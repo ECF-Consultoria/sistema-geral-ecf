@@ -336,4 +336,181 @@ class AgendaGoogleTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    // ─── Recorrência (23/09/2026) ───────────────────────────────────────────
+
+    /** Rotina já no Google, na agenda de `$dono`, com a primeira reunião em `$inicio`. */
+    private function rotinaNoGoogle(Onboarding $onboarding, User $dono, \DateTimeInterface $inicio, string $regra = 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU'): OnboardingEventoGoogle
+    {
+        return OnboardingEventoGoogle::create([
+            'onboarding_id'          => $onboarding->id,
+            'tipo'                   => OnboardingEventoGoogle::TIPO_RECORRENTE,
+            'chave'                  => OnboardingEventoGoogle::TIPO_RECORRENTE,
+            'google_event_id'        => 'serie_antiga',
+            'calendar_owner_user_id' => $dono->id,
+            'calendar_owner_email'   => $dono->email,
+            'enviado_em'             => now()->subMonth(),
+            'enviado_por'            => $dono->id,
+            'titulo'                 => 'Reunião de acompanhamento',
+            'inicio'                 => $inicio,
+            'fim'                    => \Carbon\CarbonImmutable::instance($inicio)->addHour(),
+            'recorrencia'            => $regra,
+            'plataforma'             => OnboardingEventoGoogle::PLATAFORMA_NENHUMA,
+            'status'                 => OnboardingEventoGoogle::STATUS_ATIVO,
+        ]);
+    }
+
+    /** Uma terça às 14h, no passado — a série já começou. */
+    private function tercaPassada(): \Carbon\CarbonImmutable
+    {
+        return \Carbon\CarbonImmutable::now('America/Sao_Paulo')->subWeeks(3)->previous(2)->setTime(14, 0);
+    }
+
+    /**
+     * A série nascia na data do kickoff mesmo quando ela já tinha passado: o
+     * cliente recebia convite para reuniões de semanas atrás.
+     */
+    public function test_rotina_enviada_depois_do_kickoff_nasce_a_partir_de_hoje(): void
+    {
+        $this->googleResponde();
+        [$onboarding, $analista] = $this->cenario(['agenda' => true]);
+        $onboarding->forceFill(['reuniao_agendada_para' => now()->subDays(30)])->save();
+
+        $r = $this->servico()->enviar($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE, $analista);
+
+        $this->assertTrue($r['ok'], $r['mensagem']);
+        Http::assertSent(function ($request) {
+            $inicio = $request->data()['start']['dateTime'] ?? null;
+
+            return $inicio && \Carbon\CarbonImmutable::parse($inicio)->isFuture();
+        });
+    }
+
+    public function test_previa_avisa_quando_o_dia_combinado_mudou_depois_do_envio(): void
+    {
+        $this->googleResponde();
+        [$onboarding, $analista] = $this->cenario(['agenda' => true]);
+
+        $this->servico()->enviar($onboarding, OnboardingEventoGoogle::TIPO_RECORRENTE, $analista);
+        $this->assertFalse($this->servico()->previa($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE)['desatualizado']);
+
+        OnboardingAgenda::where('onboarding_id', $onboarding->id)->update(['dia_semana' => 4]);
+
+        $this->assertTrue($this->servico()->previa($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE)['desatualizado']);
+    }
+
+    /**
+     * Série que já começou, com o dia trocado: a antiga ganha UNTIL (as
+     * reuniões passadas ficam no histórico) e nasce outra. O PATCH que movia a
+     * série inteira apagava o passado da agenda de todo mundo.
+     */
+    public function test_serie_ja_iniciada_com_dia_trocado_e_encerrada_e_nasce_outra(): void
+    {
+        [$onboarding, $analista] = $this->cenario(['agenda' => true]);
+        $this->rotinaNoGoogle($onboarding, $analista, $this->tercaPassada());
+        OnboardingAgenda::where('onboarding_id', $onboarding->id)->update(['dia_semana' => 4]);
+
+        Http::fake([
+            'https://www.googleapis.com/calendar/v3/*' => Http::sequence()
+                ->push(['id' => 'serie_antiga', 'status' => 'confirmed', 'recurrence' => ['EXDATE:20260101T170000Z', 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU']])
+                ->push(['id' => 'serie_antiga'])
+                ->push(['id' => 'serie_nova']),
+        ]);
+
+        $r = $this->servico()->enviar($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE, $analista);
+
+        $this->assertTrue($r['ok'], $r['mensagem']);
+
+        Http::assertSent(function ($request) {
+            $regras = $request->data()['recurrence'] ?? [];
+
+            return $request->method() === 'PATCH'
+                && str_contains($request->url(), 'events/serie_antiga')
+                && ! isset($request->data()['start'])
+                && in_array('EXDATE:20260101T170000Z', $regras, true)
+                && (bool) preg_match('~^RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU;UNTIL=\d{8}T\d{6}Z$~', $regras[1] ?? '');
+        });
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && ($request->data()['recurrence'][0] ?? null) === 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TH');
+
+        $registro = OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)->where('chave', 'recorrente')->sole();
+        $this->assertSame('serie_nova', $registro->google_event_id);
+        $this->assertSame('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TH', $registro->recorrencia);
+    }
+
+    /** Nada mudou: atualizar só mexe em convidados e descrição, nunca nas datas. */
+    public function test_serie_ja_iniciada_sem_mudanca_nao_mexe_nas_datas(): void
+    {
+        $this->googleResponde(['id' => 'serie_antiga']);
+        [$onboarding, $analista] = $this->cenario(['agenda' => true]);
+        $inicio = $this->tercaPassada();
+        $this->rotinaNoGoogle($onboarding, $analista, $inicio);
+
+        $r = $this->servico()->enviar($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE, $analista);
+
+        $this->assertTrue($r['ok'], $r['mensagem']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
+            && ! array_key_exists('start', $request->data())
+            && ! array_key_exists('recurrence', $request->data())
+            && isset($request->data()['attendees']));
+
+        $registro = OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)->where('chave', 'recorrente')->sole();
+        $this->assertTrue($registro->inicio->equalTo($inicio), 'o retrato continua com a primeira reunião da série');
+    }
+
+    /**
+     * Analista trocado: o botão respondia "ajuste pela Agenda", e a Agenda
+     * recusa a rotina — um beco. Agora a série sai da agenda de quem conduzia
+     * e nasce na do analista atual.
+     */
+    public function test_troca_de_analista_leva_a_rotina_para_a_agenda_do_novo(): void
+    {
+        [$onboarding, $analista, $estrategista] = $this->cenario(['agenda' => true]);
+        $antigo = User::factory()->create(['name' => 'Analista Antigo']);
+        GoogleToken::create([
+            'user_id' => $antigo->id, 'access_token' => 'token-antigo', 'refresh_token' => 'r', 'expires_at' => now()->addHour(),
+        ]);
+        // Série que ainda não começou: sai por cancelamento, sem histórico a preservar.
+        $this->rotinaNoGoogle($onboarding, $antigo, now()->addWeek());
+
+        Http::fake([
+            'https://www.googleapis.com/calendar/v3/*' => Http::sequence()
+                ->push([], 204)
+                ->push(['id' => 'serie_do_novo']),
+        ]);
+
+        $r = $this->servico()->enviar($onboarding->fresh(), OnboardingEventoGoogle::TIPO_RECORRENTE, $analista);
+
+        $this->assertTrue($r['ok'], $r['mensagem']);
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+            && str_contains($request->url(), 'events/serie_antiga')
+            && $request->hasHeader('Authorization', 'Bearer token-antigo'));
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && $request->hasHeader('Authorization', 'Bearer token-de-teste'));
+
+        $registro = OnboardingEventoGoogle::where('onboarding_id', $onboarding->id)->where('chave', 'recorrente')->sole();
+        $this->assertSame($analista->id, $registro->calendar_owner_user_id);
+        $this->assertSame('serie_do_novo', $registro->google_event_id);
+        $this->assertSame(OnboardingEventoGoogle::STATUS_ATIVO, $registro->status);
+    }
+
+    /** O kickoff do estrategista (marcado pelo "Agendar") continua sendo ajustado pela Agenda. */
+    public function test_kickoff_de_outra_agenda_continua_recusado_por_aqui(): void
+    {
+        $this->googleResponde();
+        [$onboarding, $analista, $estrategista] = $this->cenario();
+        OnboardingEventoGoogle::create([
+            'onboarding_id' => $onboarding->id, 'tipo' => 'kickoff', 'chave' => 'kickoff', 'google_event_id' => 'k1',
+            'calendar_owner_user_id' => $estrategista->id, 'calendar_owner_email' => $estrategista->email,
+            'enviado_em' => now(), 'inicio' => now()->addDays(3), 'fim' => now()->addDays(3)->addHour(),
+            'status' => OnboardingEventoGoogle::STATUS_ATIVO,
+        ]);
+
+        $r = $this->servico()->enviar($onboarding->fresh(), OnboardingEventoGoogle::TIPO_KICKOFF, $analista);
+
+        $this->assertFalse($r['ok']);
+        Http::assertNothingSent();
+    }
 }

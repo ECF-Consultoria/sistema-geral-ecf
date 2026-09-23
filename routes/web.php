@@ -346,11 +346,16 @@ Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
 Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCallback'])
     ->name('shopee.oauth.ads.callback');
 
-// Google OAuth (público — sem autenticação durante o callback)
+// Google OAuth — conectar e voltar, os dois autenticados (ver callback abaixo)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
     ->middleware(['auth', 'verified'])
     ->name('google.connect');
-Route::get('/google/callback', [GoogleCalendarController::class, 'callback'])->name('google.callback');
+// 23/09/2026 — o callback passou a exigir sessão: o token é gravado para quem
+// COMEÇOU a conexão, conferido pelo `state` guardado nessa sessão. Sem `auth`,
+// uma volta sem sessão estourava 500 (`$user->id` sobre null).
+Route::get('/google/callback', [GoogleCalendarController::class, 'callback'])
+    ->middleware(['auth'])
+    ->name('google.callback');
 
 // Gerar link NPS (DEVE ficar antes da rota pública /nps/{token} para não colidir)
 Route::post('/nps/generate', [NpsController::class, 'generate'])

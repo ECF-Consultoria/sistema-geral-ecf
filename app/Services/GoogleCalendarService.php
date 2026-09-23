@@ -14,9 +14,20 @@ class GoogleCalendarService
 {
     // ── OAuth URLs ────────────────────────────────────────────────────────────
 
-    public function getAuthUrl(): string
+    /**
+     * `$state` amarra a volta do Google a QUEM começou a conexão (23/09/2026).
+     * Sem ele o callback gravava o token em quem estivesse logado na volta: se
+     * alguém trocasse de usuário no meio do consentimento, o Google de uma
+     * pessoa ia parar na conta de outra.
+     *
+     * `$email` vira `login_hint`, e `select_account` obriga o Google a mostrar
+     * a escolha de conta. Sem isso, num navegador já logado no Google de outra
+     * pessoa, o consentimento saía na conta ERRADA sem perguntar — e daí em
+     * diante a agenda do sistema lia e escrevia na agenda dela.
+     */
+    public function getAuthUrl(string $state = '', ?string $email = null): string
     {
-        return 'https://accounts.google.com/o/oauth2/auth?' . http_build_query([
+        return 'https://accounts.google.com/o/oauth2/auth?' . http_build_query(array_filter([
             'client_id'     => config('services.google.client_id'),
             'redirect_uri'  => config('services.google.redirect'),
             'response_type' => 'code',
@@ -37,8 +48,28 @@ class GoogleCalendarService
                 'https://www.googleapis.com/auth/userinfo.email',
             ]),
             'access_type'   => 'offline',
-            'prompt'        => 'consent',
-        ]);
+            'prompt'        => 'consent select_account',
+            'state'         => $state,
+            'login_hint'    => $email,
+        ], fn ($v) => $v !== null && $v !== ''));
+    }
+
+    /**
+     * O e-mail da conta Google que acabou de autorizar — é o que diz DE QUEM é
+     * a agenda conectada. `null` quando o Google não responde: a conexão não
+     * depende disto, só o aviso de conta diferente.
+     */
+    public function emailDaConta(string $accessToken): ?string
+    {
+        try {
+            $resposta = Http::withToken($accessToken)->get('https://www.googleapis.com/oauth2/v2/userinfo');
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $email = $resposta->successful() ? $resposta->json('email') : null;
+
+        return is_string($email) && $email !== '' ? mb_strtolower($email) : null;
     }
 
     // ── Troca code por tokens ─────────────────────────────────────────────────
@@ -54,7 +85,14 @@ class GoogleCalendarService
         ]);
 
         if (!$response->successful()) {
-            throw new \RuntimeException('Falha ao trocar código Google: ' . $response->body());
+            // O corpo cru do Google (`invalid_grant` ao recarregar o callback,
+            // por exemplo) vai para o log, não para a tela.
+            Log::warning('[GoogleCalendar] troca do código OAuth recusada', [
+                'status' => $response->status(),
+                'corpo'  => mb_substr($response->body(), 0, 500),
+            ]);
+
+            throw new \RuntimeException('o Google não aceitou a autorização (tente conectar de novo).');
         }
 
         return $response->json();
@@ -62,10 +100,31 @@ class GoogleCalendarService
 
     // ── Renovar access token ──────────────────────────────────────────────────
 
-    public function refreshToken(GoogleToken $token): GoogleToken
+    /**
+     * Renova o access token vencido — ou, com `$forcar`, mesmo o que ainda
+     * não venceu (o Google devolveu 401 antes da hora).
+     *
+     * ### Conexão morta sai do banco (23/09/2026)
+     * `invalid_grant` é definitivo: o acesso foi revogado, a senha mudou ou o
+     * refresh token caducou. Antes o token ficava no banco e todo lugar que
+     * pergunta "está conectado?" (só um `exists()`) seguia dizendo que sim —
+     * a pessoa escolhia o organizador "conectado" e recebia "a conexão
+     * expirou", para sempre, até alguém reconectar à mão. Apagar é o que faz a
+     * tela voltar a oferecer "Conectar".
+     *
+     * A mensagem mantém "renovar token": é por ela que os tradutores de erro
+     * (`AgendaService`, `AgendaGoogleService::explicar()`) reconhecem o caso.
+     */
+    public function refreshToken(GoogleToken $token, bool $forcar = false): GoogleToken
     {
-        if (!$token->isExpired()) {
+        if (!$forcar && !$token->isExpired()) {
             return $token;
+        }
+
+        if (!$token->refresh_token) {
+            $this->descartarConexao($token, 'sem refresh token');
+
+            throw new \RuntimeException('Falha ao renovar token Google: a conexão precisa ser refeita.');
         }
 
         $response = Http::post('https://oauth2.googleapis.com/token', [
@@ -76,16 +135,58 @@ class GoogleCalendarService
         ]);
 
         if (!$response->successful()) {
+            if ($response->json('error') === 'invalid_grant') {
+                $this->descartarConexao($token, 'invalid_grant');
+
+                throw new \RuntimeException('Falha ao renovar token Google: a conexão foi revogada ou expirou.');
+            }
+
+            Log::warning('[GoogleCalendar] renovação do token falhou', [
+                'user_id' => $token->user_id,
+                'status'  => $response->status(),
+                'corpo'   => mb_substr($response->body(), 0, 300),
+            ]);
+
             throw new \RuntimeException('Falha ao renovar token Google.');
         }
 
         $data = $response->json();
         $token->update([
             'access_token' => $data['access_token'],
-            'expires_at'   => now()->addSeconds($data['expires_in'] - 60),
+            'expires_at'   => now()->addSeconds(($data['expires_in'] ?? 3600) - 60),
         ]);
 
         return $token->fresh();
+    }
+
+    private function descartarConexao(GoogleToken $token, string $motivo): void
+    {
+        Log::warning('[GoogleCalendar] conexão descartada — a pessoa precisa reconectar', [
+            'user_id' => $token->user_id,
+            'motivo'  => $motivo,
+        ]);
+
+        $token->delete();
+    }
+
+    /**
+     * Faz a chamada com o token válido e, se o Google responder 401 mesmo
+     * assim (token revogado antes do `expires_at`, relógio adiantado), renova
+     * à força e tenta UMA vez de novo. Antes o 401 virava erro e a próxima
+     * tentativa repetia o mesmo token até ele vencer pelo relógio.
+     *
+     * @param  callable(GoogleToken): \Illuminate\Http\Client\Response  $chamada
+     */
+    private function comToken(GoogleToken $token, callable $chamada): \Illuminate\Http\Client\Response
+    {
+        $token = $this->refreshToken($token);
+        $resposta = $chamada($token);
+
+        if ($resposta->status() === 401) {
+            $resposta = $chamada($this->refreshToken($token, forcar: true));
+        }
+
+        return $resposta;
     }
 
     // ── Escrever eventos (15/09/2026) ─────────────────────────────────────────
@@ -131,10 +232,8 @@ class GoogleCalendarService
      */
     public function buscarEvento(GoogleToken $token, string $eventId): ?array
     {
-        $token = $this->refreshToken($token);
-
-        $resposta = Http::withToken($token->access_token)
-            ->get(self::URL_EVENTOS.'/'.rawurlencode($eventId));
+        $resposta = $this->comToken($token, fn (GoogleToken $t) => Http::withToken($t->access_token)
+            ->get(self::URL_EVENTOS.'/'.rawurlencode($eventId)));
 
         if (in_array($resposta->status(), [404, 410], true)) {
             return null;
@@ -169,10 +268,8 @@ class GoogleCalendarService
      */
     public function cancelarEvento(GoogleToken $token, string $eventId): void
     {
-        $token = $this->refreshToken($token);
-
-        $resposta = Http::withToken($token->access_token)
-            ->delete(self::URL_EVENTOS.'/'.rawurlencode($eventId).'?sendUpdates=all');
+        $resposta = $this->comToken($token, fn (GoogleToken $t) => Http::withToken($t->access_token)
+            ->delete(self::URL_EVENTOS.'/'.rawurlencode($eventId).'?sendUpdates=all'));
 
         if ($resposta->successful() || in_array($resposta->status(), [404, 410], true)) {
             return;
@@ -193,18 +290,19 @@ class GoogleCalendarService
      */
     private function escrever(GoogleToken $token, string $metodo, string $url, array $corpo, bool $conferencia = false): array
     {
-        $token = $this->refreshToken($token);
-
-        $requisicao = Http::withToken($token->access_token)->asJson();
         $url .= (str_contains($url, '?') ? '&' : '?').'sendUpdates=all';
 
         if ($conferencia) {
             $url .= '&conferenceDataVersion=1';
         }
 
-        $resposta = $metodo === 'post'
-            ? $requisicao->post($url, $corpo)
-            : $requisicao->patch($url, $corpo);
+        $resposta = $this->comToken($token, function (GoogleToken $t) use ($metodo, $url, $corpo) {
+            $requisicao = Http::withToken($t->access_token)->asJson();
+
+            return $metodo === 'post'
+                ? $requisicao->post($url, $corpo)
+                : $requisicao->patch($url, $corpo);
+        });
 
         if (! $resposta->successful()) {
             $this->recusar($resposta);
@@ -246,18 +344,18 @@ class GoogleCalendarService
 
     public function fetchEvents(GoogleToken $token, int $daysBack = 30): array
     {
-        $token = $this->refreshToken($token);
-
-        $response = Http::withToken($token->access_token)
+        $response = $this->comToken($token, fn (GoogleToken $t) => Http::withToken($t->access_token)
             ->get('https://www.googleapis.com/calendar/v3/calendars/primary/events', [
                 'timeMin'      => now()->subDays($daysBack)->toIso8601String(),
                 'timeMax'      => now()->addDays(7)->toIso8601String(),
                 'orderBy'      => 'startTime',
                 'singleEvents' => 'true',
                 'maxResults'   => 250,
-            ]);
+            ]));
 
         if (!$response->successful()) {
+            $this->registrarLeituraRecusada($token, $response);
+
             throw new \RuntimeException('Falha ao buscar eventos do Google Calendar.');
         }
 
@@ -268,22 +366,69 @@ class GoogleCalendarService
 
     public function fetchEventsForRange(GoogleToken $token, Carbon $from, Carbon $to): array
     {
-        $token = $this->refreshToken($token);
-
-        $response = Http::withToken($token->access_token)
+        $response = $this->comToken($token, fn (GoogleToken $t) => Http::withToken($t->access_token)
             ->get('https://www.googleapis.com/calendar/v3/calendars/primary/events', [
                 'timeMin'      => $from->copy()->startOfDay()->toIso8601String(),
                 'timeMax'      => $to->copy()->endOfDay()->toIso8601String(),
                 'orderBy'      => 'startTime',
                 'singleEvents' => 'true',
                 'maxResults'   => 500,
-            ]);
+            ]));
 
         if (!$response->successful()) {
+            $this->registrarLeituraRecusada($token, $response);
+
             throw new \RuntimeException('Falha ao buscar eventos do Google Calendar.');
         }
 
         return $response->json('items', []);
+    }
+
+    /**
+     * Os intervalos OCUPADOS de várias agendas, sem nenhum detalhe dos
+     * compromissos — é o `freeBusy` do Google, e é por isso que ele serve ao
+     * Portal do Cliente (23/09/2026): o cliente escolhe horário livre sem que
+     * título, convidado ou assunto de ninguém saia do Google.
+     *
+     * Consulta a agenda PRIMÁRIA de cada token (a do dono), uma chamada por
+     * pessoa: o `freeBusy` de outra agenda exigiria que ela fosse compartilhada
+     * com quem pergunta, e não é o caso.
+     *
+     * @return array<int, array{inicio: CarbonImmutable, fim: CarbonImmutable}>
+     */
+    public function ocupado(GoogleToken $token, \DateTimeInterface $de, \DateTimeInterface $ate): array
+    {
+        $response = $this->comToken($token, fn (GoogleToken $t) => Http::withToken($t->access_token)
+            ->asJson()
+            ->post('https://www.googleapis.com/calendar/v3/freeBusy', [
+                'timeMin' => \Carbon\CarbonImmutable::instance($de)->toIso8601String(),
+                'timeMax' => \Carbon\CarbonImmutable::instance($ate)->toIso8601String(),
+                'items'   => [['id' => 'primary']],
+            ]));
+
+        if (!$response->successful()) {
+            $this->registrarLeituraRecusada($token, $response);
+
+            throw new \RuntimeException('Falha ao consultar os horários livres no Google Calendar.');
+        }
+
+        return collect($response->json('calendars.primary.busy', []))
+            ->map(fn (array $b) => [
+                'inicio' => \Carbon\CarbonImmutable::parse($b['start']),
+                'fim'    => \Carbon\CarbonImmutable::parse($b['end']),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** Leitura recusada ia só para a tela, e o motivo se perdia. */
+    private function registrarLeituraRecusada(GoogleToken $token, \Illuminate\Http\Client\Response $response): void
+    {
+        Log::warning('[GoogleCalendar] leitura recusada', [
+            'user_id' => $token->user_id,
+            'status'  => $response->status(),
+            'corpo'   => mb_substr($response->body(), 0, 300),
+        ]);
     }
 
     // ── Sincronizar eventos → reuniões ────────────────────────────────────────

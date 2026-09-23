@@ -80,7 +80,106 @@ class AgendaGoogleService
             'ja_enviado'   => $ativo !== null,
             'enviado_em'   => $ativo?->enviado_em?->toIso8601String(),
             'dono_evento'  => $ativo?->calendar_owner_email,
+            // 23/09/2026 — o convite no Google ficou para trás do que se
+            // combinou aqui (data, dia, horário ou quem conduz). Nada avisava.
+            'desatualizado' => $ativo !== null && $impedimento === null && $this->desatualizado($onboarding, $tipo, $ativo, $dono),
         ];
+    }
+
+    /**
+     * O convite ativo ainda corresponde ao que está combinado no onboarding?
+     *
+     * Na rotina compara-se o DIA DA SEMANA, o horário e a regra — nunca a data
+     * da primeira ocorrência, que anda sozinha com o tempo (a série começa na
+     * próxima ocorrência a partir de hoje).
+     */
+    private function desatualizado(Onboarding $onboarding, string $tipo, OnboardingEventoGoogle $ativo, ?User $dono): bool
+    {
+        if ($dono && $ativo->calendar_owner_user_id !== $dono->id && $tipo === OnboardingEventoGoogle::TIPO_RECORRENTE) {
+            return true;
+        }
+
+        if ($tipo === OnboardingEventoGoogle::TIPO_KICKOFF) {
+            return $onboarding->reuniao_agendada_para !== null
+                && $ativo->inicio !== null
+                && ! CarbonImmutable::instance($ativo->inicio)->equalTo(CarbonImmutable::parse($onboarding->reuniao_agendada_para));
+        }
+
+        [$inicio, $regra] = $this->primeiraOcorrencia($onboarding);
+
+        return $this->rotinaMudou($ativo, $inicio, $regra);
+    }
+
+    /**
+     * Dia da semana + horário + regra (sem UNTIL/COUNT) — o que define uma
+     * rotina. A data da primeira ocorrência fica de fora de propósito.
+     */
+    private function assinaturaDaRotina(CarbonImmutable $inicio, ?string $regra): string
+    {
+        $base = $regra ? preg_replace('~;(UNTIL|COUNT)=[^;]*~i', '', $regra) : '';
+
+        return $inicio->setTimezone(self::FUSO)->format('N H:i').'|'.mb_strtoupper((string) $base);
+    }
+
+    private function rotinaMudou(OnboardingEventoGoogle $ativo, CarbonImmutable $inicio, ?string $regra): bool
+    {
+        if (! $ativo->inicio) {
+            return true;
+        }
+
+        return $this->assinaturaDaRotina(CarbonImmutable::instance($ativo->inicio), $ativo->recorrencia)
+            !== $this->assinaturaDaRotina($inicio, $regra);
+    }
+
+    /**
+     * Tira a rotina ativa do caminho para uma nova nascer.
+     *
+     * Série que ainda não começou é CANCELADA (os convidados são avisados e
+     * nada se perde). Série que já começou é ENCERRADA — ganha `UNTIL` agora,
+     * como o "este e os seguintes" do próprio Google —, para as reuniões que
+     * já aconteceram continuarem na agenda de todo mundo. Mover a série
+     * inteira por PATCH, como era, reescrevia o histórico.
+     *
+     * @return array{ok: bool, mensagem: string}
+     */
+    private function encerrarRotina(OnboardingEventoGoogle $evento, User $por): array
+    {
+        if (! $evento->inicio || CarbonImmutable::instance($evento->inicio)->isFuture()) {
+            return $this->cancelar($evento, $por);
+        }
+
+        [$dono, $token] = $this->agendaDoEvento($evento);
+
+        if (! $token) {
+            return $this->falha('A rotina atual está na agenda de '.($dono?->name ?? $evento->calendar_owner_email)
+                .', que não está conectada ao Google agora. Peça para reconectar, ou encerre a série direto no Google.');
+        }
+
+        try {
+            $item = $this->google->buscarEvento($token, $evento->google_event_id);
+
+            if ($item !== null && ($item['status'] ?? '') !== 'cancelled') {
+                $ate = CarbonImmutable::now()->utc()->format('Ymd\THis\Z');
+                $regras = collect($item['recurrence'] ?? [$evento->recorrencia])
+                    ->filter()
+                    ->map(fn (string $linha) => str_starts_with(mb_strtoupper($linha), 'RRULE:')
+                        ? preg_replace('~;(UNTIL|COUNT)=[^;]*~i', '', $linha).';UNTIL='.$ate
+                        : $linha)
+                    ->values()
+                    ->all();
+
+                $this->google->atualizarEvento($token, $evento->google_event_id, ['recurrence' => $regras]);
+            }
+        } catch (\Throwable $e) {
+            return $this->falha($this->explicar($e, $dono));
+        }
+
+        activity('onboarding')
+            ->performedOn($evento->onboarding)
+            ->withProperties(['agenda_de' => $evento->calendar_owner_email, 'por' => $por->id])
+            ->log('Rotina encerrada no Google Agenda — as reuniões passadas ficam no histórico');
+
+        return ['ok' => true, 'mensagem' => 'Rotina anterior encerrada.'];
     }
 
     /**
@@ -109,17 +208,53 @@ class AgendaGoogleService
         // ele acabou. Reenviar é criar um evento novo na mesma linha.
         $ativo = $registro?->ativo() ? $registro : null;
 
+        $ehRotina = $tipo === OnboardingEventoGoogle::TIPO_RECORRENTE;
+
         // Convite marcado pelo "Agendar" na agenda do estrategista não é do
         // analista: atualizá-lo daqui usaria o token errado e trocaria o dono.
+        //
+        // A ROTINA não tem essa saída (23/09/2026): a Agenda recusa editá-la e
+        // o "Agendar" não a cria. Com o analista trocado, este botão era o
+        // único caminho e respondia "ajuste pela Agenda" — um beco. Agora a
+        // série sai da agenda de quem conduzia e nasce na do analista atual.
         if ($ativo && $ativo->calendar_owner_user_id !== $dono->id) {
-            return [
-                'ok'       => false,
-                'mensagem' => 'Este convite está na agenda de '.($ativo->dono?->name ?? $ativo->calendar_owner_email)
-                    .' — ajuste-o pela Agenda do onboarding.',
-            ];
+            if (! $ehRotina) {
+                return [
+                    'ok'       => false,
+                    'mensagem' => 'Este convite está na agenda de '.($ativo->dono?->name ?? $ativo->calendar_owner_email)
+                        .' — ajuste-o pela Agenda do onboarding.',
+                ];
+            }
+
+            $saida = $this->encerrarRotina($ativo, $por);
+
+            if (! $saida['ok']) {
+                return $saida;
+            }
+
+            $ativo = null;
         }
 
         $corpo = $this->corpoDoEvento($onboarding, $tipo, $convidados);
+
+        // Rotina que já começou: o PATCH movia a série INTEIRA para a nova
+        // primeira ocorrência, apagando as reuniões que já aconteceram da
+        // agenda de todo mundo. Se o combinado mudou, a série velha é
+        // encerrada e nasce outra; se não mudou, o PATCH não toca nas datas —
+        // só em convidados e descrição.
+        if ($ativo && $ehRotina && $ativo->inicio && CarbonImmutable::instance($ativo->inicio)->isPast()) {
+            if ($this->rotinaMudou($ativo, CarbonImmutable::parse($corpo['start']['dateTime']), $corpo['recurrence'][0] ?? null)) {
+                $saida = $this->encerrarRotina($ativo, $por);
+
+                if (! $saida['ok']) {
+                    return $saida;
+                }
+
+                $ativo = null;
+            } else {
+                unset($corpo['start'], $corpo['end'], $corpo['recurrence']);
+            }
+        }
 
         try {
             $resposta = $ativo
@@ -128,6 +263,17 @@ class AgendaGoogleService
         } catch (\Throwable $e) {
             return ['ok' => false, 'mensagem' => $this->explicar($e, $dono)];
         }
+
+        // Com as datas preservadas (acima), o retrato continua com as da série.
+        $inicioGravado = isset($corpo['start'])
+            ? CarbonImmutable::parse($corpo['start']['dateTime'])->setTimezone(config('app.timezone'))
+            : $ativo?->inicio;
+        $fimGravado = isset($corpo['end'])
+            ? CarbonImmutable::parse($corpo['end']['dateTime'])->setTimezone(config('app.timezone'))
+            : $ativo?->fim;
+        $regraGravada = array_key_exists('recurrence', $corpo)
+            ? ($corpo['recurrence'][0] ?? null)
+            : $ativo?->recorrencia;
 
         $registro = OnboardingEventoGoogle::updateOrCreate(
             ['onboarding_id' => $onboarding->id, 'chave' => $tipo],
@@ -140,9 +286,9 @@ class AgendaGoogleService
                 'enviado_por'            => $por->id,
                 'convidados'             => count($convidados),
                 'titulo'                 => $corpo['summary'],
-                'inicio'                 => CarbonImmutable::parse($corpo['start']['dateTime'])->setTimezone(config('app.timezone')),
-                'fim'                    => CarbonImmutable::parse($corpo['end']['dateTime'])->setTimezone(config('app.timezone')),
-                'recorrencia'            => $corpo['recurrence'][0] ?? null,
+                'inicio'                 => $inicioGravado,
+                'fim'                    => $fimGravado,
+                'recorrencia'            => $regraGravada,
                 // O convite fixo não escolhe plataforma; se o evento ganhou um
                 // Meet pelo "Agendar", o PATCH acima o preserva.
                 'plataforma'             => $ativo?->plataforma ?? OnboardingEventoGoogle::PLATAFORMA_NENHUMA,
@@ -726,8 +872,14 @@ class AgendaGoogleService
             $mudancas['fim'] = CarbonImmutable::parse($item['end']['dateTime'])->setTimezone(config('app.timezone'));
         }
 
-        if (! empty($item['recurrence'][0])) {
-            $mudancas['recorrencia'] = mb_substr((string) $item['recurrence'][0], 0, 120);
+        // A linha da REGRA, não a primeira da lista: o Google devolve `EXDATE`
+        // (ocorrência apagada) e `RDATE` junto, em qualquer ordem, e gravar uma
+        // delas no lugar da `RRULE` fazia a projeção perder a repetição.
+        $regra = collect($item['recurrence'] ?? [])
+            ->first(fn ($linha) => is_string($linha) && str_starts_with(mb_strtoupper($linha), 'RRULE:'));
+
+        if ($regra) {
+            $mudancas['recorrencia'] = mb_substr($regra, 0, 120);
         }
 
         if (($link = $this->linkDoItem($item)) !== null) {
@@ -1109,7 +1261,11 @@ class AgendaGoogleService
      *
      * A rotina começa DEPOIS do kickoff: é a reunião de acompanhamento, e
      * marcá-la antes da conversa de abertura inverteria o processo. Sem kickoff
-     * marcado, conta a partir de hoje.
+     * marcado — ou com ele já no passado —, conta a partir de hoje.
+     *
+     * O "já no passado" é de 23/09/2026: a base era sempre a data do kickoff, e
+     * uma rotina enviada semanas depois dele nascia com ocorrências que já
+     * tinham passado — o cliente recebia convite para reuniões de ontem.
      *
      * @return array{0: CarbonImmutable, 1: string}
      */
@@ -1118,9 +1274,12 @@ class AgendaGoogleService
         $agenda = $this->agenda($onboarding);
         [$hora, $minuto] = array_pad(explode(':', (string) $agenda->horario), 2, '0');
 
-        $base = $onboarding->reuniao_agendada_para
+        $agora = CarbonImmutable::now(self::FUSO);
+        $kickoff = $onboarding->reuniao_agendada_para
             ? CarbonImmutable::parse($onboarding->reuniao_agendada_para)
-            : CarbonImmutable::now(self::FUSO);
+            : null;
+
+        $base = $kickoff && $kickoff->greaterThan($agora) ? $kickoff : $agora;
 
         // `dia_semana` é ISO (1 = segunda … 7 = domingo) e o `next()` do Carbon
         // espera 0 = domingo … 6 = sábado. O `% 7` é a conversão inteira: 7

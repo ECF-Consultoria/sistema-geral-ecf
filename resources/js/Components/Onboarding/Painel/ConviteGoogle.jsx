@@ -97,6 +97,16 @@ function Linha({ onboardingId, tipo, rotulo, previa }) {
                     <Info size={12} className="shrink-0 mt-0.5" /> {previa.impedimento}
                 </p>
             )}
+
+            {/* 23/09/2026 — trocar dia, horário ou analista NÃO mexe no Google
+                sozinho (atualizar manda e-mail ao cliente). Antes nada avisava,
+                e a série seguia no dia antigo na agenda de todo mundo. */}
+            {previa.desatualizado && ! previa.impedimento && (
+                <p className="flex items-start gap-1.5 text-[11.5px] text-amber-300/90">
+                    <Info size={12} className="shrink-0 mt-0.5" />
+                    O convite no Google está diferente do que foi combinado aqui. Clique em "Atualizar convite" para corrigir.
+                </p>
+            )}
         </div>
     );
 }

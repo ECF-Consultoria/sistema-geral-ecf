@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\GoogleToken;
 use App\Services\GoogleCalendarService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GoogleCalendarController extends Controller
 {
@@ -32,7 +34,15 @@ class GoogleCalendarController extends Controller
             $request->session()->forget('google_retorno');
         }
 
-        return redirect($this->calendar->getAuthUrl());
+        // A volta do Google só vale para QUEM começou (23/09/2026). O `state`
+        // vai e volta pelo Google; o dono dele fica na sessão.
+        $state = Str::random(40);
+        $request->session()->put('google_oauth', [
+            'state'   => $state,
+            'user_id' => $request->user()->id,
+        ]);
+
+        return redirect($this->calendar->getAuthUrl($state, $request->user()->email));
     }
 
     // ── Callback OAuth — salva tokens ─────────────────────────────────────────
@@ -46,6 +56,29 @@ class GoogleCalendarController extends Controller
         $volta = fn (string $tipo, string $mensagem) => ($destino
             ? redirect($destino)
             : redirect()->route('profile.edit'))->with($tipo, $mensagem);
+
+        // `pull`: um `state` vale para uma volta só.
+        $pedido = $request->session()->pull('google_oauth');
+        $user = $request->user();
+
+        // Sem `state` casando com o que ESTA sessão pediu, a volta é de outra
+        // pessoa — ou de alguém que trocou de usuário no meio do caminho, ou
+        // de um link forjado com o código de outra conta. Antes o token ia
+        // para quem estivesse logado na volta, e a agenda do sistema passava a
+        // ler e escrever no Google de outra pessoa.
+        $stateValido = is_array($pedido)
+            && is_string($request->get('state'))
+            && hash_equals((string) ($pedido['state'] ?? ''), $request->get('state'))
+            && (int) ($pedido['user_id'] ?? 0) === $user->id;
+
+        if (! $stateValido) {
+            Log::warning('[GoogleCalendar] volta do OAuth recusada: state não confere', [
+                'user_id'       => $user->id,
+                'pedido_por'    => is_array($pedido) ? ($pedido['user_id'] ?? null) : null,
+            ]);
+
+            return $volta('error', 'A conexão com o Google foi iniciada em outra sessão. Clique em conectar de novo.');
+        }
 
         if ($request->get('error')) {
             return $volta('error', 'Conexão com Google negada.');
@@ -62,16 +95,33 @@ class GoogleCalendarController extends Controller
             return $volta('error', 'Erro ao conectar Google: ' . $e->getMessage());
         }
 
-        $user = $request->user();
+        $anterior = GoogleToken::where('user_id', $user->id)->first();
 
         GoogleToken::updateOrCreate(
             ['user_id' => $user->id],
             [
                 'access_token'  => $tokens['access_token'],
-                'refresh_token' => $tokens['refresh_token'] ?? null,
+                // O Google nem sempre devolve refresh token numa reconexão;
+                // gravar `null` por cima do que existia matava a conexão na
+                // primeira hora, quando o access token vencesse.
+                'refresh_token' => $tokens['refresh_token'] ?? $anterior?->refresh_token,
                 'expires_at'    => now()->addSeconds(($tokens['expires_in'] ?? 3600) - 60),
             ]
         );
+
+        // Conta Google diferente do e-mail do sistema não é proibido — há quem
+        // use outra conta para a agenda —, mas é o sintoma do navegador logado
+        // no Google de outra pessoa. Aparece na hora, com o endereço à vista.
+        $conta = $this->calendar->emailDaConta($tokens['access_token']);
+
+        //
+        // Vai pelo canal `error` de propósito: é o único, junto de `success`,
+        // que o toast global do AppLayout desenha em qualquer tela de volta
+        // (Perfil ou ficha do onboarding) — chave de flash nova morreria calada.
+        if ($conta !== null && $conta !== mb_strtolower((string) $user->email)) {
+            return $volta('error', "Atenção: o Google Agenda foi conectado com a conta {$conta}, que não é o seu e-mail do sistema. "
+                .'Se não era essa a agenda, desconecte e conecte de novo escolhendo a conta certa.');
+        }
 
         return $volta('success', 'Google Calendar conectado com sucesso!');
     }

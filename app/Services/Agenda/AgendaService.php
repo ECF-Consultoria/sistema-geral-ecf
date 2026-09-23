@@ -127,6 +127,16 @@ class AgendaService
             if ($leuGoogle && $vinculo->calendar_owner_user_id === $usuario->id) {
                 $vinculo = $this->agendaDoOnboarding->conferir($vinculo);
 
+                // SÉRIE da própria pessoa, com o Google dela lido: toda
+                // ocorrência que existe no intervalo já veio da leitura (casada
+                // por `recurringEventId`). Se nenhuma veio, não há reunião ali —
+                // a série foi encerrada, dividida ("este e os seguintes") ou a
+                // ocorrência foi apagada. Projetar o retrato desenhava uma cópia
+                // fantasma ao lado da reunião verdadeira (23/09/2026).
+                if ($vinculo->recorrencia) {
+                    continue;
+                }
+
                 if (! $vinculo->ativo() || ! $this->tocaIntervalo($vinculo, $de, $ate)) {
                     continue;
                 }
@@ -652,17 +662,33 @@ class AgendaService
         }
 
         $intervalo = preg_match('~INTERVAL=(\d+)~i', $regra, $m) ? max(1, (int) $m[1]) : 1;
+
+        // O FIM da série (23/09/2026). Antes só FREQ e INTERVAL eram lidos, e
+        // uma série encerrada no Google seguia sendo desenhada para sempre
+        // para quem não lê a agenda do dono. UNTIL é UTC (`20260923T030000Z`)
+        // ou só data; COUNT conta ocorrências desde a primeira.
+        $ultimo = preg_match('~UNTIL=(\d{8})(T(\d{6})Z?)?~i', $regra, $u)
+            ? CarbonImmutable::createFromFormat('YmdHis', $u[1].($u[3] ?? '235959'), 'UTC')
+            : null;
+        $quantas = preg_match('~COUNT=(\d+)~i', $regra, $c) ? max(1, (int) $c[1]) : null;
+
         $datas = [];
         $atual = $inicio;
+        $indice = 0;
 
         // Pula direto para perto do intervalo pedido, sem andar semana a semana
-        // desde a primeira reunião.
+        // desde a primeira reunião. O índice anda junto, para o COUNT valer.
         if ($atual < $de) {
-            $semanas = intdiv((int) $atual->diffInDays($de, true), 7 * $intervalo);
-            $atual = $atual->addWeeks(max(0, $semanas - 1) * $intervalo);
+            $saltos = max(0, intdiv((int) $atual->diffInDays($de, true), 7 * $intervalo) - 1);
+            $atual = $atual->addWeeks($saltos * $intervalo);
+            $indice = $saltos;
         }
 
-        for ($i = 0; $i < self::MAX_OCORRENCIAS && $atual <= $ate; $i++) {
+        for ($i = 0; $i < self::MAX_OCORRENCIAS && $atual <= $ate; $i++, $indice++) {
+            if (($ultimo && $atual > $ultimo) || ($quantas !== null && $indice >= $quantas)) {
+                break;
+            }
+
             if ($cabe($atual)) {
                 $datas[$atual->getTimestamp()] = $atual;
             }
