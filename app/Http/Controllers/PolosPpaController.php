@@ -40,6 +40,7 @@ class PolosPpaController extends Controller
         $query = Ppa::with(['mlbEmpresa', 'mentor'])
             ->doEscopo(Ppa::ESCOPO_POLOS)
             ->comContagemDeTarefas()
+            ->comUltimaAtividade()
             ->daSituacao($filtros['situacao'])
             ->criadoEntre($filtros['de'], $filtros['ate'])
             ->ordenadoPorAtencao();
@@ -66,6 +67,8 @@ class PolosPpaController extends Controller
             'tasks_doing'      => $p->tasks_doing_count,
             'due_date_dias'    => $p->diasAteOPrazo(),
             'created_at'       => $p->created_at->format('d/m/Y'),
+            // Última mexida, contando tarefa movida — ver `Ppa::atualizadoEm()`.
+            'updated_at'       => $p->atualizadoEm()?->format('d/m/Y'),
         ]);
 
         return Inertia::render('Polos/Ppa/Index', [

@@ -471,6 +471,22 @@ copiar as mesmas expressões para o filtro — e aí quebra: alias de SELECT val
 O SQLite dos testes é permissivo com alias em `WHERE` em alguns casos; o MariaDB
 não é. Seria mais uma armadilha do tipo "passa no teste, estoura na tela".
 
+### O filtro não pode custar uma fileira da tela — rejeitado em revisão
+
+A primeira versão do filtro pôs cinco chips e dois campos de data numa linha
+própria, abaixo da busca. Foi recusada na hora ("ficou muito ruim"), e o pedido
+foi literalmente "como era antes, porém apenas com filtro e data".
+
+A lição não é sobre chip: a lista agrupada é uma tela de LEITURA, e o que ela
+vende é a hierarquia das seções. Qualquer coisa nova acima da primeira seção
+empurra essa hierarquia para baixo e compete com ela. O filtro foi para DENTRO
+da linha da busca, que já existia — a tela não ganhou altura nenhuma.
+
+Antes de mexer nesta tela de novo, vale conferir o que está PUBLICADO em vez de
+supor: `curl -s https://admin.ecfconsultoria.com.br/build/manifest.json` acha o
+chunk de `resources/js/Pages/Ppa/Index.jsx`, e um `grep` nele diz qual versão o
+usuário está vendo. Foi o que resolveu "como era antes" sem adivinhação.
+
 ### "Vencido" não é um grupo, e por isso não entrou em `GRUPOS`
 
 O pedido foi "filtrar por vencido, em andamento e concluído". Vencido parece o
@@ -483,6 +499,19 @@ A fronteira é a mesma do selo da tela: `due_date < hoje`, **estrito**. "Vence
 hoje" não é vencido. E plano encerrado pela equipe fica de fora, pela mesma razão
 que `diasAteOPrazo()` devolve `null` nele — atraso de trabalho fechado não cobra
 ninguém.
+
+### "Atualizado em" tem de contar TAREFA, senão mente
+
+`ppas.updated_at` responde "quando alguém editou o plano", e não "quando mexeram
+nisso". Mover um card é trabalho no plano, mas grava em `ppa_tasks` — outra
+tabela. Sem contar a tarefa, um plano com o quadro andando todo dia aparece
+parado desde a última vez que alguém trocou o título, que é o oposto do que a
+coluna promete. `Ppa::scopeComUltimaAtividade()` traz o `MAX(updated_at)` das
+tarefas por subconsulta, e `atualizadoEm()` devolve a mais recente das duas.
+
+Plano sem tarefa nenhuma faz a subconsulta devolver NULL: o fallback para o
+`updated_at` do plano existe porque, sem ele, a data sumiria justamente nos
+planos recém-criados.
 
 ### Filtrar por "Concluídos" tinha de abrir a gaveta que vem fechada
 

@@ -129,6 +129,43 @@ class Ppa extends Model
     }
 
     /**
+     * A data da última mexida no plano, contando as TAREFAS dele.
+     *
+     * `ppas.updated_at` sozinho responde "quando alguém editou o plano", e não
+     * "quando mexeram nisso pela última vez": mover um card é trabalho no plano,
+     * mas grava em `ppa_tasks`, que é outra tabela. Um plano com o quadro andando
+     * todo dia apareceria parado desde a última vez que alguém trocou o título.
+     *
+     * Subconsulta, e não `with('tasks')`: a lista precisa de UM número por plano,
+     * e carregar todas as tarefas de 20 planos para achar um máximo custa caro —
+     * a mesma razão de {@see scopeComContagemDeTarefas}.
+     */
+    public function scopeComUltimaAtividade($query)
+    {
+        return $query->addSelect([
+            'tarefa_mexida_em' => PpaTask::query()
+                ->selectRaw('MAX(updated_at)')
+                ->whereColumn('ppa_tasks.ppa_id', 'ppas.id'),
+        ]);
+    }
+
+    /**
+     * A mais recente entre a do plano e a das tarefas. Exige
+     * {@see scopeComUltimaAtividade} na consulta; sem ele, cai no
+     * `updated_at` do plano em vez de mentir com uma data qualquer.
+     */
+    public function atualizadoEm(): ?\Illuminate\Support\Carbon
+    {
+        $daTarefa = $this->tarefa_mexida_em
+            ? \Illuminate\Support\Carbon::parse($this->tarefa_mexida_em)
+            : null;
+
+        return $daTarefa && $this->updated_at && $daTarefa->gt($this->updated_at)
+            ? $daTarefa
+            : $this->updated_at;
+    }
+
+    /**
      * Filtra a lista por situação — a MESMA régua de {@see scopeOrdenadoPorAtencao},
      * agora no WHERE.
      *

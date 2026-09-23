@@ -308,18 +308,54 @@ class PpaListaPorAtencaoTest extends TestCase
     }
 
     #[Test]
-    public function a_lista_interna_mostra_a_data_em_que_o_plano_foi_criado(): void
+    public function a_lista_mostra_quando_o_plano_nasceu_e_quando_mexeram_nele_pela_ultima_vez(): void
     {
         $admin = $this->admin();
         $ppa = $this->ppa('Plano datado', ['todo'], mentor: $admin);
-        $ppa->forceFill(['created_at' => '2026-09-15 10:30:00'])->saveQuietly();
+        $ppa->forceFill(['created_at' => '2026-09-15 10:30:00', 'updated_at' => '2026-09-16 09:00:00'])->saveQuietly();
+
+        // A TAREFA foi mexida depois do plano — e é ela quem manda. Mover um
+        // card é trabalho no plano, mas grava em `ppa_tasks`: sem isso, o plano
+        // com o quadro andando todo dia apareceria parado desde a última vez
+        // que alguém trocou o título.
+        $ppa->tasks()->first()->forceFill(['updated_at' => '2026-09-21 18:40:00'])->saveQuietly();
 
         $resposta = $this->actingAs($admin)->get(route('ppa.index'));
         $linha = $resposta->viewData('page')['props']['ppas']['data'][0];
 
-        // Formatada no servidor, como o prazo: data crua no JSON viraria
+        // Formatadas no servidor, como o prazo: data crua no JSON viraria
         // `new Date()` no navegador, e aí o fuso de quem olha decide o dia.
         $this->assertSame('15/09/2026', $linha['created_at']);
+        $this->assertSame('21/09/2026', $linha['updated_at']);
+    }
+
+    #[Test]
+    public function plano_mexido_depois_da_ultima_tarefa_usa_a_data_dele(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Titulo trocado ontem', ['todo'], mentor: $admin);
+        $ppa->tasks()->first()->forceFill(['updated_at' => '2026-09-10 08:00:00'])->saveQuietly();
+        $ppa->forceFill(['updated_at' => '2026-09-19 15:00:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+
+        // A regra é "a mais recente das duas", não "a da tarefa sempre".
+        $this->assertSame('19/09/2026', $resposta->viewData('page')['props']['ppas']['data'][0]['updated_at']);
+    }
+
+    #[Test]
+    public function plano_sem_tarefa_nenhuma_cai_na_propria_data_em_vez_de_ficar_vazio(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Ainda sem tarefa', [], mentor: $admin);
+        $ppa->forceFill(['updated_at' => '2026-09-12 11:00:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+
+        // A subconsulta devolve NULL quando não há tarefa. Sem o fallback, a
+        // coluna "Atualizado" apareceria em branco justamente nos planos recém
+        // criados — que são os que mais se olha.
+        $this->assertSame('12/09/2026', $resposta->viewData('page')['props']['ppas']['data'][0]['updated_at']);
     }
 
     #[Test]
