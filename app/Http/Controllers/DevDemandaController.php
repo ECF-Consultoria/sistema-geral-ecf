@@ -73,7 +73,8 @@ class DevDemandaController extends Controller
             'devs'     => $equipe ? Chamado::devsDisponiveis() : [],
             // Ticket aberto no painel lateral (?ticket=ID) — só se esta pessoa pode atuar nele.
             'chamado_detalhe' => function () use ($request, $user) {
-                $id = (int) $request->query('ticket');
+                // `chamado` = formato antigo, ainda gravado em notificações anteriores ao nome "Ticket".
+                $id = (int) ($request->query('ticket') ?? $request->query('chamado'));
                 $chamado = $id ? Chamado::find($id) : null;
 
                 return $chamado && $this->chamados->podeAtuar($user, $chamado)

@@ -30,7 +30,12 @@ const urlCom = (param, id) => {
     else u.searchParams.delete(param);
     return u.pathname + u.search;
 };
-const abaDaUrl = () => (typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('aba'));
+// `chamados` é o nome antigo da aba (links gravados antes do nome "Ticket").
+const abaDaUrl = () => {
+    if (typeof window === 'undefined') return null;
+    const aba = new URL(window.location.href).searchParams.get('aba');
+    return aba === 'chamados' ? 'tickets' : aba;
+};
 
 /**
  * Demandas Dev — tarefas do time de desenvolvimento.

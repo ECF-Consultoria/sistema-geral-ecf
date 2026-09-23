@@ -990,7 +990,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{chamado}/cancelar',          [ChamadoController::class, 'cancelar'])->name('cancelar');
         Route::get('/{chamado}/anexos/{anexo}',     [ChamadoController::class, 'anexo'])->name('anexos.show');
     });
-    // Ações da equipe sobre um chamado (a caixa de entrada é a aba Chamados de /dev/demandas).
+    // Links antigos (/chamados, de antes do nome "Ticket") — abas abertas e notificações
+    // já gravadas — continuam chegando ao mesmo lugar.
+    Route::redirect('/chamados', '/tickets');
+    Route::get('/chamados/{chamado}', fn (string $chamado) => redirect('/tickets/' . $chamado))->whereNumber('chamado');
+    // Ações da equipe sobre um chamado (a caixa de entrada é a aba Tickets de /dev/demandas).
     Route::prefix('dev/demandas/chamados')->name('dev.demandas.chamados.')->group(function () {
         Route::post('/{chamado}/status',     [ChamadoController::class, 'status'])->name('status');
         Route::post('/{chamado}/transferir', [ChamadoController::class, 'transferir'])->name('transferir');

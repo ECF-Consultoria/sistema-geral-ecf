@@ -427,6 +427,16 @@ class ChamadosTest extends TestCase
             ->missing('chamados.0.prioridade_sugerida'));
     }
 
+    public function test_enderecos_antigos_de_chamados_redirecionam_para_tickets(): void
+    {
+        $karen = $this->colaborador();
+        $this->abrir($karen);
+        $c = Chamado::sole();
+
+        $this->actingAs($karen)->get('/chamados')->assertRedirect('/tickets');
+        $this->actingAs($karen)->get("/chamados/{$c->id}")->assertRedirect("/tickets/{$c->id}");
+    }
+
     // ── Não quebra /dev/demandas ─────────────────────────────────────────────
     public function test_quem_nao_e_equipe_nao_recebe_a_caixa_de_chamados(): void
     {
