@@ -119,7 +119,8 @@ class PortalClienteTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->where('modulos', fn ($modulos) => collect($modulos)
                     ->pluck('chave')
-                    ->diff(['inicio', 'onboarding', 'calculadora', 'ppa'])
+                    // `estrutura` (Mapeamento Estrutural) entrou em 23/09.
+                    ->diff(['inicio', 'onboarding', 'calculadora', 'ppa', 'estrutura'])
                     ->isEmpty()
                 )
             );

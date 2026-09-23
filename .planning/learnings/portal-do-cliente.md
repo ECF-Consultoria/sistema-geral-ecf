@@ -149,6 +149,7 @@ para LF, edite, e regrave na terminação original.
 | Logo com fallback e sem distorção | `resources/js/Components/Portal/LogoEmpresa.jsx` |
 | Resize compartilhado com o avatar de usuário | `app/Support/ImagemUpload.php` |
 | Testes | `tests/Feature/PortalCliente/` |
+| Mapeamento Estrutural (régua, colagem, agenda) | `app/Services/Portal/Estrutura/` · ADR `PORTAL-01` |
 
 ---
 
@@ -688,3 +689,30 @@ redirecionamento aberto. Teste: `tests/Feature/PpaQuadro/CompartilharPpaTest.php
 Cliente com várias empresas: se o plano do link é de uma empresa que NÃO é a
 ativa na sessão, o `?plano=` não casa e a lista abre normal — não troca de
 empresa sozinho.
+
+## 27. Mapeamento Estrutural: a planilha do Projeto Polos virou módulo (23/09/2026)
+
+Decisões e porquês em `.planning/adrs/PORTAL-01-mapeamento-estrutural-schema.md`
+— leia antes de mexer em `estrutura_*`. O que mais facilmente se desfaz sem
+querer:
+
+- **O gabarito é a planilha.** `tests/Concerns/GabaritoDaPlanilhaEstrutural.php`
+  monta o exemplo dela (cadeira + mesa) e `ReguaDoGabaritoTest` exige os números
+  que a própria planilha calculou (9 · 2/5/1/1 · 18 · 4 · 14 · 1 · 22,2%). Se
+  uma mudança quebrar esse teste, a mudança está errada. A linha K10 ("Kit
+  virtual") foi tirada de propósito: era contagem de fase.
+- **Agenda sem estado para Publicação.** Concluir pela agenda É cadastrar o
+  anúncio (MLB obrigatório só ali). Pôr um "feito" na linha da agenda recria a
+  contradição da planilha (CB3 OK no Planejamento, "Publicar" no Mapeamento).
+- **Espera só se move em ESCRITA** (criar/renomear/excluir oferta). Um GET que
+  promovesse linhas esconderia efeito colateral — há teste disso.
+- **Paginação sempre no servidor**, painel sempre sobre o conjunto inteiro. Não
+  introduza "filtro no navegador para quem tem pouco": são dois caminhos, e o de
+  cima só o maior cliente (2.688 anúncios) exercita.
+- **O mapeamento de colunas da colagem ainda não viu uma exportação real do
+  ML.** Fica todo em `LeitorColagemAnuncios::CABECALHOS`, com teste. Quando a
+  primeira exportação aparecer, é ali (e um caso no teste) que se ajusta — não
+  use os `Anunciar-*.xlsx`, que são template de publicação em massa.
+- **Visível para toda empresa.** `mlb_empresas.company_id` preenchido em 3 de
+  308: não há caminho confiável de Company até "é de Polos".
+

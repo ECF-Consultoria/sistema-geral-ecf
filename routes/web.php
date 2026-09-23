@@ -56,6 +56,7 @@ use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
+use App\Http\Controllers\PortalEstruturaController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -183,6 +184,47 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // Calculadora de Custo (14/09) — não grava nada, então não há régua de
     // quem pode: os dois lados calculam.
     Route::get('/calculadora', [PortalCalculadoraController::class, 'indexAutenticado'])->name('portal.auth.calculadora');
+
+    // ── Mapeamento Estrutural (23/09/2026) ────────────────────────────────
+    // A planilha do Projeto Polos como módulo: ofertas, anúncios, colagem com
+    // reconciliação e agenda. ADR PORTAL-01. Cada rota daqui tem a sua linha
+    // na allowlist de `RestringeDominioDoPortal` — sem ela, 404 no domínio do
+    // cliente e tudo normal no localhost.
+    Route::get('/estrutura', [PortalEstruturaController::class, 'index'])->name('portal.auth.estrutura');
+    Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
+    Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
+        ->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.criar');
+    Route::put('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'atualizarOferta'])
+        ->whereNumber('oferta')->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.atualizar');
+    Route::delete('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'excluirOferta'])
+        ->whereNumber('oferta')->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.excluir');
+    Route::post('/estrutura/ofertas/{oferta}/anuncios', [PortalEstruturaController::class, 'criarAnuncio'])
+        ->whereNumber('oferta')->middleware('throttle:60,1')->name('portal.auth.estrutura.anuncios.criar');
+    Route::put('/estrutura/anuncios/{anuncio}', [PortalEstruturaController::class, 'atualizarAnuncio'])
+        ->whereNumber('anuncio')->middleware('throttle:60,1')->name('portal.auth.estrutura.anuncios.atualizar');
+    Route::delete('/estrutura/anuncios/{anuncio}', [PortalEstruturaController::class, 'excluirAnuncio'])
+        ->whereNumber('anuncio')->middleware('throttle:60,1')->name('portal.auth.estrutura.anuncios.excluir');
+    // A prévia só lê; a colagem refaz o plano a partir do texto antes de gravar.
+    Route::post('/estrutura/colagem/previa', [PortalEstruturaController::class, 'previaColagem'])
+        ->middleware('throttle:30,1')->name('portal.auth.estrutura.colagem.previa');
+    Route::post('/estrutura/colagem', [PortalEstruturaController::class, 'aplicarColagem'])
+        ->middleware('throttle:10,1')->name('portal.auth.estrutura.colagem');
+    Route::post('/estrutura/espera/{linha}/vincular', [PortalEstruturaController::class, 'vincularEspera'])
+        ->whereNumber('linha')->middleware('throttle:60,1')->name('portal.auth.estrutura.espera.vincular');
+    Route::delete('/estrutura/espera/{linha}', [PortalEstruturaController::class, 'descartarEspera'])
+        ->whereNumber('linha')->middleware('throttle:60,1')->name('portal.auth.estrutura.espera.descartar');
+    Route::post('/estrutura/agenda', [PortalEstruturaController::class, 'agendar'])
+        ->middleware('throttle:60,1')->name('portal.auth.estrutura.agenda.criar');
+    Route::post('/estrutura/agenda/proposta', [PortalEstruturaController::class, 'proposta'])
+        ->middleware('throttle:60,1')->name('portal.auth.estrutura.agenda.proposta');
+    Route::post('/estrutura/agenda/proposta/aplicar', [PortalEstruturaController::class, 'aplicarProposta'])
+        ->middleware('throttle:10,1')->name('portal.auth.estrutura.agenda.proposta.aplicar');
+    Route::patch('/estrutura/agenda/{item}', [PortalEstruturaController::class, 'remarcar'])
+        ->whereNumber('item')->middleware('throttle:60,1')->name('portal.auth.estrutura.agenda.remarcar');
+    Route::patch('/estrutura/agenda/{item}/jardinagem', [PortalEstruturaController::class, 'jardinagem'])
+        ->whereNumber('item')->middleware('throttle:60,1')->name('portal.auth.estrutura.agenda.jardinagem');
+    Route::delete('/estrutura/agenda/{item}', [PortalEstruturaController::class, 'excluirAgenda'])
+        ->whereNumber('item')->middleware('throttle:60,1')->name('portal.auth.estrutura.agenda.excluir');
 
     // ── Escritas do Onboarding, autenticadas ─────────────────────────
     //

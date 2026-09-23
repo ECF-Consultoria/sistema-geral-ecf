@@ -250,3 +250,25 @@ teste faz HTTP real). Até morrer, acumula **77 falhas pré-existentes** em 31
 classes — entre elas `ExampleTest` (`/` devolve 302, não 200) e
 `CalcularFaixaTest` (`new AdminController()` sem o argumento do construtor), que
 são quebras estruturais antigas, não regressão de quem está mexendo hoje.
+
+## 11. Três falsos negativos do probe que custaram uma rodada (23/09/2026)
+
+Medidos verificando o Mapeamento Estrutural com `artisan serve` numa porta do
+worktree. Nenhum era bug da tela; os três pareciam.
+
+- **`waitForNetworkIdle` não fica ocioso sob `artisan serve`** e estoura o
+  timeout mesmo com só duas requisições feitas e nada pendente (conferido com
+  `request`/`requestfinished`). Use espera fixa curta. Pior: com `try/catch`
+  engolindo o timeout, a espera vira 15 s calados — e um aviso que some em 6 s
+  (flash) é lido como "não apareceu".
+- **Screenshot logo após abrir `Sheet`/`Dialog` pega a animação no meio**: a
+  gaveta aparece cortada à direita. Espere ~800 ms e confira pela caixa
+  (`getBoundingClientRect().right === innerWidth`), não pela foto.
+- **`click({ clickCount: 3 })` não seleciona texto de `input type=number`**:
+  digitar "4" sobre "1" dá "14". Use Ctrl+A.
+
+E um que ERA bug, e só a foto mostrou (o teste passava): classe Tailwind
+concatenada por string (`` `${BASE} w-20` ``) não vence o `w-full` da base —
+o input esticou e o nome do produto sumiu da linha. Sempre `cn(BASE, 'w-20')`,
+que passa pelo tailwind-merge.
+

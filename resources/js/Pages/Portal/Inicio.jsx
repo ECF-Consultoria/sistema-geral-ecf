@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ArrowRight, ClipboardList, LayoutGrid, ListChecks } from 'lucide-react';
+import { ArrowRight, ClipboardList, LayoutGrid, Layers, ListChecks } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
 import ResponsaveisCliente from '@/Components/Onboarding/Portal/ResponsaveisCliente';
@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 const ICONES = {
     'list-checks':    ListChecks,
     'clipboard-list': ClipboardList,
+    'layers':         Layers,
 };
 
 /**

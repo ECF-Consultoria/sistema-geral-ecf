@@ -111,6 +111,23 @@ class RestringeDominioDoPortal
         // Módulo novo do menu lateral (Calculadora de Custo). Sem esta linha a
         // própria PÁGINA não abre no domínio do cliente.
         'portal/calculadora',
+        // 23/09/2026 — Mapeamento Estrutural. Uma linha por rota; o `*` só
+        // ocupa o lugar do id numérico (`whereNumber` na rota), como em
+        // `portal/ppa/tarefas/*`. Nada fora do módulo mora sob `portal/estrutura`.
+        'portal/estrutura',
+        'portal/estrutura/agenda',
+        'portal/estrutura/ofertas',
+        'portal/estrutura/ofertas/*',
+        'portal/estrutura/ofertas/*/anuncios',
+        'portal/estrutura/anuncios/*',
+        'portal/estrutura/colagem',
+        'portal/estrutura/colagem/previa',
+        'portal/estrutura/espera/*',
+        'portal/estrutura/espera/*/vincular',
+        'portal/estrutura/agenda/proposta',
+        'portal/estrutura/agenda/proposta/aplicar',
+        'portal/estrutura/agenda/*',
+        'portal/estrutura/agenda/*/jardinagem',
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',

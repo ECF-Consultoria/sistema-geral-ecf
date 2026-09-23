@@ -41,6 +41,7 @@ class ModulosPortal
     public const ONBOARDING = 'onboarding';
     public const PPA        = 'ppa';
     public const CALCULADORA = 'calculadora';
+    public const ESTRUTURA  = 'estrutura';
 
     /**
      * Os módulos na ordem em que aparecem no menu. `rota` é o nome da rota
@@ -75,6 +76,19 @@ class ModulosPortal
             'rota'      => 'portal.ppa',
             'rota_auth' => 'portal.auth.ppa',
         ],
+        // A planilha de Mapeamento Estrutural do Projeto Polos (23/09/2026).
+        // Sem `rota` por token: nasceu depois da aposentadoria do token, e só
+        // existe no portal autenticado. Visível para TODAS as empresas, com
+        // estado vazio na página: `mlb_empresas.company_id` está preenchido em
+        // 3 de 308 linhas, então não há caminho confiável de uma Company até
+        // "é cliente de Polos" — restringir esconderia o módulo de quase todos.
+        self::ESTRUTURA => [
+            'rotulo'    => 'Mapeamento Estrutural',
+            'descricao' => 'Suas ofertas, o que já está no Mercado Livre e o que falta publicar.',
+            'icone'     => 'layers',
+            'rota'      => null,
+            'rota_auth' => 'portal.auth.estrutura',
+        ],
     ];
 
     /**
@@ -96,6 +110,11 @@ class ModulosPortal
 
         foreach (self::DEFINICOES as $chave => $def) {
             if (! self::disponivel($chave, $company)) {
+                continue;
+            }
+
+            // Módulo sem rota por token não existe no portal legado.
+            if ($token !== null && $def['rota'] === null) {
                 continue;
             }
 
@@ -126,7 +145,7 @@ class ModulosPortal
     private static function disponivel(string $chave, Company $company): bool
     {
         return match ($chave) {
-            self::INICIO, self::ONBOARDING, self::PPA, self::CALCULADORA => true,
+            self::INICIO, self::ONBOARDING, self::PPA, self::CALCULADORA, self::ESTRUTURA => true,
             default => false,
         };
     }
