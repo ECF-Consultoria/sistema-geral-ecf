@@ -115,6 +115,49 @@ class ComposicaoDaOfertaTest extends TestCase
         $this->assertSame(9, EstruturaOferta::count());
     }
 
+    /**
+     * "Dá combo? Em quantas unidades?" — a resposta é uma lista. Quantidade
+     * que o produto já tem como combo é pulada pela COMPOSIÇÃO, não pelo SKU
+     * (aqui o CB3 foi renomeado e continua sendo reconhecido).
+     */
+    public function test_combos_em_lote_criam_o_que_falta_e_pulam_o_que_existe(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $svc = app(EstruturaOfertaService::class);
+        [$cad] = $svc->criar($empresa, ['sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira 01'], $ator);
+        $svc->criar($empresa, ['sku' => 'COMBO-TRES-RENOMEADO', 'fase' => 'combo',
+            'componentes' => [['id' => $cad->id, 'quantidade' => 3]]], $ator);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.ofertas.combos', $cad->id), [
+                'quantidades' => [6, 2, 3, 4, 5, 2], 'logistica' => 'mercado_envios',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn ($m) => str_contains($m, '4 combo(s) criado(s)') && str_contains($m, 'combos de 3 unidades'));
+
+        $combos = EstruturaOferta::where('fase', 'combo')->orderBy('id')->get();
+        $this->assertSame(['COMBO-TRES-RENOMEADO', 'CAD-01-CB2', 'CAD-01-CB4', 'CAD-01-CB5', 'CAD-01-CB6'], $combos->pluck('sku')->all());
+        $this->assertSame('Combo 2 Cadeira 01', $combos[1]->nome);
+        $this->assertSame('mercado_envios', $combos[1]->logistica);
+    }
+
+    public function test_combos_em_lote_recusam_quantidade_um_e_base_que_nao_e_simples(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.ofertas.combos', $ofertas['CAD-01']->id), ['quantidades' => [1, 7]])
+            ->assertSessionHasErrors('quantidades.0');
+
+        $this->recusa(fn () => app(EstruturaOfertaService::class)
+            ->criarCombos($ofertas['CAD-01-CB2'], [3], null, null, $ator));
+
+        $this->assertSame(9, EstruturaOferta::count());
+    }
+
     public function test_sku_e_obrigatorio_mas_pode_repetir(): void
     {
         $empresa = $this->empresaDoGabarito();

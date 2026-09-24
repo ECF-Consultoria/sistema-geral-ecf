@@ -31,6 +31,13 @@ const faseDoKit = (itens) => {
 
 const nomeDe = (o) => o?.nome || o?.sku || '';
 
+// "2, 3, 4" → [2, 3, 4]. Aceita vírgula, espaço ou ponto-e-vírgula; ignora o
+// que não for inteiro de 2 a 999 (o servidor confere de novo).
+const lerQuantidades = (texto) => [...new Set(String(texto)
+    .split(/[\s,;]+/)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 2 && n <= 999))].sort((a, b) => a - b);
+
 function sugestaoKit(itens, porId) {
     const fase = faseDoKit(itens);
     if (! fase) return { sku: '', nome: '' };
@@ -49,7 +56,7 @@ function sugestaoKit(itens, porId) {
  * @param base  produto de onde partiu o combo/kit (resumo), ou a oferta a editar
  * @param opcoes lista enxuta de ofertas (para compor kit) — `opcoes_ofertas`
  */
-export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocabulario, inicial }) {
+export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocabulario, inicial, existentes = [] }) {
     const editando = modo === 'editar';
     const faseInicial = editando ? base.fase : (modo === 'produto' ? 'simples' : modo === 'combo' ? 'combo' : 'kit');
 
@@ -59,7 +66,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const [nomeMexido, setNomeMexido] = useState(false);
     const [logistica, setLogistica] = useState(null);
     const [obs, setObs] = useState('');
-    const [qtdCombo, setQtdCombo] = useState(2);
+    const [qtdCombo, setQtdCombo] = useState('2');
     const [itens, setItens] = useState([]);
     const [filtroProduto, setFiltroProduto] = useState('');
     const [erros, setErros] = useState({});
@@ -76,12 +83,12 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
 
         if (editando) {
             setSku(base.sku); setNome(base.nome ?? ''); setLogistica(base.logistica); setObs(base.observacoes ?? '');
-            if (base.fase === 'combo') setQtdCombo(base.componentes[0]?.quantidade ?? 2);
+            if (base.fase === 'combo') setQtdCombo(String(base.componentes[0]?.quantidade ?? 2));
             setItens(base.componentes.map((c) => ({ id: c.id, quantidade: c.quantidade })));
         } else {
             setSku(inicial?.sku ?? ''); setNome(inicial?.nome ?? ''); setObs('');
             setLogistica(base?.logistica ?? null);
-            setQtdCombo(2);
+            setQtdCombo('2');
             setItens(modo === 'kit' && base ? [{ id: base.id, quantidade: 1 }] : []);
         }
     }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -93,13 +100,23 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const ehCombo = modo === 'combo' || (editando && base.fase === 'combo');
     const faseKit = faseDoKit(itens);
 
+    // Vários combos numa ação: "dá combo? em quantas unidades?" responde-se com
+    // uma lista. Com UMA quantidade, é o fluxo de sempre (SKU e nome editáveis).
+    const qtds = lerQuantidades(qtdCombo);
+    const emLote = ehCombo && ! editando && qtds.length > 1;
+    // O que o produto já tem como combo não é criado de novo (o servidor pula
+    // pela composição; aqui só se mostra antes, para o botão não prometer
+    // mais do que vai acontecer).
+    const novas = editando ? qtds : qtds.filter((n) => ! existentes.includes(n));
+    const repetidas = editando ? [] : qtds.filter((n) => existentes.includes(n));
+
     // Sugestões no padrão da aula, enquanto a pessoa não mexeu no campo.
     useEffect(() => {
         if (! aberta || editando) return;
 
-        if (ehCombo && base) {
-            if (! skuMexido) setSku(`${base.sku}-CB${qtdCombo}`);
-            if (! nomeMexido) setNome(`Combo ${qtdCombo} ${nomeDe(base)}`);
+        if (ehCombo && base && qtds.length === 1) {
+            if (! skuMexido) setSku(`${base.sku}-CB${qtds[0]}`);
+            if (! nomeMexido) setNome(`Combo ${qtds[0]} ${nomeDe(base)}`);
         }
         if (ehKit && opcoes) {
             const s = sugestaoKit(itens, porId);
@@ -116,8 +133,24 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     }, [simples, itens, filtroProduto]);
 
     const enviar = () => {
+        const opcoesLote = {
+            preserveScroll: true,
+            preserveState: true,
+            onStart: () => setEnviando(true),
+            onFinish: () => setEnviando(false),
+            onSuccess: () => onFechar(true),
+            onError: (e) => setErros(e),
+        };
+
+        if (emLote) {
+            router.post(route('portal.auth.estrutura.ofertas.combos', base.id),
+                { quantidades: novas, logistica, observacoes: obs }, opcoesLote);
+
+            return;
+        }
+
         const componentes = ehCombo
-            ? [{ id: editando ? base.componentes[0].id : base.id, quantidade: Number(qtdCombo) }]
+            ? [{ id: editando ? base.componentes[0].id : base.id, quantidade: qtds[0] ?? Number(qtdCombo) }]
             : ehKit ? itens.map((i) => ({ id: i.id, quantidade: Number(i.quantidade) })) : [];
 
         const fase = ehCombo ? 'combo' : ehKit ? (faseKit ?? 'kit') : faseInicial;
@@ -154,10 +187,28 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             <div className="space-y-3" data-form-oferta>
                 {ehCombo && (
                     <Campo rotulo={`Quantas unidades de ${base ? nomeDe(editando ? porId[base.componentes[0]?.id] ?? base.componentes[0] : base) : ''}?`}
-                        erro={erros.componentes}>
-                        <input type="number" min={2} max={999} value={qtdCombo}
+                        erro={erros.componentes ?? erros.quantidades}
+                        dica={editando ? undefined : 'Uma ou várias, separadas por vírgula: 2, 3, 4, 5, 6 cria cinco combos de uma vez.'}>
+                        <input type={editando ? 'number' : 'text'} inputMode="numeric" value={qtdCombo}
                             onChange={(e) => setQtdCombo(e.target.value)} className={CLASSE_INPUT} data-campo="quantidade" />
                     </Campo>
+                )}
+
+                {emLote && (
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-previa-combos>
+                        <p className="text-[12px] text-white/45 mb-1.5">
+                            {novas.length ? `Serão criados ${novas.length} combo(s):` : 'Nenhum combo novo — todas essas quantidades já existem.'}
+                        </p>
+                        <ul className="space-y-0.5 text-[12.5px]">
+                            {qtds.map((n) => (
+                                <li key={n} className={existentes.includes(n) ? 'opacity-45' : undefined}>
+                                    <span className="font-mono text-white/85">{base.sku}-CB{n}</span>{' '}
+                                    <span className="text-white/45">· Combo {n} {nomeDe(base)}</span>
+                                    {existentes.includes(n) && <span className="ml-1.5 text-[11px] text-white/50">já existe</span>}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 )}
 
                 {ehKit && (
@@ -196,6 +247,13 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                     </div>
                 )}
 
+                {ehCombo && ! emLote && repetidas.length > 0 && (
+                    <p className="text-[12.5px] text-amber-300" data-combo-existe>
+                        Este produto já tem um combo de {repetidas[0]} unidades.
+                    </p>
+                )}
+
+                {! emLote && (<>
                 <Campo rotulo="SKU" erro={erros.sku} dica="O padrão é livre — só mantenha consistente e confira o limite do seu ERP.">
                     <input value={sku} onChange={(e) => { setSku(e.target.value); setSkuMexido(true); }}
                         className={cn(CLASSE_INPUT, 'font-mono')} data-campo="sku" />
@@ -204,6 +262,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                     <input value={nome} onChange={(e) => { setNome(e.target.value); setNomeMexido(true); }}
                         className={CLASSE_INPUT} data-campo="nome" />
                 </Campo>
+                </>)}
                 <Campo rotulo="Logística" erro={erros.logistica}
                     dica={ehKit ? 'Kit que vira multivolume: kit virtual do ML (várias etiquetas) ou transportadora/ME1.' : undefined}>
                     <Seletor valor={logistica} onChange={setLogistica} opcoes={vocabulario.logisticas} vazio="Não informada" />
@@ -215,8 +274,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
 
                 <div className="flex justify-end gap-2 pt-1">
                     <Botao variante="fantasma" onClick={() => onFechar(false)}>Cancelar</Botao>
-                    <Botao variante="primario" onClick={enviar} disabled={enviando || (ehKit && ! faseKit)} data-acao="salvar-oferta">
-                        <Plus size={14} /> {editando ? 'Salvar' : 'Criar oferta'}
+                    <Botao variante="primario" onClick={enviar} disabled={enviando || (ehKit && ! faseKit) || (ehCombo && novas.length === 0)} data-acao="salvar-oferta">
+                        <Plus size={14} /> {editando ? 'Salvar' : emLote ? `Criar ${novas.length} combo(s)` : 'Criar oferta'}
                     </Botao>
                 </div>
             </div>

@@ -194,6 +194,8 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
         ->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.criar');
+    Route::post('/estrutura/ofertas/{oferta}/combos', [PortalEstruturaController::class, 'criarCombos'])
+        ->whereNumber('oferta')->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.combos');
     Route::put('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'atualizarOferta'])
         ->whereNumber('oferta')->middleware('throttle:60,1')->name('portal.auth.estrutura.ofertas.atualizar');
     Route::delete('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'excluirOferta'])

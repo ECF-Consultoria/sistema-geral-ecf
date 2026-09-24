@@ -57,6 +57,72 @@ class EstruturaOfertaService
         });
     }
 
+    /**
+     * Vários combos de um produto numa ação só — a resposta natural a "dá
+     * combo? em quantas unidades?" é uma lista ("2, 3, 4, 5, 6"), não cinco
+     * diálogos.
+     *
+     * Cada quantidade vira `SKU-CBn` / "Combo n Nome", o padrão da aula, e
+     * passa pela MESMA criação (e pela mesma regra de composição) que o combo
+     * avulso. Quantidade que o produto JÁ tem como combo é pulada — a
+     * comparação é pela composição (produto + quantidade), não pelo SKU, que o
+     * cliente pode ter renomeado.
+     *
+     * @param  array<int, int>  $quantidades
+     * @return array{criados: array<int, string>, pulados: array<int, int>, absorvidos: int}
+     */
+    public function criarCombos(EstruturaOferta $base, array $quantidades, ?string $logistica, ?string $observacoes, AtorDoPortal $ator): array
+    {
+        if ($base->fase !== EstruturaOferta::FASE_SIMPLES) {
+            throw ValidationException::withMessages(['componentes' => 'Combo se faz a partir de um produto simples.']);
+        }
+
+        $quantidades = array_values(array_unique(array_map('intval', $quantidades)));
+        sort($quantidades);
+
+        if (! $quantidades || min($quantidades) < 2 || max($quantidades) > 999) {
+            throw ValidationException::withMessages(['quantidades' => 'Informe quantidades entre 2 e 999 (ex.: 2, 3, 4).']);
+        }
+
+        $existentes = EstruturaOferta::query()
+            ->where('company_id', $base->company_id)
+            ->where('fase', EstruturaOferta::FASE_COMBO)
+            ->whereHas('componentes', fn ($q) => $q->where('componente_id', $base->id))
+            ->with('componentes')
+            ->get()
+            ->map(fn ($o) => $o->componentes->first()?->quantidade)
+            ->filter()
+            ->all();
+
+        $empresa = $base->company;
+        $nome = $base->nome ?: $base->sku;
+
+        return DB::transaction(function () use ($empresa, $base, $quantidades, $existentes, $nome, $logistica, $observacoes, $ator) {
+            $r = ['criados' => [], 'pulados' => [], 'absorvidos' => 0];
+
+            foreach ($quantidades as $n) {
+                if (in_array($n, $existentes, true)) {
+                    $r['pulados'][] = $n;
+                    continue;
+                }
+
+                [$oferta, $absorvidos] = $this->criar($empresa, [
+                    'sku'         => "{$base->sku}-CB{$n}",
+                    'fase'        => EstruturaOferta::FASE_COMBO,
+                    'nome'        => "Combo {$n} {$nome}",
+                    'logistica'   => $logistica,
+                    'observacoes' => $observacoes,
+                    'componentes' => [['id' => $base->id, 'quantidade' => $n]],
+                ], $ator);
+
+                $r['criados'][] = $oferta->sku;
+                $r['absorvidos'] += $absorvidos;
+            }
+
+            return $r;
+        });
+    }
+
     /** @return array{0: EstruturaOferta, 1: int} */
     public function atualizar(EstruturaOferta $oferta, array $dados, AtorDoPortal $ator): array
     {

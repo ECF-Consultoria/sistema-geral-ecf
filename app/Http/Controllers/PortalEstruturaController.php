@@ -90,6 +90,28 @@ class PortalEstruturaController extends Controller
         return back()->with('success', $this->mensagemOferta("Oferta {$oferta->sku} criada.", $absorvidos));
     }
 
+    /** Vários combos de um produto de uma vez ("2, 3, 4, 5, 6"). */
+    public function criarCombos(Request $request, int $oferta)
+    {
+        $dados = $request->validate([
+            'quantidades'   => ['required', 'array', 'min:1', 'max:50'],
+            'quantidades.*' => ['integer', 'min:2', 'max:999'],
+            'logistica'     => ['nullable', Rule::in(array_keys(EstruturaOferta::LOGISTICAS))],
+            'observacoes'   => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $r = $this->ofertas->criarCombos($this->oferta($oferta), $dados['quantidades'],
+            $dados['logistica'] ?? null, $dados['observacoes'] ?? null, PortalContexto::ator());
+
+        $partes = array_filter([
+            $r['criados'] ? count($r['criados']).' combo(s) criado(s): '.implode(', ', $r['criados']).'.' : null,
+            $r['pulados'] ? 'Já existiam combos de '.implode(', ', $r['pulados']).' unidades — ficaram como estavam.' : null,
+            $r['absorvidos'] ? "{$r['absorvidos']} anúncio(s) colado(s) foram vinculados a eles." : null,
+        ]);
+
+        return back()->with('success', implode(' ', $partes));
+    }
+
     public function atualizarOferta(Request $request, int $oferta)
     {
         [$registro, $absorvidos] = $this->ofertas->atualizar($this->oferta($oferta), $this->dadosOferta($request), PortalContexto::ator());

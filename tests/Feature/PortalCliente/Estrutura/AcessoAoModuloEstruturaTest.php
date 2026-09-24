@@ -99,6 +99,36 @@ class AcessoAoModuloEstruturaTest extends TestCase
             );
     }
 
+    /**
+     * O bloco nasce recolhido; o cabeçalho vive do resumo. O resumo é do bloco
+     * INTEIRO — filtrar "Falta um lado" esconde CB3..CB6, mas o cabeçalho
+     * continua dizendo "4 a publicar".
+     */
+    public function test_resumo_do_bloco_e_do_conjunto_inteiro_mesmo_filtrado(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class)
+            ->agendar($ofertas['CAD-01-CB3'], '2026-10-01', 'publicacao', $ator);
+
+        $esperado = ['total' => 5, 'ok' => 0, 'falta' => 1, 'publicar' => 4, 'sem_agenda' => 4];
+
+        foreach (['todas', 'falta'] as $filtro) {
+            $this->withoutVite()->entrarNoPortal($empresa)
+                ->get(route('portal.auth.estrutura', ['situacao' => $filtro]))
+                ->assertInertia(fn ($page) => $page
+                    ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
+                    ->where('estrutura.blocos.0.principal.situacao', 'ok')
+                    ->where('estrutura.blocos.0.resumo_combos', $esperado)
+                    ->where('estrutura.blocos.0.uso', ['kits' => 1, 'combits' => 1])
+                    ->where('estrutura.blocos.0.quantidades_combo', [2, 3, 4, 5, 6])
+                    ->where('estrutura.resumo_kits', ['total' => 2, 'ok' => 0, 'falta' => 0, 'publicar' => 2, 'sem_agenda' => 2])
+                );
+        }
+    }
+
     public function test_pagina_com_mais_de_25_blocos(): void
     {
         $empresa = $this->empresaDoGabarito();

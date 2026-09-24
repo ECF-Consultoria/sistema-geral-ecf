@@ -119,6 +119,7 @@ class RestringeDominioDoPortal
         'portal/estrutura/ofertas',
         'portal/estrutura/ofertas/*',
         'portal/estrutura/ofertas/*/anuncios',
+        'portal/estrutura/ofertas/*/combos',
         'portal/estrutura/anuncios/*',
         'portal/estrutura/colagem',
         'portal/estrutura/colagem/previa',

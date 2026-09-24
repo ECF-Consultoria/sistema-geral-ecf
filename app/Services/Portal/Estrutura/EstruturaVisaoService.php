@@ -58,7 +58,7 @@ class EstruturaVisaoService
             ));
 
             if ($ofertas) {
-                $blocos[] = ['principal' => $conjunto->oferta($bloco['principal']), 'ofertas' => $ofertas];
+                $blocos[] = ['principal' => $conjunto->oferta($bloco['principal']), 'ofertas' => $ofertas, 'todas' => $bloco['ofertas']];
             }
         }
 
@@ -81,6 +81,23 @@ class EstruturaVisaoService
 
         $serializar = fn (array $o) => $this->oferta($o, $conjunto, $repetidos, $usoEmKits, $agenda[$o['id']] ?? collect());
 
+        // Quem já tem publicação na agenda — para o resumo dizer se sobrou
+        // buraco SEM data. Publicação agendada de oferta não-OK está pendente
+        // por definição (a publicação é derivada), então basta existir a linha.
+        $comPublicacao = EstruturaAgendaItem::query()
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_agenda.oferta_id')
+            ->where('o.company_id', $empresa->id)
+            ->where('estrutura_agenda.acao', EstruturaAgendaItem::ACAO_PUBLICACAO)
+            ->distinct()
+            ->pluck('estrutura_agenda.oferta_id')
+            ->flip()
+            ->all();
+
+        $kitsECombits = array_values(array_filter(
+            $conjunto->ofertas(),
+            fn ($o) => in_array($o['fase'], [EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT], true),
+        ));
+
         return [
             'painel'     => $conjunto->painel(),
             'contadores' => $contadores,
@@ -88,10 +105,29 @@ class EstruturaVisaoService
             'blocos'     => array_map(fn ($b) => [
                 'chave'     => $b['principal']['id'],
                 'produto'   => $b['principal']['fase'] === EstruturaOferta::FASE_SIMPLES,
-                'principal' => $this->resumo($b['principal']),
+                'principal' => [...$this->resumo($b['principal']), 'situacao' => $b['principal']['situacao']],
                 'tambem_em' => array_map(fn ($id) => $this->resumo($conjunto->oferta($id)), $usoEmKits[$b['principal']['id']] ?? []),
+                // O bloco nasce RECOLHIDO na tela; o cabeçalho vive deste
+                // resumo. Ele é do bloco INTEIRO — nunca do que o filtro
+                // deixou —, senão "3 a publicar" viraria "1" ao filtrar.
+                'resumo_combos' => $this->contarSituacoes(
+                    array_map(fn ($id) => $conjunto->oferta($id), array_slice($b['todas'], 1)),
+                    $comPublicacao,
+                ),
+                'uso'       => $this->contarUso($usoEmKits[$b['principal']['id']] ?? [], $conjunto),
+                // Quantidades que este produto já tem como combo (do bloco
+                // inteiro): o formulário de combos em lote marca "já existe"
+                // em vez de prometer criar o que o servidor vai pular.
+                'quantidades_combo' => array_values(array_filter(array_map(
+                    fn ($id) => $conjunto->oferta($id)['fase'] === EstruturaOferta::FASE_COMBO
+                        ? ($conjunto->oferta($id)['componentes'][0]['quantidade'] ?? null) : null,
+                    array_slice($b['todas'], 1),
+                ))),
                 'ofertas'   => array_map($serializar, $b['ofertas']),
             ], $daPagina),
+            // Resumo da seção "Kits e combits", sobre TODOS da empresa — a
+            // seção também nasce recolhida, e a página só traz os dela.
+            'resumo_kits' => $this->contarSituacoes($kitsECombits, $comPublicacao),
             'paginacao'  => ['pagina' => $pagina, 'paginas' => $paginas, 'blocos' => $total, 'por_pagina' => self::BLOCOS_POR_PAGINA],
         ];
     }
@@ -215,6 +251,52 @@ class EstruturaVisaoService
             'motivos'    => EstruturaAnuncioEspera::MOTIVOS,
             'dias_ate_jardinagem' => EstruturaAgendaItem::DIAS_ATE_JARDINAGEM,
         ];
+    }
+
+    /**
+     * Quantas ofertas em cada situação, e quantas das que não estão OK ainda
+     * não têm publicação na agenda (`sem_agenda`) — o buraco sem data.
+     *
+     * @param  array<int, array>  $ofertas
+     * @param  array<int, mixed>  $comPublicacao  oferta_id → (qualquer) de quem tem publicação
+     * @return array{total: int, ok: int, falta: int, publicar: int, sem_agenda: int}
+     */
+    private function contarSituacoes(array $ofertas, array $comPublicacao): array
+    {
+        $r = ['total' => 0, 'ok' => 0, 'falta' => 0, 'publicar' => 0, 'sem_agenda' => 0];
+
+        foreach ($ofertas as $o) {
+            $r['total']++;
+
+            match ($o['situacao']) {
+                ReguaEstrutura::SITUACAO_OK => $r['ok']++,
+                ReguaEstrutura::SITUACAO_PUBLICAR => $r['publicar']++,
+                default => $r['falta']++,
+            };
+
+            if ($o['situacao'] !== ReguaEstrutura::SITUACAO_OK && ! isset($comPublicacao[$o['id']])) {
+                $r['sem_agenda']++;
+            }
+        }
+
+        return $r;
+    }
+
+    /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */
+    private function contarUso(array $ids, EstruturaConjunto $conjunto): array
+    {
+        $uso = ['kits' => 0, 'combits' => 0];
+
+        foreach ($ids as $id) {
+            $fase = $conjunto->oferta($id)['fase'] ?? null;
+            if ($fase === EstruturaOferta::FASE_KIT) {
+                $uso['kits']++;
+            } elseif ($fase === EstruturaOferta::FASE_COMBIT) {
+                $uso['combits']++;
+            }
+        }
+
+        return $uso;
     }
 
     private function passaNoFiltro(array $o, string $filtro): bool

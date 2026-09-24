@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, Package, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
     AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PainelEstrutura, PilulaSituacao,
@@ -87,19 +87,81 @@ function LinhaOferta({ oferta, onAbrir, onAgendar, vocabulario, rodape = null })
     );
 }
 
-function BlocoProduto({ bloco, onAbrir, onAgendar, onCombo, onKit, vocabulario }) {
-    const principalCompleto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
+// O pior caso manda na cor: algo a publicar → vermelho; falta um lado →
+// âmbar; tudo OK → verde. É o que o olho precisa com o bloco FECHADO.
+const COR_PIOR = { publicar: 'bg-red-400', falta: 'bg-amber-400', ok: 'bg-emerald-400', vazio: 'bg-white/20' };
+
+const piorCaso = (resumo, situacaoPrincipal = null) => {
+    if (resumo.publicar > 0 || situacaoPrincipal === 'publicar') return 'publicar';
+    if (resumo.falta > 0 || situacaoPrincipal?.startsWith('falta')) return 'falta';
+    if (resumo.total > 0 || situacaoPrincipal === 'ok') return 'ok';
+
+    return 'vazio';
+};
+
+/**
+ * "5 combos: 1 falta um lado · 4 a publicar · 4 sem data". O resumo vem do
+ * servidor e é do bloco INTEIRO — não muda quando um filtro esconde linhas.
+ */
+function ResumoContagem({ resumo, singular, plural }) {
+    if (resumo.total === 0) return <span className="text-white/30">sem {plural}</span>;
+
+    const pendentes = resumo.falta + resumo.publicar;
+    const partes = [
+        resumo.ok > 0 && <span key="ok" className="text-emerald-300">{resumo.ok} ok</span>,
+        resumo.falta > 0 && <span key="falta" className="text-amber-300">{resumo.falta} falta um lado</span>,
+        resumo.publicar > 0 && <span key="pub" className="text-red-300">{resumo.publicar} a publicar</span>,
+        pendentes > 0 && (resumo.sem_agenda > 0
+            ? <span key="agenda" className="text-red-300/80">{resumo.sem_agenda} sem data</span>
+            : <span key="agenda" className="text-white/40">todas agendadas</span>),
+    ].filter(Boolean);
 
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave}>
-            <header className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-4 py-3">
-                <Package size={15} className="text-white/35" />
-                <p className="text-[13.5px] text-white font-semibold min-w-0 truncate">
-                    <span className="font-mono">{bloco.principal.sku}</span>
-                    {bloco.principal.nome && <span className="text-white/55 font-normal"> · {bloco.principal.nome}</span>}
-                </p>
-                <div className="ml-auto flex gap-1.5">
-                    <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onCombo(principalCompleto)} data-acao="novo-combo">
+        <span className="text-white/55">
+            {resumo.total} {resumo.total === 1 ? singular : plural}:{' '}
+            {partes.map((p, i) => <span key={p.key}>{i > 0 && ' · '}{p}</span>)}
+        </span>
+    );
+}
+
+const textoUso = (uso) => [
+    uso.kits ? `${uso.kits} ${uso.kits === 1 ? 'kit' : 'kits'}` : null,
+    uso.combits ? `${uso.combits} ${uso.combits === 1 ? 'combit' : 'combits'}` : null,
+].filter(Boolean).join(' e ');
+
+/**
+ * Um produto e os combos dele. Nasce RECOLHIDO — a lista inteira aberta vira
+ * um rolo com 1.500 ofertas —, e o cabeçalho diz o que há dentro e o que
+ * falta. Com filtro ou busca ativos nasce aberto: quem buscou "CB4" quer ver a
+ * linha, não um cabeçalho fechado.
+ */
+function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onCombo, onKit, vocabulario }) {
+    const [aberto, setAberto] = useState(abertoInicial);
+    const principalCompleto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
+    const pior = piorCaso(bloco.resumo_combos, bloco.principal.situacao);
+    const uso = textoUso(bloco.uso);
+
+    return (
+        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto ? '1' : '0'}>
+            <header className={cn('flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3', aberto && 'border-b border-white/[0.06]')}>
+                <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-bloco"
+                    className="flex min-w-0 flex-1 basis-72 items-center gap-2 text-left">
+                    {aberto ? <ChevronDown size={15} className="shrink-0 text-white/40" /> : <ChevronRight size={15} className="shrink-0 text-white/40" />}
+                    <span className={cn('h-2 w-2 shrink-0 rounded-full', COR_PIOR[pior])} aria-hidden />
+                    <span className="min-w-0">
+                        <span className="block truncate text-[13.5px] font-semibold text-white" data-titulo-bloco>
+                            <span className="font-mono">{bloco.principal.sku}</span>
+                            {bloco.principal.nome && <span className="font-normal text-white/55"> · {bloco.principal.nome}</span>}
+                        </span>
+                        <span className="block truncate text-[12px]" data-resumo>
+                            <ResumoContagem resumo={bloco.resumo_combos} singular="combo" plural="combos" />
+                            {uso && <span className="text-white/40" title={bloco.tambem_em.map((k) => k.nome || k.sku).join(' · ')}> · entra em {uso}</span>}
+                        </span>
+                    </span>
+                </button>
+                <PilulaSituacao situacao={bloco.principal.situacao} vocabulario={vocabulario} />
+                <div className="flex gap-1.5">
+                    <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onCombo(principalCompleto, bloco.quantidades_combo)} data-acao="novo-combo">
                         <Plus size={13} /> Combo
                     </Botao>
                     <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onKit(principalCompleto)} data-acao="novo-kit">
@@ -107,13 +169,35 @@ function BlocoProduto({ bloco, onAbrir, onAgendar, onCombo, onKit, vocabulario }
                     </Botao>
                 </div>
             </header>
-            <ul className="p-1.5">
-                {bloco.ofertas.map((o) => <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAgendar={onAgendar} vocabulario={vocabulario} />)}
-            </ul>
-            {bloco.tambem_em.length > 0 && (
-                <p className="border-t border-white/[0.05] px-4 py-2 text-[11.5px] text-white/40">
-                    Também em: {bloco.tambem_em.map((k) => k.nome || k.sku).join(' · ')}
-                </p>
+            {aberto && (
+                <ul className="p-1.5">
+                    {bloco.ofertas.map((o) => <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAgendar={onAgendar} vocabulario={vocabulario} />)}
+                </ul>
+            )}
+        </section>
+    );
+}
+
+/** Kits e combits: uma seção só, também recolhida, com o resumo de TODOS. */
+function SecaoKits({ blocos, resumo, abertoInicial, onAbrir, onAgendar, vocabulario }) {
+    const [aberto, setAberto] = useState(abertoInicial);
+
+    return (
+        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-secao-kits data-aberto={aberto ? '1' : '0'}>
+            <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-kits"
+                className={cn('flex w-full items-center gap-2 px-4 py-3 text-left', aberto && 'border-b border-white/[0.06]')}>
+                {aberto ? <ChevronDown size={15} className="text-white/40" /> : <ChevronRight size={15} className="text-white/40" />}
+                <span className={cn('h-2 w-2 rounded-full', COR_PIOR[piorCaso(resumo)])} aria-hidden />
+                <span className="text-[13.5px] font-semibold text-white">Kits e combits</span>
+                <span className="text-[12px]" data-resumo><ResumoContagem resumo={resumo} singular="oferta" plural="ofertas" /></span>
+            </button>
+            {aberto && (
+                <ul className="p-1.5">
+                    {blocos.flatMap((b) => b.ofertas).map((o) => (
+                        <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAgendar={onAgendar} vocabulario={vocabulario}
+                            rodape={o.componentes.map((c) => `${c.nome ?? c.sku} ×${c.quantidade}`).join(' + ')} />
+                    ))}
+                </ul>
             )}
         </section>
     );
@@ -201,7 +285,12 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
         if (deOndeVeio) carregarOpcoes(['espera_linhas']);
     };
 
-    const primeiraDeKits = blocos.findIndex((b) => ! b.produto);
+    // Sem filtro, tudo recolhido; com filtro ou busca, o que casou abre. A
+    // chave remonta os blocos quando o filtro muda, para valer o novo padrão.
+    const filtroAtivo = (filtros.situacao ?? 'todas') !== 'todas' || !! filtros.q;
+    const chaveFiltro = `${filtros.situacao ?? 'todas'}|${filtros.q ?? ''}`;
+    const blocosProduto = blocos.filter((b) => b.produto);
+    const blocosKits = blocos.filter((b) => ! b.produto);
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural">
@@ -255,26 +344,15 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                         )}
 
                         <div className="space-y-3">
-                            {blocos.map((b, i) => (
-                                <div key={b.chave}>
-                                    {i === primeiraDeKits && (
-                                        <h2 className="mt-2 mb-2 text-[12px] uppercase tracking-wide text-white/40">Kits e combits</h2>
-                                    )}
-                                    {b.produto ? (
-                                        <BlocoProduto bloco={b} vocabulario={vocabulario} onAbrir={setGavetaId} onAgendar={setAgendar}
-                                            onCombo={(base) => setFormOferta({ modo: 'combo', base })} onKit={abrirKit} />
-                                    ) : (
-                                        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={b.chave}>
-                                            <ul className="p-1.5">
-                                                {b.ofertas.map((o) => (
-                                                    <LinhaOferta key={o.id} oferta={o} onAbrir={setGavetaId} onAgendar={setAgendar} vocabulario={vocabulario}
-                                                        rodape={o.componentes.map((c) => `${c.nome ?? c.sku} ×${c.quantidade}`).join(' + ')} />
-                                                ))}
-                                            </ul>
-                                        </section>
-                                    )}
-                                </div>
+                            {blocosProduto.map((b) => (
+                                <BlocoProduto key={`${b.chave}-${chaveFiltro}`} bloco={b} abertoInicial={filtroAtivo} vocabulario={vocabulario}
+                                    onAbrir={setGavetaId} onAgendar={setAgendar}
+                                    onCombo={(base, existentes) => setFormOferta({ modo: 'combo', base, existentes })} onKit={abrirKit} />
                             ))}
+                            {blocosKits.length > 0 && (
+                                <SecaoKits key={`kits-${chaveFiltro}`} blocos={blocosKits} resumo={estrutura.resumo_kits}
+                                    abertoInicial={filtroAtivo} onAbrir={setGavetaId} onAgendar={setAgendar} vocabulario={vocabulario} />
+                            )}
                         </div>
 
                         {paginacao.paginas > 1 && (
@@ -312,6 +390,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 modo={formOferta?.modo ?? 'produto'}
                 base={formOferta?.base}
                 inicial={formOferta?.inicial}
+                existentes={formOferta?.existentes ?? []}
                 opcoes={opcoes_ofertas}
                 vocabulario={vocabulario}
             />
