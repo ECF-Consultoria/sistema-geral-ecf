@@ -3,8 +3,9 @@ import { router } from '@inertiajs/react';
 import { AlertTriangle, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PainelEstrutura, PilulaSituacao,
+    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PainelEstrutura, PilulaSituacao, ProximoPasso,
 } from '@/Components/Portal/Estrutura/comum';
+import Janela from '@/Components/Portal/Estrutura/Janela';
 import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
 import FormOferta from '@/Components/Portal/Estrutura/FormOferta';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
@@ -35,11 +36,11 @@ import { cn } from '@/lib/utils';
 const FILTROS = [
     { chave: 'todas',     rotulo: 'Todas' },
     { chave: 'publicar',  rotulo: 'A publicar' },
-    { chave: 'falta',     rotulo: 'Falta um lado' },
-    { chave: 'completas', rotulo: 'Completas' },
+    { chave: 'falta',     rotulo: 'Falta um anúncio' },
+    { chave: 'completas', rotulo: 'Prontas' },
 ];
 
-const ROTULO_LINHA = (o) => ({ simples: 'Produto', combo: `Combo ${o.unidades}`, kit: 'Kit', combit: 'Combit' }[o.fase]);
+const ROTULO_LINHA = (o) => ({ simples: 'Produto', combo: `Combo ${o.unidades}`, kit: 'Kit', combit: 'Kit com mais unidades' }[o.fase]);
 
 function LinhaOferta({ oferta, onAbrir, onAgendar, vocabulario, rodape = null }) {
     const temPublicacaoPendente = oferta.agenda.some((i) => i.acao === 'publicacao' && ! i.feita);
@@ -55,16 +56,16 @@ function LinhaOferta({ oferta, onAbrir, onAgendar, vocabulario, rodape = null })
                         <span className="text-white/40 text-[11.5px] mr-1.5">{ROTULO_LINHA(oferta)}</span>
                         <span className="font-mono">{oferta.sku}</span>
                         {oferta.sku_repetido && (
-                            <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10.5px] text-amber-300" title="Outra oferta tem o mesmo SKU. Os anúncios colados não sabem em qual das duas entrar.">
-                                <AlertTriangle size={11} /> SKU repetido
+                            <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10.5px] text-amber-300" title="Outro produto tem este mesmo código. Anúncios colados com ele não sabem em qual dos dois entrar.">
+                                <AlertTriangle size={11} /> código repetido
                             </span>
                         )}
                     </p>
                     {oferta.nome && <p className="text-[12px] text-white/45 truncate">{oferta.nome} · {oferta.unidades} un.</p>}
                 </div>
                 <div className="flex items-center gap-3">
-                    <Lado rotulo="Clássico" quantidade={oferta.classicos} />
-                    <Lado rotulo="Premium" quantidade={oferta.premiums} />
+                    <Lado rotulo={vocabulario.tipos_curtos.classico} quantidade={oferta.classicos} />
+                    <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
                     <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
                 </div>
                 <div className="flex items-center gap-2 ml-auto">
@@ -109,7 +110,7 @@ function ResumoContagem({ resumo, singular, plural }) {
     const pendentes = resumo.falta + resumo.publicar;
     const partes = [
         resumo.ok > 0 && <span key="ok" className="text-emerald-300">{resumo.ok} ok</span>,
-        resumo.falta > 0 && <span key="falta" className="text-amber-300">{resumo.falta} falta um lado</span>,
+        resumo.falta > 0 && <span key="falta" className="text-amber-300">{resumo.falta} falta um anúncio</span>,
         resumo.publicar > 0 && <span key="pub" className="text-red-300">{resumo.publicar} a publicar</span>,
         pendentes > 0 && (resumo.sem_agenda > 0
             ? <span key="agenda" className="text-red-300/80">{resumo.sem_agenda} sem data</span>
@@ -126,7 +127,7 @@ function ResumoContagem({ resumo, singular, plural }) {
 
 const textoUso = (uso) => [
     uso.kits ? `${uso.kits} ${uso.kits === 1 ? 'kit' : 'kits'}` : null,
-    uso.combits ? `${uso.combits} ${uso.combits === 1 ? 'combit' : 'combits'}` : null,
+    uso.combits ? `${uso.combits} ${uso.combits === 1 ? 'kit com mais unidades' : 'kits com mais unidades'}` : null,
 ].filter(Boolean).join(' e ');
 
 /**
@@ -135,7 +136,7 @@ const textoUso = (uso) => [
  * falta. Com filtro ou busca ativos nasce aberto: quem buscou "CB4" quer ver a
  * linha, não um cabeçalho fechado.
  */
-function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onCombo, onKit, vocabulario }) {
+function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onVariacao, vocabulario }) {
     const [aberto, setAberto] = useState(abertoInicial);
     const principalCompleto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
     const pior = piorCaso(bloco.resumo_combos, bloco.principal.situacao);
@@ -160,14 +161,9 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onCombo, onKit
                     </span>
                 </button>
                 <PilulaSituacao situacao={bloco.principal.situacao} vocabulario={vocabulario} />
-                <div className="flex gap-1.5">
-                    <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onCombo(principalCompleto, bloco.quantidades_combo)} data-acao="novo-combo">
-                        <Plus size={13} /> Combo
-                    </Botao>
-                    <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onKit(principalCompleto)} data-acao="novo-kit">
-                        <Plus size={13} /> Kit/Combit
-                    </Botao>
-                </div>
+                <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onVariacao(principalCompleto, bloco.quantidades_combo)} data-acao="nova-variacao">
+                    <Plus size={13} /> Variação
+                </Botao>
             </header>
             {aberto && (
                 <ul className="p-1.5">
@@ -179,7 +175,7 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onCombo, onKit
 }
 
 /** Kits e combits: uma seção só, também recolhida, com o resumo de TODOS. */
-function SecaoKits({ blocos, resumo, abertoInicial, onAbrir, onAgendar, vocabulario }) {
+function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAgendar, vocabulario }) {
     const [aberto, setAberto] = useState(abertoInicial);
 
     return (
@@ -188,8 +184,13 @@ function SecaoKits({ blocos, resumo, abertoInicial, onAbrir, onAgendar, vocabula
                 className={cn('flex w-full items-center gap-2 px-4 py-3 text-left', aberto && 'border-b border-white/[0.06]')}>
                 {aberto ? <ChevronDown size={15} className="text-white/40" /> : <ChevronRight size={15} className="text-white/40" />}
                 <span className={cn('h-2 w-2 rounded-full', COR_PIOR[piorCaso(resumo)])} aria-hidden />
-                <span className="text-[13.5px] font-semibold text-white">Kits e combits</span>
-                <span className="text-[12px]" data-resumo><ResumoContagem resumo={resumo} singular="oferta" plural="ofertas" /></span>
+                <span className="text-[13.5px] font-semibold text-white">Kits</span>
+                <span className="text-[12px]" data-resumo>
+                    <span className="text-white/55">
+                        {porFase.kit} {porFase.kit === 1 ? 'kit' : 'kits'} · {porFase.combit} com mais unidades ·{' '}
+                    </span>
+                    <ResumoContagem resumo={resumo} singular="oferta" plural="ofertas" />
+                </span>
             </button>
             {aberto && (
                 <ul className="p-1.5">
@@ -215,7 +216,7 @@ function EstadoVazio({ onProduto, onColar }) {
                     ['Fase 1 · Simples', '1 Cadeira 01'],
                     ['Fase 2 · Combo', 'Combo 2 Cadeiras 01'],
                     ['Fase 3 · Kit', 'Mesa Marfim + 1 Cadeira 01'],
-                    ['Fase 4 · Combit', 'Mesa Marfim + 4 Cadeiras 01'],
+                    ['Fase 4 · Kit com mais unidades', 'Mesa Marfim + 4 Cadeiras 01'],
                 ].map(([f, e]) => (
                     <div key={f} className="rounded-xl border border-white/[0.08] p-3">
                         <p className="text-[12.5px] font-semibold text-white/85">{f}</p>
@@ -236,6 +237,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const [formOferta, setFormOferta] = useState(null);     // { modo, base, inicial }
     const [formAnuncio, setFormAnuncio] = useState(null);   // { oferta, anuncio }
     const [agendar, setAgendar] = useState(null);           // oferta
+    const [variacao, setVariacao] = useState(null);         // { base, existentes }
     const [colar, setColar] = useState(false);
     const [espera, setEspera] = useState(false);
     const [aula, setAula] = useState(false);
@@ -299,11 +301,13 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
 
                 <PainelEstrutura painel={painel} />
 
+                <ProximoPasso passo={estrutura.proximo_passo} />
+
                 {estrutura.espera > 0 && (
                     <button type="button" onClick={abrirEspera} data-aviso-espera
                         className="w-full flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left text-[13px] text-amber-200 hover:bg-amber-500/10">
                         <AlertTriangle size={16} className="shrink-0" />
-                        <span><strong>{estrutura.espera}</strong> anúncio(s) colado(s) aguardando oferta — eles já estão no ar, mas ainda não contam no painel.</span>
+                        <span><strong>{estrutura.espera}</strong> anúncio(s) seus no Mercado Livre não acharam o produto aqui — ainda não contam no painel.</span>
                         <span className="ml-auto font-semibold">Resolver</span>
                     </button>
                 )}
@@ -325,7 +329,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                             </div>
                             <div className="relative flex-1 min-w-[200px]">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="SKU, nome ou MLB"
+                                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, código do produto ou do anúncio"
                                     className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] pl-8 pr-8 py-2 text-[13px] text-white placeholder:text-white/25 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
                                     data-busca />
                                 {busca && (
@@ -347,10 +351,10 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                             {blocosProduto.map((b) => (
                                 <BlocoProduto key={`${b.chave}-${chaveFiltro}`} bloco={b} abertoInicial={filtroAtivo} vocabulario={vocabulario}
                                     onAbrir={setGavetaId} onAgendar={setAgendar}
-                                    onCombo={(base, existentes) => setFormOferta({ modo: 'combo', base, existentes })} onKit={abrirKit} />
+                                    onVariacao={(base, existentes) => setVariacao({ base, existentes })} />
                             ))}
                             {blocosKits.length > 0 && (
-                                <SecaoKits key={`kits-${chaveFiltro}`} blocos={blocosKits} resumo={estrutura.resumo_kits}
+                                <SecaoKits key={`kits-${chaveFiltro}`} blocos={blocosKits} resumo={estrutura.resumo_kits} porFase={painel.por_fase}
                                     abertoInicial={filtroAtivo} onAbrir={setGavetaId} onAgendar={setAgendar} vocabulario={vocabulario} />
                             )}
                         </div>
@@ -402,6 +406,31 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 anuncio={formAnuncio?.anuncio ?? null}
                 vocabulario={vocabulario}
             />
+
+            {/* "+ Variação": a pergunta da aula em português, sem a palavra fase.
+                A tela continua decidindo sozinha entre kit e combit. */}
+            <Janela aberta={!! variacao} onFechar={() => setVariacao(null)}
+                titulo={`Nova variação de ${variacao?.base?.nome || variacao?.base?.sku || ''}`}
+                descricao="Como mais você vende este produto?">
+                <div className="grid gap-2 sm:grid-cols-2" data-escolha-variacao>
+                    {[
+                        { chave: 'combo', titulo: 'Mais unidades do mesmo produto', exemplo: 'Ex.: 2 cadeiras, 4 cadeiras (Combo)' },
+                        { chave: 'kit', titulo: 'Junto com outro produto seu', exemplo: 'Ex.: mesa + cadeira (Kit)' },
+                    ].map((o) => (
+                        <button key={o.chave} type="button" data-escolha={o.chave}
+                            onClick={() => {
+                                const { base, existentes } = variacao;
+                                setVariacao(null);
+                                if (o.chave === 'combo') setFormOferta({ modo: 'combo', base, existentes });
+                                else abrirKit(base);
+                            }}
+                            className="rounded-xl border border-white/[0.10] p-4 text-left hover:border-ecf-yellow/40 hover:bg-ecf-yellow/[0.05]">
+                            <p className="text-[14px] font-semibold text-white">{o.titulo}</p>
+                            <p className="mt-1 text-[12.5px] text-white/50">{o.exemplo}</p>
+                        </button>
+                    ))}
+                </div>
+            </Janela>
 
             <AgendarDialog aberta={!! agendar} onFechar={() => setAgendar(null)} oferta={agendar} vocabulario={vocabulario} />
 

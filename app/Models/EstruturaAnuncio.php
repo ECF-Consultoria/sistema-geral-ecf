@@ -63,12 +63,26 @@ class EstruturaAnuncio extends Model
      * de código do ML — quem chama decide se isso é erro ou ausência.
      *
      * Aceita o hífen que o ML mostra em algumas telas (`MLB-123`), que não faz
-     * parte do id.
+     * parte do id — e aceita o ENDEREÇO inteiro do anúncio
+     * (`https://produto.mercadolivre.com.br/MLB-1234567890-cadeira-_JM`): o
+     * cliente leigo não sabe onde fica "o código", mas sabe copiar o link da
+     * página. O código de PRODUTO DE CATÁLOGO (`/p/MLB…`) é outra coisa — o id
+     * da ficha, não do anúncio — e é recusado.
      */
     public static function normalizarMlb(?string $mlb): ?string
     {
-        $mlb = strtoupper(str_replace(['-', ' '], '', trim((string) $mlb)));
+        $bruto = trim((string) $mlb);
 
-        return preg_match('/^MLB\d+$/', $mlb) ? $mlb : null;
+        if (preg_match('#/p/MLB#i', $bruto)) {
+            return null;
+        }
+
+        if (preg_match('/MLB-?(\d+)/i', $bruto, $m) && (str_contains($bruto, '/') || str_contains($bruto, '.'))) {
+            return 'MLB'.$m[1];
+        }
+
+        $codigo = strtoupper(str_replace(['-', ' '], '', $bruto));
+
+        return preg_match('/^MLB\d+$/', $codigo) ? $codigo : null;
     }
 }

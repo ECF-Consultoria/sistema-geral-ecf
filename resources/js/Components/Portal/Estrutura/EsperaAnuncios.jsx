@@ -42,17 +42,17 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
     return (
         <li className="rounded-xl border border-white/[0.08] p-3 space-y-2" data-espera={linha.id}>
             <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
-                <span className="font-mono text-white">{linha.sku_colado ?? 'sem SKU'}</span>
+                <span className="font-mono text-white">{linha.sku_colado ?? 'sem código'}</span>
                 <span className="text-white/60">{vocabulario.tipos[linha.tipo]}</span>
                 {linha.codigo_mlb && <span className="font-mono text-white/45">{linha.codigo_mlb}</span>}
-                <span className="text-[11.5px] text-amber-300/80">{linha.motivo_texto}</span>
+                <span className="text-[11.5px] text-amber-300/80">{vocabulario.motivos[linha.motivo] ?? linha.motivo_texto}</span>
             </div>
             {linha.titulo && <p className="text-[12px] text-white/45 truncate">{linha.titulo}</p>}
             <div className="flex flex-wrap gap-2">
-                <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Procurar oferta…"
+                <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Procurar produto…"
                     className={cn(CLASSE_INPUT, 'w-40 flex-1')} />
                 <select value={escolhida} onChange={(e) => setEscolhida(e.target.value)} className={cn(CLASSE_INPUT, 'flex-1 [&>option]:bg-ecf-card')} aria-label="Oferta">
-                    <option value="">Escolha a oferta…</option>
+                    <option value="">De qual produto é?</option>
                     {candidatas.map((o) => <option key={o.id} value={o.id}>{o.sku}{o.nome ? ` — ${o.nome}` : ''}</option>)}
                 </select>
                 <Botao disabled={! escolhida || ocupado}
@@ -61,7 +61,7 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
                 </Botao>
             </div>
             <div className="flex gap-2">
-                <Botao variante="fantasma" onClick={() => onCriarOferta(linha)}><Plus size={14} /> Criar oferta com este SKU</Botao>
+                <Botao variante="fantasma" onClick={() => onCriarOferta(linha)}><Plus size={14} /> Criar produto com este código</Botao>
                 <Botao variante="fantasma" disabled={ocupado} className="text-red-300/80"
                     onClick={descartar}>
                     <Trash2 size={14} /> Descartar
@@ -90,12 +90,12 @@ export default function EsperaAnuncios({ aberta, onFechar, linhas: linhasProp, o
 
     return (
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-2xl"
-            titulo="Anúncios colados que aguardam oferta"
-            descricao="Estes anúncios já existem no Mercado Livre, mas o SKU colado não bateu com nenhuma oferta (ou bateu com mais de uma). Eles não entram no painel até terem oferta.">
+            titulo="Anúncios que não acharam o produto"
+            descricao="Estes anúncios já estão no Mercado Livre, mas o código do produto não bateu com nenhum produto seu (ou bateu com dois). Diga de qual produto é cada um — até lá eles não contam no painel.">
             {linhas === undefined || ofertas === undefined
                 ? <p className="text-[13px] text-white/40">Carregando…</p>
                 : linhas.length === 0
-                    ? <p className="text-[13px] text-white/50">Nada aguardando. Tudo o que foi colado encontrou oferta.</p>
+                    ? <p className="text-[13px] text-white/50">Nada pendente. Todo anúncio colado achou o produto.</p>
                     : (
                         <ul className="space-y-2" data-lista-espera>
                             {linhas.map((l) => (

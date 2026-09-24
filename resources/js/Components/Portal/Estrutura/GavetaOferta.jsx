@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 // local — depois de cada escrita o Inertia recarrega a página e a gaveta
 // mostra o estado novo sem precisar de F5 (`portal-do-cliente.md` §10).
 
-const FASE_ROTULO = { simples: 'Produto', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
+const FASE_ROTULO = { simples: 'Produto', combo: 'Combo', kit: 'Kit', combit: 'Kit com mais unidades' };
 
 export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
@@ -48,7 +48,7 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                             {oferta.nome && <p className="text-white/65 text-[14px]">{oferta.nome}</p>}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                 <PilulaSituacao situacao={oferta.situacao} longa vocabulario={vocabulario} />
-                                {oferta.sku_repetido && <span className="text-[11.5px] text-amber-300">SKU repetido em outra oferta</span>}
+                                {oferta.sku_repetido && <span className="text-[11.5px] text-amber-300">Outro produto tem este mesmo código</span>}
                             </div>
                         </div>
 
@@ -78,19 +78,19 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                 <Botao variante="fantasma" onClick={() => onNovoAnuncio(oferta)} data-acao="novo-anuncio"><Plus size={14} /> Anúncio</Botao>
                             </div>
                             <div className="flex flex-wrap items-center gap-3 mb-2">
-                                <Lado rotulo="Clássico" quantidade={oferta.classicos} />
-                                <Lado rotulo="Premium" quantidade={oferta.premiums} />
+                                <Lado rotulo={vocabulario.tipos_curtos.classico} quantidade={oferta.classicos} />
+                                <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
                                 <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
                             </div>
                             {oferta.anuncios.length === 0
-                                ? <p className="text-[12.5px] text-white/40">Nenhum anúncio cadastrado. Publique em Clássico e Premium.</p>
+                                ? <p className="text-[12.5px] text-white/40">Nenhum anúncio ainda. Publique à vista e parcelado.</p>
                                 : (
                                     <ul className="space-y-1.5">
                                         {oferta.anuncios.map((a) => (
                                             <li key={a.id} className={cn('rounded-lg border border-white/[0.07] px-3 py-2 text-[12.5px]', a.status === 'inativo' && 'opacity-50')} data-anuncio={a.id}>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-semibold text-white/85">{vocabulario.tipos[a.tipo]}</span>
-                                                    <span className="font-mono text-white/55">{a.codigo_mlb ?? 'sem MLB'}</span>
+                                                    <span className="font-mono text-white/55">{a.codigo_mlb ?? 'sem código'}</span>
                                                     <span className="text-white/40">{vocabulario.status[a.status]}</span>
                                                     <Indicadores catalogos={a.catalogo ? 1 : 0} kitsVirtuais={a.kit_virtual ? 1 : 0} />
                                                     <span className="ml-auto flex gap-1">
@@ -134,7 +134,7 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                     <Trash2 size={14} /> Excluir
                                 </Botao>
                                 : <Botao variante="perigo" onClick={excluirOferta} data-acao="confirmar-exclusao">
-                                    Confirmar exclusão{oferta.anuncios.length ? ` (os ${oferta.anuncios.length} anúncios vão para os colados em espera)` : ''}
+                                    Confirmar exclusão{oferta.anuncios.length ? ` (os ${oferta.anuncios.length} anúncios ficam guardados em "não acharam o produto")` : ''}
                                 </Botao>}
                             {oferta.usada_em > 0 && (
                                 <p className="w-full text-[11.5px] text-white/40">

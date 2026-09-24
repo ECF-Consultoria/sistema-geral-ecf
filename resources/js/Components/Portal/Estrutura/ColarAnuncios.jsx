@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 const GRUPOS = [
     { chave: 'novos',       rotulo: 'novos',              cor: 'text-emerald-300' },
     { chave: 'atualizados', rotulo: 'já cadastrados (serão atualizados)', cor: 'text-sky-300' },
-    { chave: 'espera',      rotulo: 'aguardando oferta',  cor: 'text-amber-300' },
+    { chave: 'espera',      rotulo: 'sem produto (ficam guardados)',  cor: 'text-amber-300' },
     { chave: 'erros',       rotulo: 'com erro (não serão gravados)', cor: 'text-red-300' },
     { chave: 'removidos',   rotulo: 'serão REMOVIDOS',    cor: 'text-red-400' },
 ];
@@ -43,7 +43,7 @@ function LinhaPrevia({ grupo, item, vocabulario }) {
             {item.oferta_sku && item.sku && item.oferta_sku !== item.sku && <span className="text-white/40">→ {item.oferta_sku}</span>}
             <span>{vocabulario.tipos[item.tipo]}</span>
             {item.codigo_mlb && <span className="font-mono text-white/45">{item.codigo_mlb}</span>}
-            {item.motivo_texto && <span className="text-amber-300/80">({item.motivo_texto})</span>}
+            {item.motivo && <span className="text-amber-300/80">({vocabulario.motivos[item.motivo] ?? item.motivo_texto})</span>}
             {item.mudou_de_oferta && <span className="text-sky-300/80">(muda de oferta)</span>}
         </li>
     );
@@ -146,7 +146,7 @@ export default function ColarAnuncios({ aberta, onFechar, vocabulario }) {
                         ))}
                         {! previa.erro_geral && previa.totais.espera > 0 && (
                             <p className="text-[12px] text-white/45">
-                                Os que aguardam oferta ficam guardados e aparecem no aviso da tela. Assim que você criar a oferta com aquele SKU, eles entram nela sozinhos.
+                                Os que ficaram sem produto ficam guardados e aparecem no aviso da tela. Quando você cadastrar o produto com aquele código, eles entram nele sozinhos.
                             </p>
                         )}
                         {removidos > 0 && (

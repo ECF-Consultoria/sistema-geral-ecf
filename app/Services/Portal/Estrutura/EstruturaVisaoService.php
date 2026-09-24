@@ -128,6 +128,7 @@ class EstruturaVisaoService
             // Resumo da seção "Kits e combits", sobre TODOS da empresa — a
             // seção também nasce recolhida, e a página só traz os dela.
             'resumo_kits' => $this->contarSituacoes($kitsECombits, $comPublicacao),
+            'proximo_passo' => $this->proximoPasso($empresa, $conjunto, $comPublicacao),
             'paginacao'  => ['pagina' => $pagina, 'paginas' => $paginas, 'blocos' => $total, 'por_pagina' => self::BLOCOS_POR_PAGINA],
         ];
     }
@@ -239,16 +240,47 @@ class EstruturaVisaoService
     }
 
     /** Os vocabulários fechados, que o JSX só EXIBE — quem decide é o PHP. */
+    /**
+     * Os rótulos que a TELA mostra — em português de quem vende, com o termo
+     * da aula entre parênteses, porque o cliente é leigo em sistema e o
+     * analista ensina usando a aula (24/09). As constantes dos models seguem
+     * com os nomes da planilha: são elas que as mensagens do servidor e o
+     * activity log usam.
+     */
     public static function vocabulario(): array
     {
         return [
-            'fases'      => EstruturaOferta::FASES,
+            'fases' => [
+                EstruturaOferta::FASE_SIMPLES => 'Produto',
+                EstruturaOferta::FASE_COMBO   => 'Combo',
+                EstruturaOferta::FASE_KIT     => 'Kit',
+                EstruturaOferta::FASE_COMBIT  => 'Kit com mais unidades (Combit)',
+            ],
             'logisticas' => EstruturaOferta::LOGISTICAS,
-            'tipos'      => EstruturaAnuncio::TIPOS,
-            'status'     => EstruturaAnuncio::STATUS,
-            'situacoes'  => ReguaEstrutura::SITUACOES,
-            'acoes'      => EstruturaAgendaItem::ACOES,
-            'motivos'    => EstruturaAnuncioEspera::MOTIVOS,
+            'tipos' => [
+                EstruturaAnuncio::TIPO_CLASSICO => 'À vista (Clássico)',
+                EstruturaAnuncio::TIPO_PREMIUM  => 'Parcelado (Premium)',
+            ],
+            'tipos_curtos' => [
+                EstruturaAnuncio::TIPO_CLASSICO => 'À vista',
+                EstruturaAnuncio::TIPO_PREMIUM  => 'Parcelado',
+            ],
+            'status'    => EstruturaAnuncio::STATUS,
+            'situacoes' => [
+                ReguaEstrutura::SITUACAO_OK             => 'Pronta: à vista e parcelado no ar',
+                ReguaEstrutura::SITUACAO_FALTA_CLASSICO => 'Falta o anúncio à vista (Clássico)',
+                ReguaEstrutura::SITUACAO_FALTA_PREMIUM  => 'Falta o anúncio parcelado (Premium)',
+                ReguaEstrutura::SITUACAO_PUBLICAR       => 'Publicar os dois: à vista e parcelado',
+            ],
+            'acoes' => [
+                EstruturaAgendaItem::ACAO_PUBLICACAO => 'Publicar',
+                EstruturaAgendaItem::ACAO_JARDINAGEM => 'Revisar anúncio (Jardinagem)',
+            ],
+            'motivos' => [
+                EstruturaAnuncioEspera::MOTIVO_SEM_OFERTA   => 'O código do produto não bate com nenhum produto seu',
+                EstruturaAnuncioEspera::MOTIVO_SKU_REPETIDO => 'Dois produtos seus têm esse mesmo código',
+                EstruturaAnuncioEspera::MOTIVO_SEM_SKU      => 'Veio sem código do produto',
+            ],
             'dias_ate_jardinagem' => EstruturaAgendaItem::DIAS_ATE_JARDINAGEM,
         ];
     }
@@ -280,6 +312,72 @@ class EstruturaVisaoService
         }
 
         return $r;
+    }
+
+    /**
+     * A faixa do topo: UMA coisa a fazer agora, em ordem de urgência. Não
+     * esconde nada da tela — só aponta. O cliente é leigo e o analista o
+     * ensina uma vez; depois, é esta faixa que o lembra do método.
+     *
+     * 1. `cadastrar`  — nenhuma oferta ainda;
+     * 2. `hoje`       — publicação ou revisão com data até hoje, não feita;
+     * 3. `agendar`    — ofertas com buraco e SEM publicação na agenda;
+     * 4. `variacoes`  — produtos que não entram em nenhum combo/kit (a
+     *                   pergunta da aula: "dá combo? combina com qual?");
+     * 5. `em_dia`     — nada acima.
+     *
+     * @param  array<int, mixed>  $comPublicacao
+     * @return array{tipo: string, quantidade?: int, primeira?: array, acao?: string}
+     */
+    private function proximoPasso(Company $empresa, EstruturaConjunto $conjunto, array $comPublicacao, ?CarbonImmutable $hoje = null): array
+    {
+        $ofertas = $conjunto->ofertas();
+
+        if (! $ofertas) {
+            return ['tipo' => 'cadastrar'];
+        }
+
+        $hoje ??= CarbonImmutable::today();
+
+        $pendentes = EstruturaAgendaItem::query()
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_agenda.oferta_id')
+            ->where('o.company_id', $empresa->id)
+            ->whereDate('estrutura_agenda.data', '<=', $hoje->format('Y-m-d'))
+            ->orderBy('estrutura_agenda.data')->orderBy('estrutura_agenda.id')
+            ->get(['estrutura_agenda.*'])
+            ->filter(fn (EstruturaAgendaItem $i) => $i->acao === EstruturaAgendaItem::ACAO_PUBLICACAO
+                ? ($conjunto->oferta($i->oferta_id)['situacao'] ?? ReguaEstrutura::SITUACAO_OK) !== ReguaEstrutura::SITUACAO_OK
+                : $i->concluida_em === null)
+            ->values();
+
+        if ($pendentes->isNotEmpty()) {
+            $primeira = $pendentes->first();
+
+            return [
+                'tipo'       => 'hoje',
+                'quantidade' => $pendentes->count(),
+                'primeira'   => [
+                    ...$this->resumo($conjunto->oferta($primeira->oferta_id)),
+                    'acao'  => $primeira->acao,
+                    'data'  => $primeira->data->format('Y-m-d'),
+                ],
+            ];
+        }
+
+        $semData = $this->contarSituacoes($ofertas, $comPublicacao)['sem_agenda'];
+        if ($semData > 0) {
+            return ['tipo' => 'agendar', 'quantidade' => $semData];
+        }
+
+        $semVariacao = count(array_filter(
+            $ofertas,
+            fn ($o) => $o['fase'] === EstruturaOferta::FASE_SIMPLES && $conjunto->vezesUsadaComoComponente($o['id']) === 0,
+        ));
+        if ($semVariacao > 0) {
+            return ['tipo' => 'variacoes', 'quantidade' => $semVariacao];
+        }
+
+        return ['tipo' => 'em_dia'];
     }
 
     /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */

@@ -318,7 +318,9 @@ class PortalEstruturaController extends Controller
             'status'      => ['nullable', Rule::in(array_keys(EstruturaAnuncio::STATUS))],
             'catalogo'    => ['nullable', 'boolean'],
             'kit_virtual' => ['nullable', 'boolean'],
-            'codigo_mlb'  => ['nullable', 'string', 'max:30'],
+            // 500, não 30: o cliente pode colar o LINK do anúncio, e o código
+            // sai dele em `EstruturaAnuncio::normalizarMlb()`.
+            'codigo_mlb'  => ['nullable', 'string', 'max:500'],
             'titulo'      => ['nullable', 'string', 'max:255'],
         ]);
     }

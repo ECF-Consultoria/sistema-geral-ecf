@@ -204,6 +204,33 @@ class ColagemEEsperaTest extends TestCase
         app(EstruturaAnuncioService::class)->cadastrar($ofertas['CAD-01'], ['tipo' => 'premium', 'codigo_mlb' => 'mlb-77'], $ator);
     }
 
+    /**
+     * O cliente leigo não sabe onde fica "o código do anúncio", mas sabe copiar
+     * o endereço da página. O link de PRODUTO DE CATÁLOGO (`/p/MLB…`) é o id da
+     * ficha, não do anúncio — recusado.
+     */
+    public function test_aceita_o_link_do_anuncio_e_recusa_o_da_ficha_de_catalogo(): void
+    {
+        $this->assertSame('MLB3456789012', EstruturaAnuncio::normalizarMlb('https://produto.mercadolivre.com.br/MLB-3456789012-cadeira-jantar-_JM'));
+        $this->assertSame('MLB999', EstruturaAnuncio::normalizarMlb('articulo.mercadolivre.com.br/MLB999'));
+        $this->assertSame('MLB1234567890', EstruturaAnuncio::normalizarMlb('mlb-1234567890'));
+        $this->assertNull(EstruturaAnuncio::normalizarMlb('https://www.mercadolivre.com.br/cadeira/p/MLB19876543'));
+        $this->assertNull(EstruturaAnuncio::normalizarMlb('https://www.google.com'));
+
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.anuncios.criar', $ofertas['CAD-01-CB3']->id), [
+                'tipo' => 'classico', 'via_agenda' => true,
+                'codigo_mlb' => 'https://produto.mercadolivre.com.br/MLB-3456789012-cadeira-jantar-_JM',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('MLB3456789012', $ofertas['CAD-01-CB3']->anuncios()->sole()->codigo_mlb);
+    }
+
     public function test_mlb_igual_em_outra_empresa_nao_conflita(): void
     {
         $a = $this->empresaDoGabarito();

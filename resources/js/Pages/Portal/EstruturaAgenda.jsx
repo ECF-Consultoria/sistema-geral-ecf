@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
@@ -35,21 +35,21 @@ const SECOES = [
     { chave: 'concluidas', rotulo: 'Concluídas', cor: 'text-emerald-300', recolhida: true },
 ];
 
-function LadoDaPublicacao({ rotulo, anuncios, onConcluir }) {
+function LadoDaPublicacao({ tipo, rotulo, anuncios, onConcluir }) {
     const conta = anuncios.filter((a) => a.status !== 'inativo');
 
     if (conta.length) {
         return (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-[12px] text-emerald-300">
                 ✓ {rotulo}
-                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem MLB'}</span>
+                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem código'}</span>
             </span>
         );
     }
 
     return (
-        <Botao className="px-2 py-1 text-[12px]" onClick={onConcluir} data-acao={`concluir-${rotulo.toLowerCase()}`}>
-            {rotulo}: concluir
+        <Botao className="px-2 py-1 text-[12px]" onClick={onConcluir} data-acao={`concluir-${tipo}`}>
+            {rotulo}: já publiquei
         </Botao>
     );
 }
@@ -82,14 +82,14 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
 
             {publicacao ? (
                 <div className="flex flex-wrap items-center gap-2">
-                    <LadoDaPublicacao rotulo="Clássico" anuncios={classicos} onConcluir={() => onConcluir(o, 'classico')} />
-                    <LadoDaPublicacao rotulo="Premium" anuncios={premiums} onConcluir={() => onConcluir(o, 'premium')} />
+                    <LadoDaPublicacao tipo="classico" rotulo={vocabulario.tipos_curtos.classico} anuncios={classicos} onConcluir={() => onConcluir(o, 'classico')} />
+                    <LadoDaPublicacao tipo="premium" rotulo={vocabulario.tipos_curtos.premium} anuncios={premiums} onConcluir={() => onConcluir(o, 'premium')} />
                     <Indicadores catalogos={o.catalogos} kitsVirtuais={o.kits_virtuais} />
                 </div>
             ) : (
                 <label className="inline-flex items-center gap-2 text-[13px] text-white/75">
                     <input type="checkbox" checked={item.feita} onChange={(e) => marcarJardinagem(e.target.checked)} data-acao="jardinagem" />
-                    Feita — métricas olhadas e anúncio ajustado
+                    Revisado — olhei as visitas e ajustei o anúncio
                 </label>
             )}
 
@@ -97,7 +97,7 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
                 {publicacao && item.feita && ! o.tem_jardinagem && (
                     <Botao variante="fantasma" className="px-2 py-1 text-[12px] text-emerald-300"
                         onClick={() => onJardinagem(o)} data-acao="agendar-jardinagem">
-                        <Sparkles size={13} /> Jardinagem em {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
+                        <Sparkles size={13} /> Revisar em {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
                     </Botao>
                 )}
                 {! item.feita && (
@@ -120,6 +120,14 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
     const [aula, setAula] = useState(false);
     const [abertas, setAbertas] = useState({ concluidas: false });
 
+    // A faixa "próximo passo" da outra visão manda para cá com `?proposta=1`:
+    // chega já com a sugestão de datas aberta, sem mais um clique.
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('proposta') === '1' && agenda.painel.a_publicar > 0) {
+            setProposta(true);
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     const vazia = SECOES.every((s) => agenda.secoes[s.chave].total === 0);
 
     return (
@@ -131,7 +139,7 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12.5px] text-white/45">
-                        Ritmo: 1 publicação por dia até zerar a lista. 7 dias depois, a Jardinagem.
+                        Uma publicação por dia até terminar a lista. 7 dias depois de publicar, revise o anúncio (Jardinagem).
                     </p>
                     <Botao variante="primario" onClick={() => setProposta(true)} disabled={agenda.painel.a_publicar === 0} data-acao="agendar-o-que-falta">
                         <CalendarPlus size={14} /> Agendar o que falta

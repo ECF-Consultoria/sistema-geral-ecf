@@ -27,7 +27,7 @@ export default function AgendarDialog({ aberta, onFechar, oferta, acaoInicial = 
 
     return (
         <Janela aberta={aberta} onFechar={() => onFechar(false)} titulo={`Agendar ${oferta?.sku ?? ''}`}
-            descricao="Ritmo da aula: 1 publicação por dia. 7 dias depois, a Jardinagem (olhar métricas e ajustar o anúncio).">
+            descricao="Uma publicação por dia. 7 dias depois de publicar, revise o anúncio (Jardinagem): olhe as visitas e ajuste.">
             <div className="space-y-3">
                 <Campo rotulo="Ação" erro={erros.acao}>
                     <div className="flex gap-2">

@@ -129,6 +129,48 @@ class AcessoAoModuloEstruturaTest extends TestCase
         }
     }
 
+    /**
+     * A faixa "próximo passo": UMA coisa a fazer, em ordem de urgência, sobre o
+     * conjunto inteiro. Percorre os estados na ordem em que um cliente passa
+     * por eles.
+     */
+    public function test_proximo_passo_segue_a_ordem_de_urgencia(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $agenda = app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class);
+        $passo = fn () => $this->withoutVite()->entrarNoPortal($empresa)
+            ->get(route('portal.auth.estrutura'))
+            ->viewData('page')['props']['estrutura']['proximo_passo'];
+
+        // Nada cadastrado.
+        $this->assertSame('cadastrar', $passo()['tipo']);
+
+        // Gabarito sem agenda: 8 ofertas com buraco e nenhuma data.
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        $this->assertSame(['tipo' => 'agendar', 'quantidade' => 8], $passo());
+
+        // Algo para hoje passa na frente de tudo.
+        $agenda->agendar($ofertas['CAD-01-CB3'], today()->format('Y-m-d'), 'publicacao', $ator);
+        $p = $passo();
+        $this->assertSame('hoje', $p['tipo']);
+        $this->assertSame('CAD-01-CB3', $p['primeira']['sku']);
+
+        // Tudo com data e nada para hoje: sobram os produtos sem variação?
+        // No gabarito, os dois simples entram em kit — então está em dia.
+        \App\Models\EstruturaAgendaItem::query()->delete();
+        $agenda->agendarProposta($empresa, array_map(fn ($o) => $o->id, array_values($ofertas)), $ator);
+        \App\Models\EstruturaAgendaItem::query()->update(['data' => today()->addDays(3)->format('Y-m-d')]);
+        $this->assertSame('em_dia', $passo()['tipo']);
+
+        // Um produto novo, sem combo nem kit, e já com data: vira "variacoes".
+        [$novo] = app(\App\Services\Portal\Estrutura\EstruturaOfertaService::class)
+            ->criar($empresa, ['sku' => 'NOVO-1', 'fase' => 'simples'], $ator);
+        $agenda->agendar($novo, today()->addDays(9)->format('Y-m-d'), 'publicacao', $ator);
+        $this->assertSame(['tipo' => 'variacoes', 'quantidade' => 1], $passo());
+    }
+
     public function test_pagina_com_mais_de_25_blocos(): void
     {
         $empresa = $this->empresaDoGabarito();

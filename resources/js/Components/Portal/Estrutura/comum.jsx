@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, Layers, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — peças comuns às duas visões ────────────────────
@@ -18,10 +18,12 @@ export const ESTILO_SITUACAO = {
     publicar:       'bg-red-500/10 text-red-300 border-red-500/25',
 };
 
+// Rótulo curto da pílula, na língua de quem vende (24/09): o cliente é leigo
+// em sistema. O texto longo, com o termo da aula, vem do PHP (`vocabulario`).
 export const ROTULO_CURTO_SITUACAO = {
-    ok:             'OK',
-    falta_classico: 'Falta Clássico',
-    falta_premium:  'Falta Premium',
+    ok:             'Pronta',
+    falta_classico: 'Falta à vista',
+    falta_premium:  'Falta parcelado',
     publicar:       'Publicar',
 };
 
@@ -168,6 +170,46 @@ export function AvisoFlash() {
     );
 }
 
+/**
+ * O que é raro fica aqui: colar anúncios que já existem e rever a aula. Um
+ * leigo não precisa ver isso toda vez que abre a tela — o analista mostra na
+ * reunião onde fica.
+ */
+function MaisOpcoes({ onColar, onComoFunciona }) {
+    const [aberto, setAberto] = useState(false);
+    const caixa = useRef(null);
+
+    useEffect(() => {
+        if (! aberto) return;
+        const fechar = (e) => { if (! caixa.current?.contains(e.target)) setAberto(false); };
+        document.addEventListener('mousedown', fechar);
+
+        return () => document.removeEventListener('mousedown', fechar);
+    }, [aberto]);
+
+    const item = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-white/80 hover:bg-white/[0.06] hover:text-white';
+
+    return (
+        <div className="relative" ref={caixa}>
+            <Botao variante="fantasma" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="mais-opcoes">
+                <MoreHorizontal size={15} /> Mais opções
+            </Botao>
+            {aberto && (
+                <div className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-white/[0.10] bg-ecf-card p-1 shadow-2xl" role="menu">
+                    {onColar && (
+                        <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onColar(); }} data-acao="colar-anuncios">
+                            <ClipboardPaste size={14} /> Colar anúncios que já tenho
+                        </button>
+                    )}
+                    <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onComoFunciona(); }} data-acao="como-funciona">
+                        <BookOpen size={14} /> Como funciona (a aula)
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** Cabeçalho do módulo: título, as duas visões e as ações de topo. */
 export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
     const aba = (ativa) => cn(
@@ -187,16 +229,11 @@ export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
                         Todo produto que você tem vira oferta publicada. Produto guardado não vende.
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    {onColar && (
-                        <Botao onClick={onColar}><ClipboardPaste size={14} /> Colar anúncios</Botao>
-                    )}
-                    <Botao variante="fantasma" onClick={onComoFunciona}><BookOpen size={14} /> Como funciona</Botao>
-                </div>
+                <MaisOpcoes onColar={onColar} onComoFunciona={onComoFunciona} />
             </div>
             <nav className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" aria-label="Visões do módulo">
                 <Link href={route('portal.auth.estrutura')} className={aba(visao === 'ofertas')} data-visao="ofertas">
-                    <Layers size={14} /> Ofertas
+                    <Layers size={14} /> Meus produtos
                 </Link>
                 <Link href={route('portal.auth.estrutura.agenda')} className={aba(visao === 'agenda')} data-visao="agenda">
                     <CalendarDays size={14} /> Agenda
@@ -232,14 +269,70 @@ export function PainelEstrutura({ painel }) {
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px] text-white/55">
                 <span><strong className="text-white" data-ofertas>{painel.ofertas}</strong> {painel.ofertas === 1 ? 'oferta' : 'ofertas'}</span>
                 <span>
-                    {plural(painel.por_fase.simples, 'simples', 'simples')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'combit', 'combits')}
+                    {plural(painel.por_fase.simples, 'produto', 'produtos')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'kit com mais unidades', 'kits com mais unidades')}
                 </span>
-                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'completa' : 'completas'}</span>
+                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'pronta' : 'prontas'}</span>
                 <span><strong className="text-red-300" data-a-publicar>{painel.a_publicar}</strong> a publicar</span>
             </div>
             <p className="mt-2 text-[11.5px] text-white/30">
-                Cada oferta precisa de 1 Clássico e 1 Premium. Anúncio repetido do mesmo tipo não soma; Inativo não conta; Pausado conta.
+                Cada oferta sai em dois anúncios: um à vista (Clássico) e um parcelado (Premium). Anúncio pausado conta; inativo não.
             </p>
+        </section>
+    );
+}
+
+/**
+ * A faixa "próximo passo": UMA coisa a fazer agora. Quem decide qual é o PHP
+ * (`EstruturaVisaoService::proximoPasso`), sobre o conjunto inteiro; aqui só
+ * se escreve em português. Não esconde nada da tela — só aponta. O analista
+ * ensina o método uma vez; depois, é esta faixa que lembra o cliente dele.
+ */
+export function ProximoPasso({ passo, onCadastrar }) {
+    if (! passo || passo.tipo === 'cadastrar') return null;
+
+    const nome = (o) => o?.nome || o?.sku;
+    const textos = {
+        hoje: {
+            titulo: passo.primeira?.acao === 'jardinagem'
+                ? `Hoje: revisar o anúncio de ${nome(passo.primeira)}`
+                : `Hoje: publicar ${nome(passo.primeira)}`,
+            texto: (passo.quantidade > 1 ? `E mais ${passo.quantidade - 1} tarefa(s) para hoje ou atrasada(s). ` : '')
+                + 'Depois de publicar, marque na Agenda informando o código do anúncio.',
+            botao: 'Abrir a agenda',
+            href: route('portal.auth.estrutura.agenda'),
+        },
+        agendar: {
+            titulo: `${passo.quantidade} oferta(s) ainda sem data para publicar`,
+            texto: 'O ritmo é uma publicação por dia. A agenda sugere as datas para você.',
+            botao: 'Agendar o que falta',
+            href: route('portal.auth.estrutura.agenda') + '?proposta=1',
+        },
+        variacoes: {
+            titulo: `${passo.quantidade} produto(s) ainda sem combo ou kit`,
+            texto: 'Algum deles vende em mais unidades, ou junto com outro produto seu? Use "+ Variação" no produto.',
+        },
+        em_dia: {
+            titulo: 'Tudo em dia',
+            texto: 'O que falta publicar já tem data. É só seguir a agenda.',
+            botao: 'Ver a agenda',
+            href: route('portal.auth.estrutura.agenda'),
+        },
+    };
+    const t = textos[passo.tipo];
+    if (! t) return null;
+
+    return (
+        <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-3" data-proximo-passo={passo.tipo}>
+            <Lightbulb size={18} className="shrink-0 text-ecf-yellow" />
+            <div className="min-w-0 flex-1 basis-64">
+                <p className="text-[14px] font-semibold text-white">{t.titulo}</p>
+                <p className="text-[12.5px] text-white/55">{t.texto}</p>
+            </div>
+            {t.href && (
+                <Link href={t.href} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-3 py-2 text-[13px] font-medium text-black hover:bg-ecf-yellow/90" data-acao="proximo-passo">
+                    {t.botao} <ArrowRight size={14} />
+                </Link>
+            )}
         </section>
     );
 }
