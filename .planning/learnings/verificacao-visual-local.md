@@ -272,3 +272,10 @@ concatenada por string (`` `${BASE} w-20` ``) não vence o `w-full` da base —
 o input esticou e o nome do produto sumiu da linha. Sempre `cn(BASE, 'w-20')`,
 que passa pelo tailwind-merge.
 
+E outro, pego só USANDO o módulo de ponta a ponta (24/09): `router.delete` do
+Inertia é `(url, opções)` — não recebe dados. Uma chamada dinâmica
+`router[metodo](url, dados, opções)` mandava as opções no lugar dos dados, e
+elas eram ignoradas em silêncio: sem `preserveState` a página remontava e
+fechava o diálogo; sem `onSuccess` nada recarregava. O banco ficava certo, então
+nenhum teste PHP via. Gate: `tests/js/estrutura-mapeamento-estrutural.test.js`.
+
