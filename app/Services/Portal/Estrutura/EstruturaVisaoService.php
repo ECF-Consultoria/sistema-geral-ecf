@@ -264,6 +264,118 @@ class EstruturaVisaoService
         ];
     }
 
+    /**
+     * Quantas ofertas em cada situação, e quantas das que não estão OK ainda
+     * não têm publicação na agenda (`sem_agenda`) — o buraco sem data.
+     *
+     * @param  array<int, array>  $ofertas
+     * @param  array<int, mixed>  $comPublicacao  oferta_id → (qualquer) de quem tem publicação
+     * @return array{total: int, ok: int, falta: int, publicar: int, sem_agenda: int}
+     */
+    private function contarSituacoes(array $ofertas, array $comPublicacao): array
+    {
+        $r = ['total' => 0, 'ok' => 0, 'falta' => 0, 'publicar' => 0, 'sem_agenda' => 0];
+
+        foreach ($ofertas as $o) {
+            $r['total']++;
+
+            match ($o['situacao']) {
+                ReguaEstrutura::SITUACAO_OK => $r['ok']++,
+                ReguaEstrutura::SITUACAO_PUBLICAR => $r['publicar']++,
+                default => $r['falta']++,
+            };
+
+            if ($o['situacao'] !== ReguaEstrutura::SITUACAO_OK && ! isset($comPublicacao[$o['id']])) {
+                $r['sem_agenda']++;
+            }
+        }
+
+        return $r;
+    }
+
+    /**
+     * A faixa do topo: UMA coisa a fazer agora, em ordem de urgência. Não
+     * esconde nada da tela — só aponta. O cliente é leigo e o analista o
+     * ensina uma vez; depois, é esta faixa que o lembra do método.
+     *
+     * 1. `cadastrar`  — nenhuma oferta ainda;
+     * 2. `hoje`       — publicação ou revisão com data até hoje, não feita;
+     * 3. `agendar`    — ofertas com buraco e SEM publicação na agenda;
+     * 4. `variacoes`  — produtos que não entram em nenhum combo/kit (a
+     *                   pergunta da aula: "dá combo? combina com qual?");
+     * 5. `em_dia`     — nada acima.
+     *
+     * @param  array<int, mixed>  $comPublicacao
+     * @return array{tipo: string, quantidade?: int, primeira?: array, acao?: string}
+     */
+    private function proximoPasso(Company $empresa, EstruturaConjunto $conjunto, array $comPublicacao, ?CarbonImmutable $hoje = null): array
+    {
+        $ofertas = $conjunto->ofertas();
+
+        if (! $ofertas) {
+            return ['tipo' => 'cadastrar'];
+        }
+
+        $hoje ??= CarbonImmutable::today();
+
+        $pendentes = EstruturaAgendaItem::query()
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_agenda.oferta_id')
+            ->where('o.company_id', $empresa->id)
+            ->whereDate('estrutura_agenda.data', '<=', $hoje->format('Y-m-d'))
+            ->orderBy('estrutura_agenda.data')->orderBy('estrutura_agenda.id')
+            ->get(['estrutura_agenda.*'])
+            ->filter(fn (EstruturaAgendaItem $i) => $i->acao === EstruturaAgendaItem::ACAO_PUBLICACAO
+                ? ($conjunto->oferta($i->oferta_id)['situacao'] ?? ReguaEstrutura::SITUACAO_OK) !== ReguaEstrutura::SITUACAO_OK
+                : $i->concluida_em === null)
+            ->values();
+
+        if ($pendentes->isNotEmpty()) {
+            $primeira = $pendentes->first();
+
+            return [
+                'tipo'       => 'hoje',
+                'quantidade' => $pendentes->count(),
+                'primeira'   => [
+                    ...$this->resumo($conjunto->oferta($primeira->oferta_id)),
+                    'acao'  => $primeira->acao,
+                    'data'  => $primeira->data->format('Y-m-d'),
+                ],
+            ];
+        }
+
+        $semData = $this->contarSituacoes($ofertas, $comPublicacao)['sem_agenda'];
+        if ($semData > 0) {
+            return ['tipo' => 'agendar', 'quantidade' => $semData];
+        }
+
+        $semVariacao = count(array_filter(
+            $ofertas,
+            fn ($o) => $o['fase'] === EstruturaOferta::FASE_SIMPLES && $conjunto->vezesUsadaComoComponente($o['id']) === 0,
+        ));
+        if ($semVariacao > 0) {
+            return ['tipo' => 'variacoes', 'quantidade' => $semVariacao];
+        }
+
+        return ['tipo' => 'em_dia'];
+    }
+
+    /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */
+    private function contarUso(array $ids, EstruturaConjunto $conjunto): array
+    {
+        $uso = ['kits' => 0, 'combits' => 0];
+
+        foreach ($ids as $id) {
+            $fase = $conjunto->oferta($id)['fase'] ?? null;
+            if ($fase === EstruturaOferta::FASE_KIT) {
+                $uso['kits']++;
+            } elseif ($fase === EstruturaOferta::FASE_COMBIT) {
+                $uso['combits']++;
+            }
+        }
+
+        return $uso;
+    }
+
     private function passaNoFiltro(array $o, string $filtro): bool
     {
         return match ($filtro) {
