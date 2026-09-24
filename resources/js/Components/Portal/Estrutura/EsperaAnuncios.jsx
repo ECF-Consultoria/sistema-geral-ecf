@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { Link2, Plus, Trash2 } from 'lucide-react';
 import Janela from './Janela';
@@ -23,13 +23,21 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
         return (t ? ofertas.filter((o) => `${o.sku} ${o.nome ?? ''}`.toLowerCase().includes(t)) : ofertas).slice(0, 100);
     }, [ofertas, filtro]);
 
-    const visitar = (metodo, url, dados = {}) => router[metodo](url, dados, {
+    const opcoes = {
         preserveScroll: true,
         preserveState: true,
         onStart: () => setOcupado(true),
         onFinish: () => setOcupado(false),
         onSuccess: recarregar,
-    });
+    };
+
+    // `router.delete(url, opções)` NÃO recebe dados — com a assinatura de
+    // `post(url, dados, opções)` as opções iam no lugar dos dados e eram
+    // ignoradas: sem `preserveState` a página remontava e fechava este
+    // diálogo; sem `onSuccess` a lista nunca era relida. Pego na verificação
+    // em navegador (24/09); a suíte não via.
+    const vincular = (ofertaId) => router.post(route('portal.auth.estrutura.espera.vincular', linha.id), { oferta_id: ofertaId }, opcoes);
+    const descartar = () => router.delete(route('portal.auth.estrutura.espera.descartar', linha.id), opcoes);
 
     return (
         <li className="rounded-xl border border-white/[0.08] p-3 space-y-2" data-espera={linha.id}>
@@ -48,14 +56,14 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
                     {candidatas.map((o) => <option key={o.id} value={o.id}>{o.sku}{o.nome ? ` — ${o.nome}` : ''}</option>)}
                 </select>
                 <Botao disabled={! escolhida || ocupado}
-                    onClick={() => visitar('post', route('portal.auth.estrutura.espera.vincular', linha.id), { oferta_id: Number(escolhida) })}>
+                    onClick={() => vincular(Number(escolhida))}>
                     <Link2 size={14} /> Vincular
                 </Botao>
             </div>
             <div className="flex gap-2">
                 <Botao variante="fantasma" onClick={() => onCriarOferta(linha)}><Plus size={14} /> Criar oferta com este SKU</Botao>
                 <Botao variante="fantasma" disabled={ocupado} className="text-red-300/80"
-                    onClick={() => visitar('delete', route('portal.auth.estrutura.espera.descartar', linha.id))}>
+                    onClick={descartar}>
                     <Trash2 size={14} /> Descartar
                 </Botao>
             </div>
@@ -63,8 +71,22 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
     );
 }
 
-export default function EsperaAnuncios({ aberta, onFechar, linhas, ofertas, vocabulario, onCriarOferta }) {
+export default function EsperaAnuncios({ aberta, onFechar, linhas: linhasProp, ofertas: ofertasProp, vocabulario, onCriarOferta }) {
     const recarregar = () => router.reload({ only: ['espera_linhas', 'opcoes_ofertas', 'estrutura'] });
+
+    // Toda escrita volta com `back()`, e essa visita cheia NÃO traz as props
+    // opcionais (`Inertia::optional`) — por um instante elas somem até o
+    // `recarregar` trazê-las. Guardar a última versão evita a lista piscar
+    // "Carregando…" entre um clique e outro.
+    const [ultimas, setUltimas] = useState({ linhas: linhasProp, ofertas: ofertasProp });
+    useEffect(() => {
+        setUltimas((u) => ({
+            linhas: linhasProp ?? u.linhas,
+            ofertas: ofertasProp ?? u.ofertas,
+        }));
+    }, [linhasProp, ofertasProp]);
+    const linhas = linhasProp ?? ultimas.linhas;
+    const ofertas = ofertasProp ?? ultimas.ofertas;
 
     return (
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-2xl"
