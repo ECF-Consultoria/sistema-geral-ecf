@@ -42,14 +42,14 @@ function LadoDaPublicacao({ tipo, rotulo, anuncios, onConcluir }) {
         return (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-[12px] text-emerald-300">
                 ✓ {rotulo}
-                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem código'}</span>
+                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem MLB'}</span>
             </span>
         );
     }
 
     return (
         <Botao className="px-2 py-1 text-[12px]" onClick={onConcluir} data-acao={`concluir-${tipo}`}>
-            {rotulo}: já publiquei
+            {rotulo}: concluir
         </Botao>
     );
 }
@@ -89,7 +89,7 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
             ) : (
                 <label className="inline-flex items-center gap-2 text-[13px] text-white/75">
                     <input type="checkbox" checked={item.feita} onChange={(e) => marcarJardinagem(e.target.checked)} data-acao="jardinagem" />
-                    Revisado — olhei as visitas e ajustei o anúncio
+                    Feita — métricas olhadas e anúncio ajustado
                 </label>
             )}
 
@@ -97,7 +97,7 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
                 {publicacao && item.feita && ! o.tem_jardinagem && (
                     <Botao variante="fantasma" className="px-2 py-1 text-[12px] text-emerald-300"
                         onClick={() => onJardinagem(o)} data-acao="agendar-jardinagem">
-                        <Sparkles size={13} /> Revisar em {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
+                        <Sparkles size={13} /> Jardinagem em {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
                     </Botao>
                 )}
                 {! item.feita && (
@@ -139,7 +139,7 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12.5px] text-white/45">
-                        Uma publicação por dia até terminar a lista. 7 dias depois de publicar, revise o anúncio (Jardinagem).
+                        Ritmo: 1 publicação por dia até zerar a lista. 7 dias depois, a Jardinagem.
                     </p>
                     <Botao variante="primario" onClick={() => setProposta(true)} disabled={agenda.painel.a_publicar === 0} data-acao="agendar-o-que-falta">
                         <CalendarPlus size={14} /> Agendar o que falta

@@ -18,12 +18,10 @@ export const ESTILO_SITUACAO = {
     publicar:       'bg-red-500/10 text-red-300 border-red-500/25',
 };
 
-// Rótulo curto da pílula, na língua de quem vende (24/09): o cliente é leigo
-// em sistema. O texto longo, com o termo da aula, vem do PHP (`vocabulario`).
 export const ROTULO_CURTO_SITUACAO = {
-    ok:             'Pronta',
-    falta_classico: 'Falta à vista',
-    falta_premium:  'Falta parcelado',
+    ok:             'OK',
+    falta_classico: 'Falta Clássico',
+    falta_premium:  'Falta Premium',
     publicar:       'Publicar',
 };
 
@@ -198,11 +196,11 @@ function MaisOpcoes({ onColar, onComoFunciona }) {
                 <div className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-white/[0.10] bg-ecf-card p-1 shadow-2xl" role="menu">
                     {onColar && (
                         <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onColar(); }} data-acao="colar-anuncios">
-                            <ClipboardPaste size={14} /> Colar anúncios que já tenho
+                            <ClipboardPaste size={14} /> Colar anúncios
                         </button>
                     )}
                     <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onComoFunciona(); }} data-acao="como-funciona">
-                        <BookOpen size={14} /> Como funciona (a aula)
+                        <BookOpen size={14} /> Como funciona
                     </button>
                 </div>
             )}
@@ -233,7 +231,7 @@ export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
             </div>
             <nav className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" aria-label="Visões do módulo">
                 <Link href={route('portal.auth.estrutura')} className={aba(visao === 'ofertas')} data-visao="ofertas">
-                    <Layers size={14} /> Meus produtos
+                    <Layers size={14} /> Ofertas
                 </Link>
                 <Link href={route('portal.auth.estrutura.agenda')} className={aba(visao === 'agenda')} data-visao="agenda">
                     <CalendarDays size={14} /> Agenda
@@ -269,13 +267,13 @@ export function PainelEstrutura({ painel }) {
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px] text-white/55">
                 <span><strong className="text-white" data-ofertas>{painel.ofertas}</strong> {painel.ofertas === 1 ? 'oferta' : 'ofertas'}</span>
                 <span>
-                    {plural(painel.por_fase.simples, 'produto', 'produtos')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'kit com mais unidades', 'kits com mais unidades')}
+                    {plural(painel.por_fase.simples, 'simples', 'simples')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'combit', 'combits')}
                 </span>
-                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'pronta' : 'prontas'}</span>
+                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'completa' : 'completas'}</span>
                 <span><strong className="text-red-300" data-a-publicar>{painel.a_publicar}</strong> a publicar</span>
             </div>
             <p className="mt-2 text-[11.5px] text-white/30">
-                Cada oferta sai em dois anúncios: um à vista (Clássico) e um parcelado (Premium). Anúncio pausado conta; inativo não.
+                Cada oferta precisa de 1 Clássico e 1 Premium. Anúncio repetido do mesmo tipo não soma; Inativo não conta; Pausado conta.
             </p>
         </section>
     );
@@ -294,10 +292,10 @@ export function ProximoPasso({ passo, onCadastrar }) {
     const textos = {
         hoje: {
             titulo: passo.primeira?.acao === 'jardinagem'
-                ? `Hoje: revisar o anúncio de ${nome(passo.primeira)}`
+                ? `Hoje: Jardinagem de ${nome(passo.primeira)}`
                 : `Hoje: publicar ${nome(passo.primeira)}`,
             texto: (passo.quantidade > 1 ? `E mais ${passo.quantidade - 1} tarefa(s) para hoje ou atrasada(s). ` : '')
-                + 'Depois de publicar, marque na Agenda informando o código do anúncio.',
+                + 'Depois de publicar, conclua na Agenda informando o código MLB.',
             botao: 'Abrir a agenda',
             href: route('portal.auth.estrutura.agenda'),
         },
@@ -308,8 +306,8 @@ export function ProximoPasso({ passo, onCadastrar }) {
             href: route('portal.auth.estrutura.agenda') + '?proposta=1',
         },
         variacoes: {
-            titulo: `${passo.quantidade} produto(s) ainda sem combo ou kit`,
-            texto: 'Algum deles vende em mais unidades, ou junto com outro produto seu? Use "+ Variação" no produto.',
+            titulo: `${passo.quantidade} produto(s) ainda sem combo, kit ou combit`,
+            texto: 'Dá combo? Em quantas unidades? Combina com qual outro produto? Use "+ Variação" no produto.',
         },
         em_dia: {
             titulo: 'Tudo em dia',

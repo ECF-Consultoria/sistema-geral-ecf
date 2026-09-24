@@ -47,16 +47,16 @@ export default function FormAnuncio({ aberta, onFechar, oferta, anuncio = null, 
         }
     };
 
-    const tipoCurto = (vocabulario.tipos_curtos[dados.tipo] ?? '').toLowerCase();
+    const tipoRotulo = vocabulario.tipos[dados.tipo];
 
     return (
         <Janela
             aberta={aberta}
             onFechar={() => onFechar(false)}
-            titulo={anuncio ? 'Editar anúncio' : viaAgenda ? `Já publiquei o anúncio ${tipoCurto} de ${oferta?.nome || oferta?.sku}` : `Novo anúncio de ${oferta?.nome || oferta?.sku}`}
+            titulo={anuncio ? 'Editar anúncio' : viaAgenda ? `Concluir ${tipoRotulo} de ${oferta?.sku}` : `Anúncio de ${oferta?.sku}`}
             descricao={viaAgenda
-                ? 'Informe o código do anúncio que você acabou de publicar. É ele que marca a tarefa como feita.'
-                : 'Todo produto sai em dois anúncios: à vista (Clássico) e parcelado (Premium).'}
+                ? 'Informe o código MLB do anúncio que você acabou de publicar no Mercado Livre.'
+                : 'Mesmo SKU, títulos diferentes: Clássico para o melhor preço à vista, Premium para o parcelado.'}
         >
             <div className="space-y-3" data-form-anuncio>
                 {! tipoFixo && (
@@ -71,12 +71,12 @@ export default function FormAnuncio({ aberta, onFechar, oferta, anuncio = null, 
                 )}
                 {erros.tipo && <p className="text-[12px] text-red-400">{erros.tipo}</p>}
 
-                <Campo rotulo={viaAgenda ? 'Código do anúncio (obrigatório)' : 'Código do anúncio'} erro={erros.codigo_mlb}
-                    dica="Onde achar: abra o anúncio no Mercado Livre e copie o endereço da página — pode colar o link inteiro.">
+                <Campo rotulo={viaAgenda ? 'Código MLB (obrigatório)' : 'Código MLB'} erro={erros.codigo_mlb}
+                    dica="Pode colar o link do anúncio: o código MLB sai dele.">
                     <input value={dados.codigo_mlb ?? ''} onChange={(e) => set('codigo_mlb', e.target.value)}
-                        placeholder="MLB1234567890 ou o link do anúncio" className={`${CLASSE_INPUT} font-mono`} data-campo="codigo_mlb" autoFocus />
+                        placeholder="MLB1234567890" className={`${CLASSE_INPUT} font-mono`} data-campo="codigo_mlb" autoFocus />
                 </Campo>
-                <Campo rotulo="Título do anúncio (opcional)" erro={erros.titulo}>
+                <Campo rotulo="Título do anúncio" erro={erros.titulo}>
                     <input value={dados.titulo ?? ''} onChange={(e) => set('titulo', e.target.value)} className={CLASSE_INPUT} />
                 </Campo>
                 <button type="button" onClick={() => setMaisOpcoes(! maisOpcoes)} aria-expanded={maisOpcoes}
@@ -104,7 +104,7 @@ export default function FormAnuncio({ aberta, onFechar, oferta, anuncio = null, 
                 <div className="flex justify-end gap-2 pt-1">
                     <Botao variante="fantasma" onClick={() => onFechar(false)}>Cancelar</Botao>
                     <Botao variante="primario" onClick={enviar} disabled={enviando} data-acao="salvar-anuncio">
-                        {anuncio ? 'Salvar' : viaAgenda ? 'Marcar como publicado' : 'Cadastrar'}
+                        {anuncio ? 'Salvar' : viaAgenda ? 'Concluir' : 'Cadastrar'}
                     </Botao>
                 </div>
             </div>

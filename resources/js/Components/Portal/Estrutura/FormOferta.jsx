@@ -173,13 +173,13 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     };
 
     const titulo = editando ? `Editar ${base.sku}`
-        : modo === 'produto' ? 'Novo produto'
-        : modo === 'combo' ? `Mais unidades de ${nomeDe(base)}`
-        : 'Vender junto com outro produto';
+        : modo === 'produto' ? 'Novo produto (Fase 1)'
+        : modo === 'combo' ? `Combo de ${base?.sku}`
+        : 'Kit ou combit';
 
-    const descricao = modo === 'produto' ? '1 unidade do produto, do jeito que você vende hoje.'
-        : modo === 'combo' ? 'Mesmo produto, mais unidades (Combo). Cliente que compra 2, 4 unidades está pedindo isso.'
-        : modo === 'kit' ? 'Produtos diferentes juntos (Kit). Com mais unidades de algum deles, vira kit com mais unidades (Combit).'
+    const descricao = modo === 'produto' ? '1 unidade do produto. Depois pergunte: dá combo? Combina com qual outro produto?'
+        : modo === 'combo' ? 'Mesmo produto, mais unidades. Cliente que compra 2, 4 unidades está pedindo um combo.'
+        : modo === 'kit' ? 'Produtos diferentes juntos. Com mais unidades de algum item, vira combit.'
         : undefined;
 
     return (
@@ -213,7 +213,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
 
                 {ehKit && (
                     <div className="space-y-2">
-                        <p className="text-[12.5px] font-medium text-white/70">Quais produtos vão juntos, e quantos de cada?</p>
+                        <p className="text-[12.5px] font-medium text-white/70">Produtos do kit</p>
                         {opcoes === undefined && <p className="text-[12.5px] text-white/40">Carregando produtos…</p>}
                         {itens.map((i, idx) => (
                             <div key={i.id} className="flex items-center gap-2">
@@ -239,8 +239,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                             </div>
                         )}
                         <p className="text-[12.5px]" data-fase-kit={faseKit ?? ''}>
-                            {faseKit === 'kit' && <span className="text-orange-300">É um <strong>Kit</strong> — produtos diferentes, uma unidade de cada.</span>}
-                            {faseKit === 'combit' && <span className="text-amber-300">É um <strong>Kit com mais unidades</strong> (Combit).</span>}
+                            {faseKit === 'kit' && <span className="text-orange-300">Isto é um <strong>Kit</strong> — produtos diferentes, uma unidade de cada.</span>}
+                            {faseKit === 'combit' && <span className="text-amber-300">Isto é um <strong>Combit</strong> — kit com mais unidades de um item.</span>}
                             {! faseKit && <span className="text-white/40">Escolha pelo menos dois produtos.</span>}
                         </p>
                         {erros.componentes && <p className="text-[12px] text-red-400">{erros.componentes}</p>}
@@ -254,7 +254,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                 )}
 
                 {! emLote && (<>
-                <Campo rotulo="Código do produto (SKU)" erro={erros.sku} dica="Se você não usa código, crie um curto e fácil de lembrar, ex.: CAD-01.">
+                <Campo rotulo="SKU" erro={erros.sku} dica="O padrão é livre — só mantenha consistente e confira o limite do seu ERP.">
                     <input value={sku} onChange={(e) => { setSku(e.target.value); setSkuMexido(true); }}
                         className={cn(CLASSE_INPUT, 'font-mono')} data-campo="sku" />
                 </Campo>

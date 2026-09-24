@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 const GRUPOS = [
     { chave: 'novos',       rotulo: 'novos',              cor: 'text-emerald-300' },
     { chave: 'atualizados', rotulo: 'já cadastrados (serão atualizados)', cor: 'text-sky-300' },
-    { chave: 'espera',      rotulo: 'sem produto (ficam guardados)',  cor: 'text-amber-300' },
+    { chave: 'espera',      rotulo: 'aguardando oferta',  cor: 'text-amber-300' },
     { chave: 'erros',       rotulo: 'com erro (não serão gravados)', cor: 'text-red-300' },
     { chave: 'removidos',   rotulo: 'serão REMOVIDOS',    cor: 'text-red-400' },
 ];
@@ -146,7 +146,7 @@ export default function ColarAnuncios({ aberta, onFechar, vocabulario }) {
                         ))}
                         {! previa.erro_geral && previa.totais.espera > 0 && (
                             <p className="text-[12px] text-white/45">
-                                Os que ficaram sem produto ficam guardados e aparecem no aviso da tela. Quando você cadastrar o produto com aquele código, eles entram nele sozinhos.
+                                Os que aguardam oferta ficam guardados e aparecem no aviso da tela. Assim que você criar a oferta com aquele SKU, eles entram nela sozinhos.
                             </p>
                         )}
                         {removidos > 0 && (
