@@ -231,6 +231,30 @@ class ColagemEEsperaTest extends TestCase
         $this->assertSame('MLB3456789012', $ofertas['CAD-01-CB3']->anuncios()->sole()->codigo_mlb);
     }
 
+    /**
+     * O cliente cadastra a lista inteira e LOGO DEPOIS cola os anúncios — o
+     * passo 1 e o passo 2 da aula, em sequência. Sem prefixo, todas as rotas
+     * com `throttle` dividiam um contador por usuário/IP, e a colagem (10/min)
+     * estourava contando as escritas de antes: 429 no meio do uso normal.
+     */
+    public function test_cadastrar_varios_produtos_e_colar_em_seguida_nao_da_429(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+
+        foreach (range(1, 12) as $i) {
+            $sessao->post(route('portal.auth.estrutura.ofertas.criar'), ['sku' => "PROD-{$i}", 'fase' => 'simples'])
+                ->assertRedirect();
+        }
+
+        $sessao->postJson(route('portal.auth.estrutura.colagem.previa'), ['texto' => "SKU\tTIPO\nPROD-1\tClássico", 'modo' => 'acrescentar'])
+            ->assertOk();
+        $sessao->post(route('portal.auth.estrutura.colagem'), ['texto' => "SKU\tTIPO\nPROD-1\tClássico", 'modo' => 'acrescentar'])
+            ->assertRedirect();
+
+        $this->assertSame(1, EstruturaAnuncio::count());
+    }
+
     public function test_mlb_igual_em_outra_empresa_nao_conflita(): void
     {
         $a = $this->empresaDoGabarito();
