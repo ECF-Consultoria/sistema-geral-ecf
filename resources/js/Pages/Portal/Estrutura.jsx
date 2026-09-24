@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, ClipboardPaste, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PainelEstrutura, PilulaSituacao, ProximoPasso,
+    AvisoFlash, Botao, CabecalhoEstrutura, PainelEstrutura, PilulaSituacao, ProximoPasso, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
@@ -21,10 +21,15 @@ import { cn } from '@/lib/utils';
 // uma digitada, a outra espelhada. Aqui são uma coisa só: cada oferta mostra o
 // próprio buraco ao lado dos próprios dados (ADR PORTAL-01).
 //
-// A tela se organiza POR PRODUTO, porque é assim que a aula ensina a pensar
-// ("para cada um, pergunte: dá combo? combina com qual?"): cada produto simples
-// com os combos dele; kits e combits numa seção própria — composição não tem
-// produto principal, e pendurá-los num dos componentes seria arbitrário.
+// ### Uma tabela simples, como a aba Mapeamento (24/09)
+// Blocos recolhíveis com resumo, cards e painel grande foram recusados:
+// "acaba sendo mais complexo para o cliente que não sabe usar um sistema —
+// queria algo mais comum mas funcional, assim como é na planilha". Então: uma
+// linha por oferta, as colunas da planilha (SKU · Fase · Descrição · Clássico
+// · Premium · Catálogo · Situação), 0 em vermelho e ≥1 em verde como a
+// formatação condicional dela. A ordem continua a da aula: cada produto e,
+// logo abaixo e recuados, os combos dele; depois kits e combits. Clicar na
+// linha abre os detalhes.
 //
 // ### Tudo o que é número vem do servidor
 // Painel, contadores dos filtros e situação de cada oferta saem da
@@ -40,167 +45,101 @@ const FILTROS = [
     { chave: 'completas', rotulo: 'Completas' },
 ];
 
-const ROTULO_LINHA = (o) => ({ simples: 'Produto', combo: `Combo ${o.unidades}`, kit: 'Kit', combit: 'Combit' }[o.fase]);
+const ROTULO_FASE = (o) => ({ simples: 'Simples', combo: `Combo ${o.unidades}`, kit: 'Kit', combit: 'Combit' }[o.fase]);
 
-function LinhaOferta({ oferta, onAbrir, onAgendar, vocabulario, rodape = null }) {
-    const temPublicacaoPendente = oferta.agenda.some((i) => i.acao === 'publicacao' && ! i.feita);
-
+/** Clássico / Premium: o número, verde quando há, vermelho quando é 0 — como a planilha. */
+function Contagem({ n, cobrado = true }) {
     return (
-        <li>
-            <div role="button" tabIndex={0} onClick={() => onAbrir(oferta.id)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onAbrir(oferta.id))}
-                className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-xl px-3 py-2.5 hover:bg-white/[0.03] cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40"
-                data-oferta={oferta.id} data-situacao={oferta.situacao}>
-                <div className="min-w-0 flex-1 basis-56">
-                    <p className="text-[13px] text-white/90 truncate">
-                        <span className="text-white/40 text-[11.5px] mr-1.5">{ROTULO_LINHA(oferta)}</span>
-                        <span className="font-mono">{oferta.sku}</span>
-                        {oferta.sku_repetido && (
-                            <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10.5px] text-amber-300" title="Outra oferta tem o mesmo SKU. Os anúncios colados não sabem em qual das duas entrar.">
-                                <AlertTriangle size={11} /> SKU repetido
-                            </span>
-                        )}
-                    </p>
-                    {oferta.nome && <p className="text-[12px] text-white/45 truncate">{oferta.nome} · {oferta.unidades} un.</p>}
-                </div>
-                <div className="flex items-center gap-3">
-                    <Lado rotulo={vocabulario.tipos_curtos.classico} quantidade={oferta.classicos} />
-                    <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
-                    <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
-                </div>
-                <div className="flex items-center gap-2 ml-auto">
-                    <PilulaSituacao situacao={oferta.situacao} vocabulario={vocabulario} />
-                    {oferta.situacao !== 'ok' && ! temPublicacaoPendente && (
-                        <Botao variante="fantasma" className="px-2 py-1 text-[12px]"
-                            onClick={(e) => { e.stopPropagation(); onAgendar(oferta); }}>
-                            <CalendarPlus size={13} /> Agendar
-                        </Botao>
-                    )}
-                    {temPublicacaoPendente && (
-                        <span className="text-[11.5px] text-white/40">
-                            agendada {oferta.agenda.find((i) => i.acao === 'publicacao' && ! i.feita)?.data.split('-').reverse().slice(0, 2).join('/')}
-                        </span>
-                    )}
-                </div>
-                {rodape && <p className="basis-full text-[11.5px] text-white/40">{rodape}</p>}
-            </div>
-        </li>
-    );
-}
-
-// O pior caso manda na cor: algo a publicar → vermelho; falta um lado →
-// âmbar; tudo OK → verde. É o que o olho precisa com o bloco FECHADO.
-const COR_PIOR = { publicar: 'bg-red-400', falta: 'bg-amber-400', ok: 'bg-emerald-400', vazio: 'bg-white/20' };
-
-const piorCaso = (resumo, situacaoPrincipal = null) => {
-    if (resumo.publicar > 0 || situacaoPrincipal === 'publicar') return 'publicar';
-    if (resumo.falta > 0 || situacaoPrincipal?.startsWith('falta')) return 'falta';
-    if (resumo.total > 0 || situacaoPrincipal === 'ok') return 'ok';
-
-    return 'vazio';
-};
-
-/**
- * "5 combos: 1 falta um lado · 4 a publicar · 4 sem data". O resumo vem do
- * servidor e é do bloco INTEIRO — não muda quando um filtro esconde linhas.
- */
-function ResumoContagem({ resumo, singular, plural }) {
-    if (resumo.total === 0) return <span className="text-white/30">sem {plural}</span>;
-
-    const pendentes = resumo.falta + resumo.publicar;
-    const partes = [
-        resumo.ok > 0 && <span key="ok" className="text-emerald-300">{resumo.ok} ok</span>,
-        resumo.falta > 0 && <span key="falta" className="text-amber-300">{resumo.falta} falta um lado</span>,
-        resumo.publicar > 0 && <span key="pub" className="text-red-300">{resumo.publicar} a publicar</span>,
-        pendentes > 0 && (resumo.sem_agenda > 0
-            ? <span key="agenda" className="text-red-300/80">{resumo.sem_agenda} sem data</span>
-            : <span key="agenda" className="text-white/40">todas agendadas</span>),
-    ].filter(Boolean);
-
-    return (
-        <span className="text-white/55">
-            {resumo.total} {resumo.total === 1 ? singular : plural}:{' '}
-            {partes.map((p, i) => <span key={p.key}>{i > 0 && ' · '}{p}</span>)}
+        <span className={cn(
+            'inline-flex min-w-[26px] justify-center rounded-md px-1.5 py-0.5 text-[12px] font-semibold tabular-nums',
+            n > 0 ? 'bg-emerald-500/15 text-emerald-300' : cobrado ? 'bg-red-500/15 text-red-300' : 'text-white/30',
+        )}>
+            {n}
         </span>
     );
 }
 
-const textoUso = (uso) => [
-    uso.kits ? `${uso.kits} ${uso.kits === 1 ? 'kit' : 'kits'}` : null,
-    uso.combits ? `${uso.combits} ${uso.combits === 1 ? 'combit' : 'combits'}` : null,
-].filter(Boolean).join(' e ');
+function TabelaOfertas({ blocos, vocabulario, onAbrir, onAgendar, onVariacao }) {
+    // Achata os blocos (produto + combos; kit; combit) na ordem da aula.
+    const linhas = blocos.flatMap((b) => b.ofertas.map((o) => ({
+        o,
+        bloco: b,
+        recuada: b.produto && o.id !== b.principal.id,
+    })));
 
-/**
- * Um produto e os combos dele. Nasce RECOLHIDO — a lista inteira aberta vira
- * um rolo com 1.500 ofertas —, e o cabeçalho diz o que há dentro e o que
- * falta. Com filtro ou busca ativos nasce aberto: quem buscou "CB4" quer ver a
- * linha, não um cabeçalho fechado.
- */
-function BlocoProduto({ bloco, abertoInicial, onAbrir, onAgendar, onVariacao, vocabulario }) {
-    const [aberto, setAberto] = useState(abertoInicial);
-    const principalCompleto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
-    const pior = piorCaso(bloco.resumo_combos, bloco.principal.situacao);
-    const uso = textoUso(bloco.uso);
+    const th = 'px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-white/40';
 
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto ? '1' : '0'}>
-            <header className={cn('flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3', aberto && 'border-b border-white/[0.06]')}>
-                <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-bloco"
-                    className="flex min-w-0 flex-1 basis-72 items-center gap-2 text-left">
-                    {aberto ? <ChevronDown size={15} className="shrink-0 text-white/40" /> : <ChevronRight size={15} className="shrink-0 text-white/40" />}
-                    <span className={cn('h-2 w-2 shrink-0 rounded-full', COR_PIOR[pior])} aria-hidden />
-                    <span className="min-w-0">
-                        <span className="block truncate text-[13.5px] font-semibold text-white" data-titulo-bloco>
-                            <span className="font-mono">{bloco.principal.sku}</span>
-                            {bloco.principal.nome && <span className="font-normal text-white/55"> · {bloco.principal.nome}</span>}
-                        </span>
-                        <span className="block truncate text-[12px]" data-resumo>
-                            <ResumoContagem resumo={bloco.resumo_combos} singular="combo" plural="combos" />
-                            {uso && <span className="text-white/40" title={bloco.tambem_em.map((k) => k.nome || k.sku).join(' · ')}> · entra em {uso}</span>}
-                        </span>
-                    </span>
-                </button>
-                <PilulaSituacao situacao={bloco.principal.situacao} vocabulario={vocabulario} />
-                <Botao variante="fantasma" className="px-2 py-1 text-[12px]" onClick={() => onVariacao(principalCompleto, bloco.quantidades_combo)} data-acao="nova-variacao">
-                    <Plus size={13} /> Variação
-                </Botao>
-            </header>
-            {aberto && (
-                <ul className="p-1.5">
-                    {bloco.ofertas.map((o) => <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAgendar={onAgendar} vocabulario={vocabulario} />)}
-                </ul>
-            )}
-        </section>
-    );
-}
+        <div className="relative overflow-x-auto rounded-xl border border-white/[0.08] bg-ecf-card">
+            <table className="w-full text-[13px]" data-tabela-ofertas>
+                <thead className="border-b border-white/[0.08]">
+                    <tr>
+                        <th className={th}>SKU</th>
+                        <th className={cn(th, 'hidden md:table-cell')}>Fase</th>
+                        <th className={cn(th, 'hidden sm:table-cell')}>Descrição</th>
+                        <th className={cn(th, 'text-center')}>Clássico</th>
+                        <th className={cn(th, 'text-center')}>Premium</th>
+                        <th className={cn(th, 'hidden md:table-cell text-center')}>Catálogo</th>
+                        <th className={th}>Situação</th>
+                        <th className={cn(th, 'hidden lg:table-cell')}>Agenda</th>
+                        <th className={th}><span className="sr-only">Ações</span></th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.05]">
+                    {linhas.map(({ o, bloco, recuada }) => {
+                        const pendente = o.agenda.find((i) => i.acao === 'publicacao' && ! i.feita);
 
-/** Kits e combits: uma seção só, também recolhida, com o resumo de TODOS. */
-function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAgendar, vocabulario }) {
-    const [aberto, setAberto] = useState(abertoInicial);
-
-    return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-secao-kits data-aberto={aberto ? '1' : '0'}>
-            <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-kits"
-                className={cn('flex w-full items-center gap-2 px-4 py-3 text-left', aberto && 'border-b border-white/[0.06]')}>
-                {aberto ? <ChevronDown size={15} className="text-white/40" /> : <ChevronRight size={15} className="text-white/40" />}
-                <span className={cn('h-2 w-2 rounded-full', COR_PIOR[piorCaso(resumo)])} aria-hidden />
-                <span className="text-[13.5px] font-semibold text-white">Kits e combits</span>
-                <span className="text-[12px]" data-resumo>
-                    <span className="text-white/55">
-                        {porFase.kit} {porFase.kit === 1 ? 'kit' : 'kits'} · {porFase.combit} {porFase.combit === 1 ? 'combit' : 'combits'} ·{' '}
-                    </span>
-                    <ResumoContagem resumo={resumo} singular="oferta" plural="ofertas" />
-                </span>
-            </button>
-            {aberto && (
-                <ul className="p-1.5">
-                    {blocos.flatMap((b) => b.ofertas).map((o) => (
-                        <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAgendar={onAgendar} vocabulario={vocabulario}
-                            rodape={o.componentes.map((c) => `${c.nome ?? c.sku} ×${c.quantidade}`).join(' + ')} />
-                    ))}
-                </ul>
-            )}
-        </section>
+                        return (
+                            <tr key={o.id} onClick={() => onAbrir(o.id)} data-oferta={o.id} data-situacao={o.situacao}
+                                className="cursor-pointer hover:bg-white/[0.03]">
+                                <td className={cn('px-3 py-2 align-top', recuada && 'pl-7')}>
+                                    <span className="font-mono text-white/90 whitespace-nowrap">
+                                        {recuada && <span className="mr-1 text-white/25">└</span>}{o.sku}
+                                    </span>
+                                    {o.sku_repetido && (
+                                        <span className="ml-1.5 inline-flex items-center text-amber-300" title="Outra oferta tem o mesmo SKU.">
+                                            <AlertTriangle size={12} />
+                                        </span>
+                                    )}
+                                    {/* No celular a descrição e a fase vêm aqui, sob o SKU. */}
+                                    <p className="text-[11.5px] text-white/45 sm:hidden">{ROTULO_FASE(o)}{o.nome ? ` · ${o.nome}` : ''}</p>
+                                </td>
+                                <td className="hidden px-3 py-2 align-top text-white/60 whitespace-nowrap md:table-cell">{ROTULO_FASE(o)}</td>
+                                <td className="hidden px-3 py-2 align-top text-white/75 sm:table-cell">
+                                    {o.nome ?? <span className="text-white/30">—</span>}
+                                    {o.componentes.length > 0 && o.fase !== 'combo' && (
+                                        <p className="text-[11.5px] text-white/40">{o.componentes.map((c) => `${c.sku} ×${c.quantidade}`).join(' + ')}</p>
+                                    )}
+                                </td>
+                                <td className="px-3 py-2 text-center align-top"><Contagem n={o.classicos} /></td>
+                                <td className="px-3 py-2 text-center align-top"><Contagem n={o.premiums} /></td>
+                                <td className="hidden px-3 py-2 text-center align-top md:table-cell">
+                                    <Contagem n={o.catalogos} cobrado={false} />
+                                    {o.kits_virtuais > 0 && <span className="ml-1 rounded bg-violet-500/10 px-1 text-[10.5px] text-violet-300" title="Kit virtual montado">KV</span>}
+                                </td>
+                                <td className="px-3 py-2 align-top"><PilulaSituacao situacao={o.situacao} vocabulario={vocabulario} /></td>
+                                <td className="hidden px-3 py-2 align-top whitespace-nowrap lg:table-cell">
+                                    {pendente
+                                        ? <span className="text-white/60">{fmtData(pendente.data)}</span>
+                                        : o.situacao !== 'ok'
+                                            ? <button type="button" className="text-[12.5px] text-ecf-yellow hover:underline"
+                                                onClick={(e) => { e.stopPropagation(); onAgendar(o); }}>Agendar</button>
+                                            : <span className="text-white/25">—</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right align-top whitespace-nowrap">
+                                    {o.fase === 'simples' && (
+                                        <button type="button" className="inline-flex items-center gap-0.5 text-[12.5px] text-white/55 hover:text-white"
+                                            onClick={(e) => { e.stopPropagation(); onVariacao(o, bloco.quantidades_combo); }} data-acao="nova-variacao">
+                                            <Plus size={13} /> Variação
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
     );
 }
 
@@ -287,13 +226,6 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
         if (deOndeVeio) carregarOpcoes(['espera_linhas']);
     };
 
-    // Sem filtro, tudo recolhido; com filtro ou busca, o que casou abre. A
-    // chave remonta os blocos quando o filtro muda, para valer o novo padrão.
-    const filtroAtivo = (filtros.situacao ?? 'todas') !== 'todas' || !! filtros.q;
-    const chaveFiltro = `${filtros.situacao ?? 'todas'}|${filtros.q ?? ''}`;
-    const blocosProduto = blocos.filter((b) => b.produto);
-    const blocosKits = blocos.filter((b) => ! b.produto);
-
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural">
             <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
@@ -305,7 +237,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
 
                 {estrutura.espera > 0 && (
                     <button type="button" onClick={abrirEspera} data-aviso-espera
-                        className="w-full flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left text-[13px] text-amber-200 hover:bg-amber-500/10">
+                        className="w-full flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-left text-[13px] text-amber-200 hover:bg-amber-500/10">
                         <AlertTriangle size={16} className="shrink-0" />
                         <span><strong>{estrutura.espera}</strong> anúncio(s) colado(s) aguardando oferta — eles já estão no ar, mas ainda não contam no painel.</span>
                         <span className="ml-auto font-semibold">Resolver</span>
@@ -347,17 +279,11 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                             <p className="py-10 text-center text-[13px] text-white/45">Nenhuma oferta com este filtro.</p>
                         )}
 
-                        <div className="space-y-3">
-                            {blocosProduto.map((b) => (
-                                <BlocoProduto key={`${b.chave}-${chaveFiltro}`} bloco={b} abertoInicial={filtroAtivo} vocabulario={vocabulario}
-                                    onAbrir={setGavetaId} onAgendar={setAgendar}
-                                    onVariacao={(base, existentes) => setVariacao({ base, existentes })} />
-                            ))}
-                            {blocosKits.length > 0 && (
-                                <SecaoKits key={`kits-${chaveFiltro}`} blocos={blocosKits} resumo={estrutura.resumo_kits} porFase={painel.por_fase}
-                                    abertoInicial={filtroAtivo} onAbrir={setGavetaId} onAgendar={setAgendar} vocabulario={vocabulario} />
-                            )}
-                        </div>
+                        {blocos.length > 0 && (
+                            <TabelaOfertas blocos={blocos} vocabulario={vocabulario}
+                                onAbrir={setGavetaId} onAgendar={setAgendar}
+                                onVariacao={(base, existentes) => setVariacao({ base, existentes })} />
+                        )}
 
                         {paginacao.paginas > 1 && (
                             <nav className="flex items-center justify-center gap-3 pt-2" aria-label="Paginação" data-paginacao>
@@ -366,7 +292,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                                     <ChevronLeft size={14} /> Anterior
                                 </Botao>
                                 <span className="text-[12.5px] text-white/50">
-                                    Página {paginacao.pagina} de {paginacao.paginas} · {paginacao.blocos} grupos
+                                    Página {paginacao.pagina} de {paginacao.paginas}
                                 </span>
                                 <Botao disabled={paginacao.pagina >= paginacao.paginas}
                                     onClick={() => visitar({ situacao: filtros.situacao, q: busca || undefined, pagina: paginacao.pagina + 1 })}>

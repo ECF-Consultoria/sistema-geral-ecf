@@ -243,38 +243,45 @@ export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
 
 /**
  * O painel — os números da planilha (K5:K15 menos o K10), somados sobre TODAS
- * as ofertas, nunca sobre a página.
+ * as ofertas, nunca sobre a página. Uma faixa de cinco números, lida de uma
+ * olhada: o card grande com barra e legenda era "complexo para o cliente que
+ * não sabe usar sistema" (24/09).
  */
 export function PainelEstrutura({ painel }) {
     const pct = Math.round((painel.percentual ?? 0) * 1000) / 10;
+    const caixa = 'rounded-xl border border-white/[0.08] bg-ecf-card px-3 py-2.5';
+    const rotulo = 'text-[11.5px] text-white/45';
+    const numero = 'mt-0.5 font-display text-[22px] font-bold leading-none text-white';
 
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card p-4 sm:p-5" data-painel>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-white text-[15px]">
-                    <strong className="text-2xl font-display" data-publicados>{painel.publicados}</strong>
-                    <span className="text-white/50"> de </span>
-                    <strong data-necessarios>{painel.necessarios}</strong>
-                    <span className="text-white/50"> anúncios publicados</span>
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-5" data-painel
+            title={`${painel.por_fase.simples} simples · ${painel.por_fase.combo} combos · ${painel.por_fase.kit} kits · ${painel.por_fase.combit} combits`}>
+            <div className={caixa}>
+                <p className={rotulo}>Ofertas</p>
+                <p className={numero} data-ofertas>{painel.ofertas}</p>
+            </div>
+            <div className={caixa}>
+                <p className={rotulo}>Publicados</p>
+                <p className={numero}>
+                    <span data-publicados>{painel.publicados}</span>
+                    <span className="text-[13px] font-normal text-white/40"> de <span data-necessarios>{painel.necessarios}</span></span>
                 </p>
-                <span className="text-ecf-yellow font-display font-bold text-xl" data-percentual>
-                    {pct.toLocaleString('pt-BR')}%
-                </span>
             </div>
-            <div className="mt-2 h-2 rounded-full bg-white/[0.06] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                <div className="h-full rounded-full bg-ecf-yellow transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
+            <div className={caixa}>
+                <p className={rotulo}>A publicar</p>
+                <p className={cn(numero, painel.a_publicar > 0 && 'text-red-300')} data-a-publicar>{painel.a_publicar}</p>
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px] text-white/55">
-                <span><strong className="text-white" data-ofertas>{painel.ofertas}</strong> {painel.ofertas === 1 ? 'oferta' : 'ofertas'}</span>
-                <span>
-                    {plural(painel.por_fase.simples, 'simples', 'simples')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'combit', 'combits')}
-                </span>
-                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'completa' : 'completas'}</span>
-                <span><strong className="text-red-300" data-a-publicar>{painel.a_publicar}</strong> a publicar</span>
+            <div className={caixa}>
+                <p className={rotulo}>Completas</p>
+                <p className={cn(numero, 'text-emerald-300')}>{painel.completas}</p>
             </div>
-            <p className="mt-2 text-[11.5px] text-white/30">
-                Cada oferta precisa de 1 Clássico e 1 Premium. Anúncio repetido do mesmo tipo não soma; Inativo não conta; Pausado conta.
-            </p>
+            <div className={cn(caixa, 'col-span-2 sm:col-span-1')}>
+                <p className={rotulo}>Estrutura publicada</p>
+                <p className={cn(numero, 'text-ecf-yellow')} data-percentual>{pct.toLocaleString('pt-BR')}%</p>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full rounded-full bg-ecf-yellow" style={{ width: `${Math.min(100, pct)}%` }} />
+                </div>
+            </div>
         </section>
     );
 }
@@ -320,15 +327,12 @@ export function ProximoPasso({ passo, onCadastrar }) {
     if (! t) return null;
 
     return (
-        <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-3" data-proximo-passo={passo.tipo}>
-            <Lightbulb size={18} className="shrink-0 text-ecf-yellow" />
-            <div className="min-w-0 flex-1 basis-64">
-                <p className="text-[14px] font-semibold text-white">{t.titulo}</p>
-                <p className="text-[12.5px] text-white/55">{t.texto}</p>
-            </div>
+        <section className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-3 py-2" data-proximo-passo={passo.tipo} title={t.texto}>
+            <Lightbulb size={16} className="shrink-0 text-ecf-yellow" />
+            <p className="min-w-0 flex-1 text-[13px] text-white"><strong>{t.titulo}</strong></p>
             {t.href && (
-                <Link href={t.href} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-3 py-2 text-[13px] font-medium text-black hover:bg-ecf-yellow/90" data-acao="proximo-passo">
-                    {t.botao} <ArrowRight size={14} />
+                <Link href={t.href} className="inline-flex items-center gap-1 text-[13px] font-medium text-ecf-yellow hover:underline" data-acao="proximo-passo">
+                    {t.botao} <ArrowRight size={13} />
                 </Link>
             )}
         </section>

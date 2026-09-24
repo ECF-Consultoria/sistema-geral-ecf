@@ -279,3 +279,11 @@ elas eram ignoradas em silêncio: sem `preserveState` a página remontava e
 fechava o diálogo; sem `onSuccess` nada recarregava. O banco ficava certo, então
 nenhum teste PHP via. Gate: `tests/js/estrutura-mapeamento-estrutural.test.js`.
 
+E um de layout: tabela dentro de `overflow-x-auto` ainda alargava a PÁGINA no
+celular (scrollWidth 459 em 390). A moldura cortava certo; quem vazava era o
+`<span className="sr-only">` do cabeçalho — `sr-only` é `position: absolute`, e
+sem ancestral posicionado ele escapa do corte do scroll container e empurra o
+documento. `relative` na moldura resolve. Medir com
+`document.documentElement.scrollWidth`, e achar o culpado subindo a cadeia de
+`getBoundingClientRect().right` + `overflowX` — a foto só mostra o sintoma.
+
