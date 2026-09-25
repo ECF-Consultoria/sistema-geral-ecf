@@ -9,7 +9,6 @@ use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
 use App\Models\MlAcervoItem;
 use App\Services\MercadoLivreService;
-use App\Services\Mlb\Acervo\MlAcervoService;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -20,9 +19,9 @@ use Illuminate\Validation\ValidationException;
  * passo 2 da aula ("cole aqui os anúncios que você já tem") sem colar nada.
  *
  * ### Duas portas, uma regra
- * 1. **Importar** (a regra): lê a conta pela API, transforma cada anúncio numa
- *    linha da colagem e passa pelo MESMO `ColagemAnunciosService` — casa pelo
- *    SKU, atualiza pelo MLB, e o que não casa vai para "aguardando oferta".
+ * 1. **Importar** (a regra): para cada SKU de oferta, pergunta ao ML quais
+ *    anúncios têm aquele SKU, e passa as linhas pelo MESMO
+ *    `ColagemAnunciosService` da colagem (atualiza pelo MLB, não duplica).
  *    Não há segundo mecanismo de casamento para manter.
  * 2. **Buscar e ligar** (a exceção): quando o SKU do anúncio é diferente do da
  *    oferta, ou não existe, a pessoa procura o anúncio pelo título/MLB no
@@ -37,9 +36,9 @@ use Illuminate\Validation\ValidationException;
  *
  * ### O SKU vem da API, não do acervo
  * `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
- * tabela com dado em produção (fase GSD obrigatória). A importação lê o
- * `SELLER_SKU` direto da API, em Job, só para o casamento. A busca manual usa o
- * acervo como ele está — título, MLB, tipo e status bastam para reconhecer.
+ * tabela com dado em produção (fase GSD obrigatória). A importação pergunta à
+ * API pelo `seller_sku`, em Job; o resto dos dados vem do acervo. A busca
+ * manual usa o acervo como ele está — título, MLB, tipo e status bastam.
  */
 class AnunciosMercadoLivreService
 {
@@ -47,8 +46,12 @@ class AnunciosMercadoLivreService
     private const CHAVE = 'estrutura:importacao-ml:';
     private const VALIDADE_MINUTOS = 60;
 
-    /** A importação não tem o teto da colagem manual: a maior conta da carteira tem 66.747 anúncios. */
+    /** Sem o teto de 5.000 da colagem manual: são até 500 anúncios POR oferta (10 páginas × 50). */
     private const MAX_LINHAS = 200000;
+
+    /** Busca por SKU: 50 por página, no máximo 10 páginas (500 anúncios) por SKU. */
+    private const POR_PAGINA = 50;
+    private const PAGINAS_POR_SKU = 10;
 
     /** Campos pedidos no multiget — só o que a colagem usa. */
     private const CAMPOS = 'id,title,listing_type_id,status,catalog_listing,attributes,variations,seller_custom_field';
@@ -68,7 +71,6 @@ class AnunciosMercadoLivreService
 
     public function __construct(
         private MercadoLivreService $ml,
-        private MlAcervoService $acervo,
         private ColagemAnunciosService $colagem,
         private EstruturaAnuncioService $anuncios,
     ) {
@@ -93,51 +95,82 @@ class AnunciosMercadoLivreService
             ]);
         }
 
+        if (! EstruturaOferta::where('company_id', $empresa->id)->exists()) {
+            throw ValidationException::withMessages([
+                'importacao' => 'Cadastre as ofertas primeiro: a importação procura no Mercado Livre os anúncios pelo SKU de cada uma.',
+            ]);
+        }
+
         Cache::put(self::CHAVE.$empresa->id, ['estado' => 'lendo', 'iniciado_em' => now()->toIso8601String()], now()->addMinutes(self::VALIDADE_MINUTOS));
 
         ImportarAnunciosMlEstruturaJob::dispatch($empresa->id);
     }
 
-    /** O que o Job faz: lê a conta e guarda o texto pronto para a colagem. */
+    /**
+     * O que o Job faz: procura no ML os anúncios de cada SKU de oferta e guarda
+     * o texto pronto para a colagem.
+     *
+     * ### Por SKU, e não a conta inteira (medido em 25/09)
+     * A CAMILLOPARTSFILIALSCCAMILLO (#131) tem ~100 mil anúncios segundo o
+     * próprio ML (87.930 ativos + 10.830 pausados) — autopeças, um anúncio por
+     * peça × compatibilidade × tipo. Ler a conta inteira seriam ~5.000
+     * multigets (mais de meia hora, e a fila `database` reentrega Job acima de
+     * 90 s) e dezenas de milhares de linhas em "aguardando oferta". Pelo SKU,
+     * é UMA busca por oferta (`/users/{id}/items/search?seller_sku=`, 128 ms
+     * medidos na #131), e só volta o que interessa ao método: os anúncios de
+     * cada oferta. O que não casar por SKU se acha pela busca manual.
+     *
+     * Tipo, status, título e catálogo vêm do ACERVO local (sincronizado todo
+     * dia); só os anúncios que ainda não estão lá — publicados depois do sync
+     * da madrugada — passam por um multiget.
+     */
     public function ler(Company $empresa): void
     {
         try {
-            $lote = [];
-            $linhas = [];
-            $ignorados = 0;
+            $mlUserId = (string) $empresa->mlToken->ml_user_id;
 
-            $processar = function (array $ids) use ($empresa, &$linhas, &$ignorados) {
-                $resposta = $this->ml->get($empresa, '/items', ['ids' => implode(',', $ids), 'attributes' => self::CAMPOS]);
+            // O SKU como a oferta o tem (é o que a colagem casa), um por forma
+            // normalizada — SKU repetido em duas ofertas é UMA busca.
+            $skus = EstruturaOferta::where('company_id', $empresa->id)->pluck('sku')
+                ->unique(fn ($s) => EstruturaOferta::normalizarSku($s))
+                ->filter(fn ($s) => EstruturaOferta::normalizarSku($s) !== null)
+                ->values();
 
-                foreach ($resposta as $envelope) {
-                    $linha = ($envelope['code'] ?? null) === 200 ? self::linhaDoAnuncio($envelope['body'] ?? []) : null;
+            $idsPorSku = [];
+            foreach ($skus as $sku) {
+                $idsPorSku[$sku] = $this->idsDoSku($empresa, $mlUserId, $sku);
+            }
 
-                    if ($linha === null) {
-                        $ignorados++;
-                        continue;
-                    }
-
-                    $linhas[] = $linha;
-                }
-            };
-
-            foreach ($this->acervo->enumerarIds($empresa) as $id) {
-                $lote[] = $id;
-                if (count($lote) >= 20) {
-                    $processar($lote);
-                    $lote = [];
+            // Um anúncio numa oferta só: o primeiro SKU que o trouxe.
+            $skuDoId = [];
+            foreach ($idsPorSku as $sku => $ids) {
+                foreach ($ids as $id) {
+                    $skuDoId[$id] ??= $sku;
                 }
             }
-            if ($lote) {
-                $processar($lote);
+
+            $detalhes = $this->detalhes($empresa, array_keys($skuDoId));
+
+            $linhas = [];
+            $ignorados = 0;
+            foreach ($skuDoId as $id => $sku) {
+                $linha = isset($detalhes[$id]) ? self::linhaDoAnuncio($detalhes[$id]) : null;
+                if ($linha === null) {
+                    $ignorados++;
+                    continue;
+                }
+                $linha['sku'] = $sku;
+                $linhas[] = $linha;
             }
 
             Cache::put(self::CHAVE.$empresa->id, [
-                'estado'    => 'pronto',
-                'texto'     => self::texto($linhas),
-                'total'     => count($linhas),
-                'ignorados' => $ignorados,
-                'lido_em'   => now()->toIso8601String(),
+                'estado'      => 'pronto',
+                'texto'       => self::texto($linhas),
+                'total'       => count($linhas),
+                'ignorados'   => $ignorados,
+                'skus'        => $skus->count(),
+                'sem_anuncio' => count(array_filter($idsPorSku, fn ($ids) => $ids === [])),
+                'lido_em'     => now()->toIso8601String(),
             ], now()->addMinutes(self::VALIDADE_MINUTOS));
         } catch (\Throwable $e) {
             Log::error("[Estrutura] importação do ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
@@ -147,6 +180,70 @@ class AnunciosMercadoLivreService
                 'erro'   => 'Não foi possível ler os anúncios no Mercado Livre agora. Tente de novo em alguns minutos.',
             ], now()->addMinutes(self::VALIDADE_MINUTOS));
         }
+    }
+
+    /**
+     * Os MLB com este SKU na conta, página a página. Teto de páginas por SKU:
+     * um SKU com centenas de anúncios é raro, e sem teto um SKU genérico
+     * ("1", "A") poderia varrer a conta inteira por outra porta.
+     *
+     * @return array<int, string>
+     */
+    private function idsDoSku(Company $empresa, string $mlUserId, string $sku): array
+    {
+        $ids = [];
+        $offset = 0;
+
+        for ($pagina = 0; $pagina < self::PAGINAS_POR_SKU; $pagina++) {
+            $r = $this->ml->get($empresa, "/users/{$mlUserId}/items/search", [
+                'seller_sku' => $sku, 'limit' => self::POR_PAGINA, 'offset' => $offset,
+            ]);
+
+            $lote = $r['results'] ?? [];
+            array_push($ids, ...$lote);
+            $offset += count($lote);
+
+            if ($lote === [] || $offset >= (int) ($r['paging']['total'] ?? 0)) {
+                break;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Tipo, status, título e catálogo de cada MLB — do acervo local, e da API
+     * só para os que ainda não estão nele.
+     *
+     * @param  array<int, string>  $ids
+     * @return array<string, array> MLB → corpo no formato da API
+     */
+    private function detalhes(Company $empresa, array $ids): array
+    {
+        $porId = [];
+
+        foreach (array_chunk($ids, 1000) as $bloco) {
+            MlAcervoItem::where('company_id', $empresa->id)->whereIn('ml_item_id', $bloco)
+                ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing'])
+                ->each(function (MlAcervoItem $i) use (&$porId) {
+                    $porId[$i->ml_item_id] = [
+                        'id' => $i->ml_item_id, 'title' => $i->title, 'listing_type_id' => $i->listing_type_id,
+                        'status' => $i->status, 'catalog_listing' => (bool) $i->catalog_listing,
+                    ];
+                });
+        }
+
+        $faltam = array_values(array_diff($ids, array_keys($porId)));
+        foreach (array_chunk($faltam, 20) as $lote) {
+            $resposta = $this->ml->get($empresa, '/items', ['ids' => implode(',', $lote), 'attributes' => self::CAMPOS]);
+            foreach ($resposta as $envelope) {
+                if (($envelope['code'] ?? null) === 200 && ! empty($envelope['body']['id'])) {
+                    $porId[$envelope['body']['id']] = $envelope['body'];
+                }
+            }
+        }
+
+        return $porId;
     }
 
     /**
@@ -162,10 +259,12 @@ class AnunciosMercadoLivreService
         }
 
         return [
-            'estado'    => 'pronto',
-            'total'     => $estado['total'],
-            'ignorados' => $estado['ignorados'],
-            'lido_em'   => $estado['lido_em'],
+            'estado'      => 'pronto',
+            'total'       => $estado['total'],
+            'ignorados'   => $estado['ignorados'],
+            'skus'        => $estado['skus'] ?? null,
+            'sem_anuncio' => $estado['sem_anuncio'] ?? null,
+            'lido_em'     => $estado['lido_em'],
             'previa'    => $this->colagem->previa($empresa, $estado['texto'], ColagemAnunciosService::MODO_ACRESCENTAR, self::MAX_LINHAS),
         ];
     }

@@ -725,12 +725,24 @@ no modelo "User Products" cada anúncio tem o seu. O título muda de propósito
 ("mesmo SKU, títulos diferentes", regra da aula). `catalog_product_id` só liga
 quando os dois estão no mesmo produto de catálogo. 15 dos 21 tinham SKU.
 
-Por isso "Importar do Mercado Livre" casa pelo SKU e manda o resto para a
-espera, e a exceção (SKU diferente ou ausente) se resolve com a busca manual
-no acervo ("+ Anúncio" → procurar → Ligar). Amostra de UMA conta: antes de
-prometer taxa de casamento, medir em produção quantos anúncios têm SKU.
+### Importar pelo SKU da OFERTA, nunca a conta inteira — há conta de 100 mil
 
-O `ml_acervo_itens` não guarda SKU; a importação lê o `SELLER_SKU` da API em
-Job (`ImportarAnunciosMlEstruturaJob`) em vez de acrescentar coluna ao acervo
-(migration em tabela com dado em produção = fase GSD obrigatória).
+A primeira versão lia a conta inteira (enumerar + multiget de 20). A
+CAMILLOPARTSFILIALSCCAMILLO (#131), escolhida para o teste, tem **~100 mil
+anúncios segundo o próprio ML** (87.930 ativos + 10.830 pausados; o acervo
+local tem 113.873 com os antigos) — autopeças: um anúncio por peça ×
+compatibilidade × tipo, com UM SKU (`29348`) em 20 anúncios. Seriam ~5.000
+multigets, mais de meia hora, e a fila `database` reentrega Job acima de
+`retry_after` = 90 s. Isso só apareceu consultando PRODUÇÃO antes do teste.
+
+Agora é **uma busca por SKU de oferta**: `/users/{id}/items/search?seller_sku=`
+(128 ms medidos na #131; o filtro existe e devolveu o anúncio de origem).
+Tipo, status, título e catálogo vêm do acervo; só o que ainda não está lá
+(publicado depois do sync da madrugada) passa por multiget. Anúncio de SKU que
+nenhuma oferta tem NÃO vem — lotaria "aguardando oferta" com dezenas de
+milhares de linhas; ele se acha pela busca manual ("+ Anúncio" → procurar →
+Ligar), que é a exceção combinada com o usuário.
+
+O `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
+tabela com dado em produção (fase GSD obrigatória) — por isso o SKU sai da API.
 

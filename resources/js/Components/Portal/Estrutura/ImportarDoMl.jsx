@@ -8,11 +8,12 @@ import { Botao } from './comum';
 
 // ─── Importar do Mercado Livre ──────────────────────────────────────────────
 //
-// O passo 2 da aula sem colar nada: lê os anúncios da conta conectada pelo
-// OAuth e mostra a MESMA prévia da colagem — casa pelo SKU, e o que não casa
-// vai para "aguardando oferta". A leitura roda em segundo plano (uma conta
-// grande são minutos de API); a tela pergunta o estado a cada 2 segundos.
-// Nada é gravado até "Importar".
+// O passo 2 da aula sem colar nada: para cada SKU de oferta, pergunta ao ML
+// quais anúncios têm aquele SKU, e mostra a MESMA prévia da colagem. Não lê a
+// conta inteira — há conta com 100 mil anúncios —; anúncio cujo SKU não bate
+// com nenhuma oferta se acha pela busca manual no "+ Anúncio". A leitura roda
+// em segundo plano; a tela pergunta o estado a cada 2 segundos. Nada é gravado
+// até "Importar".
 
 export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario }) {
     const [estado, setEstado] = useState(null);
@@ -71,7 +72,7 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
     return (
         <Janela aberta={aberta} onFechar={() => onFechar(false)} largura="max-w-2xl"
             titulo="Importar do Mercado Livre"
-            descricao="Traz os anúncios Clássico e Premium que você já tem no ML e liga cada um à oferta com o mesmo SKU. Os que não casarem ficam aguardando oferta — aí você procura e liga à mão.">
+            descricao="Procura no Mercado Livre os anúncios Clássico e Premium com o SKU de cada oferta e liga cada um à sua oferta. Anúncio com SKU diferente você acha e liga à mão, pelo “+ Anúncio” da oferta.">
             <div className="space-y-3" data-importar-ml>
                 {! conectado && (
                     <p className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-[13px] text-amber-200">
@@ -81,7 +82,7 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
 
                 {conectado && estado?.estado === 'lendo' && (
                     <p className="flex items-center gap-2 text-[13px] text-white/70" data-lendo>
-                        <Loader2 size={15} className="animate-spin" /> Lendo seus anúncios no Mercado Livre… numa conta grande, isso leva alguns minutos. Pode fechar e voltar depois.
+                        <Loader2 size={15} className="animate-spin" /> Procurando no Mercado Livre os anúncios de cada SKU… Pode fechar e voltar depois.
                     </p>
                 )}
 
@@ -89,8 +90,10 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
 
                 {pronto && (
                     <>
-                        <p className="text-[12.5px] text-white/55">
-                            {estado.total} anúncio(s) Clássico e Premium lidos{estado.ignorados > 0 ? ` · ${estado.ignorados} de outro tipo, ignorados` : ''}.
+                        <p className="text-[12.5px] text-white/55" data-resumo-importacao>
+                            {estado.skus} SKU(s) procurados · {estado.total} anúncio(s) Clássico e Premium encontrados
+                            {estado.sem_anuncio > 0 ? ` · ${estado.sem_anuncio} oferta(s) sem nenhum anúncio com o mesmo SKU` : ''}
+                            {estado.ignorados > 0 ? ` · ${estado.ignorados} de outro tipo, ignorados` : ''}.
                         </p>
                         <PreviaColagem previa={estado.previa} vocabulario={vocabulario} />
                     </>
@@ -102,10 +105,10 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
                     <Botao variante="fantasma" onClick={() => onFechar(false)}>Fechar</Botao>
                     {conectado && ! pronto && (
                         <Botao variante="primario" onClick={ler} disabled={estado === null || estado?.estado === 'lendo'} data-acao="ler-ml">
-                            Ler meus anúncios
+                            Procurar meus anúncios
                         </Botao>
                     )}
-                    {pronto && <Botao onClick={ler} data-acao="ler-ml">Ler de novo</Botao>}
+                    {pronto && <Botao onClick={ler} data-acao="ler-ml">Procurar de novo</Botao>}
                     {pronto && (
                         <Botao variante="primario" onClick={importar} disabled={enviando || ! temAlgo} data-acao="importar-ml">
                             Importar

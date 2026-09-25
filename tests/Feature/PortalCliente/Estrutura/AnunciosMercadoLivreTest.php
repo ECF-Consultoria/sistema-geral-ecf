@@ -45,25 +45,35 @@ class AnunciosMercadoLivreTest extends TestCase
     }
 
     /**
-     * A conta devolve os 20 anúncios do lote real numa página de scroll.
-     *
-     * Um fake SÓ, com uma volta de scroll por leitura: `Http::fake()` acumula
-     * e o primeiro stub que casa vence — registrar de novo para a segunda
-     * leitura cairia na sequência já esgotada.
+     * A conta do lote real, respondendo à busca por SKU (`seller_sku`) com os
+     * anúncios que têm aquele SKU. O acervo local recebe todos, MENOS
+     * `$foraDoAcervo` — o anúncio publicado depois do sync da madrugada, que
+     * tem de vir pelo multiget.
      */
-    private function fingirConta(int $leituras = 1): void
+    private function fingirConta($empresa, array $foraDoAcervo = []): void
     {
         $lote = $this->fixture('multiget-lote.json');
-        $ids = array_map(fn ($w) => $w['body']['id'], $lote);
-
-        $scroll = Http::sequence();
-        foreach (range(1, $leituras) as $_) {
-            $scroll->push(['scroll_id' => 'x', 'results' => $ids, 'paging' => ['total' => 20]])
-                ->push(['scroll_id' => 'x', 'results' => [], 'paging' => ['total' => 20]]);
+        $idsPorSku = [];
+        foreach ($lote as $w) {
+            $sku = AnunciosMercadoLivreService::skuDoAnuncio($w['body']);
+            if ($sku) {
+                $idsPorSku[$sku][] = $w['body']['id'];
+            }
+            if (! in_array($w['body']['id'], $foraDoAcervo, true)) {
+                MlAcervoItem::create([
+                    'company_id' => $empresa->id, 'ml_item_id' => $w['body']['id'], 'title' => $w['body']['title'],
+                    'listing_type_id' => $w['body']['listing_type_id'], 'status' => $w['body']['status'],
+                    'catalog_listing' => (bool) ($w['body']['catalog_listing'] ?? false),
+                ]);
+            }
         }
 
         Http::fake([
-            '*/items/search*' => $scroll,
+            '*/items/search*' => function ($request) use ($idsPorSku) {
+                $ids = $idsPorSku[$request->data()['seller_sku'] ?? ''] ?? [];
+
+                return Http::response(['results' => $ids, 'paging' => ['total' => count($ids), 'offset' => 0, 'limit' => 50]]);
+            },
             '*/items?*' => Http::response($lote),
         ]);
     }
@@ -100,10 +110,13 @@ class AnunciosMercadoLivreTest extends TestCase
     }
 
     /**
-     * Importar pelo portal: lê a conta, mostra a prévia (a MESMA da colagem) e
-     * só grava ao confirmar. Casa pelo SKU; o resto vai para a espera.
+     * Importar pelo portal: para cada SKU de oferta, pergunta ao ML quais
+     * anúncios têm aquele SKU; mostra a prévia (a MESMA da colagem) e só grava
+     * ao confirmar. Anúncio de SKU que nenhuma oferta tem NÃO vem — numa conta
+     * de 100 mil anúncios, isso lotaria "aguardando oferta"; ele se acha pela
+     * busca manual.
      */
-    public function test_importar_casa_pelo_sku_e_o_resto_vai_para_a_espera(): void
+    public function test_importar_busca_pelo_sku_de_cada_oferta(): void
     {
         $empresa = $this->empresaDoGabarito();
         $ator = $this->atorCliente($empresa);
@@ -112,7 +125,9 @@ class AnunciosMercadoLivreTest extends TestCase
         [$armario] = $svc->criar($empresa, ['sku' => '1808', 'fase' => 'simples', 'nome' => 'Armário Aéreo'], $ator);
         [$balcao] = $svc->criar($empresa, ['sku' => '1301-UN-NA', 'fase' => 'simples', 'nome' => 'Balcão Cooktop'], $ator);
         [$turim] = $svc->criar($empresa, ['sku' => '1304', 'fase' => 'simples', 'nome' => 'Balcão Turim'], $ator);
-        $this->fingirConta(leituras: 2);
+        $svc->criar($empresa, ['sku' => 'SEM-NADA-NO-ML', 'fase' => 'simples'], $ator);
+        // O Premium do balcão foi publicado hoje: ainda não está no acervo.
+        $this->fingirConta($empresa, foraDoAcervo: ['MLB5317120924']);
 
         $sessao = $this->entrarNoPortal($empresa);
 
@@ -121,9 +136,12 @@ class AnunciosMercadoLivreTest extends TestCase
 
         $estado = $sessao->getJson(route('portal.auth.estrutura.importacao.estado'))->assertOk()->json();
         $this->assertSame('pronto', $estado['estado']);
-        $this->assertSame(20, $estado['total']);
-        $this->assertSame(['novos' => 7, 'atualizados' => 0, 'espera' => 13, 'erros' => 0, 'removidos' => 0], $estado['previa']['totais']);
+        $this->assertSame([7, 4, 1], [$estado['total'], $estado['skus'], $estado['sem_anuncio']]);
+        $this->assertSame(['novos' => 7, 'atualizados' => 0, 'espera' => 0, 'erros' => 0, 'removidos' => 0], $estado['previa']['totais']);
         $this->assertSame(0, EstruturaAnuncio::count(), 'a prévia não grava');
+
+        // Uma busca por SKU, e o multiget só para o que faltava no acervo.
+        Http::assertSentCount(4 + 1);
 
         $sessao->post(route('portal.auth.estrutura.importacao.aplicar'))->assertSessionHasNoErrors();
 
@@ -131,12 +149,23 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertSame([2, 1, 'ok'], [$conjunto->oferta($armario->id)['classicos'], $conjunto->oferta($armario->id)['premiums'], $conjunto->oferta($armario->id)['situacao']]);
         $this->assertSame('ok', $conjunto->oferta($balcao->id)['situacao']);
         $this->assertSame('falta_premium', $conjunto->oferta($turim->id)['situacao']);
-        $this->assertSame(13, EstruturaAnuncioEspera::count());
-        $this->assertSame(5, EstruturaAnuncioEspera::where('motivo', 'sem_sku')->count());
+        $this->assertSame(0, EstruturaAnuncioEspera::count());
 
         // Importar de novo não duplica: atualiza pelo MLB.
         $sessao->postJson(route('portal.auth.estrutura.importacao.iniciar'))->assertOk();
         $this->assertSame(7, $sessao->getJson(route('portal.auth.estrutura.importacao.estado'))->json('previa.totais.atualizados'));
+        $this->assertSame(7, EstruturaAnuncio::count());
+    }
+
+    public function test_sem_ofertas_nao_importa(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+
+        $this->entrarNoPortal($empresa)
+            ->postJson(route('portal.auth.estrutura.importacao.iniciar'))
+            ->assertStatus(422)
+            ->assertJsonPath('errors.importacao.0', fn ($m) => str_contains($m, 'Cadastre as ofertas primeiro'));
     }
 
     public function test_sem_conta_conectada_nao_importa(): void
