@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, LinkMl, PainelEstrutura, fmtData, fmtDiaSemana, hojeIso, somarDias,
+    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, LinkMl, ResumoOperacional, fmtData, fmtDiaSemana, hojeIso, somarDias,
 } from '@/Components/Portal/Estrutura/comum';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
 import PropostaAgenda from '@/Components/Portal/Estrutura/PropostaAgenda';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import { hrefDaOferta } from '@/Components/Portal/Estrutura/AgendaLateral';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — visão Agenda ───────────────────────────────────
@@ -50,8 +51,8 @@ function LadoDaPublicacao({ tipo, rotulo, anuncios, onConcluir }) {
     }
 
     return (
-        <Botao className="px-2 py-1 text-[12px]" onClick={onConcluir} data-acao={`concluir-${tipo}`}>
-            {rotulo}: concluir
+        <Botao className="border-ecf-yellow/40 px-2 py-1 text-[12px] text-ecf-yellow hover:bg-ecf-yellow/10 hover:text-ecf-yellow" onClick={onConcluir} data-acao={`concluir-${tipo}`}>
+            Concluir {rotulo}
         </Botao>
     );
 }
@@ -77,7 +78,8 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
                     <span className={cn('mr-1.5 text-[11.5px] font-semibold', publicacao ? 'text-sky-300' : 'text-emerald-300')}>
                         {vocabulario.acoes[item.acao]}
                     </span>
-                    <span className="font-mono text-white/90">{o.sku}</span>
+                    {/* A tarefa aponta para a oferta: a lista filtrada pelo SKU, com a gaveta aberta. */}
+                    <Link href={hrefDaOferta(o)} className="font-mono text-white/90 hover:text-ecf-yellow" data-link-oferta={o.id}>{o.sku}</Link>
                 </p>
                 {o.nome && <p className="text-[12px] text-white/45 truncate">{o.nome}</p>}
             </div>
@@ -134,10 +136,10 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural · Agenda">
-            <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+            <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
                 <CabecalhoEstrutura visao="agenda" onComoFunciona={() => setAula(true)} />
 
-                <PainelEstrutura painel={agenda.painel} />
+                <ResumoOperacional painel={agenda.painel} contagem={agenda.contagem} />
 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12.5px] text-white/45">

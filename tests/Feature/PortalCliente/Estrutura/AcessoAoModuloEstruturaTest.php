@@ -130,6 +130,43 @@ class AcessoAoModuloEstruturaTest extends TestCase
     }
 
     /**
+     * O produto FECHADO da tela nova: ofertas do bloco inteiro (produto +
+     * combos), quantas OK e quantas pendentes — e, com uma pendência só, qual
+     * é. A foto vem do acervo do ML, em https. A coluna "Agenda" traz as
+     * contagens e as próximas tarefas não feitas, atrasadas primeiro.
+     */
+    public function test_produto_fechado_foto_e_coluna_da_agenda(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        \App\Models\MlAcervoItem::create(['company_id' => $empresa->id, 'ml_item_id' => 'MLB0000000001', 'title' => 'Cadeira',
+            'listing_type_id' => 'gold_special', 'status' => 'active', 'thumbnail' => 'http://http2.mlstatic.com/D_1-I.jpg']);
+
+        $agenda = app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class);
+        $agenda->agendar($ofertas['CAD-01-CB3'], today()->addDay()->format('Y-m-d'), 'publicacao', $ator);
+        \App\Models\EstruturaAgendaItem::query()->update(['data' => today()->subDay()->format('Y-m-d')]);   // venceu ontem
+        $agenda->agendar($ofertas['CAD-01-CB4'], today()->format('Y-m-d'), 'publicacao', $ator);
+        $agenda->agendar($ofertas['CAD-01'], today()->addDays(3)->format('Y-m-d'), 'jardinagem', $ator);
+
+        $this->withoutVite()->entrarNoPortal($empresa)
+            ->get(route('portal.auth.estrutura'))
+            ->assertInertia(fn ($page) => $page
+                ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
+                ->where('estrutura.blocos.0.resumo_bloco', ['total' => 6, 'ok' => 1, 'falta' => 1, 'publicar' => 4, 'sem_agenda' => 3, 'pendentes' => 5, 'unica_situacao' => null])
+                ->where('estrutura.blocos.0.combos', 5)
+                ->where('estrutura.blocos.0.foto', 'https://http2.mlstatic.com/D_1-I.jpg')
+                ->where('estrutura.blocos.1.principal.sku', 'MSA-MR')
+                ->where('estrutura.blocos.1.resumo_bloco.unica_situacao', 'falta_classico')
+                ->where('estrutura.blocos.1.foto', null)
+                ->where('estrutura.agenda.contagem', ['atrasadas' => 1, 'hoje' => 1, 'jardinagem' => 1])
+                ->where('estrutura.agenda.itens', fn ($itens) => collect($itens)->map(fn ($i) => $i['secao'].':'.$i['oferta']['sku'])->all()
+                    === ['atrasadas:CAD-01-CB3', 'hoje:CAD-01-CB4', 'proximas:CAD-01'])
+            );
+    }
+
+    /**
      * A faixa "próximo passo": UMA coisa a fazer, em ordem de urgência, sobre o
      * conjunto inteiro. Percorre os estados na ordem em que um cliente passa
      * por eles.

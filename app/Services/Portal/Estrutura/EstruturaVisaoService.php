@@ -7,6 +7,7 @@ use App\Models\EstruturaAgendaItem;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Models\MlAcervoItem;
 use Carbon\CarbonImmutable;
 
 /**
@@ -31,6 +32,9 @@ class EstruturaVisaoService
     public const LIMITE_ATRASADAS  = 100;
     public const LIMITE_PROXIMAS   = 100;
     public const LIMITE_CONCLUIDAS = 20;
+
+    /** Quantas tarefas a coluna "Agenda" da visão Ofertas mostra — o resto fica a um clique. */
+    public const LIMITE_AGENDA_LATERAL = 5;
 
     public function paginaOfertas(Company $empresa, string $filtro, string $busca, int $pagina): array
     {
@@ -93,6 +97,8 @@ class EstruturaVisaoService
             ->flip()
             ->all();
 
+        $fotos = $this->fotos($empresa, $conjunto, $daPagina);
+
         $kitsECombits = array_values(array_filter(
             $conjunto->ofertas(),
             fn ($o) => in_array($o['fase'], [EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT], true),
@@ -104,6 +110,13 @@ class EstruturaVisaoService
             'espera'     => EstruturaAnuncioEspera::where('company_id', $empresa->id)->count(),
             'blocos'     => array_map(fn ($b) => [
                 'chave'     => $b['principal']['id'],
+                'foto'      => $fotos[$b['principal']['id']] ?? null,
+                // O produto FECHADO vive disto: o bloco inteiro (produto +
+                // combos), nunca o que o filtro deixou. `unica_situacao`: com
+                // UMA pendência só, a tela diz qual ("Falta Premium") em vez de
+                // "1 pendente" — sem inventar estado novo.
+                'resumo_bloco' => $this->resumoDoBloco(array_map(fn ($id) => $conjunto->oferta($id), $b['todas']), $comPublicacao),
+                'combos'    => count($b['todas']) - 1,
                 'produto'   => $b['principal']['fase'] === EstruturaOferta::FASE_SIMPLES,
                 'principal' => [...$this->resumo($b['principal']), 'situacao' => $b['principal']['situacao']],
                 'tambem_em' => array_map(fn ($id) => $this->resumo($conjunto->oferta($id)), $usoEmKits[$b['principal']['id']] ?? []),
@@ -129,6 +142,9 @@ class EstruturaVisaoService
             // seção também nasce recolhida, e a página só traz os dela.
             'resumo_kits' => $this->contarSituacoes($kitsECombits, $comPublicacao),
             'proximo_passo' => $this->proximoPasso($empresa, $conjunto, $comPublicacao),
+            // A coluna "Agenda" ao lado da lista: as contagens e as próximas
+            // tarefas, cada uma apontando para a sua oferta.
+            'agenda'     => $this->resumoAgenda($this->agenda($empresa, conjunto: $conjunto)),
             'paginacao'  => ['pagina' => $pagina, 'paginas' => $paginas, 'blocos' => $total, 'por_pagina' => self::BLOCOS_POR_PAGINA],
         ];
     }
@@ -137,10 +153,10 @@ class EstruturaVisaoService
      * A agenda em seções. Uma publicação está feita quando a oferta está OK
      * AGORA — inclusive se ficou OK por uma colagem, e não pela agenda.
      */
-    public function agenda(Company $empresa, ?CarbonImmutable $hoje = null): array
+    public function agenda(Company $empresa, ?CarbonImmutable $hoje = null, ?EstruturaConjunto $conjunto = null): array
     {
         $hoje ??= CarbonImmutable::today();
-        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+        $conjunto ??= EstruturaConjunto::daEmpresa($empresa);
 
         $itens = EstruturaAgendaItem::query()
             ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_agenda.oferta_id')
@@ -196,9 +212,19 @@ class EstruturaVisaoService
         // Concluídas: as mais recentes primeiro.
         $secoes['concluidas'] = array_reverse($secoes['concluidas']);
 
+        // O TRABALHO da agenda, para o resumo do topo: o que venceu, o que é
+        // de hoje e ainda não foi feito, e as Jardinagens marcadas e não
+        // feitas. Contado antes do corte das seções.
+        $pendentes = array_filter([...$secoes['atrasadas'], ...$secoes['hoje'], ...$secoes['proximas']], fn ($l) => ! $l['feita']);
+        $contagem = [
+            'atrasadas'  => count($secoes['atrasadas']),
+            'hoje'       => count(array_filter($secoes['hoje'], fn ($l) => ! $l['feita'])),
+            'jardinagem' => count(array_filter($pendentes, fn ($l) => $l['acao'] === EstruturaAgendaItem::ACAO_JARDINAGEM)),
+        ];
+
         $limites = ['atrasadas' => self::LIMITE_ATRASADAS, 'hoje' => null, 'proximas' => self::LIMITE_PROXIMAS, 'concluidas' => self::LIMITE_CONCLUIDAS];
 
-        $resultado = ['hoje_data' => $hoje->format('Y-m-d'), 'painel' => $conjunto->painel(), 'secoes' => []];
+        $resultado = ['hoje_data' => $hoje->format('Y-m-d'), 'painel' => $conjunto->painel(), 'contagem' => $contagem, 'secoes' => []];
         foreach ($secoes as $nome => $linhas) {
             $resultado['secoes'][$nome] = [
                 'total' => count($linhas),
@@ -357,6 +383,95 @@ class EstruturaVisaoService
         }
 
         return ['tipo' => 'em_dia'];
+    }
+
+    /**
+     * A coluna "Agenda" da visão Ofertas: as contagens das seções e as próximas
+     * tarefas NÃO feitas — atrasadas, depois as de hoje, depois as próximas.
+     * Cada uma leva o mínimo da oferta para a tela apontar para ela e abrir o
+     * anúncio do lado que falta.
+     */
+    private function resumoAgenda(array $agenda): array
+    {
+        $proximas = [];
+        foreach (['atrasadas', 'hoje', 'proximas'] as $secao) {
+            foreach ($agenda['secoes'][$secao]['itens'] as $i) {
+                if (! $i['feita']) {
+                    $proximas[] = [
+                        'id'     => $i['id'],
+                        'data'   => $i['data'],
+                        'acao'   => $i['acao'],
+                        'secao'  => $secao,
+                        'oferta' => array_intersect_key($i['oferta'], array_flip(['id', 'sku', 'nome', 'fase', 'situacao', 'classicos', 'premiums'])),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'hoje_data' => $agenda['hoje_data'],
+            'contagem'  => $agenda['contagem'],
+            'totais'    => array_map(fn ($s) => $s['total'], $agenda['secoes']),
+            'itens'     => array_slice($proximas, 0, self::LIMITE_AGENDA_LATERAL),
+        ];
+    }
+
+    /**
+     * Um produto fechado: quantas ofertas, quantas OK, quantas pendentes — e,
+     * quando só UMA está pendente, a situação dela.
+     *
+     * @param  array<int, array>  $ofertas
+     * @param  array<int, mixed>  $comPublicacao
+     */
+    private function resumoDoBloco(array $ofertas, array $comPublicacao): array
+    {
+        $r = $this->contarSituacoes($ofertas, $comPublicacao);
+        $pendentes = array_values(array_filter($ofertas, fn ($o) => $o['situacao'] !== ReguaEstrutura::SITUACAO_OK));
+
+        return [...$r, 'pendentes' => count($pendentes), 'unica_situacao' => count($pendentes) === 1 ? $pendentes[0]['situacao'] : null];
+    }
+
+    /**
+     * A foto de cada bloco da página: a do primeiro anúncio que o acervo do ML
+     * conhece — do produto, senão de qualquer oferta do bloco. Só a página
+     * (25 blocos), numa consulta. `http://` do ML vira `https://`: o portal é
+     * https e o navegador bloquearia a imagem.
+     *
+     * @return array<int, string> id da oferta principal → URL
+     */
+    private function fotos(Company $empresa, EstruturaConjunto $conjunto, array $daPagina): array
+    {
+        $mlbsPorBloco = [];
+        foreach ($daPagina as $b) {
+            foreach ($b['todas'] as $id) {
+                foreach ($conjunto->oferta($id)['anuncios'] ?? [] as $a) {
+                    if ($a['codigo_mlb']) {
+                        $mlbsPorBloco[$b['principal']['id']][] = $a['codigo_mlb'];
+                    }
+                }
+            }
+        }
+
+        if (! $mlbsPorBloco) {
+            return [];
+        }
+
+        $porMlb = MlAcervoItem::where('company_id', $empresa->id)
+            ->whereIn('ml_item_id', array_merge(...array_values($mlbsPorBloco)))
+            ->whereNotNull('thumbnail')
+            ->pluck('thumbnail', 'ml_item_id');
+
+        $fotos = [];
+        foreach ($mlbsPorBloco as $principal => $mlbs) {
+            foreach ($mlbs as $mlb) {
+                if (isset($porMlb[$mlb])) {
+                    $fotos[$principal] = preg_replace('#^http://#', 'https://', $porMlb[$mlb]);
+                    break;
+                }
+            }
+        }
+
+        return $fotos;
     }
 
     /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */

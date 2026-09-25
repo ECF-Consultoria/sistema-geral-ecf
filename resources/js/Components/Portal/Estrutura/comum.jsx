@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, MoreHorizontal, Target, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
@@ -59,6 +59,24 @@ export function PilulaSituacao({ situacao, longa = false, vocabulario }) {
     return (
         <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap', ESTILO_SITUACAO[situacao])}>
             {longa ? vocabulario?.situacoes?.[situacao] : ROTULO_CURTO_SITUACAO[situacao]}
+        </span>
+    );
+}
+
+/**
+ * A pílula do PRODUTO fechado — agregado, não estado novo: tudo OK → "OK";
+ * uma pendência só → a situação dela ("Falta Premium"); mais → "Pendências"
+ * (a contagem já está ao lado — repetir o número é ruído), na cor do pior caso (vermelho se alguma está para publicar, âmbar se só
+ * falta um lado).
+ */
+export function PilulaProduto({ resumo }) {
+    if (resumo.pendentes === 0) return <PilulaSituacao situacao="ok" />;
+    if (resumo.unica_situacao) return <PilulaSituacao situacao={resumo.unica_situacao} />;
+
+    return (
+        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap',
+            resumo.publicar > 0 ? ESTILO_SITUACAO.publicar : ESTILO_SITUACAO.falta_premium)}>
+            Pendências
         </span>
     );
 }
@@ -233,8 +251,8 @@ function MaisOpcoes({ onColar, onImportar, onComoFunciona }) {
 /** Cabeçalho do módulo: título, as duas visões e as ações de topo. */
 export function CabecalhoEstrutura({ visao, onColar, onImportar, onComoFunciona }) {
     const aba = (ativa) => cn(
-        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
-        ativa ? 'bg-white/[0.08] text-white' : 'text-white/50 hover:text-white',
+        'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-[13px] font-medium transition-colors',
+        ativa ? 'border-ecf-yellow/60 bg-ecf-yellow/[0.06] text-ecf-yellow' : 'border-white/[0.08] text-white/55 hover:text-white hover:border-white/[0.16]',
     );
 
     return (
@@ -251,7 +269,7 @@ export function CabecalhoEstrutura({ visao, onColar, onImportar, onComoFunciona 
                 </div>
                 <MaisOpcoes onColar={onColar} onImportar={onImportar} onComoFunciona={onComoFunciona} />
             </div>
-            <nav className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" aria-label="Visões do módulo">
+            <nav className="flex gap-2" aria-label="Visões do módulo">
                 <Link href={route('portal.auth.estrutura')} className={aba(visao === 'ofertas')} data-visao="ofertas">
                     <Layers size={14} /> Ofertas
                 </Link>
@@ -263,40 +281,63 @@ export function CabecalhoEstrutura({ visao, onColar, onImportar, onComoFunciona 
     );
 }
 
+const fmtInt = (n) => (n ?? 0).toLocaleString('pt-BR');
+
+function Numero({ valor, rotulo, detalhe, cor, href, ...dados }) {
+    const corpo = (
+        <>
+            <span className={cn('block font-display text-[22px] font-bold leading-none', cor)} {...dados}>{fmtInt(valor)}</span>
+            <span className="mt-1 flex items-center gap-1 text-[12px] text-white/50">
+                {rotulo}
+                {detalhe && <span className="text-red-300/90">· {detalhe}</span>}
+                {href && <ArrowRight size={12} className="text-white/30" />}
+            </span>
+        </>
+    );
+
+    return href
+        ? <Link href={href} className="block rounded-lg -m-1.5 p-1.5 hover:bg-white/[0.04]">{corpo}</Link>
+        : <div>{corpo}</div>;
+}
+
 /**
- * O painel — os números da planilha (K5:K15 menos o K10), somados sobre TODAS
- * as ofertas, nunca sobre a página.
+ * O resumo do topo: TRABALHO primeiro (anúncios a publicar, o que é de hoje,
+ * Jardinagem, completas), progresso ao lado. Faixa baixa de propósito — a ação
+ * da tela é o "Próximo passo", logo abaixo. Os números da planilha (K5:K15)
+ * vêm somados sobre TODAS as ofertas, nunca sobre a página; os da agenda vêm
+ * contados no servidor (`EstruturaVisaoService::agenda()['contagem']`).
  */
-export function PainelEstrutura({ painel }) {
+export function ResumoOperacional({ painel, contagem }) {
     const pct = Math.round((painel.percentual ?? 0) * 1000) / 10;
+    const paraHoje = (contagem?.hoje ?? 0) + (contagem?.atrasadas ?? 0);
+    const agenda = route('portal.auth.estrutura.agenda');
 
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card p-4 sm:p-5" data-painel>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-white text-[15px]">
-                    <strong className="text-2xl font-display" data-publicados>{painel.publicados}</strong>
-                    <span className="text-white/50"> de </span>
-                    <strong data-necessarios>{painel.necessarios}</strong>
-                    <span className="text-white/50"> anúncios publicados</span>
+        <section className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:gap-6" data-painel>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 lg:shrink-0">
+                <Numero valor={painel.a_publicar} rotulo="anúncios a publicar" cor="text-red-300" data-a-publicar="" />
+                <Numero valor={paraHoje} rotulo="para hoje" cor="text-ecf-yellow" href={agenda}
+                    detalhe={contagem?.atrasadas > 0 ? `${contagem.atrasadas} atrasada(s)` : null} data-para-hoje="" />
+                <Numero valor={contagem?.jardinagem} rotulo="Jardinagem" cor="text-sky-300" href={agenda} data-jardinagem="" />
+                <Numero valor={painel.completas} rotulo={painel.completas === 1 ? 'oferta completa' : 'ofertas completas'} cor="text-emerald-300" />
+            </div>
+            <div className="min-w-0 flex-1 lg:border-l lg:border-white/[0.06] lg:pl-6"
+                title="Cada oferta precisa de 1 Clássico e 1 Premium. Anúncio repetido do mesmo tipo não soma; Inativo não conta; Pausado conta.">
+                <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-[13px] text-white/60">
+                        <strong className="text-[17px] text-white font-display" data-publicados>{fmtInt(painel.publicados)}</strong>
+                        {' '}de <strong className="text-white/85" data-necessarios>{fmtInt(painel.necessarios)}</strong> anúncios publicados
+                    </p>
+                    <span className="font-display text-lg font-bold text-ecf-yellow" data-percentual>{pct.toLocaleString('pt-BR')}%</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full rounded-full bg-ecf-yellow transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
+                </div>
+                <p className="mt-2 text-[11.5px] text-white/35">
+                    <span data-ofertas>{fmtInt(painel.ofertas)}</span> {painel.ofertas === 1 ? 'oferta' : 'ofertas'}
+                    {' · '}{plural(painel.por_fase.simples, 'simples', 'simples')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'combit', 'combits')}
                 </p>
-                <span className="text-ecf-yellow font-display font-bold text-xl" data-percentual>
-                    {pct.toLocaleString('pt-BR')}%
-                </span>
             </div>
-            <div className="mt-2 h-2 rounded-full bg-white/[0.06] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                <div className="h-full rounded-full bg-ecf-yellow transition-all" style={{ width: `${Math.min(100, pct)}%` }} />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px] text-white/55">
-                <span><strong className="text-white" data-ofertas>{painel.ofertas}</strong> {painel.ofertas === 1 ? 'oferta' : 'ofertas'}</span>
-                <span>
-                    {plural(painel.por_fase.simples, 'simples', 'simples')} · {plural(painel.por_fase.combo, 'combo', 'combos')} · {plural(painel.por_fase.kit, 'kit', 'kits')} · {plural(painel.por_fase.combit, 'combit', 'combits')}
-                </span>
-                <span><strong className="text-emerald-300">{painel.completas}</strong> {painel.completas === 1 ? 'completa' : 'completas'}</span>
-                <span><strong className="text-red-300" data-a-publicar>{painel.a_publicar}</strong> a publicar</span>
-            </div>
-            <p className="mt-2 text-[11.5px] text-white/30">
-                Cada oferta precisa de 1 Clássico e 1 Premium. Anúncio repetido do mesmo tipo não soma; Inativo não conta; Pausado conta.
-            </p>
         </section>
     );
 }
@@ -342,14 +383,17 @@ export function ProximoPasso({ passo, onCadastrar }) {
     if (! t) return null;
 
     return (
-        <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-3" data-proximo-passo={passo.tipo}>
-            <Lightbulb size={18} className="shrink-0 text-ecf-yellow" />
-            <div className="min-w-0 flex-1 basis-64">
-                <p className="text-[14px] font-semibold text-white">{t.titulo}</p>
+        <section className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-ecf-yellow/45 bg-ecf-yellow/[0.04] px-4 py-4 sm:px-5" data-proximo-passo={passo.tipo}>
+            <div className="flex items-center gap-2.5 sm:border-r sm:border-white/[0.10] sm:pr-5">
+                <Target size={22} className="shrink-0 text-ecf-yellow" />
+                <span className="text-[13.5px] font-semibold text-white whitespace-nowrap">Próximo passo</span>
+            </div>
+            <div className="min-w-0 flex-1 basis-60">
+                <p className="text-[15px] font-semibold text-ecf-yellow">{t.titulo}</p>
                 <p className="text-[12.5px] text-white/55">{t.texto}</p>
             </div>
             {t.href && (
-                <Link href={t.href} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-3 py-2 text-[13px] font-medium text-black hover:bg-ecf-yellow/90" data-acao="proximo-passo">
+                <Link href={t.href} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90" data-acao="proximo-passo">
                     {t.botao} <ArrowRight size={14} />
                 </Link>
             )}
