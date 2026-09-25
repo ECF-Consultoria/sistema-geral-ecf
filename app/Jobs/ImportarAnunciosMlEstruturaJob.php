@@ -15,12 +15,11 @@ use Illuminate\Support\Facades\Log;
  * Uma fatia da leitura dos anúncios do Mercado Livre para o Mapeamento
  * Estrutural (`AnunciosMercadoLivreService::passo()`).
  *
- * Um lote de 500 SKUs passa de 90 s de API, e a fila `database` reentrega o
- * Job reservado há mais que `retry_after` (90 s). Por isso cada Job trabalha
- * ~45 s, guarda o progresso e despacha o próximo com a mesma `rodada`. NÃO
- * grava nada no módulo: quem grava é a confirmação da prévia
- * (`AnunciosMercadoLivreService::aplicar()`). Uma tentativa só — reler é um
- * clique, e repetir sozinho esconderia um token inválido.
+ * Cada Job trabalha ~45 s, guarda o progresso e despacha o próximo com a
+ * mesma `rodada` — um lote de 500 SKUs não prende um worker da fila `high`
+ * por minutos seguidos. NÃO grava nada no módulo: quem grava é a confirmação
+ * da prévia (`AnunciosMercadoLivreService::aplicar()`). Uma tentativa só —
+ * reler é um clique, e repetir sozinho esconderia um token inválido.
  */
 class ImportarAnunciosMlEstruturaJob implements ShouldQueue
 {
@@ -31,6 +30,11 @@ class ImportarAnunciosMlEstruturaJob implements ShouldQueue
 
     public function __construct(public int $companyId, public string $rodada)
     {
+        // Fila `high`, não `default`. Medido em produção em 25/09: a `default`
+        // tinha 157 jobs do sync do acervo na frente, e a leitura que o cliente
+        // acabou de pedir não começou nunca — a tela ficou em "0 lidos" até
+        // declarar "parou no meio". Mesmo precedente do `ResolveOnboardingPassoJob`.
+        $this->onQueue('high');
     }
 
     public function handle(AnunciosMercadoLivreService $servico): void

@@ -272,7 +272,20 @@ class AnunciosMercadoLivreTest extends TestCase
         $svc->iniciar($empresa);
         $svc->iniciar($empresa);   // segundo clique com a leitura em andamento
         Queue::assertPushed(ImportarAnunciosMlEstruturaJob::class, 1);
+        // Na `high`: a `default` de produção tinha 157 jobs do acervo na frente e a leitura nunca começava.
+        Queue::assertPushedOn('high', ImportarAnunciosMlEstruturaJob::class);
         $rodada = Queue::pushed(ImportarAnunciosMlEstruturaJob::class)->first()->rodada;
+
+        // Ainda na fila: a tela diz que está aguardando, e 5 min de espera NÃO é "parou no meio".
+        $this->assertSame('fila', $svc->estado($empresa)['etapa']);
+        $this->travel(5)->minutes();
+        $this->assertSame('lendo', $svc->estado($empresa)['estado']);
+        $this->travel(11)->minutes();
+        $this->assertSame('erro', $svc->estado($empresa)['estado'], 'fila parada por 16 min: a tela libera o "Puxar de novo"');
+        $svc->iniciar($empresa);   // relê: a rodada muda
+        $this->travelBack();
+        Queue::assertPushed(ImportarAnunciosMlEstruturaJob::class, 2);
+        $rodada = Queue::pushed(ImportarAnunciosMlEstruturaJob::class)->last()->rodada;
 
         $this->assertTrue($svc->passo($empresa, 'rodada-antiga', 0), 'rodada que não é a atual para sem mexer em nada');
         $this->assertSame(0, $svc->estado($empresa)['lidos']);

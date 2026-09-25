@@ -46,13 +46,16 @@ use Illuminate\Validation\ValidationException;
  * no módulo; o próximo "Puxar" continua de onde parou, porque o que já foi
  * importado sai da lista de candidatos. Decisão do usuário em 25/09.
  *
- * ### Em fatias, porque a fila reentrega Job acima de 90 s
- * A leitura de um lote passa de 90 s (500 buscas por SKU a ~130 ms, mais os
- * multigets), e a fila `database` reentrega o Job reservado há mais que
- * `retry_after` — duas leituras da mesma rodada ao mesmo tempo. Cada Job
- * trabalha no máximo {@see self::ORCAMENTO_SEGUNDOS} s, guarda o progresso no
- * cache e despacha o seguinte. A `rodada` impede que uma leitura antiga,
- * ainda na fila, escreva por cima de uma nova.
+ * ### Na fila `high`, em fatias
+ * Quem clicou está olhando a tela: a leitura vai para a fila `high` (a
+ * `default` de produção carrega o sync do acervo, com centenas de jobs na
+ * frente). Um lote passa de um minuto (500 buscas por SKU a ~130 ms, mais os
+ * multigets), então cada Job trabalha no máximo
+ * {@see self::ORCAMENTO_SEGUNDOS} s, guarda o progresso no cache e despacha o
+ * seguinte — não prende um worker da `high`, e fica abaixo de qualquer
+ * `retry_after` (90 s no `database` local; 2000 s no redis de produção). A
+ * `rodada` impede que uma leitura antiga, ainda na fila, escreva por cima de
+ * uma nova.
  *
  * ### O SKU vem da API, não do acervo
  * `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
@@ -71,11 +74,14 @@ class AnunciosMercadoLivreService
     /** Quantos anúncios, no máximo, uma leitura percorre procurando SKUs novos (250 multigets). */
     private const MAX_CANDIDATOS = 5000;
 
-    /** Quanto cada Job trabalha antes de passar a vez — bem abaixo do `retry_after` de 90 s. */
+    /** Quanto cada Job trabalha antes de passar a vez — não prende o worker da `high` e fica abaixo de qualquer `retry_after`. */
     public const ORCAMENTO_SEGUNDOS = 45;
 
-    /** Leitura sem progresso há mais que isso morreu (worker reiniciado no meio). */
+    /** Leitura que já começou e está sem progresso há mais que isso morreu (worker reiniciado no meio). */
     private const PARADA_MINUTOS = 3;
+
+    /** Leitura que ainda não saiu da fila: espera mais antes de desistir — fila cheia não é leitura morta. */
+    private const FILA_MINUTOS = 15;
 
     /** Sem o teto de 5.000 da colagem manual: são até 500 anúncios POR SKU (10 páginas × 50). */
     private const MAX_LINHAS = 200000;
@@ -157,6 +163,7 @@ class AnunciosMercadoLivreService
             'ids'         => [],
             'sem_sku'     => [],
             'feitos'      => 0,
+            'comecou'     => false,
         ]);
 
         ImportarAnunciosMlEstruturaJob::dispatch($empresa->id, $rodada);
@@ -176,6 +183,7 @@ class AnunciosMercadoLivreService
         }
 
         $fim = microtime(true) + $orcamento;
+        $estado['comecou'] = true;
 
         try {
             // Pelo menos uma unidade de trabalho por fatia: orçamento curto não trava a leitura.
@@ -424,8 +432,10 @@ class AnunciosMercadoLivreService
 
     private function lendoAinda(?array $estado): bool
     {
+        $limite = ($estado['comecou'] ?? true) ? self::PARADA_MINUTOS : self::FILA_MINUTOS;
+
         return ($estado['estado'] ?? null) === 'lendo'
-            && Carbon::parse($estado['atualizado_em'])->gt(now()->subMinutes(self::PARADA_MINUTOS));
+            && Carbon::parse($estado['atualizado_em'])->gt(now()->subMinutes($limite));
     }
 
     /**
@@ -445,7 +455,7 @@ class AnunciosMercadoLivreService
 
             return [
                 'estado'     => 'lendo',
-                'etapa'      => $estado['etapa'],
+                'etapa'      => ($estado['comecou'] ?? true) ? $estado['etapa'] : 'fila',
                 'lidos'      => $estado['cursor'],
                 'skus'       => count($estado['lote']),
                 'procurados' => $estado['feitos'],

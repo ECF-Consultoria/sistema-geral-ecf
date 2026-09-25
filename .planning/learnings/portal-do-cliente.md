@@ -756,6 +756,17 @@ despacha o próximo; a `rodada` (uuid) impede leitura velha de escrever por cima
 da nova. O estado interno (lista de MLBs) NUNCA vai para o navegador — o
 `estado()` devolve só o progresso.
 
+**Produção é REDIS, e a fila `default` vive cheia** (medido 25/09): o CLAUDE.md
+diz "queue database", mas `QUEUE_CONNECTION=redis` na VPS e os workers rodam
+`queue:work redis --queue=high,default`. A `default` tinha **157 jobs** do sync
+do acervo; a primeira versão do "Puxar" ia para ela e NUNCA começou — a tela
+ficou em "0 lidos" e depois "parou no meio", sem log e sem `failed_jobs`
+(o job só estava esperando). Job disparado por clique de alguém que está
+olhando a tela vai para `onQueue('high')`, como o `ResolveOnboardingPassoJob`.
+Para diagnosticar: `Redis::lrange('queues:default', 0, -1)` pelo tinker — a
+tabela `jobs` fica vazia em produção e engana. A tela agora distingue "na
+fila" (espera 15 min) de "começou e parou" (3 min).
+
 **A prévia com ofertas que ainda não existem**: a colagem casaria os anúncios
 contra ofertas reais e jogaria tudo em "aguardando oferta". `previa()` aceita
 `$skusFuturos` (id negativo, nunca chega ao `executar()`); a confirmação cria

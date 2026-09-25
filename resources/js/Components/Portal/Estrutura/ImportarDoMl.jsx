@@ -65,9 +65,11 @@ function Progresso({ estado }) {
     return (
         <p className="flex items-center gap-2 text-[13px] text-white/70" data-lendo>
             <Loader2 size={15} className="animate-spin shrink-0" />
-            {estado.etapa === 'procurar'
-                ? `Lendo seus anúncios mais vendidos… ${estado.lidos} lidos, ${estado.skus} SKU(s) encontrados.`
-                : `Juntando os anúncios Clássico e Premium de cada SKU… ${estado.procurados} de ${estado.skus}.`}
+            {{
+                fila: 'Aguardando a vez para ler seus anúncios…',
+                procurar: `Lendo seus anúncios mais vendidos… ${estado.lidos} lidos, ${estado.skus} SKU(s) encontrados.`,
+                irmaos: `Juntando os anúncios Clássico e Premium de cada SKU… ${estado.procurados} de ${estado.skus}.`,
+            }[estado.etapa]}
             {' '}Pode fechar e voltar depois.
         </p>
     );
