@@ -152,6 +152,28 @@ final class EstruturaConjunto
     }
 
     /**
+     * Kits e combits em que cada produto simples entra — o "Também em" da tela.
+     *
+     * @return array<int, array<int>> id da simples → ids de kits/combits
+     */
+    public function usoEmKits(): array
+    {
+        $uso = [];
+
+        foreach ($this->porId as $o) {
+            if (! in_array($o['fase'], [EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT], true)) {
+                continue;
+            }
+
+            foreach ($o['componentes'] as $c) {
+                $uso[$c['id']][] = $o['id'];
+            }
+        }
+
+        return $uso;
+    }
+
+    /**
      * Em quantas variações (combos, kits, combits) esta oferta entra. A gaveta
      * avisa antes de excluir — o FK `restrict` recusaria de qualquer jeito.
      */

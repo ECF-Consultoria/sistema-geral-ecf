@@ -39,6 +39,7 @@ class EstruturaVisaoService
         $busca = mb_strtolower(trim($busca));
 
         $repetidos = $conjunto->skusRepetidos();
+        $usoEmKits = $conjunto->usoEmKits();
 
         $contadores = array_fill_keys(self::FILTROS, 0);
         foreach ($conjunto->ofertas() as $o) {
@@ -78,10 +79,10 @@ class EstruturaVisaoService
             ->get()
             ->groupBy('oferta_id');
 
-        $serializar = fn (array $o) => $this->oferta($o, $conjunto, $repetidos, $agenda[$o['id']] ?? collect());
+        $serializar = fn (array $o) => $this->oferta($o, $conjunto, $repetidos, $usoEmKits, $agenda[$o['id']] ?? collect());
 
-        // Quem já tem publicação na agenda — para o "próximo passo" dizer se
-        // sobrou buraco SEM data. Publicação agendada de oferta não-OK está pendente
+        // Quem já tem publicação na agenda — para o resumo dizer se sobrou
+        // buraco SEM data. Publicação agendada de oferta não-OK está pendente
         // por definição (a publicação é derivada), então basta existir a linha.
         $comPublicacao = EstruturaAgendaItem::query()
             ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_agenda.oferta_id')
@@ -92,6 +93,11 @@ class EstruturaVisaoService
             ->flip()
             ->all();
 
+        $kitsECombits = array_values(array_filter(
+            $conjunto->ofertas(),
+            fn ($o) => in_array($o['fase'], [EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT], true),
+        ));
+
         return [
             'painel'     => $conjunto->painel(),
             'contadores' => $contadores,
@@ -100,6 +106,15 @@ class EstruturaVisaoService
                 'chave'     => $b['principal']['id'],
                 'produto'   => $b['principal']['fase'] === EstruturaOferta::FASE_SIMPLES,
                 'principal' => [...$this->resumo($b['principal']), 'situacao' => $b['principal']['situacao']],
+                'tambem_em' => array_map(fn ($id) => $this->resumo($conjunto->oferta($id)), $usoEmKits[$b['principal']['id']] ?? []),
+                // O bloco nasce RECOLHIDO na tela; o cabeçalho vive deste
+                // resumo. Ele é do bloco INTEIRO — nunca do que o filtro
+                // deixou —, senão "3 a publicar" viraria "1" ao filtrar.
+                'resumo_combos' => $this->contarSituacoes(
+                    array_map(fn ($id) => $conjunto->oferta($id), array_slice($b['todas'], 1)),
+                    $comPublicacao,
+                ),
+                'uso'       => $this->contarUso($usoEmKits[$b['principal']['id']] ?? [], $conjunto),
                 // Quantidades que este produto já tem como combo (do bloco
                 // inteiro): o formulário de combos em lote marca "já existe"
                 // em vez de prometer criar o que o servidor vai pular.
@@ -110,6 +125,9 @@ class EstruturaVisaoService
                 ))),
                 'ofertas'   => array_map($serializar, $b['ofertas']),
             ], $daPagina),
+            // Resumo da seção "Kits e combits", sobre TODOS da empresa — a
+            // seção também nasce recolhida, e a página só traz os dela.
+            'resumo_kits' => $this->contarSituacoes($kitsECombits, $comPublicacao),
             'proximo_passo' => $this->proximoPasso($empresa, $conjunto, $comPublicacao),
             'paginacao'  => ['pagina' => $pagina, 'paginas' => $paginas, 'blocos' => $total, 'por_pagina' => self::BLOCOS_POR_PAGINA],
         ];
@@ -341,6 +359,23 @@ class EstruturaVisaoService
         return ['tipo' => 'em_dia'];
     }
 
+    /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */
+    private function contarUso(array $ids, EstruturaConjunto $conjunto): array
+    {
+        $uso = ['kits' => 0, 'combits' => 0];
+
+        foreach ($ids as $id) {
+            $fase = $conjunto->oferta($id)['fase'] ?? null;
+            if ($fase === EstruturaOferta::FASE_KIT) {
+                $uso['kits']++;
+            } elseif ($fase === EstruturaOferta::FASE_COMBIT) {
+                $uso['combits']++;
+            }
+        }
+
+        return $uso;
+    }
+
     private function passaNoFiltro(array $o, string $filtro): bool
     {
         return match ($filtro) {
@@ -378,7 +413,7 @@ class EstruturaVisaoService
         return ['id' => $o['id'], 'sku' => $o['sku'], 'nome' => $o['nome'], 'fase' => $o['fase']];
     }
 
-    private function oferta(array $o, EstruturaConjunto $conjunto, array $repetidos, $agenda): array
+    private function oferta(array $o, EstruturaConjunto $conjunto, array $repetidos, array $usoEmKits, $agenda): array
     {
         return [
             ...$this->resumo($o),

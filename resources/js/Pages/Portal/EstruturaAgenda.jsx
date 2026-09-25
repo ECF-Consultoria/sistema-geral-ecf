@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import { CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, PainelEstrutura, fmtData, fmtDiaSemana, hojeIso, somarDias,
+    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, PainelEstrutura, fmtData, fmtDiaSemana, hojeIso, somarDias,
 } from '@/Components/Portal/Estrutura/comum';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
@@ -13,135 +13,103 @@ import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — visão Agenda ───────────────────────────────────
 //
-// A aba "Planejamento" da planilha, como TABELA (24/09): Data · SKU · Ação ·
-// Clássico · Premium · Catálogo. Seções em cards foram recusadas — "mais
-// complexo para o cliente que não sabe usar um sistema". Os três blocos da
-// planilha (unitários/combos, kits, combits) continuam fora: só existiam para
-// caber SKU1..3 + QTD na grade; fase e composição já estão na oferta.
-//
-// A ordem da tabela é a da urgência: atrasadas (data em vermelho), hoje,
-// próximos dias. As concluídas ficam numa segunda tabela, recolhida.
+// A aba "Planejamento" da planilha, sem os três blocos (unitários/combos,
+// kits, combits): eles só existiam para caber SKU1..3 + QTD na grade.
 //
 // ### Publicação: concluir É cadastrar o anúncio
-// A célula do lado que falta tem "Concluir", que abre o formulário de anúncio
-// com o MLB obrigatório. Não há checkbox de "publicado": na planilha, a CB3
-// estava OK na agenda e "Publicar" no Mapeamento, e aqui isso não consegue
-// acontecer (ADR PORTAL-01).
+// Cada publicação mostra os dois lados. O lado que falta tem "Concluir", que
+// abre o formulário de anúncio com o MLB obrigatório. Não há checkbox de
+// "publicado": na planilha, a CB3 estava OK na agenda e "Publicar" no
+// Mapeamento, e aqui isso não consegue acontecer (ADR PORTAL-01).
 //
 // ### Jardinagem: feito / não feito
-// Olhar métricas e ajustar — sem anúncio de onde derivar. A publicação
-// concluída que ainda não tem Jardinagem ganha o atalho da regra de ouro.
+// Olhar métricas e ajustar — sem anúncio de onde derivar.
+//
+// A publicação concluída que ainda não tem Jardinagem ganha o atalho da regra
+// de ouro: "7 dias depois, agende a Jardinagem".
 
-function CelulaLado({ tipo, anuncios, onConcluir }) {
-    const conta = anuncios.filter((a) => a.tipo === tipo && a.status !== 'inativo');
+const SECOES = [
+    { chave: 'atrasadas',  rotulo: 'Atrasadas',  cor: 'text-red-300' },
+    { chave: 'hoje',       rotulo: 'Hoje',       cor: 'text-ecf-yellow' },
+    { chave: 'proximas',   rotulo: 'Próximos dias', cor: 'text-white/70' },
+    { chave: 'concluidas', rotulo: 'Concluídas', cor: 'text-emerald-300', recolhida: true },
+];
+
+function LadoDaPublicacao({ tipo, rotulo, anuncios, onConcluir }) {
+    const conta = anuncios.filter((a) => a.status !== 'inativo');
 
     if (conta.length) {
         return (
-            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[12px] text-emerald-300">
-                ✓ <span className="font-mono text-emerald-200/70">{conta[0].codigo_mlb ?? 'sem MLB'}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-[12px] text-emerald-300">
+                ✓ {rotulo}
+                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem MLB'}</span>
             </span>
         );
     }
 
     return (
-        <button type="button" onClick={onConcluir} data-acao={`concluir-${tipo}`}
-            className="whitespace-nowrap rounded-md bg-red-500/15 px-2 py-0.5 text-[12px] font-medium text-red-300 hover:bg-red-500/25">
-            Concluir
-        </button>
+        <Botao className="px-2 py-1 text-[12px]" onClick={onConcluir} data-acao={`concluir-${tipo}`}>
+            {rotulo}: concluir
+        </Botao>
     );
 }
 
-function Linha({ item, secao, vocabulario, onConcluir, onJardinagem }) {
+function Item({ item, vocabulario, onConcluir, onJardinagem }) {
     const o = item.oferta;
     const publicacao = item.acao === 'publicacao';
+    const classicos = o.anuncios.filter((a) => a.tipo === 'classico');
+    const premiums = o.anuncios.filter((a) => a.tipo === 'premium');
 
     const marcarJardinagem = (feita) => router.patch(route('portal.auth.estrutura.agenda.jardinagem', item.id), { feita }, { preserveScroll: true, preserveState: true });
     const remover = () => router.delete(route('portal.auth.estrutura.agenda.excluir', item.id), { preserveScroll: true, preserveState: true });
     const remarcar = (data) => data && router.patch(route('portal.auth.estrutura.agenda.remarcar', item.id), { data }, { preserveScroll: true, preserveState: true });
 
-    const td = 'px-3 py-2 align-middle';
-
     return (
-        <tr data-item={item.id} data-secao={secao} data-feita={item.feita ? '1' : '0'}
-            className={cn(secao === 'atrasadas' && 'bg-red-500/[0.04]', secao === 'hoje' && 'bg-ecf-yellow/[0.04]')}>
-            <td className={cn(td, 'whitespace-nowrap')}>
-                <span className={cn('tabular-nums', secao === 'atrasadas' ? 'text-red-300' : secao === 'hoje' ? 'text-ecf-yellow' : 'text-white/80')}>
-                    {fmtData(item.data)}
-                </span>
-                <span className="ml-1.5 text-[11px] text-white/35">{secao === 'hoje' ? 'hoje' : fmtDiaSemana(item.data)}</span>
-            </td>
-            <td className={td}>
-                <span className="font-mono text-white/90">{o.sku}</span>
-                {o.nome && <p className="text-[11.5px] text-white/40">{o.nome}</p>}
-            </td>
-            <td className={cn(td, 'whitespace-nowrap', publicacao ? 'text-sky-300' : 'text-emerald-300')}>{vocabulario.acoes[item.acao]}</td>
+        <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3" data-item={item.id} data-feita={item.feita ? '1' : '0'}>
+            <div className="w-20 shrink-0">
+                <p className="text-[13px] text-white">{fmtData(item.data)}</p>
+                <p className="text-[11px] text-white/40">{fmtDiaSemana(item.data)}</p>
+            </div>
+            <div className="min-w-0 flex-1 basis-48">
+                <p className="text-[13px]">
+                    <span className={cn('mr-1.5 text-[11.5px] font-semibold', publicacao ? 'text-sky-300' : 'text-emerald-300')}>
+                        {vocabulario.acoes[item.acao]}
+                    </span>
+                    <span className="font-mono text-white/90">{o.sku}</span>
+                </p>
+                {o.nome && <p className="text-[12px] text-white/45 truncate">{o.nome}</p>}
+            </div>
 
             {publicacao ? (
-                <>
-                    <td className={cn(td, 'text-center')}><CelulaLado tipo="classico" anuncios={o.anuncios} onConcluir={() => onConcluir(o, 'classico')} /></td>
-                    <td className={cn(td, 'text-center')}><CelulaLado tipo="premium" anuncios={o.anuncios} onConcluir={() => onConcluir(o, 'premium')} /></td>
-                    <td className={cn(td, 'hidden text-center sm:table-cell')}>
-                        {o.catalogos > 0
-                            ? <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[12px] text-emerald-300">{o.catalogos}</span>
-                            : <span className="text-white/30">0</span>}
-                        {o.kits_virtuais > 0 && <span className="ml-1 rounded bg-violet-500/10 px-1 text-[10.5px] text-violet-300" title="Kit virtual montado">KV</span>}
-                    </td>
-                </>
+                <div className="flex flex-wrap items-center gap-2">
+                    <LadoDaPublicacao tipo="classico" rotulo={vocabulario.tipos_curtos.classico} anuncios={classicos} onConcluir={() => onConcluir(o, 'classico')} />
+                    <LadoDaPublicacao tipo="premium" rotulo={vocabulario.tipos_curtos.premium} anuncios={premiums} onConcluir={() => onConcluir(o, 'premium')} />
+                    <Indicadores catalogos={o.catalogos} kitsVirtuais={o.kits_virtuais} />
+                </div>
             ) : (
-                <td className={td} colSpan={3}>
-                    <label className="inline-flex items-center gap-2 text-[12.5px] text-white/70">
-                        <input type="checkbox" checked={item.feita} onChange={(e) => marcarJardinagem(e.target.checked)} data-acao="jardinagem" />
-                        Feita
-                    </label>
-                </td>
+                <label className="inline-flex items-center gap-2 text-[13px] text-white/75">
+                    <input type="checkbox" checked={item.feita} onChange={(e) => marcarJardinagem(e.target.checked)} data-acao="jardinagem" />
+                    Feita — métricas olhadas e anúncio ajustado
+                </label>
             )}
 
-            <td className={cn(td, 'whitespace-nowrap text-right')}>
+            <div className="ml-auto flex items-center gap-1">
                 {publicacao && item.feita && ! o.tem_jardinagem && (
-                    <button type="button" onClick={() => onJardinagem(o)} data-acao="agendar-jardinagem"
-                        className="mr-1 inline-flex items-center gap-1 text-[12px] text-emerald-300 hover:underline">
-                        <Sparkles size={12} /> Jardinagem {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
-                    </button>
+                    <Botao variante="fantasma" className="px-2 py-1 text-[12px] text-emerald-300"
+                        onClick={() => onJardinagem(o)} data-acao="agendar-jardinagem">
+                        <Sparkles size={13} /> Jardinagem em {fmtData(somarDias(hojeIso(), vocabulario.dias_ate_jardinagem))}
+                    </Botao>
                 )}
                 {! item.feita && (
-                    <label className="relative inline-block p-1 text-white/35 hover:text-white cursor-pointer align-middle" title="Remarcar">
+                    <label className="relative p-1 text-white/35 hover:text-white cursor-pointer" title="Remarcar">
                         <CalendarClock size={14} />
                         <input type="date" className="absolute inset-0 opacity-0 cursor-pointer" aria-label="Remarcar"
                             defaultValue={item.data} onChange={(e) => remarcar(e.target.value)} />
                     </label>
                 )}
-                <button type="button" onClick={remover} className="p-1 text-white/35 hover:text-red-300 align-middle" aria-label="Remover da agenda"><Trash2 size={14} /></button>
-            </td>
-        </tr>
-    );
-}
-
-function Tabela({ linhas, vocabulario, onConcluir, onJardinagem, rodape = null, ...props }) {
-    const th = 'px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-white/40';
-
-    return (
-        <div className="relative overflow-x-auto rounded-xl border border-white/[0.08] bg-ecf-card" {...props}>
-            <table className="w-full text-[13px]">
-                <thead className="border-b border-white/[0.08]">
-                    <tr>
-                        <th className={th}>Data</th>
-                        <th className={th}>SKU</th>
-                        <th className={th}>Ação</th>
-                        <th className={cn(th, 'text-center')}>Clássico</th>
-                        <th className={cn(th, 'text-center')}>Premium</th>
-                        <th className={cn(th, 'hidden text-center sm:table-cell')}>Catálogo</th>
-                        <th className={th}><span className="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.05]">
-                    {linhas.map(({ item, secao }) => (
-                        <Linha key={item.id} item={item} secao={secao} vocabulario={vocabulario}
-                            onConcluir={onConcluir} onJardinagem={onJardinagem} />
-                    ))}
-                </tbody>
-            </table>
-            {rodape && <p className="border-t border-white/[0.05] px-3 py-2 text-[11.5px] text-white/35">{rodape}</p>}
-        </div>
+                <button type="button" onClick={remover} className="p-1 text-white/35 hover:text-red-300" aria-label="Remover da agenda"><Trash2 size={14} /></button>
+            </div>
+        </li>
     );
 }
 
@@ -150,7 +118,7 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
     const [jardinagem, setJardinagem] = useState(null); // oferta
     const [proposta, setProposta] = useState(false);
     const [aula, setAula] = useState(false);
-    const [verConcluidas, setVerConcluidas] = useState(false);
+    const [abertas, setAbertas] = useState({ concluidas: false });
 
     // A faixa "próximo passo" da outra visão manda para cá com `?proposta=1`:
     // chega já com a sugestão de datas aberta, sem mais um clique.
@@ -160,12 +128,7 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
         }
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const { secoes } = agenda;
-    const abertas = ['atrasadas', 'hoje', 'proximas'].flatMap((s) => secoes[s].itens.map((item) => ({ item, secao: s })));
-    const cortadas = ['atrasadas', 'proximas'].reduce((n, s) => n + secoes[s].total - secoes[s].itens.length, 0);
-    const concluidas = secoes.concluidas.itens.map((item) => ({ item, secao: 'concluidas' }));
-
-    const aoConcluir = (oferta, tipo) => setConcluir({ oferta, tipo });
+    const vazia = SECOES.every((s) => agenda.secoes[s.chave].total === 0);
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural · Agenda">
@@ -177,37 +140,53 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-[12.5px] text-white/45">
                         Ritmo: 1 publicação por dia até zerar a lista. 7 dias depois, a Jardinagem.
-                        {secoes.atrasadas.total > 0 && <span className="ml-1 text-red-300">{secoes.atrasadas.total} atrasada(s).</span>}
                     </p>
                     <Botao variante="primario" onClick={() => setProposta(true)} disabled={agenda.painel.a_publicar === 0} data-acao="agendar-o-que-falta">
                         <CalendarPlus size={14} /> Agendar o que falta
                     </Botao>
                 </div>
 
-                {abertas.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-white/[0.12] py-10 text-center text-[13px] text-white/45">
-                        Nada pendente na agenda. {agenda.painel.a_publicar > 0
+                {vazia && (
+                    <p className="rounded-2xl border border-dashed border-white/[0.12] py-10 text-center text-[13px] text-white/45">
+                        Nada agendado ainda. {agenda.painel.a_publicar > 0
                             ? `Há ${agenda.painel.a_publicar} anúncio(s) a publicar — use "Agendar o que falta".`
                             : agenda.painel.ofertas === 0 ? 'Comece listando seus produtos na visão Ofertas.' : 'Tudo publicado.'}
                     </p>
-                ) : (
-                    <Tabela linhas={abertas} vocabulario={vocabulario} onConcluir={aoConcluir} onJardinagem={setJardinagem}
-                        rodape={cortadas > 0 ? `E mais ${cortadas} tarefa(s) mais adiante.` : null} data-tabela-agenda />
                 )}
 
-                {secoes.concluidas.total > 0 && (
-                    <div className="space-y-2">
-                        <button type="button" onClick={() => setVerConcluidas(! verConcluidas)} aria-expanded={verConcluidas}
-                            className="inline-flex items-center gap-1.5 text-[13px] text-emerald-300" data-acao="ver-concluidas">
-                            {verConcluidas ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            Concluídas <span className="text-white/35">{secoes.concluidas.total}</span>
-                        </button>
-                        {verConcluidas && (
-                            <Tabela linhas={concluidas} vocabulario={vocabulario} onConcluir={aoConcluir} onJardinagem={setJardinagem}
-                                rodape={secoes.concluidas.total > concluidas.length ? `Mostrando as ${concluidas.length} mais recentes.` : null} />
-                        )}
-                    </div>
-                )}
+                {SECOES.map((s) => {
+                    const secao = agenda.secoes[s.chave];
+                    if (secao.total === 0) return null;
+                    const aberta = s.recolhida ? abertas[s.chave] : true;
+
+                    return (
+                        <section key={s.chave} className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-secao={s.chave}>
+                            <button type="button" disabled={! s.recolhida}
+                                onClick={() => setAbertas((a) => ({ ...a, [s.chave]: ! a[s.chave] }))}
+                                className="flex w-full items-center gap-2 px-4 py-3 text-left">
+                                {s.recolhida && (aberta ? <ChevronDown size={14} className="text-white/40" /> : <ChevronRight size={14} className="text-white/40" />)}
+                                <h2 className={cn('text-[13px] font-semibold', s.cor)}>{s.rotulo}</h2>
+                                <span className="text-[12px] text-white/35">{secao.total}</span>
+                            </button>
+                            {aberta && (
+                                <>
+                                    <ul className="divide-y divide-white/[0.05] border-t border-white/[0.06]">
+                                        {secao.itens.map((item) => (
+                                            <Item key={item.id} item={item} vocabulario={vocabulario}
+                                                onConcluir={(oferta, tipo) => setConcluir({ oferta, tipo })}
+                                                onJardinagem={setJardinagem} />
+                                        ))}
+                                    </ul>
+                                    {secao.total > secao.itens.length && (
+                                        <p className="px-4 py-2 text-[11.5px] text-white/35">
+                                            Mostrando {secao.itens.length} de {secao.total}.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </section>
+                    );
+                })}
             </div>
 
             <FormAnuncio
