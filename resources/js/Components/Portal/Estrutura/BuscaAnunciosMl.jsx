@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
 import { Link2, Search } from 'lucide-react';
-import { CLASSE_INPUT } from './comum';
+import { CLASSE_INPUT, LinkMl } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Procurar nos anúncios do Mercado Livre ─────────────────────────────────
@@ -74,7 +74,7 @@ export default function BuscaAnunciosMl({ oferta, tipo = null, onLigado }) {
                                     <div className="min-w-0 flex-1">
                                         <p className="truncate text-[12.5px] text-white/85" title={item.titulo}>{item.titulo}</p>
                                         <p className="text-[11px] text-white/40">
-                                            <span className="font-mono">{item.mlb}</span> · {item.tipo} · {item.status}
+                                            <LinkMl mlb={item.mlb} /> · {item.tipo} · {item.status}
                                             {item.catalogo && ' · catálogo'}
                                             {item.ligado_a && <span className="text-sky-300"> · já na oferta {item.ligado_a}</span>}
                                             {item.na_espera && <span className="text-amber-300"> · aguardando oferta</span>}

@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/Components/ui/sheet';
-import { Botao, Indicadores, Lado, PilulaSituacao, fmtData } from './comum';
+import { Botao, Indicadores, Lado, LinkMl, PilulaSituacao, fmtData } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── A gaveta de uma oferta ─────────────────────────────────────────────────
@@ -90,7 +90,9 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                             <li key={a.id} className={cn('rounded-lg border border-white/[0.07] px-3 py-2 text-[12.5px]', a.status === 'inativo' && 'opacity-50')} data-anuncio={a.id}>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-semibold text-white/85">{vocabulario.tipos[a.tipo]}</span>
-                                                    <span className="font-mono text-white/55">{a.codigo_mlb ?? 'sem MLB'}</span>
+                                                    {a.codigo_mlb
+                                                        ? <LinkMl mlb={a.codigo_mlb} className="text-white/55" />
+                                                        : <span className="font-mono text-white/55">sem MLB</span>}
                                                     <span className="text-white/40">{vocabulario.status[a.status]}</span>
                                                     <Indicadores catalogos={a.catalogo ? 1 : 0} kitsVirtuais={a.kit_virtual ? 1 : 0} />
                                                     <span className="ml-auto flex gap-1">

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
 // ─── Mapeamento Estrutural — peças comuns às duas visões ────────────────────
 //
@@ -85,6 +86,22 @@ export function Indicadores({ catalogos, kitsVirtuais }) {
             {catalogos > 0 && <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-sky-300">Catálogo</span>}
             {kitsVirtuais > 0 && <span className="rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-violet-300">Kit virtual</span>}
         </span>
+    );
+}
+
+// O código MLB como link para o anúncio publicado, em nova aba. A URL sai do
+// `linkAnuncioMl`, a fonte única do sistema — o formato já divergiu uma vez.
+// `stopPropagation`: o código fica dentro de linhas clicáveis (gaveta, agenda).
+export function LinkMl({ mlb, className }) {
+    const href = linkAnuncioMl(mlb);
+    if (! href) return null;
+
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            title="Abrir o anúncio no Mercado Livre" data-link-ml={mlb}
+            className={cn('inline-flex items-center gap-1 font-mono underline decoration-dotted underline-offset-2 hover:text-ecf-yellow', className)}>
+            {mlb}<ExternalLink size={11} className="shrink-0" />
+        </a>
     );
 }
 

@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import { CalendarClock, CalendarPlus, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, PainelEstrutura, fmtData, fmtDiaSemana, hojeIso, somarDias,
+    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, LinkMl, PainelEstrutura, fmtData, fmtDiaSemana, hojeIso, somarDias,
 } from '@/Components/Portal/Estrutura/comum';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
@@ -42,7 +42,9 @@ function LadoDaPublicacao({ tipo, rotulo, anuncios, onConcluir }) {
         return (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-[12px] text-emerald-300">
                 ✓ {rotulo}
-                <span className="font-mono text-emerald-200/60">{conta[0].codigo_mlb ?? 'sem MLB'}</span>
+                {conta[0].codigo_mlb
+                    ? <LinkMl mlb={conta[0].codigo_mlb} className="text-emerald-200/60" />
+                    : <span className="font-mono text-emerald-200/60">sem MLB</span>}
             </span>
         );
     }

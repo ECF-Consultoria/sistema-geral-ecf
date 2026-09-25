@@ -95,3 +95,17 @@ test('largura/flex sobre CLASSE_INPUT passa pelo cn(), não por string', () => {
         );
     }
 });
+
+// O código MLB vira link para o anúncio publicado (25/09). Nenhuma tela do
+// módulo mostra o MLB como texto solto nem monta a URL por conta própria: o
+// formato já divergiu uma vez no sistema, e a fonte única é `linkAnuncioMl`.
+test('código MLB aparece como LinkMl, e a URL vem do linkAnuncioMl', () => {
+    for (const arq of ARQUIVOS) {
+        const fonte = lerSemComentarios(arq);
+        assert.doesNotMatch(fonte, /mercadoli(vre|bre)\.com/, `${arq} monta a URL do ML na mão`);
+        assert.doesNotMatch(fonte, /font-mono[^>]*>\{[^}]*(codigo_mlb|\.mlb)\b/, `${arq} mostra o MLB como texto, sem link`);
+    }
+    const comum = lerSemComentarios('resources/js/Components/Portal/Estrutura/comum.jsx');
+    assert.match(comum, /linkAnuncioMl\(mlb\)/);
+    assert.match(comum, /target="_blank" rel="noopener noreferrer"/);
+});

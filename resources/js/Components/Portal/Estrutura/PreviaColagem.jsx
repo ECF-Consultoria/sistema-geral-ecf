@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { LinkMl } from './comum';
 
 // ─── A prévia de uma colagem de anúncios ────────────────────────────────────
 //
@@ -32,7 +33,7 @@ function LinhaPrevia({ grupo, item, vocabulario }) {
             <span className="font-mono">{item.sku ?? item.oferta_sku ?? '—'}</span>
             {item.oferta_sku && item.sku && item.oferta_sku !== item.sku && <span className="text-white/40">→ {item.oferta_sku}</span>}
             <span>{vocabulario.tipos[item.tipo]}</span>
-            {item.codigo_mlb && <span className="font-mono text-white/45">{item.codigo_mlb}</span>}
+            {item.codigo_mlb && <LinkMl mlb={item.codigo_mlb} className="text-white/45" />}
             {item.motivo && <span className="text-amber-300/80">({vocabulario.motivos[item.motivo] ?? item.motivo_texto})</span>}
             {item.mudou_de_oferta && <span className="text-sky-300/80">(muda de oferta)</span>}
         </li>

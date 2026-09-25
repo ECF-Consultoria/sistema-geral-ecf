@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { Link2, Plus, Trash2 } from 'lucide-react';
 import Janela from './Janela';
-import { Botao, CLASSE_INPUT } from './comum';
+import { Botao, CLASSE_INPUT, LinkMl } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Colados que aguardam oferta ────────────────────────────────────────────
@@ -44,7 +44,7 @@ function Linha({ linha, ofertas, vocabulario, onCriarOferta, recarregar }) {
             <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
                 <span className="font-mono text-white">{linha.sku_colado ?? 'sem SKU'}</span>
                 <span className="text-white/60">{vocabulario.tipos[linha.tipo]}</span>
-                {linha.codigo_mlb && <span className="font-mono text-white/45">{linha.codigo_mlb}</span>}
+                {linha.codigo_mlb && <LinkMl mlb={linha.codigo_mlb} className="text-white/45" />}
                 <span className="text-[11.5px] text-amber-300/80">{vocabulario.motivos[linha.motivo] ?? linha.motivo_texto}</span>
             </div>
             {linha.titulo && <p className="text-[12px] text-white/45 truncate">{linha.titulo}</p>}
