@@ -716,3 +716,21 @@ querer:
 - **Visível para toda empresa.** `mlb_empresas.company_id` preenchido em 3 de
   308: não há caminho confiável de Company até "é de Polos".
 
+### O que liga o Clássico ao Premium no ML é o SELLER_SKU — medido (25/09)
+
+Nos 21 anúncios reais dos fixtures da Fase 134 (`tests/fixtures/phase134/`),
+os pares Clássico + Premium do mesmo produto tinham o **mesmo `SELLER_SKU`**
+(`1808`, `1301-UN-NA`) e **`user_product_id` / `family_name` diferentes** —
+no modelo "User Products" cada anúncio tem o seu. O título muda de propósito
+("mesmo SKU, títulos diferentes", regra da aula). `catalog_product_id` só liga
+quando os dois estão no mesmo produto de catálogo. 15 dos 21 tinham SKU.
+
+Por isso "Importar do Mercado Livre" casa pelo SKU e manda o resto para a
+espera, e a exceção (SKU diferente ou ausente) se resolve com a busca manual
+no acervo ("+ Anúncio" → procurar → Ligar). Amostra de UMA conta: antes de
+prometer taxa de casamento, medir em produção quantos anúncios têm SKU.
+
+O `ml_acervo_itens` não guarda SKU; a importação lê o `SELLER_SKU` da API em
+Job (`ImportarAnunciosMlEstruturaJob`) em vez de acrescentar coluna ao acervo
+(migration em tabela com dado em produção = fase GSD obrigatória).
+

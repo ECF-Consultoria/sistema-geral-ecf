@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, Layers, Lightbulb, MoreHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — peças comuns às duas visões ────────────────────
@@ -173,7 +173,7 @@ export function AvisoFlash() {
  * leigo não precisa ver isso toda vez que abre a tela — o analista mostra na
  * reunião onde fica.
  */
-function MaisOpcoes({ onColar, onComoFunciona }) {
+function MaisOpcoes({ onColar, onImportar, onComoFunciona }) {
     const [aberto, setAberto] = useState(false);
     const caixa = useRef(null);
 
@@ -194,6 +194,11 @@ function MaisOpcoes({ onColar, onComoFunciona }) {
             </Botao>
             {aberto && (
                 <div className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-white/[0.10] bg-ecf-card p-1 shadow-2xl" role="menu">
+                    {onImportar && (
+                        <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onImportar(); }} data-acao="importar-ml">
+                            <DownloadCloud size={14} /> Importar do Mercado Livre
+                        </button>
+                    )}
                     {onColar && (
                         <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onColar(); }} data-acao="colar-anuncios">
                             <ClipboardPaste size={14} /> Colar anúncios
@@ -209,7 +214,7 @@ function MaisOpcoes({ onColar, onComoFunciona }) {
 }
 
 /** Cabeçalho do módulo: título, as duas visões e as ações de topo. */
-export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
+export function CabecalhoEstrutura({ visao, onColar, onImportar, onComoFunciona }) {
     const aba = (ativa) => cn(
         'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
         ativa ? 'bg-white/[0.08] text-white' : 'text-white/50 hover:text-white',
@@ -227,7 +232,7 @@ export function CabecalhoEstrutura({ visao, onColar, onComoFunciona }) {
                         Todo produto que você tem vira oferta publicada. Produto guardado não vende.
                     </p>
                 </div>
-                <MaisOpcoes onColar={onColar} onComoFunciona={onComoFunciona} />
+                <MaisOpcoes onColar={onColar} onImportar={onImportar} onComoFunciona={onComoFunciona} />
             </div>
             <nav className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" aria-label="Visões do módulo">
                 <Link href={route('portal.auth.estrutura')} className={aba(visao === 'ofertas')} data-visao="ofertas">

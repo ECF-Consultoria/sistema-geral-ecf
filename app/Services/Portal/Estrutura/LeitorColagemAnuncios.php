@@ -99,9 +99,13 @@ final class LeitorColagemAnuncios
      *   linhas: array<int, array{numero: int, sku: ?string, codigo_mlb: ?string, titulo: ?string, tipo: string, status: string, catalogo: bool, kit_virtual: bool}>,
      *   erros: array<int, array{numero: int, texto: string, motivo: string}>
      * }
+     *
+     * `$maxLinhas`: teto de linhas. A importação pela API passa o dela, porque
+     * a maior conta da carteira tem 66.747 anúncios.
      */
-    public function ler(string $texto): array
+    public function ler(string $texto, ?int $maxLinhas = null): array
     {
+        $maxLinhas ??= self::MAX_LINHAS;
         $resultado = ['erro_geral' => null, 'cabecalho' => false, 'colunas' => [], 'linhas' => [], 'erros' => []];
 
         $brutas = preg_split('/\r\n|\r|\n/', $texto);
@@ -118,8 +122,8 @@ final class LeitorColagemAnuncios
             return $resultado;
         }
 
-        if (count($linhas) > self::MAX_LINHAS + 1) {
-            $resultado['erro_geral'] = 'Cole no máximo '.number_format(self::MAX_LINHAS, 0, ',', '.').' anúncios por vez.';
+        if (count($linhas) > $maxLinhas + 1) {
+            $resultado['erro_geral'] = 'Cole no máximo '.number_format($maxLinhas, 0, ',', '.').' anúncios por vez.';
 
             return $resultado;
         }

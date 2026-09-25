@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import Janela from './Janela';
+import BuscaAnunciosMl from './BuscaAnunciosMl';
 import { Botao, CLASSE_INPUT, Campo, Seletor } from './comum';
 
 // ─── Cadastrar / editar anúncio ─────────────────────────────────────────────
@@ -59,6 +60,17 @@ export default function FormAnuncio({ aberta, onFechar, oferta, anuncio = null, 
                 : 'Mesmo SKU, títulos diferentes: Clássico para o melhor preço à vista, Premium para o parcelado.'}
         >
             <div className="space-y-3" data-form-anuncio>
+                {/* A exceção do casamento por SKU: procurar o anúncio no ML e
+                    ligar. O código digitado continua embaixo — para conta sem
+                    OAuth e para o anúncio publicado hoje, que só entra no
+                    acervo no sync da madrugada. */}
+                {! anuncio && oferta && (
+                    <>
+                        <BuscaAnunciosMl oferta={oferta} tipo={tipoFixo} onLigado={() => onFechar(true)} />
+                        <p className="text-center text-[11.5px] uppercase tracking-wide text-white/30">ou informe o código</p>
+                    </>
+                )}
+
                 {! tipoFixo && (
                     <div className="flex gap-2" role="radiogroup" aria-label="Tipo">
                         {Object.entries(vocabulario.tipos).map(([v, r]) => (
@@ -70,6 +82,7 @@ export default function FormAnuncio({ aberta, onFechar, oferta, anuncio = null, 
                     </div>
                 )}
                 {erros.tipo && <p className="text-[12px] text-red-400">{erros.tipo}</p>}
+
 
                 <Campo rotulo={viaAgenda ? 'Código MLB (obrigatório)' : 'Código MLB'} erro={erros.codigo_mlb}
                     dica="Pode colar o link do anúncio: o código MLB sai dele.">

@@ -61,9 +61,9 @@ class ColagemAnunciosService
      *
      * @return array{erro_geral: ?string, cabecalho: bool, colunas: array, totais: array<string, int>, grupos: array<string, array>}
      */
-    public function previa(Company $empresa, string $texto, string $modo): array
+    public function previa(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null): array
     {
-        $plano = $this->plano($empresa, $texto, $modo);
+        $plano = $this->plano($empresa, $texto, $modo, $maxLinhas);
 
         $grupos = [];
         foreach (['novos', 'atualizados', 'espera', 'erros', 'removidos'] as $g) {
@@ -84,10 +84,10 @@ class ColagemAnunciosService
      *
      * @return array<string, int> os totais do que foi feito
      */
-    public function aplicar(Company $empresa, string $texto, string $modo, AtorDoPortal $ator): array
+    public function aplicar(Company $empresa, string $texto, string $modo, AtorDoPortal $ator, ?int $maxLinhas = null): array
     {
-        return DB::transaction(function () use ($empresa, $texto, $modo, $ator) {
-            $plano = $this->plano($empresa, $texto, $modo);
+        return DB::transaction(function () use ($empresa, $texto, $modo, $ator, $maxLinhas) {
+            $plano = $this->plano($empresa, $texto, $modo, $maxLinhas);
 
             if ($plano['erro_geral'] !== null) {
                 return ['erro_geral' => $plano['erro_geral']];
@@ -120,9 +120,9 @@ class ColagemAnunciosService
      * O plano completo. Cada item de `novos`/`atualizados`/`espera` carrega a
      * ação a executar; `removidos` só existe no modo substituir.
      */
-    private function plano(Company $empresa, string $texto, string $modo): array
+    private function plano(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null): array
     {
-        $leitura = $this->leitor->ler($texto);
+        $leitura = $this->leitor->ler($texto, $maxLinhas);
 
         $plano = [
             'erro_geral'  => $leitura['erro_geral'],

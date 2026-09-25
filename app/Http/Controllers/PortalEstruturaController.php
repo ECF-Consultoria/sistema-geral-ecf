@@ -7,6 +7,7 @@ use App\Models\EstruturaAgendaItem;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\ColagemAnunciosService;
 use App\Services\Portal\Estrutura\EstruturaAgendaService;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
@@ -45,6 +46,7 @@ class PortalEstruturaController extends Controller
         private EstruturaAnuncioService $anuncios,
         private ColagemAnunciosService $colagem,
         private EstruturaAgendaService $agenda,
+        private AnunciosMercadoLivreService $anunciosMl,
     ) {
     }
 
@@ -63,6 +65,9 @@ class PortalEstruturaController extends Controller
             'estrutura'   => $this->visao->paginaOfertas($empresa, $filtro, $busca, $pagina),
             'filtros'     => ['situacao' => $filtro, 'q' => $busca],
             'vocabulario' => EstruturaVisaoService::vocabulario(),
+            // A conta do ML está conectada? Liga "Importar do Mercado Livre"
+            // e a busca nos anúncios da conta.
+            'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             // Só quando o diálogo pede — a espera e a lista de ofertas podem
             // ter milhares de linhas, e a maioria das visitas não as abre.
             'espera_linhas'  => Inertia::optional(fn () => $this->visao->espera($empresa)),
@@ -205,6 +210,50 @@ class PortalEstruturaController extends Controller
         $this->anuncios->descartarEspera($this->linhaEspera($linha), PortalContexto::ator());
 
         return back()->with('success', 'Anúncio colado descartado.');
+    }
+
+    // ═══ Anúncios do Mercado Livre (OAuth) ═════════════════════════════════
+
+    /** Começa a leitura da conta em segundo plano. */
+    public function iniciarImportacao()
+    {
+        $this->anunciosMl->iniciar(PortalContexto::empresa());
+
+        return response()->json($this->anunciosMl->estado(PortalContexto::empresa()));
+    }
+
+    /** Estado da leitura; quando pronta, já com a prévia. */
+    public function estadoImportacao()
+    {
+        return response()->json($this->anunciosMl->estado(PortalContexto::empresa()));
+    }
+
+    public function aplicarImportacao()
+    {
+        $t = $this->anunciosMl->aplicar(PortalContexto::empresa(), PortalContexto::ator());
+
+        return back()->with('success', 'Anúncios do Mercado Livre importados: '
+            ."{$t['novos']} novo(s), {$t['atualizados']} atualizado(s), {$t['espera']} aguardando oferta.");
+    }
+
+    /** A exceção: procurar o anúncio pelo título ou MLB, quando o SKU não casou. */
+    public function buscarAnunciosMl(Request $request)
+    {
+        $dados = $request->validate([
+            'q'    => ['nullable', 'string', 'max:200'],
+            'tipo' => ['nullable', Rule::in(array_keys(EstruturaAnuncio::TIPOS))],
+        ]);
+
+        return response()->json($this->anunciosMl->buscar(PortalContexto::empresa(), $dados['q'] ?? '', $dados['tipo'] ?? null));
+    }
+
+    public function ligarAnuncioMl(Request $request, int $oferta)
+    {
+        $dados = $request->validate(['ml_item_id' => ['required', 'string', 'max:30']]);
+
+        $anuncio = $this->anunciosMl->ligar($this->oferta($oferta), $dados['ml_item_id'], PortalContexto::ator());
+
+        return back()->with('success', EstruturaAnuncio::TIPOS[$anuncio->tipo]." {$anuncio->codigo_mlb} ligado a {$anuncio->oferta->sku}.");
     }
 
     // ═══ Agenda ═════════════════════════════════════════════════════════════

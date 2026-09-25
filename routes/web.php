@@ -212,6 +212,19 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::delete('/estrutura/anuncios/{anuncio}', [PortalEstruturaController::class, 'excluirAnuncio'])
         ->whereNumber('anuncio')->middleware('throttle:60,1,estrutura.anuncios.excluir')->name('portal.auth.estrutura.anuncios.excluir');
     // A prévia só lê; a colagem refaz o plano a partir do texto antes de gravar.
+    // Anúncios do ML pelo OAuth: importar (lê a conta em Job; a prévia e a
+    // gravação são as da colagem) e, para a exceção do SKU diferente, buscar
+    // no acervo e ligar à oferta.
+    Route::post('/estrutura/importacao', [PortalEstruturaController::class, 'iniciarImportacao'])
+        ->middleware('throttle:6,1,estrutura.importacao.iniciar')->name('portal.auth.estrutura.importacao.iniciar');
+    Route::get('/estrutura/importacao', [PortalEstruturaController::class, 'estadoImportacao'])
+        ->middleware('throttle:120,1,estrutura.importacao.estado')->name('portal.auth.estrutura.importacao.estado');
+    Route::post('/estrutura/importacao/aplicar', [PortalEstruturaController::class, 'aplicarImportacao'])
+        ->middleware('throttle:10,1,estrutura.importacao.aplicar')->name('portal.auth.estrutura.importacao.aplicar');
+    Route::get('/estrutura/anuncios-ml', [PortalEstruturaController::class, 'buscarAnunciosMl'])
+        ->middleware('throttle:120,1,estrutura.anuncios_ml.buscar')->name('portal.auth.estrutura.anuncios_ml.buscar');
+    Route::post('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'ligarAnuncioMl'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.ligar')->name('portal.auth.estrutura.anuncios_ml.ligar');
     Route::post('/estrutura/colagem/previa', [PortalEstruturaController::class, 'previaColagem'])
         ->middleware('throttle:30,1,estrutura.colagem.previa')->name('portal.auth.estrutura.colagem.previa');
     Route::post('/estrutura/colagem', [PortalEstruturaController::class, 'aplicarColagem'])

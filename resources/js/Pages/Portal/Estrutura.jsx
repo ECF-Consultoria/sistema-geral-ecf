@@ -13,6 +13,7 @@ import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
 import ColarAnuncios from '@/Components/Portal/Estrutura/ColarAnuncios';
 import EsperaAnuncios from '@/Components/Portal/Estrutura/EsperaAnuncios';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import ImportarDoMl from '@/Components/Portal/Estrutura/ImportarDoMl';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — visão Ofertas ──────────────────────────────────
@@ -204,7 +205,7 @@ function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAgendar,
     );
 }
 
-function EstadoVazio({ onProduto, onColar }) {
+function EstadoVazio({ onProduto, onColar, onImportar }) {
     return (
         <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center space-y-4" data-vazio>
             <p className="text-white text-[15px] font-semibold">Comece listando seus produtos</p>
@@ -226,13 +227,14 @@ function EstadoVazio({ onProduto, onColar }) {
             </div>
             <div className="flex flex-wrap justify-center gap-2">
                 <Botao variante="primario" onClick={onProduto}><Plus size={14} /> Primeiro produto</Botao>
+                {onImportar && <Botao onClick={onImportar} data-acao="importar-ml-vazio">Importar do Mercado Livre</Botao>}
                 <Botao onClick={onColar}><ClipboardPaste size={14} /> Colar anúncios que já tenho</Botao>
             </div>
         </section>
     );
 }
 
-export default function Estrutura({ empresa, modulos = [], estrutura, filtros, vocabulario, espera_linhas, opcoes_ofertas }) {
+export default function Estrutura({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, espera_linhas, opcoes_ofertas }) {
     const [gavetaId, setGavetaId] = useState(null);
     const [formOferta, setFormOferta] = useState(null);     // { modo, base, inicial }
     const [formAnuncio, setFormAnuncio] = useState(null);   // { oferta, anuncio }
@@ -241,6 +243,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const [colar, setColar] = useState(false);
     const [espera, setEspera] = useState(false);
     const [aula, setAula] = useState(false);
+    const [importar, setImportar] = useState(false);
     const [busca, setBusca] = useState(filtros.q ?? '');
 
     const { painel, contadores, blocos, paginacao } = estrutura;
@@ -297,7 +300,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural">
             <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-                <CabecalhoEstrutura visao="ofertas" onColar={() => setColar(true)} onComoFunciona={() => setAula(true)} />
+                <CabecalhoEstrutura visao="ofertas" onColar={() => setColar(true)} onImportar={() => setImportar(true)} onComoFunciona={() => setAula(true)} />
 
                 <PainelEstrutura painel={painel} />
 
@@ -313,7 +316,8 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 )}
 
                 {painel.ofertas === 0 ? (
-                    <EstadoVazio onProduto={() => setFormOferta({ modo: 'produto' })} onColar={() => setColar(true)} />
+                    <EstadoVazio onProduto={() => setFormOferta({ modo: 'produto' })} onColar={() => setColar(true)}
+                        onImportar={ml_conectado ? () => setImportar(true) : null} />
                 ) : (
                     <>
                         <div className="flex flex-wrap items-center gap-2">
@@ -435,6 +439,8 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
             <AgendarDialog aberta={!! agendar} onFechar={() => setAgendar(null)} oferta={agendar} vocabulario={vocabulario} />
 
             <ColarAnuncios aberta={colar} onFechar={() => setColar(false)} vocabulario={vocabulario} />
+
+            <ImportarDoMl aberta={importar} onFechar={() => setImportar(false)} conectado={ml_conectado} vocabulario={vocabulario} />
 
             <EsperaAnuncios
                 aberta={espera}
