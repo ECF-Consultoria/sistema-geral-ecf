@@ -109,3 +109,10 @@ test('código MLB aparece como LinkMl, e a URL vem do linkAnuncioMl', () => {
     assert.match(comum, /linkAnuncioMl\(mlb\)/);
     assert.match(comum, /target="_blank" rel="noopener noreferrer"/);
 });
+
+// O DialogContent é grid: sem `grid-cols-1` (minmax(0, 1fr)) a coluna cresce
+// até o texto mais longo que não quebra, e título de anúncio do ML ou nome de
+// produto no kit empurra campos e botões para fora da janela (25/09).
+test('a Janela prende a coluna do grid à largura do diálogo', () => {
+    assert.match(lerSemComentarios('resources/js/Components/Portal/Estrutura/Janela.jsx'), /DialogContent className=\{cn\('grid-cols-1 /);
+});
