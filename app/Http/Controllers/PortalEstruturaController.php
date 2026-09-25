@@ -232,8 +232,8 @@ class PortalEstruturaController extends Controller
     {
         $t = $this->anunciosMl->aplicar(PortalContexto::empresa(), PortalContexto::ator());
 
-        return back()->with('success', 'Anúncios do Mercado Livre importados: '
-            ."{$t['novos']} novo(s), {$t['atualizados']} atualizado(s), {$t['espera']} aguardando oferta.");
+        return back()->with('success', "Do Mercado Livre: {$t['ofertas']} oferta(s) criada(s), "
+            ."{$t['novos']} anúncio(s) novo(s), {$t['atualizados']} atualizado(s), {$t['espera']} aguardando oferta.");
     }
 
     /** A exceção: procurar o anúncio pelo título ou MLB, quando o SKU não casou. */

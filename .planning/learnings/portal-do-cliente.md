@@ -725,23 +725,41 @@ no modelo "User Products" cada anúncio tem o seu. O título muda de propósito
 ("mesmo SKU, títulos diferentes", regra da aula). `catalog_product_id` só liga
 quando os dois estão no mesmo produto de catálogo. 15 dos 21 tinham SKU.
 
-### Importar pelo SKU da OFERTA, nunca a conta inteira — há conta de 100 mil
+### Puxar do ML cria as ofertas — em LOTES dos mais vendidos, nunca a conta inteira
 
-A primeira versão lia a conta inteira (enumerar + multiget de 20). A
-CAMILLOPARTSFILIALSCCAMILLO (#131), escolhida para o teste, tem **~100 mil
-anúncios segundo o próprio ML** (87.930 ativos + 10.830 pausados; o acervo
-local tem 113.873 com os antigos) — autopeças: um anúncio por peça ×
-compatibilidade × tipo, com UM SKU (`29348`) em 20 anúncios. Seriam ~5.000
-multigets, mais de meia hora, e a fila `database` reentrega Job acima de
-`retry_after` = 90 s. Isso só apareceu consultando PRODUÇÃO antes do teste.
+O fluxo que o usuário quer (25/09) é o contrário de "cadastre a oferta e depois
+importe": **os anúncios do ML criam as ofertas**. Cada SKU vira uma oferta
+(Fase 1, simples; nome = título do anúncio mais vendido do SKU; logística do
+`shipping` do anúncio) com TODOS os anúncios Clássico e Premium daquele SKU.
+A versão intermediária, que exigia cadastrar oferta antes e mostrava "Cadastre
+as ofertas primeiro", o usuário não entendeu — não volte a ela.
 
-Agora é **uma busca por SKU de oferta**: `/users/{id}/items/search?seller_sku=`
-(128 ms medidos na #131; o filtro existe e devolveu o anúncio de origem).
-Tipo, status, título e catálogo vêm do acervo; só o que ainda não está lá
-(publicado depois do sync da madrugada) passa por multiget. Anúncio de SKU que
-nenhuma oferta tem NÃO vem — lotaria "aguardando oferta" com dezenas de
-milhares de linhas; ele se acha pela busca manual ("+ Anúncio" → procurar →
-Ligar), que é a exceção combinada com o usuário.
+**O SKU é o par, e só ele** — medido nos 40 mais vendidos da #131: SKU
+`30069Full` = 12 anúncios, 6 Clássico + 6 Premium, títulos diferentes;
+`user_product_id` e `family_id` são DIFERENTES em cada anúncio (não servem
+para juntar). `30069` e `30069Full` são ofertas SEPARADAS (decisão do usuário:
+SKU diferente = oferta diferente). SKU como `33132x2Full` (kit de 2) entra como
+Simples — não se adivinha combo pelo SKU.
+
+**Escala**: a CAMILLOPARTSFILIALSCCAMILLO (#131) tem ~101 mil anúncios no
+acervo (46k Clássico + 53k Premium ativos). Ler tudo = ~5.000 multigets, mais
+de uma hora, milhares de ofertas de uma vez. Por isso cada "Puxar" lê os
+**mais vendidos** (`sold_quantity` do acervo) que ainda NÃO estão no módulo
+(nem anúncio, nem espera) até juntar 500 SKUs; o próximo "Puxar" continua
+sozinho, porque o que foi importado sai dos candidatos. Para cada SKU,
+`/users/{id}/items/search?seller_sku=` traz os irmãos (128 ms na #131).
+
+**Em fatias de 45 s, com `rodada`**: um lote de 500 SKUs passa de 90 s, e a
+fila `database` reentrega Job reservado há mais que `retry_after` (90 s) — duas
+leituras simultâneas. O Job trabalha 45 s, guarda o progresso no cache e
+despacha o próximo; a `rodada` (uuid) impede leitura velha de escrever por cima
+da nova. O estado interno (lista de MLBs) NUNCA vai para o navegador — o
+`estado()` devolve só o progresso.
+
+**A prévia com ofertas que ainda não existem**: a colagem casaria os anúncios
+contra ofertas reais e jogaria tudo em "aguardando oferta". `previa()` aceita
+`$skusFuturos` (id negativo, nunca chega ao `executar()`); a confirmação cria
+as ofertas ANTES e refaz o plano real.
 
 O `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
 tabela com dado em produção (fase GSD obrigatória) — por isso o SKU sai da API.

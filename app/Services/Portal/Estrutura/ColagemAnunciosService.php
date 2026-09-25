@@ -59,11 +59,18 @@ class ColagemAnunciosService
     /**
      * A prévia. Não grava nada.
      *
+     * `$skusFuturos`: SKUs de ofertas que AINDA não existem mas serão criadas
+     * junto com a confirmação (o "Puxar do Mercado Livre" cria a oferta e liga
+     * os anúncios num passo só). Na prévia, contam como oferta — senão todo
+     * anúncio de oferta nova apareceria como "aguardando oferta". Só a prévia
+     * aceita isso: a confirmação cria as ofertas ANTES e refaz o plano real.
+     *
+     * @param  array<int, string>  $skusFuturos
      * @return array{erro_geral: ?string, cabecalho: bool, colunas: array, totais: array<string, int>, grupos: array<string, array>}
      */
-    public function previa(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null): array
+    public function previa(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null, array $skusFuturos = []): array
     {
-        $plano = $this->plano($empresa, $texto, $modo, $maxLinhas);
+        $plano = $this->plano($empresa, $texto, $modo, $maxLinhas, $skusFuturos);
 
         $grupos = [];
         foreach (['novos', 'atualizados', 'espera', 'erros', 'removidos'] as $g) {
@@ -120,7 +127,7 @@ class ColagemAnunciosService
      * O plano completo. Cada item de `novos`/`atualizados`/`espera` carrega a
      * ação a executar; `removidos` só existe no modo substituir.
      */
-    private function plano(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null): array
+    private function plano(Company $empresa, string $texto, string $modo, ?int $maxLinhas = null, array $skusFuturos = []): array
     {
         $leitura = $this->leitor->ler($texto, $maxLinhas);
 
@@ -140,7 +147,9 @@ class ColagemAnunciosService
         }
 
         // ── O que já existe, indexado pelas duas chaves ──────────────────
-        $ofertas = EstruturaOferta::where('company_id', $empresa->id)->get(['id', 'sku']);
+        // As futuras ganham id negativo: nunca colidem com uma real e nunca chegam ao `executar()`.
+        $ofertas = EstruturaOferta::where('company_id', $empresa->id)->get(['id', 'sku'])->toBase()
+            ->concat(collect(array_values($skusFuturos))->map(fn ($sku, $i) => (object) ['id' => -($i + 1), 'sku' => $sku]));
         $ofertasPorSku = $ofertas->groupBy(fn ($o) => EstruturaOferta::normalizarSku($o->sku));
         $skuDaOferta = $ofertas->pluck('sku', 'id');
 

@@ -196,7 +196,7 @@ function MaisOpcoes({ onColar, onImportar, onComoFunciona }) {
                 <div className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-white/[0.10] bg-ecf-card p-1 shadow-2xl" role="menu">
                     {onImportar && (
                         <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onImportar(); }} data-acao="importar-ml">
-                            <DownloadCloud size={14} /> Importar do Mercado Livre
+                            <DownloadCloud size={14} /> Puxar do Mercado Livre
                         </button>
                     )}
                     {onColar && (

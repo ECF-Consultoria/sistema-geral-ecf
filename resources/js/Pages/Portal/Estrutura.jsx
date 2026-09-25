@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
     AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PainelEstrutura, PilulaSituacao, ProximoPasso,
@@ -210,7 +210,9 @@ function EstadoVazio({ onProduto, onColar, onImportar }) {
         <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center space-y-4" data-vazio>
             <p className="text-white text-[15px] font-semibold">Comece listando seus produtos</p>
             <p className="text-white/50 text-[13px] max-w-lg mx-auto leading-relaxed">
-                Liste TODOS os produtos em Fase 1. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?
+                {onImportar
+                    ? 'Puxe seus anúncios do Mercado Livre: cada SKU vira um produto em Fase 1, com os anúncios Clássico e Premium dele. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'
+                    : 'Liste TODOS os produtos em Fase 1. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'}
             </p>
             <div className="grid sm:grid-cols-4 gap-2 text-left max-w-3xl mx-auto">
                 {[
@@ -226,8 +228,12 @@ function EstadoVazio({ onProduto, onColar, onImportar }) {
                 ))}
             </div>
             <div className="flex flex-wrap justify-center gap-2">
-                <Botao variante="primario" onClick={onProduto}><Plus size={14} /> Primeiro produto</Botao>
-                {onImportar && <Botao onClick={onImportar} data-acao="importar-ml-vazio">Importar do Mercado Livre</Botao>}
+                {onImportar && (
+                    <Botao variante="primario" onClick={onImportar} data-acao="importar-ml-vazio">
+                        <DownloadCloud size={14} /> Puxar meus anúncios do Mercado Livre
+                    </Botao>
+                )}
+                <Botao variante={onImportar ? undefined : 'primario'} onClick={onProduto}><Plus size={14} /> Primeiro produto</Botao>
                 <Botao onClick={onColar}><ClipboardPaste size={14} /> Colar anúncios que já tenho</Botao>
             </div>
         </section>
