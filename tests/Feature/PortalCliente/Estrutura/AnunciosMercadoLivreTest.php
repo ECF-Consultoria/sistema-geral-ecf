@@ -456,8 +456,11 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertTrue($r['conectado']);
         // 3 + 1 unidades DESTE anúncio; o item de outro MLB no mesmo pedido não conta.
         $this->assertSame(['visitas' => 103, 'vendas' => 4, 'buybox' => null], $r['metricas']['MLB5307535856']);
-        // A visita falhou (null), as vendas e o buy box seguiram; "competing" é traduzido.
+        // A visita falhou (null), as vendas (0: nenhum pedido dele) e o buy box seguiram; "competing" é traduzido.
         $this->assertNull($r['metricas']['MLB5318502460']['visitas']);
+        $this->assertSame(0, $r['metricas']['MLB5318502460']['vendas']);
+        // As vendas vêm dos pedidos da LOJA, numa leitura só — não uma busca por anúncio.
+        $this->assertCount(1, collect(Http::recorded())->filter(fn ($par) => str_contains($par[0]->url(), '/orders/search')));
         $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $r['metricas']['MLB5318502460']['buybox']);
 
         $n = count(Http::recorded());

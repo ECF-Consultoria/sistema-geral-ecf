@@ -735,12 +735,17 @@ class AnunciosMercadoLivreService
      *
      * Na hora porque o acervo não tem: a camada cara da Fase 134 não preenche
      * visitas nem buy box na #131 (0%, medido 28/09). Endpoints medidos:
-     * `/items/{id}/visits/time_window?last=7&unit=day` (0,1 s),
-     * `/orders/search?item=` (conta só aquele MLB; até 1 s) e
-     * `/items/{id}/price_to_win?version=v2`. Uma chamada por anúncio, sem
-     * lote — por isso o teto de 30 anúncios (ativos e pausados primeiro) e
-     * 30 minutos de cache. Falha de um anúncio vira `null` naquele número,
-     * não derruba os outros.
+     * `/items/{id}/visits/time_window?last=7&unit=day` (0,1 s, uma chamada por
+     * anúncio — o lote de visitas é recusado) e
+     * `/items/{id}/price_to_win?version=v2` (só catálogo).
+     *
+     * As VENDAS não são por anúncio: a primeira versão fazia um
+     * `/orders/search?item=` por anúncio e levou 17 s numa oferta de 30
+     * anúncios. Agora são os pedidos da LOJA nos 7 dias, paginados uma vez e
+     * guardados 30 min para todas as ofertas ({@see self::vendas7dDaLoja()}).
+     * Teto de 30 anúncios por oferta (ativos e pausados primeiro) e 30 min de
+     * cache. Falha de um anúncio vira `null` naquele número, não derruba os
+     * outros.
      *
      * @return array{conectado: bool, metricas: array<string, array{visitas: ?int, vendas: ?int, buybox: ?array}>, limitado?: bool}
      */
@@ -764,26 +769,19 @@ class AnunciosMercadoLivreService
 
         $chave = 'estrutura:metricas-ml:'.$empresa->id.':'.md5($anuncios->pluck('codigo_mlb')->implode(','));
         $metricas = Cache::remember($chave, now()->addMinutes(30), function () use ($empresa, $anuncios) {
-            $mlUserId = (string) $empresa->mlToken->ml_user_id;
-            $de = now()->subDays(7)->startOfDay();
+            try {
+                $vendas = $this->vendas7dDaLoja($empresa);
+            } catch (\Throwable $e) {
+                Log::warning("[Estrutura] pedidos de 7 dias no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+                $vendas = null;
+            }
             $saida = [];
 
             foreach ($anuncios as $a) {
                 $mlb = $a->codigo_mlb;
                 $saida[$mlb] = [
                     'visitas' => $this->tentar(fn () => (int) ($this->ml->get($empresa, "/items/{$mlb}/visits/time_window", ['last' => 7, 'unit' => 'day'])['total_visits'] ?? 0), $empresa, $mlb),
-                    'vendas'  => $this->tentar(function () use ($empresa, $mlUserId, $mlb, $de) {
-                        $r = $this->ml->get($empresa, '/orders/search', [
-                            'seller' => $mlUserId, 'item' => $mlb, 'order.status' => 'paid',
-                            'order.date_created.from' => $de->format('Y-m-d').'T00:00:00.000-03:00',
-                            'order.date_created.to'   => now()->format('Y-m-d').'T23:59:59.000-03:00',
-                            'limit' => 50,
-                        ]);
-
-                        // Unidades DESTE anúncio (um pedido pode ter vários itens).
-                        return (int) collect($r['results'] ?? [])->flatMap(fn ($o) => $o['order_items'] ?? [])
-                            ->filter(fn ($i) => ($i['item']['id'] ?? null) === $mlb)->sum('quantity');
-                    }, $empresa, $mlb),
+                    'vendas'  => $vendas === null ? null : ($vendas[$mlb] ?? 0),
                     'buybox'  => $a->catalogo ? $this->tentar(function () use ($empresa, $mlb) {
                         $p = $this->ml->get($empresa, "/items/{$mlb}/price_to_win", ['version' => 'v2']);
                         $status = $p['status'] ?? null;
@@ -801,6 +799,51 @@ class AnunciosMercadoLivreService
         });
 
         return ['conectado' => true, 'metricas' => $metricas, 'limitado' => $limitado];
+    }
+
+    /** Quantas páginas de 50 pedidos, no máximo (10 mil pedidos na semana). */
+    private const MAX_PAGINAS_PEDIDOS = 200;
+
+    /**
+     * Unidades vendidas por anúncio nos últimos 7 dias, de TODOS os pedidos
+     * pagos da loja — uma leitura paginada (a #131 teve 2.442 pedidos na
+     * semana: ~49 páginas de 0,1 s), guardada 30 min e servida a todas as
+     * ofertas. Um pedido pode ter vários itens: conta cada um no seu MLB.
+     * A API aceitou offset além de 1.000 (medido até 2.400, 28/09).
+     *
+     * @return array<string, int> MLB → unidades
+     */
+    private function vendas7dDaLoja(Company $empresa): array
+    {
+        return Cache::remember('estrutura:vendas7d:'.$empresa->id, now()->addMinutes(30), function () use ($empresa) {
+            $consulta = [
+                'seller' => (string) $empresa->mlToken->ml_user_id, 'order.status' => 'paid', 'sort' => 'date_asc', 'limit' => 50,
+                'order.date_created.from' => now()->subDays(7)->startOfDay()->format('Y-m-d').'T00:00:00.000-03:00',
+                'order.date_created.to'   => now()->format('Y-m-d').'T23:59:59.000-03:00',
+            ];
+            $porMlb = [];
+
+            for ($pagina = 0, $offset = 0; $pagina < self::MAX_PAGINAS_PEDIDOS; $pagina++) {
+                $r = $this->ml->get($empresa, '/orders/search', [...$consulta, 'offset' => $offset]);
+                $lote = $r['results'] ?? [];
+
+                foreach ($lote as $pedido) {
+                    foreach ($pedido['order_items'] ?? [] as $item) {
+                        $mlb = $item['item']['id'] ?? null;
+                        if ($mlb !== null) {
+                            $porMlb[$mlb] = ($porMlb[$mlb] ?? 0) + (int) ($item['quantity'] ?? 0);
+                        }
+                    }
+                }
+
+                $offset += count($lote);
+                if ($lote === [] || $offset >= (int) ($r['paging']['total'] ?? 0)) {
+                    break;
+                }
+            }
+
+            return $porMlb;
+        });
     }
 
     /** Uma métrica de um anúncio: a falha dela vira `null`, com log — as outras seguem. */

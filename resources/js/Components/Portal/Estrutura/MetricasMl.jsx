@@ -29,7 +29,8 @@ function conversao(visitas, vendas) {
     return `${((vendas / visitas) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 }
 
-export default function MetricasMl({ ofertaId, anuncios, vocabulario, auto = false, compacto = false }) {
+/** Carrega as métricas de uma oferta sob demanda (ou já, com `auto`). */
+export function useMetricasMl(ofertaId, auto = false) {
     const [estado, setEstado] = useState(null);   // null | 'lendo' | { metricas, limitado, conectado } | { erro }
 
     const carregar = async () => {
@@ -44,8 +45,33 @@ export default function MetricasMl({ ofertaId, anuncios, vocabulario, auto = fal
 
     useEffect(() => {
         setEstado(null);
-        if (auto) carregar();
+        if (ofertaId && auto) carregar();
     }, [ofertaId, auto]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return { estado, carregar };
+}
+
+/** O botão e o estado da leitura (lendo, erro, sem conta), para quem mostra os números à sua maneira. */
+export function BotaoMetricas({ estado, carregar }) {
+    if (estado === null) {
+        return (
+            <button type="button" onClick={carregar} data-acao="ver-metricas"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.10] px-2.5 py-1.5 text-[12px] text-white/70 hover:border-ecf-yellow/40 hover:text-white">
+                <BarChart3 size={14} /> Ver visitas e vendas dos últimos 7 dias
+            </button>
+        );
+    }
+    if (estado === 'lendo') {
+        return <p className="flex items-center gap-2 text-[12px] text-white/45"><Loader2 size={13} className="animate-spin" /> Lendo as métricas no Mercado Livre…</p>;
+    }
+    if (estado.erro) return <p className="text-[12px] text-red-300/80">{estado.erro}</p>;
+    if (! estado.conectado) return <p className="text-[12px] text-white/40">Conecte a conta do Mercado Livre para ver as métricas.</p>;
+
+    return null;
+}
+
+export default function MetricasMl({ ofertaId, anuncios, vocabulario, auto = false, compacto = false }) {
+    const { estado, carregar } = useMetricasMl(ofertaId, auto);
 
     const comMlb = anuncios.filter((a) => a.codigo_mlb);
     if (comMlb.length === 0) return null;

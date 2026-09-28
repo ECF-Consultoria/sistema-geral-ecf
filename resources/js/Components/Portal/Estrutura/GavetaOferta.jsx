@@ -4,9 +4,9 @@ import { router } from '@inertiajs/react';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/Components/ui/sheet';
-import { Botao, DadosDoAnuncio, EstoqueAnuncio, EstoqueOferta, Indicadores, Lado, LinkMl, PilulaSituacao, PrecosDaOferta, Vendas, fmtData } from './comum';
-import MetricasMl from './MetricasMl';
-import { cn } from '@/lib/utils';
+import { Botao, EstoqueOferta, Indicadores, Lado, PilulaSituacao, PrecosDaOferta, Vendas, fmtData } from './comum';
+import { BotaoMetricas, useMetricasMl } from './MetricasMl';
+import TabelaAnuncios from './TabelaAnuncios';
 
 // ─── A gaveta de uma oferta ─────────────────────────────────────────────────
 //
@@ -17,33 +17,12 @@ import { cn } from '@/lib/utils';
 
 const FASE_ROTULO = { simples: 'Produto', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
-/**
- * O SKU que o anúncio tem HOJE no Mercado Livre (lido na hora, ao abrir a
- * gaveta). Igual ao da oferta: discreto. Diferente: âmbar — é o anúncio ligado
- * à mão, ou à oferta errada. Sem SKU no ML: dito com todas as letras.
- */
-function SkuNoMl({ mlb, skus, skuOferta }) {
-    if (! mlb || ! (mlb in skus)) return null;
-
-    const sku = skus[mlb];
-    if (sku === null) {
-        return <span className="shrink-0 text-amber-300/80" title="Este anúncio não tem SKU no Mercado Livre." data-sku-ml="">sem SKU no ML</span>;
-    }
-
-    const igual = sku.trim().toLowerCase() === (skuOferta ?? '').trim().toLowerCase();
-
-    return (
-        <span className={cn('shrink-0 font-mono', igual ? 'text-white/55' : 'text-amber-300')} data-sku-ml={sku}
-            title={igual ? 'SKU do anúncio no Mercado Livre' : `SKU diferente do da oferta (${skuOferta})`}>
-            SKU {sku}
-        </span>
-    );
-}
-
 export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar, mlConectado = false, autoMetricas = false }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [erro, setErro] = useState(null);
     const [skus, setSkus] = useState({ mapa: {}, lendo: false, erro: null });
+    const metricas = useMetricasMl(mlConectado ? oferta?.id : null, autoMetricas);
+    const totalMetricas = (campo) => Object.values(metricas.estado?.metricas ?? {}).reduce((t, m) => t + (m[campo] ?? 0), 0);
 
     // O SKU de cada anúncio vem do ML ao abrir a gaveta (e de novo quando os
     // anúncios da oferta mudam). O mapa é por MLB — único na empresa —, então
@@ -78,7 +57,7 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
 
     return (
         <Sheet open={aberta} onOpenChange={(v) => { if (! v) { setConfirmandoExclusao(false); setErro(null); onFechar(); } }}>
-            <SheetContent className="overflow-y-auto">
+            <SheetContent className="overflow-y-auto sm:max-w-3xl">
                 {oferta && (
                     <div className="px-6 py-5 space-y-5 text-white" data-gaveta={oferta.id}>
                         <div className="pr-8">
@@ -127,42 +106,23 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                 {skus.lendo && <span className="text-[11.5px] text-white/35" data-lendo-skus>lendo os SKUs no Mercado Livre…</span>}
                                 {skus.erro && <span className="text-[11.5px] text-red-300/80">{skus.erro}</span>}
                             </div>
-                            <PrecosDaOferta precos={oferta.precos} vocabulario={vocabulario} className="mb-2 text-[12px]" />
+                            {oferta.precos?.invertido && <PrecosDaOferta precos={oferta.precos} vocabulario={vocabulario} className="mb-2 text-[12px]" />}
+                            {mlConectado && oferta.anuncios.some((a) => a.codigo_mlb) && (
+                                <div className="mb-1"><BotaoMetricas estado={metricas.estado} carregar={metricas.carregar} /></div>
+                            )}
                             {oferta.anuncios.length === 0
                                 ? <p className="text-[12.5px] text-white/40">Nenhum anúncio cadastrado. Publique em Clássico e Premium.</p>
                                 : (
-                                    <ul className="space-y-1.5">
-                                        {oferta.anuncios.map((a) => (
-                                            <li key={a.id} className={cn('rounded-lg border border-white/[0.07] px-3 py-2 text-[12.5px]', a.status === 'inativo' && 'opacity-50')} data-anuncio={a.id}>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-white/85">{vocabulario.tipos[a.tipo]}</span>
-                                                    {a.codigo_mlb
-                                                        ? <LinkMl mlb={a.codigo_mlb} className="text-white/55" />
-                                                        : <span className="font-mono text-white/55">sem MLB</span>}
-                                                    <span className="text-white/40">{vocabulario.status[a.status]}</span>
-                                                    <EstoqueAnuncio quantidade={a.estoque} full={a.estoque_full} />
-                                                    <Indicadores catalogos={a.catalogo ? 1 : 0} kitsVirtuais={a.kit_virtual ? 1 : 0} />
-                                                    <span className="ml-auto flex gap-1">
-                                                        <button type="button" onClick={() => onEditarAnuncio(oferta, a)} className="p-1 text-white/40 hover:text-white" aria-label="Editar anúncio"><Pencil size={13} /></button>
-                                                        <button type="button" onClick={() => excluirAnuncio(a)} className="p-1 text-white/40 hover:text-red-300" aria-label="Excluir anúncio"><Trash2 size={13} /></button>
-                                                    </span>
-                                                </div>
-                                                {(a.titulo || a.codigo_mlb in skus.mapa) && (
-                                                    <p className="mt-0.5 flex min-w-0 items-baseline gap-1.5 text-white/45">
-                                                        <SkuNoMl mlb={a.codigo_mlb} skus={skus.mapa} skuOferta={oferta.sku} />
-                                                        {a.titulo && a.codigo_mlb in skus.mapa && <span className="shrink-0 text-white/25">·</span>}
-                                                        {a.titulo && <span className="truncate">{a.titulo}</span>}
-                                                    </p>
-                                                )}
-                                                <DadosDoAnuncio ml={a.ml} className="mt-0.5 text-[11.5px]" />
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    <TabelaAnuncios oferta={oferta} vocabulario={vocabulario} skus={skus.mapa}
+                                        metricas={metricas.estado?.metricas ?? null}
+                                        onEditar={(a) => onEditarAnuncio(oferta, a)} onExcluir={excluirAnuncio} />
                                 )}
-                            {mlConectado && (
-                                <div className="mt-3">
-                                    <MetricasMl ofertaId={oferta.id} anuncios={oferta.anuncios} vocabulario={vocabulario} auto={autoMetricas} />
-                                </div>
+                            {metricas.estado?.metricas && (
+                                <p className="mt-2 text-[11.5px] text-white/45" data-metricas-total>
+                                    Últimos 7 dias: <strong className="text-white/80">{totalMetricas('visitas').toLocaleString('pt-BR')}</strong> visitas ·{' '}
+                                    <strong className="text-white/80">{totalMetricas('vendas').toLocaleString('pt-BR')}</strong> vendas
+                                    {metricas.estado.limitado && ' · nos 30 primeiros anúncios'}
+                                </p>
                             )}
                         </section>
 
