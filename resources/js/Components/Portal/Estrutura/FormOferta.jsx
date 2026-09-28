@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import Janela from './Janela';
-import { Botao, CLASSE_INPUT, Campo, Seletor } from './comum';
+import { Botao, CLASSE_INPUT, Campo, FotoProduto, Seletor } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Criar / editar oferta ──────────────────────────────────────────────────
@@ -125,12 +125,16 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         }
     }, [qtdCombo, itens, opcoes, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const produtosFiltrados = useMemo(() => {
+    // Os que casam com a busca, sem os já escolhidos. A lista mostra no máximo
+    // 120 — com 2.700 ofertas, o resto se acha refinando a busca.
+    const casados = useMemo(() => {
         const t = filtroProduto.trim().toLowerCase();
         const livres = simples.filter((o) => ! itens.some((i) => i.id === o.id));
 
-        return (t ? livres.filter((o) => `${o.sku} ${o.nome ?? ''}`.toLowerCase().includes(t)) : livres).slice(0, 200);
+        return t ? livres.filter((o) => `${o.sku} ${o.nome ?? ''}`.toLowerCase().includes(t)) : livres;
     }, [simples, itens, filtroProduto]);
+    const produtosFiltrados = casados.slice(0, 120);
+    const adicionar = (id) => setItens([...itens, { id, quantidade: 1 }]);
 
     const enviar = () => {
         const opcoesLote = {
@@ -182,103 +186,152 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         : modo === 'kit' ? 'Produtos diferentes juntos. Com mais unidades de algum item, vira combit.'
         : undefined;
 
-    return (
-        <Janela aberta={aberta} onFechar={() => onFechar(false)} titulo={titulo} descricao={descricao}>
-            <div className="space-y-3" data-form-oferta>
-                {ehCombo && (
-                    <Campo rotulo={`Quantas unidades de ${base ? nomeDe(editando ? porId[base.componentes[0]?.id] ?? base.componentes[0] : base) : ''}?`}
-                        erro={erros.componentes ?? erros.quantidades}
-                        dica={editando ? undefined : 'Uma ou várias, separadas por vírgula: 2, 3, 4, 5, 6 cria cinco combos de uma vez.'}>
-                        <input type={editando ? 'number' : 'text'} inputMode="numeric" value={qtdCombo}
-                            onChange={(e) => setQtdCombo(e.target.value)} className={CLASSE_INPUT} data-campo="quantidade" />
-                    </Campo>
-                )}
-
-                {emLote && (
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-previa-combos>
-                        <p className="text-[12px] text-white/45 mb-1.5">
-                            {novas.length ? `Serão criados ${novas.length} combo(s):` : 'Nenhum combo novo — todas essas quantidades já existem.'}
-                        </p>
-                        <ul className="space-y-0.5 text-[12.5px]">
-                            {qtds.map((n) => (
-                                <li key={n} className={existentes.includes(n) ? 'opacity-45' : undefined}>
-                                    <span className="font-mono text-white/85">{base.sku}-CB{n}</span>{' '}
-                                    <span className="text-white/45">· Combo {n} {nomeDe(base)}</span>
-                                    {existentes.includes(n) && <span className="ml-1.5 text-[11px] text-white/50">já existe</span>}
-                                </li>
-                            ))}
-                        </ul>
+    // Kit: a escolha dos produtos e os campos lado a lado, numa janela larga —
+    // compor kit é escolher entre centenas de SKUs parecidos (`01582` ×
+    // `01582full`), e isso se faz pela capa, com calma, não num select nativo.
+    const seletorKit = (
+        <div className="flex min-h-0 flex-col gap-2" data-seletor-kit>
+            <p className="text-[12.5px] font-medium text-white/70">Escolha os produtos</p>
+            {opcoes === undefined && <p className="text-[12.5px] text-white/40">Carregando produtos…</p>}
+            {opcoes !== undefined && (
+                <>
+                    <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)} autoFocus
+                            placeholder="Procurar por SKU ou nome…" className={cn(CLASSE_INPUT, 'pl-8')} data-busca-produto />
                     </div>
-                )}
-
-                {ehKit && (
-                    <div className="space-y-2">
-                        <p className="text-[12.5px] font-medium text-white/70">Produtos do kit</p>
-                        {opcoes === undefined && <p className="text-[12.5px] text-white/40">Carregando produtos…</p>}
-                        {itens.map((i, idx) => (
-                            <div key={i.id} className="flex items-center gap-2">
-                                <span className="flex-1 truncate text-[13px] text-white/85">
-                                    <span className="font-mono text-white/55">{porId[i.id]?.sku}</span> {porId[i.id]?.nome}
-                                </span>
-                                <input type="number" min={1} max={999} value={i.quantidade} aria-label="Quantidade"
-                                    onChange={(e) => setItens(itens.map((x, j) => (j === idx ? { ...x, quantidade: e.target.value } : x)))}
-                                    className={cn(CLASSE_INPUT, 'w-20')} />
-                                <button type="button" onClick={() => setItens(itens.filter((_, j) => j !== idx))}
-                                    className="text-white/40 hover:text-red-300" aria-label="Tirar do kit"><Trash2 size={15} /></button>
-                            </div>
+                    <ul className="max-h-[52vh] min-h-[12rem] space-y-1.5 overflow-y-auto pr-1">
+                        {produtosFiltrados.map((o) => (
+                            <li key={o.id}>
+                                <button type="button" onClick={() => adicionar(o.id)} data-produto-opcao={o.id}
+                                    className="flex w-full items-center gap-3 rounded-xl border border-white/[0.06] px-2.5 py-2 text-left hover:border-ecf-yellow/40 hover:bg-ecf-yellow/[0.04]">
+                                    <FotoProduto url={o.foto} className="h-11 w-11" />
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block font-mono text-[12px] text-white/55">{o.sku}</span>
+                                        <span className="block truncate text-[13px] text-white/85" title={o.nome ?? ''}>{o.nome}</span>
+                                    </span>
+                                    <Plus size={16} className="shrink-0 text-ecf-yellow" />
+                                </button>
+                            </li>
                         ))}
-                        {opcoes !== undefined && (
-                            <div className="flex gap-2">
-                                <input value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)}
-                                    placeholder="Procurar produto…" className={cn(CLASSE_INPUT, 'flex-1')} />
-                                <select value="" onChange={(e) => e.target.value && setItens([...itens, { id: Number(e.target.value), quantidade: 1 }])}
-                                    className={cn(CLASSE_INPUT, 'flex-1 [&>option]:bg-ecf-card')} aria-label="Adicionar produto">
-                                    <option value="">+ adicionar produto</option>
-                                    {produtosFiltrados.map((o) => <option key={o.id} value={o.id}>{o.sku}{o.nome ? ` — ${o.nome}` : ''}</option>)}
-                                </select>
-                            </div>
+                        {casados.length === 0 && (
+                            <li className="py-6 text-center text-[12.5px] text-white/40">
+                                {itens.length > 0 ? 'Nenhum outro produto com essa busca.' : 'Nenhum produto com essa busca.'}
+                            </li>
                         )}
-                        <p className="text-[12.5px]" data-fase-kit={faseKit ?? ''}>
-                            {faseKit === 'kit' && <span className="text-orange-300">Isto é um <strong>Kit</strong> — produtos diferentes, uma unidade de cada.</span>}
-                            {faseKit === 'combit' && <span className="text-amber-300">Isto é um <strong>Combit</strong> — kit com mais unidades de um item.</span>}
-                            {! faseKit && <span className="text-white/40">Escolha pelo menos dois produtos.</span>}
-                        </p>
-                        {erros.componentes && <p className="text-[12px] text-red-400">{erros.componentes}</p>}
-                    </div>
-                )}
+                    </ul>
+                    {casados.length > produtosFiltrados.length && (
+                        <p className="text-[11.5px] text-white/35">Mostrando {produtosFiltrados.length} de {casados.length} — refine a busca.</p>
+                    )}
+                </>
+            )}
+        </div>
+    );
 
-                {ehCombo && ! emLote && repetidas.length > 0 && (
-                    <p className="text-[12.5px] text-amber-300" data-combo-existe>
-                        Este produto já tem um combo de {repetidas[0]} unidades.
-                    </p>
-                )}
-
-                {! emLote && (<>
-                <Campo rotulo="SKU" erro={erros.sku} dica="O padrão é livre — só mantenha consistente e confira o limite do seu ERP.">
-                    <input value={sku} onChange={(e) => { setSku(e.target.value); setSkuMexido(true); }}
-                        className={cn(CLASSE_INPUT, 'font-mono')} data-campo="sku" />
-                </Campo>
-                <Campo rotulo="Nome do produto" erro={erros.nome}>
-                    <input value={nome} onChange={(e) => { setNome(e.target.value); setNomeMexido(true); }}
-                        className={CLASSE_INPUT} data-campo="nome" />
-                </Campo>
-                </>)}
-                <Campo rotulo="Logística" erro={erros.logistica}
-                    dica={ehKit ? 'Kit que vira multivolume: kit virtual do ML (várias etiquetas) ou transportadora/ME1.' : undefined}>
-                    <Seletor valor={logistica} onChange={setLogistica} opcoes={vocabulario.logisticas} vazio="Não informada" />
-                </Campo>
-                <Campo rotulo="Observações" erro={erros.observacoes}>
-                    <textarea rows={2} value={obs} onChange={(e) => setObs(e.target.value)} className={CLASSE_INPUT} />
-                </Campo>
-                {erros.fase && <p className="text-[12px] text-red-400">{erros.fase}</p>}
-
-                <div className="flex justify-end gap-2 pt-1">
-                    <Botao variante="fantasma" onClick={() => onFechar(false)}>Cancelar</Botao>
-                    <Botao variante="primario" onClick={enviar} disabled={enviando || (ehKit && ! faseKit) || (ehCombo && novas.length === 0)} data-acao="salvar-oferta">
-                        <Plus size={14} /> {editando ? 'Salvar' : emLote ? `Criar ${novas.length} combo(s)` : 'Criar oferta'}
-                    </Botao>
+    const escolhidosKit = (
+        <div className="space-y-2">
+            <p className="text-[12.5px] font-medium text-white/70">Produtos do kit</p>
+            {itens.length === 0 && <p className="text-[12.5px] text-white/35">Nenhum ainda — escolha ao lado.</p>}
+            {itens.map((i, idx) => (
+                <div key={i.id} className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] px-2.5 py-2" data-item-kit={i.id}>
+                    <FotoProduto url={porId[i.id]?.foto} className="h-10 w-10" />
+                    <span className="min-w-0 flex-1">
+                        <span className="block font-mono text-[12px] text-white/55">{porId[i.id]?.sku}</span>
+                        <span className="block truncate text-[13px] text-white/85" title={porId[i.id]?.nome ?? ''}>{porId[i.id]?.nome}</span>
+                    </span>
+                    <input type="number" min={1} max={999} value={i.quantidade} aria-label="Quantidade"
+                        onChange={(e) => setItens(itens.map((x, j) => (j === idx ? { ...x, quantidade: e.target.value } : x)))}
+                        className={cn(CLASSE_INPUT, 'w-20')} />
+                    <button type="button" onClick={() => setItens(itens.filter((_, j) => j !== idx))}
+                        className="text-white/40 hover:text-red-300" aria-label="Tirar do kit"><Trash2 size={15} /></button>
                 </div>
+            ))}
+            <p className="text-[12.5px]" data-fase-kit={faseKit ?? ''}>
+                {faseKit === 'kit' && <span className="text-orange-300">Isto é um <strong>Kit</strong> — produtos diferentes, uma unidade de cada.</span>}
+                {faseKit === 'combit' && <span className="text-amber-300">Isto é um <strong>Combit</strong> — kit com mais unidades de um item.</span>}
+                {! faseKit && <span className="text-white/40">Escolha pelo menos dois produtos.</span>}
+            </p>
+            {erros.componentes && <p className="text-[12px] text-red-400">{erros.componentes}</p>}
+        </div>
+    );
+
+    const campos = (
+        <>
+            {ehCombo && ! emLote && repetidas.length > 0 && (
+                <p className="text-[12.5px] text-amber-300" data-combo-existe>
+                    Este produto já tem um combo de {repetidas[0]} unidades.
+                </p>
+            )}
+
+            {! emLote && (<>
+            <Campo rotulo="SKU" erro={erros.sku} dica="O padrão é livre — só mantenha consistente e confira o limite do seu ERP.">
+                <input value={sku} onChange={(e) => { setSku(e.target.value); setSkuMexido(true); }}
+                    className={cn(CLASSE_INPUT, 'font-mono')} data-campo="sku" />
+            </Campo>
+            <Campo rotulo="Nome do produto" erro={erros.nome}>
+                <input value={nome} onChange={(e) => { setNome(e.target.value); setNomeMexido(true); }}
+                    className={CLASSE_INPUT} data-campo="nome" />
+            </Campo>
+            </>)}
+            <Campo rotulo="Logística" erro={erros.logistica}
+                dica={ehKit ? 'Kit que vira multivolume: kit virtual do ML (várias etiquetas) ou transportadora/ME1.' : undefined}>
+                <Seletor valor={logistica} onChange={setLogistica} opcoes={vocabulario.logisticas} vazio="Não informada" />
+            </Campo>
+            <Campo rotulo="Observações" erro={erros.observacoes}>
+                <textarea rows={2} value={obs} onChange={(e) => setObs(e.target.value)} className={CLASSE_INPUT} />
+            </Campo>
+            {erros.fase && <p className="text-[12px] text-red-400">{erros.fase}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+                <Botao variante="fantasma" onClick={() => onFechar(false)}>Cancelar</Botao>
+                <Botao variante="primario" onClick={enviar} disabled={enviando || (ehKit && ! faseKit) || (ehCombo && novas.length === 0)} data-acao="salvar-oferta">
+                    <Plus size={14} /> {editando ? 'Salvar' : emLote ? `Criar ${novas.length} combo(s)` : 'Criar oferta'}
+                </Botao>
             </div>
+        </>
+    );
+
+    return (
+        <Janela aberta={aberta} onFechar={() => onFechar(false)} titulo={titulo} descricao={descricao} largura={ehKit ? 'max-w-5xl' : undefined}>
+            {ehKit ? (
+                <div className="grid gap-5 lg:grid-cols-2" data-form-oferta>
+                    {seletorKit}
+                    <div className="min-w-0 space-y-3">
+                        {escolhidosKit}
+                        {campos}
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-3" data-form-oferta>
+                    {ehCombo && (
+                        <Campo rotulo={`Quantas unidades de ${base ? nomeDe(editando ? porId[base.componentes[0]?.id] ?? base.componentes[0] : base) : ''}?`}
+                            erro={erros.componentes ?? erros.quantidades}
+                            dica={editando ? undefined : 'Uma ou várias, separadas por vírgula: 2, 3, 4, 5, 6 cria cinco combos de uma vez.'}>
+                            <input type={editando ? 'number' : 'text'} inputMode="numeric" value={qtdCombo}
+                                onChange={(e) => setQtdCombo(e.target.value)} className={CLASSE_INPUT} data-campo="quantidade" />
+                        </Campo>
+                    )}
+
+                    {emLote && (
+                        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-previa-combos>
+                            <p className="text-[12px] text-white/45 mb-1.5">
+                                {novas.length ? `Serão criados ${novas.length} combo(s):` : 'Nenhum combo novo — todas essas quantidades já existem.'}
+                            </p>
+                            <ul className="space-y-0.5 text-[12.5px]">
+                                {qtds.map((n) => (
+                                    <li key={n} className={existentes.includes(n) ? 'opacity-45' : undefined}>
+                                        <span className="font-mono text-white/85">{base.sku}-CB{n}</span>{' '}
+                                        <span className="text-white/45">· Combo {n} {nomeDe(base)}</span>
+                                        {existentes.includes(n) && <span className="ml-1.5 text-[11px] text-white/50">já existe</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {campos}
+                </div>
+            )}
         </Janela>
     );
 }

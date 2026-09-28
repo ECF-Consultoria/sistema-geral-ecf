@@ -255,13 +255,19 @@ class EstruturaVisaoService
             ])->all();
     }
 
-    /** Ofertas enxutas para os seletores (vincular, compor kit). */
+    /**
+     * Ofertas enxutas para os seletores (vincular, compor kit), com a foto —
+     * escolher "o produto certo" entre 500 SKUs parecidos (`01582` ×
+     * `01582full`) é pela capa, não pelo código.
+     */
     public function opcoesDeOfertas(Company $empresa): array
     {
+        $fotos = $this->fotosDasOfertas($empresa);
+
         return EstruturaOferta::where('company_id', $empresa->id)
             ->orderBy('sku')
             ->get(['id', 'sku', 'nome', 'fase'])
-            ->map(fn ($o) => ['id' => $o->id, 'sku' => $o->sku, 'nome' => $o->nome, 'fase' => $o->fase])
+            ->map(fn ($o) => ['id' => $o->id, 'sku' => $o->sku, 'nome' => $o->nome, 'fase' => $o->fase, 'foto' => $fotos[$o->id] ?? null])
             ->all();
     }
 
@@ -432,42 +438,65 @@ class EstruturaVisaoService
     }
 
     /**
-     * A foto de cada bloco da página: a do primeiro anúncio que o acervo do ML
-     * conhece — do produto, senão de qualquer oferta do bloco. Só a página
-     * (25 blocos), numa consulta. `http://` do ML vira `https://`: o portal é
-     * https e o navegador bloquearia a imagem.
+     * A foto de cada bloco da página: a do produto, senão a de qualquer oferta
+     * do bloco (na ordem do bloco).
      *
      * @return array<int, string> id da oferta principal → URL
      */
     private function fotos(Company $empresa, EstruturaConjunto $conjunto, array $daPagina): array
     {
-        $mlbsPorBloco = [];
+        $ids = array_merge(...array_map(fn ($b) => $b['todas'], $daPagina ?: [['todas' => []]]));
+        $porOferta = $this->fotosDasOfertas($empresa, $ids);
+
+        $fotos = [];
         foreach ($daPagina as $b) {
             foreach ($b['todas'] as $id) {
-                foreach ($conjunto->oferta($id)['anuncios'] ?? [] as $a) {
-                    if ($a['codigo_mlb']) {
-                        $mlbsPorBloco[$b['principal']['id']][] = $a['codigo_mlb'];
-                    }
+                if (isset($porOferta[$id])) {
+                    $fotos[$b['principal']['id']] = $porOferta[$id];
+                    break;
                 }
             }
         }
 
-        if (! $mlbsPorBloco) {
+        return $fotos;
+    }
+
+    /**
+     * A foto de cada oferta: a do primeiro anúncio dela que o acervo do ML
+     * conhece. `http://` do ML vira `https://` — o portal é https e o
+     * navegador bloquearia a imagem. Sem `$ofertaIds`, todas da empresa (o
+     * seletor do kit); com, só essas (a página).
+     *
+     * @param  array<int, int>|null  $ofertaIds
+     * @return array<int, string> id da oferta → URL
+     */
+    private function fotosDasOfertas(Company $empresa, ?array $ofertaIds = null): array
+    {
+        if ($ofertaIds === []) {
             return [];
         }
 
-        $porMlb = MlAcervoItem::where('company_id', $empresa->id)
-            ->whereIn('ml_item_id', array_merge(...array_values($mlbsPorBloco)))
-            ->whereNotNull('thumbnail')
-            ->pluck('thumbnail', 'ml_item_id');
+        $anuncios = EstruturaAnuncio::query()
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_anuncios.oferta_id')
+            ->where('o.company_id', $empresa->id)
+            ->when($ofertaIds !== null, fn ($q) => $q->whereIn('estrutura_anuncios.oferta_id', $ofertaIds))
+            ->whereNotNull('estrutura_anuncios.codigo_mlb')
+            ->orderBy('estrutura_anuncios.id')
+            ->get(['estrutura_anuncios.oferta_id', 'estrutura_anuncios.codigo_mlb']);
+
+        $porMlb = [];
+        foreach ($anuncios->pluck('codigo_mlb')->unique()->chunk(1000) as $bloco) {
+            $porMlb += MlAcervoItem::where('company_id', $empresa->id)
+                ->whereIn('ml_item_id', $bloco->values()->all())
+                ->whereNotNull('thumbnail')
+                ->pluck('thumbnail', 'ml_item_id')
+                ->all();
+        }
 
         $fotos = [];
-        foreach ($mlbsPorBloco as $principal => $mlbs) {
-            foreach ($mlbs as $mlb) {
-                if (isset($porMlb[$mlb])) {
-                    $fotos[$principal] = preg_replace('#^http://#', 'https://', $porMlb[$mlb]);
-                    break;
-                }
+        foreach ($anuncios as $a) {
+            if (! isset($fotos[$a->oferta_id]) && isset($porMlb[$a->codigo_mlb])) {
+                $fotos[$a->oferta_id] = preg_replace('#^http://#', 'https://', $porMlb[$a->codigo_mlb]);
             }
         }
 

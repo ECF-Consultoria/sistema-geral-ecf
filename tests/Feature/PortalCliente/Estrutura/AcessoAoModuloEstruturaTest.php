@@ -164,6 +164,11 @@ class AcessoAoModuloEstruturaTest extends TestCase
                 ->where('estrutura.agenda.itens', fn ($itens) => collect($itens)->map(fn ($i) => $i['secao'].':'.$i['oferta']['sku'])->all()
                     === ['atrasadas:CAD-01-CB3', 'hoje:CAD-01-CB4', 'proximas:CAD-01'])
             );
+
+        // O seletor do kit mostra a mesma capa: escolher entre SKUs parecidos é pela foto.
+        $opcoes = collect(app(\App\Services\Portal\Estrutura\EstruturaVisaoService::class)->opcoesDeOfertas($empresa))->keyBy('sku');
+        $this->assertSame('https://http2.mlstatic.com/D_1-I.jpg', $opcoes['CAD-01']['foto']);
+        $this->assertNull($opcoes['MSA-MR']['foto']);
     }
 
     /**

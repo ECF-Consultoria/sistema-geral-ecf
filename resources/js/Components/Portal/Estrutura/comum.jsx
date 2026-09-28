@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, MoreHorizontal, Target, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, MoreHorizontal, Package, Target, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
@@ -121,6 +121,17 @@ export function LinkMl({ mlb, className }) {
             {mlb}<ExternalLink size={11} className="shrink-0" />
         </a>
     );
+}
+
+/**
+ * A capa do produto — a foto do primeiro anúncio que o acervo do ML conhece
+ * (servidor). Fundo branco: as fotos do ML são de produto recortado sobre
+ * branco e ficam "furadas" no tema escuro. Sem anúncio, um ícone neutro.
+ */
+export function FotoProduto({ url, className }) {
+    return url
+        ? <img src={url} alt="" loading="lazy" className={cn('h-11 w-11 shrink-0 rounded-lg bg-white object-contain', className)} />
+        : <span className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-white/25', className)}><Package size={18} /></span>;
 }
 
 export function Botao({ variante = 'secundario', className, children, ...props }) {

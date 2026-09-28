@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Package, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, Lado, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
+    AvisoFlash, Botao, CabecalhoEstrutura, FotoProduto, Indicadores, Lado, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
@@ -66,12 +66,6 @@ const ROTULO_OFERTA = (o) => ({ simples: unidades(o.unidades), combo: unidades(o
 
 /** O lado que falta — é nele que "Completar" abre o anúncio. */
 const LADO_QUE_FALTA = { falta_classico: 'classico', falta_premium: 'premium' };
-
-function Foto({ url }) {
-    return url
-        ? <img src={url} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-lg bg-white object-contain" />
-        : <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-white/25"><Package size={18} /></span>;
-}
 
 /**
  * Uma oferta dentro do produto aberto: o que é, os dois lados, o estado e a
@@ -177,7 +171,7 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
             <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-bloco"
                 className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.02] sm:px-4">
                 <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', COR_PIOR[piorCaso(bloco.resumo_bloco)])} aria-hidden />
-                <Foto url={bloco.foto} />
+                <FotoProduto url={bloco.foto} />
                 <span className="min-w-0 flex-1">
                     <span className="block truncate font-mono text-[14px] font-semibold text-white" data-titulo-bloco>{bloco.principal.sku}</span>
                     {bloco.principal.nome && <span className="block truncate text-[12.5px] text-white/55">{bloco.principal.nome}</span>}
