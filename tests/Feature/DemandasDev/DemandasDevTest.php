@@ -90,12 +90,14 @@ class DemandasDevTest extends TestCase
         $d = $this->demanda();
         $this->atualizar($d, 'em_desenvolvimento', ['data' => '2026-09-22', 'proxima_acao' => 'antiga']);
         // Registrada depois, mas com data mais antiga: a planilha usa a ordem das linhas, não a data.
-        $this->atualizar($d, 'em_validacao', ['data' => '2026-09-20', 'proxima_acao' => 'nova', 'bloqueado' => true, 'motivo_bloqueio' => 'Erlon']);
+        $this->atualizar($d, 'em_validacao', ['data' => '2026-09-20', 'proxima_acao' => 'nova', 'bloqueado' => true, 'motivo_bloqueio' => 'Erlon', 'feito' => 'Layout entregue para validação']);
 
         $l = $this->linha($d);
 
         $this->assertSame('em_validacao', $l['status']);
         $this->assertSame('nova', $l['proxima_acao']);
+        // O painel lista o que foi feito na última atualização (recorte "Concluídas" etc.).
+        $this->assertSame('Layout entregue para validação', $l['ultimo_feito']);
         $this->assertSame('2026-09-20', $l['ultima_atualizacao']);
         $this->assertTrue($l['bloqueado']);
         $this->assertSame('Erlon', $l['motivo_bloqueio']);
@@ -240,6 +242,36 @@ class DemandasDevTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertNull($d->atualizacoes()->sole()->motivo_bloqueio);
+    }
+
+    public function test_concluir_exige_o_que_foi_entregue_e_zera_a_proxima_acao(): void
+    {
+        $admin = $this->admin();
+        $d = $this->demanda();
+        $this->atualizar($d, 'em_desenvolvimento', ['feito' => 'Tela montada', 'proxima_acao' => 'validar com o Erlon']);
+
+        $this->actingAs($admin)
+            ->post("/dev/demandas/{$d->id}/atualizacoes", ['data' => '2026-09-22', 'status' => 'concluido', 'proxima_acao' => 'validar com o Erlon'])
+            ->assertSessionHasErrors('feito');
+
+        $this->actingAs($admin)
+            ->post("/dev/demandas/{$d->id}/atualizacoes", ['data' => '2026-09-22', 'status' => 'concluido', 'feito' => 'Filtro publicado', 'proxima_acao' => 'validar com o Erlon'])
+            ->assertSessionHasNoErrors();
+
+        $l = $this->linha($d);
+        $this->assertSame('concluido', $l['status']);
+        $this->assertNull($l['proxima_acao']);
+        $this->assertSame('Filtro publicado', $l['ultimo_feito']);
+    }
+
+    public function test_o_que_foi_feito_vem_da_ultima_atualizacao_com_texto(): void
+    {
+        $d = $this->demanda();
+        $this->atualizar($d, 'em_desenvolvimento', ['feito' => 'Filtros de data prontos']);
+        // Conclusão antiga, gravada antes da trava, sem texto: não apaga o que veio antes.
+        $this->atualizar($d, 'concluido');
+
+        $this->assertSame('Filtros de data prontos', $this->linha($d)['ultimo_feito']);
     }
 
     public function test_status_invalido_e_recusado(): void

@@ -175,7 +175,7 @@ export default function DemandasDevIndex({
                 )}
                 {aba === 'tickets' && equipe && <Chamados chamados={chamados} eu={eu} onAbrir={abrirChamado} />}
                 {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} hoje={hoje} onAbrir={abrir} />}
-                {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} />}
+                {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} onAbrir={abrir} />}
                 {aba === 'reunioes' && (
                     <Reunioes
                         reunioes={reunioes}

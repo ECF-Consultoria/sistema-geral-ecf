@@ -102,24 +102,30 @@ export function AtualizacaoDialog({ demanda, hoje, onClose }) {
                         </div>
                     </Campo>
 
-                    <Campo label="O que foi feito" erro={errors.feito}>
+                    <Campo
+                        label={data.status === 'concluido' ? 'O que foi entregue (obrigatório)' : 'O que foi feito'}
+                        erro={errors.feito}
+                        dica={data.status === 'concluido' ? 'Aparece no painel em "Concluídas" e no histórico da demanda.' : null}
+                    >
                         <textarea
                             rows={3}
                             value={data.feito}
                             onChange={(e) => setData('feito', e.target.value)}
-                            placeholder="O que andou nesta demanda hoje"
+                            placeholder={data.status === 'concluido' ? 'O que ficou pronto e onde dá para ver' : 'O que andou nesta demanda hoje'}
                             className={inputClasse}
                             data-autofocus
                         />
                     </Campo>
 
-                    <Campo label="Próxima ação" erro={errors.proxima_acao} dica="O que vem a seguir — aparece na fila até a próxima atualização.">
-                        <input
-                            value={data.proxima_acao}
-                            onChange={(e) => setData('proxima_acao', e.target.value)}
-                            className={inputClasse}
-                        />
-                    </Campo>
+                    {!['concluido', 'cancelado'].includes(data.status) && (
+                        <Campo label="Próxima ação" erro={errors.proxima_acao} dica="O que vem a seguir — aparece na fila até a próxima atualização.">
+                            <input
+                                value={data.proxima_acao}
+                                onChange={(e) => setData('proxima_acao', e.target.value)}
+                                className={inputClasse}
+                            />
+                        </Campo>
+                    )}
 
                     <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
                         <label className="flex cursor-pointer items-center gap-2.5">

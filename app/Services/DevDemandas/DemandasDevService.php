@@ -48,7 +48,7 @@ class DemandasDevService
     public function demandasVisiveis(User $user): Collection
     {
         return DevDemanda::query()
-            ->with(['responsavel:id,name', 'ultimaAtualizacao', 'chamadoDeOrigem:id,codigo,dev_demanda_id'])
+            ->with(['responsavel:id,name', 'ultimaAtualizacao', 'ultimoFeito', 'chamadoDeOrigem:id,codigo,dev_demanda_id'])
             ->withCount('atualizacoes')
             ->when(! $user->isAdmin(), fn ($q) => $q->where('responsavel_id', $user->id))
             ->orderBy('codigo')
@@ -60,7 +60,7 @@ class DemandasDevService
      *
      * @return array{id:int, codigo:string, titulo:string, area:?string, escopo:?string,
      *   responsavel:?array, prioridade:int, data_entrada:?string, prazo:?string,
-     *   observacoes:?string, status:string, proxima_acao:?string, ultima_atualizacao:?string,
+     *   observacoes:?string, status:string, proxima_acao:?string, ultimo_feito:?string, ultima_atualizacao:?string,
      *   bloqueado:bool, motivo_bloqueio:?string, dias_atraso:int, situacao:string,
      *   faixa_fila:int, total_atualizacoes:int, encerrada:bool}
      */
@@ -82,6 +82,9 @@ class DemandasDevService
             'status'             => $d->statusAtual(),
             // Sem atualização nenhuma, a planilha pedia "Registrar 1ª atualização" — a tela mostra o mesmo.
             'proxima_acao'       => $ultima?->proxima_acao,
+            // O que foi feito — da última atualização que tem texto. É o que o painel mostra ao
+            // abrir um recorte (ex.: "Concluídas": qual demanda e o que entregou).
+            'ultimo_feito'       => $d->ultimoFeito?->feito,
             'ultima_atualizacao' => $ultima?->data?->toDateString(),
             'bloqueado'          => $d->estaBloqueada(),
             'motivo_bloqueio'    => $ultima?->bloqueado ? $ultima->motivo_bloqueio : null,

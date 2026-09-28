@@ -56,10 +56,23 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                                     <span><strong className="font-semibold">Bloqueada:</strong> {demanda.motivo_bloqueio || 'sem motivo registrado'}</span>
                                 </div>
                             )}
-                            <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Próxima ação</div>
-                            <div className={cn('mt-0.5 text-[13.5px]', demanda.proxima_acao ? 'text-white/90' : 'italic text-white/40')}>
-                                {demanda.proxima_acao || 'Registrar 1ª atualização'}
-                            </div>
+                            {demanda.encerrada ? (
+                                <>
+                                    <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                                        {demanda.status === 'concluido' ? 'Concluída' : 'Cancelada'} em {fmtData(demanda.ultima_atualizacao, hoje)}
+                                    </div>
+                                    <div className={cn('mt-0.5 whitespace-pre-line text-[13.5px]', demanda.ultimo_feito ? 'text-white/90' : 'italic text-white/40')}>
+                                        {demanda.ultimo_feito || 'Sem descrição do que foi feito.'}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Próxima ação</div>
+                                    <div className={cn('mt-0.5 text-[13.5px]', demanda.proxima_acao ? 'text-white/90' : 'italic text-white/40')}>
+                                        {demanda.proxima_acao || 'Registrar 1ª atualização'}
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {demanda.escopo && (

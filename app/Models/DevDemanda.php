@@ -129,6 +129,16 @@ class DevDemanda extends Model
         return $this->hasOne(DevDemandaAtualizacao::class, 'dev_demanda_id')->latestOfMany('id');
     }
 
+    /**
+     * A última atualização que tem "o que foi feito" escrito. Uma conclusão registrada
+     * sem texto não apaga o que foi contado antes — é isso que o painel mostra.
+     */
+    public function ultimoFeito(): HasOne
+    {
+        return $this->hasOne(DevDemandaAtualizacao::class, 'dev_demanda_id')
+            ->ofMany(['id' => 'max'], fn ($q) => $q->whereNotNull('feito')->where('feito', '!=', ''));
+    }
+
     /** Chamado que originou esta demanda (quando veio de "Criar demanda" num chamado). */
     public function chamadoDeOrigem(): HasOne
     {

@@ -135,23 +135,27 @@ class DevDemandaController extends Controller
         $dados = $request->validate([
             'data'              => ['required', 'date'],
             'status'            => ['required', Rule::in(array_keys(DevDemanda::STATUS_LABELS))],
-            'feito'             => ['nullable', 'string', 'max:5000'],
+            // Concluir sem dizer o que foi entregue deixava o painel sem resposta para "qual foi?".
+            'feito'             => ['nullable', 'required_if:status,' . DevDemanda::STATUS_CONCLUIDO, 'string', 'max:5000'],
             'proxima_acao'      => ['nullable', 'string', 'max:1000'],
             'bloqueado'         => ['boolean'],
             'motivo_bloqueio'   => ['nullable', 'required_if:bloqueado,true', 'string', 'max:1000'],
             'previsao_revisada' => ['nullable', 'date'],
         ], [
             'motivo_bloqueio.required_if' => 'Diga o motivo do bloqueio ou de quem depende.',
+            'feito.required_if'           => 'Conte o que foi entregue — é o que aparece no painel e no histórico.',
         ]);
 
         $bloqueado = (bool) ($dados['bloqueado'] ?? false);
+        // Demanda encerrada não tem próxima ação (o formulário vinha com a anterior preenchida).
+        $encerrando = in_array($dados['status'], DevDemanda::STATUS_ENCERRADOS, true);
 
         $demanda->atualizacoes()->create([
             'user_id'           => $request->user()->id,
             'data'              => $dados['data'],
             'status'            => $dados['status'],
             'feito'             => $dados['feito'] ?? null,
-            'proxima_acao'      => $dados['proxima_acao'] ?? null,
+            'proxima_acao'      => $encerrando ? null : ($dados['proxima_acao'] ?? null),
             'bloqueado'         => $bloqueado,
             'motivo_bloqueio'   => $bloqueado ? ($dados['motivo_bloqueio'] ?? null) : null,
             'previsao_revisada' => $dados['previsao_revisada'] ?? null,
