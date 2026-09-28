@@ -241,13 +241,47 @@ class AcessoAoModuloEstruturaTest extends TestCase
                 ->where('estrutura.blocos.1.vendas', 15)
                 ->where('estrutura.blocos.1.ofertas.0.vendas', 15)
                 ->where('estrutura.blocos.1.ofertas.0.precos', ['classico' => 199.9, 'premium' => 149.9, 'invertido' => true])
-                ->where('estrutura.blocos.1.ofertas.0.anuncios.1.ml', ['vendas' => 5, 'preco' => 149.9, 'fotos' => 2, 'alertas' => ['foto_insuficiente']])
+                ->where('estrutura.blocos.1.ofertas.0.anuncios.1.ml', ['miniatura' => null, 'vendas' => 5, 'preco' => 149.9, 'fotos' => 2, 'alertas' => ['foto_insuficiente']])
                 ->where('estrutura.blocos.0.ofertas.0.precos', ['classico' => null, 'premium' => 899, 'invertido' => false])   // no JSON, 899.0 vira 899
             );
 
         // A proposta da agenda segue a mesma ordem: a Mesa (falta Clássico) primeiro.
         $proposta = app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class)->proposta($empresa);
         $this->assertSame('MSA-MR', $proposta[0]['sku']);
+    }
+
+    /**
+     * A estação do produto: a família inteira (produto + combos, ou o kit e
+     * seus componentes) numa resposta, independente do filtro da lista.
+     */
+    public function test_estacao_traz_a_familia_inteira(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        // Pela CB3 chega-se ao produto CAD-01 com os 5 combos, na ordem das unidades.
+        $r = $sessao->getJson(route('portal.auth.estrutura.ofertas.estacao', $ofertas['CAD-01-CB3']->id))->assertOk()->json();
+        $this->assertSame('CAD-01', $r['principal']['sku']);
+        $this->assertFalse($r['kit']);
+        $this->assertSame(['CAD-01', 'CAD-01-CB2', 'CAD-01-CB3', 'CAD-01-CB4', 'CAD-01-CB5', 'CAD-01-CB6'], array_column($r['ofertas'], 'sku'));
+        $this->assertSame([2, 3, 4, 5, 6], $r['quantidades_combo']);
+        $this->assertEqualsCanonicalizing(['MSA-MR+CAD-01-KIT', 'MSA-MR+CAD-01-CBT4'], array_column($r['tambem_em'], 'sku'));
+        $this->assertSame('ok', $r['ofertas'][0]['situacao']);
+        $this->assertCount(2, $r['ofertas'][0]['anuncios']);
+
+        // O kit: ele mesmo, com os componentes e a situação de cada um.
+        $k = $sessao->getJson(route('portal.auth.estrutura.ofertas.estacao', $ofertas['MSA-MR+CAD-01-KIT']->id))->json();
+        $this->assertTrue($k['kit']);
+        $this->assertSame(['MSA-MR+CAD-01-KIT'], array_column($k['ofertas'], 'sku'));
+        $this->assertSame([['MSA-MR', 1, 'falta_classico'], ['CAD-01', 1, 'ok']], array_map(fn ($c) => [$c['sku'], $c['quantidade'], $c['situacao']], $k['componentes']));
+
+        // Oferta de outra empresa: 404, como toda rota do módulo.
+        $outra = $this->empresaDoGabarito();
+        $alheia = $this->listaDoGabarito($outra, $this->atorCliente($outra))['CAD-01'];
+        $sessao->getJson(route('portal.auth.estrutura.ofertas.estacao', $alheia->id))->assertNotFound();
     }
 
     /**

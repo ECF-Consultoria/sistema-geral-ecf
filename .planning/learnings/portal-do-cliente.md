@@ -782,6 +782,27 @@ fotos e alertas vêm do acervo (100% preenchidos). Estoque é FAIXA (pares
 Clássico+Premium do mesmo SKU têm estoques próprios); nada de "dá para montar
 N kits" — estoque no Full não está na mão do seller (usuário).
 
+**A estação do produto substituiu a gaveta (28/09)** — o usuário: "o painel
+lateral limita muito; não dá gráfico, não dá para ver as fotos". Recorte =
+FAMÍLIA (produto + combos, ou kit + componentes), numa resposta só
+(`ofertas.estacao`), relida a cada escrita (prop `versao` = `estrutura`).
+Clássico e Premium são colunas lado a lado — a régua vira layout; lado que
+falta = coluna vazia com a ação. Inspetor à direita: fotos (multiget com
+`pictures`, junto com o SKU — `anuncios-ml` GET), série de visitas do
+anúncio. Decisões que não se deduzem:
+- Visitas em PARALELO: `MercadoLivreService::getMany()` (Http::pool, lotes de
+  10, falha refeita pelo `get()` de sempre). Método NOVO; os existentes não
+  mudaram. 30 anúncios: ~1 s em vez de 12 s.
+- Vendas de 7 dias: pedidos da LOJA, pré-aquecidos por
+  `AquecerPedidosMlEstruturaJob` (fila high) ao abrir a página; a resposta das
+  métricas sai com `vendas_prontas: false` e a tela consulta de novo a cada
+  3 s. Trava `estrutura:vendas7d-aquecendo` (Cache::add, 5 min) evita 2 jobs.
+- `?abrir=ID&metricas=1` (da Jardinagem): a limpeza da URL precisa de
+  `setTimeout` — o Inertia regrava a URL logo depois da montagem e desfazia o
+  `replaceState` síncrono.
+- No celular, tocar no MLB do card abre o ML e NÃO seleciona o card (é o
+  `stopPropagation` do `LinkMl`) — tocar na foto/título seleciona.
+
 **A prévia com ofertas que ainda não existem**: a colagem casaria os anúncios
 contra ofertas reais e jogaria tudo em "aguardando oferta". `previa()` aceita
 `$skusFuturos` (id negativo, nunca chega ao `executar()`); a confirmação cria

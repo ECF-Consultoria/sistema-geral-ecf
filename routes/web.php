@@ -225,8 +225,10 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:120,1,estrutura.anuncios_ml.buscar')->name('portal.auth.estrutura.anuncios_ml.buscar');
     Route::post('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'ligarAnuncioMl'])
         ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.ligar')->name('portal.auth.estrutura.anuncios_ml.ligar');
-    Route::get('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'skusAnunciosMl'])
-        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.skus')->name('portal.auth.estrutura.anuncios_ml.skus');
+    Route::get('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'detalhesAnunciosMl'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.detalhes')->name('portal.auth.estrutura.anuncios_ml.detalhes');
+    Route::get('/estrutura/ofertas/{oferta}/estacao', [PortalEstruturaController::class, 'estacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.ofertas.estacao')->name('portal.auth.estrutura.ofertas.estacao');
     Route::get('/estrutura/ofertas/{oferta}/metricas-ml', [PortalEstruturaController::class, 'metricasAnunciosMl'])
         ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.anuncios_ml.metricas')->name('portal.auth.estrutura.anuncios_ml.metricas');
     Route::post('/estrutura/colagem/previa', [PortalEstruturaController::class, 'previaColagem'])

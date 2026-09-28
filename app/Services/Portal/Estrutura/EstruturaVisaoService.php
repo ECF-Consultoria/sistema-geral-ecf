@@ -245,6 +245,55 @@ class EstruturaVisaoService
         return $resultado;
     }
 
+    /**
+     * A estação do produto: a família inteira — o produto e os combos dele, ou
+     * o kit e seus componentes — com cada oferta serializada como na página
+     * (anúncios com dados do acervo, estoque, vendas, preços, agenda). Uma
+     * resposta só, independente do filtro da lista; a tela relê depois de
+     * cada escrita. 404 se a oferta não é desta empresa.
+     */
+    public function estacao(Company $empresa, int $ofertaId): array
+    {
+        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+
+        $bloco = collect($conjunto->blocos())->first(fn ($b) => in_array($ofertaId, $b['ofertas'], true));
+        abort_if($bloco === null, 404);
+
+        $ids = $bloco['ofertas'];
+        $acervo = $this->acervoDasOfertas($empresa, $ids);
+        $repetidos = $conjunto->skusRepetidos();
+        $usoEmKits = $conjunto->usoEmKits();
+        $agenda = EstruturaAgendaItem::whereIn('oferta_id', $ids)->orderBy('data')->orderBy('id')->get()->groupBy('oferta_id');
+        $principal = $conjunto->oferta($bloco['principal']);
+
+        $foto = null;
+        foreach ($ids as $id) {
+            if (isset($acervo['fotos'][$id])) {
+                $foto = $acervo['fotos'][$id];
+                break;
+            }
+        }
+
+        $lado = fn (array $o) => [...$this->resumo($o), 'unidades' => $o['unidades'], 'situacao' => $o['situacao'], 'classicos' => $o['classicos'], 'premiums' => $o['premiums']];
+
+        return [
+            'principal' => [...$this->resumo($principal), 'situacao' => $principal['situacao']],
+            'kit'       => in_array($principal['fase'], [EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT], true),
+            'foto'      => $foto,
+            'vendas'    => array_sum(array_map(fn ($id) => $acervo['vendas'][$id] ?? 0, $ids)),
+            'estoque'   => $acervo['estoques'][$principal['id']] ?? null,
+            // Kit: os produtos que o compõem, com a situação de cada um.
+            'componentes' => array_values(array_filter(array_map(fn ($c) => ($o = $conjunto->oferta($c['id'])) ? [...$lado($o), 'quantidade' => $c['quantidade']] : null, $principal['componentes']))),
+            // Produto: os kits/combits em que entra.
+            'tambem_em' => array_values(array_filter(array_map(fn ($id) => ($o = $conjunto->oferta($id)) ? $lado($o) : null, $usoEmKits[$principal['id']] ?? []))),
+            'quantidades_combo' => array_values(array_filter(array_map(
+                fn ($id) => $conjunto->oferta($id)['fase'] === EstruturaOferta::FASE_COMBO ? ($conjunto->oferta($id)['componentes'][0]['quantidade'] ?? null) : null,
+                array_slice($ids, 1),
+            ))),
+            'ofertas'   => array_map(fn ($id) => $this->oferta($conjunto->oferta($id), $conjunto, $repetidos, $usoEmKits, $agenda[$id] ?? collect(), $acervo), $ids),
+        ];
+    }
+
     /** As linhas da espera, para o diálogo "Resolver". */
     public function espera(Company $empresa): array
     {
@@ -525,6 +574,7 @@ class EstruturaVisaoService
                 ->get(['ml_item_id', 'thumbnail', 'available_quantity', 'shipping', 'sold_quantity', 'price', 'fotos_count', 'motivos'])
                 ->each(function (MlAcervoItem $i) use (&$fotoMlb, &$qtdMlb, &$fullMlb, &$dadosMlb) {
                     $dadosMlb[$i->ml_item_id] = [
+                        'miniatura' => $i->thumbnail ? preg_replace('#^http://#', 'https://', $i->thumbnail) : null,
                         'vendas'  => (int) ($i->sold_quantity ?? 0),
                         'preco'   => $i->price !== null ? (float) $i->price : null,
                         'fotos'   => (int) $i->fotos_count,

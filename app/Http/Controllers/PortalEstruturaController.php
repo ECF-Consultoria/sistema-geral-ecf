@@ -60,6 +60,10 @@ class PortalEstruturaController extends Controller
         $busca = (string) $request->query('q', '');
         $pagina = (int) $request->query('pagina', 1);
 
+        // Pré-aquece a parte lenta das métricas (os pedidos da loja) na fila
+        // high: quando a estação do produto abrir, ela costuma já estar pronta.
+        $this->anunciosMl->aquecerVendas7d($empresa);
+
         return Inertia::render('Portal/Estrutura', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA, PortalContexto::ator()),
             'estrutura'   => $this->visao->paginaOfertas($empresa, $filtro, $busca, $pagina),
@@ -270,10 +274,16 @@ class PortalEstruturaController extends Controller
         return back()->with('success', EstruturaAnuncio::TIPOS[$anuncio->tipo]." {$anuncio->codigo_mlb} ligado a {$anuncio->oferta->sku}.");
     }
 
-    /** O SKU de cada anúncio da oferta no ML, para a gaveta conferir. */
-    public function skusAnunciosMl(int $oferta)
+    /** A estação do produto: a família inteira, com tudo o que a página sabe de cada oferta. */
+    public function estacao(int $oferta)
     {
-        return response()->json($this->anunciosMl->skusDaOferta($this->oferta($oferta)));
+        return response()->json($this->visao->estacao(PortalContexto::empresa(), $this->oferta($oferta)->id));
+    }
+
+    /** O SKU e as fotos de cada anúncio da oferta no ML, para a estação. */
+    public function detalhesAnunciosMl(int $oferta)
+    {
+        return response()->json($this->anunciosMl->detalhesDaOferta($this->oferta($oferta)));
     }
 
     /** Visitas e vendas de 7 dias e buy box de cada anúncio da oferta, lidos no ML. */

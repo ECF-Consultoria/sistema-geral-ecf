@@ -2,6 +2,7 @@
 
 namespace App\Services\Portal\Estrutura;
 
+use App\Jobs\AquecerPedidosMlEstruturaJob;
 use App\Jobs\ImportarAnunciosMlEstruturaJob;
 use App\Models\Company;
 use App\Models\EstruturaAnuncio;
@@ -388,13 +389,13 @@ class AnunciosMercadoLivreService
      * @param  array<int, string>  $ids
      * @return array<string, array> MLB → corpo
      */
-    private function multiget(Company $empresa, array $ids): array
+    private function multiget(Company $empresa, array $ids, string $campos = self::CAMPOS): array
     {
         $porId = [];
         $pedidos = array_flip($ids);
 
         foreach (array_chunk($ids, 20) as $lote) {
-            $resposta = $this->ml->get($empresa, '/items', ['ids' => implode(',', $lote), 'attributes' => self::CAMPOS]);
+            $resposta = $this->ml->get($empresa, '/items', ['ids' => implode(',', $lote), 'attributes' => $campos]);
             foreach ($resposta as $envelope) {
                 $id = $envelope['body']['id'] ?? null;
                 if (($envelope['code'] ?? null) === 200 && $id !== null && isset($pedidos[$id])) {
@@ -645,47 +646,62 @@ class AnunciosMercadoLivreService
             ->implode("\n");
     }
 
-    // ═══ O SKU de cada anúncio, na gaveta ═══════════════════════════════════
+    // ═══ A estação: SKU e fotos de cada anúncio ═════════════════════════════
+
+    /** Quantos anúncios de uma oferta a estação detalha no ML (2 multigets). */
+    private const MAX_ANUNCIOS_DETALHES = 40;
 
     /**
-     * O SKU que cada anúncio da oferta tem HOJE no Mercado Livre — para a
-     * pessoa conferir que os anúncios da oferta são mesmo daquele produto. SKU
-     * diferente do da oferta é o anúncio ligado à mão (ou à oferta errada).
+     * O que a estação precisa de cada anúncio e o acervo NÃO guarda: o SKU que
+     * ele tem HOJE no ML (conferir que o anúncio é mesmo deste produto) e as
+     * fotos (o acervo só tem a miniatura). Um multiget traz os dois: 40
+     * anúncios em 2 chamadas de ~0,1 s (medido na #131, 28/09). 30 min de
+     * cache por conjunto de MLBs.
      *
-     * Lido na hora, não gravado: guardar o SKU seria coluna nova em
-     * `estrutura_anuncios`, tabela com dado em produção (fase GSD
-     * obrigatória), e o SKU no ML pode mudar depois. Dez minutos de cache por
-     * conjunto de MLBs — reabrir a gaveta não bate na API de novo, e anúncio
-     * novo na oferta muda a chave.
+     * Lido, não gravado: guardar seria coluna nova em `estrutura_anuncios`,
+     * tabela com dado em produção (fase GSD obrigatória) — e o SKU no ML muda.
      *
-     * @return array{conectado: bool, skus: array<string, ?string>, erro?: string}
-     *   `skus`: MLB → SKU (`null` = o anúncio não tem SKU no ML). MLB que o ML
-     *   não devolveu (encerrado e apagado) fica de fora.
+     * @return array{conectado: bool, anuncios: array<string, array{sku: ?string, fotos: array<int, string>}>, erro?: string}
+     *   `sku` null = o anúncio não tem SKU no ML. MLB que o ML não devolveu
+     *   (encerrado e apagado) fica de fora.
      */
-    public function skusDaOferta(EstruturaOferta $oferta): array
+    public function detalhesDaOferta(EstruturaOferta $oferta): array
     {
         $empresa = $oferta->company;
 
         if (! self::conectado($empresa)) {
-            return ['conectado' => false, 'skus' => []];
+            return ['conectado' => false, 'anuncios' => []];
         }
 
         $mlbs = $oferta->anuncios()->whereNotNull('codigo_mlb')->orderBy('id')
-            ->limit(self::MAX_SKUS_GAVETA)->pluck('codigo_mlb')->unique()->values()->all();
+            ->limit(self::MAX_ANUNCIOS_DETALHES)->pluck('codigo_mlb')->unique()->values()->all();
 
         if (! $mlbs) {
-            return ['conectado' => true, 'skus' => []];
+            return ['conectado' => true, 'anuncios' => []];
         }
 
         try {
-            $skus = $this->skusDeMlbs($empresa, $mlbs);
-        } catch (\Throwable $e) {
-            Log::warning("[Estrutura] SKUs da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            $anuncios = Cache::remember('estrutura:detalhes-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(30), function () use ($empresa, $mlbs) {
+                $saida = [];
+                foreach ($this->multiget($empresa, $mlbs, self::CAMPOS.',pictures') as $mlb => $corpo) {
+                    $saida[$mlb] = [
+                        'sku'   => self::skuDoAnuncio($corpo),
+                        'fotos' => array_values(array_filter(array_map(
+                            fn ($f) => $f['secure_url'] ?? (isset($f['url']) ? preg_replace('#^http://#', 'https://', $f['url']) : null),
+                            $corpo['pictures'] ?? [],
+                        ))),
+                    ];
+                }
 
-            return ['conectado' => true, 'skus' => [], 'erro' => 'Não foi possível ler os SKUs no Mercado Livre agora.'];
+                return $saida;
+            });
+        } catch (\Throwable $e) {
+            Log::warning("[Estrutura] detalhes da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return ['conectado' => true, 'anuncios' => [], 'erro' => 'Não foi possível ler os anúncios no Mercado Livre agora.'];
         }
 
-        return ['conectado' => true, 'skus' => $skus];
+        return ['conectado' => true, 'anuncios' => $anuncios];
     }
 
     /**
@@ -711,10 +727,13 @@ class AnunciosMercadoLivreService
         });
     }
 
-    // ═══ Métricas dos últimos 7 dias (Jardinagem) ═══════════════════════════
+    // ═══ Métricas: visitas (série de 30 dias), vendas de 7 dias e buy box ═══
 
-    /** Quantos anúncios de uma oferta as métricas cobrem por vez (até 3 chamadas cada). */
+    /** Quantos anúncios de uma oferta as métricas cobrem por vez. */
     private const MAX_ANUNCIOS_METRICAS = 30;
+
+    /** A série de visitas: 30 dias, dia a dia — o gráfico Clássico × Premium. */
+    public const DIAS_SERIE = 30;
 
     /**
      * Status do `price_to_win` que a tela traduz. `competing` existe na API
@@ -729,32 +748,37 @@ class AnunciosMercadoLivreService
     ];
 
     /**
-     * "7 dias depois, olhe as métricas e ajuste" (regra de ouro da aula): as
-     * visitas e as vendas de cada anúncio da oferta nos últimos 7 dias, e o
-     * buy box dos que estão no catálogo — lido no ML na hora, sob demanda.
+     * "7 dias depois, olhe as métricas e ajuste" (regra de ouro da aula), e a
+     * comparação Clássico × Premium que o método pede: por anúncio, a série de
+     * visitas dos últimos 30 dias (dia a dia), as visitas e as vendas dos
+     * últimos 7, e o buy box do que está no catálogo.
      *
      * Na hora porque o acervo não tem: a camada cara da Fase 134 não preenche
-     * visitas nem buy box na #131 (0%, medido 28/09). Endpoints medidos:
-     * `/items/{id}/visits/time_window?last=7&unit=day` (0,1 s, uma chamada por
-     * anúncio — o lote de visitas é recusado) e
-     * `/items/{id}/price_to_win?version=v2` (só catálogo).
+     * visitas nem buy box na #131 (0%, medido 28/09).
      *
-     * As VENDAS não são por anúncio: a primeira versão fazia um
-     * `/orders/search?item=` por anúncio e levou 17 s numa oferta de 30
-     * anúncios. Agora são os pedidos da LOJA nos 7 dias, paginados uma vez e
-     * guardados 30 min para todas as ofertas ({@see self::vendas7dDaLoja()}).
-     * Teto de 30 anúncios por oferta (ativos e pausados primeiro) e 30 min de
-     * cache. Falha de um anúncio vira `null` naquele número, não derruba os
-     * outros.
+     * - Visitas: `/items/{id}/visits/time_window?last=30&unit=day`, uma
+     *   chamada por anúncio (o lote é recusado) — em PARALELO
+     *   (`MercadoLivreService::getMany`): 30 anúncios em ~1 s, e não 12 s em
+     *   série. A mesma resposta dá a série (gráfico) e os 7 dias (Jardinagem).
+     *   Buy box na mesma leva, só para catálogo. 30 min de cache.
+     * - Vendas: dos pedidos da LOJA nos 7 dias, pré-aquecidos por
+     *   `AquecerPedidosMlEstruturaJob` (fila high) ao abrir a página. Sem o
+     *   cache, a resposta sai SEM vendas (`vendas_prontas: false`) e dispara o
+     *   job; a tela consulta de novo até chegar — são 14 s na #131 (2.442
+     *   pedidos), que não podem travar o resto.
      *
-     * @return array{conectado: bool, metricas: array<string, array{visitas: ?int, vendas: ?int, buybox: ?array}>, limitado?: bool}
+     * Teto de 30 anúncios por oferta (ativos e pausados primeiro). Falha de
+     * um anúncio vira `null` naquele número, não derruba os outros.
+     *
+     * @return array{conectado: bool, vendas_prontas: bool, dias_serie: int, metricas: array<string, array{visitas: ?int, visitas_30d: ?int, serie: ?array<int, array{data: string, visitas: int}>, vendas: ?int, buybox: ?array}>, limitado?: bool}
      */
     public function metricasDaOferta(EstruturaOferta $oferta): array
     {
         $empresa = $oferta->company;
+        $base = ['conectado' => self::conectado($empresa), 'vendas_prontas' => false, 'dias_serie' => self::DIAS_SERIE, 'metricas' => []];
 
-        if (! self::conectado($empresa)) {
-            return ['conectado' => false, 'metricas' => []];
+        if (! $base['conectado']) {
+            return $base;
         }
 
         $anuncios = $oferta->anuncios()->whereNotNull('codigo_mlb')
@@ -764,58 +788,127 @@ class AnunciosMercadoLivreService
         $anuncios = $anuncios->take(self::MAX_ANUNCIOS_METRICAS);
 
         if ($anuncios->isEmpty()) {
-            return ['conectado' => true, 'metricas' => []];
+            return [...$base, 'vendas_prontas' => true];
         }
 
-        $chave = 'estrutura:metricas-ml:'.$empresa->id.':'.md5($anuncios->pluck('codigo_mlb')->implode(','));
-        $metricas = Cache::remember($chave, now()->addMinutes(30), function () use ($empresa, $anuncios) {
-            try {
-                $vendas = $this->vendas7dDaLoja($empresa);
-            } catch (\Throwable $e) {
-                Log::warning("[Estrutura] pedidos de 7 dias no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
-                $vendas = null;
+        $chave = 'estrutura:visitas-ml:'.$empresa->id.':'.md5($anuncios->pluck('codigo_mlb')->implode(','));
+        $lidas = Cache::remember($chave, now()->addMinutes(30), function () use ($empresa, $anuncios) {
+            $pedidos = [];
+            foreach ($anuncios as $a) {
+                $pedidos['v:'.$a->codigo_mlb] = ["/items/{$a->codigo_mlb}/visits/time_window", ['last' => self::DIAS_SERIE, 'unit' => 'day']];
+                if ($a->catalogo) {
+                    $pedidos['b:'.$a->codigo_mlb] = ["/items/{$a->codigo_mlb}/price_to_win", ['version' => 'v2']];
+                }
             }
-            $saida = [];
 
+            $respostas = $this->ml->getMany($empresa, $pedidos);
+            $corpo = function (string $chave) use ($respostas, $empresa) {
+                $r = $respostas[$chave] ?? null;
+                if ($r instanceof \Throwable) {
+                    Log::warning("[Estrutura] métrica {$chave} no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$r->getMessage()}");
+
+                    return null;
+                }
+
+                return $r;
+            };
+
+            $saida = [];
             foreach ($anuncios as $a) {
                 $mlb = $a->codigo_mlb;
-                $saida[$mlb] = [
-                    'visitas' => $this->tentar(fn () => (int) ($this->ml->get($empresa, "/items/{$mlb}/visits/time_window", ['last' => 7, 'unit' => 'day'])['total_visits'] ?? 0), $empresa, $mlb),
-                    'vendas'  => $vendas === null ? null : ($vendas[$mlb] ?? 0),
-                    'buybox'  => $a->catalogo ? $this->tentar(function () use ($empresa, $mlb) {
-                        $p = $this->ml->get($empresa, "/items/{$mlb}/price_to_win", ['version' => 'v2']);
-                        $status = $p['status'] ?? null;
+                $serie = ($v = $corpo('v:'.$mlb)) === null ? null : self::serieDeVisitas($v);
+                $buybox = $a->catalogo ? $corpo('b:'.$mlb) : null;
 
-                        return $status === null ? null : [
-                            'status'            => $status,
-                            'rotulo'            => self::BUYBOX[$status] ?? $status,
-                            'preco_para_ganhar' => isset($p['price_to_win']) ? (float) $p['price_to_win'] : null,
-                        ];
-                    }, $empresa, $mlb) : null,
+                $saida[$mlb] = [
+                    'visitas'     => $serie === null ? null : array_sum(array_column(array_slice($serie, -7), 'visitas')),
+                    'visitas_30d' => $serie === null ? null : array_sum(array_column($serie, 'visitas')),
+                    'serie'       => $serie,
+                    'buybox'      => ! isset($buybox['status']) ? null : [
+                        'status'            => $buybox['status'],
+                        'rotulo'            => self::BUYBOX[$buybox['status']] ?? $buybox['status'],
+                        'preco_para_ganhar' => isset($buybox['price_to_win']) ? (float) $buybox['price_to_win'] : null,
+                    ],
                 ];
             }
 
             return $saida;
         });
 
-        return ['conectado' => true, 'metricas' => $metricas, 'limitado' => $limitado];
+        $vendas = $this->vendas7dEmCache($empresa);
+        if ($vendas === null) {
+            $this->aquecerVendas7d($empresa);
+            // Sob a fila `sync` (testes) o job já rodou: a resposta sai pronta.
+            $vendas = $this->vendas7dEmCache($empresa);
+        }
+
+        $metricas = [];
+        foreach ($lidas as $mlb => $m) {
+            $metricas[$mlb] = [...$m, 'vendas' => $vendas === null ? null : ($vendas[$mlb] ?? 0)];
+        }
+
+        return [...$base, 'vendas_prontas' => $vendas !== null, 'metricas' => $metricas, 'limitado' => $limitado];
+    }
+
+    /**
+     * A resposta do `time_window` → `[['data' => 'Y-m-d', 'visitas' => n], …]`
+     * em ordem de data (a API devolve fora de ordem).
+     *
+     * @return array<int, array{data: string, visitas: int}>
+     */
+    public static function serieDeVisitas(array $resposta): array
+    {
+        $serie = array_map(fn ($d) => ['data' => substr((string) ($d['date'] ?? ''), 0, 10), 'visitas' => (int) ($d['total'] ?? 0)], $resposta['results'] ?? []);
+        usort($serie, fn ($x, $y) => strcmp($x['data'], $y['data']));
+
+        return array_values($serie);
     }
 
     /** Quantas páginas de 50 pedidos, no máximo (10 mil pedidos na semana). */
     private const MAX_PAGINAS_PEDIDOS = 200;
 
+    private static function chaveVendas7d(Company $empresa): string
+    {
+        return 'estrutura:vendas7d:'.$empresa->id;
+    }
+
+    /** As unidades vendidas por anúncio nos 7 dias, se já foram lidas (30 min de cache). */
+    public function vendas7dEmCache(Company $empresa): ?array
+    {
+        return Cache::get(self::chaveVendas7d($empresa));
+    }
+
     /**
-     * Unidades vendidas por anúncio nos últimos 7 dias, de TODOS os pedidos
-     * pagos da loja — uma leitura paginada (a #131 teve 2.442 pedidos na
-     * semana: ~49 páginas de 0,1 s), guardada 30 min e servida a todas as
-     * ofertas. Um pedido pode ter vários itens: conta cada um no seu MLB.
+     * Manda ler os pedidos em segundo plano (fila high), um job por loja de
+     * cada vez. Chamado ao abrir a página do Mapeamento e quando as métricas
+     * são pedidas sem o cache — assim, quando a estação abre, a parte lenta
+     * costuma já estar pronta.
+     */
+    public function aquecerVendas7d(Company $empresa): void
+    {
+        if (! self::conectado($empresa) || Cache::has(self::chaveVendas7d($empresa))) {
+            return;
+        }
+
+        // `add` é atômico: só o primeiro pedido dentro dos 5 minutos despacha.
+        if (! Cache::add('estrutura:vendas7d-aquecendo:'.$empresa->id, true, now()->addMinutes(5))) {
+            return;
+        }
+
+        AquecerPedidosMlEstruturaJob::dispatch($empresa->id);
+    }
+
+    /**
+     * O que o job faz: unidades vendidas por anúncio nos últimos 7 dias, de
+     * TODOS os pedidos pagos da loja — uma leitura paginada (a #131 teve 2.442
+     * pedidos na semana: 49 páginas, ~14 s), guardada 30 min e servida a todas
+     * as ofertas. Um pedido pode ter vários itens: conta cada um no seu MLB.
      * A API aceitou offset além de 1.000 (medido até 2.400, 28/09).
      *
      * @return array<string, int> MLB → unidades
      */
-    private function vendas7dDaLoja(Company $empresa): array
+    public function lerVendas7d(Company $empresa): array
     {
-        return Cache::remember('estrutura:vendas7d:'.$empresa->id, now()->addMinutes(30), function () use ($empresa) {
+        try {
             $consulta = [
                 'seller' => (string) $empresa->mlToken->ml_user_id, 'order.status' => 'paid', 'sort' => 'date_asc', 'limit' => 50,
                 'order.date_created.from' => now()->subDays(7)->startOfDay()->format('Y-m-d').'T00:00:00.000-03:00',
@@ -842,19 +935,11 @@ class AnunciosMercadoLivreService
                 }
             }
 
+            Cache::put(self::chaveVendas7d($empresa), $porMlb, now()->addMinutes(30));
+
             return $porMlb;
-        });
-    }
-
-    /** Uma métrica de um anúncio: a falha dela vira `null`, com log — as outras seguem. */
-    private function tentar(callable $fn, Company $empresa, string $mlb): mixed
-    {
-        try {
-            return $fn();
-        } catch (\Throwable $e) {
-            Log::warning("[Estrutura] métrica do {$mlb} no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
-
-            return null;
+        } finally {
+            Cache::forget('estrutura:vendas7d-aquecendo:'.$empresa->id);
         }
     }
 

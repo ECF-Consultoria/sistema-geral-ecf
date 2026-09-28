@@ -126,6 +126,7 @@ class RestringeDominioDoPortal
         'portal/estrutura/anuncios-ml',
         'portal/estrutura/ofertas/*/anuncios-ml',
         'portal/estrutura/ofertas/*/metricas-ml',
+        'portal/estrutura/ofertas/*/estacao',
         'portal/estrutura/colagem',
         'portal/estrutura/colagem/previa',
         'portal/estrutura/espera/*',

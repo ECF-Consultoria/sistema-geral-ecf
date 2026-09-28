@@ -328,10 +328,10 @@ class AnunciosMercadoLivreTest extends TestCase
     }
 
     /**
-     * A gaveta mostra o SKU que cada anúncio tem HOJE no ML — lido na hora (não
-     * há coluna para ele), com cache: reabrir a gaveta não bate na API.
+     * A estação mostra o SKU que cada anúncio tem HOJE no ML e as fotos dele —
+     * lidos na hora, num multiget só (não há coluna para eles), com cache.
      */
-    public function test_gaveta_le_o_sku_de_cada_anuncio_no_ml(): void
+    public function test_estacao_le_sku_e_fotos_de_cada_anuncio_no_ml(): void
     {
         $empresa = $this->empresaDoGabarito();
         $ator = $this->atorCliente($empresa);
@@ -344,30 +344,35 @@ class AnunciosMercadoLivreTest extends TestCase
         Http::fake(['*/items?*' => Http::response($this->fixture('multiget-lote.json'))]);
         $sessao = $this->entrarNoPortal($empresa);
 
-        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))->assertOk()->json();
+        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk()->json();
 
         $this->assertTrue($r['conectado']);
         // 1808 nos dois do produto; o 1300 foi ligado à oferta errada; o encerrado não tem SKU.
-        $this->assertSame(['MLB5318502460' => '1808', 'MLB5307535856' => '1808', 'MLB5308780432' => '1300', 'MLB7046783144' => null], $r['skus']);
+        $skus = array_map(fn ($a) => $a['sku'], $r['anuncios']);
+        ksort($skus);   // o multiget devolve na ordem da API
+        $this->assertSame(['MLB5307535856' => '1808', 'MLB5308780432' => '1300', 'MLB5318502460' => '1808', 'MLB7046783144' => null], $skus);
+        $fotos = $r['anuncios']['MLB5318502460']['fotos'];
+        $this->assertNotEmpty($fotos, 'as fotos vêm do mesmo multiget');
+        $this->assertStringStartsWith('https://', $fotos[0]);
 
-        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))->assertOk();
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk();
         Http::assertSentCount(1);
 
         // Oferta de outra empresa: 404, como toda rota do módulo.
         $outra = $this->empresaDoGabarito();
         [$alheia] = app(EstruturaOfertaService::class)->criar($outra, ['sku' => 'X', 'fase' => 'simples'], $this->atorCliente($outra));
-        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $alheia->id))->assertNotFound();
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $alheia->id))->assertNotFound();
     }
 
-    public function test_gaveta_sem_conta_conectada_nao_chama_a_api(): void
+    public function test_estacao_sem_conta_conectada_nao_chama_a_api(): void
     {
         $empresa = $this->empresaDoGabarito();
         [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $this->atorCliente($empresa));
         Http::fake();
 
         $this->entrarNoPortal($empresa)
-            ->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))
-            ->assertOk()->assertExactJson(['conectado' => false, 'skus' => []]);
+            ->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))
+            ->assertOk()->assertExactJson(['conectado' => false, 'anuncios' => []]);
         Http::assertNothingSent();
     }
 
@@ -426,11 +431,13 @@ class AnunciosMercadoLivreTest extends TestCase
     }
 
     /**
-     * A Jardinagem com números: visitas e vendas dos últimos 7 dias de cada
-     * anúncio e o buy box do que está no catálogo — lidos no ML na hora (o
-     * acervo não tem), com cache. Falha de uma métrica não derruba as outras.
+     * A Jardinagem com números: por anúncio, a série de visitas de 30 dias (o
+     * gráfico), as visitas e as vendas dos últimos 7, e o buy box do catálogo.
+     * Visitas e buy box em paralelo; vendas dos pedidos da loja, pré-aquecidos
+     * (sob a fila `sync` dos testes o job roda na hora). Falha de uma métrica
+     * não derruba as outras.
      */
-    public function test_metricas_de_7_dias_e_buybox_na_hora(): void
+    public function test_metricas_serie_de_30_dias_vendas_da_loja_e_buybox(): void
     {
         $empresa = $this->empresaDoGabarito();
         $ator = $this->atorCliente($empresa);
@@ -440,10 +447,12 @@ class AnunciosMercadoLivreTest extends TestCase
         $anuncios->cadastrar($oferta, ['tipo' => 'classico', 'codigo_mlb' => 'MLB5307535856', 'status' => 'ativo', 'catalogo' => false], $ator);
         $anuncios->cadastrar($oferta, ['tipo' => 'premium', 'codigo_mlb' => 'MLB5318502460', 'status' => 'ativo', 'catalogo' => true], $ator);
 
+        // 30 dias, fora de ordem como a API manda: 10 visitas por dia, e 50 no dia mais recente.
+        $dias = collect(range(29, 0))->map(fn ($n) => ['date' => now()->subDays($n)->format('Y-m-d').'T00:00:00Z', 'total' => $n === 0 ? 50 : 10])->shuffle()->values()->all();
         Http::fake([
-            '*/items/MLB5307535856/visits/time_window*' => Http::response(['total_visits' => 103]),
+            '*/items/MLB5307535856/visits/time_window*' => Http::response(['total_visits' => 340, 'results' => $dias]),
             '*/items/MLB5318502460/visits/time_window*' => Http::response(['message' => 'boom'], 500),
-            '*/orders/search*' => fn ($r) => Http::response(['paging' => ['total' => 2], 'results' => [
+            '*/orders/search*' => Http::response(['paging' => ['total' => 2], 'results' => [
                 ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 3], ['item' => ['id' => 'MLB9999999999'], 'quantity' => 9]]],
                 ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 1]]],
             ]]),
@@ -454,18 +463,48 @@ class AnunciosMercadoLivreTest extends TestCase
         $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk()->json();
 
         $this->assertTrue($r['conectado']);
-        // 3 + 1 unidades DESTE anúncio; o item de outro MLB no mesmo pedido não conta.
-        $this->assertSame(['visitas' => 103, 'vendas' => 4, 'buybox' => null], $r['metricas']['MLB5307535856']);
+        $this->assertTrue($r['vendas_prontas']);
+        $c = $r['metricas']['MLB5307535856'];
+        // 7 dias = os 7 mais recentes da série (6×10 + 50); 30 dias = tudo; a série volta em ordem.
+        $this->assertSame([110, 340, 4, null], [$c['visitas'], $c['visitas_30d'], $c['vendas'], $c['buybox']]);
+        $this->assertCount(30, $c['serie']);
+        $this->assertSame(now()->subDays(29)->format('Y-m-d'), $c['serie'][0]['data']);
+        $this->assertSame(['data' => now()->format('Y-m-d'), 'visitas' => 50], $c['serie'][29]);
         // A visita falhou (null), as vendas (0: nenhum pedido dele) e o buy box seguiram; "competing" é traduzido.
-        $this->assertNull($r['metricas']['MLB5318502460']['visitas']);
-        $this->assertSame(0, $r['metricas']['MLB5318502460']['vendas']);
+        $p = $r['metricas']['MLB5318502460'];
+        $this->assertNull($p['visitas']);
+        $this->assertNull($p['serie']);
+        $this->assertSame(0, $p['vendas']);
+        $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $p['buybox']);
         // As vendas vêm dos pedidos da LOJA, numa leitura só — não uma busca por anúncio.
         $this->assertCount(1, collect(Http::recorded())->filter(fn ($par) => str_contains($par[0]->url(), '/orders/search')));
-        $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $r['metricas']['MLB5318502460']['buybox']);
 
         $n = count(Http::recorded());
         $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk();
         $this->assertCount($n, Http::recorded(), 'reabrir usa o cache');
+    }
+
+    /**
+     * A parte lenta das métricas (os pedidos da loja) é pré-aquecida na fila
+     * high ao abrir a página, um job por loja de cada vez.
+     */
+    public function test_abrir_a_pagina_pre_aquece_os_pedidos_na_fila_high(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $sessao->get(route('portal.auth.estrutura'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushedOn('high', \App\Jobs\AquecerPedidosMlEstruturaJob::class);
+
+        $sessao->get(route('portal.auth.estrutura'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);   // a trava segura o segundo
+
+        // Sem conta conectada, nada a aquecer.
+        $outra = $this->empresaDoGabarito();
+        $this->withoutVite()->entrarNoPortal($outra)->get(route('portal.auth.estrutura'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);
     }
 
     // ═══ A exceção: buscar e ligar ══════════════════════════════════════════

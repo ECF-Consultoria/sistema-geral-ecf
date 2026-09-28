@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, Maximize2, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
     AvisoFlash, Botao, CabecalhoEstrutura, EstoqueOferta, FotoProduto, Indicadores, Lado, Vendas, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
-import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
+import EstacaoProduto from '@/Components/Portal/Estrutura/EstacaoProduto';
 import FormOferta from '@/Components/Portal/Estrutura/FormOferta';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
@@ -69,7 +69,7 @@ const LADO_QUE_FALTA = { falta_classico: 'classico', falta_premium: 'premium' };
 
 /**
  * Uma oferta dentro do produto aberto: o que é, os dois lados, o estado e a
- * ação. A linha inteira abre a gaveta (detalhes, anúncios, agenda).
+ * ação. A linha inteira abre a estação do produto.
  */
 function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodape = null }) {
     const publicacao = oferta.agenda.find((i) => i.acao === 'publicacao' && ! i.feita);
@@ -179,9 +179,9 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
     const props = { onAbrir, onAnuncio, onAgendar, vocabulario };
 
     return (
-        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto ? '1' : '0'}>
+        <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto ? '1' : '0'}>
             <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-bloco"
-                className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.02] sm:px-4">
+                className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.02] sm:px-4 sm:pr-20">
                 <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', COR_PIOR[piorCaso(bloco.resumo_bloco)])} aria-hidden />
                 <FotoProduto url={bloco.foto} />
                 <span className="min-w-0 flex-1">
@@ -207,6 +207,11 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
                 </span>
                 <span className="hidden md:inline-flex"><PilulaProduto resumo={bloco.resumo_bloco} /></span>
                 <ChevronRight size={16} className={cn('shrink-0 text-white/30 transition-transform', aberto && 'rotate-90')} />
+            </button>
+            {/* Abrir a estação direto do produto fechado — sem expandir e clicar na linha. */}
+            <button type="button" onClick={() => onAbrir(bloco.principal.id)} title="Abrir a estação do produto" aria-label="Abrir a estação do produto"
+                className="absolute right-11 top-1/2 hidden -translate-y-1/2 rounded-lg p-1.5 text-white/35 hover:bg-white/[0.06] hover:text-ecf-yellow sm:block" data-acao="abrir-estacao">
+                <Maximize2 size={15} />
             </button>
 
             {aberto && (
@@ -339,7 +344,7 @@ function EstadoVazio({ onProduto, onColar, onImportar }) {
 }
 
 export default function Estrutura({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, espera_linhas, opcoes_ofertas }) {
-    const [gavetaId, setGavetaId] = useState(null);
+    const [estacaoId, setEstacaoId] = useState(null);       // a oferta que abre a estação do produto
     const [formOferta, setFormOferta] = useState(null);     // { modo, base, inicial }
     const [formAnuncio, setFormAnuncio] = useState(null);   // { oferta, anuncio, tipoFixo, viaAgenda }
     const [agendar, setAgendar] = useState(null);           // oferta
@@ -353,30 +358,21 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
 
     const { painel, contadores, blocos, paginacao } = estrutura;
 
-    // A oferta da gaveta é LIDA das props a cada render — depois de uma
-    // escrita, a gaveta mostra o estado novo sem cópia local para reconciliar.
-    const gaveta = useMemo(() => {
-        for (const b of blocos) {
-            const o = b.ofertas.find((x) => x.id === gavetaId);
-            if (o) return o;
-        }
-
-        return null;
-    }, [blocos, gavetaId]);
-
     // `?abrir=<id>`: a agenda aponta para a oferta — a lista chega filtrada
-    // pelo SKU e a gaveta já aberta. Tirado da URL depois, para um F5 não
+    // pelo SKU e a estação já aberta. Tirado da URL depois, para um F5 não
     // reabrir.
     useEffect(() => {
         const url = new URL(window.location.href);
         const id = Number(url.searchParams.get('abrir'));
         if (id) {
-            setGavetaId(id);
-            // Vindo do "Ver métricas" da Jardinagem: a gaveta já abre lendo os 7 dias.
+            setEstacaoId(id);
+            // Vindo do "Ver métricas" da Jardinagem: a estação já abre lendo as métricas.
             setAutoMetricas(url.searchParams.get('metricas') === '1');
             url.searchParams.delete('abrir');
             url.searchParams.delete('metricas');
-            window.history.replaceState(window.history.state, '', url);
+            // Depois do Inertia gravar o estado inicial (ele regrava a URL logo
+            // após a montagem): sem o adiamento, a limpeza era desfeita.
+            setTimeout(() => window.history.replaceState(window.history.state, '', url), 100);
         }
     }, []);
 
@@ -434,7 +430,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
 
     const acoes = {
         vocabulario,
-        onAbrir: setGavetaId,
+        onAbrir: setEstacaoId,
         onAgendar: setAgendar,
         onAnuncio: (oferta, tipoFixo) => setFormAnuncio({ oferta, tipoFixo }),
     };
@@ -522,16 +518,24 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 )}
             </div>
 
-            <GavetaOferta
-                oferta={gaveta}
-                onFechar={() => { setGavetaId(null); setAutoMetricas(false); }}
+            {/* A estação relê a família a cada escrita: `versao` muda quando o
+                Inertia recarrega `estrutura`. Os formulários abrem por cima dela. */}
+            <EstacaoProduto
+                ofertaId={estacaoId}
+                versao={estrutura}
+                onFechar={() => { setEstacaoId(null); setAutoMetricas(false); }}
+                onTrocar={(id) => { setAutoMetricas(false); setEstacaoId(id); }}
                 vocabulario={vocabulario}
-                onEditar={editarOferta}
-                onNovoAnuncio={(o) => setFormAnuncio({ oferta: o })}
-                onEditarAnuncio={(o, a) => setFormAnuncio({ oferta: o, anuncio: a })}
-                onAgendar={setAgendar}
                 mlConectado={ml_conectado}
                 autoMetricas={autoMetricas}
+                acoes={{
+                    editarOferta,
+                    novoAnuncio: (o, tipoFixo) => setFormAnuncio({ oferta: o, tipoFixo }),
+                    editarAnuncio: (o, a) => setFormAnuncio({ oferta: o, anuncio: a }),
+                    agendar: setAgendar,
+                    variacao: (base, existentes) => setVariacao({ base, existentes }),
+                    concluir: (o, tipo) => setFormAnuncio({ oferta: o, tipoFixo: tipo, viaAgenda: true }),
+                }}
             />
 
             <FormOferta

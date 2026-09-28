@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { BarChart3, Loader2 } from 'lucide-react';
 import { LinkMl, fmtReais } from './comum';
@@ -29,26 +29,38 @@ function conversao(visitas, vendas) {
     return `${((vendas / visitas) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 }
 
-/** Carrega as métricas de uma oferta sob demanda (ou já, com `auto`). */
+/**
+ * Carrega as métricas de uma oferta sob demanda (ou já, com `auto`). As
+ * visitas chegam na primeira resposta; as vendas dos 7 dias (os pedidos da
+ * loja, lidos em segundo plano) podem vir depois — enquanto
+ * `vendas_prontas` é falso, consulta de novo a cada 3 s, por até 1 minuto.
+ */
 export function useMetricasMl(ofertaId, auto = false) {
-    const [estado, setEstado] = useState(null);   // null | 'lendo' | { metricas, limitado, conectado } | { erro }
+    const [estado, setEstado] = useState(null);   // null | 'lendo' | { metricas, limitado, conectado, vendas_prontas } | { erro }
+    const rodada = useRef(0);
 
-    const carregar = async () => {
-        setEstado('lendo');
+    const carregar = async (tentativa = 0) => {
+        const r = tentativa === 0 ? ++rodada.current : rodada.current;
+        if (tentativa === 0) setEstado('lendo');
         try {
             const { data } = await axios.get(route('portal.auth.estrutura.anuncios_ml.metricas', ofertaId));
+            if (r !== rodada.current) return;
             setEstado(data);
+            if (data.conectado && data.vendas_prontas === false && tentativa < 20) {
+                setTimeout(() => r === rodada.current && carregar(tentativa + 1), 3000);
+            }
         } catch {
-            setEstado({ erro: 'Não foi possível ler as métricas no Mercado Livre agora.' });
+            if (r === rodada.current) setEstado({ erro: 'Não foi possível ler as métricas no Mercado Livre agora.' });
         }
     };
 
     useEffect(() => {
+        rodada.current++;
         setEstado(null);
         if (ofertaId && auto) carregar();
     }, [ofertaId, auto]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return { estado, carregar };
+    return { estado, carregar: () => carregar(0) };
 }
 
 /** O botão e o estado da leitura (lendo, erro, sem conta), para quem mostra os números à sua maneira. */
@@ -137,6 +149,7 @@ export default function MetricasMl({ ofertaId, anuncios, vocabulario, auto = fal
                     </tfoot>
                 )}
             </table>
+            {estado.vendas_prontas === false && <p className="mt-1 text-[11px] text-white/45">As vendas dos 7 dias estão sendo lidas dos pedidos da loja…</p>}
             {estado.limitado && <p className="mt-1 text-[11px] text-white/35">Mostrando os 30 primeiros anúncios desta oferta.</p>}
         </div>
     );

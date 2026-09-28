@@ -10,6 +10,7 @@ use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -328,6 +329,58 @@ class MercadoLivreService
     }
 
     // ═══ HTTP: chamada autenticada ════════════════════════════════════════════
+
+    /**
+     * Vários GETs em PARALELO (`Http::pool`), com o mesmo token — para as
+     * leituras que a API só dá "uma chamada por item" (visitas por anúncio,
+     * `price_to_win`) e que em série não cabem numa tela: 30 visitas levaram
+     * 12 s em série na #131 (28/09); em lotes de 10 paralelos, ~1 s.
+     *
+     * Método NOVO: não muda `get()` nem o refresh/retry de 429 dos existentes.
+     * O pedido que falhar no pool (401, 429, rede) é refeito um a um pelo
+     * `get()` de sempre, que renova token e honra o Retry-After — o paralelo é
+     * o caminho rápido, não um caminho sem rede de proteção.
+     *
+     * @param  array<string, array{0: string, 1?: array}>  $pedidos  chave → [endpoint, query]
+     * @return array<string, array|\Throwable>  chave → corpo; ou a exceção DAQUELE pedido
+     *
+     * @throws \RuntimeException sem token válido
+     */
+    public function getMany(ContaMercadoLivre $company, array $pedidos, int $porLote = 10): array
+    {
+        $token = $this->ensureValidToken($company);
+
+        if (! $token) {
+            throw new \RuntimeException("[MercadoLivre] Empresa {$company->chaveContaMl()} sem token válido.");
+        }
+
+        $saida = [];
+
+        foreach (array_chunk($pedidos, $porLote, true) as $lote) {
+            $respostas = Http::pool(function (Pool $pool) use ($lote, $token) {
+                foreach ($lote as $chave => $pedido) {
+                    $pool->as((string) $chave)->withToken($token->access_token)->get(self::API_BASE . $pedido[0], $pedido[1] ?? []);
+                }
+            });
+
+            foreach ($lote as $chave => $pedido) {
+                $r = $respostas[(string) $chave] ?? null;
+
+                if ($r instanceof \Illuminate\Http\Client\Response && $r->successful()) {
+                    $saida[$chave] = $r->json() ?? [];
+                    continue;
+                }
+
+                try {
+                    $saida[$chave] = $this->get($company, $pedido[0], $pedido[1] ?? []);
+                } catch (\Throwable $e) {
+                    $saida[$chave] = $e;
+                }
+            }
+        }
+
+        return $saida;
+    }
 
     /**
      * GET autenticado à API ML com renovação automática de token.
