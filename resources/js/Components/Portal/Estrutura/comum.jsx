@@ -216,6 +216,34 @@ export function DadosDoAnuncio({ ml, className }) {
     );
 }
 
+/**
+ * O preço que o cliente paga, como o anúncio mostra: o atual, e — quando há
+ * promoção — o cheio riscado e o desconto. `preco` vem do `sale_price` do ML
+ * (`{ atual, cheio }`); sem ele, `reserva` (o preço do acervo, que é o CHEIO,
+ * sem promoção) — por isso o aviso "sem promoção lida".
+ */
+export function PrecoDeVenda({ preco, reserva, compacto = false, className }) {
+    if (preco) {
+        // Truncado, como o ML mostra: 17,55% de desconto aparece como "17% OFF".
+        const off = preco.cheio > preco.atual ? Math.floor((1 - preco.atual / preco.cheio) * 100) : 0;
+
+        return (
+            <span className={cn('inline-flex flex-wrap items-baseline gap-x-1.5', className)} data-preco-venda={preco.atual}>
+                <span>{fmtReais(preco.atual)}</span>
+                {off > 0 && (
+                    <>
+                        {! compacto && <span className="text-[0.85em] text-white/35 line-through">{fmtReais(preco.cheio)}</span>}
+                        <span className="text-[0.8em] font-semibold text-emerald-300" title={`De ${fmtReais(preco.cheio)}`}>{off}% OFF</span>
+                    </>
+                )}
+            </span>
+        );
+    }
+    if (reserva === null || reserva === undefined) return null;
+
+    return <span className={className} title="Preço cheio do anúncio — a promoção, se houver, ainda não foi lida no Mercado Livre">{fmtReais(reserva)}</span>;
+}
+
 export function Botao({ variante = 'secundario', className, children, ...props }) {
     return (
         <button

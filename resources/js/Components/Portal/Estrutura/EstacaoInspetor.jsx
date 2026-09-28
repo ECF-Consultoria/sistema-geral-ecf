@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { LinkMl, fmtReais } from './comum';
+import { LinkMl, PrecoDeVenda, fmtReais } from './comum';
 import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +38,26 @@ function Galeria({ fotos, miniatura }) {
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+/** Um mini-gráfico com nome — o que ele mostra não fica para adivinhar. */
+function Mini({ titulo, total, dados, chave, cor, ...props }) {
+    return (
+        <div className="mt-2" {...props}>
+            <p className="flex justify-between text-[10.5px] text-white/45"><span>{titulo}</span><span>{total}</span></p>
+            <div className="h-16">
+                <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={dados} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                        <XAxis dataKey="data" hide />
+                        <YAxis hide domain={[0, 'auto']} />
+                        <Tooltip contentStyle={{ background: '#0f1116', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                            labelFormatter={(d) => d.split('-').reverse().join('/')} formatter={(v) => [v, chave]} />
+                        <Line type="monotone" dataKey={chave} stroke={cor} strokeWidth={1.5} dot={false} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
         </div>
     );
 }
@@ -79,7 +99,9 @@ export default function EstacaoInspetor({ oferta, anuncio: a, detalhe, metrica, 
                     {sku === null && <span className="text-amber-300">sem SKU no ML</span>}
                     {sku && <span className={cn('font-mono', skuDiferente ? 'text-amber-300' : '')} data-sku-inspetor={sku}>{sku}{skuDiferente && <span className="ml-1 font-sans text-[11px]">≠ {oferta.sku}</span>}</span>}
                 </Dado>
-                <Dado rotulo="Preço">{fmtReais(a.ml?.preco)}</Dado>
+                <Dado rotulo="Preço">
+                    {detalhe === undefined && a.ml?.preco === undefined ? '—' : <PrecoDeVenda preco={detalhe?.preco} reserva={a.ml?.preco} />}
+                </Dado>
                 <Dado rotulo="Estoque">
                     <span className={a.estoque === 0 ? 'text-red-300' : ''}>{n(a.estoque)}</span>
                     {a.estoque_full && <span className="ml-1 text-[10.5px] font-semibold text-emerald-300" title="No galpão do Mercado Livre (Full)">no Full</span>}
@@ -108,18 +130,10 @@ export default function EstacaoInspetor({ oferta, anuncio: a, detalhe, metrica, 
                         </p>
                     )}
                     {serie && serie.length > 1 && (
-                        <div className="mt-2 h-24" data-serie-anuncio>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={serie} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                                    <XAxis dataKey="data" hide />
-                                    <YAxis hide domain={[0, 'auto']} />
-                                    <Tooltip contentStyle={{ background: '#0f1116', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
-                                        labelFormatter={(d) => d.split('-').reverse().join('/')} formatter={(v) => [v, 'visitas']} />
-                                    <Line type="monotone" dataKey="visitas" stroke="#ffe600" strokeWidth={1.5} dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                            <p className="text-[10.5px] text-white/35">visitas por dia, 30 dias · {n(metrica.visitas_30d)} no total</p>
-                        </div>
+                        <Mini titulo="Visitas por dia" total={`${n(metrica.visitas_30d)} em 30 dias`} dados={serie} chave="visitas" cor="#ffe600" data-serie-anuncio="visitas" />
+                    )}
+                    {metrica.vendas_serie && metrica.vendas_serie.length > 1 && (
+                        <Mini titulo="Vendas por dia" total={`${n(metrica.vendas_30d)} em 30 dias`} dados={metrica.vendas_serie} chave="vendas" cor="#34d399" data-serie-anuncio="vendas" />
                     )}
                 </div>
             )}

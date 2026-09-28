@@ -653,43 +653,63 @@ class AnunciosMercadoLivreService
 
     /**
      * O que a estação precisa de cada anúncio e o acervo NÃO guarda: o SKU que
-     * ele tem HOJE no ML (conferir que o anúncio é mesmo deste produto) e as
-     * fotos (o acervo só tem a miniatura). Um multiget traz os dois: 40
-     * anúncios em 2 chamadas de ~0,1 s (medido na #131, 28/09). 30 min de
-     * cache por conjunto de MLBs.
+     * ele tem HOJE no ML (conferir que o anúncio é mesmo deste produto), as
+     * fotos (o acervo só tem a miniatura) e o PREÇO QUE O CLIENTE PAGA.
+     *
+     * ### O preço do acervo é o cheio (medido na #131, 28/09)
+     * `price` — no acervo e no próprio `/items` — é o preço SEM a promoção:
+     * o MLB4645047625 marcava R$ 2.021,08 e o anúncio mostrava R$ 1.666,37
+     * (17% OFF, campanha do marketplace). O preço com promoção vem de
+     * `/items/{id}/sale_price?context=channel_marketplace` (`amount`, com o
+     * cheio em `regular_amount`), uma chamada por anúncio — em paralelo
+     * (`getMany`), junto do multiget de SKU e fotos (40 anúncios, 2 chamadas).
+     * A comparação Clássico × Premium da oferta usa ESTE preço.
      *
      * Lido, não gravado: guardar seria coluna nova em `estrutura_anuncios`,
-     * tabela com dado em produção (fase GSD obrigatória) — e o SKU no ML muda.
+     * tabela com dado em produção (fase GSD obrigatória) — e SKU e promoção
+     * mudam. 30 min de cache por conjunto de MLBs.
      *
-     * @return array{conectado: bool, anuncios: array<string, array{sku: ?string, fotos: array<int, string>}>, erro?: string}
-     *   `sku` null = o anúncio não tem SKU no ML. MLB que o ML não devolveu
-     *   (encerrado e apagado) fica de fora.
+     * @return array{conectado: bool, anuncios: array<string, array{sku: ?string, fotos: array<int, string>, preco: ?array{atual: float, cheio: float}}>, precos: ?array, erro?: string}
+     *   `sku` null = o anúncio não tem SKU no ML; `preco` null = não foi
+     *   possível ler (a tela fica com o preço do acervo). MLB que o ML não
+     *   devolveu (encerrado e apagado) fica de fora.
      */
     public function detalhesDaOferta(EstruturaOferta $oferta): array
     {
         $empresa = $oferta->company;
 
         if (! self::conectado($empresa)) {
-            return ['conectado' => false, 'anuncios' => []];
+            return ['conectado' => false, 'anuncios' => [], 'precos' => null];
         }
 
-        $mlbs = $oferta->anuncios()->whereNotNull('codigo_mlb')->orderBy('id')
-            ->limit(self::MAX_ANUNCIOS_DETALHES)->pluck('codigo_mlb')->unique()->values()->all();
+        $anuncios = $oferta->anuncios()->whereNotNull('codigo_mlb')->orderBy('id')
+            ->limit(self::MAX_ANUNCIOS_DETALHES)->get(['codigo_mlb', 'tipo', 'status'])->unique('codigo_mlb')->values();
+        $mlbs = $anuncios->pluck('codigo_mlb')->all();
 
         if (! $mlbs) {
-            return ['conectado' => true, 'anuncios' => []];
+            return ['conectado' => true, 'anuncios' => [], 'precos' => null];
         }
 
         try {
-            $anuncios = Cache::remember('estrutura:detalhes-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(30), function () use ($empresa, $mlbs) {
+            $lidos = Cache::remember('estrutura:detalhes-ml:v2:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(30), function () use ($empresa, $mlbs) {
+                $precos = $this->ml->getMany($empresa, array_combine(
+                    array_map(fn ($m) => 'p:'.$m, $mlbs),
+                    array_map(fn ($m) => ["/items/{$m}/sale_price", ['context' => 'channel_marketplace']], $mlbs),
+                ));
+
                 $saida = [];
                 foreach ($this->multiget($empresa, $mlbs, self::CAMPOS.',pictures') as $mlb => $corpo) {
+                    $p = $precos['p:'.$mlb] ?? null;
                     $saida[$mlb] = [
                         'sku'   => self::skuDoAnuncio($corpo),
                         'fotos' => array_values(array_filter(array_map(
                             fn ($f) => $f['secure_url'] ?? (isset($f['url']) ? preg_replace('#^http://#', 'https://', $f['url']) : null),
                             $corpo['pictures'] ?? [],
                         ))),
+                        'preco' => is_array($p) && isset($p['amount']) ? [
+                            'atual' => (float) $p['amount'],
+                            'cheio' => (float) ($p['regular_amount'] ?? $p['amount']),
+                        ] : null,
                     ];
                 }
 
@@ -698,10 +718,26 @@ class AnunciosMercadoLivreService
         } catch (\Throwable $e) {
             Log::warning("[Estrutura] detalhes da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
 
-            return ['conectado' => true, 'anuncios' => [], 'erro' => 'Não foi possível ler os anúncios no Mercado Livre agora.'];
+            return ['conectado' => true, 'anuncios' => [], 'precos' => null, 'erro' => 'Não foi possível ler os anúncios no Mercado Livre agora.'];
         }
 
-        return ['conectado' => true, 'anuncios' => $anuncios];
+        // O menor preço QUE O CLIENTE PAGA de cada tipo, entre os que contam
+        // (Inativo não conta) — e o aviso de par ao contrário.
+        $porTipo = [];
+        foreach ($anuncios as $a) {
+            $atual = $lidos[$a->codigo_mlb]['preco']['atual'] ?? null;
+            if ($atual !== null && $a->status !== EstruturaAnuncio::STATUS_INATIVO) {
+                $porTipo[$a->tipo] = min($porTipo[$a->tipo] ?? $atual, $atual);
+            }
+        }
+        $c = $porTipo[EstruturaAnuncio::TIPO_CLASSICO] ?? null;
+        $pr = $porTipo[EstruturaAnuncio::TIPO_PREMIUM] ?? null;
+
+        return [
+            'conectado' => true,
+            'anuncios'  => $lidos,
+            'precos'    => $porTipo ? ['classico' => $c, 'premium' => $pr, 'invertido' => $c !== null && $pr !== null && $pr < $c] : null,
+        ];
     }
 
     /**
@@ -761,16 +797,17 @@ class AnunciosMercadoLivreService
      *   (`MercadoLivreService::getMany`): 30 anúncios em ~1 s, e não 12 s em
      *   série. A mesma resposta dá a série (gráfico) e os 7 dias (Jardinagem).
      *   Buy box na mesma leva, só para catálogo. 30 min de cache.
-     * - Vendas: dos pedidos da LOJA nos 7 dias, pré-aquecidos por
+     * - Vendas: dos pedidos da LOJA nos 30 dias, por dia, pré-aquecidos por
      *   `AquecerPedidosMlEstruturaJob` (fila high) ao abrir a página. Sem o
      *   cache, a resposta sai SEM vendas (`vendas_prontas: false`) e dispara o
-     *   job; a tela consulta de novo até chegar — são 14 s na #131 (2.442
-     *   pedidos), que não podem travar o resto.
+     *   job; a tela consulta de novo até chegar. A série diária é o segundo
+     *   painel do gráfico ("Vendas por dia") — o primeiro só tinha visitas e
+     *   não dizia qual das duas era (usuário, 28/09).
      *
      * Teto de 30 anúncios por oferta (ativos e pausados primeiro). Falha de
      * um anúncio vira `null` naquele número, não derruba os outros.
      *
-     * @return array{conectado: bool, vendas_prontas: bool, dias_serie: int, metricas: array<string, array{visitas: ?int, visitas_30d: ?int, serie: ?array<int, array{data: string, visitas: int}>, vendas: ?int, buybox: ?array}>, limitado?: bool}
+     * @return array{conectado: bool, vendas_prontas: bool, dias_serie: int, metricas: array<string, array{visitas: ?int, visitas_30d: ?int, serie: ?array<int, array{data: string, visitas: int}>, vendas: ?int, vendas_30d: ?int, vendas_serie: ?array<int, array{data: string, vendas: int}>, buybox: ?array}>, limitado?: bool}
      */
     public function metricasDaOferta(EstruturaOferta $oferta): array
     {
@@ -834,16 +871,25 @@ class AnunciosMercadoLivreService
             return $saida;
         });
 
-        $vendas = $this->vendas7dEmCache($empresa);
+        $vendas = $this->vendasEmCache($empresa);
         if ($vendas === null) {
-            $this->aquecerVendas7d($empresa);
+            $this->aquecerVendas($empresa);
             // Sob a fila `sync` (testes) o job já rodou: a resposta sai pronta.
-            $vendas = $this->vendas7dEmCache($empresa);
+            $vendas = $this->vendasEmCache($empresa);
         }
+
+        // Os mesmos dias da série de visitas: os 30 até hoje; os 7 = os últimos 7.
+        $dias = array_map(fn ($i) => now(self::FUSO)->subDays($i)->format('Y-m-d'), range(self::DIAS_SERIE - 1, 0));
+        $ultimos7 = array_slice($dias, -7);
 
         $metricas = [];
         foreach ($lidas as $mlb => $m) {
-            $metricas[$mlb] = [...$m, 'vendas' => $vendas === null ? null : ($vendas[$mlb] ?? 0)];
+            $porDia = $vendas[$mlb] ?? [];
+            $metricas[$mlb] = [...$m,
+                'vendas'       => $vendas === null ? null : array_sum(array_map(fn ($d) => $porDia[$d] ?? 0, $ultimos7)),
+                'vendas_30d'   => $vendas === null ? null : array_sum(array_map(fn ($d) => $porDia[$d] ?? 0, $dias)),
+                'vendas_serie' => $vendas === null ? null : array_map(fn ($d) => ['data' => $d, 'vendas' => $porDia[$d] ?? 0], $dias),
+            ];
         }
 
         return [...$base, 'vendas_prontas' => $vendas !== null, 'metricas' => $metricas, 'limitado' => $limitado];
@@ -863,18 +909,26 @@ class AnunciosMercadoLivreService
         return array_values($serie);
     }
 
-    /** Quantas páginas de 50 pedidos, no máximo (10 mil pedidos na semana). */
-    private const MAX_PAGINAS_PEDIDOS = 200;
+    /** O dia do pedido é o dia no Brasil — é o dia que o seller reconhece. */
+    private const FUSO = 'America/Sao_Paulo';
 
-    private static function chaveVendas7d(Company $empresa): string
+    /** Teto por dia: 100 páginas de 50 (5 mil pedidos num dia). */
+    private const MAX_PEDIDOS_DIA = 5000;
+
+    private static function chaveVendas(Company $empresa): string
     {
-        return 'estrutura:vendas7d:'.$empresa->id;
+        return 'estrutura:vendas30d:'.$empresa->id;
     }
 
-    /** As unidades vendidas por anúncio nos 7 dias, se já foram lidas (30 min de cache). */
-    public function vendas7dEmCache(Company $empresa): ?array
+    /**
+     * As unidades vendidas por anúncio e por dia nos últimos 30 dias, se já
+     * foram lidas (30 min de cache).
+     *
+     * @return array<string, array<string, int>>|null MLB → ('Y-m-d' → unidades)
+     */
+    public function vendasEmCache(Company $empresa): ?array
     {
-        return Cache::get(self::chaveVendas7d($empresa));
+        return Cache::get(self::chaveVendas($empresa));
     }
 
     /**
@@ -883,14 +937,14 @@ class AnunciosMercadoLivreService
      * são pedidas sem o cache — assim, quando a estação abre, a parte lenta
      * costuma já estar pronta.
      */
-    public function aquecerVendas7d(Company $empresa): void
+    public function aquecerVendas(Company $empresa): void
     {
-        if (! self::conectado($empresa) || Cache::has(self::chaveVendas7d($empresa))) {
+        if (! self::conectado($empresa) || Cache::has(self::chaveVendas($empresa))) {
             return;
         }
 
         // `add` é atômico: só o primeiro pedido dentro dos 5 minutos despacha.
-        if (! Cache::add('estrutura:vendas7d-aquecendo:'.$empresa->id, true, now()->addMinutes(5))) {
+        if (! Cache::add('estrutura:vendas-aquecendo:'.$empresa->id, true, now()->addMinutes(5))) {
             return;
         }
 
@@ -898,48 +952,63 @@ class AnunciosMercadoLivreService
     }
 
     /**
-     * O que o job faz: unidades vendidas por anúncio nos últimos 7 dias, de
-     * TODOS os pedidos pagos da loja — uma leitura paginada (a #131 teve 2.442
-     * pedidos na semana: 49 páginas, ~14 s), guardada 30 min e servida a todas
-     * as ofertas. Um pedido pode ter vários itens: conta cada um no seu MLB.
-     * A API aceitou offset além de 1.000 (medido até 2.400, 28/09).
+     * O que o job faz: unidades vendidas por anúncio e por DIA nos últimos 30
+     * dias, de TODOS os pedidos pagos da loja — a série "Vendas por dia" e os
+     * totais de 7 dias da Jardinagem saem daqui. Guardado 30 min e servido a
+     * todas as ofertas. Um pedido pode ter vários itens: conta cada um no seu
+     * MLB, no dia do pedido (horário do Brasil).
      *
-     * @return array<string, int> MLB → unidades
+     * Dia a dia, e não um intervalo só: ~10 mil pedidos/mês na #131 pediriam
+     * offset além de 10 mil numa busca única. A primeira página de cada dia
+     * sai numa leva paralela (30 chamadas, `getMany`); as páginas que faltam,
+     * noutra. Falha de qualquer página derruba a leitura inteira (série pela
+     * metade mentiria), e a próxima abertura da página tenta de novo.
+     *
+     * @return array<string, array<string, int>> MLB → ('Y-m-d' → unidades)
      */
-    public function lerVendas7d(Company $empresa): array
+    public function lerVendas(Company $empresa): array
     {
         try {
-            $consulta = [
-                'seller' => (string) $empresa->mlToken->ml_user_id, 'order.status' => 'paid', 'sort' => 'date_asc', 'limit' => 50,
-                'order.date_created.from' => now()->subDays(7)->startOfDay()->format('Y-m-d').'T00:00:00.000-03:00',
-                'order.date_created.to'   => now()->format('Y-m-d').'T23:59:59.000-03:00',
-            ];
+            $base = ['seller' => (string) $empresa->mlToken->ml_user_id, 'order.status' => 'paid', 'sort' => 'date_asc', 'limit' => 50];
+            $dias = [];
+            foreach (range(self::DIAS_SERIE - 1, 0) as $i) {
+                $d = now(self::FUSO)->subDays($i)->format('Y-m-d');
+                $dias[$d] = [...$base, 'order.date_created.from' => "{$d}T00:00:00.000-03:00", 'order.date_created.to' => "{$d}T23:59:59.999-03:00"];
+            }
+
             $porMlb = [];
-
-            for ($pagina = 0, $offset = 0; $pagina < self::MAX_PAGINAS_PEDIDOS; $pagina++) {
-                $r = $this->ml->get($empresa, '/orders/search', [...$consulta, 'offset' => $offset]);
-                $lote = $r['results'] ?? [];
-
-                foreach ($lote as $pedido) {
+            $somar = function ($r) use (&$porMlb) {
+                if ($r instanceof \Throwable) {
+                    throw $r;
+                }
+                foreach ($r['results'] ?? [] as $pedido) {
+                    $dia = Carbon::parse($pedido['date_created'] ?? 'now')->setTimezone(self::FUSO)->format('Y-m-d');
                     foreach ($pedido['order_items'] ?? [] as $item) {
                         $mlb = $item['item']['id'] ?? null;
                         if ($mlb !== null) {
-                            $porMlb[$mlb] = ($porMlb[$mlb] ?? 0) + (int) ($item['quantity'] ?? 0);
+                            $porMlb[$mlb][$dia] = ($porMlb[$mlb][$dia] ?? 0) + (int) ($item['quantity'] ?? 0);
                         }
                     }
                 }
+            };
 
-                $offset += count($lote);
-                if ($lote === [] || $offset >= (int) ($r['paging']['total'] ?? 0)) {
-                    break;
+            $resto = [];
+            foreach ($this->ml->getMany($empresa, array_map(fn ($q) => ['/orders/search', [...$q, 'offset' => 0]], $dias)) as $d => $r) {
+                $somar($r);
+                $total = min((int) ($r['paging']['total'] ?? 0), self::MAX_PEDIDOS_DIA);
+                for ($offset = 50; $offset < $total; $offset += 50) {
+                    $resto["{$d}:{$offset}"] = ['/orders/search', [...$dias[$d], 'offset' => $offset]];
                 }
             }
+            foreach ($this->ml->getMany($empresa, $resto) as $r) {
+                $somar($r);
+            }
 
-            Cache::put(self::chaveVendas7d($empresa), $porMlb, now()->addMinutes(30));
+            Cache::put(self::chaveVendas($empresa), $porMlb, now()->addMinutes(30));
 
             return $porMlb;
         } finally {
-            Cache::forget('estrutura:vendas7d-aquecendo:'.$empresa->id);
+            Cache::forget('estrutura:vendas-aquecendo:'.$empresa->id);
         }
     }
 

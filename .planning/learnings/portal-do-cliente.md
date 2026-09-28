@@ -800,6 +800,15 @@ anúncio. Decisões que não se deduzem:
 - `?abrir=ID&metricas=1` (da Jardinagem): a limpeza da URL precisa de
   `setTimeout` — o Inertia regrava a URL logo depois da montagem e desfazia o
   `replaceState` síncrono.
+- **O preço do acervo (e o `price` do `/items`) é o CHEIO, sem promoção.**
+  MLB4645047625: R$ 2.021,08 no acervo, R$ 1.666,37 no anúncio (17% OFF,
+  campanha do marketplace). O preço que o cliente paga: `/items/{id}/sale_price
+  ?context=channel_marketplace` → `amount` (e o cheio em `regular_amount`);
+  `original_price` vem null. Uma chamada por anúncio, lida em paralelo com o
+  SKU e as fotos. O ML trunca o desconto (17,55% → "17% OFF").
+- Vendas por dia: o job lê 30 dias de pedidos DIA A DIA (a primeira página de
+  cada dia numa leva paralela, as demais noutra) — ~10 mil pedidos/mês na #131
+  pediriam offset > 10 mil numa busca única. Dia do pedido = horário do Brasil.
 - No celular, tocar no MLB do card abre o ML e NÃO seleciona o card (é o
   `stopPropagation` do `LinkMl`) — tocar na foto/título seleciona.
 

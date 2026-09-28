@@ -1,5 +1,5 @@
 import { CalendarPlus, Plus } from 'lucide-react';
-import { Botao, LinkMl, fmtReais } from './comum';
+import { Botao, LinkMl, PrecoDeVenda, fmtReais } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Uma coluna da oferta: Clássico ou Premium ──────────────────────────────
@@ -19,9 +19,13 @@ function Chip({ children, cor = 'bg-white/[0.06] text-white/60', ...props }) {
     return <span className={cn('whitespace-nowrap rounded px-1 py-px text-[10.5px] font-semibold', cor)} {...props}>{children}</span>;
 }
 
+// O preço que o cliente paga: o do ML com promoção, quando lido; senão o do
+// acervo (o cheio).
+const precoEfetivo = (a, detalhe) => detalhe?.[a.codigo_mlb]?.preco?.atual ?? a.ml?.preco ?? null;
+
 /** O preço da MAIORIA do grupo — é contra ele que um anúncio "foge". */
-function precoDaMaioria(anuncios) {
-    const precos = anuncios.map((a) => a.ml?.preco).filter((p) => p !== null && p !== undefined);
+function precoDaMaioria(anuncios, detalhe) {
+    const precos = anuncios.map((a) => precoEfetivo(a, detalhe)).filter((p) => p !== null && p !== undefined);
     if (! precos.length) return null;
     const vezes = precos.reduce((m, p) => m.set(p, (m.get(p) ?? 0) + 1), new Map());
     const moda = [...vezes.entries()].sort((x, y) => y[1] - x[1] || x[0] - y[0])[0][0];
@@ -33,7 +37,9 @@ function Card({ a, oferta, detalhe, metrica, preco, selecionado, onSelecionar, v
     const sku = detalhe?.sku;
     const skuDiferente = sku !== undefined && sku !== null && sku.trim().toLowerCase() !== oferta.sku.trim().toLowerCase();
     const foto = detalhe?.fotos?.[0] ?? a.ml?.miniatura ?? null;
-    const precoDiferente = preco && a.ml?.preco !== null && a.ml?.preco !== undefined && a.ml.preco !== preco.moda;
+    const efetivo = detalhe?.preco?.atual ?? a.ml?.preco ?? null;
+    const precoDiferente = preco && efetivo !== null && efetivo !== preco.moda;
+    const promocao = detalhe?.preco && detalhe.preco.cheio > detalhe.preco.atual;
 
     return (
         <li>
@@ -54,7 +60,9 @@ function Card({ a, oferta, detalhe, metrica, preco, selecionado, onSelecionar, v
                             </span>
                         )}
                         {a.ml?.vendas > 0 && <span>{n(a.ml.vendas)} vendas</span>}
-                        {precoDiferente && <span className="text-amber-300/90">{fmtReais(a.ml.preco)}</span>}
+                        {(precoDiferente || promocao) && (
+                            <PrecoDeVenda preco={detalhe?.preco} reserva={a.ml?.preco} compacto className={precoDiferente ? 'text-amber-300/90' : 'text-white/60'} />
+                        )}
                     </span>
                     {(a.status !== 'ativo' || skuDiferente || sku === null || a.catalogo || a.kit_virtual || a.ml?.alertas?.length > 0 || metrica) && (
                         <span className="mt-1 flex flex-wrap items-center gap-1">
@@ -85,7 +93,7 @@ function Card({ a, oferta, detalhe, metrica, preco, selecionado, onSelecionar, v
 export default function EstacaoColuna({ tipo, oferta, detalhe, metricas, selecionado, onSelecionar, onNovoAnuncio, onAgendar, vocabulario }) {
     const anuncios = oferta.anuncios.filter((a) => a.tipo === tipo).sort((x, y) => (y.ml?.vendas ?? -1) - (x.ml?.vendas ?? -1));
     const vivos = anuncios.filter((a) => a.status !== 'inativo');
-    const preco = precoDaMaioria(vivos);
+    const preco = precoDaMaioria(vivos, detalhe);
     const rotulo = vocabulario.tipos[tipo];
 
     return (

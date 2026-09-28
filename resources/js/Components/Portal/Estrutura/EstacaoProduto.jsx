@@ -178,7 +178,8 @@ export default function EstacaoProduto({ ofertaId, versao, onFechar, onTrocar, v
                                                     <PilulaSituacao situacao={oferta.situacao} longa vocabulario={vocabulario} />
                                                     <EstoqueOferta estoque={oferta.estoque} />
                                                     {oferta.vendas > 0 && <Vendas quantidade={oferta.vendas} />}
-                                                    <PrecosDaOferta precos={oferta.precos} vocabulario={vocabulario} />
+                                                    {/* Com os preços lidos no ML (promoção incluída), a comparação usa eles. */}
+                                                    <PrecosDaOferta precos={detalhes[oferta.id]?.precos ?? oferta.precos} vocabulario={vocabulario} />
                                                     {oferta.sku_repetido && <span className="text-amber-300">SKU repetido em outra oferta</span>}
                                                 </div>
                                                 {oferta.observacoes && <p className="mt-1 text-[12px] text-white/45">{oferta.observacoes}</p>}

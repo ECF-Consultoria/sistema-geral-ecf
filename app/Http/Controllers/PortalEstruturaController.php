@@ -62,7 +62,7 @@ class PortalEstruturaController extends Controller
 
         // Pré-aquece a parte lenta das métricas (os pedidos da loja) na fila
         // high: quando a estação do produto abrir, ela costuma já estar pronta.
-        $this->anunciosMl->aquecerVendas7d($empresa);
+        $this->anunciosMl->aquecerVendas($empresa);
 
         return Inertia::render('Portal/Estrutura', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA, PortalContexto::ator()),

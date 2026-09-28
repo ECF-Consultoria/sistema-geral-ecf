@@ -328,8 +328,10 @@ class AnunciosMercadoLivreTest extends TestCase
     }
 
     /**
-     * A estação mostra o SKU que cada anúncio tem HOJE no ML e as fotos dele —
-     * lidos na hora, num multiget só (não há coluna para eles), com cache.
+     * A estação mostra o SKU que cada anúncio tem HOJE no ML, as fotos e o
+     * preço QUE O CLIENTE PAGA — o `price` do acervo é o cheio, sem a
+     * promoção (MLB4645047625: R$ 2.021,08 no acervo, R$ 1.666,37 no anúncio).
+     * Lidos na hora, com cache.
      */
     public function test_estacao_le_sku_e_fotos_de_cada_anuncio_no_ml(): void
     {
@@ -341,10 +343,25 @@ class AnunciosMercadoLivreTest extends TestCase
         foreach (['MLB5318502460' => 'premium', 'MLB5307535856' => 'classico', 'MLB5308780432' => 'classico', 'MLB7046783144' => 'premium'] as $mlb => $tipo) {
             $anuncios->cadastrar($oferta, ['tipo' => $tipo, 'codigo_mlb' => $mlb, 'status' => 'ativo', 'catalogo' => false], $ator);
         }
-        Http::fake(['*/items?*' => Http::response($this->fixture('multiget-lote.json'))]);
+        // O Premium tem promoção que o deixa MAIS BARATO que o Clássico; o Clássico, não.
+        $venda = ['MLB5318502460' => ['amount' => 80.0, 'regular_amount' => 120.0], 'MLB5307535856' => ['amount' => 99.9, 'regular_amount' => 99.9]];
+        Http::fake([
+            '*/items?*' => Http::response($this->fixture('multiget-lote.json')),
+            '*/sale_price*' => function ($req) use ($venda) {
+                preg_match('#/items/(MLB\d+)/sale_price#', $req->url(), $m);
+
+                return isset($venda[$m[1]]) ? Http::response($venda[$m[1]]) : Http::response(['message' => 'not found'], 404);
+            },
+        ]);
         $sessao = $this->entrarNoPortal($empresa);
 
         $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk()->json();
+
+        $this->assertSame(['atual' => 80, 'cheio' => 120], $r['anuncios']['MLB5318502460']['preco']);
+        $this->assertNull($r['anuncios']['MLB5308780432']['preco'], 'sem o preço de venda, a tela fica com o do acervo');
+        // A comparação usa o preço que o cliente paga: Premium 80 < Clássico 99,90.
+        // (O MLB5308780432 é Clássico e não tem preço lido — não entra.)
+        $this->assertSame(['classico' => 99.9, 'premium' => 80, 'invertido' => true], $r['precos']);
 
         $this->assertTrue($r['conectado']);
         // 1808 nos dois do produto; o 1300 foi ligado à oferta errada; o encerrado não tem SKU.
@@ -355,8 +372,9 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertNotEmpty($fotos, 'as fotos vêm do mesmo multiget');
         $this->assertStringStartsWith('https://', $fotos[0]);
 
+        $n = count(Http::recorded());
         $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk();
-        Http::assertSentCount(1);
+        $this->assertCount($n, Http::recorded(), 'reabrir usa o cache');
 
         // Oferta de outra empresa: 404, como toda rota do módulo.
         $outra = $this->empresaDoGabarito();
@@ -372,7 +390,7 @@ class AnunciosMercadoLivreTest extends TestCase
 
         $this->entrarNoPortal($empresa)
             ->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))
-            ->assertOk()->assertExactJson(['conectado' => false, 'anuncios' => []]);
+            ->assertOk()->assertExactJson(['conectado' => false, 'anuncios' => [], 'precos' => null]);
         Http::assertNothingSent();
     }
 
@@ -452,10 +470,22 @@ class AnunciosMercadoLivreTest extends TestCase
         Http::fake([
             '*/items/MLB5307535856/visits/time_window*' => Http::response(['total_visits' => 340, 'results' => $dias]),
             '*/items/MLB5318502460/visits/time_window*' => Http::response(['message' => 'boom'], 500),
-            '*/orders/search*' => Http::response(['paging' => ['total' => 2], 'results' => [
-                ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 3], ['item' => ['id' => 'MLB9999999999'], 'quantity' => 9]]],
-                ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 1]]],
-            ]]),
+            // Os pedidos são lidos DIA A DIA (30 buscas). Hoje: 2 pedidos; 10 dias atrás: 1.
+            '*/orders/search*' => function ($req) {
+                $dia = substr($req->data()['order.date_created.from'] ?? '', 0, 10);
+                $pedidos = match ($dia) {
+                    now('America/Sao_Paulo')->format('Y-m-d') => [
+                        ['date_created' => now('America/Sao_Paulo')->format('Y-m-d').'T10:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 3], ['item' => ['id' => 'MLB9999999999'], 'quantity' => 9]]],
+                        ['date_created' => now('America/Sao_Paulo')->format('Y-m-d').'T11:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 1]]],
+                    ],
+                    now('America/Sao_Paulo')->subDays(10)->format('Y-m-d') => [
+                        ['date_created' => now('America/Sao_Paulo')->subDays(10)->format('Y-m-d').'T09:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 2]]],
+                    ],
+                    default => [],
+                };
+
+                return Http::response(['paging' => ['total' => count($pedidos)], 'results' => $pedidos]);
+            },
             '*/items/MLB5318502460/price_to_win*' => Http::response(['status' => 'competing', 'price_to_win' => 38.18]),
         ]);
         $sessao = $this->entrarNoPortal($empresa);
@@ -466,7 +496,11 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertTrue($r['vendas_prontas']);
         $c = $r['metricas']['MLB5307535856'];
         // 7 dias = os 7 mais recentes da série (6×10 + 50); 30 dias = tudo; a série volta em ordem.
-        $this->assertSame([110, 340, 4, null], [$c['visitas'], $c['visitas_30d'], $c['vendas'], $c['buybox']]);
+        // Vendas: 4 hoje (3 + 1; o item de outro MLB não conta) e 2 há 10 dias — fora dos 7, dentro dos 30.
+        $this->assertSame([110, 340, 4, 6, null], [$c['visitas'], $c['visitas_30d'], $c['vendas'], $c['vendas_30d'], $c['buybox']]);
+        $this->assertCount(30, $c['vendas_serie']);
+        $this->assertSame(['data' => now('America/Sao_Paulo')->format('Y-m-d'), 'vendas' => 4], $c['vendas_serie'][29]);
+        $this->assertSame(['data' => now('America/Sao_Paulo')->subDays(10)->format('Y-m-d'), 'vendas' => 2], $c['vendas_serie'][19]);
         $this->assertCount(30, $c['serie']);
         $this->assertSame(now()->subDays(29)->format('Y-m-d'), $c['serie'][0]['data']);
         $this->assertSame(['data' => now()->format('Y-m-d'), 'visitas' => 50], $c['serie'][29]);
@@ -476,8 +510,8 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertNull($p['serie']);
         $this->assertSame(0, $p['vendas']);
         $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $p['buybox']);
-        // As vendas vêm dos pedidos da LOJA, numa leitura só — não uma busca por anúncio.
-        $this->assertCount(1, collect(Http::recorded())->filter(fn ($par) => str_contains($par[0]->url(), '/orders/search')));
+        // As vendas vêm dos pedidos da LOJA, dia a dia (30 buscas, 1 página cada) — não uma busca por anúncio.
+        $this->assertCount(30, collect(Http::recorded())->filter(fn ($par) => str_contains($par[0]->url(), '/orders/search')));
 
         $n = count(Http::recorded());
         $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk();
