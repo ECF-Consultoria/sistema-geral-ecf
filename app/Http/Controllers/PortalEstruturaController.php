@@ -90,7 +90,20 @@ class PortalEstruturaController extends Controller
 
     public function criarOferta(Request $request)
     {
-        [$oferta, $absorvidos] = $this->ofertas->criar(PortalContexto::empresa(), $this->dadosOferta($request), PortalContexto::ator());
+        $dados = $this->dadosOferta($request);
+        // "+ Produto" com anúncios escolhidos na lista do ML: cria e liga junto.
+        $mlbs = $request->validate([
+            'anuncios_ml'   => ['nullable', 'array', 'max:50'],
+            'anuncios_ml.*' => ['string', 'max:30'],
+        ])['anuncios_ml'] ?? [];
+
+        if ($mlbs) {
+            [$oferta, $absorvidos, $ligados] = $this->anunciosMl->criarOfertaComAnuncios(PortalContexto::empresa(), $dados, $mlbs, PortalContexto::ator());
+
+            return back()->with('success', $this->mensagemOferta("Oferta {$oferta->sku} criada com {$ligados} anúncio(s) do Mercado Livre.", $absorvidos));
+        }
+
+        [$oferta, $absorvidos] = $this->ofertas->criar(PortalContexto::empresa(), $dados, PortalContexto::ator());
 
         return back()->with('success', $this->mensagemOferta("Oferta {$oferta->sku} criada.", $absorvidos));
     }
@@ -240,11 +253,12 @@ class PortalEstruturaController extends Controller
     public function buscarAnunciosMl(Request $request)
     {
         $dados = $request->validate([
-            'q'    => ['nullable', 'string', 'max:200'],
-            'tipo' => ['nullable', Rule::in(array_keys(EstruturaAnuncio::TIPOS))],
+            'q'      => ['nullable', 'string', 'max:200'],
+            'tipo'   => ['nullable', Rule::in(array_keys(EstruturaAnuncio::TIPOS))],
+            'pagina' => ['nullable', 'integer', 'min:1', 'max:5000'],
         ]);
 
-        return response()->json($this->anunciosMl->buscar(PortalContexto::empresa(), $dados['q'] ?? '', $dados['tipo'] ?? null));
+        return response()->json($this->anunciosMl->buscar(PortalContexto::empresa(), $dados['q'] ?? '', $dados['tipo'] ?? null, (int) ($dados['pagina'] ?? 1)));
     }
 
     public function ligarAnuncioMl(Request $request, int $oferta)

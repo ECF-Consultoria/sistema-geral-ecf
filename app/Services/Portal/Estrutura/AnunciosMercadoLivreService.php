@@ -23,7 +23,7 @@ use Illuminate\Validation\ValidationException;
  * cliente não digita a lista de produtos: ela sai dos anúncios.
  *
  * ### Duas portas, uma regra
- * 1. **Puxar** (a regra): lê os anúncios mais vendidos que ainda não estão no
+ * 1. **Importar** (a regra): lê os anúncios mais vendidos que ainda não estão no
  *    módulo, cria uma oferta por SKU e junta nela TODOS os anúncios Clássico e
  *    Premium com aquele SKU. Os anúncios passam pelo MESMO
  *    `ColagemAnunciosService` da colagem (atualiza pelo MLB, não duplica):
@@ -41,9 +41,9 @@ use Illuminate\Validation\ValidationException;
  *
  * ### Por lote dos mais vendidos, não a conta inteira
  * A #131 tem ~100 mil anúncios. Ler tudo seriam ~5.000 multigets (mais de uma
- * hora) e milhares de ofertas de uma vez. Cada "Puxar" traz até
+ * hora) e milhares de ofertas de uma vez. Cada "Importar" traz até
  * {@see self::LOTE_SKUS} SKUs, dos anúncios mais vendidos que ainda não estão
- * no módulo; o próximo "Puxar" continua de onde parou, porque o que já foi
+ * no módulo; o próximo "Importar" continua de onde parou, porque o que já foi
  * importado sai da lista de candidatos. Decisão do usuário em 25/09.
  *
  * ### Na fila `high`, em fatias
@@ -68,7 +68,7 @@ class AnunciosMercadoLivreService
     private const CHAVE = 'estrutura:importacao-ml:';
     private const VALIDADE_MINUTOS = 60;
 
-    /** Quantos SKUs cada "Puxar" traz. */
+    /** Quantos SKUs cada "Importar" traz. */
     public const LOTE_SKUS = 500;
 
     /** Quantos anúncios, no máximo, uma leitura percorre procurando SKUs novos (250 multigets). */
@@ -85,6 +85,9 @@ class AnunciosMercadoLivreService
 
     /** Sem o teto de 5.000 da colagem manual: são até 500 anúncios POR SKU (10 páginas × 50). */
     private const MAX_LINHAS = 200000;
+
+    /** A lista de anúncios do ML (busca do "+ Produto" e do "+ Anúncio"): 30 por página. */
+    public const POR_PAGINA_BUSCA = 30;
 
     /** Quantos anúncios de uma oferta a gaveta confere no ML (10 multigets). */
     private const MAX_SKUS_GAVETA = 200;
@@ -122,12 +125,12 @@ class AnunciosMercadoLivreService
         return $empresa->mlToken?->status === 'active';
     }
 
-    // ═══ Puxar (a regra) ════════════════════════════════════════════════════
+    // ═══ Importar (a regra) ═════════════════════════════════════════════════
 
     /**
      * Começa uma leitura em segundo plano. As ofertas cadastradas à mão que
      * ainda não têm anúncio entram primeiro no lote: quem cadastrou a oferta
-     * antes de puxar recebe os anúncios dela.
+     * antes de importar recebe os anúncios dela.
      */
     public function iniciar(Company $empresa, int $loteSkus = self::LOTE_SKUS): void
     {
@@ -445,7 +448,7 @@ class AnunciosMercadoLivreService
      * O estado para a tela — nunca o estado interno inteiro (a lista de MLBs
      * da leitura não vai para o navegador). Quando pronto, já vem com as
      * ofertas a criar e a prévia dos anúncios, a MESMA da colagem, no modo
-     * acrescentar/atualizar (puxar nunca remove).
+     * acrescentar/atualizar (importar nunca remove).
      */
     public function estado(Company $empresa): array
     {
@@ -453,7 +456,7 @@ class AnunciosMercadoLivreService
 
         if ($estado['estado'] === 'lendo') {
             if (! $this->lendoAinda($estado)) {
-                return ['estado' => 'erro', 'erro' => 'A leitura parou no meio. Clique em "Puxar de novo".'];
+                return ['estado' => 'erro', 'erro' => 'A importação parou no meio. Clique em "Importar de novo".'];
             }
 
             return [
@@ -553,7 +556,7 @@ class AnunciosMercadoLivreService
 
             if ($novas) {
                 RegistroEstrutura::registrar($ator, $empresa, null, 'ofertas_puxadas_ml',
-                    count($novas).' oferta(s) criada(s) a partir dos anúncios do Mercado Livre',
+                    count($novas).' oferta(s) criada(s) na importação dos anúncios do Mercado Livre',
                     ['skus' => array_column($novas, 'sku')]);
             }
 
@@ -675,17 +678,7 @@ class AnunciosMercadoLivreService
         }
 
         try {
-            $skus = Cache::remember('estrutura:skus-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(10), function () use ($empresa, $mlbs) {
-                $corpos = $this->multiget($empresa, $mlbs);
-                $skus = [];
-                foreach ($mlbs as $mlb) {
-                    if (isset($corpos[$mlb])) {
-                        $skus[$mlb] = self::skuDoAnuncio($corpos[$mlb]);
-                    }
-                }
-
-                return $skus;
-            });
+            $skus = $this->skusDeMlbs($empresa, $mlbs);
         } catch (\Throwable $e) {
             Log::warning("[Estrutura] SKUs da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
 
@@ -695,15 +688,55 @@ class AnunciosMercadoLivreService
         return ['conectado' => true, 'skus' => $skus];
     }
 
+    /**
+     * MLB → SKU no ML (`null` = sem SKU), por multiget, com 10 minutos de cache
+     * por conjunto de MLBs. MLB que o ML não devolve fica de fora. Lança se a
+     * API falhar — quem chama decide o que mostrar.
+     *
+     * @param  array<int, string>  $mlbs
+     * @return array<string, ?string>
+     */
+    private function skusDeMlbs(Company $empresa, array $mlbs): array
+    {
+        return Cache::remember('estrutura:skus-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(10), function () use ($empresa, $mlbs) {
+            $corpos = $this->multiget($empresa, $mlbs);
+            $skus = [];
+            foreach ($mlbs as $mlb) {
+                if (isset($corpos[$mlb])) {
+                    $skus[$mlb] = self::skuDoAnuncio($corpos[$mlb]);
+                }
+            }
+
+            return $skus;
+        });
+    }
+
     // ═══ Buscar e ligar (a exceção) ═════════════════════════════════════════
 
     /**
-     * Os anúncios da empresa no acervo local que casam com a busca (título ou
-     * MLB), com a informação de onde cada um já está ligado.
+     * Os anúncios da empresa que casam com a busca — título, MLB ou SKU —, dos
+     * mais vendidos para os menos, 30 por página, com a informação de onde cada
+     * um já está ligado. Sem busca, TODOS (é a lista do "+ Produto": o cliente
+     * escolhe no que já tem no ar, em vez de digitar).
+     *
+     * O acervo não guarda SKU: a busca pergunta ao ML pelo `seller_sku` (exato,
+     * uma chamada) e soma o que achar — esses vêm primeiro. O SKU de cada item
+     * da página vem de um multiget (em cache). Sem conta conectada, título e
+     * MLB bastam, e o SKU não aparece.
      */
-    public function buscar(Company $empresa, string $busca, ?string $tipo = null): array
+    public function buscar(Company $empresa, string $busca, ?string $tipo = null, int $pagina = 1): array
     {
         $busca = trim($busca);
+        $conectado = self::conectado($empresa);
+
+        $doSku = [];
+        if ($busca !== '' && $conectado) {
+            try {
+                $doSku = $this->idsDoSku($empresa, $busca);
+            } catch (\Throwable $e) {
+                Log::warning("[Estrutura] busca por SKU no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            }
+        }
 
         $consulta = MlAcervoItem::where('company_id', $empresa->id)
             ->whereIn('listing_type_id', array_keys(self::TIPOS_ML));
@@ -716,13 +749,32 @@ class AnunciosMercadoLivreService
             $mlb = EstruturaAnuncio::normalizarMlb($busca);
             $consulta->where(fn ($q) => $q->where('title', 'like', '%'.$busca.'%')
                 ->orWhere('ml_item_id', 'like', '%'.strtoupper($busca).'%')
-                ->when($mlb, fn ($q) => $q->orWhere('ml_item_id', $mlb)));
+                ->when($mlb, fn ($q) => $q->orWhere('ml_item_id', $mlb))
+                ->when($doSku, fn ($q) => $q->orWhereIn('ml_item_id', $doSku)));
         }
 
-        $itens = $consulta->orderBy('title')->limit(30)
-            ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing', 'thumbnail', 'permalink']);
+        if ($doSku) {
+            $consulta->orderByRaw('CASE WHEN ml_item_id IN ('.implode(',', array_fill(0, count($doSku), '?')).') THEN 0 ELSE 1 END', $doSku);
+        }
+
+        $pagina = max(1, $pagina);
+        $itens = $consulta->orderByDesc('sold_quantity')->orderBy('id')
+            ->offset(($pagina - 1) * self::POR_PAGINA_BUSCA)->limit(self::POR_PAGINA_BUSCA + 1)
+            ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing', 'thumbnail', 'permalink', 'sold_quantity', 'shipping']);
+
+        $temMais = $itens->count() > self::POR_PAGINA_BUSCA;
+        $itens = $itens->take(self::POR_PAGINA_BUSCA);
 
         $mlbs = $itens->pluck('ml_item_id')->all();
+        $skus = [];
+        if ($conectado && $mlbs) {
+            try {
+                $skus = $this->skusDeMlbs($empresa, $mlbs);
+            } catch (\Throwable $e) {
+                Log::warning("[Estrutura] SKUs da busca no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            }
+        }
+
         $ligados = EstruturaAnuncio::query()
             ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_anuncios.oferta_id')
             ->where('o.company_id', $empresa->id)
@@ -732,18 +784,62 @@ class AnunciosMercadoLivreService
 
         return [
             'total_acervo' => MlAcervoItem::where('company_id', $empresa->id)->count(),
-            'itens' => $itens->map(fn (MlAcervoItem $i) => [
-                'mlb'        => $i->ml_item_id,
-                'titulo'     => $i->title,
-                'tipo'       => self::TIPOS_ML[$i->listing_type_id],
-                'status'     => self::STATUS_ML[$i->status] ?? $i->status,
-                'catalogo'   => (bool) $i->catalog_listing,
-                'thumbnail'  => $i->thumbnail,
-                'permalink'  => $i->permalink,
-                'ligado_a'   => $ligados[$i->ml_item_id] ?? null,
-                'na_espera'  => isset($naEspera[$i->ml_item_id]),
-            ])->all(),
+            'conectado'    => $conectado,
+            'pagina'       => $pagina,
+            'tem_mais'     => $temMais,
+            'itens'        => $itens->map(function (MlAcervoItem $i) use ($skus, $ligados, $naEspera) {
+                $item = [
+                    'mlb'        => $i->ml_item_id,
+                    'titulo'     => $i->title,
+                    'tipo'       => self::TIPOS_ML[$i->listing_type_id],
+                    'tipo_chave' => $i->listing_type_id === 'gold_special' ? EstruturaAnuncio::TIPO_CLASSICO : EstruturaAnuncio::TIPO_PREMIUM,
+                    'status'     => self::STATUS_ML[$i->status] ?? $i->status,
+                    'catalogo'   => (bool) $i->catalog_listing,
+                    'thumbnail'  => $i->thumbnail ? preg_replace('#^http://#', 'https://', $i->thumbnail) : null,
+                    'permalink'  => $i->permalink,
+                    'vendas'     => (int) $i->sold_quantity,
+                    'logistica'  => self::logisticaDoAnuncio(['shipping' => $i->shipping ?? []]),
+                    'ligado_a'   => $ligados[$i->ml_item_id] ?? null,
+                    'na_espera'  => isset($naEspera[$i->ml_item_id]),
+                ];
+
+                // `sku` só quando foi lido no ML (null = o anúncio não tem SKU).
+                if (array_key_exists($i->ml_item_id, $skus)) {
+                    $item['sku'] = $skus[$i->ml_item_id];
+                }
+
+                return $item;
+            })->values()->all(),
         ];
+    }
+
+    /**
+     * "+ Produto" direto do ML: cria a oferta e liga a ela os anúncios que a
+     * pessoa escolheu na lista — tudo ou nada. Anúncio que já está em OUTRA
+     * oferta recusa a criação inteira (ligar não muda de oferta). O que a
+     * criação já trouxe da espera (mesmo SKU colado antes) não é ligado duas
+     * vezes.
+     *
+     * @param  array<int, string>  $mlbs
+     * @return array{0: EstruturaOferta, 1: int, 2: int} oferta, absorvidos da espera, anúncios ligados
+     */
+    public function criarOfertaComAnuncios(Company $empresa, array $dados, array $mlbs, AtorDoPortal $ator): array
+    {
+        return DB::transaction(function () use ($empresa, $dados, $mlbs, $ator) {
+            [$oferta, $absorvidos] = $this->ofertas->criar($empresa, $dados, $ator);
+
+            $ligados = 0;
+            foreach (array_values(array_unique($mlbs)) as $mlb) {
+                $dono = $this->anuncios->localizarMlb($empresa, $mlb);
+                if ($dono instanceof EstruturaAnuncio && $dono->oferta_id === $oferta->id) {
+                    continue;
+                }
+                $this->ligar($oferta, $mlb, $ator);
+                $ligados++;
+            }
+
+            return [$oferta, $absorvidos, $ligados];
+        });
     }
 
     /**

@@ -60,7 +60,7 @@ class ColagemAnunciosService
      * A prévia. Não grava nada.
      *
      * `$skusFuturos`: SKUs de ofertas que AINDA não existem mas serão criadas
-     * junto com a confirmação (o "Puxar do Mercado Livre" cria a oferta e liga
+     * junto com a confirmação (o "Importar do Mercado Livre" cria a oferta e liga
      * os anúncios num passo só). Na prévia, contam como oferta — senão todo
      * anúncio de oferta nova apareceria como "aguardando oferta". Só a prévia
      * aceita isso: a confirmação cria as ofertas ANTES e refaz o plano real.

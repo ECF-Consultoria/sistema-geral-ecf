@@ -7,12 +7,12 @@ import PreviaColagem from './PreviaColagem';
 import { Botao } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Puxar do Mercado Livre ─────────────────────────────────────────────────
+// ─── Importar do Mercado Livre ──────────────────────────────────────────────
 //
 // O cliente não digita a lista de produtos: ela sai dos anúncios. Lê os mais
 // vendidos que ainda não estão aqui, cria uma oferta por SKU e junta nela os
 // anúncios Clássico e Premium com aquele SKU. Conta grande vem em lotes — o
-// próximo "Puxar" continua de onde o anterior parou. A leitura roda em
+// próximo "Importar" continua de onde o anterior parou. A leitura roda em
 // segundo plano; a tela pergunta o estado a cada 2 segundos. Nada é gravado
 // até "Criar ofertas".
 
@@ -66,8 +66,8 @@ function Progresso({ estado }) {
         <p className="flex items-center gap-2 text-[13px] text-white/70" data-lendo>
             <Loader2 size={15} className="animate-spin shrink-0" />
             {{
-                fila: 'Aguardando a vez para ler seus anúncios…',
-                procurar: `Lendo seus anúncios mais vendidos… ${estado.lidos} lidos, ${estado.skus} SKU(s) encontrados.`,
+                fila: 'Aguardando a vez para importar seus anúncios…',
+                procurar: `Importando seus anúncios mais vendidos… ${estado.lidos} lidos, ${estado.skus} SKU(s) encontrados.`,
                 irmaos: `Juntando os anúncios Clássico e Premium de cada SKU… ${estado.procurados} de ${estado.skus}.`,
             }[estado.etapa]}
             {' '}Pode fechar e voltar depois.
@@ -131,7 +131,7 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
 
     return (
         <Janela aberta={aberta} onFechar={() => onFechar(false)} largura="max-w-2xl"
-            titulo="Puxar do Mercado Livre"
+            titulo="Importar do Mercado Livre"
             descricao="Lê seus anúncios mais vendidos, cria uma oferta para cada SKU e junta nela os anúncios Clássico e Premium com esse SKU. Nada é gravado antes de você conferir.">
             <div className="space-y-3" data-importar-ml>
                 {! conectado && (
@@ -153,7 +153,7 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
                         </p>
                         {estado.acabou
                             ? <p className="text-[12.5px] text-emerald-300/80" data-acabou>Não há mais anúncios seus fora do Mapeamento.</p>
-                            : <p className="text-[12.5px] text-white/45">Depois de criar, clique em “Puxar do Mercado Livre” de novo para trazer os próximos {estado.limite} SKUs.</p>}
+                            : <p className="text-[12.5px] text-white/45">Depois de criar, clique em “Importar do Mercado Livre” de novo para trazer os próximos {estado.limite} SKUs.</p>}
                         <OfertasNovas ofertas={estado.ofertas_novas} />
                         <PreviaColagem previa={estado.previa} vocabulario={vocabulario} />
                     </>
@@ -165,7 +165,7 @@ export default function ImportarDoMl({ aberta, onFechar, conectado, vocabulario 
                     <Botao variante="fantasma" onClick={() => onFechar(false)}>Fechar</Botao>
                     {conectado && ! pronto && (
                         <Botao variante="primario" onClick={ler} disabled={estado === null || estado?.estado === 'lendo'} data-acao="ler-ml">
-                            {estado?.estado === 'erro' ? 'Puxar de novo' : 'Puxar meus anúncios'}
+                            {estado?.estado === 'erro' ? 'Importar de novo' : 'Importar meus anúncios'}
                         </Botao>
                     )}
                     {pronto && <Botao onClick={ler} data-acao="ler-ml">Ler de novo</Botao>}

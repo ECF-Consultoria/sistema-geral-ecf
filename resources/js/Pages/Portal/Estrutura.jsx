@@ -288,7 +288,7 @@ function EstadoVazio({ onProduto, onColar, onImportar }) {
             <p className="text-white text-[15px] font-semibold">Comece listando seus produtos</p>
             <p className="text-white/50 text-[13px] max-w-lg mx-auto leading-relaxed">
                 {onImportar
-                    ? 'Puxe seus anúncios do Mercado Livre: cada SKU vira um produto em Fase 1, com os anúncios Clássico e Premium dele. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'
+                    ? 'Importe seus anúncios do Mercado Livre: cada SKU vira um produto em Fase 1, com os anúncios Clássico e Premium dele. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'
                     : 'Liste TODOS os produtos em Fase 1. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'}
             </p>
             <div className="grid sm:grid-cols-4 gap-2 text-left max-w-3xl mx-auto">
@@ -307,7 +307,7 @@ function EstadoVazio({ onProduto, onColar, onImportar }) {
             <div className="flex flex-wrap justify-center gap-2">
                 {onImportar && (
                     <Botao variante="primario" onClick={onImportar} data-acao="importar-ml-vazio">
-                        <DownloadCloud size={14} /> Puxar meus anúncios do Mercado Livre
+                        <DownloadCloud size={14} /> Importar meus anúncios do Mercado Livre
                     </Botao>
                 )}
                 <Botao variante={onImportar ? undefined : 'primario'} onClick={onProduto}><Plus size={14} /> Primeiro produto</Botao>
@@ -396,7 +396,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const blocosKits = blocos.filter((b) => ! b.produto);
     const filtroAtual = filtros.situacao ?? 'todas';
 
-    // Anúncios colados/puxados sem oferta: no ar, mas fora da conta. Aparece
+    // Anúncios colados/importados sem oferta: no ar, mas fora da conta. Aparece
     // também com o módulo vazio — colar antes de listar produtos cai todo aqui.
     const avisoEspera = estrutura.espera > 0 && (
         <button type="button" onClick={abrirEspera} data-aviso-espera
@@ -517,6 +517,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 existentes={formOferta?.existentes ?? []}
                 opcoes={opcoes_ofertas}
                 vocabulario={vocabulario}
+                mlConectado={ml_conectado}
             />
 
             <FormAnuncio

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2, X } from 'lucide-react';
 import Janela from './Janela';
-import { Botao, CLASSE_INPUT, Campo, FotoProduto, Seletor } from './comum';
+import { EscolherAnunciosMl } from './BuscaAnunciosMl';
+import { Botao, CLASSE_INPUT, Campo, FotoProduto, LinkMl, Seletor } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Criar / editar oferta ──────────────────────────────────────────────────
@@ -56,7 +57,7 @@ function sugestaoKit(itens, porId) {
  * @param base  produto de onde partiu o combo/kit (resumo), ou a oferta a editar
  * @param opcoes lista enxuta de ofertas (para compor kit) — `opcoes_ofertas`
  */
-export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocabulario, inicial, existentes = [] }) {
+export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocabulario, inicial, existentes = [], mlConectado = false }) {
     const editando = modo === 'editar';
     const faseInicial = editando ? base.fase : (modo === 'produto' ? 'simples' : modo === 'combo' ? 'combo' : 'kit');
 
@@ -69,6 +70,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const [qtdCombo, setQtdCombo] = useState('2');
     const [itens, setItens] = useState([]);
     const [filtroProduto, setFiltroProduto] = useState('');
+    const [anunciosMl, setAnunciosMl] = useState([]);   // escolhidos na lista do ML ("+ Produto")
     const [erros, setErros] = useState({});
     const [enviando, setEnviando] = useState(false);
 
@@ -80,6 +82,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         setSkuMexido(editando || !! inicial?.sku);
         setNomeMexido(editando || !! inicial?.nome);
         setFiltroProduto('');
+        setAnunciosMl([]);
 
         if (editando) {
             setSku(base.sku); setNome(base.nome ?? ''); setLogistica(base.logistica); setObs(base.observacoes ?? '');
@@ -97,6 +100,23 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const porId = useMemo(() => Object.fromEntries((opcoes ?? []).map((o) => [o.id, o])), [opcoes]);
 
     const ehKit = modo === 'kit' || (editando && (base.fase === 'kit' || base.fase === 'combit'));
+    // "+ Produto" com a conta do ML conectada: escolhe-se no que já está no ar.
+    const comMl = modo === 'produto' && ! editando && mlConectado;
+
+    // O primeiro anúncio escolhido sugere SKU, nome e logística (enquanto a
+    // pessoa não mexeu nos campos); os seguintes só entram na oferta.
+    const alternarAnuncio = (item) => {
+        if (anunciosMl.some((a) => a.mlb === item.mlb)) {
+            setAnunciosMl(anunciosMl.filter((a) => a.mlb !== item.mlb));
+            return;
+        }
+        if (anunciosMl.length === 0) {
+            if (! skuMexido && item.sku) setSku(item.sku);
+            if (! nomeMexido && item.titulo) setNome(item.titulo);
+            if (! logistica && item.logistica) setLogistica(item.logistica);
+        }
+        setAnunciosMl([...anunciosMl, item]);
+    };
     const ehCombo = modo === 'combo' || (editando && base.fase === 'combo');
     const faseKit = faseDoKit(itens);
 
@@ -158,7 +178,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             : ehKit ? itens.map((i) => ({ id: i.id, quantidade: Number(i.quantidade) })) : [];
 
         const fase = ehCombo ? 'combo' : ehKit ? (faseKit ?? 'kit') : faseInicial;
-        const dados = { sku, nome, logistica, observacoes: obs, fase, componentes };
+        const dados = { sku, nome, logistica, observacoes: obs, fase, componentes, ...(comMl && anunciosMl.length ? { anuncios_ml: anunciosMl.map((a) => a.mlb) } : {}) };
 
         const opcoesVisita = {
             preserveScroll: true,
@@ -181,7 +201,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         : modo === 'combo' ? `Combo de ${base?.sku}`
         : 'Kit ou combit';
 
-    const descricao = modo === 'produto' ? '1 unidade do produto. Depois pergunte: dá combo? Combina com qual outro produto?'
+    const descricao = comMl ? 'Escolha ao lado os anúncios deste produto no Mercado Livre (o Clássico e o Premium) — ou só preencha o SKU e o nome.'
+        : modo === 'produto' ? '1 unidade do produto. Depois pergunte: dá combo? Combina com qual outro produto?'
         : modo === 'combo' ? 'Mesmo produto, mais unidades. Cliente que compra 2, 4 unidades está pedindo um combo.'
         : modo === 'kit' ? 'Produtos diferentes juntos. Com mais unidades de algum item, vira combit.'
         : undefined;
@@ -255,6 +276,22 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         </div>
     );
 
+    const escolhidosMl = (
+        <div className="space-y-2" data-anuncios-escolhidos>
+            <p className="text-[12.5px] font-medium text-white/70">Anúncios deste produto</p>
+            {anunciosMl.length === 0 && <p className="text-[12.5px] text-white/35">Nenhum ainda — marque ao lado, ou crie sem anúncio.</p>}
+            {anunciosMl.map((a) => (
+                <div key={a.mlb} className="flex items-center gap-2 rounded-xl border border-white/[0.06] px-2.5 py-1.5 text-[12.5px]" data-anuncio-escolhido={a.mlb}>
+                    <span className="font-semibold text-white/85">{a.tipo}</span>
+                    <LinkMl mlb={a.mlb} className="text-white/45" />
+                    <span className="min-w-0 flex-1 truncate text-white/45" title={a.titulo}>{a.titulo}</span>
+                    <button type="button" onClick={() => alternarAnuncio(a)} className="text-white/40 hover:text-red-300" aria-label="Tirar"><X size={14} /></button>
+                </div>
+            ))}
+            {erros.ml_item_id && <p className="text-[12px] text-red-400">{erros.ml_item_id}</p>}
+        </div>
+    );
+
     const campos = (
         <>
             {ehCombo && ! emLote && repetidas.length > 0 && (
@@ -292,8 +329,16 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     );
 
     return (
-        <Janela aberta={aberta} onFechar={() => onFechar(false)} titulo={titulo} descricao={descricao} largura={ehKit ? 'max-w-5xl' : undefined}>
-            {ehKit ? (
+        <Janela aberta={aberta} onFechar={() => onFechar(false)} titulo={titulo} descricao={descricao} largura={ehKit || comMl ? 'max-w-5xl' : undefined}>
+            {comMl ? (
+                <div className="grid gap-5 lg:grid-cols-2" data-form-oferta>
+                    <EscolherAnunciosMl escolhidos={anunciosMl} onAlternar={alternarAnuncio} />
+                    <div className="min-w-0 space-y-3">
+                        {escolhidosMl}
+                        {campos}
+                    </div>
+                </div>
+            ) : ehKit ? (
                 <div className="grid gap-5 lg:grid-cols-2" data-form-oferta>
                     {seletorKit}
                     <div className="min-w-0 space-y-3">

@@ -81,6 +81,7 @@ class AnunciosMercadoLivreTest extends TestCase
                     'listing_type_id' => $w['body']['listing_type_id'], 'status' => $w['body']['status'],
                     'catalog_listing' => (bool) ($w['body']['catalog_listing'] ?? false),
                     'sold_quantity' => $w['body']['sold_quantity'],
+                    'shipping' => $w['body']['shipping'],
                 ]);
             }
         }
@@ -367,6 +368,58 @@ class AnunciosMercadoLivreTest extends TestCase
             ->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))
             ->assertOk()->assertExactJson(['conectado' => false, 'skus' => []]);
         Http::assertNothingSent();
+    }
+
+    /**
+     * A lista do "+ Produto": sem busca, TODOS os anúncios, dos mais vendidos
+     * para os menos, com o SKU de cada um (lido no ML). Com busca, o SKU entra
+     * pelo `seller_sku` do ML — o acervo não o guarda — e vem primeiro.
+     */
+    public function test_lista_de_anuncios_do_ml_busca_por_sku_titulo_e_mlb(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $todos = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar'))->assertOk()->json();
+        $this->assertSame('MLB5307535856', $todos['itens'][0]['mlb'], 'o mais vendido (4.926) primeiro');
+        $this->assertSame(['1808', 4926, 'classico', 'mercado_envios'],
+            [$todos['itens'][0]['sku'], $todos['itens'][0]['vendas'], $todos['itens'][0]['tipo_chave'], $todos['itens'][0]['logistica']]);
+        $this->assertFalse($todos['tem_mais']);
+
+        // Pelo SKU (nenhum título tem "1808"): os três anúncios dele.
+        $porSku = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => '1808']))->json('itens');
+        $this->assertEqualsCanonicalizing(['MLB5307535856', 'MLB5318502460', 'MLB5318554060'], array_column($porSku, 'mlb'));
+        $this->assertSame(['1808'], array_values(array_unique(array_column($porSku, 'sku'))));
+
+        // Pelo MLB, como antes.
+        $this->assertSame(['MLB4009839421'], array_column($sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => 'MLB4009839421']))->json('itens'), 'mlb'));
+    }
+
+    /** "+ Produto" direto do ML: a oferta nasce já com os anúncios escolhidos — tudo ou nada. */
+    public function test_criar_produto_ja_com_anuncios_do_ml(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $sessao->post(route('portal.auth.estrutura.ofertas.criar'), [
+            'sku' => '1808', 'fase' => 'simples', 'nome' => 'Armário Aéreo',
+            'anuncios_ml' => ['MLB5307535856', 'MLB5318502460'],
+        ])->assertSessionHasNoErrors();
+
+        $oferta = \App\Models\EstruturaOferta::where('sku', '1808')->sole();
+        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+        $this->assertSame([1, 1, 'ok'], [$conjunto->oferta($oferta->id)['classicos'], $conjunto->oferta($oferta->id)['premiums'], $conjunto->oferta($oferta->id)['situacao']]);
+
+        // Um anúncio que já está na 1808 derruba a criação inteira: nada nasce.
+        $sessao->post(route('portal.auth.estrutura.ofertas.criar'), [
+            'sku' => 'OUTRA', 'fase' => 'simples', 'anuncios_ml' => ['MLB5318554060', 'MLB5307535856'],
+        ])->assertSessionHasErrors('ml_item_id');
+        $this->assertFalse(\App\Models\EstruturaOferta::where('sku', 'OUTRA')->exists());
+        $this->assertSame(2, EstruturaAnuncio::count());
     }
 
     // ═══ A exceção: buscar e ligar ══════════════════════════════════════════
