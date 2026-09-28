@@ -28,6 +28,8 @@ export const ROTULO_CURTO_SITUACAO = {
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
+export const fmtReais = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+
 export const fmtData = (iso) => {
     if (! iso) return '—';
     // Data pura (Y-m-d): montar como local, senão o fuso joga para o dia anterior.
@@ -163,6 +165,53 @@ export function EstoqueAnuncio({ quantidade, full, className }) {
         <span className={cn(quantidade === 0 ? 'text-red-300' : 'text-white/50', className)} data-estoque-anuncio={quantidade}>
             Estoque {quantidade.toLocaleString('pt-BR')}
             {full && <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[10px] font-semibold text-emerald-300" title="Este estoque está no galpão do Mercado Livre (Full)">no Full</span>}
+        </span>
+    );
+}
+
+/** Vendas (vitalícias, do acervo do ML). */
+export function Vendas({ quantidade, className }) {
+    if (quantidade === null || quantidade === undefined) return null;
+
+    return <span className={cn('text-white/55', className)} data-vendas={quantidade}>{quantidade.toLocaleString('pt-BR')} {quantidade === 1 ? 'venda' : 'vendas'}</span>;
+}
+
+/**
+ * O menor preço de cada tipo na oferta. A aula: "Clássico para o melhor preço
+ * à vista, Premium para o parcelado" — Premium mais barato que o Clássico é
+ * par montado ao contrário, e vira aviso.
+ */
+export function PrecosDaOferta({ precos, vocabulario, className }) {
+    if (! precos) return null;
+
+    return (
+        <span className={cn('inline-flex flex-wrap items-center gap-x-2 text-white/60', className)} data-precos>
+            {precos.classico !== null && <span>{vocabulario.tipos_curtos.classico} {fmtReais(precos.classico)}</span>}
+            {precos.premium !== null && <span>{vocabulario.tipos_curtos.premium} {fmtReais(precos.premium)}</span>}
+            {precos.invertido && (
+                <span className="text-amber-300" data-preco-invertido title="A aula: Clássico para o melhor preço à vista, Premium para o parcelado.">
+                    Premium mais barato que o Clássico
+                </span>
+            )}
+        </span>
+    );
+}
+
+// Os alertas que o próprio acervo calcula — nenhum limite é decidido aqui.
+const ROTULO_ALERTA = { foto_insuficiente: 'Poucas fotos', ficha_incompleta: 'Ficha incompleta' };
+
+/** Preço, vendas, fotos e alertas de UM anúncio (do acervo do ML). */
+export function DadosDoAnuncio({ ml, className }) {
+    if (! ml) return null;
+
+    return (
+        <span className={cn('inline-flex flex-wrap items-center gap-x-1.5 text-white/45', className)} data-dados-anuncio>
+            {ml.preco !== null && <span>{fmtReais(ml.preco)}</span>}
+            <span>· <Vendas quantidade={ml.vendas} className="text-white/45" /></span>
+            <span>· {ml.fotos} {ml.fotos === 1 ? 'foto' : 'fotos'}</span>
+            {ml.alertas.map((a) => (
+                <span key={a} className="rounded bg-amber-500/10 px-1 text-[10.5px] font-semibold text-amber-300" data-alerta={a}>{ROTULO_ALERTA[a] ?? a}</span>
+            ))}
         </span>
     );
 }

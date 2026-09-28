@@ -58,9 +58,14 @@ function Tarefa({ item, vocabulario, onConcluir }) {
                             Concluir {vocabulario.tipos_curtos[lado]}
                         </Botao>
                     ) : (
-                        <Botao className="px-2.5 py-1 text-[12px]" onClick={marcarFeita} data-acao="jardinagem-feita">
-                            Marcar feita
-                        </Botao>
+                        <span className="flex flex-wrap items-center gap-2">
+                            <Link href={`${hrefDaOferta(o)}&metricas=1`} className="rounded-xl border border-sky-500/30 px-2.5 py-1 text-[12px] text-sky-300 hover:bg-sky-500/10" data-acao="ver-metricas-jardinagem">
+                                Ver métricas
+                            </Link>
+                            <Botao className="px-2.5 py-1 text-[12px]" onClick={marcarFeita} data-acao="jardinagem-feita">
+                                Marcar feita
+                            </Botao>
+                        </span>
                     )}
                 </div>
             </div>

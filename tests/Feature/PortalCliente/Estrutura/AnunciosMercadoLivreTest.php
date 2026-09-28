@@ -425,6 +425,46 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertSame(2, EstruturaAnuncio::count());
     }
 
+    /**
+     * A Jardinagem com números: visitas e vendas dos últimos 7 dias de cada
+     * anúncio e o buy box do que está no catálogo — lidos no ML na hora (o
+     * acervo não tem), com cache. Falha de uma métrica não derruba as outras.
+     */
+    public function test_metricas_de_7_dias_e_buybox_na_hora(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $ator);
+        $anuncios = app(\App\Services\Portal\Estrutura\EstruturaAnuncioService::class);
+        $anuncios->cadastrar($oferta, ['tipo' => 'classico', 'codigo_mlb' => 'MLB5307535856', 'status' => 'ativo', 'catalogo' => false], $ator);
+        $anuncios->cadastrar($oferta, ['tipo' => 'premium', 'codigo_mlb' => 'MLB5318502460', 'status' => 'ativo', 'catalogo' => true], $ator);
+
+        Http::fake([
+            '*/items/MLB5307535856/visits/time_window*' => Http::response(['total_visits' => 103]),
+            '*/items/MLB5318502460/visits/time_window*' => Http::response(['message' => 'boom'], 500),
+            '*/orders/search*' => fn ($r) => Http::response(['paging' => ['total' => 2], 'results' => [
+                ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 3], ['item' => ['id' => 'MLB9999999999'], 'quantity' => 9]]],
+                ['order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 1]]],
+            ]]),
+            '*/items/MLB5318502460/price_to_win*' => Http::response(['status' => 'competing', 'price_to_win' => 38.18]),
+        ]);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk()->json();
+
+        $this->assertTrue($r['conectado']);
+        // 3 + 1 unidades DESTE anúncio; o item de outro MLB no mesmo pedido não conta.
+        $this->assertSame(['visitas' => 103, 'vendas' => 4, 'buybox' => null], $r['metricas']['MLB5307535856']);
+        // A visita falhou (null), as vendas e o buy box seguiram; "competing" é traduzido.
+        $this->assertNull($r['metricas']['MLB5318502460']['visitas']);
+        $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $r['metricas']['MLB5318502460']['buybox']);
+
+        $n = count(Http::recorded());
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk();
+        $this->assertCount($n, Http::recorded(), 'reabrir usa o cache');
+    }
+
     // ═══ A exceção: buscar e ligar ══════════════════════════════════════════
 
     private function acervo($empresa, string $mlb, string $titulo, string $tipo = 'gold_special', string $status = 'active'): MlAcervoItem

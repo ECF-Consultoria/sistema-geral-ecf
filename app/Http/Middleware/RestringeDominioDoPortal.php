@@ -125,6 +125,7 @@ class RestringeDominioDoPortal
         'portal/estrutura/importacao/aplicar',
         'portal/estrutura/anuncios-ml',
         'portal/estrutura/ofertas/*/anuncios-ml',
+        'portal/estrutura/ofertas/*/metricas-ml',
         'portal/estrutura/colagem',
         'portal/estrutura/colagem/previa',
         'portal/estrutura/espera/*',

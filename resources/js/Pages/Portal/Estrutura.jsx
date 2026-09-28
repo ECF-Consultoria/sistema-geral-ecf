@@ -3,7 +3,7 @@ import { Link, router } from '@inertiajs/react';
 import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, EstoqueOferta, FotoProduto, Indicadores, Lado, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
+    AvisoFlash, Botao, CabecalhoEstrutura, EstoqueOferta, FotoProduto, Indicadores, Lado, Vendas, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
@@ -93,7 +93,18 @@ function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodap
                             </span>
                         )}
                     </p>
-                    {oferta.estoque && <p className="text-[11.5px]"><EstoqueOferta estoque={oferta.estoque} /></p>}
+                    {(oferta.estoque || oferta.vendas > 0 || oferta.precos?.invertido) && (
+                        <p className="flex flex-wrap items-center gap-x-1.5 text-[11.5px]">
+                            {oferta.vendas > 0 && <Vendas quantidade={oferta.vendas} />}
+                            {oferta.vendas > 0 && oferta.estoque && <span className="text-white/25">·</span>}
+                            <EstoqueOferta estoque={oferta.estoque} />
+                            {oferta.precos?.invertido && (
+                                <span className="inline-flex items-center gap-0.5 text-amber-300" title="A aula: Clássico para o melhor preço à vista, Premium para o parcelado." data-preco-invertido>
+                                    <AlertTriangle size={11} /> Premium mais barato
+                                </span>
+                            )}
+                        </p>
+                    )}
                     {rodape && <p className="truncate text-[11.5px] text-white/40">{rodape}</p>}
                 </div>
                 <div className="order-3 col-span-2 flex flex-wrap items-center gap-3 md:order-none md:col-span-1">
@@ -178,16 +189,21 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
                     {bloco.principal.nome && <span className="block truncate text-[12.5px] text-white/55">{bloco.principal.nome}</span>}
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] md:hidden" data-resumo>
                         <ContagemProduto resumo={bloco.resumo_bloco} />
+                        {bloco.vendas > 0 && <Vendas quantidade={bloco.vendas} />}
                         <EstoqueOferta estoque={bloco.estoque} />
                         <PilulaProduto resumo={bloco.resumo_bloco} />
                     </span>
                 </span>
-                <span className="hidden w-60 shrink-0 text-[12.5px] md:block" data-resumo>
+                <span className="hidden w-64 shrink-0 text-[12.5px] md:block" data-resumo>
                     <span className="block"><ContagemProduto resumo={bloco.resumo_bloco} /></span>
-                    <span className="block text-[11.5px]">
-                        <Composicao bloco={bloco} />
-                        {bloco.estoque && <> · <EstoqueOferta estoque={bloco.estoque} /></>}
-                    </span>
+                    <span className="block text-[11.5px]"><Composicao bloco={bloco} /></span>
+                    {(bloco.vendas > 0 || bloco.estoque) && (
+                        <span className="block text-[11.5px]">
+                            {bloco.vendas > 0 && <Vendas quantidade={bloco.vendas} />}
+                            {bloco.vendas > 0 && bloco.estoque && ' · '}
+                            <EstoqueOferta estoque={bloco.estoque} />
+                        </span>
+                    )}
                 </span>
                 <span className="hidden md:inline-flex"><PilulaProduto resumo={bloco.resumo_bloco} /></span>
                 <ChevronRight size={16} className={cn('shrink-0 text-white/30 transition-transform', aberto && 'rotate-90')} />
@@ -333,6 +349,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const [aula, setAula] = useState(false);
     const [importar, setImportar] = useState(false);
     const [busca, setBusca] = useState(filtros.q ?? '');
+    const [autoMetricas, setAutoMetricas] = useState(false);
 
     const { painel, contadores, blocos, paginacao } = estrutura;
 
@@ -355,7 +372,10 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
         const id = Number(url.searchParams.get('abrir'));
         if (id) {
             setGavetaId(id);
+            // Vindo do "Ver métricas" da Jardinagem: a gaveta já abre lendo os 7 dias.
+            setAutoMetricas(url.searchParams.get('metricas') === '1');
             url.searchParams.delete('abrir');
+            url.searchParams.delete('metricas');
             window.history.replaceState(window.history.state, '', url);
         }
     }, []);
@@ -504,13 +524,14 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
 
             <GavetaOferta
                 oferta={gaveta}
-                onFechar={() => setGavetaId(null)}
+                onFechar={() => { setGavetaId(null); setAutoMetricas(false); }}
                 vocabulario={vocabulario}
                 onEditar={editarOferta}
                 onNovoAnuncio={(o) => setFormAnuncio({ oferta: o })}
                 onEditarAnuncio={(o, a) => setFormAnuncio({ oferta: o, anuncio: a })}
                 onAgendar={setAgendar}
                 mlConectado={ml_conectado}
+                autoMetricas={autoMetricas}
             />
 
             <FormOferta

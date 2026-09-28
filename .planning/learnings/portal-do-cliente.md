@@ -767,6 +767,21 @@ Para diagnosticar: `Redis::lrange('queues:default', 0, -1)` pelo tinker — a
 tabela `jobs` fica vazia em produção e engana. A tela agora distingue "na
 fila" (espera 15 min) de "começou e parou" (3 min).
 
+**Métricas do ML no Mapeamento (28/09) — o acervo NÃO tem visitas nem buy box
+na #131** (0% de 99 mil ativos). Dois defeitos da camada cara da Fase 134
+(`MlAcervoDetalheService`), medidos em produção e NÃO corrigidos aqui:
+1. `/items/{id}/visits` com `date_from=...T00:00:00.000-00:00` volta **400
+   "unknown date format"**. Aceitos: `Y-m-d` puro ou
+   `/items/{id}/visits/time_window?last=7&unit=day`.
+2. `price_to_win` devolve `status: "competing"`, fora de
+   `BUYBOX_STATUS_VALIDOS` — a coleta grava null.
+O Mapeamento lê visitas, vendas de 7 dias (`/orders/search?item=MLB…` conta só
+aquele anúncio) e buy box NA HORA, sob demanda, com cache de 30 min
+(`AnunciosMercadoLivreService::metricasDaOferta`). Vendas vitalícias, preço,
+fotos e alertas vêm do acervo (100% preenchidos). Estoque é FAIXA (pares
+Clássico+Premium do mesmo SKU têm estoques próprios); nada de "dá para montar
+N kits" — estoque no Full não está na mão do seller (usuário).
+
 **A prévia com ofertas que ainda não existem**: a colagem casaria os anúncios
 contra ofertas reais e jogaria tudo em "aguardando oferta". `previa()` aceita
 `$skusFuturos` (id negativo, nunca chega ao `executar()`); a confirmação cria

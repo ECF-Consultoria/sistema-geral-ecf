@@ -76,7 +76,8 @@ class EstruturaAgendaService
 
     /**
      * "Pegue os buracos do mapeamento e agende": uma publicação por dia, a
-     * partir do próximo dia livre, na ordem da lista.
+     * partir do próximo dia livre, na ordem da lista — que é a das vendas
+     * (`OrdemPorVendas`): o que mais vende é publicado primeiro.
      *
      * - Buraco é qualquer oferta que não está OK — inclusive a que tem só um
      *   dos lados. O exemplo da planilha deixou CB2 e MSA-MR de fora; aqui não.
@@ -112,7 +113,9 @@ class EstruturaAgendaService
         $dia = $hoje;
         $proposta = [];
 
-        foreach ($conjunto->ofertas() as $o) {
+        $naOrdem = array_merge(...array_map(fn ($b) => $b['ofertas'], OrdemPorVendas::blocos($conjunto, OrdemPorVendas::vendasPorOferta($empresa)) ?: [['ofertas' => []]]));
+
+        foreach (array_map(fn ($id) => $conjunto->oferta($id), $naOrdem) as $o) {
             if ($o['situacao'] === ReguaEstrutura::SITUACAO_OK || isset($jaAgendadas[$o['id']])) {
                 continue;
             }

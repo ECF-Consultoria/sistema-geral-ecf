@@ -4,7 +4,8 @@ import { router } from '@inertiajs/react';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/Components/ui/sheet';
-import { Botao, EstoqueAnuncio, EstoqueOferta, Indicadores, Lado, LinkMl, PilulaSituacao, fmtData } from './comum';
+import { Botao, DadosDoAnuncio, EstoqueAnuncio, EstoqueOferta, Indicadores, Lado, LinkMl, PilulaSituacao, PrecosDaOferta, Vendas, fmtData } from './comum';
+import MetricasMl from './MetricasMl';
 import { cn } from '@/lib/utils';
 
 // ─── A gaveta de uma oferta ─────────────────────────────────────────────────
@@ -39,7 +40,7 @@ function SkuNoMl({ mlb, skus, skuOferta }) {
     );
 }
 
-export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar, mlConectado = false }) {
+export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar, mlConectado = false, autoMetricas = false }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [erro, setErro] = useState(null);
     const [skus, setSkus] = useState({ mapa: {}, lendo: false, erro: null });
@@ -122,9 +123,11 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                 <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
                                 <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
                                 <EstoqueOferta estoque={oferta.estoque} className="text-[12px]" />
+                                {oferta.vendas > 0 && <Vendas quantidade={oferta.vendas} className="text-[12px]" />}
                                 {skus.lendo && <span className="text-[11.5px] text-white/35" data-lendo-skus>lendo os SKUs no Mercado Livre…</span>}
                                 {skus.erro && <span className="text-[11.5px] text-red-300/80">{skus.erro}</span>}
                             </div>
+                            <PrecosDaOferta precos={oferta.precos} vocabulario={vocabulario} className="mb-2 text-[12px]" />
                             {oferta.anuncios.length === 0
                                 ? <p className="text-[12.5px] text-white/40">Nenhum anúncio cadastrado. Publique em Clássico e Premium.</p>
                                 : (
@@ -151,10 +154,16 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                                         {a.titulo && <span className="truncate">{a.titulo}</span>}
                                                     </p>
                                                 )}
+                                                <DadosDoAnuncio ml={a.ml} className="mt-0.5 text-[11.5px]" />
                                             </li>
                                         ))}
                                     </ul>
                                 )}
+                            {mlConectado && (
+                                <div className="mt-3">
+                                    <MetricasMl ofertaId={oferta.id} anuncios={oferta.anuncios} vocabulario={vocabulario} auto={autoMetricas} />
+                                </div>
+                            )}
                         </section>
 
                         <section>

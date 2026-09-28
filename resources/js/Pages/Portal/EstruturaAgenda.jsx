@@ -6,6 +6,7 @@ import {
     AvisoFlash, Botao, CabecalhoEstrutura, Indicadores, LinkMl, ResumoOperacional, fmtData, fmtDiaSemana, hojeIso, somarDias,
 } from '@/Components/Portal/Estrutura/comum';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
+import MetricasMl from '@/Components/Portal/Estrutura/MetricasMl';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
 import PropostaAgenda from '@/Components/Portal/Estrutura/PropostaAgenda';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
@@ -95,6 +96,13 @@ function Item({ item, vocabulario, onConcluir, onJardinagem }) {
                     <input type="checkbox" checked={item.feita} onChange={(e) => marcarJardinagem(e.target.checked)} data-acao="jardinagem" />
                     Feita — métricas olhadas e anúncio ajustado
                 </label>
+            )}
+
+            {/* Jardinagem é "olhe as métricas e ajuste": os números dos 7 dias ali mesmo. */}
+            {! publicacao && ! item.feita && (
+                <div className="basis-full pl-24" data-metricas-jardinagem>
+                    <MetricasMl ofertaId={o.id} anuncios={o.anuncios} vocabulario={vocabulario} compacto />
+                </div>
             )}
 
             <div className="ml-auto flex items-center gap-1">

@@ -214,6 +214,43 @@ class AcessoAoModuloEstruturaTest extends TestCase
     }
 
     /**
+     * O trabalho na ordem das vendas: a lista e a proposta da agenda começam
+     * pelo produto que mais vende. Cada anúncio traz preço, vendas, fotos e os
+     * alertas do acervo; a oferta avisa Premium mais barato que o Clássico.
+     */
+    public function test_vendas_ordenam_a_lista_e_a_proposta_e_precos_avisam_par_invertido(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        $acervo = fn ($mlb, $vendas, $preco, $fotos = 6, $motivos = []) => \App\Models\MlAcervoItem::create([
+            'company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => 'x', 'listing_type_id' => 'gold_special', 'status' => 'active',
+            'sold_quantity' => $vendas, 'price' => $preco, 'fotos_count' => $fotos, 'motivos' => $motivos]);
+        $acervo('MLB0000000001', 10, 199.90);                                  // CAD-01 Clássico
+        $acervo('MLB0000000002', 5, 149.90, 2, ['foto_insuficiente', 'pausado']); // CAD-01 Premium: mais barato!
+        $acervo('MLB0000000004', 500, 899.00);                                 // MSA-MR Premium
+
+        $this->withoutVite()->entrarNoPortal($empresa)
+            ->get(route('portal.auth.estrutura'))
+            ->assertInertia(fn ($page) => $page
+                // A Mesa vende 500: passa na frente da Cadeira (15).
+                ->where('estrutura.blocos.0.principal.sku', 'MSA-MR')
+                ->where('estrutura.blocos.0.vendas', 500)
+                ->where('estrutura.blocos.1.principal.sku', 'CAD-01')
+                ->where('estrutura.blocos.1.vendas', 15)
+                ->where('estrutura.blocos.1.ofertas.0.vendas', 15)
+                ->where('estrutura.blocos.1.ofertas.0.precos', ['classico' => 199.9, 'premium' => 149.9, 'invertido' => true])
+                ->where('estrutura.blocos.1.ofertas.0.anuncios.1.ml', ['vendas' => 5, 'preco' => 149.9, 'fotos' => 2, 'alertas' => ['foto_insuficiente']])
+                ->where('estrutura.blocos.0.ofertas.0.precos', ['classico' => null, 'premium' => 899, 'invertido' => false])   // no JSON, 899.0 vira 899
+            );
+
+        // A proposta da agenda segue a mesma ordem: a Mesa (falta Clássico) primeiro.
+        $proposta = app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class)->proposta($empresa);
+        $this->assertSame('MSA-MR', $proposta[0]['sku']);
+    }
+
+    /**
      * A faixa "próximo passo": UMA coisa a fazer, em ordem de urgência, sobre o
      * conjunto inteiro. Percorre os estados na ordem em que um cliente passa
      * por eles.

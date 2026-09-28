@@ -54,15 +54,17 @@ class EstruturaVisaoService
             }
         }
 
+        // Do produto que mais vende para o que menos — a mesma ordem da
+        // proposta da agenda (`OrdemPorVendas`).
         $blocos = [];
-        foreach ($conjunto->blocos() as $bloco) {
+        foreach (OrdemPorVendas::blocos($conjunto, OrdemPorVendas::vendasPorOferta($empresa)) as $bloco) {
             $ofertas = array_values(array_filter(
                 array_map(fn ($id) => $conjunto->oferta($id), $bloco['ofertas']),
                 fn ($o) => $this->passaNoFiltro($o, $filtro) && $this->passaNaBusca($o, $busca),
             ));
 
             if ($ofertas) {
-                $blocos[] = ['principal' => $conjunto->oferta($bloco['principal']), 'ofertas' => $ofertas, 'todas' => $bloco['ofertas']];
+                $blocos[] = ['principal' => $conjunto->oferta($bloco['principal']), 'ofertas' => $ofertas, 'todas' => $bloco['ofertas'], 'vendas' => $bloco['vendas']];
             }
         }
 
@@ -117,6 +119,8 @@ class EstruturaVisaoService
                 // O estoque do PRODUTO (a oferta principal): é o que diz se dá
                 // para montar combo e kit.
                 'estoque'   => $acervo['estoques'][$b['principal']['id']] ?? null,
+                // Vendas do bloco inteiro (produto + combos), vitalícias, do acervo.
+                'vendas'    => $b['vendas'],
                 // O produto FECHADO vive disto: o bloco inteiro (produto +
                 // combos), nunca o que o filtro deixou. `unica_situacao`: com
                 // UMA pendência só, a tela diz qual ("Falta Premium") em vez de
@@ -486,11 +490,19 @@ class EstruturaVisaoService
      * bloquearia a imagem.
      *
      * @param  array<int, int>|null  $ofertaIds
-     * @return array{fotos: array<int, string>, estoques: array<int, array{min: int, max: int}>, por_mlb: array<string, int>, full: array<string, true>}
+     * ### Vendas, preço, fotos e alertas (28/09)
+     * Por anúncio, do mesmo acervo: vendas (vitalícias), preço, fotos e os
+     * alertas que o próprio acervo já calcula (`foto_insuficiente`,
+     * `ficha_incompleta` — nenhum limite inventado aqui). Por oferta, o menor
+     * preço de cada tipo: a aula diz "Clássico para o melhor preço à vista,
+     * Premium para o parcelado", e Premium mais barato que o Clássico é par
+     * montado ao contrário.
+     *
+     * @return array{fotos: array<int, string>, estoques: array<int, array{min: int, max: int}>, por_mlb: array<string, int>, full: array<string, true>, anuncio: array<string, array>, vendas: array<int, int>, precos: array<int, array>}
      */
     private function acervoDasOfertas(Company $empresa, ?array $ofertaIds = null): array
     {
-        $vazio = ['fotos' => [], 'estoques' => [], 'por_mlb' => [], 'full' => []];
+        $vazio = ['fotos' => [], 'estoques' => [], 'por_mlb' => [], 'full' => [], 'anuncio' => [], 'vendas' => [], 'precos' => []];
         if ($ofertaIds === []) {
             return $vazio;
         }
@@ -501,16 +513,23 @@ class EstruturaVisaoService
             ->when($ofertaIds !== null, fn ($q) => $q->whereIn('estrutura_anuncios.oferta_id', $ofertaIds))
             ->whereNotNull('estrutura_anuncios.codigo_mlb')
             ->orderBy('estrutura_anuncios.id')
-            ->get(['estrutura_anuncios.oferta_id', 'estrutura_anuncios.codigo_mlb', 'estrutura_anuncios.status']);
+            ->get(['estrutura_anuncios.oferta_id', 'estrutura_anuncios.codigo_mlb', 'estrutura_anuncios.status', 'estrutura_anuncios.tipo']);
 
         $fotoMlb = [];
         $qtdMlb = [];
         $fullMlb = [];
+        $dadosMlb = [];
         foreach ($anuncios->pluck('codigo_mlb')->unique()->chunk(1000) as $bloco) {
             MlAcervoItem::where('company_id', $empresa->id)
                 ->whereIn('ml_item_id', $bloco->values()->all())
-                ->get(['ml_item_id', 'thumbnail', 'available_quantity', 'shipping'])
-                ->each(function (MlAcervoItem $i) use (&$fotoMlb, &$qtdMlb, &$fullMlb) {
+                ->get(['ml_item_id', 'thumbnail', 'available_quantity', 'shipping', 'sold_quantity', 'price', 'fotos_count', 'motivos'])
+                ->each(function (MlAcervoItem $i) use (&$fotoMlb, &$qtdMlb, &$fullMlb, &$dadosMlb) {
+                    $dadosMlb[$i->ml_item_id] = [
+                        'vendas'  => (int) ($i->sold_quantity ?? 0),
+                        'preco'   => $i->price !== null ? (float) $i->price : null,
+                        'fotos'   => (int) $i->fotos_count,
+                        'alertas' => array_values(array_intersect(['foto_insuficiente', 'ficha_incompleta'], $i->motivos ?? [])),
+                    ];
                     if ($i->thumbnail) {
                         $fotoMlb[$i->ml_item_id] = preg_replace('#^http://#', 'https://', $i->thumbnail);
                     }
@@ -526,9 +545,18 @@ class EstruturaVisaoService
         $r = $vazio;
         $r['por_mlb'] = $qtdMlb;
         $r['full'] = $fullMlb;
+        $r['anuncio'] = $dadosMlb;
         foreach ($anuncios as $a) {
             if (! isset($r['fotos'][$a->oferta_id]) && isset($fotoMlb[$a->codigo_mlb])) {
                 $r['fotos'][$a->oferta_id] = $fotoMlb[$a->codigo_mlb];
+            }
+            if (isset($dadosMlb[$a->codigo_mlb])) {
+                $d = $dadosMlb[$a->codigo_mlb];
+                $r['vendas'][$a->oferta_id] = ($r['vendas'][$a->oferta_id] ?? 0) + $d['vendas'];
+                if ($a->status !== EstruturaAnuncio::STATUS_INATIVO && $d['preco'] !== null) {
+                    $atual = $r['precos'][$a->oferta_id][$a->tipo] ?? null;
+                    $r['precos'][$a->oferta_id][$a->tipo] = $atual === null ? $d['preco'] : min($atual, $d['preco']);
+                }
             }
             if ($a->status !== EstruturaAnuncio::STATUS_INATIVO && isset($qtdMlb[$a->codigo_mlb])) {
                 $q = $qtdMlb[$a->codigo_mlb];
@@ -589,6 +617,24 @@ class EstruturaVisaoService
         return false;
     }
 
+    /**
+     * O menor preço de cada tipo, e o aviso de par ao contrário: Premium mais
+     * barato que o Clássico.
+     *
+     * @return array{classico: ?float, premium: ?float, invertido: bool}|null
+     */
+    private function precos(array $porTipo): ?array
+    {
+        if (! $porTipo) {
+            return null;
+        }
+
+        $c = $porTipo[EstruturaAnuncio::TIPO_CLASSICO] ?? null;
+        $p = $porTipo[EstruturaAnuncio::TIPO_PREMIUM] ?? null;
+
+        return ['classico' => $c, 'premium' => $p, 'invertido' => $c !== null && $p !== null && $p < $c];
+    }
+
     private function resumo(array $o): array
     {
         return ['id' => $o['id'], 'sku' => $o['sku'], 'nome' => $o['nome'], 'fase' => $o['fase']];
@@ -611,8 +657,12 @@ class EstruturaVisaoService
             'anuncios'      => array_map(fn ($a) => [...$a,
                 'estoque'      => $a['codigo_mlb'] !== null ? ($acervo['por_mlb'][$a['codigo_mlb']] ?? null) : null,
                 'estoque_full' => $a['codigo_mlb'] !== null && isset($acervo['full'][$a['codigo_mlb']]),
+                // Do acervo: vendas vitalícias, preço, fotos e os alertas dele. `null` = anúncio fora do acervo.
+                'ml'           => $a['codigo_mlb'] !== null ? ($acervo['anuncio'][$a['codigo_mlb']] ?? null) : null,
             ], $o['anuncios']),
             'estoque'       => $acervo['estoques'][$o['id']] ?? null,
+            'vendas'        => $acervo['vendas'][$o['id']] ?? null,
+            'precos'        => $this->precos($acervo['precos'][$o['id']] ?? []),
             'classicos'     => $o['classicos'],
             'premiums'      => $o['premiums'],
             'catalogos'     => $o['catalogos'],

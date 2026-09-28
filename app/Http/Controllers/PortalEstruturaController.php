@@ -276,6 +276,12 @@ class PortalEstruturaController extends Controller
         return response()->json($this->anunciosMl->skusDaOferta($this->oferta($oferta)));
     }
 
+    /** Visitas e vendas de 7 dias e buy box de cada anúncio da oferta, lidos no ML. */
+    public function metricasAnunciosMl(int $oferta)
+    {
+        return response()->json($this->anunciosMl->metricasDaOferta($this->oferta($oferta)));
+    }
+
     // ═══ Agenda ═════════════════════════════════════════════════════════════
 
     public function agendar(Request $request)

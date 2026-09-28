@@ -711,6 +711,110 @@ class AnunciosMercadoLivreService
         });
     }
 
+    // ═══ Métricas dos últimos 7 dias (Jardinagem) ═══════════════════════════
+
+    /** Quantos anúncios de uma oferta as métricas cobrem por vez (até 3 chamadas cada). */
+    private const MAX_ANUNCIOS_METRICAS = 30;
+
+    /**
+     * Status do `price_to_win` que a tela traduz. `competing` existe na API
+     * (medido na #131, 28/09) e NÃO está na lista da coleta da Fase 134.
+     */
+    public const BUYBOX = [
+        'winning'             => 'Ganhando',
+        'sharing_first_place' => 'Dividindo o 1º lugar',
+        'competing'           => 'Competindo',
+        'losing'              => 'Perdendo',
+        'listed'              => 'Só listado',
+    ];
+
+    /**
+     * "7 dias depois, olhe as métricas e ajuste" (regra de ouro da aula): as
+     * visitas e as vendas de cada anúncio da oferta nos últimos 7 dias, e o
+     * buy box dos que estão no catálogo — lido no ML na hora, sob demanda.
+     *
+     * Na hora porque o acervo não tem: a camada cara da Fase 134 não preenche
+     * visitas nem buy box na #131 (0%, medido 28/09). Endpoints medidos:
+     * `/items/{id}/visits/time_window?last=7&unit=day` (0,1 s),
+     * `/orders/search?item=` (conta só aquele MLB; até 1 s) e
+     * `/items/{id}/price_to_win?version=v2`. Uma chamada por anúncio, sem
+     * lote — por isso o teto de 30 anúncios (ativos e pausados primeiro) e
+     * 30 minutos de cache. Falha de um anúncio vira `null` naquele número,
+     * não derruba os outros.
+     *
+     * @return array{conectado: bool, metricas: array<string, array{visitas: ?int, vendas: ?int, buybox: ?array}>, limitado?: bool}
+     */
+    public function metricasDaOferta(EstruturaOferta $oferta): array
+    {
+        $empresa = $oferta->company;
+
+        if (! self::conectado($empresa)) {
+            return ['conectado' => false, 'metricas' => []];
+        }
+
+        $anuncios = $oferta->anuncios()->whereNotNull('codigo_mlb')
+            ->orderByRaw('CASE WHEN status = ? THEN 1 ELSE 0 END', [EstruturaAnuncio::STATUS_INATIVO])->orderBy('id')
+            ->get(['codigo_mlb', 'catalogo']);
+        $limitado = $anuncios->count() > self::MAX_ANUNCIOS_METRICAS;
+        $anuncios = $anuncios->take(self::MAX_ANUNCIOS_METRICAS);
+
+        if ($anuncios->isEmpty()) {
+            return ['conectado' => true, 'metricas' => []];
+        }
+
+        $chave = 'estrutura:metricas-ml:'.$empresa->id.':'.md5($anuncios->pluck('codigo_mlb')->implode(','));
+        $metricas = Cache::remember($chave, now()->addMinutes(30), function () use ($empresa, $anuncios) {
+            $mlUserId = (string) $empresa->mlToken->ml_user_id;
+            $de = now()->subDays(7)->startOfDay();
+            $saida = [];
+
+            foreach ($anuncios as $a) {
+                $mlb = $a->codigo_mlb;
+                $saida[$mlb] = [
+                    'visitas' => $this->tentar(fn () => (int) ($this->ml->get($empresa, "/items/{$mlb}/visits/time_window", ['last' => 7, 'unit' => 'day'])['total_visits'] ?? 0), $empresa, $mlb),
+                    'vendas'  => $this->tentar(function () use ($empresa, $mlUserId, $mlb, $de) {
+                        $r = $this->ml->get($empresa, '/orders/search', [
+                            'seller' => $mlUserId, 'item' => $mlb, 'order.status' => 'paid',
+                            'order.date_created.from' => $de->format('Y-m-d').'T00:00:00.000-03:00',
+                            'order.date_created.to'   => now()->format('Y-m-d').'T23:59:59.000-03:00',
+                            'limit' => 50,
+                        ]);
+
+                        // Unidades DESTE anúncio (um pedido pode ter vários itens).
+                        return (int) collect($r['results'] ?? [])->flatMap(fn ($o) => $o['order_items'] ?? [])
+                            ->filter(fn ($i) => ($i['item']['id'] ?? null) === $mlb)->sum('quantity');
+                    }, $empresa, $mlb),
+                    'buybox'  => $a->catalogo ? $this->tentar(function () use ($empresa, $mlb) {
+                        $p = $this->ml->get($empresa, "/items/{$mlb}/price_to_win", ['version' => 'v2']);
+                        $status = $p['status'] ?? null;
+
+                        return $status === null ? null : [
+                            'status'            => $status,
+                            'rotulo'            => self::BUYBOX[$status] ?? $status,
+                            'preco_para_ganhar' => isset($p['price_to_win']) ? (float) $p['price_to_win'] : null,
+                        ];
+                    }, $empresa, $mlb) : null,
+                ];
+            }
+
+            return $saida;
+        });
+
+        return ['conectado' => true, 'metricas' => $metricas, 'limitado' => $limitado];
+    }
+
+    /** Uma métrica de um anúncio: a falha dela vira `null`, com log — as outras seguem. */
+    private function tentar(callable $fn, Company $empresa, string $mlb): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Throwable $e) {
+            Log::warning("[Estrutura] métrica do {$mlb} no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return null;
+        }
+    }
+
     // ═══ Buscar e ligar (a exceção) ═════════════════════════════════════════
 
     /**
