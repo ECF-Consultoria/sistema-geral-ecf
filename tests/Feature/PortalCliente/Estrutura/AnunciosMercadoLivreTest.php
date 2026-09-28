@@ -325,6 +325,50 @@ class AnunciosMercadoLivreTest extends TestCase
             ->assertStatus(422);
     }
 
+    /**
+     * A gaveta mostra o SKU que cada anúncio tem HOJE no ML — lido na hora (não
+     * há coluna para ele), com cache: reabrir a gaveta não bate na API.
+     */
+    public function test_gaveta_le_o_sku_de_cada_anuncio_no_ml(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $ator);
+        $anuncios = app(\App\Services\Portal\Estrutura\EstruturaAnuncioService::class);
+        foreach (['MLB5318502460' => 'premium', 'MLB5307535856' => 'classico', 'MLB5308780432' => 'classico', 'MLB7046783144' => 'premium'] as $mlb => $tipo) {
+            $anuncios->cadastrar($oferta, ['tipo' => $tipo, 'codigo_mlb' => $mlb, 'status' => 'ativo', 'catalogo' => false], $ator);
+        }
+        Http::fake(['*/items?*' => Http::response($this->fixture('multiget-lote.json'))]);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))->assertOk()->json();
+
+        $this->assertTrue($r['conectado']);
+        // 1808 nos dois do produto; o 1300 foi ligado à oferta errada; o encerrado não tem SKU.
+        $this->assertSame(['MLB5318502460' => '1808', 'MLB5307535856' => '1808', 'MLB5308780432' => '1300', 'MLB7046783144' => null], $r['skus']);
+
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))->assertOk();
+        Http::assertSentCount(1);
+
+        // Oferta de outra empresa: 404, como toda rota do módulo.
+        $outra = $this->empresaDoGabarito();
+        [$alheia] = app(EstruturaOfertaService::class)->criar($outra, ['sku' => 'X', 'fase' => 'simples'], $this->atorCliente($outra));
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $alheia->id))->assertNotFound();
+    }
+
+    public function test_gaveta_sem_conta_conectada_nao_chama_a_api(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $this->atorCliente($empresa));
+        Http::fake();
+
+        $this->entrarNoPortal($empresa)
+            ->getJson(route('portal.auth.estrutura.anuncios_ml.skus', $oferta->id))
+            ->assertOk()->assertExactJson(['conectado' => false, 'skus' => []]);
+        Http::assertNothingSent();
+    }
+
     // ═══ A exceção: buscar e ligar ══════════════════════════════════════════
 
     private function acervo($empresa, string $mlb, string $titulo, string $tipo = 'gold_special', string $status = 'active'): MlAcervoItem

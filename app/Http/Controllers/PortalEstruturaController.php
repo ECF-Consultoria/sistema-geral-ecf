@@ -256,6 +256,12 @@ class PortalEstruturaController extends Controller
         return back()->with('success', EstruturaAnuncio::TIPOS[$anuncio->tipo]." {$anuncio->codigo_mlb} ligado a {$anuncio->oferta->sku}.");
     }
 
+    /** O SKU de cada anúncio da oferta no ML, para a gaveta conferir. */
+    public function skusAnunciosMl(int $oferta)
+    {
+        return response()->json($this->anunciosMl->skusDaOferta($this->oferta($oferta)));
+    }
+
     // ═══ Agenda ═════════════════════════════════════════════════════════════
 
     public function agendar(Request $request)

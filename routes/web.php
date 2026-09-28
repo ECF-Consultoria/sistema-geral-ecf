@@ -225,6 +225,8 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:120,1,estrutura.anuncios_ml.buscar')->name('portal.auth.estrutura.anuncios_ml.buscar');
     Route::post('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'ligarAnuncioMl'])
         ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.ligar')->name('portal.auth.estrutura.anuncios_ml.ligar');
+    Route::get('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'skusAnunciosMl'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.skus')->name('portal.auth.estrutura.anuncios_ml.skus');
     Route::post('/estrutura/colagem/previa', [PortalEstruturaController::class, 'previaColagem'])
         ->middleware('throttle:30,1,estrutura.colagem.previa')->name('portal.auth.estrutura.colagem.previa');
     Route::post('/estrutura/colagem', [PortalEstruturaController::class, 'aplicarColagem'])

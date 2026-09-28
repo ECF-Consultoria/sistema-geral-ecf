@@ -505,6 +505,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                 onNovoAnuncio={(o) => setFormAnuncio({ oferta: o })}
                 onEditarAnuncio={(o, a) => setFormAnuncio({ oferta: o, anuncio: a })}
                 onAgendar={setAgendar}
+                mlConectado={ml_conectado}
             />
 
             <FormOferta

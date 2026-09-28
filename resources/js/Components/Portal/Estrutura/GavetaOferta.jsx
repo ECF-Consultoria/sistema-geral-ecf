@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
 import { router } from '@inertiajs/react';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -15,9 +16,48 @@ import { cn } from '@/lib/utils';
 
 const FASE_ROTULO = { simples: 'Produto', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
-export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar }) {
+/**
+ * O SKU que o anúncio tem HOJE no Mercado Livre (lido na hora, ao abrir a
+ * gaveta). Igual ao da oferta: discreto. Diferente: âmbar — é o anúncio ligado
+ * à mão, ou à oferta errada. Sem SKU no ML: dito com todas as letras.
+ */
+function SkuNoMl({ mlb, skus, skuOferta }) {
+    if (! mlb || ! (mlb in skus)) return null;
+
+    const sku = skus[mlb];
+    if (sku === null) {
+        return <span className="shrink-0 text-amber-300/80" title="Este anúncio não tem SKU no Mercado Livre." data-sku-ml="">sem SKU no ML</span>;
+    }
+
+    const igual = sku.trim().toLowerCase() === (skuOferta ?? '').trim().toLowerCase();
+
+    return (
+        <span className={cn('shrink-0 font-mono', igual ? 'text-white/55' : 'text-amber-300')} data-sku-ml={sku}
+            title={igual ? 'SKU do anúncio no Mercado Livre' : `SKU diferente do da oferta (${skuOferta})`}>
+            SKU {sku}
+        </span>
+    );
+}
+
+export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, onNovoAnuncio, onEditarAnuncio, onAgendar, mlConectado = false }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [erro, setErro] = useState(null);
+    const [skus, setSkus] = useState({ mapa: {}, lendo: false, erro: null });
+
+    // O SKU de cada anúncio vem do ML ao abrir a gaveta (e de novo quando os
+    // anúncios da oferta mudam). O mapa é por MLB — único na empresa —, então
+    // trocar de oferta não mostra SKU de outra.
+    const mlbs = oferta ? oferta.anuncios.map((a) => a.codigo_mlb).filter(Boolean).join(',') : '';
+    useEffect(() => {
+        if (! oferta || ! mlConectado || ! mlbs) return undefined;
+        let viva = true;
+        setSkus((s) => ({ ...s, lendo: true, erro: null }));
+        axios.get(route('portal.auth.estrutura.anuncios_ml.skus', oferta.id))
+            .then(({ data }) => viva && setSkus((s) => ({ mapa: { ...s.mapa, ...(data.skus ?? {}) }, lendo: false, erro: data.erro ?? null })))
+            .catch(() => viva && setSkus((s) => ({ ...s, lendo: false, erro: 'Não foi possível ler os SKUs no Mercado Livre agora.' })));
+
+        return () => { viva = false; };
+    }, [oferta?.id, mlbs, mlConectado]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const aberta = !! oferta;
 
@@ -81,6 +121,8 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                 <Lado rotulo={vocabulario.tipos_curtos.classico} quantidade={oferta.classicos} />
                                 <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
                                 <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
+                                {skus.lendo && <span className="text-[11.5px] text-white/35" data-lendo-skus>lendo os SKUs no Mercado Livre…</span>}
+                                {skus.erro && <span className="text-[11.5px] text-red-300/80">{skus.erro}</span>}
                             </div>
                             {oferta.anuncios.length === 0
                                 ? <p className="text-[12.5px] text-white/40">Nenhum anúncio cadastrado. Publique em Clássico e Premium.</p>
@@ -100,7 +142,13 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                                         <button type="button" onClick={() => excluirAnuncio(a)} className="p-1 text-white/40 hover:text-red-300" aria-label="Excluir anúncio"><Trash2 size={13} /></button>
                                                     </span>
                                                 </div>
-                                                {a.titulo && <p className="text-white/45 truncate mt-0.5">{a.titulo}</p>}
+                                                {(a.titulo || a.codigo_mlb in skus.mapa) && (
+                                                    <p className="mt-0.5 flex min-w-0 items-baseline gap-1.5 text-white/45">
+                                                        <SkuNoMl mlb={a.codigo_mlb} skus={skus.mapa} skuOferta={oferta.sku} />
+                                                        {a.titulo && a.codigo_mlb in skus.mapa && <span className="shrink-0 text-white/25">·</span>}
+                                                        {a.titulo && <span className="truncate">{a.titulo}</span>}
+                                                    </p>
+                                                )}
                                             </li>
                                         ))}
                                     </ul>

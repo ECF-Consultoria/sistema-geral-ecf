@@ -86,6 +86,9 @@ class AnunciosMercadoLivreService
     /** Sem o teto de 5.000 da colagem manual: são até 500 anúncios POR SKU (10 páginas × 50). */
     private const MAX_LINHAS = 200000;
 
+    /** Quantos anúncios de uma oferta a gaveta confere no ML (10 multigets). */
+    private const MAX_SKUS_GAVETA = 200;
+
     /** Busca por SKU: 50 por página, no máximo 10 páginas (500 anúncios) por SKU. */
     private const POR_PAGINA = 50;
     private const PAGINAS_POR_SKU = 10;
@@ -637,6 +640,59 @@ class AnunciosMercadoLivreService
             ->map(fn ($l) => implode("\t", [$limpa($l['sku']), $l['mlb'], $limpa($l['titulo']), $l['tipo'], $l['catalogo'] ? 'Sim' : 'Não', $l['status']]))
             ->prepend("SKU\tCÓDIGO MLB\tTÍTULO DO ANÚNCIO\tTIPO\tCATÁLOGO?\tSTATUS")
             ->implode("\n");
+    }
+
+    // ═══ O SKU de cada anúncio, na gaveta ═══════════════════════════════════
+
+    /**
+     * O SKU que cada anúncio da oferta tem HOJE no Mercado Livre — para a
+     * pessoa conferir que os anúncios da oferta são mesmo daquele produto. SKU
+     * diferente do da oferta é o anúncio ligado à mão (ou à oferta errada).
+     *
+     * Lido na hora, não gravado: guardar o SKU seria coluna nova em
+     * `estrutura_anuncios`, tabela com dado em produção (fase GSD
+     * obrigatória), e o SKU no ML pode mudar depois. Dez minutos de cache por
+     * conjunto de MLBs — reabrir a gaveta não bate na API de novo, e anúncio
+     * novo na oferta muda a chave.
+     *
+     * @return array{conectado: bool, skus: array<string, ?string>, erro?: string}
+     *   `skus`: MLB → SKU (`null` = o anúncio não tem SKU no ML). MLB que o ML
+     *   não devolveu (encerrado e apagado) fica de fora.
+     */
+    public function skusDaOferta(EstruturaOferta $oferta): array
+    {
+        $empresa = $oferta->company;
+
+        if (! self::conectado($empresa)) {
+            return ['conectado' => false, 'skus' => []];
+        }
+
+        $mlbs = $oferta->anuncios()->whereNotNull('codigo_mlb')->orderBy('id')
+            ->limit(self::MAX_SKUS_GAVETA)->pluck('codigo_mlb')->unique()->values()->all();
+
+        if (! $mlbs) {
+            return ['conectado' => true, 'skus' => []];
+        }
+
+        try {
+            $skus = Cache::remember('estrutura:skus-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(10), function () use ($empresa, $mlbs) {
+                $corpos = $this->multiget($empresa, $mlbs);
+                $skus = [];
+                foreach ($mlbs as $mlb) {
+                    if (isset($corpos[$mlb])) {
+                        $skus[$mlb] = self::skuDoAnuncio($corpos[$mlb]);
+                    }
+                }
+
+                return $skus;
+            });
+        } catch (\Throwable $e) {
+            Log::warning("[Estrutura] SKUs da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return ['conectado' => true, 'skus' => [], 'erro' => 'Não foi possível ler os SKUs no Mercado Livre agora.'];
+        }
+
+        return ['conectado' => true, 'skus' => $skus];
     }
 
     // ═══ Buscar e ligar (a exceção) ═════════════════════════════════════════
