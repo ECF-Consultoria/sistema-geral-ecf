@@ -3,7 +3,7 @@ import { Link, router } from '@inertiajs/react';
 import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, FotoProduto, Indicadores, Lado, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
+    AvisoFlash, Botao, CabecalhoEstrutura, EstoqueOferta, FotoProduto, Indicadores, Lado, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import GavetaOferta from '@/Components/Portal/Estrutura/GavetaOferta';
@@ -93,6 +93,7 @@ function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodap
                             </span>
                         )}
                     </p>
+                    {oferta.estoque && <p className="text-[11.5px]"><EstoqueOferta estoque={oferta.estoque} /></p>}
                     {rodape && <p className="truncate text-[11.5px] text-white/40">{rodape}</p>}
                 </div>
                 <div className="order-3 col-span-2 flex flex-wrap items-center gap-3 md:order-none md:col-span-1">
@@ -177,12 +178,16 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
                     {bloco.principal.nome && <span className="block truncate text-[12.5px] text-white/55">{bloco.principal.nome}</span>}
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] md:hidden" data-resumo>
                         <ContagemProduto resumo={bloco.resumo_bloco} />
+                        <EstoqueOferta estoque={bloco.estoque} />
                         <PilulaProduto resumo={bloco.resumo_bloco} />
                     </span>
                 </span>
                 <span className="hidden w-60 shrink-0 text-[12.5px] md:block" data-resumo>
                     <span className="block"><ContagemProduto resumo={bloco.resumo_bloco} /></span>
-                    <span className="block text-[11.5px]"><Composicao bloco={bloco} /></span>
+                    <span className="block text-[11.5px]">
+                        <Composicao bloco={bloco} />
+                        {bloco.estoque && <> · <EstoqueOferta estoque={bloco.estoque} /></>}
+                    </span>
                 </span>
                 <span className="hidden md:inline-flex"><PilulaProduto resumo={bloco.resumo_bloco} /></span>
                 <ChevronRight size={16} className={cn('shrink-0 text-white/30 transition-transform', aberto && 'rotate-90')} />

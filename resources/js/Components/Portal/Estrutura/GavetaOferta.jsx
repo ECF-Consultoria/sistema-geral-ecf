@@ -4,7 +4,7 @@ import { router } from '@inertiajs/react';
 import { DialogTitle } from '@radix-ui/react-dialog';
 import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/Components/ui/sheet';
-import { Botao, Indicadores, Lado, LinkMl, PilulaSituacao, fmtData } from './comum';
+import { Botao, EstoqueAnuncio, EstoqueOferta, Indicadores, Lado, LinkMl, PilulaSituacao, fmtData } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── A gaveta de uma oferta ─────────────────────────────────────────────────
@@ -121,6 +121,7 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                 <Lado rotulo={vocabulario.tipos_curtos.classico} quantidade={oferta.classicos} />
                                 <Lado rotulo={vocabulario.tipos_curtos.premium} quantidade={oferta.premiums} />
                                 <Indicadores catalogos={oferta.catalogos} kitsVirtuais={oferta.kits_virtuais} />
+                                <EstoqueOferta estoque={oferta.estoque} className="text-[12px]" />
                                 {skus.lendo && <span className="text-[11.5px] text-white/35" data-lendo-skus>lendo os SKUs no Mercado Livre…</span>}
                                 {skus.erro && <span className="text-[11.5px] text-red-300/80">{skus.erro}</span>}
                             </div>
@@ -136,6 +137,7 @@ export default function GavetaOferta({ oferta, onFechar, vocabulario, onEditar, 
                                                         ? <LinkMl mlb={a.codigo_mlb} className="text-white/55" />
                                                         : <span className="font-mono text-white/55">sem MLB</span>}
                                                     <span className="text-white/40">{vocabulario.status[a.status]}</span>
+                                                    <EstoqueAnuncio quantidade={a.estoque} full={a.estoque_full} />
                                                     <Indicadores catalogos={a.catalogo ? 1 : 0} kitsVirtuais={a.kit_virtual ? 1 : 0} />
                                                     <span className="ml-auto flex gap-1">
                                                         <button type="button" onClick={() => onEditarAnuncio(oferta, a)} className="p-1 text-white/40 hover:text-white" aria-label="Editar anúncio"><Pencil size={13} /></button>

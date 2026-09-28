@@ -760,7 +760,7 @@ class AnunciosMercadoLivreService
         $pagina = max(1, $pagina);
         $itens = $consulta->orderByDesc('sold_quantity')->orderBy('id')
             ->offset(($pagina - 1) * self::POR_PAGINA_BUSCA)->limit(self::POR_PAGINA_BUSCA + 1)
-            ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing', 'thumbnail', 'permalink', 'sold_quantity', 'shipping']);
+            ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing', 'thumbnail', 'permalink', 'sold_quantity', 'available_quantity', 'shipping']);
 
         $temMais = $itens->count() > self::POR_PAGINA_BUSCA;
         $itens = $itens->take(self::POR_PAGINA_BUSCA);
@@ -798,6 +798,8 @@ class AnunciosMercadoLivreService
                     'thumbnail'  => $i->thumbnail ? preg_replace('#^http://#', 'https://', $i->thumbnail) : null,
                     'permalink'  => $i->permalink,
                     'vendas'     => (int) $i->sold_quantity,
+                    'estoque'    => $i->available_quantity !== null ? (int) $i->available_quantity : null,
+                    'estoque_full' => ($i->shipping['logistic_type'] ?? null) === 'fulfillment',
                     'logistica'  => self::logisticaDoAnuncio(['shipping' => $i->shipping ?? []]),
                     'ligado_a'   => $ligados[$i->ml_item_id] ?? null,
                     'na_espera'  => isset($naEspera[$i->ml_item_id]),

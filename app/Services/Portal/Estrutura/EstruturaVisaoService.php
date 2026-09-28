@@ -71,6 +71,9 @@ class EstruturaVisaoService
         $pagina = min(max(1, $pagina), $paginas);
         $daPagina = array_slice($blocos, ($pagina - 1) * self::BLOCOS_POR_PAGINA, self::BLOCOS_POR_PAGINA);
 
+        // Foto e estoque vêm do acervo do ML — só das ofertas da página.
+        $acervo = $this->acervoDasOfertas($empresa, array_values(array_unique(array_merge(...array_map(fn ($b) => $b['todas'], $daPagina ?: [['todas' => []]])))));
+
         // A agenda só das ofertas desta página — é o que a gaveta mostra.
         $idsDaPagina = [];
         foreach ($daPagina as $b) {
@@ -83,7 +86,7 @@ class EstruturaVisaoService
             ->get()
             ->groupBy('oferta_id');
 
-        $serializar = fn (array $o) => $this->oferta($o, $conjunto, $repetidos, $usoEmKits, $agenda[$o['id']] ?? collect());
+        $serializar = fn (array $o) => $this->oferta($o, $conjunto, $repetidos, $usoEmKits, $agenda[$o['id']] ?? collect(), $acervo);
 
         // Quem já tem publicação na agenda — para o resumo dizer se sobrou
         // buraco SEM data. Publicação agendada de oferta não-OK está pendente
@@ -97,7 +100,7 @@ class EstruturaVisaoService
             ->flip()
             ->all();
 
-        $fotos = $this->fotos($empresa, $conjunto, $daPagina);
+        $fotos = $this->fotos($acervo['fotos'], $daPagina);
 
         $kitsECombits = array_values(array_filter(
             $conjunto->ofertas(),
@@ -111,6 +114,9 @@ class EstruturaVisaoService
             'blocos'     => array_map(fn ($b) => [
                 'chave'     => $b['principal']['id'],
                 'foto'      => $fotos[$b['principal']['id']] ?? null,
+                // O estoque do PRODUTO (a oferta principal): é o que diz se dá
+                // para montar combo e kit.
+                'estoque'   => $acervo['estoques'][$b['principal']['id']] ?? null,
                 // O produto FECHADO vive disto: o bloco inteiro (produto +
                 // combos), nunca o que o filtro deixou. `unica_situacao`: com
                 // UMA pendência só, a tela diz qual ("Falta Premium") em vez de
@@ -262,12 +268,13 @@ class EstruturaVisaoService
      */
     public function opcoesDeOfertas(Company $empresa): array
     {
-        $fotos = $this->fotosDasOfertas($empresa);
+        $acervo = $this->acervoDasOfertas($empresa);
 
         return EstruturaOferta::where('company_id', $empresa->id)
             ->orderBy('sku')
             ->get(['id', 'sku', 'nome', 'fase'])
-            ->map(fn ($o) => ['id' => $o->id, 'sku' => $o->sku, 'nome' => $o->nome, 'fase' => $o->fase, 'foto' => $fotos[$o->id] ?? null])
+            ->map(fn ($o) => ['id' => $o->id, 'sku' => $o->sku, 'nome' => $o->nome, 'fase' => $o->fase,
+                'foto' => $acervo['fotos'][$o->id] ?? null, 'estoque' => $acervo['estoques'][$o->id] ?? null])
             ->all();
     }
 
@@ -441,13 +448,11 @@ class EstruturaVisaoService
      * A foto de cada bloco da página: a do produto, senão a de qualquer oferta
      * do bloco (na ordem do bloco).
      *
+     * @param  array<int, string>  $porOferta
      * @return array<int, string> id da oferta principal → URL
      */
-    private function fotos(Company $empresa, EstruturaConjunto $conjunto, array $daPagina): array
+    private function fotos(array $porOferta, array $daPagina): array
     {
-        $ids = array_merge(...array_map(fn ($b) => $b['todas'], $daPagina ?: [['todas' => []]]));
-        $porOferta = $this->fotosDasOfertas($empresa, $ids);
-
         $fotos = [];
         foreach ($daPagina as $b) {
             foreach ($b['todas'] as $id) {
@@ -462,18 +467,32 @@ class EstruturaVisaoService
     }
 
     /**
-     * A foto de cada oferta: a do primeiro anúncio dela que o acervo do ML
-     * conhece. `http://` do ML vira `https://` — o portal é https e o
-     * navegador bloquearia a imagem. Sem `$ofertaIds`, todas da empresa (o
+     * O que o acervo do ML sabe das ofertas, numa leitura: a foto (a do
+     * primeiro anúncio) e o estoque. Sem `$ofertaIds`, todas da empresa (o
      * seletor do kit); com, só essas (a página).
      *
+     * ### Estoque é FAIXA, não número (medido na #131 em 28/09)
+     * Os anúncios do mesmo SKU não compartilham um estoque: cada par Clássico
+     * + Premium é um "produto do vendedor" com o seu (`30069Full`: 74, 88,
+     * 138, 996, 998), e há estoque de fachada (51.515). Somar contaria o mesmo
+     * produto várias vezes. A oferta leva `min` e `max` entre os anúncios que
+     * contam (Inativo não conta, como na régua); a tela mostra "74–998", e a
+     * tela NÃO calcula "dá para montar N kits": estoque no Full está no galpão
+     * do ML, e tirá-lo de lá para montar kit custa — a sugestão seria inútil
+     * (usuário, 28/09). Por isso cada anúncio diz se o estoque dele está no
+     * Full. O acervo é sincronizado todo dia e bateu com o ML ao vivo (±1).
+     *
+     * `http://` do ML vira `https://` — o portal é https e o navegador
+     * bloquearia a imagem.
+     *
      * @param  array<int, int>|null  $ofertaIds
-     * @return array<int, string> id da oferta → URL
+     * @return array{fotos: array<int, string>, estoques: array<int, array{min: int, max: int}>, por_mlb: array<string, int>, full: array<string, true>}
      */
-    private function fotosDasOfertas(Company $empresa, ?array $ofertaIds = null): array
+    private function acervoDasOfertas(Company $empresa, ?array $ofertaIds = null): array
     {
+        $vazio = ['fotos' => [], 'estoques' => [], 'por_mlb' => [], 'full' => []];
         if ($ofertaIds === []) {
-            return [];
+            return $vazio;
         }
 
         $anuncios = EstruturaAnuncio::query()
@@ -482,25 +501,43 @@ class EstruturaVisaoService
             ->when($ofertaIds !== null, fn ($q) => $q->whereIn('estrutura_anuncios.oferta_id', $ofertaIds))
             ->whereNotNull('estrutura_anuncios.codigo_mlb')
             ->orderBy('estrutura_anuncios.id')
-            ->get(['estrutura_anuncios.oferta_id', 'estrutura_anuncios.codigo_mlb']);
+            ->get(['estrutura_anuncios.oferta_id', 'estrutura_anuncios.codigo_mlb', 'estrutura_anuncios.status']);
 
-        $porMlb = [];
+        $fotoMlb = [];
+        $qtdMlb = [];
+        $fullMlb = [];
         foreach ($anuncios->pluck('codigo_mlb')->unique()->chunk(1000) as $bloco) {
-            $porMlb += MlAcervoItem::where('company_id', $empresa->id)
+            MlAcervoItem::where('company_id', $empresa->id)
                 ->whereIn('ml_item_id', $bloco->values()->all())
-                ->whereNotNull('thumbnail')
-                ->pluck('thumbnail', 'ml_item_id')
-                ->all();
+                ->get(['ml_item_id', 'thumbnail', 'available_quantity', 'shipping'])
+                ->each(function (MlAcervoItem $i) use (&$fotoMlb, &$qtdMlb, &$fullMlb) {
+                    if ($i->thumbnail) {
+                        $fotoMlb[$i->ml_item_id] = preg_replace('#^http://#', 'https://', $i->thumbnail);
+                    }
+                    if ($i->available_quantity !== null) {
+                        $qtdMlb[$i->ml_item_id] = (int) $i->available_quantity;
+                    }
+                    if (($i->shipping['logistic_type'] ?? null) === 'fulfillment') {
+                        $fullMlb[$i->ml_item_id] = true;
+                    }
+                });
         }
 
-        $fotos = [];
+        $r = $vazio;
+        $r['por_mlb'] = $qtdMlb;
+        $r['full'] = $fullMlb;
         foreach ($anuncios as $a) {
-            if (! isset($fotos[$a->oferta_id]) && isset($porMlb[$a->codigo_mlb])) {
-                $fotos[$a->oferta_id] = preg_replace('#^http://#', 'https://', $porMlb[$a->codigo_mlb]);
+            if (! isset($r['fotos'][$a->oferta_id]) && isset($fotoMlb[$a->codigo_mlb])) {
+                $r['fotos'][$a->oferta_id] = $fotoMlb[$a->codigo_mlb];
+            }
+            if ($a->status !== EstruturaAnuncio::STATUS_INATIVO && isset($qtdMlb[$a->codigo_mlb])) {
+                $q = $qtdMlb[$a->codigo_mlb];
+                $atual = $r['estoques'][$a->oferta_id] ?? ['min' => $q, 'max' => $q];
+                $r['estoques'][$a->oferta_id] = ['min' => min($atual['min'], $q), 'max' => max($atual['max'], $q)];
             }
         }
 
-        return $fotos;
+        return $r;
     }
 
     /** "Entra em 1 kit e 1 combit" — contagem curta no lugar da lista por extenso. */
@@ -557,7 +594,7 @@ class EstruturaVisaoService
         return ['id' => $o['id'], 'sku' => $o['sku'], 'nome' => $o['nome'], 'fase' => $o['fase']];
     }
 
-    private function oferta(array $o, EstruturaConjunto $conjunto, array $repetidos, array $usoEmKits, $agenda): array
+    private function oferta(array $o, EstruturaConjunto $conjunto, array $repetidos, array $usoEmKits, $agenda, array $acervo): array
     {
         return [
             ...$this->resumo($o),
@@ -568,7 +605,14 @@ class EstruturaVisaoService
                 ...$this->resumo($conjunto->oferta($c['id']) ?? ['id' => $c['id'], 'sku' => '?', 'nome' => null, 'fase' => 'simples']),
                 'quantidade' => $c['quantidade'],
             ], $o['componentes']),
-            'anuncios'      => $o['anuncios'],
+            // O estoque de cada anúncio no ML (do acervo; `null` = desconhecido).
+            // `estoque_full`: o estoque está no galpão do ML — não está na mão
+            // do seller para montar kit.
+            'anuncios'      => array_map(fn ($a) => [...$a,
+                'estoque'      => $a['codigo_mlb'] !== null ? ($acervo['por_mlb'][$a['codigo_mlb']] ?? null) : null,
+                'estoque_full' => $a['codigo_mlb'] !== null && isset($acervo['full'][$a['codigo_mlb']]),
+            ], $o['anuncios']),
+            'estoque'       => $acervo['estoques'][$o['id']] ?? null,
             'classicos'     => $o['classicos'],
             'premiums'      => $o['premiums'],
             'catalogos'     => $o['catalogos'],

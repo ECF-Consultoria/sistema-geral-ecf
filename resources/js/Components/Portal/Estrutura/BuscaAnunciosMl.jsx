@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
 import { Check, Link2, Search } from 'lucide-react';
-import { CLASSE_INPUT, LinkMl } from './comum';
+import { CLASSE_INPUT, EstoqueAnuncio, LinkMl } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Os anúncios da empresa no Mercado Livre ────────────────────────────────
@@ -76,6 +76,7 @@ function Linha({ item, children, className, ...props }) {
                     <LinkMl mlb={item.mlb} /> · {item.tipo} · {item.status}
                     {item.catalogo && ' · catálogo'}
                     {item.vendas > 0 && ` · ${item.vendas.toLocaleString('pt-BR')} vendas`}
+                    {item.estoque !== null && item.estoque !== undefined && <><span>·</span><EstoqueAnuncio quantidade={item.estoque} full={item.estoque_full} /></>}
                     {item.ligado_a && <span className="text-sky-300">· já na oferta {item.ligado_a}</span>}
                     {item.na_espera && <span className="text-amber-300">· aguardando oferta</span>}
                 </p>

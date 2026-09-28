@@ -82,6 +82,7 @@ class AnunciosMercadoLivreTest extends TestCase
                     'catalog_listing' => (bool) ($w['body']['catalog_listing'] ?? false),
                     'sold_quantity' => $w['body']['sold_quantity'],
                     'shipping' => $w['body']['shipping'],
+                    'available_quantity' => $w['body']['available_quantity'],
                 ]);
             }
         }
@@ -387,6 +388,8 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->assertSame(['1808', 4926, 'classico', 'mercado_envios'],
             [$todos['itens'][0]['sku'], $todos['itens'][0]['vendas'], $todos['itens'][0]['tipo_chave'], $todos['itens'][0]['logistica']]);
         $this->assertFalse($todos['tem_mais']);
+        $maisVendido = collect($this->fixture('multiget-lote.json'))->firstWhere('body.id', 'MLB5307535856')['body'];
+        $this->assertSame($maisVendido['available_quantity'], $todos['itens'][0]['estoque'], 'o estoque de cada anúncio vem do acervo');
 
         // Pelo SKU (nenhum título tem "1808"): os três anúncios dele.
         $porSku = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => '1808']))->json('itens');

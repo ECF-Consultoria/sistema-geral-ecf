@@ -172,6 +172,48 @@ class AcessoAoModuloEstruturaTest extends TestCase
     }
 
     /**
+     * Estoque é FAIXA: os anúncios do mesmo SKU no ML podem ter estoques
+     * diferentes (medido na #131). A oferta leva min/max dos que contam
+     * (Inativo não conta); cada anúncio, o seu.
+     */
+    public function test_estoque_da_oferta_e_faixa_e_cada_anuncio_tem_o_seu(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        app(\App\Services\Portal\Estrutura\EstruturaAnuncioService::class)->cadastrar($ofertas['CAD-01'],
+            ['tipo' => 'premium', 'codigo_mlb' => 'MLB0000000009', 'status' => 'inativo', 'catalogo' => false], $ator);
+        foreach (['MLB0000000001' => 40, 'MLB0000000002' => 120, 'MLB0000000003' => 7, 'MLB0000000009' => 0] as $mlb => $qtd) {
+            \App\Models\MlAcervoItem::create(['company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => 'x',
+                'listing_type_id' => 'gold_special', 'status' => 'active', 'available_quantity' => $qtd,
+                // O Premium da CAD-01 está no Full: o estoque dele está no galpão do ML.
+                'shipping' => ['mode' => 'me2', 'logistic_type' => $mlb === 'MLB0000000002' ? 'fulfillment' : 'cross_docking']]);
+        }
+
+        $this->withoutVite()->entrarNoPortal($empresa)
+            ->get(route('portal.auth.estrutura'))
+            ->assertInertia(fn ($page) => $page
+                ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
+                // 40 e 120 contam; o Inativo (0) não derruba o mínimo.
+                ->where('estrutura.blocos.0.estoque', ['min' => 40, 'max' => 120])
+                ->where('estrutura.blocos.0.ofertas.0.estoque', ['min' => 40, 'max' => 120])
+                ->where('estrutura.blocos.0.ofertas.0.anuncios', fn ($as) => collect($as)->pluck('estoque', 'codigo_mlb')->all()
+                    === ['MLB0000000001' => 40, 'MLB0000000002' => 120, 'MLB0000000009' => 0])
+                ->where('estrutura.blocos.0.ofertas.0.anuncios', fn ($as) => collect($as)->pluck('estoque_full', 'codigo_mlb')->all()
+                    === ['MLB0000000001' => false, 'MLB0000000002' => true, 'MLB0000000009' => false])
+                ->where('estrutura.blocos.0.ofertas.1.sku', 'CAD-01-CB2')
+                ->where('estrutura.blocos.0.ofertas.1.estoque', ['min' => 7, 'max' => 7])
+                ->where('estrutura.blocos.0.ofertas.2.estoque', null)   // CB3 não tem anúncio
+            );
+
+        // O seletor do kit mostra o mesmo estoque — é com ele que se decide o kit.
+        $opcoes = collect(app(\App\Services\Portal\Estrutura\EstruturaVisaoService::class)->opcoesDeOfertas($empresa))->keyBy('sku');
+        $this->assertSame(['min' => 40, 'max' => 120], $opcoes['CAD-01']['estoque']);
+        $this->assertNull($opcoes['MSA-MR']['estoque']);
+    }
+
+    /**
      * A faixa "próximo passo": UMA coisa a fazer, em ordem de urgência, sobre o
      * conjunto inteiro. Percorre os estados na ordem em que um cliente passa
      * por eles.

@@ -134,6 +134,39 @@ export function FotoProduto({ url, className }) {
         : <span className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-white/25', className)}><Package size={18} /></span>;
 }
 
+/**
+ * O estoque de uma oferta no ML: FAIXA entre os anúncios dela ("74–998"),
+ * porque anúncios do mesmo SKU podem ter estoques diferentes (cada par
+ * Clássico + Premium é um produto do vendedor com o seu). Sem anúncio no
+ * acervo, não aparece. Nada de "dá para montar N kits": estoque no Full está
+ * no galpão do ML, e tirá-lo de lá custa (usuário, 28/09).
+ */
+export function EstoqueOferta({ estoque, className }) {
+    if (! estoque) return null;
+    if (estoque.max === 0) return <span className={cn('text-red-300', className)} data-estoque="0">Sem estoque</span>;
+
+    const n = (x) => x.toLocaleString('pt-BR');
+
+    return (
+        <span className={cn('text-white/55', className)} data-estoque={`${estoque.min}-${estoque.max}`}
+            title={estoque.min === estoque.max ? 'Estoque no Mercado Livre' : 'Os anúncios deste SKU têm estoques diferentes no Mercado Livre'}>
+            Estoque {estoque.min === estoque.max ? n(estoque.max) : `${n(estoque.min)}–${n(estoque.max)}`}
+        </span>
+    );
+}
+
+/** O estoque de UM anúncio, com "no Full" quando está no galpão do ML. */
+export function EstoqueAnuncio({ quantidade, full, className }) {
+    if (quantidade === null || quantidade === undefined) return null;
+
+    return (
+        <span className={cn(quantidade === 0 ? 'text-red-300' : 'text-white/50', className)} data-estoque-anuncio={quantidade}>
+            Estoque {quantidade.toLocaleString('pt-BR')}
+            {full && <span className="ml-1 rounded bg-emerald-500/10 px-1 text-[10px] font-semibold text-emerald-300" title="Este estoque está no galpão do Mercado Livre (Full)">no Full</span>}
+        </span>
+    );
+}
+
 export function Botao({ variante = 'secundario', className, children, ...props }) {
     return (
         <button

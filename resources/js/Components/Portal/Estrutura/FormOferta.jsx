@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import { Plus, Search, Trash2, X } from 'lucide-react';
 import Janela from './Janela';
 import { EscolherAnunciosMl } from './BuscaAnunciosMl';
-import { Botao, CLASSE_INPUT, Campo, FotoProduto, LinkMl, Seletor } from './comum';
+import { Botao, CLASSE_INPUT, Campo, EstoqueOferta, FotoProduto, LinkMl, Seletor } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Criar / editar oferta ──────────────────────────────────────────────────
@@ -230,6 +230,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                                     <span className="min-w-0 flex-1">
                                         <span className="block font-mono text-[12px] text-white/55">{o.sku}</span>
                                         <span className="block truncate text-[13px] text-white/85" title={o.nome ?? ''}>{o.nome}</span>
+                                        <EstoqueOferta estoque={o.estoque} className="block text-[11.5px]" />
                                     </span>
                                     <Plus size={16} className="shrink-0 text-ecf-yellow" />
                                 </button>
@@ -259,6 +260,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                     <span className="min-w-0 flex-1">
                         <span className="block font-mono text-[12px] text-white/55">{porId[i.id]?.sku}</span>
                         <span className="block truncate text-[13px] text-white/85" title={porId[i.id]?.nome ?? ''}>{porId[i.id]?.nome}</span>
+                        <EstoqueOferta estoque={porId[i.id]?.estoque} className="block text-[11.5px]" />
                     </span>
                     <input type="number" min={1} max={999} value={i.quantidade} aria-label="Quantidade"
                         onChange={(e) => setItens(itens.map((x, j) => (j === idx ? { ...x, quantidade: e.target.value } : x)))}
@@ -355,6 +357,11 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                             <input type={editando ? 'number' : 'text'} inputMode="numeric" value={qtdCombo}
                                 onChange={(e) => setQtdCombo(e.target.value)} className={CLASSE_INPUT} data-campo="quantidade" />
                         </Campo>
+                    )}
+                    {ehCombo && ! editando && base?.estoque && (
+                        <p className="-mt-1 text-[12px]" data-estoque-base>
+                            <EstoqueOferta estoque={base.estoque} /> <span className="text-white/35">de {nomeDe(base)} no Mercado Livre</span>
+                        </p>
                     )}
 
                     {emLote && (
