@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\GoogleToken;
 use App\Services\DevDemandas\ChamadoService;
 use App\Services\DevDemandas\DemandasDevService;
+use App\Services\DevDemandas\LinhaDoTempoService;
 use App\Services\DevDemandas\ReuniaoDevGoogleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,7 @@ class DevDemandaController extends Controller
         private DemandasDevService $service,
         private ReuniaoDevGoogleService $google,
         private ChamadoService $chamados,
+        private LinhaDoTempoService $linhaDoTempo,
     ) {}
 
     public function index(Request $request)
@@ -35,9 +37,12 @@ class DevDemandaController extends Controller
         $user = $request->user();
         abort_unless($this->service->podeAcessar($user), 403, 'Você não tem demandas atribuídas.');
 
-        $hoje   = now()->startOfDay();
-        $linhas = $this->service->demandasVisiveis($user)
-            ->map(fn (DevDemanda $d) => $this->service->serializar($d, $hoje))
+        $hoje      = now()->startOfDay();
+        $visiveis  = $this->service->demandasVisiveis($user);
+        // Linha do tempo (fases, prazo dado, revisões) sai do diário — uma consulta para todas.
+        $tempos    = $this->linhaDoTempo->paraDemandas($visiveis, $hoje);
+        $linhas    = $visiveis
+            ->map(fn (DevDemanda $d) => $this->service->serializar($d, $hoje) + ['tempo' => $tempos[$d->id]])
             ->values()
             ->all();
 
@@ -49,6 +54,11 @@ class DevDemandaController extends Controller
         return Inertia::render('Dev/Demandas/Index', [
             'demandas' => $linhas,
             'painel'   => $this->service->painel($linhas),
+            // Aba "Tempo": prometido × entregue por responsável (em observação — sem nota nem meta).
+            'metricas' => [
+                'janela_dias' => LinhaDoTempoService::JANELA_DIAS,
+                'devs'        => $this->linhaDoTempo->metricasPorDev($linhas, $hoje),
+            ],
             'reunioes' => $this->service->reunioes($user),
             // Quem pode ser responsável: usuários ativos. Não-admin só precisa de si mesmo.
             'usuarios' => $gerencia
@@ -137,6 +147,10 @@ class DevDemandaController extends Controller
     {
         abort_unless($this->service->podeAtualizar($request->user(), $demanda), 403, 'Só o responsável ou um admin registra atualização.');
 
+        // Começar o trabalho exige o prazo de entrega: quem faz dá a data ao começar.
+        // Ela fica gravada nesta atualização, que não se edita — é o "prometido" da linha do tempo.
+        $comecando = in_array($request->input('status'), DevDemanda::STATUS_TRABALHO, true) && ! $demanda->jaComecou();
+
         $dados = $request->validate([
             'data'              => ['required', 'date'],
             'status'            => ['required', Rule::in(array_keys(DevDemanda::STATUS_LABELS))],
@@ -145,26 +159,36 @@ class DevDemandaController extends Controller
             'proxima_acao'      => ['nullable', 'string', 'max:1000'],
             'bloqueado'         => ['boolean'],
             'motivo_bloqueio'   => ['nullable', 'required_if:bloqueado,true', 'string', 'max:1000'],
-            'previsao_revisada' => ['nullable', 'date'],
+            'previsao_revisada' => [$comecando ? 'required' : 'nullable', 'date', 'after_or_equal:data'],
         ], [
-            'motivo_bloqueio.required_if' => 'Diga o motivo do bloqueio ou de quem depende.',
-            'feito.required_if'           => 'Conte o que foi entregue — é o que aparece no painel e no histórico.',
+            'motivo_bloqueio.required_if'      => 'Diga o motivo do bloqueio ou de quem depende.',
+            'feito.required_if'                => 'Conte o que foi entregue — é o que aparece no painel e no histórico.',
+            'previsao_revisada.required'       => 'Informe o prazo de entrega — quem faz dá a data ao começar, e ela fica gravada.',
+            'previsao_revisada.after_or_equal' => 'O prazo não pode ser antes da data da atualização.',
         ]);
 
         $bloqueado = (bool) ($dados['bloqueado'] ?? false);
         // Demanda encerrada não tem próxima ação (o formulário vinha com a anterior preenchida).
         $encerrando = in_array($dados['status'], DevDemanda::STATUS_ENCERRADOS, true);
 
-        $demanda->atualizacoes()->create([
-            'user_id'           => $request->user()->id,
-            'data'              => $dados['data'],
-            'status'            => $dados['status'],
-            'feito'             => $dados['feito'] ?? null,
-            'proxima_acao'      => $encerrando ? null : ($dados['proxima_acao'] ?? null),
-            'bloqueado'         => $bloqueado,
-            'motivo_bloqueio'   => $bloqueado ? ($dados['motivo_bloqueio'] ?? null) : null,
-            'previsao_revisada' => $dados['previsao_revisada'] ?? null,
-        ]);
+        DB::transaction(function () use ($demanda, $dados, $request, $encerrando, $bloqueado) {
+            $demanda->atualizacoes()->create([
+                'user_id'           => $request->user()->id,
+                'data'              => $dados['data'],
+                'status'            => $dados['status'],
+                'feito'             => $dados['feito'] ?? null,
+                'proxima_acao'      => $encerrando ? null : ($dados['proxima_acao'] ?? null),
+                'bloqueado'         => $bloqueado,
+                'motivo_bloqueio'   => $bloqueado ? ($dados['motivo_bloqueio'] ?? null) : null,
+                'previsao_revisada' => $dados['previsao_revisada'] ?? null,
+            ]);
+
+            // O prazo da demanda passa a ser o prazo VIGENTE: a última data dada no diário.
+            // O original não se perde — ele mora na atualização de início.
+            if (! empty($dados['previsao_revisada'])) {
+                $demanda->update(['prazo' => $dados['previsao_revisada']]);
+            }
+        });
 
         return back()->with('success', "Atualização de {$demanda->codigo} registrada.");
     }

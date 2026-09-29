@@ -217,7 +217,8 @@ class DemandasDevTest extends TestCase
         $dev = $this->dev();
         $minha = $this->demanda(['responsavel_id' => $dev->id]);
         $alheia = $this->demanda(['responsavel_id' => $this->dev()->id]);
-        $payload = ['data' => '2026-09-22', 'status' => 'em_desenvolvimento', 'feito' => 'layout', 'proxima_acao' => 'validar', 'bloqueado' => false];
+        // Começar exige o prazo de entrega (ver LinhaDoTempoTest).
+        $payload = ['data' => '2026-09-22', 'status' => 'em_desenvolvimento', 'feito' => 'layout', 'proxima_acao' => 'validar', 'bloqueado' => false, 'previsao_revisada' => '2026-09-30'];
 
         $this->actingAs($dev)->post("/dev/demandas/{$minha->id}/atualizacoes", $payload)->assertRedirect();
         $this->actingAs($dev)->post("/dev/demandas/{$alheia->id}/atualizacoes", $payload)->assertForbidden();

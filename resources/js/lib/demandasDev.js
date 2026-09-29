@@ -36,6 +36,27 @@ export const SITUACAO_ORDEM = ['bloqueado', 'atrasada', 'prazo_proximo', 'no_pra
 // Status em que a demanda está sendo trabalhada — são as que pedem a linha diária.
 export const STATUS_EM_ANDAMENTO = ['em_desenvolvimento', 'em_validacao', 'bloqueado'];
 
+// Status de trabalho começado (DevDemanda::STATUS_TRABALHO): a primeira atualização com um
+// deles é o início, e é nela que quem faz dá o prazo de entrega.
+export const STATUS_TRABALHO = ['em_desenvolvimento', 'em_validacao', 'bloqueado'];
+
+// Já começou? O servidor manda `tempo.iniciada_em` (LinhaDoTempoService).
+export const comecaria = (demanda, status) => STATUS_TRABALHO.includes(status) && !demanda.tempo?.iniciada_em;
+
+// Fases da linha do tempo (LinhaDoTempoService::FASE_*).
+export const FASE_LABELS = {
+    fila:            'na fila',
+    desenvolvimento: 'em desenvolvimento',
+    bloqueada:       'bloqueada',
+    validacao:       'em validação',
+};
+
+// "1 dia", "3 dias", "4,5 dias" — sempre em módulo; o sinal é dito pelo texto em volta.
+export const textoDias = (n) => {
+    const v = Math.abs(n);
+    return v === 1 ? '1 dia' : `${String(v).replace('.', ',')} dias`;
+};
+
 // 'YYYY-MM-DD' → 'dd/mm' (com o ano quando não é o do `hoje`). Parse manual: sem fuso.
 export const fmtData = (iso, hoje = null) => {
     if (!iso) return '—';

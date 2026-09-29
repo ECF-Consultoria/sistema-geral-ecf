@@ -57,6 +57,12 @@ class DevDemanda extends Model
     /** Status que encerram a demanda — saem da fila e das contagens de "abertas". */
     public const STATUS_ENCERRADOS = [self::STATUS_CONCLUIDO, self::STATUS_CANCELADO];
 
+    /**
+     * Status de trabalho começado. A primeira atualização com um deles é o INÍCIO da
+     * demanda — é nela que quem faz dá o prazo de entrega (ver LinhaDoTempoService).
+     */
+    public const STATUS_TRABALHO = [self::STATUS_EM_DESENVOLVIMENTO, self::STATUS_EM_VALIDACAO, self::STATUS_BLOQUEADO];
+
     public const PRIORIDADE_LABELS = [
         0 => 'P0 - Crítica',
         1 => 'P1 - Alta',
@@ -159,6 +165,17 @@ class DevDemanda extends Model
     public function estaEncerrada(): bool
     {
         return in_array($this->statusAtual(), self::STATUS_ENCERRADOS, true);
+    }
+
+    /**
+     * O trabalho já começou? Conta concluída direto do backlog também — o que
+     * importa é que o momento de dar o prazo já passou.
+     */
+    public function jaComecou(): bool
+    {
+        return $this->atualizacoes()
+            ->whereIn('status', [...self::STATUS_TRABALHO, self::STATUS_CONCLUIDO])
+            ->exists();
     }
 
     public function estaBloqueada(): bool

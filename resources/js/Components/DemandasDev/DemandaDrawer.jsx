@@ -1,13 +1,18 @@
-import { CalendarClock, CalendarPlus, Loader2, Lock, PenLine, Pencil, Video } from 'lucide-react';
+import { useMemo } from 'react';
+import { CalendarClock, CalendarPlus, Flag, Loader2, Lock, PenLine, Pencil, Video } from 'lucide-react';
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/Components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { fmtData, textoPrazo } from '@/lib/demandasDev';
 import { PrioridadeSelo, SituacaoSelo, StatusSelo } from './Selos';
+import { EixoFaixa, escala, FaixaDemanda, resultado, TemposDaDemanda } from './Tempo';
 
 // Painel lateral de uma demanda: dados, próxima ação e o diário completo.
 export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClose, onAtualizar, onEditar, onAgendarReuniao, onAbrirChamado }) {
     const carregando = !detalhe || detalhe.id !== demanda?.id;
     const podeAtualizar = demanda && (pode.gerenciar || demanda.responsavel?.id === eu.id);
+    // Uma faixa só, pelo calendário: aqui interessa em que dias cada coisa aconteceu.
+    const esc = useMemo(() => (demanda?.tempo ? escala([demanda.tempo], hoje, 'calendario') : null), [demanda, hoje]);
+    const prazoDado = demanda?.tempo?.prazo_dado;
 
     return (
         <Sheet open={!!demanda} onOpenChange={(v) => !v && onClose()}>
@@ -45,6 +50,10 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                                         ({textoPrazo(demanda, hoje)})
                                     </span>
                                 )}
+                                {/* O prazo vigente muda com revisão; o dado ao começar fica. */}
+                                {prazoDado && prazoDado !== demanda.prazo && (
+                                    <div className="text-[11.5px] text-white/40">dado ao começar: {fmtData(prazoDado, hoje)}</div>
+                                )}
                             </Dado>
                             <Dado rotulo="Última atualização">{demanda.ultima_atualizacao ? fmtData(demanda.ultima_atualizacao, hoje) : 'nunca'}</Dado>
                         </dl>
@@ -74,6 +83,22 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                                 </>
                             )}
                         </div>
+
+                        {demanda.tempo && esc && (
+                            <Secao titulo="Linha do tempo">
+                                <div className="space-y-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                                        <span className="text-white/50">{resultado(demanda, hoje).sub}</span>
+                                        <span className="font-medium text-white/80">{resultado(demanda, hoje).texto}</span>
+                                    </div>
+                                    <div>
+                                        <FaixaDemanda tempo={demanda.tempo} esc={esc} hoje={hoje} />
+                                        <EixoFaixa esc={esc} className="mt-0.5" />
+                                    </div>
+                                    <TemposDaDemanda tempo={demanda.tempo} />
+                                </div>
+                            </Secao>
+                        )}
 
                         {demanda.escopo && (
                             <Secao titulo="Escopo / critério de conclusão">
@@ -126,11 +151,15 @@ export default function DemandaDrawer({ demanda, detalhe, eu, pode, hoje, onClos
                                             {a.bloqueado && a.motivo_bloqueio && (
                                                 <p className="mt-0.5 text-[12.5px] text-orange-400/90"><span className="text-orange-400/60">Motivo:</span> {a.motivo_bloqueio}</p>
                                             )}
-                                            {a.previsao_revisada && (
+                                            {a.previsao_revisada && (a.id === demanda.tempo?.inicio_id ? (
+                                                <p className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-white/70">
+                                                    <Flag size={12} className="text-[var(--dd-prazo)]" /> Prazo dado ao começar: {fmtData(a.previsao_revisada, hoje)}
+                                                </p>
+                                            ) : (
                                                 <p className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-white/50">
                                                     <CalendarClock size={12} /> Previsão revisada: {fmtData(a.previsao_revisada, hoje)}
                                                 </p>
-                                            )}
+                                            ))}
                                         </li>
                                     ))}
                                 </ol>

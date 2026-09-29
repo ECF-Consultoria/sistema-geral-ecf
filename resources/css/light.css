@@ -180,6 +180,7 @@ html.light .group:hover .group-hover\:text-ecf-yellow\/60 { color: #9a7b0a; }
 html.light {
     --dd-bloqueado: #eb6834;
     --dd-dev:       #4a3aa7;
-    --dd-validacao: #eda100;
+    --dd-validacao: #00897b;
     --dd-afazer:    #2a78d6;
+    --dd-prazo:     #9a7b0a;
 }

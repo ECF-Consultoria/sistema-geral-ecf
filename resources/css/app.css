@@ -11,11 +11,15 @@
 @layer base {
     :root {
         /* Demandas Dev — cores dos status de trabalho ativo (validadas p/ daltonismo
-           contra o card escuro; o tema claro redefine em light.css). */
+           contra o card escuro; o tema claro redefine em light.css). Validação era
+           ocre e ficava colada no laranja do bloqueio (ΔE 10,6) — na linha do tempo as
+           duas fases encostam uma na outra, então virou verde-azulado. */
         --dd-bloqueado: #d95926;
         --dd-dev:       #9085e9;
-        --dd-validacao: #c98500;
+        --dd-validacao: #2a9d8f;
         --dd-afazer:    #3987e5;
+        /* Marca do prazo dado na linha do tempo. */
+        --dd-prazo:     #ffe600;
 
         /* ECF Brand — Dark Mode */
         --background: 240 17% 2%;        /* #050507 */

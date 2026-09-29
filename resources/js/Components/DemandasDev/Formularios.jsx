@@ -3,7 +3,7 @@ import { useForm } from '@inertiajs/react';
 import { Loader2, Lock, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { compararCodigo, PRIORIDADE_LABELS, STATUS_LABELS } from '@/lib/demandasDev';
+import { comecaria, compararCodigo, fmtData, PRIORIDADE_LABELS, STATUS_LABELS } from '@/lib/demandasDev';
 import { Campo, inputClasse, STATUS_COR } from './Selos';
 
 // Casca comum dos três formulários: diálogo escuro com rolagem própria.
@@ -50,18 +50,32 @@ function Rodape({ processing, bloqueado = false, onCancelar, rotulo }) {
 }
 
 // ═══ Registrar atualização — uma linha nova no diário ═══════════════════════
-export function AtualizacaoDialog({ demanda, hoje, onClose }) {
+export function AtualizacaoDialog({ demanda, hoje, onClose, statusInicial = null }) {
+    // `statusInicial`: veio da troca de status em um clique, que abre o formulário quando
+    // a mudança pede algo que só a pessoa sabe (o que foi entregue, o motivo, o prazo).
+    const status0 = statusInicial ?? demanda.status;
     const form = useForm({
         data:              hoje,
         // Começa no status atual e com a próxima ação vigente: o dev só muda o que andou.
-        status:            demanda.status,
+        status:            status0,
         feito:             '',
         proxima_acao:      demanda.proxima_acao ?? '',
-        bloqueado:         demanda.bloqueado,
+        bloqueado:         status0 === 'bloqueado' ? true : demanda.bloqueado,
         motivo_bloqueio:   demanda.motivo_bloqueio ?? '',
-        previsao_revisada: '',
+        // Começando: o prazo já cadastrado vem sugerido, para confirmar ou trocar.
+        previsao_revisada: comecaria(demanda, status0) ? (demanda.prazo ?? '') : '',
     });
     const { data, setData, errors, processing } = form;
+    const comecando = comecaria(demanda, data.status);
+    const prazoDado = demanda.tempo?.prazo_dado;
+
+    const escolherStatus = (valor) => setData((d) => ({
+        ...d,
+        status:            valor,
+        // Status "Bloqueado" é bloqueio: marca a caixinha para pedir o motivo.
+        bloqueado:         valor === 'bloqueado' ? true : d.bloqueado,
+        previsao_revisada: d.previsao_revisada || (comecaria(demanda, valor) ? (demanda.prazo ?? '') : ''),
+    }));
 
     const enviar = (e) => {
         e.preventDefault();
@@ -87,7 +101,7 @@ export function AtualizacaoDialog({ demanda, hoje, onClose }) {
                                 <button
                                     key={valor}
                                     type="button"
-                                    onClick={() => setData('status', valor)}
+                                    onClick={() => escolherStatus(valor)}
                                     className={cn(
                                         'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors',
                                         data.status === valor
@@ -154,8 +168,22 @@ export function AtualizacaoDialog({ demanda, hoje, onClose }) {
                         <Campo label="Data" erro={errors.data}>
                             <input type="date" value={data.data} onChange={(e) => setData('data', e.target.value)} className={inputClasse} />
                         </Campo>
-                        <Campo label="Previsão revisada" erro={errors.previsao_revisada} dica="Opcional">
-                            <input type="date" value={data.previsao_revisada} onChange={(e) => setData('previsao_revisada', e.target.value)} className={inputClasse} />
+                        <Campo
+                            label={comecando ? 'Prazo de entrega (obrigatório)' : 'Previsão revisada'}
+                            erro={errors.previsao_revisada}
+                            dica={comecando
+                                ? 'Quem faz dá a data ao começar. Ela fica gravada; depois, só revisão.'
+                                : prazoDado
+                                    ? `Prazo dado: ${fmtData(prazoDado, hoje)}. Revisar fica registrado, antes ou depois de vencer.`
+                                    : 'Opcional'}
+                        >
+                            <input
+                                type="date"
+                                value={data.previsao_revisada}
+                                min={data.data || undefined}
+                                onChange={(e) => setData('previsao_revisada', e.target.value)}
+                                className={cn(inputClasse, comecando && 'border-ecf-yellow/40')}
+                            />
                         </Campo>
                     </div>
 

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, Lock, PenLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtData, ordenarFila, STATUS_EM_ANDAMENTO, textoPrazo } from '@/lib/demandasDev';
-import { PrioridadeSelo, SituacaoSelo, StatusSelo } from './Selos';
+import { PrioridadeSelo, SituacaoSelo } from './Selos';
+import TrocarStatus from './TrocarStatus';
 
 // As regras da aba "Minha Semana" da planilha — como escolher o que fazer agora.
 const REGRAS = [
@@ -114,7 +115,7 @@ export default function Fila({ demandas, usuarios, eu, pode, hoje, onAbrir, onAt
                                 </div>
                                 <div className="mt-0.5 truncate text-[14px] font-medium text-white">{d.titulo}</div>
                                 <div className="mt-1 flex items-center gap-3">
-                                    <StatusSelo status={d.status} />
+                                    <TrocarStatus demanda={d} hoje={hoje} podeAtualizar={pode.gerenciar || d.responsavel?.id === eu.id} onFormulario={onAtualizar} />
                                     {mostrarResponsavel && <span className="truncate text-[12px] text-white/40">{d.responsavel?.name ?? 'Sem responsável'}</span>}
                                 </div>
                             </div>

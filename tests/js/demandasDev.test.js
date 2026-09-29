@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { compararCodigo, diasEntre, fmtData, ordenarFila, textoPrazo } from '../../resources/js/lib/demandasDev.js';
+import { comecaria, compararCodigo, diasEntre, fmtData, ordenarFila, textoDias, textoPrazo } from '../../resources/js/lib/demandasDev.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Demandas Dev — helpers da tela.
@@ -49,4 +49,30 @@ describe('prazo', () => {
 
 test('compararCodigo é natural', () => {
     assert.deepEqual(['DEV-10', 'DEV-9', 'ADM-1'].sort(compararCodigo), ['ADM-1', 'DEV-9', 'DEV-10']);
+});
+
+// Começar pede o prazo de entrega — a tela tem de concordar com o servidor
+// (DevDemanda::STATUS_TRABALHO + jaComecou), senão o formulário não mostra o campo
+// obrigatório e o dev só descobre pelo erro 422.
+describe('comecaria', () => {
+    test('só status de trabalho, e só se ainda não começou', () => {
+        const nova = { tempo: { iniciada_em: null } };
+        const comecada = { tempo: { iniciada_em: '2026-09-10' } };
+        assert.equal(comecaria(nova, 'em_desenvolvimento'), true);
+        assert.equal(comecaria(nova, 'em_validacao'), true);
+        assert.equal(comecaria(nova, 'bloqueado'), true);
+        assert.equal(comecaria(nova, 'a_fazer'), false);
+        assert.equal(comecaria(nova, 'concluido'), false);
+        assert.equal(comecaria(comecada, 'em_desenvolvimento'), false);
+    });
+});
+
+describe('textoDias', () => {
+    test('singular, plural, decimal com vírgula e sempre em módulo', () => {
+        assert.equal(textoDias(1), '1 dia');
+        assert.equal(textoDias(-1), '1 dia');
+        assert.equal(textoDias(0), '0 dias');
+        assert.equal(textoDias(4.5), '4,5 dias');
+        assert.equal(textoDias(-3), '3 dias');
+    });
 });

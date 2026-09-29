@@ -4,14 +4,15 @@ import { cn } from '@/lib/utils';
 import {
     compararCodigo, fmtData, PRIORIDADE_LABELS, SITUACAO_LABELS, SITUACAO_ORDEM, STATUS_LABELS, textoPrazo,
 } from '@/lib/demandasDev';
-import { PrioridadeSelo, SituacaoSelo, StatusSelo } from './Selos';
+import { PrioridadeSelo, SituacaoSelo } from './Selos';
+import TrocarStatus from './TrocarStatus';
 
 const FILTRO_VAZIO = { busca: '', responsavel: '', area: '', status: '', prioridade: '', situacao: '', encerradas: false };
 
 const selectClasse =
     'rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 text-[12.5px] text-white focus:border-ecf-yellow/50 focus:outline-none';
 
-export default function ListaDemandas({ demandas, pode, hoje, onAbrir }) {
+export default function ListaDemandas({ demandas, pode, eu, hoje, onAbrir, onAtualizar }) {
     const [f, setF] = useState(FILTRO_VAZIO);
     const [ordemPrior, setOrdemPrior] = useState(null); // null | 'asc' | 'desc'
     const set = (k, v) => setF((atual) => ({ ...atual, [k]: v }));
@@ -138,7 +139,14 @@ export default function ListaDemandas({ demandas, pode, hoje, onAbrir }) {
                                 </td>
                                 <td className="whitespace-nowrap px-3 py-3 text-[12.5px] text-white/70">{d.responsavel?.name ?? <span className="text-white/30">—</span>}</td>
                                 <td className="px-3 py-3"><PrioridadeSelo prioridade={d.prioridade} /></td>
-                                <td className="px-3 py-3"><StatusSelo status={d.status} /></td>
+                                <td className="px-3 py-3">
+                                    <TrocarStatus
+                                        demanda={d}
+                                        hoje={hoje}
+                                        podeAtualizar={!d.encerrada && (pode.gerenciar || d.responsavel?.id === eu.id)}
+                                        onFormulario={onAtualizar}
+                                    />
+                                </td>
                                 <td className="whitespace-nowrap px-3 py-3">
                                     <SituacaoSelo situacao={d.situacao} />
                                     <div className="mt-1 text-[11.5px] text-white/40">{textoPrazo(d, hoje)}</div>

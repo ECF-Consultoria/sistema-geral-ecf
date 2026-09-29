@@ -84,3 +84,42 @@ solicitante, o cartão para de aparecer calado. Some ao abrir o ticket
 (`ChamadoService::marcarAvisosLidos` no `show`) ou no X (marca lida via JSON).
 A rota fica fora do `modulo:chamados` de propósito: senão toda página de quem
 não vê o módulo daria 404 no polling.
+
+## 9. Linha do tempo e métricas por dev: tudo sai do diário (29/09)
+
+A aba **Tempo** (faixa por demanda, régua "prometido × entregue", números por
+dev) foi pedida como "um Gantt, mas não feio", para ter métricas do time dev
+com vistas a bonificação. Está **em observação**: nenhum número dali vira nota
+ou meta. Antes de transformar em régua de bônus, leia
+`.planning/learnings/metas-dev-regua.md` (Metas do Dev), que já errou cota duas vezes.
+
+- **O prazo de entrega é dado pelos PRÓPRIOS devs** (decisão do usuário). Por
+  isso "cumpriu o prazo" sozinho é gameável com prazo folgado, e a tela mostra a
+  **sobra do prazo** (mediana de quanto antes a entrega saiu) como contrapeso.
+  Não tire a sobra achando que é enfeite.
+- **Não existe coluna de "prazo original".** O prazo dado é o
+  `previsao_revisada` da **primeira atualização de trabalho** (status em
+  `DevDemanda::STATUS_TRABALHO`, ou concluído). Como o diário não se edita nem
+  se apaga, ele fica congelado de graça. Escolha deliberada: adicionar coluna em
+  `dev_demandas` (tabela com dado em produção) exigiria fase GSD e ainda deixaria
+  o valor editável.
+- `dev_demandas.prazo` passou a ser o **prazo vigente**: o controller grava nele
+  toda previsão registrada no diário. Até 29/09 a "previsão revisada" era só
+  informativa e não mexia no prazo. Editar o prazo pela tela de demanda continua
+  possível, mas não vira revisão no histórico. As métricas não usam esse campo.
+- **Começar exige prazo** (`storeAtualizacao`, `jaComecou()`). Demanda que já
+  tinha começado antes disso (todas as importadas da planilha) não é travada e
+  fica **sem prazo dado**, fora da pontualidade. Não invente prazo retroativo
+  para ela.
+- **"Revisou antes de vencer" usa o `created_at` da atualização**, não a `data`
+  digitada, porque dá para digitar data no passado. Já as fases usam a `data`
+  ("status no fim do dia"), apenas forçada a nunca voltar antes do marco
+  anterior. Registrar uma conclusão com data retroativa ainda melhora o desvio.
+  Isso está aceito por ora: o `registrado_em` já vai no detalhe da demanda, mas
+  a tela ainda não o mostra. Se virar régua de bônus, reveja.
+- A cor de **validação** deixou de ser ocre (`#c98500`) e virou verde-azulado
+  (`#2a9d8f` escuro / `#00897b` claro). Na faixa, validação encosta no laranja do
+  bloqueio, e o par ocre × laranja reprovava no validador de paleta (ΔE 10,6,
+  abaixo do piso 15 para visão normal). O par "a fazer" × "desenvolvimento"
+  também reprova no escuro, mas "a fazer" não aparece na faixa (vira fila, em
+  cinza). Nos selos da lista os dois sempre têm rótulo escrito.

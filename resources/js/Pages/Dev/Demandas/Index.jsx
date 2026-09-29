@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { BarChart3, ListChecks, ListOrdered, Plus, Ticket, Video } from 'lucide-react';
+import { BarChart3, ChartGantt, ListChecks, ListOrdered, Plus, Ticket, Video } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import Fila from '@/Components/DemandasDev/Fila';
 import ListaDemandas from '@/Components/DemandasDev/ListaDemandas';
 import Painel from '@/Components/DemandasDev/Painel';
+import Tempo from '@/Components/DemandasDev/Tempo';
 import Reunioes from '@/Components/DemandasDev/Reunioes';
 import DemandaDrawer from '@/Components/DemandasDev/DemandaDrawer';
 import Chamados from '@/Components/DemandasDev/Chamados';
@@ -18,6 +19,7 @@ const ABAS = [
     { id: 'tickets', rotulo: 'Tickets', icone: Ticket, soEquipe: true },
     { id: 'demandas', rotulo: 'Demandas', icone: ListChecks },
     { id: 'painel',   rotulo: 'Painel',   icone: BarChart3 },
+    { id: 'tempo',    rotulo: 'Tempo',    icone: ChartGantt },
     { id: 'reunioes', rotulo: 'Reuniões', icone: Video },
 ];
 
@@ -45,7 +47,7 @@ const abaDaUrl = () => {
  * saem da atualização mais recente.
  */
 export default function DemandasDevIndex({
-    demandas, painel, reunioes, usuarios, responsaveis = [], areas, prefixos, pode, eu, hoje, detalhe, google,
+    demandas, painel, metricas, reunioes, usuarios, responsaveis = [], areas, prefixos, pode, eu, hoje, detalhe, google,
     equipe = false, chamados = [], devs = [], chamado_detalhe: chamadoDetalhe = null,
 }) {
     const abasVisiveis = ABAS.filter((a) => !a.soEquipe || equipe);
@@ -60,6 +62,12 @@ export default function DemandasDevIndex({
     const [convertendo, setConvertendo] = useState(null); // chamado sendo transformado em demanda
     const chamadosAtencao = chamados.filter((c) => c.precisa_atencao).length;
     const [atualizando, setAtualizando] = useState(null);
+    // Status já escolhido na troca em um clique (abre o formulário quando a mudança pede algo).
+    const [statusInicial, setStatusInicial] = useState(null);
+    const abrirFormulario = (demanda, status = null) => {
+        setStatusInicial(status);
+        setAtualizando(demanda);
+    };
     const [editandoDemanda, setEditandoDemanda] = useState(null); // null | 'nova' | demanda
     // null | { reuniao } (editar) | { preset } (agendar, opcionalmente já com demanda e participante)
     const [editandoReuniao, setEditandoReuniao] = useState(null);
@@ -171,11 +179,12 @@ export default function DemandasDevIndex({
                 </nav>
 
                 {aba === 'fila' && (
-                    <Fila demandas={demandas} usuarios={usuarios} eu={eu} pode={pode} hoje={hoje} onAbrir={abrir} onAtualizar={setAtualizando} />
+                    <Fila demandas={demandas} usuarios={usuarios} eu={eu} pode={pode} hoje={hoje} onAbrir={abrir} onAtualizar={abrirFormulario} />
                 )}
                 {aba === 'tickets' && equipe && <Chamados chamados={chamados} eu={eu} onAbrir={abrirChamado} />}
-                {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} hoje={hoje} onAbrir={abrir} />}
+                {aba === 'demandas' && <ListaDemandas demandas={demandas} pode={pode} eu={eu} hoje={hoje} onAbrir={abrir} onAtualizar={abrirFormulario} />}
                 {aba === 'painel' && <Painel demandas={demandas} areas={areas} hoje={hoje} onAbrir={abrir} />}
+                {aba === 'tempo' && <Tempo demandas={demandas} metricas={metricas} pode={pode} hoje={hoje} onAbrir={abrir} />}
                 {aba === 'reunioes' && (
                     <Reunioes
                         reunioes={reunioes}
@@ -195,7 +204,7 @@ export default function DemandasDevIndex({
                 pode={pode}
                 hoje={hoje}
                 onClose={fechar}
-                onAtualizar={setAtualizando}
+                onAtualizar={abrirFormulario}
                 onEditar={setEditandoDemanda}
                 onAgendarReuniao={pode.gerenciar ? agendarReuniao : null}
                 onAbrirChamado={equipe ? abrirChamado : null}
@@ -225,7 +234,13 @@ export default function DemandasDevIndex({
             )}
 
             {atualizando && (
-                <AtualizacaoDialog key={atualizando.id} demanda={atualizando} hoje={hoje} onClose={() => setAtualizando(null)} />
+                <AtualizacaoDialog
+                    key={`${atualizando.id}-${statusInicial ?? ''}`}
+                    demanda={atualizando}
+                    statusInicial={statusInicial}
+                    hoje={hoje}
+                    onClose={() => setAtualizando(null)}
+                />
             )}
             {editandoDemanda && (
                 <DemandaDialog
