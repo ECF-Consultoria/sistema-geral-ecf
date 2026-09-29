@@ -61,3 +61,26 @@ Disco `local` (privado), em `chamados/{id}/`, saída só pela rota
 `chamados.anexos.show`, que confere a permissão — anexo de nota interna nunca
 sai para quem abriu. O tipo gravado é o detectado pelo servidor; imagem e PDF
 abrem no navegador (`nosniff`), o resto baixa. SVG e HTML não são aceitos.
+
+## 7. Nem todo Dev atende (29/09)
+
+O cargo Dev (`users.is_dev`) dá o sistema inteiro — mas quem ATENDE ticket e
+pode ser responsável por demanda é um recorte: `config/demandas_dev.php`
+`atendimento_ids` (env `DEMANDAS_DEV_ATENDIMENTO_IDS`, padrão `2,24` = Barreto
+e Maycon em produção). A Thalissa (#33) é Dev e ficou FORA por decisão do
+usuário, sem perder o cargo. `Chamado::queryAtendimento()` é a fonte única:
+"Quem atende", aviso da fila, transferência e o select de responsável da
+demanda. `usuarios` (todos os ativos) continua existindo porque reunião
+convida qualquer pessoa. Nos testes o env é forçado vazio = todo Dev atende.
+
+## 8. Aviso no canto da tela é só para quem abriu
+
+O sino sozinho passava despercebido. `AvisoTicketRespondido.jsx` (no
+`AppLayout`) consulta `/api/notificacoes/tickets` a cada 30s e mostra as
+ChamadoNotification NÃO lidas cuja `url` começa com `/tickets/` — é assim que
+se distingue o aviso de quem abriu (os da equipe apontam para
+`/dev/demandas?...`). Não há flag própria: se `avisar()` mudar a url do
+solicitante, o cartão para de aparecer calado. Some ao abrir o ticket
+(`ChamadoService::marcarAvisosLidos` no `show`) ou no X (marca lida via JSON).
+A rota fica fora do `modulo:chamados` de propósito: senão toda página de quem
+não vê o módulo daria 404 no polling.
