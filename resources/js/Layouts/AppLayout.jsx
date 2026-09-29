@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
+import AvisoTicketRespondido from '@/Components/Chamados/AvisoTicketRespondido';
 import ThemeToggle from '@/Components/ThemeToggle';
 
 /**
@@ -995,21 +996,24 @@ export default function AppLayout({ children, title }) {
                 </main>
             </div>
 
-            {/* Toast */}
-            {toast && (
-                <div className={cn(
-                    'fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
-                    'border backdrop-blur-md',
-                    toast.type === 'success'
-                        ? 'bg-green-950/90 border-green-500/30 text-green-300'
-                        : 'bg-red-950/90 border-red-500/30 text-red-300'
-                )}>
-                    <span>{toast.message}</span>
-                    <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
+            {/* Canto inferior direito: avisos de ticket de quem abriu + toast — empilhados, sem sobrepor */}
+            <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+                <AvisoTicketRespondido />
+                {toast && (
+                    <div className={cn(
+                        'flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
+                        'border backdrop-blur-md',
+                        toast.type === 'success'
+                            ? 'bg-green-950/90 border-green-500/30 text-green-300'
+                            : 'bg-red-950/90 border-red-500/30 text-red-300'
+                    )}>
+                        <span>{toast.message}</span>
+                        <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

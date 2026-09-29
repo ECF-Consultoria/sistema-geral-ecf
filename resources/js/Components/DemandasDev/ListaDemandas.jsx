@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Lock, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Lock, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     compararCodigo, fmtData, PRIORIDADE_LABELS, SITUACAO_LABELS, SITUACAO_ORDEM, STATUS_LABELS, textoPrazo,
@@ -13,6 +13,7 @@ const selectClasse =
 
 export default function ListaDemandas({ demandas, pode, hoje, onAbrir }) {
     const [f, setF] = useState(FILTRO_VAZIO);
+    const [ordemPrior, setOrdemPrior] = useState(null); // null | 'asc' | 'desc'
     const set = (k, v) => setF((atual) => ({ ...atual, [k]: v }));
 
     const responsaveis = useMemo(() => {
@@ -33,8 +34,15 @@ export default function ListaDemandas({ demandas, pode, hoje, onAbrir }) {
             .filter((d) => !f.status || d.status === f.status)
             .filter((d) => f.prioridade === '' || String(d.prioridade) === f.prioridade)
             .filter((d) => !f.situacao || d.situacao === f.situacao)
-            .sort((a, b) => compararCodigo(a.codigo, b.codigo));
-    }, [demandas, f]);
+            // Ordem por prioridade (clique no cabeçalho "Prior."); empate e padrão seguem o código.
+            .sort((a, b) =>
+                (ordemPrior ? (a.prioridade - b.prioridade) * (ordemPrior === 'asc' ? 1 : -1) : 0)
+                || compararCodigo(a.codigo, b.codigo));
+    }, [demandas, f, ordemPrior]);
+
+    // Ciclo do cabeçalho: crescente (P0 primeiro) → decrescente (P3 primeiro) → padrão.
+    const alternarOrdemPrior = () => setOrdemPrior((o) => (o === null ? 'asc' : o === 'asc' ? 'desc' : null));
+    const IconeOrdem = ordemPrior === 'asc' ? ArrowUp : ordemPrior === 'desc' ? ArrowDown : ArrowUpDown;
 
     const filtrando = JSON.stringify(f) !== JSON.stringify(FILTRO_VAZIO);
     const encerradasOcultas = !f.encerradas && !f.status && !['concluido', 'cancelado'].includes(f.situacao)
@@ -104,7 +112,16 @@ export default function ListaDemandas({ demandas, pode, hoje, onAbrir }) {
                             <th className="px-4 py-2.5 font-medium">Código</th>
                             <th className="px-3 py-2.5 font-medium">Demanda</th>
                             <th className="px-3 py-2.5 font-medium">Responsável</th>
-                            <th className="px-3 py-2.5 font-medium">Prior.</th>
+                            <th className="px-3 py-2.5 font-medium">
+                                <button
+                                    type="button"
+                                    onClick={alternarOrdemPrior}
+                                    title={ordemPrior === 'asc' ? 'Crescente (P0 → P3) — clique para decrescente' : ordemPrior === 'desc' ? 'Decrescente (P3 → P0) — clique para voltar ao padrão' : 'Ordenar por prioridade'}
+                                    className={cn('inline-flex items-center gap-1 uppercase tracking-wider transition-colors hover:text-white', ordemPrior && 'text-ecf-yellow')}
+                                >
+                                    Prior. <IconeOrdem size={12} />
+                                </button>
+                            </th>
                             <th className="px-3 py-2.5 font-medium">Status</th>
                             <th className="px-3 py-2.5 font-medium">Prazo</th>
                             <th className="px-3 py-2.5 font-medium">Próxima ação</th>

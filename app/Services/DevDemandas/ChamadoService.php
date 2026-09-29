@@ -482,6 +482,61 @@ class ChamadoService
             : $disco->download($a->caminho, $a->nome_original, $headers);
     }
 
+    // ═══ Aviso na tela de quem abriu ═══
+
+    /**
+     * Avisos de ticket ainda não lidos de quem ABRIU o ticket — alimentam o
+     * cartão do canto inferior direito (AvisoTicketRespondido.jsx).
+     *
+     * Só os que vão para o solicitante: são os que levam `url` `/tickets/{id}`
+     * (ver avisar(); os da equipe apontam para /dev/demandas). Notificação é
+     * por usuário (`notifiable`), então cada um só enxerga as suas.
+     *
+     * @return array{total:int, avisos:list<array{id:string,titulo:string,mensagem:string,url:string,autor_nome:?string,created_at:mixed}>}
+     */
+    public function avisosPendentes(User $u, int $limite = 3): array
+    {
+        $pendentes = $this->avisosNaoLidos($u);
+        $autores   = User::query()
+            ->whereIn('id', $pendentes->pluck('data.autor_user_id')->filter()->unique())
+            ->pluck('name', 'id');
+
+        return [
+            'total'  => $pendentes->count(),
+            'avisos' => $pendentes->take($limite)->map(fn ($n) => [
+                'id'         => $n->id,
+                'titulo'     => $n->data['titulo'] ?? '',
+                'mensagem'   => $n->data['mensagem'] ?? '',
+                'url'        => $n->data['url'],
+                'autor_nome' => $autores[$n->data['autor_user_id'] ?? 0] ?? null,
+                'created_at' => $n->created_at,
+            ])->values()->all(),
+        ];
+    }
+
+    /** Abrir o ticket conta como ter visto: some o aviso daquele ticket. */
+    public function marcarAvisosLidos(User $u, Chamado $c): void
+    {
+        $ids = $this->avisosNaoLidos($u)
+            ->filter(fn ($n) => (int) ($n->data['meta']['chamado_id'] ?? 0) === $c->id)
+            ->pluck('id');
+
+        if ($ids->isNotEmpty()) {
+            $u->unreadNotifications()->whereIn('id', $ids)->update(['read_at' => now()]);
+        }
+    }
+
+    /** Filtro em PHP de propósito: `data` é texto e os não lidos de uma pessoa são poucos. */
+    private function avisosNaoLidos(User $u): Collection
+    {
+        return $u->unreadNotifications()
+            ->where('type', ChamadoNotification::class)
+            ->latest()
+            ->get()
+            ->filter(fn ($n) => str_starts_with((string) ($n->data['url'] ?? ''), '/tickets/'))
+            ->values();
+    }
+
     // ═══ Internos ═══
 
     /** Troca de status sempre com evento (nunca em silêncio). */
@@ -504,13 +559,13 @@ class ChamadoService
         ]);
     }
 
-    /** Responsável tem de ser dev ativo — id vindo da tela não é confiável. */
+    /** Responsável tem de ser dev ativo que atende — id vindo da tela não é confiável. */
     private function devValido(?int $id): ?User
     {
         if (! $id) {
             return null;
         }
-        $dev = User::query()->where('id', $id)->where('active', true)->where('is_dev', true)->first();
+        $dev = Chamado::queryAtendimento()->where('id', $id)->first();
         if (! $dev) {
             throw new \RuntimeException('Escolha um dev válido.');
         }
@@ -520,7 +575,7 @@ class ChamadoService
 
     private function equipe(): Collection
     {
-        return User::query()->where('active', true)->where('is_dev', true)->get();
+        return Chamado::queryAtendimento()->get();
     }
 
     private function quemAtende(Chamado $c): Collection

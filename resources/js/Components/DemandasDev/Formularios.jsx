@@ -247,6 +247,10 @@ export function DemandaDialog({ demanda = null, origem = null, usuarios, areas, 
                             <select value={data.responsavel_id} onChange={(e) => setData('responsavel_id', e.target.value)} className={inputClasse}>
                                 <option value="">Sem responsável</option>
                                 {usuarios.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                                {/* Responsável atual fora da lista de quem atende: continua visível para não trocar calado. */}
+                                {demanda?.responsavel && !usuarios.some((u) => u.id === demanda.responsavel.id) && (
+                                    <option value={String(demanda.responsavel.id)}>{demanda.responsavel.name}</option>
+                                )}
                             </select>
                         </Campo>
                         <Campo

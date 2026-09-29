@@ -757,6 +757,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Notificações — leitura/contador/marcação (Phase 9 + recentes/abas da Phase 10)
     Route::get('/api/notificacoes/contador',           [NotificacaoController::class, 'contador'])->name('notificacoes.contador');
     Route::get('/api/notificacoes/recentes',           [NotificacaoController::class, 'recentes'])->name('notificacoes.recentes');
+    Route::get('/api/notificacoes/tickets',            [NotificacaoController::class, 'tickets'])->name('notificacoes.tickets');
     Route::get('/notificacoes',                        [NotificacaoController::class, 'index'])->name('notificacoes.index');
     Route::patch('/notificacoes/{id}/marcar-lida',     [NotificacaoController::class, 'marcarLida'])->name('notificacoes.marcar-lida');
     Route::post('/notificacoes/marcar-todas-lidas',    [NotificacaoController::class, 'marcarTodasLidas'])->name('notificacoes.marcar-todas-lidas');

@@ -54,6 +54,11 @@ class DevDemandaController extends Controller
             'usuarios' => $gerencia
                 ? User::query()->where('active', true)->orderBy('name')->get(['id', 'name'])
                 : [['id' => $user->id, 'name' => $user->name]],
+            // Responsável da demanda: só quem atende (config demandas_dev.atendimento_ids).
+            // `usuarios` segue com todos — reunião convida qualquer pessoa.
+            'responsaveis' => $gerencia
+                ? Chamado::devsDisponiveis()
+                : [['id' => $user->id, 'name' => $user->name]],
             'areas'    => $areas,
             'prefixos' => DevDemanda::PREFIXOS,
             'pode'     => ['gerenciar' => $gerencia],

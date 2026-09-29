@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Setor;
 use App\Models\User;
 use App\Notifications\ManualNotification;
+use App\Services\DevDemandas\ChamadoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -134,6 +135,17 @@ class NotificacaoController extends Controller
     }
 
     /**
+     * Avisos de ticket não lidos de quem abriu o ticket (resposta, status,
+     * resolvido…) — o cartão do canto inferior direito consulta aqui.
+     * Fica fora do middleware `modulo:chamados` para não virar 404 em toda
+     * página de quem não vê o módulo: sem ticket, a lista só vem vazia.
+     */
+    public function tickets(Request $request, ChamadoService $chamados): JsonResponse
+    {
+        return response()->json($chamados->avisosPendentes($request->user()));
+    }
+
+    /**
      * Marca uma notification específica como lida (HIST-03).
      *
      * `abort_unless` faz a defesa contra cross-user mark (T-09-01): garante
@@ -145,7 +157,7 @@ class NotificacaoController extends Controller
      * `markAsRead()` é método nativo do `DatabaseNotification` que preenche
      * `read_at = now()` e dá save.
      */
-    public function marcarLida(Request $request, string $id): RedirectResponse
+    public function marcarLida(Request $request, string $id): RedirectResponse|JsonResponse
     {
         $notificacao = DatabaseNotification::findOrFail($id);
         $user        = $request->user();
@@ -158,6 +170,11 @@ class NotificacaoController extends Controller
         );
 
         $notificacao->markAsRead();
+
+        // O cartão de aviso de ticket marca por fetch — sem recarregar a página.
+        if ($request->wantsJson()) {
+            return response()->json(['ok' => true]);
+        }
 
         return back()->with('success', 'Notificação marcada como lida.');
     }

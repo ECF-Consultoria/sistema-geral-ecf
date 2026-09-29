@@ -97,6 +97,9 @@ class ChamadoController extends Controller
             return redirect("/dev/demandas?aba=tickets&ticket={$chamado->id}");
         }
 
+        // Quem abriu está vendo o ticket: o aviso do canto da tela já cumpriu o papel.
+        $this->chamados->marcarAvisosLidos($user, $chamado);
+
         return Inertia::render('Chamados/Show', [
             'chamado' => $this->chamados->detalhe($chamado, $user, comoSolicitante: true),
         ]);

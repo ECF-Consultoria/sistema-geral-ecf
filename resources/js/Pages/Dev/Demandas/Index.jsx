@@ -45,7 +45,7 @@ const abaDaUrl = () => {
  * saem da atualização mais recente.
  */
 export default function DemandasDevIndex({
-    demandas, painel, reunioes, usuarios, areas, prefixos, pode, eu, hoje, detalhe, google,
+    demandas, painel, reunioes, usuarios, responsaveis = [], areas, prefixos, pode, eu, hoje, detalhe, google,
     equipe = false, chamados = [], devs = [], chamado_detalhe: chamadoDetalhe = null,
 }) {
     const abasVisiveis = ABAS.filter((a) => !a.soEquipe || equipe);
@@ -216,7 +216,7 @@ export default function DemandasDevIndex({
                 <DemandaDialog
                     key={`chamado-${convertendo.id}`}
                     origem={origemDoChamado(convertendo)}
-                    usuarios={usuarios}
+                    usuarios={responsaveis}
                     areas={areas}
                     prefixos={prefixos}
                     hoje={hoje}
@@ -231,7 +231,7 @@ export default function DemandasDevIndex({
                 <DemandaDialog
                     key={editandoDemanda === 'nova' ? 'nova' : editandoDemanda.id}
                     demanda={editandoDemanda === 'nova' ? null : editandoDemanda}
-                    usuarios={usuarios}
+                    usuarios={responsaveis}
                     areas={areas}
                     prefixos={prefixos}
                     hoje={hoje}

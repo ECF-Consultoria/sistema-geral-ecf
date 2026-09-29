@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -132,6 +133,21 @@ class Chamado extends Model
     /** Quem pode ser responsável por um chamado: usuários ativos com o cargo Dev. */
     public static function devsDisponiveis()
     {
-        return User::query()->where('active', true)->where('is_dev', true)->orderBy('name')->get(['id', 'name']);
+        return self::queryAtendimento()->orderBy('name')->get(['id', 'name']);
+    }
+
+    /**
+     * Dev ativo que ATENDE — recorte de `demandas_dev.atendimento_ids` quando
+     * configurado (nem todo Dev atende). Vale para "Quem atende", aviso da
+     * fila, transferência e responsável da demanda.
+     */
+    public static function queryAtendimento(): Builder
+    {
+        $ids = config('demandas_dev.atendimento_ids', []);
+
+        return User::query()
+            ->where('active', true)
+            ->where('is_dev', true)
+            ->when($ids, fn (Builder $q) => $q->whereIn('id', $ids));
     }
 }
