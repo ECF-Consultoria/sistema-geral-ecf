@@ -351,20 +351,29 @@ return [
     |--------------------------------------------------------------------------
     |
     | Proposital: NÃO amarrado a um provedor. Qualquer endpoint compatível com
-    | a API da OpenAI serve — hoje o 9router local, amanhã a NVIDIA direta, a
-    | DeepSeek ou outro. Trocar é mudar `.env`, não código.
+    | a API da OpenAI serve. Desde 29/09/2026: NVIDIA (build.nvidia.com), tier
+    | gratuito. Trocar é mudar `.env`, não código.
     |
-    | `timeout` é alto de propósito: medido em 21/09/2026, uma análise completa
-    | levou 103s e devolveu 8.797 tokens. Por isso a geração vive num Job — um
-    | request web não sobreviveria, e o 9router não tem timeout configurável
-    | (fixo no código dele: 20s para o 1º byte, 30s sem token).
+    | Modelo: comparados em 29/09/2026 com os prompts reais do MAG T8. O
+    | `kimi-k3` acertou 4/4 títulos na régua ECF (58-60 caracteres, sem
+    | preposição) e escreveu a melhor descrição, em ~3 min as três etapas. O
+    | `gemma-4-31b-it` é o reserva: estável, mas tira acento dos títulos. O
+    | `nemotron-3-super` foi o mais rápido e quebrou o JSON dos títulos.
+    |
+    | `fallbacks`: lista separada por vírgula, tentada em ordem quando o modelo
+    | principal está sobrecarregado, mudo ou saiu do ar — na NVIDIA isso é
+    | rotina (deepseek-v4.1-flash e glm-5.3-flash ficaram 150s sem responder).
+    |
+    | `timeout` é POR CHAMADA e o job ainda impõe um prazo total por cima (ver
+    | `GerarAnaliseAnuncioIaJob::PRAZO_S`). Os títulos do kimi levaram 106s.
     |
     */
     'llm' => [
-        'base_url' => env('LLM_BASE_URL', 'http://127.0.0.1:20128/v1'),
-        'key'      => env('LLM_API_KEY'),
-        'model'    => env('LLM_MODEL', 'oc/muse-spark-1.3-contributor-free'),
-        'timeout'  => (int) env('LLM_TIMEOUT', 300),
+        'base_url'  => env('LLM_BASE_URL', 'https://integrate.api.nvidia.com/v1'),
+        'key'       => env('LLM_API_KEY'),
+        'model'     => env('LLM_MODEL', 'moonshotai/kimi-k3'),
+        'fallbacks' => env('LLM_MODEL_FALLBACK', 'google/gemma-4-31b-it'),
+        'timeout'   => (int) env('LLM_TIMEOUT', 180),
         // Generoso porque modelo de raciocínio gasta orçamento "pensando" antes
         // de responder — com teto curto ele devolve conteúdo VAZIO com HTTP 200.
         'max_tokens' => (int) env('LLM_MAX_TOKENS', 16000),

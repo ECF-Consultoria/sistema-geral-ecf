@@ -26,14 +26,28 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** 3 tentativas: o tier gratuito costuma liberar entre uma e outra. */
-    public int $tries = 3;
+    /**
+     * 2 tentativas. A 2ª retoma da etapa que falhou (o parcial fica salvo) e
+     * o serviço já troca de modelo sozinho — mais tentativas só esticavam o
+     * "Gerando…" na tela sem chance real de mudar o resultado.
+     */
+    public int $tries = 2;
 
-    /** Folga crescente — insistir em 5s contra sobrecarga só gasta cota. */
-    public array $backoff = [30, 120];
+    public array $backoff = [20];
 
-    /** Teto acima da soma das 3 etapas; o worker da `high` permite 600s. */
+    /** Teto do worker: o da `high` permite 600s. */
     public int $timeout = 580;
+
+    /**
+     * Prazo que o SERVIÇO respeita, abaixo do `$timeout`. É ele que faz a
+     * etapa falhar com mensagem em vez de o worker matar o processo — morte
+     * por timeout não roda o `handle` até o fim e deixava a análise em
+     * "rodando" para sempre.
+     */
+    public const PRAZO_S = 540;
+
+    /** Se mesmo assim o worker matar, é falha definitiva — status vira erro. */
+    public bool $failOnTimeout = true;
 
     public function __construct(public int $analiseId)
     {
@@ -60,6 +74,21 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
         if ($analise->status === MlAnuncioIaAnalise::STATUS_CONCLUIDO) {
             return;
         }
+
+        // A tela já desistiu desta (passou do limite): não gastar cota numa
+        // geração que ninguém vai ver.
+        $analise->encerrarSeTravada();
+        if ($analise->status === MlAnuncioIaAnalise::STATUS_ERRO) {
+            return;
+        }
+
+        // O menor entre o prazo desta tentativa e o limite total da análise:
+        // a 2ª tentativa não pode seguir gerando depois que a tela já mostrou
+        // "encerrada por tempo".
+        $ia->comPrazo(min(
+            microtime(true) + self::PRAZO_S,
+            $analise->created_at->getTimestamp() + MlAnuncioIaAnalise::LIMITE_MINUTOS * 60 - 30,
+        ));
 
         $analise->update([
             'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,

@@ -23,6 +23,16 @@ class MlAnuncioIaAnalise extends Model
     /** Estados em que ainda vale a pena o front continuar perguntando. */
     public const STATUS_EM_ANDAMENTO = [self::STATUS_PENDENTE, self::STATUS_RODANDO];
 
+    /**
+     * Passou disto em andamento, não vai terminar: vira erro.
+     *
+     * O job tem prazo de 9 min por tentativa e só 2 tentativas; uma análise
+     * viva além de 15 min é worker que morreu no meio ou fila que nunca pegou.
+     * Sem este teto a tela perguntava "e aí?" para sempre — foi o "loop
+     * infinito" relatado em 29/09/2026.
+     */
+    public const LIMITE_MINUTOS = 15;
+
     protected $fillable = [
         'company_id', 'mlb_empresa_id', 'user_id',
         'produto', 'loja', 'specs',
@@ -55,6 +65,39 @@ class MlAnuncioIaAnalise extends Model
     public function emAndamento(): bool
     {
         return in_array($this->status, self::STATUS_EM_ANDAMENTO, true);
+    }
+
+    /**
+     * Em andamento há mais de LIMITE_MINUTOS? Então nunca vai terminar.
+     *
+     * Conta do `created_at`, não do `started_at`: análise que ficou em
+     * "pendente" é justamente a que a fila não pegou, e ela nem tem started_at.
+     */
+    public function travada(): bool
+    {
+        return $this->emAndamento()
+            && $this->created_at !== null
+            && $this->created_at->lt(now()->subMinutes(self::LIMITE_MINUTOS));
+    }
+
+    /**
+     * Encerra como erro a análise travada, com uma mensagem que diz ONDE
+     * travou. O que já foi gerado fica — meia análise vale mais que nenhuma.
+     */
+    public function encerrarSeTravada(): void
+    {
+        if (! $this->travada()) {
+            return;
+        }
+
+        $this->update([
+            'status'        => self::STATUS_ERRO,
+            'etapa'         => null,
+            'erro_mensagem' => $this->status === self::STATUS_PENDENTE
+                ? 'A geração não saiu da fila em ' . self::LIMITE_MINUTOS . ' minutos (worker parado?). Tente novamente.'
+                : 'A geração passou de ' . self::LIMITE_MINUTOS . ' minutos sem terminar e foi encerrada. Tente novamente — o que já ficou pronto foi mantido.',
+            'finished_at'   => now(),
+        ]);
     }
 
     /** Títulos sugeridos, já com a contagem real de caracteres conferida aqui. */

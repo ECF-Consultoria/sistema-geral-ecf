@@ -2156,6 +2156,8 @@ class MlbAnuncioController extends Controller
             return null;
         }
 
+        $a->encerrarSeTravada();
+
         return [
             'id'           => $a->id,
             'status'       => $a->status,
@@ -2231,6 +2233,9 @@ class MlbAnuncioController extends Controller
             $company->loadMissing('mlToken');
             abort_unless($company->mlToken !== null, 404);
         }
+
+        // Garante que o polling tem fim mesmo se o worker morreu calado.
+        $analise->encerrarSeTravada();
 
         return response()->json([
             'id'          => $analise->id,

@@ -2,6 +2,7 @@
 
 namespace App\Services\Ia;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -22,8 +23,33 @@ use Illuminate\Support\Facades\Log;
  */
 class AnaliseAnuncioService
 {
-    /** Erros que valem retentar: sobrecarga e falha transitória de gateway. */
-    private const HTTP_RETENTAVEIS = [408, 429, 500, 502, 503, 504];
+    /**
+     * Erros em que vale passar para o modelo reserva: sobrecarga, falha de
+     * gateway e modelo que saiu do ar/não está liberado para a conta (a NVIDIA
+     * devolve 404 "Function not found for account" e 410 em fim de vida).
+     */
+    private const HTTP_TROCA_MODELO = [404, 408, 410, 429, 500, 502, 503, 504];
+
+    /** Abaixo disto de prazo restante nem vale abrir outra chamada. */
+    private const PRAZO_MINIMO_S = 20;
+
+    /**
+     * Instante (microtime) em que TODA a geração tem que ter parado.
+     *
+     * POR QUE EXISTE. A versão anterior retentava cada chamada 3× com timeout
+     * de 300s — um provedor mudo custava 900s+ numa etapa só, o worker matava o
+     * processo no teto do job, a análise ficava em "rodando" e a tela
+     * perguntava para sempre. Com prazo, cada chamada recebe só o tempo que
+     * sobra, e a etapa FALHA com mensagem antes de o worker precisar matar.
+     */
+    private ?float $prazo = null;
+
+    public function comPrazo(float $instante): static
+    {
+        $this->prazo = $instante;
+
+        return $this;
+    }
 
     // ═══ As três etapas ═══════════════════════════════════════════════════════
 
@@ -63,7 +89,12 @@ class AnaliseAnuncioService
     // ═══ Chamada ao provedor ══════════════════════════════════════════════════
 
     /**
-     * Uma chamada, um JSON de volta.
+     * Uma chamada, um JSON de volta — tentando o modelo principal e, se ele
+     * estiver fora/sobrecarregado/mudo, os reservas de `LLM_MODEL_FALLBACK`.
+     *
+     * Sem retentar o MESMO modelo: medido em 29/09/2026 na NVIDIA, modelo que
+     * não responde em 150s continua sem responder na 2ª vez (fila do lado
+     * deles). Trocar de modelo resolve; insistir só queima o prazo.
      *
      * `max_tokens` por etapa em vez de um teto único: modelo de raciocínio
      * gasta orçamento "pensando" antes de escrever, e teto apertado devolve
@@ -81,24 +112,67 @@ class AnaliseAnuncioService
             throw new \RuntimeException('[IA] LLM_BASE_URL não configurado.');
         }
 
+        $modelos = collect([$cfg['model'] ?? null])
+            ->merge(explode(',', (string) ($cfg['fallbacks'] ?? '')))
+            ->map(fn ($m) => trim((string) $m))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $erro = null;
+
+        foreach ($modelos as $modelo) {
+            try {
+                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens);
+            } catch (FalhaTrocavel $e) {
+                // Guarda o erro e tenta o próximo; se todos falharem, é esta a
+                // mensagem que chega ao publicador.
+                $erro = $e;
+                Log::warning("[IA] Modelo {$modelo} falhou, tentando o próximo: {$e->getMessage()}");
+            }
+        }
+
+        throw new \RuntimeException($erro?->getMessage() ?? 'Nenhum modelo de IA configurado (LLM_MODEL).');
+    }
+
+    /**
+     * Uma chamada a UM modelo. Lança `FalhaTrocavel` quando outro modelo pode
+     * resolver (sobrecarga, timeout, modelo indisponível) e `RuntimeException`
+     * quando não adianta trocar (chave recusada, prazo acabou).
+     */
+    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens): array
+    {
+        $timeout = (int) $cfg['timeout'];
+
+        if ($this->prazo !== null) {
+            $resta = (int) floor($this->prazo - microtime(true));
+
+            if ($resta < self::PRAZO_MINIMO_S) {
+                throw new \RuntimeException('A geração passou do tempo limite. Tente novamente — o que já ficou pronto foi mantido.');
+            }
+
+            $timeout = min($timeout, $resta);
+        }
+
         $t0 = microtime(true);
 
-        $resposta = Http::withToken((string) $cfg['key'])
-            ->timeout((int) $cfg['timeout'])
-            // Conectar é rápido ou não é. Separar do tempo de geração evita
-            // esperar o timeout inteiro por um endpoint que está fora do ar.
-            ->connectTimeout(15)
-            ->retry(3, 5000, function ($exception) {
-                $status = method_exists($exception, 'response') ? $exception->response?->status() : null;
+        try {
+            $resposta = Http::withToken((string) $cfg['key'])
+                ->timeout($timeout)
+                // Conectar é rápido ou não é. Separar do tempo de geração evita
+                // esperar o timeout inteiro por um endpoint que está fora do ar.
+                ->connectTimeout(15)
+                ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', [
+                    'model'       => $modelo,
+                    'temperature' => 0.7,
+                    'max_tokens'  => $maxTokens,
+                    'messages'    => [['role' => 'user', 'content' => $prompt]],
+                ]);
+        } catch (ConnectionException $e) {
+            Log::warning('[IA] Provedor não respondeu', ['modelo' => $modelo, 'timeout_s' => $timeout, 'erro' => $e->getMessage()]);
 
-                return $status === null || in_array($status, self::HTTP_RETENTAVEIS, true);
-            }, throw: false)
-            ->post(rtrim((string) $cfg['base_url'], '/') . '/chat/completions', [
-                'model'       => $cfg['model'],
-                'temperature' => 0.7,
-                'max_tokens'  => $maxTokens,
-                'messages'    => [['role' => 'user', 'content' => $prompt]],
-            ]);
+            throw new FalhaTrocavel("A IA não respondeu em {$timeout}s. Tente novamente em alguns minutos.");
+        }
 
         $duracaoMs = (int) round((microtime(true) - $t0) * 1000);
 
@@ -106,11 +180,15 @@ class AnaliseAnuncioService
             $corpo = mb_substr($resposta->body(), 0, 400);
             Log::warning('[IA] Falha do provedor', [
                 'status' => $resposta->status(),
-                'modelo' => $cfg['model'],
+                'modelo' => $modelo,
                 'corpo'  => $corpo,
             ]);
 
-            throw new \RuntimeException($this->mensagemAmigavel($resposta->status(), $corpo));
+            $mensagem = $this->mensagemAmigavel($resposta->status(), $corpo);
+
+            throw in_array($resposta->status(), self::HTTP_TROCA_MODELO, true)
+                ? new FalhaTrocavel($mensagem)
+                : new \RuntimeException($mensagem);
         }
 
         $json     = $resposta->json();
@@ -119,7 +197,7 @@ class AnaliseAnuncioService
         if (trim($conteudo) === '') {
             $pensou = mb_strlen((string) data_get($json, 'choices.0.message.reasoning_content', ''));
 
-            throw new \RuntimeException(
+            throw new FalhaTrocavel(
                 $pensou > 0
                     ? 'A IA gastou todo o orçamento de tokens raciocinando e não chegou a responder. Aumente LLM_MAX_TOKENS ou troque para um modelo sem raciocínio longo.'
                     : 'A IA respondeu vazio. Tente novamente em alguns minutos.'
@@ -131,7 +209,7 @@ class AnaliseAnuncioService
         if ($dados === null) {
             Log::warning('[IA] Resposta não era JSON válido', ['inicio' => mb_substr($conteudo, 0, 300)]);
 
-            throw new \RuntimeException('A IA não devolveu um JSON válido. Tente gerar novamente.');
+            throw new FalhaTrocavel('A IA não devolveu um JSON válido. Tente gerar novamente.');
         }
 
         return [
@@ -139,7 +217,7 @@ class AnaliseAnuncioService
             'meta' => [
                 // O modelo que RESPONDEU pode não ser o pedido: combo com
                 // fallback troca por baixo. Registrar o real.
-                'modelo'         => (string) ($json['model'] ?? $cfg['model']),
+                'modelo'         => (string) ($json['model'] ?? $modelo),
                 'tokens_entrada' => (int) data_get($json, 'usage.prompt_tokens', 0),
                 'tokens_saida'   => (int) data_get($json, 'usage.completion_tokens', 0),
                 'duracao_ms'     => $duracaoMs,
@@ -354,6 +432,10 @@ class AnaliseAnuncioService
 
         if ($status === 503 || str_contains($c, 'overloaded')) {
             return 'O provedor de IA está sobrecarregado neste momento. Tente novamente em alguns minutos.';
+        }
+
+        if ($status === 429) {
+            return 'O limite de uso da IA foi atingido neste momento. Tente novamente em alguns minutos.';
         }
 
         if ($status === 401 || $status === 403) {

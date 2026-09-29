@@ -2,6 +2,10 @@ import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, Check, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 
+// Um pouco acima dos 15 min em que o servidor encerra a análise: quem decide
+// é o servidor; este teto só vale se nem ele responder.
+const LIMITE_ESPERA_MS = 17 * 60 * 1000;
+
 /**
  * "Anunciar por IA" — metodologia MAG T8, Parte 1 (Análise Estratégica).
  *
@@ -41,6 +45,8 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
 
     const pollRef   = useRef(null);
     const cronoRef  = useRef(null);
+    // Quando o acompanhamento começou, para o teto de espera abaixo.
+    const pollDesdeRef = useRef(null);
 
     // O relógio conta desde o `started_at` do SERVIDOR, não desde o momento em
     // que este componente montou. Sem isso, um F5 zerava a contagem e passava
@@ -61,6 +67,7 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     function pararTimers() {
         if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current = null; }
         if (cronoRef.current) { clearInterval(cronoRef.current); cronoRef.current = null; }
+        pollDesdeRef.current = null;
     }
 
     // Retoma o acompanhamento de uma geração que já estava correndo quando a
@@ -112,6 +119,17 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     }
 
     async function consultar(id) {
+        // Teto de espera no navegador. O servidor já encerra a análise em 15
+        // min (MlAnuncioIaAnalise::LIMITE_MINUTOS); isto cobre o caso em que
+        // nem o servidor responde. Sem teto, a tela perguntava para sempre.
+        pollDesdeRef.current ??= Date.now();
+        if (Date.now() - pollDesdeRef.current > LIMITE_ESPERA_MS) {
+            pararTimers();
+            setEstado('erro');
+            setErro('A geração passou do tempo limite e foi interrompida. Tente novamente.');
+            return;
+        }
+
         try {
             const { data } = await window.axios.get(route('mlb.anuncios.ia.analise.status', { analise: id }));
 
