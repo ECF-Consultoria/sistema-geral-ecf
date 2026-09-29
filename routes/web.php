@@ -207,6 +207,25 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.precificacao.oferta')->name('portal.auth.estrutura.precificacao.oferta');
     Route::get('/estrutura/mapeamento', [PortalEstruturaController::class, 'mapeamento'])->name('portal.auth.estrutura.mapeamento');
     Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
+    // ── Anunciar (29/09/2026, ADR PORTAL-03): o par Clássico + Premium
+    // publicado pelo portal. A lista é Inertia; o formulário, a conferência
+    // e a publicação são JSON, por oferta. Publicar é síncrono (dois POST
+    // /items) e protegido por trava atômica no service.
+    Route::get('/estrutura/anunciar', [PortalEstruturaController::class, 'anunciarIndex'])->name('portal.auth.estrutura.anunciar');
+    Route::get('/estrutura/anunciar/categorias', [PortalEstruturaController::class, 'categoriasAnunciar'])
+        ->middleware('throttle:60,1,estrutura.anunciar.categorias')->name('portal.auth.estrutura.anunciar.categorias');
+    Route::get('/estrutura/anunciar/categorias/{categoria}', [PortalEstruturaController::class, 'categoriaAnunciar'])
+        ->where('categoria', 'MLB[0-9]+')->middleware('throttle:60,1,estrutura.anunciar.categoria')->name('portal.auth.estrutura.anunciar.categoria');
+    Route::get('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'abrirPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.abrir')->name('portal.auth.estrutura.publicacao.abrir');
+    Route::put('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'salvarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.salvar')->name('portal.auth.estrutura.publicacao.salvar');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/fotos', [PortalEstruturaController::class, 'fotoPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.publicacao.fotos')->name('portal.auth.estrutura.publicacao.fotos');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/validar', [PortalEstruturaController::class, 'validarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:30,1,estrutura.publicacao.validar')->name('portal.auth.estrutura.publicacao.validar');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/publicar', [PortalEstruturaController::class, 'publicarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.publicacao.publicar')->name('portal.auth.estrutura.publicacao.publicar');
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
         ->middleware('throttle:60,1,estrutura.ofertas.criar')->name('portal.auth.estrutura.ofertas.criar');
     Route::post('/estrutura/ofertas/{oferta}/combos', [PortalEstruturaController::class, 'criarCombos'])

@@ -110,7 +110,7 @@ class ModulosPortal
             'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
             'planejamento' => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.agenda'],
             'mapeamento'   => ['rotulo' => 'Mapeamento',   'rota_auth' => 'portal.auth.estrutura.mapeamento'],
-            'anunciar'     => ['rotulo' => 'Anunciar',     'rota_auth' => null],
+            'anunciar'     => ['rotulo' => 'Anunciar',     'rota_auth' => 'portal.auth.estrutura.anunciar'],
         ],
     ];
 

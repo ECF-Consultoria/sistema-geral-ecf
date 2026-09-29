@@ -334,7 +334,7 @@ export function AvisoFlash() {
  */
 export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunciona }) {
     const { modulos = [] } = usePage().props;
-    const subs = (modulos.find((m) => m.chave === 'estrutura')?.submodulos ?? []).filter((s) => s.chave !== 'anunciar');
+    const subs = modulos.find((m) => m.chave === 'estrutura')?.submodulos ?? [];
     const atual = subs.find((s) => s.chave === etapa);
 
     return (
@@ -518,7 +518,7 @@ function paginasVisiveis(atual, total) {
     return saida;
 }
 
-export function Paginacao({ paginacao, onIr }) {
+export function Paginacao({ paginacao, onIr, rotulo = 'grupos' }) {
     return (
         <nav className="flex flex-wrap items-center justify-between gap-3 pt-1" aria-label="Paginação" data-paginacao>
             <div className="flex items-center gap-1">
@@ -540,7 +540,7 @@ export function Paginacao({ paginacao, onIr }) {
                     <ChevronRight size={15} />
                 </button>
             </div>
-            <span className="text-[12px] text-white/40">{paginacao.blocos} grupos · {paginacao.por_pagina} por página</span>
+            <span className="text-[12px] text-white/40">{paginacao.blocos} {rotulo} · {paginacao.por_pagina} por página</span>
         </nav>
     );
 }

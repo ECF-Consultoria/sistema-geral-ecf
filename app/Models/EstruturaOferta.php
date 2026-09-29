@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Uma oferta do Mapeamento Estrutural — uma linha da aba "Lista SKUs" da
@@ -75,6 +76,12 @@ class EstruturaOferta extends Model
     public function agenda(): HasMany
     {
         return $this->hasMany(EstruturaAgendaItem::class, 'oferta_id');
+    }
+
+    /** O par Clássico + Premium publicado pelo Anunciar (ADR PORTAL-03). */
+    public function publicacao(): HasOne
+    {
+        return $this->hasOne(EstruturaPublicacao::class, 'oferta_id');
     }
 
     /**

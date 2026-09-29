@@ -141,6 +141,15 @@ class RestringeDominioDoPortal
         'portal/estrutura/agenda/proposta/aplicar',
         'portal/estrutura/agenda/*',
         'portal/estrutura/agenda/*/jardinagem',
+        // 29/09/2026 — Anunciar (ADR PORTAL-03): o par Clássico + Premium
+        // publicado pelo portal. Uma linha por rota, como sempre.
+        'portal/estrutura/anunciar',
+        'portal/estrutura/anunciar/categorias',
+        'portal/estrutura/anunciar/categorias/*',
+        'portal/estrutura/ofertas/*/publicacao',
+        'portal/estrutura/ofertas/*/publicacao/fotos',
+        'portal/estrutura/ofertas/*/publicacao/validar',
+        'portal/estrutura/ofertas/*/publicacao/publicar',
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',
