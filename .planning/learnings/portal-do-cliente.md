@@ -855,3 +855,57 @@ Tudo sai de `ModulosPortal::SUBMODULOS`. `rota_auth` nulo = "Em breve".
   soma dos componentes, e um componente sem custo anula a soma de propósito.
   A migration só cria tabelas novas; no MariaDB local compartilhado ela foi
   rodada com `--path`, para não arrastar migrations pendentes de outras sessões.
+
+## 29. Anunciar: o par Clássico + Premium publicado pelo portal (29/09/2026)
+
+Decisões e schema em `.planning/adrs/PORTAL-03-anunciar-do-mapeamento.md`.
+O que custou caro e não se deduz do código:
+
+- **`ml_anuncio_rascunhos` não serve ao portal.** `user_id` é NOT NULL com FK
+  para `users`, e o cliente entra pelo guard `portal`. Alterá-la é migration em
+  tabela com dado em produção (fase GSD). Por isso `estrutura_publicacoes` e
+  um service próprio (`EstruturaPublicacaoService`) que compõe o motor do
+  admin (`builderPara()->montar()`, `MercadoLivreService::post()`,
+  `MlImagemService`, `MlCatalogoMetaService`, `MlItemPayloadValidator`) sem
+  usar `MlPublicacaoService::validar()/publicar()`.
+- **A trava contra publicar duas vezes é um UPDATE condicional** (`WHERE
+  status IN (validado, parcial, erro) OR (publicando AND publicando_em < −15
+  min)`) que precisa afetar 1 linha — funciona no SQLite dos testes e no
+  MariaDB sem cache. **Cada MLB é gravado no instante em que o POST devolve o
+  id**, antes da descrição e da aba Anúncios; o admin marcava `erro` quando a
+  descrição falhava e perdia o `ml_item_id`. Aqui descrição é best-effort.
+- **O botão desabilitado não é a trava.** O servidor guarda o sha256 dos dados
+  EFETIVOS (rascunho + título planejado da aba Anúncios + preço anunciado da
+  Precificação) na conferência e recusa publicar se o hash de agora for outro.
+  Consequência que parece bug: mudar o custo na Precificação depois de
+  conferir obriga a conferir de novo — é o preço que vai ao ML que mudou.
+- **`Http::fake` + `UploadedFile::fake()->create()` = "A 'contents' key is
+  required".** O `create()` gera arquivo VAZIO; `attach('file', '')` do Guzzle
+  recusa antes de qualquer fake, e a falha aparece como "o ML não aceitou a
+  imagem" sem nenhuma requisição registrada. Use `->image()` (GD existe no
+  XAMPP). Ganhou um guarda contra arquivo vazio no service.
+- **`Http::recorded()` preserva as chaves** do filtro: `[0]` não existe depois
+  de filtrar — `->values()` antes de indexar.
+- **`array_replace_recursive` não esvazia uma lista** (`['fotos' => []]` deixa
+  as fotos): para "tirar as fotos" na fixture é `array_replace` no nível de cima.
+- **Duas sessões do portal no mesmo teste não funcionam** (o guard cacheia o
+  usuário — §22): "oferta de outra empresa → 404" e "empresa sem conta do ML"
+  são testes separados, cada um com a sua sessão.
+- **Resposta JSON incompleta derruba a tela inteira.** O `salvar` devolvia só
+  `publicacao` e a tela fazia `pendencias.length` → React 18 desmonta a raiz
+  e a página fica PRETA, sem erro no PHP e com os testes verdes. Pego só no
+  probe (captura preta). O teste do rascunho agora afirma a forma da resposta.
+- **Probe sem tocar o ML de verdade:** a empresa 1 local não tem conta; para
+  ver o formulário, semear um `MlToken` FALSO + o rascunho JÁ com
+  `categoria_id` + a meta da categoria no cache de arquivo
+  (`ml_meta_categoria_<id>`, `ml_meta_atributos_<id>`). Com a categoria salva,
+  `abrir()` não chama o preditor; foto/conferir/publicar não se clicam. Mas a
+  página abre SOZINHA a primeira oferta da lista — se ela não tem categoria,
+  `abrir()` chama o preditor no servidor (app token, dado público). Para um
+  probe hermético, deixe TODAS as ofertas da página com categoria ou abra a
+  semeada direto. Apagar depois: `EstruturaPublicacao` da oferta, o token,
+  as chaves do cache e o activity log `publicacao_*` da empresa — e conferir
+  por reconsulta.
+- **A lista da esquerda não confere a ficha técnica** (exigiria a meta de cada
+  categoria, uma chamada por categoria): o card diz "pronto para conferir" e
+  o formulário, abaixo, "Falta Altura total". É deliberado.
