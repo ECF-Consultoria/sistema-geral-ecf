@@ -317,15 +317,26 @@ export default function FormPublicacao({ ofertaId, vocabulario, onPublicou }) {
                         </div>
                         {sugestoes.length > 0 && (
                             <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.08]" data-sugestoes-categoria>
-                                {sugestoes.map((c) => (
-                                    <li key={c.id}>
-                                        <button type="button" onClick={() => escolherCategoria(c)}
-                                            className={cn('flex w-full items-center justify-between px-3 py-2 text-left text-[13px] hover:bg-white/[0.04]', c.id === dados.categoria_id ? 'text-ecf-yellow' : 'text-white/80')}>
-                                            <span>{c.nome}{c.dominio && <span className="ml-2 text-[11px] text-white/35">{c.dominio}</span>}</span>
-                                            <span className="font-mono text-[11px] text-white/30">{c.id}</span>
-                                        </button>
-                                    </li>
-                                ))}
+                                {/* O caminho inteiro ANTES de escolher: "Caixa de Direção" e "Caixas de
+                                    Direção Hidráulica" só se distinguem pela árvore. Sem caminho (a
+                                    leitura falhou), fica o nome do preditor. */}
+                                {sugestoes.map((c) => {
+                                    const caminho = c.caminho ?? [];
+                                    const folha = caminho.length ? caminho[caminho.length - 1] : c.nome;
+
+                                    return (
+                                        <li key={c.id}>
+                                            <button type="button" onClick={() => escolherCategoria(c)} data-sugestao={c.id} data-caminho={caminho.join(' › ')}
+                                                className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-white/[0.04]', c.id === dados.categoria_id ? 'text-ecf-yellow' : 'text-white/80')}>
+                                                <span className="min-w-0 leading-snug">
+                                                    {caminho.length > 1 && <span className="text-[12px] text-white/40">{caminho.slice(0, -1).join(' › ')} › </span>}
+                                                    <span className="font-semibold">{folha}</span>
+                                                </span>
+                                                <span className="shrink-0 font-mono text-[11px] text-white/30">{c.id}</span>
+                                            </button>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         )}
                     </div>

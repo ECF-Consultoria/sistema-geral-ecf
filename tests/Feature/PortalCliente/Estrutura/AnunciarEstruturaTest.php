@@ -195,6 +195,9 @@ class AnunciarEstruturaTest extends TestCase
         // Categoria sugerida pelo título, com a meta: caminho, limite e SÓ os obrigatórios sem variação/grade.
         $this->assertSame('MLB1234', $r['dados']['categoria_id']);
         $this->assertSame('sugerida', $r['dados']['categoria_origem']);
+        // O nome gravado é o caminho inteiro — o mesmo que o card e a lista mostram.
+        $this->assertSame('Casa, Móveis e Decoração › Cadeiras', $r['dados']['categoria_nome']);
+        $this->assertSame(['Casa, Móveis e Decoração', 'Cadeiras'], $r['sugestoes'][0]['caminho']);
         $this->assertSame(['Casa, Móveis e Decoração', 'Cadeiras'], $r['categoria']['caminho']);
         $this->assertSame(60, $r['categoria']['max_titulo']);
         $this->assertSame(['BRAND', 'MODEL'], array_column($r['categoria']['atributos'], 'id'));
@@ -242,6 +245,59 @@ class AnunciarEstruturaTest extends TestCase
         $sessao->post(route('portal.auth.estrutura.publicacao.fotos', $cb3->id), ['imagem' => UploadedFile::fake()->create('lista.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])
             ->assertStatus(422);
         $this->assertSame(1, $this->postsEm('/pictures/items/upload'));
+    }
+
+    /**
+     * A lista de sugestões traz o CAMINHO inteiro de cada categoria (29/09,
+     * pedido do usuário: "Caixa de Direção" e "Caixas de Direção Hidráulica"
+     * só se distinguem pela árvore, e ele precisa vê-la ANTES de escolher).
+     * Os caminhos são lidos em paralelo e aquecem o cache do
+     * `MlCatalogoMetaService`; uma categoria que falha aparece sem caminho,
+     * e as outras não caem.
+     */
+    public function test_sugestoes_de_categoria_trazem_o_caminho_completo_e_uma_falha_nao_derruba_as_outras(): void
+    {
+        $arvore = fn ($id, $nome) => ['id' => $id, 'name' => $nome, 'settings' => ['max_title_length' => 60], 'children_categories' => [],
+            'path_from_root' => [['id' => 'MLB5672', 'name' => 'Acessórios para Veículos'], ['id' => 'MLB1747', 'name' => 'Peças de Carros e Caminhonetes'],
+                ['id' => 'MLB22693', 'name' => 'Direção'], ['id' => $id, 'name' => $nome]]];
+        $dominio = 'Caixas de direção para veículos';
+
+        Http::fake([
+            '*/oauth/token'              => Http::response(['access_token' => 'app-token', 'expires_in' => 21600]),
+            '*/domain_discovery/search*' => Http::response([
+                ['domain_id' => 'MLB-STEERING', 'domain_name' => $dominio, 'category_id' => 'MLB193420', 'category_name' => 'Caixa de Direção'],
+                ['domain_id' => 'MLB-STEERING', 'domain_name' => $dominio, 'category_id' => 'MLB456920', 'category_name' => 'Caixas de Direção Hidráulica'],
+                ['domain_id' => 'MLB-STEERING', 'domain_name' => $dominio, 'category_id' => 'MLB447370', 'category_name' => 'Cajas de Dirección Hidráulica'],
+                // O preditor repete a mesma categoria em dois domínios: aparece uma vez.
+                ['domain_id' => 'MLB-OUTRO', 'domain_name' => 'Outro', 'category_id' => 'MLB193420', 'category_name' => 'Caixa de Direção'],
+            ]),
+            '*/categories/MLB193420'     => Http::response($arvore('MLB193420', 'Caixa de Direção')),
+            '*/categories/MLB456920'     => Http::response($arvore('MLB456920', 'Caixas de Direção Hidráulica')),
+            '*/categories/MLB447370'     => Http::response(['message' => 'internal error'], 500),
+        ]);
+        [$empresa, $ofertas, $sessao] = $this->cenario();
+        // Só o GET /categories/{id} — o `/categories/{id}/attributes` da meta é outra leitura.
+        $chamadas = fn () => count(Http::recorded(fn (Request $q) => preg_match('#/categories/MLB\d+$#', $q->url()) === 1));
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.anunciar.categorias', ['q' => 'caixa de direção']))->assertOk()->json();
+
+        $this->assertSame(['MLB193420', 'MLB456920', 'MLB447370'], array_column($r, 'id'));
+        $this->assertSame(['Acessórios para Veículos', 'Peças de Carros e Caminhonetes', 'Direção', 'Caixa de Direção'], $r[0]['caminho']);
+        $this->assertSame('Caixas de Direção Hidráulica', end($r[1]['caminho']));
+        // A que falhou: o nome do preditor, sem caminho — e a lista inteira de pé.
+        $this->assertSame(['id' => 'MLB447370', 'nome' => 'Cajas de Dirección Hidráulica', 'dominio' => $dominio, 'caminho' => []], $r[2]);
+        // Uma chamada por categoria, todas de uma vez.
+        $this->assertSame(3, $chamadas());
+
+        // Segunda busca: os caminhos vêm do cache; só a que falhou é lida de novo.
+        $sessao->getJson(route('portal.auth.estrutura.anunciar.categorias', ['q' => 'caixa de direção']))
+            ->assertOk()->assertJsonPath('0.caminho.3', 'Caixa de Direção')->assertJsonPath('2.caminho', []);
+        $this->assertSame(4, $chamadas());
+
+        // O aquecimento serve ao resto do formulário: a meta da escolhida vem do cache.
+        $sessao->getJson(route('portal.auth.estrutura.anunciar.categoria', 'MLB456920'))
+            ->assertOk()->assertJsonPath('caminho.3', 'Caixas de Direção Hidráulica')->assertJsonPath('max_titulo', 60);
+        $this->assertSame(4, $chamadas());
     }
 
     // ═══ Conferência ════════════════════════════════════════════════════════

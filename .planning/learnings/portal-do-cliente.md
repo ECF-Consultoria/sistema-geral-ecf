@@ -909,3 +909,17 @@ O que custou caro e não se deduz do código:
 - **A lista da esquerda não confere a ficha técnica** (exigiria a meta de cada
   categoria, uma chamada por categoria): o card diz "pronto para conferir" e
   o formulário, abaixo, "Falta Altura total". É deliberado.
+- **Sugestão de categoria mostra a ÁRVORE inteira antes de escolher** (usuário,
+  29/09: "Caixa de Direção" × "Caixas de Direção Hidráulica" só se distinguem
+  pelo caminho). O `domain_discovery` não traz `path_from_root`; é um
+  `GET /categories/{id}` por sugestão (até 8). O portal lê o que falta em
+  PARALELO (`Http::pool`, app token) e grava na chave `ml_meta_categoria_{id}`
+  (7 dias) — a chave do `MlCatalogoMetaService` já era contrato de fato (o
+  `MlbAnuncioController::preverCategoria` a lê direto), e assim `categoria()`
+  e a próxima busca acham tudo pronto sem tocar o service do admin.
+  `MercadoLivreService::getMany()` NÃO serve aqui: exige a conta da empresa
+  (token dela, refresh, lock) para dado público de cache compartilhado.
+  `Http::pool` passa pelo `Http::fake` (o `Pool` cria cada pedido por
+  `Factory::async()`, que aplica os stubs) e é gravado em `Http::recorded()`.
+  Ao contar chamadas a `/categories/`, lembre que `/categories/{id}/attributes`
+  também casa — filtre por `#/categories/MLB\d+$#`.
