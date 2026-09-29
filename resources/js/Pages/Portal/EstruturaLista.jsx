@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, DownloadCloud, Layers, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ChevronRight, DownloadCloud, Layers, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, FotoProduto, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
@@ -85,15 +85,20 @@ function LinhaCombo({ oferta, base, vocabulario, onEditar, onExcluir }) {
 }
 
 /**
- * O produto (Fase 1) e os combos dele, sempre abertos: é a planilha — CAD-01
- * e, logo abaixo, CAD-01-CB2…CB6. Sem combo ainda, o card faz a pergunta.
+ * O produto (Fase 1) e os combos dele. Nasce RECOLHIDO (pedido do usuário,
+ * 29/09: "senão vai ficar muita coisa"): fechado, o card é uma linha só e diz
+ * quantos combos tem e de quantas unidades ("2 combos · 2 e 3 un."); aberto,
+ * mostra CAD-01-CB2…CB6 como na planilha. "+ Variação" fica no cabeçalho, à
+ * mão com o card fechado. Com busca ou poucos produtos, abre sozinho.
  */
-function CardProduto({ bloco, vocabulario, onEditar, onExcluir, onVariacao }) {
+function CardProduto({ bloco, abertoInicial, vocabulario, onEditar, onExcluir, onVariacao }) {
     const produto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
     const combos = bloco.ofertas.filter((o) => o.id !== produto.id);
+    const [aberto, setAberto] = useState(abertoInicial);
+    const temCombo = bloco.combos > 0;
 
     return (
-        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave}>
+        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto && temCombo ? '1' : '0'}>
             <header className="flex items-center gap-3 px-3 py-3 sm:px-4">
                 <FotoProduto url={bloco.foto} />
                 <span className="min-w-0 flex-1">
@@ -108,25 +113,33 @@ function CardProduto({ bloco, vocabulario, onEditar, onExcluir, onVariacao }) {
                         {bloco.tambem_em.length > 0 && <> · também entra em {bloco.tambem_em.map((k) => k.sku).join(', ')}</>}
                     </span>
                 </span>
-                <span className="hidden text-[12px] text-white/45 md:block">
-                    {combos.length ? `${combos.length} ${combos.length === 1 ? 'combo' : 'combos'}` : 'sem combo'}
-                </span>
+                {temCombo ? (
+                    <button type="button" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="alternar-combos"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] text-white/60 hover:bg-white/[0.05] hover:text-white">
+                        {bloco.combos} {bloco.combos === 1 ? 'combo' : 'combos'}
+                        {bloco.quantidades_combo.length > 0 && (
+                            <span className="hidden text-white/35 sm:inline">· {bloco.quantidades_combo.join(', ')} un.</span>
+                        )}
+                        <ChevronRight size={14} className={cn('transition-transform', aberto && 'rotate-90')} />
+                    </button>
+                ) : (
+                    <span className="hidden shrink-0 text-[12px] text-white/35 md:block">sem combo</span>
+                )}
+                <button type="button" onClick={() => onVariacao(produto, bloco.quantidades_combo)} data-acao="nova-variacao"
+                    title="Nova variação: combo ou kit" aria-label={`Nova variação de ${produto.sku}`}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-white/[0.14] px-2 py-1.5 text-[12px] text-white/60 hover:border-ecf-yellow/40 hover:text-ecf-yellow">
+                    <Plus size={13} /> <span className="hidden sm:inline">Variação</span>
+                </button>
                 <AcoesOferta oferta={produto} onEditar={onEditar} onExcluir={onExcluir} />
             </header>
 
-            <div className="border-t border-white/[0.06] px-3 pb-3 pt-2 sm:px-4">
-                {combos.length > 0 ? (
+            {aberto && temCombo && (
+                <div className="border-t border-white/[0.06] px-3 pb-3 pt-2 sm:px-4">
                     <ul className="ml-2 space-y-1.5 border-l border-white/[0.08] pl-3">
                         {combos.map((o) => <LinhaCombo key={o.id} oferta={o} base={produto} vocabulario={vocabulario} onEditar={onEditar} onExcluir={onExcluir} />)}
                     </ul>
-                ) : (
-                    <p className="text-[12.5px] text-white/40">Dá combo? Combina com outro produto num kit?</p>
-                )}
-                <button type="button" onClick={() => onVariacao(produto, bloco.quantidades_combo)} data-acao="nova-variacao"
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/[0.14] px-2.5 py-1.5 text-[12.5px] text-white/60 hover:border-ecf-yellow/40 hover:text-ecf-yellow">
-                    <Plus size={13} /> Variação (combo, kit)
-                </button>
-            </div>
+                </div>
+            )}
         </section>
     );
 }
@@ -244,6 +257,8 @@ export default function EstruturaLista({ empresa, modulos = [], estrutura, filtr
     };
 
     const produtos = blocos.filter((b) => b.produto);
+    // Recolhido por padrão; com busca, ou com até 3 produtos, abre respirado.
+    const abertoInicial = !! filtros.q || paginacao.blocos <= 3;
     const kits = blocos.filter((b) => ! b.produto);
     const acoes = {
         vocabulario, onEditar: editar, onExcluir: excluir,
@@ -291,7 +306,8 @@ export default function EstruturaLista({ empresa, modulos = [], estrutura, filtr
                         {blocos.length === 0 && <p className="py-10 text-center text-[13px] text-white/45">Nenhum produto com essa busca.</p>}
 
                         <div className="space-y-2.5">
-                            {produtos.map((b) => <CardProduto key={b.chave} bloco={b} {...acoes} />)}
+                            {/* A chave remonta os cards quando a busca muda: o que casou abre. */}
+                            {produtos.map((b) => <CardProduto key={`${b.chave}-${filtros.q ?? ''}`} bloco={b} abertoInicial={abertoInicial} {...acoes} />)}
                         </div>
 
                         {/* Kits e combits entram na ordem por vendas, em qualquer página:
