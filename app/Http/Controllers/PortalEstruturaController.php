@@ -7,11 +7,13 @@ use App\Models\EstruturaAgendaItem;
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaPrecificacao;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\ColagemAnunciosService;
 use App\Services\Portal\Estrutura\EstruturaAgendaService;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
+use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\EstruturaVisaoService;
 use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
@@ -47,6 +49,7 @@ class PortalEstruturaController extends Controller
         private ColagemAnunciosService $colagem,
         private EstruturaAgendaService $agenda,
         private AnunciosMercadoLivreService $anunciosMl,
+        private EstruturaPrecificacaoService $precificacao,
     ) {
     }
 
@@ -99,6 +102,44 @@ class PortalEstruturaController extends Controller
             'espera_linhas'  => Inertia::optional(fn () => $this->visao->espera($empresa)),
             'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
         ]);
+    }
+
+    /**
+     * Precificação: os produtos da Lista SKUs com custo, fretes e o preço de
+     * Clássico e Premium — a conta da Calculadora de Custo, feita no PHP
+     * (ADR PORTAL-02). O resumo é da empresa inteira; o detalhe, da página.
+     */
+    public function precificacaoIndex(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $busca = (string) $request->query('q', '');
+        $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1));
+        $ids = array_merge(...array_map(fn ($b) => array_column($b['ofertas'], 'id'), $estrutura['blocos'] ?: [['ofertas' => []]]));
+
+        return Inertia::render('Portal/EstruturaPrecificacao', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.precificacao', PortalContexto::ator()),
+            'estrutura'    => $estrutura,
+            'precificacao' => $this->precificacao->pagina($empresa, $ids),
+            'filtros'      => ['q' => $busca],
+            'vocabulario'  => EstruturaVisaoService::vocabulario(),
+        ]);
+    }
+
+    public function salvarParametrosPreco(Request $request)
+    {
+        $this->precificacao->salvarParametros(PortalContexto::empresa(), $request->all(), PortalContexto::ator());
+
+        return back()->with('success', 'Parâmetros de preço salvos. Os preços foram recalculados.');
+    }
+
+    public function salvarPrecificacao(Request $request, int $oferta)
+    {
+        $registro = $this->oferta($oferta);
+        $this->precificacao->salvarOferta($registro, $request->only([
+            'custo', 'frete_classico', 'frete_premium', ...EstruturaPrecificacao::EXCECOES,
+        ]), PortalContexto::ator());
+
+        return back()->with('success', "Preço de {$registro->sku} salvo.");
     }
 
     /** Mapeamento: o pós-publicação — situação de cada oferta, estação do produto, métricas. */

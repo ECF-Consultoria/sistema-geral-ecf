@@ -200,6 +200,11 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     Route::get('/estrutura', [PortalEstruturaController::class, 'entrada'])->name('portal.auth.estrutura');
     Route::get('/estrutura/lista', [PortalEstruturaController::class, 'lista'])->name('portal.auth.estrutura.lista');
     Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
+    Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
+    Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])
+        ->middleware('throttle:30,1,estrutura.precificacao.parametros')->name('portal.auth.estrutura.precificacao.parametros');
+    Route::put('/estrutura/ofertas/{oferta}/precificacao', [PortalEstruturaController::class, 'salvarPrecificacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.precificacao.oferta')->name('portal.auth.estrutura.precificacao.oferta');
     Route::get('/estrutura/mapeamento', [PortalEstruturaController::class, 'mapeamento'])->name('portal.auth.estrutura.mapeamento');
     Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])

@@ -106,7 +106,7 @@ class ModulosPortal
     private const SUBMODULOS = [
         self::ESTRUTURA => [
             'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
-            'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => null],
+            'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => 'portal.auth.estrutura.precificacao'],
             'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
             'planejamento' => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.agenda'],
             'mapeamento'   => ['rotulo' => 'Mapeamento',   'rota_auth' => 'portal.auth.estrutura.mapeamento'],

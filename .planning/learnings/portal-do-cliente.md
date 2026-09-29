@@ -848,3 +848,10 @@ Tudo sai de `ModulosPortal::SUBMODULOS`. `rota_auth` nulo = "Em breve".
     planejado órfão ao lado do publicado.
 - O gabarito da planilha (4 publicados de 18) não mudou: todos os anúncios
   dele têm MLB.
+- **Precificação** (mesmo dia): decisões em `.planning/adrs/PORTAL-02-precificacao-do-mapeamento.md`.
+  A conta da Calculadora roda no PHP (`PrecificacaoEstrutura`), e o preço
+  NÃO é coluna: mudar o imposto da empresa recalcula tudo na leitura. Todo
+  percentual é gravado em ponto percentual. O custo de combo, kit e combit é a
+  soma dos componentes, e um componente sem custo anula a soma de propósito.
+  A migration só cria tabelas novas; no MariaDB local compartilhado ela foi
+  rodada com `--path`, para não arrastar migrations pendentes de outras sessões.
