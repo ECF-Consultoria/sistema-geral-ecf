@@ -27,6 +27,7 @@ import StatusDonut from './components/StatusDonut';
 import AdsCard from './components/AdsCard';
 import M1Card from './components/M1Card';
 import SparkSemanal from './components/SparkSemanal';
+import PpasDaEmpresa from './components/PpasDaEmpresa';
 import { montarCorDoPolo } from './components/poloCores';
 import { corEstagio } from './components/estagioBadge';
 import { corAds } from './components/adsCor';
@@ -724,7 +725,8 @@ export default function PolosPainel({
     }, [modoTv]);
     const [mostrarArquivadas, setMostrarArquivadas] = useState(false); // modal "Arquivados"
     const [editNota, setEditNota]     = useState({});
-    const [semanal, setSemanal]       = useState({});
+    const [semanal, setSemanal]       = useState({});   // `${cust_id}|${mes}` -> { semanas, total, totalAds, loading, erro }
+    const [ppas, setPpas]             = useState({});   // mlb_empresa_id -> { lista, loading, erro }
 
     // ── Financeiro (admin) — carregado async, separado do payload operacional ──
     const [mes, setMes]           = useState(null);   // null = mês default do backend
@@ -1121,17 +1123,61 @@ export default function PolosPainel({
             onFinish: () => setSincronizando(false),
         });
 
+    // Semanal por empresa E mês. Indexado só pelo cust_id, trocar o mês com a gaveta já
+    // aberta seguia mostrando as semanas do mês anterior.
+    const chaveSemanal = (cust) => `${cust}|${mesEfetivo ?? ''}`;
+    const carregarSemanal = (e) => {
+        if (!isAdmin || !e?.cust_id) return;
+        const k = chaveSemanal(e.cust_id);
+        if (semanal[k]) return;
+        setSemanal((s) => ({ ...s, [k]: { loading: true } }));
+        fetch(route('polos.empresa.semanal', { cust: e.cust_id, mes: mesEfetivo }))
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+            .then((d) => setSemanal((s) => ({ ...s, [k]: { ...d, loading: false } })))
+            .catch(() => setSemanal((s) => ({ ...s, [k]: { erro: true, loading: false } })));
+    };
+    // PPAs da empresa: busca a cada abertura (plano criado em outra aba aparece), mas a
+    // lista anterior fica na tela enquanto isso.
+    const carregarPpas = (e) => {
+        setPpas((s) => ({ ...s, [e.id]: { ...s[e.id], loading: true, erro: false } }));
+        fetch(route('mlb.polos-ppa.empresa', e.id), { headers: { Accept: 'application/json' } })
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+            .then((d) => setPpas((s) => ({ ...s, [e.id]: { lista: d.ppas ?? [], loading: false } })))
+            .catch(() => setPpas((s) => ({ ...s, [e.id]: { ...s[e.id], loading: false, erro: true } })));
+    };
+
     const toggleExpandir = (e) => {
         const abrindo = expandida !== e.id;
         setExpandida(abrindo ? e.id : null);
-        if (abrindo && isAdmin && e.cust_id && !semanal[e.cust_id]) {
-            setSemanal((s) => ({ ...s, [e.cust_id]: { loading: true } }));
-            fetch(route('polos.empresa.semanal', { cust: e.cust_id, mes: mesEfetivo }))
-                .then((r) => r.json())
-                .then((d) => setSemanal((s) => ({ ...s, [e.cust_id]: { ...d, loading: false } })))
-                .catch(() => setSemanal((s) => ({ ...s, [e.cust_id]: { erro: true, loading: false } })));
+        if (abrindo) {
+            carregarSemanal(e);
+            carregarPpas(e);
         }
     };
+    // Mês trocado com uma gaveta aberta: busca o semanal do mês novo para ela.
+    useEffect(() => {
+        if (expandida == null) return;
+        const aberta = empresas.find((x) => x.id === expandida);
+        if (aberta) carregarSemanal(aberta);
+    }, [mesEfetivo]);
+
+    // Largura VISÍVEL da caixa rolável da tabela, exposta em --painel-largura-visivel.
+    // A gaveta da linha é uma célula colSpan: sem isto ela fica tão larga quanto a tabela
+    // inteira (milhares de px na Geral) e rola junto com ela — cards de ~1.500 px, o
+    // gráfico semanal gigante e metade da gaveta fora da tela. Com a largura em CSS var
+    // (e não em estado), redimensionar não re-renderiza as 300 linhas.
+    const roCaixaTabela = useRef(null);
+    const refCaixaTabela = useCallback((el) => {
+        roCaixaTabela.current?.disconnect();
+        roCaixaTabela.current = null;
+        if (!el) return;
+        const aplicar = () => el.style.setProperty('--painel-largura-visivel', `${el.clientWidth}px`);
+        aplicar();
+        if (typeof ResizeObserver !== 'undefined') {
+            roCaixaTabela.current = new ResizeObserver(aplicar);
+            roCaixaTabela.current.observe(el);
+        }
+    }, []);
 
     // Grava a meta de entrantes de uma região/mês (aba Metas): otimista + POST assíncrono.
     const salvarMetaEntrada = useCallback((polo, mes, meta) => {
@@ -1518,7 +1564,7 @@ export default function PolosPainel({
                     rodapé de uma caixa do tamanho da tela (não no fim de TODAS as linhas) — dá pra ir
                     pro lado sem descer tudo. thead sticky (nomes acompanham a rolagem vertical) e as 2
                     colunas fixas (Seleção + Empresa) congeladas à esquerda (empresa visível ao rolar). */
-                <div className={cn('rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-auto', telaCheia ? 'min-h-0 flex-1' : 'max-h-[80vh]')}>
+                <div ref={refCaixaTabela} className={cn('rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-auto', telaCheia ? 'min-h-0 flex-1' : 'max-h-[80vh]')}>
                     <table className="w-full text-left border-collapse">
                         <thead className="sticky top-0 z-20 bg-ecf-card shadow-[inset_0_-1px_0_0_rgba(255,255,255,0.12)]">
                             <tr className="border-b border-white/[0.12] bg-white/[0.02]">
@@ -1585,7 +1631,8 @@ export default function PolosPainel({
                                     finLoaded={fin !== null}
                                     fechado={fechado}
                                     adsLimites={adsLimites}
-                                    semanal={e.cust_id ? semanal[e.cust_id] : null}
+                                    semanal={e.cust_id ? semanal[chaveSemanal(e.cust_id)] : null}
+                                    ppas={ppas[e.id]}
                                     aberta={expandida === e.id}
                                     notaEdit={editNota[e.id]}
                                     setEditNota={setEditNota}
@@ -1943,7 +1990,7 @@ function SelectResponsavel({ e, usuarios, onTrocar }) {
 // memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
 // célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
 // linha que de fato mudou é redesenhada.
-const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, notaEdit, setEditNota, on }) {
+const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, lente, colunas = [], ocultas = SEM_OCULTAS, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, ppas, aberta, notaEdit, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
@@ -2125,67 +2172,74 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
                 <tr className="bg-white/[0.02]">
                     {/* colSpan alto: o navegador limita ao total real de colunas (Geral, com
                         as 2 congeladas, chega a ~33 desde a coluna "Link do Whats"). */}
-                    <td colSpan={40} className="px-5 py-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                            {/* Problema */}
-                            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                                <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShieldAlert size={12} /> Problema</h4>
-                                {e.problema ? (
-                                    <div className="space-y-2">
-                                        <textarea value={notaEdit ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
-                                            className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] p-2 outline-none focus:border-ecf-yellow/40" />
-                                        {/* Decide se ESTE problema tira a empresa da meta. Desmarcado (padrão)
-                                            ela continua contando em No alvo / Em progresso / Não. */}
-                                        <label className="flex items-start gap-2 cursor-pointer select-none rounded-lg bg-white/[0.02] border border-white/[0.06] p-2">
-                                            <input type="checkbox" checked={e.problema_desconsidera_meta === true}
-                                                onChange={(ev) => on.alternarMeta(e, ev.target.checked)}
-                                                className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent accent-purple-500" />
-                                            <span className="text-[11px] leading-snug">
-                                                <span className="text-white/70 font-semibold">Desconsiderar da meta</span>
-                                                <span className="block text-white/35">
-                                                    {e.problema_desconsidera_meta
-                                                        ? 'Fica no status Problema e sai da meta do polo.'
-                                                        : 'Segue contando pra meta (No alvo / Em progresso / Não).'}
+                    <td colSpan={40} className="p-0">
+                        {/* A célula tem a largura da tabela inteira; o conteúdo fica preso à
+                            parte VISÍVEL da caixa rolável (sticky + largura medida em
+                            refCaixaTabela), então a gaveta não rola para o lado com as colunas. */}
+                        <div className="sticky left-0 px-5 py-4 space-y-4" style={{ width: 'var(--painel-largura-visivel, 100%)' }}>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                {/* Problema */}
+                                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                    <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShieldAlert size={12} /> Problema</h4>
+                                    {e.problema ? (
+                                        <div className="space-y-2">
+                                            <textarea value={notaEdit ?? e.problema_nota ?? ''} onChange={(ev) => setEditNota((s) => ({ ...s, [e.id]: ev.target.value }))} rows={2} placeholder="Descreva o problema…"
+                                                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] p-2 outline-none focus:border-ecf-yellow/40" />
+                                            {/* Decide se ESTE problema tira a empresa da meta. Desmarcado (padrão)
+                                                ela continua contando em No alvo / Em progresso / Não. */}
+                                            <label className="flex items-start gap-2 cursor-pointer select-none rounded-lg bg-white/[0.02] border border-white/[0.06] p-2">
+                                                <input type="checkbox" checked={e.problema_desconsidera_meta === true}
+                                                    onChange={(ev) => on.alternarMeta(e, ev.target.checked)}
+                                                    className="mt-0.5 h-3.5 w-3.5 rounded border-white/20 bg-transparent accent-purple-500" />
+                                                <span className="text-[11px] leading-snug">
+                                                    <span className="text-white/70 font-semibold">Desconsiderar da meta</span>
+                                                    <span className="block text-white/35">
+                                                        {e.problema_desconsidera_meta
+                                                            ? 'Fica no status Problema e sai da meta do polo.'
+                                                            : 'Segue contando pra meta (No alvo / Em progresso / Não).'}
+                                                    </span>
                                                 </span>
-                                            </span>
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => on.salvarNota(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-ecf-yellow/10 text-ecf-yellow text-[11px] font-semibold hover:bg-ecf-yellow/20 transition"><Pencil size={11} /> Salvar nota</button>
-                                            <button onClick={() => on.removerProblema(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] text-white/50 text-[11px] hover:text-red-300 transition"><Trash2 size={11} /> Remover</button>
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => on.salvarNota(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-ecf-yellow/10 text-ecf-yellow text-[11px] font-semibold hover:bg-ecf-yellow/20 transition"><Pencil size={11} /> Salvar nota</button>
+                                                <button onClick={() => on.removerProblema(e)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] text-white/50 text-[11px] hover:text-red-300 transition"><Trash2 size={11} /> Remover</button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    // Duas portas de entrada: o problema comum (continua na meta) e o
-                                    // que desconsidera. A escolha é feita no ato de marcar.
-                                    <div className="flex flex-col gap-1.5 items-start">
-                                        <button onClick={() => on.toggleProblema(e, false)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 text-[12px] hover:text-red-300 hover:bg-red-500/10 transition"><ShieldAlert size={12} /> Marcar problema <span className="text-white/30">· conta pra meta</span></button>
-                                        <button onClick={() => on.toggleProblema(e, true)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-500/[0.08] text-purple-200/80 text-[12px] hover:bg-purple-500/[0.16] transition"><ShieldAlert size={12} /> Marcar e tirar da meta</button>
+                                    ) : (
+                                        // Duas portas de entrada: o problema comum (continua na meta) e o
+                                        // que desconsidera. A escolha é feita no ato de marcar.
+                                        <div className="flex flex-col gap-1.5 items-start">
+                                            <button onClick={() => on.toggleProblema(e, false)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 text-[12px] hover:text-red-300 hover:bg-red-500/10 transition"><ShieldAlert size={12} /> Marcar problema <span className="text-white/30">· conta pra meta</span></button>
+                                            <button onClick={() => on.toggleProblema(e, true)} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-500/[0.08] text-purple-200/80 text-[12px] hover:bg-purple-500/[0.16] transition"><ShieldAlert size={12} /> Marcar e tirar da meta</button>
+                                        </div>
+                                    )}
+                                    {e.contexto && <p className="text-white/35 text-[11px] mt-2 italic">Contexto: {e.contexto}</p>}
+                                </div>
+                                {/* Links */}
+                                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                    <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Link2 size={12} /> Links</h4>
+                                    {e.token ? (
+                                        <div className="flex flex-col gap-1.5">
+                                            <a href={`${appUrl}/implementacao/${e.token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-sky-300 hover:text-sky-200 transition"><ExternalLink size={12} /> Workspace do cliente</a>
+                                            <a href={`${appUrl}/implementacao/${e.token}/publicador`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-sky-300 hover:text-sky-200 transition"><BookUser size={12} /> Visão do publicador</a>
+                                            {e.link_enviado_em && <span className="text-white/30 text-[10px] mt-1">Enviado por {e.link_enviado_por ?? '—'} em {e.link_enviado_em}</span>}
+                                        </div>
+                                    ) : <p className="text-white/30 text-[12px]">Sem ficha — crie o onboarding para gerar os links.</p>}
+                                </div>
+                                {/* Semanal (admin) */}
+                                {isAdmin && (
+                                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                        <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Wallet size={12} /> Semanal do mês</h4>
+                                        {!e.cust_id ? <p className="text-white/30 text-[12px]">Sem cust_id.</p>
+                                            : semanal?.loading ? <p className="text-white/30 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" /> Carregando…</p>
+                                            : semanal?.erro ? <p className="text-red-300/70 text-[12px]">Falha ao buscar.</p>
+                                            : semanal ? <SparkSemanal semanas={semanal.semanas ?? []} total={semanal.total ?? 0} totalAds={semanal.totalAds ?? 0} fechado={fechado} />
+                                            : <p className="text-white/30 text-[12px]">Abrindo…</p>}
                                     </div>
                                 )}
-                                {e.contexto && <p className="text-white/35 text-[11px] mt-2 italic">Contexto: {e.contexto}</p>}
                             </div>
-                            {/* Links */}
-                            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                                <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Link2 size={12} /> Links</h4>
-                                {e.token ? (
-                                    <div className="flex flex-col gap-1.5">
-                                        <a href={`${appUrl}/implementacao/${e.token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-sky-300 hover:text-sky-200 transition"><ExternalLink size={12} /> Workspace do cliente</a>
-                                        <a href={`${appUrl}/implementacao/${e.token}/publicador`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[12px] text-sky-300 hover:text-sky-200 transition"><BookUser size={12} /> Visão do publicador</a>
-                                        {e.link_enviado_em && <span className="text-white/30 text-[10px] mt-1">Enviado por {e.link_enviado_por ?? '—'} em {e.link_enviado_em}</span>}
-                                    </div>
-                                ) : <p className="text-white/30 text-[12px]">Sem ficha — crie o onboarding para gerar os links.</p>}
-                            </div>
-                            {/* Semanal (admin) */}
-                            {isAdmin && (
-                                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-                                    <h4 className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"><Wallet size={12} /> Semanal do mês</h4>
-                                    {!e.cust_id ? <p className="text-white/30 text-[12px]">Sem cust_id.</p>
-                                        : semanal?.loading ? <p className="text-white/30 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={12} className="animate-spin" /> Carregando…</p>
-                                        : semanal?.erro ? <p className="text-red-300/70 text-[12px]">Falha ao buscar.</p>
-                                        : semanal ? <SparkSemanal semanas={semanal.semanas ?? []} total={semanal.total ?? 0} totalAds={semanal.totalAds ?? 0} fechado={fechado} />
-                                        : <p className="text-white/30 text-[12px]">Abrindo…</p>}
-                                </div>
-                            )}
+                            {/* PPAs gerados para a empresa (PPA Polos + carteira, se vinculada) */}
+                            <PpasDaEmpresa estado={ppas} />
                         </div>
                     </td>
                 </tr>

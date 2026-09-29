@@ -488,3 +488,34 @@ Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot*
 `user_id` (autoria não pode virar "—" quando o usuário é desativado), e `editado_em` é
 coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
 futuro marcaria o comentário como editado sem ninguém ter editado nada.
+
+## 13. A gaveta da linha é uma célula `colSpan` — ela tem a largura da TABELA, não da tela (2026-09-29)
+
+A gaveta que abre na seta da linha é um `<td colSpan={40}>`. Na Geral a tabela passa de
+**5.600 px** (medido na tela local), então a gaveta também passava: o grid de 3 cards dava
+~1.500 px para cada um, e a gaveta rolava para o lado junto com as colunas — metade dela
+fora da tela. O "Semanal do mês" parecia quebrado: o `SparkSemanal` tinha viewBox fixo
+280×92 com `width="100%"`, então a **altura** crescia com a largura (500+ px de gráfico,
+pontos de 30 px).
+
+Hoje o conteúdo da gaveta é `sticky left-0` com `width: var(--painel-largura-visivel)`,
+variável que um ResizeObserver grava na caixa rolável da tabela (`refCaixaTabela` em
+`Painel.jsx`). É CSS var, e não estado, de propósito: estado re-renderizaria as ~300
+linhas memoizadas a cada redimensionamento. O `SparkSemanal` passou a medir a própria
+largura e manter altura fixa — em qualquer contexto, não só na gaveta.
+
+O que vale para quem mexer ali:
+
+- **Card novo na gaveta herda a largura certa de graça** — desde que fique DENTRO do div
+  sticky. Fora dele, volta a ter 5.600 px.
+- **SVG responsivo: não use viewBox fixo com `width="100%"`** se a altura não pode crescer.
+  E não use `width={px}` fixo: trava o card no tamanho antigo quando a janela encolhe (o
+  ResizeObserver nunca vê a largura menor). O padrão do `SparkSemanal` é `width="100%"` +
+  viewBox na largura medida.
+- **Cache de dado da gaveta que depende do mês leva o mês na chave.** O semanal era
+  indexado só por `cust_id`: trocar o mês com a gaveta aberta mostrava as semanas do mês
+  anterior. Hoje a chave é `${cust_id}|${mes}`.
+- Os PPAs da gaveta (`mlb.polos-ppa.empresa`) trazem **todos os planos da empresa**, de
+  qualquer responsável e com rascunho — ao contrário da lista do PPA, que recorta por
+  `mentor_id` para o não-admin. O recorte da lista é arrumação de tela, não barreira: o
+  quadro de qualquer plano já abre para quem tem acesso.

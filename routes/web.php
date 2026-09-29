@@ -1481,6 +1481,8 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
         Route::delete('/polos-ppa/{ppa}',           [PolosPpaController::class, 'destroy'])->name('polos-ppa.destroy');
         Route::get('/polos-ppa/{ppa}/kanban',       [PolosPpaController::class, 'kanban'])->name('polos-ppa.kanban');
         Route::post('/polos-ppa/{ppa}/workspace-link', [PolosPpaController::class, 'generateWorkspaceLink'])->name('polos-ppa.workspace.generate');
+        // PPAs de UMA empresa (JSON) — a gaveta da linha no Painel Polos busca ao abrir.
+        Route::get('/polos-ppa/empresa/{empresa}',  [PolosPpaController::class, 'daEmpresa'])->name('polos-ppa.empresa');
     });
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
