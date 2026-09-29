@@ -923,3 +923,17 @@ O que custou caro e não se deduz do código:
   `Factory::async()`, que aplica os stubs) e é gravado em `Http::recorded()`.
   Ao contar chamadas a `/categories/`, lembre que `/categories/{id}/attributes`
   também casa — filtre por `#/categories/MLB\d+$#`.
+- **Fotos reordenam por arraste com `@dnd-kit`, não com o drag nativo do
+  `/mlb/anuncios`** (usuário, 29/09): o nativo não existe no toque, e o portal
+  é usado no celular. `FotosDoPar.jsx`: `MouseSensor` (distance 6) +
+  `TouchSensor` (delay 200, tolerance 8) + `KeyboardSensor`, como no PPA;
+  `touch-action: manipulation` (com `none`, o dedo sobre a foto não rola a
+  página); `draggable={false}` na `<img>` (senão o navegador inicia o arraste
+  NATIVO da imagem e cancela o ponteiro do dnd-kit); `pointer-events-none` na
+  imagem para o ponteiro cair na alça. A ordem é a do rascunho e vira
+  `pictures` no POST — o `validado_hash` já cobre (as fotos entram no
+  `normalizar()`), então reordenar caduca a conferência. A lógica de mover é
+  pura em `lib/fotosDoPar.js`, com teste em node. **Puppeteer 25 arrasta por
+  toque de verdade**: `setViewport({ hasTouch: true })`,
+  `page.touchscreen.touchStart(x, y)` → `handle.move(x, y)` em passos →
+  `handle.end()`; espere mais que o `delay` do sensor antes de mover.

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { AlertTriangle, CheckCircle2, ImagePlus, Loader2, RefreshCw, Rocket, Sparkles, Star, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, Rocket, Sparkles, X } from 'lucide-react';
 import { Botao, CLASSE_INPUT, Campo, LinkMl, Seletor, fmtReais } from './comum';
+import FotosDoPar from './FotosDoPar';
 import { cn } from '@/lib/utils';
 
 // ─── O formulário do PAR (Anunciar) ─────────────────────────────────────────
@@ -208,7 +209,10 @@ export default function FormPublicacao({ ofertaId, vocabulario, onPublicou }) {
             }
         }
     };
-    const tornarCapa = (i) => mudar((d) => ({ fotos: [d.fotos[i], ...d.fotos.filter((_, j) => j !== i)] }));
+    // A ordem vem pronta do `FotosDoPar` (arraste, ◀ ▶, tornar capa): é a do
+    // anúncio, e salva pelo mesmo autosave — mudar a ordem caduca a conferência
+    // como qualquer edição (as fotos entram no hash do servidor).
+    const reordenarFotos = (lista) => mudar({ fotos: lista });
     const removerFoto = (i) => mudar((d) => ({ fotos: d.fotos.filter((_, j) => j !== i) }));
 
     // ── Conferir e publicar ──
@@ -389,35 +393,8 @@ export default function FormPublicacao({ ofertaId, vocabulario, onPublicou }) {
 
             {/* 3. Fotos */}
             <Secao numero={3} titulo="Fotos" chave="fotos" lado={`mínimo 1, ideal 6+, fundo branco · até ${voc.max_fotos}`}>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6" data-fotos={dados.fotos.length}>
-                    {dados.fotos.map((f, i) => (
-                        <figure key={f.id} className={cn('group relative aspect-square overflow-hidden rounded-xl border bg-white', i === 0 ? 'border-ecf-yellow' : 'border-white/[0.08]')} data-foto={f.id}>
-                            {f.url ? <img src={f.url} alt="" className="h-full w-full object-contain" /> : <span className="grid h-full place-items-center font-mono text-[10px] text-black/50">{f.id}</span>}
-                            {i === 0 && <span className="absolute left-1.5 top-1.5 rounded bg-ecf-yellow px-1.5 py-0.5 text-[10px] font-bold text-black">capa</span>}
-                            {editavel && (
-                                <span className="absolute inset-x-1 bottom-1 flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                                    {i > 0 && (
-                                        <button type="button" onClick={() => tornarCapa(i)} title="Tornar capa" aria-label="Tornar capa" className="rounded-md bg-black/70 p-1 text-white hover:bg-black" data-acao="tornar-capa">
-                                            <Star size={12} />
-                                        </button>
-                                    )}
-                                    <button type="button" onClick={() => removerFoto(i)} title="Remover" aria-label="Remover foto" className="rounded-md bg-black/70 p-1 text-white hover:bg-red-600" data-acao="remover-foto">
-                                        <Trash2 size={12} />
-                                    </button>
-                                </span>
-                            )}
-                        </figure>
-                    ))}
-                    {editavel && dados.fotos.length < voc.max_fotos && (
-                        <button type="button" onClick={() => arquivoRef.current?.click()} disabled={enviandoFoto}
-                            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); enviarArquivos([...e.dataTransfer.files]); }}
-                            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/20 text-[11.5px] text-white/45 hover:border-ecf-yellow/50 hover:text-white disabled:opacity-50"
-                            data-acao="adicionar-foto">
-                            {enviandoFoto ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
-                            {enviandoFoto ? 'enviando…' : '+ adicionar'}
-                        </button>
-                    )}
-                </div>
+                <FotosDoPar fotos={dados.fotos} editavel={editavel} maxFotos={voc.max_fotos} enviando={enviandoFoto}
+                    onReordenar={reordenarFotos} onRemover={removerFoto} onAdicionar={() => arquivoRef.current?.click()} onArquivos={enviarArquivos} />
                 <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" data-campo="fotos"
                     onChange={(e) => { enviarArquivos([...e.target.files]); e.target.value = ''; }} />
                 <p className="mt-2 text-[11.5px] text-white/35">Arraste do computador ou clique em "+ adicionar". Cada foto sobe para o Mercado Livre na hora; a primeira é a capa.</p>

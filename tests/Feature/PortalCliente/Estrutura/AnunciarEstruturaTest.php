@@ -248,6 +248,39 @@ class AnunciarEstruturaTest extends TestCase
     }
 
     /**
+     * A ordem das fotos é a do anúncio: a 1ª é a capa e o ML recebe
+     * `pictures` nesta sequência, nos dois tipos. Reordenar (arraste, ◀ ▶,
+     * tornar capa) depois de conferir é edição como outra qualquer: o hash
+     * denuncia, e publicar espera nova conferência.
+     */
+    public function test_a_ordem_das_fotos_e_a_do_anuncio_e_reordenar_exige_conferir_de_novo(): void
+    {
+        $this->fakeMl();
+        [$empresa, $ofertas, $sessao] = $this->cenario();
+        $cb3 = $ofertas['CAD-01-CB3'];
+        $foto = fn ($id) => ['id' => $id, 'url' => "https://http2.mlstatic.com/D_{$id}-O.jpg"];
+        $picturesEnviadas = fn (string $sufixo) => Http::recorded(fn (Request $q) => str_ends_with($q->url(), $sufixo))
+            ->map(fn ($par) => array_column($par[0]->data()['pictures'], 'id'))->values()->all();
+
+        $sessao->putJson(route('portal.auth.estrutura.publicacao.salvar', $cb3->id), array_replace($this->rascunhoCompleto(), ['fotos' => [$foto('PIC1'), $foto('PIC2'), $foto('PIC3')]]))->assertOk();
+        $sessao->postJson(route('portal.auth.estrutura.publicacao.validar', $cb3->id))->assertJsonPath('valido', true);
+        $this->assertSame([['PIC1', 'PIC2', 'PIC3'], ['PIC1', 'PIC2', 'PIC3']], $picturesEnviadas('/items/validate'));
+
+        // Arrastou a 3ª para a capa: o rascunho guarda a nova ordem e a conferência caduca.
+        $sessao->putJson(route('portal.auth.estrutura.publicacao.salvar', $cb3->id), array_replace($this->rascunhoCompleto(), ['fotos' => [$foto('PIC3'), $foto('PIC1'), $foto('PIC2')]]))
+            ->assertOk()->assertJsonPath('publicacao.conferida', false)->assertJsonPath('status', 'rascunho');
+        $this->assertSame(['PIC3', 'PIC1', 'PIC2'], array_column($cb3->publicacao()->first()->dados['fotos'], 'id'));
+        $sessao->postJson(route('portal.auth.estrutura.publicacao.publicar', $cb3->id))->assertStatus(422)
+            ->assertJsonPath('errors.publicacao.0', 'Confira o anúncio no Mercado Livre antes de publicar.');
+        $this->assertSame(0, $this->postsEm('/items'));
+
+        // Conferiu de novo e publicou: Clássico e Premium saem com a capa nova, na mesma sequência.
+        $sessao->postJson(route('portal.auth.estrutura.publicacao.validar', $cb3->id))->assertJsonPath('valido', true);
+        $sessao->postJson(route('portal.auth.estrutura.publicacao.publicar', $cb3->id))->assertOk()->assertJsonPath('publicacao.status', 'publicado');
+        $this->assertSame([['PIC3', 'PIC1', 'PIC2'], ['PIC3', 'PIC1', 'PIC2']], $picturesEnviadas('/items'));
+    }
+
+    /**
      * A lista de sugestões traz o CAMINHO inteiro de cada categoria (29/09,
      * pedido do usuário: "Caixa de Direção" e "Caixas de Direção Hidráulica"
      * só se distinguem pela árvore, e ele precisa vê-la ANTES de escolher).
