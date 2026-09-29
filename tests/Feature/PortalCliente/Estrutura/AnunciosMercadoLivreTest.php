@@ -529,15 +529,15 @@ class AnunciosMercadoLivreTest extends TestCase
         $this->conectar($empresa);
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        $sessao->get(route('portal.auth.estrutura'))->assertOk();
+        $sessao->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
         \Illuminate\Support\Facades\Queue::assertPushedOn('high', \App\Jobs\AquecerPedidosMlEstruturaJob::class);
 
-        $sessao->get(route('portal.auth.estrutura'))->assertOk();
+        $sessao->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);   // a trava segura o segundo
 
         // Sem conta conectada, nada a aquecer.
         $outra = $this->empresaDoGabarito();
-        $this->withoutVite()->entrarNoPortal($outra)->get(route('portal.auth.estrutura'))->assertOk();
+        $this->withoutVite()->entrarNoPortal($outra)->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);
     }
 

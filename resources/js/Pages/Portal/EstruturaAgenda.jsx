@@ -145,7 +145,8 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural · Agenda">
             <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
-                <CabecalhoEstrutura visao="agenda" onComoFunciona={() => setAula(true)} />
+                <CabecalhoEstrutura etapa="planejamento" onComoFunciona={() => setAula(true)}
+                    descricao="Uma publicação por dia até zerar. Sete dias depois de publicar, a Jardinagem: olhar as métricas e ajustar." />
 
                 <ResumoOperacional painel={agenda.painel} contagem={agenda.contagem} />
 

@@ -42,6 +42,27 @@ class EstruturaAnuncioService
             $this->garantirMlbLivre($empresa, $dados['codigo_mlb']);
             $this->garantirUnicoSemMlb($oferta, $dados);
 
+            // Publicou o que estava PLANEJADO: a aba Anúncios já tinha o título
+            // deste tipo, sem MLB (29/09). O código completa aquele registro —
+            // senão o "Concluir" da agenda deixaria o planejado órfão ao lado
+            // do publicado, e a oferta teria dois Clássicos.
+            $planejado = $dados['codigo_mlb'] !== null
+                ? $oferta->anuncios()->where('tipo', $dados['tipo'])->whereNull('codigo_mlb')->orderBy('id')->first()
+                : null;
+
+            if ($planejado) {
+                $planejado->update([
+                    ...$dados,
+                    'titulo'   => $dados['titulo'] ?? $planejado->titulo,
+                    'catalogo' => $dados['catalogo'] || $planejado->catalogo,
+                ]);
+
+                RegistroEstrutura::registrar($ator, $empresa, $planejado, 'anuncio_publicado',
+                    "Anúncio {$this->rotulo($planejado)} publicado em {$oferta->sku} (era planejado)");
+
+                return $planejado;
+            }
+
             $anuncio = $oferta->anuncios()->create($dados);
 
             RegistroEstrutura::registrar($ator, $empresa, $anuncio, 'anuncio_cadastrado',

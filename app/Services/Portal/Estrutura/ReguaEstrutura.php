@@ -72,12 +72,14 @@ final class ReguaEstrutura
      * As contagens de uma oferta — as colunas E, F e G da planilha, mais o kit
      * virtual (flag do anúncio).
      *
-     * Conta cada anúncio que NÃO é inativo (pausado conta). O catálogo conta
+     * Conta cada anúncio PUBLICADO: com código MLB e não inativo (pausado
+     * conta). Sem MLB é planejado — está na aba Anúncios, ainda não no ar —
+     * e não conta ({@see EstruturaAnuncio::conta()}, 29/09). O catálogo conta
      * de qualquer tipo, então um Premium de catálogo aparece em Premium E em
      * Catálogo — igual à planilha, onde a MSA-MR tem Premium 1 e Catálogo 1
      * pelo mesmo anúncio.
      *
-     * @param  array<int, array{tipo: string, status: string, catalogo: bool, kit_virtual: bool}>  $anuncios
+     * @param  array<int, array{tipo: string, status: string, catalogo: bool, kit_virtual: bool, codigo_mlb: ?string}>  $anuncios
      * @return array{classicos: int, premiums: int, catalogos: int, kits_virtuais: int}
      */
     public static function contagens(array $anuncios): array
@@ -85,7 +87,7 @@ final class ReguaEstrutura
         $c = ['classicos' => 0, 'premiums' => 0, 'catalogos' => 0, 'kits_virtuais' => 0];
 
         foreach ($anuncios as $a) {
-            if (! EstruturaAnuncio::conta($a['status'])) {
+            if (! EstruturaAnuncio::conta($a['status'], $a['codigo_mlb'] ?? null)) {
                 continue;
             }
 

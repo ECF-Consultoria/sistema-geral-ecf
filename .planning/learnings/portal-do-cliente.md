@@ -820,3 +820,31 @@ as ofertas ANTES e refaz o plano real.
 O `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
 tabela com dado em produção (fase GSD obrigatória) — por isso o SKU sai da API.
 
+
+## 28. O Mapeamento virou submódulos, e anúncio sem MLB deixou de contar (29/09/2026)
+
+O usuário achou a página única "poluída" e corrigiu a premissa do módulo: ele
+é **principalmente para quem começa do zero**, sem anúncio no ML. Importar do ML
+continua, mas como porta secundária. Ordem dos submódulos (menu e trilha):
+Lista SKUs → Precificação → Anúncios → Planejamento → Mapeamento → Anunciar.
+Tudo sai de `ModulosPortal::SUBMODULOS`. `rota_auth` nulo = "Em breve".
+
+- **A chave ativa é `estrutura.<sub>`** (`ModulosPortal::ESTRUTURA.'.lista'`).
+  O `paraEmpresa()` parte no ponto: o que vem antes é o módulo, o resto é o
+  submódulo. Página nova do módulo que passar só `estrutura` acende o módulo
+  e nenhum submódulo.
+- **`/portal/estrutura` só redireciona.** Sem query, vai para a Lista SKUs.
+  Com `abrir`/`q`/`situacao`/`pagina`/`metricas`, vai para o Mapeamento com a
+  query intacta: são os links que a agenda e a Jardinagem já espalharam.
+- **Sem código MLB = PLANEJADO, e não conta como publicado** (decisão do
+  usuário). A aba Anúncios passou a receber o título do Clássico e do Premium
+  antes de publicar. Contar isso como publicado faria o progresso mentir. A
+  regra mora em `EstruturaAnuncio::conta($status, $codigoMlb)`, sem migration.
+  Medido em produção antes: só 3 anúncios sem MLB, todos da #447; os 2.996 da
+  #131 têm código. Duas consequências que parecem bug e não são:
+  - colagem com SKU + tipo e sem MLB agora deixa a oferta em "Falta …";
+  - **cadastrar com MLB COMPLETA o planejado do mesmo (oferta, tipo)** em vez
+    de criar um segundo. Sem isso, o "Concluir" da agenda deixava o título
+    planejado órfão ao lado do publicado.
+- O gabarito da planilha (4 publicados de 18) não mudou: todos os anúncios
+  dele têm MLB.

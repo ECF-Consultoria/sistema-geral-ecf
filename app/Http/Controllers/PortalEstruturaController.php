@@ -52,7 +52,57 @@ class PortalEstruturaController extends Controller
 
     // ═══ Visões ═════════════════════════════════════════════════════════════
 
-    public function index(Request $request)
+    /**
+     * A porta do módulo. Sem nada na URL, abre a Lista SKUs — o primeiro passo
+     * de quem começa do zero. Os links antigos (`?abrir=ID` da agenda,
+     * `?abrir=ID&metricas=1` da Jardinagem, `?q=`/`?situacao=`/`?pagina=`)
+     * eram da página que hoje é o Mapeamento: vão para ela, com a query intacta.
+     */
+    public function entrada(Request $request)
+    {
+        $daVisaoAntiga = $request->hasAny(['abrir', 'q', 'situacao', 'pagina', 'metricas']);
+
+        return redirect()->route(
+            $daVisaoAntiga ? 'portal.auth.estrutura.mapeamento' : 'portal.auth.estrutura.lista',
+            $request->query(),
+        );
+    }
+
+    /** Lista SKUs: os produtos e as variações deles — sem anúncio nem métrica. */
+    public function lista(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $busca = (string) $request->query('q', '');
+
+        return Inertia::render('Portal/EstruturaLista', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.lista', PortalContexto::ator()),
+            'estrutura'   => $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1)),
+            'filtros'     => ['q' => $busca],
+            'vocabulario' => EstruturaVisaoService::vocabulario(),
+            'ml_conectado'   => AnunciosMercadoLivreService::conectado($empresa),
+            'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
+        ]);
+    }
+
+    /** Anúncios: SKU · código MLB · título · tipo · catálogo, como a aba da planilha. */
+    public function anunciosIndex(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $busca = (string) $request->query('q', '');
+
+        return Inertia::render('Portal/EstruturaAnuncios', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.anuncios', PortalContexto::ator()),
+            'estrutura'   => $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1)),
+            'filtros'     => ['q' => $busca],
+            'vocabulario' => EstruturaVisaoService::vocabulario(),
+            'ml_conectado'   => AnunciosMercadoLivreService::conectado($empresa),
+            'espera_linhas'  => Inertia::optional(fn () => $this->visao->espera($empresa)),
+            'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
+        ]);
+    }
+
+    /** Mapeamento: o pós-publicação — situação de cada oferta, estação do produto, métricas. */
+    public function mapeamento(Request $request)
     {
         $empresa = PortalContexto::empresa();
 
@@ -64,17 +114,16 @@ class PortalEstruturaController extends Controller
         // high: quando a estação do produto abrir, ela costuma já estar pronta.
         $this->anunciosMl->aquecerVendas($empresa);
 
-        return Inertia::render('Portal/Estrutura', [
-            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA, PortalContexto::ator()),
+        return Inertia::render('Portal/EstruturaMapeamento', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.mapeamento', PortalContexto::ator()),
             'estrutura'   => $this->visao->paginaOfertas($empresa, $filtro, $busca, $pagina),
             'filtros'     => ['situacao' => $filtro, 'q' => $busca],
             'vocabulario' => EstruturaVisaoService::vocabulario(),
-            // A conta do ML está conectada? Liga "Importar do Mercado Livre"
-            // e a busca nos anúncios da conta.
+            // A conta do ML está conectada? Liga as métricas da estação e a
+            // busca nos anúncios da conta.
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
-            // Só quando o diálogo pede — a espera e a lista de ofertas podem
-            // ter milhares de linhas, e a maioria das visitas não as abre.
-            'espera_linhas'  => Inertia::optional(fn () => $this->visao->espera($empresa)),
+            // Só quando o diálogo pede — a lista de ofertas pode ter milhares
+            // de linhas, e a maioria das visitas não a abre.
             'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
         ]);
     }
@@ -84,7 +133,7 @@ class PortalEstruturaController extends Controller
         $empresa = PortalContexto::empresa();
 
         return Inertia::render('Portal/EstruturaAgenda', [
-            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA, PortalContexto::ator()),
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.planejamento', PortalContexto::ator()),
             'agenda'      => $this->visao->agenda($empresa),
             'vocabulario' => EstruturaVisaoService::vocabulario(),
         ]);
@@ -107,9 +156,23 @@ class PortalEstruturaController extends Controller
             return back()->with('success', $this->mensagemOferta("Oferta {$oferta->sku} criada com {$ligados} anúncio(s) do Mercado Livre.", $absorvidos));
         }
 
-        [$oferta, $absorvidos] = $this->ofertas->criar(PortalContexto::empresa(), $dados, PortalContexto::ator());
+        // Lista SKUs: o produto simples já nasce com os combos marcados na
+        // pergunta "dá combo? em quantas unidades?". Só no cadastro à mão — com
+        // anúncios do ML escolhidos, os combos seguem pelo "+ Variação".
+        $combos = $dados['fase'] === EstruturaOferta::FASE_SIMPLES
+            ? ($request->validate([
+                'combos'   => ['nullable', 'array', 'max:50'],
+                'combos.*' => ['integer', 'min:2', 'max:999'],
+            ])['combos'] ?? [])
+            : [];
 
-        return back()->with('success', $this->mensagemOferta("Oferta {$oferta->sku} criada.", $absorvidos));
+        [$oferta, $absorvidos, $r] = $this->ofertas->criarComCombos(PortalContexto::empresa(), $dados, $combos, PortalContexto::ator());
+
+        $texto = $r['criados']
+            ? "Produto {$oferta->sku} criado com ".count($r['criados']).' combo(s): '.implode(', ', $r['criados']).'.'
+            : "Oferta {$oferta->sku} criada.";
+
+        return back()->with('success', $this->mensagemOferta($texto, $absorvidos + $r['absorvidos']));
     }
 
     /** Vários combos de um produto de uma vez ("2, 3, 4, 5, 6"). */

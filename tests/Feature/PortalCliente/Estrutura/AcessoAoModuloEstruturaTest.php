@@ -25,14 +25,133 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $empresa = $this->empresaDoGabarito();
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Portal/Estrutura')
+                ->component('Portal/EstruturaMapeamento')
                 ->where('estrutura.painel.ofertas', 0)
                 ->where('estrutura.blocos', [])
                 ->where('modulos', fn ($modulos) => collect($modulos)->contains(fn ($m) => $m['chave'] === 'estrutura' && $m['ativo']))
             );
+    }
+
+    /**
+     * Os submódulos (29/09), na ordem de quem começa do zero. A entrada do
+     * módulo abre a Lista SKUs; os links antigos (`?abrir=` da agenda e da
+     * Jardinagem) vão para o Mapeamento, com a query intacta.
+     */
+    public function test_a_entrada_abre_a_lista_e_os_links_antigos_vao_para_o_mapeamento(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
+        $sessao->get(route('portal.auth.estrutura', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]))
+            ->assertRedirect(route('portal.auth.estrutura.mapeamento', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]));
+
+        $sessao->get(route('portal.auth.estrutura.lista'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Portal/EstruturaLista')
+                ->where('modulos', function ($modulos) {
+                    $estrutura = collect($modulos)->firstWhere('chave', 'estrutura');
+
+                    return $estrutura['ativo']
+                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento', 'anunciar']
+                        && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
+                        && collect($estrutura['submodulos'])->firstWhere('chave', 'anunciar')['em_breve']
+                        && collect($estrutura['submodulos'])->firstWhere('chave', 'anunciar')['url'] === null;
+                })
+            );
+
+        // Cada submódulo marca a si mesmo como ativo.
+        foreach (['anuncios' => 'Portal/EstruturaAnuncios', 'agenda' => 'Portal/EstruturaAgenda', 'mapeamento' => 'Portal/EstruturaMapeamento'] as $rota => $componente) {
+            $sub = $rota === 'agenda' ? 'planejamento' : $rota;
+            $sessao->get(route("portal.auth.estrutura.{$rota}"))
+                ->assertOk()
+                ->assertInertia(fn ($page) => $page
+                    ->component($componente)
+                    ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['chave'] === $sub)
+                );
+        }
+
+        // Os outros módulos não ganham submódulo.
+        $sessao->get(route('portal.auth.estrutura.lista'))
+            ->assertInertia(fn ($page) => $page
+                ->where('modulos', fn ($m) => collect($m)->where('chave', '!=', 'estrutura')->every(fn ($x) => $x['submodulos'] === []))
+            );
+    }
+
+    /**
+     * Anúncio sem código MLB é PLANEJADO (decisão de 29/09): está na aba
+     * Anúncios, mas não conta como publicado. Com o código, o mesmo registro
+     * vira publicado — o "Concluir" da agenda não cria um segundo.
+     */
+    public function test_anuncio_sem_mlb_e_planejado_e_o_mlb_o_completa(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        // O título do Clássico da CB3, antes de publicar.
+        $sessao->post(route('portal.auth.estrutura.anuncios.criar', $ofertas['CAD-01-CB3']->id),
+            ['tipo' => 'classico', 'titulo' => 'Kit 3 Cadeiras 01 Madeira'])->assertSessionHasNoErrors();
+
+        $sessao->get(route('portal.auth.estrutura.anuncios'))
+            ->assertInertia(fn ($page) => $page
+                ->component('Portal/EstruturaAnuncios')
+                // O gabarito continua: 4 publicados de 18. O planejado não soma.
+                ->where('estrutura.painel.publicados', 4)
+                ->where('estrutura.anuncios_resumo', ['publicados' => 4, 'planejados' => 1, 'sem_titulo' => 13])
+            );
+
+        // Publicou: concluir pela agenda com o MLB completa o planejado.
+        $sessao->post(route('portal.auth.estrutura.anuncios.criar', $ofertas['CAD-01-CB3']->id),
+            ['tipo' => 'classico', 'codigo_mlb' => 'MLB0000000077', 'via_agenda' => true])->assertSessionHasNoErrors();
+
+        $anuncios = $ofertas['CAD-01-CB3']->anuncios()->get();
+        $this->assertCount(1, $anuncios);
+        $this->assertSame('MLB0000000077', $anuncios[0]->codigo_mlb);
+        $this->assertSame('Kit 3 Cadeiras 01 Madeira', $anuncios[0]->titulo);
+
+        $sessao->get(route('portal.auth.estrutura.anuncios'))
+            ->assertInertia(fn ($page) => $page
+                ->where('estrutura.painel.publicados', 5)
+                ->where('estrutura.anuncios_resumo', ['publicados' => 5, 'planejados' => 0, 'sem_titulo' => 13])
+            );
+    }
+
+    /**
+     * Lista SKUs: o produto simples nasce com os combos marcados na pergunta
+     * "dá combo? em quantas unidades?" — o CAD-01 e os CB2…CB6 da planilha
+     * numa ação só, no padrão de SKU da aula.
+     */
+    public function test_produto_nasce_com_os_combos_da_pergunta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.ofertas.criar'), [
+                'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira 01', 'logistica' => 'mercado_envios',
+                'combos' => [2, 3, 4, 5, 6],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', 'Produto CAD-01 criado com 5 combo(s): CAD-01-CB2, CAD-01-CB3, CAD-01-CB4, CAD-01-CB5, CAD-01-CB6.');
+
+        $ofertas = EstruturaOferta::where('company_id', $empresa->id)->orderBy('id')->get();
+        $this->assertSame(['CAD-01', 'CAD-01-CB2', 'CAD-01-CB3', 'CAD-01-CB4', 'CAD-01-CB5', 'CAD-01-CB6'], $ofertas->pluck('sku')->all());
+        $this->assertSame(['simples', 'combo', 'combo', 'combo', 'combo', 'combo'], $ofertas->pluck('fase')->all());
+        $this->assertSame('Combo 4 Cadeira 01', $ofertas[3]->nome);
+        $this->assertSame('mercado_envios', $ofertas[3]->logistica);
+        $this->assertSame(4, $ofertas[3]->componentes()->first()->quantidade);
+
+        // Quantidade fora da faixa: nada é criado — nem o produto.
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.ofertas.criar'), ['sku' => 'MSA-MR', 'fase' => 'simples', 'combos' => [1]])
+            ->assertSessionHasErrors('combos.0');
+        $this->assertSame(0, EstruturaOferta::where('company_id', $empresa->id)->where('sku', 'MSA-MR')->count());
     }
 
     public function test_a_agenda_abre_com_as_quatro_secoes(): void
@@ -54,7 +173,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
 
     public function test_sem_sessao_vai_para_a_entrada(): void
     {
-        $this->get(route('portal.auth.estrutura'))->assertRedirect();
+        $this->get(route('portal.auth.estrutura.mapeamento'))->assertRedirect();
     }
 
     public function test_a_pagina_entrega_o_gabarito_em_blocos(): void
@@ -64,9 +183,9 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $this->anunciosDoGabarito($this->listaDoGabarito($empresa, $ator), $ator);
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->assertInertia(fn ($page) => $page
-                ->component('Portal/Estrutura')
+                ->component('Portal/EstruturaMapeamento')
                 ->where('estrutura.painel.publicados', 4)
                 ->where('estrutura.contadores', ['todas' => 9, 'publicar' => 6, 'falta' => 2, 'completas' => 1])
                 // CAD-01 (+5 combos), MSA-MR, kit, combit.
@@ -84,7 +203,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $this->anunciosDoGabarito($this->listaDoGabarito($empresa, $ator), $ator);
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura', ['situacao' => 'falta']))
+            ->get(route('portal.auth.estrutura.mapeamento', ['situacao' => 'falta']))
             ->assertInertia(fn ($page) => $page
                 ->where('estrutura.painel.ofertas', 9)
                 ->count('estrutura.blocos', 2) // CB2 (bloco CAD-01) e MSA-MR
@@ -92,7 +211,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
 
         // A busca acha pelo MLB — "onde está o MLB tal?" leva à oferta.
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura', ['q' => 'mlb0000000004']))
+            ->get(route('portal.auth.estrutura.mapeamento', ['q' => 'mlb0000000004']))
             ->assertInertia(fn ($page) => $page
                 ->count('estrutura.blocos', 1)
                 ->where('estrutura.blocos.0.ofertas.0.sku', 'MSA-MR')
@@ -117,7 +236,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
 
         foreach (['todas', 'falta'] as $filtro) {
             $this->withoutVite()->entrarNoPortal($empresa)
-                ->get(route('portal.auth.estrutura', ['situacao' => $filtro]))
+                ->get(route('portal.auth.estrutura.mapeamento', ['situacao' => $filtro]))
                 ->assertInertia(fn ($page) => $page
                     ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
                     ->where('estrutura.blocos.0.principal.situacao', 'ok')
@@ -151,7 +270,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $agenda->agendar($ofertas['CAD-01'], today()->addDays(3)->format('Y-m-d'), 'jardinagem', $ator);
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->assertInertia(fn ($page) => $page
                 ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
                 ->where('estrutura.blocos.0.resumo_bloco', ['total' => 6, 'ok' => 1, 'falta' => 1, 'publicar' => 4, 'sem_agenda' => 3, 'pendentes' => 5, 'unica_situacao' => null])
@@ -192,7 +311,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         }
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->assertInertia(fn ($page) => $page
                 ->where('estrutura.blocos.0.principal.sku', 'CAD-01')
                 // 40 e 120 contam; o Inativo (0) não derruba o mínimo.
@@ -232,7 +351,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $acervo('MLB0000000004', 500, 899.00);                                 // MSA-MR Premium
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->assertInertia(fn ($page) => $page
                 // A Mesa vende 500: passa na frente da Cadeira (15).
                 ->where('estrutura.blocos.0.principal.sku', 'MSA-MR')
@@ -295,7 +414,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $ator = $this->atorCliente($empresa);
         $agenda = app(\App\Services\Portal\Estrutura\EstruturaAgendaService::class);
         $passo = fn () => $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura'))
+            ->get(route('portal.auth.estrutura.mapeamento'))
             ->viewData('page')['props']['estrutura']['proximo_passo'];
 
         // Nada cadastrado.
@@ -336,7 +455,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
         }
 
         $this->withoutVite()->entrarNoPortal($empresa)
-            ->get(route('portal.auth.estrutura', ['pagina' => 2]))
+            ->get(route('portal.auth.estrutura.mapeamento', ['pagina' => 2]))
             ->assertInertia(fn ($page) => $page
                 ->where('estrutura.paginacao', ['pagina' => 2, 'paginas' => 2, 'blocos' => 30, 'por_pagina' => 25])
                 ->count('estrutura.blocos', 5)

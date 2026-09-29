@@ -195,7 +195,12 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // reconciliação e agenda. ADR PORTAL-01. Cada rota daqui tem a sua linha
     // na allowlist de `RestringeDominioDoPortal` — sem ela, 404 no domínio do
     // cliente e tudo normal no localhost.
-    Route::get('/estrutura', [PortalEstruturaController::class, 'index'])->name('portal.auth.estrutura');
+    // A entrada do módulo só redireciona: Lista SKUs por padrão, Mapeamento
+    // quando o link antigo traz `?abrir=`/`?q=`/`?situacao=` (agenda, Jardinagem).
+    Route::get('/estrutura', [PortalEstruturaController::class, 'entrada'])->name('portal.auth.estrutura');
+    Route::get('/estrutura/lista', [PortalEstruturaController::class, 'lista'])->name('portal.auth.estrutura.lista');
+    Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
+    Route::get('/estrutura/mapeamento', [PortalEstruturaController::class, 'mapeamento'])->name('portal.auth.estrutura.mapeamento');
     Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
         ->middleware('throttle:60,1,estrutura.ofertas.criar')->name('portal.auth.estrutura.ofertas.criar');

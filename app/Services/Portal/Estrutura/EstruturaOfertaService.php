@@ -123,6 +123,28 @@ class EstruturaOfertaService
         });
     }
 
+    /**
+     * O produto simples e os combos dele numa ação só — o cadastro da Lista
+     * SKUs já pergunta "dá combo? em quantas unidades?" (29/09). Tudo ou nada:
+     * um combo recusado desfaz também o produto, para o cliente não ficar com
+     * metade do que confirmou na prévia.
+     *
+     * @param  array<int, int>  $combos
+     * @return array{0: EstruturaOferta, 1: int, 2: array{criados: array<int, string>, pulados: array<int, int>, absorvidos: int}}
+     */
+    public function criarComCombos(Company $empresa, array $dados, array $combos, AtorDoPortal $ator): array
+    {
+        return DB::transaction(function () use ($empresa, $dados, $combos, $ator) {
+            [$oferta, $absorvidos] = $this->criar($empresa, $dados, $ator);
+
+            $r = $combos
+                ? $this->criarCombos($oferta, $combos, $oferta->logistica, null, $ator)
+                : ['criados' => [], 'pulados' => [], 'absorvidos' => 0];
+
+            return [$oferta, $absorvidos, $r];
+        });
+    }
+
     /** @return array{0: EstruturaOferta, 1: int} */
     public function atualizar(EstruturaOferta $oferta, array $dados, AtorDoPortal $ator): array
     {

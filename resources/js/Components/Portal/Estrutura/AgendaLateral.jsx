@@ -20,7 +20,7 @@ const SECOES = [
 ];
 
 /** A oferta dentro da lista: filtra pelo SKU e abre a gaveta dela. */
-export const hrefDaOferta = (oferta) => route('portal.auth.estrutura', { q: oferta.sku, abrir: oferta.id });
+export const hrefDaOferta = (oferta) => route('portal.auth.estrutura.mapeamento', { q: oferta.sku, abrir: oferta.id });
 
 const quando = (item) => ({
     atrasadas: `Atrasada · ${fmtData(item.data)}`,

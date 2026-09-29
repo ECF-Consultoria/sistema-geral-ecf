@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardPaste, DownloadCloud, ExternalLink, Layers, MoreHorizontal, Package, Target, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Layers, Package, Target, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { linkAnuncioMl } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
-// ─── Mapeamento Estrutural — peças comuns às duas visões ────────────────────
+// ─── Mapeamento Estrutural — peças comuns aos submódulos ────────────────────
 //
 // A régua NÃO mora aqui. Situação, unidades e painel chegam prontos do PHP
 // (`ReguaEstrutura`), e este arquivo só os DESENHA. Recalcular no JSX é como
@@ -325,78 +325,61 @@ export function AvisoFlash() {
 }
 
 /**
- * O que é raro fica aqui: colar anúncios que já existem e rever a aula. Um
- * leigo não precisa ver isso toda vez que abre a tela — o analista mostra na
- * reunião onde fica.
+ * Cabeçalho de cada submódulo: onde estou (o nome do submódulo, com o módulo
+ * acima), para que serve, as ações daquela página e a trilha do caminho.
+ *
+ * A trilha é a mesma régua do menu lateral (`ModulosPortal::SUBMODULOS`), lida
+ * das props da página — não há segunda lista aqui para divergir. No celular
+ * ela some: o layout já desenha os submódulos numa linha abaixo do menu.
  */
-function MaisOpcoes({ onColar, onImportar, onComoFunciona }) {
-    const [aberto, setAberto] = useState(false);
-    const caixa = useRef(null);
-
-    useEffect(() => {
-        if (! aberto) return;
-        const fechar = (e) => { if (! caixa.current?.contains(e.target)) setAberto(false); };
-        document.addEventListener('mousedown', fechar);
-
-        return () => document.removeEventListener('mousedown', fechar);
-    }, [aberto]);
-
-    const item = 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-white/80 hover:bg-white/[0.06] hover:text-white';
-
-    return (
-        <div className="relative" ref={caixa}>
-            <Botao variante="fantasma" onClick={() => setAberto(! aberto)} aria-expanded={aberto} data-acao="mais-opcoes">
-                <MoreHorizontal size={15} /> Mais opções
-            </Botao>
-            {aberto && (
-                <div className="absolute right-0 z-40 mt-1 w-64 rounded-xl border border-white/[0.10] bg-ecf-card p-1 shadow-2xl" role="menu">
-                    {onImportar && (
-                        <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onImportar(); }} data-acao="importar-ml">
-                            <DownloadCloud size={14} /> Importar do Mercado Livre
-                        </button>
-                    )}
-                    {onColar && (
-                        <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onColar(); }} data-acao="colar-anuncios">
-                            <ClipboardPaste size={14} /> Colar anúncios
-                        </button>
-                    )}
-                    <button type="button" role="menuitem" className={item} onClick={() => { setAberto(false); onComoFunciona(); }} data-acao="como-funciona">
-                        <BookOpen size={14} /> Como funciona
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-}
-
-/** Cabeçalho do módulo: título, as duas visões e as ações de topo. */
-export function CabecalhoEstrutura({ visao, onColar, onImportar, onComoFunciona }) {
-    const aba = (ativa) => cn(
-        'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-[13px] font-medium transition-colors',
-        ativa ? 'border-ecf-yellow/60 bg-ecf-yellow/[0.06] text-ecf-yellow' : 'border-white/[0.08] text-white/55 hover:text-white hover:border-white/[0.16]',
-    );
+export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunciona }) {
+    const { modulos = [] } = usePage().props;
+    const subs = (modulos.find((m) => m.chave === 'estrutura')?.submodulos ?? []).filter((s) => s.chave !== 'anunciar');
+    const atual = subs.find((s) => s.chave === etapa);
 
     return (
         <header className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <h1 className="text-white font-display font-bold text-2xl tracking-tight flex items-center gap-2">
-                        <Layers size={22} className="text-ecf-yellow" />
-                        Mapeamento Estrutural
-                    </h1>
-                    <p className="text-white/45 text-[13.5px] mt-1 leading-relaxed max-w-xl">
-                        Todo produto que você tem vira oferta publicada. Produto guardado não vende.
+                <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-white/35">
+                        <Layers size={13} className="text-ecf-yellow" /> Mapeamento Estrutural
                     </p>
+                    <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-white" data-etapa={etapa}>{atual?.rotulo ?? 'Mapeamento Estrutural'}</h1>
+                    {descricao && <p className="mt-1 max-w-2xl text-[13.5px] leading-relaxed text-white/45">{descricao}</p>}
                 </div>
-                <MaisOpcoes onColar={onColar} onImportar={onImportar} onComoFunciona={onComoFunciona} />
+                <div className="flex flex-wrap items-center gap-2">
+                    {acoes}
+                    {onComoFunciona && (
+                        <Botao variante="fantasma" onClick={onComoFunciona} data-acao="como-funciona">
+                            <BookOpen size={14} /> Como funciona
+                        </Botao>
+                    )}
+                </div>
             </div>
-            <nav className="flex gap-2" aria-label="Visões do módulo">
-                <Link href={route('portal.auth.estrutura')} className={aba(visao === 'ofertas')} data-visao="ofertas">
-                    <Layers size={14} /> Ofertas
-                </Link>
-                <Link href={route('portal.auth.estrutura.agenda')} className={aba(visao === 'agenda')} data-visao="agenda">
-                    <CalendarDays size={14} /> Agenda
-                </Link>
+            <nav className="hidden flex-wrap items-center gap-1 rounded-2xl border border-white/[0.08] bg-ecf-card p-1.5 sm:flex" aria-label="Etapas do Mapeamento Estrutural" data-trilha>
+                {subs.map((s, i) => {
+                    const classe = cn('inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-[12.5px] transition-colors',
+                        s.ativo ? 'bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'text-white/55 hover:bg-white/[0.04] hover:text-white');
+                    const numero = (
+                        <span className={cn('grid h-5 w-5 place-items-center rounded-full border text-[10.5px] tabular-nums',
+                            s.ativo ? 'border-ecf-yellow/60' : 'border-white/15 text-white/40')}>{i + 1}</span>
+                    );
+
+                    return (
+                        <span key={s.chave} className="inline-flex items-center gap-1">
+                            {i > 0 && <ArrowRight size={12} className="text-white/20" aria-hidden />}
+                            {s.em_breve ? (
+                                <span className={cn(classe, 'cursor-default text-white/25 hover:bg-transparent hover:text-white/25')} data-trilha-etapa={s.chave} data-em-breve>
+                                    {numero}{s.rotulo}<span className="text-[10px] uppercase tracking-wide">em breve</span>
+                                </span>
+                            ) : (
+                                <Link href={s.url} className={classe} aria-current={s.ativo ? 'step' : undefined} data-trilha-etapa={s.chave}>
+                                    {numero}{s.rotulo}
+                                </Link>
+                            )}
+                        </span>
+                    );
+                })}
             </nav>
         </header>
     );
@@ -519,5 +502,45 @@ export function ProximoPasso({ passo, onCadastrar }) {
                 </Link>
             )}
         </section>
+    );
+}
+
+/** 1 … 4 5 6 … 108 — sempre a primeira, a última e as vizinhas da atual. */
+function paginasVisiveis(atual, total) {
+    const set = new Set([1, total, atual - 1, atual, atual + 1].filter((p) => p >= 1 && p <= total));
+    const lista = [...set].sort((a, b) => a - b);
+    const saida = [];
+    lista.forEach((p, i) => {
+        if (i > 0 && p - lista[i - 1] > 1) saida.push(`…${p}`);
+        saida.push(p);
+    });
+
+    return saida;
+}
+
+export function Paginacao({ paginacao, onIr }) {
+    return (
+        <nav className="flex flex-wrap items-center justify-between gap-3 pt-1" aria-label="Paginação" data-paginacao>
+            <div className="flex items-center gap-1">
+                <button type="button" disabled={paginacao.pagina <= 1} onClick={() => onIr(paginacao.pagina - 1)} aria-label="Página anterior"
+                    className="rounded-lg p-2 text-white/50 hover:bg-white/[0.05] hover:text-white disabled:opacity-30">
+                    <ChevronLeft size={15} />
+                </button>
+                {paginasVisiveis(paginacao.pagina, paginacao.paginas).map((p) => (typeof p === 'string'
+                    ? <span key={p} className="px-1 text-[12.5px] text-white/30">…</span>
+                    : (
+                        <button key={p} type="button" onClick={() => onIr(p)} aria-current={p === paginacao.pagina ? 'page' : undefined}
+                            className={cn('min-w-[32px] rounded-lg px-2 py-1.5 text-[12.5px]',
+                                p === paginacao.pagina ? 'bg-ecf-yellow font-semibold text-black' : 'text-white/60 hover:bg-white/[0.05] hover:text-white')}>
+                            {p}
+                        </button>
+                    )))}
+                <button type="button" disabled={paginacao.pagina >= paginacao.paginas} onClick={() => onIr(paginacao.pagina + 1)} aria-label="Próxima página"
+                    className="rounded-lg p-2 text-white/50 hover:bg-white/[0.05] hover:text-white disabled:opacity-30">
+                    <ChevronRight size={15} />
+                </button>
+            </div>
+            <span className="text-[12px] text-white/40">{paginacao.blocos} grupos · {paginacao.por_pagina} por página</span>
+        </nav>
     );
 }

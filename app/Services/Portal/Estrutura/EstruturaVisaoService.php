@@ -111,6 +111,7 @@ class EstruturaVisaoService
 
         return [
             'painel'     => $conjunto->painel(),
+            'anuncios_resumo' => $this->resumoAnuncios($conjunto),
             'contadores' => $contadores,
             'espera'     => EstruturaAnuncioEspera::where('company_id', $empresa->id)->count(),
             'blocos'     => array_map(fn ($b) => [
@@ -633,6 +634,33 @@ class EstruturaVisaoService
         }
 
         return $uso;
+    }
+
+    /**
+     * A aba Anúncios em três números, sobre o conjunto inteiro: cada oferta
+     * pede um Clássico e um Premium, e cada um desses lados está publicado
+     * (tem MLB), planejado (tem o registro, sem MLB) ou sem título ainda.
+     * A soma é sempre `painel.necessarios`.
+     *
+     * @return array{publicados: int, planejados: int, sem_titulo: int}
+     */
+    private function resumoAnuncios(EstruturaConjunto $conjunto): array
+    {
+        $r = ['publicados' => 0, 'planejados' => 0, 'sem_titulo' => 0];
+
+        foreach ($conjunto->ofertas() as $o) {
+            foreach ([EstruturaAnuncio::TIPO_CLASSICO => 'classicos', EstruturaAnuncio::TIPO_PREMIUM => 'premiums'] as $tipo => $contagem) {
+                if ($o[$contagem] > 0) {
+                    $r['publicados']++;
+                } elseif (array_filter($o['anuncios'], fn ($a) => $a['tipo'] === $tipo && $a['status'] !== EstruturaAnuncio::STATUS_INATIVO)) {
+                    $r['planejados']++;
+                } else {
+                    $r['sem_titulo']++;
+                }
+            }
+        }
+
+        return $r;
     }
 
     private function passaNoFiltro(array $o, string $filtro): bool

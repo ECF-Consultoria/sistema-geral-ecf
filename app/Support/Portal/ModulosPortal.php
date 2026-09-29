@@ -92,6 +92,29 @@ class ModulosPortal
     ];
 
     /**
+     * Os submódulos, na ordem do caminho de quem começa do zero (29/09): listar
+     * os produtos → precificar → montar os anúncios → agendar → acompanhar o
+     * que foi publicado. É também a ordem das abas da planilha (Lista SKUs,
+     * Anúncios, Planejamento, Mapeamento), com a Precificação entre elas.
+     *
+     * `rota_auth` nulo = "Em breve": o item aparece apagado, sem link. Assim o
+     * cliente vê para onde o módulo vai sem clicar numa página vazia.
+     *
+     * A chave ativa chega como `estrutura.lista`: o que vem antes do ponto é o
+     * módulo; o que vem depois, o submódulo.
+     */
+    private const SUBMODULOS = [
+        self::ESTRUTURA => [
+            'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
+            'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => null],
+            'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
+            'planejamento' => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.agenda'],
+            'mapeamento'   => ['rotulo' => 'Mapeamento',   'rota_auth' => 'portal.auth.estrutura.mapeamento'],
+            'anunciar'     => ['rotulo' => 'Anunciar',     'rota_auth' => null],
+        ],
+    ];
+
+    /**
      * Os módulos prontos para o front: rótulo, ícone, URL já resolvida com o
      * token, qual está ativo e o badge de cada um.
      *
@@ -106,6 +129,7 @@ class ModulosPortal
      */
     public static function paraEmpresa(Company $company, ?string $token, string $ativo, array $badges = []): array
     {
+        [$ativo, $subAtivo] = array_pad(explode('.', $ativo, 2), 2, null);
         $modulos = [];
 
         foreach (self::DEFINICOES as $chave => $def) {
@@ -130,10 +154,34 @@ class ModulosPortal
                     : route($def['rota'], $token),
                 'ativo'     => $chave === $ativo,
                 'badge'     => $badge > 0 ? (int) $badge : null,
+                'submodulos' => self::submodulos($chave, $chave === $ativo ? $subAtivo : null),
             ];
         }
 
         return $modulos;
+    }
+
+    /**
+     * Os submódulos de um módulo, prontos para o menu. Só o portal autenticado
+     * os tem — o Mapeamento Estrutural não existe no modo por token.
+     *
+     * @return array<int, array{chave: string, rotulo: string, url: ?string, ativo: bool, em_breve: bool}>
+     */
+    public static function submodulos(string $modulo, ?string $ativo = null): array
+    {
+        $subs = [];
+
+        foreach (self::SUBMODULOS[$modulo] ?? [] as $chave => $def) {
+            $subs[] = [
+                'chave'    => $chave,
+                'rotulo'   => $def['rotulo'],
+                'url'      => $def['rota_auth'] ? route($def['rota_auth']) : null,
+                'ativo'    => $chave === $ativo,
+                'em_breve' => $def['rota_auth'] === null,
+            ];
+        }
+
+        return $subs;
     }
 
     /**

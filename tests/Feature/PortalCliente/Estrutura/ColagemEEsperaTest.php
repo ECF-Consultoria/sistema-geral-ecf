@@ -132,7 +132,8 @@ class ColagemEEsperaTest extends TestCase
 
         $this->assertSame(2, $absorvidos);
         $this->assertSame(0, EstruturaAnuncioEspera::count());
-        $this->assertSame('ok', EstruturaConjunto::daEmpresa($empresa)->oferta($oferta->id)['situacao']);
+        // O Premium veio sem MLB: é PLANEJADO e não conta (29/09) — falta o Premium.
+        $this->assertSame('falta_premium', EstruturaConjunto::daEmpresa($empresa)->oferta($oferta->id)['situacao']);
     }
 
     public function test_renomear_o_sku_absorve_e_desfaz_o_repetido(): void
@@ -185,7 +186,7 @@ class ColagemEEsperaTest extends TestCase
         EstruturaAnuncioEspera::create(['company_id' => $empresa->id, 'sku_colado' => 'CAD-01', 'motivo' => 'sem_oferta',
             'tipo' => 'classico', 'status' => 'ativo']);
 
-        $this->withoutVite()->entrarNoPortal($empresa)->get(route('portal.auth.estrutura'))->assertOk();
+        $this->withoutVite()->entrarNoPortal($empresa)->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
 
         $this->assertSame(1, EstruturaAnuncioEspera::count());
         $this->assertSame(0, $ofertas['CAD-01']->anuncios()->count());
@@ -286,8 +287,12 @@ class ColagemEEsperaTest extends TestCase
             $this->assertArrayHasKey('codigo_mlb', $e->errors());
         }
 
-        // Com MLB, o segundo entra (duplicado do mesmo tipo é permitido, só não soma).
+        // Com MLB, o código COMPLETA o planejado (29/09) em vez de empilhar…
         $svc->cadastrar($ofertas['CAD-01'], ['tipo' => 'classico', 'codigo_mlb' => 'MLB8'], $ator);
+        $this->assertSame(['MLB8'], $ofertas['CAD-01']->anuncios()->pluck('codigo_mlb')->all());
+
+        // …e, sem planejado, o segundo com MLB entra (duplicado do mesmo tipo é permitido, só não soma).
+        $svc->cadastrar($ofertas['CAD-01'], ['tipo' => 'classico', 'codigo_mlb' => 'MLB9'], $ator);
         $this->assertSame(2, $ofertas['CAD-01']->anuncios()->count());
     }
 

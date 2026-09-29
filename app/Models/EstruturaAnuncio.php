@@ -52,10 +52,25 @@ class EstruturaAnuncio extends Model
         return $this->belongsTo(EstruturaOferta::class, 'oferta_id');
     }
 
-    /** Conta no painel? Só o inativo fica de fora. */
-    public static function conta(string $status): bool
+    /**
+     * Conta no painel como PUBLICADO? Precisa estar no ar (o inativo fica de
+     * fora; pausado conta) e ter código MLB.
+     *
+     * Sem MLB é PLANEJADO (decisão do usuário, 29/09): a aba Anúncios passou a
+     * receber o título do Clássico e do Premium ANTES de publicar — o caminho
+     * de quem começa do zero —, e contá-lo como publicado faria o progresso
+     * mentir. Medido em produção no mesmo dia: 3 anúncios sem MLB, todos de
+     * uma empresa (#447); os 2.996 da #131 têm código.
+     */
+    public static function conta(string $status, ?string $codigoMlb = null): bool
     {
-        return $status !== self::STATUS_INATIVO;
+        return $status !== self::STATUS_INATIVO && $codigoMlb !== null && $codigoMlb !== '';
+    }
+
+    /** Planejado: existe na aba Anúncios, mas ainda não tem código MLB. */
+    public static function planejado(?string $codigoMlb): bool
+    {
+        return $codigoMlb === null || $codigoMlb === '';
     }
 
     /**

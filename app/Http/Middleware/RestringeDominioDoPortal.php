@@ -115,6 +115,9 @@ class RestringeDominioDoPortal
         // ocupa o lugar do id numérico (`whereNumber` na rota), como em
         // `portal/ppa/tarefas/*`. Nada fora do módulo mora sob `portal/estrutura`.
         'portal/estrutura',
+        'portal/estrutura/lista',
+        'portal/estrutura/anuncios',
+        'portal/estrutura/mapeamento',
         'portal/estrutura/agenda',
         'portal/estrutura/ofertas',
         'portal/estrutura/ofertas/*',

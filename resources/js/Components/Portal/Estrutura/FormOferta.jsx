@@ -20,6 +20,11 @@ import { cn } from '@/lib/utils';
 // confere (`EstruturaOfertaService::composicao()`) — aqui só para mostrar ao
 // cliente, lá para valer.
 //
+// No 'produto' à mão, a pergunta "dá combo? em quantas unidades?" vem no
+// próprio cadastro (29/09): o produto e os combos saem numa ação, com a prévia
+// dos SKUs — o resultado das linhas CAD-01 / CAD-01-CB2…CB6 da planilha sem
+// digitar seis linhas.
+//
 // SKU e nome vêm sugeridos no padrão da aula (CAD-01-CB2, MSA-MR+CAD-01-KIT,
 // MSA-MR+CAD-01-CBT4) e continuam editáveis — "o padrão de SKU é livre".
 // Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever.
@@ -38,6 +43,9 @@ const lerQuantidades = (texto) => [...new Set(String(texto)
     .split(/[\s,;]+/)
     .map(Number)
     .filter((n) => Number.isInteger(n) && n >= 2 && n <= 999))].sort((a, b) => a - b);
+
+/** As quantidades mais comuns de combo, em botões — o resto vai no campo "outras". */
+const COMBOS_RAPIDOS = [2, 3, 4, 5, 6];
 
 function sugestaoKit(itens, porId) {
     const fase = faseDoKit(itens);
@@ -71,6 +79,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const [itens, setItens] = useState([]);
     const [filtroProduto, setFiltroProduto] = useState('');
     const [anunciosMl, setAnunciosMl] = useState([]);   // escolhidos na lista do ML ("+ Produto")
+    const [combosRapidos, setCombosRapidos] = useState([]);   // "dá combo?" no cadastro do produto
+    const [combosOutras, setCombosOutras] = useState('');
     const [erros, setErros] = useState({});
     const [enviando, setEnviando] = useState(false);
 
@@ -83,6 +93,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         setNomeMexido(editando || !! inicial?.nome);
         setFiltroProduto('');
         setAnunciosMl([]);
+        setCombosRapidos([]);
+        setCombosOutras('');
 
         if (editando) {
             setSku(base.sku); setNome(base.nome ?? ''); setLogistica(base.logistica); setObs(base.observacoes ?? '');
@@ -119,6 +131,12 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     };
     const ehCombo = modo === 'combo' || (editando && base.fase === 'combo');
     const faseKit = faseDoKit(itens);
+
+    // "Dá combo?" no cadastro do produto — só à mão: com anúncios do ML
+    // escolhidos, os combos seguem pelo "+ Variação" depois.
+    const perguntaCombo = modo === 'produto' && ! editando && anunciosMl.length === 0;
+    const combosNovos = perguntaCombo ? [...new Set([...combosRapidos, ...lerQuantidades(combosOutras)])].sort((a, b) => a - b) : [];
+    const alternarCombo = (n) => setCombosRapidos(combosRapidos.includes(n) ? combosRapidos.filter((x) => x !== n) : [...combosRapidos, n]);
 
     // Vários combos numa ação: "dá combo? em quantas unidades?" responde-se com
     // uma lista. Com UMA quantidade, é o fluxo de sempre (SKU e nome editáveis).
@@ -178,7 +196,9 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             : ehKit ? itens.map((i) => ({ id: i.id, quantidade: Number(i.quantidade) })) : [];
 
         const fase = ehCombo ? 'combo' : ehKit ? (faseKit ?? 'kit') : faseInicial;
-        const dados = { sku, nome, logistica, observacoes: obs, fase, componentes, ...(comMl && anunciosMl.length ? { anuncios_ml: anunciosMl.map((a) => a.mlb) } : {}) };
+        const dados = { sku, nome, logistica, observacoes: obs, fase, componentes,
+            ...(comMl && anunciosMl.length ? { anuncios_ml: anunciosMl.map((a) => a.mlb) } : {}),
+            ...(combosNovos.length ? { combos: combosNovos } : {}) };
 
         const opcoesVisita = {
             preserveScroll: true,
@@ -202,7 +222,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
         : 'Kit ou combit';
 
     const descricao = comMl ? 'Escolha ao lado os anúncios deste produto no Mercado Livre (o Clássico e o Premium) — ou só preencha o SKU e o nome.'
-        : modo === 'produto' ? '1 unidade do produto. Depois pergunte: dá combo? Combina com qual outro produto?'
+        : modo === 'produto' ? '1 unidade do produto — e, logo abaixo, os combos dele.'
         : modo === 'combo' ? 'Mesmo produto, mais unidades. Cliente que compra 2, 4 unidades está pedindo um combo.'
         : modo === 'kit' ? 'Produtos diferentes juntos. Com mais unidades de algum item, vira combit.'
         : undefined;
@@ -321,10 +341,44 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             </Campo>
             {erros.fase && <p className="text-[12px] text-red-400">{erros.fase}</p>}
 
+            {perguntaCombo && (
+                <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2.5" data-pergunta-combo>
+                    <div>
+                        <p className="text-[13px] font-semibold text-white">Dá combo? Em quantas unidades?</p>
+                        <p className="text-[12px] text-white/45">Cliente que compra 2, 4 unidades está pedindo um combo. Marque as que fazem sentido — pode deixar para depois.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {COMBOS_RAPIDOS.map((n) => (
+                            <button key={n} type="button" onClick={() => alternarCombo(n)} aria-pressed={combosRapidos.includes(n)} data-combo-rapido={n}
+                                className={cn('min-w-[40px] rounded-lg border px-2.5 py-1.5 text-[13px] font-semibold transition-colors',
+                                    combosRapidos.includes(n) ? 'border-ecf-yellow bg-ecf-yellow text-black' : 'border-white/[0.12] text-white/70 hover:border-white/30 hover:text-white')}>
+                                {n}
+                            </button>
+                        ))}
+                        <input value={combosOutras} onChange={(e) => setCombosOutras(e.target.value)} placeholder="outras: 10, 12"
+                            inputMode="numeric" className={cn(CLASSE_INPUT, 'w-36 py-1.5')} aria-label="Outras quantidades de combo" data-campo="combos-outras" />
+                    </div>
+                    {combosNovos.length > 0 && (
+                        <ul className="space-y-0.5 border-t border-white/[0.06] pt-2 text-[12.5px]" data-previa-combos-produto>
+                            <li><span className="font-mono text-white/85">{sku || 'SKU'}</span> <span className="text-white/45">· {nome || 'o produto'}</span></li>
+                            {combosNovos.map((n) => (
+                                <li key={n} className="pl-3">
+                                    <span className="font-mono text-white/85">{sku || 'SKU'}-CB{n}</span>{' '}
+                                    <span className="text-white/45">· Combo {n} {nome || sku || 'o produto'}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {erros.combos && <p className="text-[12px] text-red-400">{erros.combos}</p>}
+                    {erros.quantidades && <p className="text-[12px] text-red-400">{erros.quantidades}</p>}
+                </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-1">
                 <Botao variante="fantasma" onClick={() => onFechar(false)}>Cancelar</Botao>
                 <Botao variante="primario" onClick={enviar} disabled={enviando || (ehKit && ! faseKit) || (ehCombo && novas.length === 0)} data-acao="salvar-oferta">
-                    <Plus size={14} /> {editando ? 'Salvar' : emLote ? `Criar ${novas.length} combo(s)` : 'Criar oferta'}
+                    <Plus size={14} /> {editando ? 'Salvar' : emLote ? `Criar ${novas.length} combo(s)`
+                        : combosNovos.length ? `Criar produto + ${combosNovos.length} combo(s)` : modo === 'produto' ? 'Criar produto' : 'Criar oferta'}
                 </Botao>
             </div>
         </>

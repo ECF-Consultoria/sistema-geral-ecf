@@ -26,8 +26,9 @@ const raiz = resolve(import.meta.dirname, '../..');
 const pastaComponentes = 'resources/js/Components/Portal/Estrutura';
 const ARQUIVOS = [
     ...readdirSync(resolve(raiz, pastaComponentes)).filter((f) => f.endsWith('.jsx')).map((f) => `${pastaComponentes}/${f}`),
-    'resources/js/Pages/Portal/Estrutura.jsx',
-    'resources/js/Pages/Portal/EstruturaAgenda.jsx',
+    // Todas as páginas dos submódulos (Lista SKUs, Anúncios, Agenda, Mapeamento…):
+    // uma página nova entra no gate sem ninguém lembrar de listá-la.
+    ...readdirSync(resolve(raiz, 'resources/js/Pages/Portal')).filter((f) => /^Estrutura.*\.jsx$/.test(f)).map((f) => `resources/js/Pages/Portal/${f}`),
 ];
 
 /** Argumentos de nível superior de cada chamada `nome(` na fonte. */

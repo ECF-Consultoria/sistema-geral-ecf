@@ -1,23 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, router } from '@inertiajs/react';
-import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, Maximize2, ClipboardPaste, DownloadCloud, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarPlus, ChevronRight, Maximize2, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
-    AvisoFlash, Botao, CabecalhoEstrutura, EstoqueOferta, FotoProduto, Indicadores, Lado, Vendas, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
+    AvisoFlash, Botao, CabecalhoEstrutura, Paginacao, EstoqueOferta, FotoProduto, Indicadores, Lado, Vendas, PilulaProduto, PilulaSituacao, ProximoPasso, ResumoOperacional, fmtData,
 } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import EstacaoProduto from '@/Components/Portal/Estrutura/EstacaoProduto';
 import FormOferta from '@/Components/Portal/Estrutura/FormOferta';
 import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
-import ColarAnuncios from '@/Components/Portal/Estrutura/ColarAnuncios';
-import EsperaAnuncios from '@/Components/Portal/Estrutura/EsperaAnuncios';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
-import ImportarDoMl from '@/Components/Portal/Estrutura/ImportarDoMl';
 import AgendaLateral from '@/Components/Portal/Estrutura/AgendaLateral';
 import { cn } from '@/lib/utils';
 
-// ─── Mapeamento Estrutural — visão Ofertas ──────────────────────────────────
+// ─── Mapeamento Estrutural — submódulo Mapeamento (o pós-publicação) ────────
+//
+// Até 29/09 esta era a página única do módulo (a "visão Ofertas"). O usuário a
+// achou poluída e o módulo virou submódulos na ordem de quem começa do zero:
+// Lista SKUs → Precificação → Anúncios → Planejamento → Mapeamento. Cadastrar
+// produto, colar e importar anúncios saíram daqui para a Lista SKUs e os
+// Anúncios; aqui fica o que se olha DEPOIS de publicar: a situação de cada
+// oferta, a estação do produto com as métricas, a Jardinagem.
 //
 // Uma CENTRAL DE TRABALHO, não uma planilha (redesign de 25/09). A ordem da
 // tela é a ordem da pergunta do seller: quanto falta (resumo) → o que faço
@@ -268,91 +272,28 @@ function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAnuncio,
     );
 }
 
-/** 1 … 4 5 6 … 108 — sempre a primeira, a última e as vizinhas da atual. */
-function paginasVisiveis(atual, total) {
-    const set = new Set([1, total, atual - 1, atual, atual + 1].filter((p) => p >= 1 && p <= total));
-    const lista = [...set].sort((a, b) => a - b);
-    const saida = [];
-    lista.forEach((p, i) => {
-        if (i > 0 && p - lista[i - 1] > 1) saida.push(`…${p}`);
-        saida.push(p);
-    });
-
-    return saida;
-}
-
-function Paginacao({ paginacao, onIr }) {
+/** Nada cadastrado ainda: o Mapeamento é o pós-publicação — o começo é a Lista SKUs. */
+function EstadoVazio() {
     return (
-        <nav className="flex flex-wrap items-center justify-between gap-3 pt-1" aria-label="Paginação" data-paginacao>
-            <div className="flex items-center gap-1">
-                <button type="button" disabled={paginacao.pagina <= 1} onClick={() => onIr(paginacao.pagina - 1)} aria-label="Página anterior"
-                    className="rounded-lg p-2 text-white/50 hover:bg-white/[0.05] hover:text-white disabled:opacity-30">
-                    <ChevronLeft size={15} />
-                </button>
-                {paginasVisiveis(paginacao.pagina, paginacao.paginas).map((p) => (typeof p === 'string'
-                    ? <span key={p} className="px-1 text-[12.5px] text-white/30">…</span>
-                    : (
-                        <button key={p} type="button" onClick={() => onIr(p)} aria-current={p === paginacao.pagina ? 'page' : undefined}
-                            className={cn('min-w-[32px] rounded-lg px-2 py-1.5 text-[12.5px]',
-                                p === paginacao.pagina ? 'bg-ecf-yellow font-semibold text-black' : 'text-white/60 hover:bg-white/[0.05] hover:text-white')}>
-                            {p}
-                        </button>
-                    )))}
-                <button type="button" disabled={paginacao.pagina >= paginacao.paginas} onClick={() => onIr(paginacao.pagina + 1)} aria-label="Próxima página"
-                    className="rounded-lg p-2 text-white/50 hover:bg-white/[0.05] hover:text-white disabled:opacity-30">
-                    <ChevronRight size={15} />
-                </button>
-            </div>
-            <span className="text-[12px] text-white/40">{paginacao.blocos} grupos · {paginacao.por_pagina} por página</span>
-        </nav>
-    );
-}
-
-function EstadoVazio({ onProduto, onColar, onImportar }) {
-    return (
-        <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center space-y-4" data-vazio>
-            <p className="text-white text-[15px] font-semibold">Comece listando seus produtos</p>
+        <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center space-y-3" data-vazio>
+            <p className="text-white text-[15px] font-semibold">Nada para acompanhar ainda</p>
             <p className="text-white/50 text-[13px] max-w-lg mx-auto leading-relaxed">
-                {onImportar
-                    ? 'Importe seus anúncios do Mercado Livre: cada SKU vira um produto em Fase 1, com os anúncios Clássico e Premium dele. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'
-                    : 'Liste TODOS os produtos em Fase 1. Depois, para cada um, pergunte: dá combo? Em quantas unidades? Combina com qual outro produto?'}
+                O Mapeamento mostra a situação de cada oferta depois de publicada. Comece listando os seus produtos.
             </p>
-            <div className="grid sm:grid-cols-4 gap-2 text-left max-w-3xl mx-auto">
-                {[
-                    ['Fase 1 · Simples', '1 Cadeira 01'],
-                    ['Fase 2 · Combo', 'Combo 2 Cadeiras 01'],
-                    ['Fase 3 · Kit', 'Mesa Marfim + 1 Cadeira 01'],
-                    ['Fase 4 · Combit', 'Mesa Marfim + 4 Cadeiras 01'],
-                ].map(([f, e]) => (
-                    <div key={f} className="rounded-xl border border-white/[0.08] p-3">
-                        <p className="text-[12.5px] font-semibold text-white/85">{f}</p>
-                        <p className="text-[12px] text-white/45">{e}</p>
-                    </div>
-                ))}
-            </div>
-            <div className="flex flex-wrap justify-center gap-2">
-                {onImportar && (
-                    <Botao variante="primario" onClick={onImportar} data-acao="importar-ml-vazio">
-                        <DownloadCloud size={14} /> Importar meus anúncios do Mercado Livre
-                    </Botao>
-                )}
-                <Botao variante={onImportar ? undefined : 'primario'} onClick={onProduto}><Plus size={14} /> Primeiro produto</Botao>
-                <Botao onClick={onColar}><ClipboardPaste size={14} /> Colar anúncios que já tenho</Botao>
-            </div>
+            <Link href={route('portal.auth.estrutura.lista')} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90" data-acao="ir-lista">
+                Ir para a Lista SKUs <ArrowRight size={14} />
+            </Link>
         </section>
     );
 }
 
-export default function Estrutura({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, espera_linhas, opcoes_ofertas }) {
+export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, opcoes_ofertas }) {
     const [estacaoId, setEstacaoId] = useState(null);       // a oferta que abre a estação do produto
     const [formOferta, setFormOferta] = useState(null);     // { modo, base, inicial }
     const [formAnuncio, setFormAnuncio] = useState(null);   // { oferta, anuncio, tipoFixo, viaAgenda }
     const [agendar, setAgendar] = useState(null);           // oferta
     const [variacao, setVariacao] = useState(null);         // { base, existentes }
-    const [colar, setColar] = useState(false);
-    const [espera, setEspera] = useState(false);
     const [aula, setAula] = useState(false);
-    const [importar, setImportar] = useState(false);
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [autoMetricas, setAutoMetricas] = useState(false);
 
@@ -376,7 +317,7 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
         }
     }, []);
 
-    const visitar = (params) => router.get(route('portal.auth.estrutura'), params, {
+    const visitar = (params) => router.get(route('portal.auth.estrutura.mapeamento'), params, {
         preserveState: true, preserveScroll: false, replace: true,
         only: ['estrutura', 'filtros'],
     });
@@ -393,19 +334,12 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const carregarOpcoes = (extra = []) => router.reload({ only: ['opcoes_ofertas', ...extra] });
 
     const abrirKit = (base) => { carregarOpcoes(); setFormOferta({ modo: 'kit', base }); };
-    const abrirEspera = () => { carregarOpcoes(['espera_linhas']); setEspera(true); };
     const editarOferta = (o) => {
         if (o.fase === 'kit' || o.fase === 'combit') carregarOpcoes();
         setFormOferta({ modo: 'editar', base: o });
     };
 
-    const fecharFormOferta = () => {
-        const deOndeVeio = formOferta?.daEspera;
-        setFormOferta(null);
-        // Criar a oferta a partir da espera: a lista da espera precisa ser
-        // relida — a varredura (no servidor) pode ter absorvido a linha.
-        if (deOndeVeio) carregarOpcoes(['espera_linhas']);
-    };
+    const fecharFormOferta = () => setFormOferta(null);
 
     // Sem filtro, tudo recolhido — salvo quem tem pouca coisa: com até 3
     // produtos a tela abre respirada, sem clique para ver o buraco. Com filtro
@@ -417,17 +351,6 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     const blocosKits = blocos.filter((b) => ! b.produto);
     const filtroAtual = filtros.situacao ?? 'todas';
 
-    // Anúncios colados/importados sem oferta: no ar, mas fora da conta. Aparece
-    // também com o módulo vazio — colar antes de listar produtos cai todo aqui.
-    const avisoEspera = estrutura.espera > 0 && (
-        <button type="button" onClick={abrirEspera} data-aviso-espera
-            className="flex w-full items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left text-[13px] text-amber-200 hover:bg-amber-500/10">
-            <AlertTriangle size={16} className="shrink-0" />
-            <span><strong>{estrutura.espera}</strong> anúncio(s) aguardando oferta — já estão no ar, mas ainda não contam.</span>
-            <span className="ml-auto whitespace-nowrap font-semibold">Ligar às ofertas</span>
-        </button>
-    );
-
     const acoes = {
         vocabulario,
         onAbrir: setEstacaoId,
@@ -438,22 +361,17 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural">
             <div className="mx-auto max-w-7xl space-y-4 px-4 py-6">
-                <CabecalhoEstrutura visao="ofertas" onColar={() => setColar(true)} onImportar={() => setImportar(true)} onComoFunciona={() => setAula(true)} />
+                <CabecalhoEstrutura etapa="mapeamento" onComoFunciona={() => setAula(true)}
+                    descricao="Depois de publicar: a situação de cada oferta, as métricas de cada anúncio e a Jardinagem." />
 
                 <ResumoOperacional painel={painel} contagem={estrutura.agenda.contagem} />
 
                 {painel.ofertas === 0 ? (
-                    <>
-                    {avisoEspera}
-                    <EstadoVazio onProduto={() => setFormOferta({ modo: 'produto' })} onColar={() => setColar(true)}
-                        onImportar={ml_conectado ? () => setImportar(true) : null} />
-                    </>
+                    <EstadoVazio />
                 ) : (
                     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
                         <div className="min-w-0 space-y-4">
                             <ProximoPasso passo={estrutura.proximo_passo} />
-
-                            {avisoEspera}
 
                             <div className="flex flex-wrap items-center gap-2">
                                 <div className="hidden flex-wrap gap-2 sm:flex" role="tablist" aria-label="Situação">
@@ -485,9 +403,6 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
                                         </button>
                                     )}
                                 </div>
-                                <Botao variante="primario" onClick={() => setFormOferta({ modo: 'produto' })} data-acao="novo-produto">
-                                    <Plus size={14} /> Produto
-                                </Botao>
                             </div>
 
                             {blocos.length === 0 && (
@@ -586,22 +501,6 @@ export default function Estrutura({ empresa, modulos = [], estrutura, filtros, v
             </Janela>
 
             <AgendarDialog aberta={!! agendar} onFechar={() => setAgendar(null)} oferta={agendar} vocabulario={vocabulario} />
-
-            <ColarAnuncios aberta={colar} onFechar={() => setColar(false)} vocabulario={vocabulario} />
-
-            <ImportarDoMl aberta={importar} onFechar={() => setImportar(false)} conectado={ml_conectado} vocabulario={vocabulario} />
-
-            <EsperaAnuncios
-                aberta={espera}
-                onFechar={() => setEspera(false)}
-                linhas={espera_linhas}
-                ofertas={opcoes_ofertas}
-                vocabulario={vocabulario}
-                onCriarOferta={(linha) => {
-                    setEspera(false);
-                    setFormOferta({ modo: 'produto', inicial: { sku: linha.sku_colado ?? '', nome: linha.titulo ?? '' }, daEspera: true });
-                }}
-            />
 
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} />
 
