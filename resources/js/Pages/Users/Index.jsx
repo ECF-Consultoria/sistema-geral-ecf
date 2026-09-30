@@ -243,13 +243,31 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
         setOpen(true);
     };
 
-    const addVinculo = () => {
+    // D-01/D-02: a mesma pessoa pode ter mais de um cargo no mesmo setor —
+    // "vínculo livre" deixou de significar só "setor ainda sem vínculo" e
+    // passou a incluir "setor já usado, mas com algum cargo que nenhum
+    // vínculo dele ainda ocupa".
+    const proximoVinculoLivre = () => {
         const usados = new Set(data.vinculos.map(v => v.setor_id));
-        const livre = setoresDisponiveis.find(s => !usados.has(s.id));
-        if (!livre) return;
+        const setorNovo = setoresDisponiveis.find(s => !usados.has(s.id));
+        if (setorNovo) return { setor_id: setorNovo.id, cargo_id: null };
+
+        for (const s of setoresDisponiveis) {
+            const cargosUsados = new Set(
+                data.vinculos.filter(v => v.setor_id === s.id).map(v => v.cargo_id)
+            );
+            const cargoLivre = (s.cargos || []).find(c => !cargosUsados.has(c.id));
+            if (cargoLivre) return { setor_id: s.id, cargo_id: cargoLivre.id };
+        }
+        return null;
+    };
+
+    const addVinculo = () => {
+        const proximo = proximoVinculoLivre();
+        if (!proximo) return;
         setData('vinculos', [...data.vinculos, {
-            setor_id: livre.id,
-            cargo_id: null,
+            setor_id: proximo.setor_id,
+            cargo_id: proximo.cargo_id,
             is_principal: data.vinculos.length === 0,
         }]);
     };
@@ -364,7 +382,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                             ) : u.setores?.length > 0 ? (
                                                 <div className="flex flex-wrap gap-1">
                                                     {u.setores.map(s => (
-                                                        <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] border ${
+                                                        <span key={`${s.id}-${s.cargo_id ?? 'sem'}`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] border ${
                                                             s.is_principal
                                                                 ? 'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/30'
                                                                 : 'bg-white/[0.04] text-white/60 border-white/[0.08]'
@@ -579,7 +597,8 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                             Setores e cargos
                                         </h3>
                                         <p className="text-white/40 text-[11px] mt-0.5">
-                                            Defina em quais setores o usuário atua e qual cargo ocupa em cada.
+                                            Defina em quais setores o usuário atua e qual cargo ocupa em cada. A mesma
+                                            pessoa pode ter mais de um cargo no mesmo setor (ex.: Analista e Estrategista).
                                         </p>
                                     </div>
                                     <Button
@@ -587,9 +606,9 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                         size="sm"
                                         variant="outline"
                                         onClick={addVinculo}
-                                        disabled={data.vinculos.length >= setoresDisponiveis.length}
+                                        disabled={!proximoVinculoLivre()}
                                     >
-                                        <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar setor
+                                        <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar vínculo
                                     </Button>
                                 </div>
 
@@ -626,8 +645,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                                                     )}
                                                                 >
                                                                     {setoresDisponiveis.map(s => (
-                                                                        <option key={s.id} value={s.id}
-                                                                            disabled={s.id !== v.setor_id && data.vinculos.some(x => x.setor_id === s.id)}>
+                                                                        <option key={s.id} value={s.id}>
                                                                             {s.nome}
                                                                         </option>
                                                                     ))}
@@ -646,9 +664,18 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                                                     disabled={cargosDoSetor.length === 0}
                                                                 >
                                                                     <option value="">— sem cargo —</option>
-                                                                    {cargosDoSetor.map(c => (
-                                                                        <option key={c.id} value={c.id}>{c.nome}</option>
-                                                                    ))}
+                                                                    {cargosDoSetor.map(c => {
+                                                                        // D-01: outro vínculo (índice diferente) já
+                                                                        // usa este MESMO cargo neste MESMO setor —
+                                                                        // desabilita pra não repetir o par.
+                                                                        const usadoEmOutroVinculo = data.vinculos.some((x, i2) =>
+                                                                            i2 !== idx && x.setor_id === v.setor_id && x.cargo_id === c.id);
+                                                                        return (
+                                                                            <option key={c.id} value={c.id} disabled={usadoEmOutroVinculo}>
+                                                                                {c.nome}
+                                                                            </option>
+                                                                        );
+                                                                    })}
                                                                 </select>
                                                                 {cargoErr && <p className="text-red-400 text-[10px] mt-1">{cargoErr}</p>}
                                                                 {!cargoErr && cargosDoSetor.length === 0 && (
@@ -672,6 +699,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                                             type="button"
                                                             onClick={() => setPrincipal(idx)}
                                                             disabled={v.is_principal}
+                                                            title="O vínculo principal define o setor do perfil e, para quem tem dois cargos de Desempenho, qual é o cargo principal."
                                                             className={cn(
                                                                 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors',
                                                                 v.is_principal
@@ -680,7 +708,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                                             )}
                                                         >
                                                             {v.is_principal ? <Star size={10} fill="currentColor" /> : <Star size={10} />}
-                                                            {v.is_principal ? 'Setor principal' : 'Marcar como principal'}
+                                                            {v.is_principal ? 'Principal' : 'Marcar como principal'}
                                                         </button>
                                                         {setor && (
                                                             <span className="text-white/30 text-[10px] font-mono">{setor.slug}</span>
