@@ -5,8 +5,11 @@ namespace App\Services\Usuarios;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
+use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Fase 159 Plano 159-05 (D-06) — junção das contas: NÚCLEO (carteira,
@@ -21,11 +24,13 @@ use Illuminate\Support\Facades\DB;
  * (learnings §4/§10.1: `consolidar-mes` já devolveu exit 0 falhando para 11
  * de 12 profissionais). Por isso:
  *  - `planejar()` é SOMENTE LEITURA — nunca escreve, serve tanto para o
- *    dry-run quanto para a reconsulta pós-`--apply` (Task 2).
- *  - A Task 2 deste plano acrescenta `aplicar()`/`desfazer()`, que gravam o
- *    estado ANTERIOR em `unificacao_contas_backup` antes de cada
- *    UPDATE/DELETE (e o estado NOVO logo após cada INSERT), tudo dentro de
- *    uma única transação.
+ *    dry-run quanto para a reconsulta pós-`--apply`.
+ *  - `aplicar()` grava o estado ANTERIOR em `unificacao_contas_backup` antes
+ *    de cada UPDATE/DELETE (e o estado NOVO logo após cada INSERT), tudo
+ *    dentro de uma única transação.
+ *  - `desfazer()` restaura um lote inteiro a partir do backup, em ordem
+ *    inversa, sem `try/catch` — colisão ao restaurar derruba a transação
+ *    inteira em vez de mascarar o erro.
  *
  * Por que cada tabela do núcleo entra ou fica de fora (D-06/CONTEXT.md):
  *  - `company_users` (etapa `carteira`) — carteira ATIVA; move porque é o
@@ -194,6 +199,121 @@ class UnificacaoContasService
         }
 
         return $pendencias;
+    }
+
+    /**
+     * Aplica o plano: recusa (RuntimeException) se houver bloqueio ou
+     * pendência de censo fora de `$manter`. Todo o núcleo roda em UMA
+     * transação; o backup de cada linha é gravado ANTES do UPDATE/DELETE e
+     * LOGO APÓS o INSERT (para capturar o id gerado).
+     *
+     * @param  list<string>  $manter
+     * @return array{lote:string, operacoes:int}
+     */
+    public function aplicar(array $plano, array $manter = []): array
+    {
+        if (! empty($plano['bloqueios'])) {
+            throw new \RuntimeException('Bloqueios impedem o --apply: ' . implode(' | ', $plano['bloqueios']));
+        }
+
+        $pendencias = $this->pendenciasCenso($plano['censo'], $manter);
+        if (! empty($pendencias)) {
+            throw new \RuntimeException(
+                'Censo com coluna(s) sem regra e sem --manter (decida antes de aplicar): '
+                . implode(', ', $pendencias)
+            );
+        }
+
+        $lote = (string) Str::uuid();
+        $deId = (int) $plano['de']['id'];
+        $paraId = (int) $plano['para']['id'];
+        $aPartirData = Carbon::parse($plano['a_partir'] . '-01');
+
+        $operacoes = DB::transaction(function () use ($plano, $lote, $deId, $paraId, $aPartirData) {
+            $total = 0;
+
+            foreach ($plano['etapas'] as $etapa) {
+                foreach ($etapa['operacoes'] as $operacao) {
+                    $this->aplicarOperacao($operacao, $etapa['chave'], $lote, $deId, $paraId, $aPartirData);
+                    $total++;
+                }
+            }
+
+            return $total;
+        });
+
+        $this->bustarCache($deId, $paraId, $aPartirData);
+
+        activity('usuarios')
+            ->withProperties([
+                'lote' => $lote,
+                'de' => $deId,
+                'para' => $paraId,
+                'a_partir' => $plano['a_partir'],
+                'operacoes' => $operacoes,
+                'manter' => $manter,
+            ])
+            ->log("Unificação de contas aplicada — usuário {$deId} → usuário {$paraId}, lote {$lote}");
+
+        return ['lote' => $lote, 'operacoes' => $operacoes];
+    }
+
+    /**
+     * Desfaz um lote a partir do backup. Sem `$aplicar`, só devolve o
+     * resumo (quantas operações seriam restauradas). Com `$aplicar`,
+     * restaura em ordem INVERSA à da aplicação, dentro de uma transação,
+     * sem `try/catch` — colisão ao restaurar (ex.: linha já existe de novo)
+     * derruba a transação inteira em vez de mascarar o erro.
+     *
+     * @return array{lote:string, operacoes:int}
+     */
+    public function desfazer(string $lote, bool $aplicar): array
+    {
+        $registros = DB::table('unificacao_contas_backup')
+            ->where('lote', $lote)
+            ->orderByDesc('id')
+            ->get();
+
+        if ($registros->isEmpty()) {
+            throw new \RuntimeException("Lote {$lote} não encontrado.");
+        }
+
+        if ($registros->contains(fn ($r) => $r->desfeito_em !== null)) {
+            throw new \RuntimeException("Lote {$lote} já foi desfeito — recusado rodar duas vezes o mesmo lote.");
+        }
+
+        if (! $aplicar) {
+            return ['lote' => $lote, 'operacoes' => $registros->count()];
+        }
+
+        $primeiro = $registros->first();
+        $deId = (int) $primeiro->de_user_id;
+        $paraId = (int) $primeiro->para_user_id;
+        $aPartirData = Carbon::parse($primeiro->a_partir);
+
+        DB::transaction(function () use ($registros, $lote) {
+            foreach ($registros as $registro) {
+                $antes = $registro->antes !== null ? json_decode($registro->antes, true) : null;
+
+                if ($registro->acao === 'update') {
+                    DB::table($registro->tabela)->where('id', $registro->linha_id)->update($antes);
+                } elseif ($registro->acao === 'delete') {
+                    DB::table($registro->tabela)->insert($antes);
+                } else { // insert
+                    DB::table($registro->tabela)->where('id', $registro->linha_id)->delete();
+                }
+            }
+
+            DB::table('unificacao_contas_backup')->where('lote', $lote)->update(['desfeito_em' => now()]);
+        });
+
+        $this->bustarCache($deId, $paraId, $aPartirData);
+
+        activity('usuarios')
+            ->withProperties(['lote' => $lote, 'de' => $deId, 'para' => $paraId, 'operacoes' => $registros->count()])
+            ->log("Unificação de contas DESFEITA — lote {$lote}");
+
+        return ['lote' => $lote, 'operacoes' => $registros->count()];
     }
 
     // =========================================================================
@@ -589,5 +709,74 @@ class UnificacaoContasService
             'nome' => $user->name ?? "usuário #{$id} (não encontrado)",
             'ativo' => (bool) ($user->active ?? false),
         ];
+    }
+
+    /**
+     * Aplica UMA operação do plano: update/delete gravam o backup ANTES da
+     * escrita; insert escreve primeiro (para capturar o id gerado) e grava
+     * o backup logo em seguida.
+     */
+    private function aplicarOperacao(array $operacao, string $etapa, string $lote, int $deId, int $paraId, Carbon $aPartir): void
+    {
+        $baseBackup = [
+            'lote' => $lote,
+            'de_user_id' => $deId,
+            'para_user_id' => $paraId,
+            'a_partir' => $aPartir->toDateString(),
+            'etapa' => $etapa,
+            'tabela' => $operacao['tabela'],
+            'created_at' => now(),
+        ];
+
+        if ($operacao['acao'] === 'update') {
+            DB::table('unificacao_contas_backup')->insert($baseBackup + [
+                'acao' => 'update',
+                'linha_id' => $operacao['linha_id'],
+                'antes' => json_encode($operacao['antes']),
+                'depois' => json_encode($operacao['depois']),
+            ]);
+            DB::table($operacao['tabela'])->where('id', $operacao['linha_id'])->update($operacao['depois']);
+
+            return;
+        }
+
+        if ($operacao['acao'] === 'delete') {
+            DB::table('unificacao_contas_backup')->insert($baseBackup + [
+                'acao' => 'delete',
+                'linha_id' => $operacao['linha_id'],
+                'antes' => json_encode($operacao['antes']),
+                'depois' => null,
+            ]);
+            DB::table($operacao['tabela'])->where('id', $operacao['linha_id'])->delete();
+
+            return;
+        }
+
+        // insert — escreve primeiro para capturar o id gerado.
+        $novoId = DB::table($operacao['tabela'])->insertGetId($operacao['depois']);
+        DB::table('unificacao_contas_backup')->insert($baseBackup + [
+            'acao' => 'insert',
+            'linha_id' => $novoId,
+            'antes' => null,
+            'depois' => json_encode($operacao['depois']),
+        ]);
+    }
+
+    /**
+     * Derruba a chave de cache do desempenho dos dois usuários, mês a mês,
+     * do início de `--a-partir` até o mês corrente (inclusive). NUNCA
+     * `cache:clear` (learnings §5 — já derrubou o site inteiro em produção).
+     */
+    private function bustarCache(int $deId, int $paraId, Carbon $aPartir): void
+    {
+        $scoreService = app(DesempenhoScoreService::class);
+        $mes = $aPartir->copy()->startOfMonth();
+        $fim = now()->copy()->startOfMonth();
+
+        while ($mes->lte($fim)) {
+            Cache::forget($scoreService->cacheKey($deId, $mes));
+            Cache::forget($scoreService->cacheKey($paraId, $mes));
+            $mes = $mes->copy()->addMonthNoOverflow();
+        }
     }
 }

@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\DB;
  * `ReverterRecadastrosCompetencia` (dry-run por padrão, `--apply` explícito,
  * backup por lote, `--desfazer`).
  *
- * Task 1 deste plano entrega SÓ o caminho dry-run (relatório + censo +
- * bloqueios, exit code por bloqueio/pendência). A Task 2 acrescenta
- * `--apply`/`--desfazer` sobre a mesma base — ver
+ * Este comando entrega o NÚCLEO (carteira, histórico de gestão, cargos,
+ * desativação da origem). O plano 159-06 acrescenta as etapas de NPS,
+ * snapshots, PPAs e onboardings sobre a mesma estrutura — ver
  * `App\Services\Usuarios\UnificacaoContasService`.
  *
  * NUNCA imprime nota, faixa ou valor de bônus (learnings §11) — só contagens
@@ -41,6 +41,10 @@ class UnificarContas extends Command
 
     public function handle(): int
     {
+        if ($lote = $this->option('desfazer')) {
+            return $this->handleDesfazer($lote);
+        }
+
         $deId = $this->option('de');
         $paraId = $this->option('para');
         $aPartirRaw = (string) $this->option('a-partir');
@@ -76,11 +80,84 @@ class UnificarContas extends Command
             ));
         } else {
             $this->imprimirRelatorio($plano, $pendencias);
-            $this->line('');
-            $this->warn('DRY-RUN — nada foi gravado. Rode com --apply para aplicar.');
         }
 
-        return (empty($plano['bloqueios']) && empty($pendencias)) ? self::SUCCESS : self::FAILURE;
+        if (! $this->option('apply')) {
+            if (! $this->option('json')) {
+                $this->line('');
+                $this->warn('DRY-RUN — nada foi gravado. Rode com --apply para aplicar.');
+            }
+
+            return (empty($plano['bloqueios']) && empty($pendencias)) ? self::SUCCESS : self::FAILURE;
+        }
+
+        try {
+            $resultado = $this->service->aplicar($plano, $manter);
+        } catch (\RuntimeException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $this->line('');
+        $this->info("Lote: {$resultado['lote']} ({$resultado['operacoes']} operação(ões) gravada(s)).");
+        $this->line("Desfazer com: php artisan usuarios:unificar-contas --desfazer={$resultado['lote']} --apply");
+
+        return $this->reconsultar($deId, $paraId, $aPartir);
+    }
+
+    /**
+     * Reconsulta ao banco depois do --apply: planeja de novo com os mesmos
+     * parâmetros e confere que não sobrou nenhuma operação pendente
+     * (learnings §4 — o veredito é o exit code, nunca o texto impresso).
+     */
+    private function reconsultar(int $deId, int $paraId, Carbon $aPartir): int
+    {
+        $replano = $this->service->planejar($deId, $paraId, $aPartir);
+        $pendentes = array_sum(array_map(fn ($etapa) => count($etapa['operacoes']), $replano['etapas']));
+
+        $this->imprimirConsultasDeConferencia($deId, $paraId);
+
+        if ($pendentes > 0) {
+            $this->line('');
+            $this->error("Reconsulta ao banco encontrou {$pendentes} operação(ões) pendente(s):");
+            foreach ($replano['etapas'] as $etapa) {
+                if (count($etapa['operacoes']) > 0) {
+                    $this->line("  {$etapa['chave']}: " . count($etapa['operacoes']) . ' pendente(s)');
+                }
+            }
+
+            return self::FAILURE;
+        }
+
+        $this->line('');
+        $this->info('Reconsulta: 0 operações pendentes.');
+
+        return self::SUCCESS;
+    }
+
+    private function handleDesfazer(string $lote): int
+    {
+        $aplicar = (bool) $this->option('apply');
+
+        try {
+            $resultado = $this->service->desfazer($lote, $aplicar);
+        } catch (\RuntimeException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if (! $aplicar) {
+            $this->info("Lote {$lote}: {$resultado['operacoes']} operação(ões) seriam restauradas ao estado anterior.");
+            $this->warn('DRY-RUN — rode com --apply para restaurar.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info("Lote {$lote}: {$resultado['operacoes']} operação(ões) restaurada(s) ao estado anterior.");
+
+        return self::SUCCESS;
     }
 
     private function idValido(mixed $id): bool
@@ -157,5 +234,14 @@ class UnificarContas extends Command
                 $this->line("  - {$pendencia}");
             }
         }
+    }
+
+    private function imprimirConsultasDeConferencia(int $deId, int $paraId): void
+    {
+        $this->line('');
+        $this->line('Consultas de conferência independente (rode à parte — o veredito é a reconsulta, não este texto):');
+        $this->line("  SELECT COUNT(*) FROM company_users WHERE user_id = {$deId};");
+        $this->line("  SELECT COUNT(*) FROM user_setores WHERE user_id = {$paraId};");
+        $this->line("  SELECT active FROM users WHERE id = {$deId};");
     }
 }
