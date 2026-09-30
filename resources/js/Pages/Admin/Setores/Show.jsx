@@ -302,10 +302,15 @@ function CargoEditInline({ cargo, onClose }) {
 function TabMembros({ setor, membros, todosUsers }) {
     const [showAdd, setShowAdd] = useState(false);
 
+    // D-10/159-02: pessoa com dois cargos no mesmo setor aparece em duas
+    // linhas (uma por cargo) — o contador do cabeçalho conta PESSOAS
+    // distintas, não linhas.
+    const pessoasDistintas = new Set(membros.map(m => m.id)).size;
+
     return (
         <div>
             <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white/70 text-[13px]">{membros.length} membro(s)</h3>
+                <h3 className="text-white/70 text-[13px]">{pessoasDistintas} membro(s)</h3>
                 <button onClick={() => setShowAdd(true)}
                     className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white text-xs">
                     <Plus size={12} /> Adicionar membro
@@ -327,7 +332,7 @@ function TabMembros({ setor, membros, todosUsers }) {
                         </thead>
                         <tbody>
                             {membros.map(m => (
-                                <tr key={m.id} className="border-b border-white/[0.04]">
+                                <tr key={m.vinculo_id} className="border-b border-white/[0.04]">
                                     <td className="px-4 py-3 text-[13px] text-white/85">
                                         {m.name}
                                         <span className="text-white/40 text-[11px] block">{m.email}</span>
@@ -339,8 +344,8 @@ function TabMembros({ setor, membros, todosUsers }) {
                                     <td className="px-4 py-3 text-right whitespace-nowrap">
                                         <button
                                             onClick={() => {
-                                                if (confirm(`Remover ${m.name} do setor?`)) {
-                                                    router.delete(route('admin.setores.membros.destroy', [setor.id, m.id]), { preserveScroll: true });
+                                                if (confirm(`Remover ${m.name} do cargo ${m.cargo_nome ?? 'sem cargo'}?`)) {
+                                                    router.delete(route('admin.setores.membros.destroy', { setor: setor.id, user: m.id, vinculo: m.vinculo_id }), { preserveScroll: true });
                                                 }
                                             }}
                                             className="text-red-400/60 hover:text-red-400 px-2"
@@ -384,6 +389,9 @@ function AddMembroModal({ setor, todosUsers, onClose }) {
                         <option value="">— sem cargo —</option>
                         {setor.cargos.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </select>
+                    <p className="text-white/40 text-[11px] mt-1">
+                        Para dar um segundo cargo a quem já é membro, adicione a pessoa de novo escolhendo o outro cargo.
+                    </p>
                 </Field>
                 <label className="inline-flex items-center gap-2 text-white/70 text-xs">
                     <input type="checkbox" checked={data.is_principal} onChange={e => setData('is_principal', e.target.checked)} className="w-3.5 h-3.5 accent-ecf-yellow" />
