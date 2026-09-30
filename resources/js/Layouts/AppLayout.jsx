@@ -11,6 +11,7 @@ import {
     MessageSquareText, UsersRound, Ticket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
 import NotificationBell from '@/Components/NotificationBell';
 import AvisoTicketRespondido from '@/Components/Chamados/AvisoTicketRespondido';
 import ThemeToggle from '@/Components/ThemeToggle';
@@ -472,7 +473,6 @@ export default function AppLayout({ children, title }) {
     const pubCargos = (auth?.setores ?? [])
         .map(s => CARGO_SHORT[s.cargo_slug] ?? s.cargo_slug)
         .filter(Boolean);
-    const effectiveRoles = new Set([mainRole, ...pubCargos].filter(Boolean));
 
     /**
      * MVP Cargo Dev — uma rota está oculta quando casa com algum route_prefix
@@ -485,8 +485,11 @@ export default function AppLayout({ children, title }) {
 
     /**
      * Regra de visibilidade de um item de menu.
-     * Retorna false se QUALQUER papel efetivo do user está em excludeRoles, ou se
-     * a permission requerida não consta na lista de permissions do usuário.
+     * Fase 159 (D-08): retorna false se o papel do sistema OU TODOS os cargos
+     * de publicação do user estão em excludeRoles (ver itemOcultoPorPapel) —
+     * quem tem dois cargos e só um deles é excluído continua vendo o item.
+     * Também retorna false se a permission requerida não consta na lista de
+     * permissions do usuário.
      */
     const itemVisivel = (item) => {
         // Dividers (labels de separacao dentro de grupos) sao sempre visiveis.
@@ -499,7 +502,7 @@ export default function AppLayout({ children, title }) {
         if (item.authFlag && !auth?.[item.authFlag]) return false;
         // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
         if (!isAdminDev && rotaOculta(item.routeName)) return false;
-        if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
+        if (itemOcultoPorPapel({ excludeRoles: item.excludeRoles, mainRole, cargos: pubCargos })) return false;
         // `permission` aceita ARRAY = OR entre chaves (Fase 152, D-17 em diante):
         // há rotas servidas por `permission:a,b` no backend, e usar só uma das
         // chaves aqui esconderia o item de metade de quem pode abri-lo.
