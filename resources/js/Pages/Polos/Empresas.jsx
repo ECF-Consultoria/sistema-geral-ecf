@@ -57,6 +57,21 @@ export default function PolosEmpresas({
     const [ordem, setOrdem]     = useState({ campo: 'faturamento', dir: 'desc' });
     const [aberta, setAberta]   = useState(null);   // cust_id expandido
     const [semanal, setSemanal] = useState({});
+    // cust_id → valor escolhido enquanto o servidor grava (a página recarrega os dados
+    // do mês inteiro; sem isto o clique parece não ter pegado por alguns segundos).
+    const [adsPendente, setAdsPendente] = useState({});
+
+    // Só o mês corrente edita: mês fechado mostra o roster congelado daquele mês, e
+    // gravar ali mudaria o cadastro de hoje sem mudar o que está na tela.
+    const marcarAds = (e, valor) => {
+        if (e.cust_id in adsPendente) return;
+        setAdsPendente((p) => ({ ...p, [e.cust_id]: valor }));
+        router.patch(route('polos.empresas.ads', e.mlb_empresa_id), { ads_desligado: valor }, {
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => setAdsPendente((p) => { const n = { ...p }; delete n[e.cust_id]; return n; }),
+        });
+    };
 
     // O status viaja junto na troca de mês: quem veio do donut de setembro filtrando
     // "No alvo" espera continuar em "No alvo" ao olhar agosto.
@@ -251,8 +266,12 @@ export default function PolosEmpresas({
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-1.5">
-                                                    {e.ads_desligado === true && <span title="Ads desligado" className="text-red-400"><MegaphoneOff size={15} /></span>}
-                                                    {e.ads_desligado === false && <span title="Ads ligado" className="text-green-400"><Megaphone size={15} /></span>}
+                                                    <AdsLigadoDesligado
+                                                        valor={e.cust_id in adsPendente ? adsPendente[e.cust_id] : e.ads_desligado}
+                                                        editavel={parcial && !!e.mlb_empresa_id}
+                                                        salvando={e.cust_id in adsPendente}
+                                                        onMudar={(v) => marcarAds(e, v)}
+                                                    />
                                                     {e.problema && <span title={e.problema_nota || 'Problema'} className="text-purple-400"><AlertTriangle size={15} /></span>}
                                                 </div>
                                             </td>
@@ -433,6 +452,41 @@ function Comentarios({ cust, empresa, mes, mesLabel, lista = [] }) {
                     Sem mês selecionado — escolha uma competência para comentar.
                 </p>
             )}
+        </div>
+    );
+}
+
+/**
+ * Opção "ADS ligado / desligado" da empresa (TKT-0003). `valor` segue a coluna
+ * `mlb_empresas.ads_desligado`: true = desligado, false = ligado, null = não informado.
+ * Clicar no estado já marcado volta para "não informado" — desfaz um clique errado
+ * sem precisar de um terceiro botão.
+ */
+function AdsLigadoDesligado({ valor, editavel, salvando, onMudar }) {
+    if (!editavel) {
+        if (valor === true)  return <span title="Ads desligado" className="text-red-400"><MegaphoneOff size={15} /></span>;
+        if (valor === false) return <span title="Ads ligado" className="text-green-400"><Megaphone size={15} /></span>;
+        return null;
+    }
+
+    const opcao = (alvo, Icone, rotulo, corAtiva) => {
+        const ativa = valor === alvo;
+        return (
+            <button type="button" disabled={salvando} aria-pressed={ativa}
+                    // O <tr> abre o semanal no clique: sem isto, marcar o ADS abriria a linha.
+                    onClick={(ev) => { ev.stopPropagation(); onMudar(ativa ? null : alvo); }}
+                    title={ativa ? `Ads ${rotulo.toLowerCase()} — clique para limpar` : `Marcar ads ${rotulo.toLowerCase()}`}
+                    className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-wait',
+                        ativa ? corAtiva : 'text-white/30 hover:bg-white/[0.06] hover:text-white/70')}>
+                <Icone size={12} /> {rotulo}
+            </button>
+        );
+    };
+
+    return (
+        <div className={cn('inline-flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5', salvando && 'opacity-60')}>
+            {opcao(false, Megaphone, 'Ligado', 'bg-green-500/15 text-green-400')}
+            {opcao(true, MegaphoneOff, 'Desligado', 'bg-red-500/15 text-red-400')}
         </div>
     );
 }

@@ -1435,6 +1435,50 @@ class PolosController extends Controller
         return back()->with('success', 'Comentário removido.');
     }
 
+    // ═══ ADS ligado/desligado (/polos/empresas) ═══
+
+    /**
+     * Marca o ADS da empresa como ligado, desligado ou "não informado" (TKT-0003).
+     *
+     * Flag MANUAL de propósito: o time registra o que foi combinado com o cliente
+     * (campanha ativa ou pausada). Não se deduz do gasto da Adman — gasto zero no mês
+     * pode ser conta nova ou campanha pausada há dois dias. Três estados, como a
+     * migration 2026_06_15_160000 definiu: null = ninguém informou ainda.
+     *
+     * Grava no cadastro ao vivo. Mês fechado lê o roster congelado
+     * (`polos:congelar-roster`, 23:40), então marcar hoje não reescreve o passado.
+     */
+    public function marcarAds(Request $request, MlbEmpresa $empresa): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $proj = ($empresa->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$empresa->fase ?? ''] ?? null);
+        abort_unless($proj === 'POLOS', 403, 'Só é possível marcar o ADS de empresas do projeto Polos.');
+
+        $request->validate([
+            // `present`: null é um valor válido (limpar), mas o campo tem de vir.
+            'ads_desligado' => ['present', 'nullable', 'boolean'],
+        ]);
+
+        $novo    = $request->input('ads_desligado') === null ? null : $request->boolean('ads_desligado');
+        $antes   = $empresa->ads_desligado;
+        $rotulo  = fn (?bool $v) => match ($v) { true => 'desligado', false => 'ligado', null => 'não informado' };
+
+        if ($antes !== $novo) {
+            $empresa->update(['ads_desligado' => $novo]);
+
+            activity('polos')
+                ->causedBy($request->user())
+                ->performedOn($empresa)
+                ->withProperties(['de' => $rotulo($antes), 'para' => $rotulo($novo)])
+                ->log("[Polos] ADS de {$empresa->nome}: {$rotulo($antes)} → {$rotulo($novo)}");
+        }
+
+        return back()->with('success', $novo === null
+            ? "ADS de \"{$empresa->nome}\" voltou para não informado."
+            : "ADS de \"{$empresa->nome}\" marcado como {$rotulo($novo)}.");
+    }
+
     /**
      * Prepara os dados base dos polos (arquivo CSV → mês → ativos → faturamento
      * Adman → agregação por polo + distribuição de status). Compartilhado pela
@@ -2317,6 +2361,9 @@ class PolosController extends Controller
             // Detalhe por empresa (para o painel de detalhe ao clicar no polo).
             $grupos[$localidade]['empresas'][] = [
                 'cust_id'       => $id,
+                // Id do cadastro para editar a empresa na tela (opção de ADS). Nulo no roster
+                // reconstruído do CSV (mês fechado antigo), que não tem MlbEmpresa garantida.
+                'mlb_empresa_id' => $ativo['id'] ?? null,
                 'nome'          => $ativo['nome'] ?? "Empresa {$id}",
                 'fase'          => $ativo['fase'],
                 'faturamento'   => $tgmv,
