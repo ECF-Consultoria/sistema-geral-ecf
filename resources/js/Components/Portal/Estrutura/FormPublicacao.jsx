@@ -374,9 +374,10 @@ export default function FormPublicacao({ ofertaId, vocabulario, onPublicou }) {
                                     <input value={t.titulo ?? ''} onChange={(e) => mudarTipo(tipo, 'titulo', e.target.value)} disabled={travado} maxLength={255}
                                         placeholder={`Título do ${vocabulario.tipos[tipo]}…`} className={cn(CLASSE_INPUT, 'disabled:opacity-50')} data-campo={`titulo-${tipo}`} />
                                 </Campo>
+                                {/* O preço sem o acréscimo não é "mínimo": é o da promoção, dado na Central de Promoções depois de publicar. */}
                                 <Campo className="mt-2" rotulo="Preço de venda"
                                     dica={ref.preco_anunciado !== null
-                                        ? `da Precificação · mín. ${fmtReais(ref.preco_minimo)}${t.preco !== ref.preco_anunciado ? ` · sugerido ${fmtReais(ref.preco_anunciado)}` : ''}`
+                                        ? `${t.preco !== ref.preco_anunciado ? `Precificação: anunciar ${fmtReais(ref.preco_anunciado)}` : 'da Precificação'} · depois, na Central de Promoções: ${fmtReais(ref.preco_minimo)}`
                                         : 'sem preço na Precificação — informe custo e frete lá, ou digite aqui'}>
                                     <div className="relative">
                                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-white/35">R$</span>

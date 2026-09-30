@@ -117,3 +117,10 @@ campo mostra o valor herdado apagado, com "mesmo do Clássico". **Zero digitado
 fica zero.** "Sem frete" só quando os dois estão em branco. Também veio do
 onboarding a regra da comissão: mexer na do Clássico leva a do Premium a
 Clássico + 5 p.p. (só na tela, como lá).
+
+**O preço sem acréscimo não é "mínimo" (30/09, pedido do usuário).** O
+acréscimo é o desconto que se dá na Central de Promoções do ML. A tela mostra
+os dois preços como o link do Publicador do onboarding: **Anunciar** (com o
+acréscimo: é por ele que se publica) e **Promoção** (sem: é por ele que se
+vende), com botão de copiar e o passo a passo acima da tabela. O campo segue
+se chamando `minimo` no PHP; só o nome na tela mudou.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, Loader2, Percent, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Loader2, Percent, Search, SlidersHorizontal, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
@@ -103,7 +103,7 @@ function ParametrosEmpresa({ parametros, padroes }) {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                 {PARAMETROS.map(([k, rotulo]) => (
                     <Campo key={k} rotulo={rotulo} erro={erros[k]}
-                        dica={k === 'acrescimo' ? `espaço p/ promoção · padrão ${fmtPct(padroes[k])}` : `padrão ${fmtPct(padroes[k])}`}>
+                        dica={k === 'acrescimo' ? `o desconto da promoção · padrão ${fmtPct(padroes[k])}` : `padrão ${fmtPct(padroes[k])}`}>
                         <div className="relative">
                             <input value={valores[k]} onChange={(e) => setValores(comPremiumAcompanhando(valores, k, e.target.value))} inputMode="decimal"
                                 className={cn(CLASSE_INPUT, 'pr-7 text-right tabular-nums')} data-parametro={k} />
@@ -116,17 +116,71 @@ function ParametrosEmpresa({ parametros, padroes }) {
     );
 }
 
-/** Preço de um tipo: o anunciado em destaque, o mínimo embaixo. */
+/** Copia o valor no formato que o Mercado Livre aceita ("131.22"). */
+function Copiar({ valor, rotulo }) {
+    const [copiado, setCopiado] = useState(false);
+    const copiar = () => {
+        try {
+            navigator.clipboard.writeText(Number(valor).toFixed(2));
+            setCopiado(true);
+            setTimeout(() => setCopiado(false), 1500);
+        } catch { /* sem clipboard: o valor segue visível ao lado */ }
+    };
+
+    return (
+        <button type="button" onClick={copiar} title={`Copiar ${rotulo}`} aria-label={`Copiar ${rotulo}`}
+            className="shrink-0 text-white/25 transition hover:text-white">
+            {copiado ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+        </button>
+    );
+}
+
+/**
+ * Preço de um tipo, como no link do Publicador do onboarding: o preço de
+ * ANUNCIAR (com o acréscimo) e o preço na PROMOÇÃO (sem ele). O acréscimo é o
+ * desconto que se dá na Central de Promoções do ML — o "sem acréscimo" não é
+ * um mínimo abstrato, é o preço que o comprador paga na promoção.
+ */
 function Preco({ calculo, tipo }) {
     if (calculo.minimo === null) return <span className="text-[12.5px] text-white/25">—</span>;
 
     return (
-        <span className="block text-right" data-preco={tipo}>
-            <span className="block text-[13.5px] font-semibold tabular-nums text-white">{fmtReais(calculo.anunciado)}</span>
-            <span className="block text-[11px] tabular-nums text-white/40" title="O preço que paga custo, frete, comissão, imposto, MC e LL — sem o acréscimo">
-                mín. {fmtReais(calculo.minimo)} · {fmtPct(calculo.comissao)}
+        <span className="block space-y-0.5 text-right" data-preco={tipo}>
+            <span className="flex items-center justify-end gap-1.5" title="Preço para publicar o anúncio no Mercado Livre">
+                <span className="text-[9.5px] font-semibold uppercase tracking-wider text-amber-300/60">Anunciar</span>
+                <span className="text-[13.5px] font-bold tabular-nums text-amber-300" data-anunciar>{fmtReais(calculo.anunciado)}</span>
+                <Copiar valor={calculo.anunciado} rotulo="o preço de anunciar" />
             </span>
+            <span className="flex items-center justify-end gap-1.5" title="Preço com o desconto da Central de Promoções: paga custo, frete, comissão, imposto, MC e LL">
+                <span className="text-[9.5px] font-semibold uppercase tracking-wider text-emerald-300/60">Promoção</span>
+                <span className="text-[13.5px] font-bold tabular-nums text-emerald-300" data-promocao>{fmtReais(calculo.minimo)}</span>
+                <Copiar valor={calculo.minimo} rotulo="o preço da promoção" />
+            </span>
+            <span className="block text-[10.5px] tabular-nums text-white/30">comissão {fmtPct(calculo.comissao)}</span>
         </span>
+    );
+}
+
+/** Como publicar com esses dois preços — o mesmo passo a passo do link do Publicador. */
+function ComoPublicar({ acrescimo }) {
+    return (
+        <section className="rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-3.5 sm:px-5" data-como-publicar>
+            <p className="text-[13px] font-semibold text-white">Como usar os dois preços</p>
+            <ol className="mt-1.5 space-y-1 text-[12.5px] leading-relaxed text-white/60">
+                <li>
+                    <span className="font-semibold text-white/80">1.</span> Publique o anúncio no Mercado Livre pelo preço{' '}
+                    <span className="font-semibold text-amber-300">Anunciar</span> — ele já tem os {fmtPct(acrescimo)} de acréscimo.
+                </li>
+                <li>
+                    <span className="font-semibold text-white/80">2.</span> Na <span className="font-semibold text-white/80">Central de Promoções</span>, crie o desconto
+                    até o preço <span className="font-semibold text-emerald-300">Promoção</span>, que é o valor sem os {fmtPct(acrescimo)}.
+                </li>
+                <li>
+                    <span className="font-semibold text-white/80">3.</span> O comprador vê o produto com desconto, e o preço da promoção ainda paga custo, frete, comissão,
+                    imposto e as margens dos parâmetros. Não desça abaixo dele.
+                </li>
+            </ol>
+        </section>
     );
 }
 
@@ -325,6 +379,8 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                             <Numero valor={resumo.impossivel} rotulo="conta impossível" classe="text-red-300" />
                         </section>
 
+                        <ComoPublicar acrescimo={parametros.acrescimo} />
+
                         {resumo.impossivel > 0 && (
                             <p className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-[13px] text-red-200">
                                 <AlertTriangle size={15} className="shrink-0" />
@@ -345,10 +401,10 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                         </div>
 
                         <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-ecf-card">
-                            <table className="w-full min-w-[1040px] table-fixed border-collapse text-left" data-tabela-precos>
+                            <table className="w-full min-w-[1140px] table-fixed border-collapse text-left" data-tabela-precos>
                                 <colgroup>
                                     <col /><col className="w-[140px]" /><col className="w-[120px]" /><col className="w-[120px]" />
-                                    <col className="w-[150px]" /><col className="w-[150px]" /><col className="w-[140px]" /><col className="w-[104px]" />
+                                    <col className="w-[200px]" /><col className="w-[200px]" /><col className="w-[140px]" /><col className="w-[104px]" />
                                 </colgroup>
                                 <thead>
                                     <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-white/40">
