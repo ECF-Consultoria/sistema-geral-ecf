@@ -2,9 +2,13 @@
 
 namespace Tests\Feature\Phase159;
 
+use App\Models\SetorGoal;
 use App\Models\User;
+use App\Notifications\MetaAtribuidaNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
@@ -313,5 +317,95 @@ class SetorMembroDoisCargosTest extends TestCase
         $setores = collect($index->viewData('page')['props']['setores']);
         $performance = $setores->firstWhere('id', $this->setorPerformanceId);
         $this->assertSame(1, $performance['membros_count'], 'A pessoa com dois cargos conta como 1 membro.');
+    }
+
+    // ─── Teste 11 ───────────────────────────────────────────────────────────
+
+    /**
+     * SetorGoal::booted() dispara MetaAtribuidaNotification pra `$setor->membros`
+     * (AUTO-01, Phase 11). Com dois cargos no mesmo setor (D-01), a relação
+     * belongsToMany devolve a pessoa duas vezes — sem `unique('id')` ela seria
+     * notificada 2x pela mesma meta.
+     */
+    public function test_setor_goal_created_notifica_pessoa_com_dois_cargos_uma_vez_so(): void
+    {
+        $pessoa = User::factory()->create(['role' => 'consultor']);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoAnalistaId, true);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoEstrategistaId, false);
+
+        Notification::fake();
+
+        SetorGoal::create([
+            'setor_id'     => $this->setorPerformanceId,
+            'metric'       => 'publicacoes_mes',
+            'target_value' => 1000,
+            'value_type'   => 'absolute',
+            'period_type'  => 'monthly',
+            'description'  => 'Meta 159-02 dois cargos',
+            'active'       => true,
+        ]);
+
+        Notification::assertSentToTimes($pessoa, MetaAtribuidaNotification::class, 1);
+    }
+
+    // ─── Teste 12 ───────────────────────────────────────────────────────────
+
+    /**
+     * NotificacaoController::criar() com publico=setor resolve destinatários
+     * via `Setor::find(...)->membros` (mesmo ponto de duplicação do teste 11,
+     * caminho MANUAL em vez de automático). Convenção da suíte de notificações
+     * (Phase12ManualTest): sem Notification::fake(), observa a tabela real.
+     */
+    public function test_notificacao_manual_ao_setor_notifica_pessoa_com_dois_cargos_uma_vez_so(): void
+    {
+        $pessoa = User::factory()->create(['role' => 'consultor']);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoAnalistaId, true);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoEstrategistaId, false);
+
+        $autor = $this->admin();
+
+        $this->actingAs($autor)
+            ->post(route('notificacoes.criar'), [
+                'titulo'   => 'Aviso ao Performance',
+                'mensagem' => 'Mensagem de teste 159-02.',
+                'publico'  => 'setor',
+                'setor_id' => $this->setorPerformanceId,
+            ])
+            ->assertSessionHas('success', 'Notificação enviada para 1 destinatário(s).');
+
+        $this->assertSame(
+            1,
+            DatabaseNotification::where('notifiable_id', $pessoa->id)->count(),
+            'Pessoa com dois cargos no setor não pode receber a notificação manual em dobro.'
+        );
+    }
+
+    // ─── Teste 13 ───────────────────────────────────────────────────────────
+
+    /**
+     * LiderancaController::show() expõe `membros` (usado por Lideranca/Setor.jsx
+     * com `key={m.id}`) e `kpis.total_membros`. Com dois cargos, o `map` de
+     * antes geraria duas entradas com o MESMO `id` de React key — colapsa numa
+     * entrada só, com `cargo_nome` = "Analista · Estrategista".
+     */
+    public function test_lideranca_setor_colapsa_pessoa_com_dois_cargos_numa_entrada(): void
+    {
+        $pessoa = User::factory()->create(['name' => 'Pessoa Lideranca 159-02']);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoAnalistaId, true);
+        $this->inserirVinculo($pessoa->id, $this->setorPerformanceId, $this->cargoEstrategistaId, false);
+
+        $ator = $this->admin();
+
+        $response = $this->actingAs($ator)->get(route('lideranca.setor', 'performance'));
+        $response->assertOk();
+
+        $props = $response->viewData('page')['props'];
+        $membros = collect($props['membros']);
+        $doPessoa = $membros->where('id', $pessoa->id);
+
+        $this->assertCount(1, $doPessoa, 'Uma entrada só para a pessoa, mesmo com dois cargos.');
+        $this->assertSame('Analista · Estrategista', $doPessoa->first()['cargo_nome']);
+
+        $this->assertSame(1, $props['kpis']['total_membros'], 'kpis.total_membros conta a pessoa uma vez.');
     }
 }
