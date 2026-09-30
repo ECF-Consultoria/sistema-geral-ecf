@@ -287,3 +287,38 @@ documento. `relative` na moldura resolve. Medir com
 `document.documentElement.scrollWidth`, e achar o culpado subindo a cadeia de
 `getBoundingClientRect().right` + `overflowX` — a foto só mostra o sintoma.
 
+
+## 12. Tela de um worktree com banco DESCARTÁVEL (SQLite), sem tocar no MariaDB local (30/09/2026)
+
+Alternativa ao §9 quando o banco local nem tem as tabelas da feature (o `main`
+local estava 1.304 commits atrás) e migrar o MariaDB compartilhado seria mexer
+no ambiente dos outros. Usado para ver o "Anunciar por IA" abrindo o rascunho no
+wizard de `/mlb/anuncios` — com o job rodando DE VERDADE durante o polling.
+
+- **Banco:** arquivo SQLite no scratchpad + `migrate:fresh` (as migrations rodam
+  em SQLite, é o que a suíte usa). Configuração pela linha de comando:
+  `DB_CONNECTION=sqlite DB_DATABASE=<arquivo> SESSION_DRIVER=file CACHE_STORE=file
+  APP_URL=… ASSET_URL=…` — variável do processo vence o `.env` (Dotenv imutável).
+  Nunca editar o `.env`. Todo script de seed deve ABORTAR se
+  `config('database.connections.sqlite.database')` não for o arquivo descartável.
+- **Servidor:** `php -S 127.0.0.1:<porta> -t public <router.php>` com router
+  PRÓPRIO que faz `require` do bootstrap de autoload do worktree
+  (learning `autoloader-compartilhado-entre-worktrees.md`) e depois do
+  `public/index.php`. **`-d auto_prepend_file=` NÃO roda no servidor embutido
+  quando há router** — sem o router próprio as classes `App\` vêm do checkout
+  principal, e nada avisa.
+- **Porta ocupada não dá erro no Windows.** Outra sessão tinha `artisan serve`
+  na 8123; o meu `php -S` na mesma porta imprimiu "started" e as requisições
+  caíram no servidor DELA (login dava `auth.failed`: era o banco dela). Antes de
+  subir: `Get-NetTCPConnection -LocalPort <p> -State Listen` vazio. Para parar o
+  seu, filtre pela linha de comando (`*router*`), nunca pela porta. Um log por
+  requisição no router (URI + `getenv('DB_DATABASE')`) prova com quem você fala.
+- Os chunks dinâmicos carregam do `ASSET_URL` gravado NO BUILD, não do env do
+  servidor — interceptar no Puppeteer como no §3, apontando para o `public/` do
+  worktree.
+- **Metadados do ML** vão para o cache de arquivo (`ml_app_token_coleta`,
+  `ml_meta_categoria_<id>`, `ml_meta_atributos_<id>`, `ml_meta_listing_types_MLB`):
+  a tela não chama o ML.
+- **Job com IA/ML:** rodar o `handle()` num script contra o mesmo SQLite, com
+  `Http::fake` + `Http::preventStrayRequests()`, enquanto a página está aberta —
+  prova o polling e a abertura automática, não só o estado final.
