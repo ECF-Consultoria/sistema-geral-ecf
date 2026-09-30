@@ -1,23 +1,27 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, Check, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Sparkles, Loader2, Check, AlertTriangle, ChevronDown, ChevronRight, FileCheck2 } from 'lucide-react';
 
 // Um pouco acima dos 15 min em que o servidor encerra a análise: quem decide
 // é o servidor; este teto só vale se nem ele responder.
 const LIMITE_ESPERA_MS = 17 * 60 * 1000;
 
 /**
- * "Anunciar por IA" — metodologia MAG T8, Parte 1 (Análise Estratégica).
+ * "Anunciar por IA" — cadastra o anúncio inteiro e deixa em RASCUNHO.
  *
- * O publicador informa produto e especificações; a loja vem da conta ML
- * conectada (o servidor deriva, não aceita do cliente). A IA devolve a análise
- * e os campos prontos: títulos e descrição.
+ * O publicador informa produto e especificações (ou escolhe um produto da
+ * planilha do cliente); a loja vem da conta ML conectada (o servidor deriva,
+ * não aceita do cliente). A IA roda a análise MAG T8 (títulos e descrição) e,
+ * desde 30/09/2026, escolhe a categoria, preenche a ficha técnica, variações,
+ * pacote e garantia, e grava tudo como rascunho — que abre sozinho no wizard.
+ *
+ * NUNCA publica: fotos, conferência e o clique de publicar são do publicador.
  *
  * Assíncrono por necessidade — a geração levou 103s na medição de 21/09/2026.
  * Por isso: POST enfileira, e daqui em diante é polling. Não existe versão
  * síncrona disso que sobreviva a um request.
  */
-export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTitulo, onAplicarDescricao }) {
+export default function PainelAnunciarIa({ empresa, analiseInicial, produtos = [], onAplicarTitulo, onAplicarDescricao, onAbrirRascunho }) {
     // Estado inicial vem do servidor quando existe análise recente: é isso que
     // faz o F5 não parecer perda de trabalho. A geração leva minutos e mora no
     // banco — recarregar a página nunca cancelou nada, só escondia.
@@ -26,6 +30,9 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     const [aberto, setAberto]   = useState(Boolean(inicial));
     const [produto, setProduto] = useState(inicial?.produto ?? '');
     const [specs, setSpecs]     = useState(inicial?.specs ?? '');
+    // SKU da planilha do cliente (opcional). O servidor lê preço, estoque e
+    // medidas do pacote a partir dele — o navegador só diz qual produto.
+    const [sku, setSku]         = useState(inicial?.sku ?? '');
 
     const [estado, setEstado]   = useState(
         !inicial ? 'parado'
@@ -47,6 +54,8 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     const cronoRef  = useRef(null);
     // Quando o acompanhamento começou, para o teto de espera abaixo.
     const pollDesdeRef = useRef(null);
+    // Rascunho já aberto automaticamente — abre UMA vez, não a cada consulta.
+    const abertoAutoRef = useRef(null);
 
     // O relógio conta desde o `started_at` do SERVIDOR, não desde o momento em
     // que este componente montou. Sem isso, um F5 zerava a contagem e passava
@@ -57,10 +66,25 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
     }
 
     const ETAPA_LABEL = {
-        analise:   'analisando o produto e a persona',
-        titulos:   'escrevendo os títulos',
-        descricao: 'escrevendo a descrição',
+        analise:   '1/5 · analisando o produto e a persona',
+        titulos:   '2/5 · escrevendo os títulos',
+        descricao: '3/5 · escrevendo a descrição',
+        ficha:     '4/5 · escolhendo a categoria e preenchendo a ficha técnica',
+        rascunho:  '5/5 · salvando o rascunho',
     };
+
+    // Produto da planilha do cliente: nome e especificações entram nos campos
+    // (o publicador ainda pode editar). Medidas NÃO entram nas especificações:
+    // na planilha são do pacote, e a IA as tomaria por medida do produto.
+    function escolherProdutoCliente(valor) {
+        setSku(valor);
+        const p = produtos.find(x => x.sku === valor);
+        if (!p) return;
+        setProduto(p.produto ?? '');
+        setSpecs([p.especificacoes, p.descricao].map(t => (t ?? '').trim()).filter(Boolean).join('\n'));
+    }
+
+    const produtoCliente = produtos.find(x => x.sku === sku) ?? null;
 
     // Um único lugar para desarmar os dois timers. Sem isto, sair da etapa no
     // meio da geração deixa polling rodando contra um componente desmontado.
@@ -95,6 +119,7 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
         setInicioEm(null);
         setAplicado({});
         setSegundos(0);
+        abertoAutoRef.current = null;
 
         // Sem `started_at` ainda (o job nem começou): conta local até a
         // primeira consulta trazer o horário do servidor.
@@ -105,6 +130,7 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
                 company_id: empresa.company_id ?? empresa.id,
                 produto: produto.trim(),
                 specs: specs.trim() || null,
+                sku: sku || null,
             });
 
             // 5s entre consultas: a geração leva ~100s, então perguntar mais
@@ -151,6 +177,14 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
 
             setDados(data);
             setEstado('pronto');
+
+            // Terminou com o rascunho gravado: abre no wizard na hora. Só
+            // aqui (fim acompanhado ao vivo) — num F5 de análise já pronta o
+            // publicador pode estar editando outra coisa; lá vira botão.
+            if (data.rascunho && abertoAutoRef.current !== data.rascunho.id) {
+                abertoAutoRef.current = data.rascunho.id;
+                onAbrirRascunho?.(data.rascunho);
+            }
         } catch {
             pararTimers();
             setEstado('erro');
@@ -177,7 +211,7 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
             >
                 <Sparkles className="h-4 w-4 shrink-0 text-violet-300" />
                 <span className="text-sm font-semibold text-white">Anunciar por IA</span>
-                <span className="text-[11px] text-white/35">metodologia MAG T8</span>
+                <span className="text-[11px] text-white/35">cadastra tudo e deixa em rascunho</span>
                 {aberto
                     ? <ChevronDown className="ml-auto h-4 w-4 text-white/30" />
                     : <ChevronRight className="ml-auto h-4 w-4 text-white/30" />}
@@ -185,6 +219,33 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
 
             {aberto && (
                 <div className="mt-4 space-y-3">
+                    {produtos.length > 0 && (
+                        <div>
+                            <label className="mb-1 block text-[11px] text-white/50">
+                                Produto da planilha do cliente
+                                <span className="ml-1 text-white/25">— opcional</span>
+                            </label>
+                            <select
+                                value={sku}
+                                onChange={e => escolherProdutoCliente(e.target.value)}
+                                disabled={estado === 'gerando'}
+                                className="w-full rounded-lg border border-white/[0.08] bg-ecf-bg px-3 py-2 text-sm text-white focus:outline-none disabled:opacity-50"
+                            >
+                                <option value="">Nenhum — vou descrever o produto</option>
+                                {produtos.filter(p => p.sku).map(p => (
+                                    <option key={p.sku} value={p.sku}>{p.sku} · {p.produto || '—'}</option>
+                                ))}
+                            </select>
+                            {produtoCliente && (
+                                <p className={cn('mt-1 text-[11px]', produtoCliente.tem_preco ? 'text-white/40' : 'text-amber-300/80')}>
+                                    {produtoCliente.tem_preco
+                                        ? 'Preço, estoque e medidas do pacote vêm da planilha do cliente.'
+                                        : 'Sem custo na precificação do cliente: o rascunho sai sem preço.'}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     <div>
                         <label className="mb-1 block text-[11px] text-white/50">Nome do produto</label>
                         <input
@@ -226,8 +287,14 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
                     >
                         {estado === 'gerando'
                             ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando… {segundos}s</>
-                            : <><Sparkles className="h-4 w-4" /> Gerar análise</>}
+                            : <><Sparkles className="h-4 w-4" /> Gerar anúncio completo</>}
                     </button>
+
+                    <p className="text-[11px] text-white/35">
+                        A IA preenche título, categoria, ficha técnica, variações, descrição, pacote e
+                        garantia e <b className="text-white/55">salva como rascunho</b>. Ela não publica:
+                        você confere, envia as fotos e publica.
+                    </p>
 
                     {estado === 'gerando' && (
                         // Expectativa honesta e sinal de vida. Sem dizer em que
@@ -236,14 +303,61 @@ export default function PainelAnunciarIa({ empresa, analiseInicial, onAplicarTit
                         <div className="space-y-1">
                             {etapa && (
                                 <p className="text-[11px] text-violet-300/80">
-                                    Etapa: {ETAPA_LABEL[etapa] ?? etapa}
+                                    Etapa {ETAPA_LABEL[etapa] ?? etapa}
                                 </p>
                             )}
                             <p className="text-[11px] text-white/40">
-                                São três etapas e leva alguns minutos. Cada uma aparece aqui assim
-                                que fica pronta. Pode recarregar a página — a geração roda no
-                                servidor e você volta para o mesmo ponto.
+                                São cinco etapas e leva alguns minutos. Cada uma aparece aqui assim
+                                que fica pronta, e o rascunho abre sozinho no fim. Pode recarregar a
+                                página — a geração roda no servidor e você volta para o mesmo ponto.
                             </p>
+                        </div>
+                    )}
+
+                    {/* O rascunho que a IA gravou. Abre sozinho quando a geração
+                        termina com a tela aberta; depois de um F5 fica o botão. */}
+                    {dados?.rascunho && (
+                        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2.5">
+                            <div className="flex items-start gap-2">
+                                <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                                <div className="min-w-0 flex-1 space-y-0.5">
+                                    <p className="text-[12px] font-semibold text-emerald-300">
+                                        {dados.rascunho.status === 'publicado'
+                                            ? `Rascunho #${dados.rascunho.id} — já publicado`
+                                            : `Rascunho #${dados.rascunho.id} salvo — não publicado`}
+                                    </p>
+                                    {dados.ficha?.caminho && (
+                                        <p className="truncate text-[11px] text-white/55">{dados.ficha.caminho}</p>
+                                    )}
+                                    {dados.ficha && (
+                                        <p className="text-[11px] text-white/45">
+                                            {dados.ficha.atributos} atributo{dados.ficha.atributos === 1 ? '' : 's'} da ficha
+                                            {dados.ficha.variacoes > 0 && ` · ${dados.ficha.variacoes} variaç${dados.ficha.variacoes === 1 ? 'ão' : 'ões'}`}
+                                            {dados.ficha.pacote_completo ? ' · pacote preenchido' : ' · pacote incompleto'}
+                                        </p>
+                                    )}
+                                    {dados.ficha?.obrigatorios_faltando?.length > 0 && (
+                                        <p className="text-[11px] text-amber-300/80">
+                                            Falta preencher: {dados.ficha.obrigatorios_faltando.join(', ')}
+                                        </p>
+                                    )}
+                                    {dados.ficha?.aviso && (
+                                        <p className="text-[11px] text-amber-300/80">{dados.ficha.aviso}</p>
+                                    )}
+                                    <p className="text-[11px] text-white/40">
+                                        Confira os campos com o selo IA, envie as fotos e publique quando estiver certo.
+                                    </p>
+                                </div>
+                                {onAbrirRascunho && dados.rascunho.status !== 'publicado' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onAbrirRascunho(dados.rascunho)}
+                                        className="shrink-0 rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/10"
+                                    >
+                                        Abrir rascunho
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
 

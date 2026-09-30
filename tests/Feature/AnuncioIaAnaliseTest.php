@@ -28,6 +28,11 @@ class AnuncioIaAnaliseTest extends TestCase
         parent::setUp();
         $this->withoutVite();
 
+        // Desde a etapa "ficha" o job fala com o Mercado Livre (preditor de
+        // categoria, atributos). Pedido sem stub vira exceção em vez de ir à
+        // internet — com fakes por padrão de URL, o Laravel deixaria passar.
+        Http::preventStrayRequests();
+
         config([
             'services.llm.base_url'   => 'http://llm.teste/v1',
             'services.llm.key'        => 'chave-de-teste',

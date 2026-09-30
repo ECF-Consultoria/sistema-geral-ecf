@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\Log;
  *
  * Os prompts são a metodologia da ECF, não invenção nossa. Não "melhorar" sem
  * combinar: é o resultado que a equipe valida no chat hoje.
+ *
+ * A 4ª chamada (`ficha`, 30/09/2026) NÃO é MAG T8: é o preenchimento do
+ * cadastro (atributos da categoria, variações, pacote, garantia) para a IA
+ * deixar o anúncio inteiro em rascunho. Prompt próprio, regra própria.
  */
 class AnaliseAnuncioService
 {
@@ -82,6 +86,26 @@ class AnaliseAnuncioService
 
         return [
             'dados' => trim((string) ($r['json']['descricao'] ?? '')),
+            'meta'  => $r['meta'],
+        ];
+    }
+
+    /**
+     * Etapa 4 — Ficha técnica da categoria já escolhida.
+     *
+     * Devolve o JSON CRU do modelo: quem confere cada valor contra o catálogo
+     * do ML é o `RascunhoAnuncioIaService`. Aqui só se pergunta.
+     *
+     * NÃO é parte da metodologia MAG T8 (que para na descrição): é o
+     * preenchimento do cadastro, e a regra dele é a oposta da copy — nada de
+     * persuasão, só o que as especificações sustentam.
+     */
+    public function ficha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo): array
+    {
+        $r = $this->chamar($this->promptFicha($produto, $specs, $titulo, $caminhoCategoria, $catalogo), 6000);
+
+        return [
+            'dados' => $r['json'],
             'meta'  => $r['meta'],
         ];
     }
@@ -316,6 +340,39 @@ class AnaliseAnuncioService
 
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}
+        TXT;
+    }
+
+    /**
+     * Prompt da ficha técnica. A lista de atributos vem pronta do
+     * `RascunhoAnuncioIaService::catalogoParaPrompt()` — só os que o wizard
+     * mostra, para a IA não preencher campo que o publicador não vê.
+     */
+    private function promptFicha(string $produto, string $specs, string $titulo, string $caminhoCategoria, string $catalogo): string
+    {
+        $bloco = $this->blocoSpecs($specs);
+
+        return <<<TXT
+        Preencha o cadastro do anúncio do produto **{$produto}** no Mercado Livre.
+
+        Categoria já escolhida: {$caminhoCategoria}
+        Título do anúncio: {$titulo}{$bloco}
+
+        REGRAS (obrigatórias):
+        1. Use SOMENTE o que o nome do produto e as especificações acima sustentam. NÃO invente marca, modelo, medida, material, quantidade nem certificação. Na dúvida, OMITA o atributo — campo vazio o publicador completa; valor inventado vira anúncio errado.
+        2. Atributo com "opções": responda exatamente o texto de uma das opções listadas.
+        3. Atributo "número + unidade": responda o número e a unidade, ex.: "45 cm".
+        4. Atributo "número": só o número.
+        5. Atributo "Sim/Não": responda "Sim" ou "Não".
+        6. "variacoes": só quando as especificações trazem valores de um atributo de variação (ex.: cores ou tamanhos disponíveis). Uma entrada por combinação. Sem essa informação, lista vazia.
+        7. "pacote": só se as especificações trazem medidas e peso do produto. Nesse caso estime o pacote EMBALADO (produto + embalagem), em gramas e centímetros. Sem medidas, null.
+        8. "garantia": só se as especificações mencionam garantia (ex.: "90 dias", "12 meses"). Senão, null.
+
+        ATRIBUTOS DA FICHA (ID | nome | formato). Os marcados com * são obrigatórios na categoria:
+        {$catalogo}
+
+        Responda APENAS com JSON válido, sem crases, usando os IDs como chaves:
+        {"atributos":{"ID":"valor"},"variacoes":[{"ID":"valor"}],"pacote":{"peso_g":0,"comprimento_cm":0,"largura_cm":0,"altura_cm":0},"garantia":null}
         TXT;
     }
 

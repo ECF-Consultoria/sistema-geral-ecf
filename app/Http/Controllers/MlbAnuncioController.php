@@ -2176,6 +2176,34 @@ class MlbAnuncioController extends Controller
             'analise'      => $a->analise(),
             'modelo'       => $a->modelo,
             'duracao_ms'   => $a->duracao_ms,
+            'sku'          => $a->resultado['cliente']['sku'] ?? null,
+        ] + $this->preenchimentoIa($a);
+    }
+
+    /**
+     * O que a IA cadastrou além da copy: resumo da ficha e o rascunho gravado.
+     *
+     * O rascunho vai com o payload inteiro porque a tela o abre no wizard na
+     * hora em que a geração termina — o mesmo formato da lista de rascunhos.
+     * Só o da MESMA empresa: o id vem do JSON da análise, não do navegador,
+     * mas a checagem custa uma cláusula.
+     */
+    private function preenchimentoIa(MlAnuncioIaAnalise $a): array
+    {
+        $id       = $a->rascunhoId();
+        $rascunho = $id !== null
+            ? MlAnuncioRascunho::where('id', $id)->where('company_id', $a->company_id)->first()
+            : null;
+
+        return [
+            'ficha'    => $a->resumoFicha(),
+            'rascunho' => $rascunho ? [
+                'id'          => $rascunho->id,
+                'status'      => $rascunho->status,
+                'category_id' => $rascunho->category_id,
+                'ml_item_id'  => $rascunho->ml_item_id,
+                'payload'     => $rascunho->payload,
+            ] : null,
         ];
     }
 
@@ -2194,12 +2222,43 @@ class MlbAnuncioController extends Controller
             'company_id' => ['required', 'integer', 'exists:companies,id'],
             'produto'    => ['required', 'string', 'max:300'],
             'specs'      => ['nullable', 'string', 'max:8000'],
+            // Produto da planilha do cliente (opcional): preço, estoque e
+            // medidas do rascunho saem DAQUI, lidos no servidor — o navegador
+            // só diz qual SKU.
+            'sku'        => ['nullable', 'string', 'max:100'],
         ]);
 
         $company = Company::findOrFail($dados['company_id']);
 
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 422, 'Empresa sem conta ML conectada.');
+
+        $resultado = null;
+        $sku       = trim((string) ($dados['sku'] ?? ''));
+
+        if ($sku !== '') {
+            $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)->with('implementacao')->first();
+            $produto    = collect($this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados))
+                ->first(fn ($p) => trim((string) $p['sku']) === $sku);
+
+            if ($produto === null) {
+                return response()->json(['message' => 'Produto não encontrado nos dados do cliente.'], 422);
+            }
+
+            // Retrato do produto NA HORA do pedido: a geração leva minutos e
+            // o rascunho tem que sair com o preço que o publicador viu.
+            $resultado = ['cliente' => [
+                'sku'          => $produto['sku'],
+                'produto'      => $produto['produto'],
+                'preco_c'      => $produto['preco_anunciado_c'],
+                'preco_p'      => $produto['preco_anunciado_p'],
+                'estoque'      => $produto['estoque'],
+                'peso_kg'      => $produto['peso_kg'],
+                'altura'       => $produto['altura'],
+                'largura'      => $produto['largura'],
+                'profundidade' => $produto['profundidade'],
+            ]];
+        }
 
         $analise = MlAnuncioIaAnalise::create([
             'company_id' => $company->id,
@@ -2208,6 +2267,7 @@ class MlbAnuncioController extends Controller
             'loja'       => $company->nomeContaMl(),
             'specs'      => $dados['specs'] ?? null,
             'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+            'resultado'  => $resultado,
         ]);
 
         GerarAnaliseAnuncioIaJob::dispatch($analise->id);
@@ -2251,7 +2311,7 @@ class MlbAnuncioController extends Controller
             'analise'     => $analise->analise(),
             'modelo'      => $analise->modelo,
             'duracao_ms'  => $analise->duracao_ms,
-        ]);
+        ] + $this->preenchimentoIa($analise));
     }
 
     /**

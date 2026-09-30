@@ -109,10 +109,49 @@ class MlAnuncioIaAnalise extends Model
                 // NUNCA confiar na contagem que o modelo declara: ele erra.
                 // Medimos aqui, e é esta medida que a tela mostra.
                 'caracteres' => mb_strlen((string) ($t['texto'] ?? '')),
+                // Conferidos no servidor pelo AnaliseAnuncioService. Antes
+                // eram descartados aqui e a tela marcava TODO título como
+                // fora da regra.
+                'dentro_da_regra' => (bool) ($t['dentro_da_regra'] ?? false),
+                'tem_loja'        => (bool) ($t['tem_loja'] ?? false),
             ])
             ->filter(fn ($t) => $t['texto'] !== '')
             ->values()
             ->all();
+    }
+
+    /**
+     * Resumo da ficha que a IA preencheu, para a tela dizer o que ficou
+     * pronto e o que falta. `null` enquanto a etapa não rodou.
+     */
+    public function resumoFicha(): ?array
+    {
+        $f = $this->resultado['ficha'] ?? null;
+
+        if (! is_array($f)) {
+            return null;
+        }
+
+        return [
+            'category_id'           => $f['category_id'] ?? null,
+            'caminho'               => $f['caminho'] ?? ($f['categoria_nome'] ?? null),
+            'titulo'                => $f['titulo'] ?? null,
+            'atributos'             => count($f['atributos'] ?? []),
+            'obrigatorios_total'    => (int) ($f['obrigatorios_total'] ?? 0),
+            'obrigatorios_faltando' => array_values($f['obrigatorios_faltando'] ?? []),
+            'variacoes'             => count($f['variacoes'] ?? []),
+            'pacote_completo'       => ! empty($f['pacote']['peso_g']) && ! empty($f['pacote']['altura_cm'])
+                && ! empty($f['pacote']['largura_cm']) && ! empty($f['pacote']['comprimento_cm']),
+            'aviso'                 => $f['aviso'] ?? null,
+        ];
+    }
+
+    /** Id do rascunho gravado pela etapa final (null enquanto não gravou). */
+    public function rascunhoId(): ?int
+    {
+        $id = $this->resultado['rascunho_id'] ?? null;
+
+        return $id !== null ? (int) $id : null;
     }
 
     public function descricao(): ?string
