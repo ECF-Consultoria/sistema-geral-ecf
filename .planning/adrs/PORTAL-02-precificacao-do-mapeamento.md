@@ -103,3 +103,17 @@ não há recursão profunda nem ciclo.
 - **sem frete**: o preço sai, mas avisado. É a mesma régua da Calculadora:
   frete esquecido é o erro que mais estraga a conta, porque some do resultado;
 - **conta impossível**: a soma dos percentuais chega a 100% ou mais.
+
+## Revisão de 30/09 — frete em branco usa o do outro tipo
+
+O tipo com frete em branco entrava com frete **zero** e saía mais barato que o
+outro. Caso real: PUFF-AZ (empresa 447), custo 44, frete Clássico 32, Premium
+vazio → Premium R$ 81,86 contra Clássico R$ 131,22. A comissão maior do Premium
+só garante preço maior com o mesmo frete.
+
+Agora `PrecificacaoEstrutura::fretes()`: digitado vence; em branco, vale o do
+outro tipo (o frete do Mercado Envios não muda entre Clássico e Premium); o
+campo mostra o valor herdado apagado, com "mesmo do Clássico". **Zero digitado
+fica zero.** "Sem frete" só quando os dois estão em branco. Também veio do
+onboarding a regra da comissão: mexer na do Clássico leva a do Premium a
+Clássico + 5 p.p. (só na tela, como lá).

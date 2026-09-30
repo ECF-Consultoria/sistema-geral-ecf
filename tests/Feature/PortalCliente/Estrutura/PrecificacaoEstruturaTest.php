@@ -40,6 +40,40 @@ class PrecificacaoEstruturaTest extends TestCase
     }
 
     /**
+     * Caso real de 30/09 (PUFF-AZ, empresa 447): frete do Clássico 32 e o do
+     * Premium em branco. O branco entrava como ZERO e o Premium saía mais
+     * barato que o Clássico. Agora o tipo em branco usa o frete do outro.
+     */
+    public function test_frete_em_branco_usa_o_do_outro_tipo_e_premium_fica_acima(): void
+    {
+        $this->assertSame(
+            ['classico' => ['valor' => 32.0, 'origem' => 'digitado'], 'premium' => ['valor' => 32.0, 'origem' => 'outro_tipo']],
+            PrecificacaoEstrutura::fretes(32.0, null),
+        );
+        $this->assertSame(['valor' => 25.0, 'origem' => 'outro_tipo'], PrecificacaoEstrutura::fretes(null, 25.0)['classico']);
+        // Zero digitado é escolha do cliente: não herda.
+        $this->assertSame(['valor' => 0.0, 'origem' => 'digitado'], PrecificacaoEstrutura::fretes(32.0, 0.0)['premium']);
+        $this->assertSame(['valor' => null, 'origem' => null], PrecificacaoEstrutura::fretes(null, null)['premium']);
+
+        $empresa = $this->empresaDoGabarito();
+        $o = $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $sessao->put(route('portal.auth.estrutura.precificacao.oferta', $o['CAD-01']->id), ['custo' => '44', 'frete_classico' => '32'])
+            ->assertSessionHasNoErrors();
+        $cad = $sessao->get(route('portal.auth.estrutura.precificacao'))->viewData('page')['props']['precificacao']['por_oferta'][$o['CAD-01']->id];
+
+        // Clássico: 76 / 0,695 = 109,35 → ×1,2 = 131,22. Premium: 76 / 0,645 = 117,83 → 141,40.
+        $this->assertSame(131.22, $cad['classico']['anunciado']);
+        $this->assertSame(141.4, $cad['premium']['anunciado']);
+        $this->assertGreaterThan($cad['classico']['anunciado'], $cad['premium']['anunciado']);
+        $this->assertSame('outro_tipo', $cad['premium']['frete_origem']);
+        // O que o cliente digitou continua sendo o que o campo mostra: o Premium segue vazio.
+        $this->assertNull($cad['frete_premium']);
+        $this->assertNull($cad['pendencia']);
+    }
+
+    /**
      * O custo de combo/kit/combit vem dos componentes; basta um componente sem
      * custo para não haver custo. O digitado vence.
      */

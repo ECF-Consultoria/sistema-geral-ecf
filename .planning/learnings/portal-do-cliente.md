@@ -937,3 +937,15 @@ O que custou caro e não se deduz do código:
   toque de verdade**: `setViewport({ hasTouch: true })`,
   `page.touchscreen.touchStart(x, y)` → `handle.move(x, y)` em passos →
   `handle.end()`; espere mais que o `delay` do sensor antes de mover.
+
+## 30. Precificação: frete em branco virava ZERO e o Premium saía abaixo do Clássico (30/09/2026)
+
+A fórmula do portal e a do onboarding de Polos são **idênticas** — "copiar a
+lógica do onboarding" não resolveria. Lá o frete em branco também entra como
+zero; só que o Simulador mostra um tipo por vez e o campo pisca vermelho,
+então ninguém lê o preço como final. No portal os dois preços ficam lado a
+lado, e o Premium sem frete parecia o preço certo. Correção: tipo em branco
+usa o frete do outro (ADR PORTAL-02, revisão de 30/09). Ao receber "a conta
+está errada" aqui, olhar primeiro o DADO gravado (`estrutura_precificacoes`)
+antes da fórmula — foi o que achou a causa em minutos.
+

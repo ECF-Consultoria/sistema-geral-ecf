@@ -52,6 +52,20 @@ const fmtPct = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigi
 
 const CELULA = 'w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 text-right text-[13px] tabular-nums text-white placeholder:text-white/30 hover:border-white/[0.14] focus:border-ecf-yellow/40 focus:bg-white/[0.04] focus:outline-none focus:ring-0';
 
+// Regra do onboarding de Polos (`ImplementacaoPublica.jsx`, updateCfg): mexer na
+// comissão do Clássico leva a do Premium junto, 5 pontos acima. O Premium segue
+// editável depois — só não fica para trás esquecido abaixo do Clássico.
+const DIFERENCA_PREMIUM = 5;
+const comPremiumAcompanhando = (valores, chave, texto) => {
+    const novo = { ...valores, [chave]: texto };
+    const classico = parseFloat(paraNumero(texto));
+    if (chave === 'comissao_classico' && Number.isFinite(classico)) {
+        novo.comissao_premium = paraTexto(Math.round((classico + DIFERENCA_PREMIUM) * 100) / 100);
+    }
+
+    return novo;
+};
+
 /** O conjunto da empresa: seis percentuais, salvos juntos. */
 function ParametrosEmpresa({ parametros, padroes }) {
     const [valores, setValores] = useState(() => Object.fromEntries(PARAMETROS.map(([k]) => [k, paraTexto(parametros[k])])));
@@ -91,7 +105,7 @@ function ParametrosEmpresa({ parametros, padroes }) {
                     <Campo key={k} rotulo={rotulo} erro={erros[k]}
                         dica={k === 'acrescimo' ? `espaço p/ promoção · padrão ${fmtPct(padroes[k])}` : `padrão ${fmtPct(padroes[k])}`}>
                         <div className="relative">
-                            <input value={valores[k]} onChange={(e) => setValores({ ...valores, [k]: e.target.value })} inputMode="decimal"
+                            <input value={valores[k]} onChange={(e) => setValores(comPremiumAcompanhando(valores, k, e.target.value))} inputMode="decimal"
                                 className={cn(CLASSE_INPUT, 'pr-7 text-right tabular-nums')} data-parametro={k} />
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-white/35">%</span>
                         </div>
@@ -114,6 +128,16 @@ function Preco({ calculo, tipo }) {
             </span>
         </span>
     );
+}
+
+// Frete em branco usa o do outro tipo (`PrecificacaoEstrutura::fretes`): o campo
+// mostra esse valor apagado, como o custo somado dos componentes.
+const placeholderFrete = (tipo) => (tipo.frete_origem === 'outro_tipo' ? paraTexto(tipo.frete) : 'R$');
+
+function FreteHerdado({ calculo, de }) {
+    if (calculo.frete_origem !== 'outro_tipo') return null;
+
+    return <span className="mt-0.5 block text-right text-[10.5px] text-white/35" data-frete-herdado>mesmo do {de}</span>;
 }
 
 /** Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços. */
@@ -176,11 +200,13 @@ function LinhaPreco({ oferta, calculo, onAjustar }) {
             </td>
             <td className="px-1.5 py-1.5">
                 <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                    placeholder="R$" className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
+                    placeholder={placeholderFrete(calculo.classico)} className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
+                <FreteHerdado calculo={calculo.classico} de="Premium" />
             </td>
             <td className="px-1.5 py-1.5">
                 <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                    placeholder="R$" className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
+                    placeholder={placeholderFrete(calculo.premium)} className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
+                <FreteHerdado calculo={calculo.premium} de="Clássico" />
             </td>
             <td className="px-3 py-2"><Preco calculo={calculo.classico} tipo="classico" /></td>
             <td className="px-3 py-2"><Preco calculo={calculo.premium} tipo="premium" /></td>
@@ -229,7 +255,7 @@ function AjustarProduto({ alvo, parametros, onFechar }) {
                 {chaves.map(([k, rotulo]) => (
                     <Campo key={k} rotulo={rotulo} erro={erros[k]} dica={`empresa: ${fmtPct(parametros[k])}`}>
                         <div className="relative">
-                            <input value={valores[k] ?? ''} onChange={(e) => setValores({ ...valores, [k]: e.target.value })} inputMode="decimal"
+                            <input value={valores[k] ?? ''} onChange={(e) => setValores(comPremiumAcompanhando(valores, k, e.target.value))} inputMode="decimal"
                                 placeholder={paraTexto(parametros[k])} className={cn(CLASSE_INPUT, 'pr-7 text-right tabular-nums')} data-excecao={k} />
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-white/35">%</span>
                         </div>

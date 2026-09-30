@@ -114,10 +114,12 @@ class EstruturaPrecificacaoService
         $custo = PrecificacaoEstrutura::custo($linha?->custo, $o['componentes'], $custos);
 
         $tipos = [];
-        foreach (['classico' => $linha?->frete_classico, 'premium' => $linha?->frete_premium] as $tipo => $frete) {
+        foreach (PrecificacaoEstrutura::fretes($linha?->frete_classico, $linha?->frete_premium) as $tipo => $frete) {
             $tipos[$tipo] = [
-                'comissao' => $p["comissao_{$tipo}"],
-                ...PrecificacaoEstrutura::preco($custo['valor'], $frete, $p["comissao_{$tipo}"], $p['imposto'], $p['margem_contribuicao'], $p['lucro_liquido'], $p['acrescimo']),
+                'comissao'     => $p["comissao_{$tipo}"],
+                'frete'        => $frete['valor'],
+                'frete_origem' => $frete['origem'],
+                ...PrecificacaoEstrutura::preco($custo['valor'], $frete['valor'], $p["comissao_{$tipo}"], $p['imposto'], $p['margem_contribuicao'], $p['lucro_liquido'], $p['acrescimo']),
             ];
         }
 

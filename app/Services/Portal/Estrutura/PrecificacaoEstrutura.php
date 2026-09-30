@@ -51,6 +51,29 @@ final class PrecificacaoEstrutura
     }
 
     /**
+     * O frete que a conta usa em cada tipo. O digitado vence; em branco, vale o
+     * do OUTRO tipo — o frete do Mercado Envios não muda entre Clássico e
+     * Premium, e o cliente costuma preencher um só.
+     *
+     * Sem isto, o tipo em branco entrava com frete ZERO e saía mais barato que o
+     * outro: PUFF-AZ (custo 44, frete Clássico 32, Premium vazio) deu Premium
+     * R$ 81,86 contra Clássico R$ 131,22 — o inverso do que a comissão maior do
+     * Premium garante (30/09). Zero DIGITADO é escolha do cliente e fica.
+     *
+     * @return array{classico: array{valor: ?float, origem: ?string}, premium: array{valor: ?float, origem: ?string}}
+     */
+    public static function fretes(?float $classico, ?float $premium): array
+    {
+        $efetivo = fn (?float $proprio, ?float $outro) => match (true) {
+            $proprio !== null => ['valor' => $proprio, 'origem' => 'digitado'],
+            $outro !== null   => ['valor' => $outro, 'origem' => 'outro_tipo'],
+            default           => ['valor' => null, 'origem' => null],
+        };
+
+        return ['classico' => $efetivo($classico, $premium), 'premium' => $efetivo($premium, $classico)];
+    }
+
+    /**
      * O custo que a conta usa. Digitado vence; senão, combo/kit/combit somam os
      * componentes (quantidade × custo). Basta UM componente sem custo para o
      * resultado ser nulo: somar só o que se conhece daria um kit barato demais.
