@@ -336,8 +336,9 @@ cust_id normalizado contra `polos_faturamento_snapshots` (`mes='YYYYMM'`) + `mlb
 POLOS não-arquivadas. Existe `php artisan polos:audit-faturamento` (read-only).
 
 **O banco local está meses atrás** (só snapshot 202606) — auditar sempre contra a VPS. E o
-`polos:warm` tem **orçamento de 1500s** a ~7s/empresa: quem não couber fica sem snapshot e
-conta **R$ 0 sem erro visível**. Conferir cobertura antes de concluir qualquer coisa:
+sync **na fila** (botão "Sincronizar") tem **orçamento de 1500s** a ~11s/empresa: quem não
+couber fica sem snapshot e conta **R$ 0 sem erro visível**. (Desde 30/09 o agendamento diário
+roda `polos:warm` sem teto — ver §15.) Conferir cobertura antes de concluir qualquer coisa:
 `roster M1–M4` vs `COUNT(*) de polos_faturamento_snapshots WHERE mes=...`.
 
 ---
@@ -551,3 +552,39 @@ O que não é óbvio lendo o código:
 - **O `/polos` antigo (`Polos/Index`) NÃO mudou** — segue somando só M2–M4, filtrado pelos
   chips e com meta = soma dos limiares (§5). Se alguém comparar as duas telas, é esperado
   que o faturamento difira.
+
+## 15. O sync diário só cobria metade do roster — e começava 4h atrasado (2026-09-30)
+
+Pedido: "o faturamento polos atualizar todos os dias automaticamente". Já existia um
+agendamento diário às 13:00 — o problema era que ele **não terminava**. Medido em produção
+em 30/09: dos 262 custs M1–M4, **130** atualizados no dia, **100** no anterior, e o resto com
+`synced_at` de até 29 dias atrás.
+
+Duas causas somadas, nenhuma visível no log (`LOG_LEVEL=error` esconde os `Log::info` do job):
+
+- **Teto de 25 min.** O job tem orçamento de 1500s porque o worker mata em 1800s. Com o ADS
+  por adgroup, cada empresa leva ~11,5s → ~130 por execução. O `worker.log` mostrava
+  **"25min DONE" todo santo dia** — o sinal de que batia no teto, não de que terminou.
+- **4h na fila.** `Schedule::job` só enfileira. A `default` passa das 11h às 17h entupida de
+  `SyncMlAcervo*` (API do ML), então o job das 13:00 começava **~17h**.
+
+Correção: o agendamento virou `Schedule::command('polos:warm')->runInBackground()` —
+processo próprio, fora da fila, **sem orçamento** (~50 min para 262). O botão "Sincronizar"
+continua na fila com o teto de 1500s. Um `Cache::lock` impede duas varreduras juntas (a Adman
+aceita ~10 rpm; duas instâncias viram 429 — ver o comentário do `RefreshGrossBillingCacheJob`).
+
+O que não é óbvio:
+
+- **Às 13h a cota da Adman está livre porque a fila está ocupada com o ML**, não com a Adman
+  (`SyncAdmanCompany`/`SyncFaturamentoMensal` terminam na faixa das 11h). Se alguém mover
+  job pesado de Adman para a tarde, os dois passam a disputar cota.
+- **`withoutOverlapping(180)`, não o default.** O mutex padrão vale 24h: se o processo morrer,
+  a execução do dia seguinte seria pulada calada.
+- **Propriedade nova em job enfileirado precisa de default NA DECLARAÇÃO.** `$orcamento`
+  promovido no construtor ficaria não inicializado ao desserializar o job que já estava na
+  fila antes do deploy — e ele quebraria. Vale para qualquer job: construtor promovido só
+  para propriedades que todo payload antigo já traz.
+- **Onde conferir:** cada execução grava uma linha em `storage/logs/polos-warm.log`
+  ("atualizadas X/Y em N min" + os custs que ficaram de fora). O resumo vem de **reconsulta**
+  ao banco (`synced_at >= início`), não do contador do job. Quem sobra quase sempre é cust
+  recusado pela Adman (§8), não falha do sync.

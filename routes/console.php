@@ -88,17 +88,25 @@ Schedule::job(new \App\Jobs\RefreshGrossBillingCacheJob)
     ->name('refresh-gross-billing-cache-d1')
     ->withoutOverlapping();
 
-// Aquece e PERSISTE o faturamento/ADS dos polos ativos (M2–M4) do mês corrente —
-// alimenta o /polos. Roda 13:00 BRT, no fim da cascata D-1 (depois do adman:sync 11:00
-// e do refresh de gross billing 12:45). de/ate null = mês corrente (default do Job).
-// Sem este agendamento o /polos zerava ao virar o dia (a chave de cache da Adman inclui
-// a data) e exigia clicar "Sincronizar" à mão; com ele + o snapshot durável, a página
-// fica sempre populada e se atualiza sozinha após o sync diário.
-Schedule::job(new \App\Jobs\SyncPolosFaturamentoJob)
+// Aquece e PERSISTE o faturamento/ADS dos polos M1–M4 do mês corrente — alimenta o Painel
+// Polos e o /polos. Roda 13:00 BRT, no fim da cascata D-1 (depois do adman:sync 11:00 e do
+// refresh de gross billing 12:45).
+//
+// É COMANDO em processo próprio, não Schedule::job (30/09/2026). Na fila, o job esperava
+// ~4h atrás dos SyncMlAcervo* na `default` (começava ~17h) e o teto de 25 min do worker
+// cortava ~130 de 262 empresas — cada uma era atualizada a cada ~2 dias. Fora da fila não
+// há teto: a varredura inteira leva ~50 min. Das 12h às 17h a `default` só chama a API do
+// ML (acervo), então a cota da Adman (~10 rpm) está livre nesse horário.
+// withoutOverlapping(180): se o processo morrer, o mutex expira em 3h, não em 24h (o default)
+// — senão a execução do dia seguinte seria pulada. O resumo de cada dia vai para o log abaixo
+// (LOG_LEVEL=error em produção esconde os Log::info do job).
+Schedule::command('polos:warm')
     ->dailyAt('13:00')
     ->timezone('America/Sao_Paulo')
     ->name('sync-polos-faturamento-d1')
-    ->withoutOverlapping();
+    ->withoutOverlapping(180)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/polos-warm.log'));
 
 // Congela o roster de polos do mês corrente (quem está ativo e em que fase). Roda 23:40
 // BRT, tarde o bastante para pegar as mudanças de fase do dia — inclusive a cascata que o
