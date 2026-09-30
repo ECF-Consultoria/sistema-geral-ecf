@@ -21,6 +21,7 @@ import { CustIdCell } from './components/CustIdCell';
 import { NomeEmpresaCell } from './components/NomeEmpresaCell';
 import StatusBadge from './components/StatusBadge';
 import HeroKpi from './components/HeroKpi';
+import FaturamentoPorFase from './components/FaturamentoPorFase';
 import FatVsMetaChart from './components/FatVsMetaChart';
 import RankingProgresso from './components/RankingProgresso';
 import StatusDonut from './components/StatusDonut';
@@ -1057,7 +1058,12 @@ export default function PolosPainel({
     };
 
     // ── KPIs macro (do cockpit async) ──
+    // `totalFat` é a BASE DA META (M2–M4). O card de faturamento mostra o TOTAL do projeto
+    // (M1–M4, pedido de 30/09) — são números diferentes de propósito. Sem a quebra no
+    // payload (erro do ECF Drive), o total cai no da meta.
     const totalFat    = polosCk.reduce((a, p) => a + (p.faturamento ?? 0), 0);
+    const fatPorFase  = cockpit?.faturamentoPorFase ?? [];
+    const totalFatProjeto = fatPorFase.length > 0 ? fatPorFase.reduce((a, f) => a + (f.faturamento ?? 0), 0) : totalFat;
     const totalAtivos = polosCk.reduce((a, p) => a + (p.ativos ?? 0), 0);
     // Meta ÚNICA de faturamento (alvo global editável), NÃO a soma das metas por empresa.
     const metaFat     = metaFatOverride ?? cockpit?.metaFaturamento ?? 3200000;
@@ -1334,7 +1340,7 @@ export default function PolosPainel({
                             {finLoading && <RefreshCw size={13} className="animate-spin text-white/30" />}
                             {!cockpitAberto && cockpit && (
                                 <span className="ml-2 text-[12px] font-normal text-white/40">
-                                    {formatCurrency(totalFat)} / {formatCurrency(metaFat)} · {pctGeral.toFixed(0)}% · {totalAtivos} ativos
+                                    {formatCurrency(totalFatProjeto)} (M1–M4) · {pctGeral.toFixed(0)}% da meta · {totalAtivos} ativos
                                     {!fechado && alertas.n > 0 ? ` · ${alertas.n} alertas` : ''}
                                 </span>
                             )}
@@ -1352,10 +1358,11 @@ export default function PolosPainel({
                                     <>
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                             <HeroKpi titulo={cockpit.metricaFaturamento === 'gross' ? 'Faturamento total' : 'Faturamento (móveis)'}
-                                                valor={formatCurrency(totalFat)} icone={Wallet} glow="yellow"
-                                                sublabel={cockpit.mesRefLabel ? `${cockpit.mesRefLabel} · ${parcial ? 'parcial' : 'fechado'}` : null} />
+                                                valor={formatCurrency(totalFatProjeto)} icone={Wallet} glow="yellow"
+                                                sublabel={cockpit.mesRefLabel ? `${cockpit.mesRefLabel} · ${parcial ? 'parcial' : 'fechado'} · M1–M4` : 'M1–M4'}
+                                                extra={fatPorFase.length > 0 ? <FaturamentoPorFase fases={fatPorFase} total={totalFatProjeto} /> : null} />
                                             <HeroKpi titulo="% Geral da meta" valor={`${pctGeral.toFixed(0)}%`} icone={Target} glow="yellow"
-                                                sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(metaFat)}`}
+                                                sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(metaFat)} · base M2–M4`}
                                                 extra={editandoMeta ? (
                                                     <div className="flex items-center gap-1.5">
                                                         <div className="relative flex-1">

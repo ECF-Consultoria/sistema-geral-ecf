@@ -519,3 +519,35 @@ O que vale para quem mexer ali:
   qualquer responsável e com rascunho — ao contrário da lista do PPA, que recorta por
   `mentor_id` para o não-admin. O recorte da lista é arrumação de tela, não barreira: o
   quadro de qualquer plano já abre para quem tem acesso.
+
+## 14. O card de faturamento e o "% Geral da meta" contam empresas diferentes — de propósito (2026-09-30)
+
+Pedido do time em 30/09: o faturamento total do projeto soma **M1–M4**; a meta continua
+sobre **M2–M4**. Desde então o Painel (e o Modo TV) mostram dois números que **não fecham
+entre si**, e isso não é bug:
+
+- Card "Faturamento" = Σ `cockpit.faturamentoPorFase` (M1 + M2 + M3 + M4 [+ Fechamento]).
+- "% Geral da meta" = Σ `polos[].faturamento` (só o roster da meta) ÷ `metaFaturamento`.
+
+Em setembro/2026 parcial: R$ 3,74 mi no card × R$ 3,33 mi na base da meta. Quem dividir
+o número do card pela meta chega a 117% e vai achar que o 104% está errado. Os sublabels
+dizem "M1–M4" e "base M2–M4" exatamente por isso — **não unifique os dois números**, e não
+passe a dividir o total pela meta: M1 é onboarding e nunca teve meta (D-01).
+
+O que não é óbvio lendo o código:
+
+- **M0 fica fora do total, mas dentro da coorte M1.** O card "Coorte M1" é M1 + M0 (D-16);
+  o total M1–M4 filtra `fase === 'M1'`. Hoje dá no mesmo porque o `polos:warm` só aquece
+  M1–M4 — M0 (89 empresas em 30/09) **não tem snapshot** e entra com R$ 0. Se um dia o warm
+  passar a cobrir M0, a coorte cresce e o total não.
+- **Fechamento está na base da meta e no total, mas a fase está vazia em produção** (0
+  empresas em 30/09) e também não é aquecida pelo warm. Só aparece na quebra se tiver
+  empresa.
+- **A invariante que o teste trava:** as fases com `naMeta = true` somam exatamente
+  Σ `polos[].faturamento`, e suas empresas somam "Empresas ativas". As duas varreduras
+  (`faturamentoPorFase()` e `agregarPorPolo()`) leem o mesmo `$ativos` e o mesmo `$fatMes`,
+  sem deduplicar. Trocar a fonte de uma sem a outra faz card e meta divergirem **calados**
+  (`tests/Feature/Polos/FaturamentoPorFaseTest.php`).
+- **O `/polos` antigo (`Polos/Index`) NÃO mudou** — segue somando só M2–M4, filtrado pelos
+  chips e com meta = soma dos limiares (§5). Se alguém comparar as duas telas, é esperado
+  que o faturamento difira.

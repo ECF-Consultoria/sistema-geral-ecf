@@ -104,7 +104,7 @@ class PolosController extends Controller
      *
      * @param  string|null $mesPedido  YYYYMM solicitado (?mes); null/inválido → mês mais recente.
      * @return array  polos, statusDist, meses, mesSelecionado, mesRefLabel, parcial,
-     *                fonteFaturamento, metricaFaturamento, adsLimites, m1, erro
+     *                fonteFaturamento, metricaFaturamento, adsLimites, m1, faturamentoPorFase, erro
      */
     public function montarCockpit(?string $mesPedido = null): array
     {
@@ -193,6 +193,10 @@ class PolosController extends Controller
             // status binário (faturando vs não) para o gráfico dedicado de M1.
             $m1 = $this->montarM1($mesSel, $parcial, $linhasMes);
 
+            // ─── 10. Faturamento por fase (M1–M4) — o TOTAL do projeto ────────
+            // A meta segue só sobre M2–M4 (polos[].faturamento); o total soma M1 também.
+            $porFase = $this->faturamentoPorFase($ativos, $fatMes, $m1);
+
             return [
                 'polos'            => $polos,
                 'statusDist'       => $statusDist,
@@ -209,6 +213,7 @@ class PolosController extends Controller
                 // NÃO é a soma das metas por empresa (limiar×ativos) — é um alvo global.
                 'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
                 'm1'               => $m1,
+                'faturamentoPorFase' => $porFase,
                 'erro'             => null,
             ];
         } catch (\Throwable $e) {
@@ -1607,6 +1612,7 @@ class PolosController extends Controller
             'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
+            'faturamentoPorFase' => [],
             'erro'             => $mensagem,
         ];
     }
@@ -1982,14 +1988,15 @@ class PolosController extends Controller
             foreach (
                 MlbEmpresa::whereIn('fase', ['M1', 'M0'])->where('projeto', 'POLOS')
                     ->whereNull('arquivado_em') // arquivadas não contam na coorte M1
-                    ->get(['nome', 'cust_id', 'polo']) as $e
+                    ->get(['nome', 'cust_id', 'polo', 'fase']) as $e
             ) {
                 $id = CustId::normaliza((string) $e->cust_id);
                 if ($id === '' || isset($roster[$id])) {
                     continue;
                 }
                 $nome = trim((string) $e->nome);
-                $roster[$id] = ['nome' => $nome !== '' ? $nome : "Empresa {$id}", 'polo' => trim((string) $e->polo)];
+                // `fase` separa M1 de M0 no faturamento por fase (M0 fica fora do total M1–M4).
+                $roster[$id] = ['nome' => $nome !== '' ? $nome : "Empresa {$id}", 'polo' => trim((string) $e->polo), 'fase' => (string) $e->fase];
             }
         } else {
             // Mês fechado: reconstrói pelo CSV (MESES_NO_PROGRAMA = 0 → M1).
@@ -2006,6 +2013,7 @@ class PolosController extends Controller
                 $roster[$id] = [
                     'nome' => $nome !== '' ? $nome : "Empresa {$id}",
                     'polo' => trim((string) ($row['LOCALIDADE'] ?? $row['localidade'] ?? '')),
+                    'fase' => 'M1', // o CSV não distingue M0: MESES_NO_PROGRAMA=0 é M1
                 ];
             }
         }
@@ -2033,6 +2041,7 @@ class PolosController extends Controller
             $empresas[] = [
                 'cust_id'     => $id,
                 'nome'        => $r['nome'],
+                'fase'        => $r['fase'],
                 'polo'        => $polo,
                 'faturamento' => $fat,
                 'faturando'   => $isFat,
@@ -2062,6 +2071,60 @@ class PolosController extends Controller
             'empresas'    => $empresas,
             'polos'       => $polos,
         ];
+    }
+
+    /**
+     * Faturamento do mês quebrado por fase — alimenta o card de faturamento do Painel e do
+     * Modo TV, que mostram o TOTAL do projeto e quanto cada M vende.
+     *
+     * Pedido de 30/09/2026: o faturamento total passa a somar M1–M4 (antes era só o roster
+     * da meta). A META não muda: "% Geral da meta" continua dividindo só `polos[].faturamento`
+     * (M2–M4), porque M1 é onboarding e nunca teve meta (D-01). Os dois números convivem na
+     * tela de propósito — o total vende mais do que a base da meta. `naMeta` diz qual é qual.
+     *
+     * - Fases da meta varrem os MESMOS `$ativos` e o MESMO `$fatMes` de agregarPorPolo(), sem
+     *   deduplicar — a soma das fases `naMeta` é, por construção, Σ polos[].faturamento, e as
+     *   empresas dessas fases somam o "Empresas ativas". Trocar a fonte de um sem o outro faz o
+     *   card e o % da meta divergirem sem erro nenhum.
+     * - M1 sai da coorte de montarM1() filtrada por `fase === 'M1'`: a coorte inclui M0 (D-16),
+     *   que fica FORA — o pedido foi M1–M4. Hoje o polos:warm nem aquece M0 (R$ 0 de qualquer
+     *   jeito); o filtro garante que continue fora se um dia aquecer.
+     * - M1–M4 saem sempre, mesmo zeradas (a tela tem posição fixa por fase). Outra fase do
+     *   roster de ativos (Fechamento) só aparece se tiver empresa, no fim.
+     *
+     * Medido em produção em 30/09 (setembro parcial, móveis): M1 R$ 403 mil, M2 R$ 1,14 mi,
+     * M3 R$ 1,17 mi, M4 R$ 1,03 mi — M1 é ~11% do total.
+     *
+     * @param  array<array<string,mixed>>  $ativos  Roster da meta (M2–M4 + Fechamento)
+     * @param  array<string,float>         $fatMes  [cust_id => faturamento] do mês
+     * @param  array{empresas?:array}      $m1      Coorte de montarM1()
+     * @return array<int, array{fase:string, empresas:int, faturamento:float, naMeta:bool}>
+     */
+    private function faturamentoPorFase(array $ativos, array $fatMes, array $m1): array
+    {
+        $fases = [];
+        foreach (['M1', 'M2', 'M3', 'M4'] as $f) {
+            $fases[$f] = ['fase' => $f, 'empresas' => 0, 'faturamento' => 0.0, 'naMeta' => $f !== 'M1'];
+        }
+
+        foreach (($m1['empresas'] ?? []) as $emp) {
+            if (($emp['fase'] ?? '') !== 'M1') {
+                continue; // M0 da coorte
+            }
+            $fases['M1']['empresas']++;
+            $fases['M1']['faturamento'] += (float) ($emp['faturamento'] ?? 0);
+        }
+
+        foreach ($ativos as $ativo) {
+            $fase = (string) ($ativo['fase'] ?? '');
+            $id   = CustId::normaliza((string) ($ativo['cust_id'] ?? ''));
+
+            $fases[$fase] ??= ['fase' => $fase, 'empresas' => 0, 'faturamento' => 0.0, 'naMeta' => true];
+            $fases[$fase]['empresas']++;
+            $fases[$fase]['faturamento'] += (float) ($fatMes[$id] ?? 0.0);
+        }
+
+        return array_values($fases);
     }
 
     /**
