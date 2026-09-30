@@ -5,6 +5,7 @@ namespace Tests\Feature\Phase159;
 use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
@@ -221,6 +222,48 @@ class RankingDoisCargosTest extends TestCase
         ]);
     }
 
+    /**
+     * Vincula uma empresa com contrato de serviço "performance" ATIVO — sem
+     * ele, `CarteiraContextService::forUser()` (ramo legado, servico_id
+     * NULL) não resolve o vínculo e `BonusAuditoriaController::index()`
+     * rejeita o profissional inteiro (`empresas` vazio). Mesma armadilha
+     * documentada em `tests/Feature/Phase123/Phase123TestCase::darCarteira()`
+     * — a Auditoria é a única das 4 telas deste plano que passa pela camada
+     * de contexto de carteira em vez de ler `company_users` puro.
+     */
+    private function darCarteiraElegivelParaAuditoria(User $user): void
+    {
+        $servicoId = DB::table('servicos')->insertGetId([
+            'nome'          => 'Serviço Performance 159 Aud ' . uniqid(),
+            'valor_padrao'  => 0,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        $company = Company::factory()->create();
+
+        DB::table('contratos_servico')->insert([
+            'company_id'       => $company->id,
+            'servico_id'       => $servicoId,
+            'valor_contratado' => 0,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+
+        DB::table('company_users')->insert([
+            'user_id'    => $user->id,
+            'company_id' => $company->id,
+            'role'       => 'consultor',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function props($response): array
     {
         return $response->viewData('page')['props'] ?? [];
@@ -403,5 +446,28 @@ class RankingDoisCargosTest extends TestCase
             collect($profissionais)->firstWhere('id', $a->id),
             'A (só analista) não pode aparecer na aba estrategista'
         );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Auditoria de Bônus — /desempenho/auditoria-bonus (Task 3)
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_auditoria_mostra_a_dupla_uma_vez(): void
+    {
+        $this->actingAsAdmin();
+        $mes = now()->subMonthNoOverflow()->startOfMonth();
+
+        $d = $this->criarProfissional('Dupla Aud159', ['analista', 'estrategista'], 'analista');
+        $this->darCarteiraElegivelParaAuditoria($d);
+        $this->seedSnapshotMensal($d, $mes, 4.50, 'basico');
+
+        $profissionais = $this->props(
+            $this->get('/desempenho/auditoria-bonus?mes=' . $mes->format('Y-m'))->assertOk()
+        )['profissionais'];
+
+        $linhasD = collect($profissionais)->where('id', $d->id)->values();
+        $this->assertCount(1, $linhasD, 'pessoa com dois cargos deve aparecer UMA vez na auditoria');
+        $this->assertSame('Analista · Estrategista', $linhasD->first()['cargo_label']);
+        $this->assertSame('analista', $linhasD->first()['cargo_slug']);
     }
 }
