@@ -31,6 +31,28 @@ Schedule::command('adman:warm-diff')
     ->name('warm-adman-diff-manha')
     ->withoutOverlapping();
 
+// Quick 260930-njd (T3) — relê da Adman os últimos 5 dias já coletados. O
+// `adman:sync` grava D-1 uma vez e nunca volta; a Adman revisa dias passados
+// depois da nossa coleta, para os dois lados (medido em 30/09/2026: o dia 28/09
+// estava guardado como R$ 15.933,13 e a Adman já mostrava R$ 17.904,08, +12,4%).
+//
+// 19:00 = fora da cascata D-1 das 11h de propósito. São ~420 chamadas (5 dias ×
+// ~84 empresas) a 7s de intervalo, ~49min — empilhar isso entre 11h e 13h
+// competiria pelo mesmo limite de 10 rpm do adman:sync, do ml:sync, do
+// adman:sync-margem, do warm-diff e do warm-fechamento. À noite a releitura tem a
+// janela toda para si e o dado corrigido está pronto antes do dia seguinte.
+//
+// Só as MÉTRICAS (o comando passa `incluirCampanhas: false`): com campanhas, um
+// dia relido custaria `2 + N` chamadas em vez de 1.
+//
+// ⚠️ Mexe em `adman_metrics`, que alimenta carteira/desempenho/bônus — desejado.
+// Mas NÃO recalcula snapshot de desempenho: competência consolidada só muda por
+// `desempenho:consolidar-mes --mes=`, decisão humana.
+Schedule::command('adman:reler-dias')
+    ->dailyAt('19:00')
+    ->name('adman-reler-ultimos-dias')
+    ->withoutOverlapping();
+
 // Quick 260930-njd (T2) — aquece o total do período da Adman que a tela do
 // fechamento lê no mês EM CURSO. Sem este warm o cache nasce frio todo dia (a
 // chave de `fetchGrossBilling` inclui a data BRT) e a tela fica permanentemente

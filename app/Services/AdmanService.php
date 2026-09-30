@@ -80,7 +80,24 @@ class AdmanService
         return $results;
     }
 
-    public function syncCompany(Company $company, ?string $date = null): AdmanMetric
+    /**
+     * @param  bool  $incluirCampanhas  Quick 260930-njd — `false` sincroniza SÓ
+     *   as métricas do dia, sem passar por `syncCampaigns()`. Default `true`,
+     *   comportamento de sempre intocado.
+     *
+     *   Por que existe, MEDIDO no código e não presumido: `syncCampaigns()`
+     *   gasta `fetchCampaigns()` (1 chamada) MAIS uma `fetchCampaignMetrics()`
+     *   por campanha da conta. Uma empresa com 5 campanhas custa 7 chamadas por
+     *   dia em vez de 1. Na releitura dos últimos 5 dias de ~84 empresas isso é
+     *   a diferença entre ~420 chamadas (~49 min no ritmo de 7 s) e milhares —
+     *   fora do limite de 10 rpm por uma ordem de grandeza.
+     *
+     *   E é desperdício puro: a releitura existe para corrigir o FATURAMENTO de
+     *   dias já passados (a Adman revisa devoluções e conciliação depois da nossa
+     *   coleta), não para reconstruir o histórico de campanhas. Precedente do
+     *   mesmo tipo: `syncCompanyMarginOnly()`.
+     */
+    public function syncCompany(Company $company, ?string $date = null, bool $incluirCampanhas = true): AdmanMetric
     {
         // Padrão: ontem — dados do dia corrente ficam incompletos até o processamento noturno da Adman
         $date   = $date ?? now()->subDay()->toDateString();
@@ -117,8 +134,27 @@ class AdmanService
             $productsTotal       = count($items);
             $productsWithoutCost = collect($items)->filter(fn($i) => ($i['cost']['value'] ?? 0) == 0)->count();
 
+            // Quick 260930-njd — `Carbon` no lugar da string 'Y-m-d', e isto é
+            // CORREÇÃO DE BUG, não estilo.
+            //
+            // `reference_date` é persistido como datetime ('2026-09-28 00:00:00')
+            // por causa do cast `date` do model. `updateOrCreate` monta o WHERE a
+            // partir do array de atributos SEM aplicar cast, então com a string
+            // crua o SQL fica `where reference_date = '2026-09-28'` — que NÃO casa
+            // com o valor gravado. Resultado: em vez de atualizar, ele tenta
+            // INSERIR e bate no unique `(company_id, reference_date)`.
+            //
+            // Nunca apareceu porque o MariaDB de produção é leniente e coage a
+            // string curta para datetime; o SQLite dos testes compara como texto e
+            // estoura — o inverso da armadilha de sempre. Ficou visível ao
+            // exercitar a RELEITURA de um dia que já tem linha (T3), que é
+            // justamente todo dia que ela precisa consertar.
+            //
+            // Com o Carbon, `prepareBindings()` formata como 'Y-m-d H:i:s' e o
+            // WHERE casa nos dois bancos. Para linha nova o valor gravado é
+            // idêntico ao de antes.
             $metric = AdmanMetric::updateOrCreate(
-                ['company_id' => $company->id, 'reference_date' => $date],
+                ['company_id' => $company->id, 'reference_date' => Carbon::parse($date)->startOfDay()],
                 [
                     'tacos'                   => $tacos,
                     'revenue'                 => $grossBilling,
@@ -155,10 +191,12 @@ class AdmanService
                 'synced_at'     => now(),
             ]);
 
-            try {
-                $this->syncCampaigns($company, $custId, $date, $marketplace);
-            } catch (\Throwable $e) {
-                Log::warning("[Adman] Campanhas empresa {$company->id}: " . $e->getMessage());
+            if ($incluirCampanhas) {
+                try {
+                    $this->syncCampaigns($company, $custId, $date, $marketplace);
+                } catch (\Throwable $e) {
+                    Log::warning("[Adman] Campanhas empresa {$company->id}: " . $e->getMessage());
+                }
             }
 
             return $metric;
