@@ -1142,12 +1142,6 @@ class CompanyController extends Controller
             $novoAnalista     = !empty($data['consultor_id'])    ? (int) $data['consultor_id']    : null;
             $novoEstrategista = !empty($data['estrategista_id']) ? (int) $data['estrategista_id'] : null;
 
-            // Mesma pessoa nos dois papéis continua valendo só como analista —
-            // regra herdada, preservada de propósito.
-            if ($novoEstrategista !== null && $novoEstrategista === $novoAnalista) {
-                $novoEstrategista = null;
-            }
-
             // Fase 108 — captura os responsáveis ANTES da troca, para registrar
             // o histórico de gerenciamento (entrada/saída) logo abaixo.
             $antigoAnalista     = $company->analistaPerformance()->value('users.id');
@@ -1163,16 +1157,21 @@ class CompanyController extends Controller
             // servico_id NULL) antes de regravar — ver limparSlotPerformance().
             $this->limparSlotPerformance($company, ['consultor', 'estrategista']);
 
-            $sync = [];
+            // Fase 159 (D-03) — um attach() por papel, NUNCA um array $sync
+            // indexado por user_id: quando a mesma pessoa ocupa os dois
+            // papéis, as duas chaves do array seriam iguais e a segunda
+            // atribuição sobrescreveria a primeira silenciosamente (a antiga
+            // "regra herdada" de esvaziar o estrategista existia exatamente
+            // para mascarar essa colisão — revogada pela decisão do usuário).
+            // O unique de company_users (company_id, user_id, role,
+            // servico_id) diferencia as duas linhas pelo role, então dois
+            // attach() separados convivem sem conflito mesmo com o mesmo
+            // user_id.
             if ($novoAnalista !== null) {
-                $sync[$novoAnalista] = ['role' => 'consultor', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()];
+                $company->users()->attach($novoAnalista, ['role' => 'consultor', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()]);
             }
             if ($novoEstrategista !== null) {
-                $sync[$novoEstrategista] = ['role' => 'estrategista', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()];
-            }
-
-            if (!empty($sync)) {
-                $company->users()->attach($sync);
+                $company->users()->attach($novoEstrategista, ['role' => 'estrategista', 'servico_id' => $servicoMlId, 'assigned_at' => now()->toDateString()]);
             }
 
             // A relação já foi lida acima (valores "antigos"); o cache do
