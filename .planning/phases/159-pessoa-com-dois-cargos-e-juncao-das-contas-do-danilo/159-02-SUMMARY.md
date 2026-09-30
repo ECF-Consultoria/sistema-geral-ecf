@@ -132,3 +132,9 @@ Ambos os gates RED e GREEN confirmados por execução real do PHPUnit entre os c
 ---
 *Phase: 159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo*
 *Completed: 2026-09-30*
+
+## Self-Check: PASSED
+
+- `159-02-SUMMARY.md` presente em `.planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/`
+- Todos os 7 arquivos citados (criado/modificados) confirmados presentes no disco
+- Todos os 6 commits citados confirmados em `git log --oneline`: `e00e521d`, `6d68db6e`, `318ba79e`, `1fc647bd`, `95d409cd`, `df6b175a`
