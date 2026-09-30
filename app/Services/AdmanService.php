@@ -466,6 +466,29 @@ class AdmanService
     }
 
     /**
+     * Quick 260930-njd — grava um valor de faturamento bruto direto no cache,
+     * sem chamar a Adman.
+     *
+     * Existe por UM motivo, e é estreito: o `adman:warm-fechamento` relê o total
+     * do período com `forceRefresh` (a Adman revisa dias passados durante o dia,
+     * então a rodada da tarde tem de reler de verdade). Quando essa releitura
+     * falha, `fetchGrossBilling()` grava a ERROR_SENTINEL — e um 429 passageiro
+     * às 16h trocaria o número bom da manhã por fallback na tela do fechamento.
+     * Este método repõe o valor anterior por cima da sentinela.
+     *
+     * A chave é montada EXATAMENTE como em `fetchGrossBilling()`/
+     * `getCachedGrossBilling()`: mesmo prefixo, mesmo marketplace, mesmo sufixo
+     * de dia BRT. Não é um atalho para inventar faturamento — é reposição de um
+     * valor que a própria API já devolveu.
+     */
+    public function guardarGrossBillingNoCache(string $custId, string $dateFrom, string $dateTo, float $valor, int $cacheMinutes = 1440, string $marketplace = 'meli'): void
+    {
+        $cacheKey = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+
+        Cache::put($cacheKey, $valor, now()->addMinutes($cacheMinutes));
+    }
+
+    /**
      * True se existe QUALQUER entrada no cache (valor real ou ERROR_SENTINEL).
      * Permite controllers diferenciarem:
      *  - hasCachedEntry=false → job nunca rodou pra empresa → dispatch job

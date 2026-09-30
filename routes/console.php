@@ -31,6 +31,30 @@ Schedule::command('adman:warm-diff')
     ->name('warm-adman-diff-manha')
     ->withoutOverlapping();
 
+// Quick 260930-njd (T2) — aquece o total do período da Adman que a tela do
+// fechamento lê no mês EM CURSO. Sem este warm o cache nasce frio todo dia (a
+// chave de `fetchGrossBilling` inclui a data BRT) e a tela fica permanentemente
+// na soma diária, que envelhece: a Adman revisa dias já passados depois da nossa
+// coleta (medido em 30/09/2026: +3,5% numa amostra de 12 empresas).
+//
+// 11:50 = depois do adman:sync (11:00) e do warm-diff (11:40) — a janela pedida
+// vai do dia 1º até ONTEM, então não depende do sync de hoje ter terminado, mas
+// empilhar na mesma janela de 10 rpm sem folga jogaria o pool para 429.
+// 16:00 = segunda passada, como o warm-diff já faz em dois horários: a Adman
+// revisa dados DURANTE o dia, e a rodada da tarde relê de fato (forceRefresh),
+// repondo o valor da manhã se a releitura falhar.
+//
+// Custo: ~84 chamadas por rodada (1 por empresa que pode ler da Adman), 7s de
+// intervalo → ~10min cada, ~168 chamadas/dia somando as duas.
+Schedule::command('adman:warm-fechamento')
+    ->dailyAt('11:50')
+    ->name('warm-fechamento-pos-sync')
+    ->withoutOverlapping();
+Schedule::command('adman:warm-fechamento')
+    ->dailyAt('16:00')
+    ->name('warm-fechamento-tarde')
+    ->withoutOverlapping();
+
 // Calcula resultados de metas diariamente às 11:45 BRT (depois do adman:sync D-1)
 Schedule::command('goals:calculate')
     ->dailyAt('11:45')
