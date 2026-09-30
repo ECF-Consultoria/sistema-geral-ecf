@@ -252,7 +252,9 @@ class NotificacaoController extends Controller
         // Resolve destinatários conforme o público escolhido (ENVIO-02).
         $destinatarios = match ($data['publico']) {
             'usuario' => User::where('id', $data['usuario_id'])->get(),
-            'setor'   => Setor::find($data['setor_id'])->membros,
+            // unique('id'): pessoa com dois cargos no mesmo setor (D-01, Fase 159)
+            // aparece duas vezes na pivot — sem isto receberia a notificação 2x.
+            'setor'   => Setor::find($data['setor_id'])->membros->unique('id')->values(),
             'lideres' => User::whereHas('setoresLiderados')->get(),
             'todos'   => User::where('active', true)->get(),
         };

@@ -60,7 +60,10 @@ class SetorGoal extends Model
                 return;
             }
 
-            $membros = $setor->membros;
+            // unique('id'): com dois cargos no mesmo setor (D-01, Fase 159) a
+            // relação devolve a pessoa duas vezes — uma por linha da pivot
+            // `user_setores` — e ela seria notificada em dobro sem isto.
+            $membros = $setor->membros->unique('id')->values();
             if ($membros->isEmpty()) {
                 return;
             }
