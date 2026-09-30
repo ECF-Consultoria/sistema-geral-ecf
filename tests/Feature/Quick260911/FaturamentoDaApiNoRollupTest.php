@@ -402,8 +402,23 @@ class FaturamentoDaApiNoRollupTest extends TestCase
         app(FechamentoRollupService::class)->porEmpresa('2026-08', null, faturamentoDaApi: true);
     }
 
+    /**
+     * SUPERADO EM PARTE pelo quick 260930-njd, e o teste foi reescrito em vez
+     * de apagado porque METADE dele continua sendo a trava mais importante:
+     * o mês corrente NUNCA chama a Adman ao vivo.
+     *
+     * O que mudou: antes o mês corrente ignorava a API por completo e o
+     * resultado era `soma_diaria`. Agora ele CONSULTA o cache (aquecido
+     * off-request por `adman:warm-fechamento`); com o cache frio, como aqui,
+     * cai para a soma diária marcando `soma_diaria_fallback` — o número é o
+     * nosso e a tela precisa poder dizer isso.
+     *
+     * O que NÃO mudou e é o ponto: zero chamada HTTP. 84 chamadas dentro de um
+     * carregamento de tela é como o `cache:clear` de 2026-07-30 derrubou a
+     * produção.
+     */
     #[Test]
-    public function mes_corrente_ignora_a_api_mesmo_com_a_chave_ligada(): void
+    public function mes_corrente_nunca_chama_a_api_ao_vivo_e_cai_no_fallback_com_cache_frio(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-11'));
 
@@ -412,8 +427,6 @@ class FaturamentoDaApiNoRollupTest extends TestCase
 
         $this->fakeApi(50_000.00);
 
-        // Setembro é o mês corrente: a janela vai do dia 1 até HOJE e o
-        // `/performance` de mês incompleto muda de resposta a cada hora.
         $resultado = app(FechamentoRollupService::class)->porEmpresa(
             '2026-09',
             Company::whereKey($company->id)->get(),
@@ -422,7 +435,7 @@ class FaturamentoDaApiNoRollupTest extends TestCase
 
         Http::assertNothingSent();
         $this->assertEqualsWithDelta(8_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK, $resultado[$company->id]['faturamento_fonte']);
     }
 
     #[Test]

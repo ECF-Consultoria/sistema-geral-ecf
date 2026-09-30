@@ -45,8 +45,11 @@ use InvalidArgumentException;
  * para mês passado.
  *
  * Quick 260911-eph — a soma diária deixa de ser a única fonte possível:
- * `porEmpresa()` ganha `$faturamentoDaApi` (OPT-IN, default `false`, quem
- * liga é SÓ `ConsolidarMesFechamento`). Motivo, medido em produção e não
+ * `porEmpresa()` ganha `$faturamentoDaApi` (OPT-IN, default `false`). Quem
+ * liga, desde o quick 260930-njd, são DOIS chamadores: o
+ * `ConsolidarMesFechamento` (mês fechado, chamada ao vivo) e a tela do
+ * fechamento via `AdminController::fechamentoDadosPorEmpresaAoVivo()` (mês
+ * corrente, SÓ do cache). Motivo, medido em produção e não
  * presumido: cada linha de `adman_metrics` é escrita uma vez, na manhã
  * seguinte, e nunca mais revisitada — a Adman aplica ajustes retroativos
  * (devoluções, conciliação) que não voltam para o nosso banco. DESK DESIGN,
@@ -105,6 +108,62 @@ class FechamentoRollupService
             'inicio' => Carbon::createFromFormat('Y-m-d', $periodo['current_start'])->startOfDay(),
             'fim'    => Carbon::createFromFormat('Y-m-d', $periodo['current_end'])->startOfDay(),
         ];
+    }
+
+    /**
+     * Quick 260930-njd — a janela que se PEDE à Adman para `$mes`, que não é
+     * sempre a mesma de `janela()`.
+     *
+     * A Adman é D-1: publica o consolidado do dia anterior às ~10h BRT. Num
+     * mês FECHADO a janela inteira já é passado e as duas coincidem. No mês
+     * CORRENTE `janela()` vai até HOJE — e pedir `/performance` incluindo hoje
+     * devolve um dia pela metade, que muda de valor a cada hora e faria a
+     * mesma tela mostrar números diferentes de manhã e de tarde. Aqui o fim é
+     * clampado em ONTEM.
+     *
+     * Este método existe para ser a ÚNICA definição dessa janela: o
+     * `fetchGrossBilling()` cacheia por `custId:dateFrom:dateTo:dia`, então o
+     * comando que aquece (`adman:warm-fechamento`) e a leitura da tela
+     * precisam pedir o intervalo EXATAMENTE igual — um dia de diferença e a
+     * chave não casa, o cache fica eternamente frio e a tela cai no fallback
+     * para sempre.
+     *
+     * `null` quando não existe nenhum dia fechado dentro da janela — é o dia
+     * 1º do mês corrente, em que ontem ainda pertence ao mês passado. Nesse
+     * caso não há o que perguntar à Adman.
+     *
+     * @return array{inicio: Carbon, fim: Carbon}|null
+     */
+    public function janelaDaAdman(string $mes): ?array
+    {
+        $janela = $this->janela($mes);
+        $ontem  = Carbon::now()->subDay()->startOfDay();
+
+        $fim = $janela['fim']->greaterThan($ontem) ? $ontem->copy() : $janela['fim']->copy();
+
+        if ($fim->lessThan($janela['inicio'])) {
+            return null;
+        }
+
+        return [
+            'inicio' => $janela['inicio']->copy(),
+            'fim'    => $fim,
+        ];
+    }
+
+    /**
+     * Quick 260930-njd — a MESMA regra de `podeUsarApiDaAdman()`, exposta
+     * para quem está fora deste serviço (hoje só o `adman:warm-fechamento`).
+     *
+     * É um invólucro de propósito, não uma segunda implementação: quem aquece
+     * o cache tem de aquecer exatamente as empresas que a tela vai consultar,
+     * e duplicar o critério dos três cortes (sem `cust_id`, Adman puro,
+     * `ml_driven` com a mesma loja) seria criar uma segunda régua que
+     * envelhece sozinha. O método privado segue intocado.
+     */
+    public function podeLerFaturamentoDaAdman(Company $company): bool
+    {
+        return $this->podeUsarApiDaAdman($company);
     }
 
     /**
@@ -190,10 +249,19 @@ class FechamentoRollupService
      * e têm `cust_id`. Exige `$companies` pela mesma razão que
      * `$somenteContratadas`: é de lá que vêm `cust_id` e o token ML.
      *
-     * ⚠️ **Só mês FECHADO.** Com a chave ligada numa competência que é o mês
-     * corrente, a API é ignorada e vale a soma diária: a janela do mês
-     * corrente vai do dia 1 até HOJE, e pedir `/performance` de mês
-     * incompleto compara coisa diferente a cada hora do dia.
+     * Quick 260930-njd: o mês CORRENTE passou a usar a API também — mas SÓ do
+     * cache (`getCachedGrossBillingsMany()`), nunca ao vivo, e pedindo a
+     * janela de `janelaDaAdman()` (dia 1º até ONTEM, porque a Adman é D-1).
+     * Cache frio = soma diária com fonte `soma_diaria_fallback`.
+     *
+     * `$apiSomenteDoCache` (default `false`) estende esse modo a QUALQUER
+     * competência. Quem liga é quem roda dentro de um request — a tela do
+     * fechamento, que calcula o mês corrente E o mês anterior (fechado) num
+     * carregamento só; sem isto, o mês anterior faria dezenas de chamadas
+     * HTTP sequenciais no meio da requisição. Fora do request
+     * (`fechamento:consolidar-mes`) fica `false` e o mês fechado segue
+     * chamando a Adman ao vivo, com a pausa de sempre — é ali que a
+     * competência vira cobrança e o número não pode depender de aquecimento.
      *
      * ⚠️ **Fallback nunca silencioso.** API que falha ou devolve `null` cai
      * para o `SUM(revenue)` com fonte `soma_diaria_fallback` e um
@@ -207,7 +275,7 @@ class FechamentoRollupService
      * @param  Collection<int, Company>|null  $companies
      * @return array<int, array{faturamento_ml: float|null, faturamento_shopee: float|null, faturamento_total: float|null, plataformas_consideradas: array<int, string>, faturamento_fonte: string}>
      */
-    public function porEmpresa(string $mes, ?Collection $companies = null, bool $somenteContratadas = false, bool $faturamentoDaApi = false): array
+    public function porEmpresa(string $mes, ?Collection $companies = null, bool $somenteContratadas = false, bool $faturamentoDaApi = false, bool $apiSomenteDoCache = false): array
     {
         if ($somenteContratadas && $companies === null) {
             throw new InvalidArgumentException(
@@ -225,11 +293,46 @@ class FechamentoRollupService
         $inicio = $janela['inicio'];
         $fim    = $janela['fim'];
 
-        // ⚠️ Mês corrente NUNCA usa a API, mesmo com a chave ligada — a
-        // janela vai até hoje e o `/performance` de mês incompleto muda de
-        // resposta a cada hora. A checagem é sobre `$mes`, não sobre a
-        // janela, para espelhar exatamente a regra de `janela()` acima.
-        $usarApi = $faturamentoDaApi && $mes !== Carbon::now()->format('Y-m');
+        // Quick 260930-njd — o mês corrente DEIXOU de ser proibido de usar a
+        // API, mas entra por uma porta diferente: a leitura SÓ DO CACHE.
+        //
+        // O que mudou e por quê: a conferência de setembro/2026 contra a
+        // Adman (mês ainda aberto) divergiu em quase toda empresa — amostra
+        // de 12 empresas, 01/09–29/09, R$ 12.468.923,94 na nossa soma contra
+        // R$ 12.910.546,59 na Adman (+3,5%, a Adman maior em 9 e menor em 2).
+        // Dia a dia, mesma empresa: 01/09 guardado 24.770,86 contra 26.506,96
+        // hoje; 28/09 guardado 15.933,13 contra 17.904,08 (+12,4%). A Adman
+        // revisa dias já passados para os dois lados depois da nossa coleta, e
+        // `adman:sync` grava D-1 uma vez e nunca volta. O total do período
+        // pedido à Adman já vem com essas revisões aplicadas.
+        //
+        // ⚠️ Mas NUNCA ao vivo dentro do request: 84 chamadas HTTP sequenciais
+        // num carregamento de tela é exatamente a forma como o `cache:clear`
+        // de 2026-07-30 derrubou a produção (o dashboard passou a esperar a
+        // Adman, as requisições lentas ocuparam os workers do php-fpm e até o
+        // login parou). Cache frio cai para a soma diária com fonte
+        // `soma_diaria_fallback`.
+        //
+        // Duas coisas ligam o modo cache-only, e a diferença importa:
+        //
+        // 1. `$apiSomenteDoCache` — pedido EXPLÍCITO do chamador. Quem pede é
+        //    a tela (`AdminController::fechamentoDadosPorEmpresaAoVivo()`), e
+        //    ela pede para OS DOIS meses que calcula: o mês anterior é
+        //    competência FECHADA, e sem este pedido o ramo de mês fechado
+        //    abaixo faria dezenas de chamadas HTTP no meio do carregamento —
+        //    o problema que este modo existe para evitar.
+        // 2. Mês corrente, sempre. Aqui o motivo é outro: `/performance` do
+        //    mês em curso é o único intervalo cujo cache é aquecido de fora
+        //    (`adman:warm-fechamento`), e chamá-lo ao vivo de qualquer
+        //    lugar — inclusive do CLI — voltaria a comparar um intervalo que
+        //    muda de valor a cada hora.
+        $lerApiSomenteDoCache = $apiSomenteDoCache || $mes === Carbon::now()->format('Y-m');
+
+        // A janela pedida à Adman NÃO é `$inicio..$fim`: no mês corrente ela
+        // para em ontem (a Adman é D-1). `null` = nenhum dia fechado na
+        // janela (dia 1º do mês) → não há o que perguntar.
+        $janelaApi = $faturamentoDaApi ? $this->janelaDaAdman($mes) : null;
+        $usarApi   = $faturamentoDaApi && $janelaApi !== null;
 
         // Uma query para todos os tokens — o acessor `is_ml_driven` lê
         // `mlToken` e faria N+1 no laço de ~201 empresas sem isto. Guard de
@@ -238,6 +341,38 @@ class FechamentoRollupService
         if ($usarApi && $companies instanceof EloquentCollection) {
             $companies->loadMissing('mlToken');
         }
+
+        // Modo cache-only: UMA leitura em lote (um round-trip, zero HTTP)
+        // antes do laço, em vez de um `Cache::get` por empresa.
+        $cacheDaApi = [];
+
+        if ($usarApi && $lerApiSomenteDoCache && $companies !== null) {
+            $custIdsParaLer = $companies
+                ->filter(fn (Company $company) => $this->podeUsarApiDaAdman($company))
+                ->map(fn (Company $company) => (string) $company->cust_id)
+                ->filter(fn (string $custId) => $custId !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            if ($custIdsParaLer !== []) {
+                // Marketplace fica no default 'meli', igual à chamada ao vivo
+                // logo abaixo e igual ao comando de aquecimento — a chave de
+                // cache inclui o marketplace, e divergir aqui deixaria o
+                // cache eternamente frio.
+                $cacheDaApi = $this->admanService->getCachedGrossBillingsMany(
+                    $custIdsParaLer,
+                    $janelaApi['inicio']->toDateString(),
+                    $janelaApi['fim']->toDateString(),
+                );
+            }
+        }
+
+        // Cache frio: as empresas que ficaram sem o número da Adman entram
+        // aqui e saem num ÚNICO aviso depois do laço. Um
+        // `Log::warning` por empresa dentro de um carregamento de tela seriam
+        // 84 linhas por visita — o aviso que aparece sempre deixa de ser aviso.
+        $semNumeroDaAdman = [];
 
         $mlQuery = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
             ->whereNotNull('revenue')
@@ -299,25 +434,31 @@ class FechamentoRollupService
                 $plataformasConsideradas = ['ml', 'shopee'];
             }
 
-            // ── Quick 260911-eph — a fonte do lado ML ─────────────────────
-            // Só entra aqui se a chave está ligada, a competência é mês
-            // fechado E o lado ML conta para esta empresa (com o recorte por
-            // contrato ligado, não adianta chamar a API de quem não tem
+            // ── Quick 260911-eph / 260930-njd — a fonte do lado ML ───────
+            // Só entra aqui se a chave está ligada, existe janela fechada para
+            // pedir à Adman E o lado ML conta para esta empresa (com o recorte
+            // por contrato ligado, não adianta chamar a API de quem não tem
             // plataforma ML elegível — o valor seria zerado logo abaixo).
             if ($usarApi && in_array('ml', $plataformasConsideradas, true)) {
                 $company = $companiesPorId[$companyId] ?? null;
 
                 if ($company !== null && $this->podeUsarApiDaAdman($company)) {
-                    if ($chamadasApiFeitas > 0) {
-                        usleep(self::PAUSA_ENTRE_CHAMADAS_API);
-                    }
-                    $chamadasApiFeitas++;
+                    if ($lerApiSomenteDoCache) {
+                        // Modo cache-only — SÓ o que o aquecimento já deixou
+                        // pronto. Zero chamada HTTP dentro do request.
+                        $valorApi = $cacheDaApi[(string) $company->cust_id]['value'] ?? null;
+                    } else {
+                        if ($chamadasApiFeitas > 0) {
+                            usleep(self::PAUSA_ENTRE_CHAMADAS_API);
+                        }
+                        $chamadasApiFeitas++;
 
-                    $valorApi = $this->admanService->fetchGrossBilling(
-                        (string) $company->cust_id,
-                        $inicio->toDateString(),
-                        $fim->toDateString(),
-                    );
+                        $valorApi = $this->admanService->fetchGrossBilling(
+                            (string) $company->cust_id,
+                            $janelaApi['inicio']->toDateString(),
+                            $janelaApi['fim']->toDateString(),
+                        );
+                    }
 
                     if ($valorApi === null) {
                         // Fallback JAMAIS silencioso: o número continua
@@ -325,17 +466,22 @@ class FechamentoRollupService
                         // era outro. O gate do comando conta estes casos.
                         $faturamentoFonte = FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK;
 
-                        Log::warning(
-                            "[Fechamento] Faturamento da API indisponível para a empresa {$company->id} ({$company->name}) "
-                            ."na competência {$mes} — caindo para a soma diária de adman_metrics.",
-                            [
-                                'company_id'  => (int) $company->id,
-                                'cust_id'     => (string) $company->cust_id,
-                                'competencia' => $mes,
-                                'janela'      => $inicio->toDateString().'..'.$fim->toDateString(),
-                                'fonte'       => FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK,
-                            ]
-                        );
+                        if ($lerApiSomenteDoCache) {
+                            // Vai num aviso só, depois do laço.
+                            $semNumeroDaAdman[] = "{$company->id} ({$company->name})";
+                        } else {
+                            Log::warning(
+                                "[Fechamento] Faturamento da API indisponível para a empresa {$company->id} ({$company->name}) "
+                                ."na competência {$mes} — caindo para a soma diária de adman_metrics.",
+                                [
+                                    'company_id'  => (int) $company->id,
+                                    'cust_id'     => (string) $company->cust_id,
+                                    'competencia' => $mes,
+                                    'janela'      => $janelaApi['inicio']->toDateString().'..'.$janelaApi['fim']->toDateString(),
+                                    'fonte'       => FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK,
+                                ]
+                            );
+                        }
                     } else {
                         // A API é a régua para esta empresa, inclusive quando
                         // devolve MENOS que a soma diária (é justamente o que
@@ -379,6 +525,26 @@ class FechamentoRollupService
                 'plataformas_consideradas'  => $plataformasConsideradas,
                 'faturamento_fonte'         => $faturamentoFonte,
             ];
+        }
+
+        // Quick 260930-njd — um aviso por CARREGAMENTO, com a lista de nomes.
+        // Uma ou duas empresas aqui é a Adman tendo dado erro naquela conta; a
+        // lista inteira é sinal de que `adman:warm-fechamento` não rodou hoje,
+        // e é isso que precisa aparecer no log de uma vez só.
+        if ($semNumeroDaAdman !== []) {
+            Log::warning(
+                '[Fechamento] O número da Adman ainda não estava disponível para '
+                .count($semNumeroDaAdman)." empresa(s) na competência {$mes} — caindo para a soma diária de adman_metrics. "
+                .'Conferir se o aquecimento (adman:warm-fechamento) rodou hoje.',
+                [
+                    'competencia' => $mes,
+                    'janela_api'  => $janelaApi !== null
+                        ? $janelaApi['inicio']->toDateString().'..'.$janelaApi['fim']->toDateString()
+                        : null,
+                    'empresas'    => $semNumeroDaAdman,
+                    'fonte'       => FechamentoSnapshot::FONTE_SOMA_DIARIA_FALLBACK,
+                ]
+            );
         }
 
         return $resultado;

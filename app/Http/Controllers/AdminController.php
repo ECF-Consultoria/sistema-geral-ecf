@@ -18,6 +18,7 @@ use App\Services\AdmanService;
 use App\Services\Fechamento\FechamentoComparativoService;
 use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaResolver;
+use App\Services\Fechamento\FechamentoFonteFaturamento;
 use App\Services\Fechamento\FechamentoRegraTabela;
 use App\Services\Fechamento\FechamentoRollupService;
 use App\Support\CobrancaCalculator;
@@ -36,6 +37,12 @@ class AdminController extends Controller
         private FechamentoFaixaResolver $faixaResolver,
         private FechamentoComparativoService $comparativoService,
         private FechamentoRegraTabela $regra,
+        // Quick 260930-njd — a chave `fechamento_faturamento_da_api_ativo`.
+        // A tela do fechamento passou a ler o faturamento do mês CORRENTE do
+        // total do período da Adman (do cache, nunca ao vivo); quem decide se
+        // isso vale é a mesma chave que a consolidação já obedece, e não um
+        // segundo interruptor.
+        private FechamentoFonteFaturamento $fonteFaturamento,
     ) {}
 
     public function empresas()
@@ -792,18 +799,40 @@ class AdminController extends Controller
         // compararia réguas diferentes entre os dois meses e inventaria
         // evolução de faixa falsa (mesma disciplina de
         // `ConsolidarMesFechamento::handle()`).
-        $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies, somenteContratadas: $regraNova);
+        // Quick 260930-njd — `faturamentoDaApi` vai NAS TRÊS chamadas, pela
+        // mesma razão que `somenteContratadas` vai: recortar só a competência
+        // atual compararia réguas diferentes entre os dois meses (um mês pelo
+        // total da Adman, o outro pela soma diária) e inventaria evolução de
+        // faixa que não existe. A chave é a mesma da consolidação; desligada,
+        // o default `false` de `porEmpresa()` mantém tudo byte a byte como
+        // era.
+        //
+        // ⚠️ `apiSomenteDoCache: true` vai junto, e não é detalhe: o mês
+        // ANTERIOR é competência fechada, e sem isso o rollup chamaria a Adman
+        // ao vivo dezenas de vezes no meio do carregamento da tela — a forma
+        // exata como o `cache:clear` de 2026-07-30 derrubou a produção (as
+        // requisições lentas ocuparam os workers do php-fpm e até o login
+        // parou). Dentro de um request a Adman só é lida do cache, aquecido
+        // off-request por `adman:warm-fechamento`.
+        $faturamentoDaApi = $this->fonteFaturamento->ativa();
+
+        $rollupAtual = $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies, somenteContratadas: $regraNova, faturamentoDaApi: $faturamentoDaApi, apiSomenteDoCache: true);
 
         $mesAnterior    = Carbon::createFromFormat('Y-m-d', $mesSelecionado.'-01')->startOfMonth()->subMonthNoOverflow();
-        $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies, somenteContratadas: $regraNova);
+        $rollupAnterior = $this->rollupService->porEmpresa($mesAnterior->format('Y-m'), $rawCompanies, somenteContratadas: $regraNova, faturamentoDaApi: $faturamentoDaApi, apiSomenteDoCache: true);
 
         // Fase 141 (D-02) — só quando a regra nova filtra plataforma: o
         // faturamento BRUTO (sem filtro) alimenta SÓ a explicação da tela
         // de qual plataforma ficou de fora da conta — nunca a classificação
         // nem a cobrança, que usam sempre o rollup filtrado acima. Uma
         // chamada extra (2 queries agregadas), fora do laço de empresas.
+        // Quick 260930-njd — a terceira chamada recebe o MESMO
+        // `faturamentoDaApi` das outras duas. O bruto é a referência que a tela
+        // usa para dizer "esta plataforma ficou de fora da conta": se ele viesse
+        // da soma diária enquanto o recortado vem do total da Adman, a
+        // comparação acusaria diferença onde só há duas fontes distintas.
         $rollupBrutoAtual = $regraNova
-            ? $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies)
+            ? $this->rollupService->porEmpresa($mesSelecionado, $rawCompanies, faturamentoDaApi: $faturamentoDaApi, apiSomenteDoCache: true)
             : [];
 
         $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
@@ -816,7 +845,7 @@ class AdminController extends Controller
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $fatAtual  = $rollupAtual[$c->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null];
+            $fatAtual  = $rollupAtual[$c->id] ?? ['faturamento_ml' => null, 'faturamento_shopee' => null, 'faturamento_total' => null, 'faturamento_fonte' => null];
             $fatBruto  = $rollupBrutoAtual[$c->id] ?? null;
 
             $hasAdman      = $c->cust_id !== null;
@@ -976,6 +1005,14 @@ class AdminController extends Controller
                 // explicar).
                 'faturamento_ml_bruto'     => $fatBruto['faturamento_ml'] ?? null,
                 'faturamento_shopee_bruto' => $fatBruto['faturamento_shopee'] ?? null,
+                // Quick 260930-njd (T1) — literal 1 de 5. De onde saiu o
+                // número: o total do período conferido com a Adman ('api') ou
+                // a nossa soma dia a dia ('soma_diaria' / 'soma_diaria_fallback'
+                // quando a Adman era a régua e não respondeu). A tela precisa
+                // dizer isso, porque a soma diária envelhece (a Adman revisa
+                // dias passados) e conferir sem saber qual dos dois está na
+                // tela é conferir às cegas.
+                'faturamento_fonte'     => $fatAtual['faturamento_fonte'] ?? null,
                 'cobranca_mensal'       => $cobrancaMensal,
                 'evolucao'              => $evolucao,
                 // Fase 139 (D-04): de qual faixa a empresa veio e quanto
@@ -1079,6 +1116,10 @@ class AdminController extends Controller
                     'plataformas_consideradas' => null,
                     'faturamento_ml_bruto'     => null,
                     'faturamento_shopee_bruto' => null,
+                    // Quick 260930-njd (T1) — literal 2 de 5. Sem linha nesta
+                    // competência não há número nenhum, logo não há de onde ele
+                    // tenha vindo; `null` e a tela não mostra nada.
+                    'faturamento_fonte'        => null,
                     // Quick 260904-kwz — sem linha nesta competência, não há
                     // tabela nenhuma pra perguntar se está confirmada.
                     'tabela_confirmada'     => null,
@@ -1164,6 +1205,11 @@ class AdminController extends Controller
                 'plataformas_consideradas' => null,
                 'faturamento_ml_bruto'     => null,
                 'faturamento_shopee_bruto' => null,
+                // Quick 260930-njd (T1) — literal 3 de 5. Aqui a procedência
+                // vem CONGELADA junto do snapshot (a coluna
+                // `faturamento_fonte` existe desde o quick 260911-eph) — nunca
+                // recalculada, mesma disciplina do D-11.
+                'faturamento_fonte'        => $s->faturamento_fonte,
                 // Quick 260904-kwz — confirmada (cadastro manual ou contrato
                 // assinado) ou só presumida a partir do serviço. Lê o
                 // contrato assinado ATUAL (não congela junto do snapshot) —
@@ -1427,6 +1473,16 @@ class AdminController extends Controller
                 // a linha de grupo não duplica a conta.
                 'faturamento_ml_bruto'     => null,
                 'faturamento_shopee_bruto' => null,
+                // Quick 260930-njd (T1) — literal 4 de 5. A chave SAI (a tela
+                // lê a mesma propriedade em toda linha; faltar em uma é como
+                // nasceu a chave fantasma desta tela), mas grupo fica `null` de
+                // propósito: o total do grupo é a soma de membros que podem ter
+                // vindo de procedências DIFERENTES entre si, e escolher uma
+                // delas para rotular a linha inteira seria dizer do número do
+                // grupo uma coisa que só vale para parte dele. A procedência
+                // aparece empresa por empresa, ao abrir a linha — mesma
+                // disciplina de `faturamento_ml_bruto` logo acima.
+                'faturamento_fonte'        => null,
                 // Quick 260904-kwz — confirmada (cadastro manual do GRUPO ou
                 // da empresa-âncora, ou contrato assinado da âncora) ou só
                 // presumida a partir do serviço. `origem` 'grupo' já é
@@ -1597,6 +1653,11 @@ class AdminController extends Controller
                 'plataformas_consideradas' => null,
                 'faturamento_ml_bruto'     => null,
                 'faturamento_shopee_bruto' => null,
+                // Quick 260930-njd (T1) — literal 5 de 5. Mesma razão do
+                // literal 4: a linha de grupo soma membros de procedências
+                // possivelmente diferentes, e o snapshot de grupo não guarda
+                // essa coluna. `null`, nunca palpite.
+                'faturamento_fonte'        => null,
                 // Quick 260904-kwz — mesma regra do ramo ao vivo: origem
                 // 'grupo' é manual por si só; 'propria'/'servico' checam o
                 // contrato assinado da empresa-âncora deste snapshot. Fase

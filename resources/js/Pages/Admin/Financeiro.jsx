@@ -727,6 +727,41 @@ function FaturamentoCombinadoBreakdown({ faturamentoMl, faturamentoShopee, plata
     );
 }
 
+// Quick 260930-njd (T1) — de onde saiu o número do mês.
+//
+// Existe porque os dois caminhos possíveis dão valores DIFERENTES e quem
+// confere precisa saber qual está na tela. A Adman revisa dias já passados
+// depois da nossa coleta (medido em 30/09/2026: o dia 28/09 estava guardado
+// como R$ 15.933,13 e a Adman já mostrava R$ 17.904,08 — +12,4%), então a nossa
+// soma dia a dia envelhece. Quando o total do período vem da Adman, é ele que
+// bate com o painel dela; quando não vem, o número é o nosso e a tela diz isso
+// em voz alta em vez de deixar a pessoa achar divergência que não é erro.
+//
+// A soma diária SEM tentativa de conferência não mostra nada: é o estado
+// normal de quem não tem conta Adman conferível, e um selo em toda linha
+// viraria ruído que ninguém lê. Sem jargão de propósito — a pessoa que confere
+// não tem que saber o que é aquecimento, chave nem endereço de API.
+function ProcedenciaFaturamentoNota({ fonte }) {
+    if (fonte === 'api') {
+        return (
+            <p className="text-white/40 text-[12px]">
+                Total conferido com a Adman, já com os ajustes que ela fez nos dias passados.
+            </p>
+        );
+    }
+
+    if (fonte === 'soma_diaria_fallback') {
+        return (
+            <p className="text-amber-300/70 text-[12px]">
+                O total da Adman não chegou hoje — este é o nosso, somado dia a dia, e pode
+                estar alguns por cento abaixo do que a Adman mostra.
+            </p>
+        );
+    }
+
+    return null;
+}
+
 // Fase 141 (D-03) — o paliativo do quick 260909-lge (composição "faixa +
 // contrato" da mensalidade) SAIU: pela regra nova essa soma deixa de
 // existir, a mensalidade é só o valor da faixa. O que resta abaixo é só o
@@ -1332,6 +1367,11 @@ function FechamentoAccordion({ empresa, mesSelecionado, faixasPorServico, faixas
                             faturamentoMlBruto={empresa.faturamento_ml_bruto}
                             faturamentoShopeeBruto={empresa.faturamento_shopee_bruto}
                         />
+                        {/* Quick 260930-njd (T1) — o número grande acima pode vir
+                            da Adman ou da nossa soma dia a dia, e os dois não
+                            batem. Fica no fim do cartão, discreto, e só aparece
+                            quando há de fato algo a dizer. */}
+                        <ProcedenciaFaturamentoNota fonte={empresa.faturamento_fonte} />
                     </div>
 
                     {empresa.estado === 'sem_tabela' ? (

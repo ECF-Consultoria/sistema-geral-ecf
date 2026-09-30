@@ -24,6 +24,12 @@ use Tests\TestCase;
  *  - `AdminController::fechamento()` — a tela renderiza a cada carregamento;
  *    48 chamadas HTTP por page load é inaceitável (e a tela de mês fechado
  *    já lê o snapshot congelado, então recebe o número corrigido de graça).
+ *    ⚠️ Quick 260930-njd: a tela PASSOU a ligar `faturamentoDaApi` (o mês em
+ *    curso precisava bater com a Adman), mas junto com `apiSomenteDoCache:
+ *    true` — lê o cache aquecido por `adman:warm-fechamento` e nunca a rede.
+ *    Por isso este teste continua valendo SEM ALTERAÇÃO e ficou ainda mais
+ *    importante: é ele que trava a tela em zero chamada HTTP agora que ela
+ *    tem permissão de usar o número da Adman.
  *  - `EnviarRelatorioFechamentoJob` — relatório por e-mail, mesma razão.
  *  - `CompararMensalidadeFechamento` — leitura pura de conferência.
  *
