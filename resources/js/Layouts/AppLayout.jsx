@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
 import AvisoTicketRespondido from '@/Components/Chamados/AvisoTicketRespondido';
 import ThemeToggle from '@/Components/ThemeToggle';
+import { useModoTvLigado } from '@/hooks/useModoTv';
 
 /**
  * Árvore de navegação com suporte a grupos colapsáveis.
@@ -421,6 +422,8 @@ export default function AppLayout({ children, title }) {
     });
     const [mobileOpen, setMobileOpen] = useState(false);
     const [toast, setToast] = useState(null);
+    // Painel de parede na tela (Modo TV do Painel Polos): nada de aviso flutuante por cima.
+    const modoTv = useModoTvLigado();
 
     // `collapsed` continua sendo a variavel que todo o render consulta —
     // mudou apenas QUEM a decide.
@@ -996,24 +999,27 @@ export default function AppLayout({ children, title }) {
                 </main>
             </div>
 
-            {/* Canto inferior direito: avisos de ticket de quem abriu + toast — empilhados, sem sobrepor */}
-            <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
-                <AvisoTicketRespondido />
-                {toast && (
-                    <div className={cn(
-                        'flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
-                        'border backdrop-blur-md',
-                        toast.type === 'success'
-                            ? 'bg-green-950/90 border-green-500/30 text-green-300'
-                            : 'bg-red-950/90 border-red-500/30 text-red-300'
-                    )}>
-                        <span>{toast.message}</span>
-                        <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
-                            <X size={14} />
-                        </button>
-                    </div>
-                )}
-            </div>
+            {/* Canto inferior direito: avisos de ticket de quem abriu + toast — empilhados, sem sobrepor.
+                Em Modo TV a pilha nem monta (o aviso segue não lido, para o dono ver no computador dele). */}
+            {!modoTv && (
+                <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+                    <AvisoTicketRespondido />
+                    {toast && (
+                        <div className={cn(
+                            'flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
+                            'border backdrop-blur-md',
+                            toast.type === 'success'
+                                ? 'bg-green-950/90 border-green-500/30 text-green-300'
+                                : 'bg-red-950/90 border-red-500/30 text-red-300'
+                        )}>
+                            <span>{toast.message}</span>
+                            <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

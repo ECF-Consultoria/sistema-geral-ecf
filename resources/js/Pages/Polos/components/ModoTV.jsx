@@ -3,6 +3,7 @@ import { usePage } from '@inertiajs/react';
 import { Building2, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
+import { useAnunciarModoTv } from '@/hooks/useModoTv';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
@@ -296,6 +297,10 @@ export default function ModoTV({
     const { asset_url } = usePage().props;
     const [agora, setAgora]             = useState(() => new Date());
     const [atualizadoEm, setAtualizado] = useState(() => new Date());
+
+    // Este overlay mora DENTRO do AppLayout: sem o sinal, o aviso de ticket respondido
+    // e o toast de flash aparecem por cima da parede e ninguém está lá para fechar.
+    useAnunciarModoTv();
 
     // Ao voltar de um reload o Modo TV é restaurado sem gesto do usuário, e a Fullscreen
     // API exige gesto — então rearmamos na primeira interação (um clique/tecla qualquer
