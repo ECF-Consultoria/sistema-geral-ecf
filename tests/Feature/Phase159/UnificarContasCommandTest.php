@@ -6,8 +6,11 @@ use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
+use App\Services\DesempenhoScoreService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -15,9 +18,6 @@ use Tests\TestCase;
  * Fase 159 Plano 159-05 (D-06/D-11) — prova de SC6 (núcleo): dry-run por
  * padrão, censo de D-11, `--apply` com backup por lote, reconsulta ao banco
  * e `--desfazer`.
- *
- * Task 1 (RED→GREEN): testes 1-7, só o caminho dry-run. Task 2 acrescenta
- * os testes 8-15 (--apply/--desfazer/cache) sobre a mesma fixture.
  *
  * Fixture única (setUp), espelhando a descrição do <behavior> do plano:
  *  - Setor Performance com cargos analista/estrategista (reusa o setor
@@ -114,6 +114,12 @@ class UnificarContasCommandTest extends TestCase
         $this->vincularCarteira($this->companyCId, $this->destinoId, 'estrategista', $this->servicoPerfId, '2026-04-01');
     }
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     // ═════════════════════════════════════════════════════════════════════
     // Helpers
     // ═════════════════════════════════════════════════════════════════════
@@ -184,7 +190,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 1: dry-run não grava nada
+    // Task 1 — Teste 1: dry-run não grava nada
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_dry_run_sem_apply_nao_grava_nada(): void
@@ -198,7 +204,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 2: --json mostra etapas/censo corretos
+    // Task 1 — Teste 2: --json mostra etapas/censo corretos
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_json_mostra_chaves_etapas_na_ordem_e_censo(): void
@@ -238,7 +244,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 3: snapshot mensal já consolidado bloqueia
+    // Task 1 — Teste 3: snapshot mensal já consolidado bloqueia
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_bloqueia_com_snapshot_mensal_ja_consolidado(): void
@@ -261,7 +267,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 4: detalhe por empresa consolidado (destino) bloqueia
+    // Task 1 — Teste 4: detalhe por empresa consolidado (destino) bloqueia
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_bloqueia_com_detalhe_por_empresa_consolidado_para_o_destino(): void
@@ -280,7 +286,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 5: validações de --de/--para/--a-partir
+    // Task 1 — Teste 5: validações de --de/--para/--a-partir
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_de_igual_a_para_e_recusado(): void
@@ -299,7 +305,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 6: destino inativo bloqueia
+    // Task 1 — Teste 6: destino inativo bloqueia
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_destino_inativo_bloqueia(): void
@@ -312,7 +318,7 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
-    // Teste 7: censo sem_regra trava; --manter libera
+    // Task 1 — Teste 7: censo sem_regra trava; --manter libera
     // ═════════════════════════════════════════════════════════════════════
 
     public function test_censo_sem_regra_com_linhas_trava_e_manter_libera(): void
@@ -345,5 +351,257 @@ class UnificarContasCommandTest extends TestCase
 
         $exitComManter = $this->chamar($this->opcoesBase(['--manter' => ['setor_lideres.user_id']]));
         $this->assertSame(0, $exitComManter);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 8: --apply move a carteira preservando linha/assigned_at
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_carteira_preservando_linha_e_assigned_at(): void
+    {
+        $linhaAId = DB::table('company_users')
+            ->where('company_id', $this->companyAId)->where('user_id', $this->origemId)->value('id');
+        $linhaBId = DB::table('company_users')
+            ->where('company_id', $this->companyBId)->where('user_id', $this->origemId)->value('id');
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+
+        $this->assertSame(0, $exit);
+
+        $linhaA = DB::table('company_users')->where('id', $linhaAId)->first();
+        $this->assertSame($this->destinoId, (int) $linhaA->user_id);
+        $this->assertSame('2026-06-01', substr((string) $linhaA->assigned_at, 0, 10));
+
+        $linhaB = DB::table('company_users')->where('id', $linhaBId)->first();
+        $this->assertSame($this->destinoId, (int) $linhaB->user_id);
+
+        $linhasC = DB::table('company_users')->where('company_id', $this->companyCId)->get();
+        $this->assertCount(1, $linhasC);
+        $this->assertSame($this->destinoId, (int) $linhasC->first()->user_id);
+
+        $this->assertSame(0, DB::table('company_users')->where('user_id', $this->origemId)->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 9: histórico de gestão correto, linhas antigas intactas
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_grava_historico_de_gestao_sem_reescrever_linhas_antigas(): void
+    {
+        $antigoId = DB::table('company_manager_history')->insertGetId([
+            'company_id' => $this->companyAId,
+            'user_id'    => $this->destinoId,
+            'papel'      => 'analista',
+            'evento'     => 'entrada',
+            'changed_by' => null,
+            'created_at' => '2026-01-01 10:00:00',
+        ]);
+
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+
+        $antigo = DB::table('company_manager_history')->where('id', $antigoId)->first();
+        $this->assertSame('2026-01-01 10:00:00', $antigo->created_at);
+
+        foreach ([$this->companyAId, $this->companyBId, $this->companyCId] as $companyId) {
+            $this->assertDatabaseHas('company_manager_history', [
+                'company_id' => $companyId, 'user_id' => $this->origemId,
+                'papel' => 'estrategista', 'evento' => 'saida',
+            ]);
+        }
+        foreach ([$this->companyAId, $this->companyBId] as $companyId) {
+            $this->assertDatabaseHas('company_manager_history', [
+                'company_id' => $companyId, 'user_id' => $this->destinoId,
+                'papel' => 'estrategista', 'evento' => 'entrada',
+            ]);
+        }
+        $this->assertDatabaseMissing('company_manager_history', [
+            'company_id' => $this->companyCId, 'user_id' => $this->destinoId,
+            'papel' => 'estrategista', 'evento' => 'entrada',
+        ]);
+
+        $this->assertSame(1 + 5, DB::table('company_manager_history')->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 10: cargo extra no destino, origem desativada e intacta
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_grava_cargo_extra_no_destino_e_desativa_origem_sem_apagar(): void
+    {
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+
+        $this->assertDatabaseHas('user_setores', [
+            'user_id' => $this->destinoId, 'setor_id' => $this->setorPerformanceId,
+            'cargo_id' => $this->cargoEstrategistaId, 'is_principal' => false,
+        ]);
+        $this->assertDatabaseHas('user_setores', [
+            'user_id' => $this->destinoId, 'setor_id' => $this->setorPerformanceId,
+            'cargo_id' => $this->cargoAnalistaId, 'is_principal' => true,
+        ]);
+
+        $this->assertSame(0, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+
+        // Linha de user_setores da ORIGEM continua intacta.
+        $this->assertDatabaseHas('user_setores', [
+            'user_id' => $this->origemId, 'setor_id' => $this->setorPerformanceId,
+            'cargo_id' => $this->cargoEstrategistaId,
+        ]);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 11: backup por lote com o conteúdo esperado
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_grava_backup_com_lote_unico_e_conteudo_esperado(): void
+    {
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $registros = DB::table('unificacao_contas_backup')->get();
+        $this->assertGreaterThan(0, $registros->count());
+        $this->assertCount(1, $registros->pluck('lote')->unique());
+
+        foreach ($registros as $registro) {
+            $this->assertSame($this->origemId, (int) $registro->de_user_id);
+            $this->assertSame($this->destinoId, (int) $registro->para_user_id);
+            $this->assertSame('2026-09-01', substr((string) $registro->a_partir, 0, 10));
+        }
+
+        $deleteRow = $registros->first(fn ($r) => $r->acao === 'delete');
+        $this->assertNotNull($deleteRow);
+        $antesDelete = json_decode($deleteRow->antes, true);
+        $this->assertArrayHasKey('id', $antesDelete);
+        $this->assertArrayHasKey('company_id', $antesDelete);
+        $this->assertSame($this->origemId, $antesDelete['user_id']);
+
+        $usersRow = $registros->first(fn ($r) => $r->tabela === 'users');
+        $this->assertNotNull($usersRow);
+        $this->assertSame(['active' => true], json_decode($usersRow->antes, true));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 12: cache dos dois usuários é derrubado
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_busta_cache_dos_dois_usuarios(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-15'));
+
+        $scoreService = app(DesempenhoScoreService::class);
+        $chaves = [
+            $scoreService->cacheKey($this->origemId, Carbon::parse('2026-09-01')),
+            $scoreService->cacheKey($this->destinoId, Carbon::parse('2026-09-01')),
+            $scoreService->cacheKey($this->origemId, Carbon::now()),
+            $scoreService->cacheKey($this->destinoId, Carbon::now()),
+        ];
+
+        foreach ($chaves as $chave) {
+            Cache::put($chave, ['valor' => 'teste'], 600);
+        }
+
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+
+        foreach ($chaves as $chave) {
+            $this->assertFalse(Cache::has($chave), "chave de cache ainda presente: {$chave}");
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 13: --apply repetido é idempotente
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_repetido_e_idempotente(): void
+    {
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+        $totalBackupAntes = DB::table('unificacao_contas_backup')->count();
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+
+        $this->assertSame(0, $exit);
+        $this->assertSame($totalBackupAntes, DB::table('unificacao_contas_backup')->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 14: --desfazer restaura e recusa rodar duas vezes
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_desfazer_restaura_estado_anterior_e_recusa_lote_repetido(): void
+    {
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+        $lote = DB::table('unificacao_contas_backup')->value('lote');
+        $this->assertNotNull($lote);
+
+        // Sem --apply: nada muda.
+        $assinaturaAplicada = $this->assinaturaNucleo();
+        $exitDry = $this->chamar(['--desfazer' => $lote]);
+        $this->assertSame(0, $exitDry);
+        $this->assertSame($assinaturaAplicada, $this->assinaturaNucleo());
+
+        $exitApply = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $this->assertSame(0, $exitApply);
+
+        // Carteira: empresa A e B voltam para a origem.
+        $this->assertSame(0, DB::table('company_users')
+            ->where('company_id', $this->companyAId)->where('user_id', $this->destinoId)->count());
+        $this->assertSame(1, DB::table('company_users')
+            ->where('company_id', $this->companyAId)->where('user_id', $this->origemId)->count());
+
+        // Empresa C: linha da origem (apagada no apply) volta com o MESMO id.
+        $this->assertSame(2, DB::table('company_users')->where('company_id', $this->companyCId)->count());
+        $this->assertSame(1, DB::table('company_users')
+            ->where('company_id', $this->companyCId)->where('user_id', $this->origemId)->where('role', 'estrategista')->count());
+
+        // Cargo extra do destino foi removido.
+        $this->assertDatabaseMissing('user_setores', [
+            'user_id' => $this->destinoId, 'cargo_id' => $this->cargoEstrategistaId,
+        ]);
+
+        // Eventos de histórico inseridos pelo apply foram removidos.
+        $this->assertSame(0, DB::table('company_manager_history')->count());
+
+        // Origem volta a ficar ativa.
+        $this->assertSame(1, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+
+        $this->assertNotNull(DB::table('unificacao_contas_backup')->where('lote', $lote)->value('desfeito_em'));
+
+        $exitRepetir = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $this->assertSame(1, $exitRepetir);
+        $this->assertStringContainsString('desfeito', Artisan::output());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Task 2 — Teste 15: --apply recusado (bloqueio/censo) não grava nada
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_recusado_por_bloqueio_ou_censo_nao_grava_nada(): void
+    {
+        // Caso 1: competência já consolidada (snapshot mensal).
+        DesempenhoScoreSnapshot::create([
+            'user_id'        => $this->origemId,
+            'ref_date'       => '2026-09-01',
+            'mes_referencia' => '2026-09-01',
+            'score'          => 80,
+            'classificacao'  => 'bom',
+            'breakdown_json' => [],
+        ]);
+
+        $exit1 = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(1, $exit1);
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+
+        DesempenhoScoreSnapshot::query()->delete();
+
+        // Caso 2: censo sem_regra sem --manter.
+        DB::table('setor_lideres')->insert([
+            'setor_id'    => $this->setorPerformanceId,
+            'user_id'     => $this->origemId,
+            'assigned_at' => now(),
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        $exit2 = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(1, $exit2);
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
     }
 }
