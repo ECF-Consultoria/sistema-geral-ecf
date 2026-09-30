@@ -6,6 +6,7 @@ use App\Models\MlbEmpresa;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
 use App\Services\MlCategoriaService;
+use App\Services\Polos\AdsCampanhasPolos;
 use App\Support\CustId;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -129,6 +130,13 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         $orcamento = $this->orcamento;
         $pausa     = (int) config('services.adman.polos_pausa_ms', 7000) * 1000;
 
+        // Status das campanhas (ADS ligado/desligado, TKT-0003) sai na mesma varredura: uma
+        // chamada leve a mais por empresa, dentro do mesmo throttle. Só no mês corrente — é
+        // um estado de AGORA, e o botão Sincronizar de um mês passado não deve regravá-lo.
+        $campanhas = ($mes === now()->format('Ym')) ? new AdsCampanhasPolos($adman) : null;
+        $idsPorCust = $campanhas ? AdsCampanhasPolos::mapaIds() : [];
+        $comStatusAds = 0;
+
         $ok = 0; $comFat = 0; $comAds = 0; $processados = 0;
         foreach ($empresas as $i => $emp) {
             if ($orcamento !== null && time() - $inicio > $orcamento) {
@@ -193,10 +201,22 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                 $processados++;
             } catch (\Throwable $e) {
                 Log::warning("[Polos] Sync: falha cust={$cust}: " . $e->getMessage());
+                continue;
+            }
+
+            // Depois do snapshot gravado e em try próprio: falhar aqui nunca custa o faturamento.
+            if ($campanhas) {
+                try {
+                    if ($campanhas->atualizar($cust, $idsPorCust[$cust] ?? []) !== null) {
+                        $comStatusAds++;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("[Polos] Sync: status de ADS falhou cust={$cust}: " . $e->getMessage());
+                }
             }
         }
 
-        Log::info("[Polos] Sync concluído: {$processados}/{$empresas->count()} processados · {$comFat} com faturamento>0 · {$comAds} com ADS>0 ({$de}..{$ate})");
+        Log::info("[Polos] Sync concluído: {$processados}/{$empresas->count()} processados · {$comFat} com faturamento>0 · {$comAds} com ADS>0 · {$comStatusAds} com status de campanha ({$de}..{$ate})");
     }
 
     public function failed(\Throwable $e): void

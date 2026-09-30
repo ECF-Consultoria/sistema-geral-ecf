@@ -108,6 +108,18 @@ Schedule::command('polos:warm')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/polos-warm.log'));
 
+// Segunda leitura do dia do status das campanhas (ADS ligado/desligado, TKT-0003) — a
+// primeira vem junto com o polos:warm das 13:00. Uma chamada leve por empresa no ritmo de
+// ~10 rpm (~30 min). Usa a MESMA trava do sync de faturamento: se ele ainda estiver rodando,
+// esta pula. 17:30 fica fora da cascata da Adman (11:00–13:50).
+Schedule::command('polos:ads-status')
+    ->dailyAt('17:30')
+    ->timezone('America/Sao_Paulo')
+    ->name('polos-ads-status-tarde')
+    ->withoutOverlapping(120)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/polos-warm.log'));
+
 // Congela o roster de polos do mês corrente (quem está ativo e em que fase). Roda 23:40
 // BRT, tarde o bastante para pegar as mudanças de fase do dia — inclusive a cascata que o
 // time faz na virada do mês (M0→M1→…→M4→Encerrado). Sem isso o mês fechado precisa ser

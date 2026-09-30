@@ -588,3 +588,24 @@ O que não é óbvio:
   ("atualizadas X/Y em N min" + os custs que ficaram de fora). O resumo vem de **reconsulta**
   ao banco (`synced_at >= início`), não do contador do job. Quem sobra quase sempre é cust
   recusado pela Adman (§8), não falha do sync.
+
+## 16. "ADS ligado/desligado" é automático pela Adman — e o status do adgroup mente (2026-09-30)
+
+Pedido no TKT-0003 (Débora): acompanhar se a campanha está ativa. `mlb_empresas.ads_desligado`
+existia desde jun/2026, mas **nenhuma rota gravava nele** — ícone, chip "Ads desligado" e os
+alertas do `/polos` e do Painel ficaram sempre zerados sem ninguém notar.
+
+Hoje o sync lê `/ads/{cust}/campaigns` (13:00 no `polos:warm` e 17:30 no `polos:ads-status`) e
+grava `ads_desligado` + `polos_ads_status`. Ligado = pelo menos uma campanha `active`.
+
+- **Não use o `status` do adgroup** (`/adgroups/metrics`, que o warm já chama). Medido na
+  Império Estofados: 54 adgroups `ACTIVE` com 6 de 11 campanhas `paused`. Parecia sair de graça
+  e dá a resposta errada.
+- **Conta não vinculada responde HTTP 500 "User is not mentored by agency"** — é permanente, não
+  transitório; por isso `fetchCampanhasAtivas` só repete em 429. Essas contas não ganham linha em
+  `polos_ads_status` e continuam marcáveis à mão na coluna Sinais. Leitura com mais de 72h
+  (`PoloAdsStatus::FRESCOR_HORAS`) também devolve a empresa ao manual.
+- **A marcação manual é recusada** para conta com leitura fresca: o sync seguinte a sobrescreveria.
+- **É estado de AGORA.** Só o mês corrente lê/grava; o botão Sincronizar de mês passado não
+  regrava. Mês fechado mostra o `ads_desligado` congelado pelo `polos:congelar-roster` (23:40).
+- As duas varreduras usam a MESMA trava (`polos-sync-faturamento:handle`) — cota de ~10 rpm.

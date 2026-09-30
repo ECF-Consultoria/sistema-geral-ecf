@@ -268,6 +268,7 @@ export default function PolosEmpresas({
                                                 <div className="flex items-center gap-1.5">
                                                     <AdsLigadoDesligado
                                                         valor={e.cust_id in adsPendente ? adsPendente[e.cust_id] : e.ads_desligado}
+                                                        auto={e.ads_auto ?? null}
                                                         editavel={parcial && !!e.mlb_empresa_id}
                                                         salvando={e.cust_id in adsPendente}
                                                         onMudar={(v) => marcarAds(e, v)}
@@ -457,12 +458,27 @@ function Comentarios({ cust, empresa, mes, mesLabel, lista = [] }) {
 }
 
 /**
- * Opção "ADS ligado / desligado" da empresa (TKT-0003). `valor` segue a coluna
+ * "ADS ligado / desligado" da empresa (TKT-0003). `valor` segue a coluna
  * `mlb_empresas.ads_desligado`: true = desligado, false = ligado, null = não informado.
- * Clicar no estado já marcado volta para "não informado" — desfaz um clique errado
- * sem precisar de um terceiro botão.
+ *
+ * Com `auto` (leitura das campanhas na Adman, 13:00 e 17:30) é só leitura: o próximo sync
+ * sobrescreveria qualquer clique. Sem ela — conta que a Adman não enxerga — vira seletor
+ * manual; clicar no estado já marcado volta para "não informado".
  */
-function AdsLigadoDesligado({ valor, editavel, salvando, onMudar }) {
+function AdsLigadoDesligado({ valor, auto, editavel, salvando, onMudar }) {
+    if (auto) {
+        const ligado = valor === false;
+        const Icone  = ligado ? Megaphone : MegaphoneOff;
+        return (
+            <span title={`Automático pela Adman: ${auto.ativas} de ${auto.total} campanha(s) ativa(s) · verificado em ${auto.verificado_em}`}
+                  className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold',
+                      ligado ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400')}>
+                <Icone size={12} /> {ligado ? 'Ligado' : 'Desligado'}
+                <span className="font-normal opacity-70">· {auto.total === 0 ? 'sem campanha' : `${auto.ativas}/${auto.total}`}</span>
+            </span>
+        );
+    }
+
     if (!editavel) {
         if (valor === true)  return <span title="Ads desligado" className="text-red-400"><MegaphoneOff size={15} /></span>;
         if (valor === false) return <span title="Ads ligado" className="text-green-400"><Megaphone size={15} /></span>;
@@ -475,7 +491,7 @@ function AdsLigadoDesligado({ valor, editavel, salvando, onMudar }) {
             <button type="button" disabled={salvando} aria-pressed={ativa}
                     // O <tr> abre o semanal no clique: sem isto, marcar o ADS abriria a linha.
                     onClick={(ev) => { ev.stopPropagation(); onMudar(ativa ? null : alvo); }}
-                    title={ativa ? `Ads ${rotulo.toLowerCase()} — clique para limpar` : `Marcar ads ${rotulo.toLowerCase()}`}
+                    title={`${ativa ? `Ads ${rotulo.toLowerCase()} — clique para limpar` : `Marcar ads ${rotulo.toLowerCase()}`} (a Adman não enxerga esta conta: marcação manual)`}
                     className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-wait',
                         ativa ? corAtiva : 'text-white/30 hover:bg-white/[0.06] hover:text-white/70')}>
                 <Icone size={12} /> {rotulo}

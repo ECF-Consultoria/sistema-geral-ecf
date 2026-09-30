@@ -17,6 +17,7 @@ use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
+use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
 use App\Models\PolosComentario;
@@ -1306,6 +1307,10 @@ class PolosController extends Controller
             }
             usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
 
+            // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
+            // fechado segue com o `ads_desligado` congelado no roster daquele mês.
+            $empresas = $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+
             $totFat  = array_sum(array_column($empresas, 'faturamento'));
             $totMeta = array_sum(array_column($empresas, 'meta'));
 
@@ -1438,12 +1443,44 @@ class PolosController extends Controller
     // ═══ ADS ligado/desligado (/polos/empresas) ═══
 
     /**
-     * Marca o ADS da empresa como ligado, desligado ou "não informado" (TKT-0003).
+     * Anexa a cada linha a leitura automática das campanhas (TKT-0003), quando a Adman
+     * respondeu por aquela conta há menos de PoloAdsStatus::FRESCOR_HORAS. Para essas, a
+     * leitura manda no `ads_desligado` da linha e a tela não oferece marcação manual.
      *
-     * Flag MANUAL de propósito: o time registra o que foi combinado com o cliente
-     * (campanha ativa ou pausada). Não se deduz do gasto da Adman — gasto zero no mês
-     * pode ser conta nova ou campanha pausada há dois dias. Três estados, como a
-     * migration 2026_06_15_160000 definiu: null = ninguém informou ainda.
+     * @param  array<int, array<string,mixed>>  $empresas
+     * @return array<int, array<string,mixed>>
+     */
+    private function comAdsAutomatico(array $empresas): array
+    {
+        $leituras = PoloAdsStatus::frescos()
+            ->whereIn('cust_id', array_column($empresas, 'cust_id'))
+            ->get()
+            ->keyBy('cust_id');
+
+        foreach ($empresas as &$e) {
+            $l = $leituras[$e['cust_id']] ?? null;
+            $e['ads_auto'] = $l ? [
+                'ativas'        => $l->campanhas_ativas,
+                'total'         => $l->campanhas_total,
+                'verificado_em' => $l->verificado_em?->format('d/m H:i'),
+            ] : null;
+            if ($l) {
+                $e['ads_desligado'] = $l->desligado();
+            }
+        }
+        unset($e);
+
+        return $empresas;
+    }
+
+    /**
+     * Marca À MÃO o ADS da empresa como ligado, desligado ou "não informado" (TKT-0003).
+     *
+     * Desde 30/09 o normal é AUTOMÁTICO: o sync lê as campanhas na Adman (13:00 e 17:30) e
+     * grava `ads_desligado` (AdsCampanhasPolos). A marcação manual existe só para a conta
+     * que a Adman não enxerga ("User is not mentored by agency") — para as demais ela seria
+     * sobrescrita na leitura seguinte, então é recusada. Três estados, como a migration
+     * 2026_06_15_160000 definiu: null = ninguém informou ainda.
      *
      * Grava no cadastro ao vivo. Mês fechado lê o roster congelado
      * (`polos:congelar-roster`, 23:40), então marcar hoje não reescreve o passado.
@@ -1454,6 +1491,11 @@ class PolosController extends Controller
 
         $proj = ($empresa->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$empresa->fase ?? ''] ?? null);
         abort_unless($proj === 'POLOS', 403, 'Só é possível marcar o ADS de empresas do projeto Polos.');
+
+        $cust = CustId::normaliza((string) $empresa->cust_id);
+        if ($cust !== '' && PoloAdsStatus::frescos()->where('cust_id', $cust)->exists()) {
+            return back()->with('error', "O ADS de \"{$empresa->nome}\" é lido automaticamente da Adman — não dá para marcar à mão.");
+        }
 
         $request->validate([
             // `present`: null é um valor válido (limpar), mas o campo tem de vir.
