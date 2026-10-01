@@ -296,6 +296,13 @@ class UnificarContas extends Command
             if ($ids !== []) {
                 $this->line('  linha_id: ' . implode(', ', $ids));
             }
+
+            // WR-05 (revisão da Fase 159): insert não tem linha_id — sem
+            // isto o operador via só "N× insert" sem saber QUAIS cargos (e,
+            // com eles, quais permissões de setor) o destino vai ganhar.
+            if ($etapa['chave'] === 'cargos') {
+                $this->imprimirCargosCopiados($etapa['operacoes']);
+            }
         }
 
         $censoRelevante = array_values(array_filter($plano['censo'], fn ($c) => $c['linhas_origem'] > 0));
@@ -315,6 +322,32 @@ class UnificarContas extends Command
             foreach ($pendencias as $pendencia) {
                 $this->line("  - {$pendencia}");
             }
+        }
+    }
+
+    /**
+     * WR-05: uma linha por (setor, cargo) que a etapa `cargos` copia da
+     * origem para o destino — com nome e id, para o operador decidir antes
+     * do `--apply` (cargo em setor concede as permissões do setor).
+     */
+    private function imprimirCargosCopiados(array $operacoes): void
+    {
+        $depois = array_values(array_filter(array_column($operacoes, 'depois')));
+        if ($depois === []) {
+            return;
+        }
+
+        $setores = DB::table('setores')->whereIn('id', array_column($depois, 'setor_id'))->pluck('nome', 'id');
+        $cargos = DB::table('cargos')->whereIn('id', array_column($depois, 'cargo_id'))->pluck('nome', 'id');
+
+        foreach ($depois as $linha) {
+            $this->line(sprintf(
+                '  + setor %s (id %d) / cargo %s (id %d)',
+                $setores[$linha['setor_id']] ?? '?',
+                $linha['setor_id'],
+                $cargos[$linha['cargo_id']] ?? '?',
+                $linha['cargo_id']
+            ));
         }
     }
 

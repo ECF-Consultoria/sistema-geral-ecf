@@ -1409,6 +1409,43 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // WR-05 da revisão — o dry-run em TEXTO lista cada (setor, cargo) que o
+    // destino vai ganhar (cargo em setor concede as permissões do setor).
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_wr05_dry_run_em_texto_lista_cada_setor_e_cargo_que_o_destino_ganha(): void
+    {
+        // Origem também tem cargo em OUTRO setor — a etapa copia de qualquer setor.
+        $setorExtraId = DB::table('setores')->insertGetId([
+            'nome' => 'Comercial WR05', 'slug' => 'comercial-wr05', 'active' => true, 'is_system' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $cargoExtraId = DB::table('cargos')->insertGetId([
+            'setor_id' => $setorExtraId, 'nome' => 'Vendedor WR05', 'slug' => 'vendedor-wr05',
+            'active' => true, 'ordem' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('user_setores')->insert([
+            'user_id' => $this->origemId, 'setor_id' => $setorExtraId, 'cargo_id' => $cargoExtraId,
+            'is_principal' => false, 'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $nomeSetorPerformance = DB::table('setores')->where('id', $this->setorPerformanceId)->value('nome');
+        $nomeCargoEstrategista = DB::table('cargos')->where('id', $this->cargoEstrategistaId)->value('nome');
+
+        $this->chamar($this->opcoesBase());
+        $saida = Artisan::output();
+
+        $this->assertStringContainsString(
+            "setor {$nomeSetorPerformance} (id {$this->setorPerformanceId}) / cargo {$nomeCargoEstrategista} (id {$this->cargoEstrategistaId})",
+            $saida
+        );
+        $this->assertStringContainsString(
+            "setor Comercial WR05 (id {$setorExtraId}) / cargo Vendedor WR05 (id {$cargoExtraId})",
+            $saida
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
     // consolidada (snapshot mensal) para origem e destino que têm carteira.
     // `company_users` não tem dimensão temporal: mover a carteira recalcula
