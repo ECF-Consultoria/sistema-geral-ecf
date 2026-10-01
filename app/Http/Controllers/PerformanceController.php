@@ -165,6 +165,19 @@ class PerformanceController extends Controller
             $slugs     = $cargosPorUser->get($u->id)['slugs'] ?? [$u->isMentor() ? 'estrategista' : 'analista'];
             $cargoSlug = $cargosPorUser->get($u->id)['principal'] ?? $slugs[0];
 
+            // Snapshot mensal CONGELADO (com `componentes`) é leitura de tabela,
+            // custo zero — decide ANTES do gate, como `show()` já fazia.
+            //
+            // 2026-10-01: o gate vinha antes e mandava para "calculando…" até
+            // competência consolidada sempre que a chave do cache expirava (7
+            // dias depois do último compute, e o warm agendado só cobre os
+            // meses recentes). O warm sob-demanda de um mês antigo frio custa
+            // ~2,5 min por perfil e ocupa o único `ecf-worker-high` por ~25
+            // min — em 01/10 um warm de maio segurou a fila enquanto o ranking
+            // de agosto esperava, e a tela ficou "calculando em loop".
+            $snap      = $ehMesEmCurso ? null : $snapshotsMensal->get($u->id);
+            $congelado = $snap !== null && isset(($snap->breakdown_json ?? [])['componentes']);
+
             // Gate SC2/SC3 — profissional sem cache pronto NÃO é computado ao
             // vivo na tela (evita o fan-out ML/Adman de ~14s/user síncrono).
             // Frio: devolve placeholder `calculando:true` e coleta o ID pro
@@ -175,7 +188,7 @@ class PerformanceController extends Controller
             // aquecido pelo warm agendado" — mas quando o warm não completa
             // (ex.: diff frio deixando o compute lento), o ranking Em curso
             // caía no compute ao vivo e travava ~87s pra 6 users frios.
-            if (! $this->scoreService->isCached($u, $mesReferencia)) {
+            if (! $congelado && ! $this->scoreService->isCached($u, $mesReferencia)) {
                 $usuariosFrios[] = $u->id;
 
                 return [
@@ -214,14 +227,11 @@ class PerformanceController extends Controller
             }
 
             // Mês em curso → compute live. Mês passado → prefere snapshot mensal
-            // fechado; se não existe (user sem snapshot naquele mês), compute
-            // como fallback.
-            $snap = $snapshotsMensal->get($u->id);
-            if (! $ehMesEmCurso && $snap) {
-                $resultado = $snap->breakdown_json ?? [];
-                if (! isset($resultado['componentes'])) {
-                    $resultado = $this->scoreService->computeCached($u, $mesReferencia);
-                }
+            // fechado; se não existe (user sem snapshot naquele mês) ou veio sem
+            // `componentes`, compute como fallback — esse caminho passou pelo
+            // gate acima, então a chave está quente.
+            if ($congelado) {
+                $resultado = $snap->breakdown_json;
             } else {
                 // Ajuste 2026-07-10 (audit performance-lentidao): usa versão
                 // cacheada — antes cold cache demorava 70s pra 11 users;

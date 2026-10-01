@@ -184,6 +184,49 @@ teto de poll do front é de 2 min (`Show.jsx`, 20 × 6s) mas o lock do warm é d
 pessoa não chega a ser enfileirado e ela queima o poll inteiro esperando algo
 que nunca foi agendado — trava mesmo com worker saudável. Ainda sem fase.
 
+### 0.041.1. Dia 1º do mês: o M-2 sai da janela do warm e esfria em BLOCO
+
+Incidente de 2026-10-01, "Ranking setembro · Ref. agosto calculando em loop",
+com workers saudáveis e a fila `high` vazia. A causa não era a fila: era
+**calendário**.
+
+- O warm agendado cobre o mês corrente e o último fechado. Em 01/10 isso virou
+  outubro + setembro, e **agosto saiu da janela**. Agosto é justamente a
+  competência cujo bônus se fecha agora, porque a coleta de NPS dela terminou
+  em 30/09.
+- Com o `consolidar-mes` quebrado (§10.1), agosto não tinha snapshot mensal: o
+  ranking dependia do cache vivo, que tem TTL de 7 dias contado do último
+  compute. Como o warm reescreve todas as chaves no mesmo ciclo, **elas
+  expiram juntas**: 8 de 10 caíram no mesmo minuto, ~12h15 do dia 1º.
+- Ao mesmo tempo alguém abriu **maio**, e o warm sob-demanda de maio (10
+  perfis × ~2,5 min, mês velho e frio) ocupou o único `ecf-worker-high` por
+  ~25 min. O warm de agosto só rodou quando um `ecf-worker` terminou o job de
+  acervo em que estava.
+- Agravante, corrigido no mesmo dia: o `index()` checava o cache **antes** do
+  snapshot congelado. Até competência consolidada virava "calculando…" e
+  disparava warm. O `show()` já fazia na ordem certa.
+
+**Correção (2026-10-01):** snapshot congelado antes do gate no ranking, e o
+warm agendado ganhou um 3º alvo, o M-2, só para quem não tem snapshot
+congelado (no-op quando a consolidação funciona). Teste:
+`tests/Feature/Desempenho/RankingCalculandoEmLoopTest.php`.
+
+**Continua aberto:** warm de mês antigo ainda pode monopolizar o
+`ecf-worker-high`, e a fila é FIFO. Fatiar o job por usuário não resolve,
+porque o pedido seguinte entra atrás de todas as fatias.
+
+**Diagnóstico que fechou o caso.** O `worker-high.log` só diz
+`desempenho:warm-cache ... RUNNING`, sem argumentos. Quem diz QUAL mês e QUAIS
+usuários está em voo é o próprio Redis:
+
+```
+redis-cli -n 1 zrange ecf-admin-database-queues:high:reserved 0 -1   # payload com --mes e --user
+redis-cli -n 2 ttl ecf-admin-database-ecf-admin-cache-desempenho.compute.v20.<user>.<YYYY-MM>
+```
+
+O TTL que sobra (de 604800) mostra **quando** cada chave foi escrita. Chaves
+com o mesmo TTL foram escritas no mesmo ciclo e vão expirar juntas.
+
 ## 0.042. Duas requisições ao /performance no mesmo teste fazem a linha SUMIR
 
 Descoberto em 2026-08-31, ao escrever o teste do modo simulador. Custou uma
