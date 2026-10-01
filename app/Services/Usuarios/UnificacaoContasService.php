@@ -80,7 +80,13 @@ use Illuminate\Support\Str;
  * nem por detalhe por empresa gravado por `desempenho:consolidar-mes`
  * (`desempenho_company_score_snapshots.origem = consolidar_mes`). "Fechada"
  * aqui é sempre >= o início de `--a-partir`: competências ANTERIORES a
- * `--a-partir` nem entram na conta, porque a junção não pretende tocá-las.
+ * `--a-partir` nem entram NESTA conta, porque a junção não pretende tocá-las.
+ *
+ * Trava da competência ANTERIOR (CR-02 da revisão): a junção também exige
+ * que `--a-partir − 1` JÁ esteja consolidada (snapshot mensal) para origem e
+ * destino que têm carteira — `company_users` não tem dimensão temporal, e
+ * mover a carteira recalcularia ao vivo um mês fechado sem snapshot. Ver
+ * {@see self::bloqueiosCompetenciaAnteriorSemConsolidar()}.
  *
  * Censo (D-11): antes de aceitar `--apply`, o comando levanta TODA coluna do
  * banco que referencia `users` (FK ou heurística de nome `user_id`) e conta
@@ -189,7 +195,8 @@ class UnificacaoContasService
 
         $bloqueios = array_merge(
             $bloqueios,
-            $this->bloqueiosCompetenciaConsolidada($deId, $paraId, $aPartirInicio)
+            $this->bloqueiosCompetenciaConsolidada($deId, $paraId, $aPartirInicio),
+            $this->bloqueiosCompetenciaAnteriorSemConsolidar([$de, $para], $aPartirInicio)
         );
 
         $etapaCarteira = $this->planejarCarteira($deId, $paraId);
@@ -926,6 +933,71 @@ class UnificacaoContasService
 
         foreach ($porEmpresa as $snapshot) {
             $this->registrarBloqueioCompetencia($bloqueios, $vistos, $snapshot->user_id, $snapshot->mes_referencia);
+        }
+
+        return $bloqueios;
+    }
+
+    /**
+     * CR-02 (revisão da Fase 159): bloqueia quando a competência
+     * IMEDIATAMENTE ANTERIOR ao corte (`--a-partir − 1`) não tem snapshot
+     * mensal (`desempenho_score_snapshots` com `mes_referencia`, o que
+     * `desempenho:consolidar-mes` grava) para origem ou destino que TÊM
+     * carteira.
+     *
+     * Por quê: `company_users` não tem dimensão temporal — a carteira é
+     * sempre a ATUAL, e toda competência sem snapshot mensal é calculada ao
+     * vivo (Ranking, Relatório de Bonificação, Auditoria). Mover a carteira
+     * reescreveria em silêncio um mês "fechado" que ainda não virou snapshot
+     * — exatamente o que D-06 proíbe (learnings §2 e §10.1: `consolidar-mes`
+     * já falhou com exit 0 para 11 de 12 profissionais).
+     *
+     * Cobre também o caso simétrico: com `--a-partir` posterior à primeira
+     * competência ainda aberta, `--a-partir − 1` é essa competência aberta,
+     * sem snapshot — bloqueia do mesmo jeito.
+     *
+     * Quem não tem carteira não precisa de snapshot: não há o que recalcular.
+     *
+     * @param  list<array{id:int,nome:string,ativo:bool}>  $usuarios
+     * @return list<string>
+     */
+    private function bloqueiosCompetenciaAnteriorSemConsolidar(array $usuarios, Carbon $inicio): array
+    {
+        $anterior = $inicio->copy()->subMonthNoOverflow()->startOfMonth();
+        $bloqueios = [];
+        $vistos = [];
+
+        foreach ($usuarios as $usuario) {
+            $userId = (int) $usuario['id'];
+            if (isset($vistos[$userId])) {
+                continue;
+            }
+            $vistos[$userId] = true;
+
+            if (! DB::table('company_users')->where('user_id', $userId)->exists()) {
+                continue;
+            }
+
+            $temMensal = DesempenhoScoreSnapshot::query()
+                ->mensal()
+                ->where('user_id', $userId)
+                ->whereDate('mes_referencia', $anterior->toDateString())
+                ->exists();
+
+            if (! $temMensal) {
+                $bloqueios[] = sprintf(
+                    'competência %s (anterior ao corte %s) sem snapshot mensal para o usuário %d (%s), que tem '
+                    . 'carteira — mover a carteira recalcularia esse mês fechado. Consolide antes '
+                    . '(desempenho:consolidar-mes --mes=%s) e confira por desempenho:verificar-consolidacao '
+                    . '--mes=%s --json (o veredito é o exit code)',
+                    $anterior->format('Y-m'),
+                    $inicio->format('Y-m'),
+                    $userId,
+                    $usuario['nome'],
+                    $anterior->format('Y-m'),
+                    $anterior->format('Y-m')
+                );
+            }
         }
 
         return $bloqueios;

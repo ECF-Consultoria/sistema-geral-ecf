@@ -119,7 +119,17 @@ class UnificarContasCommandTest extends TestCase
         // Empresa C: origem e destino JÁ são estrategista com o mesmo serviço — colisão.
         $this->vincularCarteira($this->companyCId, $this->origemId, 'estrategista', $this->servicoPerfId, '2026-06-03');
         $this->vincularCarteira($this->companyCId, $this->destinoId, 'estrategista', $this->servicoPerfId, '2026-04-01');
+
+        // CR-02 da revisão: a competência ANTERIOR ao corte (2026-08) precisa
+        // estar consolidada para quem tem carteira — senão mover a carteira
+        // recalcularia em silêncio esse mês fechado. Estado "feliz" do
+        // fixture: as duas contas já consolidadas em 2026-08.
+        $this->mensalAgostoOrigemId  = $this->consolidarCompetencia($this->origemId, '2026-08-01');
+        $this->mensalAgostoDestinoId = $this->consolidarCompetencia($this->destinoId, '2026-08-01');
     }
+
+    private int $mensalAgostoOrigemId;
+    private int $mensalAgostoDestinoId;
 
     protected function tearDown(): void
     {
@@ -250,6 +260,23 @@ class UnificarContasCommandTest extends TestCase
             'servico_id' => $this->servicoPerfId,
             'status'     => $status,
         ], $responsaveis))->id;
+    }
+
+    /**
+     * Snapshot MENSAL de uma competência — a linha que `desempenho:consolidar-mes`
+     * grava (`ref_date = mes_referencia = YYYY-MM-01`). O conteúdo é irrelevante
+     * para a junção; só a existência conta.
+     */
+    private function consolidarCompetencia(int $userId, string $mes): int
+    {
+        return DesempenhoScoreSnapshot::create([
+            'user_id'        => $userId,
+            'ref_date'       => $mes,
+            'mes_referencia' => $mes,
+            'score'          => 50,
+            'classificacao'  => 'bom',
+            'breakdown_json' => [],
+        ])->id;
     }
 
     /** Assinatura das tabelas do núcleo, usada para provar "dry-run não muda nada". */
@@ -683,7 +710,9 @@ class UnificarContasCommandTest extends TestCase
         $this->assertSame(1, $exit1);
         $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
 
-        DesempenhoScoreSnapshot::query()->delete();
+        // Só o snapshot de 2026-09 sai — o de 2026-08 (fixture) continua, para
+        // que o censo seja o ÚNICO motivo de recusa no caso 2.
+        DesempenhoScoreSnapshot::query()->whereDate('mes_referencia', '2026-09-01')->delete();
 
         // Caso 2: censo sem_regra sem --manter.
         DB::table('setor_lideres')->insert([
@@ -769,10 +798,8 @@ class UnificarContasCommandTest extends TestCase
             'score' => 60, 'classificacao' => 'atencao', 'breakdown_json' => [],
         ])->id;
 
-        $mensalId = DesempenhoScoreSnapshot::create([
-            'user_id' => $this->origemId, 'ref_date' => '2026-08-01', 'mes_referencia' => '2026-08-01',
-            'score' => 65, 'classificacao' => 'bom', 'breakdown_json' => [],
-        ])->id;
+        // Mensal de 2026-08 da origem: vem do fixture (CR-02 exige que exista).
+        $mensalId = $this->mensalAgostoOrigemId;
 
         $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
         $this->assertSame(0, $exit);
@@ -1018,5 +1045,71 @@ class UnificarContasCommandTest extends TestCase
             $this->origemId,
             (int) DB::table('onboardings')->where('id', $andamentoId)->value('responsavel_id')
         );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
+    // consolidada (snapshot mensal) para origem e destino que têm carteira.
+    // `company_users` não tem dimensão temporal: mover a carteira recalcula
+    // ao vivo toda competência fechada que ainda não virou snapshot.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_cr02_bloqueia_quando_a_origem_com_carteira_nao_tem_snapshot_da_competencia_anterior(): void
+    {
+        DesempenhoScoreSnapshot::where('id', $this->mensalAgostoOrigemId)->delete();
+        $antes = $this->assinaturaNucleo();
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $saida = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('competência 2026-08', $saida);
+        $this->assertStringContainsString("usuário {$this->origemId}", $saida);
+        $this->assertStringContainsString('sem snapshot mensal', $saida);
+
+        // Nada gravado: carteira, backup e conta de origem intactos.
+        $this->assertSame($antes, $this->assinaturaNucleo());
+        $this->assertSame(3, DB::table('company_users')->where('user_id', $this->origemId)->count());
+        $this->assertSame(1, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+    }
+
+    public function test_cr02_bloqueia_quando_o_destino_com_carteira_nao_tem_snapshot_da_competencia_anterior(): void
+    {
+        DesempenhoScoreSnapshot::where('id', $this->mensalAgostoDestinoId)->delete();
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $saida = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('competência 2026-08', $saida);
+        $this->assertStringContainsString("usuário {$this->destinoId}", $saida);
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+    }
+
+    public function test_cr02_corte_posterior_a_primeira_competencia_aberta_tambem_bloqueia(): void
+    {
+        // --a-partir 2026-10 com 2026-09 ainda aberta (sem snapshot): a
+        // carteira passaria a valer para 2026-09, mas o NPS de 2026-09 não.
+        $this->chamar($this->opcoesBase(['--a-partir' => '2026-10', '--json' => true]));
+        $plano = json_decode(Artisan::output(), true);
+
+        $bloqueios = implode(' | ', $plano['bloqueios']);
+        $this->assertStringContainsString('competência 2026-09', $bloqueios);
+    }
+
+    public function test_cr02_libera_quando_as_duas_contas_estao_consolidadas_e_ignora_quem_nao_tem_carteira(): void
+    {
+        // Estado do fixture: as duas contas consolidadas em 2026-08 → sem bloqueio.
+        $this->chamar($this->opcoesBase(['--json' => true]));
+        $plano = json_decode(Artisan::output(), true);
+        $this->assertSame([], $plano['bloqueios']);
+
+        // Origem SEM carteira não precisa de snapshot (não há o que recalcular).
+        DB::table('company_users')->where('user_id', $this->origemId)->delete();
+        DesempenhoScoreSnapshot::where('id', $this->mensalAgostoOrigemId)->delete();
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+        $this->assertSame(0, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
     }
 }
