@@ -230,3 +230,44 @@ mal a foto", foi "reescrever caracteres".
 texto/número cravado são candidatos naturais ao `COMPOSITE` do §9.2 — IA gera o cenário, o sistema
 desenha o texto por template. Era a hipótese que o próprio plano levantava; a primeira medição real
 já aponta para ela. Confirmar com foto de produto de verdade antes de fechar.
+
+---
+
+## 15. Teste de fidelidade com produto REAL (2026-10-01) — slot LIFESTYLE
+
+Produto: gabinete de cozinha branco de um cliente, 3 fotos (3/4 em fundo branco, frontal com o
+interior à mostra, e uma ambientada), enviadas pela equipe como chegam pelo Drive.
+
+**As 3 fotos foram mandadas juntas como referência na MESMA chamada** — o comando passou a aceitar
+`--imagem` repetido para isso. É o que o §8.2 pede: quanto mais ângulos do mesmo produto, menos o
+modelo precisa inventar o que não vê.
+
+`gemini-3.1-flash-image`, HTTP 200, 15,3s, 1.866 KB, 2048×2048. Prompt no formato MASTER+SLOT do
+§8.5 (regras de fidelidade explícitas + proibição total de texto).
+
+**Resultado: o produto foi preservado.** Conferido elemento a elemento contra a referência —
+2 portas à esquerda e coluna de 3 gavetas à direita na mesma proporção, puxadores de perfil
+horizontal prateado, tampo branco com rodabanca ao fundo, 4 pés cônicos prateados, branco fosco
+mantido. A ambientação (cozinha real, luz natural lateral, bancada vizinha em madeira) é de
+qualidade comercial e nenhum texto foi inventado — o prompt proibia, e foi obedecido.
+
+### O contraste com a seção 14 é o achado de desenho
+
+| | referência | resultado |
+|---|---|---|
+| print de dashboard (denso em texto) | §14 | layout ok, **texto e números reescritos**, tela duplicada |
+| gabinete, 3 ângulos, sem texto | §15 | **produto preservado**, ambientação comercial |
+
+A conclusão não é "o modelo é bom" nem "o modelo é ruim": é que **a fraqueza dele é texto, não
+geometria**. Isso separa a biblioteca de slots do §8.4 em dois grupos com risco MUITO diferente:
+
+- **Seguros em `FULL_AI`** — `HERO`, `LIFESTYLE`, `WHITE_BACKGROUND`, `ANGLES`, `DETAIL`: só forma,
+  cor e cena. É o que acabou de ser medido.
+- **Perigosos em `FULL_AI`** — `SPECIFICATIONS`, `DIMENSIONS`, `BENEFITS`, `COMPARISON`: carregam
+  número e texto cravados, exatamente o que a §14 mostrou o modelo reescrevendo. Candidatos ao
+  `COMPOSITE` do §9.2, onde a IA gera só o cenário e o sistema desenha o texto por template a partir
+  do cadastro.
+
+⚠️ **Amostra de UM produto e UM slot.** Antes de fechar desenho, repetir com produto que tenha
+detalhe físico difícil (peça pequena, produto com logo aplicado, kit com vários itens) — categorias
+onde "preservar o produto" é mais difícil que num móvel branco de superfície lisa.

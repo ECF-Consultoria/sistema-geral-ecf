@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\File;
 class CreativeTestGemini extends Command
 {
     protected $signature = 'creative:test-gemini
-        {--imagem= : Caminho de uma foto local para usar como referência}
+        {--imagem=* : Caminho de foto local de referência; repetir a opção manda vários ângulos do MESMO produto}
         {--prompt= : Prompt alternativo}
         {--saida= : Onde gravar a imagem gerada}';
 
@@ -40,10 +40,10 @@ class CreativeTestGemini extends Command
         try {
             $this->testarTexto($provider);
 
-            $caminhoImagem = $this->option('imagem');
+            $caminhosImagem = (array) $this->option('imagem');
 
-            if ($caminhoImagem) {
-                $this->testarImagem($provider, (string) $caminhoImagem);
+            if ($caminhosImagem !== []) {
+                $this->testarImagem($provider, $caminhosImagem);
             } else {
                 $this->comment('Nenhum --imagem informado: só a conectividade de texto foi testada.');
                 $this->comment('Exemplo de uso: php artisan creative:test-gemini --imagem="/caminho/para/foto.jpg"');
@@ -82,18 +82,31 @@ class CreativeTestGemini extends Command
         $this->line('  resposta (primeiros 120 chars): '.mb_substr(trim($resposta), 0, 120));
     }
 
-    private function testarImagem(ImageGenerationProvider $provider, string $caminhoImagem): void
+    /**
+     * @param array<int, string> $caminhosImagem Ângulos do MESMO produto — é
+     *                                           assim que o §8.2 trata as
+     *                                           referências visuais: quanto
+     *                                           mais ângulos, menos o modelo
+     *                                           precisa inventar o que não vê.
+     */
+    private function testarImagem(ImageGenerationProvider $provider, array $caminhosImagem): void
     {
-        if (! is_file($caminhoImagem) || ! is_readable($caminhoImagem)) {
-            throw new \RuntimeException("Arquivo de imagem não encontrado ou ilegível: {$caminhoImagem}");
-        }
+        $referencias = [];
 
-        $mime = (string) (mime_content_type($caminhoImagem) ?: 'image/jpeg');
-        $bytes = (string) file_get_contents($caminhoImagem);
+        foreach ($caminhosImagem as $caminho) {
+            if (! is_file($caminho) || ! is_readable($caminho)) {
+                throw new \RuntimeException("Arquivo de imagem não encontrado ou ilegível: {$caminho}");
+            }
+
+            $referencias[] = [
+                'mime'  => (string) (mime_content_type($caminho) ?: 'image/jpeg'),
+                'bytes' => (string) file_get_contents($caminho),
+            ];
+        }
 
         $prompt = (string) ($this->option('prompt') ?: $this->promptDefaultDeFidelidade());
 
-        $request = CreativeGenerationRequest::comImagem($prompt, $bytes, $mime);
+        $request = new CreativeGenerationRequest($prompt, $referencias);
 
         $t0 = microtime(true);
         $resultado = $provider->gerarImagem($request);
@@ -107,6 +120,7 @@ class CreativeTestGemini extends Command
         file_put_contents($caminhoSaida, $resultado->bytes);
 
         $this->info('Teste de IMAGEM:');
+        $this->line('  referências enviadas: '.count($referencias));
         $this->line('  modelo que respondeu: '.$resultado->modelo);
         $this->line("  latência: {$resultado->latenciaMs}ms (medida local: {$latenciaMs}ms)");
         $this->line('  tamanho: '.round($resultado->tamanhoBytes() / 1024, 1).' KB');
