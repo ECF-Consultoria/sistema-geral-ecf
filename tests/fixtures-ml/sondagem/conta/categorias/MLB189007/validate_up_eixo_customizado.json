@@ -1,0 +1,107 @@
+{
+    "requisicao": {
+        "metodo": "POST",
+        "caminho": "/items/validate",
+        "query": null,
+        "corpo": {
+            "category_id": "MLB189007",
+            "price": 150,
+            "currency_id": "BRL",
+            "available_quantity": 1,
+            "buying_mode": "buy_it_now",
+            "condition": "new",
+            "listing_type_id": "gold_special",
+            "pictures": [
+                {
+                    "source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+                }
+            ],
+            "attributes": [
+                {
+                    "id": "BRAND",
+                    "value_name": "Genérica"
+                },
+                {
+                    "id": "MODEL",
+                    "value_name": "Sonda"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WEIGHT",
+                    "value_name": "500 g"
+                },
+                {
+                    "id": "SELLER_PACKAGE_HEIGHT",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_LENGTH",
+                    "value_name": "20 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WIDTH",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_SKU",
+                    "value_name": "SONDA-ECF-001"
+                },
+                {
+                    "id": "VOLTAGE",
+                    "value_id": "198813"
+                },
+                {
+                    "id": "COLOR",
+                    "value_id": "283148"
+                },
+                {
+                    "name": "Estampa",
+                    "value_name": "Lisa"
+                }
+            ],
+            "sale_terms": [
+                {
+                    "id": "WARRANTY_TYPE",
+                    "value_name": "Garantia do vendedor"
+                },
+                {
+                    "id": "WARRANTY_TIME",
+                    "value_name": "30 dias"
+                }
+            ],
+            "shipping": {
+                "mode": "me2",
+                "local_pick_up": false,
+                "free_shipping": false,
+                "logistic_type": "drop_off"
+            },
+            "family_name": "Teste Sonda ECF De Mão Modelo Basico"
+        }
+    },
+    "status": 400,
+    "resposta": {
+        "cause": [
+            {
+                "department": "shipping",
+                "cause_id": 4053,
+                "type": "warning",
+                "code": "shipping.lost_me1_by_user",
+                "references": [
+                    "user.shipping_preferences.modes"
+                ],
+                "message": "User has not mode me1"
+            },
+            {
+                "department": "items",
+                "cause_id": 350,
+                "type": "warning",
+                "code": "item.shipping.mandatory_free_shipping",
+                "references": [],
+                "message": "Mandatory free shipping added"
+            }
+        ],
+        "message": "Validation error",
+        "error": "validation_error",
+        "status": 400
+    },
+    "capturado_em": "2026-10-01T16:00:44-03:00"
+}

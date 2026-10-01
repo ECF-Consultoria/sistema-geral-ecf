@@ -35,6 +35,32 @@ sem homônima. Arquivo novo em `tests/fixtures/`: conferir com
 As fixtures vão para o git: o comando tira dado pessoal (`sanitizar()`) e nunca
 grava token (só vai no cabeçalho). Não afrouxe isso.
 
+**Como a parte da conta rodou na produção sem deploy (01/10):** `pscp` do
+`PublicadorSondar.php` + um `run.php` para `/tmp/<pasta>` da VPS; o `run.php` faz
+o boot do app de `/var/www/ecf_admin`, dá `require` no comando e o registra com
+`$kernel->registerCommand(new PublicadorSondar())`, depois
+`$kernel->call('publicador:sondar', ['--empresa' => '459', '--categorias' => '…', '--saida' => __DIR__.'/saida'])`.
+Rodar como **www-data** (`chown -R www-data` na pasta + `su -s /bin/sh www-data -c 'php run.php'`):
+log ou cache criado como root deixaria o PHP-FPM sem escrita. Trazer `saida/conta`
+de volta com `pscp -r` e apagar a pasta da VPS. Nada em `/var/www` é tocado.
+
+**A conta da #459 é a MGSTOREL (1555596317), loja REAL**, não usuário de teste
+do ML — a mesma conta da antiga "Dev 02 Teste" (#356), que em 10/07 era clássica
+e hoje é **User Products**. Anúncio criado nela é visível a compradores: título
+"Item de teste - Não ofertar", fechar logo depois, e confirmação do usuário antes
+de cada `POST /items`.
+
+## 3a. O `/items/validate` devolve 400 mesmo quando só há avisos
+
+Nesta conta sempre vêm dois avisos (`4053 lost_me1_by_user`, `350
+mandatory_free_shipping`), e o status é **400**, não 204. "Passou" = nenhuma
+causa com `type: error`. Quem testar `status === 204` vai achar que nada nunca
+passa. O `lost_me1_by_user`, que em 10/07 bloqueava, hoje é aviso.
+
+Outra armadilha da sondagem: numa conta UP, payload com `title` (ou sem
+`family_name`) para no erro de corpo (369 / `body.invalid_fields`) ANTES de
+qualquer outra validação — cenário montado sobre a base errada não testa nada.
+
 ## 4. O que a API real mostrou e a documentação não dizia (01/10/2026)
 
 Detalhes em `12-hipoteses-e-pendencias.md` §Resultado. Os que mais mudam código:

@@ -35,29 +35,32 @@ A sonda é o comando `php artisan publicador:sondar` (`app/Console/Commands/Publ
   | **MLB31447** Camisetas e Regatas | Calçados, Roupas e Bolsas |
   | **MLB47097** Pastilhas de Freios | Acessórios para Veículos › Peças de Carros e Caminhonetes › Freios |
 
-- **Parte da conta (0b):** pendente. Conta de teste definida pelo usuário: empresa **#459 "Dev 02 Testes API"**. Os tokens só se descriptografam na produção, então a 0b roda lá.
+- **Parte da conta (0b):** feita em 01/10, na produção, com a empresa **#459 "Dev 02 Testes API"**. Foram 105 respostas em `conta/`. A conta do ML é a **MGSTOREL** (1555596317). É a mesma da antiga Dev 02 Teste (#356) — e **é uma loja real, não um usuário de teste do ML**. A 1ª rodada partia do payload legado; numa conta UP tudo parou no erro de `family_name`. A 2ª rodada parte da base do modelo da conta.
+
+**Regra observada que muda a validação (H-24):** o `/items/validate` devolve **HTTP 400 mesmo quando todas as causas são `warning`**. Nesta conta sempre vêm dois avisos (`4053 shipping.lost_me1_by_user` e `350 item.shipping.mandatory_free_shipping`), então nunca houve 204. **"Válido" = nenhuma causa com `type = error`**, não "status 204". O Anunciar antigo já decide assim.
 
 | ID | Status | Evidência | Decisão |
 |---|---|---|---|
-| H-01 | **Pendente (0b)** | — | — |
-| H-02 | **Pendente (0b)** | Cenários `base_legado` / `base_up` / `base_title_e_family` | — |
-| H-03 | **Parcial** | O pai de cada folha tem `listing_allowed=false` e filhos (`pai_*.json`) | Bloquear categoria que não é folha; o erro do `validate` sai na 0b (`categoria_nao_folha`) |
-| H-04 | **Parcial** | `ITEM_CONDITION` (lista, `hidden`) existe nas 4 categorias, mas o valor **Recondicionado (2230582)** só aparece em cadeira e furadeira. Camiseta tem só Novo/Usado e pastilha só Novo. | Oferecer recondicionado **só quando o valor existir** no schema. Qual `condition` acompanha: 0b (`recondicionado`) |
-| H-05 | **Pendente (0b)** | Cenários `sem_embalagem` / `embalagem_sem_unidade` | Indício de 10/07: `"500 g"` e `"15 cm"` passaram |
-| H-06 | **Pendente (0b)** | Cenário `na_em_obrigatorio`. INMETRO (`INMETRO_CERTIFICATION_REGISTRATION_NUMBER`) **não é obrigatório** na cadeira — o N/A do print está num opcional. | — |
-| H-07 | **Resolvida pelos dados** | `technical_specs/input` traz `ui_config.allow_custom_value` por componente (`COMBO` true ou false; `TEXT_INPUT` false) | Com `values[]` e `allow_custom_value=false` → só `value_id`. Com `true` → id ou texto livre. Sem `values[]` → texto livre. |
-| H-08 | **Pendente (0b)** | `conditional_base_legado` / `conditional_variacoes_legado_soma` | — |
+| H-01 | **Confirmada: UP** | Tags da conta: `business`, `eshop`, **`user_product_seller`**, `messages_as_seller`, `normal`. Em 10/07 a mesma conta era clássica: migrou. | O builder **UP é o caminho principal**. O legado continua para contas clássicas. |
+| H-02 | **Confirmada** | No UP, `title` dá **`body.invalid_fields`** ("The fields [title] are invalid") e a falta de `family_name` dá **369** `body.required_fields` | O builder UP **nunca** manda `title`. A flag `up_send_title` deixa de ser necessária: a API proíbe. |
+| H-03 | **Confirmada** | **126** `item.category_id.invalid` — "Make sure you're posting in a leaf category" | Bloquear categoria que não é folha (L2) |
+| H-04 | **Confirmada no validate** | `condition: new` + `ITEM_CONDITION` = 2230582 (Recondicionado) + garantia de 90 dias passou só com avisos (cadeira, furadeira). O valor só existe em algumas categorias. | Recondicionado = `condition new` + `ITEM_CONDITION` 2230582, oferecido **só quando o valor existir** no schema. Conferir na criação (E2E). |
+| H-05 | **Confirmada (opcional)** | Sem embalagem: passou sem nenhum aviso de embalagem. `"500"`/`"15"` sem unidade: **aviso 306** `item.attributes.omitted` — o valor é **descartado em silêncio**. | Embalagem opcional. Se informada, **sempre com unidade** (L1 bloqueia número sem unidade, senão o ML joga fora). |
+| H-06 | **Confirmada: N/A não vale em obrigatório** | Cadeira: **100** `field.constraint.violated` ("BACKREST_HEIGHT is a required attribute … cannot be not applicable"). Camiseta (GENDER): **2516**. INMETRO não é obrigatório na cadeira. | V-ATT-06 BLOCKER: N/A só em opcional |
+| H-07 | **Confirmada** | Texto livre em `REQUIRES_ASSEMBLY` (`BOOLEAN_INPUT`, `allow_custom_value=false`) → **3510** `invalid.item.attribute.values`. Texto livre em `BRAND` da pastilha (`COMBO`, `allow_custom_value=true`) → aceito. | Com `values[]` e `allow_custom_value=false` → só `value_id`. Com `true` → id ou texto livre. Sem `values[]` → texto livre. |
+| H-08 | **Parcial** | `/attributes/conditional` aceita o payload UP (`family_name`, sem `title`) e o legado com `variations`. Em todos devolveu `{"required_attributes": []}` — nenhum condicional disparou nestas 4 categorias. | Mandar o payload da 1ª variante ativa (UP) ou o item inteiro (legado). Falta um caso que dispare. |
 | H-09 | **Confirmada** | `GET /categories/{id}/sale_terms` existe. `WARRANTY_TYPE` é lista: **2230280** Garantia do vendedor, **2230279** Garantia de fábrica, **6150835** Sem garantia. `WARRANTY_TIME` é `number_unit` em dias/meses/anos. Igual nas 4 categorias. | Ler sempre do schema; mandar `value_id` |
-| H-10 | **Pendente (0b)** | `shipping_options_free_{50,78_99,79,150}` | — |
+| H-10 | **Confirmada (nesta conta)** | `shipping_options/free`: a R$ 50 e R$ 78,99 vem `free_shipping_by_meli: true` com desconto de 30%; a **R$ 79,00** vira `discount.type: mandatory` com 50%. No `validate` a R$ 150 sem frete grátis, o ML responde **aviso 350** "Mandatory free shipping added": ele **liga sozinho**, não recusa. | O limite vem da API (`discount.type`, `free_shipping_by_meli`). Nunca fixar 79 no código. Mostrar como aviso. |
 | H-11 | **Confirmada (não existe)** | `settings.restrictions` e `settings.tags` vazios na cadeira | Ignorar na Fase 1 |
 | H-13 | **Sem sinal** | `catalog_domains.compatibilities` = `[]` até na pastilha de freio. `HAS_COMPATIBILITIES` é `read_only`. | Continua fora da Fase 1. Como detectar a exigência fica em aberto. |
-| H-14 | **Parcial** | `listing_prices` da cadeira, a R$ 150 no Clássico, dá **16,50 (11%)**, o mesmo do print. Premium: 21,00 (14%). | O `list_cost` do frete sai na 0b |
+| H-14 | **Confirmada (fórmula)** | `listing_prices` da cadeira, a R$ 150 no Clássico, dá **16,50 (11%)**, o mesmo do print. Premium: 21,00 (14%). `coverage.all_country.list_cost` já vem **com o desconto aplicado** (R$ 150: `promoted_amount` 42,70 × 50% = 21,35), como no print (124,70 → 62,35). | "Você recebe" = preço − `sale_fee_amount` − `list_cost`, exibido como estimativa |
 | H-15 | **Confirmada** | `EMPTY_GTIN_REASON` com **17055158–17055161** em cadeira, furadeira e camiseta. A pastilha nem tem o atributo (GTIN é `read_only`). | Ler do schema |
 | H-16 | **Confirmada** | `settings.catalog_domain` traz o domínio (`MLB-OFFICE_CHAIRS`…), igual ao `domain_id` do `domain_discovery`. Também existe `GET /catalog_domains/{id}`. | Usar `settings.catalog_domain` |
-| H-17 | **Pendente (0b)** | Cenário `variacoes_eixo_customizado` (eixo da categoria + `{name, value_name}`) | — |
-| H-19 | **Indício forte** | `/users/{id}/items/search?seller_sku=` já roda em produção no "Importar" do Mapeamento (learnings do portal §27). Forma da resposta: 0b. | — |
+| H-17 | **Parcial (UP)** | No UP, um atributo customizado `{"name": "Estampa", "value_name": "Lisa"}` junto com os eixos da categoria nos atributos do item passou só com avisos (cadeira, furadeira). O legado com 3+ eixos não pôde ser testado: a conta é UP. | UI limita a 3 eixos (configurável) |
+| H-19 | **Confirmada** | `/users/{id}/items/search?seller_sku=` devolve `{seller_id, results: [ids], paging}`. Já roda em produção no "Importar" do Mapeamento. | Reconciliação por SKU |
 | H-21 | **Confirmada** | Na cadeira, `UPHOLSTERY_MATERIAL` tem `allow_variations` **e** `defines_picture`, assim como `COLOR`. O "Azul / Couro" do print é Cor × Material. | O grupo de imagem é o par Cor+Material quando os dois são eixos |
-| H-24, H-26 | **Pendente (0b)** | `variacoes_legado_{soma,zero,sem_qtd}` | — |
+| H-24 | **Confirmada (pior que o previsto)** | Avisos voltam num **400**, não num 204 (ver a regra acima) | V-REM-01 = "nenhuma causa `error`" |
+| H-26 | **Sem conta para testar** | A conta de teste é UP: qualquer `variations` dá **374** ("The field variations is invalid with family name"). Na 1ª rodada, sem `available_quantity` no item, o ML também o pediu (369). | Precisa de uma conta **clássica** para fechar. Até lá: enviar a soma (decisão provisória). |
 | H-27 | **Refutada como sinal** | `relevance` 1 em cerca de 55% dos atributos, inclusive em muitos `hidden` | O destaque vem do grupo `MAIN` do `technical_specs`, não do `relevance` |
 | H-28 | **Confirmada (parcial)** | Só o **GTIN** tem `used_hidden`, nas 4 categorias | Ocultar GTIN quando a condição for usado |
 | H-18, H-22, H-23, H-25 | **Pendente (E2E)** | Exigem criar anúncio | — |
@@ -78,6 +81,42 @@ A sonda é o comando `php artisan publicador:sondar` (`app/Console/Commands/Publ
 | N-10 | `settings.item_conditions` varia por categoria (pastilha: só `new`). `minimum_price` = **8** na camiseta e 0 nas outras. | Ler da categoria (já previsto) |
 | N-11 | O `domain_discovery` devolve atributos inferidos (furadeira: `VOLTAGE` = 127V) | Sugestões com `origem=inferred` (RN-20) |
 | N-12 | A cadeira MLB193945 tem **exatamente** os atributos do print: `BACKREST_HEIGHT`, `SEAT_DEPTH`, `OFFICE_CHAIR_WIDTH`, `MAX_CHAIR_HEIGHT` (`number_unit`, unidades `"`/cm/ft/m/mm) e `REQUIRES_ASSEMBLY`, `IS_GAMER`, `IS_ERGONOMIC`, `IS_SWIVEL`, `INCLUDES_ASSEMBLY_MANUAL` (`boolean`: 242084 Não / 242085 Sim), todos `required`. | A fixture `schema_cadeira` do `11` é esta categoria, de verdade |
+| N-13 | **RN-03 confirmada no MLB:** conta UP + `variations` → **374** `body.invalid_fields` | A guarda do builder UP (TC-90) é regra [ML], não só [ARQ] |
+| N-14 | **Limite do `family_name`:** passou de 60 → **462** `item.family_name.length_invalid` ("over of 60 character") nas categorias com `max_title_length` 60. Na pastilha (`max_title_length` 200), **140 caracteres passaram**. | O limite é o `max_title_length` da categoria. O teto de 120 do [ML·S8] **não apareceu** no `validate`: fica configurável (`up_family_name_max`, padrão `null`) até a criação real confirmar. |
+| N-15 | Estoque 0 passou no `validate` (só avisos) | V-VAR-12 continua BLOCKER por decisão [ARQ] (item nasce pausado), não por regra do ML |
+| N-16 | O `lost_me1_by_user` agora vem como **`warning`** (em 10/07 bloqueava o `validate` desta conta) | A decisão D7 (lista de falsos positivos) não é necessária hoje; decide-se pelo `type` que o ML manda |
+| N-17 | `references` de atributo apontam o **índice no payload** (`item.attributes[16].values`) | O mapeador de erros precisa do payload enviado para achar o atributo — mais um motivo para guardá-lo (V11) |
+
+### Catálogo de erros reais (base do dicionário do `09` §3)
+
+Observados no `/items/validate` em 01/10/2026 (`conta/categorias/*/validate_*.json`). Alguns códigos diferem dos documentados (**3705**, não 3715, para título curto; **7711**, não 7710, para dígito verificador errado).
+
+| `cause_id` | `code` | Tipo | Gatilho observado | `references` |
+|---|---|---|---|---|
+| 369 | `body.required_fields` | error | UP sem `family_name`; item sem `available_quantity` | `body` |
+| — | `body.invalid_fields` (em `error`, sem `cause`) | error | UP com `title` | — |
+| 374 | `body.invalid_fields` | error | UP com `variations` | `field.invalid` |
+| 126 | `item.category_id.invalid` | error | Categoria que não é folha | `item.category_id` |
+| 173 | `item.listing_type_id.requiresPictures` | error | Sem fotos | `item.listing_type_id`, `item.pictures` |
+| 109 | `item.price.invalid` | error | Preço abaixo do `minimum_price` | `item.category_id` (!) |
+| 462 | `item.family_name.length_invalid` | error | `family_name` acima do `max_title_length` | `item.family_name` |
+| 3705 | `item.title.minimum_length` | error | `family_name` "Cadeira" | `item.title` |
+| 100 | `field.constraint.violated` | error | N/A em obrigatório | — |
+| 2516 | `error.item.attribute.business_conditional.value_name` | error | N/A em GENDER (camiseta) | `item.name` |
+| 3510 | `invalid.item.attribute.values` | error | Texto livre em lista fechada | `item.name` |
+| 3708 | `item.attribute.number_invalid_format` | error | `number_unit` sem unidade ou com unidade inválida (mensagem em pt com exemplo) | `item.attributes` |
+| 344 | `item.attributes.normalizable.invalid` | error | Idem (acompanha o 3708) | `item.attributes` |
+| 154 | `item.attributes.invalid_length` | error | Valor > 255 | `item.attributes` |
+| 394 | `item.attribute.values.name.invalid` | error | Idem (acompanha o 154) | `item.attributes.values.name` |
+| 7711 | `item.attribute.product_identifier.invalid_format` | error | GTIN com dígito verificador errado | `item.attributes[n].values` |
+| 2610 | `missing.fashion_grid.grid_id.values` | error | Moda sem `SIZE_GRID_ID` (Fase 2) | `item.attributes` |
+| 306 | `item.attributes.omitted` | warning | Embalagem sem unidade — **valor descartado** | `item.attributes` |
+| 303 | `item.attributes.ignored` | warning | Atributo `read_only` enviado (GTIN da pastilha) | `item.attributes` |
+| 3704 | `item.attribute.missing_catalog_required` | warning | Falta atributo `catalog_required` (exposição) | `item.attributes` |
+| 2511 | `create.item.attribute.business_conditional` | warning | ML acrescenta `AGE_GROUP` sozinho (camiseta) | `item.attributes` |
+| 350 | `item.shipping.mandatory_free_shipping` | warning | Preço ≥ R$ 79: o ML **liga** o frete grátis | — |
+| 4053 | `shipping.lost_me1_by_user` | warning | Sempre, nesta conta | `user.shipping_preferences.modes` |
+| 4056 | `shipping.lost_me2_by_catalog` | warning | Junto do 126 | `catalog.shipping_preferences.modes` |
 
 | ID | Hipótese | Por que importa | Como validar | Decisão provisória |
 |---|---|---|---|---|

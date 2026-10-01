@@ -186,7 +186,9 @@ class PublicadorSondar extends Command
             $usuario['resposta'] = array_intersect_key($usuario['resposta'], array_flip(self::CAMPOS_USUARIO));
         }
         $this->gravar('conta/usuario.json', $usuario);
-        $this->line('Tags da conta: '.implode(', ', (array) data_get($usuario, 'resposta.tags', [])));
+        $tags = (array) data_get($usuario, 'resposta.tags', []);
+        $up = in_array('user_product_seller', $tags, true);
+        $this->line('Tags da conta: '.implode(', ', $tags).' → modelo '.($up ? 'USER_PRODUCTS' : 'LEGADO'));
 
         $this->gravar('conta/shipping_preferences.json', $this->chamar('GET', "/users/{$sellerId}/shipping_preferences", $t));
 
@@ -207,9 +209,9 @@ class PublicadorSondar extends Command
 
             $this->gravar("{$base}/available_listing_types.json", $this->chamar('GET', "/users/{$sellerId}/available_listing_types", $t, ['category_id' => $id]));
 
-            foreach ($this->cenarios($id, $cat, $attrs) as $nome => $payload) {
-                // H-08: condicionais com o payload simples e com o de variações.
-                if (in_array($nome, ['base_legado', 'variacoes_legado_soma'], true)) {
+            foreach ($this->cenarios($id, $cat, $attrs, $up) as $nome => $payload) {
+                // H-08: condicionais com o payload do modelo da conta e com o de variações.
+                if (in_array($nome, [$up ? 'base_up' : 'base_legado', 'up_variante_eixos', 'variacoes_legado_soma', 'sem_embalagem'], true)) {
                     $this->gravar("{$base}/conditional_{$nome}.json", $this->chamar('POST', "/categories/{$id}/attributes/conditional", $t, [], $payload));
                 }
                 $this->gravar("{$base}/validate_{$nome}.json", $this->chamar('POST', '/items/validate', $t, [], $payload));
@@ -223,9 +225,13 @@ class PublicadorSondar extends Command
      * (atributos obrigatórios com o 1º valor da lista, embalagem, me2 drop_off,
      * foto por URL externa).
      *
+     * Os cenários partem da base do MODELO DA CONTA (`$up`): na 1ª rodada,
+     * todos partiam do legado e uma conta UP parava no erro de `family_name`
+     * antes de chegar à pergunta de cada cenário.
+     *
      * @return array<string, array>
      */
-    public function cenarios(string $categoria, array $cat, array $attrs): array
+    public function cenarios(string $categoria, array $cat, array $attrs, bool $up = false): array
     {
         $principais = [];
         $eixos = [];
@@ -253,7 +259,10 @@ class PublicadorSondar extends Command
             $m,
         ));
 
-        $base = [
+        $sku = ['SELLER_SKU' => ['value_name' => 'SONDA-ECF-001']];
+        $comEmbalagem = [...array_map(fn ($v) => ['value_name' => $v], $embalagem), ...$sku];
+
+        $legado = [
             'title' => $titulo,
             'category_id' => $categoria,
             'price' => 150.00,
@@ -263,25 +272,60 @@ class PublicadorSondar extends Command
             'condition' => 'new',
             'listing_type_id' => 'gold_special',
             'pictures' => [['source' => self::FOTO]],
-            'attributes' => $comAtributos([...array_map(fn ($v) => ['value_name' => $v], $embalagem), 'SELLER_SKU' => ['value_name' => 'SONDA-ECF-001']]),
+            'attributes' => $comAtributos($comEmbalagem),
             'sale_terms' => [['id' => 'WARRANTY_TYPE', 'value_name' => 'Garantia do vendedor'], ['id' => 'WARRANTY_TIME', 'value_name' => '30 dias']],
             'shipping' => ['mode' => 'me2', 'local_pick_up' => false, 'free_shipping' => false, 'logistic_type' => 'drop_off'],
         ];
-        $semTitulo = array_diff_key($base, ['title' => 1]);
+        $upBase = [...array_diff_key($legado, ['title' => 1]), 'family_name' => $titulo];
+        $base = $up ? $upBase : $legado;
+        $campoNome = $up ? 'family_name' : 'title';
+        $trocar = fn (array $mudanca) => [...$base, 'attributes' => $comAtributos([...$comEmbalagem, ...$mudanca])];
 
         $c = [
-            'base_legado'        => $base,                                                       // H-01/H-02
-            'base_up'            => [...$semTitulo, 'family_name' => $titulo],                  // H-02
-            'base_title_e_family' => [...$base, 'family_name' => $titulo],                       // H-02
+            'base_legado'        => $legado,                                                     // H-01/H-02
+            'base_up'            => $upBase,                                                     // H-02
+            'base_title_e_family' => [...$legado, 'family_name' => $titulo],                     // H-02
             'sem_fotos'          => [...$base, 'pictures' => []],                                 // 173
-            'sem_embalagem'      => [...$base, 'attributes' => $comAtributos(['SELLER_SKU' => ['value_name' => 'SONDA-ECF-001']])],  // H-05
-            'embalagem_sem_unidade' => [...$base, 'attributes' => $comAtributos([...array_map(fn ($v) => ['value_name' => (string) (int) $v], $embalagem), 'SELLER_SKU' => ['value_name' => 'SONDA-ECF-001']])], // H-05
+            'sem_embalagem'      => [...$base, 'attributes' => $comAtributos($sku)],              // H-05
+            'embalagem_sem_unidade' => [...$base, 'attributes' => $comAtributos([...array_map(fn ($v) => ['value_name' => (string) (int) $v], $embalagem), ...$sku])], // H-05
+            'estoque_zero'       => [...$base, 'available_quantity' => 0],                        // V-VAR-12
+            'nome_longo'         => [...$base, $campoNome => str_repeat('Cadeira Teste ', 10)],  // 462 / V-TIT-01
+            'nome_curto'         => [...$base, $campoNome => 'Cadeira'],                          // 3715
+            'garantia_value_id'  => [...$base, 'sale_terms' => [['id' => 'WARRANTY_TYPE', 'value_id' => '2230280'], ['id' => 'WARRANTY_TIME', 'value_name' => '30 dias']]], // H-09
+            'sem_garantia'       => [...$base, 'sale_terms' => [['id' => 'WARRANTY_TYPE', 'value_id' => '6150835']]], // H-09
+            'gtin_checksum_errado' => $trocar(['GTIN' => ['value_name' => '7896553367646']]),    // TC-38
+            'gtin_valido'        => $trocar(['GTIN' => ['value_name' => '7896553367645']]),       // TC-38 (o do print)
+            'empty_gtin_reason'  => $trocar(['EMPTY_GTIN_REASON' => ['value_id' => '17055160']]), // H-15
         ];
 
         // H-06: N/A num obrigatório que não seja marca nem modelo.
         $alvoNa = array_values(array_diff(array_keys($principais), ['BRAND', 'MODEL']))[0] ?? null;
         if ($alvoNa !== null) {
-            $c['na_em_obrigatorio'] = [...$base, 'attributes' => $comAtributos([$alvoNa => ['value_id' => '-1', 'value_name' => null], ...array_map(fn ($v) => ['value_name' => $v], $embalagem)])];
+            $c['na_em_obrigatorio'] = $trocar([$alvoNa => ['value_id' => '-1', 'value_name' => null]]);
+        }
+
+        // RN-17 / V-ATT-04: número sem unidade e unidade fora de allowed_units.
+        $numUnit = collect($attrs)->first(fn ($a) => isset($principais[$a['id']]) && ($a['value_type'] ?? '') === 'number_unit');
+        if ($numUnit) {
+            $c['numero_sem_unidade'] = $trocar([$numUnit['id'] => ['value_name' => '10']]);
+            $c['unidade_invalida'] = $trocar([$numUnit['id'] => ['value_name' => '10 pol']]);
+        }
+
+        // RN-16 / H-07: texto livre num atributo de lista obrigatório.
+        $lista = collect($attrs)->first(fn ($a) => isset($principais[$a['id']]) && ! empty($a['values']));
+        if ($lista) {
+            $c['valor_livre_em_lista'] = $trocar([$lista['id'] => ['value_name' => 'Valor Inventado Sonda']]);
+        }
+
+        // RN-18 / 154: valor com mais de 255 caracteres.
+        if (isset($principais['MODEL'])) {
+            $c['texto_longo'] = $trocar(['MODEL' => ['value_name' => str_repeat('M', 300)]]);
+        }
+
+        // RN-81 / 109: preço abaixo do mínimo da categoria (só quando há mínimo).
+        $minimo = (float) data_get($cat, 'settings.minimum_price', 0);
+        if ($minimo > 0) {
+            $c['preco_abaixo_minimo'] = [...$base, 'price' => max(0.01, $minimo - 1)];
         }
 
         // H-03: o pai da folha.
@@ -315,14 +359,30 @@ class PublicadorSondar extends Command
                 'attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'SONDA-ECF-V'.($i + 1)]],
             ];
             $vars = array_map(fn ($v, $i) => $variacao($v, $i, 150.00), $valores, array_keys($valores));
-            $comVars = [...$base, 'attributes' => $semEixo, 'variations' => $vars];
+            $comVars = [...$legado, 'attributes' => $semEixo, 'variations' => $vars];
+
+            // RN-03: `variations` com `family_name` (vale nos dois modelos — é a prova da regra).
+            $c['variacoes_com_family_name'] = [...array_diff_key($comVars, ['title' => 1]), 'family_name' => $titulo, 'available_quantity' => 2 * count($vars)];
+
+            if ($up) {
+                // UP: cada variante é um item; o eixo vai como atributo comum (`05` §9).
+                $e2 = $listaEixos[1] ?? null;
+                $eixosComoAtributo = [$e1['id'] => ['value_id' => (string) $valores[0]['id']]];
+                if ($e2) {
+                    $eixosComoAtributo[$e2['id']] = ['value_id' => (string) $e2['values'][0]['id']];
+                }
+                $c['up_variante_eixos'] = $trocar($eixosComoAtributo);
+                // H-17 no UP: eixo customizado como `{name, value_name}` nos atributos do item.
+                $c['up_eixo_customizado'] = [...$base, 'attributes' => [...$trocar($eixosComoAtributo)['attributes'], ['name' => 'Estampa', 'value_name' => 'Lisa']]];
+
+                return $c;
+            }
 
             $c['variacoes_legado_soma'] = [...$comVars, 'available_quantity' => 2 * count($vars)];
             $c['variacoes_legado_zero'] = [...$comVars, 'available_quantity' => 0];
             $c['variacoes_legado_sem_qtd'] = array_diff_key($comVars, ['available_quantity' => 1]);
             $c['variacoes_precos_diferentes'] = [...$comVars, 'available_quantity' => 2 * count($vars),
                 'variations' => array_map(fn ($v, $i) => $variacao($v, $i, 150.00 + 15 * $i), $valores, array_keys($valores))];
-            $c['variacoes_com_family_name'] = [...array_diff_key($comVars, ['title' => 1]), 'family_name' => $titulo, 'available_quantity' => 2 * count($vars)];
 
             // H-17 / eixo customizado: 1º eixo + um eixo livre `{name, value_name}`.
             $c['variacoes_eixo_customizado'] = [...$comVars, 'available_quantity' => 2 * count($vars),
@@ -338,7 +398,7 @@ class PublicadorSondar extends Command
                     }
                 }
                 $semDoisEixos = array_values(array_filter($semEixo, fn ($a) => $a['id'] !== $e2['id']));
-                $c['variacoes_dois_eixos'] = [...$base, 'attributes' => $semDoisEixos, 'variations' => $vars2, 'available_quantity' => 2 * count($vars2)];
+                $c['variacoes_dois_eixos'] = [...$legado, 'attributes' => $semDoisEixos, 'variations' => $vars2, 'available_quantity' => 2 * count($vars2)];
             }
         }
 

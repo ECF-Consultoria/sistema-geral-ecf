@@ -114,4 +114,40 @@ class PublicadorSondarTest extends TestCase
         $this->assertArrayNotHasKey('title', $c['variacoes_com_family_name']);
         $this->assertSame(['name' => 'Estampa', 'value_name' => 'Lisa'], $c['variacoes_eixo_customizado']['variations'][0]['attribute_combinations'][1]);
     }
+
+    public function test_em_conta_up_os_cenarios_partem_do_family_name_e_o_eixo_vira_atributo(): void
+    {
+        $cat = ['name' => 'Furadeiras', 'settings' => ['minimum_price' => 8], 'path_from_root' => [['id' => 'MLB2'], ['id' => 'MLB3']]];
+        $attrs = [
+            ['id' => 'BRAND', 'value_type' => 'string', 'tags' => ['required' => true]],
+            ['id' => 'MODEL', 'value_type' => 'string', 'tags' => ['required' => true]],
+            ['id' => 'POWER', 'value_type' => 'number_unit', 'default_unit' => 'W', 'tags' => ['required' => true]],
+            ['id' => 'VOLTAGE', 'value_type' => 'list', 'tags' => ['allow_variations' => true],
+                'values' => [['id' => '1', 'name' => '127V'], ['id' => '2', 'name' => '220V']]],
+        ];
+
+        $c = (new PublicadorSondar())->cenarios('MLB3', $cat, $attrs, up: true);
+        $attrsDe = fn (string $cenario) => array_column($c[$cenario]['attributes'], null, 'id');
+
+        // Todo cenário derivado parte da base UP: family_name, nunca title.
+        foreach (['sem_fotos', 'sem_embalagem', 'na_em_obrigatorio', 'categoria_nao_folha', 'numero_sem_unidade', 'preco_abaixo_minimo'] as $cenario) {
+            $this->assertArrayNotHasKey('title', $c[$cenario], $cenario);
+            $this->assertArrayHasKey('family_name', $c[$cenario], $cenario);
+        }
+        $this->assertArrayHasKey('title', $c['base_legado']);
+
+        // O nome longo mexe no campo do modelo.
+        $this->assertGreaterThan(120, mb_strlen($c['nome_longo']['family_name']));
+
+        // UP: variante = item com o eixo como atributo comum; nada de variations legado.
+        $this->assertSame('1', $attrsDe('up_variante_eixos')['VOLTAGE']['value_id']);
+        $this->assertArrayNotHasKey('variations', $c['up_variante_eixos']);
+        $this->assertArrayNotHasKey('variacoes_legado_soma', $c);
+        $this->assertArrayHasKey('variations', $c['variacoes_com_family_name']);
+
+        // Unidade e mínimo da categoria.
+        $this->assertSame('10', $attrsDe('numero_sem_unidade')['POWER']['value_name']);
+        $this->assertSame('10 pol', $attrsDe('unidade_invalida')['POWER']['value_name']);
+        $this->assertSame(7.0, $c['preco_abaixo_minimo']['price']);
+    }
 }

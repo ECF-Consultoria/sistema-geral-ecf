@@ -1,0 +1,59 @@
+{
+    "requisicao": {
+        "metodo": "POST",
+        "caminho": "/categories/MLB189007/attributes/conditional",
+        "query": null,
+        "corpo": {
+            "category_id": "MLB189007",
+            "price": 150,
+            "currency_id": "BRL",
+            "available_quantity": 1,
+            "buying_mode": "buy_it_now",
+            "condition": "new",
+            "listing_type_id": "gold_special",
+            "pictures": [
+                {
+                    "source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+                }
+            ],
+            "attributes": [
+                {
+                    "id": "BRAND",
+                    "value_name": "Genérica"
+                },
+                {
+                    "id": "MODEL",
+                    "value_name": "Sonda"
+                },
+                {
+                    "id": "SELLER_SKU",
+                    "value_name": "SONDA-ECF-001"
+                }
+            ],
+            "sale_terms": [
+                {
+                    "id": "WARRANTY_TYPE",
+                    "value_name": "Garantia do vendedor"
+                },
+                {
+                    "id": "WARRANTY_TIME",
+                    "value_name": "30 dias"
+                }
+            ],
+            "shipping": {
+                "mode": "me2",
+                "local_pick_up": false,
+                "free_shipping": false,
+                "logistic_type": "drop_off"
+            },
+            "family_name": "Teste Sonda ECF De Mão Modelo Basico"
+        }
+    },
+    "status": 200,
+    "resposta": {
+        "required_attributes": [],
+        "callbacks": [],
+        "status": 200
+    },
+    "capturado_em": "2026-10-01T16:00:39-03:00"
+}

@@ -19,6 +19,22 @@
 
 As perguntas 5–11 seguem com o padrão proposto (§7.1) até você dizer o contrário.
 
+## Resultado da Fase 0 (01/10/2026) — o que muda no plano
+
+Detalhes e evidências no `12-hipoteses-e-pendencias.md` §Resultado.
+
+| Achado | Muda no plano |
+|---|---|
+| A conta #459 (MGSTOREL) é **User Products** | O builder UP é o **caminho principal** e o primeiro a ficar pronto (F1.4). O legado continua, para contas clássicas. |
+| No UP, `title` é **inválido** e `family_name` é obrigatório | O builder UP nunca manda `title` — regra da API, não flag |
+| `validate` devolve **400 mesmo só com avisos** | V-REM-01 = "nenhuma causa `type=error`" (decisão D6 mantida; o 204 do `08` não é o critério) |
+| `lost_me1_by_user` agora vem como `warning` | Decisão **D7 dispensada**: decide-se pelo `type` que o ML manda |
+| Embalagem sem unidade é **descartada em silêncio** (aviso 306) | L1 bloqueia embalagem sem unidade |
+| `family_name` limitado pelo `max_title_length` (60, ou 200 na pastilha); o teto de 120 não apareceu | Limite lido da categoria; 120 só como configuração |
+| `technical_specs/input` agrupa **todos** os atributos; `allow_custom_value` diz se aceita texto livre | O formulário dinâmico (F1.2/F1.11) usa os grupos e esse sinal |
+| **A conta de teste é uma loja real** (não usuário de teste do ML) | O E2E (F1.12) cria anúncio visível de verdade: título "Item de teste - Não ofertar", fechar logo depois, e sua confirmação antes de cada `POST /items` |
+| **Não há conta clássica** para testar o legado | O H-26 e o E2E legado (TC-93) ficam sem conta (pergunta 12 abaixo) |
+
 ---
 
 ## 0. Resumo
@@ -513,6 +529,7 @@ Cada entrega é pequena, tem os testes junto no mesmo commit e é verificável s
 9. **Falso positivo do `validate`.** Para `lost_me1_by_user`, aceito "aviso com Estou ciente" em vez de bloquear (decisão D7)?
 10. **Admin `/mlb/anuncios`.** Fica fora até 20/10? Quer o conserto isolado da guarda RN-03 (V1) lá, e a remoção do EAN aleatório?
 11. **Prints do Seller Center.** Ainda não chegaram. Eles mudam a apresentação da F1.11, não o núcleo.
+12. **Conta clássica (pergunta nova, 01/10).** A #459 é UP. Para fechar o legado (H-26 e TC-93) é preciso uma conta **sem** `user_product_seller`. Existe alguma conectada que possa ser usada só para `validate`? Sem ela, o builder legado sai testado só contra a documentação e as fixtures.
 
 ### 7.2 Riscos
 
