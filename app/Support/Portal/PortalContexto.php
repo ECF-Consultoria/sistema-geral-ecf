@@ -28,6 +28,13 @@ class PortalContexto
     /** A chave de sessão que marca uma sessão de EQUIPE. */
     public const SESSAO_EQUIPE = 'portal_equipe_user_id';
 
+    /**
+     * Marca a sessão de equipe que nasceu do link aberto
+     * (`config('portal.link_equipe')`), e não da passagem de 60 segundos. É
+     * por ela que o middleware sabe que precisa reconferir a lista.
+     */
+    public const SESSAO_LINK = 'portal_equipe_por_link';
+
     /** Alguém da ECF está dentro do portal deste cliente? */
     public static function modoEquipe(): bool
     {

@@ -118,10 +118,27 @@ class EnsurePortalAutenticado
         $empresaId = $request->session()->get('portal_empresa_id');
         $empresa = $empresaId ? \App\Models\Company::find($empresaId) : null;
 
+        $sessao = [
+            \App\Support\Portal\PortalContexto::SESSAO_EQUIPE,
+            \App\Support\Portal\PortalContexto::SESSAO_LINK,
+            'portal_empresa_id',
+        ];
+
         if (! $membro || ! $membro->active || ! $empresa || ! $this->equipe->podeEntrar($membro, $empresa)) {
-            $request->session()->forget([\App\Support\Portal\PortalContexto::SESSAO_EQUIPE, 'portal_empresa_id']);
+            $request->session()->forget($sessao);
 
             return $this->naoAutenticado($request, 'Sua sessão no portal do cliente terminou. Entre de novo pelo sistema.');
+        }
+
+        // Sessão nascida do link aberto: a lista `portal.link_equipe` é
+        // reconferida aqui, a cada requisição. Para o dono (admin), a pergunta
+        // de cima responde "sim" sempre — sem esta, tirar a empresa da lista só
+        // barraria quem chegasse depois.
+        if ($request->session()->get(\App\Support\Portal\PortalContexto::SESSAO_LINK)
+            && ! $this->equipe->linkContinuaValendo($membro, $empresa)) {
+            $request->session()->forget($sessao);
+
+            return $this->naoAutenticado($request, 'Esse link do portal não está mais ativo.');
         }
 
         return $next($request);

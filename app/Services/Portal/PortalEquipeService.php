@@ -133,4 +133,86 @@ class PortalEquipeService
     {
         return \App\Support\Portal\UrlDoPortal::para('portal.equipe.entrar', ['t' => $token]);
     }
+
+    // ─── Link aberto (exceção para loja de TESTE) ───────────────────────────
+    //
+    // Tudo acima existe para que a equipe entre com a identidade dela. O link
+    // aberto é o oposto, e por isso fica confinado a `config('portal.link_equipe')`:
+    // quem tiver o link entra, em nome do dono configurado. Ver o docblock da
+    // chave em config/portal.php.
+
+    /**
+     * O dono do link aberto desta empresa — ou `null` se ela não está na
+     * lista, se o dono sumiu, foi desativado ou perdeu o acesso à empresa.
+     *
+     * A régua do dono é a mesma {@see podeEntrar()} de sempre: o link não dá a
+     * ninguém mais do que o próprio dono teria.
+     */
+    public function donoDoLink(Company $empresa): ?User
+    {
+        $donoId = config('portal.link_equipe', [])[$empresa->id] ?? null;
+
+        if (! $donoId) {
+            return null;
+        }
+
+        $dono = User::find($donoId);
+
+        if (! $dono || ! $dono->active || ! $this->podeEntrar($dono, $empresa)) {
+            return null;
+        }
+
+        return $dono;
+    }
+
+    /**
+     * Troca o link aberto por uma entrada. `null` para qualquer recusa, pelo
+     * mesmo motivo de {@see consumir()}.
+     *
+     * Não há o que "gastar": o link é permanente por desenho. A assinatura
+     * (middleware `signed`) prova que o link foi emitido por nós; a lista
+     * decide se ele ainda vale.
+     *
+     * @return array{membro: User, empresa: Company}|null
+     */
+    public function consumirLink(int $empresaId, ?string $ip = null): ?array
+    {
+        $empresa = Company::find($empresaId);
+        $dono = $empresa ? $this->donoDoLink($empresa) : null;
+
+        if (! $dono) {
+            return null;
+        }
+
+        $this->auditoria->equipeEntrouPorLink($dono, $empresa, $ip);
+
+        return ['membro' => $dono, 'empresa' => $empresa];
+    }
+
+    /**
+     * A sessão aberta pelo link continua valendo? Relido a cada requisição
+     * pelo `EnsurePortalAutenticado` — é o que faz "tirar da lista" derrubar
+     * também quem já estava dentro, e não só quem chegar depois.
+     */
+    public function linkContinuaValendo(User $membro, Company $empresa): bool
+    {
+        return $this->donoDoLink($empresa)?->id === $membro->id;
+    }
+
+    /**
+     * O link aberto, no domínio do cliente.
+     *
+     * Assinatura RELATIVA (só caminho + query): o host é trocado depois por
+     * {@see \App\Support\Portal\UrlDoPortal::noDominioDoCliente()}, e uma
+     * assinatura absoluta, calculada sobre o host do admin, não fecharia no
+     * domínio do cliente. A rota valida com `signed:relative`, no mesmo molde.
+     */
+    public function urlDoLink(Company $empresa): string
+    {
+        $relativa = \Illuminate\Support\Facades\URL::signedRoute(
+            'portal.equipe.link', ['empresa' => $empresa->id], null, false
+        );
+
+        return \App\Support\Portal\UrlDoPortal::noDominioDoCliente(url($relativa));
+    }
 }

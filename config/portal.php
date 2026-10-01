@@ -56,4 +56,29 @@ return [
 
     'sessao_minutos' => (int) env('PORTAL_SESSAO_MINUTOS', 43200),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Link aberto de equipe — EXCEÇÃO, não regra
+    |--------------------------------------------------------------------------
+    |
+    | `companies.id => users.id`. A empresa listada aqui ganha um link fixo e
+    | assinado (`php artisan portal:link-equipe {id}`) que abre o portal dela
+    | SEM login, como sessão de equipe em nome do usuário ao lado.
+    |
+    | É a porta que o login de 15/09/2026 fechou para todo mundo, reaberta só
+    | para loja de TESTE da própria ECF — nunca para cliente real: quem tiver o
+    | link opera, e não há como saber quem clicou. Por isso o dono é uma conta
+    | genérica, e não o nome de um dev que pode não ter sido quem agiu.
+    |
+    | Revogar = tirar a linha daqui e publicar. A lista é relida a cada
+    | requisição, então derruba também quem já estava dentro.
+    |
+    */
+
+    'link_equipe' => [
+        // 01/10/2026 — "Dev 02 Testes API", loja onde começa o teste do
+        // Anunciar pelo portal. Dono: "Admin" (#1), a conta genérica.
+        459 => 1,
+    ],
+
 ];

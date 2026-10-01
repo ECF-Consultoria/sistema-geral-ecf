@@ -359,6 +359,17 @@ Route::get('/equipe/entrar', [PortalEquipeController::class, 'entrar'])
     ->name('portal.equipe.entrar');
 Route::post('/equipe/sair', [PortalEquipeController::class, 'sair'])->name('portal.equipe.sair');
 
+// O link ABERTO de equipe — exceção para loja de teste da ECF, só para
+// empresa em `config('portal.link_equipe')`. `signed:relative` porque o host é
+// trocado para o do cliente depois de assinar (ver
+// `PortalEquipeService::urlDoLink()`). `{empresa}` sem model binding: a
+// assinatura é conferida ANTES de qualquer consulta, e sem ela um id
+// inexistente (404) e um existente (403) responderiam diferente.
+Route::get('/equipe/link/{empresa}', [PortalEquipeController::class, 'entrarPorLink'])
+    ->whereNumber('empresa')
+    ->middleware(['signed:relative', 'throttle:20,1'])
+    ->name('portal.equipe.link');
+
 // Entrada e login. Fora do grupo autenticado, por motivo óbvio.
 Route::get('/entrar', [PortalAuthController::class, 'entrada'])->name('portal.entrada');
 Route::post('/entrar/codigo', [PortalAuthController::class, 'enviarCodigo'])

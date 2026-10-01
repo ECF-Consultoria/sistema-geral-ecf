@@ -76,6 +76,9 @@ class RestringeDominioDoPortal
         // Não expõe nada por si: sem ticket válido, devolve para a entrada.
         'equipe/entrar',
         'equipe/sair',
+        // 01/10/2026 — link aberto de equipe, só para empresa listada em
+        // `portal.link_equipe` (loja de teste). Assinado; sem assinatura, 403.
+        'equipe/link/*',
 
         // Uma linha por rota, NUNCA `portal/*`. O curinga deixava passar
         // `/portal/usuarios` — a tela ADMIN de gerenciar acessos, que colide
