@@ -44,4 +44,25 @@ return [
     'avisar_acima_de_itens' => 20,
     'concorrencia_ml' => 2,
 
+    // D9: a publicação roda em fatias que se redespacham (o Job não pode passar do
+    // retry_after de 90 s da fila, senão é reentregue). A trava cobre a fatia inteira
+    // mais um POST lento; UNKNOWN só é reenviado depois de reconciliar E de passado
+    // este tempo desde o envio (a busca por SKU do ML demora a enxergar o item novo).
+    'fatia_segundos' => 45,
+    'trava_segundos' => 600,
+    'reconciliar_apos_segundos' => 180,
+
+    // Piloto (usuário, 01/10): só estas empresas publicam pelo Publicador novo; as
+    // demais seguem no Anunciar antigo. Vazio = todas. A #459 é a conta de teste.
+    'empresas_piloto' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_EMPRESAS_PILOTO', '459'))))),
+
+    // D11 [HIP]: conta multidepósito cria pelo caminho próprio, com o estoque de cada
+    // depósito. Formato lido na documentação por busca (acesso direto dá 403) e nunca
+    // testado de verdade (a conta de teste não tem depósitos). Se o ML recusar com 4xx,
+    // o Publicador cria pelo /items comum e avisa (plano B).
+    'multideposito' => [
+        'caminho' => '/items/multiwarehouse',
+        'campo' => 'stock_locations',
+    ],
+
 ];

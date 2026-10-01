@@ -3,21 +3,12 @@
 namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\ConferirRascunhoJob;
-use App\Models\Company;
-use App\Models\EstruturaOferta;
-use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
-use App\Services\MercadoLivreService;
-use App\Services\MlColetaService;
-use App\Services\Publicador\ClienteMlPublicador;
 use App\Services\Publicador\ConferenciaService;
-use App\Services\Publicador\DadosEfetivosService;
-use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
-use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\RegeneradorVariantes;
@@ -26,121 +17,28 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Tests\Feature\Publicador\Concerns\CenarioCadeira;
 use Tests\TestCase;
-use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
  * A conferência com o ML — L3 (`08` §4), TC-32, 33, 92, 103. O ML é simulado
  * com as respostas REAIS da sondagem de 01/10 (conta #459 e cadeira MLB193945).
- *
- * O fake HTTP é registrado UMA vez e responde pelo estado do teste
- * (`$this->condicionais`, `$this->validate`…): `Http::fake` acumula e o
- * primeiro stub que casa vence (learnings §5).
  */
 class ConferenciaTest extends TestCase
 {
-    use CarregaSchemas;
+    use CenarioCadeira;
     use RefreshDatabase;
-
-    private const ATRIBUTOS = [
-        'BRAND' => ['value_name' => 'ECF'],
-        'MODEL' => ['value_name' => 'Executiva'],
-        'BACKREST_HEIGHT' => ['value_name' => '50 cm'],
-        'SEAT_DEPTH' => ['value_name' => '45 cm'],
-        'OFFICE_CHAIR_WIDTH' => ['value_name' => '60 cm'],
-        'MAX_CHAIR_HEIGHT' => ['value_name' => '110 cm'],
-        'REQUIRES_ASSEMBLY' => ['value_id' => '242085'],
-        'IS_GAMER' => ['value_id' => '242084'],
-        'IS_ERGONOMIC' => ['value_id' => '242085'],
-        'IS_SWIVEL' => ['value_id' => '242085'],
-        'INCLUDES_ASSEMBLY_MANUAL' => ['value_id' => '242085'],
-    ];
-
-    private PubRascunho $r;
-
-    private RascunhoRepository $repo;
-
-    /** @var list<string> o que o `/attributes/conditional` devolve agora */
-    private array $condicionais = [];
-
-    /** @var list<string>|null tipos disponíveis; nulo = a resposta real (todos) */
-    private ?array $tipos = null;
-
-    /** @var array<string, list<string>> SKU → MLBs ativos da conta */
-    private array $skuEm = [];
-
-    /** @var \Closure(array): \GuzzleHttp\Promise\PromiseInterface o `/items/validate` agora */
-    private \Closure $validate;
-
-    private array $efetivos = ['titulos' => [], 'precos' => [], 'mlbs' => []];
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        $empresa = Company::factory()->create();
-        MlToken::create(['company_id' => $empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
-            'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
-        $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(app(MercadoLivreService::class), app(MlColetaService::class), fn () => null));
-        $this->mock(DadosEfetivosService::class, fn ($m) => $m->shouldReceive('daOferta')->andReturnUsing(fn () => $this->efetivos));
-
-        // O schema já guardado (24h): nenhuma chamada pública no teste.
-        $schema = self::schema(self::CADEIRA);
-        MlCategoriaSchema::create(['category_id' => self::CADEIRA, 'domain_id' => $schema->dominio(), 'categoria' => $schema->categoria, 'atributos' => $schema->atributos,
-            'technical_specs' => $schema->technicalSpecs, 'sale_terms' => $schema->saleTerms, 'schema_hash' => $schema->hash(), 'fetched_at' => now()]);
-
-        $this->repo = new RascunhoRepository();
-        $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
-        $this->r = $this->repo->criar($oferta, [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória')]);
-        $this->repo->gravarCategoria($this->r, $schema);
-        $this->repo->gravarAtributos($this->r, self::ATRIBUTOS);
-        $this->variante(['SELLER_SKU' => ['value_name' => 'CAD-01'], 'GTIN' => ['value_name' => '7896553367645']]);
-        $this->r->update(['descricao' => 'Cadeira executiva giratória.', 'envio' => ['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false],
-            'garantia' => ['tipo' => '2230280', 'tempo' => 30, 'unidade' => 'dias']]);
-        $foto = $this->r->imagens()->create(['caminho' => 'publicador/x.jpg', 'sha256' => str_repeat('a', 64), 'mime' => 'image/jpeg', 'bytes' => 800_000,
-            'largura' => 1200, 'altura' => 1200, 'upload_status' => PubImagem::ENVIADA, 'ml_picture_id' => '123-MLB1_102026']);
-        $this->repo->gravarAtribuicoes($this->r, [['imagem' => $foto->id, 'grupo' => R::GERAL, 'posicao' => 0]]);
-        $this->r = $this->r->fresh();
-
-        // O validate da conta #459 devolve 400 só com avisos (N-16): é aprovação.
-        $this->validate = fn (array $corpo) => Http::response(self::fixture('conta/categorias/MLB193945/validate_base_up'), 400);
-
-        Http::fake([
-            '*/users/me' => Http::response(self::fixture('conta/usuario')),
-            '*/shipping_preferences*' => Http::response(self::fixture('conta/shipping_preferences')),
-            '*/attributes/conditional*' => fn () => Http::response(['required_attributes' => array_map(fn ($id) => ['id' => $id, 'name' => $id], $this->condicionais), 'callbacks' => [], 'status' => 200]),
-            '*/available_listing_types*' => function () {
-                $real = self::fixture('conta/categorias/MLB193945/available_listing_types');
-                if ($this->tipos !== null) {
-                    $real['available'] = array_values(array_filter($real['available'], fn ($t) => in_array($t['id'], $this->tipos, true)));
-                }
-
-                return Http::response($real);
-            },
-            '*/items/search*' => fn (Request $req) => Http::response(['seller_id' => '1555596317', 'results' => $this->skuEm[$req->data()['seller_sku'] ?? ''] ?? [], 'paging' => ['total' => 0]]),
-            '*/items/validate' => fn (Request $req) => ($this->validate)($req->data()),
-        ]);
-    }
-
-    private static function fixture(string $relativo): array
-    {
-        return json_decode(file_get_contents(base_path("tests/fixtures-ml/sondagem/{$relativo}.json")), true)['resposta'];
-    }
-
-    private function variante(array $atributos, int $estoque = 3, float $preco = 150.0): void
-    {
-        $unica = $this->repo->snapshot($this->r->fresh())->variantes[0];
-        $this->repo->gravarVariacao($this->r->fresh(), [], [$unica->comDados(['estoque' => $estoque, 'precos' => ['gold_special' => $preco], 'atributos' => $atributos])]);
+        $this->montarCenario();
+        $this->fakeMl();
     }
 
     private function conferir(): PubValidacao
     {
         return app(ConferenciaService::class)->conferir($this->r->fresh());
-    }
-
-    private function chamadas(string $sufixo): int
-    {
-        return count(Http::recorded(fn (Request $r) => str_contains($r->url(), $sufixo)));
     }
 
     private static function regras(PubValidacao $v): array
