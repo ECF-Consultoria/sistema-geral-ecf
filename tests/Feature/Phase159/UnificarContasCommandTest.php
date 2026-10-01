@@ -1126,6 +1126,93 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // WR-02 da revisão — o plano é calculado FORA da transação; o --apply
+    // relê cada linha DENTRO dela e recusa (rollback, nada gravado) quando
+    // o estado mudou desde o plano (TOCTOU).
+    // ═════════════════════════════════════════════════════════════════════
+
+    private function planoDoFixture(): array
+    {
+        return app(\App\Services\Usuarios\UnificacaoContasService::class)
+            ->planejar($this->origemId, $this->destinoId, Carbon::parse('2026-09-01'));
+    }
+
+    private function aplicarEsperandoRecusa(array $plano): string
+    {
+        try {
+            app(\App\Services\Usuarios\UnificacaoContasService::class)->aplicar($plano);
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        $this->fail('aplicar() deveria recusar um plano que não bate mais com o banco.');
+    }
+
+    public function test_wr02_linha_de_carteira_reatribuida_a_terceiro_depois_do_plano_aborta_sem_gravar_nada(): void
+    {
+        $linhaAId = (int) DB::table('company_users')
+            ->where('company_id', $this->companyAId)->where('user_id', $this->origemId)->value('id');
+        $terceiroId = $this->criarUser('Terceiro Teste');
+
+        $plano = $this->planoDoFixture();
+
+        // Escrita concorrente entre o plano e o --apply.
+        DB::table('company_users')->where('id', $linhaAId)->update(['user_id' => $terceiroId]);
+
+        $mensagem = $this->aplicarEsperandoRecusa($plano);
+        $this->assertStringContainsString("company_users#{$linhaAId}", $mensagem);
+        $this->assertStringContainsString('mudou desde o plano', $mensagem);
+
+        // Rollback completo: nada do lote ficou.
+        $this->assertSame($terceiroId, (int) DB::table('company_users')->where('id', $linhaAId)->value('user_id'));
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+        $this->assertSame(0, DB::table('company_manager_history')->count());
+        $this->assertSame(1, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+        $this->assertSame(2, DB::table('company_users')->where('user_id', $this->origemId)->count());
+    }
+
+    public function test_wr02_linha_do_destino_que_motivou_a_colisao_some_depois_do_plano_aborta_sem_apagar_a_origem(): void
+    {
+        $linhaOrigemC = (int) DB::table('company_users')
+            ->where('company_id', $this->companyCId)->where('user_id', $this->origemId)->value('id');
+
+        $plano = $this->planoDoFixture();
+
+        // A linha do destino em C (a "colisão") some no intervalo.
+        DB::table('company_users')
+            ->where('company_id', $this->companyCId)->where('user_id', $this->destinoId)->delete();
+
+        $mensagem = $this->aplicarEsperandoRecusa($plano);
+        $this->assertStringContainsString("company_users#{$linhaOrigemC}", $mensagem);
+
+        // A linha da origem em C NÃO foi apagada — a empresa não fica sem responsável.
+        $this->assertSame(1, DB::table('company_users')->where('id', $linhaOrigemC)->count());
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+    }
+
+    public function test_wr02_snapshot_de_cache_que_virou_consolidar_mes_depois_do_plano_nao_e_apagado(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $snapId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyAId, 'mes_referencia' => '2026-09-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE, 'gerado_em' => now(),
+        ])->id;
+
+        $plano = $this->planoDoFixture();
+
+        // `desempenho:consolidar-mes` regrava a mesma linha no intervalo.
+        DB::table('desempenho_company_score_snapshots')->where('id', $snapId)
+            ->update(['origem' => CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES]);
+
+        $mensagem = $this->aplicarEsperandoRecusa($plano);
+        $this->assertStringContainsString("desempenho_company_score_snapshots#{$snapId}", $mensagem);
+
+        $this->assertSame(1, DesempenhoCompanyScoreSnapshot::where('id', $snapId)->count());
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
     // consolidada (snapshot mensal) para origem e destino que têm carteira.
     // `company_users` não tem dimensão temporal: mover a carteira recalcula

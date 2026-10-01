@@ -30,7 +30,8 @@ use Illuminate\Support\Str;
  *    dry-run quanto para a reconsulta pós-`--apply`.
  *  - `aplicar()` grava o estado ANTERIOR em `unificacao_contas_backup` antes
  *    de cada UPDATE/DELETE (e o estado NOVO logo após cada INSERT), tudo
- *    dentro de uma única transação.
+ *    dentro de uma única transação — e RELÊ cada linha lá dentro, recusando
+ *    o lote inteiro se o banco mudou desde o plano (WR-02, TOCTOU).
  *  - `desfazer()` restaura um lote inteiro a partir do backup, em ordem
  *    inversa, sem `try/catch` — colisão ao restaurar derruba a transação
  *    inteira em vez de mascarar o erro.
@@ -444,16 +445,7 @@ class UnificacaoContasService
         $operacoes = [];
 
         foreach ($linhasOrigem as $linha) {
-            $colisao = DB::table('company_users')
-                ->where('user_id', $paraId)
-                ->where('company_id', $linha->company_id)
-                ->where('role', $linha->role)
-                ->when(
-                    $linha->servico_id === null,
-                    fn ($q) => $q->whereNull('servico_id'),
-                    fn ($q) => $q->where('servico_id', $linha->servico_id)
-                )
-                ->exists();
+            $colisao = $this->consultaColisaoCarteira($linha, $paraId)->exists();
 
             if ($colisao) {
                 $operacoes[] = [
@@ -485,6 +477,20 @@ class UnificacaoContasService
             'descricao' => 'Vínculos de carteira (company_users) da origem passam ao destino.',
             'operacoes' => $operacoes,
         ];
+    }
+
+    /** Linha do DESTINO com a mesma (empresa, role, serviço) da linha `$linha` da origem — null-safe no serviço. */
+    private function consultaColisaoCarteira(object $linha, int $paraId): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('company_users')
+            ->where('user_id', $paraId)
+            ->where('company_id', $linha->company_id)
+            ->where('role', $linha->role)
+            ->when(
+                $linha->servico_id === null,
+                fn ($q) => $q->whereNull('servico_id'),
+                fn ($q) => $q->where('servico_id', $linha->servico_id)
+            );
     }
 
     /**
@@ -628,16 +634,7 @@ class UnificacaoContasService
         $operacoes = [];
 
         foreach ($linhasOrigem as $linha) {
-            $colisao = DB::table('nps_score_assignments')
-                ->where('user_id', $paraId)
-                ->where('nps_response_id', $linha->nps_response_id)
-                ->where('role', $linha->role)
-                ->when(
-                    $linha->servico_id === null,
-                    fn ($q) => $q->whereNull('servico_id'),
-                    fn ($q) => $q->where('servico_id', $linha->servico_id)
-                )
-                ->exists();
+            $colisao = $this->consultaColisaoAtribuicao($linha, $paraId)->exists();
 
             $operacoes[] = $colisao
                 ? [
@@ -661,6 +658,20 @@ class UnificacaoContasService
             'descricao' => 'Atribuições de NPS (nps_score_assignments) da origem cuja competência (completed_at do survey) é a partir do corte.',
             'operacoes' => $operacoes,
         ];
+    }
+
+    /** Linha do DESTINO com o mesmo (resposta, role, serviço) da atribuição `$linha` da origem — null-safe no serviço. */
+    private function consultaColisaoAtribuicao(object $linha, int $paraId): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('nps_score_assignments')
+            ->where('user_id', $paraId)
+            ->where('nps_response_id', $linha->nps_response_id)
+            ->where('role', $linha->role)
+            ->when(
+                $linha->servico_id === null,
+                fn ($q) => $q->whereNull('servico_id'),
+                fn ($q) => $q->where('servico_id', $linha->servico_id)
+            );
     }
 
     /**
@@ -1186,6 +1197,15 @@ class UnificacaoContasService
      * Aplica UMA operação do plano: update/delete gravam o backup ANTES da
      * escrita; insert escreve primeiro (para capturar o id gerado) e grava
      * o backup logo em seguida.
+     *
+     * WR-02 (revisão da Fase 159): o plano é calculado FORA da transação e,
+     * no intervalo, `desempenho:warm-cache`, `CompanyController::update` e
+     * afins podem escrever nas mesmas linhas. Por isso update/delete RELEEM
+     * a linha aqui dentro ({@see self::conferirEstadoPlanejado()}), escrevem
+     * condicionados ao estado planejado e exigem exatamente 1 linha afetada.
+     * Qualquer divergência lança RuntimeException — `aplicar()` está dentro
+     * de `DB::transaction`, então o lote inteiro volta atrás e o comando sai
+     * com FAILURE.
      */
     private function aplicarOperacao(array $operacao, string $etapa, string $lote, int $deId, int $paraId, Carbon $aPartir): void
     {
@@ -1199,6 +1219,15 @@ class UnificacaoContasService
             'created_at' => now(),
         ];
 
+        if ($operacao['acao'] === 'update' || $operacao['acao'] === 'delete') {
+            $atual = DB::table($operacao['tabela'])
+                ->where('id', $operacao['linha_id'])
+                ->lockForUpdate()
+                ->first();
+
+            $this->conferirEstadoPlanejado($operacao, $etapa, $atual, $paraId);
+        }
+
         if ($operacao['acao'] === 'update') {
             DB::table('unificacao_contas_backup')->insert($baseBackup + [
                 'acao' => 'update',
@@ -1206,7 +1235,12 @@ class UnificacaoContasService
                 'antes' => json_encode($operacao['antes']),
                 'depois' => json_encode($operacao['depois']),
             ]);
-            DB::table($operacao['tabela'])->where('id', $operacao['linha_id'])->update($operacao['depois']);
+
+            $afetadas = $this->restringirAoEstadoPlanejado(
+                DB::table($operacao['tabela'])->where('id', $operacao['linha_id']),
+                $operacao
+            )->update($operacao['depois']);
+            $this->exigirUmaLinhaAfetada($afetadas, $operacao);
 
             return;
         }
@@ -1218,7 +1252,12 @@ class UnificacaoContasService
                 'antes' => json_encode($operacao['antes']),
                 'depois' => null,
             ]);
-            DB::table($operacao['tabela'])->where('id', $operacao['linha_id'])->delete();
+
+            $afetadas = $this->restringirAoEstadoPlanejado(
+                DB::table($operacao['tabela'])->where('id', $operacao['linha_id']),
+                $operacao
+            )->delete();
+            $this->exigirUmaLinhaAfetada($afetadas, $operacao);
 
             return;
         }
@@ -1231,6 +1270,125 @@ class UnificacaoContasService
             'antes' => null,
             'depois' => json_encode($operacao['depois']),
         ]);
+    }
+
+    /**
+     * WR-02: confere, DENTRO da transação, que a linha relida ainda está no
+     * estado em que o plano a viu. Lança RuntimeException (derruba o lote)
+     * quando:
+     *  - a linha não existe mais;
+     *  - `update`: alguma coluna de `antes` mudou (ex.: carteira ou PPA
+     *    reatribuído a um terceiro no intervalo);
+     *  - `delete`: a linha não é mais da origem, ou deixou de ser cache
+     *    (snapshot regravado por `consolidar_mes` — competência fechada NUNCA
+     *    é apagada);
+     *  - etapas com colisão (`carteira`, `nps_atribuicoes`, `nps_imputacoes`):
+     *    o `delete` exige que a linha do destino que motivou a colisão AINDA
+     *    exista (senão a empresa ficaria sem o responsável); o `update` exige
+     *    que ela continue NÃO existindo (senão viraria duplicata).
+     */
+    private function conferirEstadoPlanejado(array $operacao, string $etapa, ?object $atual, int $paraId): void
+    {
+        $rotulo = "{$operacao['tabela']}#{$operacao['linha_id']}";
+
+        if ($atual === null) {
+            $this->recusarPorMudanca($rotulo, 'a linha não existe mais');
+        }
+
+        if ($operacao['acao'] === 'update') {
+            foreach ($operacao['antes'] as $coluna => $valor) {
+                if (! $this->mesmoValor($atual->{$coluna} ?? null, $valor)) {
+                    $this->recusarPorMudanca($rotulo, "{$coluna} não é mais o do plano");
+                }
+            }
+        } else { // delete
+            if (! $this->mesmoValor($atual->user_id ?? null, $operacao['antes']['user_id'] ?? null)) {
+                $this->recusarPorMudanca($rotulo, 'a linha não é mais da origem');
+            }
+            if ($operacao['tabela'] === 'desempenho_score_snapshots' && $atual->mes_referencia !== null) {
+                $this->recusarPorMudanca($rotulo, 'o snapshot virou MENSAL (competência fechada)');
+            }
+            if ($operacao['tabela'] === 'desempenho_company_score_snapshots'
+                && $atual->origem === CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES) {
+                $this->recusarPorMudanca($rotulo, 'o detalhe por empresa foi regravado por consolidar_mes');
+            }
+        }
+
+        $consultaColisao = match ($etapa) {
+            'carteira' => $this->consultaColisaoCarteira($atual, $paraId),
+            'nps_atribuicoes' => $this->consultaColisaoAtribuicao($atual, $paraId),
+            'nps_imputacoes' => $this->consultaColisaoImputacao($atual, $paraId),
+            default => null,
+        };
+
+        if ($consultaColisao === null) {
+            return;
+        }
+
+        $colide = $consultaColisao->exists();
+
+        if ($operacao['acao'] === 'delete' && ! $colide) {
+            $this->recusarPorMudanca($rotulo, 'a linha do destino que motivou a colisão não existe mais');
+        }
+        if ($operacao['acao'] === 'update' && $colide) {
+            $this->recusarPorMudanca($rotulo, 'o destino passou a ter a mesma linha (viraria duplicata)');
+        }
+    }
+
+    /**
+     * WR-02: condiciona a escrita ao estado planejado (defesa em
+     * profundidade, além da releitura): `update` só casa se as colunas de
+     * `antes` continuam iguais; `delete` só casa se a linha ainda é da
+     * origem e, nas tabelas de snapshot, ainda é cache.
+     */
+    private function restringirAoEstadoPlanejado(\Illuminate\Database\Query\Builder $query, array $operacao): \Illuminate\Database\Query\Builder
+    {
+        $condicoes = $operacao['acao'] === 'update'
+            ? $operacao['antes']
+            : ['user_id' => $operacao['antes']['user_id'] ?? null];
+
+        foreach ($condicoes as $coluna => $valor) {
+            $valor === null ? $query->whereNull($coluna) : $query->where($coluna, $valor);
+        }
+
+        if ($operacao['acao'] === 'delete' && $operacao['tabela'] === 'desempenho_score_snapshots') {
+            $query->whereNull('mes_referencia');
+        }
+        if ($operacao['acao'] === 'delete' && $operacao['tabela'] === 'desempenho_company_score_snapshots') {
+            $query->where('origem', '!=', CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES);
+        }
+
+        return $query;
+    }
+
+    private function exigirUmaLinhaAfetada(int $afetadas, array $operacao): void
+    {
+        if ($afetadas !== 1) {
+            $this->recusarPorMudanca(
+                "{$operacao['tabela']}#{$operacao['linha_id']}",
+                "{$operacao['acao']} afetou {$afetadas} linha(s), esperado 1"
+            );
+        }
+    }
+
+    private function recusarPorMudanca(string $rotulo, string $motivo): never
+    {
+        throw new \RuntimeException(
+            "linha {$rotulo} mudou desde o plano ({$motivo}) — nada foi gravado; rode o comando de novo para replanejar."
+        );
+    }
+
+    /** Comparação null-safe e tolerante ao tipo que o driver devolve (int/string/bool). */
+    private function mesmoValor(mixed $atual, mixed $esperado): bool
+    {
+        if ($atual === null || $esperado === null) {
+            return $atual === null && $esperado === null;
+        }
+        if (is_bool($esperado)) {
+            return (bool) $atual === $esperado;
+        }
+
+        return (string) $atual === (string) $esperado;
     }
 
     /**
