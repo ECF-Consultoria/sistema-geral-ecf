@@ -140,3 +140,42 @@ unitário `GeminiImageProviderTest` com `Http::fake()`.
 jobs, rotas, controllers, qualquer `.jsx`, o staging de upload efêmero (D-02), `CreativeContextBuilder`
 / `ProductTruthBuilder` / `CreativePlanner` / `CreativeValidator`, e qualquer integração com o wizard
 de publicação.
+
+---
+
+## 13. Medição contra a API real (2026-10-01, chave de produção)
+
+A chave foi criada e testada no mesmo dia. Três fatos que só a chamada real revelou:
+
+**(a) A forma da resposta não é a que a documentação resume.** A página de docs descreve
+`interaction.outputText` e `interaction.output_image.data`. A API devolve objeto **plano**, com o
+conteúdo em `steps[]`:
+
+```json
+{"id":"…","status":"completed","usage":{…},"service_tier":"standard","object":"…","model":"…",
+ "steps":[{"type":"thought","signature":"…"},
+          {"type":"model_output","content":[{"type":"text","text":"ok"}]}]}
+```
+
+O passo `thought` vem **antes** e não tem conteúdo — quem lê `steps[0]` lê o passo errado. O provider
+foi corrigido para varrer `steps[]` atrás do `model_output`; a grafia da doc ficou como último
+recurso. ⚠️ **Os testes com `Http::fake()` não pegaram isso** porque os fakes foram escritos a partir
+da mesma forma errada — fake construído de documentação, não de medição, confirma o próprio engano.
+
+**(b) GERAÇÃO DE IMAGEM EXIGE TIER PAGO.** Com chave válida, **todos** os modelos de imagem
+responderam HTTP 429 `limit: 0 requests per day on Free Tier`: `gemini-3.1-flash-image`,
+`gemini-3.1-flash-lite-image`, `gemini-3-pro-image` e `gemini-2.5-flash-image` (este com "0 input
+tokens per minute"). Texto funciona no tier grátis. **É este o bloqueio da prova de fidelidade do
+§16** — não a chave, que está boa. Upgrade em https://ai.dev/rate-limit.
+
+**(c) O modelo de texto default congestiona.** `gemini-3.8-flash` devolveu 503 `experiencing high
+demand` em chamadas seguidas, enquanto `gemini-3.5-flash-lite` respondia em 1,3s com a mesma chave.
+Daí a reserva de texto (`GEMINI_TEXT_MODEL_FALLBACK`) passar a existir e já vir preenchida.
+
+⚠️ **A forma do `content` de IMAGEM segue INFERIDA**, não medida: sem tier pago não houve nenhuma
+resposta 200 de imagem para conferir. O extrator aceita várias grafias (`data`, `image_data`,
+`inline_data.data`, `image.data`) justamente por isso — **confirmar na primeira geração real**.
+
+⚠️ **A chave chegou dentro do `.env.example` por engano** (arquivo versionado). Foi movida para o
+`.env` antes de qualquer commit e **não entrou no histórico** (conferido com `git log -S`). Chave de
+API nunca vai no `.env.example`, que existe só como modelo com valores vazios.
