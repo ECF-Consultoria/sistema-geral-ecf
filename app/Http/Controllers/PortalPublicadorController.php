@@ -136,17 +136,22 @@ class PortalPublicadorController extends Controller
         });
     }
 
-    /** Uma foto do computador: conferida, guardada no disco privado e enviada ao ML. */
+    /**
+     * Uma foto do computador: conferida, guardada no disco privado e enviada
+     * ao ML. Entra no fim do grupo onde foi solta (a coluna da cor, ou a
+     * galeria geral); a mesma foto de novo só ganha o grupo novo (TC-58).
+     */
     public function foto(Request $request, int $oferta): JsonResponse
     {
-        $request->validate(['imagem' => ['required', 'file', 'max:10240']]);
+        $dados = $request->validate(['imagem' => ['required', 'file', 'max:10240'], 'grupo' => ['nullable', 'string', 'max:600']]);
         $arquivo = $request->file('imagem');
+        $grupo = $dados['grupo'] ?? ResolvedorGruposImagem::GERAL;
 
-        return $this->responder(function () use ($oferta, $arquivo) {
+        return $this->responder(function () use ($oferta, $arquivo, $grupo) {
             $r = $this->rascunho($oferta);
             $res = $this->imagens->receber($r, $arquivo->get(), $arquivo->getClientOriginalName());
-            if ($res['nova']) {
-                $this->novaFotoNaGeral($r, $res['imagem']);
+            if ($res['imagem']) {
+                $this->colocarNoGrupo($r, $res['imagem'], $grupo);
             }
 
             return [$r, ['foto' => ['id' => $res['imagem']?->id ? (string) $res['imagem']->id : null, 'nova' => $res['nova'],
@@ -274,12 +279,14 @@ class PortalPublicadorController extends Controller
         return PubRascunho::where('oferta_id', $this->oferta($oferta)->id)->firstOrFail();
     }
 
-    /** Foto nova entra no fim da galeria geral — a pessoa arrasta para o grupo depois. */
-    private function novaFotoNaGeral(PubRascunho $r, PubImagem $imagem): void
+    private function colocarNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo): void
     {
-        $s = $this->repo->snapshot($r);
-        $geral = array_values(array_filter($s->imagens, fn ($a) => $a['grupo'] === ResolvedorGruposImagem::GERAL));
-        $this->repo->gravarAtribuicoes($r, [...$s->imagens, ['imagem' => $imagem->id, 'grupo' => ResolvedorGruposImagem::GERAL, 'posicao' => count($geral)]]);
+        $atuais = $this->repo->snapshot($r)->imagens;
+        $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
+        if (in_array((string) $imagem->id, array_map('strval', array_column($doGrupo, 'imagem')), true)) {
+            return;
+        }
+        $this->repo->gravarAtribuicoes($r, [...$atuais, ['imagem' => $imagem->id, 'grupo' => $grupo, 'posicao' => count($doGrupo)]]);
         $this->repo->tocar($r);
     }
 }

@@ -4,6 +4,7 @@ import { MousePointerClick, PlugZap, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, CabecalhoEstrutura, LinkMl, Paginacao, Seletor, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import FormPublicacao from '@/Components/Portal/Estrutura/FormPublicacao';
+import EditorPublicador from '@/Components/Publicador/EditorPublicador';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,10 @@ import { cn } from '@/lib/utils';
 // preço (da Precificação), a conferência com o ML e a trava que impede
 // publicar duas vezes. Esta tela desenha e chama — a lista vem paginada do
 // servidor (Inertia), o formulário vem por JSON (`FormPublicacao`).
+//
+// Empresas do piloto do Publicador novo (`publicador_novo`, 01/10/2026) usam
+// o `EditorPublicador`: variações, fotos por grupo, conferência e publicação
+// em fila. As demais seguem no par.
 
 const ESTILO_PRONTIDAO = {
     pronto:     'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
@@ -88,7 +93,7 @@ function SemOfertas() {
     );
 }
 
-export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, filtros, vocabulario, ml_conectado = false }) {
+export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, filtros, vocabulario, ml_conectado = false, publicador_novo = false }) {
     const { filtro, contagens, ofertas, paginacao } = anunciar;
     const [selecionada, setSelecionada] = useState(null);
     const [busca, setBusca] = useState(filtros.q ?? '');
@@ -172,7 +177,9 @@ export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, fil
 
                         <section className="mt-4 min-w-0 lg:mt-0">
                             {selecionada !== null ? (
-                                <FormPublicacao key={selecionada} ofertaId={selecionada} vocabulario={vocabulario} onPublicou={recarregarLista} />
+                                publicador_novo
+                                    ? <EditorPublicador key={selecionada} ofertaId={selecionada} onPublicou={recarregarLista} />
+                                    : <FormPublicacao key={selecionada} ofertaId={selecionada} vocabulario={vocabulario} onPublicou={recarregarLista} />
                             ) : (
                                 <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-ecf-card p-5 text-[13px] text-white/50" data-form-vazio>
                                     <MousePointerClick size={18} className="shrink-0 text-ecf-yellow" />

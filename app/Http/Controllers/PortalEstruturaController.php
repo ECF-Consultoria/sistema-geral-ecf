@@ -8,6 +8,8 @@ use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
+use App\Models\PubRascunho;
+use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\ColagemAnunciosService;
 use App\Services\Portal\Estrutura\EstruturaAgendaService;
@@ -17,6 +19,7 @@ use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\EstruturaPublicacaoService;
 use App\Services\Portal\Estrutura\EstruturaVisaoService;
 use App\Services\Portal\PortalClienteService;
+use App\Services\Publicador\EditorRascunhoService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
@@ -194,15 +197,34 @@ class PortalEstruturaController extends Controller
         $filtro = (string) $request->query('filtro', 'a_anunciar');
         $busca = (string) $request->query('q', '');
 
+        $pagina = $this->publicacoes->pagina($empresa, $filtro, $busca, (int) $request->query('pagina', 1));
+        $piloto = PortalPublicadorController::noPiloto($empresa);
+        if ($piloto) {
+            $pagina['ofertas'] = $this->comProntidaoDoPublicador($pagina['ofertas']);
+        }
+
         return Inertia::render('Portal/EstruturaAnunciar', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.anunciar', PortalContexto::ator()),
-            'anunciar'     => $this->publicacoes->pagina($empresa, $filtro, $busca, (int) $request->query('pagina', 1)),
+            'anunciar'     => $pagina,
             'filtros'      => ['filtro' => $filtro, 'q' => $busca],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             // Piloto do Publicador novo (variações, fotos por grupo, conferência em fila).
-            'publicador_novo' => PortalPublicadorController::noPiloto($empresa),
+            'publicador_novo' => $piloto,
         ]);
+    }
+
+    /** Piloto do Publicador: o selo de cada card vem do rascunho novo, não do par antigo. */
+    private function comProntidaoDoPublicador(array $ofertas): array
+    {
+        $rascunhos = PubRascunho::whereIn('oferta_id', array_column($ofertas, 'id'))->get()->keyBy('oferta_id');
+        $ultimas = PubValidacao::whereIn('rascunho_id', $rascunhos->pluck('id'))->orderBy('id')->get()->keyBy('rascunho_id');
+
+        return array_map(function ($o) use ($rascunhos, $ultimas) {
+            $r = $rascunhos[$o['id']] ?? null;
+
+            return [...$o, 'prontidao' => EditorRascunhoService::prontidao($r, $r ? ($ultimas[$r->id] ?? null) : null)];
+        }, $ofertas);
     }
 
     // ═══ Anunciar — o par de uma oferta (JSON) ══════════════════════════════

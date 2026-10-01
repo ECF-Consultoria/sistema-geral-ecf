@@ -19,6 +19,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 use Tests\Unit\Publicador\Concerns\CarregaSchemas;
@@ -222,6 +223,27 @@ class PortalPublicadorTest extends TestCase
         Queue::assertPushedOn('high', PublicarRascunhoJob::class);
         $this->assertSame('RUNNING', $estado['publicacao']['status']);
         $this->assertSame('PUBLISHING', $estado['rascunho']['status']);
+    }
+
+    public function test_cards_do_piloto_mostram_o_rascunho_novo_e_o_estado_marca_o_que_ja_esta_no_ar(): void
+    {
+        $cb3 = $this->ofertas['CAD-01-CB3'];
+        $selo = fn () => collect($this->portal()->get(route('portal.auth.estrutura.anunciar'))->viewData('page')['props']['anunciar']['ofertas'])
+            ->firstWhere('id', $cb3->id)['prontidao'];
+
+        $this->assertSame(['chave' => 'rascunho', 'rotulo' => 'a preencher'], $selo());
+
+        $this->portal()->getJson($this->rota('abrir'))->assertOk();
+        $this->assertSame('em preenchimento', $selo()['rotulo']);
+
+        $r = PubRascunho::first();
+        $r->update(['status' => PubRascunho::PARTIALLY_PUBLISHED]);
+        $p = $r->publicacoes()->create(['revisao' => $r->revisao, 'modelo_publicacao' => 'USER_PRODUCTS', 'status' => 'PARTIALLY_PUBLISHED', 'chave_idempotencia' => (string) Str::uuid()]);
+        $p->itens()->create(['indice' => 0, 'listing_type_id' => 'gold_special', 'variante_chave' => '__single__', 'status' => 'CREATED', 'ml_item_id' => 'MLB4000000001']);
+        $this->assertSame('parte publicada', $selo()['rotulo']);
+
+        $estado = $this->portal()->getJson($this->rota('abrir'))->assertOk()->json();
+        $this->assertSame(['gold_special|__single__' => 'MLB4000000001'], $estado['ja_publicados']);
     }
 
     public function test_simulador_usa_tarifa_e_frete_do_ml(): void

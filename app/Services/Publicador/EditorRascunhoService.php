@@ -7,6 +7,7 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
@@ -383,8 +384,38 @@ class EditorRascunhoService
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,
+            // "tipo|variante" → MLB, de TODAS as publicações: o que "publicar de novo" não reenvia (RN-94).
+            'ja_publicados' => PubPublicacaoItem::query()
+                ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
+                ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
+                ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all(),
             'piloto' => true,
         ];
+    }
+
+    /**
+     * O selo do card da oferta na lista do Anunciar, pelo rascunho do
+     * Publicador (o da lista antiga lê o par antigo e diria "falta categoria").
+     *
+     * @return array{chave: string, rotulo: string}
+     */
+    public static function prontidao(?PubRascunho $r, ?PubValidacao $ultima): array
+    {
+        if (! $r) {
+            return ['chave' => 'rascunho', 'rotulo' => 'a preencher'];
+        }
+        if ($r->status === PubRascunho::DRAFT && $ultima && $ultima->revisao === $r->revisao && in_array($ultima->resultado, [ConferenciaService::OK, ConferenciaService::AVISOS], true)) {
+            return ['chave' => 'pronto', 'rotulo' => 'conferido'];
+        }
+
+        return match ($r->status) {
+            PubRascunho::VALIDATED => ['chave' => 'pronto', 'rotulo' => 'conferido'],
+            PubRascunho::PUBLISHING => ['chave' => 'publicando', 'rotulo' => 'publicando'],
+            PubRascunho::PUBLISHED => ['chave' => 'publicado', 'rotulo' => 'publicado'],
+            PubRascunho::PARTIALLY_PUBLISHED => ['chave' => 'parcial', 'rotulo' => 'parte publicada'],
+            PubRascunho::FAILED => ['chave' => 'erro', 'rotulo' => 'não publicado'],
+            default => ['chave' => 'conferir', 'rotulo' => 'em preenchimento'],
+        };
     }
 
     /** @return array{0: ?SchemaClassificado, 1: ?string} */
