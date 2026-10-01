@@ -20,6 +20,14 @@ that actual size 0 matches expected size 1.`
 reexecutado `tests/Feature/Phase61/` — as MESMAS 3 falhas ocorrem, byte a byte. Edições
 da Task 3 restauradas em seguida (cópia local, sem `git stash`).
 
+**Reconferido pelo orquestrador contra `origin/main` PURO (2026-09-30):** o teste acima
+reverteu só o `PortfolioController.php`, com os planos 01–03 ainda aplicados — não provava
+nada sobre a migration de `user_setores`. Rodado num worktree destacado de `origin/main`
+(`5d0a3997`, sem nenhuma mudança da fase, com `public/build` copiado):
+`tests/Feature/Phase61/` = **31 testes, 3 falhas — as mesmas três**. Pré-existentes de fato.
+Sem o manifest do Vite o mesmo diretório dá 30/31 falhas (`Vite manifest not found`) — não
+confundir com regressão.
+
 Não estavam na baseline (`159-BASELINE-TESTES.md`, que cobre 18 grupos + Phase119 +
 `npm run test:js`) nem no escopo de verificação do `159-04-PLAN.md` (que lista
 `RankingDoisCargosTest`, `NpsPorEmpresaContratoTest`,
