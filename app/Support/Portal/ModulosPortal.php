@@ -41,6 +41,7 @@ class ModulosPortal
     public const ONBOARDING = 'onboarding';
     public const PPA        = 'ppa';
     public const CALCULADORA = 'calculadora';
+    public const ESTRUTURA  = 'estrutura';
 
     /**
      * Os módulos na ordem em que aparecem no menu. `rota` é o nome da rota
@@ -75,6 +76,42 @@ class ModulosPortal
             'rota'      => 'portal.ppa',
             'rota_auth' => 'portal.auth.ppa',
         ],
+        // A planilha de Mapeamento Estrutural do Projeto Polos (23/09/2026).
+        // Sem `rota` por token: nasceu depois da aposentadoria do token, e só
+        // existe no portal autenticado. Visível para TODAS as empresas, com
+        // estado vazio na página: `mlb_empresas.company_id` está preenchido em
+        // 3 de 308 linhas, então não há caminho confiável de uma Company até
+        // "é cliente de Polos" — restringir esconderia o módulo de quase todos.
+        self::ESTRUTURA => [
+            'rotulo'    => 'Mapeamento Estrutural',
+            'descricao' => 'Suas ofertas, o que já está no Mercado Livre e o que falta publicar.',
+            'icone'     => 'layers',
+            'rota'      => null,
+            'rota_auth' => 'portal.auth.estrutura',
+        ],
+    ];
+
+    /**
+     * Os submódulos, na ordem do caminho de quem começa do zero (29/09): listar
+     * os produtos → precificar → montar os anúncios → agendar → acompanhar o
+     * que foi publicado. É também a ordem das abas da planilha (Lista SKUs,
+     * Anúncios, Planejamento, Mapeamento), com a Precificação entre elas.
+     *
+     * `rota_auth` nulo = "Em breve": o item aparece apagado, sem link. Assim o
+     * cliente vê para onde o módulo vai sem clicar numa página vazia.
+     *
+     * A chave ativa chega como `estrutura.lista`: o que vem antes do ponto é o
+     * módulo; o que vem depois, o submódulo.
+     */
+    private const SUBMODULOS = [
+        self::ESTRUTURA => [
+            'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
+            'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => 'portal.auth.estrutura.precificacao'],
+            'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
+            'planejamento' => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.agenda'],
+            'mapeamento'   => ['rotulo' => 'Mapeamento',   'rota_auth' => 'portal.auth.estrutura.mapeamento'],
+            'anunciar'     => ['rotulo' => 'Anunciar',     'rota_auth' => 'portal.auth.estrutura.anunciar'],
+        ],
     ];
 
     /**
@@ -92,10 +129,16 @@ class ModulosPortal
      */
     public static function paraEmpresa(Company $company, ?string $token, string $ativo, array $badges = []): array
     {
+        [$ativo, $subAtivo] = array_pad(explode('.', $ativo, 2), 2, null);
         $modulos = [];
 
         foreach (self::DEFINICOES as $chave => $def) {
             if (! self::disponivel($chave, $company)) {
+                continue;
+            }
+
+            // Módulo sem rota por token não existe no portal legado.
+            if ($token !== null && $def['rota'] === null) {
                 continue;
             }
 
@@ -111,10 +154,34 @@ class ModulosPortal
                     : route($def['rota'], $token),
                 'ativo'     => $chave === $ativo,
                 'badge'     => $badge > 0 ? (int) $badge : null,
+                'submodulos' => self::submodulos($chave, $chave === $ativo ? $subAtivo : null),
             ];
         }
 
         return $modulos;
+    }
+
+    /**
+     * Os submódulos de um módulo, prontos para o menu. Só o portal autenticado
+     * os tem — o Mapeamento Estrutural não existe no modo por token.
+     *
+     * @return array<int, array{chave: string, rotulo: string, url: ?string, ativo: bool, em_breve: bool}>
+     */
+    public static function submodulos(string $modulo, ?string $ativo = null): array
+    {
+        $subs = [];
+
+        foreach (self::SUBMODULOS[$modulo] ?? [] as $chave => $def) {
+            $subs[] = [
+                'chave'    => $chave,
+                'rotulo'   => $def['rotulo'],
+                'url'      => $def['rota_auth'] ? route($def['rota_auth']) : null,
+                'ativo'    => $chave === $ativo,
+                'em_breve' => $def['rota_auth'] === null,
+            ];
+        }
+
+        return $subs;
     }
 
     /**
@@ -126,7 +193,7 @@ class ModulosPortal
     private static function disponivel(string $chave, Company $company): bool
     {
         return match ($chave) {
-            self::INICIO, self::ONBOARDING, self::PPA, self::CALCULADORA => true,
+            self::INICIO, self::ONBOARDING, self::PPA, self::CALCULADORA, self::ESTRUTURA => true,
             default => false,
         };
     }

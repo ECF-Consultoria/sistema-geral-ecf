@@ -1087,6 +1087,51 @@ class AdmanService
         return is_array($data) && isset($data[0]) ? $data : ($data['data'] ?? $data['campaigns'] ?? []);
     }
 
+    /**
+     * Quantas campanhas de ADS da conta estão ativas agora (TKT-0003 — "ADS ligado?").
+     *
+     * Uma chamada leve (/ads/{cust}/campaigns, ~0,5s, sem paginação). A Adman devolve
+     * `status` "active"/"paused" por campanha. Conta que ela não enxerga responde 500
+     * "User is not mentored by agency" — permanente, então só 429 é repetido.
+     *
+     * @return array{ativas:int,total:int}|null  null = a Adman não respondeu (não gravar nada)
+     */
+    public function fetchCampanhasAtivas(string $custId, string $marketplace = 'meli'): ?array
+    {
+        try {
+            $response = null;
+            for ($tentativa = 1; $tentativa <= 3; $tentativa++) {
+                $response = Http::withHeaders($this->headers())
+                    ->timeout(30)
+                    ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns");
+                if ($response->status() !== 429 || $tentativa === 3) {
+                    break;
+                }
+                $retryAfter = (int) ($response->header('Retry-After') ?? 0);
+                sleep($retryAfter > 0 ? min($retryAfter, 30) : 2 ** $tentativa);
+            }
+
+            if ($response->failed()) {
+                Log::warning("[Adman/Campanhas] custId={$custId}: HTTP {$response->status()} " . trim(substr($response->body(), 0, 120)));
+                return null;
+            }
+
+            $data  = $response->json() ?? [];
+            $lista = is_array($data) && array_is_list($data) ? $data : ($data['data'] ?? $data['campaigns'] ?? []);
+            $ativas = 0;
+            foreach ($lista as $c) {
+                if (strtolower((string) ($c['status'] ?? '')) === 'active') {
+                    $ativas++;
+                }
+            }
+
+            return ['ativas' => $ativas, 'total' => count($lista)];
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/Campanhas] custId={$custId}: " . $e->getMessage());
+            return null;
+        }
+    }
+
     public function fetchCampaignMetrics(string $custId, string $campaignId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $response = Http::withHeaders($this->headers())

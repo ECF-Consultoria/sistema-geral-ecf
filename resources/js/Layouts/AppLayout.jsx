@@ -8,11 +8,13 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound,
+    MessageSquareText, UsersRound, Ticket,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
+import AvisoTicketRespondido from '@/Components/Chamados/AvisoTicketRespondido';
 import ThemeToggle from '@/Components/ThemeToggle';
+import { useModoTvLigado } from '@/hooks/useModoTv';
 
 /**
  * Árvore de navegação com suporte a grupos colapsáveis.
@@ -195,6 +197,9 @@ const NAV_TREE = [
         ],
     },
 
+    // ── Item de topo: Tickets — qualquer pessoa pede ajuda ao time dev ───
+    { label: 'Tickets', routeName: 'chamados.index', page: 'Chamados', icon: Ticket, authFlag: 'tickets' },
+
     // ── Item de topo: Meu Setor (líder; admin excluído por ter visão global) ─
     { label: 'Meu Setor', routeName: 'lideranca.index', page: 'Lideranca', icon: Crown, permission: 'lideranca.dashboard_setor', excludeRoles: ['admin'] },
 
@@ -203,6 +208,8 @@ const NAV_TREE = [
         group: 'Dev',
         icon: Code2,
         children: [
+            // Demandas Dev — admin ou quem tem demanda atribuída (flag do HandleInertiaRequests).
+            { label: 'Demandas Dev',   routeName: 'dev.demandas.index',  page: 'Dev/Demandas/Index',  icon: ListChecks, authFlag: 'demandas_dev' },
             { label: 'Log',            routeName: 'activity-log.index',  page: 'ActivityLog',        icon: ScrollText, permission: 'sistema.activity_log' },
             { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,     permission: 'sistema.desenvolvimento' },
             // Phase 42 D-02 / REQ-42-07: item de UI de onboarding (Plan 41-05) removido daqui.
@@ -415,6 +422,8 @@ export default function AppLayout({ children, title }) {
     });
     const [mobileOpen, setMobileOpen] = useState(false);
     const [toast, setToast] = useState(null);
+    // Painel de parede na tela (Modo TV do Painel Polos): nada de aviso flutuante por cima.
+    const modoTv = useModoTvLigado();
 
     // `collapsed` continua sendo a variavel que todo o render consulta —
     // mudou apenas QUEM a decide.
@@ -486,6 +495,8 @@ export default function AppLayout({ children, title }) {
         if (item.divider) return true;
         // Itens exclusivos do Dev (ex.: a própria tela de controle de visibilidade).
         if (item.devOnly && !isAdminDev) return false;
+        // Item liberado por uma flag booleana do `auth` compartilhado (ex.: `demandas_dev`).
+        if (item.authFlag && !auth?.[item.authFlag]) return false;
         // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
         if (!isAdminDev && rotaOculta(item.routeName)) return false;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
@@ -988,19 +999,25 @@ export default function AppLayout({ children, title }) {
                 </main>
             </div>
 
-            {/* Toast */}
-            {toast && (
-                <div className={cn(
-                    'fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
-                    'border backdrop-blur-md',
-                    toast.type === 'success'
-                        ? 'bg-green-950/90 border-green-500/30 text-green-300'
-                        : 'bg-red-950/90 border-red-500/30 text-red-300'
-                )}>
-                    <span>{toast.message}</span>
-                    <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
-                        <X size={14} />
-                    </button>
+            {/* Canto inferior direito: avisos de ticket de quem abriu + toast — empilhados, sem sobrepor.
+                Em Modo TV a pilha nem monta (o aviso segue não lido, para o dono ver no computador dele). */}
+            {!modoTv && (
+                <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
+                    <AvisoTicketRespondido />
+                    {toast && (
+                        <div className={cn(
+                            'flex items-center gap-3 rounded-xl px-4 py-3 shadow-2xl text-sm font-semibold',
+                            'border backdrop-blur-md',
+                            toast.type === 'success'
+                                ? 'bg-green-950/90 border-green-500/30 text-green-300'
+                                : 'bg-red-950/90 border-red-500/30 text-red-300'
+                        )}>
+                            <span>{toast.message}</span>
+                            <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition-opacity">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

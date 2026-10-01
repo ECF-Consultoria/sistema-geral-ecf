@@ -882,7 +882,18 @@ class CompanyController extends Controller
         $npsRespondidos     = $notasReaisEmpresa->count();
         $npsNaoRespondidos  = $notasImputadasEmpresa->count() + $notasSemLinkEmpresa->count();
 
+        // 23/09/2026 — o que o onboarding coletou, para consulta depois dele.
+        // Antes só existia na ficha do onboarding e sumia do portal quando ele
+        // concluía. Só leitura; editar continua sendo na ficha do onboarding.
+        $onboardingResumo = app(\App\Services\Onboarding\ResumoOnboardingService::class)
+            ->daEmpresa($company, auth()->user());
+        $fotografiaDaConta = $onboardingResumo !== []
+            ? app(\App\Services\Onboarding\FotografiaContaService::class)->paraPortal($company)
+            : null;
+
         return Inertia::render('Companies/Show', [
+            'onboarding_resumo'  => $onboardingResumo,
+            'fotografia_da_conta' => $fotografiaDaConta,
             'company' => [
                 'id'               => $company->id,
                 'name'             => $company->name,

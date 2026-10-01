@@ -54,6 +54,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role'       => \App\Http\Middleware\EnsureUserHasRole::class,
             'permission' => \App\Http\Middleware\EnsurePermission::class,
+            // Módulo que pode estar oculto (Controle Dev): só o Dev entra enquanto oculto.
+            'modulo'     => \App\Http\Middleware\EnsureModuloLiberado::class,
             // Portal do Cliente: autentica E confere o vínculo com a empresa.
             // As duas coisas juntas — autenticar sozinho não autoriza nada.
             'portal.auth' => \App\Http\Middleware\EnsurePortalAutenticado::class,

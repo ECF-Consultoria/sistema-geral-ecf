@@ -149,6 +149,7 @@ para LF, edite, e regrave na terminação original.
 | Logo com fallback e sem distorção | `resources/js/Components/Portal/LogoEmpresa.jsx` |
 | Resize compartilhado com o avatar de usuário | `app/Support/ImagemUpload.php` |
 | Testes | `tests/Feature/PortalCliente/` |
+| Mapeamento Estrutural (régua, colagem, agenda) | `app/Services/Portal/Estrutura/` · ADR `PORTAL-01` |
 
 ---
 
@@ -415,13 +416,13 @@ Há um teste que quebra se alguém reintroduzir `portal/*`.
 que pegou. A suíte passava — porque o teste que eu tinha escrito verificava as
 rotas que eu me lembrei de listar, e `/portal/usuarios` não estava entre elas.
 
-## 25. A régua de agrupamento do PPA vive em TRÊS lugares — e eles têm de concordar
+## 25. A régua de agrupamento do PPA vive em QUATRO lugares — e eles têm de concordar
 
 Em 21/09/2026 as duas listas de PPA (a do portal e a interna) passaram a se
 agrupar sozinhas em **Em andamento · A fazer · Concluídos**, para que um cliente
 com 20 planos não recebesse 20 quadros de três colunas empilhados.
 
-A mesma régua existe em três implementações, e nenhuma delas é opcional:
+A mesma régua existe em quatro implementações, e nenhuma delas é opcional:
 
 1. **`resources/js/lib/ppaAgrupamento.js`** — decide o grupo de cada plano na
    tela, a partir das tarefas. Tem teste próprio em
@@ -432,6 +433,10 @@ A mesma régua existe em três implementações, e nenhuma delas é opcional:
    2. O sintoma é silencioso — nada quebra, só some.
 3. **`PortalPpaService::visao()`** — manda `fazendo` / `a_fazer` / `prazo_dias`.
    Sem essas contagens todo plano cai em "A fazer" e a hierarquia vira enfeite.
+4. **`Ppa::scopeDaSituacao()`** — a MESMA régua no `WHERE`, para o filtro de
+   situação da lista interna (22/09/2026). Nasceu depois dos outros três e é o
+   mais fácil de esquecer: um filtro que discorde da régua devolve planos que a
+   seção escolhida não desenha — lista vazia com o contador dizendo que há sete.
 
 Mudar uma sem as outras não quebra teste nenhum de forma óbvia: a tela continua
 renderizando, só que errado.
@@ -456,6 +461,202 @@ avaliado depois da projeção — ao contrário do `WHERE`, onde o alias NÃO va
   quadro sumiria de sob o cursor. Contadores e percentual, esses sim, são vivos.
   A posição nova vale na próxima visita.
 
+### O filtro no `WHERE` NÃO pode reaproveitar os aliases do `withCount`
+
+`scopeOrdenadoPorAtencao` usa `tasks_count` / `tasks_done_count` /
+`tasks_doing_count` dentro de um `CASE` no `ORDER BY`, e funciona. A tentação é
+copiar as mesmas expressões para o filtro — e aí quebra: alias de SELECT vale em
+`ORDER BY` (avaliado depois da projeção) e **não** em `WHERE`. Por isso
+`scopeDaSituacao` usa `whereHas` / `whereDoesntHave`, que viram subconsulta.
+
+O SQLite dos testes é permissivo com alias em `WHERE` em alguns casos; o MariaDB
+não é. Seria mais uma armadilha do tipo "passa no teste, estoura na tela".
+
+### O PPA interno virou a tela do Portal — um desenho só (23/09/2026)
+
+Duas revisões seguidas foram recusadas antes de a pergunta certa aparecer. A
+primeira pôs uma fileira de chips acima da lista ("ficou muito ruim"); a
+segunda acertou o peso, mas ainda era a lista de linhas. O que o usuário queria
+era outra coisa: **"o PPA do Portal está diferente do nosso interno; gostei
+apenas do Portal, então o mesmo que está no Portal eu quero no interno"**.
+
+A lição de processo: quando alguém recusa um ajuste de tela duas vezes, pare de
+ajustar. "Como era antes" pode significar uma tela que você nem está olhando —
+e, aqui, a tela boa já existia, do outro lado do mesmo módulo.
+
+**O que mudou.** Equipe e cliente desenhavam o MESMO plano de jeitos
+diferentes: o cliente tinha o quadro de três colunas que abre e fecha, e a
+equipe tinha uma lista de linhas com o Kanban em outra página. Falar ao
+telefone sobre "o card que está em andamento" exigia traduzir entre as duas.
+Agora:
+
+- os componentes saíram de `Components/Portal/Ppa/` para **`Components/Ppa/`** e
+  servem os dois lados: `PlanoPpa`, `ColunaPpa`, `CardTarefaPpa`,
+  `IndicadoresPpa`, `TituloSecaoPpa`;
+- o payload comum sai de um lugar só: **`PpaListaService::linha()` monta em
+  cima de `PortalPpaService::visao()`** e acrescenta o que é da equipe. A
+  direção da dependência é de propósito — o payload do cliente é o mais
+  restrito, e por isso é ele quem define o mínimo comum;
+- o que só a equipe vê entra por PROPRIEDADE do `PlanoPpa` (`meta`, `chips`,
+  `acoes`, `somenteLeitura`, `vazioTexto`), **nunca por cópia da tela**.
+
+O gate `tests/js/estrutura-ppa-filtros.test.js` quebra se alguém reintroduzir
+um `function Indicador` ou um `const COLUNAS` dentro de uma das páginas — que é
+o primeiro passo da divergência, sempre feito "só para ajustar uma coisinha".
+
+**Chaves do payload:** a lista interna deixou de falar `title`/`tasks_count`/
+`due_date_dias` e passou a falar `titulo`/`total`/`prazo_dias`, como o cliente.
+Componente compartilhado exige as mesmas chaves; chave que diverge é componente
+que quebra do outro lado.
+
+**A equipe NÃO herda a trava de leitura do cliente.** No portal, plano encerrado
+vira consulta. Internamente quem encerrou foi a própria equipe, e impedí-la de
+reabrir seria uma trava sem dono — daí `somenteLeitura={false}` na lista
+interna, com o comportamento do portal como padrão do componente.
+
+**O arraste interno usa `ppa.tasks.mover`, não `ppa.tasks.update`.** A primeira
+responde JSON; a segunda responde Inertia e faria o quadro piscar a cada card.
+A rota serve os dois escopos porque a tarefa pertence ao PPA, não ao escopo.
+
+### A tela do CLIENTE tambem filtra — e lá o filtro é do navegador
+
+Unificadas as telas, veio o óbvio: *"não estou conseguindo filtrar pelo portal
+do cliente"*. O portal ganhou os MESMOS dois seletores da lista interna, e a
+busca deixou de sumir quando o cliente tem 3 planos ou menos.
+
+**O filtro do portal roda no NAVEGADOR, e o da lista interna no BANCO.** Não é
+descuido: `PortalPpaController::indexAutenticado` manda TODOS os planos do
+cliente de uma vez, sem paginação. Sem paginação não existe o risco que obriga
+o outro lado ao SQL (mostrar "3 vencidos" para quem tem 19 na página seguinte),
+e filtrar no cliente é instantâneo. Se um dia o portal paginar, o filtro TEM de
+descer para o servidor junto.
+
+Para as duas telas não divergirem, o que é comum mora em
+`lib/ppaAgrupamento.js`: `SITUACOES_PPA`, `ORDENS_PPA`, as sentinelas
+(`TODAS_SITUACOES`, `ORDEM_PADRAO`), `filtrarPorSituacao` e
+`ordenarPorAtualizacao`. `filtrarPorSituacao` **não é uma quinta
+implementação da régua**: o grupo de cada plano já foi decidido por
+`grupoDoPlano`, e "vencido" olha `prazoDias`, que o servidor calcula e que já
+vem nulo em plano encerrado.
+
+**`atualizado_em` passou a viajar para o cliente**, quebrando a regra de "datas
+de controle não vão no payload". É deliberado: ordenar por "atualizados
+recentemente" sem mostrar a data seria ordenar por critério invisível. É a data
+de mexida no plano DELE, não um dado interno.
+
+**Os números do topo NÃO seguem o filtro no portal, e seguem na lista interna.**
+Também estrutural: no portal existe o conjunto inteiro para somar, e segui-lo
+faria "Concluídos" mostrar 100% e zero pendências — lido de relance, "acabou
+tudo". Na lista interna o filtro é do servidor e a página já chega recortada;
+não há conjunto inteiro para somar.
+
+### Sem ESLint, constante órfã só estoura na cara do usuário
+
+Ao mover os rótulos dos filtros para a lib, o bloco removido levou junto uma
+constante que continuava em uso (`SEM_PLANOS`). **`npm run build` passou.** O
+que pegou foi o gate estrutural de `tests/js/estrutura-ppa-filtros.test.js`, que
+afirma a existência da declaração. Sem ele, a tela do PPA abriria em branco com
+um `ReferenceError` no console. Mesma família do `setCollapsed` órfão da
+sidebar — vale a pena o gate citar as declarações, não só os usos.
+
+### O "quadro completo" foi desligado — e ele era o ÚNICO lugar que criava tarefa
+
+Pedido: *"eu não quero quadro completo, não vou usar isso, ninguém vai, o
+simples está bom"*. Com o quadro desenhado dentro da lista, a segunda página
+virou a mesma coisa maior.
+
+**A armadilha:** tirar o botão sozinho deixaria o módulo sem como adicionar uma
+ação. `Ppa/Kanban.jsx` era o único consumidor de `ppa.tasks.store`, e a lista era
+o único link até ele. Por isso a criação veio para o rodapé do quadro na lista,
+no mesmo commit.
+
+A página e as rotas continuam existindo, **sem link nenhum**. Ficaram sem
+caminho pela tela: área, prioridade, prazo e lado responsável da TAREFA, e as
+colunas extras (`ppa_colunas`). O quadro do portal e o da lista mostram
+`prazo_dias` e `responsavel_lado` dos cards — eles seguem viajando no payload,
+mas ninguém mais tem onde preenchê-los. Se alguém sentir falta, o caminho é
+trazer esses campos para o card na lista, não ressuscitar a página.
+
+**Criar tarefa recarrega com `preserveState: true`**, para o plano não fechar
+debaixo de quem está trabalhando nele. Quem traz a tarefa nova para a tela é um
+`useEffect` que re-semeia `tarefasPorPlano` quando os props chegam — sem ele o
+estado local continuaria o de antes e a tarefa só apareceria no F5. E `linhas`
+PRECISA de referência estável (`?? SEM_PLANOS`, constante de módulo): com
+`?? []` o efeito giraria em falso para sempre.
+
+### Filtro de data virou ORDENAÇÃO, não intervalo
+
+Também recusado: "os filtros de data eu quero filtrar não data exata, mas do
+mais recente atualizado, ou dos mais antigos". Intervalo `de`/`até` responde
+"o que nasceu nesta semana"; ninguém procura PPA assim. A pergunta real era
+"o que anda parado há tempo demais".
+
+Virou `Ppa::scopeOrdenadoPorAtencao($ordem)`, e o **grupo continua sendo o
+critério principal** — a ordem só desempata dentro da seção. Um concluído
+mexido agora não pode pular na frente de um plano andando, ou as seções viram
+enfeite.
+
+Como a tela agrupa o que recebe, ela não pode reordenar por conta:
+`seccionar(planos, { ordenar: false })` na lista interna. Sem isso o JS
+reordenaria por prazo e desfaria, calado, a escolha do usuário.
+
+### `GREATEST` não existe no SQLite dos testes
+
+"Quando mexeram neste plano pela última vez" é o maior entre `ppas.updated_at`
+e o `MAX(updated_at)` das tarefas. `GREATEST(a, b)` resolveria em uma linha no
+MariaDB e **não existe no SQLite** (lá é `MAX(a, b)` escalar, que no MariaDB é
+agregação). A forma que os dois entendem é um `CASE` — ver
+`Ppa::sqlUltimaAtividade()`.
+
+A subconsulta aparece DUAS vezes dentro do `CASE` de propósito: alias de SELECT
+não pode ser referenciado por outra expressão do mesmo SELECT no MySQL.
+
+**Ao escrever teste disso, envelheça a TAREFA também.** Tarefa nasce com
+`updated_at` de agora; três planos com tarefas novas empatam no mesmo instante e
+a ordem sai aleatória. Custou uma falha que parecia bug de ordenação.
+
+### "Vencido" não é um grupo, e por isso não entrou em `GRUPOS`
+
+O pedido foi "filtrar por vencido, em andamento e concluído". Vencido parece o
+quarto grupo, mas não é: um plano vencido continua estando em andamento **ou** a
+fazer — ele atravessa as seções em vez de substituí-las. Virou filtro, e a lista
+filtrada continua se agrupando normalmente: quem pede "Vencidos" vê os atrasados
+já separados entre o que está andando e o que nem começou.
+
+A fronteira é a mesma do selo da tela: `due_date < hoje`, **estrito**. "Vence
+hoje" não é vencido. E plano encerrado pela equipe fica de fora, pela mesma razão
+que `diasAteOPrazo()` devolve `null` nele — atraso de trabalho fechado não cobra
+ninguém.
+
+### "Atualizado em" tem de contar TAREFA, senão mente
+
+`ppas.updated_at` responde "quando alguém editou o plano", e não "quando mexeram
+nisso". Mover um card é trabalho no plano, mas grava em `ppa_tasks` — outra
+tabela. Sem contar a tarefa, um plano com o quadro andando todo dia aparece
+parado desde a última vez que alguém trocou o título, que é o oposto do que a
+coluna promete. `Ppa::scopeComUltimaAtividade()` traz o `MAX(updated_at)` das
+tarefas por subconsulta, e `atualizadoEm()` devolve a mais recente das duas.
+
+Plano sem tarefa nenhuma faz a subconsulta devolver NULL: o fallback para o
+`updated_at` do plano existe porque, sem ele, a data sumiria justamente nos
+planos recém-criados.
+
+### Filtrar por "Concluídos" tinha de abrir a gaveta que vem fechada
+
+A seção "Concluídos" nasce recolhida, para tirar do caminho o que ninguém pediu.
+Com o filtro, ela passou a ser exatamente o que se pediu — e a tela vinha vazia
+com o contador dizendo "12". Daí `soConcluidos` na lista interna: filtrou por
+concluídos, a gaveta abre e o cabeçalho deixa de ser botão.
+
+### O filtro é do SERVIDOR; a busca por texto continua sendo da página
+
+A busca por título/empresa/responsável varre só a página atual, de propósito
+(é o alcance que os olhos tinham na tabela). Os filtros novos **não** podiam
+seguir esse caminho: a lista pagina de 20 em 20, e recortar só o que chegou
+mostraria "3 vencidos" para quem tem 19 espalhados pelas páginas seguintes.
+Pelo mesmo motivo a paginação carrega os filtros na URL, e mudar um filtro volta
+para a página 1.
+
 ### No portal o card arrasta, mas não reordena
 
 `useDraggable`, não `useSortable` — ao contrário do quadro interno. A rota do
@@ -464,3 +665,287 @@ que se reordenasse dentro da coluna mostraria uma organização que o próximo F
 desfaz. Se um dia a reordenação pelo cliente for desejada, ela exige passar
 `ordem` pela rota do portal — e aí vale lembrar que a ordem é COMPARTILHADA com
 o quadro que a equipe usa.
+
+## 26. Link de compartilhar PPA: o login precisa devolver ao destino — e só a destinos do portal
+
+Em 23/09/2026 a lista interna (PPA e PPA Polos) ganhou "Compartilhar" por plano
+(`PpaListaService::compartilhamento()`). Duas vias, sem reabrir o token de
+Company aposentado em 15/09:
+
+- **PPA de empresa** → `/portal/ppa?plano=ID` (login). A tela do portal abre e
+  rola até `#plano-ID`; se o plano está concluído, abre a gaveta também.
+- **PPA de Polos** → `ppa.workspace` por token, sem login. O token nasce no
+  clique (POST `workspace.generate` com `Accept: application/json`), nunca na
+  listagem.
+
+**Antes disto o login do portal SEMPRE ia para o Início** — qualquer link
+profundo para o portal morria no login. Agora `abrirSessao()` honra o
+`url.intended` gravado por `redirect()->guest()`, com duas travas:
+só caminho que começa em `/portal/`, e reduzido a caminho + query (sem host).
+O `url.intended` é a MESMA chave que o login do sistema interno usa; honrar
+qualquer valor mandaria o cliente para uma URL do admin, e aceitar host seria
+redirecionamento aberto. Teste: `tests/Feature/PpaQuadro/CompartilharPpaTest.php`.
+
+Cliente com várias empresas: se o plano do link é de uma empresa que NÃO é a
+ativa na sessão, o `?plano=` não casa e a lista abre normal — não troca de
+empresa sozinho.
+
+## 27. Mapeamento Estrutural: a planilha do Projeto Polos virou módulo (23/09/2026)
+
+Decisões e porquês em `.planning/adrs/PORTAL-01-mapeamento-estrutural-schema.md`
+— leia antes de mexer em `estrutura_*`. O que mais facilmente se desfaz sem
+querer:
+
+- **O gabarito é a planilha.** `tests/Concerns/GabaritoDaPlanilhaEstrutural.php`
+  monta o exemplo dela (cadeira + mesa) e `ReguaDoGabaritoTest` exige os números
+  que a própria planilha calculou (9 · 2/5/1/1 · 18 · 4 · 14 · 1 · 22,2%). Se
+  uma mudança quebrar esse teste, a mudança está errada. A linha K10 ("Kit
+  virtual") foi tirada de propósito: era contagem de fase.
+- **Agenda sem estado para Publicação.** Concluir pela agenda É cadastrar o
+  anúncio (MLB obrigatório só ali). Pôr um "feito" na linha da agenda recria a
+  contradição da planilha (CB3 OK no Planejamento, "Publicar" no Mapeamento).
+- **Espera só se move em ESCRITA** (criar/renomear/excluir oferta). Um GET que
+  promovesse linhas esconderia efeito colateral — há teste disso.
+- **Paginação sempre no servidor**, painel sempre sobre o conjunto inteiro. Não
+  introduza "filtro no navegador para quem tem pouco": são dois caminhos, e o de
+  cima só o maior cliente (2.688 anúncios) exercita.
+- **O mapeamento de colunas da colagem ainda não viu uma exportação real do
+  ML.** Fica todo em `LeitorColagemAnuncios::CABECALHOS`, com teste. Quando a
+  primeira exportação aparecer, é ali (e um caso no teste) que se ajusta — não
+  use os `Anunciar-*.xlsx`, que são template de publicação em massa.
+- **Visível para toda empresa.** `mlb_empresas.company_id` preenchido em 3 de
+  308: não há caminho confiável de Company até "é de Polos".
+
+### O que liga o Clássico ao Premium no ML é o SELLER_SKU — medido (25/09)
+
+Nos 21 anúncios reais dos fixtures da Fase 134 (`tests/fixtures/phase134/`),
+os pares Clássico + Premium do mesmo produto tinham o **mesmo `SELLER_SKU`**
+(`1808`, `1301-UN-NA`) e **`user_product_id` / `family_name` diferentes** —
+no modelo "User Products" cada anúncio tem o seu. O título muda de propósito
+("mesmo SKU, títulos diferentes", regra da aula). `catalog_product_id` só liga
+quando os dois estão no mesmo produto de catálogo. 15 dos 21 tinham SKU.
+
+### Puxar do ML cria as ofertas — em LOTES dos mais vendidos, nunca a conta inteira
+
+O fluxo que o usuário quer (25/09) é o contrário de "cadastre a oferta e depois
+importe": **os anúncios do ML criam as ofertas**. Cada SKU vira uma oferta
+(Fase 1, simples; nome = título do anúncio mais vendido do SKU; logística do
+`shipping` do anúncio) com TODOS os anúncios Clássico e Premium daquele SKU.
+A versão intermediária, que exigia cadastrar oferta antes e mostrava "Cadastre
+as ofertas primeiro", o usuário não entendeu — não volte a ela.
+
+**O SKU é o par, e só ele** — medido nos 40 mais vendidos da #131: SKU
+`30069Full` = 12 anúncios, 6 Clássico + 6 Premium, títulos diferentes;
+`user_product_id` e `family_id` são DIFERENTES em cada anúncio (não servem
+para juntar). `30069` e `30069Full` são ofertas SEPARADAS (decisão do usuário:
+SKU diferente = oferta diferente). SKU como `33132x2Full` (kit de 2) entra como
+Simples — não se adivinha combo pelo SKU.
+
+**Escala**: a CAMILLOPARTSFILIALSCCAMILLO (#131) tem ~101 mil anúncios no
+acervo (46k Clássico + 53k Premium ativos). Ler tudo = ~5.000 multigets, mais
+de uma hora, milhares de ofertas de uma vez. Por isso cada "Puxar" lê os
+**mais vendidos** (`sold_quantity` do acervo) que ainda NÃO estão no módulo
+(nem anúncio, nem espera) até juntar 500 SKUs; o próximo "Puxar" continua
+sozinho, porque o que foi importado sai dos candidatos. Para cada SKU,
+`/users/{id}/items/search?seller_sku=` traz os irmãos (128 ms na #131).
+
+**Em fatias de 45 s, com `rodada`**: um lote de 500 SKUs passa de 90 s, e a
+fila `database` reentrega Job reservado há mais que `retry_after` (90 s) — duas
+leituras simultâneas. O Job trabalha 45 s, guarda o progresso no cache e
+despacha o próximo; a `rodada` (uuid) impede leitura velha de escrever por cima
+da nova. O estado interno (lista de MLBs) NUNCA vai para o navegador — o
+`estado()` devolve só o progresso.
+
+**Produção é REDIS, e a fila `default` vive cheia** (medido 25/09): o CLAUDE.md
+diz "queue database", mas `QUEUE_CONNECTION=redis` na VPS e os workers rodam
+`queue:work redis --queue=high,default`. A `default` tinha **157 jobs** do sync
+do acervo; a primeira versão do "Puxar" ia para ela e NUNCA começou — a tela
+ficou em "0 lidos" e depois "parou no meio", sem log e sem `failed_jobs`
+(o job só estava esperando). Job disparado por clique de alguém que está
+olhando a tela vai para `onQueue('high')`, como o `ResolveOnboardingPassoJob`.
+Para diagnosticar: `Redis::lrange('queues:default', 0, -1)` pelo tinker — a
+tabela `jobs` fica vazia em produção e engana. A tela agora distingue "na
+fila" (espera 15 min) de "começou e parou" (3 min).
+
+**Métricas do ML no Mapeamento (28/09) — o acervo NÃO tem visitas nem buy box
+na #131** (0% de 99 mil ativos). Dois defeitos da camada cara da Fase 134
+(`MlAcervoDetalheService`), medidos em produção e NÃO corrigidos aqui:
+1. `/items/{id}/visits` com `date_from=...T00:00:00.000-00:00` volta **400
+   "unknown date format"**. Aceitos: `Y-m-d` puro ou
+   `/items/{id}/visits/time_window?last=7&unit=day`.
+2. `price_to_win` devolve `status: "competing"`, fora de
+   `BUYBOX_STATUS_VALIDOS` — a coleta grava null.
+O Mapeamento lê visitas, vendas de 7 dias (`/orders/search?item=MLB…` conta só
+aquele anúncio) e buy box NA HORA, sob demanda, com cache de 30 min
+(`AnunciosMercadoLivreService::metricasDaOferta`). Vendas vitalícias, preço,
+fotos e alertas vêm do acervo (100% preenchidos). Estoque é FAIXA (pares
+Clássico+Premium do mesmo SKU têm estoques próprios); nada de "dá para montar
+N kits" — estoque no Full não está na mão do seller (usuário).
+
+**A estação do produto substituiu a gaveta (28/09)** — o usuário: "o painel
+lateral limita muito; não dá gráfico, não dá para ver as fotos". Recorte =
+FAMÍLIA (produto + combos, ou kit + componentes), numa resposta só
+(`ofertas.estacao`), relida a cada escrita (prop `versao` = `estrutura`).
+Clássico e Premium são colunas lado a lado — a régua vira layout; lado que
+falta = coluna vazia com a ação. Inspetor à direita: fotos (multiget com
+`pictures`, junto com o SKU — `anuncios-ml` GET), série de visitas do
+anúncio. Decisões que não se deduzem:
+- Visitas em PARALELO: `MercadoLivreService::getMany()` (Http::pool, lotes de
+  10, falha refeita pelo `get()` de sempre). Método NOVO; os existentes não
+  mudaram. 30 anúncios: ~1 s em vez de 12 s.
+- Vendas de 7 dias: pedidos da LOJA, pré-aquecidos por
+  `AquecerPedidosMlEstruturaJob` (fila high) ao abrir a página; a resposta das
+  métricas sai com `vendas_prontas: false` e a tela consulta de novo a cada
+  3 s. Trava `estrutura:vendas7d-aquecendo` (Cache::add, 5 min) evita 2 jobs.
+- `?abrir=ID&metricas=1` (da Jardinagem): a limpeza da URL precisa de
+  `setTimeout` — o Inertia regrava a URL logo depois da montagem e desfazia o
+  `replaceState` síncrono.
+- **O preço do acervo (e o `price` do `/items`) é o CHEIO, sem promoção.**
+  MLB4645047625: R$ 2.021,08 no acervo, R$ 1.666,37 no anúncio (17% OFF,
+  campanha do marketplace). O preço que o cliente paga: `/items/{id}/sale_price
+  ?context=channel_marketplace` → `amount` (e o cheio em `regular_amount`);
+  `original_price` vem null. Uma chamada por anúncio, lida em paralelo com o
+  SKU e as fotos. O ML trunca o desconto (17,55% → "17% OFF").
+- Vendas por dia: o job lê 30 dias de pedidos DIA A DIA (a primeira página de
+  cada dia numa leva paralela, as demais noutra) — ~10 mil pedidos/mês na #131
+  pediriam offset > 10 mil numa busca única. Dia do pedido = horário do Brasil.
+- No celular, tocar no MLB do card abre o ML e NÃO seleciona o card (é o
+  `stopPropagation` do `LinkMl`) — tocar na foto/título seleciona.
+
+**A prévia com ofertas que ainda não existem**: a colagem casaria os anúncios
+contra ofertas reais e jogaria tudo em "aguardando oferta". `previa()` aceita
+`$skusFuturos` (id negativo, nunca chega ao `executar()`); a confirmação cria
+as ofertas ANTES e refaz o plano real.
+
+O `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
+tabela com dado em produção (fase GSD obrigatória) — por isso o SKU sai da API.
+
+
+## 28. O Mapeamento virou submódulos, e anúncio sem MLB deixou de contar (29/09/2026)
+
+O usuário achou a página única "poluída" e corrigiu a premissa do módulo: ele
+é **principalmente para quem começa do zero**, sem anúncio no ML. Importar do ML
+continua, mas como porta secundária. Ordem dos submódulos (menu e trilha):
+Lista SKUs → Precificação → Anúncios → Planejamento → Mapeamento → Anunciar.
+Tudo sai de `ModulosPortal::SUBMODULOS`. `rota_auth` nulo = "Em breve".
+
+- **A chave ativa é `estrutura.<sub>`** (`ModulosPortal::ESTRUTURA.'.lista'`).
+  O `paraEmpresa()` parte no ponto: o que vem antes é o módulo, o resto é o
+  submódulo. Página nova do módulo que passar só `estrutura` acende o módulo
+  e nenhum submódulo.
+- **`/portal/estrutura` só redireciona.** Sem query, vai para a Lista SKUs.
+  Com `abrir`/`q`/`situacao`/`pagina`/`metricas`, vai para o Mapeamento com a
+  query intacta: são os links que a agenda e a Jardinagem já espalharam.
+- **Sem código MLB = PLANEJADO, e não conta como publicado** (decisão do
+  usuário). A aba Anúncios passou a receber o título do Clássico e do Premium
+  antes de publicar. Contar isso como publicado faria o progresso mentir. A
+  regra mora em `EstruturaAnuncio::conta($status, $codigoMlb)`, sem migration.
+  Medido em produção antes: só 3 anúncios sem MLB, todos da #447; os 2.996 da
+  #131 têm código. Duas consequências que parecem bug e não são:
+  - colagem com SKU + tipo e sem MLB agora deixa a oferta em "Falta …";
+  - **cadastrar com MLB COMPLETA o planejado do mesmo (oferta, tipo)** em vez
+    de criar um segundo. Sem isso, o "Concluir" da agenda deixava o título
+    planejado órfão ao lado do publicado.
+- O gabarito da planilha (4 publicados de 18) não mudou: todos os anúncios
+  dele têm MLB.
+- **Precificação** (mesmo dia): decisões em `.planning/adrs/PORTAL-02-precificacao-do-mapeamento.md`.
+  A conta da Calculadora roda no PHP (`PrecificacaoEstrutura`), e o preço
+  NÃO é coluna: mudar o imposto da empresa recalcula tudo na leitura. Todo
+  percentual é gravado em ponto percentual. O custo de combo, kit e combit é a
+  soma dos componentes, e um componente sem custo anula a soma de propósito.
+  A migration só cria tabelas novas; no MariaDB local compartilhado ela foi
+  rodada com `--path`, para não arrastar migrations pendentes de outras sessões.
+
+## 29. Anunciar: o par Clássico + Premium publicado pelo portal (29/09/2026)
+
+Decisões e schema em `.planning/adrs/PORTAL-03-anunciar-do-mapeamento.md`.
+O que custou caro e não se deduz do código:
+
+- **`ml_anuncio_rascunhos` não serve ao portal.** `user_id` é NOT NULL com FK
+  para `users`, e o cliente entra pelo guard `portal`. Alterá-la é migration em
+  tabela com dado em produção (fase GSD). Por isso `estrutura_publicacoes` e
+  um service próprio (`EstruturaPublicacaoService`) que compõe o motor do
+  admin (`builderPara()->montar()`, `MercadoLivreService::post()`,
+  `MlImagemService`, `MlCatalogoMetaService`, `MlItemPayloadValidator`) sem
+  usar `MlPublicacaoService::validar()/publicar()`.
+- **A trava contra publicar duas vezes é um UPDATE condicional** (`WHERE
+  status IN (validado, parcial, erro) OR (publicando AND publicando_em < −15
+  min)`) que precisa afetar 1 linha — funciona no SQLite dos testes e no
+  MariaDB sem cache. **Cada MLB é gravado no instante em que o POST devolve o
+  id**, antes da descrição e da aba Anúncios; o admin marcava `erro` quando a
+  descrição falhava e perdia o `ml_item_id`. Aqui descrição é best-effort.
+- **O botão desabilitado não é a trava.** O servidor guarda o sha256 dos dados
+  EFETIVOS (rascunho + título planejado da aba Anúncios + preço anunciado da
+  Precificação) na conferência e recusa publicar se o hash de agora for outro.
+  Consequência que parece bug: mudar o custo na Precificação depois de
+  conferir obriga a conferir de novo — é o preço que vai ao ML que mudou.
+- **`Http::fake` + `UploadedFile::fake()->create()` = "A 'contents' key is
+  required".** O `create()` gera arquivo VAZIO; `attach('file', '')` do Guzzle
+  recusa antes de qualquer fake, e a falha aparece como "o ML não aceitou a
+  imagem" sem nenhuma requisição registrada. Use `->image()` (GD existe no
+  XAMPP). Ganhou um guarda contra arquivo vazio no service.
+- **`Http::recorded()` preserva as chaves** do filtro: `[0]` não existe depois
+  de filtrar — `->values()` antes de indexar.
+- **`array_replace_recursive` não esvazia uma lista** (`['fotos' => []]` deixa
+  as fotos): para "tirar as fotos" na fixture é `array_replace` no nível de cima.
+- **Duas sessões do portal no mesmo teste não funcionam** (o guard cacheia o
+  usuário — §22): "oferta de outra empresa → 404" e "empresa sem conta do ML"
+  são testes separados, cada um com a sua sessão.
+- **Resposta JSON incompleta derruba a tela inteira.** O `salvar` devolvia só
+  `publicacao` e a tela fazia `pendencias.length` → React 18 desmonta a raiz
+  e a página fica PRETA, sem erro no PHP e com os testes verdes. Pego só no
+  probe (captura preta). O teste do rascunho agora afirma a forma da resposta.
+- **Probe sem tocar o ML de verdade:** a empresa 1 local não tem conta; para
+  ver o formulário, semear um `MlToken` FALSO + o rascunho JÁ com
+  `categoria_id` + a meta da categoria no cache de arquivo
+  (`ml_meta_categoria_<id>`, `ml_meta_atributos_<id>`). Com a categoria salva,
+  `abrir()` não chama o preditor; foto/conferir/publicar não se clicam. Mas a
+  página abre SOZINHA a primeira oferta da lista — se ela não tem categoria,
+  `abrir()` chama o preditor no servidor (app token, dado público). Para um
+  probe hermético, deixe TODAS as ofertas da página com categoria ou abra a
+  semeada direto. Apagar depois: `EstruturaPublicacao` da oferta, o token,
+  as chaves do cache e o activity log `publicacao_*` da empresa — e conferir
+  por reconsulta.
+- **A lista da esquerda não confere a ficha técnica** (exigiria a meta de cada
+  categoria, uma chamada por categoria): o card diz "pronto para conferir" e
+  o formulário, abaixo, "Falta Altura total". É deliberado.
+- **Sugestão de categoria mostra a ÁRVORE inteira antes de escolher** (usuário,
+  29/09: "Caixa de Direção" × "Caixas de Direção Hidráulica" só se distinguem
+  pelo caminho). O `domain_discovery` não traz `path_from_root`; é um
+  `GET /categories/{id}` por sugestão (até 8). O portal lê o que falta em
+  PARALELO (`Http::pool`, app token) e grava na chave `ml_meta_categoria_{id}`
+  (7 dias) — a chave do `MlCatalogoMetaService` já era contrato de fato (o
+  `MlbAnuncioController::preverCategoria` a lê direto), e assim `categoria()`
+  e a próxima busca acham tudo pronto sem tocar o service do admin.
+  `MercadoLivreService::getMany()` NÃO serve aqui: exige a conta da empresa
+  (token dela, refresh, lock) para dado público de cache compartilhado.
+  `Http::pool` passa pelo `Http::fake` (o `Pool` cria cada pedido por
+  `Factory::async()`, que aplica os stubs) e é gravado em `Http::recorded()`.
+  Ao contar chamadas a `/categories/`, lembre que `/categories/{id}/attributes`
+  também casa — filtre por `#/categories/MLB\d+$#`.
+- **Fotos reordenam por arraste com `@dnd-kit`, não com o drag nativo do
+  `/mlb/anuncios`** (usuário, 29/09): o nativo não existe no toque, e o portal
+  é usado no celular. `FotosDoPar.jsx`: `MouseSensor` (distance 6) +
+  `TouchSensor` (delay 200, tolerance 8) + `KeyboardSensor`, como no PPA;
+  `touch-action: manipulation` (com `none`, o dedo sobre a foto não rola a
+  página); `draggable={false}` na `<img>` (senão o navegador inicia o arraste
+  NATIVO da imagem e cancela o ponteiro do dnd-kit); `pointer-events-none` na
+  imagem para o ponteiro cair na alça. A ordem é a do rascunho e vira
+  `pictures` no POST — o `validado_hash` já cobre (as fotos entram no
+  `normalizar()`), então reordenar caduca a conferência. A lógica de mover é
+  pura em `lib/fotosDoPar.js`, com teste em node. **Puppeteer 25 arrasta por
+  toque de verdade**: `setViewport({ hasTouch: true })`,
+  `page.touchscreen.touchStart(x, y)` → `handle.move(x, y)` em passos →
+  `handle.end()`; espere mais que o `delay` do sensor antes de mover.
+
+## 30. Precificação: frete em branco virava ZERO e o Premium saía abaixo do Clássico (30/09/2026)
+
+A fórmula do portal e a do onboarding de Polos são **idênticas** — "copiar a
+lógica do onboarding" não resolveria. Lá o frete em branco também entra como
+zero; só que o Simulador mostra um tipo por vez e o campo pisca vermelho,
+então ninguém lê o preço como final. No portal os dois preços ficam lado a
+lado, e o Premium sem frete parecia o preço certo. Correção: tipo em branco
+usa o frete do outro (ADR PORTAL-02, revisão de 30/09). Ao receber "a conta
+está errada" aqui, olhar primeiro o DADO gravado (`estrutura_precificacoes`)
+antes da fórmula — foi o que achou a causa em minutos.
+

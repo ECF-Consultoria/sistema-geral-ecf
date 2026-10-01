@@ -206,6 +206,9 @@ class OnboardingPublicoController extends Controller
                 $data['resposta'],
                 $data['observacoes'] ?? null,
                 $ator,
+                // O check do portal (23/09/2026) não manda a chave: sem ela, a
+                // observação gravada pela ficha interna fica como está.
+                manterObservacoes: ! $request->exists('observacoes'),
             );
         } catch (\DomainException $e) {
             throw ValidationException::withMessages(['chave' => $e->getMessage()]);
@@ -350,6 +353,68 @@ class OnboardingPublicoController extends Controller
             ->log('Anotações da reunião atualizadas no portal');
 
         return back()->with('success', 'Anotações salvas.');
+    }
+
+    /**
+     * GET /portal/onboarding/horarios — sugestões de horário livre para a
+     * reunião de onboarding, para a EQUIPE que opera o portal (23/09/2026).
+     *
+     * JSON, lido só quando a equipe abre o formulário: consultar o Google a
+     * cada abertura da tela deixaria o portal lento para o cliente.
+     */
+    public function horariosReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
+    {
+        $this->exigirEquipe(null);
+        $company = \App\Support\Portal\PortalContexto::empresa();
+
+        $data = $request->validate(['onboarding_id' => ['required', 'integer']]);
+        $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
+
+        return response()->json($agendamento->sugestoes($onboarding));
+    }
+
+    /**
+     * POST /portal/onboarding/agendar — a EQUIPE marca (ou remarca) a reunião
+     * de onboarding pelo portal, com convite e Google Meet (23/09/2026).
+     *
+     * Só a equipe: o cliente não agenda nada — decisão do negócio, que recusou
+     * a primeira versão em que ele escolhia o horário.
+     */
+    public function agendarReuniao(Request $request, \App\Services\Portal\AgendamentoPortalService $agendamento)
+    {
+        $membro = $this->exigirEquipe(null);
+        $company = \App\Support\Portal\PortalContexto::empresa();
+
+        $data = $request->validate([
+            'onboarding_id'  => ['required', 'integer'],
+            'inicio'         => ['required', 'date', 'after:now'],
+            'duracao'        => ['required', 'integer', 'min:15', 'max:240'],
+            'organizador_id' => ['nullable', 'integer'],
+        ], [
+            'inicio.after' => 'Escolha uma data e hora no futuro.',
+        ]);
+
+        $onboarding = $this->onboardingDaEmpresa($this->linkService->paraEmpresa($company), $data['onboarding_id']);
+
+        $resultado = $agendamento->agendar(
+            $onboarding,
+            \Carbon\CarbonImmutable::parse($data['inicio'], 'America/Sao_Paulo'),
+            (int) $data['duracao'],
+            isset($data['organizador_id']) ? (int) $data['organizador_id'] : null,
+            $membro,
+        );
+
+        if (! $resultado['ok']) {
+            throw ValidationException::withMessages(['inicio' => $resultado['mensagem']]);
+        }
+
+        activity('onboarding')
+            ->performedOn($onboarding)
+            ->causedBy($membro)
+            ->withProperties(['origem' => 'interno', 'tela' => 'portal', 'ip' => $request->ip()])
+            ->log('Reunião de onboarding marcada pela equipe no Portal do Cliente');
+
+        return back()->with('success', $resultado['mensagem']);
     }
 
     /** O investimento do cliente, registrado na reunião (14/09). */
@@ -818,7 +883,7 @@ class OnboardingPublicoController extends Controller
                     'funcao'   => $ct->funcao,
                     'telefone' => $ct->telefone,
                 ])->values()),
-            'reunioes' => $this->linkService->reunioesDaEmpresa($company),
+            'reunioes' => $this->linkService->reunioesDaEmpresa($company, (bool) $ator?->equipe),
             'responsaveis' => $this->linkService->responsaveisDaEmpresa($company),
             'mapeamentos' => Onboarding::where('company_id', $company->id)
                 ->emAndamento()

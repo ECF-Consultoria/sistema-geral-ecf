@@ -336,8 +336,9 @@ cust_id normalizado contra `polos_faturamento_snapshots` (`mes='YYYYMM'`) + `mlb
 POLOS não-arquivadas. Existe `php artisan polos:audit-faturamento` (read-only).
 
 **O banco local está meses atrás** (só snapshot 202606) — auditar sempre contra a VPS. E o
-`polos:warm` tem **orçamento de 1500s** a ~7s/empresa: quem não couber fica sem snapshot e
-conta **R$ 0 sem erro visível**. Conferir cobertura antes de concluir qualquer coisa:
+sync **na fila** (botão "Sincronizar") tem **orçamento de 1500s** a ~11s/empresa: quem não
+couber fica sem snapshot e conta **R$ 0 sem erro visível**. (Desde 30/09 o agendamento diário
+roda `polos:warm` sem teto — ver §15.) Conferir cobertura antes de concluir qualquer coisa:
 `roster M1–M4` vs `COUNT(*) de polos_faturamento_snapshots WHERE mes=...`.
 
 ---
@@ -488,3 +489,123 @@ Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot*
 `user_id` (autoria não pode virar "—" quando o usuário é desativado), e `editado_em` é
 coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
 futuro marcaria o comentário como editado sem ninguém ter editado nada.
+
+## 13. A gaveta da linha é uma célula `colSpan` — ela tem a largura da TABELA, não da tela (2026-09-29)
+
+A gaveta que abre na seta da linha é um `<td colSpan={40}>`. Na Geral a tabela passa de
+**5.600 px** (medido na tela local), então a gaveta também passava: o grid de 3 cards dava
+~1.500 px para cada um, e a gaveta rolava para o lado junto com as colunas — metade dela
+fora da tela. O "Semanal do mês" parecia quebrado: o `SparkSemanal` tinha viewBox fixo
+280×92 com `width="100%"`, então a **altura** crescia com a largura (500+ px de gráfico,
+pontos de 30 px).
+
+Hoje o conteúdo da gaveta é `sticky left-0` com `width: var(--painel-largura-visivel)`,
+variável que um ResizeObserver grava na caixa rolável da tabela (`refCaixaTabela` em
+`Painel.jsx`). É CSS var, e não estado, de propósito: estado re-renderizaria as ~300
+linhas memoizadas a cada redimensionamento. O `SparkSemanal` passou a medir a própria
+largura e manter altura fixa — em qualquer contexto, não só na gaveta.
+
+O que vale para quem mexer ali:
+
+- **Card novo na gaveta herda a largura certa de graça** — desde que fique DENTRO do div
+  sticky. Fora dele, volta a ter 5.600 px.
+- **SVG responsivo: não use viewBox fixo com `width="100%"`** se a altura não pode crescer.
+  E não use `width={px}` fixo: trava o card no tamanho antigo quando a janela encolhe (o
+  ResizeObserver nunca vê a largura menor). O padrão do `SparkSemanal` é `width="100%"` +
+  viewBox na largura medida.
+- **Cache de dado da gaveta que depende do mês leva o mês na chave.** O semanal era
+  indexado só por `cust_id`: trocar o mês com a gaveta aberta mostrava as semanas do mês
+  anterior. Hoje a chave é `${cust_id}|${mes}`.
+- Os PPAs da gaveta (`mlb.polos-ppa.empresa`) trazem **todos os planos da empresa**, de
+  qualquer responsável e com rascunho — ao contrário da lista do PPA, que recorta por
+  `mentor_id` para o não-admin. O recorte da lista é arrumação de tela, não barreira: o
+  quadro de qualquer plano já abre para quem tem acesso.
+
+## 14. O card de faturamento e o "% Geral da meta" contam empresas diferentes — de propósito (2026-09-30)
+
+Pedido do time em 30/09: o faturamento total do projeto soma **M1–M4**; a meta continua
+sobre **M2–M4**. Desde então o Painel (e o Modo TV) mostram dois números que **não fecham
+entre si**, e isso não é bug:
+
+- Card "Faturamento" = Σ `cockpit.faturamentoPorFase` (M1 + M2 + M3 + M4 [+ Fechamento]).
+- "% Geral da meta" = Σ `polos[].faturamento` (só o roster da meta) ÷ `metaFaturamento`.
+
+Em setembro/2026 parcial: R$ 3,74 mi no card × R$ 3,33 mi na base da meta. Quem dividir
+o número do card pela meta chega a 117% e vai achar que o 104% está errado. Os sublabels
+dizem "M1–M4" e "base M2–M4" exatamente por isso — **não unifique os dois números**, e não
+passe a dividir o total pela meta: M1 é onboarding e nunca teve meta (D-01).
+
+O que não é óbvio lendo o código:
+
+- **M0 fica fora do total, mas dentro da coorte M1.** O card "Coorte M1" é M1 + M0 (D-16);
+  o total M1–M4 filtra `fase === 'M1'`. Hoje dá no mesmo porque o `polos:warm` só aquece
+  M1–M4 — M0 (89 empresas em 30/09) **não tem snapshot** e entra com R$ 0. Se um dia o warm
+  passar a cobrir M0, a coorte cresce e o total não.
+- **Fechamento está na base da meta e no total, mas a fase está vazia em produção** (0
+  empresas em 30/09) e também não é aquecida pelo warm. Só aparece na quebra se tiver
+  empresa.
+- **A invariante que o teste trava:** as fases com `naMeta = true` somam exatamente
+  Σ `polos[].faturamento`, e suas empresas somam "Empresas ativas". As duas varreduras
+  (`faturamentoPorFase()` e `agregarPorPolo()`) leem o mesmo `$ativos` e o mesmo `$fatMes`,
+  sem deduplicar. Trocar a fonte de uma sem a outra faz card e meta divergirem **calados**
+  (`tests/Feature/Polos/FaturamentoPorFaseTest.php`).
+- **O `/polos` antigo (`Polos/Index`) NÃO mudou** — segue somando só M2–M4, filtrado pelos
+  chips e com meta = soma dos limiares (§5). Se alguém comparar as duas telas, é esperado
+  que o faturamento difira.
+
+## 15. O sync diário só cobria metade do roster — e começava 4h atrasado (2026-09-30)
+
+Pedido: "o faturamento polos atualizar todos os dias automaticamente". Já existia um
+agendamento diário às 13:00 — o problema era que ele **não terminava**. Medido em produção
+em 30/09: dos 262 custs M1–M4, **130** atualizados no dia, **100** no anterior, e o resto com
+`synced_at` de até 29 dias atrás.
+
+Duas causas somadas, nenhuma visível no log (`LOG_LEVEL=error` esconde os `Log::info` do job):
+
+- **Teto de 25 min.** O job tem orçamento de 1500s porque o worker mata em 1800s. Com o ADS
+  por adgroup, cada empresa leva ~11,5s → ~130 por execução. O `worker.log` mostrava
+  **"25min DONE" todo santo dia** — o sinal de que batia no teto, não de que terminou.
+- **4h na fila.** `Schedule::job` só enfileira. A `default` passa das 11h às 17h entupida de
+  `SyncMlAcervo*` (API do ML), então o job das 13:00 começava **~17h**.
+
+Correção: o agendamento virou `Schedule::command('polos:warm')->runInBackground()` —
+processo próprio, fora da fila, **sem orçamento** (~50 min para 262). O botão "Sincronizar"
+continua na fila com o teto de 1500s. Um `Cache::lock` impede duas varreduras juntas (a Adman
+aceita ~10 rpm; duas instâncias viram 429 — ver o comentário do `RefreshGrossBillingCacheJob`).
+
+O que não é óbvio:
+
+- **Às 13h a cota da Adman está livre porque a fila está ocupada com o ML**, não com a Adman
+  (`SyncAdmanCompany`/`SyncFaturamentoMensal` terminam na faixa das 11h). Se alguém mover
+  job pesado de Adman para a tarde, os dois passam a disputar cota.
+- **`withoutOverlapping(180)`, não o default.** O mutex padrão vale 24h: se o processo morrer,
+  a execução do dia seguinte seria pulada calada.
+- **Propriedade nova em job enfileirado precisa de default NA DECLARAÇÃO.** `$orcamento`
+  promovido no construtor ficaria não inicializado ao desserializar o job que já estava na
+  fila antes do deploy — e ele quebraria. Vale para qualquer job: construtor promovido só
+  para propriedades que todo payload antigo já traz.
+- **Onde conferir:** cada execução grava uma linha em `storage/logs/polos-warm.log`
+  ("atualizadas X/Y em N min" + os custs que ficaram de fora). O resumo vem de **reconsulta**
+  ao banco (`synced_at >= início`), não do contador do job. Quem sobra quase sempre é cust
+  recusado pela Adman (§8), não falha do sync.
+
+## 16. "ADS ligado/desligado" é automático pela Adman — e o status do adgroup mente (2026-09-30)
+
+Pedido no TKT-0003 (Débora): acompanhar se a campanha está ativa. `mlb_empresas.ads_desligado`
+existia desde jun/2026, mas **nenhuma rota gravava nele** — ícone, chip "Ads desligado" e os
+alertas do `/polos` e do Painel ficaram sempre zerados sem ninguém notar.
+
+Hoje o sync lê `/ads/{cust}/campaigns` (13:00 no `polos:warm` e 17:30 no `polos:ads-status`) e
+grava `ads_desligado` + `polos_ads_status`. Ligado = pelo menos uma campanha `active`.
+
+- **Não use o `status` do adgroup** (`/adgroups/metrics`, que o warm já chama). Medido na
+  Império Estofados: 54 adgroups `ACTIVE` com 6 de 11 campanhas `paused`. Parecia sair de graça
+  e dá a resposta errada.
+- **Conta não vinculada responde HTTP 500 "User is not mentored by agency"** — é permanente, não
+  transitório; por isso `fetchCampanhasAtivas` só repete em 429. Essas contas não ganham linha em
+  `polos_ads_status` e continuam marcáveis à mão na coluna Sinais. Leitura com mais de 72h
+  (`PoloAdsStatus::FRESCOR_HORAS`) também devolve a empresa ao manual.
+- **A marcação manual é recusada** para conta com leitura fresca: o sync seguinte a sobrescreveria.
+- **É estado de AGORA.** Só o mês corrente lê/grava; o botão Sincronizar de mês passado não
+  regrava. Mês fechado mostra o `ads_desligado` congelado pelo `polos:congelar-roster` (23:40).
+- As duas varreduras usam a MESMA trava (`polos-sync-faturamento:handle`) — cota de ~10 rpm.

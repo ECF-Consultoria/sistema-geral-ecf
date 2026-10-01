@@ -3,6 +3,7 @@ import { usePage } from '@inertiajs/react';
 import { Building2, ChevronLeft, ChevronRight, Wallet, X } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 import { ehReservaProximoMes, somaMetaDoMes, competenciaDe, janelaDaCompetencia } from '@/lib/polosEntrantes';
+import { useAnunciarModoTv } from '@/hooks/useModoTv';
 import { STATUS_META, STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
 import FatVsMetaChart, { origemFaturamento } from './FatVsMetaChart';
@@ -297,6 +298,10 @@ export default function ModoTV({
     const [agora, setAgora]             = useState(() => new Date());
     const [atualizadoEm, setAtualizado] = useState(() => new Date());
 
+    // Este overlay mora DENTRO do AppLayout: sem o sinal, o aviso de ticket respondido
+    // e o toast de flash aparecem por cima da parede e ninguém está lá para fechar.
+    useAnunciarModoTv();
+
     // Ao voltar de um reload o Modo TV é restaurado sem gesto do usuário, e a Fullscreen
     // API exige gesto — então rearmamos na primeira interação (um clique/tecla qualquer
     // na TV ou no controle) em vez de deixar a barra do navegador aparecendo para sempre.
@@ -382,7 +387,13 @@ export default function ModoTV({
     // ── Faturamento: cockpit (admin) ──
     const polosCk   = cockpit?.polos ?? [];
     const temCk     = isAdmin && polosCk.length > 0 && !cockpit?.erro;
+    // `totalFat` é a base da META (M2–M4); o card mostra o TOTAL do projeto (M1–M4, 30/09).
+    // Mesma regra do Painel — sem a quebra no payload, o total cai no da meta.
     const totalFat  = useMemo(() => polosCk.reduce((s, p) => s + (Number(p.faturamento) || 0), 0), [polosCk]);
+    const totalFatProjeto = useMemo(() => {
+        const fases = cockpit?.faturamentoPorFase ?? [];
+        return fases.length > 0 ? fases.reduce((s, f) => s + (Number(f.faturamento) || 0), 0) : totalFat;
+    }, [cockpit, totalFat]);
     const totalAtiv = useMemo(() => polosCk.reduce((s, p) => s + (Number(p.ativos) || 0), 0), [polosCk]);
     const metaFat    = Number(cockpit?.metaFaturamento) || 0;
     const pctFat     = metaFat > 0 ? Math.round((totalFat / metaFat) * 100) : 0;
@@ -576,9 +587,9 @@ export default function ModoTV({
                                 a barra do herói antigo. */}
                             <CardTV titulo="Faturamento total" icone={Wallet}
                                     cor={metaFat > 0 && pctFat >= 100 ? HEX.green : HEX.yellow}
-                                    valor={formatCurrency(totalFat)}
+                                    valor={formatCurrency(totalFatProjeto)}
                                     sublabel={metaFat > 0
-                                        ? `meta ${formatCurrencyCompact(metaFat)} · ${pctFat}%`
+                                        ? `M2–M4: ${pctFat}% da meta ${formatCurrencyCompact(metaFat)}`
                                         : `${mesRefFat} · ${parcial ? 'parcial' : 'fechado'}`} />
                             <CardTV titulo="Empresas ativas" icone={Building2}
                                     valor={fmtInt(totalAtiv)}

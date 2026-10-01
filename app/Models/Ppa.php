@@ -30,6 +30,41 @@ class Ppa extends Model
     /** PPA Polos (quick 260805-dzu; alvo = MlbEmpresa do projeto POLOS). */
     public const ESCOPO_POLOS = 'polos';
 
+    /**
+     * As situações pelas quais a lista filtra.
+     *
+     * As três primeiras são os GRUPOS da régua de atenção — os mesmos valores
+     * de `resources/js/lib/ppaAgrupamento.js`, e por isso strings iguais dos
+     * dois lados. `vencido` não é grupo: atravessa os três (um plano vencido
+     * está, ao mesmo tempo, em andamento ou a fazer) e por isso só existe como
+     * filtro.
+     */
+    public const GRUPO_ANDAMENTO  = 'andamento';
+    public const GRUPO_FAZER      = 'fazer';
+    public const GRUPO_CONCLUIDO  = 'concluido';
+    public const SITUACAO_VENCIDO = 'vencido';
+
+    public const SITUACOES = [
+        self::SITUACAO_VENCIDO,
+        self::GRUPO_ANDAMENTO,
+        self::GRUPO_FAZER,
+        self::GRUPO_CONCLUIDO,
+    ];
+
+    /**
+     * Como a lista se ordena DENTRO de cada seção.
+     *
+     * O agrupamento (em andamento · a fazer · concluídos) nunca muda: ele é a
+     * estrutura da tela, não uma preferência. O que estas ordens trocam é o
+     * critério de desempate dentro do grupo.
+     *
+     * `null` = a régua de atenção de sempre (prazo mais apertado primeiro).
+     */
+    public const ORDEM_RECENTE = 'recente';
+    public const ORDEM_ANTIGO  = 'antigo';
+
+    public const ORDENS = [self::ORDEM_RECENTE, self::ORDEM_ANTIGO];
+
     protected $fillable = [
         'escopo', 'company_id', 'mlb_empresa_id', 'mentor_id', 'title', 'description', 'actions',
         'status', 'trello_board_url', 'workspace_token', 'due_date', 'sent_at', 'completed_at',
@@ -94,17 +129,166 @@ class Ppa extends Model
      * funciona em MySQL/MariaDB e em SQLite — o ORDER BY é avaliado depois da
      * projeção, ao contrário do WHERE.
      */
-    public function scopeOrdenadoPorAtencao($query)
+    public function scopeOrdenadoPorAtencao($query, ?string $ordem = null)
     {
-        return $query
-            ->orderByRaw("CASE
+        $query->orderByRaw("CASE
                 WHEN status = 'completed' THEN 2
                 WHEN tasks_count > 0 AND tasks_done_count = tasks_count THEN 2
                 WHEN tasks_doing_count > 0 THEN 0
                 ELSE 1
-            END")
+            END");
+
+        // O grupo acima é sempre o critério PRINCIPAL: trocar a ordem não pode
+        // desmanchar as seções, que são o que a tela desenha.
+        if (in_array($ordem, self::ORDENS, true)) {
+            return $query->orderByRaw(
+                self::sqlUltimaAtividade().' '.($ordem === self::ORDEM_RECENTE ? 'DESC' : 'ASC')
+            );
+        }
+
+        return $query
             ->orderByRaw('due_date IS NULL, due_date ASC')
             ->orderByDesc('created_at');
+    }
+
+    /**
+     * A expressão SQL de "quando mexeram neste plano pela última vez".
+     *
+     * `GREATEST` resolveria isto em uma linha e NÃO existe no SQLite, onde os
+     * testes rodam — o `CASE` abaixo é a forma que os dois bancos entendem.
+     * A subconsulta aparece duas vezes de propósito: alias de SELECT não pode
+     * ser referenciado por outra expressão do mesmo SELECT no MySQL.
+     *
+     * O critério é o mesmo de `PpaQuadroService::ultimaAtualizacao()`, que o
+     * quadro interno já mostrava no topo — aqui ele existe em SQL porque a
+     * lista PAGINA, e ordenar em PHP ordenaria só a página.
+     */
+    private static function sqlUltimaAtividade(): string
+    {
+        $daTarefa = '(select max(updated_at) from ppa_tasks where ppa_tasks.ppa_id = ppas.id)';
+
+        return "CASE
+            WHEN {$daTarefa} IS NULL OR {$daTarefa} < ppas.updated_at THEN ppas.updated_at
+            ELSE {$daTarefa}
+        END";
+    }
+
+    /**
+     * A data da última mexida no plano, contando as TAREFAS dele.
+     *
+     * `ppas.updated_at` sozinho responde "quando alguém editou o plano", e não
+     * "quando mexeram nisso pela última vez": mover um card é trabalho no plano,
+     * mas grava em `ppa_tasks`, que é outra tabela. Um plano com o quadro andando
+     * todo dia apareceria parado desde a última vez que alguém trocou o título.
+     *
+     * Subconsulta, e não `with('tasks')`: a lista precisa de UM número por plano,
+     * e carregar todas as tarefas de 20 planos para achar um máximo custa caro —
+     * a mesma razão de {@see scopeComContagemDeTarefas}.
+     */
+    public function scopeComUltimaAtividade($query)
+    {
+        if (is_null($query->getQuery()->columns)) {
+            $query->select('ppas.*');
+        }
+
+        return $query->addSelect(\Illuminate\Support\Facades\DB::raw(
+            self::sqlUltimaAtividade().' as ultima_atividade'
+        ));
+    }
+
+    /**
+     * A mais recente entre a do plano e a das tarefas. Exige
+     * {@see scopeComUltimaAtividade} na consulta; sem ele, cai no
+     * `updated_at` do plano em vez de mentir com uma data qualquer.
+     */
+    public function atualizadoEm(): ?\Illuminate\Support\Carbon
+    {
+        if ($this->ultima_atividade) {
+            return \Illuminate\Support\Carbon::parse($this->ultima_atividade);
+        }
+
+        // Sem o scope na consulta (um `Ppa::find()` qualquer), cai no que dá
+        // para saber sem ir ao banco de novo: as tarefas se estiverem
+        // carregadas, e o plano se não estiverem. Nunca `null` por descuido.
+        $daTarefa = $this->relationLoaded('tasks') ? $this->tasks->max('updated_at') : null;
+
+        return $daTarefa && $this->updated_at && $daTarefa->gt($this->updated_at)
+            ? $daTarefa
+            : $this->updated_at;
+    }
+
+    /**
+     * Filtra a lista por situação — a MESMA régua de {@see scopeOrdenadoPorAtencao},
+     * agora no WHERE.
+     *
+     * Este é o QUARTO lugar em que a régua de agrupamento do PPA existe (os
+     * outros três estão em `.planning/learnings/portal-do-cliente.md` §25), e
+     * ele tem de concordar com os demais: a tela agrupa o que recebe, então um
+     * filtro que discordasse da régua devolveria planos que a seção escolhida
+     * não mostra — a lista viria "vazia" com o contador dizendo que há 7.
+     *
+     * Por que `whereHas` e não os aliases do `withCount`: alias de SELECT vale
+     * em `ORDER BY` (que é avaliado depois da projeção) mas NÃO em `WHERE`.
+     * Reaproveitar `tasks_doing_count` aqui estouraria no MariaDB — e passaria
+     * no SQLite dos testes, que é permissivo com isso.
+     *
+     * Situação desconhecida (ou vazia) não filtra nada: o parâmetro vem da URL,
+     * e lixo na query string deve devolver a lista inteira, não um erro.
+     */
+    public function scopeDaSituacao($query, ?string $situacao)
+    {
+        if (! in_array($situacao, self::SITUACOES, true)) {
+            return $query;
+        }
+
+        // Vencido olha só o prazo, e ignora o plano que a equipe encerrou —
+        // é a mesma regra de `diasAteOPrazo()`, que é quem pinta o selo
+        // vermelho na tela. Sem esse recorte, "Vencidos" traria de volta todo
+        // plano fechado com prazo antigo, que é ruído e não trabalho.
+        if ($situacao === self::SITUACAO_VENCIDO) {
+            return $query
+                ->where('status', '!=', 'completed')
+                ->whereNotNull('due_date')
+                ->whereDate('due_date', '<', now()->toDateString());
+        }
+
+        // "Concluído" = encerrado pela equipe OU com todas as tarefas em `done`.
+        // O `has('tasks')` não é enfeite: sem ele, plano SEM tarefa nenhuma
+        // entraria aqui por vacuidade (não existe tarefa pendente) — e a régua
+        // do JS manda ele para "A fazer", de propósito.
+        $concluido = fn ($q) => $q
+            ->where('status', 'completed')
+            ->orWhere(fn ($interno) => $interno
+                ->has('tasks')
+                ->whereDoesntHave('tasks', fn ($t) => $t->where('status', '!=', 'done')));
+
+        return match ($situacao) {
+            self::GRUPO_CONCLUIDO => $query->where($concluido),
+            self::GRUPO_ANDAMENTO => $query->whereNot($concluido)
+                ->whereHas('tasks', fn ($t) => $t->where('status', 'doing')),
+            self::GRUPO_FAZER     => $query->whereNot($concluido)
+                ->whereDoesntHave('tasks', fn ($t) => $t->where('status', 'doing')),
+        };
+    }
+
+    /**
+     * Normaliza os filtros que chegam pela URL, para os dois controllers da
+     * lista (carteira e Polos) aplicarem o mesmo critério.
+     *
+     * Devolve sempre as três chaves, com `null` no lugar do que não veio ou
+     * não serve — é esse mesmo array que volta para a tela repovoar os campos.
+     * Nada aqui aborta: filtro inválido vira "sem filtro", porque uma URL
+     * colada pela metade tem de abrir a lista, não uma tela de erro.
+     */
+    public static function filtrosDaLista(array $entrada): array
+    {
+        $situacao = $entrada['situacao'] ?? null;
+        $ordem    = $entrada['ordem'] ?? null;
+
+        return [
+            'situacao' => in_array($situacao, self::SITUACOES, true) ? $situacao : null,
+            'ordem'    => in_array($ordem, self::ORDENS, true) ? $ordem : null,
+        ];
     }
 
     /**

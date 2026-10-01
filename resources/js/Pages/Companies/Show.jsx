@@ -11,8 +11,9 @@ import {
     ArrowLeft, Building2, Star, Target, Briefcase, Plus, Pencil, PowerOff,
     ShoppingCart, Copy, Check, Unplug, RefreshCw, Info, CheckCircle2,
     Users, UserPlus, UserMinus, History, Medal, DollarSign, Percent,
-    AlertTriangle, FileText, CalendarDays, ImagePlus, Trash2,
+    AlertTriangle, FileText, CalendarDays, ImagePlus, Trash2, ClipboardList,
 } from 'lucide-react';
+import ResumoOnboarding from './components/ResumoOnboarding';
 import { formatCurrency, formatPercent, formatDate, formatDateTime, cn } from '@/lib/utils';
 import { useState, useMemo, useRef } from 'react';
 import HistoricoMedalhas from '@/Pages/EmpresaAnaliseEcf/components/HistoricoMedalhas';
@@ -380,6 +381,8 @@ export default function CompanyShow({
     goal_metrics = {},
     goal_percentage_only_metrics = [],
     permissions = {},
+    onboarding_resumo = [],
+    fotografia_da_conta = null,
 }) {
     const consultor = company.consultor?.[0];
     const estrategista = company.estrategista?.[0];
@@ -723,6 +726,15 @@ export default function CompanyShow({
                         </div>
                     )}
                 </Section>
+
+                {/* ─── 6b. Onboarding (23/09/2026) — o que foi coletado ────────
+                    Destino das informações do onboarding: sobrevive à conclusão
+                    dele, ao contrário do portal. Só leitura; editar é na ficha. */}
+                {onboarding_resumo.length > 0 && (
+                    <Section icon={ClipboardList} title="Onboarding" glow="radial-gradient(circle, rgba(34,197,94,0.35), transparent 70%)">
+                        <ResumoOnboarding onboardings={onboarding_resumo} fotografia={fotografia_da_conta} />
+                    </Section>
+                )}
 
                 {/* ─── 7. Mercado Livre: integração + medalhas ──────────────── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">

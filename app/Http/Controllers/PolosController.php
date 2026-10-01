@@ -17,6 +17,7 @@ use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
+use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
 use App\Models\PolosComentario;
@@ -104,7 +105,7 @@ class PolosController extends Controller
      *
      * @param  string|null $mesPedido  YYYYMM solicitado (?mes); null/inválido → mês mais recente.
      * @return array  polos, statusDist, meses, mesSelecionado, mesRefLabel, parcial,
-     *                fonteFaturamento, metricaFaturamento, adsLimites, m1, erro
+     *                fonteFaturamento, metricaFaturamento, adsLimites, m1, faturamentoPorFase, erro
      */
     public function montarCockpit(?string $mesPedido = null): array
     {
@@ -193,6 +194,10 @@ class PolosController extends Controller
             // status binário (faturando vs não) para o gráfico dedicado de M1.
             $m1 = $this->montarM1($mesSel, $parcial, $linhasMes);
 
+            // ─── 10. Faturamento por fase (M1–M4) — o TOTAL do projeto ────────
+            // A meta segue só sobre M2–M4 (polos[].faturamento); o total soma M1 também.
+            $porFase = $this->faturamentoPorFase($ativos, $fatMes, $m1);
+
             return [
                 'polos'            => $polos,
                 'statusDist'       => $statusDist,
@@ -209,6 +214,7 @@ class PolosController extends Controller
                 // NÃO é a soma das metas por empresa (limiar×ativos) — é um alvo global.
                 'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
                 'm1'               => $m1,
+                'faturamentoPorFase' => $porFase,
                 'erro'             => null,
             ];
         } catch (\Throwable $e) {
@@ -1301,6 +1307,10 @@ class PolosController extends Controller
             }
             usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
 
+            // Status das campanhas é um estado de AGORA: só o mês corrente o mostra. Mês
+            // fechado segue com o `ads_desligado` congelado no roster daquele mês.
+            $empresas = $d['parcial'] ? $this->comAdsAutomatico($empresas) : $empresas;
+
             $totFat  = array_sum(array_column($empresas, 'faturamento'));
             $totMeta = array_sum(array_column($empresas, 'meta'));
 
@@ -1428,6 +1438,87 @@ class PolosController extends Controller
         $comentario->delete();
 
         return back()->with('success', 'Comentário removido.');
+    }
+
+    // ═══ ADS ligado/desligado (/polos/empresas) ═══
+
+    /**
+     * Anexa a cada linha a leitura automática das campanhas (TKT-0003), quando a Adman
+     * respondeu por aquela conta há menos de PoloAdsStatus::FRESCOR_HORAS. Para essas, a
+     * leitura manda no `ads_desligado` da linha e a tela não oferece marcação manual.
+     *
+     * @param  array<int, array<string,mixed>>  $empresas
+     * @return array<int, array<string,mixed>>
+     */
+    private function comAdsAutomatico(array $empresas): array
+    {
+        $leituras = PoloAdsStatus::frescos()
+            ->whereIn('cust_id', array_column($empresas, 'cust_id'))
+            ->get()
+            ->keyBy('cust_id');
+
+        foreach ($empresas as &$e) {
+            $l = $leituras[$e['cust_id']] ?? null;
+            $e['ads_auto'] = $l ? [
+                'ativas'        => $l->campanhas_ativas,
+                'total'         => $l->campanhas_total,
+                'verificado_em' => $l->verificado_em?->format('d/m H:i'),
+            ] : null;
+            if ($l) {
+                $e['ads_desligado'] = $l->desligado();
+            }
+        }
+        unset($e);
+
+        return $empresas;
+    }
+
+    /**
+     * Marca À MÃO o ADS da empresa como ligado, desligado ou "não informado" (TKT-0003).
+     *
+     * Desde 30/09 o normal é AUTOMÁTICO: o sync lê as campanhas na Adman (13:00 e 17:30) e
+     * grava `ads_desligado` (AdsCampanhasPolos). A marcação manual existe só para a conta
+     * que a Adman não enxerga ("User is not mentored by agency") — para as demais ela seria
+     * sobrescrita na leitura seguinte, então é recusada. Três estados, como a migration
+     * 2026_06_15_160000 definiu: null = ninguém informou ainda.
+     *
+     * Grava no cadastro ao vivo. Mês fechado lê o roster congelado
+     * (`polos:congelar-roster`, 23:40), então marcar hoje não reescreve o passado.
+     */
+    public function marcarAds(Request $request, MlbEmpresa $empresa): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $proj = ($empresa->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$empresa->fase ?? ''] ?? null);
+        abort_unless($proj === 'POLOS', 403, 'Só é possível marcar o ADS de empresas do projeto Polos.');
+
+        $cust = CustId::normaliza((string) $empresa->cust_id);
+        if ($cust !== '' && PoloAdsStatus::frescos()->where('cust_id', $cust)->exists()) {
+            return back()->with('error', "O ADS de \"{$empresa->nome}\" é lido automaticamente da Adman — não dá para marcar à mão.");
+        }
+
+        $request->validate([
+            // `present`: null é um valor válido (limpar), mas o campo tem de vir.
+            'ads_desligado' => ['present', 'nullable', 'boolean'],
+        ]);
+
+        $novo    = $request->input('ads_desligado') === null ? null : $request->boolean('ads_desligado');
+        $antes   = $empresa->ads_desligado;
+        $rotulo  = fn (?bool $v) => match ($v) { true => 'desligado', false => 'ligado', null => 'não informado' };
+
+        if ($antes !== $novo) {
+            $empresa->update(['ads_desligado' => $novo]);
+
+            activity('polos')
+                ->causedBy($request->user())
+                ->performedOn($empresa)
+                ->withProperties(['de' => $rotulo($antes), 'para' => $rotulo($novo)])
+                ->log("[Polos] ADS de {$empresa->nome}: {$rotulo($antes)} → {$rotulo($novo)}");
+        }
+
+        return back()->with('success', $novo === null
+            ? "ADS de \"{$empresa->nome}\" voltou para não informado."
+            : "ADS de \"{$empresa->nome}\" marcado como {$rotulo($novo)}.");
     }
 
     /**
@@ -1607,6 +1698,7 @@ class PolosController extends Controller
             'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
+            'faturamentoPorFase' => [],
             'erro'             => $mensagem,
         ];
     }
@@ -1982,14 +2074,15 @@ class PolosController extends Controller
             foreach (
                 MlbEmpresa::whereIn('fase', ['M1', 'M0'])->where('projeto', 'POLOS')
                     ->whereNull('arquivado_em') // arquivadas não contam na coorte M1
-                    ->get(['nome', 'cust_id', 'polo']) as $e
+                    ->get(['nome', 'cust_id', 'polo', 'fase']) as $e
             ) {
                 $id = CustId::normaliza((string) $e->cust_id);
                 if ($id === '' || isset($roster[$id])) {
                     continue;
                 }
                 $nome = trim((string) $e->nome);
-                $roster[$id] = ['nome' => $nome !== '' ? $nome : "Empresa {$id}", 'polo' => trim((string) $e->polo)];
+                // `fase` separa M1 de M0 no faturamento por fase (M0 fica fora do total M1–M4).
+                $roster[$id] = ['nome' => $nome !== '' ? $nome : "Empresa {$id}", 'polo' => trim((string) $e->polo), 'fase' => (string) $e->fase];
             }
         } else {
             // Mês fechado: reconstrói pelo CSV (MESES_NO_PROGRAMA = 0 → M1).
@@ -2006,6 +2099,7 @@ class PolosController extends Controller
                 $roster[$id] = [
                     'nome' => $nome !== '' ? $nome : "Empresa {$id}",
                     'polo' => trim((string) ($row['LOCALIDADE'] ?? $row['localidade'] ?? '')),
+                    'fase' => 'M1', // o CSV não distingue M0: MESES_NO_PROGRAMA=0 é M1
                 ];
             }
         }
@@ -2033,6 +2127,7 @@ class PolosController extends Controller
             $empresas[] = [
                 'cust_id'     => $id,
                 'nome'        => $r['nome'],
+                'fase'        => $r['fase'],
                 'polo'        => $polo,
                 'faturamento' => $fat,
                 'faturando'   => $isFat,
@@ -2062,6 +2157,60 @@ class PolosController extends Controller
             'empresas'    => $empresas,
             'polos'       => $polos,
         ];
+    }
+
+    /**
+     * Faturamento do mês quebrado por fase — alimenta o card de faturamento do Painel e do
+     * Modo TV, que mostram o TOTAL do projeto e quanto cada M vende.
+     *
+     * Pedido de 30/09/2026: o faturamento total passa a somar M1–M4 (antes era só o roster
+     * da meta). A META não muda: "% Geral da meta" continua dividindo só `polos[].faturamento`
+     * (M2–M4), porque M1 é onboarding e nunca teve meta (D-01). Os dois números convivem na
+     * tela de propósito — o total vende mais do que a base da meta. `naMeta` diz qual é qual.
+     *
+     * - Fases da meta varrem os MESMOS `$ativos` e o MESMO `$fatMes` de agregarPorPolo(), sem
+     *   deduplicar — a soma das fases `naMeta` é, por construção, Σ polos[].faturamento, e as
+     *   empresas dessas fases somam o "Empresas ativas". Trocar a fonte de um sem o outro faz o
+     *   card e o % da meta divergirem sem erro nenhum.
+     * - M1 sai da coorte de montarM1() filtrada por `fase === 'M1'`: a coorte inclui M0 (D-16),
+     *   que fica FORA — o pedido foi M1–M4. Hoje o polos:warm nem aquece M0 (R$ 0 de qualquer
+     *   jeito); o filtro garante que continue fora se um dia aquecer.
+     * - M1–M4 saem sempre, mesmo zeradas (a tela tem posição fixa por fase). Outra fase do
+     *   roster de ativos (Fechamento) só aparece se tiver empresa, no fim.
+     *
+     * Medido em produção em 30/09 (setembro parcial, móveis): M1 R$ 403 mil, M2 R$ 1,14 mi,
+     * M3 R$ 1,17 mi, M4 R$ 1,03 mi — M1 é ~11% do total.
+     *
+     * @param  array<array<string,mixed>>  $ativos  Roster da meta (M2–M4 + Fechamento)
+     * @param  array<string,float>         $fatMes  [cust_id => faturamento] do mês
+     * @param  array{empresas?:array}      $m1      Coorte de montarM1()
+     * @return array<int, array{fase:string, empresas:int, faturamento:float, naMeta:bool}>
+     */
+    private function faturamentoPorFase(array $ativos, array $fatMes, array $m1): array
+    {
+        $fases = [];
+        foreach (['M1', 'M2', 'M3', 'M4'] as $f) {
+            $fases[$f] = ['fase' => $f, 'empresas' => 0, 'faturamento' => 0.0, 'naMeta' => $f !== 'M1'];
+        }
+
+        foreach (($m1['empresas'] ?? []) as $emp) {
+            if (($emp['fase'] ?? '') !== 'M1') {
+                continue; // M0 da coorte
+            }
+            $fases['M1']['empresas']++;
+            $fases['M1']['faturamento'] += (float) ($emp['faturamento'] ?? 0);
+        }
+
+        foreach ($ativos as $ativo) {
+            $fase = (string) ($ativo['fase'] ?? '');
+            $id   = CustId::normaliza((string) ($ativo['cust_id'] ?? ''));
+
+            $fases[$fase] ??= ['fase' => $fase, 'empresas' => 0, 'faturamento' => 0.0, 'naMeta' => true];
+            $fases[$fase]['empresas']++;
+            $fases[$fase]['faturamento'] += (float) ($fatMes[$id] ?? 0.0);
+        }
+
+        return array_values($fases);
     }
 
     /**
@@ -2254,6 +2403,9 @@ class PolosController extends Controller
             // Detalhe por empresa (para o painel de detalhe ao clicar no polo).
             $grupos[$localidade]['empresas'][] = [
                 'cust_id'       => $id,
+                // Id do cadastro para editar a empresa na tela (opção de ADS). Nulo no roster
+                // reconstruído do CSV (mês fechado antigo), que não tem MlbEmpresa garantida.
+                'mlb_empresa_id' => $ativo['id'] ?? null,
                 'nome'          => $ativo['nome'] ?? "Empresa {$id}",
                 'fase'          => $ativo['fase'],
                 'faturamento'   => $tgmv,

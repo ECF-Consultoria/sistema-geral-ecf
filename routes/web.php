@@ -3,6 +3,8 @@
 use Inertia\Inertia;
 use App\Http\Controllers\BoasVindasTemplateController;
 use App\Http\Controllers\CoordenacaoDistribuicaoController;
+use App\Http\Controllers\ChamadoController;
+use App\Http\Controllers\DevDemandaController;
 use App\Http\Controllers\ContratoAdminController;
 use App\Http\Controllers\TabelasContratoController;
 use App\Http\Controllers\TabelaEmpresaContratoController;
@@ -54,6 +56,7 @@ use App\Http\Controllers\PortalAuthController;
 use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
+use App\Http\Controllers\PortalEstruturaController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -182,6 +185,102 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // quem pode: os dois lados calculam.
     Route::get('/calculadora', [PortalCalculadoraController::class, 'indexAutenticado'])->name('portal.auth.calculadora');
 
+    // ── Mapeamento Estrutural (23/09/2026) ────────────────────────────────
+    // O TERCEIRO parâmetro do throttle é o prefixo da chave, e cada rota tem
+    // o seu. Sem ele, todas as rotas com `throttle` dividem UM contador por
+    // usuário (ou por IP, para o cliente do portal): cadastrar dez produtos e
+    // depois colar os anúncios dava 429 na colagem (limite 10/min), porque ela
+    // contava as escritas de antes. Pego usando o módulo como cliente (24/09).
+    // A planilha do Projeto Polos como módulo: ofertas, anúncios, colagem com
+    // reconciliação e agenda. ADR PORTAL-01. Cada rota daqui tem a sua linha
+    // na allowlist de `RestringeDominioDoPortal` — sem ela, 404 no domínio do
+    // cliente e tudo normal no localhost.
+    // A entrada do módulo só redireciona: Lista SKUs por padrão, Mapeamento
+    // quando o link antigo traz `?abrir=`/`?q=`/`?situacao=` (agenda, Jardinagem).
+    Route::get('/estrutura', [PortalEstruturaController::class, 'entrada'])->name('portal.auth.estrutura');
+    Route::get('/estrutura/lista', [PortalEstruturaController::class, 'lista'])->name('portal.auth.estrutura.lista');
+    Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
+    Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
+    Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])
+        ->middleware('throttle:30,1,estrutura.precificacao.parametros')->name('portal.auth.estrutura.precificacao.parametros');
+    Route::put('/estrutura/ofertas/{oferta}/precificacao', [PortalEstruturaController::class, 'salvarPrecificacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.precificacao.oferta')->name('portal.auth.estrutura.precificacao.oferta');
+    Route::get('/estrutura/mapeamento', [PortalEstruturaController::class, 'mapeamento'])->name('portal.auth.estrutura.mapeamento');
+    Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
+    // ── Anunciar (29/09/2026, ADR PORTAL-03): o par Clássico + Premium
+    // publicado pelo portal. A lista é Inertia; o formulário, a conferência
+    // e a publicação são JSON, por oferta. Publicar é síncrono (dois POST
+    // /items) e protegido por trava atômica no service.
+    Route::get('/estrutura/anunciar', [PortalEstruturaController::class, 'anunciarIndex'])->name('portal.auth.estrutura.anunciar');
+    Route::get('/estrutura/anunciar/categorias', [PortalEstruturaController::class, 'categoriasAnunciar'])
+        ->middleware('throttle:60,1,estrutura.anunciar.categorias')->name('portal.auth.estrutura.anunciar.categorias');
+    Route::get('/estrutura/anunciar/categorias/{categoria}', [PortalEstruturaController::class, 'categoriaAnunciar'])
+        ->where('categoria', 'MLB[0-9]+')->middleware('throttle:60,1,estrutura.anunciar.categoria')->name('portal.auth.estrutura.anunciar.categoria');
+    Route::get('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'abrirPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.abrir')->name('portal.auth.estrutura.publicacao.abrir');
+    Route::put('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'salvarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.salvar')->name('portal.auth.estrutura.publicacao.salvar');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/fotos', [PortalEstruturaController::class, 'fotoPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.publicacao.fotos')->name('portal.auth.estrutura.publicacao.fotos');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/validar', [PortalEstruturaController::class, 'validarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:30,1,estrutura.publicacao.validar')->name('portal.auth.estrutura.publicacao.validar');
+    Route::post('/estrutura/ofertas/{oferta}/publicacao/publicar', [PortalEstruturaController::class, 'publicarPublicacao'])
+        ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.publicacao.publicar')->name('portal.auth.estrutura.publicacao.publicar');
+    Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
+        ->middleware('throttle:60,1,estrutura.ofertas.criar')->name('portal.auth.estrutura.ofertas.criar');
+    Route::post('/estrutura/ofertas/{oferta}/combos', [PortalEstruturaController::class, 'criarCombos'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.ofertas.combos')->name('portal.auth.estrutura.ofertas.combos');
+    Route::put('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'atualizarOferta'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.ofertas.atualizar')->name('portal.auth.estrutura.ofertas.atualizar');
+    Route::delete('/estrutura/ofertas/{oferta}', [PortalEstruturaController::class, 'excluirOferta'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.ofertas.excluir')->name('portal.auth.estrutura.ofertas.excluir');
+    Route::post('/estrutura/ofertas/{oferta}/anuncios', [PortalEstruturaController::class, 'criarAnuncio'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios.criar')->name('portal.auth.estrutura.anuncios.criar');
+    Route::put('/estrutura/anuncios/{anuncio}', [PortalEstruturaController::class, 'atualizarAnuncio'])
+        ->whereNumber('anuncio')->middleware('throttle:60,1,estrutura.anuncios.atualizar')->name('portal.auth.estrutura.anuncios.atualizar');
+    Route::delete('/estrutura/anuncios/{anuncio}', [PortalEstruturaController::class, 'excluirAnuncio'])
+        ->whereNumber('anuncio')->middleware('throttle:60,1,estrutura.anuncios.excluir')->name('portal.auth.estrutura.anuncios.excluir');
+    // A prévia só lê; a colagem refaz o plano a partir do texto antes de gravar.
+    // Anúncios do ML pelo OAuth: importar (lê a conta em Job; a prévia e a
+    // gravação são as da colagem) e, para a exceção do SKU diferente, buscar
+    // no acervo e ligar à oferta.
+    Route::post('/estrutura/importacao', [PortalEstruturaController::class, 'iniciarImportacao'])
+        ->middleware('throttle:6,1,estrutura.importacao.iniciar')->name('portal.auth.estrutura.importacao.iniciar');
+    Route::get('/estrutura/importacao', [PortalEstruturaController::class, 'estadoImportacao'])
+        ->middleware('throttle:120,1,estrutura.importacao.estado')->name('portal.auth.estrutura.importacao.estado');
+    Route::post('/estrutura/importacao/aplicar', [PortalEstruturaController::class, 'aplicarImportacao'])
+        ->middleware('throttle:10,1,estrutura.importacao.aplicar')->name('portal.auth.estrutura.importacao.aplicar');
+    Route::get('/estrutura/anuncios-ml', [PortalEstruturaController::class, 'buscarAnunciosMl'])
+        ->middleware('throttle:120,1,estrutura.anuncios_ml.buscar')->name('portal.auth.estrutura.anuncios_ml.buscar');
+    Route::post('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'ligarAnuncioMl'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.ligar')->name('portal.auth.estrutura.anuncios_ml.ligar');
+    Route::get('/estrutura/ofertas/{oferta}/anuncios-ml', [PortalEstruturaController::class, 'detalhesAnunciosMl'])
+        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.anuncios_ml.detalhes')->name('portal.auth.estrutura.anuncios_ml.detalhes');
+    Route::get('/estrutura/ofertas/{oferta}/estacao', [PortalEstruturaController::class, 'estacao'])
+        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.ofertas.estacao')->name('portal.auth.estrutura.ofertas.estacao');
+    Route::get('/estrutura/ofertas/{oferta}/metricas-ml', [PortalEstruturaController::class, 'metricasAnunciosMl'])
+        ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.anuncios_ml.metricas')->name('portal.auth.estrutura.anuncios_ml.metricas');
+    Route::post('/estrutura/colagem/previa', [PortalEstruturaController::class, 'previaColagem'])
+        ->middleware('throttle:30,1,estrutura.colagem.previa')->name('portal.auth.estrutura.colagem.previa');
+    Route::post('/estrutura/colagem', [PortalEstruturaController::class, 'aplicarColagem'])
+        ->middleware('throttle:10,1,estrutura.colagem')->name('portal.auth.estrutura.colagem');
+    Route::post('/estrutura/espera/{linha}/vincular', [PortalEstruturaController::class, 'vincularEspera'])
+        ->whereNumber('linha')->middleware('throttle:60,1,estrutura.espera.vincular')->name('portal.auth.estrutura.espera.vincular');
+    Route::delete('/estrutura/espera/{linha}', [PortalEstruturaController::class, 'descartarEspera'])
+        ->whereNumber('linha')->middleware('throttle:60,1,estrutura.espera.descartar')->name('portal.auth.estrutura.espera.descartar');
+    Route::post('/estrutura/agenda', [PortalEstruturaController::class, 'agendar'])
+        ->middleware('throttle:60,1,estrutura.agenda.criar')->name('portal.auth.estrutura.agenda.criar');
+    Route::post('/estrutura/agenda/proposta', [PortalEstruturaController::class, 'proposta'])
+        ->middleware('throttle:60,1,estrutura.agenda.proposta')->name('portal.auth.estrutura.agenda.proposta');
+    Route::post('/estrutura/agenda/proposta/aplicar', [PortalEstruturaController::class, 'aplicarProposta'])
+        ->middleware('throttle:10,1,estrutura.agenda.proposta.aplicar')->name('portal.auth.estrutura.agenda.proposta.aplicar');
+    Route::patch('/estrutura/agenda/{item}', [PortalEstruturaController::class, 'remarcar'])
+        ->whereNumber('item')->middleware('throttle:60,1,estrutura.agenda.remarcar')->name('portal.auth.estrutura.agenda.remarcar');
+    Route::patch('/estrutura/agenda/{item}/jardinagem', [PortalEstruturaController::class, 'jardinagem'])
+        ->whereNumber('item')->middleware('throttle:60,1,estrutura.agenda.jardinagem')->name('portal.auth.estrutura.agenda.jardinagem');
+    Route::delete('/estrutura/agenda/{item}', [PortalEstruturaController::class, 'excluirAgenda'])
+        ->whereNumber('item')->middleware('throttle:60,1,estrutura.agenda.excluir')->name('portal.auth.estrutura.agenda.excluir');
+
     // ── Escritas do Onboarding, autenticadas ─────────────────────────
     //
     // Os MESMOS métodos das rotas por token, com `$token` nulo: quando ele
@@ -217,6 +316,15 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->name('portal.auth.onboarding.fotografia');
     Route::get('/onboarding/conectar/ml', [OnboardingPublicoController::class, 'conectarMercadoLivre'])
         ->name('portal.auth.onboarding.conectar-ml');
+    // 23/09/2026 — o cliente marca a reunião de onboarding num horário livre
+    // de quem conduz. Os horários são JSON (lidos só quando ele pede); marcar
+    // tem limite para ninguém martelar a agenda da equipe.
+    Route::get('/onboarding/horarios', [OnboardingPublicoController::class, 'horariosReuniao'])
+        ->middleware('throttle:30,1')
+        ->name('portal.auth.onboarding.horarios');
+    Route::post('/onboarding/agendar', [OnboardingPublicoController::class, 'agendarReuniao'])
+        ->middleware('throttle:10,1')
+        ->name('portal.auth.onboarding.agendar');
 
     Route::patch('/ppa/tarefas/{task}', [PortalPpaController::class, 'moverTarefaAutenticado'])
         ->middleware('throttle:60,1')
@@ -346,11 +454,16 @@ Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
 Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCallback'])
     ->name('shopee.oauth.ads.callback');
 
-// Google OAuth (público — sem autenticação durante o callback)
+// Google OAuth — conectar e voltar, os dois autenticados (ver callback abaixo)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
     ->middleware(['auth', 'verified'])
     ->name('google.connect');
-Route::get('/google/callback', [GoogleCalendarController::class, 'callback'])->name('google.callback');
+// 23/09/2026 — o callback passou a exigir sessão: o token é gravado para quem
+// COMEÇOU a conexão, conferido pelo `state` guardado nessa sessão. Sem `auth`,
+// uma volta sem sessão estourava 500 (`$user->id` sobre null).
+Route::get('/google/callback', [GoogleCalendarController::class, 'callback'])
+    ->middleware(['auth'])
+    ->name('google.callback');
 
 // Gerar link NPS (DEVE ficar antes da rota pública /nps/{token} para não colidir)
 Route::post('/nps/generate', [NpsController::class, 'generate'])
@@ -673,6 +786,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Notificações — leitura/contador/marcação (Phase 9 + recentes/abas da Phase 10)
     Route::get('/api/notificacoes/contador',           [NotificacaoController::class, 'contador'])->name('notificacoes.contador');
     Route::get('/api/notificacoes/recentes',           [NotificacaoController::class, 'recentes'])->name('notificacoes.recentes');
+    Route::get('/api/notificacoes/tickets',            [NotificacaoController::class, 'tickets'])->name('notificacoes.tickets');
     Route::get('/notificacoes',                        [NotificacaoController::class, 'index'])->name('notificacoes.index');
     Route::patch('/notificacoes/{id}/marcar-lida',     [NotificacaoController::class, 'marcarLida'])->name('notificacoes.marcar-lida');
     Route::post('/notificacoes/marcar-todas-lidas',    [NotificacaoController::class, 'marcarTodasLidas'])->name('notificacoes.marcar-todas-lidas');
@@ -957,6 +1071,45 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/sugadores/configs/{company}',        [SugadorConfigController::class, 'show'])->name('sugadores.config.show');
     Route::get('/companies/{company}/sugador-config', [SugadorConfigController::class, 'show'])->name('sugadores.config.show-legacy');
     Route::put('/companies/{company}/sugador-config', [SugadorConfigController::class, 'update'])->name('sugadores.config.update');
+
+    // ─── Demandas Dev — tarefas do time de desenvolvimento ────────────────
+    // FORA do `role:admin` de propósito: o responsável por uma demanda entra
+    // mesmo sem ser admin (vê só as próprias). A trava fica no controller
+    // (DemandasDevService::podeAcessar / podeGerenciar / podeAtualizar).
+    // ─── Tickets — Central de Tickets (qualquer usuário logado) ──────────────
+    // Na tela o nome é "Ticket"; no código o domínio segue `Chamado` (tabelas chamados*).
+    // Autorização por ticket no ChamadoService: quem abriu ou a equipe dev.
+    Route::prefix('tickets')->name('chamados.')->middleware('modulo:chamados')->group(function () {
+        Route::get('/',                             [ChamadoController::class, 'index'])->name('index');
+        Route::post('/',                            [ChamadoController::class, 'store'])->name('store');
+        Route::get('/{chamado}',                    [ChamadoController::class, 'show'])->name('show');
+        Route::post('/{chamado}/mensagens',         [ChamadoController::class, 'mensagem'])->name('mensagens.store');
+        Route::post('/{chamado}/reabrir',           [ChamadoController::class, 'reabrir'])->name('reabrir');
+        Route::post('/{chamado}/cancelar',          [ChamadoController::class, 'cancelar'])->name('cancelar');
+        Route::get('/{chamado}/anexos/{anexo}',     [ChamadoController::class, 'anexo'])->name('anexos.show');
+    });
+    // Links antigos (/chamados, de antes do nome "Ticket") — abas abertas e notificações
+    // já gravadas — continuam chegando ao mesmo lugar.
+    Route::redirect('/chamados', '/tickets');
+    Route::get('/chamados/{chamado}', fn (string $chamado) => redirect('/tickets/' . $chamado))->whereNumber('chamado');
+    // Ações da equipe sobre um chamado (a caixa de entrada é a aba Tickets de /dev/demandas).
+    Route::prefix('dev/demandas/chamados')->name('dev.demandas.chamados.')->middleware('modulo:chamados')->group(function () {
+        Route::post('/{chamado}/status',     [ChamadoController::class, 'status'])->name('status');
+        Route::post('/{chamado}/transferir', [ChamadoController::class, 'transferir'])->name('transferir');
+        Route::post('/{chamado}/converter',  [ChamadoController::class, 'converter'])->name('converter');
+        Route::post('/{chamado}/resolver',   [ChamadoController::class, 'resolver'])->name('resolver');
+    });
+
+    Route::prefix('dev/demandas')->name('dev.demandas.')->middleware('modulo:dev.demandas')->group(function () {
+        Route::get('/',                          [DevDemandaController::class, 'index'])->name('index');
+        Route::post('/',                         [DevDemandaController::class, 'store'])->name('store');
+        Route::put('/{demanda}',                 [DevDemandaController::class, 'update'])->name('update');
+        Route::post('/{demanda}/atualizacoes',   [DevDemandaController::class, 'storeAtualizacao'])->name('atualizacoes.store');
+        Route::post('/reunioes',                 [DevDemandaController::class, 'storeReuniao'])->name('reunioes.store');
+        Route::put('/reunioes/{reuniao}',        [DevDemandaController::class, 'updateReuniao'])->name('reunioes.update');
+        Route::post('/reunioes/{reuniao}/cancelar',        [DevDemandaController::class, 'cancelarReuniao'])->name('reunioes.cancelar');
+        Route::post('/reunioes/{reuniao}/buscar-gravacao', [DevDemandaController::class, 'buscarGravacao'])->name('reunioes.buscar_gravacao');
+    });
 
     Route::middleware('role:admin')->group(function () {
         // Log de atividades
@@ -1300,6 +1453,8 @@ Route::middleware(['auth', 'verified'])
          Route::post('/comentarios',                [PolosController::class, 'comentarioStore'])->name('comentarios.store');
          Route::put('/comentarios/{comentario}',    [PolosController::class, 'comentarioUpdate'])->name('comentarios.update');
          Route::delete('/comentarios/{comentario}', [PolosController::class, 'comentarioDestroy'])->name('comentarios.destroy');
+         // Opção ADS ligado/desligado por empresa (coluna Sinais de /polos/empresas — TKT-0003).
+         Route::patch('/empresas/{empresa}/ads', [PolosController::class, 'marcarAds'])->name('empresas.ads');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
@@ -1347,6 +1502,8 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
         Route::delete('/polos-ppa/{ppa}',           [PolosPpaController::class, 'destroy'])->name('polos-ppa.destroy');
         Route::get('/polos-ppa/{ppa}/kanban',       [PolosPpaController::class, 'kanban'])->name('polos-ppa.kanban');
         Route::post('/polos-ppa/{ppa}/workspace-link', [PolosPpaController::class, 'generateWorkspaceLink'])->name('polos-ppa.workspace.generate');
+        // PPAs de UMA empresa (JSON) — a gaveta da linha no Painel Polos busca ao abrir.
+        Route::get('/polos-ppa/empresa/{empresa}',  [PolosPpaController::class, 'daEmpresa'])->name('polos-ppa.empresa');
     });
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');

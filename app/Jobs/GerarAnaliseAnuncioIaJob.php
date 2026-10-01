@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\MlAnuncioIaAnalise;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Services\Ia\RascunhoAnuncioIaService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Gera a análise MAG T8 em três etapas, salvando cada uma assim que fica pronta.
+ *
+ * Desde 30/09/2026 segue mais duas: "ficha" (categoria + atributos da ficha
+ * técnica + variações + pacote) e "rascunho" (grava o anúncio inteiro como
+ * rascunho do wizard). Nenhuma delas publica — ver RascunhoAnuncioIaService.
  *
  * POR QUE EM ETAPAS. A primeira versão pedia tudo numa chamada e o provedor
  * devolvia 503 no prompt inteiro (medido em produção, 21/09/2026), enquanto a
@@ -26,14 +31,28 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** 3 tentativas: o tier gratuito costuma liberar entre uma e outra. */
-    public int $tries = 3;
+    /**
+     * 2 tentativas. A 2ª retoma da etapa que falhou (o parcial fica salvo) e
+     * o serviço já troca de modelo sozinho — mais tentativas só esticavam o
+     * "Gerando…" na tela sem chance real de mudar o resultado.
+     */
+    public int $tries = 2;
 
-    /** Folga crescente — insistir em 5s contra sobrecarga só gasta cota. */
-    public array $backoff = [30, 120];
+    public array $backoff = [20];
 
-    /** Teto acima da soma das 3 etapas; o worker da `high` permite 600s. */
+    /** Teto do worker: o da `high` permite 600s. */
     public int $timeout = 580;
+
+    /**
+     * Prazo que o SERVIÇO respeita, abaixo do `$timeout`. É ele que faz a
+     * etapa falhar com mensagem em vez de o worker matar o processo — morte
+     * por timeout não roda o `handle` até o fim e deixava a análise em
+     * "rodando" para sempre.
+     */
+    public const PRAZO_S = 540;
+
+    /** Se mesmo assim o worker matar, é falha definitiva — status vira erro. */
+    public bool $failOnTimeout = true;
 
     public function __construct(public int $analiseId)
     {
@@ -47,8 +66,10 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
         $this->onQueue('high');
     }
 
-    public function handle(AnaliseAnuncioService $ia): void
+    public function handle(AnaliseAnuncioService $ia, ?RascunhoAnuncioIaService $rascunhos = null): void
     {
+        $rascunhos ??= app(RascunhoAnuncioIaService::class);
+
         $analise = MlAnuncioIaAnalise::find($this->analiseId);
 
         if (! $analise) {
@@ -60,6 +81,21 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
         if ($analise->status === MlAnuncioIaAnalise::STATUS_CONCLUIDO) {
             return;
         }
+
+        // A tela já desistiu desta (passou do limite): não gastar cota numa
+        // geração que ninguém vai ver.
+        $analise->encerrarSeTravada();
+        if ($analise->status === MlAnuncioIaAnalise::STATUS_ERRO) {
+            return;
+        }
+
+        // O menor entre o prazo desta tentativa e o limite total da análise:
+        // a 2ª tentativa não pode seguir gerando depois que a tela já mostrou
+        // "encerrada por tempo".
+        $ia->comPrazo(min(
+            microtime(true) + self::PRAZO_S,
+            $analise->created_at->getTimestamp() + MlAnuncioIaAnalise::LIMITE_MINUTOS * 60 - 30,
+        ));
 
         $analise->update([
             'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,
@@ -104,6 +140,44 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
             $analise->update(['resultado' => $r]);
         }
 
+        // ─── Etapa 4: Ficha (categoria, atributos, variações, pacote, garantia) ───
+        if (empty($r['ficha'])) {
+            $analise->update(['etapa' => 'ficha']);
+            $cliente = is_array($r['cliente'] ?? null) ? $r['cliente'] : null;
+
+            try {
+                $p = $rascunhos->preencherFicha($ia, $produto, $specs, $r['titulos'] ?? [], $cliente);
+            } catch (\RuntimeException $e) {
+                // Ainda há tentativa: retenta a etapa (as anteriores ficam).
+                if ($this->attempts() < $this->tries) {
+                    throw $e;
+                }
+
+                // Última tentativa: a ficha não pode custar o rascunho inteiro.
+                // Sai com categoria e dados do cliente; o resto o publicador completa.
+                $p = $rascunhos->preencherFicha($ia, $produto, $specs, $r['titulos'] ?? [], $cliente, usarIa: false);
+                $p['dados']['aviso'] = 'A IA não conseguiu preencher a ficha técnica ('
+                    . $e->getMessage() . ') — complete no passo 2.';
+            }
+
+            $r['ficha'] = $p['dados'];
+            $meta = $p['meta'] ?: $meta;
+            $analise->update(['resultado' => $r]);
+        }
+
+        // ─── Etapa 5: Rascunho — só grava, NUNCA publica ───
+        // O pedido foi explícito: a IA cadastra tudo, mas quem publica é o
+        // publicador, depois de conferir e subir as fotos.
+        if (empty($r['rascunho_id'])) {
+            $analise->update(['etapa' => 'rascunho']);
+            $rascunho = $rascunhos->criarRascunho($analise, $r);
+
+            if ($rascunho !== null) {
+                $r['rascunho_id'] = $rascunho->id;
+                $analise->update(['resultado' => $r]);
+            }
+        }
+
         $analise->update([
             'status'         => MlAnuncioIaAnalise::STATUS_CONCLUIDO,
             'etapa'          => null,
@@ -117,8 +191,11 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
         ]);
 
         Log::info("[IA] Análise {$analise->id} concluída para '{$produto}'", [
-            'modelo'  => $analise->modelo,
-            'titulos' => count($r['titulos'] ?? []),
+            'modelo'      => $analise->modelo,
+            'titulos'     => count($r['titulos'] ?? []),
+            'categoria'   => $r['ficha']['category_id'] ?? null,
+            'atributos'   => count($r['ficha']['atributos'] ?? []),
+            'rascunho_id' => $r['rascunho_id'] ?? null,
         ]);
     }
 

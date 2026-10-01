@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\ContratoAssinatura;
 use App\Models\OnboardingLink;
+use App\Models\Servico;
 use App\Services\BoasVindas\MensagemBoasVindasService;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoDefinicao;
 use App\Services\ChecklistAdministrativo\ChecklistAdministrativoService;
@@ -14,6 +15,7 @@ use App\Services\Comercial\PendenciasComerciaisService;
 use App\Services\Contratos\ContratosPresosService;
 use App\Services\FluxoEntrada\TimelineEntradaService;
 use App\Support\Permissions;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -47,6 +49,15 @@ class ComercialEntradaController extends Controller
             'ordem' => in_array($request->input('ordem'), ['recentes', 'antigas'], true)
                 ? $request->input('ordem')
                 : 'recentes',
+            // 23/09/2026 — os três filtros pedidos pelo negócio. Todos por
+            // whitelist: valor fora da lista vira "sem filtro", nunca erro.
+            'servico'    => ctype_digit((string) $request->input('servico')) ? (int) $request->input('servico') : null,
+            'vencimento' => in_array($request->input('vencimento'), self::FILTROS_VENCIMENTO, true)
+                ? $request->input('vencimento')
+                : null,
+            'contrato'   => in_array($request->input('contrato'), self::filtrosContrato(), true)
+                ? $request->input('contrato')
+                : null,
         ];
 
         // (2) Universo (COMERC-03 + D-07 + D-14): empresas ATIVAS nas
@@ -87,11 +98,47 @@ class ComercialEntradaController extends Controller
                 $w->where('name', 'like', $qLike)->orWhere('cnpj', 'like', $qLike);
             });
         }
+
+        // (3b) Serviço — o mesmo "serviço ativo" que a coluna Serviços mostra.
+        // Contrato desativado não conta: a coluna não o desenha, e filtrar por
+        // ele devolveria linha que não exibe o serviço que se pediu.
+        if ($filters['servico'] !== null) {
+            $query->whereHas('contratosServico', fn ($q) => $q->where('ativo', true)->where('servico_id', $filters['servico']));
+        }
+
         $query->orderBy('created_at', $filters['ordem'] === 'antigas' ? 'asc' : 'desc');
 
         // (4) Materializa e anota is_origem_hubspot + pendências ANTES da
         // paginação (mesmo desenho de ComercialController::listagem()).
         $todasEmpresas = $query->get();
+
+        // (4b) Badge de contrato de TODAS as empresas, não só da página: o
+        // filtro de status de contrato precisa dele antes de paginar, senão a
+        // página 1 viria com 3 linhas e o total diria 40. A lista é curta por
+        // desenho (só etapas 1 a 4), então uma query a mais sobre ela não pesa.
+        $contratosPorEmpresa = ContratoAssinatura::whereIn('company_id', $todasEmpresas->pluck('id'))
+            ->whereHas('servico', fn ($q) => $q->where('exige_contrato', true))
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($grupo) => $grupo->first());
+
+        $todasEmpresas->each(function (Company $c) use ($contratosPorEmpresa, $presos) {
+            $c->contrato_badge   = $this->contratoBadge($c, $contratosPorEmpresa->get($c->id), $presos);
+            $c->termino_contrato = $this->terminoMaisProximo($c);
+        });
+
+        if ($filters['contrato'] !== null) {
+            $todasEmpresas = $todasEmpresas->filter(
+                fn (Company $c) => ($c->contrato_badge['status'] ?? self::CONTRATO_ISENTO) === $filters['contrato']
+            )->values();
+        }
+
+        if ($filters['vencimento'] !== null) {
+            $todasEmpresas = $todasEmpresas->filter(
+                fn (Company $c) => $this->casaVencimento($c->termino_contrato, $filters['vencimento'])
+            )->values();
+        }
 
         // Duas pendências, NUNCA somadas (D-11):
         // - pendencia_fluxo (a da Fase 150, lida só por pendenciaAberta());
@@ -127,47 +174,12 @@ class ComercialEntradaController extends Controller
             ],
         );
 
-        // (6) Badge de contrato (D-08, Fase 131) — query ÚNICA para os
-        // contratos da PÁGINA ATUAL, indexada por company_id. Mesma
-        // disciplina de ComercialController::listagem(): NUNCA usar o
-        // método "preso" do serviço de contratos presos aqui, ele
-        // esconderia contrato saudável.
-        $idsDaPagina = $paginator->getCollection()->pluck('id');
-        $contratosPorEmpresa = ContratoAssinatura::whereIn('company_id', $idsDaPagina)
-            ->whereHas('servico', fn ($q) => $q->where('exige_contrato', true))
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('company_id')
-            ->map(fn ($grupo) => $grupo->first());
-
         // (7) Payload — os 8 campos mínimos do §2, achatados por linha
-        // (nunca o model inteiro, nunca dado de signatário).
-        $companiesPaginadas = $paginator->getCollection()->map(function (Company $c) use ($contratosPorEmpresa, $presos) {
+        // (nunca o model inteiro, nunca dado de signatário). O badge de
+        // contrato já veio calculado no passo (4b), para a empresa inteira.
+        $companiesPaginadas = $paginator->getCollection()->map(function (Company $c) {
             $contratosAtivos = $c->contratosServico->where('ativo', true);
             $setorDominante  = $contratosAtivos->map(fn ($ct) => optional($ct->servico)->setor)->filter()->first();
-
-            $contratoDaEmpresa = $contratosPorEmpresa->get($c->id);
-            if ($contratoDaEmpresa) {
-                // Caso 1: contrato encontrado.
-                $contratoBadge = [
-                    'status' => $contratoDaEmpresa->status,
-                    'dias'   => $presos->diasParado($contratoDaEmpresa),
-                ];
-            } elseif ($contratosAtivos->contains(fn ($ct) => $ct->servico?->exigeContrato() === true)) {
-                // Caso 2: sem ContratoAssinatura ainda, mas há serviço ativo
-                // que exige contrato. `Company::ETAPAS[0]` devolve o mesmo
-                // valor que `ComercialController::CONTRATO_BADGE_SEM_CONTRATO`
-                // e `ContratoAdminController::SEM_CONTRATO` já usam — lido
-                // pelo índice do vocabulário travado do §10 em vez de
-                // duplicar a string à mão em mais um lugar do código.
-                $contratoBadge = [
-                    'status' => Company::ETAPAS[0],
-                    'dias'   => (int) $c->created_at->diffInDays(now()),
-                ];
-            } else {
-                // Caso 3: nenhum serviço ativo exige contrato (ex.: só Polos).
-                $contratoBadge = null;
-            }
 
             return [
                 'id'              => $c->id,
@@ -185,7 +197,10 @@ class ComercialEntradaController extends Controller
                 'email_cliente'      => $c->email_cliente,
                 'telefone'           => $c->telefone,
                 'nome_contato'       => $c->nome_contato,
-                'contrato_badge'     => $contratoBadge,
+                'contrato_badge'     => $c->contrato_badge,
+                // O término mais próximo entre os contratos ativos (23/09/2026)
+                // — a data que o filtro de vencimento lê.
+                'termino_contrato'   => $c->termino_contrato?->format('Y-m-d'),
                 // D-11 — duas pendências, chaves separadas e NUNCA somadas.
                 // pendencia_fluxo é lida SÓ pelo ponto único pendenciaAberta()
                 // (D-19 da Fase 150) — nenhum controller lê a coluna bruta direto.
@@ -215,7 +230,101 @@ class ComercialEntradaController extends Controller
         return Inertia::render('Comercial/Entrada', [
             'companies' => $paginator,
             'filters'   => $filters,
+            // Só os serviços ativos do catálogo: serviço desativado não nasce
+            // mais em contrato novo, e a lista é de empresas entrando agora.
+            'servicos'  => Servico::where('ativo', true)->orderBy('nome')->get(['id', 'nome']),
         ]);
+    }
+
+    /** Faixas do filtro de vencimento — o TÉRMINO do contrato (23/09/2026). */
+    private const FILTROS_VENCIMENTO = ['vencido', '30', '60', '90', 'sem_prazo'];
+
+    /**
+     * Linha cujo serviço não passa por contrato (ex.: só Polos). O badge dela
+     * é `null` — e o filtro precisa de um nome para pedi-la.
+     */
+    private const CONTRATO_ISENTO = 'isento';
+
+    /** @return array<int, string> */
+    private static function filtrosContrato(): array
+    {
+        return [...ContratoAssinatura::STATUS_TODOS, Company::ETAPAS[0], self::CONTRATO_ISENTO];
+    }
+
+    /**
+     * Badge de status do contrato (D-08, Fase 131). NUNCA usar o método
+     * "preso" do serviço de contratos presos aqui — ele esconderia contrato
+     * saudável (mesma disciplina de ComercialController::listagem()).
+     *
+     * @return array{status: string, dias: int}|null
+     */
+    private function contratoBadge(Company $c, ?ContratoAssinatura $contrato, ContratosPresosService $presos): ?array
+    {
+        if ($contrato) {
+            // Caso 1: contrato encontrado.
+            return [
+                'status' => $contrato->status,
+                'dias'   => $presos->diasParado($contrato),
+            ];
+        }
+
+        if ($c->contratosServico->where('ativo', true)->contains(fn ($ct) => $ct->servico?->exigeContrato() === true)) {
+            // Caso 2: sem ContratoAssinatura ainda, mas há serviço ativo que
+            // exige contrato. `Company::ETAPAS[0]` devolve o mesmo valor que
+            // `ComercialController::CONTRATO_BADGE_SEM_CONTRATO` e
+            // `ContratoAdminController::SEM_CONTRATO` já usam — lido pelo
+            // índice do vocabulário travado do §10 em vez de duplicar a
+            // string à mão em mais um lugar do código.
+            return [
+                'status' => Company::ETAPAS[0],
+                'dias'   => (int) $c->created_at->diffInDays(now()),
+            ];
+        }
+
+        // Caso 3: nenhum serviço ativo exige contrato (ex.: só Polos).
+        return null;
+    }
+
+    /**
+     * O término mais próximo entre os contratos ATIVOS da empresa.
+     *
+     * Vazio não é dado faltando: é contrato por prazo indeterminado, que a
+     * regra 5 do `ContratoDadosMinimosService` aceita ("data_vencimento vazia
+     * NÃO reprova"). Por isso "sem prazo" é uma faixa própria do filtro, e não
+     * um "vencido".
+     */
+    private function terminoMaisProximo(Company $c): ?CarbonInterface
+    {
+        return $c->contratosServico
+            ->where('ativo', true)
+            ->pluck('data_vencimento')
+            ->filter()
+            ->sort()
+            ->first();
+    }
+
+    /**
+     * "Vence em 30 dias" vai de HOJE até hoje + 30, inclusive nas duas pontas —
+     * vence hoje ainda não venceu. As faixas são cumulativas (60 contém 30),
+     * que é como se pergunta: "o que vence nos próximos 60 dias?".
+     */
+    private function casaVencimento(?CarbonInterface $termino, string $faixa): bool
+    {
+        if ($faixa === 'sem_prazo') {
+            return $termino === null;
+        }
+
+        if ($termino === null) {
+            return false;
+        }
+
+        $hoje = now()->startOfDay();
+
+        if ($faixa === 'vencido') {
+            return $termino->lt($hoje);
+        }
+
+        return $termino->gte($hoje) && $termino->lte($hoje->copy()->addDays((int) $faixa));
     }
 
     /**

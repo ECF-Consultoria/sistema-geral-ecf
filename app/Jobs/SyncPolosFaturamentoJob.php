@@ -6,12 +6,14 @@ use App\Models\MlbEmpresa;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
 use App\Services\MlCategoriaService;
+use App\Services\Polos\AdsCampanhasPolos;
 use App\Support\CustId;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -27,8 +29,16 @@ use Illuminate\Support\Facades\Log;
  * tail de empresas novas não ficar de fora) e com ORÇAMENTO de tempo (para limpo antes
  * do worker --timeout; o que sobrar é coberto no próximo sync).
  *
- * Requer worker de fila ativo (`php artisan queue:work`) — na VPS o Supervisor
- * já roda; no localhost o dev precisa subir o worker para o job processar.
+ * Dois caminhos (30/09/2026):
+ *  - FILA (botão "Sincronizar"): orçamento de 1500s, porque o worker mata o job em 1800s.
+ *    Cobre ~130 empresas por vez (~11,5s cada, com o ADS).
+ *  - AGENDAMENTO DIÁRIO (`polos:warm`, 13:00 BRT): processo próprio, SEM orçamento —
+ *    varre o roster inteiro (~262 empresas ≈ 50 min). Antes o agendamento também ia para a
+ *    fila: esperava ~4h atrás dos SyncMlAcervo* na `default`, começava ~17h e o teto de 25 min
+ *    cortava metade do roster — cada empresa era atualizada a cada ~2 dias.
+ *
+ * Nunca rodam duas varreduras ao mesmo tempo (lock abaixo): a Adman aceita ~10 rpm e duas
+ * instâncias em paralelo viram 429 — o mesmo que já custou 741 erros no RefreshGrossBilling.
  */
 class SyncPolosFaturamentoJob implements ShouldQueue
 {
@@ -39,16 +49,43 @@ class SyncPolosFaturamentoJob implements ShouldQueue
     // Warm longo: ~7s/cust_id. 1800s cobre ~250 polos com folga.
     public int $timeout = 1800;
 
+    // Default NA DECLARAÇÃO (não promovido): payload serializado antes desta propriedade
+    // existir desserializa com 1500. Promovida, ficaria não inicializada e o job da fila
+    // quebraria no primeiro acesso.
+    private ?int $orcamento = 1500;
+
     /**
-     * @param  string|null  $de   Início do mês 'YYYY-MM-01' (null = mês corrente)
-     * @param  string|null  $ate  Fim do mês 'YYYY-MM-DD' (null = mês corrente)
+     * @param  string|null  $de         Início do mês 'YYYY-MM-01' (null = mês corrente)
+     * @param  string|null  $ate        Fim do mês 'YYYY-MM-DD' (null = mês corrente)
+     * @param  int|null     $orcamento  Teto em segundos; null = varre tudo (só fora da fila)
      */
     public function __construct(
         private ?string $de = null,
         private ?string $ate = null,
-    ) {}
+        ?int $orcamento = 1500,
+    ) {
+        $this->orcamento = $orcamento;
+    }
 
     public function handle(AdmanService $adman, MlCategoriaService $categoria): void
+    {
+        // TTL de 2h: cobre a varredura completa (~50 min) com folga; se o processo morrer,
+        // o lock expira sozinho antes do agendamento do dia seguinte.
+        $lock = Cache::lock('polos-sync-faturamento:handle', 7200);
+
+        if (! $lock->get()) {
+            Log::info('[Polos] Sync: outra varredura já está rodando — pulando esta execução.');
+            return;
+        }
+
+        try {
+            $this->processar($adman, $categoria);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function processar(AdmanService $adman, MlCategoriaService $categoria): void
     {
         // Default: mês corrente (usado pelo warm agendado, que roda todo dia).
         // $this->de/$this->ate vêm do construtor (mês selecionado no botão Sincronizar);
@@ -86,15 +123,23 @@ class SyncPolosFaturamentoJob implements ShouldQueue
 
         Log::info('[Polos] Sync iniciado: ' . $empresas->count() . " polos ({$de}..{$ate})");
 
-        // Orçamento de tempo: para LIMPO antes do worker --timeout=1800s matar o job (o
-        // ADS por adgroup deixou o warm pesado). O resto é coberto no próximo sync — a
-        // ordem por staleness faz a fila avançar a cada run.
+        // Orçamento de tempo: na fila, para LIMPO antes do worker --timeout=1800s matar o
+        // job (o ADS por adgroup deixou o warm pesado); o resto fica para o próximo sync — a
+        // ordem por staleness faz a fila avançar. Fora da fila (polos:warm) não há teto.
         $inicio    = time();
-        $orcamento = 1500;
+        $orcamento = $this->orcamento;
+        $pausa     = (int) config('services.adman.polos_pausa_ms', 7000) * 1000;
+
+        // Status das campanhas (ADS ligado/desligado, TKT-0003) sai na mesma varredura: uma
+        // chamada leve a mais por empresa, dentro do mesmo throttle. Só no mês corrente — é
+        // um estado de AGORA, e o botão Sincronizar de um mês passado não deve regravá-lo.
+        $campanhas = ($mes === now()->format('Ym')) ? new AdsCampanhasPolos($adman) : null;
+        $idsPorCust = $campanhas ? AdsCampanhasPolos::mapaIds() : [];
+        $comStatusAds = 0;
 
         $ok = 0; $comFat = 0; $comAds = 0; $processados = 0;
         foreach ($empresas as $i => $emp) {
-            if (time() - $inicio > $orcamento) {
+            if ($orcamento !== null && time() - $inicio > $orcamento) {
                 Log::info("[Polos] Sync: orçamento de {$orcamento}s atingido em {$processados}/{$empresas->count()} — resto no próximo sync.");
                 break;
             }
@@ -103,8 +148,8 @@ class SyncPolosFaturamentoJob implements ShouldQueue
             $ehM2aM4 = in_array($emp['fase'], ['M2', 'M3', 'M4'], true);
 
             // Throttle Adman (~10 rpm): 7s entre empresas, exceto a 1ª.
-            if ($i > 0) {
-                usleep(7_000_000);
+            if ($i > 0 && $pausa > 0) {
+                usleep($pausa);
             }
 
             try {
@@ -156,10 +201,22 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                 $processados++;
             } catch (\Throwable $e) {
                 Log::warning("[Polos] Sync: falha cust={$cust}: " . $e->getMessage());
+                continue;
+            }
+
+            // Depois do snapshot gravado e em try próprio: falhar aqui nunca custa o faturamento.
+            if ($campanhas) {
+                try {
+                    if ($campanhas->atualizar($cust, $idsPorCust[$cust] ?? []) !== null) {
+                        $comStatusAds++;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("[Polos] Sync: status de ADS falhou cust={$cust}: " . $e->getMessage());
+                }
             }
         }
 
-        Log::info("[Polos] Sync concluído: {$processados}/{$empresas->count()} processados · {$comFat} com faturamento>0 · {$comAds} com ADS>0 ({$de}..{$ate})");
+        Log::info("[Polos] Sync concluído: {$processados}/{$empresas->count()} processados · {$comFat} com faturamento>0 · {$comAds} com ADS>0 · {$comStatusAds} com status de campanha ({$de}..{$ate})");
     }
 
     public function failed(\Throwable $e): void

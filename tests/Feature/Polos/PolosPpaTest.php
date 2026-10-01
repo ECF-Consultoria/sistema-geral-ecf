@@ -5,8 +5,10 @@ namespace Tests\Feature\Polos;
 use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\Ppa;
+use App\Models\PpaTask;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -64,7 +66,7 @@ class PolosPpaTest extends TestCase
                 ->where('escopo', Ppa::ESCOPO_POLOS)
                 ->has('ppas.data', 1)
                 ->where('ppas.data.0.id', $doPolo->id)
-                ->where('ppas.data.0.company_name', $empresa->nome)
+                ->where('ppas.data.0.empresa', $empresa->nome)
             );
     }
 
@@ -95,6 +97,36 @@ class PolosPpaTest extends TestCase
                 ->has('companies', 1)
                 ->where('companies.0.id', $ativa->id)
                 ->where('companies.0.name', 'Polo Ativo')
+            );
+    }
+
+    /**
+     * A tela do PPA Polos é o MESMO componente da lista de carteira
+     * (`Pages/Ppa/Index.jsx`, re-exportado). Os filtros desenham lá de
+     * qualquer jeito — se o controller de Polos não os aplicasse, clicar em
+     * "Vencidos" aqui recarregaria a lista inteira e pareceria um botão morto.
+     */
+    public function test_index_filtra_por_situacao_e_devolve_os_filtros_aplicados(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaPolos();
+
+        $base = [
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id,
+            'mentor_id' => $admin->id, 'status' => 'sent',
+        ];
+
+        $vencido = Ppa::create([...$base, 'title' => 'Atrasado', 'due_date' => now()->subDays(3)->toDateString()]);
+        Ppa::create([...$base, 'title' => 'No prazo', 'due_date' => now()->addDays(3)->toDateString()]);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.polos-ppa.index', ['situacao' => Ppa::SITUACAO_VENCIDO]))
+            ->assertStatus(200)
+            ->assertInertia(fn (Assert $p) => $p
+                ->component('Polos/Ppa/Index')
+                ->has('ppas.data', 1)
+                ->where('ppas.data.0.id', $vencido->id)
+                ->where('filtros.situacao', Ppa::SITUACAO_VENCIDO)
             );
     }
 
@@ -166,6 +198,102 @@ class PolosPpaTest extends TestCase
             );
     }
 
+    // ─── Gaveta do Painel Polos ──────────────────────────────────────────────
+
+    public function test_gaveta_traz_so_os_ppas_da_empresa_com_progresso_e_link_do_quadro(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaPolos();
+        $outra   = $this->empresaPolos();
+
+        $plano = Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id,
+            'mentor_id' => $admin->id, 'title' => 'Plano de publicação', 'status' => 'sent',
+            'due_date' => now()->subDays(2)->toDateString(),
+        ]);
+        foreach (['done', 'doing', 'todo'] as $i => $status) {
+            PpaTask::create(['ppa_id' => $plano->id, 'title' => "T{$i}", 'status' => $status, 'order' => $i]);
+        }
+        Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $outra->id,
+            'mentor_id' => $admin->id, 'title' => 'Plano de outra empresa', 'status' => 'sent',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('mlb.polos-ppa.empresa', $empresa))
+            ->assertOk()
+            ->assertJsonCount(1, 'ppas')
+            ->assertJsonPath('ppas.0.id', $plano->id)
+            ->assertJsonPath('ppas.0.titulo', 'Plano de publicação')
+            ->assertJsonPath('ppas.0.escopo', Ppa::ESCOPO_POLOS)
+            ->assertJsonPath('ppas.0.total', 3)
+            ->assertJsonPath('ppas.0.feitas', 1)
+            ->assertJsonPath('ppas.0.fazendo', 1)
+            ->assertJsonPath('ppas.0.prazo_dias', -2)
+            ->assertJsonPath('ppas.0.responsavel', $admin->name)
+            ->assertJsonPath('ppas.0.url', route('mlb.polos-ppa.kanban', $plano));
+    }
+
+    /**
+     * Rascunho entra (a gaveta é da equipe) e a ordem é a régua de atenção da
+     * lista: plano com tarefa andando antes do que não começou, concluído por
+     * último.
+     */
+    public function test_gaveta_inclui_rascunho_e_ordena_pela_regua_de_atencao(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->empresaPolos();
+        $base    = ['escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id, 'mentor_id' => $admin->id];
+
+        $concluido = Ppa::create([...$base, 'title' => 'Encerrado', 'status' => 'completed']);
+        $rascunho  = Ppa::create([...$base, 'title' => 'Rascunho', 'status' => 'draft']);
+        $andando   = Ppa::create([...$base, 'title' => 'Andando', 'status' => 'sent']);
+        PpaTask::create(['ppa_id' => $andando->id, 'title' => 'Em curso', 'status' => 'doing', 'order' => 0]);
+
+        $this->actingAs($admin)
+            ->getJson(route('mlb.polos-ppa.empresa', $empresa))
+            ->assertOk()
+            ->assertJsonPath('ppas.*.id', [$andando->id, $rascunho->id, $concluido->id]);
+    }
+
+    public function test_gaveta_traz_o_ppa_de_carteira_quando_a_empresa_tem_company(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create();
+        $empresa = $this->empresaPolos(['company_id' => $company->id]);
+
+        $carteira = Ppa::create([
+            'escopo' => Ppa::ESCOPO_GERAL, 'company_id' => $company->id,
+            'mentor_id' => $admin->id, 'title' => 'Plano da carteira', 'status' => 'sent',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('mlb.polos-ppa.empresa', $empresa))
+            ->assertOk()
+            ->assertJsonCount(1, 'ppas')
+            ->assertJsonPath('ppas.0.escopo', Ppa::ESCOPO_GERAL)
+            // Abre no quadro de carteira: o de Polos daria 404 (garantirEscopo).
+            ->assertJsonPath('ppas.0.url', route('ppa.kanban', $carteira));
+    }
+
+    /**
+     * A gaveta mostra os planos da EMPRESA, não só os de quem olha — ao
+     * contrário da lista, que recorta por `mentor_id` para o não-admin.
+     */
+    public function test_gaveta_mostra_planos_de_outros_responsaveis_para_quem_tem_permissao(): void
+    {
+        $empresa = $this->empresaPolos();
+        Ppa::create([
+            'escopo' => Ppa::ESCOPO_POLOS, 'mlb_empresa_id' => $empresa->id,
+            'mentor_id' => $this->admin()->id, 'title' => 'Plano de outro', 'status' => 'sent',
+        ]);
+
+        $this->actingAs($this->userComPermissao('mlb.projetos'))
+            ->getJson(route('mlb.polos-ppa.empresa', $empresa))
+            ->assertOk()
+            ->assertJsonCount(1, 'ppas');
+    }
+
     // ─── Acesso ──────────────────────────────────────────────────────────────
 
     public function test_sem_permissao_mlb_projetos_recebe_403(): void
@@ -173,5 +301,33 @@ class PolosPpaTest extends TestCase
         $this->actingAs(User::factory()->create(['role' => 'consultor']))
             ->get(route('mlb.polos-ppa.index'))
             ->assertStatus(403);
+    }
+
+    public function test_gaveta_sem_permissao_mlb_projetos_recebe_403(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'consultor']))
+            ->getJson(route('mlb.polos-ppa.empresa', $this->empresaPolos()))
+            ->assertStatus(403);
+    }
+
+    private function userComPermissao(string $permission): User
+    {
+        $slug    = 'setor-' . Str::random(6);
+        $setorId = DB::table('setores')->insertGetId([
+            'nome' => 'Setor ' . $slug, 'slug' => $slug, 'active' => true, 'is_system' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('setor_permissoes')->insert([
+            'setor_id' => $setorId, 'permission_key' => $permission,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $user = User::factory()->create(['role' => 'consultor']);
+        DB::table('user_setores')->insert([
+            'user_id' => $user->id, 'setor_id' => $setorId, 'cargo_id' => null, 'is_principal' => true,
+            'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return $user->fresh();
     }
 }

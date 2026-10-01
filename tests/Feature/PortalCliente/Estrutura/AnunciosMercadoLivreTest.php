@@ -1,0 +1,624 @@
+<?php
+
+namespace Tests\Feature\PortalCliente\Estrutura;
+
+use App\Models\EstruturaAnuncio;
+use App\Models\EstruturaAnuncioEspera;
+use App\Models\EstruturaOferta;
+use App\Models\MlAcervoItem;
+use App\Models\MlToken;
+use App\Jobs\ImportarAnunciosMlEstruturaJob;
+use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
+use App\Services\Portal\Estrutura\EstruturaConjunto;
+use App\Services\Portal\Estrutura\EstruturaOfertaService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
+use Tests\TestCase;
+
+/**
+ * Os anúncios que a empresa já tem no ML, trazidos pelo OAuth.
+ *
+ * Os corpos de anúncio são REAIS — `tests/fixtures/phase134/multiget-lote.json`,
+ * capturado pela sondagem da Fase 134 (`Http::fake()` nunca sobre shape
+ * inventado). Nesse lote, os pares Clássico + Premium do mesmo produto têm o
+ * MESMO `SELLER_SKU` (`1808`, `1301-UN-NA`) e `user_product_id` diferentes:
+ * é por isso que o casamento é pelo SKU.
+ *
+ * O lote tem 20 anúncios: 5 encerrados e sem SKU (ficam de fora) e 15 vivos em
+ * 11 SKUs. Por venda: 1808 (4926), 1300 (767), 1808 (659), 1303-UN-BC (562),
+ * 1304 (329), 1304 (312), 1305 (274), 1304-UN-MDN (255), 1809 (151),
+ * 1300-UN-BC (81), 1301-UN-NA (78), 1301-UN-NA (69), 2110 (40),
+ * 1302-UN-MDN (34), 1808 (5). Pares Clássico + Premium: 1808 e 1301-UN-NA.
+ */
+class AnunciosMercadoLivreTest extends TestCase
+{
+    use GabaritoDaPlanilhaEstrutural;
+    use RefreshDatabase;
+
+    private function fixture(string $nome): array
+    {
+        return json_decode(file_get_contents(base_path("tests/fixtures/phase134/{$nome}")), true);
+    }
+
+    private function conectar($empresa): void
+    {
+        MlToken::create([
+            'company_id' => $empresa->id, 'ml_user_id' => '436501796',
+            'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
+            'token_type' => 'bearer', 'scope' => 'read write offline_access',
+            'expires_at' => now()->addDays(6), 'last_refreshed_at' => now(),
+            'status' => 'active', 'connected_at' => now(),
+        ]);
+    }
+
+    /**
+     * A conta do lote real, respondendo à busca por SKU (`seller_sku`) com os
+     * anúncios que têm aquele SKU. O acervo local recebe todos, MENOS
+     * `$foraDoAcervo` — o anúncio publicado depois do sync da madrugada, que
+     * tem de vir pelo multiget.
+     */
+    private function fingirConta($empresa, array $foraDoAcervo = [], array $semSku = []): void
+    {
+        $lote = $this->fixture('multiget-lote.json');
+        foreach ($lote as &$w) {
+            if (in_array($w['body']['id'], $semSku, true)) {
+                $w['body']['attributes'] = array_values(array_filter($w['body']['attributes'], fn ($a) => $a['id'] !== 'SELLER_SKU'));
+                $w['body']['seller_custom_field'] = null;
+            }
+        }
+        unset($w);
+        $idsPorSku = [];
+        foreach ($lote as $w) {
+            $sku = AnunciosMercadoLivreService::skuDoAnuncio($w['body']);
+            if ($sku) {
+                $idsPorSku[$sku][] = $w['body']['id'];
+            }
+            if (! in_array($w['body']['id'], $foraDoAcervo, true)) {
+                MlAcervoItem::create([
+                    'company_id' => $empresa->id, 'ml_item_id' => $w['body']['id'], 'title' => $w['body']['title'],
+                    'listing_type_id' => $w['body']['listing_type_id'], 'status' => $w['body']['status'],
+                    'catalog_listing' => (bool) ($w['body']['catalog_listing'] ?? false),
+                    'sold_quantity' => $w['body']['sold_quantity'],
+                    'shipping' => $w['body']['shipping'],
+                    'available_quantity' => $w['body']['available_quantity'],
+                ]);
+            }
+        }
+
+        Http::fake([
+            '*/items/search*' => function ($request) use ($idsPorSku) {
+                $ids = $idsPorSku[$request->data()['seller_sku'] ?? ''] ?? [];
+
+                return Http::response(['results' => $ids, 'paging' => ['total' => count($ids), 'offset' => 0, 'limit' => 50]]);
+            },
+            '*/items?*' => Http::response($lote),
+        ]);
+    }
+
+    public function test_cada_anuncio_real_vira_uma_linha_com_sku_tipo_e_status(): void
+    {
+        $linhas = array_map(fn ($w) => AnunciosMercadoLivreService::linhaDoAnuncio($w['body']), $this->fixture('multiget-lote.json'));
+        $porMlb = collect($linhas)->keyBy('mlb');
+
+        $this->assertSame(['sku' => '1808', 'mlb' => 'MLB5318502460', 'tipo' => 'Premium', 'status' => 'Ativo'],
+            array_intersect_key($porMlb['MLB5318502460'], array_flip(['sku', 'mlb', 'tipo', 'status'])));
+        $this->assertSame('Clássico', $porMlb['MLB5317224904']['tipo']);
+        $this->assertSame('Pausado', $porMlb['MLB5316608806']['status']);
+        $this->assertSame('Inativo', $porMlb['MLB7046783144']['status']);   // closed
+        $this->assertTrue($porMlb['MLB4009839421']['catalogo']);
+        $this->assertNull($porMlb['MLB7046783144']['sku']);                  // veio sem SELLER_SKU
+        $this->assertSame(15, collect($linhas)->whereNotNull('sku')->count());
+    }
+
+    /** Anúncio com variações: o SKU vem delas só quando TODAS concordam. */
+    public function test_sku_das_variacoes_so_quando_todas_concordam(): void
+    {
+        $item = ['id' => 'MLB1', 'listing_type_id' => 'gold_pro', 'variations' => [
+            ['attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'X-1']]],
+            ['attributes' => [['id' => 'SELLER_SKU', 'value_name' => 'X-1 ']]],
+        ]];
+        $this->assertSame('X-1', AnunciosMercadoLivreService::skuDoAnuncio($item));
+
+        $item['variations'][1]['attributes'][0]['value_name'] = 'X-2';
+        $this->assertNull(AnunciosMercadoLivreService::skuDoAnuncio($item));
+
+        // Anúncio grátis ou outro tipo não entra: o método só trabalha com Clássico e Premium.
+        $this->assertNull(AnunciosMercadoLivreService::linhaDoAnuncio(['id' => 'MLB2', 'listing_type_id' => 'free']));
+    }
+
+    private function ofertasNovas(array $estado): array
+    {
+        return array_column($estado['ofertas_novas']['itens'], 'sku');
+    }
+
+    /**
+     * O fluxo do cliente: módulo vazio, "Puxar do Mercado Livre". Cada SKU vira
+     * uma oferta com TODOS os seus anúncios Clássico e Premium; a prévia mostra
+     * quais ofertas têm o par e nada é gravado antes de confirmar.
+     */
+    public function test_puxar_cria_uma_oferta_por_sku_juntando_classico_e_premium(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        // Sob a fila `sync` dos testes, o Job roda dentro do POST.
+        $sessao->postJson(route('portal.auth.estrutura.importacao.iniciar'))->assertOk();
+        $estado = $sessao->getJson(route('portal.auth.estrutura.importacao.estado'))->assertOk()->json();
+
+        $this->assertSame('pronto', $estado['estado']);
+        $this->assertSame(['1808', '1300', '1303-UN-BC', '1304', '1305', '1304-UN-MDN', '1809', '1300-UN-BC', '1301-UN-NA', '2110', '1302-UN-MDN'],
+            $this->ofertasNovas($estado), 'uma oferta por SKU, na ordem dos mais vendidos');
+        $this->assertSame([15, 2, true], [$estado['total'], $estado['ofertas_novas']['pares'], $estado['acabou']]);
+        $this->assertSame(['novos' => 15, 'atualizados' => 0, 'espera' => 0, 'erros' => 0, 'removidos' => 0], $estado['previa']['totais'],
+            'anúncio de oferta que ainda vai nascer NÃO aparece como "aguardando oferta"');
+
+        $armario = collect($estado['ofertas_novas']['itens'])->firstWhere('sku', '1808');
+        $this->assertSame([2, 1, 'mercado_envios', 'Mercado Envios'],
+            [$armario['classicos'], $armario['premiums'], $armario['logistica'], $armario['logistica_rotulo']]);
+        $this->assertNotNull($armario['nome'], 'o nome vem do anúncio mais vendido do SKU');
+        $this->assertNull(collect($estado['ofertas_novas']['itens'])->firstWhere('sku', '1300')['logistica'], 'not_specified não vira chute');
+        $this->assertSame(0, EstruturaOferta::count(), 'a prévia não grava');
+
+        // Uma leitura dos candidatos (15 cabem num multiget) e uma busca por SKU.
+        Http::assertSentCount(1 + 11);
+
+        $sessao->post(route('portal.auth.estrutura.importacao.aplicar'))->assertSessionHasNoErrors();
+
+        $this->assertSame([11, 15, 0], [EstruturaOferta::count(), EstruturaAnuncio::count(), EstruturaAnuncioEspera::count()]);
+        $oferta = EstruturaOferta::where('sku', '1808')->sole();
+        $this->assertSame(['simples', 'mercado_envios', $armario['nome']], [$oferta->fase, $oferta->logistica, $oferta->nome]);
+        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+        $this->assertSame([2, 1, 'ok'], [$conjunto->oferta($oferta->id)['classicos'], $conjunto->oferta($oferta->id)['premiums'], $conjunto->oferta($oferta->id)['situacao']]);
+        $this->assertSame('falta_premium', $conjunto->oferta(EstruturaOferta::where('sku', '1304')->value('id'))['situacao']);
+
+        // Puxar de novo: tudo já está aqui — nada duplica, e a tela diz que acabou.
+        $sessao->postJson(route('portal.auth.estrutura.importacao.iniciar'))->assertOk();
+        $deNovo = $sessao->getJson(route('portal.auth.estrutura.importacao.estado'))->json();
+        $this->assertSame([0, 0, true], [$deNovo['total'], $deNovo['ofertas_novas']['total'], $deNovo['acabou']]);
+        $this->assertSame(15, EstruturaAnuncio::count());
+    }
+
+    /** Conta grande: cada "Puxar" traz um lote, e o próximo continua de onde o anterior parou. */
+    public function test_puxar_em_lotes_continua_dos_mais_vendidos(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $svc = app(AnunciosMercadoLivreService::class);
+
+        $svc->iniciar($empresa, loteSkus: 4);
+        $primeiro = $svc->estado($empresa);
+        $this->assertSame(['1808', '1300', '1303-UN-BC', '1304'], $this->ofertasNovas($primeiro));
+        $this->assertFalse($primeiro['acabou']);
+        $svc->aplicar($empresa, $ator);
+
+        $svc->iniciar($empresa, loteSkus: 4);
+        $this->assertSame(['1305', '1304-UN-MDN', '1809', '1300-UN-BC'], $this->ofertasNovas($svc->estado($empresa)));
+    }
+
+    /**
+     * Quem cadastrou a oferta à mão antes de puxar recebe os anúncios dela; o
+     * resto da conta vira oferta nova. O anúncio publicado depois do sync da
+     * madrugada (fora do acervo) vem pela busca do SKU e passa pelo multiget.
+     */
+    public function test_oferta_cadastrada_a_mao_recebe_os_seus_anuncios(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        $svc = app(EstruturaOfertaService::class);
+        [$armario] = $svc->criar($empresa, ['sku' => '1808', 'fase' => 'simples', 'nome' => 'Armário Aéreo'], $ator);
+        [$balcao] = $svc->criar($empresa, ['sku' => '1301-UN-NA', 'fase' => 'simples', 'nome' => 'Balcão Cooktop'], $ator);
+        [$turim] = $svc->criar($empresa, ['sku' => '1304', 'fase' => 'simples', 'nome' => 'Balcão Turim'], $ator);
+        $svc->criar($empresa, ['sku' => 'SEM-NADA-NO-ML', 'fase' => 'simples'], $ator);
+        $this->fingirConta($empresa, foraDoAcervo: ['MLB5317120924']);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $sessao->postJson(route('portal.auth.estrutura.importacao.iniciar'))->assertOk();
+        $estado = $sessao->getJson(route('portal.auth.estrutura.importacao.estado'))->json();
+
+        $this->assertSame([15, 12, 1, 8], [$estado['total'], $estado['skus'], $estado['sem_anuncio'], $estado['ofertas_novas']['total']]);
+        $this->assertNotContains('1808', $this->ofertasNovas($estado), 'a oferta já existe: não nasce outra');
+        // Candidatos (1 multiget), uma busca por SKU (12), e o multiget do que faltava no acervo.
+        Http::assertSentCount(1 + 12 + 1);
+
+        $sessao->post(route('portal.auth.estrutura.importacao.aplicar'))->assertSessionHasNoErrors();
+
+        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+        $this->assertSame([2, 1, 'ok'], [$conjunto->oferta($armario->id)['classicos'], $conjunto->oferta($armario->id)['premiums'], $conjunto->oferta($armario->id)['situacao']]);
+        $this->assertSame('ok', $conjunto->oferta($balcao->id)['situacao']);
+        $this->assertSame('falta_premium', $conjunto->oferta($turim->id)['situacao']);
+        $this->assertSame([12, 15], [EstruturaOferta::count(), EstruturaAnuncio::count()]);
+    }
+
+    /** Anúncio sem SKU não junta com nada: fica aguardando oferta, e não volta no próximo "Puxar". */
+    public function test_anuncio_sem_sku_fica_aguardando_oferta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        $this->fingirConta($empresa, semSku: ['MLB5308780432']);   // o 1300, 2º mais vendido
+        $svc = app(AnunciosMercadoLivreService::class);
+
+        $svc->iniciar($empresa);
+        $estado = $svc->estado($empresa);
+        $this->assertNotContains('1300', $this->ofertasNovas($estado));
+        $this->assertSame([1, 1], [$estado['sem_sku'], $estado['previa']['totais']['espera']]);
+        $svc->aplicar($empresa, $ator);
+
+        $espera = EstruturaAnuncioEspera::sole();
+        $this->assertSame(['MLB5308780432', 'sem_sku'], [$espera->codigo_mlb, $espera->motivo]);
+
+        $svc->iniciar($empresa);
+        $this->assertSame(0, $svc->estado($empresa)['total']);
+    }
+
+    /**
+     * Em fatias: a fila reentrega Job acima de 90 s, então cada Job trabalha
+     * um orçamento e passa a vez. Com orçamento zero, cada fatia faz uma
+     * unidade — e o resultado é o mesmo da leitura de uma vez.
+     */
+    public function test_leitura_em_fatias_e_uma_rodada_por_vez(): void
+    {
+        Queue::fake();
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $svc = app(AnunciosMercadoLivreService::class);
+
+        $svc->iniciar($empresa);
+        $svc->iniciar($empresa);   // segundo clique com a leitura em andamento
+        Queue::assertPushed(ImportarAnunciosMlEstruturaJob::class, 1);
+        // Na `high`: a `default` de produção tinha 157 jobs do acervo na frente e a leitura nunca começava.
+        Queue::assertPushedOn('high', ImportarAnunciosMlEstruturaJob::class);
+        $rodada = Queue::pushed(ImportarAnunciosMlEstruturaJob::class)->first()->rodada;
+
+        // Ainda na fila: a tela diz que está aguardando, e 5 min de espera NÃO é "parou no meio".
+        $this->assertSame('fila', $svc->estado($empresa)['etapa']);
+        $this->travel(5)->minutes();
+        $this->assertSame('lendo', $svc->estado($empresa)['estado']);
+        $this->travel(11)->minutes();
+        $this->assertSame('erro', $svc->estado($empresa)['estado'], 'fila parada por 16 min: a tela libera o "Puxar de novo"');
+        $svc->iniciar($empresa);   // relê: a rodada muda
+        $this->travelBack();
+        Queue::assertPushed(ImportarAnunciosMlEstruturaJob::class, 2);
+        $rodada = Queue::pushed(ImportarAnunciosMlEstruturaJob::class)->last()->rodada;
+
+        $this->assertTrue($svc->passo($empresa, 'rodada-antiga', 0), 'rodada que não é a atual para sem mexer em nada');
+        $this->assertSame(0, $svc->estado($empresa)['lidos']);
+
+        $fatias = 1;
+        while (! $svc->passo($empresa, $rodada, 0)) {
+            $fatias++;
+            $lendo = $svc->estado($empresa);
+            $this->assertSame(['estado', 'etapa', 'lidos', 'skus', 'procurados'], array_keys($lendo), 'a lista de MLBs não vai para o navegador');
+        }
+
+        // 2 de procura (15 candidatos + a que descobre o fim), 11 SKUs, 1 que fecha.
+        $this->assertSame(14, $fatias);
+        $this->assertCount(11, $this->ofertasNovas($svc->estado($empresa)));
+    }
+
+    public function test_logistica_no_vocabulario_da_planilha(): void
+    {
+        $l = fn (array $envio) => AnunciosMercadoLivreService::logisticaDoAnuncio(['shipping' => $envio]);
+
+        $this->assertSame('full', $l(['mode' => 'me2', 'logistic_type' => 'fulfillment']));
+        $this->assertSame('flex', $l(['mode' => 'me2', 'logistic_type' => 'self_service']));
+        $this->assertSame('transportadora_me1', $l(['mode' => 'me1']));
+        $this->assertSame('mercado_envios', $l(['mode' => 'me2', 'logistic_type' => 'cross_docking']));
+        $this->assertNull($l(['mode' => 'not_specified', 'logistic_type' => 'not_specified']));
+        foreach (['full', 'flex', 'transportadora_me1', 'mercado_envios'] as $chave) {
+            $this->assertArrayHasKey($chave, EstruturaOferta::LOGISTICAS);
+        }
+    }
+
+    public function test_sem_conta_conectada_nao_importa(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+
+        $this->entrarNoPortal($empresa)
+            ->postJson(route('portal.auth.estrutura.importacao.iniciar'))
+            ->assertStatus(422);
+    }
+
+    /**
+     * A estação mostra o SKU que cada anúncio tem HOJE no ML, as fotos e o
+     * preço QUE O CLIENTE PAGA — o `price` do acervo é o cheio, sem a
+     * promoção (MLB4645047625: R$ 2.021,08 no acervo, R$ 1.666,37 no anúncio).
+     * Lidos na hora, com cache.
+     */
+    public function test_estacao_le_sku_e_fotos_de_cada_anuncio_no_ml(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $ator);
+        $anuncios = app(\App\Services\Portal\Estrutura\EstruturaAnuncioService::class);
+        foreach (['MLB5318502460' => 'premium', 'MLB5307535856' => 'classico', 'MLB5308780432' => 'classico', 'MLB7046783144' => 'premium'] as $mlb => $tipo) {
+            $anuncios->cadastrar($oferta, ['tipo' => $tipo, 'codigo_mlb' => $mlb, 'status' => 'ativo', 'catalogo' => false], $ator);
+        }
+        // O Premium tem promoção que o deixa MAIS BARATO que o Clássico; o Clássico, não.
+        $venda = ['MLB5318502460' => ['amount' => 80.0, 'regular_amount' => 120.0], 'MLB5307535856' => ['amount' => 99.9, 'regular_amount' => 99.9]];
+        Http::fake([
+            '*/items?*' => Http::response($this->fixture('multiget-lote.json')),
+            '*/sale_price*' => function ($req) use ($venda) {
+                preg_match('#/items/(MLB\d+)/sale_price#', $req->url(), $m);
+
+                return isset($venda[$m[1]]) ? Http::response($venda[$m[1]]) : Http::response(['message' => 'not found'], 404);
+            },
+        ]);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk()->json();
+
+        $this->assertSame(['atual' => 80, 'cheio' => 120], $r['anuncios']['MLB5318502460']['preco']);
+        $this->assertNull($r['anuncios']['MLB5308780432']['preco'], 'sem o preço de venda, a tela fica com o do acervo');
+        // A comparação usa o preço que o cliente paga: Premium 80 < Clássico 99,90.
+        // (O MLB5308780432 é Clássico e não tem preço lido — não entra.)
+        $this->assertSame(['classico' => 99.9, 'premium' => 80, 'invertido' => true], $r['precos']);
+
+        $this->assertTrue($r['conectado']);
+        // 1808 nos dois do produto; o 1300 foi ligado à oferta errada; o encerrado não tem SKU.
+        $skus = array_map(fn ($a) => $a['sku'], $r['anuncios']);
+        ksort($skus);   // o multiget devolve na ordem da API
+        $this->assertSame(['MLB5307535856' => '1808', 'MLB5308780432' => '1300', 'MLB5318502460' => '1808', 'MLB7046783144' => null], $skus);
+        $fotos = $r['anuncios']['MLB5318502460']['fotos'];
+        $this->assertNotEmpty($fotos, 'as fotos vêm do mesmo multiget');
+        $this->assertStringStartsWith('https://', $fotos[0]);
+
+        $n = count(Http::recorded());
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))->assertOk();
+        $this->assertCount($n, Http::recorded(), 'reabrir usa o cache');
+
+        // Oferta de outra empresa: 404, como toda rota do módulo.
+        $outra = $this->empresaDoGabarito();
+        [$alheia] = app(EstruturaOfertaService::class)->criar($outra, ['sku' => 'X', 'fase' => 'simples'], $this->atorCliente($outra));
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $alheia->id))->assertNotFound();
+    }
+
+    public function test_estacao_sem_conta_conectada_nao_chama_a_api(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $this->atorCliente($empresa));
+        Http::fake();
+
+        $this->entrarNoPortal($empresa)
+            ->getJson(route('portal.auth.estrutura.anuncios_ml.detalhes', $oferta->id))
+            ->assertOk()->assertExactJson(['conectado' => false, 'anuncios' => [], 'precos' => null]);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * A lista do "+ Produto": sem busca, TODOS os anúncios, dos mais vendidos
+     * para os menos, com o SKU de cada um (lido no ML). Com busca, o SKU entra
+     * pelo `seller_sku` do ML — o acervo não o guarda — e vem primeiro.
+     */
+    public function test_lista_de_anuncios_do_ml_busca_por_sku_titulo_e_mlb(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $todos = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar'))->assertOk()->json();
+        $this->assertSame('MLB5307535856', $todos['itens'][0]['mlb'], 'o mais vendido (4.926) primeiro');
+        $this->assertSame(['1808', 4926, 'classico', 'mercado_envios'],
+            [$todos['itens'][0]['sku'], $todos['itens'][0]['vendas'], $todos['itens'][0]['tipo_chave'], $todos['itens'][0]['logistica']]);
+        $this->assertFalse($todos['tem_mais']);
+        $maisVendido = collect($this->fixture('multiget-lote.json'))->firstWhere('body.id', 'MLB5307535856')['body'];
+        $this->assertSame($maisVendido['available_quantity'], $todos['itens'][0]['estoque'], 'o estoque de cada anúncio vem do acervo');
+
+        // Pelo SKU (nenhum título tem "1808"): os três anúncios dele.
+        $porSku = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => '1808']))->json('itens');
+        $this->assertEqualsCanonicalizing(['MLB5307535856', 'MLB5318502460', 'MLB5318554060'], array_column($porSku, 'mlb'));
+        $this->assertSame(['1808'], array_values(array_unique(array_column($porSku, 'sku'))));
+
+        // Pelo MLB, como antes.
+        $this->assertSame(['MLB4009839421'], array_column($sessao->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => 'MLB4009839421']))->json('itens'), 'mlb'));
+    }
+
+    /** "+ Produto" direto do ML: a oferta nasce já com os anúncios escolhidos — tudo ou nada. */
+    public function test_criar_produto_ja_com_anuncios_do_ml(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $this->fingirConta($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $sessao->post(route('portal.auth.estrutura.ofertas.criar'), [
+            'sku' => '1808', 'fase' => 'simples', 'nome' => 'Armário Aéreo',
+            'anuncios_ml' => ['MLB5307535856', 'MLB5318502460'],
+        ])->assertSessionHasNoErrors();
+
+        $oferta = \App\Models\EstruturaOferta::where('sku', '1808')->sole();
+        $conjunto = EstruturaConjunto::daEmpresa($empresa);
+        $this->assertSame([1, 1, 'ok'], [$conjunto->oferta($oferta->id)['classicos'], $conjunto->oferta($oferta->id)['premiums'], $conjunto->oferta($oferta->id)['situacao']]);
+
+        // Um anúncio que já está na 1808 derruba a criação inteira: nada nasce.
+        $sessao->post(route('portal.auth.estrutura.ofertas.criar'), [
+            'sku' => 'OUTRA', 'fase' => 'simples', 'anuncios_ml' => ['MLB5318554060', 'MLB5307535856'],
+        ])->assertSessionHasErrors('ml_item_id');
+        $this->assertFalse(\App\Models\EstruturaOferta::where('sku', 'OUTRA')->exists());
+        $this->assertSame(2, EstruturaAnuncio::count());
+    }
+
+    /**
+     * A Jardinagem com números: por anúncio, a série de visitas de 30 dias (o
+     * gráfico), as visitas e as vendas dos últimos 7, e o buy box do catálogo.
+     * Visitas e buy box em paralelo; vendas dos pedidos da loja, pré-aquecidos
+     * (sob a fila `sync` dos testes o job roda na hora). Falha de uma métrica
+     * não derruba as outras.
+     */
+    public function test_metricas_serie_de_30_dias_vendas_da_loja_e_buybox(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $this->conectar($empresa);
+        [$oferta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => '1808', 'fase' => 'simples'], $ator);
+        $anuncios = app(\App\Services\Portal\Estrutura\EstruturaAnuncioService::class);
+        $anuncios->cadastrar($oferta, ['tipo' => 'classico', 'codigo_mlb' => 'MLB5307535856', 'status' => 'ativo', 'catalogo' => false], $ator);
+        $anuncios->cadastrar($oferta, ['tipo' => 'premium', 'codigo_mlb' => 'MLB5318502460', 'status' => 'ativo', 'catalogo' => true], $ator);
+
+        // 30 dias, fora de ordem como a API manda: 10 visitas por dia, e 50 no dia mais recente.
+        $dias = collect(range(29, 0))->map(fn ($n) => ['date' => now()->subDays($n)->format('Y-m-d').'T00:00:00Z', 'total' => $n === 0 ? 50 : 10])->shuffle()->values()->all();
+        Http::fake([
+            '*/items/MLB5307535856/visits/time_window*' => Http::response(['total_visits' => 340, 'results' => $dias]),
+            '*/items/MLB5318502460/visits/time_window*' => Http::response(['message' => 'boom'], 500),
+            // Os pedidos são lidos DIA A DIA (30 buscas). Hoje: 2 pedidos; 10 dias atrás: 1.
+            '*/orders/search*' => function ($req) {
+                $dia = substr($req->data()['order.date_created.from'] ?? '', 0, 10);
+                $pedidos = match ($dia) {
+                    now('America/Sao_Paulo')->format('Y-m-d') => [
+                        ['date_created' => now('America/Sao_Paulo')->format('Y-m-d').'T10:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 3], ['item' => ['id' => 'MLB9999999999'], 'quantity' => 9]]],
+                        ['date_created' => now('America/Sao_Paulo')->format('Y-m-d').'T11:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 1]]],
+                    ],
+                    now('America/Sao_Paulo')->subDays(10)->format('Y-m-d') => [
+                        ['date_created' => now('America/Sao_Paulo')->subDays(10)->format('Y-m-d').'T09:00:00.000-03:00', 'order_items' => [['item' => ['id' => 'MLB5307535856'], 'quantity' => 2]]],
+                    ],
+                    default => [],
+                };
+
+                return Http::response(['paging' => ['total' => count($pedidos)], 'results' => $pedidos]);
+            },
+            '*/items/MLB5318502460/price_to_win*' => Http::response(['status' => 'competing', 'price_to_win' => 38.18]),
+        ]);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $r = $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk()->json();
+
+        $this->assertTrue($r['conectado']);
+        $this->assertTrue($r['vendas_prontas']);
+        $c = $r['metricas']['MLB5307535856'];
+        // 7 dias = os 7 mais recentes da série (6×10 + 50); 30 dias = tudo; a série volta em ordem.
+        // Vendas: 4 hoje (3 + 1; o item de outro MLB não conta) e 2 há 10 dias — fora dos 7, dentro dos 30.
+        $this->assertSame([110, 340, 4, 6, null], [$c['visitas'], $c['visitas_30d'], $c['vendas'], $c['vendas_30d'], $c['buybox']]);
+        $this->assertCount(30, $c['vendas_serie']);
+        $this->assertSame(['data' => now('America/Sao_Paulo')->format('Y-m-d'), 'vendas' => 4], $c['vendas_serie'][29]);
+        $this->assertSame(['data' => now('America/Sao_Paulo')->subDays(10)->format('Y-m-d'), 'vendas' => 2], $c['vendas_serie'][19]);
+        $this->assertCount(30, $c['serie']);
+        $this->assertSame(now()->subDays(29)->format('Y-m-d'), $c['serie'][0]['data']);
+        $this->assertSame(['data' => now()->format('Y-m-d'), 'visitas' => 50], $c['serie'][29]);
+        // A visita falhou (null), as vendas (0: nenhum pedido dele) e o buy box seguiram; "competing" é traduzido.
+        $p = $r['metricas']['MLB5318502460'];
+        $this->assertNull($p['visitas']);
+        $this->assertNull($p['serie']);
+        $this->assertSame(0, $p['vendas']);
+        $this->assertSame(['status' => 'competing', 'rotulo' => 'Competindo', 'preco_para_ganhar' => 38.18], $p['buybox']);
+        // As vendas vêm dos pedidos da LOJA, dia a dia (30 buscas, 1 página cada) — não uma busca por anúncio.
+        $this->assertCount(30, collect(Http::recorded())->filter(fn ($par) => str_contains($par[0]->url(), '/orders/search')));
+
+        $n = count(Http::recorded());
+        $sessao->getJson(route('portal.auth.estrutura.anuncios_ml.metricas', $oferta->id))->assertOk();
+        $this->assertCount($n, Http::recorded(), 'reabrir usa o cache');
+    }
+
+    /**
+     * A parte lenta das métricas (os pedidos da loja) é pré-aquecida na fila
+     * high ao abrir a página, um job por loja de cada vez.
+     */
+    public function test_abrir_a_pagina_pre_aquece_os_pedidos_na_fila_high(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $sessao->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushedOn('high', \App\Jobs\AquecerPedidosMlEstruturaJob::class);
+
+        $sessao->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);   // a trava segura o segundo
+
+        // Sem conta conectada, nada a aquecer.
+        $outra = $this->empresaDoGabarito();
+        $this->withoutVite()->entrarNoPortal($outra)->get(route('portal.auth.estrutura.mapeamento'))->assertOk();
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\AquecerPedidosMlEstruturaJob::class, 1);
+    }
+
+    // ═══ A exceção: buscar e ligar ══════════════════════════════════════════
+
+    private function acervo($empresa, string $mlb, string $titulo, string $tipo = 'gold_special', string $status = 'active'): MlAcervoItem
+    {
+        return MlAcervoItem::create([
+            'company_id' => $empresa->id, 'ml_item_id' => $mlb, 'title' => $titulo,
+            'listing_type_id' => $tipo, 'status' => $status, 'catalog_listing' => false,
+        ]);
+    }
+
+    public function test_busca_so_mostra_anuncios_da_empresa_e_diz_onde_ja_estao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);          // MLB0000000001 está na CAD-01
+        $this->acervo($empresa, 'MLB0000000001', 'Cadeira de Jantar Estofada');
+        $this->acervo($empresa, 'MLB0000000099', 'Cadeira Jantar Premium Veludo', 'gold_pro');
+        $this->acervo($empresa, 'MLB0000000098', 'Cadeira grátis', 'free');
+        $outra = $this->empresaDoGabarito();
+        $this->acervo($outra, 'MLB0000000097', 'Cadeira de outra empresa');
+
+        $r = $this->entrarNoPortal($empresa)
+            ->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => 'cadeira']))
+            ->assertOk()->json();
+
+        $this->assertEqualsCanonicalizing(['MLB0000000001', 'MLB0000000099'], array_column($r['itens'], 'mlb'));
+        $porMlb = collect($r['itens'])->keyBy('mlb');
+        $this->assertSame('CAD-01', $porMlb['MLB0000000001']['ligado_a']);
+        $this->assertNull($porMlb['MLB0000000099']['ligado_a']);
+
+        // Filtrada pelo tipo — no "Concluir Premium" da agenda.
+        $soPremium = $this->entrarNoPortal($empresa)
+            ->getJson(route('portal.auth.estrutura.anuncios_ml.buscar', ['q' => 'cadeira', 'tipo' => 'premium']))->json('itens');
+        $this->assertSame(['MLB0000000099'], array_column($soPremium, 'mlb'));
+    }
+
+    public function test_ligar_usa_o_registro_do_acervo_e_recusa_o_que_ja_esta_em_outra_oferta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->anunciosDoGabarito($ofertas, $ator);
+        $this->acervo($empresa, 'MLB0000000099', 'Kit 2 Cadeiras Premium', 'gold_pro', 'paused');
+        $this->acervo($empresa, 'MLB0000000001', 'Cadeira de Jantar Estofada');
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $sessao->post(route('portal.auth.estrutura.anuncios_ml.ligar', $ofertas['CAD-01-CB2']->id), ['ml_item_id' => 'MLB0000000099'])
+            ->assertSessionHasNoErrors();
+
+        $ligado = EstruturaAnuncio::where('codigo_mlb', 'MLB0000000099')->sole();
+        $this->assertSame([$ofertas['CAD-01-CB2']->id, 'premium', 'pausado', 'Kit 2 Cadeiras Premium'],
+            [$ligado->oferta_id, $ligado->tipo, $ligado->status, $ligado->titulo]);
+
+        // Já está na CAD-01: ligar à CB3 é recusado.
+        $sessao->post(route('portal.auth.estrutura.anuncios_ml.ligar', $ofertas['CAD-01-CB3']->id), ['ml_item_id' => 'MLB0000000001'])
+            ->assertSessionHasErrors('ml_item_id');
+    }
+
+    public function test_ligar_tira_da_espera_e_nao_enxerga_outra_empresa(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $ofertas = $this->listaDoGabarito($empresa, $ator);
+        $this->acervo($empresa, 'MLB0000000050', 'Mesa Marfim Clássico');
+        EstruturaAnuncioEspera::create(['company_id' => $empresa->id, 'sku_colado' => 'MESA-ANTIGA', 'motivo' => 'sem_oferta',
+            'tipo' => 'classico', 'status' => 'ativo', 'codigo_mlb' => 'MLB0000000050']);
+        $outra = $this->empresaDoGabarito();
+        $this->acervo($outra, 'MLB0000000060', 'Alheio');
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $sessao->post(route('portal.auth.estrutura.anuncios_ml.ligar', $ofertas['MSA-MR']->id), ['ml_item_id' => 'MLB0000000050'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(0, EstruturaAnuncioEspera::count());
+        // Ganhou o Clássico que estava na espera; o Premium ainda falta.
+        $this->assertSame('falta_premium', EstruturaConjunto::daEmpresa($empresa)->oferta($ofertas['MSA-MR']->id)['situacao']);
+
+        $sessao->post(route('portal.auth.estrutura.anuncios_ml.ligar', $ofertas['MSA-MR']->id), ['ml_item_id' => 'MLB0000000060'])
+            ->assertNotFound();
+    }
+}

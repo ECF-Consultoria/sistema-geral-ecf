@@ -28,10 +28,19 @@ class AnuncioIaAnaliseTest extends TestCase
         parent::setUp();
         $this->withoutVite();
 
+        // Desde a etapa "ficha" o job fala com o Mercado Livre (preditor de
+        // categoria, atributos). Pedido sem stub vira exceção em vez de ir à
+        // internet — com fakes por padrão de URL, o Laravel deixaria passar.
+        Http::preventStrayRequests();
+
         config([
             'services.llm.base_url'   => 'http://llm.teste/v1',
             'services.llm.key'        => 'chave-de-teste',
             'services.llm.model'      => 'modelo-de-teste',
+            // Sem reserva por padrão: cada teste que quer a troca de modelo
+            // liga a sua. Senão o reserva do config/services.php entraria
+            // escondido em todo teste de falha.
+            'services.llm.fallbacks'  => '',
             'services.llm.timeout'    => 30,
             'services.llm.max_tokens' => 16000,
         ]);
@@ -465,5 +474,170 @@ class AnuncioIaAnaliseTest extends TestCase
         $analise->refresh();
         $this->assertSame(MlAnuncioIaAnalise::STATUS_ERRO, $analise->status);
         $this->assertSame('provedor fora do ar', $analise->erro_mensagem);
+    }
+
+    // ═══ Troca de modelo e fim garantido (29/09/2026) ═══════════════════════
+
+    public function test_modelo_principal_sobrecarregado_passa_para_o_reserva(): void
+    {
+        // Na NVIDIA é rotina: um modelo fica na fila deles e outro responde.
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+
+        Http::fake(fn ($req) => $req['model'] === 'modelo-de-teste'
+            ? Http::response(['error' => 'Service temporarily overloaded'], 503)
+            : Http::response([
+                'model'   => 'modelo-reserva',
+                'choices' => [['message' => ['content' => '{"analise":{"puv":"Conforto"}}']]],
+            ]));
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->analise('Cadeira', 'Unity', '');
+
+        $this->assertSame('Conforto', $r['dados']['puv']);
+        $this->assertSame('modelo-reserva', $r['meta']['modelo']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_modelo_mudo_nao_e_retentado_e_passa_para_o_reserva(): void
+    {
+        // A causa do "loop infinito": o mesmo modelo mudo era retentado 3x com
+        // 300s cada. Agora: uma chamada, e o reserva assume.
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+
+        Http::fake(fn ($req) => $req['model'] === 'modelo-de-teste'
+            ? Http::failedConnection()
+            : Http::response(['choices' => [['message' => ['content' => '{"descricao":"Olá!"}']]]]));
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->descricao('Cadeira', 'Unity', '', []);
+
+        $this->assertSame('Olá!', $r['dados']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_json_quebrado_do_principal_passa_para_o_reserva(): void
+    {
+        // Medido em 29/09/2026: o nemotron-3-super quebrou o JSON dos títulos.
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+
+        Http::fake(fn ($req) => Http::response(['choices' => [['message' => ['content' => $req['model'] === 'modelo-de-teste'
+            ? 'Aqui estão os títulos: 1. Cadeira'
+            : '{"titulos":[{"texto":"Cadeira Gamer"}]}']]]]));
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->titulos('Cadeira', 'Unity', '', []);
+
+        $this->assertSame('Cadeira Gamer', $r['dados'][0]['texto']);
+    }
+
+    public function test_chave_recusada_nao_tenta_o_reserva(): void
+    {
+        // Chave errada é errada para todos os modelos: trocar só atrasaria o erro.
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+        Http::fake(['llm.teste/*' => Http::response(['error' => 'unauthorized'], 401)]);
+
+        try {
+            app(\App\Services\Ia\AnaliseAnuncioService::class)->analise('Cadeira', 'Unity', '');
+            $this->fail('Deveria ter lançado.');
+        } catch (\RuntimeException $e) {
+            $this->assertMatchesRegularExpression('/chave/i', $e->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_prazo_esgotado_falha_sem_chamar_o_provedor(): void
+    {
+        Http::fake();
+
+        $svc = app(\App\Services\Ia\AnaliseAnuncioService::class)->comPrazo(microtime(true) + 5);
+
+        try {
+            $svc->analise('Cadeira', 'Unity', '');
+            $this->fail('Deveria ter lançado.');
+        } catch (\RuntimeException $e) {
+            $this->assertMatchesRegularExpression('/tempo limite/i', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_analise_rodando_ha_mais_de_15_min_vira_erro_no_polling(): void
+    {
+        // Worker morto no meio: sem isto a tela perguntava para sempre.
+        $company = $this->companyConectada();
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'produto'    => 'Cadeira',
+            'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,
+            'resultado'  => ['analise' => ['puv' => 'Conforto']],
+        ]);
+        $analise->forceFill(['created_at' => now()->subMinutes(16)])->save();
+
+        $this->actingAs($this->admin())
+            ->getJson(route('mlb.anuncios.ia.analise.status', ['analise' => $analise->id]))
+            ->assertOk()
+            ->assertJsonPath('status', MlAnuncioIaAnalise::STATUS_ERRO)
+            ->assertJsonPath('em_andamento', false)
+            // O parcial fica: meia análise vale mais que nenhuma.
+            ->assertJsonPath('analise.puv', 'Conforto');
+
+        $this->assertStringContainsString('15 minutos', $analise->fresh()->erro_mensagem);
+    }
+
+    public function test_analise_que_a_fila_nunca_pegou_diz_isso(): void
+    {
+        $company = $this->companyConectada();
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'produto'    => 'Cadeira',
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+        $analise->forceFill(['created_at' => now()->subMinutes(20)])->save();
+
+        $this->actingAs($this->admin())
+            ->getJson(route('mlb.anuncios.ia.analise.status', ['analise' => $analise->id]))
+            ->assertJsonPath('status', MlAnuncioIaAnalise::STATUS_ERRO);
+
+        $this->assertStringContainsString('fila', $analise->fresh()->erro_mensagem);
+    }
+
+    public function test_analise_recente_em_andamento_nao_e_encerrada(): void
+    {
+        $company = $this->companyConectada();
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $company->id,
+            'produto'    => 'Cadeira',
+            'status'     => MlAnuncioIaAnalise::STATUS_RODANDO,
+        ]);
+
+        $this->actingAs($this->admin())
+            ->getJson(route('mlb.anuncios.ia.analise.status', ['analise' => $analise->id]))
+            ->assertJsonPath('status', MlAnuncioIaAnalise::STATUS_RODANDO)
+            ->assertJsonPath('em_andamento', true);
+    }
+
+    public function test_job_de_analise_vencida_nao_gasta_cota(): void
+    {
+        // A retentativa chegou depois que a tela já mostrou "encerrada".
+        Http::fake();
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id' => $this->companyConectada()->id,
+            'produto'    => 'Cadeira',
+            'status'     => MlAnuncioIaAnalise::STATUS_PENDENTE,
+        ]);
+        $analise->forceFill(['created_at' => now()->subMinutes(16)])->save();
+
+        (new GerarAnaliseAnuncioIaJob($analise->id))->handle(app(\App\Services\Ia\AnaliseAnuncioService::class));
+
+        Http::assertNothingSent();
+        $this->assertSame(MlAnuncioIaAnalise::STATUS_ERRO, $analise->fresh()->status);
+    }
+
+    public function test_job_falha_de_vez_se_o_worker_matar_por_timeout(): void
+    {
+        // Morte por timeout não roda o fim do handle; sem failOnTimeout a
+        // análise ficava em "rodando" até as tentativas acabarem.
+        $job = new GerarAnaliseAnuncioIaJob(1);
+
+        $this->assertTrue($job->failOnTimeout);
+        $this->assertLessThan($job->timeout, GerarAnaliseAnuncioIaJob::PRAZO_S);
     }
 }

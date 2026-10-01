@@ -1,5 +1,5 @@
 import { Link, Head, router, usePage } from '@inertiajs/react';
-import { Calculator, ClipboardList, Eye, Home, LayoutGrid, ListChecks, LogOut } from 'lucide-react';
+import { Calculator, ClipboardList, Eye, Home, LayoutGrid, Layers, ListChecks, LogOut } from 'lucide-react';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +30,7 @@ const ICONES = {
     'list-checks':    ListChecks,
     'clipboard-list': ClipboardList,
     'calculator':     Calculator,
+    'layers':         Layers,
 };
 
 function ItemModulo({ modulo }) {
@@ -64,6 +65,38 @@ function ItemModulo({ modulo }) {
                 </span>
             )}
         </Link>
+    );
+}
+
+/**
+ * Os submódulos do módulo ativo (hoje só o Mapeamento Estrutural), numerados
+ * na ordem do caminho. Abertos só quando o módulo está ativo: fora dele, o
+ * item do módulo leva ao primeiro submódulo e o menu não cresce à toa.
+ * "Em breve" aparece apagado e sem link.
+ */
+function Submodulos({ submodulos, compacto = false }) {
+    return (
+        <div className={cn(compacto ? 'flex gap-1.5 overflow-x-auto pb-0.5' : 'ml-[18px] mt-1 space-y-0.5 border-l border-white/[0.08] pl-2.5')} data-submodulos>
+            {submodulos.map((s, i) => {
+                const numero = <span className={cn('w-3.5 shrink-0 text-[11px] tabular-nums', s.ativo ? 'text-ecf-yellow' : 'text-white/30')}>{i + 1}</span>;
+                const classe = cn(
+                    'flex items-center gap-2 rounded-lg transition-colors',
+                    compacto ? 'shrink-0 px-2.5 py-1.5 text-[12px]' : 'px-2.5 py-1.5 text-[12.5px]',
+                    s.ativo ? 'bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
+                );
+
+                return s.em_breve ? (
+                    <span key={s.chave} className={cn(classe, 'cursor-default text-white/25 hover:bg-transparent hover:text-white/25')} data-submodulo={s.chave} data-em-breve>
+                        {numero}{s.rotulo}
+                        <span className="ml-auto whitespace-nowrap rounded bg-white/[0.05] px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-white/35">Em breve</span>
+                    </span>
+                ) : (
+                    <Link key={s.chave} href={s.url} aria-current={s.ativo ? 'page' : undefined} className={classe} data-submodulo={s.chave}>
+                        {numero}{s.rotulo}
+                    </Link>
+                );
+            })}
+        </div>
     );
 }
 
@@ -149,7 +182,10 @@ export default function PortalClienteLayout({ empresa, modulos = [], titulo, chi
 
                     <nav className="hidden lg:block mt-6 space-y-1">
                         {modulos.map((modulo) => (
-                            <ItemModulo key={modulo.chave} modulo={modulo} />
+                            <div key={modulo.chave}>
+                                <ItemModulo modulo={modulo} />
+                                {modulo.ativo && modulo.submodulos?.length > 0 && <Submodulos submodulos={modulo.submodulos} />}
+                            </div>
                         ))}
                     </nav>
 
@@ -179,6 +215,13 @@ export default function PortalClienteLayout({ empresa, modulos = [], titulo, chi
                             );
                         })}
                     </nav>
+                    {/* No mobile, os submódulos do módulo ativo ganham uma
+                        segunda linha — a mesma régua, compacta. */}
+                    {modulos.filter((m) => m.ativo && m.submodulos?.length > 0).map((m) => (
+                        <div key={m.chave} className="lg:hidden mt-2">
+                            <Submodulos submodulos={m.submodulos} compacto />
+                        </div>
+                    ))}
 
                     <div className="hidden lg:block mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
                         <p className="text-white text-[12px] font-semibold">Dúvidas?</p>

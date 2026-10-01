@@ -134,17 +134,37 @@ Schedule::job(new \App\Jobs\RefreshGrossBillingCacheJob)
     ->name('refresh-gross-billing-cache-d1')
     ->withoutOverlapping();
 
-// Aquece e PERSISTE o faturamento/ADS dos polos ativos (M2–M4) do mês corrente —
-// alimenta o /polos. Roda 13:00 BRT, no fim da cascata D-1 (depois do adman:sync 11:00
-// e do refresh de gross billing 12:45). de/ate null = mês corrente (default do Job).
-// Sem este agendamento o /polos zerava ao virar o dia (a chave de cache da Adman inclui
-// a data) e exigia clicar "Sincronizar" à mão; com ele + o snapshot durável, a página
-// fica sempre populada e se atualiza sozinha após o sync diário.
-Schedule::job(new \App\Jobs\SyncPolosFaturamentoJob)
+// Aquece e PERSISTE o faturamento/ADS dos polos M1–M4 do mês corrente — alimenta o Painel
+// Polos e o /polos. Roda 13:00 BRT, no fim da cascata D-1 (depois do adman:sync 11:00 e do
+// refresh de gross billing 12:45).
+//
+// É COMANDO em processo próprio, não Schedule::job (30/09/2026). Na fila, o job esperava
+// ~4h atrás dos SyncMlAcervo* na `default` (começava ~17h) e o teto de 25 min do worker
+// cortava ~130 de 262 empresas — cada uma era atualizada a cada ~2 dias. Fora da fila não
+// há teto: a varredura inteira leva ~50 min. Das 12h às 17h a `default` só chama a API do
+// ML (acervo), então a cota da Adman (~10 rpm) está livre nesse horário.
+// withoutOverlapping(180): se o processo morrer, o mutex expira em 3h, não em 24h (o default)
+// — senão a execução do dia seguinte seria pulada. O resumo de cada dia vai para o log abaixo
+// (LOG_LEVEL=error em produção esconde os Log::info do job).
+Schedule::command('polos:warm')
     ->dailyAt('13:00')
     ->timezone('America/Sao_Paulo')
     ->name('sync-polos-faturamento-d1')
-    ->withoutOverlapping();
+    ->withoutOverlapping(180)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/polos-warm.log'));
+
+// Segunda leitura do dia do status das campanhas (ADS ligado/desligado, TKT-0003) — a
+// primeira vem junto com o polos:warm das 13:00. Uma chamada leve por empresa no ritmo de
+// ~10 rpm (~30 min). Usa a MESMA trava do sync de faturamento: se ele ainda estiver rodando,
+// esta pula. 17:30 fica fora da cascata da Adman (11:00–13:50).
+Schedule::command('polos:ads-status')
+    ->dailyAt('17:30')
+    ->timezone('America/Sao_Paulo')
+    ->name('polos-ads-status-tarde')
+    ->withoutOverlapping(120)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/polos-warm.log'));
 
 // Congela o roster de polos do mês corrente (quem está ativo e em que fase). Roda 23:40
 // BRT, tarde o bastante para pegar as mudanças de fase do dia — inclusive a cascata que o
@@ -490,4 +510,12 @@ Schedule::command('clicksign:alertar-presos')
 Schedule::command('clicksign:verificar-varredura')
     ->dailyAt('08:00')
     ->name('clicksign-verificar-varredura')
+    ->withoutOverlapping();
+
+// Demandas Dev — o Meet anexa gravação, transcrição e anotações do Gemini ao
+// evento alguns minutos depois do fim da reunião. A cada 30 min puxa esses links
+// das reuniões dev encerradas nos últimos 3 dias (só preenche link vazio).
+Schedule::command('demandas-dev:buscar-gravacoes')
+    ->everyThirtyMinutes()
+    ->name('demandas-dev-buscar-gravacoes')
     ->withoutOverlapping();

@@ -1,20 +1,36 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
     DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor,
     closestCorners, useSensor, useSensors,
 } from '@dnd-kit/core';
 import { CalendarDays, CheckCircle2, ChevronDown, Lock } from 'lucide-react';
-import ColunaPortal, { COLUNAS } from './ColunaPortal';
-import { ConteudoCardPortal } from './CardTarefaPortal';
+import ColunaPpa, { COLUNAS } from './ColunaPpa';
+import { ConteudoCardPpa } from './CardTarefaPpa';
 import { contarTarefas, percentual, resumoTarefas, seloPrazo } from '@/lib/ppaAgrupamento';
 import { cn } from '@/lib/utils';
 
-// ─── Um plano no Portal do Cliente ──────────────────────────────────────────
+// ─── Um plano, nas DUAS telas ───────────────────────────────────────────────
 //
 // Bloco expansível: recolhido é uma linha que responde "quanto falta e para
 // quando"; expandido é o quadro de três colunas com arraste. É o que permite
-// ao cliente ter vinte planos sem vinte quadros abertos — o problema que esta
-// tela tinha quando cada PPA se desenhava inteiro, sempre.
+// ter vinte planos sem vinte quadros abertos — o problema que esta tela tinha
+// quando cada PPA se desenhava inteiro, sempre.
+//
+// ### Um componente só para o Portal e para a lista interna (23/09/2026)
+// Nasceu em `Components/Portal/Ppa/`, servindo só o cliente, enquanto a lista
+// interna desenhava um formato próprio. Ter dois desenhos para o mesmo objeto
+// fazia a conversa entre equipe e cliente falar de telas diferentes — e todo
+// ajuste precisava ser feito duas vezes, ou divergia.
+//
+// O que o lado interno acrescenta entra por PROPRIEDADE, nunca por cópia:
+//   `meta`   — empresa, responsável, datas;
+//   `chips`  — status e visibilidade, ao lado do título;
+//   `acoes`  — editar e remover;
+//   `onAdicionarTarefa` — "adicionar tarefa" no pé de cada coluna (o cliente
+//              não cria tarefa, a equipe cria);
+//   `onAbrirTarefa` — clicar no card abre a edição da tarefa;
+//   `somenteLeitura` / `avisoLeitura` — no portal, plano encerrado vira
+//              consulta; internamente a equipe continua podendo mexer.
 //
 // ### Um DndContext POR PLANO
 // E não um para a página. Cada tarefa pertence a um `ppa_id`, e a rota que
@@ -29,19 +45,43 @@ const TOM_SELO = {
     proximo:  'border-amber-300/20 bg-amber-300/[0.07] text-amber-200/90',
 };
 
-export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMover }) {
+export default function PlanoPpa({
+    plano,
+    tarefas,
+    aberto,
+    onAlternar,
+    onMover,
+    meta = null,
+    chips = null,
+    acoes = null,
+    onAdicionarTarefa = null,
+    onAbrirTarefa = null,
+    somenteLeitura: travadoPorFora,
+    avisoLeitura = 'Plano encerrado pela nossa equipe — fica aqui para consulta.',
+    vazioTexto = 'Este plano ainda não tem tarefas. Assim que a equipe incluir as ações, elas aparecem aqui.',
+}) {
     const [arrastando, setArrastando] = useState(null);
     const [erro, setErro] = useState(false);
+
+    // Instante em que o último arraste terminou. Em alguns navegadores o
+    // soltar ainda dispara um `click` no card de origem, e ele abriria o
+    // diálogo de edição por cima do movimento que acabou de acontecer.
+    const soltouEm = useRef(0);
 
     const contagem = contarTarefas(tarefas);
     const pct = percentual(contagem);
 
-    // Plano encerrado pela equipe vira leitura — a regra que já existia. Deixar
-    // o arraste ativo convidaria o cliente a reabrir algo dado por concluído
-    // dos dois lados. Note que um plano apenas 100% feito NÃO entra aqui: ele
-    // desce para a seção de concluídos, mas continua editável, porque a equipe
-    // não o encerrou.
-    const somenteLeitura = plano.concluido;
+    // No portal, plano encerrado pela equipe vira leitura — a regra que já
+    // existia. Deixar o arraste ativo convidaria o cliente a reabrir algo dado
+    // por concluído dos dois lados. Um plano apenas 100% feito NÃO entra aqui:
+    // ele desce para a seção de concluídos, mas continua editável, porque a
+    // equipe não o encerrou.
+    //
+    // A lista interna passa `false`: quem encerrou o plano foi a equipe, e
+    // impedir a equipe de reabrir o que ela mesma fechou seria uma trava sem
+    // dono. Por isso a regra chega de fora, com o comportamento do portal como
+    // padrão.
+    const somenteLeitura = travadoPorFora ?? plano.concluido;
 
     const selo = seloPrazo(plano.prazo_dias, { encerrado: somenteLeitura });
 
@@ -54,8 +94,21 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
         useSensor(KeyboardSensor),
     );
 
+    const abrirTarefa = onAbrirTarefa
+        ? (tarefa) => { if (Date.now() - soltouEm.current > 250) onAbrirTarefa(plano, tarefa); }
+        : null;
+
+    const adicionarEm = (status) => (onAdicionarTarefa
+        ? (titulo) => onAdicionarTarefa(plano, status, titulo)
+        : null);
+
+    // Com o "adicionar" nas colunas, o plano vazio precisa MOSTRAR as colunas:
+    // é justamente ele que mais precisa do botão.
+    const mostrarQuadro = contagem.total > 0 || Boolean(onAdicionarTarefa);
+
     const aoSoltar = ({ active, over }) => {
         setArrastando(null);
+        soltouEm.current = Date.now();
         if (!over) return;
 
         const destino = over.data.current?.coluna ?? over.id;
@@ -68,19 +121,25 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
 
     return (
         <section
+            // Âncora do link de compartilhar (`/portal/ppa?plano=ID`): a tela do
+            // Portal rola até aqui. `scroll-mt` para não parar sob o cabeçalho.
+            id={`plano-${plano.id}`}
             className={cn(
-                'rounded-2xl ring-1 ring-inset transition-colors',
+                'rounded-2xl ring-1 ring-inset transition-colors scroll-mt-24',
                 aberto
                     ? 'bg-white/[0.022] ring-white/[0.07]'
                     : 'bg-white/[0.012] ring-white/[0.05] hover:ring-white/[0.11]',
             )}
         >
             {/* ═══ Cabeçalho — a linha que existe aberto ou fechado ══════════ */}
+            {/* As ações ficam FORA do <button>: botão dentro de botão é HTML
+                inválido, e o clique no lixeira abriria o plano junto. */}
+            <div className={cn('flex items-stretch', acoes && 'pr-2 sm:pr-3')}>
             <button
                 type="button"
                 onClick={onAlternar}
                 aria-expanded={aberto}
-                className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left group"
+                className="flex-1 min-w-0 flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left group"
             >
                 <ChevronDown
                     size={16}
@@ -110,6 +169,11 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                                 <CalendarDays size={10} /> {selo.texto}
                             </span>
                         )}
+
+                        {/* Selos de quem chamou. No lado interno são o status e
+                            a visibilidade no portal — informação de PLANO, que
+                            pertence ao título, e não à linha de contagem. */}
+                        {chips}
                     </div>
 
                     {/* A linha de resumo é o que substitui o quadro quando ele
@@ -125,6 +189,7 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                                 </span>
                             </>
                         )}
+                        {meta}
                     </p>
                 </div>
 
@@ -153,6 +218,11 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                 </div>
             </button>
 
+            {acoes && (
+                <div className="flex items-center gap-0.5 shrink-0 self-center">{acoes}</div>
+            )}
+            </div>
+
             {/* ═══ Quadro ═══════════════════════════════════════════════════ */}
             {aberto && (
                 <div className="px-4 sm:px-5 pb-5 space-y-4">
@@ -162,10 +232,10 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                         </p>
                     )}
 
-                    {somenteLeitura && (
+                    {somenteLeitura && avisoLeitura && (
                         <p className="flex items-center gap-1.5 text-white/35 text-[12px]">
                             <Lock size={12} />
-                            Plano encerrado pela nossa equipe — fica aqui para consulta.
+                            {avisoLeitura}
                         </p>
                     )}
 
@@ -175,10 +245,9 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                         </p>
                     )}
 
-                    {contagem.total === 0 ? (
+                    {!mostrarQuadro ? (
                         <p className="text-white/30 text-[13px] text-center py-8">
-                            Este plano ainda não tem tarefas. Assim que a equipe incluir as ações, elas
-                            aparecem aqui.
+                            {vazioTexto}
                         </p>
                     ) : (
                         <DndContext
@@ -187,17 +256,19 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                             onDragStart={({ active }) => setArrastando(
                                 tarefas.find((t) => t.id === active.id) ?? null,
                             )}
-                            onDragCancel={() => setArrastando(null)}
+                            onDragCancel={() => { setArrastando(null); soltouEm.current = Date.now(); }}
                             onDragEnd={aoSoltar}
                         >
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 {COLUNAS.map((coluna) => (
-                                    <ColunaPortal
+                                    <ColunaPpa
                                         key={coluna.chave}
                                         coluna={coluna}
                                         tarefas={tarefas.filter((t) => t.status === coluna.chave)}
                                         somenteLeitura={somenteLeitura}
                                         arrastandoAlgo={Boolean(arrastando)}
+                                        onAbrirTarefa={abrirTarefa}
+                                        onAdicionar={adicionarEm(coluna.chave)}
                                     />
                                 ))}
                             </div>
@@ -207,7 +278,7 @@ export default function PlanoPortal({ plano, tarefas, aberto, onAlternar, onMove
                                 move — e some no instante em que se solta. */}
                             <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
                                 {arrastando && (
-                                    <ConteudoCardPortal tarefa={arrastando} arrastando />
+                                    <ConteudoCardPpa tarefa={arrastando} arrastando />
                                 )}
                             </DragOverlay>
                         </DndContext>

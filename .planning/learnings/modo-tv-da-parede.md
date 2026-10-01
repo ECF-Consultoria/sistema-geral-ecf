@@ -125,3 +125,19 @@ tem uma análise da barra da `LinhaPolo` sendo comida por `auto-rows-fr` + `over
 **zera a contribuição de `min-content`**, então `minmax(min-content,1fr)` só funciona se o
 `overflow-hidden` sair da raiz da linha. Aquela branch ficou 26 commits atrás e a tela foi
 reescrita em `main` por outra sessão; o diagnóstico segue válido, o patch não.
+
+## 10. Overlay de TV DENTRO do AppLayout herda os avisos flutuantes — ligue o sinal.
+
+30/09: o dev concluía um ticket e o cartão "ticket respondido" (`AvisoTicketRespondido`,
+pilha `fixed bottom-5 right-5 z-50` do `AppLayout`, junto com o toast de flash) aparecia
+**por cima do Modo TV do Painel Polos**, na parede — onde ninguém está para fechar.
+
+Por que só ali: os Modos TV do Dashboard, do Dashboard MLB e de Publicações trocam a página
+inteira e **saem do `AppLayout`** (`if (tvMode) return …` antes do layout / `TvShell`). O do
+Painel Polos é um overlay renderizado **dentro** dele, porque o estado da tela mora no Painel.
+
+Regra: todo Modo TV que ficar dentro do `AppLayout` chama `useAnunciarModoTv(ativo)`
+(`hooks/useModoTv.js`); o layout lê `useModoTvLigado()` e nem monta a pilha. O aviso **não é
+marcado como lido** — segue no sino e aparece no computador de quem abriu o ticket.
+`tests/js/modoTv.test.js` trava os dois lados (o sinal no Polos e os outros três fora do layout).
+Aviso flutuante novo no layout vai para DENTRO da pilha condicionada, não ao lado dela.

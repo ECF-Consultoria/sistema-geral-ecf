@@ -170,78 +170,11 @@ function LinkAppEcf({ url }) {
 }
 
 // ─── Card de um passo (1 por `chave`, nunca por onboarding_passo) ───────────
-
-const PAPEIS_CONTATO = [
-    ['ponto_de_contato',    'Ponto de contato',         'Quem acionamos no dia a dia.'],
-    ['participante_reuniao', 'Participantes das reuniões', 'Quem recebe o convite dos encontros.'],
-];
-
-/**
- * Contatos do cliente, no portal (14/09).
- *
- * ### Por que existe, se os passos saíram
- * `ponto_contato_definido` e `participantes_reuniao_cadastrados` deixaram de
- * ser itens do portal na mesma decisão — são cadastro INTERNO, não tarefa que
- * se cobra do cliente numa lista. Mas o negócio pediu os CONTATOS no portal, e
- * as duas coisas não se contradizem: o que saiu foi a cobrança em forma de
- * checklist; o que entra é o bloco onde a informação vive e é conferida junto
- * com o cliente na reunião.
- *
- * Escrita é da equipe, leitura é dos dois — mesma régua dos outros blocos. O
- * endpoint é o `onboarding.pessoas` que já existia e já funcionava nos dois
- * modos; nada de rota nova.
- *
- * Sem ninguém cadastrado e sem ser equipe, o bloco não aparece: uma lista vazia
- * no portal do cliente não informa nada e ainda parece defeito.
- */
-function BlocoContatosPortal({ pessoas, token, ehEquipe }) {
-    const temAlguem = PAPEIS_CONTATO.some(([papel]) => (pessoas?.[papel] ?? []).length > 0);
-
-    if (! ehEquipe && ! temAlguem) return null;
-
-    return (
-        <section className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4">
-            <h2 className="text-white font-display font-bold text-[15px]">Contatos</h2>
-
-            {PAPEIS_CONTATO.map(([papel, rotulo, ajuda]) => {
-                const doPapel = pessoas?.[papel] ?? [];
-
-                if (! ehEquipe && doPapel.length === 0) return null;
-
-                return (
-                    <div key={papel} className="space-y-1.5">
-                        <div>
-                            <p className="text-white/70 text-[13px] font-semibold">{rotulo}</p>
-                            <p className="text-white/35 text-[12px]">{ajuda}</p>
-                        </div>
-
-                        {ehEquipe ? (
-                            <PessoasDoCliente
-                                token={token}
-                                papel={papel}
-                                pessoas={doPapel}
-                                // O ponto de contato entra também como
-                                // participante: sugerir quem já está cadastrado
-                                // evita redigitar os mesmos dados.
-                                sugestoes={papel === 'participante_reuniao' ? (pessoas?.ponto_de_contato ?? []) : []}
-                            />
-                        ) : (
-                            <ul className="space-y-1">
-                                {doPapel.map((pessoa) => (
-                                    <li key={pessoa.id} className="flex flex-wrap items-center gap-2 text-[13px]">
-                                        <span className="text-white/85">{pessoa.nome}</span>
-                                        {pessoa.funcao && <span className="text-white/35 text-[12px]">{pessoa.funcao}</span>}
-                                        {pessoa.email && <span className="text-white/55 text-[12px]">{pessoa.email}</span>}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                );
-            })}
-        </section>
-    );
-}
+//
+// O bloco "Contatos" (ponto de contato + participantes das reuniões) saiu do
+// portal em 23/09/2026 a pedido do negócio: "não precisamos mais disso". Os
+// contatos continuam cadastrados e editáveis na ficha interna do onboarding —
+// é de lá que o convite da reunião tira os convidados.
 
 const CAMPOS_ANOTACAO = [
     ['pontos_atencao',  'Pontos de atenção'],
@@ -249,10 +182,14 @@ const CAMPOS_ANOTACAO = [
     ['proximos_passos', 'Próximos passos'],
 ];
 
+// As três perspectivas do investimento (23/09/2026). As COLUNAS não mudaram de
+// nome — só o que a tela pergunta: `investimento_mensal_previsto` passou a ser
+// o objetivo de investimento, e `investimento_publicidade`, o que o cliente já
+// investiu nos últimos 90 dias. Espelho de `Painel/BlocoInvestimento.jsx`.
 const CAMPOS_INVESTIMENTO = [
     ['investimento_disponivel',      'Disponível para investir'],
-    ['investimento_mensal_previsto', 'Previsto por mês'],
-    ['investimento_publicidade',     'Em publicidade'],
+    ['investimento_mensal_previsto', 'Objetivo de investimento'],
+    ['investimento_publicidade',     'Investido nos últimos 90 dias'],
 ];
 
 /**
@@ -418,118 +355,71 @@ function BlocoInvestimentoPortal({ bloco, token, ehEquipe }) {
     );
 }
 
-const RESPOSTA_ROTULO = {
-    sim:      'Sim',
-    nao:      'Não',
-    pendente: 'Pendente',
-};
+/**
+ * Grava a resposta de um item conduzido na reunião, pelo portal.
+ *
+ * Nunca manda `observacoes`: o servidor entende a ausência da chave como
+ * "mantenha a que já existe". A observação saiu da tela do portal em
+ * 23/09/2026, mas continua viva na ficha interna — mandar `null` daqui a
+ * apagaria calada a cada check.
+ */
+function responderConfirmacao(token, chave, resposta, onFinish) {
+    router.post(
+        rotaDoPortal('onboarding.confirmacao', token),
+        { chave, resposta },
+        { preserveScroll: true, onFinish },
+    );
+}
 
 /**
- * Item CONDUZIDO na reunião — fica registrado com resposta e observação.
+ * Item CONDUZIDO na reunião (os "explicados", 04 a 08 da lista) — só um check.
  *
- * ### Quem registra
+ * Até 23/09/2026 era observação + Sim / Não / Pendente. O negócio pediu "manter
+ * ali apenas um check": marcar grava "Sim" (a única resposta que fecha o item,
+ * ver `ConfirmacaoResolver`), e desmarcar — no rodapé de concluído do card —
+ * devolve a "Pendente". "Não" e a observação continuam existindo na ficha
+ * interna, para quem precisar registrar o porquê.
+ *
+ * ### Quem marca
  * Só a equipe da ECF, autenticada. Estes itens são `dono=interno`: o cliente
- * participa da conversa e vê o que ficou registrado, mas quem grava somos nós.
- * A régua real está no servidor (`responderConfirmacaoPorChave()` recusa
- * qualquer outro ator); aqui a tela só não oferece o que seria recusado.
- *
- * Sem resposta e sem ser equipe, o card não mostra formulário nenhum em vez de
- * um "nada a fazer" — o item existe para ser conversado, e dizer ao cliente
- * que não há nada ali seria a leitura errada.
+ * participa da conversa e vê o item fechar, mas quem grava somos nós. A régua
+ * real está no servidor (`responderConfirmacaoPorChave()` recusa qualquer
+ * outro ator); aqui a tela só não oferece o que seria recusado.
  */
 function BlocoConfirmacao({ passo, token, ehEquipe }) {
-    const registrada = passo.confirmacao;
-    const [obs, setObs] = useState(registrada?.observacoes ?? '');
     const [salvando, setSalvando] = useState(false);
 
-    // Resincroniza o campo com o que foi GRAVADO. `useState` só lê o valor
-    // inicial uma vez, e as props do Inertia trocam a cada resposta salva —
-    // sem isto o campo seguiria mostrando o texto antigo depois de alguém
-    // responder o mesmo item de novo, ou o texto de outra sessão da equipe.
-    // `respondido_em` é o gatilho por ser o que muda a cada gravação.
-    useEffect(() => {
-        setObs(registrada?.observacoes ?? '');
-    }, [registrada?.respondido_em, registrada?.observacoes]);
-
-    function responder(resposta) {
-        if (salvando) return;
-        setSalvando(true);
-        router.post(
-            rotaDoPortal('onboarding.confirmacao', token),
-            { chave: passo.chave, resposta, observacoes: obs.trim() || null },
-            { preserveScroll: true, onFinish: () => setSalvando(false) },
+    if (! ehEquipe) {
+        return (
+            <p className="text-white/40 text-[12px]">
+                Vamos tratar disto na reunião, junto com você.
+            </p>
         );
     }
 
+    function marcar() {
+        if (salvando) return;
+        setSalvando(true);
+        responderConfirmacao(token, passo.chave, 'sim', () => setSalvando(false));
+    }
+
     return (
-        <div className="w-full space-y-2">
-            {/* O que ficou REGISTRADO, para os dois lados. Antes isto só
-                aparecia para o cliente: a equipe via a observação apenas dentro
-                do campo de edição, o que é ambíguo — texto em textarea parece
-                rascunho não salvo, não registro gravado. */}
-            {registrada && (
-                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
-                    <p className="text-white/50 text-[12px]">
-                        <span className="text-white/85 font-semibold">
-                            {RESPOSTA_ROTULO[registrada.resposta] ?? registrada.resposta}
-                        </span>
-                        {registrada.respondido_por && ` · ${registrada.respondido_por}`}
-                        {registrada.respondido_em && ` · ${new Date(registrada.respondido_em).toLocaleDateString('pt-BR', {
-                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                        })}`}
-                    </p>
-
-                    {registrada.observacoes ? (
-                        <p className="text-white/60 text-[12px] leading-relaxed whitespace-pre-wrap">
-                            {registrada.observacoes}
-                        </p>
-                    ) : (
-                        <p className="text-white/25 text-[12px] italic">Sem observação.</p>
-                    )}
-                </div>
-            )}
-
-            {! registrada && ! ehEquipe && (
-                <p className="text-white/40 text-[12px]">
-                    Vamos tratar disto na reunião, junto com você.
-                </p>
-            )}
-
-            {ehEquipe && (
-                <>
-                    <textarea
-                        value={obs}
-                        onChange={(e) => setObs(e.target.value)}
-                        rows={3}
-                        placeholder={registrada ? 'Editar a observação' : 'Observação da conversa (opcional)'}
-                        className={cn(
-                            'w-full rounded-lg border border-white/[0.08] bg-white/[0.03]',
-                            'px-3 py-2 text-[12px] text-white/80 leading-relaxed resize-y',
-                            'placeholder:text-white/25',
-                        )}
-                    />
-
-                    <div className="flex flex-wrap gap-2">
-                        {['sim', 'nao', 'pendente'].map((valor) => (
-                            <button
-                                key={valor}
-                                type="button"
-                                disabled={salvando}
-                                onClick={() => responder(valor)}
-                                className={cn(
-                                    'rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors disabled:opacity-40',
-                                    registrada?.resposta === valor
-                                        ? 'bg-ecf-yellow text-ecf-bg'
-                                        : 'border border-white/[0.10] bg-white/[0.03] text-white/70 hover:text-white',
-                                )}
-                            >
-                                {RESPOSTA_ROTULO[valor]}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
+        <label className="flex items-center gap-2.5 group w-fit cursor-pointer">
+            <div
+                onClick={marcar}
+                role="checkbox"
+                aria-checked="false"
+                aria-label={`Marcar "${passo.titulo}" como feito`}
+                className={cn(
+                    'w-5 h-5 rounded border-2 border-white/20 flex items-center justify-center transition-all',
+                    'group-hover:border-emerald-400/50',
+                    salvando && 'opacity-40',
+                )}
+            />
+            <span className="text-[13px] font-medium text-white/40 group-hover:text-white/60 transition-colors">
+                {salvando ? 'Marcando…' : 'Marcar como feito'}
+            </span>
+        </label>
     );
 }
 
@@ -558,6 +448,16 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
             preserveScroll: true,
             onFinish: () => setMarcando(false),
         });
+    }
+
+    // O item de reunião fecha pelo resolver, não por status: desmarcar é
+    // devolver a resposta a "Pendente". Só a equipe — mesma régua do marcar.
+    const podeDesmarcarConfirmacao = passo.acao === 'confirmar' && ehEquipe;
+
+    function desmarcarConfirmacao() {
+        if (marcando) return;
+        setMarcando(true);
+        responderConfirmacao(token, passo.chave, 'pendente', () => setMarcando(false));
     }
 
     // Sai do portal para o OAuth do Mercado Livre. Navegação de página inteira
@@ -657,9 +557,9 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
                     {concluido && (
                         <div className="mt-2 flex items-center gap-3 flex-wrap">
                             <p className="text-emerald-300/70 text-[11px]">Concluído.</p>
-                            {passo.pode_desmarcar && (
+                            {(passo.pode_desmarcar || podeDesmarcarConfirmacao) && (
                                 <span
-                                    onClick={desmarcar}
+                                    onClick={podeDesmarcarConfirmacao ? desmarcarConfirmacao : desmarcar}
                                     className="text-white/40 hover:text-white text-[11px] cursor-pointer select-none underline underline-offset-2"
                                 >
                                     {marcando ? 'Desmarcando…' : 'Desmarcar'}
@@ -802,25 +702,214 @@ function PassoCard({ passo, token, num, conectandoChave, setConectandoChave, onP
 
 // ─── Reunião de onboarding ────────────────────────────────────────────────
 // Não é um passo: `agendar_reuniao_onboarding` é `dono=interno` e nunca
-// apareceria na lista do cliente. Este bloco existe para ele VER a data que
-// NÓS marcamos.
+// apareceria na lista do cliente. Este bloco existe para ele VER a reunião.
 //
-// O cliente NÃO pede reunião. Existia aqui um botão "Solicitar reunião" e um
-// estado "Recebemos seu pedido" — o negócio derrubou os dois em 19/08: quem
-// define a data somos nós, e a partir dela cobramos a presença do cliente.
-// Pedir invertia o sentido do processo, e deixava a empresa parada esperando
-// um clique que muitas vezes nunca vinha.
+// QUEM AGENDA É A EQUIPE. Existia aqui um "Solicitar reunião" (derrubado em
+// 19/08) e, por algumas horas de 23/09/2026, um "Escolher horário" para o
+// CLIENTE — recusado: "o cliente não tem que agendar nada pra gente, a gente
+// que agenda com eles". O que ficou:
+//  - CLIENTE: "estamos definindo a data" ou, marcada, TUDO sobre a reunião —
+//    data, horário, Google Meet, convite no e-mail;
+//  - EQUIPE (operando o portal junto com o cliente): o formulário de agendar
+//    aparece de primeira, no lugar do "estamos definindo". Marcar por aqui é o
+//    mesmo "Agendar" da ficha do onboarding — se já foi marcado lá, aqui só
+//    aparece a reunião (e o "Remarcar").
 
-function formatarQuando(iso) {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return d.toLocaleString('pt-BR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-    });
+const FUSO_PORTAL = 'America/Sao_Paulo';
+
+// O fuso vai explícito em toda formatação: o horário é o de Brasília, que é o
+// da equipe, mesmo que o navegador do cliente esteja em outro.
+const dataPorExtenso = (iso) => primeiraMaiuscula(new Date(iso).toLocaleDateString('pt-BR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: FUSO_PORTAL,
+}));
+const horaDe = (iso) => new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit', minute: '2-digit', timeZone: FUSO_PORTAL,
+});
+const diaDoHorario = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: FUSO_PORTAL });
+const rotuloDoDia = (iso) => new Date(iso).toLocaleDateString('pt-BR', {
+    weekday: 'short', day: '2-digit', month: '2-digit', timeZone: FUSO_PORTAL,
+});
+const primeiraMaiuscula = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
+const DURACOES = [30, 45, 60, 90];
+
+/**
+ * O formulário da EQUIPE. Data e hora livres — as sugestões (horários em que
+ * analista e estrategista estão livres, lidos do Google) só preenchem os
+ * campos. Quem marca decide.
+ */
+function AgendarPelaEquipe({ reuniao, token, aoFechar, remarcando }) {
+    const organizadores = reuniao.organizadores ?? [];
+    const padrao = organizadores.find((o) => o.conectado) ?? organizadores[0];
+
+    const [organizadorId, setOrganizadorId] = useState(padrao?.id ?? '');
+    const [data, setData] = useState('');
+    const [hora, setHora] = useState('');
+    const [duracao, setDuracao] = useState(60);
+    const [sugestoes, setSugestoes] = useState({ carregando: true, horarios: [], erro: null });
+    const [dia, setDia] = useState(null);
+    const [erro, setErro] = useState(null);
+    const [marcando, setMarcando] = useState(false);
+
+    useEffect(() => {
+        window.axios
+            .get(rotaDoPortal('onboarding.horarios', token), { params: { onboarding_id: reuniao.onboarding_id } })
+            .then(({ data: r }) => {
+                setSugestoes({ carregando: false, horarios: r.horarios ?? [], erro: r.erro ?? null });
+                setDia((r.horarios ?? []).length ? diaDoHorario(r.horarios[0]) : null);
+            })
+            .catch(() => setSugestoes({ carregando: false, horarios: [], erro: 'Não deu para ler as agendas agora — escolha a data e a hora à mão.' }));
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const usarSugestao = (iso) => {
+        setData(diaDoHorario(iso));
+        setHora(horaDe(iso));
+    };
+
+    const organizador = organizadores.find((o) => o.id === Number(organizadorId));
+    const podeMarcar = data && hora && organizador?.conectado && !marcando;
+
+    const marcar = () => {
+        if (!podeMarcar) return;
+        setMarcando(true);
+        setErro(null);
+        router.post(
+            rotaDoPortal('onboarding.agendar', token),
+            {
+                onboarding_id: reuniao.onboarding_id,
+                // Hora de Brasília, sem fuso no texto: o servidor a lê em
+                // America/Sao_Paulo, qualquer que seja o fuso deste navegador.
+                inicio: `${data} ${hora}`,
+                duracao,
+                organizador_id: organizador.id,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => aoFechar?.(),
+                onError: (erros) => setErro(erros.inicio ?? erros.duracao ?? 'Não foi possível marcar. Tente de novo.'),
+                onFinish: () => setMarcando(false),
+            },
+        );
+    };
+
+    const dias = [...new Set(sugestoes.horarios.map(diaDoHorario))];
+    const doDia = sugestoes.horarios.filter((h) => diaDoHorario(h) === dia);
+    const campo = 'h-9 w-full rounded-lg border border-white/[0.10] bg-white/[0.03] px-2.5 text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40';
+
+    return (
+        <div className="mt-3 space-y-3">
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-sky-300/80">
+                Equipe ECF · {remarcando ? 'remarcar a reunião' : 'agendar a reunião'}
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <label className="col-span-2 sm:col-span-1 space-y-1">
+                    <span className="block text-white/45 text-[11px]">Data</span>
+                    <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={campo} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-white/45 text-[11px]">Hora</span>
+                    <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={campo} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-white/45 text-[11px]">Duração</span>
+                    <select value={duracao} onChange={(e) => setDuracao(Number(e.target.value))} className={campo}>
+                        {DURACOES.map((d) => <option key={d} value={d} className="bg-[#0f1116]">{d} min</option>)}
+                    </select>
+                </label>
+                <label className="col-span-2 sm:col-span-1 space-y-1">
+                    <span className="block text-white/45 text-[11px]">Agenda de</span>
+                    <select value={organizadorId} onChange={(e) => setOrganizadorId(e.target.value)} className={campo}>
+                        {organizadores.map((o) => (
+                            <option key={o.id} value={o.id} disabled={!o.conectado} className="bg-[#0f1116]">
+                                {o.nome} ({o.papel}){o.conectado ? '' : ' — sem Google'}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            </div>
+
+            {/* Atalho, não trava: preenche data e hora. */}
+            <div className="space-y-1.5">
+                <p className="text-white/40 text-[11px]">Horários livres do analista e do estrategista</p>
+                {sugestoes.carregando ? (
+                    <p className="inline-flex items-center gap-1.5 text-white/40 text-[12px]">
+                        <RefreshCw size={12} className="animate-spin" /> Lendo as agendas…
+                    </p>
+                ) : sugestoes.erro ? (
+                    <p className="text-white/35 text-[12px]">{sugestoes.erro}</p>
+                ) : dias.length === 0 ? (
+                    <p className="text-white/35 text-[12px]">Nenhum horário livre em comum nos próximos dias.</p>
+                ) : (
+                    <>
+                        <div className="flex gap-1.5 overflow-x-auto pb-1">
+                            {dias.map((d) => (
+                                <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => setDia(d)}
+                                    className={cn(
+                                        'shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-medium capitalize',
+                                        d === dia ? 'bg-white/[0.12] text-white' : 'border border-white/[0.08] text-white/55 hover:text-white',
+                                    )}
+                                >
+                                    {rotuloDoDia(sugestoes.horarios.find((h) => diaDoHorario(h) === d))}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {doDia.map((h) => {
+                                const escolhido = data === diaDoHorario(h) && hora === horaDe(h);
+                                return (
+                                    <button
+                                        key={h}
+                                        type="button"
+                                        onClick={() => usarSugestao(h)}
+                                        className={cn(
+                                            'rounded-lg px-2.5 py-1 text-[12px] font-semibold tabular-nums',
+                                            escolhido ? 'bg-emerald-400 text-ecf-bg' : 'border border-white/[0.10] text-white/70 hover:border-emerald-400/50',
+                                        )}
+                                    >
+                                        {horaDe(h)}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {erro && (
+                <p className="text-[12px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">{erro}</p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    onClick={marcar}
+                    disabled={!podeMarcar}
+                    className="px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold disabled:opacity-40"
+                >
+                    {marcando ? 'Marcando…' : remarcando ? 'Remarcar e avisar o cliente' : 'Agendar e enviar convite'}
+                </button>
+                {aoFechar && (
+                    <button type="button" onClick={aoFechar} className="px-3 py-1.5 text-[12px] text-white/50 hover:text-white/80">
+                        Cancelar
+                    </button>
+                )}
+            </div>
+
+            <p className="text-white/30 text-[11px]">
+                Horário de Brasília. Sai da agenda escolhida, com Google Meet, e o convite vai por e-mail aos contatos do
+                cliente e à equipe do onboarding.
+            </p>
+        </div>
+    );
 }
 
-function ReuniaoCard({ reuniao, varios }) {
+function ReuniaoCard({ reuniao, varios, token, ehEquipe }) {
+    const [remarcando, setRemarcando] = useState(false);
+
     if (reuniao.realizada) {
         return (
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
@@ -837,35 +926,76 @@ function ReuniaoCard({ reuniao, varios }) {
         );
     }
 
-    const quando = formatarQuando(reuniao.agendada_para);
+    const marcada = Boolean(reuniao.agendada_para);
+    const podeAgendar = ehEquipe && reuniao.pode_agendar;
 
     return (
-        <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
+        <div className={cn('rounded-2xl border p-4', marcada ? 'border-ecf-yellow/20 bg-ecf-yellow/[0.04]' : 'border-white/[0.10] bg-white/[0.03]')}>
             <div className="flex items-start gap-3">
-                <CalendarDays size={16} className="shrink-0 mt-0.5 text-white/40" />
+                <CalendarDays size={16} className={cn('shrink-0 mt-0.5', marcada ? 'text-ecf-yellow' : 'text-white/40')} />
                 <div className="min-w-0 flex-1">
-                    {/* Sem título repetido: o `<h2>` da seção logo acima já
-                        diz "Reunião de onboarding", e o card o repetia — a
-                        primeira coisa que o negócio apontou ao ler a tela. Com
-                        mais de um serviço o card volta a ter cabeçalho, porque
-                        aí ele precisa dizer QUAL reunião é. */}
+                    {/* Com mais de um serviço o card precisa dizer QUAL reunião é. */}
                     {varios && (
                         <h3 className="text-[14px] font-semibold text-white">{reuniao.servico}</h3>
                     )}
 
-                    {quando ? (
+                    {marcada ? (
                         <>
-                            <p className="text-ecf-yellow text-[13px] font-semibold mt-1.5">{quando}</p>
-                            <p className="text-white/40 text-[12px] mt-1">
+                            <p className="text-white/45 text-[11px] font-semibold uppercase tracking-wider mt-0.5">Reunião marcada</p>
+                            <p className="text-white text-[15px] font-semibold mt-1">{dataPorExtenso(reuniao.agendada_para)}</p>
+                            <p className="text-ecf-yellow text-[14px] font-semibold tabular-nums">
+                                {horaDe(reuniao.agendada_para)}
+                                {reuniao.termina_em ? ` às ${horaDe(reuniao.termina_em)}` : ''}
+                                <span className="text-white/40 font-normal text-[12px]"> · horário de Brasília</span>
+                            </p>
+
+                            {reuniao.link ? (
+                                <div className="mt-2.5 space-y-1.5">
+                                    <a
+                                        href={reuniao.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ecf-yellow text-ecf-bg hover:bg-ecf-yellow/90 text-[12px] font-semibold"
+                                    >
+                                        <ExternalLink size={12} />
+                                        {reuniao.plataforma === 'google_meet' ? 'Entrar pelo Google Meet' : 'Entrar na reunião'}
+                                    </a>
+                                    <p className="text-white/35 text-[11px] break-all">{reuniao.link}</p>
+                                </div>
+                            ) : (
+                                <p className="text-white/40 text-[12px] mt-2">O link da reunião chega junto com o convite.</p>
+                            )}
+
+                            {reuniao.convite_enviado && (
+                                <p className="text-white/45 text-[12px] mt-2">
+                                    O convite foi enviado para o seu e-mail — aceite para a reunião entrar na sua agenda.
+                                </p>
+                            )}
+                            <p className="text-white/40 text-[12px] mt-1.5">
                                 É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                                 Se esse horário não funcionar para você, fale com a gente pelo grupo.
                             </p>
+
+                            {podeAgendar && (
+                                remarcando ? (
+                                    <AgendarPelaEquipe reuniao={reuniao} token={token} remarcando aoFechar={() => setRemarcando(false)} />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRemarcando(true)}
+                                        className="mt-3 text-[12px] text-sky-300/80 hover:text-sky-200 underline underline-offset-2"
+                                    >
+                                        Remarcar (equipe ECF)
+                                    </button>
+                                )
+                            )}
                         </>
+                    ) : podeAgendar ? (
+                        // A equipe, conduzindo com o cliente pela tela: agenda
+                        // de primeira, no lugar do "estamos definindo".
+                        <AgendarPelaEquipe reuniao={reuniao} token={token} />
                     ) : (
-                        // Sem data ainda. Nenhum botão: não há nada para o
-                        // cliente fazer aqui, e oferecer uma ação que não é
-                        // dele foi exatamente o que se removeu.
-                        <p className="text-white/50 text-[12px] mt-1.5">
+                        <p className="text-white/50 text-[12px] mt-0.5">
                             É a conversa em que apresentamos o diagnóstico da sua conta e os próximos passos.
                             Estamos definindo a data — assim que ela estiver marcada, aparece aqui.
                         </p>
@@ -1116,6 +1246,8 @@ export default function Publico({
                                         key={reuniao.onboarding_id}
                                         reuniao={reuniao}
                                         varios={reunioes.length > 1}
+                                        token={token}
+                                        ehEquipe={ehEquipe}
                                     />
                                 ))}
                             </section>
@@ -1163,8 +1295,6 @@ export default function Publico({
                             que diziam "como está a conta" (Métricas da conta e
                             a ficha de mapeamento). */}
                         <FotografiaDaConta fotografia={fotografia} token={token} ehEquipe={ehEquipe} />
-
-                        <BlocoContatosPortal pessoas={pessoas} token={token} ehEquipe={ehEquipe} />
 
                         {blocos_operacao.map((bloco) => (
                             <Fragment key={bloco.onboarding_id}>

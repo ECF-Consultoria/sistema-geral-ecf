@@ -168,11 +168,15 @@ class PpaListaPorAtencaoTest extends TestCase
         $resposta->assertOk();
         $linha = $resposta->viewData('page')['props']['ppas']['data'][0];
 
-        $this->assertSame(4, $linha['tasks_count']);
-        $this->assertSame(1, $linha['tasks_done']);
-        $this->assertSame(2, $linha['tasks_doing']);
+        // As chaves são as MESMAS do payload do cliente: a lista interna
+        // desenha os mesmos componentes, e `PpaListaService` monta em cima de
+        // `PortalPpaService::visao()`. Chave que diverge aqui é componente que
+        // quebra lá.
+        $this->assertSame(4, $linha['total']);
+        $this->assertSame(1, $linha['feitas']);
+        $this->assertSame(2, $linha['fazendo']);
         // Negativo = o prazo já passou. É o sinal do selo vermelho na linha.
-        $this->assertSame(-3, $linha['due_date_dias']);
+        $this->assertSame(-3, $linha['prazo_dias']);
     }
 
     #[Test]
@@ -186,8 +190,267 @@ class PpaListaPorAtencaoTest extends TestCase
 
         // A data continua lá para consulta; o que some é a contagem de atraso,
         // que é o que pinta o selo. Plano fechado não cobra ninguém.
-        $this->assertNotNull($linha['due_date']);
-        $this->assertNull($linha['due_date_dias']);
+        $this->assertNotNull($linha['prazo']);
+        $this->assertNull($linha['prazo_dias']);
+    }
+
+    // ─── Os filtros da lista ──────────────────────────────────────
+
+    /**
+     * O filtro é o QUARTO lugar em que a régua de agrupamento do PPA existe
+     * (os outros: `lib/ppaAgrupamento.js`, `scopeOrdenadoPorAtencao` e
+     * `PortalPpaService::visao`). Se ele discordar dos outros, a tela recebe
+     * planos que a seção escolhida não desenha: lista vazia com o contador
+     * dizendo que há sete. Estes três casos são os mesmos do teste de ordem
+     * lá em cima, de propósito — é a mesma pergunta, feita no WHERE.
+     */
+    #[Test]
+    public function o_filtro_de_situacao_parte_os_planos_como_a_regua_de_agrupamento(): void
+    {
+        $this->ppa('Encerrado pela equipe', ['todo', 'doing'], status: 'completed');
+        $this->ppa('Tudo feito sem encerrar', ['done', 'done']);
+        $this->ppa('Tem tarefa andando', ['todo', 'doing']);
+        $this->ppa('Só a fazer', ['todo', 'todo']);
+        $this->ppa('Ainda vazio');
+
+        $porSituacao = fn (string $situacao) => Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->daSituacao($situacao)
+            ->orderBy('title')
+            ->pluck('title')
+            ->all();
+
+        $this->assertSame(['Tem tarefa andando'], $porSituacao(Ppa::GRUPO_ANDAMENTO));
+
+        // Plano SEM tarefa nenhuma fica com o que não começou, nunca em
+        // concluído — "nenhuma tarefa pendente" é verdade por vacuidade nele.
+        $this->assertSame(['Ainda vazio', 'Só a fazer'], $porSituacao(Ppa::GRUPO_FAZER));
+
+        // Os dois jeitos de acabar: o encerrado pela equipe e o 100% feito que
+        // ninguém voltou para marcar.
+        $this->assertSame(['Encerrado pela equipe', 'Tudo feito sem encerrar'], $porSituacao(Ppa::GRUPO_CONCLUIDO));
+    }
+
+    #[Test]
+    public function os_tres_grupos_cobrem_todos_os_planos_e_nenhum_cai_em_dois(): void
+    {
+        foreach ([
+            ['Encerrado', ['doing'], 'completed'],
+            ['Cem por cento', ['done'], 'sent'],
+            ['Andando', ['doing'], 'sent'],
+            ['Parado', ['todo'], 'sent'],
+            ['Vazio', [], 'sent'],
+            ['Meio a meio', ['done', 'todo'], 'sent'],
+        ] as [$titulo, $tarefas, $status]) {
+            $this->ppa($titulo, $tarefas, status: $status);
+        }
+
+        $ids = [];
+        foreach ([Ppa::GRUPO_ANDAMENTO, Ppa::GRUPO_FAZER, Ppa::GRUPO_CONCLUIDO] as $grupo) {
+            $ids = array_merge($ids, Ppa::query()->doEscopo(Ppa::ESCOPO_GERAL)->daSituacao($grupo)->pluck('id')->all());
+        }
+
+        $todos = Ppa::query()->doEscopo(Ppa::ESCOPO_GERAL)->pluck('id')->all();
+
+        // Partição: soma igual ao total prova que ninguém caiu em dois grupos;
+        // conjuntos iguais provam que ninguém ficou de fora dos três. Um filtro
+        // que perdesse um plano sumiria com ele da tela sem erro nenhum.
+        $this->assertCount(count($todos), $ids);
+        $this->assertEqualsCanonicalizing($todos, $ids);
+    }
+
+    #[Test]
+    public function vencido_atravessa_os_grupos_e_deixa_de_fora_o_que_a_equipe_encerrou(): void
+    {
+        $this->ppa('Andando e atrasado', ['doing'], prazo: now()->subDays(2)->toDateString());
+        $this->ppa('Nem começou e atrasado', ['todo'], prazo: now()->subDay()->toDateString());
+        $this->ppa('Vence hoje', ['doing'], prazo: now()->toDateString());
+        $this->ppa('Vence amanhã', ['doing'], prazo: now()->addDay()->toDateString());
+        $this->ppa('Sem prazo', ['doing']);
+        $this->ppa('Fechado com prazo velho', ['done'], status: 'completed', prazo: now()->subDays(40)->toDateString());
+
+        $vencidos = Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->daSituacao(Ppa::SITUACAO_VENCIDO)
+            ->orderBy('title')
+            ->pluck('title')
+            ->all();
+
+        // Um andando e um sem começar: "vencido" recorta os dois grupos, e por
+        // isso não pode ser um grupo. "Vence hoje" fica de fora — a mesma
+        // fronteira do selo da tela, onde dia 0 é "Vence hoje" e não "Atrasado".
+        // O encerrado também fica: atraso de trabalho fechado não cobra ninguém,
+        // que é o que `diasAteOPrazo()` já dizia devolvendo null.
+        $this->assertSame(['Andando e atrasado', 'Nem começou e atrasado'], $vencidos);
+    }
+
+    /**
+     * O intervalo de datas exatas foi RECUSADO em revisão ("não data exata,
+     * mas do mais recente atualizado, ou dos mais antigos"). Virou ordenação.
+     *
+     * O agrupamento continua sendo o critério principal: trocar a ordem não
+     * pode desmanchar as seções, que são o que a tela desenha. Por isso os
+     * planos abaixo estão todos no MESMO grupo — é dentro dele que a escolha
+     * vale.
+     */
+    #[Test]
+    public function a_ordem_por_atualizacao_vale_dentro_do_grupo_nos_dois_sentidos(): void
+    {
+        // A TAREFA tambem precisa ser envelhecida: ela nasce com `updated_at`
+        // de agora, e como a regua e "a mais recente entre plano e tarefa",
+        // tres tarefas novas empatariam os tres planos no mesmo instante.
+        $em = function (string $titulo, string $quando) {
+            $ppa = $this->ppa($titulo, ['doing']);
+            $ppa->forceFill(['updated_at' => $quando])->saveQuietly();
+            $ppa->tasks()->first()->forceFill(['updated_at' => $quando])->saveQuietly();
+        };
+
+        $em('Mexido em agosto',  '2026-08-01 10:00:00');
+        $em('Mexido ontem',      '2026-09-21 10:00:00');
+        $em('Mexido em julho',   '2026-07-01 10:00:00');
+
+        $ordenado = fn (?string $ordem) => Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->comContagemDeTarefas()
+            ->ordenadoPorAtencao($ordem)
+            ->pluck('title')
+            ->all();
+
+        $this->assertSame(['Mexido ontem', 'Mexido em agosto', 'Mexido em julho'], $ordenado(Ppa::ORDEM_RECENTE));
+        $this->assertSame(['Mexido em julho', 'Mexido em agosto', 'Mexido ontem'], $ordenado(Ppa::ORDEM_ANTIGO));
+    }
+
+    #[Test]
+    public function a_ordem_escolhida_nao_desmancha_as_secoes(): void
+    {
+        // O concluído é o MAIS recentemente mexido de todos. Mesmo assim ele
+        // tem de continuar por último: o grupo manda, a ordem só desempata.
+        $concluido = $this->ppa('Concluído e mexido agora', ['done'], status: 'completed');
+        $concluido->forceFill(['updated_at' => now()])->saveQuietly();
+
+        $andando = $this->ppa('Andando e mexido em julho', ['doing']);
+        $andando->forceFill(['updated_at' => '2026-07-01 10:00:00'])->saveQuietly();
+        $andando->tasks()->first()->forceFill(['updated_at' => '2026-07-01 10:00:00'])->saveQuietly();
+
+        $ordem = Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->comContagemDeTarefas()
+            ->ordenadoPorAtencao(Ppa::ORDEM_RECENTE)
+            ->pluck('title')
+            ->all();
+
+        $this->assertSame(['Andando e mexido em julho', 'Concluído e mexido agora'], $ordem);
+    }
+
+    #[Test]
+    public function a_ordem_por_atualizacao_enxerga_mexida_em_TAREFA(): void
+    {
+        $velho = $this->ppa('Plano velho, tarefa nova', ['doing']);
+        $velho->forceFill(['updated_at' => '2026-07-01 10:00:00'])->saveQuietly();
+        $velho->tasks()->first()->forceFill(['updated_at' => '2026-09-21 18:00:00'])->saveQuietly();
+
+        $novo = $this->ppa('Plano novo, tarefa velha', ['doing']);
+        $novo->forceFill(['updated_at' => '2026-08-15 10:00:00'])->saveQuietly();
+        $novo->tasks()->first()->forceFill(['updated_at' => '2026-07-02 10:00:00'])->saveQuietly();
+
+        $ordem = Ppa::query()
+            ->doEscopo(Ppa::ESCOPO_GERAL)
+            ->comContagemDeTarefas()
+            ->ordenadoPorAtencao(Ppa::ORDEM_RECENTE)
+            ->pluck('title')
+            ->all();
+
+        // Mover um card é trabalho no plano. Se a ordem olhasse só
+        // `ppas.updated_at`, o plano com o quadro andando ficaria atrás de um
+        // que ninguém toca desde agosto.
+        $this->assertSame(['Plano velho, tarefa nova', 'Plano novo, tarefa velha'], $ordem);
+    }
+
+    #[Test]
+    public function a_lista_mostra_quando_o_plano_nasceu_e_quando_mexeram_nele_pela_ultima_vez(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Plano datado', ['todo'], mentor: $admin);
+        $ppa->forceFill(['created_at' => '2026-09-15 10:30:00', 'updated_at' => '2026-09-16 09:00:00'])->saveQuietly();
+
+        // A TAREFA foi mexida depois do plano — e é ela quem manda. Mover um
+        // card é trabalho no plano, mas grava em `ppa_tasks`: sem isso, o plano
+        // com o quadro andando todo dia apareceria parado desde a última vez
+        // que alguém trocou o título.
+        $ppa->tasks()->first()->forceFill(['updated_at' => '2026-09-21 18:40:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+        $linha = $resposta->viewData('page')['props']['ppas']['data'][0];
+
+        // Formatadas no servidor, como o prazo: data crua no JSON viraria
+        // `new Date()` no navegador, e aí o fuso de quem olha decide o dia.
+        $this->assertSame('15/09/2026', $linha['criado_em']);
+        $this->assertSame('21/09/2026', $linha['atualizado_em']);
+    }
+
+    #[Test]
+    public function plano_mexido_depois_da_ultima_tarefa_usa_a_data_dele(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Titulo trocado ontem', ['todo'], mentor: $admin);
+        $ppa->tasks()->first()->forceFill(['updated_at' => '2026-09-10 08:00:00'])->saveQuietly();
+        $ppa->forceFill(['updated_at' => '2026-09-19 15:00:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+
+        // A regra é "a mais recente das duas", não "a da tarefa sempre".
+        $this->assertSame('19/09/2026', $resposta->viewData('page')['props']['ppas']['data'][0]['atualizado_em']);
+    }
+
+    #[Test]
+    public function plano_sem_tarefa_nenhuma_cai_na_propria_data_em_vez_de_ficar_vazio(): void
+    {
+        $admin = $this->admin();
+        $ppa = $this->ppa('Ainda sem tarefa', [], mentor: $admin);
+        $ppa->forceFill(['updated_at' => '2026-09-12 11:00:00'])->saveQuietly();
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index'));
+
+        // A subconsulta devolve NULL quando não há tarefa. Sem o fallback, a
+        // coluna "Atualizado" apareceria em branco justamente nos planos recém
+        // criados — que são os que mais se olha.
+        $this->assertSame('12/09/2026', $resposta->viewData('page')['props']['ppas']['data'][0]['atualizado_em']);
+    }
+
+    #[Test]
+    public function a_lista_interna_aplica_o_filtro_da_url_e_devolve_o_que_aplicou(): void
+    {
+        $admin = $this->admin();
+        $this->ppa('Andando', ['doing'], mentor: $admin);
+        $this->ppa('Parado', ['todo'], mentor: $admin);
+
+        $resposta = $this->actingAs($admin)->get(route('ppa.index', ['situacao' => Ppa::GRUPO_ANDAMENTO]));
+        $props = $resposta->viewData('page')['props'];
+
+        // O total tem de ser o do RECORTE: ele é o que a tela mostra como
+        // "N PPA(s)" e o que decide quantas páginas existem.
+        $this->assertSame(1, $props['ppas']['total']);
+        $this->assertSame('Andando', $props['ppas']['data'][0]['titulo']);
+        $this->assertSame(Ppa::GRUPO_ANDAMENTO, $props['filtros']['situacao']);
+    }
+
+    #[Test]
+    public function filtro_estragado_na_url_abre_a_lista_inteira_em_vez_de_erro(): void
+    {
+        $admin = $this->admin();
+        $this->ppa('Único', ['doing'], mentor: $admin);
+
+        $resposta = $this->actingAs($admin)
+            ->get(route('ppa.index', ['situacao' => 'xpto', 'ordem' => 'alfabetica']));
+
+        // Link colado pela metade, filtro renomeado, bookmark velho: nada disso
+        // pode virar tela de erro — vira lista sem filtro.
+        $resposta->assertOk();
+        $this->assertSame(1, $resposta->viewData('page')['props']['ppas']['total']);
+
+        $filtros = $resposta->viewData('page')['props']['filtros'];
+        $this->assertNull($filtros['situacao']);
+        $this->assertNull($filtros['ordem']);
     }
 
     // ─── O payload do Portal do Cliente ─────────────────────────────────────
@@ -222,6 +485,13 @@ class PpaListaPorAtencaoTest extends TestCase
         // Tarefa concluída não carrega atraso: o selo vermelho no card de algo
         // já feito seria alarme sobre trabalho que acabou.
         $this->assertNull($visao['tarefas'][2]['prazo_dias']);
+
+        // A data da última mexida viaja para o cliente desde 23/09/2026: sem
+        // ela, o seletor "atualizados recentemente" da tela dele ordenaria por
+        // um critério invisível. `_iso` é o que ordena, o outro é o que escreve.
+        $this->assertNotNull($visao['atualizado_em']);
+        $this->assertNotNull($visao['atualizado_iso']);
+        $this->assertMatchesRegularExpression('/^\d{2}\/\d{2}\/\d{4}$/', $visao['atualizado_em']);
     }
 
     #[Test]

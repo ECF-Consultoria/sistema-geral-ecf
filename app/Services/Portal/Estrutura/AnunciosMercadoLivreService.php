@@ -1,0 +1,1191 @@
+<?php
+
+namespace App\Services\Portal\Estrutura;
+
+use App\Jobs\AquecerPedidosMlEstruturaJob;
+use App\Jobs\ImportarAnunciosMlEstruturaJob;
+use App\Models\Company;
+use App\Models\EstruturaAnuncio;
+use App\Models\EstruturaAnuncioEspera;
+use App\Models\EstruturaOferta;
+use App\Models\MlAcervoItem;
+use App\Services\MercadoLivreService;
+use App\Support\Portal\AtorDoPortal;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Os anúncios que a empresa JÁ TEM no Mercado Livre, trazidos pelo OAuth — o
+ * cliente não digita a lista de produtos: ela sai dos anúncios.
+ *
+ * ### Duas portas, uma regra
+ * 1. **Importar** (a regra): lê os anúncios mais vendidos que ainda não estão no
+ *    módulo, cria uma oferta por SKU e junta nela TODOS os anúncios Clássico e
+ *    Premium com aquele SKU. Os anúncios passam pelo MESMO
+ *    `ColagemAnunciosService` da colagem (atualiza pelo MLB, não duplica):
+ *    não há segundo mecanismo de casamento para manter.
+ * 2. **Buscar e ligar** (a exceção): quando o SKU do anúncio é diferente do da
+ *    oferta, ou não existe, a pessoa procura o anúncio pelo título/MLB no
+ *    acervo local e liga à oferta com um clique.
+ *
+ * ### Por que o SKU e nada mais (medido em 24/09 e 25/09 com anúncios reais)
+ * Nos anúncios reais da Fase 134 e nos 40 mais vendidos da CAMILLOPARTS (#131),
+ * os anúncios do mesmo produto tinham o MESMO `SELLER_SKU` e
+ * `user_product_id`/`family_id` DIFERENTES — cada anúncio tem o seu. Na #131 o
+ * SKU `30069Full` tem 12 anúncios, 6 Clássico e 6 Premium, cada um com um
+ * título. O SKU é o único vínculo que o próprio seller controla.
+ *
+ * ### Por lote dos mais vendidos, não a conta inteira
+ * A #131 tem ~100 mil anúncios. Ler tudo seriam ~5.000 multigets (mais de uma
+ * hora) e milhares de ofertas de uma vez. Cada "Importar" traz até
+ * {@see self::LOTE_SKUS} SKUs, dos anúncios mais vendidos que ainda não estão
+ * no módulo; o próximo "Importar" continua de onde parou, porque o que já foi
+ * importado sai da lista de candidatos. Decisão do usuário em 25/09.
+ *
+ * ### Na fila `high`, em fatias
+ * Quem clicou está olhando a tela: a leitura vai para a fila `high` (a
+ * `default` de produção carrega o sync do acervo, com centenas de jobs na
+ * frente). Um lote passa de um minuto (500 buscas por SKU a ~130 ms, mais os
+ * multigets), então cada Job trabalha no máximo
+ * {@see self::ORCAMENTO_SEGUNDOS} s, guarda o progresso no cache e despacha o
+ * seguinte — não prende um worker da `high`, e fica abaixo de qualquer
+ * `retry_after` (90 s no `database` local; 2000 s no redis de produção). A
+ * `rodada` impede que uma leitura antiga, ainda na fila, escreva por cima de
+ * uma nova.
+ *
+ * ### O SKU vem da API, não do acervo
+ * `ml_acervo_itens` não guarda SKU, e acrescentar a coluna seria migration em
+ * tabela com dado em produção (fase GSD obrigatória). O acervo dá a ORDEM (mais
+ * vendidos) e os dados do anúncio; o SKU e a logística vêm do multiget.
+ */
+class AnunciosMercadoLivreService
+{
+    /** Estado da leitura por empresa: lendo → pronto | erro. Uma hora basta para revisar a prévia. */
+    private const CHAVE = 'estrutura:importacao-ml:';
+    private const VALIDADE_MINUTOS = 60;
+
+    /** Quantos SKUs cada "Importar" traz. */
+    public const LOTE_SKUS = 500;
+
+    /** Quantos anúncios, no máximo, uma leitura percorre procurando SKUs novos (250 multigets). */
+    private const MAX_CANDIDATOS = 5000;
+
+    /** Quanto cada Job trabalha antes de passar a vez — não prende o worker da `high` e fica abaixo de qualquer `retry_after`. */
+    public const ORCAMENTO_SEGUNDOS = 45;
+
+    /** Leitura que já começou e está sem progresso há mais que isso morreu (worker reiniciado no meio). */
+    private const PARADA_MINUTOS = 3;
+
+    /** Leitura que ainda não saiu da fila: espera mais antes de desistir — fila cheia não é leitura morta. */
+    private const FILA_MINUTOS = 15;
+
+    /** Sem o teto de 5.000 da colagem manual: são até 500 anúncios POR SKU (10 páginas × 50). */
+    private const MAX_LINHAS = 200000;
+
+    /** A lista de anúncios do ML (busca do "+ Produto" e do "+ Anúncio"): 30 por página. */
+    public const POR_PAGINA_BUSCA = 30;
+
+    /** Quantos anúncios de uma oferta a gaveta confere no ML (10 multigets). */
+    private const MAX_SKUS_GAVETA = 200;
+
+    /** Busca por SKU: 50 por página, no máximo 10 páginas (500 anúncios) por SKU. */
+    private const POR_PAGINA = 50;
+    private const PAGINAS_POR_SKU = 10;
+
+    /** Campos pedidos no multiget — só o que a colagem e a oferta usam. */
+    private const CAMPOS = 'id,title,listing_type_id,status,catalog_listing,attributes,variations,seller_custom_field,shipping';
+
+    public const TIPOS_ML = [
+        'gold_special' => 'Clássico',
+        'gold_pro'     => 'Premium',
+    ];
+
+    public const STATUS_ML = [
+        'active'       => 'Ativo',
+        'paused'       => 'Pausado',
+        'under_review' => 'Pausado',
+        'closed'       => 'Inativo',
+        'inactive'     => 'Inativo',
+    ];
+
+    public function __construct(
+        private MercadoLivreService $ml,
+        private ColagemAnunciosService $colagem,
+        private EstruturaAnuncioService $anuncios,
+        private EstruturaOfertaService $ofertas,
+    ) {
+    }
+
+    public static function conectado(Company $empresa): bool
+    {
+        return $empresa->mlToken?->status === 'active';
+    }
+
+    // ═══ Importar (a regra) ═════════════════════════════════════════════════
+
+    /**
+     * Começa uma leitura em segundo plano. As ofertas cadastradas à mão que
+     * ainda não têm anúncio entram primeiro no lote: quem cadastrou a oferta
+     * antes de importar recebe os anúncios dela.
+     */
+    public function iniciar(Company $empresa, int $loteSkus = self::LOTE_SKUS): void
+    {
+        if (! self::conectado($empresa)) {
+            throw ValidationException::withMessages([
+                'importacao' => 'A conta do Mercado Livre desta empresa não está conectada. Conecte pelo Onboarding.',
+            ]);
+        }
+
+        // Dois cliques (ou duas abas) não abrem duas leituras.
+        if ($this->lendoAinda(Cache::get(self::CHAVE.$empresa->id))) {
+            return;
+        }
+
+        $lote = [];
+        EstruturaOferta::where('company_id', $empresa->id)
+            ->whereDoesntHave('anuncios')
+            ->orderBy('id')->limit($loteSkus)->pluck('sku')
+            ->each(function ($sku) use (&$lote) {
+                $chave = EstruturaOferta::normalizarSku($sku);
+                if ($chave !== null) {
+                    $lote[$chave] ??= ['sku' => $sku, 'nome' => null, 'logistica' => null];
+                }
+            });
+
+        $rodada = (string) Str::uuid();
+
+        $this->guardar($empresa, [
+            'estado'      => 'lendo',
+            'rodada'      => $rodada,
+            'limite'      => $loteSkus,
+            'etapa'       => 'procurar',
+            'cursor'      => 0,
+            'acabou'      => false,
+            'lote'        => $lote,
+            'ids'         => [],
+            'sem_sku'     => [],
+            'feitos'      => 0,
+            'comecou'     => false,
+        ]);
+
+        ImportarAnunciosMlEstruturaJob::dispatch($empresa->id, $rodada);
+    }
+
+    /**
+     * Uma fatia da leitura — o que o Job faz. Trabalha até o orçamento acabar
+     * e guarda o progresso. Devolve `true` quando não há mais o que fazer
+     * (pronto, erro, ou a rodada já não é esta).
+     */
+    public function passo(Company $empresa, string $rodada, float $orcamento = self::ORCAMENTO_SEGUNDOS): bool
+    {
+        $estado = Cache::get(self::CHAVE.$empresa->id);
+
+        if (($estado['estado'] ?? null) !== 'lendo' || ($estado['rodada'] ?? null) !== $rodada) {
+            return true;
+        }
+
+        $fim = microtime(true) + $orcamento;
+        $estado['comecou'] = true;
+
+        try {
+            // Pelo menos uma unidade de trabalho por fatia: orçamento curto não trava a leitura.
+            do {
+                match ($estado['etapa']) {
+                    'procurar' => $this->procurar($empresa, $estado),
+                    'irmaos'   => $this->irmaos($empresa, $estado),
+                };
+
+                if ($estado['etapa'] === 'fechar') {
+                    $this->fechar($empresa, $estado);
+
+                    return true;
+                }
+            } while (microtime(true) < $fim);
+
+            $this->guardar($empresa, $estado);
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::error("[Estrutura] leitura do ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            Cache::put(self::CHAVE.$empresa->id, [
+                'estado' => 'erro',
+                'erro'   => 'Não foi possível ler os anúncios no Mercado Livre agora. Tente de novo em alguns minutos.',
+            ], now()->addMinutes(self::VALIDADE_MINUTOS));
+
+            return true;
+        }
+    }
+
+    /**
+     * Etapa 1, uma unidade: os próximos 20 anúncios mais vendidos que ainda
+     * não estão no módulo → o SKU de cada um. SKU novo entra no lote com o
+     * título do anúncio mais vendido (o primeiro a aparecer) e a logística dele.
+     */
+    private function procurar(Company $empresa, array &$e): void
+    {
+        $candidatos = count($e['lote']) < $e['limite'] && $e['cursor'] < self::MAX_CANDIDATOS
+            ? $this->candidatos($empresa)->offset($e['cursor'])->limit(20)->pluck('ml_item_id')->all()
+            : [];
+
+        if ($candidatos === []) {
+            $e['acabou'] = count($e['lote']) < $e['limite'] && $e['cursor'] < self::MAX_CANDIDATOS;
+            $e['etapa'] = 'irmaos';
+
+            return;
+        }
+
+        $e['cursor'] += count($candidatos);
+        $corpos = $this->multiget($empresa, $candidatos);
+
+        foreach ($candidatos as $id) {
+            $corpo = $corpos[$id] ?? null;
+            if ($corpo === null || self::linhaDoAnuncio($corpo) === null) {
+                continue;
+            }
+
+            $sku = self::skuDoAnuncio($corpo);
+            if ($sku === null) {
+                // Sem SKU não junta com nada: vai para "aguardando oferta" e se liga à mão.
+                $e['sem_sku'][$id] = true;
+                continue;
+            }
+
+            $chave = EstruturaOferta::normalizarSku($sku);
+            if (! isset($e['lote'][$chave])) {
+                if (count($e['lote']) >= $e['limite']) {
+                    continue;
+                }
+                $e['lote'][$chave] = ['sku' => $sku, 'nome' => $corpo['title'] ?? null, 'logistica' => self::logisticaDoAnuncio($corpo)];
+            }
+
+            // O próprio anúncio entra mesmo que a busca por SKU não o devolva.
+            $e['ids'][$id] ??= $chave;
+        }
+    }
+
+    /** Etapa 2, uma unidade: os anúncios de UM SKU do lote — os irmãos Clássico e Premium. */
+    private function irmaos(Company $empresa, array &$e): void
+    {
+        $chaves = array_keys($e['lote']);
+
+        if ($e['feitos'] >= count($chaves)) {
+            $e['etapa'] = 'fechar';
+
+            return;
+        }
+
+        $chave = $chaves[$e['feitos']];
+        foreach ($this->idsDoSku($empresa, $e['lote'][$chave]['sku']) as $id) {
+            $e['ids'][$id] ??= $chave;
+        }
+        $e['feitos']++;
+    }
+
+    /** Etapa 3: o texto da colagem, as ofertas a criar e a contagem por tipo. */
+    private function fechar(Company $empresa, array $e): void
+    {
+        $detalhes = $this->detalhes($empresa, [...array_keys($e['ids']), ...array_keys($e['sem_sku'])]);
+
+        $linhas = [];
+        $contagem = [];
+        $ignorados = 0;
+
+        foreach ($e['ids'] as $id => $chave) {
+            $linha = isset($detalhes[$id]) ? self::linhaDoAnuncio($detalhes[$id]) : null;
+            if ($linha === null) {
+                $ignorados++;
+                continue;
+            }
+            $linha['sku'] = $e['lote'][$chave]['sku'];
+            $linhas[] = $linha;
+            $campo = $linha['tipo'] === 'Clássico' ? 'classicos' : 'premiums';
+            $contagem[$chave][$campo] = ($contagem[$chave][$campo] ?? 0) + 1;
+        }
+
+        foreach (array_keys($e['sem_sku']) as $id) {
+            if (isset($detalhes[$id]) && ($linha = self::linhaDoAnuncio($detalhes[$id])) !== null) {
+                $linhas[] = [...$linha, 'sku' => null];
+            }
+        }
+
+        Cache::put(self::CHAVE.$empresa->id, [
+            'estado'      => 'pronto',
+            'texto'       => self::texto($linhas),
+            'total'       => count($linhas),
+            'ignorados'   => $ignorados,
+            'skus'        => count($e['lote']),
+            'sem_anuncio' => count(array_diff_key($e['lote'], $contagem)),
+            'sem_sku'     => count($e['sem_sku']),
+            'lidos'       => $e['cursor'],
+            'acabou'      => $e['acabou'],
+            'limite'      => $e['limite'],
+            'ofertas'     => array_filter($e['lote'], fn ($o) => $o['nome'] !== null),
+            'contagem'    => $contagem,
+            'lido_em'     => now()->toIso8601String(),
+        ], now()->addMinutes(self::VALIDADE_MINUTOS));
+    }
+
+    /**
+     * Os anúncios Clássico/Premium da empresa que ainda não estão no módulo
+     * (nem como anúncio, nem aguardando oferta), dos mais vendidos para os
+     * menos. Encerrados ficam de fora: não se publica de novo o que foi fechado.
+     */
+    private function candidatos(Company $empresa): Builder
+    {
+        return MlAcervoItem::where('company_id', $empresa->id)
+            ->whereIn('listing_type_id', array_keys(self::TIPOS_ML))
+            ->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', ['closed', 'inactive']))
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))
+                ->from('estrutura_anuncios as a')
+                ->join('estrutura_ofertas as o', 'o.id', '=', 'a.oferta_id')
+                ->where('o.company_id', $empresa->id)
+                ->whereColumn('a.codigo_mlb', 'ml_acervo_itens.ml_item_id'))
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))
+                ->from('estrutura_anuncios_espera as w')
+                ->where('w.company_id', $empresa->id)
+                ->whereColumn('w.codigo_mlb', 'ml_acervo_itens.ml_item_id'))
+            ->orderByDesc('sold_quantity')->orderBy('id');
+    }
+
+    /**
+     * Os MLB com este SKU na conta, página a página. Teto de páginas por SKU:
+     * um SKU com centenas de anúncios é raro, e sem teto um SKU genérico
+     * ("1", "A") poderia varrer a conta inteira por outra porta.
+     *
+     * @return array<int, string>
+     */
+    private function idsDoSku(Company $empresa, string $sku): array
+    {
+        $mlUserId = (string) $empresa->mlToken->ml_user_id;
+        $ids = [];
+        $offset = 0;
+
+        for ($pagina = 0; $pagina < self::PAGINAS_POR_SKU; $pagina++) {
+            $r = $this->ml->get($empresa, "/users/{$mlUserId}/items/search", [
+                'seller_sku' => $sku, 'limit' => self::POR_PAGINA, 'offset' => $offset,
+            ]);
+
+            $lote = $r['results'] ?? [];
+            array_push($ids, ...$lote);
+            $offset += count($lote);
+
+            if ($lote === [] || $offset >= (int) ($r['paging']['total'] ?? 0)) {
+                break;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * O corpo de cada MLB pedido, pela API (20 por chamada).
+     *
+     * @param  array<int, string>  $ids
+     * @return array<string, array> MLB → corpo
+     */
+    private function multiget(Company $empresa, array $ids, string $campos = self::CAMPOS): array
+    {
+        $porId = [];
+        $pedidos = array_flip($ids);
+
+        foreach (array_chunk($ids, 20) as $lote) {
+            $resposta = $this->ml->get($empresa, '/items', ['ids' => implode(',', $lote), 'attributes' => $campos]);
+            foreach ($resposta as $envelope) {
+                $id = $envelope['body']['id'] ?? null;
+                if (($envelope['code'] ?? null) === 200 && $id !== null && isset($pedidos[$id])) {
+                    $porId[$id] = $envelope['body'];
+                }
+            }
+        }
+
+        return $porId;
+    }
+
+    /**
+     * Tipo, status, título e catálogo de cada MLB — do acervo local, e da API
+     * só para os que ainda não estão nele (publicados depois do sync da madrugada).
+     *
+     * @param  array<int, string>  $ids
+     * @return array<string, array> MLB → corpo no formato da API
+     */
+    private function detalhes(Company $empresa, array $ids): array
+    {
+        $porId = [];
+
+        foreach (array_chunk($ids, 1000) as $bloco) {
+            MlAcervoItem::where('company_id', $empresa->id)->whereIn('ml_item_id', $bloco)
+                ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing'])
+                ->each(function (MlAcervoItem $i) use (&$porId) {
+                    $porId[$i->ml_item_id] = [
+                        'id' => $i->ml_item_id, 'title' => $i->title, 'listing_type_id' => $i->listing_type_id,
+                        'status' => $i->status, 'catalog_listing' => (bool) $i->catalog_listing,
+                    ];
+                });
+        }
+
+        return $porId + $this->multiget($empresa, array_values(array_diff($ids, array_keys($porId))));
+    }
+
+    private function guardar(Company $empresa, array $estado): void
+    {
+        Cache::put(self::CHAVE.$empresa->id, [...$estado, 'atualizado_em' => now()->toIso8601String()], now()->addMinutes(self::VALIDADE_MINUTOS));
+    }
+
+    private function lendoAinda(?array $estado): bool
+    {
+        $limite = ($estado['comecou'] ?? true) ? self::PARADA_MINUTOS : self::FILA_MINUTOS;
+
+        return ($estado['estado'] ?? null) === 'lendo'
+            && Carbon::parse($estado['atualizado_em'])->gt(now()->subMinutes($limite));
+    }
+
+    /**
+     * O estado para a tela — nunca o estado interno inteiro (a lista de MLBs
+     * da leitura não vai para o navegador). Quando pronto, já vem com as
+     * ofertas a criar e a prévia dos anúncios, a MESMA da colagem, no modo
+     * acrescentar/atualizar (importar nunca remove).
+     */
+    public function estado(Company $empresa): array
+    {
+        $estado = Cache::get(self::CHAVE.$empresa->id) ?? ['estado' => 'nenhum'];
+
+        if ($estado['estado'] === 'lendo') {
+            if (! $this->lendoAinda($estado)) {
+                return ['estado' => 'erro', 'erro' => 'A importação parou no meio. Clique em "Importar de novo".'];
+            }
+
+            return [
+                'estado'     => 'lendo',
+                'etapa'      => ($estado['comecou'] ?? true) ? $estado['etapa'] : 'fila',
+                'lidos'      => $estado['cursor'],
+                'skus'       => count($estado['lote']),
+                'procurados' => $estado['feitos'],
+            ];
+        }
+
+        if ($estado['estado'] !== 'pronto') {
+            return $estado;
+        }
+
+        $novas = $this->ofertasNovas($empresa, $estado);
+        $pares = collect($novas)->filter(fn ($o) => $o['classicos'] > 0 && $o['premiums'] > 0)->count();
+
+        return [
+            'estado'        => 'pronto',
+            'total'         => $estado['total'],
+            'ignorados'     => $estado['ignorados'],
+            'skus'          => $estado['skus'],
+            'sem_anuncio'   => $estado['sem_anuncio'],
+            'sem_sku'       => $estado['sem_sku'],
+            'lidos'         => $estado['lidos'],
+            'acabou'        => $estado['acabou'],
+            'limite'        => $estado['limite'],
+            'lido_em'       => $estado['lido_em'],
+            'ofertas_novas' => [
+                'total'  => count($novas),
+                'pares'  => $pares,
+                'itens'  => array_slice($novas, 0, 200),
+            ],
+            'previa' => $this->colagem->previa($empresa, $estado['texto'], ColagemAnunciosService::MODO_ACRESCENTAR,
+                self::MAX_LINHAS, array_column($novas, 'sku')),
+        ];
+    }
+
+    /**
+     * As ofertas que a leitura vai criar: SKU do lote que nenhuma oferta da
+     * empresa tem AGORA — conferido a cada chamada, porque entre a leitura e o
+     * confirmar alguém pode ter criado a oferta à mão.
+     *
+     * @return array<int, array{sku: string, nome: ?string, logistica: ?string, logistica_rotulo: ?string, classicos: int, premiums: int}>
+     */
+    private function ofertasNovas(Company $empresa, array $estado): array
+    {
+        $existentes = EstruturaOferta::where('company_id', $empresa->id)->pluck('sku')
+            ->map(fn ($s) => EstruturaOferta::normalizarSku($s))->flip();
+
+        $novas = [];
+        foreach ($estado['ofertas'] as $chave => $o) {
+            if (isset($existentes[$chave]) || mb_strlen($o['sku']) > 120) {
+                continue;
+            }
+            $novas[] = [
+                'sku'              => $o['sku'],
+                'nome'             => $o['nome'] === null ? null : mb_substr($o['nome'], 0, 255),
+                'logistica'        => $o['logistica'],
+                'logistica_rotulo' => EstruturaOferta::LOGISTICAS[$o['logistica']] ?? null,
+                'classicos'        => $estado['contagem'][$chave]['classicos'] ?? 0,
+                'premiums'         => $estado['contagem'][$chave]['premiums'] ?? 0,
+            ];
+        }
+
+        return $novas;
+    }
+
+    /**
+     * Grava o que a prévia mostrou: cria as ofertas novas (Fase 1, simples —
+     * combo e kit o cliente ajusta; não se adivinha pelo SKU) e passa os
+     * anúncios pela colagem, refeita a partir do texto guardado no servidor.
+     *
+     * @return array<string, int>
+     */
+    public function aplicar(Company $empresa, AtorDoPortal $ator): array
+    {
+        $estado = Cache::get(self::CHAVE.$empresa->id);
+
+        if (($estado['estado'] ?? null) !== 'pronto') {
+            throw ValidationException::withMessages(['importacao' => 'Leia os anúncios do Mercado Livre de novo antes de confirmar.']);
+        }
+
+        $totais = DB::transaction(function () use ($empresa, $ator, $estado) {
+            $novas = $this->ofertasNovas($empresa, $estado);
+
+            foreach ($novas as $o) {
+                EstruturaOferta::create([
+                    'company_id' => $empresa->id,
+                    'sku'        => $o['sku'],
+                    'fase'       => EstruturaOferta::FASE_SIMPLES,
+                    'nome'       => $o['nome'],
+                    'logistica'  => $o['logistica'],
+                ]);
+            }
+
+            if ($novas) {
+                RegistroEstrutura::registrar($ator, $empresa, null, 'ofertas_puxadas_ml',
+                    count($novas).' oferta(s) criada(s) na importação dos anúncios do Mercado Livre',
+                    ['skus' => array_column($novas, 'sku')]);
+            }
+
+            $totais = $this->colagem->aplicar($empresa, $estado['texto'], ColagemAnunciosService::MODO_ACRESCENTAR, $ator, self::MAX_LINHAS);
+
+            // Linha antiga da espera com o SKU de uma oferta que acabou de nascer.
+            $this->ofertas->varrerEspera($empresa, array_column($novas, 'sku'));
+
+            return [...$totais, 'ofertas' => count($novas)];
+        });
+
+        Cache::forget(self::CHAVE.$empresa->id);
+
+        return $totais;
+    }
+
+    /**
+     * A logística do anúncio no vocabulário da planilha: Full, Flex, ME1 ou
+     * Mercado Envios. `null` quando o ML não diz (`not_specified`) — a pessoa
+     * escolhe depois; não se chuta.
+     */
+    public static function logisticaDoAnuncio(array $item): ?string
+    {
+        $envio = $item['shipping'] ?? [];
+
+        return match (true) {
+            ($envio['logistic_type'] ?? null) === 'fulfillment'  => 'full',
+            ($envio['logistic_type'] ?? null) === 'self_service' => 'flex',
+            ($envio['mode'] ?? null) === 'me1'                    => 'transportadora_me1',
+            ($envio['mode'] ?? null) === 'me2'                    => 'mercado_envios',
+            default                                                => null,
+        };
+    }
+
+    /**
+     * Um anúncio da API → uma linha da colagem, ou `null` se não é Clássico
+     * nem Premium (o método da aula só trabalha com os dois).
+     *
+     * SKU, em ordem: o atributo `SELLER_SKU`; o campo antigo
+     * `seller_custom_field`; e, em anúncio com variações, o SKU das variações
+     * quando TODAS têm o mesmo — senão fica sem SKU e vai para a espera.
+     *
+     * @return array{sku: ?string, mlb: string, titulo: string, tipo: string, catalogo: bool, status: string}|null
+     */
+    public static function linhaDoAnuncio(array $item): ?array
+    {
+        $tipo = self::TIPOS_ML[$item['listing_type_id'] ?? ''] ?? null;
+        if ($tipo === null || empty($item['id'])) {
+            return null;
+        }
+
+        return [
+            'sku'      => self::skuDoAnuncio($item),
+            'mlb'      => $item['id'],
+            'titulo'   => (string) ($item['title'] ?? ''),
+            'tipo'     => $tipo,
+            'catalogo' => (bool) ($item['catalog_listing'] ?? false),
+            'status'   => self::STATUS_ML[$item['status'] ?? ''] ?? 'Ativo',
+        ];
+    }
+
+    public static function skuDoAnuncio(array $item): ?string
+    {
+        $doAtributo = fn (array $attrs) => collect($attrs)->firstWhere('id', 'SELLER_SKU')['value_name'] ?? null;
+
+        $sku = $doAtributo($item['attributes'] ?? []) ?: ($item['seller_custom_field'] ?? null);
+        if ($sku) {
+            return trim($sku);
+        }
+
+        $daVariacao = collect($item['variations'] ?? [])
+            ->map(fn ($v) => $doAtributo($v['attributes'] ?? []) ?: ($v['seller_custom_field'] ?? null))
+            ->filter()->map(fn ($s) => trim($s))->unique()->values();
+
+        return $daVariacao->count() === 1 ? $daVariacao->first() : null;
+    }
+
+    /** As linhas no formato da colagem, com o cabeçalho da aba Anúncios da planilha. */
+    public static function texto(array $linhas): string
+    {
+        $limpa = fn (?string $s) => trim(str_replace(["\t", "\r", "\n"], ' ', (string) $s));
+
+        return collect($linhas)
+            ->map(fn ($l) => implode("\t", [$limpa($l['sku']), $l['mlb'], $limpa($l['titulo']), $l['tipo'], $l['catalogo'] ? 'Sim' : 'Não', $l['status']]))
+            ->prepend("SKU\tCÓDIGO MLB\tTÍTULO DO ANÚNCIO\tTIPO\tCATÁLOGO?\tSTATUS")
+            ->implode("\n");
+    }
+
+    // ═══ A estação: SKU e fotos de cada anúncio ═════════════════════════════
+
+    /** Quantos anúncios de uma oferta a estação detalha no ML (2 multigets). */
+    private const MAX_ANUNCIOS_DETALHES = 40;
+
+    /**
+     * O que a estação precisa de cada anúncio e o acervo NÃO guarda: o SKU que
+     * ele tem HOJE no ML (conferir que o anúncio é mesmo deste produto), as
+     * fotos (o acervo só tem a miniatura) e o PREÇO QUE O CLIENTE PAGA.
+     *
+     * ### O preço do acervo é o cheio (medido na #131, 28/09)
+     * `price` — no acervo e no próprio `/items` — é o preço SEM a promoção:
+     * o MLB4645047625 marcava R$ 2.021,08 e o anúncio mostrava R$ 1.666,37
+     * (17% OFF, campanha do marketplace). O preço com promoção vem de
+     * `/items/{id}/sale_price?context=channel_marketplace` (`amount`, com o
+     * cheio em `regular_amount`), uma chamada por anúncio — em paralelo
+     * (`getMany`), junto do multiget de SKU e fotos (40 anúncios, 2 chamadas).
+     * A comparação Clássico × Premium da oferta usa ESTE preço.
+     *
+     * Lido, não gravado: guardar seria coluna nova em `estrutura_anuncios`,
+     * tabela com dado em produção (fase GSD obrigatória) — e SKU e promoção
+     * mudam. 30 min de cache por conjunto de MLBs.
+     *
+     * @return array{conectado: bool, anuncios: array<string, array{sku: ?string, fotos: array<int, string>, preco: ?array{atual: float, cheio: float}}>, precos: ?array, erro?: string}
+     *   `sku` null = o anúncio não tem SKU no ML; `preco` null = não foi
+     *   possível ler (a tela fica com o preço do acervo). MLB que o ML não
+     *   devolveu (encerrado e apagado) fica de fora.
+     */
+    public function detalhesDaOferta(EstruturaOferta $oferta): array
+    {
+        $empresa = $oferta->company;
+
+        if (! self::conectado($empresa)) {
+            return ['conectado' => false, 'anuncios' => [], 'precos' => null];
+        }
+
+        $anuncios = $oferta->anuncios()->whereNotNull('codigo_mlb')->orderBy('id')
+            ->limit(self::MAX_ANUNCIOS_DETALHES)->get(['codigo_mlb', 'tipo', 'status'])->unique('codigo_mlb')->values();
+        $mlbs = $anuncios->pluck('codigo_mlb')->all();
+
+        if (! $mlbs) {
+            return ['conectado' => true, 'anuncios' => [], 'precos' => null];
+        }
+
+        try {
+            $lidos = Cache::remember('estrutura:detalhes-ml:v2:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(30), function () use ($empresa, $mlbs) {
+                $precos = $this->ml->getMany($empresa, array_combine(
+                    array_map(fn ($m) => 'p:'.$m, $mlbs),
+                    array_map(fn ($m) => ["/items/{$m}/sale_price", ['context' => 'channel_marketplace']], $mlbs),
+                ));
+
+                $saida = [];
+                foreach ($this->multiget($empresa, $mlbs, self::CAMPOS.',pictures') as $mlb => $corpo) {
+                    $p = $precos['p:'.$mlb] ?? null;
+                    $saida[$mlb] = [
+                        'sku'   => self::skuDoAnuncio($corpo),
+                        'fotos' => array_values(array_filter(array_map(
+                            fn ($f) => $f['secure_url'] ?? (isset($f['url']) ? preg_replace('#^http://#', 'https://', $f['url']) : null),
+                            $corpo['pictures'] ?? [],
+                        ))),
+                        'preco' => is_array($p) && isset($p['amount']) ? [
+                            'atual' => (float) $p['amount'],
+                            'cheio' => (float) ($p['regular_amount'] ?? $p['amount']),
+                        ] : null,
+                    ];
+                }
+
+                return $saida;
+            });
+        } catch (\Throwable $e) {
+            Log::warning("[Estrutura] detalhes da oferta {$oferta->id} no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+
+            return ['conectado' => true, 'anuncios' => [], 'precos' => null, 'erro' => 'Não foi possível ler os anúncios no Mercado Livre agora.'];
+        }
+
+        // O menor preço QUE O CLIENTE PAGA de cada tipo, entre os que contam
+        // (Inativo não conta) — e o aviso de par ao contrário.
+        $porTipo = [];
+        foreach ($anuncios as $a) {
+            $atual = $lidos[$a->codigo_mlb]['preco']['atual'] ?? null;
+            if ($atual !== null && $a->status !== EstruturaAnuncio::STATUS_INATIVO) {
+                $porTipo[$a->tipo] = min($porTipo[$a->tipo] ?? $atual, $atual);
+            }
+        }
+        $c = $porTipo[EstruturaAnuncio::TIPO_CLASSICO] ?? null;
+        $pr = $porTipo[EstruturaAnuncio::TIPO_PREMIUM] ?? null;
+
+        return [
+            'conectado' => true,
+            'anuncios'  => $lidos,
+            'precos'    => $porTipo ? ['classico' => $c, 'premium' => $pr, 'invertido' => $c !== null && $pr !== null && $pr < $c] : null,
+        ];
+    }
+
+    /**
+     * MLB → SKU no ML (`null` = sem SKU), por multiget, com 10 minutos de cache
+     * por conjunto de MLBs. MLB que o ML não devolve fica de fora. Lança se a
+     * API falhar — quem chama decide o que mostrar.
+     *
+     * @param  array<int, string>  $mlbs
+     * @return array<string, ?string>
+     */
+    private function skusDeMlbs(Company $empresa, array $mlbs): array
+    {
+        return Cache::remember('estrutura:skus-ml:'.$empresa->id.':'.md5(implode(',', $mlbs)), now()->addMinutes(10), function () use ($empresa, $mlbs) {
+            $corpos = $this->multiget($empresa, $mlbs);
+            $skus = [];
+            foreach ($mlbs as $mlb) {
+                if (isset($corpos[$mlb])) {
+                    $skus[$mlb] = self::skuDoAnuncio($corpos[$mlb]);
+                }
+            }
+
+            return $skus;
+        });
+    }
+
+    // ═══ Métricas: visitas (série de 30 dias), vendas de 7 dias e buy box ═══
+
+    /** Quantos anúncios de uma oferta as métricas cobrem por vez. */
+    private const MAX_ANUNCIOS_METRICAS = 30;
+
+    /** A série de visitas: 30 dias, dia a dia — o gráfico Clássico × Premium. */
+    public const DIAS_SERIE = 30;
+
+    /**
+     * Status do `price_to_win` que a tela traduz. `competing` existe na API
+     * (medido na #131, 28/09) e NÃO está na lista da coleta da Fase 134.
+     */
+    public const BUYBOX = [
+        'winning'             => 'Ganhando',
+        'sharing_first_place' => 'Dividindo o 1º lugar',
+        'competing'           => 'Competindo',
+        'losing'              => 'Perdendo',
+        'listed'              => 'Só listado',
+    ];
+
+    /**
+     * "7 dias depois, olhe as métricas e ajuste" (regra de ouro da aula), e a
+     * comparação Clássico × Premium que o método pede: por anúncio, a série de
+     * visitas dos últimos 30 dias (dia a dia), as visitas e as vendas dos
+     * últimos 7, e o buy box do que está no catálogo.
+     *
+     * Na hora porque o acervo não tem: a camada cara da Fase 134 não preenche
+     * visitas nem buy box na #131 (0%, medido 28/09).
+     *
+     * - Visitas: `/items/{id}/visits/time_window?last=30&unit=day`, uma
+     *   chamada por anúncio (o lote é recusado) — em PARALELO
+     *   (`MercadoLivreService::getMany`): 30 anúncios em ~1 s, e não 12 s em
+     *   série. A mesma resposta dá a série (gráfico) e os 7 dias (Jardinagem).
+     *   Buy box na mesma leva, só para catálogo. 30 min de cache.
+     * - Vendas: dos pedidos da LOJA nos 30 dias, por dia, pré-aquecidos por
+     *   `AquecerPedidosMlEstruturaJob` (fila high) ao abrir a página. Sem o
+     *   cache, a resposta sai SEM vendas (`vendas_prontas: false`) e dispara o
+     *   job; a tela consulta de novo até chegar. A série diária é o segundo
+     *   painel do gráfico ("Vendas por dia") — o primeiro só tinha visitas e
+     *   não dizia qual das duas era (usuário, 28/09).
+     *
+     * Teto de 30 anúncios por oferta (ativos e pausados primeiro). Falha de
+     * um anúncio vira `null` naquele número, não derruba os outros.
+     *
+     * @return array{conectado: bool, vendas_prontas: bool, dias_serie: int, metricas: array<string, array{visitas: ?int, visitas_30d: ?int, serie: ?array<int, array{data: string, visitas: int}>, vendas: ?int, vendas_30d: ?int, vendas_serie: ?array<int, array{data: string, vendas: int}>, buybox: ?array}>, limitado?: bool}
+     */
+    public function metricasDaOferta(EstruturaOferta $oferta): array
+    {
+        $empresa = $oferta->company;
+        $base = ['conectado' => self::conectado($empresa), 'vendas_prontas' => false, 'dias_serie' => self::DIAS_SERIE, 'metricas' => []];
+
+        if (! $base['conectado']) {
+            return $base;
+        }
+
+        $anuncios = $oferta->anuncios()->whereNotNull('codigo_mlb')
+            ->orderByRaw('CASE WHEN status = ? THEN 1 ELSE 0 END', [EstruturaAnuncio::STATUS_INATIVO])->orderBy('id')
+            ->get(['codigo_mlb', 'catalogo']);
+        $limitado = $anuncios->count() > self::MAX_ANUNCIOS_METRICAS;
+        $anuncios = $anuncios->take(self::MAX_ANUNCIOS_METRICAS);
+
+        if ($anuncios->isEmpty()) {
+            return [...$base, 'vendas_prontas' => true];
+        }
+
+        $chave = 'estrutura:visitas-ml:'.$empresa->id.':'.md5($anuncios->pluck('codigo_mlb')->implode(','));
+        $lidas = Cache::remember($chave, now()->addMinutes(30), function () use ($empresa, $anuncios) {
+            $pedidos = [];
+            foreach ($anuncios as $a) {
+                $pedidos['v:'.$a->codigo_mlb] = ["/items/{$a->codigo_mlb}/visits/time_window", ['last' => self::DIAS_SERIE, 'unit' => 'day']];
+                if ($a->catalogo) {
+                    $pedidos['b:'.$a->codigo_mlb] = ["/items/{$a->codigo_mlb}/price_to_win", ['version' => 'v2']];
+                }
+            }
+
+            $respostas = $this->ml->getMany($empresa, $pedidos);
+            $corpo = function (string $chave) use ($respostas, $empresa) {
+                $r = $respostas[$chave] ?? null;
+                if ($r instanceof \Throwable) {
+                    Log::warning("[Estrutura] métrica {$chave} no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$r->getMessage()}");
+
+                    return null;
+                }
+
+                return $r;
+            };
+
+            $saida = [];
+            foreach ($anuncios as $a) {
+                $mlb = $a->codigo_mlb;
+                $serie = ($v = $corpo('v:'.$mlb)) === null ? null : self::serieDeVisitas($v);
+                $buybox = $a->catalogo ? $corpo('b:'.$mlb) : null;
+
+                $saida[$mlb] = [
+                    'visitas'     => $serie === null ? null : array_sum(array_column(array_slice($serie, -7), 'visitas')),
+                    'visitas_30d' => $serie === null ? null : array_sum(array_column($serie, 'visitas')),
+                    'serie'       => $serie,
+                    'buybox'      => ! isset($buybox['status']) ? null : [
+                        'status'            => $buybox['status'],
+                        'rotulo'            => self::BUYBOX[$buybox['status']] ?? $buybox['status'],
+                        'preco_para_ganhar' => isset($buybox['price_to_win']) ? (float) $buybox['price_to_win'] : null,
+                    ],
+                ];
+            }
+
+            return $saida;
+        });
+
+        $vendas = $this->vendasEmCache($empresa);
+        if ($vendas === null) {
+            $this->aquecerVendas($empresa);
+            // Sob a fila `sync` (testes) o job já rodou: a resposta sai pronta.
+            $vendas = $this->vendasEmCache($empresa);
+        }
+
+        // Os mesmos dias da série de visitas: os 30 até hoje; os 7 = os últimos 7.
+        $dias = array_map(fn ($i) => now(self::FUSO)->subDays($i)->format('Y-m-d'), range(self::DIAS_SERIE - 1, 0));
+        $ultimos7 = array_slice($dias, -7);
+
+        $metricas = [];
+        foreach ($lidas as $mlb => $m) {
+            $porDia = $vendas[$mlb] ?? [];
+            $metricas[$mlb] = [...$m,
+                'vendas'       => $vendas === null ? null : array_sum(array_map(fn ($d) => $porDia[$d] ?? 0, $ultimos7)),
+                'vendas_30d'   => $vendas === null ? null : array_sum(array_map(fn ($d) => $porDia[$d] ?? 0, $dias)),
+                'vendas_serie' => $vendas === null ? null : array_map(fn ($d) => ['data' => $d, 'vendas' => $porDia[$d] ?? 0], $dias),
+            ];
+        }
+
+        return [...$base, 'vendas_prontas' => $vendas !== null, 'metricas' => $metricas, 'limitado' => $limitado];
+    }
+
+    /**
+     * A resposta do `time_window` → `[['data' => 'Y-m-d', 'visitas' => n], …]`
+     * em ordem de data (a API devolve fora de ordem).
+     *
+     * @return array<int, array{data: string, visitas: int}>
+     */
+    public static function serieDeVisitas(array $resposta): array
+    {
+        $serie = array_map(fn ($d) => ['data' => substr((string) ($d['date'] ?? ''), 0, 10), 'visitas' => (int) ($d['total'] ?? 0)], $resposta['results'] ?? []);
+        usort($serie, fn ($x, $y) => strcmp($x['data'], $y['data']));
+
+        return array_values($serie);
+    }
+
+    /** O dia do pedido é o dia no Brasil — é o dia que o seller reconhece. */
+    private const FUSO = 'America/Sao_Paulo';
+
+    /** Teto por dia: 100 páginas de 50 (5 mil pedidos num dia). */
+    private const MAX_PEDIDOS_DIA = 5000;
+
+    private static function chaveVendas(Company $empresa): string
+    {
+        return 'estrutura:vendas30d:'.$empresa->id;
+    }
+
+    /**
+     * As unidades vendidas por anúncio e por dia nos últimos 30 dias, se já
+     * foram lidas (30 min de cache).
+     *
+     * @return array<string, array<string, int>>|null MLB → ('Y-m-d' → unidades)
+     */
+    public function vendasEmCache(Company $empresa): ?array
+    {
+        return Cache::get(self::chaveVendas($empresa));
+    }
+
+    /**
+     * Manda ler os pedidos em segundo plano (fila high), um job por loja de
+     * cada vez. Chamado ao abrir a página do Mapeamento e quando as métricas
+     * são pedidas sem o cache — assim, quando a estação abre, a parte lenta
+     * costuma já estar pronta.
+     */
+    public function aquecerVendas(Company $empresa): void
+    {
+        if (! self::conectado($empresa) || Cache::has(self::chaveVendas($empresa))) {
+            return;
+        }
+
+        // `add` é atômico: só o primeiro pedido dentro dos 5 minutos despacha.
+        if (! Cache::add('estrutura:vendas-aquecendo:'.$empresa->id, true, now()->addMinutes(5))) {
+            return;
+        }
+
+        AquecerPedidosMlEstruturaJob::dispatch($empresa->id);
+    }
+
+    /**
+     * O que o job faz: unidades vendidas por anúncio e por DIA nos últimos 30
+     * dias, de TODOS os pedidos pagos da loja — a série "Vendas por dia" e os
+     * totais de 7 dias da Jardinagem saem daqui. Guardado 30 min e servido a
+     * todas as ofertas. Um pedido pode ter vários itens: conta cada um no seu
+     * MLB, no dia do pedido (horário do Brasil).
+     *
+     * Dia a dia, e não um intervalo só: ~10 mil pedidos/mês na #131 pediriam
+     * offset além de 10 mil numa busca única. A primeira página de cada dia
+     * sai numa leva paralela (30 chamadas, `getMany`); as páginas que faltam,
+     * noutra. Falha de qualquer página derruba a leitura inteira (série pela
+     * metade mentiria), e a próxima abertura da página tenta de novo.
+     *
+     * @return array<string, array<string, int>> MLB → ('Y-m-d' → unidades)
+     */
+    public function lerVendas(Company $empresa): array
+    {
+        try {
+            $base = ['seller' => (string) $empresa->mlToken->ml_user_id, 'order.status' => 'paid', 'sort' => 'date_asc', 'limit' => 50];
+            $dias = [];
+            foreach (range(self::DIAS_SERIE - 1, 0) as $i) {
+                $d = now(self::FUSO)->subDays($i)->format('Y-m-d');
+                $dias[$d] = [...$base, 'order.date_created.from' => "{$d}T00:00:00.000-03:00", 'order.date_created.to' => "{$d}T23:59:59.999-03:00"];
+            }
+
+            $porMlb = [];
+            $somar = function ($r) use (&$porMlb) {
+                if ($r instanceof \Throwable) {
+                    throw $r;
+                }
+                foreach ($r['results'] ?? [] as $pedido) {
+                    $dia = Carbon::parse($pedido['date_created'] ?? 'now')->setTimezone(self::FUSO)->format('Y-m-d');
+                    foreach ($pedido['order_items'] ?? [] as $item) {
+                        $mlb = $item['item']['id'] ?? null;
+                        if ($mlb !== null) {
+                            $porMlb[$mlb][$dia] = ($porMlb[$mlb][$dia] ?? 0) + (int) ($item['quantity'] ?? 0);
+                        }
+                    }
+                }
+            };
+
+            $resto = [];
+            foreach ($this->ml->getMany($empresa, array_map(fn ($q) => ['/orders/search', [...$q, 'offset' => 0]], $dias)) as $d => $r) {
+                $somar($r);
+                $total = min((int) ($r['paging']['total'] ?? 0), self::MAX_PEDIDOS_DIA);
+                for ($offset = 50; $offset < $total; $offset += 50) {
+                    $resto["{$d}:{$offset}"] = ['/orders/search', [...$dias[$d], 'offset' => $offset]];
+                }
+            }
+            foreach ($this->ml->getMany($empresa, $resto) as $r) {
+                $somar($r);
+            }
+
+            Cache::put(self::chaveVendas($empresa), $porMlb, now()->addMinutes(30));
+
+            return $porMlb;
+        } finally {
+            Cache::forget('estrutura:vendas-aquecendo:'.$empresa->id);
+        }
+    }
+
+    // ═══ Buscar e ligar (a exceção) ═════════════════════════════════════════
+
+    /**
+     * Os anúncios da empresa que casam com a busca — título, MLB ou SKU —, dos
+     * mais vendidos para os menos, 30 por página, com a informação de onde cada
+     * um já está ligado. Sem busca, TODOS (é a lista do "+ Produto": o cliente
+     * escolhe no que já tem no ar, em vez de digitar).
+     *
+     * O acervo não guarda SKU: a busca pergunta ao ML pelo `seller_sku` (exato,
+     * uma chamada) e soma o que achar — esses vêm primeiro. O SKU de cada item
+     * da página vem de um multiget (em cache). Sem conta conectada, título e
+     * MLB bastam, e o SKU não aparece.
+     */
+    public function buscar(Company $empresa, string $busca, ?string $tipo = null, int $pagina = 1): array
+    {
+        $busca = trim($busca);
+        $conectado = self::conectado($empresa);
+
+        $doSku = [];
+        if ($busca !== '' && $conectado) {
+            try {
+                $doSku = $this->idsDoSku($empresa, $busca);
+            } catch (\Throwable $e) {
+                Log::warning("[Estrutura] busca por SKU no ML falhou — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            }
+        }
+
+        $consulta = MlAcervoItem::where('company_id', $empresa->id)
+            ->whereIn('listing_type_id', array_keys(self::TIPOS_ML));
+
+        if ($tipo !== null) {
+            $consulta->where('listing_type_id', $tipo === EstruturaAnuncio::TIPO_CLASSICO ? 'gold_special' : 'gold_pro');
+        }
+
+        if ($busca !== '') {
+            $mlb = EstruturaAnuncio::normalizarMlb($busca);
+            $consulta->where(fn ($q) => $q->where('title', 'like', '%'.$busca.'%')
+                ->orWhere('ml_item_id', 'like', '%'.strtoupper($busca).'%')
+                ->when($mlb, fn ($q) => $q->orWhere('ml_item_id', $mlb))
+                ->when($doSku, fn ($q) => $q->orWhereIn('ml_item_id', $doSku)));
+        }
+
+        if ($doSku) {
+            $consulta->orderByRaw('CASE WHEN ml_item_id IN ('.implode(',', array_fill(0, count($doSku), '?')).') THEN 0 ELSE 1 END', $doSku);
+        }
+
+        $pagina = max(1, $pagina);
+        $itens = $consulta->orderByDesc('sold_quantity')->orderBy('id')
+            ->offset(($pagina - 1) * self::POR_PAGINA_BUSCA)->limit(self::POR_PAGINA_BUSCA + 1)
+            ->get(['ml_item_id', 'title', 'listing_type_id', 'status', 'catalog_listing', 'thumbnail', 'permalink', 'sold_quantity', 'available_quantity', 'shipping']);
+
+        $temMais = $itens->count() > self::POR_PAGINA_BUSCA;
+        $itens = $itens->take(self::POR_PAGINA_BUSCA);
+
+        $mlbs = $itens->pluck('ml_item_id')->all();
+        $skus = [];
+        if ($conectado && $mlbs) {
+            try {
+                $skus = $this->skusDeMlbs($empresa, $mlbs);
+            } catch (\Throwable $e) {
+                Log::warning("[Estrutura] SKUs da busca no ML falharam — empresa {$empresa->id} ({$empresa->name}): {$e->getMessage()}");
+            }
+        }
+
+        $ligados = EstruturaAnuncio::query()
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_anuncios.oferta_id')
+            ->where('o.company_id', $empresa->id)
+            ->whereIn('estrutura_anuncios.codigo_mlb', $mlbs)
+            ->pluck('o.sku', 'estrutura_anuncios.codigo_mlb');
+        $naEspera = EstruturaAnuncioEspera::where('company_id', $empresa->id)->whereIn('codigo_mlb', $mlbs)->pluck('codigo_mlb')->flip();
+
+        return [
+            'total_acervo' => MlAcervoItem::where('company_id', $empresa->id)->count(),
+            'conectado'    => $conectado,
+            'pagina'       => $pagina,
+            'tem_mais'     => $temMais,
+            'itens'        => $itens->map(function (MlAcervoItem $i) use ($skus, $ligados, $naEspera) {
+                $item = [
+                    'mlb'        => $i->ml_item_id,
+                    'titulo'     => $i->title,
+                    'tipo'       => self::TIPOS_ML[$i->listing_type_id],
+                    'tipo_chave' => $i->listing_type_id === 'gold_special' ? EstruturaAnuncio::TIPO_CLASSICO : EstruturaAnuncio::TIPO_PREMIUM,
+                    'status'     => self::STATUS_ML[$i->status] ?? $i->status,
+                    'catalogo'   => (bool) $i->catalog_listing,
+                    'thumbnail'  => $i->thumbnail ? preg_replace('#^http://#', 'https://', $i->thumbnail) : null,
+                    'permalink'  => $i->permalink,
+                    'vendas'     => (int) $i->sold_quantity,
+                    'estoque'    => $i->available_quantity !== null ? (int) $i->available_quantity : null,
+                    'estoque_full' => ($i->shipping['logistic_type'] ?? null) === 'fulfillment',
+                    'logistica'  => self::logisticaDoAnuncio(['shipping' => $i->shipping ?? []]),
+                    'ligado_a'   => $ligados[$i->ml_item_id] ?? null,
+                    'na_espera'  => isset($naEspera[$i->ml_item_id]),
+                ];
+
+                // `sku` só quando foi lido no ML (null = o anúncio não tem SKU).
+                if (array_key_exists($i->ml_item_id, $skus)) {
+                    $item['sku'] = $skus[$i->ml_item_id];
+                }
+
+                return $item;
+            })->values()->all(),
+        ];
+    }
+
+    /**
+     * "+ Produto" direto do ML: cria a oferta e liga a ela os anúncios que a
+     * pessoa escolheu na lista — tudo ou nada. Anúncio que já está em OUTRA
+     * oferta recusa a criação inteira (ligar não muda de oferta). O que a
+     * criação já trouxe da espera (mesmo SKU colado antes) não é ligado duas
+     * vezes.
+     *
+     * @param  array<int, string>  $mlbs
+     * @return array{0: EstruturaOferta, 1: int, 2: int} oferta, absorvidos da espera, anúncios ligados
+     */
+    public function criarOfertaComAnuncios(Company $empresa, array $dados, array $mlbs, AtorDoPortal $ator): array
+    {
+        return DB::transaction(function () use ($empresa, $dados, $mlbs, $ator) {
+            [$oferta, $absorvidos] = $this->ofertas->criar($empresa, $dados, $ator);
+
+            $ligados = 0;
+            foreach (array_values(array_unique($mlbs)) as $mlb) {
+                $dono = $this->anuncios->localizarMlb($empresa, $mlb);
+                if ($dono instanceof EstruturaAnuncio && $dono->oferta_id === $oferta->id) {
+                    continue;
+                }
+                $this->ligar($oferta, $mlb, $ator);
+                $ligados++;
+            }
+
+            return [$oferta, $absorvidos, $ligados];
+        });
+    }
+
+    /**
+     * Liga um anúncio do acervo à oferta. Os dados vêm do REGISTRO do acervo,
+     * nunca do navegador. Se o anúncio estava aguardando oferta, sai de lá; se
+     * já está em OUTRA oferta, recusa — mudar de oferta é editar, não ligar.
+     */
+    public function ligar(EstruturaOferta $oferta, string $mlItemId, AtorDoPortal $ator): EstruturaAnuncio
+    {
+        $empresa = $oferta->company;
+        $item = MlAcervoItem::where('company_id', $empresa->id)->where('ml_item_id', $mlItemId)->firstOrFail();
+
+        $linha = self::linhaDoAnuncio([
+            'id' => $item->ml_item_id, 'title' => $item->title, 'listing_type_id' => $item->listing_type_id,
+            'status' => $item->status, 'catalog_listing' => $item->catalog_listing,
+        ]);
+
+        if ($linha === null) {
+            throw ValidationException::withMessages(['ml_item_id' => 'Este anúncio não é Clássico nem Premium.']);
+        }
+
+        $dados = [
+            'tipo'       => $linha['tipo'] === 'Clássico' ? EstruturaAnuncio::TIPO_CLASSICO : EstruturaAnuncio::TIPO_PREMIUM,
+            'codigo_mlb' => $linha['mlb'],
+            'titulo'     => $linha['titulo'],
+            'catalogo'   => $linha['catalogo'],
+            'status'     => ['Ativo' => 'ativo', 'Pausado' => 'pausado', 'Inativo' => 'inativo'][$linha['status']],
+        ];
+
+        $dono = $this->anuncios->localizarMlb($empresa, $linha['mlb']);
+
+        if ($dono instanceof EstruturaAnuncioEspera) {
+            return $this->anuncios->vincularEspera($dono, $oferta, $ator);
+        }
+
+        if ($dono instanceof EstruturaAnuncio) {
+            throw ValidationException::withMessages([
+                'ml_item_id' => $dono->oferta_id === $oferta->id
+                    ? 'Este anúncio já está nesta oferta.'
+                    : "Este anúncio já está na oferta {$dono->oferta->sku}.",
+            ]);
+        }
+
+        return $this->anuncios->cadastrar($oferta, $dados, $ator);
+    }
+}

@@ -206,6 +206,40 @@ class AgendaLeituraTest extends TestCase
         $this->assertSame([null, null], array_column($eventos, 'edicao'));
     }
 
+    /**
+     * 23/09/2026 — série encerrada no Google (UNTIL) ou com número fixo de
+     * reuniões (COUNT) parava de existir lá e seguia desenhada aqui para
+     * sempre, para quem não lê a agenda do dono.
+     */
+    public function test_rotina_projetada_respeita_o_fim_da_serie(): void
+    {
+        Http::fake();
+        [$onboarding, $analista, $estrategista] = $this->cenario();
+        $vinculo = $this->vinculo($onboarding, $analista, [
+            'tipo'        => OnboardingEventoGoogle::TIPO_RECORRENTE,
+            'chave'       => OnboardingEventoGoogle::TIPO_RECORRENTE,
+            'inicio'      => CarbonImmutable::parse('2026-09-02 14:00', 'America/Sao_Paulo'),
+            'fim'         => CarbonImmutable::parse('2026-09-02 15:00', 'America/Sao_Paulo'),
+            // Encerrada no dia 20: a reunião do dia 30 não existe mais.
+            'recorrencia' => 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE;UNTIL=20260920T030000Z',
+        ]);
+
+        $periodo = fn () => array_column($this->servico()->periodo(
+            $estrategista,
+            CarbonImmutable::parse('2026-09-14', 'America/Sao_Paulo'),
+            CarbonImmutable::parse('2026-10-11', 'America/Sao_Paulo'),
+        )['eventos'], 'inicio');
+
+        $this->assertSame(['2026-09-16T14:00:00-03:00'], $periodo());
+
+        // COUNT=3: 02/09, 16/09 e 30/09 — nada em outubro.
+        $vinculo->update(['recorrencia' => 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE;COUNT=3']);
+        $this->assertSame(['2026-09-16T14:00:00-03:00', '2026-09-30T14:00:00-03:00'], $periodo());
+
+        $vinculo->update(['recorrencia' => 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE;COUNT=2']);
+        $this->assertSame(['2026-09-16T14:00:00-03:00'], $periodo());
+    }
+
     public function test_reuniao_marcada_sem_convite_aparece_como_do_sistema(): void
     {
         Http::fake();

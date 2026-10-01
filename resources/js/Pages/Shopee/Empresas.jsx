@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store } from 'lucide-react';
+import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store, UserCog } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { filtrarPorGrupo, opcoesDeGrupo, SEM_GRUPO } from '@/lib/shopeeEmpresas';
 
 const SHOPEE_ORANGE = '#ee4d2d'; // laranja da marca Shopee
 
@@ -125,11 +126,15 @@ function ShopeeConexao({ company }) {
 
 // ─── Página "Empresas" da Shopee (Phase 75; revisada na Phase 78 DEC-78-2/3/4) ─
 // Versão ENXUTA de Companies/Index.jsx: SEM colunas de métrica/cust_id/grant.
-// Ações: atribuir responsável em massa (bulk-assign), "Resolver" pendência
-// (popup: atribui Analista/Estrategista Shopee — selects JÁ escopados ao Setor
-// Shopee pelo backend — + contato) e "Excluir" (cancela SÓ o serviço Shopee,
-// não apaga a empresa). O "Gerar NPS" avulso foi removido (o NPS passa a ser
-// por modelo/disparo — Phase 79).
+// Ações: atribuir responsável em massa (bulk-assign), editar os responsáveis de
+// UMA empresa (popup: Analista/Estrategista Shopee — selects JÁ escopados ao
+// Setor Shopee pelo backend — + contato), aberto tanto pelo botão "Responsáveis"
+// da aba Todas quanto pelo "Resolver" da aba Pendências, e "Excluir" (cancela SÓ
+// o serviço Shopee, não apaga a empresa). O "Gerar NPS" avulso foi removido
+// (o NPS passa a ser por modelo/disparo — Phase 79).
+// A lente por grupo (carteira) vale para a página toda — abas, cards de
+// pendência e tabelas —, menos o sync geral, que roda no servidor sobre todas as
+// lojas conectadas.
 // Rotas: shopee.empresas.* (index, bulk-assign, resolver, cancelar-servico).
 
 // Dicionário de pendências — SÓ as 3 chaves da DEC-2 (voltadas ao NPS).
@@ -188,9 +193,19 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
     const [tab, setTab] = useState('todas');
     const [search, setSearch] = useState('');
 
-    const totalAtivas = companies.filter(c => c.active).length;
+    // ── Lente por grupo (carteira) ───────────────────────────────────────────
+    // Vale para a página inteira: contagem das abas, cards de pendência e as duas
+    // tabelas passam a enxergar só o grupo escolhido. `''` = todos, `'sem'` = as
+    // empresas que não estão em grupo nenhum.
+    const [grupoFilter, setGrupoFilter] = useState('');
+    const doGrupo = filtrarPorGrupo(companies, grupoFilter);
+    const { opcoes: gruposOptions, semGrupo: semGrupoQtd } = opcoesDeGrupo(companies, grupos ?? []);
+
+    const totalAtivas = doGrupo.filter(c => c.active).length;
 
     // ── Sync forçado GERAL (todas as lojas conectadas) ───────────────────────
+    // Fica FORA da lente de propósito: shopee.sync.all roda no servidor sobre
+    // TODAS as lojas conectadas, então o número aqui tem de ser o total.
     const conectadas = companies.filter(c => c.shopee_token?.status === 'active').length;
     const [syncingAll, setSyncingAll] = useState(false);
     const sincronizarTodas = () => {
@@ -204,9 +219,9 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
     };
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
-    const pendentes = companies.filter(c => c.active && (c.pendencias || []).length > 0);
+    const pendentes = doGrupo.filter(c => c.active && (c.pendencias || []).length > 0);
     const pendCounts = { sem_responsavel: 0, sem_contato: 0, empresa_nova: 0 };
-    companies.forEach(c => {
+    doGrupo.forEach(c => {
         if (!c.active) return;
         (c.pendencias || []).forEach(p => { if (pendCounts[p] !== undefined) pendCounts[p]++; });
     });
@@ -220,8 +235,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         setSelectedIds(new Set());
     };
 
-    // ── Filtro da aba Todas (busca por nome/segmento) ────────────────────────
-    const filtered = companies.filter(c => {
+    // ── Filtro da aba Todas (busca por nome/segmento, dentro da lente) ───────
+    const filtered = doGrupo.filter(c => {
         const q = search.toLowerCase();
         return c.name.toLowerCase().includes(q) || (c.segment || '').toLowerCase().includes(q);
     });
@@ -236,6 +251,13 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         });
     };
     const clearSelection = () => setSelectedIds(new Set());
+
+    // Trocar a lente limpa a seleção — linha selecionada que sai da tela ainda
+    // entraria no bulk-assign, e ninguém veria.
+    const aplicarGrupo = (valor) => {
+        setGrupoFilter(valor);
+        clearSelection();
+    };
 
     // Fonte da lista da view corrente (Todas vs Pendências) — orienta o "selecionar tudo".
     const viewList = tab === 'todas' ? filtered : pendentesView;
@@ -267,6 +289,33 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
             email_cliente: company.email_cliente ?? '',
         });
     };
+
+    // Responsável exibido na linha vira gatilho do popup — trocar analista/
+    // estrategista de UMA empresa não depende mais de ela estar pendente.
+    const ResponsavelCell = ({ company, campo }) => (
+        <button
+            type="button"
+            onClick={() => abrirResolver(company)}
+            title="Alterar Analista/Estrategista Shopee desta empresa"
+            className="text-left rounded px-1 -mx-1 hover:text-ecf-yellow hover:bg-ecf-yellow/[0.07] transition-colors"
+        >
+            {company[campo]?.name || <span className="text-white/25">— definir —</span>}
+        </button>
+    );
+
+    // Botão "Responsáveis" da aba Todas (mesmo popup do "Resolver" das Pendências).
+    const ResponsaveisButton = ({ company }) => (
+        <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-[12px]"
+            onClick={() => abrirResolver(company)}
+            title="Alterar Analista/Estrategista Shopee e o contato desta empresa"
+        >
+            <UserCog className="h-3.5 w-3.5" /> Responsáveis
+        </Button>
+    );
+
     const salvarResolver = (e) => {
         e.preventDefault();
         resolverForm.post(route('shopee.empresas.resolver'), {
@@ -297,6 +346,36 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         >
             <Trash2 className="h-3.5 w-3.5" /> Excluir
         </Button>
+    );
+
+    // Select da lente por grupo — o mesmo nas duas abas (estado unico).
+    const GrupoFilter = () => (
+        <div className="flex items-center gap-2">
+            <select
+                value={grupoFilter}
+                onChange={e => aplicarGrupo(e.target.value)}
+                title="Filtrar as empresas por grupo (carteira)"
+                className={cn(
+                    'h-9 pl-3 pr-8 rounded-lg border text-[13px] cursor-pointer focus:outline-none focus:border-ecf-yellow/40',
+                    grupoFilter
+                        ? 'border-ecf-yellow/40 bg-ecf-yellow/[0.07] text-white'
+                        : 'border-white/[0.1] bg-white/[0.05] text-white/80'
+                )}
+            >
+                <option value="" className="bg-[#0f1116]">Todos os grupos</option>
+                {gruposOptions.map(g => (
+                    <option key={g.id} value={String(g.id)} className="bg-[#0f1116]">{g.name} ({g.qtd})</option>
+                ))}
+                {semGrupoQtd > 0 && (
+                    <option value={SEM_GRUPO} className="bg-[#0f1116]">— sem grupo — ({semGrupoQtd})</option>
+                )}
+            </select>
+            {grupoFilter && (
+                <button onClick={() => aplicarGrupo('')} className="text-[12px] text-white/50 hover:text-white underline">
+                    limpar
+                </button>
+            )}
+        </div>
     );
 
     // Barra de ações em massa (aparece quando há seleção) — atribuição de responsáveis.
@@ -351,6 +430,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                     <>
                         <div className="flex items-center gap-2 flex-wrap">
                             <Input placeholder="Buscar empresa..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
+                            <GrupoFilter />
                             {conectadas > 0 && (
                                 <Button
                                     size="sm"
@@ -409,8 +489,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-white/70">{c.segment || <span className="text-white/25">—</span>}</TableCell>
-                                                <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
-                                                <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
+                                                <TableCell className="text-sm"><ResponsavelCell company={c} campo="consultor" /></TableCell>
+                                                <TableCell className="text-sm"><ResponsavelCell company={c} campo="estrategista" /></TableCell>
                                                 <TableCell><ServicoBadges contratos={c.contratos_servico || []} /></TableCell>
                                                 <TableCell><ShopeeConexao company={c} /></TableCell>
                                                 <TableCell className="text-xs text-white/60">{c.email_cliente || <span className="text-white/25">—</span>}</TableCell>
@@ -420,6 +500,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
+                                                        <ResponsaveisButton company={c} />
                                                         <ExcluirButton company={c} />
                                                     </div>
                                                 </TableCell>
@@ -429,7 +510,9 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                             <TableRow>
                                                 <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                                                     <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                                                    Nenhuma empresa Shopee encontrada
+                                                    {grupoFilter || search
+                                                        ? 'Nenhuma empresa Shopee com esse filtro.'
+                                                        : 'Nenhuma empresa Shopee encontrada'}
                                                 </TableCell>
                                             </TableRow>
                                         )}
@@ -443,6 +526,8 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                 {/* ══════════════ ABA PENDÊNCIAS ══════════════ */}
                 {tab === 'pendencias' && (
                     <>
+                        <GrupoFilter />
+
                         {/* Cards clicáveis — filtram a lista por tipo de pendência */}
                         <div className="flex flex-wrap items-center gap-3">
                             {Object.entries(PENDENCIAS).map(([key, cfg]) => (
@@ -527,13 +612,15 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                 )}
             </div>
 
-            {/* Popup "Resolver pendência" — atribuir Analista/Estrategista Shopee + contato.
-                Os selects usam as options JÁ escopadas ao Setor Shopee pelo backend (78-01). */}
+            {/* Popup de responsáveis — atribuir/trocar/remover Analista e Estrategista
+                Shopee + contato. Aberto pelo "Responsáveis" (aba Todas) e pelo "Resolver"
+                (aba Pendências). Os selects usam as options JÁ escopadas ao Setor Shopee
+                pelo backend (78-01); "— sem ... —" remove o responsável. */}
             <Dialog open={!!resolverEmpresa} onOpenChange={(o) => { if (!o) setResolverEmpresa(null); }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Wrench size={16} className="text-ecf-yellow/70" /> Resolver pendência — {resolverEmpresa?.name}
+                            <UserCog size={16} className="text-ecf-yellow/70" /> Responsáveis Shopee — {resolverEmpresa?.name}
                         </DialogTitle>
                     </DialogHeader>
                     <form onSubmit={salvarResolver} className="space-y-4">

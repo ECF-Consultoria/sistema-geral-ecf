@@ -250,3 +250,75 @@ teste faz HTTP real). Até morrer, acumula **77 falhas pré-existentes** em 31
 classes — entre elas `ExampleTest` (`/` devolve 302, não 200) e
 `CalcularFaixaTest` (`new AdminController()` sem o argumento do construtor), que
 são quebras estruturais antigas, não regressão de quem está mexendo hoje.
+
+## 11. Três falsos negativos do probe que custaram uma rodada (23/09/2026)
+
+Medidos verificando o Mapeamento Estrutural com `artisan serve` numa porta do
+worktree. Nenhum era bug da tela; os três pareciam.
+
+- **`waitForNetworkIdle` não fica ocioso sob `artisan serve`** e estoura o
+  timeout mesmo com só duas requisições feitas e nada pendente (conferido com
+  `request`/`requestfinished`). Use espera fixa curta. Pior: com `try/catch`
+  engolindo o timeout, a espera vira 15 s calados — e um aviso que some em 6 s
+  (flash) é lido como "não apareceu".
+- **Screenshot logo após abrir `Sheet`/`Dialog` pega a animação no meio**: a
+  gaveta aparece cortada à direita. Espere ~800 ms e confira pela caixa
+  (`getBoundingClientRect().right === innerWidth`), não pela foto.
+- **`click({ clickCount: 3 })` não seleciona texto de `input type=number`**:
+  digitar "4" sobre "1" dá "14". Use Ctrl+A.
+
+E um que ERA bug, e só a foto mostrou (o teste passava): classe Tailwind
+concatenada por string (`` `${BASE} w-20` ``) não vence o `w-full` da base —
+o input esticou e o nome do produto sumiu da linha. Sempre `cn(BASE, 'w-20')`,
+que passa pelo tailwind-merge.
+
+E outro, pego só USANDO o módulo de ponta a ponta (24/09): `router.delete` do
+Inertia é `(url, opções)` — não recebe dados. Uma chamada dinâmica
+`router[metodo](url, dados, opções)` mandava as opções no lugar dos dados, e
+elas eram ignoradas em silêncio: sem `preserveState` a página remontava e
+fechava o diálogo; sem `onSuccess` nada recarregava. O banco ficava certo, então
+nenhum teste PHP via. Gate: `tests/js/estrutura-mapeamento-estrutural.test.js`.
+
+E um de layout: tabela dentro de `overflow-x-auto` ainda alargava a PÁGINA no
+celular (scrollWidth 459 em 390). A moldura cortava certo; quem vazava era o
+`<span className="sr-only">` do cabeçalho — `sr-only` é `position: absolute`, e
+sem ancestral posicionado ele escapa do corte do scroll container e empurra o
+documento. `relative` na moldura resolve. Medir com
+`document.documentElement.scrollWidth`, e achar o culpado subindo a cadeia de
+`getBoundingClientRect().right` + `overflowX` — a foto só mostra o sintoma.
+
+
+## 12. Tela de um worktree com banco DESCARTÁVEL (SQLite), sem tocar no MariaDB local (30/09/2026)
+
+Alternativa ao §9 quando o banco local nem tem as tabelas da feature (o `main`
+local estava 1.304 commits atrás) e migrar o MariaDB compartilhado seria mexer
+no ambiente dos outros. Usado para ver o "Anunciar por IA" abrindo o rascunho no
+wizard de `/mlb/anuncios` — com o job rodando DE VERDADE durante o polling.
+
+- **Banco:** arquivo SQLite no scratchpad + `migrate:fresh` (as migrations rodam
+  em SQLite, é o que a suíte usa). Configuração pela linha de comando:
+  `DB_CONNECTION=sqlite DB_DATABASE=<arquivo> SESSION_DRIVER=file CACHE_STORE=file
+  APP_URL=… ASSET_URL=…` — variável do processo vence o `.env` (Dotenv imutável).
+  Nunca editar o `.env`. Todo script de seed deve ABORTAR se
+  `config('database.connections.sqlite.database')` não for o arquivo descartável.
+- **Servidor:** `php -S 127.0.0.1:<porta> -t public <router.php>` com router
+  PRÓPRIO que faz `require` do bootstrap de autoload do worktree
+  (learning `autoloader-compartilhado-entre-worktrees.md`) e depois do
+  `public/index.php`. **`-d auto_prepend_file=` NÃO roda no servidor embutido
+  quando há router** — sem o router próprio as classes `App\` vêm do checkout
+  principal, e nada avisa.
+- **Porta ocupada não dá erro no Windows.** Outra sessão tinha `artisan serve`
+  na 8123; o meu `php -S` na mesma porta imprimiu "started" e as requisições
+  caíram no servidor DELA (login dava `auth.failed`: era o banco dela). Antes de
+  subir: `Get-NetTCPConnection -LocalPort <p> -State Listen` vazio. Para parar o
+  seu, filtre pela linha de comando (`*router*`), nunca pela porta. Um log por
+  requisição no router (URI + `getenv('DB_DATABASE')`) prova com quem você fala.
+- Os chunks dinâmicos carregam do `ASSET_URL` gravado NO BUILD, não do env do
+  servidor — interceptar no Puppeteer como no §3, apontando para o `public/` do
+  worktree.
+- **Metadados do ML** vão para o cache de arquivo (`ml_app_token_coleta`,
+  `ml_meta_categoria_<id>`, `ml_meta_atributos_<id>`, `ml_meta_listing_types_MLB`):
+  a tela não chama o ML.
+- **Job com IA/ML:** rodar o `handle()` num script contra o mesmo SQLite, com
+  `Http::fake` + `Http::preventStrayRequests()`, enquanto a página está aberta —
+  prova o polling e a abertura automática, não só o estado final.

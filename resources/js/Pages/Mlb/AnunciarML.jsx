@@ -94,6 +94,7 @@ function SkuCopyChip({ sku }) {
 // ─── Input padrão ECF com badge de origem (DRAFT-04) ───
 // origem === 'cliente'    → badge violet
 // origem === 'publicador' → badge amber ('editado')
+// origem === 'ia'         → badge sky ('IA', preenchido pelo Anunciar por IA)
 // origem ausente          → sem badge (comportamento original preservado)
 function Campo({ label, children, dica, origem }) {
     return (
@@ -108,6 +109,12 @@ function Campo({ label, children, dica, origem }) {
                 {origem === 'publicador' && (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80">
                         editado
+                    </span>
+                )}
+                {/* Preenchido pelo "Anunciar por IA" — confira antes de publicar */}
+                {origem === 'ia' && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300/80">
+                        IA
                     </span>
                 )}
             </span>
@@ -1164,6 +1171,14 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         if (payload.price != null)              setPreco(String(payload.price));
         if (payload.available_quantity != null) setEstoque(String(payload.available_quantity));
         if (payload.description != null)        setDescricao(payload.description);
+        if (payload.condition)                  setCondicao(payload.condition);
+
+        // Garantia e imagem principal. Sem restaurá-las, o autosave que roda
+        // logo depois de abrir regravava o rascunho com '30 dias' e sem foto.
+        const garantiaSalva = (payload.sale_terms ?? []).find(t => t.id === 'WARRANTY_TIME')?.value_name;
+        if (garantiaSalva) setGarantia(garantiaSalva);
+        const fotoPrincipal = payload.pictures?.[0]?.source;
+        if (fotoPrincipal) setImagemUrl(fotoPrincipal);
 
         // Extrai SELLER_PACKAGE_* de payload.attributes → states individuais de dimensão
         const attrs = Array.isArray(payload.attributes) ? payload.attributes : [];
@@ -1260,6 +1275,14 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         if (alvo) abrirRascunho(alvo);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [abrirRascunhoId]);
+
+    // ─── Rascunho que o "Anunciar por IA" gravou: abre no wizard para revisão ───
+    // Mesmo caminho de qualquer rascunho (abrirRascunho), só muda o recado:
+    // deixar claro que nada foi publicado e o que ainda é do publicador.
+    const abrirRascunhoDaIa = async (r) => {
+        await abrirRascunho(r);
+        setFlash(`A IA montou o rascunho #${r.id} — nada foi publicado. Confira os campos com o selo IA, envie as fotos e publique quando estiver certo.`);
+    };
 
     // ─── Marca um campo como 'publicador' quando editado (DRAFT-04) ───
     // Só age se o campo já estava mapeado como 'cliente' — não polui campos livres.
@@ -1518,6 +1541,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             // não duplica save já em andamento nem interfere com publicação
             const b = busyRef.current;
             if (b === 'salvar' || b === 'publicar' || b === 'publicarDuplo' || b === 'criar') return;
+            // Atributos da categoria ainda carregando (abrir rascunho): sem eles
+            // `temVariacoes` é falso e o save descartaria as variações. O save
+            // volta a disparar quando `atributos` chega (está nas dependências).
+            if (b === 'attrs') return;
 
             setAutoSaveStatus('salvando');
             try {
@@ -1540,7 +1567,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         imagemUrl, garantia, categoryId, valores, variacoes,
         pesoG, comprimentoCm, larguraCm, alturaCm,
         shippingMode, freteGratis, veiculos,
-        rascunhoId,
+        rascunhoId, atributos,
     ]);
 
     // ─── UX-04: atalhos de teclado no wizard ───
@@ -1597,7 +1624,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         return () => window.removeEventListener('keydown', onKey);
     }, [etapa, busy, categoryId, bloqueadoPorCatalogo]);
 
-    const setValor = (id, patch) => setValores(v => ({ ...v, [id]: { ...v[id], ...patch } }));
+    // Só é chamado pela ficha técnica (edição humana): o selo IA do atributo vira "editado".
+    const setValor = (id, patch) => {
+        setValores(v => ({ ...v, [id]: { ...v[id], ...patch } }));
+        marcarEditado(`attr:${id}`);
+    };
 
     // ─── Monta o payload no shape que o backend (ItemBuilder) espera ───
     const montarPayload = () => {
@@ -1713,6 +1744,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             // ItemBuilder ignora esta chave); o MlPublicacaoService as lê aqui e
             // aplica via POST /items/{id}/compatibilities depois de publicar.
             ...(veiculos.length > 0 ? { compatibilidades: veiculos } : {}),
+            // Selos de origem (cliente / IA / editado). O ItemBuilder só copia
+            // campos conhecidos, então isto nunca chega ao ML — mas sem gravar,
+            // o 1º autosave apagava os selos e reabrir o rascunho os perdia.
+            ...(Object.keys(origemCampos).length > 0 ? { meta_campos: origemCampos } : {}),
         };
     };
 
@@ -2084,8 +2119,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             <PainelAnunciarIa
                                 empresa={empresa}
                                 analiseInicial={iaAnalise}
+                                produtos={produtos}
                                 onAplicarTitulo={(t) => { setTitulo(t); marcarEditado('title'); }}
                                 onAplicarDescricao={(d) => { setDescricao(d); marcarEditado('description'); }}
+                                onAbrirRascunho={abrirRascunhoDaIa}
                             />
                             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                 <h2 className="mb-3 text-sm font-semibold text-white">1. Título e categoria</h2>
@@ -2206,7 +2243,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 ) : (
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         {obrigatorios.map(a => (
-                                            <Campo key={a.id} label={a.name}>
+                                            <Campo key={a.id} label={a.name} origem={origemCampos[`attr:${a.id}`]}>
                                                 {(a.value_type === 'list' || a.value_type === 'boolean') && a.values?.length ? (
                                                     <select className={inputCls} value={valores[a.id]?.value_id ?? ''}
                                                         onChange={e => setValor(a.id, { value_id: e.target.value, value_name: undefined })}>
@@ -2251,7 +2288,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                 </p>
                                                 <div className="grid gap-3 sm:grid-cols-2">
                                                     {opcionais.map(a => (
-                                                        <Campo key={a.id} label={a.name}>
+                                                        <Campo key={a.id} label={a.name} origem={origemCampos[`attr:${a.id}`]}>
                                                             {(a.value_type === 'list' || a.value_type === 'boolean') && a.values?.length ? (
                                                                 <select className={inputCls} value={valores[a.id]?.value_id ?? ''}
                                                                     onChange={e => setValor(a.id, { value_id: e.target.value, value_name: undefined })}>
@@ -2417,7 +2454,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                             </ul>
                                         </div>
 
-                                        <Campo label="Garantia"><input className={inputCls} value={garantia} onChange={e => setGarantia(e.target.value)} placeholder="Ex.: 30 dias" /></Campo>
+                                        <Campo label="Garantia" origem={origemCampos['garantia']}>
+                                            <input className={inputCls} value={garantia} onChange={e => { setGarantia(e.target.value); marcarEditado('garantia'); }} placeholder="Ex.: 30 dias" />
+                                        </Campo>
                                         <Campo label="Descrição" origem={origemCampos['description']}>
                                             <textarea
                                                 className={cn(inputCls, 'min-h-[100px] resize-y')}

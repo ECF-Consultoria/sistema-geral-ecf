@@ -7,7 +7,49 @@ import { Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import { ListChecks, Search, Webhook, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
-import { rotuloContrato, classeContrato, formatarHaDias, SEM_CONTRATO, SEM_CONTRATO_LABEL } from '@/lib/contratoStatus';
+import {
+    rotuloContrato, classeContrato, formatarHaDias, SEM_CONTRATO, SEM_CONTRATO_LABEL, CONTRATO_STATUS_LABELS,
+} from '@/lib/contratoStatus';
+
+// ─── Filtros de 23/09/2026 — serviço, vencimento e status de contrato ──────
+// As chaves espelham a whitelist de `ComercialEntradaController` (sincronia
+// manual, como o resto do projeto). Valor fora dela o servidor ignora.
+const FILTROS_VENCIMENTO = [
+    ['vencido',   'Vencido'],
+    ['30',        'Vence em até 30 dias'],
+    ['60',        'Vence em até 60 dias'],
+    ['90',        'Vence em até 90 dias'],
+    ['sem_prazo', 'Sem prazo definido'],
+];
+
+// "Isento" é a linha cujo serviço não passa por contrato (ex.: só Polos) —
+// na tabela ela aparece como travessão.
+const CONTRATO_ISENTO = 'isento';
+
+const FILTROS_CONTRATO = [
+    [SEM_CONTRATO, SEM_CONTRATO_LABEL],
+    ...Object.entries(CONTRATO_STATUS_LABELS),
+    [CONTRATO_ISENTO, 'Não passa por contrato'],
+];
+
+const CLASSE_SELECT = 'h-9 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40';
+
+/** Término do contrato com o aviso de já vencido — a data que o filtro lê. */
+function Termino({ data }) {
+    if (!data) {
+        return <span className="text-white/30" title="Contrato por prazo indeterminado">—</span>;
+    }
+    // Comparação por string ISO (Y-m-d) de propósito: `new Date('2026-09-23')`
+    // é meia-noite UTC e cairia no dia anterior no fuso de Brasília.
+    const hoje = new Date().toLocaleDateString('en-CA');
+    const vencido = data < hoje;
+
+    return (
+        <span className={cn('text-[13px]', vencido ? 'text-red-400 font-semibold' : 'text-white/60')}>
+            {formatDate(data)}{vencido && ' · vencido'}
+        </span>
+    );
+}
 
 // ─── Plano 151-08 (COMERC-02, D-11) — rótulos das 7 pendências comerciais.
 // Mesmo bloco de Comercial/EmpresasListagem.jsx e Admin/Contratos.jsx — o
@@ -98,17 +140,26 @@ function ContratoBadge({ badge }) {
  * elimina o módulo do manifest do Vite e a rota morre em runtime com
  * "Unable to locate file in Vite manifest", sem falhar no `npm run build`.
  */
-export default function Entrada({ companies, filters = {}, resumo = {} }) {
+export default function Entrada({ companies, filters = {}, resumo = {}, servicos = [] }) {
     // Busca com debounce — mesmo padrão de EmpresasListagem.jsx/Admin/Contratos.jsx,
     // evita um request por caractere digitado.
     const [qInput, setQInput] = useState(filters.q || '');
     const debounceRef = useRef(null);
 
+    // Trocar um filtro volta para a página 1: a paginação é sobre a lista já
+    // filtrada, e manter `page` levaria a uma página que pode não existir mais.
     const applyFilter = (key, value) => {
         router.get(route('comercial.entrada.index'), {
             ...filters,
             [key]: value || undefined,
         }, { preserveState: true, preserveScroll: true });
+    };
+
+    const temFiltro = Boolean(filters.q || filters.servico || filters.vencimento || filters.contrato);
+
+    const limparFiltros = () => {
+        setQInput('');
+        router.get(route('comercial.entrada.index'), { ordem: filters.ordem }, { preserveState: true, preserveScroll: true });
     };
 
     const onSearchChange = (e) => {
@@ -158,14 +209,56 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                             />
                         </div>
                         <select
+                            value={filters.servico ?? ''}
+                            onChange={(e) => applyFilter('servico', e.target.value)}
+                            className={CLASSE_SELECT}
+                            aria-label="Filtrar por serviço"
+                        >
+                            <option value="" className="bg-[#0f1116]">Todos os serviços</option>
+                            {servicos.map((s) => (
+                                <option key={s.id} value={s.id} className="bg-[#0f1116]">{s.nome}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={filters.vencimento ?? ''}
+                            onChange={(e) => applyFilter('vencimento', e.target.value)}
+                            className={CLASSE_SELECT}
+                            aria-label="Filtrar pelo término do contrato"
+                        >
+                            <option value="" className="bg-[#0f1116]">Qualquer vencimento</option>
+                            {FILTROS_VENCIMENTO.map(([valor, rotulo]) => (
+                                <option key={valor} value={valor} className="bg-[#0f1116]">{rotulo}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={filters.contrato ?? ''}
+                            onChange={(e) => applyFilter('contrato', e.target.value)}
+                            className={CLASSE_SELECT}
+                            aria-label="Filtrar pelo status do contrato"
+                        >
+                            <option value="" className="bg-[#0f1116]">Qualquer status de contrato</option>
+                            {FILTROS_CONTRATO.map(([valor, rotulo]) => (
+                                <option key={valor} value={valor} className="bg-[#0f1116]">{rotulo}</option>
+                            ))}
+                        </select>
+                        <select
                             value={filters.ordem || 'recentes'}
                             onChange={(e) => applyFilter('ordem', e.target.value)}
-                            className="h-9 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
+                            className={CLASSE_SELECT}
                             aria-label="Ordenar a lista"
                         >
                             <option value="recentes" className="bg-[#0f1116]">Mais recentes</option>
                             <option value="antigas" className="bg-[#0f1116]">Mais antigas</option>
                         </select>
+                        {temFiltro && (
+                            <button
+                                type="button"
+                                onClick={limparFiltros}
+                                className="h-9 px-3 rounded-lg text-[12px] text-white/50 hover:text-white/80 hover:underline"
+                            >
+                                Limpar filtros
+                            </button>
+                        )}
                     </div>
 
                     <Card>
@@ -182,6 +275,7 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                         <TableHead className="text-[11px] uppercase tracking-wide">Data da venda</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Contato</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Status do contrato</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wide">Término</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Pendências</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Etapa</TableHead>
                                         <TableHead className="text-[11px] uppercase tracking-wide">Ações</TableHead>
@@ -190,10 +284,10 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                 <TableBody>
                                     {linhas.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={12} className="text-center py-10">
-                                                {filters.q ? (
+                                            <TableCell colSpan={13} className="text-center py-10">
+                                                {temFiltro ? (
                                                     <p className="text-[13px] text-white/40">
-                                                        Nenhuma empresa encontrada para "{filters.q}".
+                                                        Nenhuma empresa encontrada com esses filtros.
                                                     </p>
                                                 ) : (
                                                     <>
@@ -232,6 +326,7 @@ export default function Entrada({ companies, filters = {}, resumo = {} }) {
                                                 {c.nome_contato ?? '—'}
                                             </TableCell>
                                             <TableCell><ContratoBadge badge={c.contrato_badge} /></TableCell>
+                                            <TableCell><Termino data={c.termino_contrato} /></TableCell>
                                             {/* D-11 — pendência do fluxo e pendências do cadastro são DUAS
                                                 coisas visualmente distintas na mesma célula, nunca um
                                                 número só somado. */}

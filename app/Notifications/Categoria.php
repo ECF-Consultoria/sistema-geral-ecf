@@ -36,4 +36,7 @@ enum Categoria: string
 
     /** Disparada pelo fechamento mensal quando uma empresa ou grupo muda de faixa de cobrança (Fase 138, D-02). */
     case FAIXA_ALTERADA = 'faixa_alterada';
+
+    /** Movimento em um chamado para o time dev: novo, transferido, respondido, resolvido (Chamados, 23/09/2026). */
+    case CHAMADO        = 'chamado';
 }

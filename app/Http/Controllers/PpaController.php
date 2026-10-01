@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Ppa;
+use App\Services\Ppa\PpaListaService;
 use App\Services\Ppa\PpaQuadroService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -11,7 +12,7 @@ use Inertia\Inertia;
 
 class PpaController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, PpaListaService $lista)
     {
         $user = $request->user();
 
@@ -21,10 +22,20 @@ class PpaController extends Controller
         // deixaria um plano em andamento esperando na página 2 enquanto
         // concluídos ocupam a 1. A régua está em `Ppa::scopeOrdenadoPorAtencao`
         // e é a mesma que a tela aplica ao agrupar.
-        $query = Ppa::with(['company', 'mentor'])
+        //
+        // Situação e ordem vêm da URL e são aplicadas no BANCO, não na página:
+        // a lista pagina de 20 em 20, e recortar só o que chegou mostraria 3
+        // vencidos para quem tem 19 espalhados pelas páginas seguintes.
+        $filtros = Ppa::filtrosDaLista($request->only('situacao', 'ordem'));
+
+        // `tasks` carregado porque a lista DESENHA o quadro de cada plano agora,
+        // e não só a contagem — é o mesmo componente que o Portal do Cliente usa.
+        $query = Ppa::with(['company', 'mentor', 'tasks'])
             ->doEscopo(Ppa::ESCOPO_GERAL)
             ->comContagemDeTarefas()
-            ->ordenadoPorAtencao();
+            ->comUltimaAtividade()
+            ->daSituacao($filtros['situacao'])
+            ->ordenadoPorAtencao($filtros['ordem']);
 
         // Ajuste UAT 2026-07-07: qualquer user não-admin só vê PPAs que ELE
         // criou. Antes o filtro era só isMentor(), o que deixava Analistas
@@ -33,26 +44,9 @@ class PpaController extends Controller
             $query->where('mentor_id', $user->id);
         }
 
-        $ppas = $query->paginate(20)->through(fn($p) => [
-            'id'               => $p->id,
-            'title'            => $p->title,
-            'company_name'     => $p->nomeEmpresa(),
-            'company_id'       => $p->company_id,
-            'mentor_name'      => $p->mentor->name,
-            'status'           => $p->status,
-            'due_date'         => $p->due_date?->format('d/m/Y'),
-            'sent_at'          => $p->sent_at?->format('d/m/Y H:i'),
-            'completed_at'     => $p->completed_at?->format('d/m/Y H:i'),
-            'trello_board_url' => $p->trello_board_url,
-            'workspace_token'  => $p->workspace_token,
-            'tasks_count'      => $p->tasks_count,
-            'tasks_done'       => $p->tasks_done_count,
-            // Quantas estão em andamento — é o que decide se o plano entra na
-            // seção "Em andamento" da lista, e o que a linha recolhida mostra.
-            'tasks_doing'      => $p->tasks_doing_count,
-            'due_date_dias'    => $p->diasAteOPrazo(),
-            'created_at'       => $p->created_at->format('d/m/Y'),
-        ]);
+        // O formato da linha vive em PpaListaService, que reaproveita o payload
+        // do Portal — a tela é a mesma componente dos dois lados.
+        $ppas = $query->paginate(20)->through(fn ($p) => $lista->linha($p));
 
         $companies = $user->isAdmin()
             ? Company::where('active', true)->get(['id', 'name'])
@@ -61,6 +55,7 @@ class PpaController extends Controller
         return Inertia::render('Ppa/Index', [
             'ppas'      => $ppas,
             'companies' => $companies,
+            'filtros'   => $filtros,
         ]);
     }
 
@@ -156,8 +151,19 @@ class PpaController extends Controller
 
     // ── Gerar / revogar link do workspace ────────────────────────────────────
 
-    public function generateWorkspaceLink(Ppa $ppa)
+    public function generateWorkspaceLink(Request $request, Ppa $ppa, PpaListaService $lista)
     {
+        // O botão "Compartilhar" da lista pede por axios — ver o mesmo método
+        // em `PolosPpaController`. PPA de empresa não ganha token: o link dele
+        // é o do Portal, e `compartilhamento()` já o devolve.
+        if ($request->wantsJson()) {
+            if (! $ppa->company_id && ! $ppa->workspace_token) {
+                $ppa->update(['workspace_token' => Str::uuid()->toString()]);
+            }
+
+            return response()->json($lista->compartilhamento($ppa));
+        }
+
         if ($ppa->company_id) {
             return back()->with('workspace_url', \App\Support\Portal\UrlDoPortal::para('portal.entrada'));
         }
