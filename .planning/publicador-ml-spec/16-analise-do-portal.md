@@ -19,6 +19,18 @@
 
 As perguntas 5–11 seguem com o padrão proposto (§7.1) até você dizer o contrário.
 
+## Andamento
+
+Branch `feat/publicador-ml-261001`. Commits só locais até a primeira entrega com tela.
+
+| Entrega | Situação | Commit |
+|---|---|---|
+| F0 — sondagem (0a pública + 0b na conta #459) | Feita em 01/10 | `6184715a`, `7a7d5a9f` |
+| F1.1 — chave canônica, combinações, regeneração | Feita em 01/10 (TC-03…13, 40) | `a48ee990` |
+| F1.2 — CategorySchema, classificador, valor de atributo, troca de categoria | Feita em 01/10 (TC-30…41, 70…74) | `5036a94e` |
+| F1.3 — grupos de imagem | Feita em 01/10 (TC-50…55, 60) | ver `git log` |
+| F1.4 — builders legado e UP + PayloadPlan | Próxima | — |
+
 ## Resultado da Fase 0 (01/10/2026) — o que muda no plano
 
 Detalhes e evidências no `12-hipoteses-e-pendencias.md` §Resultado.
