@@ -6,15 +6,17 @@ use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
+use App\Services\Nps\NpsJanelaResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Fase 159 Plano 159-05 (D-06) — junção das contas: NÚCLEO (carteira,
- * histórico de gestão, cargos, desativação). O plano 159-06 acrescenta NPS,
- * snapshots, PPAs e onboardings sobre a mesma estrutura.
+ * Fase 159 Planos 159-05/159-06 (D-06/D-11) — junção das contas: NÚCLEO
+ * (carteira, histórico de gestão, cargos, desativação — 159-05) e as etapas
+ * de NPS, snapshots, PPAs e onboardings em aberto (159-06) sobre a mesma
+ * estrutura.
  *
  * Por que existe: a conta de origem (`--de`) deixa de existir como perfil
  * ativo e todo o histórico vivo que ela carrega (carteira, cargos) passa
@@ -51,6 +53,27 @@ use Illuminate\Support\Str;
  *    apontando para o nome dela. Nenhuma outra coluna de `users` é tocada —
  *    em especial nunca `password`/`remember_token` vão para o backup.
  *
+ * Por que as etapas de NPS/snapshots entram (159-06, D-06) — nesta ordem,
+ * depois de `cargos` e antes de `desativar_origem`:
+ *  - `nps_atribuicoes` — `nps_score_assignments` não tem coluna de mês; a
+ *    competência é sempre o JOIN com `nps_responses`/`nps_surveys` (NUNCA
+ *    `assigned_at`/`month_reference` — Pitfall 4 da pesquisa). A linha move
+ *    quando `completed_at` do survey cai no mês de COLETA (M+1,
+ *    `NpsJanelaResolver::mesDeColeta`) a partir do corte de `--a-partir`.
+ *  - `nps_imputacoes` — `nps_imputed_assignments.competencia_nps` JÁ é o mês
+ *    de coleta materializado (ver `NpsImputationService`) — comparação
+ *    direta, sem JOIN.
+ *  - Nas duas, colisão (destino já tem a mesma linha pelo grão da origem)
+ *    vira `delete` da origem, nunca `update` que colidiria no unique/no
+ *    mesmo `(response,role,servico)`.
+ *  - `snapshots_diarios`/`snapshots_empresa` — só o que é CACHE (diário sem
+ *    `mes_referencia`, ou detalhe por empresa com `origem` != consolidar_mes)
+ *    a partir do corte é removido; o que já é competência FECHADA
+ *    (`consolidar_mes`, ou mensal — bloqueado antes de chegar aqui) nunca é
+ *    tocado. A janela de coleta do NPS abre DEPOIS do corte financeiro
+ *    (01/10 para a competência 09) — por isso `planejar()` sempre acrescenta
+ *    um aviso de re-execução (ver fim do método).
+ *
  * Trava de competência consolidada (D-06): a junção nunca recua sobre uma
  * competência já fechada — nem por snapshot mensal (`desempenho_score_snapshots`)
  * nem por detalhe por empresa gravado por `desempenho:consolidar-mes`
@@ -82,6 +105,22 @@ class UnificacaoContasService
     private const CLASSIFICACAO_CENSO = [
         'company_users.user_id' => ['tratada', null],
         'user_setores.user_id' => ['tratada', null],
+        'nps_score_assignments.user_id' => [
+            'tratada',
+            'parcial: só competência >= corte; o resto fica com a origem de propósito',
+        ],
+        'nps_imputed_assignments.user_id' => [
+            'tratada',
+            'parcial: só competência >= corte; o resto fica com a origem de propósito',
+        ],
+        'desempenho_score_snapshots.user_id' => [
+            'tratada',
+            'parcial: só competência >= corte; o resto fica com a origem de propósito',
+        ],
+        'desempenho_company_score_snapshots.user_id' => [
+            'tratada',
+            'parcial: só competência >= corte; o resto fica com a origem de propósito',
+        ],
         'company_manager_history.user_id' => [
             'mantida',
             'histórico — a junção acrescenta eventos, não reescreve',
@@ -142,6 +181,16 @@ class UnificacaoContasService
         $etapaHistorico = $this->planejarHistoricoGestao($etapaCarteira['operacoes'], $deId, $paraId, $agora);
         $etapaCarteira['operacoes'] = $this->limparMetadadosInternos($etapaCarteira['operacoes']);
         $etapaCargos = $this->planejarCargos($deId, $paraId, $agora);
+
+        // Mês de COLETA do NPS (M+1) da competência de corte — mesma régua do
+        // motor (NpsJanelaResolver::mesDeColeta), nunca recalculada à mão.
+        $inicioColeta = app(NpsJanelaResolver::class)->mesDeColeta($aPartirInicio->copy())->startOfMonth();
+
+        $etapaNpsAtribuicoes = $this->planejarNpsAtribuicoes($deId, $paraId, $inicioColeta);
+        $etapaNpsImputacoes = $this->planejarNpsImputacoes($deId, $paraId, $inicioColeta);
+        $etapaSnapshotsDiarios = $this->planejarSnapshotsDiarios($deId, $aPartirInicio);
+        $etapaSnapshotsEmpresa = $this->planejarSnapshotsEmpresa($deId, $aPartirInicio);
+
         $etapaDesativar = $this->planejarDesativarOrigem($de);
 
         $censo = $this->censo($deId);
@@ -160,13 +209,46 @@ class UnificacaoContasService
             }
         }
 
+        // A janela de coleta do NPS da competência de corte ainda não abriu —
+        // 0 atribuições/imputações é esperado, não um bug (D-06/CONTEXT.md).
+        if ($agora->lt($inicioColeta)) {
+            $avisos[] = sprintf(
+                'A coleta do NPS da competência %s começa em %s; respostas e imputações dessa '
+                . 'competência ainda não existem. Rode o comando de novo depois da coleta e antes '
+                . 'do desempenho:consolidar-mes de %s às 14:00 (America/Sao_Paulo).',
+                $aPartirInicio->format('Y-m'),
+                $inicioColeta->format('Y-m-d'),
+                $inicioColeta->copy()->endOfMonth()->format('Y-m-d')
+            );
+        }
+
+        // Mesmo com a coleta já aberta: respostas que chegarem DEPOIS deste
+        // --apply já nascem atribuídas ao destino (a carteira já moveu), mas
+        // as que chegaram ANTES precisam de um segundo --apply para migrar.
+        $avisos[] = sprintf(
+            'Rode a etapa de NPS de novo antes do desempenho:consolidar-mes de %s às 14:00 '
+            . '(America/Sao_Paulo) — respostas/imputações da competência %s que já chegaram ficam '
+            . 'com a origem até o próximo --apply; as que chegarem depois já nascem no destino.',
+            $inicioColeta->copy()->endOfMonth()->format('Y-m-d'),
+            $aPartirInicio->format('Y-m')
+        );
+
         return [
             'de' => $de,
             'para' => $para,
             'a_partir' => $aPartirInicio->format('Y-m'),
             'bloqueios' => $bloqueios,
             'avisos' => $avisos,
-            'etapas' => [$etapaCarteira, $etapaHistorico, $etapaCargos, $etapaDesativar],
+            'etapas' => [
+                $etapaCarteira,
+                $etapaHistorico,
+                $etapaCargos,
+                $etapaNpsAtribuicoes,
+                $etapaNpsImputacoes,
+                $etapaSnapshotsDiarios,
+                $etapaSnapshotsEmpresa,
+                $etapaDesativar,
+            ],
             'censo' => $censo,
         ];
     }
@@ -485,6 +567,202 @@ class UnificacaoContasService
         return [
             'chave' => 'cargos',
             'descricao' => 'Cargos da origem que o destino ainda não tem (D-01).',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `nps_atribuicoes` (D-06, 159-06): `nps_score_assignments` NÃO tem
+     * coluna de mês — a competência é sempre o JOIN com
+     * `nps_responses`/`nps_surveys` (`s.completed_at`), a MESMA régua que
+     * `NpsPorEmpresaService::notasAtribuicaoPorEmpresa()` usa (Pitfall 4 da
+     * pesquisa: NUNCA `assigned_at` nem `month_reference`). `$inicioColeta`
+     * já é o mês de COLETA (M+1, `NpsJanelaResolver::mesDeColeta`), não o mês
+     * financeiro do corte.
+     *
+     * Colisão = destino já tem linha com o MESMO `(nps_response_id, role,
+     * servico_id)` (comparação null-safe) → `delete` da origem (o destino já
+     * cobre); senão → `update` de `user_id`.
+     */
+    private function planejarNpsAtribuicoes(int $deId, int $paraId, Carbon $inicioColeta): array
+    {
+        $linhasOrigem = DB::table('nps_score_assignments as nsa')
+            ->join('nps_responses as r', 'r.id', '=', 'nsa.nps_response_id')
+            ->join('nps_surveys as s', 's.id', '=', 'r.survey_id')
+            ->where('nsa.user_id', $deId)
+            ->where('s.status', 'completed')
+            ->where('s.completed_at', '>=', $inicioColeta)
+            ->orderBy('nsa.id')
+            ->select('nsa.*')
+            ->get();
+
+        $operacoes = [];
+
+        foreach ($linhasOrigem as $linha) {
+            $colisao = DB::table('nps_score_assignments')
+                ->where('user_id', $paraId)
+                ->where('nps_response_id', $linha->nps_response_id)
+                ->where('role', $linha->role)
+                ->when(
+                    $linha->servico_id === null,
+                    fn ($q) => $q->whereNull('servico_id'),
+                    fn ($q) => $q->where('servico_id', $linha->servico_id)
+                )
+                ->exists();
+
+            $operacoes[] = $colisao
+                ? [
+                    'tabela' => 'nps_score_assignments',
+                    'acao' => 'delete',
+                    'linha_id' => $linha->id,
+                    'antes' => (array) $linha,
+                    'depois' => null,
+                ]
+                : [
+                    'tabela' => 'nps_score_assignments',
+                    'acao' => 'update',
+                    'linha_id' => $linha->id,
+                    'antes' => ['user_id' => $deId],
+                    'depois' => ['user_id' => $paraId],
+                ];
+        }
+
+        return [
+            'chave' => 'nps_atribuicoes',
+            'descricao' => 'Atribuições de NPS (nps_score_assignments) da origem cuja competência (completed_at do survey) é a partir do corte.',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `nps_imputacoes` (D-06, 159-06): `nps_imputed_assignments.competencia_nps`
+     * JÁ é o mês de COLETA materializado (ver `NpsImputationService`) —
+     * comparação direta, sem JOIN.
+     *
+     * Colisão pelo grão do unique `nps_imput_grao_uniq`
+     * (`survey_id`, `dimensao`, `role`, `servico_id`, null-safe) com
+     * `user_id` = destino → `delete`; senão → `update` de `user_id`.
+     */
+    private function planejarNpsImputacoes(int $deId, int $paraId, Carbon $inicioColeta): array
+    {
+        $linhasOrigem = DB::table('nps_imputed_assignments')
+            ->where('user_id', $deId)
+            ->whereDate('competencia_nps', '>=', $inicioColeta->toDateString())
+            ->orderBy('id')
+            ->get();
+
+        $operacoes = [];
+
+        foreach ($linhasOrigem as $linha) {
+            $colisao = DB::table('nps_imputed_assignments')
+                ->where('user_id', $paraId)
+                ->where('dimensao', $linha->dimensao)
+                ->when($linha->role === null, fn ($q) => $q->whereNull('role'), fn ($q) => $q->where('role', $linha->role))
+                ->when(
+                    $linha->survey_id === null,
+                    fn ($q) => $q->whereNull('survey_id'),
+                    fn ($q) => $q->where('survey_id', $linha->survey_id)
+                )
+                ->when(
+                    $linha->servico_id === null,
+                    fn ($q) => $q->whereNull('servico_id'),
+                    fn ($q) => $q->where('servico_id', $linha->servico_id)
+                )
+                ->exists();
+
+            $operacoes[] = $colisao
+                ? [
+                    'tabela' => 'nps_imputed_assignments',
+                    'acao' => 'delete',
+                    'linha_id' => $linha->id,
+                    'antes' => (array) $linha,
+                    'depois' => null,
+                ]
+                : [
+                    'tabela' => 'nps_imputed_assignments',
+                    'acao' => 'update',
+                    'linha_id' => $linha->id,
+                    'antes' => ['user_id' => $deId],
+                    'depois' => ['user_id' => $paraId],
+                ];
+        }
+
+        return [
+            'chave' => 'nps_imputacoes',
+            'descricao' => 'Imputações de NPS (nps_imputed_assignments) da origem com competencia_nps (mês de coleta) a partir do corte.',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `snapshots_diarios` (D-06, 159-06): `desempenho_score_snapshots`
+     * da origem na modalidade DIÁRIA (`mes_referencia` NULL — é cache, D-02
+     * da Fase 74) com `ref_date >= início do corte` (financeiro, NÃO o mês de
+     * coleta do NPS) é removida. A modalidade MENSAL nunca é tocada aqui —
+     * se existisse uma mensal >= corte, `bloqueiosCompetenciaConsolidada()`
+     * já teria recusado a junção antes de chegar nesta etapa.
+     */
+    private function planejarSnapshotsDiarios(int $deId, Carbon $corteInicio): array
+    {
+        $linhasOrigem = DB::table('desempenho_score_snapshots')
+            ->where('user_id', $deId)
+            ->whereNull('mes_referencia')
+            ->whereDate('ref_date', '>=', $corteInicio->toDateString())
+            ->orderBy('id')
+            ->get();
+
+        $operacoes = [];
+
+        foreach ($linhasOrigem as $linha) {
+            $operacoes[] = [
+                'tabela' => 'desempenho_score_snapshots',
+                'acao' => 'delete',
+                'linha_id' => $linha->id,
+                'antes' => (array) $linha,
+                'depois' => null,
+            ];
+        }
+
+        return [
+            'chave' => 'snapshots_diarios',
+            'descricao' => 'Snapshots diários (cache) da origem a partir do corte são removidos; o mensal nunca.',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `snapshots_empresa` (D-06, 159-06): `desempenho_company_score_snapshots`
+     * da origem com `mes_referencia >= início do corte` e `origem` diferente
+     * de `CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES` (cache —
+     * `snapshot_diario`/`warm_cache`) é removida. Uma linha `consolidar_mes`
+     * >= corte já teria bloqueado a junção antes (mesma trava de
+     * `bloqueiosCompetenciaConsolidada()`); o filtro aqui é defesa em
+     * profundidade, nunca o único guarda-chuva.
+     */
+    private function planejarSnapshotsEmpresa(int $deId, Carbon $corteInicio): array
+    {
+        $linhasOrigem = DB::table('desempenho_company_score_snapshots')
+            ->where('user_id', $deId)
+            ->whereDate('mes_referencia', '>=', $corteInicio->toDateString())
+            ->where('origem', '!=', CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES)
+            ->orderBy('id')
+            ->get();
+
+        $operacoes = [];
+
+        foreach ($linhasOrigem as $linha) {
+            $operacoes[] = [
+                'tabela' => 'desempenho_company_score_snapshots',
+                'acao' => 'delete',
+                'linha_id' => $linha->id,
+                'antes' => (array) $linha,
+                'depois' => null,
+            ];
+        }
+
+        return [
+            'chave' => 'snapshots_empresa',
+            'descricao' => 'Detalhe por empresa da origem a partir do corte, exceto consolidar_mes, é removido.',
             'operacoes' => $operacoes,
         ];
     }
