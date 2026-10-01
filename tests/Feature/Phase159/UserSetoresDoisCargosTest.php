@@ -343,6 +343,84 @@ class UserSetoresDoisCargosTest extends TestCase
         $this->assertNotNull($vinculoDev, 'O vínculo do cargo Dev não pode ser derrubado por um save comum do Performance.');
     }
 
+    // ─── Teste 11b (CR-01 da revisão) ──────────────────────────────────────
+
+    /**
+     * Reproduz o payload REAL da tela: o `openEdit()` antigo copiava
+     * `u.setores` inteiro (inclusive a linha do setor Desenvolvimento) para
+     * `vinculos`, e o `submit()` reenviava tudo. O `syncVinculos()` exclui o
+     * setor Dev das linhas atuais, então a linha Dev do payload caía no
+     * INSERT e estourava o unique de 3 colunas — 500 para todo Dev não-admin.
+     */
+    public function test_put_de_dev_nao_admin_reenviando_a_linha_dev_como_a_tela_faz_nao_quebra(): void
+    {
+        $alvo = User::factory()->create(['role' => 'consultor']);
+        $ator = $this->admin();
+
+        // Estado de partida: analista no Performance + cargo Dev.
+        $this->actingAs($ator)->put("/users/{$alvo->id}", $this->payload($alvo, [
+            ['setor_id' => $this->setorPerformanceId, 'cargo_id' => $this->cargoAnalistaId, 'is_principal' => true],
+        ], ['is_dev' => true]))->assertRedirect();
+
+        $setorDevId = (int) Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
+        $this->assertGreaterThan(0, $setorDevId, 'O setor Desenvolvimento precisa estar semeado.');
+
+        $linhaDevAntes = DB::table('user_setores')
+            ->where('user_id', $alvo->id)
+            ->where('setor_id', $setorDevId)
+            ->first();
+        $this->assertNotNull($linhaDevAntes, 'Pré-condição: a linha Dev precisa existir.');
+
+        // Monta `vinculos` exatamente como a tela montava: a partir de
+        // `u.setores` da listagem, SEM filtrar o setor Dev.
+        $u = collect($this->actingAs($ator)->get('/users')->viewData('page')['props']['users'])
+            ->firstWhere('id', $alvo->id);
+        $vinculosDaTela = collect($u['setores'])->map(fn ($s) => [
+            'setor_id'     => $s['id'],
+            'cargo_id'     => $s['cargo_id'],
+            'is_principal' => (bool) $s['is_principal'],
+        ])->values()->all();
+        $this->assertTrue(
+            collect($vinculosDaTela)->contains(fn ($v) => (int) $v['setor_id'] === $setorDevId),
+            'Pré-condição: a listagem expõe a linha Dev em u.setores.'
+        );
+
+        // A pessoa ganha o segundo cargo de Desempenho no mesmo save.
+        $vinculosDaTela[] = [
+            'setor_id'     => $this->setorPerformanceId,
+            'cargo_id'     => $this->cargoEstrategistaId,
+            'is_principal' => false,
+        ];
+
+        $this->actingAs($ator)
+            ->put("/users/{$alvo->id}", $this->payload($alvo, $vinculosDaTela, ['is_dev' => true, 'name' => 'Nome Novo CR01']))
+            ->assertStatus(302)
+            ->assertSessionHasNoErrors();
+
+        // Linha Dev intacta: uma só, a MESMA de antes.
+        $linhasDev = DB::table('user_setores')
+            ->where('user_id', $alvo->id)
+            ->where('setor_id', $setorDevId)
+            ->get();
+        $this->assertCount(1, $linhasDev, 'A linha Dev não pode duplicar nem sumir.');
+        $this->assertSame($linhaDevAntes->id, $linhasDev->first()->id);
+        $this->assertSame(0, (int) $linhasDev->first()->is_principal, 'A linha Dev nunca é a principal.');
+
+        // Demais vínculos gravados.
+        $performance = DB::table('user_setores')
+            ->where('user_id', $alvo->id)
+            ->where('setor_id', $this->setorPerformanceId)
+            ->pluck('cargo_id')
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+        $this->assertEqualsCanonicalizing([$this->cargoAnalistaId, $this->cargoEstrategistaId], $performance);
+
+        $this->assertSame('Nome Novo CR01', $alvo->fresh()->name);
+        $this->assertTrue((bool) $alvo->fresh()->is_dev);
+    }
+
     // ─── Teste 12 ───────────────────────────────────────────────────────────
 
     public function test_index_expoe_duas_entradas_no_mesmo_setor_com_cargos_diferentes(): void

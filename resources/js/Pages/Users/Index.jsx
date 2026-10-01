@@ -140,6 +140,10 @@ function AvatarCropper({ src, onConfirm, onCancel }) {
     );
 }
 
+// Espelha User::SETOR_DEV_SLUG — o vínculo desse setor é governado pelo toggle
+// "Dev" (UserController::syncCargoDev), nunca pela lista de vínculos.
+const SETOR_DEV_SLUG = 'desenvolvimento';
+
 /**
  * Vínculos (form local): array de objetos com {setor_id, cargo_id, is_principal}.
  * Backend recebe esse array e faz sync em user_setores.
@@ -234,11 +238,16 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
             is_dev:   !!u.is_dev,
             phone:    u.phone || '',
             active:   u.active,
-            vinculos: (u.setores || []).map(s => ({
-                setor_id:     s.id,
-                cargo_id:     s.cargo_id ?? null,
-                is_principal: !!s.is_principal,
-            })),
+            // A linha do setor Desenvolvimento NÃO entra no form: quem a
+            // governa é o toggle "Dev" (CR-01 da revisão da Fase 159 —
+            // reenviá-la fazia o backend tentar inseri-la de novo).
+            vinculos: (u.setores || [])
+                .filter(s => s.slug !== SETOR_DEV_SLUG)
+                .map(s => ({
+                    setor_id:     s.id,
+                    cargo_id:     s.cargo_id ?? null,
+                    is_principal: !!s.is_principal,
+                })),
         });
         setOpen(true);
     };

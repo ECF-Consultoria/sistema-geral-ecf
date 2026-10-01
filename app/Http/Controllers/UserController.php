@@ -101,18 +101,24 @@ class UserController extends Controller
 
         $isAdmin = (bool) ($data['is_admin'] ?? false);
 
-        $user = User::create([
-            'name'       => $data['name'],
-            'email'      => $data['email'],
-            'password'   => Hash::make($data['password']),
-            'role'       => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
-            'phone'      => $data['phone'] ?? null,
-            'created_by' => $request->user()->id,
-            'active'     => true,
-        ]);
+        // Usuário, vínculos e cargo Dev na MESMA transação: uma falha nos
+        // vínculos não pode deixar um usuário criado pela metade.
+        $user = DB::transaction(function () use ($request, $data, $isAdmin) {
+            $user = User::create([
+                'name'       => $data['name'],
+                'email'      => $data['email'],
+                'password'   => Hash::make($data['password']),
+                'role'       => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
+                'phone'      => $data['phone'] ?? null,
+                'created_by' => $request->user()->id,
+                'active'     => true,
+            ]);
 
-        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
-        $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+            $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+            $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+
+            return $user;
+        });
 
         return back()->with('success', "Usuário {$user->name} criado.");
     }
@@ -134,10 +140,17 @@ class UserController extends Controller
             $update['password'] = Hash::make($data['password']);
         }
 
-        $user->update($update);
+        // CR-01 (revisão da Fase 159): nome/e-mail/senha/role e vínculos na
+        // MESMA transação. Antes o `update()` rodava fora dela — uma falha nos
+        // vínculos deixava o usuário gravado pela metade (role derivado dos
+        // vínculos novos, vínculos velhos).
+        $devMudou = DB::transaction(function () use ($request, $user, $update, $isAdmin, $data) {
+            $user->update($update);
 
-        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
-        $devMudou = $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+            $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+
+            return $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+        });
 
         if ($devMudou === 'auto_lockout_bloqueado') {
             return back()->with('error', 'Você não pode remover o seu próprio cargo Dev.');
@@ -251,12 +264,23 @@ class UserController extends Controller
         // mesmo dentro do unique (ver docblock da migration
         // 2026_09_30_100000) — então esta validação de aplicação é a única
         // defesa para o caso "setor repetido sem cargo".
+        //
+        // A linha do setor Desenvolvimento fica FORA da contagem (CR-01 da
+        // revisão): ela pode chegar no payload, mas é descartada por
+        // syncVinculos() — quem a governa é syncCargoDev().
+        $setorDevId = $this->setorDevId();
         $setorContagem = [];
         foreach ($data['vinculos'] ?? [] as $v) {
+            if ($setorDevId && (int) $v['setor_id'] === $setorDevId) {
+                continue;
+            }
             $setorContagem[$v['setor_id']] = ($setorContagem[$v['setor_id']] ?? 0) + 1;
         }
         $paresVistos = [];
         foreach ($data['vinculos'] ?? [] as $i => $v) {
+            if ($setorDevId && (int) $v['setor_id'] === $setorDevId) {
+                continue;
+            }
             if (isset($errors["vinculos.{$i}.cargo_id"])) {
                 continue; // já reprovado pela checagem de cargo×setor acima
             }
@@ -311,6 +335,20 @@ class UserController extends Controller
      */
     private function syncVinculos(User $user, bool $isAdmin, array $vinculos): void
     {
+        // CR-01 (revisão da Fase 159): a linha do setor Desenvolvimento é
+        // descartada do payload ANTES de tudo. A tela reenviava `u.setores`
+        // inteiro, inclusive a linha Dev; como as linhas atuais abaixo
+        // excluem o setor Dev, essa linha caía no INSERT e estourava o unique
+        // (user_id, setor_id, cargo_id) — 500 em todo save de Dev não-admin.
+        // Quem governa o vínculo Dev é syncCargoDev(), nunca este método.
+        $setorDevId = $this->setorDevId();
+        if ($setorDevId) {
+            $vinculos = array_values(array_filter(
+                $vinculos,
+                fn ($v) => (int) $v['setor_id'] !== $setorDevId
+            ));
+        }
+
         // Admin tem 1 vínculo fixo: setor Administração + cargo Admin
         if ($isAdmin) {
             $admin = Setor::where('slug', 'administracao')->first();
@@ -338,11 +376,9 @@ class UserController extends Controller
             $vinculos[0]['is_principal'] = true;
         }
 
-        // O vínculo do cargo Dev não trafega neste array (o setor é filtrado do
-        // dropdown — quem o governa é o toggle "Dev"), então precisa ficar fora
-        // da remoção abaixo, senão todo save comum derrubaria o cargo Dev.
-        $setorDevId = Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
-
+        // O vínculo do cargo Dev não trafega neste array (filtrado acima —
+        // quem o governa é o toggle "Dev"), então precisa ficar fora da
+        // remoção abaixo, senão todo save comum derrubaria o cargo Dev.
         DB::transaction(function () use ($user, $vinculos, $setorDevId) {
             // Linhas atuais do usuário, sempre fora do setor Dev (ele não
             // trafega no array `vinculos` — quem o governa é syncCargoDev()).
@@ -410,6 +446,14 @@ class UserController extends Controller
                 }
             }
         });
+    }
+
+    /** Id do setor Desenvolvimento (governado por syncCargoDev), ou null se não semeado. */
+    private function setorDevId(): ?int
+    {
+        $id = Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
+
+        return $id ? (int) $id : null;
     }
 
     /**
