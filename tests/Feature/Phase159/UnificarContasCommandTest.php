@@ -1213,6 +1213,107 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // WR-03 da revisão — --desfazer só restaura linha que está no estado em
+    // que o --apply a deixou, conta o que restaurou de fato, recusa lote
+    // com lote POSTERIOR vivo do mesmo par e sai ≠ 0 se algo não restaurou.
+    // ═════════════════════════════════════════════════════════════════════
+
+    private function loteMaisRecente(): string
+    {
+        return (string) DB::table('unificacao_contas_backup')->orderByDesc('id')->value('lote');
+    }
+
+    public function test_wr03_desfazer_nao_sobrescreve_linha_alterada_depois_do_apply_e_nao_restaura_nada(): void
+    {
+        $ppaId = $this->criarPpa($this->origemId, 'draft');
+        $this->assertSame(0, $this->chamar($this->opcoesBase(['--apply' => true])));
+        $lote = $this->loteMaisRecente();
+
+        // Depois da junção, o PPA foi reatribuído a um terceiro pela tela.
+        $terceiroId = $this->criarUser('Terceiro PPA');
+        DB::table('ppas')->where('id', $ppaId)->update(['mentor_id' => $terceiroId]);
+
+        // Dry-run já denuncia a divergência.
+        $exitDry = $this->chamar(['--desfazer' => $lote]);
+        $this->assertSame(1, $exitDry);
+        $this->assertStringContainsString("ppas#{$ppaId}", Artisan::output());
+
+        $exit = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $saida = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString("ppas#{$ppaId}", $saida);
+
+        // Nada restaurado: o PPA continua com o terceiro e o resto do lote fica como o --apply deixou.
+        $this->assertSame($terceiroId, (int) DB::table('ppas')->where('id', $ppaId)->value('mentor_id'));
+        $this->assertSame(0, DB::table('company_users')->where('user_id', $this->origemId)->count());
+        $this->assertSame(0, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+        $this->assertNull(DB::table('unificacao_contas_backup')->where('lote', $lote)->value('desfeito_em'));
+    }
+
+    public function test_wr03_restauracao_fantasma_de_linha_recriada_sai_com_falha(): void
+    {
+        $this->assertSame(0, $this->chamar($this->opcoesBase(['--apply' => true])));
+        $lote = $this->loteMaisRecente();
+
+        // `limparSlotPerformance` apaga e regrava o slot em qualquer edição da
+        // empresa: a linha movida some e volta com OUTRO id.
+        $linhaA = DB::table('company_users')
+            ->where('company_id', $this->companyAId)->where('user_id', $this->destinoId)->first();
+        DB::table('company_users')->where('id', $linhaA->id)->delete();
+        $novaId = $this->vincularCarteira($this->companyAId, $this->destinoId, 'estrategista', $this->servicoPerfId, '2026-06-01');
+
+        $exit = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $saida = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString("company_users#{$linhaA->id}", $saida);
+        $this->assertStringNotContainsString('restaurada(s) ao estado anterior', $saida);
+
+        $this->assertSame($this->destinoId, (int) DB::table('company_users')->where('id', $novaId)->value('user_id'));
+        $this->assertNull(DB::table('unificacao_contas_backup')->where('lote', $lote)->value('desfeito_em'));
+    }
+
+    public function test_wr03_recusa_desfazer_lote_com_lote_posterior_vivo_do_mesmo_par(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $this->assertSame(0, $this->chamar($this->opcoesBase(['--apply' => true])));
+        $lote1 = $this->loteMaisRecente();
+
+        // Resposta de NPS que chegou para a origem depois do 1º --apply → 2º --apply.
+        $atribId = $this->criarAtribuicaoNps($this->companyAId, $this->origemId, 'estrategista', '2026-10-05 09:00:00');
+        $this->assertSame(0, $this->chamar($this->opcoesBase(['--apply' => true])));
+        $lote2 = $this->loteMaisRecente();
+        $this->assertNotSame($lote1, $lote2);
+
+        $exit = $this->chamar(['--desfazer' => $lote1, '--apply' => true]);
+        $saida = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString($lote2, $saida);
+        // Nada restaurado.
+        $this->assertSame(0, DB::table('company_users')->where('user_id', $this->origemId)->count());
+        $this->assertSame($this->destinoId, (int) DB::table('nps_score_assignments')->where('id', $atribId)->value('user_id'));
+
+        // Na ordem certa (do mais novo para o mais antigo), os dois desfazem.
+        $this->assertSame(0, $this->chamar(['--desfazer' => $lote2, '--apply' => true]));
+        $this->assertSame(0, $this->chamar(['--desfazer' => $lote1, '--apply' => true]));
+        $this->assertSame($this->origemId, (int) DB::table('nps_score_assignments')->where('id', $atribId)->value('user_id'));
+        $this->assertSame(3, DB::table('company_users')->where('user_id', $this->origemId)->count());
+    }
+
+    public function test_wr03_desfazer_informa_quantas_linhas_restaurou_de_fato(): void
+    {
+        $this->assertSame(0, $this->chamar($this->opcoesBase(['--apply' => true])));
+        $lote = $this->loteMaisRecente();
+        $total = DB::table('unificacao_contas_backup')->where('lote', $lote)->count();
+
+        $this->assertSame(0, $this->chamar(['--desfazer' => $lote, '--apply' => true]));
+        $this->assertStringContainsString("{$total} de {$total} operação(ões) restaurada(s)", Artisan::output());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
     // consolidada (snapshot mensal) para origem e destino que têm carteira.
     // `company_users` não tem dimensão temporal: mover a carteira recalcula

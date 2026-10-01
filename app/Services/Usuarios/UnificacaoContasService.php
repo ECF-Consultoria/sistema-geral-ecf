@@ -33,8 +33,9 @@ use Illuminate\Support\Str;
  *    dentro de uma única transação — e RELÊ cada linha lá dentro, recusando
  *    o lote inteiro se o banco mudou desde o plano (WR-02, TOCTOU).
  *  - `desfazer()` restaura um lote inteiro a partir do backup, em ordem
- *    inversa, sem `try/catch` — colisão ao restaurar derruba a transação
- *    inteira em vez de mascarar o erro.
+ *    inversa, só onde a linha ainda está no estado que o `--apply` deixou
+ *    (WR-03) — qualquer divergência ou colisão ao restaurar derruba a
+ *    transação inteira em vez de mascarar o erro.
  *
  * Por que cada tabela do núcleo entra ou fica de fora (D-06/CONTEXT.md):
  *  - `company_users` (etapa `carteira`) — carteira ATIVA; move porque é o
@@ -161,6 +162,13 @@ class UnificacaoContasService
     ];
 
     private const TABELAS_CENSO_EXCLUIDAS = ['users', 'migrations', 'unificacao_contas_backup'];
+
+    /**
+     * Colunas que telas comuns reescrevem sem mudar a identidade da linha —
+     * ficam fora da conferência de estado do `--desfazer` de um `insert`
+     * (WR-03).
+     */
+    private const COLUNAS_VOLATEIS = ['created_at', 'updated_at', 'assigned_at', 'is_principal'];
 
     /**
      * Monta o plano da junção — SOMENTE LEITURA, nunca escreve nada. Usado
@@ -371,13 +379,28 @@ class UnificacaoContasService
     }
 
     /**
-     * Desfaz um lote a partir do backup. Sem `$aplicar`, só devolve o
-     * resumo (quantas operações seriam restauradas). Com `$aplicar`,
-     * restaura em ordem INVERSA à da aplicação, dentro de uma transação,
-     * sem `try/catch` — colisão ao restaurar (ex.: linha já existe de novo)
-     * derruba a transação inteira em vez de mascarar o erro.
+     * Desfaz um lote a partir do backup. Sem `$aplicar`, só confere (leitura)
+     * quantas operações seriam restauradas e quais divergem. Com `$aplicar`,
+     * restaura em ordem INVERSA à da aplicação, dentro de uma transação.
      *
-     * @return array{lote:string, operacoes:int}
+     * WR-03 (revisão da Fase 159) — o desfazer só mexe em linha que está
+     * EXATAMENTE no estado em que o `--apply` a deixou:
+     *  - `update`: restaura `antes` só onde as colunas ainda valem `depois`
+     *    (não sobrescreve um PPA/carteira reatribuído depois da junção);
+     *  - `delete`: reinsere a linha só se o id não voltou a existir;
+     *  - `insert`: apaga só a linha com aquele id E as mesmas colunas de
+     *    identidade (sem timestamps/`is_principal`, que telas comuns tocam).
+     * Cada escrita precisa afetar exatamente 1 linha. Qualquer divergência
+     * (inclusive colisão no INSERT de restauração) derruba a transação
+     * inteira: nada é restaurado pela metade, e a RuntimeException lista as
+     * linhas divergentes (o comando sai com FAILURE).
+     *
+     * Também recusa desfazer um lote quando existe lote POSTERIOR, ainda não
+     * desfeito, para o mesmo par (de, para) — desfazer fora de ordem deixaria
+     * a carteira com a origem e o NPS com o destino. Desfaça do mais novo
+     * para o mais antigo.
+     *
+     * @return array{lote:string, operacoes:int, restauradas:int, divergentes:list<string>}
      */
     public function desfazer(string $lote, bool $aplicar): array
     {
@@ -394,38 +417,150 @@ class UnificacaoContasService
             throw new \RuntimeException("Lote {$lote} já foi desfeito — recusado rodar duas vezes o mesmo lote.");
         }
 
-        if (! $aplicar) {
-            return ['lote' => $lote, 'operacoes' => $registros->count()];
-        }
-
         $primeiro = $registros->first();
         $deId = (int) $primeiro->de_user_id;
         $paraId = (int) $primeiro->para_user_id;
         $aPartirData = Carbon::parse($primeiro->a_partir);
 
-        DB::transaction(function () use ($registros, $lote) {
-            foreach ($registros as $registro) {
-                $antes = $registro->antes !== null ? json_decode($registro->antes, true) : null;
+        $posteriores = DB::table('unificacao_contas_backup')
+            ->where('de_user_id', $deId)
+            ->where('para_user_id', $paraId)
+            ->where('lote', '!=', $lote)
+            ->whereNull('desfeito_em')
+            ->where('id', '>', (int) $registros->max('id'))
+            ->distinct()
+            ->pluck('lote')
+            ->all();
 
-                if ($registro->acao === 'update') {
-                    DB::table($registro->tabela)->where('id', $registro->linha_id)->update($antes);
-                } elseif ($registro->acao === 'delete') {
-                    DB::table($registro->tabela)->insert($antes);
-                } else { // insert
-                    DB::table($registro->tabela)->where('id', $registro->linha_id)->delete();
+        if ($posteriores !== []) {
+            throw new \RuntimeException(
+                "Lote {$lote} tem lote(s) POSTERIOR(es) ainda não desfeito(s) para o mesmo par "
+                . "(usuário {$deId} → usuário {$paraId}): " . implode(', ', $posteriores)
+                . ' — desfaça do mais novo para o mais antigo.'
+            );
+        }
+
+        if (! $aplicar) {
+            $divergentes = [];
+            foreach ($registros as $registro) {
+                if (! $this->estadoPermiteRestaurar($registro)) {
+                    $divergentes[] = $this->rotuloRestauracao($registro);
                 }
             }
 
+            return [
+                'lote' => $lote,
+                'operacoes' => $registros->count(),
+                'restauradas' => $registros->count() - count($divergentes),
+                'divergentes' => $divergentes,
+            ];
+        }
+
+        $restauradas = DB::transaction(function () use ($registros, $lote) {
+            $restauradas = 0;
+            $divergentes = [];
+
+            foreach ($registros as $registro) {
+                if (! $this->estadoPermiteRestaurar($registro)) {
+                    $divergentes[] = $this->rotuloRestauracao($registro);
+
+                    continue;
+                }
+
+                $afetadas = $this->restaurarRegistro($registro);
+
+                if ($afetadas === 1) {
+                    $restauradas++;
+                } else {
+                    $divergentes[] = $this->rotuloRestauracao($registro) . " (afetou {$afetadas})";
+                }
+            }
+
+            if ($divergentes !== []) {
+                throw new \RuntimeException(sprintf(
+                    'Lote %s NÃO desfeito: %d de %d operação(ões) não estão mais no estado que o --apply deixou '
+                    . '(mudaram depois da junção) — nada foi restaurado. Divergentes: %s',
+                    $lote,
+                    count($divergentes),
+                    $registros->count(),
+                    implode(', ', array_slice($divergentes, 0, 30)) . (count($divergentes) > 30 ? ', …' : '')
+                ));
+            }
+
             DB::table('unificacao_contas_backup')->where('lote', $lote)->update(['desfeito_em' => now()]);
+
+            return $restauradas;
         });
 
         $this->bustarCache($deId, $paraId, $aPartirData);
 
         activity('usuarios')
-            ->withProperties(['lote' => $lote, 'de' => $deId, 'para' => $paraId, 'operacoes' => $registros->count()])
+            ->withProperties(['lote' => $lote, 'de' => $deId, 'para' => $paraId, 'operacoes' => $registros->count(), 'restauradas' => $restauradas])
             ->log("Unificação de contas DESFEITA — lote {$lote}");
 
-        return ['lote' => $lote, 'operacoes' => $registros->count()];
+        return ['lote' => $lote, 'operacoes' => $registros->count(), 'restauradas' => $restauradas, 'divergentes' => []];
+    }
+
+    /**
+     * WR-03: a linha está no estado em que o `--apply` a deixou? (só leitura)
+     */
+    private function estadoPermiteRestaurar(object $registro): bool
+    {
+        if ($registro->acao === 'delete') {
+            return ! DB::table($registro->tabela)->where('id', $registro->linha_id)->exists();
+        }
+
+        return $this->consultaEstadoDeixadoPeloApply($registro)->exists();
+    }
+
+    /**
+     * WR-03: restaura UM registro, condicionado ao estado deixado pelo
+     * `--apply`, e devolve quantas linhas a escrita afetou (esperado: 1).
+     * Colisão no INSERT de restauração conta como 0 — a transação de
+     * `desfazer()` cai inteira logo depois.
+     */
+    private function restaurarRegistro(object $registro): int
+    {
+        if ($registro->acao === 'update') {
+            return $this->consultaEstadoDeixadoPeloApply($registro)
+                ->update(json_decode($registro->antes, true));
+        }
+
+        if ($registro->acao === 'delete') {
+            try {
+                return DB::table($registro->tabela)->insert(json_decode($registro->antes, true)) ? 1 : 0;
+            } catch (\Illuminate\Database\QueryException $e) {
+                return 0;
+            }
+        }
+
+        // insert — apaga a linha que o --apply criou.
+        return $this->consultaEstadoDeixadoPeloApply($registro)->delete();
+    }
+
+    /**
+     * Linha `linha_id` com as colunas que o `--apply` gravou: em `update`, as
+     * colunas de `depois`; em `insert`, as colunas de identidade de `depois`
+     * (sem {@see self::COLUNAS_VOLATEIS}).
+     */
+    private function consultaEstadoDeixadoPeloApply(object $registro): \Illuminate\Database\Query\Builder
+    {
+        $query = DB::table($registro->tabela)->where('id', $registro->linha_id);
+        $depois = $registro->depois !== null ? json_decode($registro->depois, true) : [];
+
+        foreach ($depois as $coluna => $valor) {
+            if ($registro->acao === 'insert' && in_array($coluna, self::COLUNAS_VOLATEIS, true)) {
+                continue;
+            }
+            $valor === null ? $query->whereNull($coluna) : $query->where($coluna, $valor);
+        }
+
+        return $query;
+    }
+
+    private function rotuloRestauracao(object $registro): string
+    {
+        return "{$registro->tabela}#{$registro->linha_id} ({$registro->acao})";
     }
 
     // =========================================================================

@@ -149,15 +149,39 @@ class UnificarContas extends Command
         }
 
         if (! $aplicar) {
-            $this->info("Lote {$lote}: {$resultado['operacoes']} operação(ões) seriam restauradas ao estado anterior.");
+            $this->info(sprintf(
+                'Lote %s: %d de %d operação(ões) podem ser restauradas ao estado anterior.',
+                $lote,
+                $resultado['restauradas'],
+                $resultado['operacoes']
+            ));
+
+            // WR-03: linha que mudou depois da junção não é sobrescrita — e
+            // o --apply recusaria o lote inteiro. Avisa já no dry-run.
+            if ($resultado['divergentes'] !== []) {
+                $this->error('Não estão mais no estado que o --apply deixou (o --desfazer --apply será recusado):');
+                foreach (array_slice($resultado['divergentes'], 0, 30) as $divergente) {
+                    $this->line("  - {$divergente}");
+                }
+
+                return self::FAILURE;
+            }
+
             $this->warn('DRY-RUN — rode com --apply para restaurar.');
 
             return self::SUCCESS;
         }
 
-        $this->info("Lote {$lote}: {$resultado['operacoes']} operação(ões) restaurada(s) ao estado anterior.");
+        $this->info(sprintf(
+            'Lote %s: %d de %d operação(ões) restaurada(s) ao estado anterior.',
+            $lote,
+            $resultado['restauradas'],
+            $resultado['operacoes']
+        ));
 
-        return self::SUCCESS;
+        // Veredito pela contagem do que a escrita afetou de fato (WR-03),
+        // nunca pelo texto acima.
+        return $resultado['restauradas'] === $resultado['operacoes'] ? self::SUCCESS : self::FAILURE;
     }
 
     private function idValido(mixed $id): bool
