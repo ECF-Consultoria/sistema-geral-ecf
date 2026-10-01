@@ -4,6 +4,7 @@ namespace App\Services\Usuarios;
 
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
+use App\Models\Onboarding;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsJanelaResolver;
@@ -121,6 +122,22 @@ class UnificacaoContasService
             'tratada',
             'parcial: só competência >= corte; o resto fica com a origem de propósito',
         ],
+        'ppas.mentor_id' => [
+            'tratada',
+            'parcial: só o que ainda está em aberto',
+        ],
+        'onboardings.responsavel_id' => [
+            'tratada',
+            'parcial: só o que ainda está em aberto',
+        ],
+        'onboardings.responsavel_analista_id' => [
+            'tratada',
+            'parcial: só o que ainda está em aberto',
+        ],
+        'onboardings.responsavel_estrategista_id' => [
+            'tratada',
+            'parcial: só o que ainda está em aberto',
+        ],
         'company_manager_history.user_id' => [
             'mantida',
             'histórico — a junção acrescenta eventos, não reescreve',
@@ -191,6 +208,9 @@ class UnificacaoContasService
         $etapaSnapshotsDiarios = $this->planejarSnapshotsDiarios($deId, $aPartirInicio);
         $etapaSnapshotsEmpresa = $this->planejarSnapshotsEmpresa($deId, $aPartirInicio);
 
+        $etapaPpas = $this->planejarPpas($deId, $paraId);
+        $etapaOnboardings = $this->planejarOnboardings($deId, $paraId);
+
         $etapaDesativar = $this->planejarDesativarOrigem($de);
 
         $censo = $this->censo($deId);
@@ -247,6 +267,8 @@ class UnificacaoContasService
                 $etapaNpsImputacoes,
                 $etapaSnapshotsDiarios,
                 $etapaSnapshotsEmpresa,
+                $etapaPpas,
+                $etapaOnboardings,
                 $etapaDesativar,
             ],
             'censo' => $censo,
@@ -763,6 +785,81 @@ class UnificacaoContasService
         return [
             'chave' => 'snapshots_empresa',
             'descricao' => 'Detalhe por empresa da origem a partir do corte, exceto consolidar_mes, é removido.',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `ppas` (D-11, 159-06): PPAs em aberto (`draft`/`sent`) com
+     * `mentor_id` = origem passam ao destino — é trabalho VIVO e a origem
+     * vai ficar inativa (não pode continuar "dona" de um PPA em andamento).
+     * PPA `completed` é histórico e fica com a origem.
+     */
+    private function planejarPpas(int $deId, int $paraId): array
+    {
+        $linhasOrigem = DB::table('ppas')
+            ->where('mentor_id', $deId)
+            ->whereIn('status', ['draft', 'sent'])
+            ->orderBy('id')
+            ->get(['id']);
+
+        $operacoes = [];
+
+        foreach ($linhasOrigem as $linha) {
+            $operacoes[] = [
+                'tabela' => 'ppas',
+                'acao' => 'update',
+                'linha_id' => $linha->id,
+                'antes' => ['mentor_id' => $deId],
+                'depois' => ['mentor_id' => $paraId],
+            ];
+        }
+
+        return [
+            'chave' => 'ppas',
+            'descricao' => 'PPAs em aberto (draft/sent) da origem passam ao destino; concluído fica com a origem.',
+            'operacoes' => $operacoes,
+        ];
+    }
+
+    /**
+     * Etapa `onboardings` (D-11, 159-06): para cada um dos três slots de
+     * responsável (`responsavel_id` principal, `responsavel_analista_id`,
+     * `responsavel_estrategista_id`), onboardings NÃO CONCLUÍDOS
+     * (`Onboarding::scopeNaoConcluido()` — rascunho/andamento) com aquela
+     * coluna = origem passam ao destino. Uma operação por (linha, coluna) —
+     * `antes`/`depois` só carregam a coluna tocada, nunca mexem em outra
+     * coluna da mesma linha. Onboarding `concluido` é histórico e fica com
+     * a origem.
+     */
+    private function planejarOnboardings(int $deId, int $paraId): array
+    {
+        $colunas = ['responsavel_id', 'responsavel_analista_id', 'responsavel_estrategista_id'];
+        $statusAbertos = [Onboarding::STATUS_RASCUNHO, Onboarding::STATUS_ANDAMENTO];
+
+        $operacoes = [];
+
+        foreach ($colunas as $coluna) {
+            $linhasOrigem = DB::table('onboardings')
+                ->where($coluna, $deId)
+                ->whereIn('status', $statusAbertos)
+                ->orderBy('id')
+                ->get(['id']);
+
+            foreach ($linhasOrigem as $linha) {
+                $operacoes[] = [
+                    'tabela' => 'onboardings',
+                    'acao' => 'update',
+                    'linha_id' => $linha->id,
+                    'antes' => [$coluna => $deId],
+                    'depois' => [$coluna => $paraId],
+                ];
+            }
+        }
+
+        return [
+            'chave' => 'onboardings',
+            'descricao' => 'Responsáveis (principal/analista/estrategista) de onboardings em aberto da origem passam ao destino; concluído fica.',
             'operacoes' => $operacoes,
         ];
     }
