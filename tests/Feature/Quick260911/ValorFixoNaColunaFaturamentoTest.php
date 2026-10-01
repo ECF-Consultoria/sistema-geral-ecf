@@ -96,10 +96,14 @@ class ValorFixoNaColunaFaturamentoTest extends TestCase
 
         // Regressão: o caminho genérico (estado `ok`) não pode ter sido
         // trocado por nenhum dos ramos nomeados.
+        // Quick 260922-j4l trocou o <span> com fmtBRL() pelo componente que
+        // separa Mercado Livre e Shopee (pedido do usuário em 2026-09-22). O
+        // invariante deste teste não mudou: o ramo genérico mostra o apurado
+        // DA EMPRESA, nunca um dos ramos nomeados acima.
         $this->assertMatchesRegularExpression(
-            '/function ColunaFaturamento\(\{ empresa \}\) \{.*?return \(\s*<span className="font-mono tabular-nums text-\[16px\] text-white\/75">\s*\{fmtBRL\(empresa\.faturamento\)\}/s',
+            '/function ColunaFaturamento\(\{ empresa \}\) \{.*?return \(\s*<ValorPorPlataforma\s+linha=\{empresa\}/s',
             $conteudo,
-            'O ramo genérico (estado ok) precisa continuar imprimindo fmtBRL(empresa.faturamento).'
+            'O ramo genérico (estado ok) precisa continuar mostrando o faturamento da empresa.'
         );
     }
 
