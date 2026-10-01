@@ -38,12 +38,17 @@ use Illuminate\Support\Facades\Log;
  * `content[]` dele. Os caminhos da documentação ficam como ÚLTIMO recurso:
  * se a API mudar de volta, nada quebra.
  *
- * ⚠️ A forma do content de IMAGEM é INFERIDA por simetria com a de texto e
- * ainda NÃO foi medida contra a API: em 2026-10-01 todos os modelos de imagem
- * responderam HTTP 429 "limit: 0 requests per day on Free Tier", então não
- * houve nenhuma resposta 200 de imagem para conferir. Por isso o extrator
- * aceita várias grafias (`data`, `image_data`, `inline_data.data`) em vez de
- * fixar uma — confirmar na primeira geração real com tier pago.
+ * A forma do content de IMAGEM foi CONFIRMADA na primeira geração real, em
+ * 2026-10-01 com tier pago (gemini-3.1-flash-image, HTTP 200):
+ *
+ *   steps: [ {type:"thought"},
+ *            {type:"model_output",
+ *             content:[{type:"image", mime_type:"image/jpeg", data:"<base64>"}]} ]
+ *
+ * O extrator ainda aceita as outras grafias (`image_data`, `inline_data.data`)
+ * de propósito: custa nada e errar o caminho aqui produz o sintoma mais
+ * confuso possível — HTTP 200 lido como "respondeu sem imagem", que faz o
+ * provider trocar de modelo e falhar em todos.
  *
  * SEGURANÇA (§17): a chave nunca é logada, o body inteiro do pedido nunca é
  * logado, e o base64 (de entrada OU de saída) jamais aparece em log — só

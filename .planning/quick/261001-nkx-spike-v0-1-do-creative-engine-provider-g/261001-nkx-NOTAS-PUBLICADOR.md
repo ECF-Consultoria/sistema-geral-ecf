@@ -179,3 +179,54 @@ resposta 200 de imagem para conferir. O extrator aceita várias grafias (`data`,
 ⚠️ **A chave chegou dentro do `.env.example` por engano** (arquivo versionado). Foi movida para o
 `.env` antes de qualquer commit e **não entrou no histórico** (conferido com `git log -S`). Chave de
 API nunca vai no `.env.example`, que existe só como modelo com valores vazios.
+
+---
+
+## 14. Primeira geração real (2026-10-01, tier pago) — e o alerta que ela trouxe
+
+Com billing vinculado ao projeto da chave, a geração passou a funcionar na hora, sem mudar
+uma linha de código: `gemini-3.1-flash-image`, HTTP 200, 15,3s, JPEG 2048×2048 válido (1.437 KB).
+
+**Forma da resposta de imagem CONFIRMADA** (era inferida até aqui, e a inferência estava certa):
+
+```json
+"steps":[{"type":"thought"},
+         {"type":"model_output","content":[{"type":"image","mime_type":"image/jpeg","data":"<base64>"}]}]
+```
+
+### ⚠️ O achado que importa para o §16: o modelo REESCREVE texto e NÚMEROS
+
+O teste usou por acaso um print de dashboard (denso em texto) como referência. O modelo preservou
+muito bem **layout, cor de marca, logo e composição** — e corrompeu quase todo texto pequeno:
+
+| no original | no gerado |
+|---|---|
+| `Wallet Overview & Spending` | `Wallet Walleteet & Spending` / `Winld Wahaenes & Spending` |
+| `Steady Growth Savings` | `Stkady Growth Savings` |
+| `Transactions` | `Transaations` |
+| `GBP` | `GEP` |
+| `+1.5%` | `+1.4%` e `+24%` |
+| `€28,345.00` | `€29,345.00` |
+| `£25,000.00` | `£25,500.00` |
+| `1 USD = 122.20 BDT` | `132.25 BDT` |
+| `Cashflow $33,847.00` | `$23,847.00` |
+
+Também **duplicou a tela inteira** (dois painéis empilhados num mockup de notebook) — alucinação de
+composição, não de detalhe.
+
+**Por que isto decide desenho e não é só curiosidade.** O §16 lista como ELIMINATÓRIO "inventar
+especificação técnica" e "escrever potência, voltagem, medida ou capacidade diferente do cadastro".
+Os slots planejados `SPECIFICATIONS`, `DIMENSIONS` e `BENEFITS` são exatamente os que carregam
+badges do tipo `1200W` / `220V` / `13mm`. Um modelo que troca `€28.345` por `€29.345` sozinho vai
+trocar `1200W` por `1800W` — e num anúncio de Mercado Livre isso é informação falsa ao consumidor.
+
+**Leitura honesta dos limites deste teste:** a referência era um print denso em texto, o pior caso
+possível para renderização de texto; foto de produto com pouco texto tende a ir muito melhor **no
+produto em si**. O que NÃO muda é a conclusão sobre texto sobreposto, porque a falha não foi "copiar
+mal a foto", foi "reescrever caracteres".
+
+**Direção que isto sugere para o V0.2/V0.4** (decisão do usuário, não tomada aqui): o `FULL_AI` do
+§9.1 parece adequado para os slots visuais (`HERO`, `LIFESTYLE`, `ANGLES`, `DETAIL`), e os slots com
+texto/número cravado são candidatos naturais ao `COMPOSITE` do §9.2 — IA gera o cenário, o sistema
+desenha o texto por template. Era a hipótese que o próprio plano levantava; a primeira medição real
+já aponta para ela. Confirmar com foto de produto de verdade antes de fechar.
