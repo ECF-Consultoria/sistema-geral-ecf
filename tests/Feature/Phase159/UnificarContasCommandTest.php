@@ -1446,6 +1446,35 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // IN-04 da revisão — backup que não serializa derruba o lote, nunca
+    // grava `false` em silêncio (sem backup restaurável não há --desfazer).
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_in04_backup_que_nao_serializa_aborta_o_lote_sem_gravar_nada(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        // Linha de cache que a junção apaga, com bytes que não são UTF-8 válido.
+        $snapId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyAId, 'mes_referencia' => '2026-09-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE, 'gerado_em' => now(),
+        ])->id;
+        DB::table('desempenho_company_score_snapshots')->where('id', $snapId)
+            ->update(['company_name' => "Loja \xB1\xB2 inválida"]);
+
+        try {
+            app(\App\Services\Usuarios\UnificacaoContasService::class)->aplicar($this->planoDoFixture());
+            $this->fail('aplicar() deveria recusar quando o backup de uma linha não pode ser serializado.');
+        } catch (\JsonException $e) {
+            // esperado
+        }
+
+        $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+        $this->assertSame(1, DesempenhoCompanyScoreSnapshot::where('id', $snapId)->count());
+        $this->assertSame(1, (int) DB::table('users')->where('id', $this->origemId)->value('active'));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
     // consolidada (snapshot mensal) para origem e destino que têm carteira.
     // `company_users` não tem dimensão temporal: mover a carteira recalcula

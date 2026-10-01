@@ -1367,8 +1367,10 @@ class UnificacaoContasService
             DB::table('unificacao_contas_backup')->insert($baseBackup + [
                 'acao' => 'update',
                 'linha_id' => $operacao['linha_id'],
-                'antes' => json_encode($operacao['antes']),
-                'depois' => json_encode($operacao['depois']),
+                // IN-04: sem JSON_THROW_ON_ERROR uma falha viraria `false` no
+                // backup em silêncio — e a linha ficaria sem como ser desfeita.
+                'antes' => json_encode($operacao['antes'], JSON_THROW_ON_ERROR),
+                'depois' => json_encode($operacao['depois'], JSON_THROW_ON_ERROR),
             ]);
 
             $afetadas = $this->restringirAoEstadoPlanejado(
@@ -1384,7 +1386,7 @@ class UnificacaoContasService
             DB::table('unificacao_contas_backup')->insert($baseBackup + [
                 'acao' => 'delete',
                 'linha_id' => $operacao['linha_id'],
-                'antes' => json_encode($operacao['antes']),
+                'antes' => json_encode($operacao['antes'], JSON_THROW_ON_ERROR),
                 'depois' => null,
             ]);
 
@@ -1403,7 +1405,7 @@ class UnificacaoContasService
             'acao' => 'insert',
             'linha_id' => $novoId,
             'antes' => null,
-            'depois' => json_encode($operacao['depois']),
+            'depois' => json_encode($operacao['depois'], JSON_THROW_ON_ERROR),
         ]);
     }
 
