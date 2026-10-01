@@ -200,6 +200,8 @@ class PortalEstruturaController extends Controller
             'filtros'      => ['filtro' => $filtro, 'q' => $busca],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
+            // Piloto do Publicador novo (variações, fotos por grupo, conferência em fila).
+            'publicador_novo' => PortalPublicadorController::noPiloto($empresa),
         ]);
     }
 
