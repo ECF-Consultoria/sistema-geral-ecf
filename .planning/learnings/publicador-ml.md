@@ -50,6 +50,17 @@ e hoje é **User Products**. Anúncio criado nela é visível a compradores: tí
 "Item de teste - Não ofertar", fechar logo depois, e confirmação do usuário antes
 de cada `POST /items`.
 
+**Conta de cliente: nunca publicar nem mexer em anúncio** (regra do usuário, 01/10). No
+máximo leitura e `validate`, e só com autorização dele para aquilo. A lista de depósitos
+(`/users/{id}/stores/search`) traz **endereço e coordenadas** da loja: o `sanitizar()` passou
+a remover `location`/`address_line`/`latitude`/`longitude`, e as respostas de conta de
+cliente são anonimizadas (id do vendedor, apelido) antes de irem para `tests/fixtures-ml/`.
+
+**Medido em 01/10 nas contas de cliente:** 33 de 33 com token válido são User Products (o
+perfil público `GET /users/{id}` NÃO traz `tags` — só o token da conta mostra), e 23 de 33
+têm `warehouse_management`. Nessas, `available_quantity` é obrigatório no corpo (sem ele, 369)
+mas **ignorado** (aviso 469): o estoque vem dos depósitos.
+
 ## 3a. O `/items/validate` devolve 400 mesmo quando só há avisos
 
 Nesta conta sempre vêm dois avisos (`4053 lost_me1_by_user`, `350

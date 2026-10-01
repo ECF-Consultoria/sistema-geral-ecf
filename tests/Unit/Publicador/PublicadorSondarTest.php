@@ -63,6 +63,18 @@ class PublicadorSondarTest extends TestCase
         ], $limpo);
     }
 
+    public function test_endereco_dos_depositos_nao_vai_para_a_fixture(): void
+    {
+        $deposito = ['id' => '1', 'description' => 'Loja', 'tags' => ['stock_location'],
+            'location' => ['address_id' => 9, 'address_line' => 'Rua X 1', 'latitude' => -23.4, 'longitude' => -51.4, 'city' => 'Cidade'],
+            'services' => ['stock_location' => ['cross_docking']]];
+
+        $this->assertSame(
+            ['id' => '1', 'description' => 'Loja', 'tags' => ['stock_location'], 'services' => ['stock_location' => ['cross_docking']]],
+            PublicadorSondar::sanitizar($deposito),
+        );
+    }
+
     public function test_cada_cenario_isola_uma_pergunta(): void
     {
         $cat = ['name' => 'Furadeiras', 'path_from_root' => [['id' => 'MLB1'], ['id' => 'MLB2'], ['id' => 'MLB3']]];
@@ -135,6 +147,10 @@ class PublicadorSondarTest extends TestCase
             $this->assertArrayHasKey('family_name', $c[$cenario], $cenario);
         }
         $this->assertArrayHasKey('title', $c['base_legado']);
+
+        // RN-04: sem estoque no item (conta com warehouse_management).
+        $this->assertArrayNotHasKey('available_quantity', $c['sem_available_quantity']);
+        $this->assertArrayHasKey('family_name', $c['sem_available_quantity']);
 
         // O nome longo mexe no campo do modelo.
         $this->assertGreaterThan(120, mb_strlen($c['nome_longo']['family_name']));

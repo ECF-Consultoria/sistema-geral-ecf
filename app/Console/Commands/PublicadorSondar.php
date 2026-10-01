@@ -60,6 +60,8 @@ class PublicadorSondar extends Command
         'first_name', 'last_name', 'email', 'secure_email', 'phone', 'alternative_phone',
         'identification', 'address', 'street_name', 'street_number', 'zip_code',
         'doc_number', 'doc_type', 'bill_data', 'billing_info', 'company', 'credit', 'thumbnail',
+        // Depósitos (`/stores/search`): endereço e coordenadas da loja do vendedor.
+        'location', 'address_line', 'address_id', 'latitude', 'longitude',
     ];
 
     /** O que fica de `GET /users/me`: só o que o Publicador usa (`02` E0). */
@@ -192,6 +194,11 @@ class PublicadorSondar extends Command
 
         $this->gravar('conta/shipping_preferences.json', $this->chamar('GET', "/users/{$sellerId}/shipping_preferences", $t));
 
+        // RN-04: conta com estoque por depósito — quais depósitos ela tem.
+        if (in_array('warehouse_management', $tags, true)) {
+            $this->gravar('conta/stores_stock_location.json', $this->chamar('GET', "/users/{$sellerId}/stores/search", $t, ['tags' => 'stock_location']));
+        }
+
         // H-19: busca por SKU (um que não existe — só a forma da resposta importa).
         $this->gravar('conta/items_search_seller_sku.json', $this->chamar('GET', "/users/{$sellerId}/items/search", $t, ['seller_sku' => 'SONDA-ECF-INEXISTENTE']));
 
@@ -289,6 +296,7 @@ class PublicadorSondar extends Command
             'sem_embalagem'      => [...$base, 'attributes' => $comAtributos($sku)],              // H-05
             'embalagem_sem_unidade' => [...$base, 'attributes' => $comAtributos([...array_map(fn ($v) => ['value_name' => (string) (int) $v], $embalagem), ...$sku])], // H-05
             'estoque_zero'       => [...$base, 'available_quantity' => 0],                        // V-VAR-12
+            'sem_available_quantity' => array_diff_key($base, ['available_quantity' => 1]),   // RN-04: conta com warehouse_management
             'nome_longo'         => [...$base, $campoNome => str_repeat('Cadeira Teste ', 10)],  // 462 / V-TIT-01
             'nome_curto'         => [...$base, $campoNome => 'Cadeira'],                          // 3715
             'garantia_value_id'  => [...$base, 'sale_terms' => [['id' => 'WARRANTY_TYPE', 'value_id' => '2230280'], ['id' => 'WARRANTY_TIME', 'value_name' => '30 dias']]], // H-09

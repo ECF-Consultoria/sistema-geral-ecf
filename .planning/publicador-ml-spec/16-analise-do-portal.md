@@ -17,7 +17,13 @@
 | 3. Conta de teste | Empresa **#459 "Dev 02 Testes API"** (link aberto de equipe no portal, `2869d201`) | A Fase 0b e o E2E rodam nela |
 | 4. UP na régua | "As variações são separadas, mas do **mesmo anúncio** — separadas só para levar cor, imagens e outras informações" | Na aba Anúncios/régua, a oferta tem **um anúncio por tipo**. No UP, os N itens da família contam como esse único anúncio: registra-se o item da 1ª variante ativa, e os demais ficam ligados em `pub_publicacao_itens` (não viram linhas novas na régua). |
 
+| 12. Conta clássica para teste | Autorizado usar conta de cliente **só para conferência** (`validate`, sem publicar nem mexer em anúncio). Publicação real só na Dev 02 (#459). | Nenhuma das 33 contas de cliente está no modelo antigo |
+| 13. Builder legado | **Sim, sai da Fase 1** | Decisão **D10**: só o builder UP na Fase 1; conta sem `user_product_seller` é detectada e bloqueada com mensagem clara. Muda o [ARQ] do `01` §4.3 ("os dois builders na Fase 1"). Justificativa: 0 de 33 contas de cliente usam o legado (medido em 01/10). O núcleo já feito (união de fotos do legado, chave, regeneração) fica; só não há builder nem publicação legada. |
+| 14. Conferir conta multidepósito | **Sim** (uma conta, só `validate`) | Feito: o `available_quantity` é **obrigatório** (sem ele, 369) mas **ignorado** (aviso 469). O anúncio é aceito; o estoque vem dos depósitos da conta. Ver a pergunta 15. |
+
 As perguntas 5–11 seguem com o padrão proposto (§7.1) até você dizer o contrário.
+
+**Pergunta 15 (aberta):** nas contas multidepósito (23 de 33), o ML aceita o anúncio, mas ignora o estoque informado. Proposta para a Fase 1: **publicar normalmente** (mandando o estoque, porque o campo é obrigatório) e **avisar na tela**: "Nesta conta o estoque é controlado por depósito: depois de publicar, ajuste o estoque no Mercado Livre ou no seu sistema de estoque". Estoque por depósito pelo Publicador fica para a Fase 2. A alternativa da spec (bloquear essas contas) deixaria ~70% dos clientes de fora.
 
 ## Andamento
 

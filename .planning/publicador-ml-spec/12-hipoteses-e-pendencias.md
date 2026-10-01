@@ -86,6 +86,7 @@ A sonda é o comando `php artisan publicador:sondar` (`app/Console/Commands/Publ
 | N-15 | Estoque 0 passou no `validate` (só avisos) | V-VAR-12 continua BLOCKER por decisão [ARQ] (item nasce pausado), não por regra do ML |
 | N-16 | O `lost_me1_by_user` agora vem como **`warning`** (em 10/07 bloqueava o `validate` desta conta) | A decisão D7 (lista de falsos positivos) não é necessária hoje; decide-se pelo `type` que o ML manda |
 | N-18 | **Contas de clientes (01/10, leitura do `/users/me` de 33 contas com token válido, autorizada pelo usuário):** as **33 são User Products** (zero no modelo antigo), e **23 das 33 têm `warehouse_management`** (várias também `multiwarehouse`). O perfil público (`GET /users/{id}` com app token) **não traz `tags`** — só o token da conta mostra o modelo. | O legado não tem conta para testar (H-26/TC-93 seguem abertos), e hoje nenhum cliente o usa. **RN-04 / V-VAR-20 ("bloquear `warehouse_management` na Fase 1") bloquearia ~70% dos clientes:** antes de decidir, conferir no `validate` de uma conta com a tag o que o ML exige no estoque. **[HIP]** |
+| N-19 | **Conta com `warehouse_management` + `multiwarehouse`** (1 conta de cliente, só `validate`, autorizada em 01/10; fixtures anonimizadas em `conta-multideposito/`): **sem `available_quantity` → erro 369** (o campo é obrigatório); **com ele → aviso 469** `item.available_quantity.ignored` "available_quantity field is ignored for multi warehouse seller". A conta tem 2 depósitos em `GET /users/{id}/stores/search?tags=stock_location`. | RN-04 corrigida pelos dados: o campo **vai** no payload (senão 369), mas **não define o estoque**: nessas contas o estoque vem dos depósitos. Como o anúncio nasce (sem estoque? pausado?) **não se sabe** — exigiria publicar numa conta de cliente, o que não se faz. **[HIP]** |
 | N-17 | `references` de atributo apontam o **índice no payload** (`item.attributes[16].values`) | O mapeador de erros precisa do payload enviado para achar o atributo — mais um motivo para guardá-lo (V11) |
 
 ### Catálogo de erros reais (base do dicionário do `09` §3)
@@ -115,6 +116,7 @@ Observados no `/items/validate` em 01/10/2026 (`conta/categorias/*/validate_*.js
 | 303 | `item.attributes.ignored` | warning | Atributo `read_only` enviado (GTIN da pastilha) | `item.attributes` |
 | 3704 | `item.attribute.missing_catalog_required` | warning | Falta atributo `catalog_required` (exposição) | `item.attributes` |
 | 2511 | `create.item.attribute.business_conditional` | warning | ML acrescenta `AGE_GROUP` sozinho (camiseta) | `item.attributes` |
+| 469 | `item.available_quantity.ignored` | warning | Conta multidepósito: o estoque do item é ignorado | `item.available_quantity` |
 | 350 | `item.shipping.mandatory_free_shipping` | warning | Preço ≥ R$ 79: o ML **liga** o frete grátis | — |
 | 4053 | `shipping.lost_me1_by_user` | warning | Sempre, nesta conta | `user.shipping_preferences.modes` |
 | 4056 | `shipping.lost_me2_by_catalog` | warning | Junto do 126 | `catalog.shipping_preferences.modes` |
