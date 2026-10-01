@@ -34,8 +34,9 @@ Branch `feat/publicador-ml-261001`. Commits só locais até a primeira entrega c
 | F0 — sondagem (0a pública + 0b na conta #459) | Feita em 01/10 | `6184715a`, `7a7d5a9f` |
 | F1.1 — chave canônica, combinações, regeneração | Feita em 01/10 (TC-03…13, 40) | `a48ee990` |
 | F1.2 — CategorySchema, classificador, valor de atributo, troca de categoria | Feita em 01/10 (TC-30…41, 70…74) | `5036a94e` |
-| F1.3 — grupos de imagem | Feita em 01/10 (TC-50…55, 60) | ver `git log` |
-| F1.4 — builders legado e UP + PayloadPlan | Próxima | — |
+| F1.3 — grupos de imagem | Feita em 01/10 (TC-50…55, 60) | `a070f02e` |
+| F1.4 — builder UP + PayloadPlan com alvos (legado fora: D10) | Feita em 01/10 (TC-01…05, 14, 31, 39, 41, 43, 90) | ver `git log` |
+| F1.5 — validação L1/L2 + simulador | Próxima | — |
 
 ## Resultado da Fase 0 (01/10/2026) — o que muda no plano
 
