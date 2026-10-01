@@ -68,7 +68,15 @@ class CreativeTestGemini extends Command
         $latenciaMs = (int) round((microtime(true) - $t0) * 1000);
 
         $this->info('Teste de TEXTO:');
-        $this->line('  modelo configurado: '.config('services.creative.gemini.text_model'));
+        // "ordem tentada", não "modelo usado": com reserva configurada quem
+        // respondeu pode ser o 2º da fila, e imprimir só o principal mandaria
+        // o operador tirar conclusão errada sobre qual modelo está de pé.
+        // Qual deles atendeu sai no log com a tag [Creative].
+        $cadeia = array_filter(array_map('trim', array_merge(
+            [(string) config('services.creative.gemini.text_model')],
+            explode(',', (string) config('services.creative.gemini.text_fallbacks')),
+        )));
+        $this->line('  ordem de modelos tentada: '.implode(' → ', $cadeia));
         $this->line("  latência: {$latenciaMs}ms");
         $this->line('  status: ok');
         $this->line('  resposta (primeiros 120 chars): '.mb_substr(trim($resposta), 0, 120));

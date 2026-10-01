@@ -418,9 +418,16 @@ return [
 
             'text_model'  => env('GEMINI_TEXT_MODEL', 'gemini-3.8-flash'),
             'image_model' => env('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'),
-            // Lista por vírgula, mesma semântica do `llm.fallbacks` acima:
+            // Listas por vírgula, mesma semântica do `llm.fallbacks` acima:
             // tentados em ordem quando o modelo principal falha de forma
             // trocável (sobrecarga, timeout, modelo fora do ar).
+            //
+            // A reserva de TEXTO não é luxo: medido em 2026-10-01, o
+            // `gemini-3.8-flash` devolveu 503 "high demand" em chamadas
+            // seguidas enquanto o `gemini-3.5-flash-lite` respondia em 1,3s
+            // com a mesma chave. Sem reserva, modelo congestionado faz o
+            // teste de conectividade acusar a chave, que está boa.
+            'text_fallbacks'  => env('GEMINI_TEXT_MODEL_FALLBACK', 'gemini-3.5-flash-lite'),
             'image_fallbacks' => env('GEMINI_IMAGE_MODEL_FALLBACK', ''),
 
             // Mercado Livre: §13.3 pede 1200x1200. "2K" em "1:1" atende com

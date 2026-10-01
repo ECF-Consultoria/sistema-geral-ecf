@@ -22,9 +22,28 @@ use Illuminate\Support\Facades\Log;
  *   OAuth Bearer aqui — conferido na doc oficial em 2026-10-01);
  * - endpoint único `/interactions` para texto E imagem, diferenciado pelo
  *   `response_format` do corpo, não por rota;
- * - resposta de imagem vem em base64 (`interaction.output_image.data`) que
- *   é decodificado ANTES de devolver ao chamador — quem usa este provider
- *   nunca deveria lidar com base64 diretamente.
+ * - o base64 da resposta é decodificado ANTES de devolver ao chamador — quem
+ *   usa este provider nunca deveria lidar com base64 diretamente.
+ *
+ * FORMA DA RESPOSTA — MEDIDA, não deduzida da documentação. A página de docs
+ * resume a resposta como `interaction.outputText` / `interaction.output_image
+ * .data`, e isso NÃO é o que a API devolve. Chamada real em 2026-10-01
+ * (gemini-3.5-flash-lite, HTTP 200) devolveu objeto PLANO:
+ *
+ *   {id, status, usage, created, updated, service_tier, object, model,
+ *    steps: [ {type:"thought", signature:"…"},
+ *             {type:"model_output", content:[{type:"text", text:"ok"}]} ]}
+ *
+ * Por isso a extração varre `steps[]` atrás do passo `model_output` e lê o
+ * `content[]` dele. Os caminhos da documentação ficam como ÚLTIMO recurso:
+ * se a API mudar de volta, nada quebra.
+ *
+ * ⚠️ A forma do content de IMAGEM é INFERIDA por simetria com a de texto e
+ * ainda NÃO foi medida contra a API: em 2026-10-01 todos os modelos de imagem
+ * responderam HTTP 429 "limit: 0 requests per day on Free Tier", então não
+ * houve nenhuma resposta 200 de imagem para conferir. Por isso o extrator
+ * aceita várias grafias (`data`, `image_data`, `inline_data.data`) em vez de
+ * fixar uma — confirmar na primeira geração real com tier pago.
  *
  * SEGURANÇA (§17): a chave nunca é logada, o body inteiro do pedido nunca é
  * logado, e o base64 (de entrada OU de saída) jamais aparece em log — só
@@ -66,12 +85,38 @@ class GeminiImageProvider implements ImageGenerationProvider
         throw new \RuntimeException($erro?->getMessage() ?? 'Nenhum modelo de imagem configurado (GEMINI_IMAGE_MODEL).');
     }
 
+    /**
+     * Texto, com a MESMA disciplina de reserva da imagem.
+     *
+     * POR QUE A RESERVA EXISTE AQUI. Medido em 2026-10-01: o
+     * `gemini-3.8-flash` devolveu 503 "experiencing high demand" em chamadas
+     * seguidas enquanto o `gemini-3.5-flash-lite` respondia em 1,3s com a
+     * MESMA chave. Sem reserva, um modelo congestionado faz o comando de teste
+     * dizer que a conexão falhou — e manda o operador procurar problema na
+     * chave, que está boa.
+     */
     public function gerarTexto(string $prompt): string
     {
         $cfg = $this->configGemini();
 
-        $modelo = (string) ($cfg['text_model'] ?? '');
+        $modelos = $this->listaDeModelos($cfg['text_model'] ?? null, $cfg['text_fallbacks'] ?? '');
 
+        $erro = null;
+
+        foreach ($modelos as $modelo) {
+            try {
+                return $this->gerarTextoComModelo($cfg, $modelo, $prompt);
+            } catch (FalhaDeGeracaoTrocavel $e) {
+                $erro = $e;
+                Log::warning("[Creative] Modelo de texto {$modelo} falhou, tentando o próximo: {$e->getMessage()}");
+            }
+        }
+
+        throw new \RuntimeException($erro?->getMessage() ?? 'Nenhum modelo de texto configurado (GEMINI_TEXT_MODEL).');
+    }
+
+    private function gerarTextoComModelo(array $cfg, string $modelo, string $prompt): string
+    {
         $t0 = microtime(true);
 
         $resposta = $this->chamarInteractions($cfg, [
@@ -81,7 +126,7 @@ class GeminiImageProvider implements ImageGenerationProvider
 
         $duracaoMs = (int) round((microtime(true) - $t0) * 1000);
 
-        $texto = (string) data_get($resposta, 'interaction.outputText', '');
+        $texto = $this->extrairTexto($resposta);
 
         if (trim($texto) === '') {
             Log::warning('[Creative] Texto vazio', ['modelo' => $modelo, 'latencia_ms' => $duracaoMs]);
@@ -121,7 +166,8 @@ class GeminiImageProvider implements ImageGenerationProvider
 
         $duracaoMs = (int) round((microtime(true) - $t0) * 1000);
 
-        $base64 = data_get($resposta, 'interaction.output_image.data');
+        $imagem = $this->extrairImagem($resposta);
+        $base64 = $imagem['data'] ?? null;
 
         if (empty($base64)) {
             Log::warning('[Creative] Resposta 200 sem imagem', [
@@ -141,7 +187,7 @@ class GeminiImageProvider implements ImageGenerationProvider
             throw new FalhaDeGeracaoTrocavel("O modelo {$modelo} devolveu base64 inválido.");
         }
 
-        $mimeSaida = (string) (data_get($resposta, 'interaction.output_image.mime_type') ?: ($cfg['mime'] ?? 'image/jpeg'));
+        $mimeSaida = (string) ($imagem['mime'] ?: ($cfg['mime'] ?? 'image/jpeg'));
 
         Log::info('[Creative] Imagem gerada', [
             'modelo'       => $modelo,
@@ -207,6 +253,94 @@ class GeminiImageProvider implements ImageGenerationProvider
         return (array) $resposta->json();
     }
 
+    // ═══ Extração da resposta ══════════════════════════════════════════════
+
+    /**
+     * Blocos de `content` do passo `model_output`, na ordem.
+     *
+     * O passo `thought` é ignorado de propósito: ele traz só a `signature` do
+     * raciocínio, nunca conteúdo útil, e lê-lo como saída devolveria lixo.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function blocosDeSaida(array $resposta): array
+    {
+        $blocos = [];
+
+        foreach ((array) ($resposta['steps'] ?? []) as $passo) {
+            if (($passo['type'] ?? null) !== 'model_output') {
+                continue;
+            }
+
+            foreach ((array) ($passo['content'] ?? []) as $bloco) {
+                if (is_array($bloco)) {
+                    $blocos[] = $bloco;
+                }
+            }
+        }
+
+        return $blocos;
+    }
+
+    /**
+     * Texto da resposta: concatena todos os blocos de texto do `model_output`.
+     *
+     * Concatena em vez de pegar o primeiro porque modelo longo pode quebrar a
+     * saída em vários blocos — pegar só o [0] truncaria a resposta em silêncio.
+     */
+    private function extrairTexto(array $resposta): string
+    {
+        $partes = [];
+
+        foreach ($this->blocosDeSaida($resposta) as $bloco) {
+            if (($bloco['type'] ?? null) === 'text' && isset($bloco['text'])) {
+                $partes[] = (string) $bloco['text'];
+            }
+        }
+
+        if ($partes !== []) {
+            return implode('', $partes);
+        }
+
+        // Último recurso: as grafias que a documentação descreve.
+        return (string) (data_get($resposta, 'interaction.outputText') ?? data_get($resposta, 'outputText') ?? '');
+    }
+
+    /**
+     * Imagem da resposta, como `['data' => base64, 'mime' => string|null]`.
+     *
+     * ⚠️ INFERIDO, não medido — ver o aviso no docblock da classe. Aceita as
+     * grafias plausíveis de onde o base64 pode vir porque errar o caminho aqui
+     * produz o sintoma mais confuso possível: HTTP 200 tratado como "respondeu
+     * sem imagem", que manda o provider trocar de modelo e falhar em todos.
+     *
+     * @return array{data: string|null, mime: string|null}
+     */
+    private function extrairImagem(array $resposta): array
+    {
+        foreach ($this->blocosDeSaida($resposta) as $bloco) {
+            $base64 = $bloco['data']
+                ?? $bloco['image_data']
+                ?? data_get($bloco, 'inline_data.data')
+                ?? data_get($bloco, 'image.data');
+
+            if (! empty($base64) && is_string($base64)) {
+                return [
+                    'data' => $base64,
+                    'mime' => (string) ($bloco['mime_type'] ?? data_get($bloco, 'inline_data.mime_type') ?? '') ?: null,
+                ];
+            }
+        }
+
+        // Último recurso: a grafia que a documentação descreve.
+        $doc = data_get($resposta, 'interaction.output_image');
+
+        return [
+            'data' => is_array($doc) ? ($doc['data'] ?? null) : null,
+            'mime' => is_array($doc) ? ($doc['mime_type'] ?? null) : null,
+        ];
+    }
+
     // ═══ Helpers ═══════════════════════════════════════════════════════════
 
     private function configGemini(): array
@@ -236,7 +370,10 @@ class GeminiImageProvider implements ImageGenerationProvider
     {
         return match (true) {
             $status === 401 || $status === 403 => 'A chave da Gemini foi recusada. Confira GEMINI_API_KEY.',
-            $status === 429 => 'O limite de uso da Gemini foi atingido neste momento. Tente novamente em alguns minutos.',
+            // NÃO dizer só "tente em alguns minutos": medido em 2026-10-01, o
+            // 429 dos modelos de IMAGEM no tier grátis é "limit: 0 requests
+            // per day" — nunca passa com o tempo, só com upgrade de tier.
+            $status === 429 => 'A Gemini recusou por limite de uso (429). Pode ser cota do minuto — ou o tier da conta não liberar este modelo (os modelos de imagem são 0/dia no tier grátis). Confira em https://ai.dev/rate-limit.',
             $status === 503 => 'A Gemini está sobrecarregada neste momento. Tente novamente em alguns minutos.',
             $status === 404 => 'O modelo configurado não existe ou saiu do ar. Confira GEMINI_IMAGE_MODEL/GEMINI_TEXT_MODEL.',
             $status === 400 => 'A Gemini recusou o pedido (requisição malformada).',
