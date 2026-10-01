@@ -10,6 +10,8 @@ use App\Models\NpsResponse;
 use App\Models\NpsResponseScore;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
+use App\Models\Onboarding;
+use App\Models\Ppa;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
@@ -229,6 +231,27 @@ class UnificarContasCommandTest extends TestCase
         ])->id;
     }
 
+    /** PPA com `mentor_id`/`status` dados — demais campos usam o default do model/migration. */
+    private function criarPpa(int $userId, string $status): int
+    {
+        return Ppa::create([
+            'company_id' => $this->companyAId,
+            'mentor_id'  => $userId,
+            'title'      => 'PPA teste ' . uniqid(),
+            'status'     => $status,
+        ])->id;
+    }
+
+    /** Onboarding com responsável(is) e status dados — schema atual não exige template_id (migration 2026-08-12 moveu a definição pro código). */
+    private function criarOnboarding(string $status, array $responsaveis): int
+    {
+        return Onboarding::create(array_merge([
+            'company_id' => $this->companyAId,
+            'servico_id' => $this->servicoPerfId,
+            'status'     => $status,
+        ], $responsaveis))->id;
+    }
+
     /** Assinatura das tabelas do núcleo, usada para provar "dry-run não muda nada". */
     private function assinaturaNucleo(): array
     {
@@ -292,6 +315,7 @@ class UnificarContasCommandTest extends TestCase
             [
                 'carteira', 'historico_gestao', 'cargos',
                 'nps_atribuicoes', 'nps_imputacoes', 'snapshots_diarios', 'snapshots_empresa',
+                'ppas', 'onboardings',
                 'desativar_origem',
             ],
             array_column($plano['etapas'], 'chave')
@@ -872,5 +896,127 @@ class UnificarContasCommandTest extends TestCase
             $this->assertSame('tratada', $linha['classificacao']);
             $this->assertStringContainsString('parcial: só competência', $linha['motivo']);
         }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 2, Teste 23: PPA em aberto move; concluído fica.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_ppas_em_aberto_e_mantem_concluido_com_a_origem(): void
+    {
+        $draftId = $this->criarPpa($this->origemId, 'draft');
+        $sentId = $this->criarPpa($this->origemId, 'sent');
+        $completedId = $this->criarPpa($this->origemId, 'completed');
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame($this->destinoId, (int) DB::table('ppas')->where('id', $draftId)->value('mentor_id'));
+        $this->assertSame($this->destinoId, (int) DB::table('ppas')->where('id', $sentId)->value('mentor_id'));
+        $this->assertSame($this->origemId, (int) DB::table('ppas')->where('id', $completedId)->value('mentor_id'));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 2, Teste 24: onboarding em andamento move as DUAS
+    // colunas tocadas; concluído fica intacto.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_duas_colunas_de_onboarding_em_andamento_e_mantem_concluido(): void
+    {
+        $andamentoId = $this->criarOnboarding(Onboarding::STATUS_ANDAMENTO, [
+            'responsavel_id' => $this->origemId,
+            'responsavel_estrategista_id' => $this->origemId,
+        ]);
+
+        $concluidoId = $this->criarOnboarding(Onboarding::STATUS_CONCLUIDO, [
+            'responsavel_id' => $this->origemId,
+            'responsavel_estrategista_id' => $this->origemId,
+        ]);
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $andamento = DB::table('onboardings')->where('id', $andamentoId)->first();
+        $this->assertSame($this->destinoId, (int) $andamento->responsavel_id);
+        $this->assertSame($this->destinoId, (int) $andamento->responsavel_estrategista_id);
+
+        $concluido = DB::table('onboardings')->where('id', $concluidoId)->first();
+        $this->assertSame($this->origemId, (int) $concluido->responsavel_id);
+        $this->assertSame($this->origemId, (int) $concluido->responsavel_estrategista_id);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 2, Teste 25: onboarding em rascunho move o slot
+    // de responsável analista.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_responsavel_analista_de_onboarding_em_rascunho(): void
+    {
+        $rascunhoId = $this->criarOnboarding(Onboarding::STATUS_RASCUNHO, [
+            'responsavel_analista_id' => $this->origemId,
+        ]);
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame(
+            $this->destinoId,
+            (int) DB::table('onboardings')->where('id', $rascunhoId)->value('responsavel_analista_id')
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 2, Teste 26: censo classifica ppas.mentor_id e as
+    // 3 colunas de onboardings como 'tratada', motivo "parcial: em aberto".
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_censo_classifica_ppas_e_onboardings_como_tratada_parcial(): void
+    {
+        $this->chamar($this->opcoesBase(['--json' => true]));
+        $plano = json_decode(Artisan::output(), true);
+
+        $colunas = [
+            'ppas.mentor_id',
+            'onboardings.responsavel_id',
+            'onboardings.responsavel_analista_id',
+            'onboardings.responsavel_estrategista_id',
+        ];
+
+        foreach ($colunas as $chave) {
+            [$tabela, $coluna] = explode('.', $chave);
+            $linha = collect($plano['censo'])->first(fn ($c) => $c['tabela'] === $tabela && $c['coluna'] === $coluna);
+
+            $this->assertNotNull($linha, "{$chave} deveria aparecer no censo");
+            $this->assertSame('tratada', $linha['classificacao']);
+            $this->assertStringContainsString('parcial: só o que ainda está em aberto', $linha['motivo']);
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 2, Teste 27: --desfazer restaura mentor_id e as
+    // colunas de responsável de onboarding.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_desfazer_restaura_mentor_id_e_colunas_de_responsavel(): void
+    {
+        $draftId = $this->criarPpa($this->origemId, 'draft');
+        $andamentoId = $this->criarOnboarding(Onboarding::STATUS_ANDAMENTO, [
+            'responsavel_id' => $this->origemId,
+        ]);
+
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+        $lote = DB::table('unificacao_contas_backup')->value('lote');
+        $this->assertNotNull($lote);
+
+        $this->assertSame($this->destinoId, (int) DB::table('ppas')->where('id', $draftId)->value('mentor_id'));
+
+        $exitApply = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $this->assertSame(0, $exitApply);
+
+        $this->assertSame($this->origemId, (int) DB::table('ppas')->where('id', $draftId)->value('mentor_id'));
+        $this->assertSame(
+            $this->origemId,
+            (int) DB::table('onboardings')->where('id', $andamentoId)->value('responsavel_id')
+        );
     }
 }
