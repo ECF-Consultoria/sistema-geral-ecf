@@ -1163,6 +1163,9 @@ class PerformanceController extends Controller
                   ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']);
             })
             ->select(['id', 'name', 'avatar_url'])
+            // WR-12 (revisão da Fase 159): com dois cargos no mesmo setor
+            // (D-01), o cargo do rótulo é o da linha PRINCIPAL (empate → menor
+            // id) — sem ORDER BY o MariaDB devolvia qualquer um.
             ->addSelect(['cargo_slug' => DB::table('user_setores')
                 ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
                 ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
@@ -1170,6 +1173,8 @@ class PerformanceController extends Controller
                 ->where('setores.slug', 'publicacao')
                 ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao'])
                 ->select('cargos.slug')
+                ->orderByDesc('user_setores.is_principal')
+                ->orderBy('user_setores.id')
                 ->limit(1)])
             ->orderBy('name')
             ->get();
@@ -1309,11 +1314,15 @@ class PerformanceController extends Controller
         if ($registro !== null) return (int) $registro;
 
         // Fallback CANÔNICO (igual ao MlbController): meta do cargo no setor Publicação.
+        // WR-12 (revisão da Fase 159): com dois cargos no setor (D-01), vale o
+        // da linha PRINCIPAL (empate → menor id) — determinístico.
         $meta = DB::table('user_setores')
             ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
             ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
             ->where('user_setores.user_id', $userId)
             ->where('setores.slug', 'publicacao')
+            ->orderByDesc('user_setores.is_principal')
+            ->orderBy('user_setores.id')
             ->value('cargos.meta_publicacoes');
 
         return (int) ($meta ?? 220);
