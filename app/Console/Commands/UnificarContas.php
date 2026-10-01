@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\DB;
  * `App\Services\Usuarios\UnificacaoContasService`.
  *
  * NUNCA imprime nota, faixa ou valor de bônus (learnings §11) — só contagens
- * e ids, que é o que as telas já exibem.
+ * e ids, que é o que as telas já exibem. Vale também para o `--json`: as
+ * operações saem por {@see self::planoParaSaida()}, nunca o plano cru (WR-04).
  */
 class UnificarContas extends Command
 {
@@ -75,7 +76,7 @@ class UnificarContas extends Command
 
         if ($this->option('json')) {
             $this->line(json_encode(
-                $plano + ['pendencias_censo' => $pendencias],
+                $this->planoParaSaida($plano) + ['pendencias_censo' => $pendencias],
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
             ));
         } else {
@@ -182,6 +183,63 @@ class UnificarContas extends Command
         // Veredito pela contagem do que a escrita afetou de fato (WR-03),
         // nunca pelo texto acima.
         return $resultado['restauradas'] === $resultado['operacoes'] ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * Colunas que identificam a linha de um `delete` na saída — nunca
+     * colunas de nota/pontos/faixa (WR-04).
+     */
+    private const COLUNAS_IDENTIFICACAO = [
+        'user_id', 'company_id', 'role', 'servico_id', 'nps_response_id', 'survey_id',
+        'group_survey_id', 'dimensao', 'competencia_nps', 'ref_date', 'mes_referencia', 'origem',
+    ];
+
+    /**
+     * WR-04 (revisão da Fase 159): o plano interno carrega, nas operações de
+     * `delete`, a linha INTEIRA em `antes` — é o que o backup precisa para
+     * desfazer. Em `desempenho_score_snapshots` isso inclui `score`,
+     * `classificacao` e `breakdown_json` (nota final, faixa de bônus); em
+     * `desempenho_company_score_snapshots`, `nota_empresa` e os pontos; nas
+     * tabelas de NPS, `average_score`/`nota`. Nada disso pode ir para a tela
+     * nem para um VERIFICATION colado da saída (learnings §11).
+     *
+     * A saída leva só `tabela/acao/linha_id` + as colunas tocadas (`update`/
+     * `insert`, que o próprio plano monta só com ids e papéis) e, no
+     * `delete`, uma `identificacao` por whitelist. O backup no BANCO
+     * continua com a linha inteira.
+     */
+    private function planoParaSaida(array $plano): array
+    {
+        $plano['etapas'] = array_map(fn (array $etapa) => [
+            'chave' => $etapa['chave'],
+            'descricao' => $etapa['descricao'],
+            'operacoes' => array_map(fn (array $op) => $this->operacaoParaSaida($op), $etapa['operacoes']),
+        ], $plano['etapas']);
+
+        return $plano;
+    }
+
+    private function operacaoParaSaida(array $operacao): array
+    {
+        $saida = [
+            'tabela' => $operacao['tabela'],
+            'acao' => $operacao['acao'],
+            'linha_id' => $operacao['linha_id'],
+        ];
+
+        if ($operacao['acao'] === 'delete') {
+            $saida['identificacao'] = array_intersect_key(
+                (array) ($operacao['antes'] ?? []),
+                array_flip(self::COLUNAS_IDENTIFICACAO)
+            );
+
+            return $saida;
+        }
+
+        $saida['antes'] = $operacao['antes'];
+        $saida['depois'] = $operacao['depois'];
+
+        return $saida;
     }
 
     private function idValido(mixed $id): bool

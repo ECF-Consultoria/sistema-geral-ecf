@@ -1314,6 +1314,101 @@ class UnificarContasCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // WR-04 da revisão — nenhuma saída do comando (--json, texto, --apply)
+    // carrega nota, faixa, score, breakdown_json ou nota_empresa (learnings §11).
+    // ═════════════════════════════════════════════════════════════════════
+
+    // `classificacao` fica de fora da lista de CHAVES: o censo usa uma chave
+    // com esse nome (tratada/mantida/sem_regra). A classificação do snapshot
+    // (faixa de nota) é vigiada pelo VALOR sentinela 'excelente'.
+    private const CHAVES_PROIBIDAS_NA_SAIDA = [
+        'nota', 'nota_final', 'nota_empresa', 'nota_empresa_parcial',
+        'faixa', 'faixa_bonus', 'score', 'breakdown_json',
+        'average_score', 'nps_pontos', 'faturamento_pontos', 'margem_pontos',
+    ];
+
+    /** Todas as chaves (recursivo) de um array decodificado de JSON. */
+    private function chavesRecursivas(array $dados): array
+    {
+        $chaves = [];
+        foreach ($dados as $chave => $valor) {
+            if (is_string($chave)) {
+                $chaves[] = $chave;
+            }
+            if (is_array($valor)) {
+                $chaves = array_merge($chaves, $this->chavesRecursivas($valor));
+            }
+        }
+
+        return $chaves;
+    }
+
+    private function assertSaidaSemDadoDeBonus(string $saida, string $contexto): void
+    {
+        foreach (['SENTINELA_FAIXA', 'nota_final', 'faixa_bonus', '4.37', '3.21', 'excelente'] as $sentinela) {
+            $this->assertStringNotContainsString($sentinela, $saida, "{$contexto}: vazou '{$sentinela}'");
+        }
+
+        foreach (self::CHAVES_PROIBIDAS_NA_SAIDA as $chave) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/"' . preg_quote($chave, '/') . '"\s*:/',
+                $saida,
+                "{$contexto}: a chave '{$chave}' apareceu na saída"
+            );
+        }
+    }
+
+    public function test_wr04_nenhuma_saida_do_comando_carrega_nota_faixa_ou_score(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        // Linhas que a junção APAGA e cujo `antes` completo carrega dado de bônus.
+        DesempenhoScoreSnapshot::create([
+            'user_id' => $this->origemId, 'ref_date' => '2026-09-10', 'mes_referencia' => null,
+            'score' => 87, 'classificacao' => 'excelente',
+            'breakdown_json' => ['nota_final' => 4.37, 'faixa_bonus' => 'SENTINELA_FAIXA'],
+        ]);
+        DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyAId, 'mes_referencia' => '2026-09-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE, 'gerado_em' => now(),
+            'nota_empresa' => 3.21, 'nps_pontos' => 3.21,
+        ]);
+        // Colisões de NPS (viram delete com a linha inteira no plano).
+        $surveyColisaoId = NpsSurvey::factory()->create(['company_id' => $this->companyCId])->id;
+        $this->criarImputacaoNps($this->companyCId, $this->origemId, 'estrategista', '2026-10-01', null, $surveyColisaoId);
+        $this->criarImputacaoNps($this->companyCId, $this->destinoId, 'estrategista', '2026-10-01', null, $surveyColisaoId);
+
+        // 1) --json (dry-run): estrutura sem nenhuma chave proibida.
+        $this->chamar($this->opcoesBase(['--json' => true]));
+        $saidaJson = Artisan::output();
+        $plano = json_decode($saidaJson, true);
+        $this->assertIsArray($plano);
+        $this->assertSame([], array_values(array_intersect(self::CHAVES_PROIBIDAS_NA_SAIDA, $this->chavesRecursivas($plano))));
+        $this->assertSaidaSemDadoDeBonus($saidaJson, '--json');
+
+        // A operação de delete continua identificável (tabela/acao/linha_id).
+        $deletes = collect($plano['etapas'])->keyBy('chave')['snapshots_diarios']['operacoes'];
+        $this->assertCount(1, $deletes);
+        $this->assertSame('delete', $deletes[0]['acao']);
+        $this->assertNotNull($deletes[0]['linha_id']);
+
+        // 2) Texto (dry-run).
+        $this->chamar($this->opcoesBase());
+        $this->assertSaidaSemDadoDeBonus(Artisan::output(), 'texto');
+
+        // 3) --json --apply (inclui lote e reconsulta).
+        $exit = $this->chamar($this->opcoesBase(['--json' => true, '--apply' => true]));
+        $this->assertSame(0, $exit);
+        $this->assertSaidaSemDadoDeBonus(Artisan::output(), '--json --apply');
+
+        // O backup NO BANCO continua com a linha inteira (é o que permite desfazer).
+        $backupSnapshot = DB::table('unificacao_contas_backup')
+            ->where('tabela', 'desempenho_score_snapshots')->where('acao', 'delete')->first();
+        $this->assertNotNull($backupSnapshot);
+        $this->assertArrayHasKey('breakdown_json', json_decode($backupSnapshot->antes, true));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // CR-02 da revisão — a competência ANTERIOR ao corte precisa estar
     // consolidada (snapshot mensal) para origem e destino que têm carteira.
     // `company_users` não tem dimensão temporal: mover a carteira recalcula
