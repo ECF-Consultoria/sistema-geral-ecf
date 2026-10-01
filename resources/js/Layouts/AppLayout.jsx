@@ -485,9 +485,10 @@ export default function AppLayout({ children, title }) {
 
     /**
      * Regra de visibilidade de um item de menu.
-     * Fase 159 (D-08): retorna false se o papel do sistema OU TODOS os cargos
-     * de publicação do user estão em excludeRoles (ver itemOcultoPorPapel) —
-     * quem tem dois cargos e só um deles é excluído continua vendo o item.
+     * Fase 159 (D-08, restrita pelo WR-10 da revisão): retorna false se o
+     * papel do sistema OU QUALQUER cargo do user está em excludeRoles — com
+     * a única exceção de analista/estrategista, em que um cargo de Desempenho
+     * com acesso compensa o outro excluído (ver itemOcultoPorPapel).
      * Também retorna false se a permission requerida não consta na lista de
      * permissions do usuário.
      */
