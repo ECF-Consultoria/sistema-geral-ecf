@@ -241,6 +241,43 @@ class UnificarContasCommandTest extends TestCase
         ])->id;
     }
 
+    /** Link de NPS de GRUPO (âncora `nps_group_surveys`) — um grupo próprio por link, para não esbarrar no dedup. */
+    private function criarLinkDeGrupo(): int
+    {
+        $grupoId = DB::table('company_groups')->insertGetId([
+            'name'       => 'Grupo Unificacao ' . uniqid(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return DB::table('nps_group_surveys')->insertGetId([
+            'token'            => (string) \Illuminate\Support\Str::uuid(),
+            'company_group_id' => $grupoId,
+            'month_reference'  => '2026-10-01',
+            'status'           => 'pending',
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+    }
+
+    /** Imputação de link de GRUPO: `survey_id` NULL, grão real = (group_survey_id, company_id). */
+    private function criarImputacaoGrupoNps(int $companyId, int $userId, string $role, string $competenciaNps, int $groupSurveyId, ?int $servicoId = null): int
+    {
+        return NpsImputedAssignment::create([
+            'survey_id'       => null,
+            'group_survey_id' => $groupSurveyId,
+            'company_id'      => $companyId,
+            'servico_id'      => $servicoId,
+            'service_setor'   => 'performance',
+            'dimensao'        => $role === 'estrategista' ? 'estrategista' : 'analista',
+            'role'            => $role,
+            'user_id'         => $userId,
+            'competencia_nps' => $competenciaNps,
+            'nota'            => 1.00,
+            'status'          => 'provisorio',
+        ])->id;
+    }
+
     /** PPA com `mentor_id`/`status` dados — demais campos usam o default do model/migration. */
     private function criarPpa(int $userId, string $status): int
     {
@@ -1044,6 +1081,47 @@ class UnificarContasCommandTest extends TestCase
         $this->assertSame(
             $this->origemId,
             (int) DB::table('onboardings')->where('id', $andamentoId)->value('responsavel_id')
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // WR-01 da revisão — colisão de imputação de GRUPO pelo grão real
+    // (group_survey_id, company_id), o mesmo de NpsImputedAssignment::chaveDeDedupe().
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_wr01_imputacao_de_grupo_so_colide_no_mesmo_link_e_mesma_empresa(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $linkA = $this->criarLinkDeGrupo();
+        $linkB = $this->criarLinkDeGrupo();
+
+        // Origem no link A, empresa A — o destino só tem linhas de OUTRO link
+        // (B, empresa A) e de OUTRA empresa (A, empresa B): não é colisão.
+        $moveId = $this->criarImputacaoGrupoNps($this->companyAId, $this->origemId, 'estrategista', '2026-10-01', $linkA, $this->servicoPerfId);
+        $this->criarImputacaoGrupoNps($this->companyAId, $this->destinoId, 'estrategista', '2026-10-01', $linkB, $this->servicoPerfId);
+        $this->criarImputacaoGrupoNps($this->companyBId, $this->destinoId, 'estrategista', '2026-10-01', $linkA, $this->servicoPerfId);
+
+        // Colisão de verdade: mesmo link (A) e mesma empresa (C).
+        $colisaoId = $this->criarImputacaoGrupoNps($this->companyCId, $this->origemId, 'estrategista', '2026-10-01', $linkA, $this->servicoPerfId);
+        $this->criarImputacaoGrupoNps($this->companyCId, $this->destinoId, 'estrategista', '2026-10-01', $linkA, $this->servicoPerfId);
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        // A linha da origem MUDA de dono — o piso 1 da empresa A não some.
+        $this->assertSame($this->destinoId, (int) DB::table('nps_imputed_assignments')->where('id', $moveId)->value('user_id'));
+        $this->assertSame(
+            2,
+            DB::table('nps_imputed_assignments')->where('company_id', $this->companyAId)->where('user_id', $this->destinoId)->count(),
+            'Empresa A: a linha do link B (já do destino) + a do link A (movida).'
+        );
+
+        // A colisão real vira delete e sobra só a linha do destino.
+        $this->assertSame(0, DB::table('nps_imputed_assignments')->where('id', $colisaoId)->count());
+        $this->assertSame(
+            1,
+            DB::table('nps_imputed_assignments')->where('company_id', $this->companyCId)->where('user_id', $this->destinoId)->count()
         );
     }
 

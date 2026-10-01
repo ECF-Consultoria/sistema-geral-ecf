@@ -669,8 +669,10 @@ class UnificacaoContasService
      * comparação direta, sem JOIN.
      *
      * Colisão pelo grão do unique `nps_imput_grao_uniq`
-     * (`survey_id`, `dimensao`, `role`, `servico_id`, null-safe) com
-     * `user_id` = destino → `delete`; senão → `update` de `user_id`.
+     * (`survey_id`, `dimensao`, `role`, `servico_id`, null-safe) MAIS o grão
+     * de link de grupo (`group_survey_id`, `company_id` — WR-01) com
+     * `user_id` = destino → `delete`; senão → `update` de `user_id`. Ver
+     * {@see self::consultaColisaoImputacao()}.
      */
     private function planejarNpsImputacoes(int $deId, int $paraId, Carbon $inicioColeta): array
     {
@@ -683,21 +685,7 @@ class UnificacaoContasService
         $operacoes = [];
 
         foreach ($linhasOrigem as $linha) {
-            $colisao = DB::table('nps_imputed_assignments')
-                ->where('user_id', $paraId)
-                ->where('dimensao', $linha->dimensao)
-                ->when($linha->role === null, fn ($q) => $q->whereNull('role'), fn ($q) => $q->where('role', $linha->role))
-                ->when(
-                    $linha->survey_id === null,
-                    fn ($q) => $q->whereNull('survey_id'),
-                    fn ($q) => $q->where('survey_id', $linha->survey_id)
-                )
-                ->when(
-                    $linha->servico_id === null,
-                    fn ($q) => $q->whereNull('servico_id'),
-                    fn ($q) => $q->where('servico_id', $linha->servico_id)
-                )
-                ->exists();
+            $colisao = $this->consultaColisaoImputacao($linha, $paraId)->exists();
 
             $operacoes[] = $colisao
                 ? [
@@ -721,6 +709,42 @@ class UnificacaoContasService
             'descricao' => 'Imputações de NPS (nps_imputed_assignments) da origem com competencia_nps (mês de coleta) a partir do corte.',
             'operacoes' => $operacoes,
         ];
+    }
+
+    /**
+     * Linha do DESTINO que ocupa o mesmo grão da imputação `$linha` da
+     * origem — o mesmo grão do guard `exists()` de `NpsImputationService`
+     * e de `NpsImputedAssignment::chaveDeDedupe()`.
+     *
+     * WR-01 (revisão da Fase 159): a linha de link de GRUPO tem
+     * `survey_id = NULL` desde a migration 2026_08_26_150000, e o grão real é
+     * `(group_survey_id, company_id)`. Comparar só `survey_id IS NULL`
+     * casava a linha de OUTRO link ou de OUTRA empresa do destino como
+     * "colisão" e APAGAVA a da origem — o piso 1 daquela empresa sumia da
+     * carteira do destino sem nenhum aviso.
+     */
+    private function consultaColisaoImputacao(object $linha, int $paraId): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('nps_imputed_assignments')
+            ->where('user_id', $paraId)
+            ->where('dimensao', $linha->dimensao)
+            ->where('company_id', $linha->company_id)
+            ->when($linha->role === null, fn ($q) => $q->whereNull('role'), fn ($q) => $q->where('role', $linha->role))
+            ->when(
+                $linha->survey_id === null,
+                fn ($q) => $q->whereNull('survey_id'),
+                fn ($q) => $q->where('survey_id', $linha->survey_id)
+            )
+            ->when(
+                ($linha->group_survey_id ?? null) === null,
+                fn ($q) => $q->whereNull('group_survey_id'),
+                fn ($q) => $q->where('group_survey_id', $linha->group_survey_id)
+            )
+            ->when(
+                $linha->servico_id === null,
+                fn ($q) => $q->whereNull('servico_id'),
+                fn ($q) => $q->where('servico_id', $linha->servico_id)
+            );
     }
 
     /**
