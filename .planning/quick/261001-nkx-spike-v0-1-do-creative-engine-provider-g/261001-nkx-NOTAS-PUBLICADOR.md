@@ -271,3 +271,54 @@ geometria**. Isso separa a biblioteca de slots do §8.4 em dois grupos com risco
 ⚠️ **Amostra de UM produto e UM slot.** Antes de fechar desenho, repetir com produto que tenha
 detalhe físico difícil (peça pequena, produto com logo aplicado, kit com vários itens) — categorias
 onde "preservar o produto" é mais difícil que num móvel branco de superfície lisa.
+
+---
+
+## 16. Comparação dos três modelos de imagem (2026-10-01) — mesmo produto, mesmo prompt
+
+Mesmas 3 fotos de referência do gabinete, mesmo prompt MASTER+SLOT, uma execução por modelo.
+Opções `--modelo` e `--tamanho` foram acrescentadas ao comando para isto (o §19 pede custo por kit).
+
+| modelo | saída | latência | arquivo | preço/imagem | kit de 7 |
+|---|---|---|---|---|---|
+| `gemini-3.1-flash-lite-image` | 1K | 6,7s | 552 KB | US$ 0,0336 | US$ 0,24 |
+| `gemini-3.1-flash-image` | 2K | 16,9s | 2.019 KB | US$ 0,101 | US$ 0,71 |
+| `gemini-3-pro-image` | 2K | 25,7s | 2.021 KB | US$ 0,134 | US$ 0,94 |
+
+(Preços do tier pago, tabela oficial de 2026-10-01. `flash-image` em 1K cai para US$ 0,067.)
+
+### O que cada um fez com o MESMO pedido
+
+**lite** — geometria certa (3 gavetas, pés, rodabanca), mas **reproduziu o gabinete SEM as portas**,
+copiando o estado da foto de referência que mostra o interior aberto, e repetiu a encenação das
+referências (as mesmas panelas, potes e bananas). Mostrar o móvel sem as portas que ele tem
+**descaracteriza o produto** — é o §16 item 5 ("remover item que deveria estar no kit"). Além disso
+só entrega 1K.
+
+**flash** — portas fechadas, 2 portas + coluna de 3 gavetas, puxadores de perfil, tampo com
+rodabanca, 4 pés cônicos. Ambientação boa e **respeitou a proibição de texto**. É o equilíbrio.
+
+**pro** — a melhor fotografia das três, de longe, e geometria do produto correta. **Mas violou a
+instrução explícita de não escrever texto**: colocou livros sobre a bancada com títulos ilegíveis
+("Morosofolli 88", "BOOKSOFIK"). Não foi texto sobre o produto, foi texto em adereço de cena — e
+ainda assim é texto inventado numa peça que vai para anúncio.
+
+### A conclusão que isso muda
+
+**O modelo premium não é automaticamente a escolha certa.** O `pro` enfeita mais a cena, e é
+justamente no enfeite que o texto se infiltra. Para um pipeline em que "nenhum texto inventado" é
+regra, mais capacidade criativa é mais superfície de risco.
+
+Recomendação para o V0.2 (decisão do usuário): **`gemini-3.1-flash-image` como default**, `pro`
+reservado para slot que precise de fotografia excepcional e passe por revisão humana atenta, e
+**`lite` descartado** para ambientação — o desconto de 70% não paga descaracterizar o produto.
+
+⚠️ **O `lite` devolve HTTP 404 com `image_size=2K`** — em qualquer pedido, com ou sem referência.
+Não é "modelo inexistente": o mesmo pedido em `1K` responde 200. Como o nosso default é 2K, ele
+falharia sempre, e a mensagem genérica do Google ("Requested entity was not found") mandaria quem
+depura caçar nome de modelo errado. A mensagem de 404 do provider foi reescrita para citar
+`GEMINI_IMAGE_SIZE`.
+
+⚠️ **Custo de regeneração não está nas contas acima.** O §12.2 prevê até 2 tentativas por asset;
+no pior caso o kit dobra de preço. A taxa real de regeneração é uma das métricas do §19 e só o uso
+mede.

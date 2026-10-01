@@ -19,6 +19,8 @@ class CreativeTestGemini extends Command
     protected $signature = 'creative:test-gemini
         {--imagem=* : Caminho de foto local de referência; repetir a opção manda vários ângulos do MESMO produto}
         {--prompt= : Prompt alternativo}
+        {--modelo= : Força um modelo de imagem só nesta execução (para comparar modelos, §19)}
+        {--tamanho= : Força o image_size (512px|1K|2K|4K) — o lite não aceita 2K}
         {--saida= : Onde gravar a imagem gerada}';
 
     protected $description = 'Prova técnica manual: testa conectividade e geração de imagem com a Gemini (custa crédito)';
@@ -106,7 +108,21 @@ class CreativeTestGemini extends Command
 
         $prompt = (string) ($this->option('prompt') ?: $this->promptDefaultDeFidelidade());
 
-        $request = new CreativeGenerationRequest($prompt, $referencias);
+        // --modelo força UM modelo nesta execução: sobrescreve o principal E
+        // zera as reservas, senão a comparação mentiria (o resultado poderia
+        // vir de outro modelo que não o pedido, sem o operador notar).
+        if ($modelo = $this->option('modelo')) {
+            config([
+                'services.creative.gemini.image_model'     => (string) $modelo,
+                'services.creative.gemini.image_fallbacks' => '',
+            ]);
+        }
+
+        $request = new CreativeGenerationRequest(
+            $prompt,
+            $referencias,
+            imageSize: $this->option('tamanho') ? (string) $this->option('tamanho') : null,
+        );
 
         $t0 = microtime(true);
         $resultado = $provider->gerarImagem($request);

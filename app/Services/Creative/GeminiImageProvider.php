@@ -380,7 +380,13 @@ class GeminiImageProvider implements ImageGenerationProvider
             // per day" — nunca passa com o tempo, só com upgrade de tier.
             $status === 429 => 'A Gemini recusou por limite de uso (429). Pode ser cota do minuto — ou o tier da conta não liberar este modelo (os modelos de imagem são 0/dia no tier grátis). Confira em https://ai.dev/rate-limit.',
             $status === 503 => 'A Gemini está sobrecarregada neste momento. Tente novamente em alguns minutos.',
-            $status === 404 => 'O modelo configurado não existe ou saiu do ar. Confira GEMINI_IMAGE_MODEL/GEMINI_TEXT_MODEL.',
+            // O 404 da Gemini é genérico ("Requested entity was not found") e
+            // NÃO significa só "modelo inexistente": medido em 2026-10-01, o
+            // gemini-3.1-flash-lite-image devolve 404 em QUALQUER pedido com
+            // image_size=2K (o nosso default) e responde 200 no mesmo pedido
+            // com 1K. Quem lesse só "não existe" ia caçar nome de modelo
+            // errado por horas.
+            $status === 404 => 'A Gemini recusou (404). Pode ser modelo inexistente/fora do ar — ou combinação não suportada por ESTE modelo, tipicamente GEMINI_IMAGE_SIZE (o lite não aceita 2K). Confira GEMINI_IMAGE_MODEL e GEMINI_IMAGE_SIZE.',
             $status === 400 => 'A Gemini recusou o pedido (requisição malformada).',
             default => "A Gemini respondeu com erro {$status}. Tente novamente.",
         };
