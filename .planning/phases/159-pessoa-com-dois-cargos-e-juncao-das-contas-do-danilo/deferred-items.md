@@ -34,3 +34,11 @@ Não estavam na baseline (`159-BASELINE-TESTES.md`, que cobre 18 grupos + Phase1
 `Phase123/AuditoriaBonusNotaEmpresaTest`, `Phase119`, `V16/ComparacaoContextualBlockedTest`
 e o diff vazio do motor). Registrado aqui por disciplina (SCOPE BOUNDARY) — não corrigido,
 não investigado a causa raiz.
+
+## Rodada de correção (pós-revisão) — mais 3 falhas pré-existentes
+
+`tests/Feature/Phase38Publicador/MeuPainelControllerTest.php` (2: `test_meu_painel_passa_props_novas`,
+`test_sem_publicacoes`) e `tests/Feature/PublicacaoDesempenhoRouteTest.php` (1:
+`test_user_com_mlb_dashboard_acessa_rota_e_recebe_200`). **Reconferido pelo orquestrador contra
+`origin/main` PURO** (`d01ef00b`, worktree destacado, sem nenhuma mudança da fase, com
+`public/build`): 9 testes, as MESMAS 3 falhas. Não são regressão da Fase 159.
