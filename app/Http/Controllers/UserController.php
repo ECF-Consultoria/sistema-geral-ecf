@@ -101,18 +101,24 @@ class UserController extends Controller
 
         $isAdmin = (bool) ($data['is_admin'] ?? false);
 
-        $user = User::create([
-            'name'       => $data['name'],
-            'email'      => $data['email'],
-            'password'   => Hash::make($data['password']),
-            'role'       => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
-            'phone'      => $data['phone'] ?? null,
-            'created_by' => $request->user()->id,
-            'active'     => true,
-        ]);
+        // Usuário, vínculos e cargo Dev na MESMA transação: uma falha nos
+        // vínculos não pode deixar um usuário criado pela metade.
+        $user = DB::transaction(function () use ($request, $data, $isAdmin) {
+            $user = User::create([
+                'name'       => $data['name'],
+                'email'      => $data['email'],
+                'password'   => Hash::make($data['password']),
+                'role'       => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
+                'phone'      => $data['phone'] ?? null,
+                'created_by' => $request->user()->id,
+                'active'     => true,
+            ]);
 
-        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
-        $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+            $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+            $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+
+            return $user;
+        });
 
         return back()->with('success', "Usuário {$user->name} criado.");
     }
@@ -134,10 +140,17 @@ class UserController extends Controller
             $update['password'] = Hash::make($data['password']);
         }
 
-        $user->update($update);
+        // CR-01 (revisão da Fase 159): nome/e-mail/senha/role e vínculos na
+        // MESMA transação. Antes o `update()` rodava fora dela — uma falha nos
+        // vínculos deixava o usuário gravado pela metade (role derivado dos
+        // vínculos novos, vínculos velhos).
+        $devMudou = DB::transaction(function () use ($request, $user, $update, $isAdmin, $data) {
+            $user->update($update);
 
-        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
-        $devMudou = $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+            $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+
+            return $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+        });
 
         if ($devMudou === 'auto_lockout_bloqueado') {
             return back()->with('error', 'Você não pode remover o seu próprio cargo Dev.');
@@ -243,6 +256,43 @@ class UserController extends Controller
                 }
             }
         }
+
+        // D-01/D-02: a mesma pessoa pode ter mais de um cargo no mesmo setor
+        // (ex.: Analista e Estrategista no Performance), mas cada vínculo
+        // extra do mesmo setor precisa de um cargo DISTINTO. O banco sozinho
+        // não recusa (user, setor, NULL) duplicado — NULL é distinto de si
+        // mesmo dentro do unique (ver docblock da migration
+        // 2026_09_30_100000) — então esta validação de aplicação é a única
+        // defesa para o caso "setor repetido sem cargo".
+        //
+        // A linha do setor Desenvolvimento fica FORA da contagem (CR-01 da
+        // revisão): ela pode chegar no payload, mas é descartada por
+        // syncVinculos() — quem a governa é syncCargoDev().
+        $setorDevId = $this->setorDevId();
+        $setorContagem = [];
+        foreach ($data['vinculos'] ?? [] as $v) {
+            if ($setorDevId && (int) $v['setor_id'] === $setorDevId) {
+                continue;
+            }
+            $setorContagem[$v['setor_id']] = ($setorContagem[$v['setor_id']] ?? 0) + 1;
+        }
+        $paresVistos = [];
+        foreach ($data['vinculos'] ?? [] as $i => $v) {
+            if ($setorDevId && (int) $v['setor_id'] === $setorDevId) {
+                continue;
+            }
+            if (isset($errors["vinculos.{$i}.cargo_id"])) {
+                continue; // já reprovado pela checagem de cargo×setor acima
+            }
+            $chave = $v['setor_id'] . ':' . ($v['cargo_id'] ?? 'null');
+            if (!empty($v['cargo_id']) && isset($paresVistos[$chave])) {
+                $errors["vinculos.{$i}.cargo_id"] = 'Este cargo já está em outro vínculo do mesmo setor.';
+            } elseif (empty($v['cargo_id']) && ($setorContagem[$v['setor_id']] ?? 0) > 1) {
+                $errors["vinculos.{$i}.cargo_id"] = 'Quando o mesmo setor aparece mais de uma vez, cada vínculo precisa de um cargo.';
+            }
+            $paresVistos[$chave] = true;
+        }
+
         if ($errors) {
             throw \Illuminate\Validation\ValidationException::withMessages($errors);
         }
@@ -271,9 +321,34 @@ class UserController extends Controller
     /**
      * Sincroniza user_setores: remove vínculos que não vieram, atualiza os existentes,
      * cria os novos. Garante no máximo 1 is_principal.
+     *
+     * D-01/D-02 (Fase 159): a chave de comparação deixou de ser (user_id, setor_id)
+     * e passou a ser o PAR (setor_id, cargo_id) — null-safe, com "null" explícito
+     * quando o vínculo não tem cargo. É o que permite duas linhas para o mesmo
+     * setor (ex.: Analista e Estrategista no Performance) sem uma sobrescrever a
+     * outra. Ao encontrar o mesmo par já existente, faz UPDATE só de
+     * `is_principal`/`updated_at` — preserva `assigned_at`/`created_at` (é a data
+     * do vínculo, não do último save). Se a mesma pessoa tiver, por
+     * inconsistência anterior a esta fase, duas linhas com o MESMO par (ex.:
+     * duplicata antiga com cargo NULL — o banco não impede isso, ver docblock da
+     * migration 2026_09_30_100000), mantém a de menor id e apaga as demais.
      */
     private function syncVinculos(User $user, bool $isAdmin, array $vinculos): void
     {
+        // CR-01 (revisão da Fase 159): a linha do setor Desenvolvimento é
+        // descartada do payload ANTES de tudo. A tela reenviava `u.setores`
+        // inteiro, inclusive a linha Dev; como as linhas atuais abaixo
+        // excluem o setor Dev, essa linha caía no INSERT e estourava o unique
+        // (user_id, setor_id, cargo_id) — 500 em todo save de Dev não-admin.
+        // Quem governa o vínculo Dev é syncCargoDev(), nunca este método.
+        $setorDevId = $this->setorDevId();
+        if ($setorDevId) {
+            $vinculos = array_values(array_filter(
+                $vinculos,
+                fn ($v) => (int) $v['setor_id'] !== $setorDevId
+            ));
+        }
+
         // Admin tem 1 vínculo fixo: setor Administração + cargo Admin
         if ($isAdmin) {
             $admin = Setor::where('slug', 'administracao')->first();
@@ -301,41 +376,84 @@ class UserController extends Controller
             $vinculos[0]['is_principal'] = true;
         }
 
-        // O vínculo do cargo Dev não trafega neste array (o setor é filtrado do
-        // dropdown — quem o governa é o toggle "Dev"), então precisa ficar fora
-        // da remoção abaixo, senão todo save comum derrubaria o cargo Dev.
-        $setorDevId = Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
-
+        // O vínculo do cargo Dev não trafega neste array (filtrado acima —
+        // quem o governa é o toggle "Dev"), então precisa ficar fora da
+        // remoção abaixo, senão todo save comum derrubaria o cargo Dev.
         DB::transaction(function () use ($user, $vinculos, $setorDevId) {
-            $setorIdsAtuais = DB::table('user_setores')->where('user_id', $user->id)->pluck('setor_id')->all();
-            $setorIdsNovos  = array_column($vinculos, 'setor_id');
+            // Linhas atuais do usuário, sempre fora do setor Dev (ele não
+            // trafega no array `vinculos` — quem o governa é syncCargoDev()).
+            $query = DB::table('user_setores')->where('user_id', $user->id);
             if ($setorDevId) {
-                $setorIdsNovos[] = $setorDevId;
+                $query->where('setor_id', '!=', $setorDevId);
             }
+            $atuais = $query->get(['id', 'setor_id', 'cargo_id']);
 
-            // Remove os que sumiram
-            $aRemover = array_diff($setorIdsAtuais, $setorIdsNovos);
-            if (!empty($aRemover)) {
-                DB::table('user_setores')
-                    ->where('user_id', $user->id)
-                    ->whereIn('setor_id', $aRemover)
-                    ->delete();
-            }
+            // Chave null-safe por par (setor_id, cargo_id).
+            $chave = fn ($setorId, $cargoId) => $setorId . ':' . ($cargoId ?? 'null');
 
-            // Upsert dos vínculos atuais
+            $paresNovos = [];
             foreach ($vinculos as $v) {
-                DB::table('user_setores')->updateOrInsert(
-                    ['user_id' => $user->id, 'setor_id' => $v['setor_id']],
-                    [
+                $paresNovos[$chave($v['setor_id'], $v['cargo_id'] ?? null)] = true;
+            }
+
+            // Agrupa as linhas atuais por par. Mantém a de menor id quando há
+            // duplicata (inconsistência só possível ANTES desta fase — ver
+            // docblock acima) e marca as demais + as que sumiram do payload
+            // novo pra apagar.
+            $porPar = [];
+            foreach ($atuais as $linha) {
+                $porPar[$chave($linha->setor_id, $linha->cargo_id)][] = $linha;
+            }
+
+            $idsParaApagar   = [];
+            $linhaAtualPorPar = [];
+            foreach ($porPar as $par => $linhas) {
+                usort($linhas, fn ($a, $b) => $a->id <=> $b->id);
+                $linhaAtualPorPar[$par] = $linhas[0];
+                foreach (array_slice($linhas, 1) as $extra) {
+                    $idsParaApagar[] = $extra->id;
+                }
+                if (!isset($paresNovos[$par])) {
+                    $idsParaApagar[] = $linhas[0]->id;
+                }
+            }
+
+            if (!empty($idsParaApagar)) {
+                DB::table('user_setores')->whereIn('id', $idsParaApagar)->delete();
+            }
+
+            // Upsert por par: atualiza só is_principal quando o par já existe
+            // (preserva assigned_at/created_at); insere quando é novo.
+            foreach ($vinculos as $v) {
+                $par       = $chave($v['setor_id'], $v['cargo_id'] ?? null);
+                $existente = $linhaAtualPorPar[$par] ?? null;
+
+                if ($existente) {
+                    DB::table('user_setores')->where('id', $existente->id)->update([
+                        'is_principal' => !empty($v['is_principal']),
+                        'updated_at'   => now(),
+                    ]);
+                } else {
+                    DB::table('user_setores')->insert([
+                        'user_id'      => $user->id,
+                        'setor_id'     => $v['setor_id'],
                         'cargo_id'     => $v['cargo_id'] ?? null,
                         'is_principal' => !empty($v['is_principal']),
                         'assigned_at'  => now(),
-                        'updated_at'   => now(),
                         'created_at'   => now(),
-                    ]
-                );
+                        'updated_at'   => now(),
+                    ]);
+                }
             }
         });
+    }
+
+    /** Id do setor Desenvolvimento (governado por syncCargoDev), ou null se não semeado. */
+    private function setorDevId(): ?int
+    {
+        $id = Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
+
+        return $id ? (int) $id : null;
     }
 
     /**

@@ -8,10 +8,10 @@ use App\Models\User;
 use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
+use App\Support\CargosDesempenho;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 /**
@@ -83,14 +83,14 @@ class RelatorioBonificacaoController extends Controller
      */
     private function montarLinhas(Carbon $competencia, ?string $cargo): array
     {
-        // Cargo canônico via user_setores → cargos (fonte de verdade; users.role legacy).
-        $cargosPorUser = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->when($cargo !== null, fn ($q) => $q->where('c.slug', $cargo))
-            ->select('us.user_id', 'c.slug')
-            ->get()
-            ->keyBy('user_id');
+        // Fonte ÚNICA de cargos (D-05, Fase 159). Sem filtro, elegíveis são
+        // TODAS as pessoas com cargo de Desempenho; com filtro, só quem TEM
+        // o cargo pedido em `slugs` (pessoa com os dois cargos entra nas
+        // duas abas, com a mesma nota — o filtro não troca de fonte).
+        $cargosTodos = CargosDesempenho::porUsuario();
+        $cargosPorUser = $cargo === null
+            ? $cargosTodos
+            : $cargosTodos->filter(fn ($c) => in_array($cargo, $c['slugs'], true));
 
         $users = User::where('active', true)
             ->whereIn('id', $cargosPorUser->keys())
@@ -114,8 +114,8 @@ class RelatorioBonificacaoController extends Controller
         // literalmente pela UIEM-04, ver CompanyScoreSnapshotReader).
         $detalhePorUser = $this->companyScoreReader->paraUsuarios($users->pluck('id')->all(), $competencia);
 
-        $linhas = $users->map(function ($u) use ($cargosPorUser, $snapshots, $competencia, $faixaLabels, $detalhePorUser) {
-            $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? 'analista';
+        $linhas = $users->map(function ($u) use ($cargosPorUser, $cargo, $snapshots, $competencia, $faixaLabels, $detalhePorUser) {
+            $slugsDoUser = $cargosPorUser->get($u->id)['slugs'] ?? ['analista'];
 
             // Snapshot-first: breakdown_json do fechamento; fallback computeCached
             // quando a competência não foi consolidada para este profissional.
@@ -142,7 +142,14 @@ class RelatorioBonificacaoController extends Controller
             return [
                 'id'                    => $u->id,
                 'name'                  => $u->name,
-                'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                // D-05: com filtro, a aba mostra o cargo DA ABA; sem filtro,
+                // todos os cargos da pessoa (rotulo() cai no fallback 'Analista'
+                // só quando não há cargo algum — não deveria acontecer aqui,
+                // pois $cargosPorUser só contém quem tem cargo de Desempenho).
+                'cargo_label'           => $cargo !== null
+                    ? CargosDesempenho::rotulo([$cargo])
+                    : (CargosDesempenho::rotulo($slugsDoUser) ?? 'Analista'),
+                'cargos_slugs'          => $slugsDoUser,
                 'nps_medio'             => $comp['nps_medio']           ?? null,
                 'var_faturamento_pct'   => $comp['var_faturamento_pct'] ?? null,
                 'var_margem_pct'        => $comp['var_margem_pct']      ?? null,

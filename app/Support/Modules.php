@@ -146,6 +146,10 @@ class Modules
     // ═══ Liderança ═══
     public const LIDERANCA_DASHBOARD_SETOR   = 'lideranca.dashboard_setor';
 
+    // ═══ Incubadora ═══
+    /** Publicador da Incubadora (01/10/2026) — módulo em construção, oculto: só por URL e só o Dev. */
+    public const INCUBADORA_PUBLICADOR       = 'incubadora.publicador';
+
     /**
      * Catálogo agrupado por módulo com label legível em pt-BR — espelha o
      * formato de `Permissions::catalog()`, acrescentando por item: `grupo`,
@@ -230,6 +234,10 @@ class Modules
             ],
             'Liderança' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'name' => 'Meu Setor', 'grupo' => 'Liderança', 'route_prefix' => 'lideranca.index', 'permission_key' => Permissions::LIDERANCA_DASHBOARD_SETOR, 'stage' => 'producao'],
+            ],
+            // Sem item de menu de propósito: só por URL, e só o Dev entra (nasce oculto).
+            'Incubadora' => [
+                ['key' => self::INCUBADORA_PUBLICADOR, 'name' => 'Publicador Incubadora', 'grupo' => 'Incubadora', 'route_prefix' => 'incubadora.publicador.', 'permission_key' => null, 'stage' => 'em_desenvolvimento', 'nasce_oculto' => true],
             ],
         ];
     }

@@ -26,6 +26,7 @@ use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
 use App\Services\Portfolio\CarteiraContextService;
 use App\Models\Company;
+use App\Support\CargosDesempenho;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -987,13 +988,10 @@ class PortfolioController extends Controller
             ? round((float) $tacosPorEmpresa->avg(), 2)
             : null;
 
-        // Cargo pt-BR pra header (mesmo padrão do resto do módulo).
-        $cargoSlug = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->where('us.user_id', $user->id)
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->value('c.slug');
-        $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : ($cargoSlug === 'analista' ? 'Analista' : 'Profissional');
+        // Cargo pt-BR pra header — fonte ÚNICA (D-05, Fase 159).
+        $cargosCarteira = CargosDesempenho::doUsuario($user->id);
+        $cargoSlug      = $cargosCarteira['principal'];
+        $cargoLabel     = CargosDesempenho::rotulo($cargosCarteira['slugs']) ?? 'Profissional';
 
         // Meses disponíveis pro filtro (últimos 6 meses — mesma janela do ranking).
         $mesesDisponiveis = [];
@@ -2256,13 +2254,10 @@ class PortfolioController extends Controller
         $performanceProfissional = $this->scoreService->computeCached($user, $mesReferencia);
 
         // Comparacao contextual com pares do mesmo cargo (analista x analista
-        // ou estrategista x estrategista). Identifica cargo via user_setores
-        // (fonte da verdade desde quick 260610-f69; users.role eh legacy).
-        $cargoSlug = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->where('us.user_id', $user->id)
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->value('c.slug');
+        // ou estrategista x estrategista). Fonte ÚNICA (D-05, Fase 159): quem
+        // tem os dois cargos compara com os pares do cargo PRINCIPAL — deixa
+        // de ser arbitrário (antes: primeira linha que o banco devolvesse).
+        $cargoSlug = CargosDesempenho::doUsuario($user->id)['principal'];
 
         $comparacaoContextual = null;
         if ($cargoSlug) {

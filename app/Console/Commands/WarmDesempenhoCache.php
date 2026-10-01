@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\DesempenhoScoreSnapshot;
 use App\Models\User;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
@@ -36,7 +37,9 @@ use Illuminate\Support\Facades\Log;
  * passou a aquecer DOIS alvos na mesma execução — o mês corrente
  * (comportamento original) MAIS a competência do último mês fechado
  * (via `MetricPeriodResolver::resolve(['period_key'=>'last_closed_month'])`)
- * — "Bônus atual" deixa de depender de band-aid manual em prod. Ganha
+ * — "Bônus atual" deixa de depender de band-aid manual em prod (desde
+ * 2026-10-01 há um 3º alvo, o mês anterior a esse, só para quem não tem
+ * snapshot congelado — ver `handle()`). Ganha
  * também `--mes=YYYY-MM` (catch-up de UMA competência específica, sem
  * tocar o mês corrente) e `--user=*` array (restringe a IDs específicos —
  * insumo do dispatch sob-demanda do Plan 106-02).
@@ -76,6 +79,11 @@ class WarmDesempenhoCache extends Command
     {
         $mesOpt = $this->option('mes');
 
+        // [Y-m => [user_id => …]] — pares que este ciclo NÃO aquece porque o
+        // snapshot mensal congelado já responde por eles (só o modo agendado
+        // preenche; ver o 3º alvo abaixo).
+        $congeladosPorMes = [];
+
         if ($mesOpt !== null) {
             // T-106-01 (ASVS V5) — nunca deixar o valor cru chegar ao Carbon;
             // formato inválido falha graciosamente (FAILURE), sem 500.
@@ -100,11 +108,38 @@ class WarmDesempenhoCache extends Command
             // SC1 — 2 alvos: mês corrente (comportamento original) + último
             // mês fechado (nunca fixar um valor — recalculado a cada execução,
             // ver Pitfall 1 do 106-RESEARCH.md).
+            $ultimoFechado = Carbon::parse(
+                $this->periodResolver->resolve(['period_key' => 'last_closed_month'])['bonus_competence_month'] . '-01'
+            )->startOfMonth();
+
+            // 2026-10-01 — 3º alvo: o mês ANTERIOR ao último fechado (M-2),
+            // só para quem ainda não tem snapshot mensal congelado dele.
+            //
+            // M-2 é a competência cujo bônus se fecha no começo do mês: a
+            // coleta de NPS dela (feita em M-1) acabou de terminar. É também a
+            // que sai da janela deste warm no dia 1º. Sem consolidação, o
+            // ranking dela depende do cache vivo, que expira 7 dias depois do
+            // último compute — e expira em BLOCO, porque o warm reescreveu
+            // todas as chaves no mesmo ciclo. Em 01/10 as 8 chaves frias de
+            // agosto deixaram a tela "calculando em loop".
+            //
+            // Quem já tem snapshot congelado é pulado: o ranking e o
+            // `/performance/{id}` leem a tabela, o cache não é consultado.
+            // Com a consolidação funcionando, este alvo vira no-op.
             $mesesAlvo = [
                 Carbon::now()->startOfMonth(),
-                Carbon::parse(
-                    $this->periodResolver->resolve(['period_key' => 'last_closed_month'])['bonus_competence_month'] . '-01'
-                )->startOfMonth(),
+                $ultimoFechado,
+                $ultimoFechado->copy()->subMonthNoOverflow(),
+            ];
+
+            $mesAnteriorAoFechado = $mesesAlvo[2];
+            $congeladosPorMes = [
+                $mesAnteriorAoFechado->format('Y-m') => DesempenhoScoreSnapshot::mensal()
+                    ->whereDate('mes_referencia', $mesAnteriorAoFechado->toDateString())
+                    ->get(['user_id', 'breakdown_json'])
+                    ->filter(fn ($s) => isset(($s->breakdown_json ?? [])['componentes']))
+                    ->pluck('user_id')
+                    ->flip(),
             ];
         }
 
@@ -140,7 +175,13 @@ class WarmDesempenhoCache extends Command
         $degradados       = 0;
 
         foreach ($mesesAlvo as $mesReferencia) {
+            $congelados = $congeladosPorMes[$mesReferencia->format('Y-m')] ?? collect();
+
             foreach ($users as $user) {
+                if ($congelados->has($user->id)) {
+                    continue;
+                }
+
                 $tUser = microtime(true);
                 try {
                     // computeCached() faz Cache::remember internamente — se cache

@@ -2675,6 +2675,35 @@ Plans:
 **Plans:** sem planos GSD — **trabalho direto**, sem migration e **sem gravar nada**: a timeline é leitura agregada do que as Fases 150-155 já registram. Decisões em `.planning/phases/156-historico-e-sla-v23-0/156-DECISOES.md`. 11 testes / 86 assertions.
 
 > **Fora de escopo desta milestone (Future Requirements do `REQUIREMENTS-v23.md`):** criar o grupo de WhatsApp via API do Digisac, provisionar e-mail colaborador automaticamente, enviar a mensagem de boas-vindas pelo sistema (o PDF pede "pronta para copiar", não envio automático), painel de SLA agregado (HIST-03 entrega o dado por empresa, o painel é produto separado), e a segunda parte da especificação funcional (o PDF se declara "a primeira parte"). **Fora de escopo declarado pelo PDF:** o Trello não integra este fluxo. **Fora de escopo por já estar entregue:** reconstruir a ingestão do HubSpot ou a assinatura de contrato (D5); reescrever `DefinicaoOnboarding` (ONBRD-03); fechar a v22.0 — a Fase 133 e o plano `133-05` seguem abertos, são trabalho daquela milestone.
+
+## Fase avulsa — Pessoa com dois cargos (fora de milestone)
+
+> Número 158 reservado para "Metas do Dev v3", ainda não publicada no `origin/main`.
+
+### Phase 159: Pessoa com dois cargos (estrategista + analista) e junção das contas do Danilo
+
+**Goal:** Uma pessoa que atende as duas funções — estrategista numas lojas, analista noutras, as duas em algumas — passa a existir como UM usuário com UMA nota de desempenho. Hoje o Danilo é dois usuários (`users` 15 e 35) porque o cadastro só comporta um cargo por setor e o formulário da empresa descarta a mesma pessoa nos dois papéis; a nota sai em duas contas e a média delas não é a nota certa.
+**Depends on:** nenhuma (o cálculo já suporta papel duplo — regra D-02 da Fase 118 — quando a resposta de NPS tem atribuição por papel; o ramo legado usa um cargo só por pessoa e é medido antes da junção, D-09)
+**Por que GSD:** altera `user_setores` (tabela com dado em produção) e a junção das contas mexe em snapshots e atribuições de NPS que alimentam bonificação.
+**Success Criteria:**
+  1. Uma pessoa pode ter os cargos analista e estrategista no mesmo setor, marcados pela tela /users
+  2. A tela da empresa grava a mesma pessoa como analista e estrategista, e salvar de novo não apaga nenhum dos papéis; o histórico registra os dois
+  3. Quem tem os dois cargos aparece nos dois selects de responsável
+  4. Ranking de desempenho e Relatório de Bonificação filtrados por cargo mostram a pessoa em cada aba de cargo que ela tem, com a mesma nota; sem filtro, uma vez só
+  5. A nota de quem acumula os dois papéis numa loja continua sendo a média das duas perguntas de NPS, com a loja pesando 1× — sem mudança de cálculo
+  6. Comando de junção (dry-run por padrão) passa lojas, atribuições de NPS e imputações do user 35 para o 15 a partir da competência 2026-09, sem tocar competência consolidada; conferido por reconsulta ao banco
+
+**Plans:** 7/8 executados (código no ar em `c7a58b3b`, 2026-10-01); 159-08 adiado — decisões em `.planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/159-CONTEXT.md`
+
+Plans:
+- [x] 159-01-PLAN.md — baseline de testes (D-12), unique de user_setores por cargo (D-01) e /users com dois cargos no mesmo setor (D-02) · wave 1
+- [x] 159-02-PLAN.md — /administrativo/setores por cargo (D-10) e consumidores de Setor::membros sem duplicar pessoa · wave 2
+- [x] 159-03-PLAN.md — empresa com a mesma pessoa nos dois papéis (D-03), selects (D-04), NPS por função (D-07) e menu (D-08) · wave 2
+- [x] 159-04-PLAN.md — ranking, relatório, auditoria e portfolio nas duas abas com a mesma nota (D-05, SC5) · wave 2
+- [x] 159-05-PLAN.md — comando usuarios:unificar-contas: dry-run, travas, censo (D-11), carteira, backup e desfazer (D-06) · wave 2
+- [x] 159-06-PLAN.md — junção de NPS, imputações, snapshots, PPAs/onboardings e medição do ramo legado (D-09) · wave 3
+- [x] 159-07-PLAN.md — regressão final, deploy com o usuário presente, SHOW INDEX no MariaDB e medições só de leitura · wave 4 (checkpoint)
+- [ ] 159-08-PLAN.md — junção 35 → 15 em produção com decisão e verificação humanas, segundo passe até 31/10 14:00 · wave 5 (checkpoint) — **ADIADO pelo usuário em 2026-10-01**: junção bloqueada pelo consolidar-mes quebrado (learnings §10.1); ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 

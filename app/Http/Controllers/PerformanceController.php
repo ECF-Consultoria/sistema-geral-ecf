@@ -18,6 +18,7 @@ use App\Services\Desempenho\WarmDesempenhoDispatcher;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\PlanoMetasPublicacaoService;
+use App\Support\CargosDesempenho;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,12 +117,11 @@ class PerformanceController extends Controller
         $ehMesEmCurso     = $ctx['ehMesEmCurso'];
         $bonusMeta        = $ctx['bonus'];
 
-        $cargosPorUser = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->select('us.user_id', 'c.slug')
-            ->get()
-            ->keyBy('user_id');
+        // Fonte ÚNICA de "quais cargos a pessoa tem" (D-05, Fase 159) — troca o
+        // antigo keyBy('user_id') sem ORDER BY (cargo arbitrário quando a
+        // pessoa tem os dois cargos, pesquisa §6) por CargosDesempenho, que
+        // desempata de forma determinística (is_principal, depois menor id).
+        $cargosPorUser = CargosDesempenho::porUsuario($users->pluck('id')->all());
 
         // Snapshot mensal do mês selecionado (se existir) — evita recomputar
         // em meses passados fechados. Para o mês em curso, snapshot ainda
@@ -160,7 +160,23 @@ class PerformanceController extends Controller
             ->flip();
 
         $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso, $periodoResolvido, $promovivelPorUser, &$usuariosFrios) {
-            $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
+            // D-05 (Fase 159): fallback histórico (isMentor()) preservado
+            // quando a pessoa não tem cargo de Desempenho atribuído.
+            $slugs     = $cargosPorUser->get($u->id)['slugs'] ?? [$u->isMentor() ? 'estrategista' : 'analista'];
+            $cargoSlug = $cargosPorUser->get($u->id)['principal'] ?? $slugs[0];
+
+            // Snapshot mensal CONGELADO (com `componentes`) é leitura de tabela,
+            // custo zero — decide ANTES do gate, como `show()` já fazia.
+            //
+            // 2026-10-01: o gate vinha antes e mandava para "calculando…" até
+            // competência consolidada sempre que a chave do cache expirava (7
+            // dias depois do último compute, e o warm agendado só cobre os
+            // meses recentes). O warm sob-demanda de um mês antigo frio custa
+            // ~2,5 min por perfil e ocupa o único `ecf-worker-high` por ~25
+            // min — em 01/10 um warm de maio segurou a fila enquanto o ranking
+            // de agosto esperava, e a tela ficou "calculando em loop".
+            $snap      = $ehMesEmCurso ? null : $snapshotsMensal->get($u->id);
+            $congelado = $snap !== null && isset(($snap->breakdown_json ?? [])['componentes']);
 
             // Gate SC2/SC3 — profissional sem cache pronto NÃO é computado ao
             // vivo na tela (evita o fan-out ML/Adman de ~14s/user síncrono).
@@ -172,7 +188,7 @@ class PerformanceController extends Controller
             // aquecido pelo warm agendado" — mas quando o warm não completa
             // (ex.: diff frio deixando o compute lento), o ranking Em curso
             // caía no compute ao vivo e travava ~87s pra 6 users frios.
-            if (! $this->scoreService->isCached($u, $mesReferencia)) {
+            if (! $congelado && ! $this->scoreService->isCached($u, $mesReferencia)) {
                 $usuariosFrios[] = $u->id;
 
                 return [
@@ -180,7 +196,8 @@ class PerformanceController extends Controller
                     'name'                  => $u->name,
                     'role'                  => $u->role,
                     'cargo_slug'            => $cargoSlug,
-                    'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                    'cargo_label'           => CargosDesempenho::rotulo($slugs),
+                    'cargos_slugs'          => $slugs,
                     'empresas_carteira'     => 0,
                     'empresas_com_baseline' => 0,
                     'sem_carteira'          => false,
@@ -210,14 +227,11 @@ class PerformanceController extends Controller
             }
 
             // Mês em curso → compute live. Mês passado → prefere snapshot mensal
-            // fechado; se não existe (user sem snapshot naquele mês), compute
-            // como fallback.
-            $snap = $snapshotsMensal->get($u->id);
-            if (! $ehMesEmCurso && $snap) {
-                $resultado = $snap->breakdown_json ?? [];
-                if (! isset($resultado['componentes'])) {
-                    $resultado = $this->scoreService->computeCached($u, $mesReferencia);
-                }
+            // fechado; se não existe (user sem snapshot naquele mês) ou veio sem
+            // `componentes`, compute como fallback — esse caminho passou pelo
+            // gate acima, então a chave está quente.
+            if ($congelado) {
+                $resultado = $snap->breakdown_json;
             } else {
                 // Ajuste 2026-07-10 (audit performance-lentidao): usa versão
                 // cacheada — antes cold cache demorava 70s pra 11 users;
@@ -232,7 +246,8 @@ class PerformanceController extends Controller
                 'name'                  => $u->name,
                 'role'                  => $u->role,
                 'cargo_slug'            => $cargoSlug,
-                'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                'cargo_label'           => CargosDesempenho::rotulo($slugs),
+                'cargos_slugs'          => $slugs,
                 'empresas_carteira'     => (int) ($resultado['empresas_carteira'] ?? 0),
                 'empresas_com_baseline' => (int) ($resultado['empresas_com_baseline'] ?? 0),
                 'sem_carteira'          => (bool) ($resultado['sem_carteira'] ?? false),
@@ -355,9 +370,20 @@ class PerformanceController extends Controller
             return $r;
         });
 
-        // Filtra por cargo pós-cálculo (cargo_slug já presente em cada item do ranking)
+        // Filtra por cargo pós-cálculo — D-05 (Fase 159): a pessoa com dois
+        // cargos aparece em CADA aba de cargo que tem (não só na do
+        // `cargo_slug` principal), com a MESMA nota e a MESMA posição geral
+        // (calculada acima, antes deste filtro). Nas linhas que passam, a
+        // aba sobrescreve cargo_slug/cargo_label com o cargo DA ABA.
         if ($cargo !== null) {
-            $ranking = $ranking->filter(fn ($r) => $r['cargo_slug'] === $cargo)->values();
+            $ranking = $ranking
+                ->filter(fn ($r) => in_array($cargo, $r['cargos_slugs'], true))
+                ->map(function ($r) use ($cargo) {
+                    $r['cargo_slug']  = $cargo;
+                    $r['cargo_label'] = CargosDesempenho::rotulo([$cargo]);
+                    return $r;
+                })
+                ->values();
         }
 
         // Meses disponíveis pro filtro — últimas 6 competências FECHADAS,
@@ -1147,6 +1173,9 @@ class PerformanceController extends Controller
                   ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']);
             })
             ->select(['id', 'name', 'avatar_url'])
+            // WR-12 (revisão da Fase 159): com dois cargos no mesmo setor
+            // (D-01), o cargo do rótulo é o da linha PRINCIPAL (empate → menor
+            // id) — sem ORDER BY o MariaDB devolvia qualquer um.
             ->addSelect(['cargo_slug' => DB::table('user_setores')
                 ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
                 ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
@@ -1154,6 +1183,8 @@ class PerformanceController extends Controller
                 ->where('setores.slug', 'publicacao')
                 ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao'])
                 ->select('cargos.slug')
+                ->orderByDesc('user_setores.is_principal')
+                ->orderBy('user_setores.id')
                 ->limit(1)])
             ->orderBy('name')
             ->get();
@@ -1293,11 +1324,15 @@ class PerformanceController extends Controller
         if ($registro !== null) return (int) $registro;
 
         // Fallback CANÔNICO (igual ao MlbController): meta do cargo no setor Publicação.
+        // WR-12 (revisão da Fase 159): com dois cargos no setor (D-01), vale o
+        // da linha PRINCIPAL (empate → menor id) — determinístico.
         $meta = DB::table('user_setores')
             ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
             ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
             ->where('user_setores.user_id', $userId)
             ->where('setores.slug', 'publicacao')
+            ->orderByDesc('user_setores.is_principal')
+            ->orderBy('user_setores.id')
             ->value('cargos.meta_publicacoes');
 
         return (int) ($meta ?? 220);
@@ -1471,15 +1506,14 @@ class PerformanceController extends Controller
         $ctx           = $this->resolveContextoPeriodo($request);
         $mesReferencia = $ctx['mesReferencia'];
 
-        // Resolve cargo canônico via user_setores → cargos (padrão do projeto).
-        $cargoRow = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->where('us.user_id', $user->id)
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->select('c.slug', 'c.nome')
-            ->first();
-        $cargoSlug  = $cargoRow?->slug ?? ($user->isMentor() ? 'estrategista' : 'analista');
-        $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista';
+        // Fonte ÚNICA de cargos de Desempenho (D-05, Fase 159). Fallback
+        // histórico (isMentor()) preservado quando a pessoa não tem cargo
+        // atribuído. `dimensaoNpsDesempenho()` (linha abaixo, ~860) NÃO é
+        // tocado aqui — é D-09, medição, fora deste plano.
+        $cargos     = CargosDesempenho::doUsuario($user->id);
+        $slugsCargo = $cargos['slugs'] !== [] ? $cargos['slugs'] : [$user->isMentor() ? 'estrategista' : 'analista'];
+        $cargoSlug  = $cargos['principal'] ?? $slugsCargo[0];
+        $cargoLabel = CargosDesempenho::rotulo($slugsCargo);
 
         // Tenta usar snapshot mensal do mês selecionado; senão compute() cacheado.
         $snap = DesempenhoScoreSnapshot::mensal()

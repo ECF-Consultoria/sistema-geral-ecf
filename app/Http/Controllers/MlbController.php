@@ -250,12 +250,17 @@ class MlbController extends Controller
         $user = User::find($userId);
         if (!$user) return 220;
 
-        // Pega meta_publicacoes do cargo do user no setor Publicação
+        // Pega meta_publicacoes do cargo do user no setor Publicação.
+        // WR-12 (revisão da Fase 159): com dois cargos no setor (D-01), vale o
+        // da linha PRINCIPAL (empate → menor id) — o mesmo critério do
+        // PerformanceController::metaParaMes, que espelha este fallback.
         $meta = DB::table('user_setores')
             ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
             ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
             ->where('user_setores.user_id', $userId)
             ->where('setores.slug', 'publicacao')
+            ->orderByDesc('user_setores.is_principal')
+            ->orderBy('user_setores.id')
             ->value('cargos.meta_publicacoes');
 
         return (int) ($meta ?? 220);

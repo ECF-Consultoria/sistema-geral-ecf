@@ -11,6 +11,7 @@ use App\Services\Desempenho\CompanyScoreSnapshotReader;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Portfolio\CarteiraContextService;
+use App\Support\CargosDesempenho;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -52,13 +53,8 @@ class BonusAuditoriaController extends Controller
             return ['value' => $m->format('Y-m'), 'label' => $this->mesExtenso($m)];
         });
 
-        // Profissionais (analista/estrategista) — mesma fonte do ranking.
-        $cargosPorUser = DB::table('user_setores as us')
-            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
-            ->whereIn('c.slug', ['analista', 'estrategista'])
-            ->select('us.user_id', 'c.slug')
-            ->get()
-            ->keyBy('user_id');
+        // Profissionais (analista/estrategista) — fonte ÚNICA (D-05, Fase 159).
+        $cargosPorUser = CargosDesempenho::porUsuario();
 
         $users = User::where('active', true)
             ->whereIn('id', $cargosPorUser->keys())
@@ -97,7 +93,8 @@ class BonusAuditoriaController extends Controller
         $temDetalheCompetencia = $detalhePorUser->contains(fn ($linhas) => $linhas->isNotEmpty());
 
         $profissionais = $users->map(function ($u) use ($cargosPorUser, $competencia, $invalidadas, $detalhePorUser, $snapshotsMensais) {
-            $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? 'analista';
+            $slugsDoUser = $cargosPorUser->get($u->id)['slugs'] ?? ['analista'];
+            $cargoSlug   = $cargosPorUser->get($u->id)['principal'] ?? 'analista';
 
             // Snapshot-first: breakdown_json do fechamento; fallback
             // computeCached ao vivo só quando a competência não foi
@@ -144,10 +141,11 @@ class BonusAuditoriaController extends Controller
                 ->values();
 
             return [
-                'id'          => $u->id,
-                'name'        => $u->name,
-                'cargo_slug'  => $cargoSlug,
-                'cargo_label' => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                'id'           => $u->id,
+                'name'         => $u->name,
+                'cargo_slug'   => $cargoSlug,
+                'cargo_label'  => CargosDesempenho::rotulo($slugsDoUser) ?? 'Analista',
+                'cargos_slugs' => $slugsDoUser,
                 'nota_final'  => $resultado['nota_final'] ?? null,
                 'score_status' => $resultado['score_status'] ?? null,
                 // Sinaliza a safra da nota exibida (CR-02) — front usa para

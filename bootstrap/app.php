@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function (): void {
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/mlb_anuncios.php');
+            // Publicador da Incubadora — mesmo motivo: módulo de dois devs, fora do web.php.
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/incubadora_publicador.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
