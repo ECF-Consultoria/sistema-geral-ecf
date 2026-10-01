@@ -33,6 +33,14 @@ class AppServiceProvider extends ServiceProvider
         // (telemetria ml_metrics no summary JSON usada pelo cut-over Phase 42).
         $this->app->singleton(\App\Services\Sugadores\MercadoLivreAdsService::class);
 
+        // Quick 261001-nkx — Creative Engine V0.1 (spike): amarra o contrato
+        // de geração de imagem à implementação Gemini. Trocar de provedor no
+        // futuro é mudar esta linha, não os chamadores.
+        $this->app->singleton(
+            \App\Services\Creative\Contracts\ImageGenerationProvider::class,
+            \App\Services\Creative\GeminiImageProvider::class,
+        );
+
         // Fase 135 Plano 03 — catálogo fechado de resolvers automáticos do
         // Onboarding geral (D-09). Lista EXPLÍCITA de instâncias — nunca
         // descoberta implícita por diretório. Os Planos 05/06 acrescentam

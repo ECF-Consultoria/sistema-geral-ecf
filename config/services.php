@@ -379,4 +379,63 @@ return [
         'max_tokens' => (int) env('LLM_MAX_TOKENS', 16000),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Creative Engine — geração de imagem por IA (V0.1, spike)
+    |--------------------------------------------------------------------------
+    |
+    | Camada separada do `llm` acima: aquele é texto-only (metodologia MAG T8);
+    | este bloco é a prova técnica de geração de IMAGEM a partir de uma foto
+    | real do produto (plano-incubadora-v1 §20). `enabled=false` por padrão de
+    | propósito — o spike nasce desligado até a prova de fidelidade (§16)
+    | passar; ninguém liga em produção sem decidir isso explicitamente.
+    |
+    | `provider`: hoje só existe `gemini`, mas o nome fica configurável porque
+    | a interface `ImageGenerationProvider` já separa contrato de implementação
+    | — trocar de provedor no futuro é .env, não reescrita.
+    |
+    | `render_mode`: `full_ai` é o único modo que este spike constrói (D-03).
+    | `composite` é arquitetura futura — não existe implementação ainda.
+    |
+    | Modelos conferidos na documentação oficial do Google em 2026-10-01:
+    | `gemini-3.1-flash` (texto) do plano canônico §6.2 NÃO EXISTE — o flash
+    | estável de texto é `gemini-3.8-flash`, adotado como default aqui.
+    | Para imagem, `gemini-3.1-flash-image` (Nano Banana 2) é barato e rápido
+    | para iterar a prova de fidelidade; `gemini-3-pro-image` (Nano Banana Pro)
+    | é o degrau de cima quando a fidelidade exigir, alcançável só por env.
+    | Imagen 4 (`imagen-4.0-*`) está DEPRECADO (shutdown 17/08/2026) — nunca
+    | usar como default.
+    |
+    */
+    'creative' => [
+        'enabled'     => (bool) env('CREATIVE_ENGINE_ENABLED', false),
+        'provider'    => env('CREATIVE_IMAGE_PROVIDER', 'gemini'),
+        'render_mode' => env('CREATIVE_RENDER_MODE', 'full_ai'),
+
+        'gemini' => [
+            'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+            'key'      => env('GEMINI_API_KEY'),
+
+            'text_model'  => env('GEMINI_TEXT_MODEL', 'gemini-3.8-flash'),
+            'image_model' => env('GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image'),
+            // Lista por vírgula, mesma semântica do `llm.fallbacks` acima:
+            // tentados em ordem quando o modelo principal falha de forma
+            // trocável (sobrecarga, timeout, modelo fora do ar).
+            'image_fallbacks' => env('GEMINI_IMAGE_MODEL_FALLBACK', ''),
+
+            // Mercado Livre: §13.3 pede 1200x1200. "2K" em "1:1" atende com
+            // folga o mínimo de 500px do ML.
+            'aspect_ratio' => env('GEMINI_ASPECT_RATIO', '1:1'),
+            'image_size'   => env('GEMINI_IMAGE_SIZE', '2K'),
+            'mime'         => env('GEMINI_IMAGE_MIME', 'image/jpeg'),
+
+            // POR CHAMADA — não é o prazo total da geração.
+            'timeout' => (int) env('GEMINI_TIMEOUT_SECONDS', 120),
+            // Conectar é rápido ou não é (lição do AnaliseAnuncioService):
+            // separar do tempo de geração evita esperar o timeout inteiro
+            // por um endpoint que está fora do ar.
+            'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT', 15),
+        ],
+    ],
+
 ];
