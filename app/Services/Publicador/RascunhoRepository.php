@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\EstruturaOferta;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
+use App\Models\PubImagemAtribuicao;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
 use App\Support\Publicador\Payload\Alvo;
@@ -215,6 +216,46 @@ class RascunhoRepository
                 }
             }
         });
+    }
+
+    /**
+     * Onde cada foto está: galeria geral (`GENERAL`) ou um grupo, e a ordem
+     * (`06` §3). Só as fotos deste rascunho; a lista inteira substitui a anterior.
+     *
+     * @param  list<array{imagem: string|int, grupo: string, posicao: int}>  $atribuicoes
+     */
+    public function gravarAtribuicoes(PubRascunho $r, array $atribuicoes): void
+    {
+        DB::transaction(function () use ($r, $atribuicoes) {
+            $ids = $r->imagens()->pluck('id')->all();
+            PubImagemAtribuicao::whereIn('imagem_id', $ids ?: [0])->delete();
+
+            $vistos = [];
+            foreach ($atribuicoes as $a) {
+                $imagem = (int) $a['imagem'];
+                $grupo = (string) $a['grupo'];
+                if (! in_array($imagem, $ids, true) || isset($vistos[$imagem][$grupo])) {
+                    continue;
+                }
+                $vistos[$imagem][$grupo] = true;
+                PubImagemAtribuicao::create(['imagem_id' => $imagem, 'grupo_chave' => $grupo, 'grupo_hash' => ChaveCanonica::hash($grupo), 'posicao' => (int) $a['posicao']]);
+            }
+        });
+    }
+
+    /** Metadados das fotos para a validação (L1 do arquivo e upload pendente — V-IMG-08). */
+    public function metadadosDasImagens(PubRascunho $r): array
+    {
+        return $r->imagens()->get()->mapWithKeys(fn ($i) => [(string) $i->id => [
+            'mime' => $i->mime, 'bytes' => $i->bytes, 'largura' => $i->largura, 'altura' => $i->altura, 'upload_status' => $i->upload_status,
+        ]])->all();
+    }
+
+    /** id da foto no rascunho → `ml_picture_id`, só das que já subiram (o montador usa ids — RN-65). */
+    public function fotosNoMl(PubRascunho $r): array
+    {
+        return $r->imagens()->where('upload_status', 'uploaded')->whereNotNull('ml_picture_id')->pluck('ml_picture_id', 'id')
+            ->mapWithKeys(fn ($ml, $id) => [(string) $id => $ml])->all();
     }
 
     /** Uma edição: a validação anterior deixa de valer (`08` §1). */

@@ -50,7 +50,8 @@ Branch `feat/publicador-ml-261001`. Commits só locais até a primeira entrega c
 | F1.5 — validação L1/L2 + simulador "Você recebe" | Feita em 01/10 (TC-20…25, 30, 32 local, 38, 42, 43, 56, 57, 72…74, 100…102, 104, 105) | `a5938dbf` |
 | F1.6 — 15 tabelas, models, repositório, migração do Anunciar antigo | Feita em 01/10 (TC-05, 10, 58 persistência). Migration rodada no MariaDB local com `--path`: 0 coluna com `ON UPDATE`. Repositório lê e grava só o digitado; efetivos via `comEfetivos()`. | ver `git log` |
 | F1.7 — cliente HTTP do ML, contexto da conta (com depósitos — D11), CategorySchemaRepository, `config/publicador.php` | Feita em 01/10 (TC-75, 86, 87, 88; falha da conta nunca vira clássico; falha do schema nunca é guardada; token nunca no log) | ver `git log` |
-| F1.8 — imagens: upload local, validação L1, envio ao ML | Próxima | — |
+| F1.8 — imagens: upload local, validação L1, envio ao ML | Feita em 01/10 (TC-56, 57, 58, 59). Foto guardada no disco **privado** (`local`), nunca no público; deduplicada por sha256 no rascunho; sobe na hora e, se falhar, fica `failed` com o motivo e o arquivo, e é reenviada antes de conferir/publicar. O envio é sequencial (abaixo do teto de 2 simultâneos) com espera progressiva no 429. Foto do Anunciar antigo sem arquivo não tem como reenviar: pede nova. | ver `git log` |
+| F1.9 — L3: condicionais, `validate` por item em Job, `plano_hash` | Próxima | — |
 
 ## Resultado da Fase 0 (01/10/2026) — o que muda no plano
 

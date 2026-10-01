@@ -45,11 +45,37 @@ class ClienteMlPublicador
     /** Chamada com o token da EMPRESA. */
     public function daConta(Company $empresa, string $metodo, string $caminho, array $query = [], ?array $corpo = null, bool $repetir = true): RespostaMl
     {
+        return $this->executar($empresa, $metodo, $caminho, $repetir,
+            fn (string $token) => $this->enviar($token, $metodo, $caminho, $query, $corpo));
+    }
+
+    /**
+     * Sobe UMA foto (`POST /pictures/items/upload`, multipart — `06` §7). O
+     * limite por minuto do ML aparece como 429 ou 400 `bad_request` (`06` §7):
+     * o 429 é repetido aqui; o resto volta para quem chamou.
+     */
+    public function enviarFoto(Company $empresa, string $conteudo, string $nome): RespostaMl
+    {
+        return $this->executar($empresa, 'POST', '/pictures/items/upload', true, function (string $token) use ($conteudo, $nome) {
+            try {
+                $resp = Http::withToken($token)->acceptJson()->timeout((int) config('publicador.timeout_segundos', 30))
+                    ->attach('file', $conteudo, $nome)->post(self::API.'/pictures/items/upload');
+
+                return new RespostaMl($resp->status(), $resp->json() ?? ($resp->body() === '' ? null : $resp->body()));
+            } catch (ConnectionException $e) {
+                return new RespostaMl(0, ['erro_de_rede' => $e->getMessage()]);
+            }
+        });
+    }
+
+    /** O laço comum: token válido, UMA renovação em 401, novas tentativas por classe, registro sem token. */
+    private function executar(Company $empresa, string $metodo, string $caminho, bool $repetir, \Closure $envio): RespostaMl
+    {
         $token = $this->tokenValido($empresa);
         $renovou = false;
 
         for ($tentativa = 1; ; $tentativa++) {
-            $resposta = $this->enviar($token->access_token, $metodo, $caminho, $query, $corpo);
+            $resposta = $envio($token->access_token);
 
             if ($resposta->classe === RespostaMl::AUTH && ! $renovou) {
                 $token = $this->renovar($token);

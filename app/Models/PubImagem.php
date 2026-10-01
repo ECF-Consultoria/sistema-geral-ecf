@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -24,5 +25,10 @@ class PubImagem extends Model
     public function atribuicoes(): HasMany
     {
         return $this->hasMany(PubImagemAtribuicao::class, 'imagem_id');
+    }
+
+    public function rascunho(): BelongsTo
+    {
+        return $this->belongsTo(PubRascunho::class, 'rascunho_id');
     }
 }
