@@ -31,6 +31,32 @@ findings:
   info: 9
   total: 23
 status: issues_found
+fix_status: partial
+fixed_at: 2026-10-01T13:42:16Z
+fixes:
+  CR-01: {status: fixed, commit: 31100713}
+  CR-02: {status: fixed, commit: 998fae1d}
+  WR-01: {status: fixed, commit: 2bc01002}
+  WR-02: {status: fixed, commit: de2aa2d8}
+  WR-03: {status: fixed, commit: 75f307a3}
+  WR-04: {status: fixed, commit: 36e34ddb}
+  WR-05: {status: fixed, commit: 181f6e78, nota: "só a listagem no dry-run; o escopo da etapa continua copiando de qualquer setor (decisão do usuário)"}
+  WR-06: {status: not_fixed, motivo: "decisão do usuário / documentação do plano 159-08"}
+  WR-07: {status: not_fixed, motivo: "decisão do usuário / documentação do plano 159-08"}
+  WR-08: {status: not_fixed, motivo: "decisão do usuário / documentação do plano 159-08"}
+  WR-09: {status: fixed, commit: 2d58a6e6}
+  WR-10: {status: fixed, commit: ec73737f}
+  WR-11: {status: fixed, commit: 6b3b7e47}
+  WR-12: {status: fixed, commit: 3658aba7}
+  IN-01: {status: not_fixed, motivo: "código morto, não é bug"}
+  IN-02: {status: not_fixed, motivo: "frágil, não quebrado; driver de produção é mysql; não testável no SQLite"}
+  IN-03: {status: not_fixed, motivo: "regra de histórico — decisão, não bug de 1 linha"}
+  IN-04: {status: fixed, commit: 8e0596b6}
+  IN-05: {status: not_fixed, motivo: "reorganiza o fluxo pós-commit do comando — não é trivial"}
+  IN-06: {status: not_fixed, motivo: "muda o contrato do --json --apply — não é trivial"}
+  IN-07: {status: not_fixed, motivo: "toca o desempate do motor (User::cargoDesempenhoSlug) — registrar em D-09, sem decisão"}
+  IN-08: {status: not_fixed, motivo: "baixo impacto; mais de 1 linha"}
+  IN-09: {status: not_fixed, motivo: "UI sem teste unitário possível dentro do componente"}
 ---
 
 # Fase 159: Relatório de Code Review
@@ -76,9 +102,29 @@ commits da Fase 159 (`a1941779..a5b196b8`).
 O resto são fragilidades da junção em produção e do rollback (`--desfazer`), vazamento de nota no
 `--json` e efeitos colaterais de D-01/D-08 fora do caso "dois cargos no mesmo setor".
 
+## Situação das correções (2026-10-01)
+
+Rodada de correção (gsd-code-fixer): **12 corrigidos** (CR-01, CR-02, WR-01, WR-02, WR-03, WR-04,
+WR-05, WR-09, WR-10, WR-11, WR-12 e o informativo IN-04), **11 não corrigidos** (WR-06, WR-07,
+WR-08 e os informativos restantes). Um commit atômico por achado, cada um com teste de regressão
+que falhava antes da correção. O status de cada achado está na linha **Status** logo abaixo do
+título e no frontmatter (`fixes`).
+
+Conferência ao fim da rodada:
+- `tests/Feature/Phase159/` inteiro verde: 109 testes, 599 asserções.
+- `tests/Feature/Phase119/`: 17 de 29 falham — o mesmo número do baseline (D-12, gate de hash
+  pré-existente). `DesempenhoScoreService.php` e `app/Services/Desempenho/` não foram tocados.
+- `npm run test:js`: 474 passam e 2 falham (as herdadas: estrutura-grade-glide e polosEntrantes).
+- `npm run build`: exit 0.
+
 ## Critical Issues
 
 ### CR-01: `/users` dá 500 ao salvar usuário Dev não-admin — o vínculo Dev vem no payload e vira INSERT duplicado
+
+**Status:** fixed — `31100713`. `syncVinculos()` descarta do payload a linha do setor Dev,
+`validateUser()` a ignora na contagem de setor repetido e o `openEdit()` não a copia mais para o
+form. `update()`/`store()` gravam usuário, vínculos e cargo Dev na mesma transação. Teste monta o
+payload REAL a partir da listagem (com a linha Dev).
 
 **Arquivo:** `app/Http/Controllers/UserController.php:349-353` e `:391-410`; origem do payload em `resources/js/Pages/Users/Index.jsx:237-241` e `:301`
 
@@ -117,6 +163,12 @@ E também filtrar no `openEdit()`: `(u.setores || []).filter(s => setoresDisponi
 Acrescentar um teste que reproduza o payload REAL da tela, com a linha Dev incluída.
 
 ### CR-02: A junção não exige que a competência anterior ao corte esteja consolidada — a carteira movida reescreve em silêncio meses "fechados" sem snapshot
+
+**Status:** fixed — `998fae1d`. Bloqueio (exit 1, nada gravado) quando `--a-partir − 1` não tem
+snapshot mensal em `desempenho_score_snapshots` para a origem OU o destino que têm carteira; a
+mensagem diz a competência, o usuário e manda consolidar e conferir por
+`desempenho:verificar-consolidacao --json`. O caso simétrico (`--a-partir` depois da primeira
+competência aberta) cai na mesma trava. Quem não tem carteira não precisa de snapshot.
 
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:190-193` (bloqueios), `:906-932` (`bloqueiosCompetenciaConsolidada`), `:434-481` (etapa `carteira`)
 
@@ -166,6 +218,9 @@ e decidir pelo exit code (learnings §4).
 
 ### WR-01: Colisão de imputação de GRUPO usa a chave errada — `survey_id IS NULL` casa linha de outro link/empresa e APAGA a da origem
 
+**Status:** fixed — `2bc01002`. A consulta de colisão (`consultaColisaoImputacao()`) compara também
+`group_survey_id` (null-safe) e `company_id`.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:679-693`
 
 **Problema:**
@@ -195,6 +250,11 @@ E acrescentar um teste com duas linhas de grupo de links diferentes.
 
 ### WR-02: O plano é calculado FORA da transação e aplicado às cegas (TOCTOU)
 
+**Status:** fixed — `de2aa2d8`. Dentro da transação, cada update/delete relê a linha
+(`lockForUpdate`) e confere o estado planejado: colunas de `antes`, dono da linha, snapshot ainda
+cache, colisão ainda existente (delete) ou ainda inexistente (update). A escrita é condicionada a
+esse estado e exige exatamente 1 linha afetada. Qualquer divergência causa rollback do lote e exit 1.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:336-347` e `:1106-1127`; `app/Console/Commands/UnificarContas.php:73-95`
 
 **Problema:**
@@ -222,6 +282,11 @@ linha do destino ainda existe.
 
 ### WR-03: `--desfazer` restaura sem conferir o estado atual — sobrescreve mudanças posteriores e reporta sucesso sem ter restaurado
 
+**Status:** fixed — `75f307a3`. Só restaura linha no estado que o `--apply` deixou. Cada escrita
+exige 1 linha afetada, e qualquer divergência derruba a transação inteira, listando as linhas. Lote
+com lote POSTERIOR vivo do mesmo par é recusado. O dry-run já lista as divergências, o comando
+imprime "R de N restaurada(s)" e sai ≠ 0 se R ≠ N.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:398-412`
 
 **Problema:**
@@ -243,6 +308,10 @@ linha do destino ainda existe.
 
 ### WR-04: `--json` imprime nota e faixa de bônus — viola learnings §11 e o próprio docblock
 
+**Status:** fixed — `36e34ddb`. O `--json` sai por `planoParaSaida()`: `tabela/acao/linha_id` + as
+colunas tocadas e, no delete, uma `identificacao` por whitelist. O backup no banco continua com a
+linha inteira. O teste usa valores sentinela e confere `--json`, texto e `--json --apply`.
+
 **Arquivo:** `app/Console/Commands/UnificarContas.php:76-80`; conteúdo vindo de `UnificacaoContasService.php:740-745` e `:776-783`
 
 **Problema:**
@@ -261,6 +330,10 @@ com a linha inteira.
 
 ### WR-05: A etapa `cargos` copia TODO cargo da origem, de QUALQUER setor, e o dry-run em texto não mostra quais
 
+**Status:** fixed (parcial) — `181f6e78`. O dry-run em texto lista cada par que o destino ganha
+(`+ setor <nome> (id N) / cargo <nome> (id M)`). O escopo da etapa NÃO mudou: ela continua copiando
+de qualquer setor. Restringir aos cargos de Desempenho ou exigir `--cargos=` é decisão do usuário.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:549-594`; `app/Console/Commands/UnificarContas.php:213-216`
 
 **Problema:**
@@ -278,6 +351,10 @@ com a linha inteira.
   `historico_gestao`.
 
 ### WR-06: As respostas de NPS de 2026-09 que chegarem antes do 1º `--apply` dependem de um 2º `--apply` MANUAL, sem nenhuma trava
+
+**Status:** not_fixed. É decisão do usuário: trava no `consolidar-mes`/`verificar-consolidacao` ou
+reexecução agendada. O plano 159-08 documenta. Com o WR-03, o 2º `--apply` gera um lote posterior,
+e o `--desfazer` passa a exigir a ordem do mais novo para o mais antigo.
 
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:245-254`
 
@@ -298,6 +375,9 @@ comando no dia 30 do mês de coleta.
 
 ### WR-07: Desativar a origem tira o 35 das telas de competências JÁ FECHADAS (Ranking, Relatório de Bonificação, Auditoria)
 
+**Status:** not_fixed. É decisão do usuário: mudar o universo das telas de pagamento, ou exportar o
+relatório de 2026-08 antes do `--apply` como passo obrigatório. O plano 159-08 documenta.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:872-891`; consumidores em `RelatorioBonificacaoController.php:95`, `BonusAuditoriaController.php:59`, `PerformanceController.php:78`
 
 **Problema:**
@@ -315,6 +395,9 @@ comando no dia 30 do mês de coleta.
   obrigatório do 159-07.
 
 ### WR-08: Depois da junção, reconsolidar ou invalidar empresa numa competência anterior ao corte recalcula o 15 com a carteira unificada
+
+**Status:** not_fixed. É decisão do usuário, documentada no plano 159-08 (learning "junção de
+contas" e mudança em `bustarCacheDaEmpresa`).
 
 **Arquivo:** consequência de `UnificacaoContasService.php:434-481`; gatilho em `BonusAuditoriaController.php:241-261`
 
@@ -335,6 +418,11 @@ comando no dia 30 do mês de coleta.
 
 ### WR-09: `AuditarRamoLegadoNps` aceita competência com a janela de coleta ainda aberta e devolve "sem exposição" com exit 0
 
+**Status:** fixed — `2d58a6e6`. Por competência, `NpsJanelaResolver::fechada(mesDeColeta)` decide.
+Com a janela aberta, o resultado marca `inconclusivo` e `janela_coleta_aberta_ate`, o texto mostra
+"inconclusivo (janela de coleta aberta até AAAA-MM-DD)" e o exit é 2, nunca 0. Quando há exposição
+encontrada, o exit 1 prevalece: resposta que já caiu no ramo legado é exposição real.
+
 **Arquivo:** `app/Console/Commands/AuditarRamoLegadoNps.php:142-146`
 
 **Problema:**
@@ -351,6 +439,12 @@ comando no dia 30 do mês de coleta.
 que data a medição passa a valer.
 
 ### WR-10: D-08 muda a visibilidade para quem tem cargos em SETORES diferentes — publicador com qualquer outro cargo passa a ver "Alertas Estratégicos"
+
+**Status:** fixed — `ec73737f`. Volta a regra "o item some se o papel do sistema OU QUALQUER cargo
+estiver em `excludeRoles`", com uma única exceção: entre `analista` e `estrategista`, o cargo com
+acesso compensa o outro, que está excluído. A exceção olha o slug, então vale também se os dois
+cargos de Desempenho estiverem em setores diferentes (Performance e Shopee). Isso precisa ser
+reportado ao usuário.
 
 **Arquivo:** `resources/js/lib/visibilidadeMenu.js:22-44`; `resources/js/Layouts/AppLayout.jsx:470-472`, `:502`; rota em `routes/web.php:1406`
 
@@ -373,6 +467,8 @@ que data a medição passa a valer.
 
 ### WR-11: `storeMembro` converte a linha "sem cargo" e ZERA o `is_principal` quando ela era a principal
 
+**Status:** fixed — `6b3b7e47`. A conversão grava `$isPrincipal || $linhaSemCargo->is_principal`.
+
 **Arquivo:** `app/Http/Controllers/Admin/SetorMembroController.php:70-93`
 
 **Problema:**
@@ -390,6 +486,16 @@ que data a medição passa a valer.
 (ou excluir `$linhaSemCargo` do cálculo de `$jaTemPrincipal`).
 
 ### WR-12: D-01 libera dois cargos em QUALQUER setor, mas leitores "um cargo por setor" sem `ORDER BY` continuam ativos
+
+**Status:** fixed — `3658aba7`. Três leitores passam a ordenar por
+`user_setores.is_principal DESC, id ASC`:
+- `PerformanceController::indexPolos` (`cargo_slug`);
+- `PerformanceController::metaParaMes`;
+- `MlbController::metaParaMes`. Este está fora da lista de arquivos da fase, mas é o fallback
+  "canônico" que o do Performance espelha.
+
+Não foi encontrado outro leitor sem ordem nos arquivos da fase. `User::cargoDesempenhoSlug()` é o
+IN-07 e não foi tocado.
 
 **Arquivo:** `app/Http/Controllers/PerformanceController.php:1312-1317` (`->value('cargos.meta_publicacoes')`) e `:1166-1173` (`cargo_slug` com `limit(1)`); idem `MlbController.php:254-259`
 
@@ -412,11 +518,16 @@ que data a medição passa a valer.
 
 ### IN-01: Variável `$cargoSlug` sem uso em `renderCarteiraProfissional`
 
+**Status:** not_fixed. É código morto, não bug, e fica sem efeito.
+
 **Arquivo:** `app/Http/Controllers/PortfolioController.php:993`
 **Problema:** atribuída e nunca lida; só `$cargoLabel` é usado.
 **Correção:** remover.
 
 ### IN-02: Checagem de driver só reconhece `'mysql'` (migration e censo)
+
+**Status:** not_fixed. É frágil, não quebrado: o driver de produção é `mysql`. O SQLite dos testes
+também não permite um teste de regressão.
 
 **Arquivo:** `database/migrations/2026_09_30_100000_amplia_unique_user_setores_por_cargo.php:122`; `app/Services/Usuarios/UnificacaoContasService.php:991`
 **Problema:** com `DB_CONNECTION=mariadb` (driver `mariadb`, que existe em `config/database.php:67`
@@ -426,6 +537,9 @@ hoje o driver deve ser `mysql`. É frágil, não quebrado.
 **Correção:** `in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)`.
 
 ### IN-03: `historico_gestao` rotula qualquer papel ≠ estrategista como "analista" e pode omitir a entrada
+
+**Status:** not_fixed. Mexe na regra do histórico (escopo e papéis), então é decisão, não bug de 1
+linha.
 
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:495-501`
 **Problema:**
@@ -438,6 +552,10 @@ update" e documentar o escopo.
 
 ### IN-04: `json_encode` do backup sem `JSON_THROW_ON_ERROR`
 
+**Status:** fixed — `8e0596b6`. Os três `json_encode` do backup usam `JSON_THROW_ON_ERROR`, e a
+falha derruba a transação do `--apply`. O teste grava bytes que não são UTF-8 válido numa linha de
+cache apagada.
+
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:1110`, `:1122`, `:1136`
 **Problema:** se a codificação falhar, `false` vai para o backup em silêncio e o DELETE segue, sem
 backup restaurável. A probabilidade é baixa com utf8mb4, mas é o único ponto em que o backup pode
@@ -445,6 +563,8 @@ sair incompleto sem erro.
 **Correção:** `json_encode($x, JSON_THROW_ON_ERROR)`.
 
 ### IN-05: Falha pós-commit (cache ou activity log) derruba o comando sem imprimir o lote nem rodar a reconsulta
+
+**Status:** not_fixed. Reorganiza o fluxo pós-commit do comando, então não é trivial.
 
 **Arquivo:** `app/Services/Usuarios/UnificacaoContasService.php:349-360`; `app/Console/Commands/UnificarContas.php:94-106`
 **Problema:** `bustarCache` (Redis em produção) e `activity()` rodam depois do commit. Uma exceção
@@ -455,11 +575,17 @@ desfazer.
 
 ### IN-06: `--json --apply` mistura JSON e texto na mesma saída
 
+**Status:** not_fixed. Muda o contrato do `--json --apply`, então não é trivial. Depois do WR-04, a
+parte JSON já não carrega nota nem faixa.
+
 **Arquivo:** `app/Console/Commands/UnificarContas.php:76-83`, `:102-106`, `:119-134`
 **Problema:** a saída deixa de ser JSON parseável.
 **Correção:** com `--json`, emitir um único objeto final `{plano, lote, reconsulta}`.
 
 ### IN-07: Desempate de cargo da tela ≠ desempate do motor
+
+**Status:** not_fixed. Toca `User::cargoDesempenhoSlug()`, que alimenta o motor. Fica registrado em
+D-09 e não muda sem decisão.
 
 **Arquivo:** `app/Support/CargosDesempenho.php:51-52` vs `app/Models/User.php:125`
 **Problema:** `CargosDesempenho` ordena por `is_principal DESC, id ASC`, e
@@ -469,6 +595,9 @@ setor), a tela pode mostrar um cargo e o ramo legado usar outro.
 **Correção:** registrar em D-09. Não mexer em `User` sem decisão, porque afeta o motor.
 
 ### IN-08: `destroyMembro` — a principal pode ir para o setor Desenvolvimento, e `vinculo` inválido cai no caminho legado
+
+**Status:** not_fixed. O impacto é baixo: um `vinculo` inválido cai no caminho legado, que só apaga
+quando há exatamente uma linha. A correção passa de 1 linha.
 
 **Arquivo:** `app/Http/Controllers/Admin/SetorMembroController.php:130`, `:161-173`
 **Problema:**
@@ -480,6 +609,9 @@ vier preenchido mas não for inteiro positivo.
 
 ### IN-09: `proximoVinculoLivre` sugere um par que o backend vai recusar
 
+**Status:** not_fixed. É UI dentro do componente, sem teste unitário possível. O backend já recusa
+com mensagem clara.
+
 **Arquivo:** `resources/js/Pages/Users/Index.jsx:250-263`
 **Problema:** se o setor já tem vínculo "sem cargo", a função sugere um 2º vínculo com cargo no mesmo
 setor, e a validação nova responde "cada vínculo precisa de um cargo".
@@ -490,3 +622,4 @@ setor, e a validação nova responde "cada vínculo precisa de um cargo".
 _Revisado em: 2026-10-01T13:08:42Z_
 _Revisor: Claude (gsd-code-reviewer)_
 _Profundidade: standard_
+_Correções: 2026-10-01T13:42:16Z — Claude (gsd-code-fixer), iteração 1_
