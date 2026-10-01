@@ -16,6 +16,7 @@ use App\Models\ServicoFaixaFaturamento;
 use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
 use App\Services\Fechamento\FechamentoComparativoService;
+use App\Services\Fechamento\FechamentoConferenciaFaturamentoService;
 use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Fechamento\FechamentoFonteFaturamento;
@@ -43,6 +44,10 @@ class AdminController extends Controller
         // isso vale é a mesma chave que a consolidação já obedece, e não um
         // segundo interruptor.
         private FechamentoFonteFaturamento $fonteFaturamento,
+        // Quick 261001-gi1 — a conferência "o que está gravado ainda bate com
+        // o faturamento de agora?". Read-only e sem HTTP (lê a Adman só do
+        // cache); alimenta UM aviso discreto em mês fechado.
+        private FechamentoConferenciaFaturamentoService $conferencia,
     ) {}
 
     public function empresas()
@@ -296,6 +301,13 @@ class AdminController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
+        // Quick 261001-gi1 — o fechamento foi gravado com um número que mudou
+        // depois? Só faz sentido em competência FECHADA (a aberta recalcula
+        // ao vivo a cada carregamento, não tem como estar velha).
+        $dadoMudouDepois = $competenciaFechada
+            ? $this->fechamentoAvisoDadoMudouDepois($mesSelecionado)
+            : null;
+
         return Inertia::render('Admin/Financeiro', [
             'companies'              => array_values($dadosPorId),
             'mes_selecionado'        => $mesSelecionado,
@@ -333,7 +345,61 @@ class AdminController extends Controller
             // fechamento" (empresa ou grupo). Lista da PÁGINA, do cadastro de
             // hoje — nunca chave nova nas linhas. O link leva aonde se desmarca.
             'nao_participam_do_fechamento' => $this->fechamentoNaoParticipantes(),
+            // Quick 261001-gi1 — `null` quando o que está gravado bate com o
+            // faturamento de agora (o estado normal: nenhum aviso). Prop da
+            // PÁGINA, nunca chave nova nos cinco literais de linha.
+            'dado_mudou_depois_do_fechamento' => $dadoMudouDepois,
         ]);
+    }
+
+    /**
+     * Quick 261001-gi1 — o aviso de "este fechamento foi gravado com um
+     * número que mudou depois".
+     *
+     * ⚠️ O CRITÉRIO É A DIVERGÊNCIA DE VALOR, não a existência de escrita
+     * posterior. `adman_metrics` recebe escrita todo dia (o `adman:sync` das
+     * 11:00 e a releitura das 19:00 reescrevem dias já passados DE PROPÓSITO,
+     * quick 260930-njd); avisar pela escrita faria o aviso aparecer todo
+     * santo dia, e aviso que aparece sempre ensina a ignorar — depois de uma
+     * semana ninguém mais leria o dia em que o número está mesmo errado. A
+     * hora da escrita entra no aviso só como contexto, depois que já se sabe
+     * que algum valor mudou.
+     *
+     * Devolve `null` no estado normal — a tela não mostra nada.
+     *
+     * @return array{fechado_em: ?string, dado_atualizado_em: ?string, empresas: int, faixas_mudariam: int, exemplos: array<int, array<string, mixed>>}|null
+     */
+    private function fechamentoAvisoDadoMudouDepois(string $mesSelecionado): ?array
+    {
+        // Sem `$permitirChamadasApi`: zero HTTP dentro do request. O que não
+        // dá para conferir sem chamar a Adman fica de fora do aviso em vez de
+        // virar alarme falso — a tela nunca espera a API (2026-07-30).
+        $conferencia = $this->conferencia->conferir($mesSelecionado);
+
+        if ($conferencia['total_divergentes'] === 0) {
+            return null;
+        }
+
+        return [
+            'fechado_em'         => $conferencia['fechado_em'],
+            'dado_atualizado_em' => $conferencia['dado_mudou_depois'] ? $conferencia['dado_atualizado_em'] : null,
+            'empresas'           => $conferencia['total_divergentes'],
+            'faixas_mudariam'    => $conferencia['total_faixas_mudariam'],
+            // Os três maiores (já ordenados: quem muda de faixa primeiro) —
+            // o suficiente para a pessoa saber onde olhar sem a tela virar
+            // um relatório.
+            'exemplos'           => collect($conferencia['divergentes'])
+                ->take(3)
+                ->map(fn (array $d) => [
+                    'id'            => $d['company_id'],
+                    'name'          => $d['company_name'],
+                    'gravado'       => $d['gravado'],
+                    'atual'         => $d['atual'],
+                    'faixa_mudaria' => $d['faixa_mudaria'] === true,
+                ])
+                ->values()
+                ->all(),
+        ];
     }
 
     /**

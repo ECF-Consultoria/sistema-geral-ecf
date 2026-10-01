@@ -7,7 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
-import { cn, formatDate, formatCurrency } from '@/lib/utils';
+import { cn, formatDate, formatDateTime, formatTime, formatCurrency } from '@/lib/utils';
 import axios from 'axios';
 import TabelaFaixasSection from './Financeiro/TabelaFaixasSection';
 
@@ -2130,6 +2130,55 @@ function NaoParticipamAviso({ itens, mesFechado }) {
     );
 }
 
+// Quick 261001-gi1 — o mês foi fechado com um número que mudou depois.
+//
+// ⚠️ O backend só manda esta prop quando algum VALOR está diferente do que
+// ficou gravado (`dado_mudou_depois_do_fechamento` é `null` no estado
+// normal). Não é um aviso de "chegou dado novo": dado novo chega todo dia, e
+// um aviso que aparece todo dia ensina a ignorar o aviso. A hora entra só
+// como contexto, depois que já se sabe que algum valor mudou.
+function DadoMudouDepoisAviso({ info }) {
+    if (!info) return null;
+
+    const mudaMensalidade = info.faixas_mudariam > 0;
+
+    return (
+        <div className={cn(
+            'rounded-xl px-4 py-3 flex flex-col gap-2.5 border',
+            mudaMensalidade
+                ? 'border-amber-400/30 bg-amber-400/[0.06]'
+                : 'border-white/[0.08] bg-white/[0.02]',
+        )}>
+            <div className="flex items-start gap-2">
+                <AlertTriangle className={cn('h-4 w-4 mt-0.5 shrink-0', mudaMensalidade ? 'text-amber-300/80' : 'text-white/40')} />
+                <div className="flex flex-col gap-0.5">
+                    <p className="text-white/70 text-[14px] font-medium">
+                        Este mês foi fechado com número que mudou depois
+                    </p>
+                    <p className="text-white/50 text-[13px]">
+                        O fechamento foi gravado em {formatDateTime(info.fechado_em)} e o faturamento de{' '}
+                        {info.empresas === 1 ? 'uma empresa está diferente' : `${info.empresas} empresas está diferente`} agora.
+                        {info.dado_atualizado_em && ` O número mais recente deste mês chegou às ${formatTime(info.dado_atualizado_em)}.`}
+                        {mudaMensalidade
+                            ? ` Em ${info.faixas_mudariam === 1 ? 'uma delas' : `${info.faixas_mudariam} delas`} a mensalidade a cobrar sairia diferente — vale refazer o fechamento.`
+                            : ' A mensalidade a cobrar continua a mesma.'}
+                    </p>
+                </div>
+            </div>
+            {info.exemplos?.length > 0 && (
+                <ul className="flex flex-col gap-1 pl-6">
+                    {info.exemplos.map(e => (
+                        <li key={e.id} className="text-[13px] text-white/55">
+                            <span className="text-white/75">{e.name}</span>: fechou com {fmtBRL(e.gravado)}, hoje está {fmtBRL(e.atual)}
+                            {e.faixa_mudaria && <span className="text-amber-300/80"> — muda a mensalidade</span>}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
 // Quick 260915-jpr — empresas que entram no fechamento só porque o contrato
 // não tem data de início: sem ela não dá para saber em que mês a empresa
 // virou cliente. Lista da página (não é atributo de linha); o link leva à
@@ -2220,7 +2269,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [], nao_participam_do_fechamento = [] }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [], nao_participam_do_fechamento = [], dado_mudou_depois_do_fechamento = null }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -2445,6 +2494,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     <TabelaPresumidaAviso quantidade={totais.tabelas_assumidas} onVerQuais={verTabelasPresumidas} />
                     <SemDataInicioAviso empresas={empresas_sem_data_inicio} />
                     <NaoParticipamAviso itens={nao_participam_do_fechamento} mesFechado={competencia_fechada} />
+                    <DadoMudouDepoisAviso info={dado_mudou_depois_do_fechamento} />
                     <div className="flex flex-col gap-4">
                         <FiltroBarra
                             filtros={filtros}
