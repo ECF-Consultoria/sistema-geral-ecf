@@ -321,6 +321,57 @@ class AuditarRamoLegadoCommandTest extends TestCase
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // WR-09 da revisão: competência cuja janela de coleta do NPS (M+1)
+    // ainda está aberta → "inconclusivo" e exit 2, NUNCA 0. Zero resposta
+    // no ramo legado ali é falta de resposta, não ausência de exposição.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_wr09_janela_de_coleta_aberta_e_inconclusivo_com_exit_2(): void
+    {
+        // 2026-09: coleta em outubro, que em 15/10 ainda está aberta.
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $texto = $this->rodar(['--mes' => ['2026-09']], json: false);
+        $this->assertSame(2, $texto['exit']);
+        $this->assertStringContainsString('inconclusivo (janela de coleta aberta até 2026-10-31)', $texto['saida']);
+        $this->assertStringNotContainsString('sem exposição do ramo legado', $texto['saida']);
+
+        $json = $this->rodar(['--mes' => ['2026-09']]);
+        $this->assertSame(2, $json['exit']);
+        $saida = json_decode($json['saida'], true);
+        $linha = collect($saida['resultados'])->first(fn ($l) => $l['mes'] === '2026-09');
+        $this->assertTrue($linha['inconclusivo']);
+        $this->assertSame('2026-10-31', $linha['janela_coleta_aberta_ate']);
+        $this->assertStringContainsString('inconclusivo', $saida['veredito']);
+    }
+
+    public function test_wr09_mistura_de_competencia_fechada_e_aberta_nunca_sai_com_zero(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $resultado = $this->rodar(['--mes' => ['2026-08', '2026-09']]);
+        $this->assertSame(2, $resultado['exit']);
+
+        $saida = json_decode($resultado['saida'], true);
+        $porMes = collect($saida['resultados'])->keyBy('mes');
+        $this->assertFalse($porMes['2026-08']['inconclusivo']);
+        $this->assertTrue($porMes['2026-09']['inconclusivo']);
+    }
+
+    public function test_wr09_depois_do_fechamento_da_coleta_a_mesma_competencia_e_conclusiva(): void
+    {
+        // Último dia da coleta de outubro: a régua de leitura (NpsJanelaResolver::fechada) já fecha.
+        Carbon::setTestNow('2026-10-31 15:00:00');
+
+        $resultado = $this->rodar(['--mes' => ['2026-09']]);
+        $this->assertSame(0, $resultado['exit']);
+
+        $linha = collect(json_decode($resultado['saida'], true)['resultados'])->first();
+        $this->assertFalse($linha['inconclusivo']);
+        $this->assertNull($linha['janela_coleta_aberta_ate']);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // Teste 5: comando é SÓ LEITURA — nenhuma tabela muda de contagem
     // ═════════════════════════════════════════════════════════════════════
 

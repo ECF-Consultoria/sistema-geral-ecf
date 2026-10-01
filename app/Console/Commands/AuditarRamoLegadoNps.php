@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\Desempenho\NpsPorEmpresaService;
+use App\Services\Nps\NpsJanelaResolver;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,17 @@ use Illuminate\Support\Facades\DB;
  * NUNCA imprime nota, faixa ou valor de bônus (learnings §11) — só
  * contagens, ids, nomes de empresa e papéis.
  *
+ * Exit code (WR-09 da revisão) — é o veredito, nunca o texto:
+ *  - 0: sem exposição do ramo legado, em competências com a janela de coleta
+ *       do NPS (M+1) JÁ fechada;
+ *  - 1: exposição encontrada (divergente/parcial) — decisão necessária (D-09).
+ *       Prevalece sobre o inconclusivo: resposta que já caiu no ramo legado
+ *       é exposição real, e mais respostas só podem aumentá-la;
+ *  - 2: inconclusivo — alguma competência pedida ainda tem a janela de coleta
+ *       aberta (`NpsJanelaResolver::fechada()`, a mesma régua do bônus). Zero
+ *       resposta no ramo legado ali é falta de resposta, não ausência de
+ *       exposição; medir de novo depois do fechamento.
+ *
  * @see .planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/159-CONTEXT.md D-09
  * @see App\Services\Desempenho\NpsPorEmpresaService::notasLegadoPorEmpresa()
  */
@@ -45,8 +57,13 @@ class AuditarRamoLegadoNps extends Command
 
     protected $description = 'Mede a exposição do ramo legado de NPS por profissional/competência (D-09) — SÓ LEITURA';
 
-    public function __construct(private readonly NpsPorEmpresaService $service)
-    {
+    /** Exit code de "inconclusivo" (janela de coleta ainda aberta) — WR-09. */
+    private const INCONCLUSIVO = 2;
+
+    public function __construct(
+        private readonly NpsPorEmpresaService $service,
+        private readonly NpsJanelaResolver $janela,
+    ) {
         parent::__construct();
     }
 
@@ -75,6 +92,19 @@ class AuditarRamoLegadoNps extends Command
             }
         }
 
+        // WR-09: competência cuja coleta do NPS (M+1) ainda não fechou dá
+        // medição prematura — marcada como inconclusiva, nunca "sem exposição".
+        // O resolver memoiza os fechamentos manuais por instância; relê a cada execução.
+        $this->janela->esquecerCache();
+        $abertaAtePorMes = [];
+        foreach ($meses as $mes) {
+            $mesColeta = $this->janela->mesDeColeta($mes);
+            $abertaAtePorMes[$mes->format('Y-m')] = $this->janela->fechada($mesColeta)
+                ? null
+                : $mesColeta->copy()->endOfMonth()->toDateString();
+        }
+        $abertaAte = collect($abertaAtePorMes)->filter()->max();
+
         $resultados = [];
         $houveExposicao = false;
 
@@ -87,6 +117,8 @@ class AuditarRamoLegadoNps extends Command
 
             foreach ($meses as $mes) {
                 $resultado = $this->auditarUsuarioNoMes($user, $mes, $dimensao, $papelAplicado, $papeisReaisPorEmpresa);
+                $resultado['janela_coleta_aberta_ate'] = $abertaAtePorMes[$mes->format('Y-m')];
+                $resultado['inconclusivo'] = $resultado['janela_coleta_aberta_ate'] !== null;
 
                 if (! empty($resultado['divergentes']) || ! empty($resultado['parciais'])) {
                     $houveExposicao = true;
@@ -96,9 +128,14 @@ class AuditarRamoLegadoNps extends Command
             }
         }
 
-        $veredito = $houveExposicao
-            ? 'Veredito: decisão necessária (D-09)'
-            : 'Veredito: sem exposição do ramo legado';
+        $veredito = match (true) {
+            $houveExposicao && $abertaAte !== null => 'Veredito: decisão necessária (D-09) — e há competência com a '
+                . "janela de coleta aberta até {$abertaAte}: a exposição ainda pode crescer",
+            $houveExposicao => 'Veredito: decisão necessária (D-09)',
+            $abertaAte !== null => "Veredito: inconclusivo (janela de coleta aberta até {$abertaAte}) — medir de novo "
+                . 'depois do fechamento da coleta',
+            default => 'Veredito: sem exposição do ramo legado',
+        };
 
         if ($this->option('json')) {
             $this->line(json_encode(
@@ -109,7 +146,11 @@ class AuditarRamoLegadoNps extends Command
             $this->imprimirRelatorio($resultados, $veredito);
         }
 
-        return $houveExposicao ? self::FAILURE : self::SUCCESS;
+        if ($houveExposicao) {
+            return self::FAILURE;
+        }
+
+        return $abertaAte !== null ? self::INCONCLUSIVO : self::SUCCESS;
     }
 
     /**
@@ -253,6 +294,9 @@ class AuditarRamoLegadoNps extends Command
                 $r['dimensao_aplicada'],
                 $r['papel_aplicado']
             ));
+            if ($r['inconclusivo']) {
+                $this->warn("  inconclusivo (janela de coleta aberta até {$r['janela_coleta_aberta_ate']})");
+            }
             $this->line(sprintf(
                 '  Empresas com nota no ramo legado: %d — total de notas legado: %d',
                 count($r['empresas_legado']),
