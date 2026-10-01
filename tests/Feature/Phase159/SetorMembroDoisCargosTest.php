@@ -150,6 +150,32 @@ class SetorMembroDoisCargosTest extends TestCase
         $this->assertSame($this->cargoAnalistaId, (int) $linhas->first()->cargo_id);
     }
 
+    // ─── Teste 3b (WR-11 da revisão) ───────────────────────────────────────
+
+    public function test_converter_linha_sem_cargo_que_era_a_principal_preserva_is_principal(): void
+    {
+        $user = User::factory()->create();
+        $ator = $this->admin();
+        // A linha "sem cargo" é a ÚNICA linha da pessoa — e é a principal.
+        $linhaId = $this->inserirVinculo($user->id, $this->setorPerformanceId, null, true);
+
+        // O admin não marca "principal" ao atribuir o cargo.
+        $this->actingAs($ator)->post(route('admin.setores.membros.store', $this->setorPerformanceId), [
+            'user_id'      => $user->id,
+            'cargo_id'     => $this->cargoAnalistaId,
+            'is_principal' => false,
+        ])->assertRedirect();
+
+        $linha = DB::table('user_setores')->where('id', $linhaId)->first();
+        $this->assertSame($this->cargoAnalistaId, (int) $linha->cargo_id);
+        $this->assertSame(1, (int) $linha->is_principal, 'A conversão não pode tirar a principal da pessoa.');
+        $this->assertSame(
+            1,
+            DB::table('user_setores')->where('user_id', $user->id)->where('is_principal', true)->count(),
+            'A pessoa continua com exatamente uma linha principal.'
+        );
+    }
+
     // ─── Teste 4 ────────────────────────────────────────────────────────────
 
     public function test_post_sem_cargo_para_quem_ja_e_membro_e_recusado(): void

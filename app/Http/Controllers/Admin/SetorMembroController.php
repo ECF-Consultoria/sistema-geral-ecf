@@ -84,11 +84,16 @@ class SetorMembroController extends Controller
                 // Converte a linha sem cargo em vez de criar uma segunda —
                 // a linha "sem cargo" é o único caso em que o unique do
                 // banco não distingue duas linhas do mesmo par.
+                //
+                // WR-11 (revisão da Fase 159): `$jaTemPrincipal` conta a
+                // própria linha convertida — se ela era a principal e o
+                // admin não marcou o checkbox, `$isPrincipal` sai false e a
+                // pessoa ficaria SEM nenhuma principal. A conversão preserva.
                 DB::table('user_setores')
                     ->where('id', $linhaSemCargo->id)
                     ->update([
                         'cargo_id'     => $data['cargo_id'],
-                        'is_principal' => $isPrincipal,
+                        'is_principal' => $isPrincipal || (bool) $linhaSemCargo->is_principal,
                         'updated_at'   => now(),
                     ]);
 
