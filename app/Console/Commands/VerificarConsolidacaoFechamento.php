@@ -7,6 +7,7 @@ use App\Models\FechamentoGrupoSnapshot;
 use App\Models\FechamentoSnapshot;
 use App\Models\ShopeeMetric;
 use App\Services\Fechamento\FechamentoConferenciaFaturamentoService;
+use App\Services\Fechamento\FechamentoEmpresasDoMes;
 use App\Services\Fechamento\FechamentoSnapshotWriter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -105,6 +106,7 @@ class VerificarConsolidacaoFechamento extends Command
 
     public function __construct(
         private FechamentoConferenciaFaturamentoService $conferencia,
+        private FechamentoEmpresasDoMes $empresasDoMes,
     ) {
         parent::__construct();
     }
@@ -155,10 +157,22 @@ class VerificarConsolidacaoFechamento extends Command
         // "tem_integracao" usada por ConsolidarMesFechamento::handle().
         $companyIdsComShopee = ShopeeMetric::query()->distinct()->pluck('company_id')->flip();
 
-        $empresasElegiveis = Company::query()
+        $ativasComIntegracao = Company::query()
             ->where('active', true)
+            ->with(['contratosServico' => fn ($q) => $q->where('ativo', true)->with('servico')])
             ->get()
             ->filter(fn (Company $c) => $c->cust_id !== null || $companyIdsComShopee->has($c->id));
+
+        // Quem é elegível é decidido pelo PONTO ÚNICO de "quem entra no mês"
+        // (`FechamentoEmpresasDoMes`), o mesmo que a consolidação usa. Sem isto o
+        // comando acusava SEM_SNAPSHOT para quem CORRETAMENTE não tem linha:
+        // empresa marcada como "não participa do fechamento" (quick 260916-onn —
+        // em 01/10/2026 eram RELOJOARIA WENUS e DSG VARIEDADES pelo grupo, e
+        // Rações Soldera pela própria empresa) e empresa cujo contrato começou
+        // depois do mês (quick 260915-jpr). Resultado: exit 1 em TODA
+        // competência, e alarme que vive aceso ensina a ignorar justamente o mês
+        // em que o número está errado.
+        $empresasElegiveis = $this->empresasDoMes->filtrar($ativasComIntegracao, $mesLabel);
 
         $snapshotsEmpresa      = FechamentoSnapshot::query()->whereDate('mes_referencia', $mesStr)->get();
         $snapshotsEmpresaPorId = $snapshotsEmpresa->keyBy('company_id');
