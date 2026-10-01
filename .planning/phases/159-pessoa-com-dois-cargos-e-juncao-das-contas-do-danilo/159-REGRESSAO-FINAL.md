@@ -267,3 +267,54 @@ Vazio — árvore sem mudança rastreada pendente.
   (`create_polos_ads_status_table`).
 - **Produção NÃO foi acessada.** As leituras de schema, o push e o `deploy.sh` são a Task 3,
   que só roda se o usuário autorizar na Task 2.
+
+---
+
+## Produção — deploy de 2026-10-01 (autorizado pelo usuário nesta sessão)
+
+**SHA publicado:** `c7a58b3b` (`d01ef00b..c7a58b3b`, fast-forward). VPS antes do deploy já estava
+em `d01ef00b` = origin/main — os 15 commits de outras sessões listados acima JÁ estavam no ar; o
+deploy publicou só os commits da Fase 159. `package-lock.json` sujo na VPS é efeito do `npm install`
+do próprio deploy (o `reset --hard` seguinte desfaz).
+
+### `user_setores` — SHOW INDEX antes × depois (D-01)
+
+| | antes | depois |
+|---|---|---|
+| unique de 2 colunas `user_setores_user_id_setor_id_unique` (user_id, setor_id) | presente | **ausente** |
+| unique de 3 colunas `user_setores_user_id_setor_id_cargo_id_unique` (user_id, setor_id, cargo_id) | ausente | **presente**, Non_unique = 0 |
+| índice com `user_id` na posição 1 (apoio da FK `user_setores_user_id_foreign`) | o unique de 2 | o unique de 3 — sem 1553 |
+| duplicidade (user, setor) antes da migration | 0 | — |
+
+`migrate:status`: `2026_09_30_100000_amplia_unique_user_setores_por_cargo` e
+`2026_09_30_110000_create_unificacao_contas_backup_table` **Ran** (batch 154); 0 pendentes.
+Comandos `usuarios:unificar-contas` e `desempenho:auditar-ramo-legado` listados; workers
+`ecf-worker_00/_01` RUNNING; `/login` 200; `public/build/manifest.json` regerado 14:22.
+
+### Medições só de leitura (insumo do 159-08)
+
+- **Dry-run da junção 35 → 15 a partir de 2026-09:** exit **1 — BLOQUEADO (CR-02)**: competência
+  2026-08 sem snapshot mensal para o user 15. Plano que rodaria: carteira 17× update, histórico
+  34× insert, cargos 1× insert (Performance / Estrategista), NPS atribuições e imputações nada a
+  fazer, snapshots diários 8× delete, snapshots por empresa 32× delete (nenhum `consolidar_mes`),
+  PPAs/onboardings nada a fazer, desativar origem 1×. Salvo em
+  `/root/juncao_danilo_dryrun_20261001_1422.{txt,json}`.
+- **Auditoria do ramo legado (D-09):** 2026-08 exit 0 — user 15: 0 notas legado; user 35: 1 nota
+  legado em 1 empresa, na dimensão do próprio papel (sem divergência hoje). 2026-09 exit **2 —
+  inconclusivo** (janela de coleta aberta até 2026-10-31). O ramo legado é marginal, não o caminho
+  principal.
+- **D-08:** usuários ativos com 2+ cargos (fora dev): 2, ambos com o MESMO cargo em dois setores
+  (Performance + Shopee). Nenhum tem o par analista+estrategista — a regra nova do menu não muda
+  nada para eles.
+- **Contagens de referência:** `/root/juncao_danilo_antes_20261001_1422.txt`.
+
+### Achado fora do escopo que bloqueia a junção — consolidação mensal quebrada em produção
+
+`desempenho_score_snapshots` ainda tem o unique legado `(user_id, ref_date)` (learnings §10.1). O
+`laravel.log` de produção tem **1062** do `[Desempenho Mensal]` para 2026-07 (229), 2026-08 (95,
+inclusive a rodada agendada de **2026-10-01 09:56**) e 2026-09 (9). Snapshots mensais vivos:
+2026-06 = 10, **2026-07 = 1, 2026-08 = 1**. Ou seja, julho e agosto não fecharam para quase ninguém,
+e o fechamento de setembro (31/10 14:00) vai falhar do mesmo jeito. A migration de correção
+`2026_08_31_150000_drop_unique_legado_desempenho_score_snapshots` existe só como arquivo não
+commitado no checkout principal — não está em origin/main nem na VPS. É mudança em consolidação de
+bônus (GSD obrigatório) — decisão do usuário, fora da Fase 159.
