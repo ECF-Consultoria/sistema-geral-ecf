@@ -44,6 +44,41 @@ final class RascunhoSnapshot
         public readonly ?array $garantia = null,
     ) {}
 
+    /**
+     * O rascunho com os dados EFETIVOS: título nulo de um alvo vale o título
+     * planejado na aba Anúncios; preço nulo vale o da Precificação (ADR
+     * PORTAL-02/03). Serve para validar e montar o payload — e NUNCA é gravado:
+     * o Anunciar antigo devolvia os efetivos ao autosave e congelava o preço da
+     * Precificação no rascunho (`16` §1.6). Por isso o repositório só lê e grava
+     * o que a pessoa digitou.
+     *
+     * @param  array<string, ?string>  $titulos  listing_type_id → título planejado
+     * @param  array<string, ?float>  $precos  listing_type_id → preço anunciado da Precificação
+     */
+    public function comEfetivos(array $titulos, array $precos): self
+    {
+        $alvos = array_map(fn (Alvo $a) => trim((string) $a->titulo) !== ''
+            ? $a
+            : new Alvo($a->listingTypeId, $titulos[$a->listingTypeId] ?? null, $a->ativo), $this->alvos);
+
+        $variantes = array_map(function (Variante $v) use ($precos) {
+            $proprios = (array) ($v->dados['precos'] ?? []);
+            foreach ($this->alvos as $alvo) {
+                $lt = $alvo->listingTypeId;
+                if (($proprios[$lt] ?? null) === null && isset($precos[$lt])) {
+                    $proprios[$lt] = (float) $precos[$lt];
+                }
+            }
+
+            return $v->comDados([...$v->dados, 'precos' => $proprios]);
+        }, $this->variantes);
+
+        return new self(
+            $this->categoriaId, $this->condicao, $this->atributos, $this->eixos, $variantes, $alvos, $this->imagens,
+            $this->fotosPorVariante, $this->incluirGeral, $this->descricao, $this->envio, $this->garantia,
+        );
+    }
+
     /** As variantes que vão para o ML: ativas e não órfãs. */
     public function variantesAtivas(): array
     {

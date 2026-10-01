@@ -47,8 +47,9 @@ Branch `feat/publicador-ml-261001`. Commits só locais até a primeira entrega c
 | F1.2 — CategorySchema, classificador, valor de atributo, troca de categoria | Feita em 01/10 (TC-30…41, 70…74) | `5036a94e` |
 | F1.3 — grupos de imagem | Feita em 01/10 (TC-50…55, 60) | `a070f02e` |
 | F1.4 — builder UP + PayloadPlan com alvos (legado fora: D10) | Feita em 01/10 (TC-01…05, 14, 31, 39, 41, 43, 90) | `55798348` |
-| F1.5 — validação L1/L2 + simulador "Você recebe" | Feita em 01/10 (TC-20…25, 30, 32 local, 38, 42, 43, 56, 57, 72…74, 100…102, 104, 105) | ver `git log` |
-| F1.6 — tabelas, models, repositório e migração do Anunciar antigo | Próxima | — |
+| F1.5 — validação L1/L2 + simulador "Você recebe" | Feita em 01/10 (TC-20…25, 30, 32 local, 38, 42, 43, 56, 57, 72…74, 100…102, 104, 105) | `a5938dbf` |
+| F1.6 — 15 tabelas, models, repositório, migração do Anunciar antigo | Feita em 01/10 (TC-05, 10, 58 persistência). Migration rodada no MariaDB local com `--path`: 0 coluna com `ON UPDATE`. Repositório lê e grava só o digitado; efetivos via `comEfetivos()`. | ver `git log` |
+| F1.7 — conta, CategorySchemaRepository, cliente HTTP do ML | Próxima | — |
 
 ## Resultado da Fase 0 (01/10/2026) — o que muda no plano
 
@@ -386,13 +387,13 @@ A especificação manda tornar essas configuráveis:
 | `04` | Proposta | Observação |
 |---|---|---|
 | `ml_account` | `ml_tokens` (existente, sem alteração) + snapshot do contexto | §5.1, decisão D3 |
-| `category_schema` | `ml_categoria_schemas` | `category_id` PK; `domain_id`; JSON brutos de `path_from_root`, `settings`, `attributes`, `technical_specs_input` e `sale_terms`; `schema_hash char(64)`; `fetched_at dateTime` |
-| `listing_draft` | `pub_rascunhos` | `oferta_id` FK **obrigatória e única** (decisão de 01/10; a empresa vem pela oferta); `status`; `revisao`; `step_state` json; `identificacao` json; `categoria_id`; `dominio_id`; `schema_hash`; `condicao`; `descricao`; `envio` json; `garantia` json; `fotos_por_variante`; `incluir_geral_nas_variantes` (padrão true); `modelo_publicacao` (snapshot); `conta_checada_em`; `ator` json |
+| `category_schema` | `ml_categoria_schemas` | `category_id` PK; `domain_id`; JSON brutos das 4 respostas (`categoria` inteira — `settings` e `path_from_root` vêm nela —, `atributos`, `technical_specs`, `sale_terms`); `schema_hash char(64)`; `fetched_at dateTime`. Nunca grava falha (V13). |
+| `listing_draft` | `pub_rascunhos` | `oferta_id` FK **obrigatória e única**, `cascadeOnDelete` como `estrutura_publicacoes` (excluir a oferta já manda os anúncios dela para a espera; os MLB não se perdem) — a empresa vem pela oferta; `status`; `revisao`; `step_state` json; `identificacao` json; `categoria_id`; `dominio_id`; `schema_hash`; `condicao`; `descricao`; `envio` json; `garantia` json; `fotos_por_variante`; `incluir_geral_nas_variantes` (padrão true); `modelo_publicacao` (snapshot); `conta_checada_em`; `ator` json |
 | *(novo)* alvo | `pub_rascunho_alvos` | `listing_type_id`; `titulo` (null = herda o título planejado da aba Anúncios); `ativo`; `posicao`; `unique(rascunho_id, listing_type_id)` |
 | `draft_attribute_value` | `pub_rascunho_atributos` | `attribute_id`, `value_id`, `value_name`, `value_number`, `value_unit`, `values_multi`, `origem` (user/inferred/catalog/migrated), `revisar`; `unique(rascunho_id, attribute_id)` |
 | `variation_axis` | `pub_eixos` | `attribute_id` null para eixo customizado; `nome_custom`; `posicao`; `defines_picture`. "No máximo 1 customizado" fica na validação V-VAR-02, porque o `unique` deixa passar vários `NULL`. |
 | `axis_value` | `pub_eixo_valores` | `value_id`, `value_name`, `chave_normalizada`, `posicao`, `removido` (**nunca apagar** enquanto houver variante órfã); `unique(eixo_id, chave_normalizada)` |
-| `variant` | `pub_variantes` | `combinacao_chave` (texto), `combinacao_hash char(64)`, `ativa`, `orfa`, `estoque`, `posicao`; `unique(rascunho_id, combinacao_hash)`. **Os ids do ML não ficam aqui** (decisão D5). |
+| `variant` | `pub_variantes` | `combinacao_chave` (texto), `combinacao_hash char(64)`, `ativa`, `orfa`, `publicada`, `estoque`, `estoque_depositos` json (D11: `store_id` → quantidade), `posicao`; `unique(rascunho_id, combinacao_hash)`. **Os ids do ML não ficam aqui** (decisão D5). |
 | `variant_axis_value` | `pub_variante_eixo_valores` | PK `(variante_id, eixo_id)` |
 | `variant_attribute_value` | `pub_variante_atributos` | `SELLER_SKU`, `GTIN`, `EMPTY_GTIN_REASON`…; `unique(variante_id, attribute_id)`. A unicidade do SKU no rascunho é garantida pela validação (V-VAR-13). |
 | *(novo)* preço por alvo | `pub_variante_precos` | `variante_id`, `alvo_id`, `preco decimal(12,2)` (null = herda a Precificação); `unique(variante_id, alvo_id)` |
@@ -400,9 +401,9 @@ A especificação manda tornar essas configuráveis:
 | `image_assignment` | `pub_imagem_atribuicoes` | `escopo` (GENERAL/GROUP), `grupo_chave`, `posicao`; `unique(imagem_id, grupo_chave)` |
 | `validation_run` + `validation_issue` | `pub_validacoes` | `revisao`, `camada`, `plano_hash`, `resultado`, `issues` json (no formato do `04` §2.12), `respostas_ml` json (bruto). Decisão D4. |
 | `publication` | `pub_publicacoes` | `revisao`, `modelo_publicacao`, `conta_snapshot` json, `plano_hash`, `status`, `chave_idempotencia`, `iniciada_em`, `concluida_em`, `ator` |
-| `publication_item` | `pub_publicacao_itens` | `alvo_id`, `indice`, `variante_ids` json, `mapa_variacoes` json (legado: índice do payload → `variante_id` → `ml_variation_id`), `payload` json, `payload_hash`, `status`, `tentativas`, `http_status`, `resposta` json (bruta), `ml_item_id`, `ml_user_product_id`, `avisos`, `descricao_status`, `enviado_em`, `criado_em` |
+| `publication_item` | `pub_publicacao_itens` | `indice`, `listing_type_id` e `variante_chave` **como texto** (é o registro do que foi enviado: sobrevive a edições do rascunho), `caminho` (`items` · `items_multiwarehouse` · `plano_b` — D11), `payload` json, `payload_hash`, `status`, `tentativas`, `http_status`, `resposta` json (bruta), `ml_item_id`, `ml_user_product_id`, `avisos` json, `descricao_status`, `enviado_em`, `criado_em`. Sem `mapa_variacoes`: era do legado (D10). |
 
-São 15 tabelas novas.
+São 15 tabelas novas (revisão de 01/10, antes da migration: D10 tirou o mapa do legado; D11 pôs o estoque por depósito na variante e o caminho no item).
 
 ### 4.3 O que acontece com o que já existe
 
