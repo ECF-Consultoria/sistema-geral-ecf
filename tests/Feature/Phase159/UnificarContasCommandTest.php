@@ -5,6 +5,11 @@ namespace Tests\Feature\Phase159;
 use App\Models\Company;
 use App\Models\DesempenhoCompanyScoreSnapshot;
 use App\Models\DesempenhoScoreSnapshot;
+use App\Models\NpsImputedAssignment;
+use App\Models\NpsResponse;
+use App\Models\NpsResponseScore;
+use App\Models\NpsScoreAssignment;
+use App\Models\NpsSurvey;
 use App\Services\Desempenho\CompanyScoreSnapshotWriter;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
@@ -163,6 +168,67 @@ class UnificarContasCommandTest extends TestCase
         ]);
     }
 
+    /**
+     * Monta survey completed + response + nps_response_scores +
+     * nps_score_assignments — só os campos que a etapa `nps_atribuicoes`
+     * precisa (JOIN por `completed_at`). Usa as factories de NpsSurvey/
+     * NpsResponse (campos novos de migrations futuras já vêm com default) e
+     * grava o score/atribuição direto via Eloquent (sem factory própria).
+     */
+    private function criarAtribuicaoNps(int $companyId, int $userId, string $role, string $completedAt, ?int $servicoId = null): int
+    {
+        $survey = NpsSurvey::factory()->create([
+            'company_id'   => $companyId,
+            'status'       => 'completed',
+            'completed_at' => $completedAt,
+        ]);
+
+        $response = NpsResponse::factory()->create(['survey_id' => $survey->id]);
+
+        $dimensao = $role === 'estrategista' ? 'estrategista' : 'analista';
+
+        $score = NpsResponseScore::create([
+            'nps_response_id' => $response->id,
+            'company_id'      => $companyId,
+            'dimensao'        => $dimensao,
+            'score_sum'       => 15,
+            'question_count'  => 3,
+            'average_score'   => 5,
+            'calculated_at'   => now(),
+        ]);
+
+        return NpsScoreAssignment::create([
+            'nps_response_id'       => $response->id,
+            'nps_response_score_id' => $score->id,
+            'company_id'            => $companyId,
+            'servico_id'            => $servicoId,
+            'service_setor'         => 'performance',
+            'role'                  => $role,
+            'user_id'               => $userId,
+            'average_score'         => 5,
+            'assigned_at'           => now(),
+        ])->id;
+    }
+
+    /** Monta uma linha de `nps_imputed_assignments` da regra "NPS não respondido conta 1". */
+    private function criarImputacaoNps(int $companyId, int $userId, string $role, string $competenciaNps, ?int $servicoId = null, ?int $surveyId = null): int
+    {
+        $surveyId ??= NpsSurvey::factory()->create(['company_id' => $companyId])->id;
+
+        return NpsImputedAssignment::create([
+            'survey_id'      => $surveyId,
+            'company_id'     => $companyId,
+            'servico_id'     => $servicoId,
+            'service_setor'  => 'performance',
+            'dimensao'       => $role === 'estrategista' ? 'estrategista' : 'analista',
+            'role'           => $role,
+            'user_id'        => $userId,
+            'competencia_nps' => $competenciaNps,
+            'nota'           => 1.00,
+            'status'         => 'provisorio',
+        ])->id;
+    }
+
     /** Assinatura das tabelas do núcleo, usada para provar "dry-run não muda nada". */
     private function assinaturaNucleo(): array
     {
@@ -223,7 +289,11 @@ class UnificarContasCommandTest extends TestCase
 
         // desativar_origem é SEMPRE a última etapa.
         $this->assertSame(
-            ['carteira', 'historico_gestao', 'cargos', 'desativar_origem'],
+            [
+                'carteira', 'historico_gestao', 'cargos',
+                'nps_atribuicoes', 'nps_imputacoes', 'snapshots_diarios', 'snapshots_empresa',
+                'desativar_origem',
+            ],
             array_column($plano['etapas'], 'chave')
         );
 
@@ -603,5 +673,204 @@ class UnificarContasCommandTest extends TestCase
         $exit2 = $this->chamar($this->opcoesBase(['--apply' => true]));
         $this->assertSame(1, $exit2);
         $this->assertSame(0, DB::table('unificacao_contas_backup')->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 16: atribuições de NPS da competência
+    // a partir do corte movem; competência anterior fica com a origem.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_atribuicoes_de_nps_da_competencia_a_partir_do_corte(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        // completed_at 2026-10-05 → competência 2026-09 (>= corte) → move.
+        $moveId = $this->criarAtribuicaoNps($this->companyAId, $this->origemId, 'estrategista', '2026-10-05 09:00:00');
+        // completed_at 2026-09-20 → competência 2026-08 (< corte) → fica.
+        $ficaId = $this->criarAtribuicaoNps($this->companyBId, $this->origemId, 'estrategista', '2026-09-20 09:00:00');
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame($this->destinoId, (int) DB::table('nps_score_assignments')->where('id', $moveId)->value('user_id'));
+        $this->assertSame($this->origemId, (int) DB::table('nps_score_assignments')->where('id', $ficaId)->value('user_id'));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 17: imputações da competência a partir
+    // do corte movem; colisão pelo grão do unique vira delete.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_move_imputacoes_de_nps_e_remove_colisao_pelo_grao_do_unique(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $moveId = $this->criarImputacaoNps($this->companyAId, $this->origemId, 'estrategista', '2026-10-01');
+        $ficaId = $this->criarImputacaoNps($this->companyBId, $this->origemId, 'estrategista', '2026-09-01');
+
+        // Colisão: destino já tem linha com o MESMO grão (survey_id, dimensao, role, servico_id).
+        $surveyColisaoId = NpsSurvey::factory()->create(['company_id' => $this->companyCId])->id;
+        $colisaoOrigemId = $this->criarImputacaoNps($this->companyCId, $this->origemId, 'estrategista', '2026-10-01', null, $surveyColisaoId);
+        $this->criarImputacaoNps($this->companyCId, $this->destinoId, 'estrategista', '2026-10-01', null, $surveyColisaoId);
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame($this->destinoId, (int) DB::table('nps_imputed_assignments')->where('id', $moveId)->value('user_id'));
+        $this->assertSame($this->origemId, (int) DB::table('nps_imputed_assignments')->where('id', $ficaId)->value('user_id'));
+
+        $this->assertSame(0, DB::table('nps_imputed_assignments')->where('id', $colisaoOrigemId)->count());
+        $this->assertSame(
+            1,
+            DB::table('nps_imputed_assignments')->where('company_id', $this->companyCId)->where('user_id', $this->destinoId)->count()
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 18: snapshot diário (cache) da origem
+    // a partir do corte some; anterior ao corte e o mensal ficam.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_remove_snapshot_diario_da_origem_a_partir_do_corte_mantendo_mensal(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $removidoId = DesempenhoScoreSnapshot::create([
+            'user_id' => $this->origemId, 'ref_date' => '2026-09-10', 'mes_referencia' => null,
+            'score' => 70, 'classificacao' => 'bom', 'breakdown_json' => [],
+        ])->id;
+
+        $ficaId = DesempenhoScoreSnapshot::create([
+            'user_id' => $this->origemId, 'ref_date' => '2026-08-31', 'mes_referencia' => null,
+            'score' => 60, 'classificacao' => 'atencao', 'breakdown_json' => [],
+        ])->id;
+
+        $mensalId = DesempenhoScoreSnapshot::create([
+            'user_id' => $this->origemId, 'ref_date' => '2026-08-01', 'mes_referencia' => '2026-08-01',
+            'score' => 65, 'classificacao' => 'bom', 'breakdown_json' => [],
+        ])->id;
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame(0, DesempenhoScoreSnapshot::where('id', $removidoId)->count());
+        $this->assertSame(1, DesempenhoScoreSnapshot::where('id', $ficaId)->count());
+        $this->assertSame(1, DesempenhoScoreSnapshot::where('id', $mensalId)->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 19: detalhe por empresa (cache) da
+    // origem a partir do corte some; consolidar_mes nunca é tocado.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_apply_remove_detalhe_por_empresa_cache_da_origem_mantendo_consolidado(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $warmCacheId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyAId, 'mes_referencia' => '2026-09-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE, 'gerado_em' => now(),
+        ])->id;
+
+        $snapshotDiarioId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyBId, 'mes_referencia' => '2026-10-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_SNAPSHOT_DIARIO, 'gerado_em' => now(),
+        ])->id;
+
+        $consolidarMesId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyCId, 'mes_referencia' => '2026-08-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_CONSOLIDAR_MES, 'gerado_em' => now(),
+        ])->id;
+
+        $exit = $this->chamar($this->opcoesBase(['--apply' => true]));
+        $this->assertSame(0, $exit);
+
+        $this->assertSame(0, DesempenhoCompanyScoreSnapshot::where('id', $warmCacheId)->count());
+        $this->assertSame(0, DesempenhoCompanyScoreSnapshot::where('id', $snapshotDiarioId)->count());
+        $this->assertSame(1, DesempenhoCompanyScoreSnapshot::where('id', $consolidarMesId)->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 20: aviso quando a coleta do NPS da
+    // competência de corte ainda não abriu.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_aviso_de_coleta_ainda_nao_aberta_e_etapa_nps_atribuicoes_vazia(): void
+    {
+        Carbon::setTestNow('2026-09-30 10:00:00');
+
+        $this->chamar($this->opcoesBase(['--json' => true]));
+        $plano = json_decode(Artisan::output(), true);
+
+        $avisos = implode(' | ', $plano['avisos']);
+        $this->assertStringContainsString('coleta', $avisos);
+        $this->assertStringContainsString('2026-10-01', $avisos);
+
+        $etapas = collect($plano['etapas'])->keyBy('chave');
+        $this->assertSame([], $etapas['nps_atribuicoes']['operacoes']);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 21: --desfazer restaura atribuições,
+    // imputações e snapshots removidos, com o mesmo id.
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_desfazer_restaura_nps_e_snapshots_removidos_com_mesmo_id(): void
+    {
+        Carbon::setTestNow('2026-10-15 10:00:00');
+
+        $atribId = $this->criarAtribuicaoNps($this->companyAId, $this->origemId, 'estrategista', '2026-10-05 09:00:00');
+        $imputId = $this->criarImputacaoNps($this->companyBId, $this->origemId, 'estrategista', '2026-10-01');
+        $snapDiarioId = DesempenhoScoreSnapshot::create([
+            'user_id' => $this->origemId, 'ref_date' => '2026-09-10', 'mes_referencia' => null,
+            'score' => 70, 'classificacao' => 'bom', 'breakdown_json' => [],
+        ])->id;
+        $snapEmpresaId = DesempenhoCompanyScoreSnapshot::create([
+            'user_id' => $this->origemId, 'company_id' => $this->companyCId, 'mes_referencia' => '2026-09-01',
+            'origem' => CompanyScoreSnapshotWriter::ORIGEM_WARM_CACHE, 'gerado_em' => now(),
+        ])->id;
+
+        $this->chamar($this->opcoesBase(['--apply' => true]));
+        $lote = DB::table('unificacao_contas_backup')->value('lote');
+        $this->assertNotNull($lote);
+
+        $this->assertSame($this->destinoId, (int) DB::table('nps_score_assignments')->where('id', $atribId)->value('user_id'));
+        $this->assertSame(0, DesempenhoScoreSnapshot::where('id', $snapDiarioId)->count());
+        $this->assertSame(0, DesempenhoCompanyScoreSnapshot::where('id', $snapEmpresaId)->count());
+
+        $exitApply = $this->chamar(['--desfazer' => $lote, '--apply' => true]);
+        $this->assertSame(0, $exitApply);
+
+        $this->assertSame($this->origemId, (int) DB::table('nps_score_assignments')->where('id', $atribId)->value('user_id'));
+        $this->assertSame($this->origemId, (int) DB::table('nps_imputed_assignments')->where('id', $imputId)->value('user_id'));
+        $this->assertSame(1, DesempenhoScoreSnapshot::where('id', $snapDiarioId)->where('user_id', $this->origemId)->count());
+        $this->assertSame(1, DesempenhoCompanyScoreSnapshot::where('id', $snapEmpresaId)->where('user_id', $this->origemId)->count());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Plano 159-06 — Task 1, Teste 22: censo classifica as 4 colunas novas
+    // como 'tratada', motivo "parcial: só competência >= corte".
+    // ═════════════════════════════════════════════════════════════════════
+
+    public function test_censo_classifica_colunas_de_nps_e_snapshots_como_tratada_parcial(): void
+    {
+        $this->chamar($this->opcoesBase(['--json' => true]));
+        $plano = json_decode(Artisan::output(), true);
+
+        $colunas = [
+            'nps_score_assignments.user_id',
+            'nps_imputed_assignments.user_id',
+            'desempenho_score_snapshots.user_id',
+            'desempenho_company_score_snapshots.user_id',
+        ];
+
+        foreach ($colunas as $chave) {
+            [$tabela, $coluna] = explode('.', $chave);
+            $linha = collect($plano['censo'])->first(fn ($c) => $c['tabela'] === $tabela && $c['coluna'] === $coluna);
+
+            $this->assertNotNull($linha, "{$chave} deveria aparecer no censo");
+            $this->assertSame('tratada', $linha['classificacao']);
+            $this->assertStringContainsString('parcial: só competência', $linha['motivo']);
+        }
     }
 }
