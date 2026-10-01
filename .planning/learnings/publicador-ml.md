@@ -85,3 +85,14 @@ Detalhes em `12-hipoteses-e-pendencias.md` §Resultado. Os que mais mudam códig
   fábrica / 6150835 sem garantia.
 - Autopeças: `GTIN` é `read_only` e `VEHICLE_TYPE` é `required` + `fixed` —
   `fixed`/`read_only` vencem `required`.
+
+## 5. Teste com `Http::fake` que muda no meio: mude o ESTADO, não o fake
+
+`Http::fake()` acumula, e o primeiro stub que casa vence. Chamar `Http::fake()`
+de novo no meio do teste para "o ML agora responde outra coisa" não tem efeito
+— e o teste pode PASSAR sem testar nada (aconteceu em 01/10 com "ML fora do ar
+usa o schema guardado": verde por engano). Padrão do Publicador: registrar o
+fake uma vez, com closures que leem propriedades do teste
+(`$this->fontesFora`, `$this->ajusteCategoria`), e mudar a propriedade
+(`tests/Feature/Publicador/CamadaMlTest.php`). Conferir com uma mutação que o
+teste quebra quando a regra some.

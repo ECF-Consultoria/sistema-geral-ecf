@@ -49,7 +49,8 @@ Branch `feat/publicador-ml-261001`. Commits só locais até a primeira entrega c
 | F1.4 — builder UP + PayloadPlan com alvos (legado fora: D10) | Feita em 01/10 (TC-01…05, 14, 31, 39, 41, 43, 90) | `55798348` |
 | F1.5 — validação L1/L2 + simulador "Você recebe" | Feita em 01/10 (TC-20…25, 30, 32 local, 38, 42, 43, 56, 57, 72…74, 100…102, 104, 105) | `a5938dbf` |
 | F1.6 — 15 tabelas, models, repositório, migração do Anunciar antigo | Feita em 01/10 (TC-05, 10, 58 persistência). Migration rodada no MariaDB local com `--path`: 0 coluna com `ON UPDATE`. Repositório lê e grava só o digitado; efetivos via `comEfetivos()`. | ver `git log` |
-| F1.7 — conta, CategorySchemaRepository, cliente HTTP do ML | Próxima | — |
+| F1.7 — cliente HTTP do ML, contexto da conta (com depósitos — D11), CategorySchemaRepository, `config/publicador.php` | Feita em 01/10 (TC-75, 86, 87, 88; falha da conta nunca vira clássico; falha do schema nunca é guardada; token nunca no log) | ver `git log` |
+| F1.8 — imagens: upload local, validação L1, envio ao ML | Próxima | — |
 
 ## Resultado da Fase 0 (01/10/2026) — o que muda no plano
 
