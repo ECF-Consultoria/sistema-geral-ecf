@@ -96,3 +96,40 @@ fake uma vez, com closures que leem propriedades do teste
 (`$this->fontesFora`, `$this->ajusteCategoria`), e mudar a propriedade
 (`tests/Feature/Publicador/CamadaMlTest.php`). Conferir com uma mutação que o
 teste quebra quando a regra some.
+
+## 6. Job em fatias: a próxima fatia é `release()`, nunca `dispatch()` de dentro do `handle`
+
+`PublicarRascunhoJob` trabalha ~45 s e volta para a fila. Com `self::dispatch()`
+dentro do `handle`, o driver `sync` (testes, máquina local sem worker) executa o
+novo Job NA HORA, dentro do anterior: um item `UNKNOWN` esperando a hora de
+reconciliar vira recursão sem pausa. `$this->release(15)` + `retryUntil()` faz o
+mesmo no Redis de produção e não recursa no `sync`. A trava (`Cache::lock` por
+publicação) cobre a fatia inteira mais um POST lento: quem não pega a trava faz
+`release(20)` — e o item gravado `SENT` antes do POST garante que uma reentrega
+vá para a reconciliação, nunca para um segundo POST.
+
+## 7. Conferência visual sem tocar no MariaDB compartilhado
+
+O MariaDB local é de todas as sessões; semear cenário nele atropela os outros.
+O que funcionou (01/10, F1.11):
+
+- `DB_CONNECTION=sqlite DB_DATABASE=<arquivo> SESSION_DRIVER=file ... php artisan migrate --force`
+  (as migrations rodam em SQLite — é o que os testes usam);
+- semear com um PHP avulso que dá `bootstrap()` no app e se recusa a rodar se
+  `database.default` não for `sqlite`;
+- sessão do portal sem passar pelo código por e-mail: gravar o arquivo em
+  `storage/framework/sessions/<id>` com `serialize([guard('portal')->getName() => id, 'portal_empresa_id' => id, '_token' => …])`
+  e mandar o cookie `encrypt(CookieValuePrefix::create(nome, chave).$id, false)`;
+- servidor: `php -S` **de dentro de `public/`** com o `server.php` do framework —
+  ele usa a pasta atual como `public`; de fora, `index.php` não é achado;
+- `node_modules` do worktree: junção para outro worktree com `package-lock.json`
+  idêntico (conferir com `diff` antes). O checkout principal pode estar atrás
+  (em 01/10 não tinha `@dnd-kit`).
+
+## 8. Duas pegadinhas de teste
+
+- `Storage::assertExists($caminho, $mensagem)` NÃO aceita mensagem: o 2º
+  argumento é o CONTEÚDO esperado do arquivo — o teste falha comparando bytes.
+- Timeout do ML em teste: `Http::failedConnection()` (lança `ConnectionException`).
+  Uma closure que lança outra exceção não fica em `Http::recorded()` — conte as
+  chamadas por um contador próprio.
