@@ -46,6 +46,8 @@ Detalhes e evidências no `12-hipoteses-e-pendencias.md` §Resultado.
 | `technical_specs/input` agrupa **todos** os atributos; `allow_custom_value` diz se aceita texto livre | O formulário dinâmico (F1.2/F1.11) usa os grupos e esse sinal |
 | **A conta de teste é uma loja real** (não usuário de teste do ML) | O E2E (F1.12) cria anúncio visível de verdade: título "Item de teste - Não ofertar", fechar logo depois, e sua confirmação antes de cada `POST /items` |
 | **Não há conta clássica** para testar o legado | O H-26 e o E2E legado (TC-93) ficam sem conta (pergunta 12 abaixo) |
+| **Nenhum cliente no modelo antigo:** as 33 contas de cliente com token válido são User Products (leitura autorizada, só `/users/me`) | Recomendação: o builder legado sai do caminho crítico (pergunta 13) |
+| **23 das 33 contas têm `warehouse_management`** (estoque em vários depósitos) | Bloquear essas contas na Fase 1 (RN-04/V-VAR-20) barraria ~70% dos clientes. Precisa de um `validate` numa conta com a tag antes de decidir (pergunta 14). |
 
 ---
 
@@ -541,7 +543,9 @@ Cada entrega é pequena, tem os testes junto no mesmo commit e é verificável s
 9. **Falso positivo do `validate`.** Para `lost_me1_by_user`, aceito "aviso com Estou ciente" em vez de bloquear (decisão D7)?
 10. **Admin `/mlb/anuncios`.** Fica fora até 20/10? Quer o conserto isolado da guarda RN-03 (V1) lá, e a remoção do EAN aleatório?
 11. **Prints do Seller Center.** Ainda não chegaram. Eles mudam a apresentação da F1.11, não o núcleo.
-12. **Conta clássica (pergunta nova, 01/10).** A #459 é UP. Para fechar o legado (H-26 e TC-93) é preciso uma conta **sem** `user_product_seller`. Existe alguma conectada que possa ser usada só para `validate`? Sem ela, o builder legado sai testado só contra a documentação e as fixtures.
+13. **Builder legado (01/10).** Nenhuma das 33 contas de cliente usa o modelo antigo. Proposta: o builder legado deixa a Fase 1; conta no modelo antigo é detectada e bloqueada com mensagem clara. Isso muda a decisão [ARQ] do `01` §4.3 ("os dois builders na Fase 1"), e a justificativa é a medição.
+14. **Contas com `warehouse_management` (01/10).** 23 das 33. A spec manda bloqueá-las na Fase 1. Proposta: rodar o `validate` (sem publicar) numa delas para ver o que o ML exige no estoque, e só então decidir se bloqueia ou se o Publicador as atende.
+12. **Conta clássica (pergunta nova, 01/10).** **Respondida:** autorizado usar conta de cliente só para conferência — mas não existe nenhuma no modelo antigo. A #459 é UP. Para fechar o legado (H-26 e TC-93) é preciso uma conta **sem** `user_product_seller`. Existe alguma conectada que possa ser usada só para `validate`? Sem ela, o builder legado sai testado só contra a documentação e as fixtures.
 
 ### 7.2 Riscos
 
