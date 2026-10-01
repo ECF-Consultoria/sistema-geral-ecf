@@ -1,0 +1,37 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/sites/MLB/listing_prices",
+        "query": {
+            "price": 150,
+            "category_id": "MLB31447",
+            "listing_type_id": "gold_pro",
+            "currency_id": "BRL",
+            "logistic_type": "drop_off",
+            "shipping_mode": "me2"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "currency_id": "BRL",
+        "free_relist": false,
+        "listing_exposure": "highest",
+        "listing_fee_amount": 0,
+        "listing_fee_details": {
+            "fixed_fee": 0,
+            "gross_amount": 0
+        },
+        "listing_type_id": "gold_pro",
+        "listing_type_name": "Premium",
+        "requires_picture": true,
+        "sale_fee_amount": 22.5,
+        "sale_fee_details": {
+            "fixed_fee": 0,
+            "gross_amount": 22.5,
+            "percentage_fee": 15
+        },
+        "stop_time": "2046-09-26T00:00:00.000-04:00"
+    },
+    "capturado_em": "2026-10-01T15:48:47-03:00"
+}

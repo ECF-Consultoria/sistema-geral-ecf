@@ -1,0 +1,43 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/sites/MLB/domain_discovery/search",
+        "query": {
+            "q": "furadeira de impacto eletrica 127v",
+            "limit": 8
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": [
+        {
+            "domain_id": "MLB-ELECTRIC_DRILLS",
+            "domain_name": "Furadeiras elétricas",
+            "category_id": "MLB189007",
+            "category_name": "De Mão",
+            "attributes": [
+                {
+                    "id": "VOLTAGE",
+                    "name": "Voltagem",
+                    "value_id": "39205162",
+                    "value_name": "127V"
+                }
+            ]
+        },
+        {
+            "domain_id": "MLB-HAMMER_DRILLS",
+            "domain_name": "Marteletes",
+            "category_id": "MLB188791",
+            "category_name": "Marteletes",
+            "attributes": [
+                {
+                    "id": "VOLTAGE",
+                    "name": "Voltagem",
+                    "value_id": "39205162",
+                    "value_name": "127V"
+                }
+            ]
+        }
+    ],
+    "capturado_em": "2026-10-01T15:48:33-03:00"
+}

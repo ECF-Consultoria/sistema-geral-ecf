@@ -1,0 +1,1825 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/catalog_domains/MLB-VEHICLE_BRAKE_PADS",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "id": "MLB-VEHICLE_BRAKE_PADS",
+        "name": "Pastilhas de freio para carros e caminhonetes",
+        "numeric_id": 3018,
+        "multisite_catalog": false,
+        "is_generic": false,
+        "checked_categories": false,
+        "allow_primitive_products": true,
+        "catalogable": "NOT_DEFINED",
+        "date_created": "2015-03-12T14:15:19Z",
+        "domain_structure_last_updated": "2026-10-01T10:30:50Z",
+        "apd_last_updated": "2026-09-30T17:22:02Z",
+        "products_last_updated": "2026-10-01T04:36:18Z",
+        "last_updated": "2026-10-01T10:30:50Z",
+        "compatibilities": [],
+        "pictures": [
+            {
+                "id": "864985-MLU28711882226_112018",
+                "url": "http://http2.mlstatic.com/D_NQ_NP_864985-MLU28711882226_112018-F.jpg",
+                "secure_url": "https://http2.mlstatic.com/D_NQ_NP_864985-MLU28711882226_112018-F.jpg",
+                "size": "607x494"
+            }
+        ],
+        "attributes": [
+            {
+                "id": "BRAND",
+                "name": "Marca",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "5059525",
+                        "value_name": "ATE"
+                    },
+                    {
+                        "value_id": "2515741",
+                        "value_name": "Bendix"
+                    },
+                    {
+                        "value_id": "4946",
+                        "value_name": "Bosch"
+                    },
+                    {
+                        "value_id": "2786247",
+                        "value_name": "Brembo"
+                    },
+                    {
+                        "value_id": "5059528",
+                        "value_name": "Girling"
+                    },
+                    {
+                        "value_id": "5059527",
+                        "value_name": "Lucas"
+                    },
+                    {
+                        "value_id": "5059524",
+                        "value_name": "Perrot"
+                    },
+                    {
+                        "value_id": "2786016",
+                        "value_name": "Sumitomo"
+                    },
+                    {
+                        "value_id": "2786025",
+                        "value_name": "TRW"
+                    },
+                    {
+                        "value_id": "5059526",
+                        "value_name": "Teves"
+                    }
+                ],
+                "hints": "Informe a marca verdadeira do produto ou 'Genérica' se não tiver marca.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "LINE",
+                "name": "Linha",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI"
+                    ]
+                },
+                "tooltip": "Indica a série ou grupo do produto de acordo com a classificação da marca ou fabricante, por exemplo: a linha “111” da marca “xxx” agrupa diferentes modelos de produtos.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MODEL",
+                "name": "Modelo",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PART_NUMBER",
+                "name": "Número de peça",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ"
+                    ]
+                },
+                "tooltip": "Adicione essa informação para que os compradores encontrem o seu anúncio mais rapidamente.",
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MATERIAL",
+                "name": "Material",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "5059544",
+                        "value_name": "Baixos metais"
+                    },
+                    {
+                        "value_id": "2282603",
+                        "value_name": "Cerâmica"
+                    },
+                    {
+                        "value_id": "112648",
+                        "value_name": "Metal"
+                    },
+                    {
+                        "value_id": "362186",
+                        "value_name": "Orgânico"
+                    },
+                    {
+                        "value_id": "362188",
+                        "value_name": "Semimetálica"
+                    }
+                ],
+                "tooltip": "É a matéria-prima usada para fabricar o seu produto.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "POSITION",
+                "name": "Posição",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "RO",
+                        "THI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "13701104",
+                        "value_name": "Dianteira"
+                    },
+                    {
+                        "value_id": "42089747",
+                        "value_name": "Dianteira esquerda"
+                    },
+                    {
+                        "value_id": "40668606",
+                        "value_name": "Dianteira direita"
+                    },
+                    {
+                        "value_id": "14276179",
+                        "value_name": "Dianteira/Traseira"
+                    },
+                    {
+                        "value_id": "42089748",
+                        "value_name": "Traseira esquerda"
+                    },
+                    {
+                        "value_id": "42089749",
+                        "value_name": "Traseira direita"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "QUANTITY_OF_PADS",
+                "name": "Quantidade de pastilhas",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "filter_config": {
+                    "filter_numeric_max_value": 4,
+                    "filter_numeric_min_value": 1,
+                    "filter_numeric_values": "DISCRETE",
+                    "filter_show_lower_bound": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INCLUDES_WEAR_SENSORS",
+                "name": "Inclui sensores de desgaste",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "ORIGIN",
+                "name": "Origem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "FMSI_NUMBER",
+                "name": "Código FMSI",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "VEHICLE_TYPE",
+                "name": "Tipo de veículo",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "11377043",
+                        "value_name": "Carro/Caminhonete"
+                    },
+                    {
+                        "value_id": "15279767",
+                        "value_name": "Moto/Quadriciclo"
+                    },
+                    {
+                        "value_id": "13222040",
+                        "value_name": "Linha Pesada"
+                    },
+                    {
+                        "value_id": "4369996",
+                        "value_name": "Agrícola"
+                    },
+                    {
+                        "value_id": "24035241",
+                        "value_name": "Náutico"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "GTIN",
+                "name": "Código universal de produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": true,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "UHI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                "hints": "Pode ser um EAN, UPC ou outro GTIN",
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "OEM",
+                "name": "Código OEM",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VDP"
+                    ]
+                },
+                "tooltip": "É possível incluir letras e números.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_HEIGHT",
+                "name": "Altura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WIDTH",
+                "name": "Largura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_LENGTH",
+                "name": "Comprimento da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WEIGHT",
+                "name": "Peso da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "mass",
+                    "allowed_units": [
+                        "g",
+                        "kg",
+                        "lb",
+                        "mg",
+                        "oz"
+                    ],
+                    "default_unit": "g",
+                    "comparation_unit": "kg"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INMETRO_CERTIFICATION_REGISTRATION_NUMBER",
+                "name": "Número de registro/certificação INMETRO",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV"
+                    ]
+                },
+                "tooltip": "Informe a numeração de máximo 21 dígitos, com ponto, hífen ou barra (/), se houver. É o registro no Instituto Nacional de Metrologia, Qualidade e Tecnologia (INMETRO).",
+                "input_group": "PRODUCT_REGISTRIES",
+                "output_group": [
+                    "PRODUCT_REGISTRIES"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "INVOICE_PRODUCT_NAME",
+                "name": "Nome do produto na nota fiscal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IMPORT_DECLARATION_NUMBER",
+                "name": "Número da DI",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_CBT",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLM",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "Número de 15 dígitos do documento aduaneiro que ampara a importação desta mercadoria somente venda de primeira mão). Este dado será usado para a emissão de notas fiscais vinculadas à venda deste produto.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_DATA_SOURCE",
+                "name": "Origem do dado do pacote de fábrica",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SAT_KEY",
+                "name": "Chave do produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021094",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": " A chave do produto é um código atribuído pelo SAT para classificar os produtos comercializados no país",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_KEY",
+                "name": "Chave da unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021108",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": "A chave da unidade de medida é um código padronizado pelo SAT.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_DESCRIPTION",
+                "name": "Unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "A unidade de medida é a forma como o SAT quantifica um produto. Exemplos: peça, caixa, kit.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IVA_FOR_RESALE",
+                "name": "IVA para revenda",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "81861612",
+                        "value_name": "Isento"
+                    },
+                    {
+                        "value_id": "81861613",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "81861614",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "81861616",
+                        "value_name": "16%"
+                    }
+                ],
+                "tooltip": "Escolha a alíquota do IVA (Imposto sobre o Valor Agregado) que deve ser paga pelo comprador em cada produto: 0%, 16% ou Isento.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IEPS",
+                "name": "IEPS",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "82021095",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "82021096",
+                        "value_name": "3%"
+                    },
+                    {
+                        "value_id": "82021097",
+                        "value_name": "6%"
+                    },
+                    {
+                        "value_id": "82021098",
+                        "value_name": "7%"
+                    },
+                    {
+                        "value_id": "82021099",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "82021100",
+                        "value_name": "9%"
+                    },
+                    {
+                        "value_id": "82021101",
+                        "value_name": "25%"
+                    },
+                    {
+                        "value_id": "82021102",
+                        "value_name": "26.5%"
+                    },
+                    {
+                        "value_id": "82021103",
+                        "value_name": "30%"
+                    },
+                    {
+                        "value_id": "82021104",
+                        "value_name": "30.4%"
+                    },
+                    {
+                        "value_id": "82021105",
+                        "value_name": "50%"
+                    },
+                    {
+                        "value_id": "82021106",
+                        "value_name": "53%"
+                    },
+                    {
+                        "value_id": "82021107",
+                        "value_name": "160%"
+                    }
+                ],
+                "tooltip": "scolha a alíquota do IEPS (Imposto Especial sobre Produção e Serviços) que deve ser paga pelo comprador nos produtos das categorias: combustível, bebidas e tabaco.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "REGULATORY_INFORMATION_QR_CODE",
+                "name": "Código QR de Informações Regulatórias",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "PICTURE_ID"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "OUTER_PAD_THICKNESS",
+                "name": "Espessura da pastilha exterior",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INNER_PAD_THICKNESS",
+                "name": "Espessura da pastilha interior",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INCLUDES_BRAKE_PAD_SHIMS",
+                "name": "Inclui folha antirruído",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SENSORS_NUMBER",
+                "name": "Quantidade de sensores",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BRAKE_PAD_LONG",
+                "name": "Comprimento",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BRAKE_PAD_WIDTH",
+                "name": "Largura",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BRAKE_PAD_THICKNESS",
+                "name": "Espessura da pastilha de freio",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INCLUDES_MOUNTING_HARDWARE",
+                "name": "Inclui kit de montagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_ASBESTOS_FREE",
+                "name": "É sem amianto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BRAKE_SYSTEM",
+                "name": "Sistema de freios",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "5059549",
+                        "value_name": "Disco"
+                    },
+                    {
+                        "value_id": "5059550",
+                        "value_name": "Tambor"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "ITEM_CONDITION",
+                "name": "Condição do item",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "2230284",
+                        "value_name": "Novo"
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Condição",
+                        "es": "Condición"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MPN",
+                "name": "MPN",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 2,
+                    "apd_tags": [
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            }
+        ],
+        "metadata": {
+            "business_unit": "core",
+            "use_brand_and_part_number_matcher": true,
+            "vertical": "ACC"
+        },
+        "settings": {
+            "max_title_length": 200,
+            "max_pictures_per_item": 12,
+            "max_variations_allowed": 100
+        }
+    },
+    "capturado_em": "2026-10-01T15:48:49-03:00"
+}

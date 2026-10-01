@@ -1,0 +1,4116 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/categories/MLB193945/technical_specs/input",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "groups": [
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "BRAND",
+                                "name": "Marca",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Marca",
+                        "ui_config": {
+                            "tooltip": "É o nome da empresa que cria o produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "hint": "Informe a marca verdadeira do produto ou 'Genérica' se não tiver marca.",
+                            "example": "Consulogo"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "LINE",
+                                "name": "Linha",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "10201879",
+                                        "name": "Gerencial"
+                                    },
+                                    {
+                                        "id": "10201878",
+                                        "name": "Presidencial"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Linha",
+                        "ui_config": {
+                            "tooltip": "Indica a série ou grupo do produto de acordo com a classificação da marca ou fabricante, por exemplo: a linha “111” da marca “xxx” agrupa diferentes modelos de produtos.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "Racing Series"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "MODEL",
+                                "name": "Modelo",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo",
+                        "ui_config": {
+                            "tooltip": "É o nome específico do produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "GAM720"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "ALPHANUMERIC_MODEL",
+                                "name": "Modelo alfanumérico",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo alfanumérico",
+                        "ui_config": {
+                            "tooltip": "É um código que combina letras e números. Você pode encontrá-lo na embalagem ou na documentação do produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "COLOR",
+                                "name": "Cor",
+                                "relevance": 1,
+                                "tags": [
+                                    "defines_picture",
+                                    "allow_variations"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "283148",
+                                        "name": "Coral-claro"
+                                    },
+                                    {
+                                        "id": "283149",
+                                        "name": "Coral"
+                                    },
+                                    {
+                                        "id": "283150",
+                                        "name": "Laranja-claro"
+                                    },
+                                    {
+                                        "id": "283151",
+                                        "name": "Laranja-escuro"
+                                    },
+                                    {
+                                        "id": "283156",
+                                        "name": "Cáqui"
+                                    },
+                                    {
+                                        "id": "283157",
+                                        "name": "Verde-limão"
+                                    },
+                                    {
+                                        "id": "283158",
+                                        "name": "Verde-musgo"
+                                    },
+                                    {
+                                        "id": "283152",
+                                        "name": "Chocolate"
+                                    },
+                                    {
+                                        "id": "283153",
+                                        "name": "Palha"
+                                    },
+                                    {
+                                        "id": "283154",
+                                        "name": "Marrom-claro"
+                                    },
+                                    {
+                                        "id": "283155",
+                                        "name": "Marrom-escuro"
+                                    },
+                                    {
+                                        "id": "283164",
+                                        "name": "Dourado"
+                                    },
+                                    {
+                                        "id": "51993",
+                                        "name": "Vermelho"
+                                    },
+                                    {
+                                        "id": "283165",
+                                        "name": "Cinza"
+                                    },
+                                    {
+                                        "id": "51994",
+                                        "name": "Rosa"
+                                    },
+                                    {
+                                        "id": "283160",
+                                        "name": "Azul-turquesa"
+                                    },
+                                    {
+                                        "id": "51996",
+                                        "name": "Terracota"
+                                    },
+                                    {
+                                        "id": "283161",
+                                        "name": "Azul-marinho"
+                                    },
+                                    {
+                                        "id": "283162",
+                                        "name": "Índigo"
+                                    },
+                                    {
+                                        "id": "51998",
+                                        "name": "Bordô"
+                                    },
+                                    {
+                                        "id": "283163",
+                                        "name": "Rosa-chiclete"
+                                    },
+                                    {
+                                        "id": "52000",
+                                        "name": "Laranja"
+                                    },
+                                    {
+                                        "id": "52001",
+                                        "name": "Bege"
+                                    },
+                                    {
+                                        "id": "52003",
+                                        "name": "Nude"
+                                    },
+                                    {
+                                        "id": "52005",
+                                        "name": "Marrom"
+                                    },
+                                    {
+                                        "id": "52007",
+                                        "name": "Amarelo"
+                                    },
+                                    {
+                                        "id": "52008",
+                                        "name": "Creme"
+                                    },
+                                    {
+                                        "id": "52010",
+                                        "name": "Ocre"
+                                    },
+                                    {
+                                        "id": "52012",
+                                        "name": "Dourado-escuro"
+                                    },
+                                    {
+                                        "id": "52014",
+                                        "name": "Verde"
+                                    },
+                                    {
+                                        "id": "52015",
+                                        "name": "Verde-claro"
+                                    },
+                                    {
+                                        "id": "52019",
+                                        "name": "Verde-escuro"
+                                    },
+                                    {
+                                        "id": "52021",
+                                        "name": "Azul-celeste"
+                                    },
+                                    {
+                                        "id": "52022",
+                                        "name": "Água"
+                                    },
+                                    {
+                                        "id": "52024",
+                                        "name": "Azul-petróleo"
+                                    },
+                                    {
+                                        "id": "52028",
+                                        "name": "Azul"
+                                    },
+                                    {
+                                        "id": "52029",
+                                        "name": "Azul-claro"
+                                    },
+                                    {
+                                        "id": "52031",
+                                        "name": "Azul-aço"
+                                    },
+                                    {
+                                        "id": "52033",
+                                        "name": "Azul-escuro"
+                                    },
+                                    {
+                                        "id": "52035",
+                                        "name": "Violeta"
+                                    },
+                                    {
+                                        "id": "52036",
+                                        "name": "Lavanda"
+                                    },
+                                    {
+                                        "id": "52038",
+                                        "name": "Lilás"
+                                    },
+                                    {
+                                        "id": "52042",
+                                        "name": "Fúcsia"
+                                    },
+                                    {
+                                        "id": "52043",
+                                        "name": "Rosa-claro"
+                                    },
+                                    {
+                                        "id": "52045",
+                                        "name": "Rosa-pálido"
+                                    },
+                                    {
+                                        "id": "52047",
+                                        "name": "Violeta-escuro"
+                                    },
+                                    {
+                                        "id": "52049",
+                                        "name": "Preto"
+                                    },
+                                    {
+                                        "id": "52051",
+                                        "name": "Cinza-escuro"
+                                    },
+                                    {
+                                        "id": "52053",
+                                        "name": "Prateado"
+                                    },
+                                    {
+                                        "id": "52055",
+                                        "name": "Branco"
+                                    },
+                                    {
+                                        "id": "338779",
+                                        "name": "Ciano"
+                                    }
+                                ]
+                            },
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "MAIN_COLOR",
+                                "name": "Cor principal",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2450295",
+                                        "metadata": {
+                                            "rgb": "000000"
+                                        },
+                                        "name": "Preto"
+                                    },
+                                    {
+                                        "id": "2450293",
+                                        "metadata": {
+                                            "rgb": "1717FF"
+                                        },
+                                        "name": "Azul"
+                                    },
+                                    {
+                                        "id": "2450307",
+                                        "metadata": {
+                                            "rgb": "FF0000"
+                                        },
+                                        "name": "Vermelho"
+                                    },
+                                    {
+                                        "id": "2450311",
+                                        "metadata": {
+                                            "rgb": "9F00FF"
+                                        },
+                                        "name": "Violeta"
+                                    },
+                                    {
+                                        "id": "2450291",
+                                        "metadata": {
+                                            "rgb": "A0522D"
+                                        },
+                                        "name": "Marrom"
+                                    },
+                                    {
+                                        "id": "2450314",
+                                        "metadata": {
+                                            "rgb": "0DA600"
+                                        },
+                                        "name": "Verde"
+                                    },
+                                    {
+                                        "id": "2450327",
+                                        "metadata": {
+                                            "rgb": "FF8C00"
+                                        },
+                                        "name": "Laranja"
+                                    },
+                                    {
+                                        "id": "2450278",
+                                        "metadata": {
+                                            "rgb": "83DDFF"
+                                        },
+                                        "name": "Azul celeste"
+                                    },
+                                    {
+                                        "id": "2450312",
+                                        "metadata": {
+                                            "rgb": "FCB1BE"
+                                        },
+                                        "name": "Rosa"
+                                    },
+                                    {
+                                        "id": "2450289",
+                                        "metadata": {
+                                            "rgb": "FFD700"
+                                        },
+                                        "name": "Dourado"
+                                    },
+                                    {
+                                        "id": "2450303",
+                                        "metadata": {
+                                            "rgb": "CBCFD0"
+                                        },
+                                        "name": "Prateado"
+                                    },
+                                    {
+                                        "id": "2450296",
+                                        "metadata": {
+                                            "rgb": "FFED00"
+                                        },
+                                        "name": "Amarelo"
+                                    },
+                                    {
+                                        "id": "2450294",
+                                        "metadata": {
+                                            "rgb": "E1E1E1"
+                                        },
+                                        "name": "Cinza"
+                                    },
+                                    {
+                                        "id": "2450308",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Branco"
+                                    },
+                                    {
+                                        "id": "46671867",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Multicolorido"
+                                    },
+                                    {
+                                        "id": "2450281",
+                                        "metadata": {
+                                            "rgb": "F5F3DC",
+                                            "parent_id": "2450291"
+                                        },
+                                        "name": "Bege"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COLOR_INPUT",
+                        "label": "Cor",
+                        "ui_config": {
+                            "connector": ""
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "UPHOLSTERY_MATERIAL",
+                                "name": "Material do estofamento",
+                                "relevance": 1,
+                                "tags": [
+                                    "defines_picture",
+                                    "allow_variations"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "2395698",
+                                        "name": "Borracha"
+                                    },
+                                    {
+                                        "id": "482783",
+                                        "name": "Couro"
+                                    },
+                                    {
+                                        "id": "570721",
+                                        "name": "Couro sintético"
+                                    },
+                                    {
+                                        "id": "466793",
+                                        "name": "Algodão"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Material do estofamento",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "SALE_FORMAT",
+                                "name": "Formato de venda",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "1359391",
+                                        "name": "Unidade"
+                                    },
+                                    {
+                                        "id": "1359392",
+                                        "name": "Kit"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Formato de venda",
+                        "ui_config": {
+                            "tooltip": "É o formato em que seu produto será vendido, podendo ser por pack ou unidade. Kit: significa vender várias unidades idênticas, agrupadas em conjunto, por exemplo, 2 cadeiras de escritório. Unidade: significa vender o produto individualmente, por exemplo, 1 cadeira de escritório.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "UNITS_PER_PACK",
+                                "name": "Quantidade de unidades",
+                                "relevance": 1,
+                                "rendering_conditions": {
+                                    "inactive_render_mode": "HIDDEN",
+                                    "visibility_conditions": {
+                                        "conditions": [
+                                            {
+                                                "attribute_id": "SALE_FORMAT",
+                                                "operator": "IN",
+                                                "values": [
+                                                    {
+                                                        "id": "1359392",
+                                                        "name": "Pack"
+                                                    },
+                                                    {
+                                                        "name": "Kit"
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "operator": "AND"
+                                    }
+                                },
+                                "tags": [],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Quantidade de unidades",
+                        "ui_config": {
+                            "tooltip": "É a quantidade de produtos em cada pacote, por exemplo, 3 cadeiras de escritório.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "MAIN",
+                "label": "Características principais",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "INMETRO_CERTIFICATION_REGISTRATION_NUMBER",
+                                "name": "Número de registro/certificação INMETRO",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Número de registro/certificação INMETRO",
+                        "ui_config": {
+                            "tooltip": "Informe a numeração de máximo 21 dígitos, com ponto, hífen ou barra (/), se houver. É o registro no Instituto Nacional de Metrologia, Qualidade e Tecnologia (INMETRO).",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "PRODUCT_REGISTRIES",
+                "label": "Registros de produtos",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "VALUE_ADDED_TAX",
+                                "name": "Imposto sobre o valor acrescentado",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Imposto sobre o valor acrescentado",
+                        "ui_config": {
+                            "tooltip": "O imposto sobre valor agregado é aplicado sobre o preço de venda das compras de bens ou serviços.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IMPORT_DUTY",
+                                "name": "Imposto de importação",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "49553239",
+                                        "name": "0 %"
+                                    },
+                                    {
+                                        "id": "49553240",
+                                        "name": "1 %"
+                                    },
+                                    {
+                                        "id": "49553241",
+                                        "name": "2.5 %"
+                                    },
+                                    {
+                                        "id": "49553242",
+                                        "name": "4 %"
+                                    },
+                                    {
+                                        "id": "49553243",
+                                        "name": "5 %"
+                                    },
+                                    {
+                                        "id": "49553244",
+                                        "name": "8 %"
+                                    },
+                                    {
+                                        "id": "49553245",
+                                        "name": "9.5 %"
+                                    },
+                                    {
+                                        "id": "49553246",
+                                        "name": "10 %"
+                                    },
+                                    {
+                                        "id": "49553247",
+                                        "name": "14 %"
+                                    },
+                                    {
+                                        "id": "49553248",
+                                        "name": "15 %"
+                                    },
+                                    {
+                                        "id": "49553249",
+                                        "name": "18 %"
+                                    },
+                                    {
+                                        "id": "49553250",
+                                        "name": "19 %"
+                                    },
+                                    {
+                                        "id": "49553251",
+                                        "name": "20 %"
+                                    },
+                                    {
+                                        "id": "49553252",
+                                        "name": "23 %"
+                                    },
+                                    {
+                                        "id": "49553253",
+                                        "name": "25 %"
+                                    },
+                                    {
+                                        "id": "49553254",
+                                        "name": "26 %"
+                                    },
+                                    {
+                                        "id": "49553255",
+                                        "name": "70 %"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Imposto de importação",
+                        "ui_config": {
+                            "tooltip": "O imposto interno é aplicado apenas a produtos específicos considerados supérfluos ou de luxo, como bebidas alcohólicas, fornos de micro-ondas, entre outros.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "PRICING",
+                "label": "Preços",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "PACKAGE_WIDTH",
+                                "name": "Largura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "INSTALLATION_SERVICE",
+                                "name": "Serviço de instalação",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Serviço de instalação",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    },
+                                    {
+                                        "id": "kg",
+                                        "name": "kg"
+                                    },
+                                    {
+                                        "id": "lb",
+                                        "name": "lb"
+                                    },
+                                    {
+                                        "id": "mg",
+                                        "name": "mg"
+                                    },
+                                    {
+                                        "id": "oz",
+                                        "name": "oz"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            },
+                            {
+                                "id": "kg",
+                                "name": "kg"
+                            },
+                            {
+                                "id": "lb",
+                                "name": "lb"
+                            },
+                            {
+                                "id": "mg",
+                                "name": "mg"
+                            },
+                            {
+                                "id": "oz",
+                                "name": "oz"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "FILTRABLE_COLOR",
+                                "name": "Cor filtrável",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2450295",
+                                        "metadata": {
+                                            "rgb": "000000"
+                                        },
+                                        "name": "Preto"
+                                    },
+                                    {
+                                        "id": "2450293",
+                                        "metadata": {
+                                            "rgb": "1717FF"
+                                        },
+                                        "name": "Azul"
+                                    },
+                                    {
+                                        "id": "2450307",
+                                        "metadata": {
+                                            "rgb": "FF0000"
+                                        },
+                                        "name": "Vermelho"
+                                    },
+                                    {
+                                        "id": "2450311",
+                                        "metadata": {
+                                            "rgb": "9F00FF"
+                                        },
+                                        "name": "Violeta"
+                                    },
+                                    {
+                                        "id": "2450291",
+                                        "metadata": {
+                                            "rgb": "A0522D"
+                                        },
+                                        "name": "Marrom"
+                                    },
+                                    {
+                                        "id": "2450314",
+                                        "metadata": {
+                                            "rgb": "0DA600"
+                                        },
+                                        "name": "Verde"
+                                    },
+                                    {
+                                        "id": "2450327",
+                                        "metadata": {
+                                            "rgb": "FF8C00"
+                                        },
+                                        "name": "Laranja"
+                                    },
+                                    {
+                                        "id": "2450278",
+                                        "metadata": {
+                                            "rgb": "83DDFF"
+                                        },
+                                        "name": "Azul celeste"
+                                    },
+                                    {
+                                        "id": "2450312",
+                                        "metadata": {
+                                            "rgb": "FCB1BE"
+                                        },
+                                        "name": "Rosa"
+                                    },
+                                    {
+                                        "id": "2450289",
+                                        "metadata": {
+                                            "rgb": "FFD700"
+                                        },
+                                        "name": "Dourado"
+                                    },
+                                    {
+                                        "id": "2450303",
+                                        "metadata": {
+                                            "rgb": "CBCFD0"
+                                        },
+                                        "name": "Prateado"
+                                    },
+                                    {
+                                        "id": "2450296",
+                                        "metadata": {
+                                            "rgb": "FFED00"
+                                        },
+                                        "name": "Amarelo"
+                                    },
+                                    {
+                                        "id": "2450294",
+                                        "metadata": {
+                                            "rgb": "E1E1E1"
+                                        },
+                                        "name": "Cinza"
+                                    },
+                                    {
+                                        "id": "2450308",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Branco"
+                                    },
+                                    {
+                                        "id": "46671867",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Multicolorido"
+                                    },
+                                    {
+                                        "id": "2450281",
+                                        "metadata": {
+                                            "rgb": "F5F3DC",
+                                            "parent_id": "2450291"
+                                        },
+                                        "name": "Bege"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COLOR_INPUT",
+                        "label": "Cor filtrável",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "OFFICE_CHAIR_TYPE",
+                                "name": "Tipo de cadeira de escritório",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "13016812",
+                                        "name": "Presidente"
+                                    },
+                                    {
+                                        "id": "13016813",
+                                        "name": "Executiva"
+                                    },
+                                    {
+                                        "id": "13016815",
+                                        "name": "Escritório"
+                                    },
+                                    {
+                                        "id": "13016816",
+                                        "name": "Caixa"
+                                    },
+                                    {
+                                        "id": "13016817",
+                                        "name": "Visita"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de cadeira de escritório",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "STRUCTURE_MATERIALS",
+                                "name": "Materiais da estrutura",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "4086949",
+                                        "name": "Aço inoxidável"
+                                    },
+                                    {
+                                        "id": "2431883",
+                                        "name": "Ferro"
+                                    },
+                                    {
+                                        "id": "2431881",
+                                        "name": "Madeira"
+                                    },
+                                    {
+                                        "id": "2748302",
+                                        "name": "Plástico"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Materiais da estrutura",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "Polipropileno; Madeira; Aço; Alumínio"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "FILLING_MATERIALS",
+                                "name": "Materiais do enchimento",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "5008909",
+                                        "name": "Borracha"
+                                    },
+                                    {
+                                        "id": "5897875",
+                                        "name": "Espuma"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Materiais do enchimento",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "FOOT_RING_MATERIALS",
+                                "name": "Materiais do aro para pés",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "16602171",
+                                        "name": "Náilon"
+                                    },
+                                    {
+                                        "id": "16602172",
+                                        "name": "Metal"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Materiais do aro para pés",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "BACKREST_HEIGHT",
+                                "name": "Altura do encosto",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura do encosto",
+                        "ui_config": {
+                            "tooltip": "É a medida sem o apoio de cabeça.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "81 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "SEAT_DEPTH",
+                                "name": "Profundidade do assento",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Profundidade do assento",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "OFFICE_CHAIR_WIDTH",
+                                "name": "Largura da cadeira",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da cadeira",
+                        "ui_config": {
+                            "tooltip": "É a largura total, incluindo os apoios de braço.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "60 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "MAX_CHAIR_HEIGHT",
+                                "name": "Altura máxima da cadeira",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura máxima da cadeira",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "142 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "kg",
+                                "hierarchy": "FAMILY",
+                                "id": "MAX_WEIGHT_SUPPORTED",
+                                "name": "Peso máximo suportado",
+                                "relevance": 1,
+                                "tags": [],
+                                "units": [
+                                    {
+                                        "id": "kg",
+                                        "name": "kg"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "kg",
+                        "label": "Peso máximo suportado",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "kg",
+                                "name": "kg"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "REQUIRES_ASSEMBLY",
+                                "name": "Requer montagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Requer montagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_ADJUSTABLE_HEIGHT",
+                                "name": "Altura ajustável",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_WHEELS",
+                                "name": "Rodas",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_FOOT_RING",
+                                "name": "Aro para pés",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_ARMREST",
+                                "name": "Apoio de braços",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_RECLINING_BACKREST",
+                                "name": "Encosto reclinável",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_LIGHTS",
+                                "name": "Luzes",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_ADJUSTABLE_ARMREST",
+                                "name": "Apoio de braços ajustável",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGING_BOXES_NUMBER",
+                                "name": "Quantidade de caixas de embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Quantidade de caixas de embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_HEADREST",
+                                "name": "Apoio de cabeça",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de fábrica",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de fábrica",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_FOOTREST",
+                                "name": "Apoio de pés",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_GAMER",
+                                "name": "Gamer",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "tooltip": "Especificar se é compatível com videogames.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_ERGONOMIC",
+                                "name": "Ergonômica",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_SWIVEL",
+                                "name": "Giratória",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "DETAILED_MODEL",
+                                "name": "Modelo detalhado",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo detalhado",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "GTIN",
+                                "name": "Código universal de produto",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "multivalued",
+                                    "used_hidden",
+                                    "variation_attribute",
+                                    "conditional_required",
+                                    "validate"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Código universal de produto",
+                        "ui_config": {
+                            "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "hint": "Pode ser um EAN, UPC ou outro GTIN"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "EMPTY_GTIN_REASON",
+                                "name": "Motivo de GTIN vazio",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute",
+                                    "conditional_required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "17055158",
+                                        "name": "O produto é uma peça artesanal"
+                                    },
+                                    {
+                                        "id": "17055159",
+                                        "name": "O produto é um kit ou pack"
+                                    },
+                                    {
+                                        "id": "17055160",
+                                        "name": "O produto não tem código cadastrado"
+                                    },
+                                    {
+                                        "id": "17055161",
+                                        "name": "Outro motivo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Motivo de GTIN vazio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "INCLUDES_ASSEMBLY_MANUAL",
+                                "name": "Manual de montagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Inclui",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "VERTICAL_TAGS",
+                                "name": "Tags vertical",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "53559152",
+                                        "name": "is_tom_brand"
+                                    },
+                                    {
+                                        "id": "53559153",
+                                        "name": "is_polos"
+                                    },
+                                    {
+                                        "id": "53559154",
+                                        "name": "is_social_brands"
+                                    },
+                                    {
+                                        "id": "53559155",
+                                        "name": "is_beauty_premium"
+                                    },
+                                    {
+                                        "id": "53559156",
+                                        "name": "has_dimensions_images"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tags vertical",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "AGID",
+                                "name": "AGID",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "AGID",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "LUMBAR_SUPPORT_TYPE",
+                                "name": "Tipo de apoio lombar",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "10201908",
+                                        "name": "Fixo"
+                                    },
+                                    {
+                                        "id": "10201909",
+                                        "name": "Regulável"
+                                    },
+                                    {
+                                        "id": "13035824",
+                                        "name": "Dinâmico"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de apoio lombar",
+                        "ui_config": {
+                            "tooltip": "É fixa quando faz parte da curvatura da cadeira ou ajustável quando diferentes alturas podem ser adaptadas.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true,
+                            "example": "Regulável"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "STRUCTURE_FINISH",
+                                "name": "Acabamento da estrutura",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "1185555",
+                                        "name": "Galvanizado"
+                                    },
+                                    {
+                                        "id": "1185554",
+                                        "name": "Cromado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Acabamento da estrutura",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "LEAN_BACK_MECHANISM_TYPES",
+                                "name": "Tipos de mecanismos de reclinação",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "10201910",
+                                        "name": "Sincrônico"
+                                    },
+                                    {
+                                        "id": "10201911",
+                                        "name": "Multimodal"
+                                    },
+                                    {
+                                        "id": "10219265",
+                                        "name": "Encosto reclinável"
+                                    },
+                                    {
+                                        "id": "10204587",
+                                        "name": "Basculante"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipos de mecanismos de reclinação",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "Basculante; Sincrônico; Encosto reclinável; Multimodall"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "BACKREST_TILT_RANGE",
+                                "name": "Faixa de inclinação do encosto",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Faixa de inclinação do encosto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "90° x 180°"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "OFFICE_CHAIR_HEIGHT",
+                                "name": "Altura da cadeira",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da cadeira",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "OFFICE_CHAIR_DEPTH",
+                                "name": "Profundidade da cadeira",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Profundidade da cadeira",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "BASE_DIAMETER",
+                                "name": "Diâmetro da base",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Diâmetro da base",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "kg",
+                                "hierarchy": "FAMILY",
+                                "id": "OFFICE_CHAIR_WEIGHT",
+                                "name": "Peso da cadeira",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    },
+                                    {
+                                        "id": "kg",
+                                        "name": "kg"
+                                    },
+                                    {
+                                        "id": "lb",
+                                        "name": "lb"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "kg",
+                        "label": "Peso da cadeira",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            },
+                            {
+                                "id": "kg",
+                                "name": "kg"
+                            },
+                            {
+                                "id": "lb",
+                                "name": "lb"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "SEAT_WIDTH",
+                                "name": "Largura do assento",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura do assento",
+                        "ui_config": {
+                            "tooltip": "É a largura total, sem incluir os apoios de braço.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "45 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "BACKREST_WIDTH",
+                                "name": "Largura do encosto",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura do encosto",
+                        "ui_config": {
+                            "tooltip": "É a medida sem os apoios de braço.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "81 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "MIN_HEIGHT_FROM_FLOOR_TO_SEAT",
+                                "name": "Altura mínima do chão ao assento",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura mínima do chão ao assento",
+                        "ui_config": {
+                            "tooltip": "Faz referência à distância mínima que existe entre o chão e o assento, em uma cadeira regulável.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "43 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "MAX_HEIGHT_FROM_FLOOR_TO_SEAT",
+                                "name": "Altura máxima do chão ao assento\r",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura máxima do chão ao assento\r",
+                        "ui_config": {
+                            "tooltip": "Faz referência à distância máxima que existe entre o chão e o assento, em uma cadeira regulável.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "51 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "MIN_CHAIR_HEIGHT",
+                                "name": "Altura mínima da cadeira",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura mínima da cadeira",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "132 cm"
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "MPN",
+                                "name": "MPN",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "MPN",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ITEM_CONDITION",
+                                "name": "Condição do item",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2230581",
+                                        "name": "Usado"
+                                    },
+                                    {
+                                        "id": "2230284",
+                                        "name": "Novo"
+                                    },
+                                    {
+                                        "id": "2230582",
+                                        "name": "Recondicionado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Condição do item",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ASSEMBLY_TYPE",
+                                "name": "Tipo de montagem",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "88746805",
+                                        "name": "Com ferramentas básicas"
+                                    },
+                                    {
+                                        "id": "88746806",
+                                        "name": "Com ferramentas especializadas"
+                                    },
+                                    {
+                                        "id": "88746804",
+                                        "name": "Sem ferramentas"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de montagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_SKU",
+                                "name": "SKU",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "SKU",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de envio",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de envio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WIDTH",
+                                "name": "Largura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAZMAT_TRANSPORTABILITY",
+                                "name": "Transportabilidade Hazmat",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "13414677",
+                                        "name": "Livre"
+                                    },
+                                    {
+                                        "id": "13414678",
+                                        "name": "Limitado"
+                                    },
+                                    {
+                                        "id": "13414679",
+                                        "name": "Excedido"
+                                    },
+                                    {
+                                        "id": "13414680",
+                                        "name": "Indeterminado"
+                                    },
+                                    {
+                                        "id": "75989961",
+                                        "name": "Notificado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Transportabilidade Hazmat",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_KIT",
+                                "name": "Kit",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "DESCRIPTIVE_TAGS",
+                                "name": "Tags descritivos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Tags descritivos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_CHEMICAL_FEATURES",
+                                "name": "Características químicas do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7651070",
+                                        "name": "Inflamável"
+                                    },
+                                    {
+                                        "id": "7651071",
+                                        "name": "Aerosol"
+                                    },
+                                    {
+                                        "id": "7651072",
+                                        "name": "Oxidante"
+                                    },
+                                    {
+                                        "id": "7651073",
+                                        "name": "Corrosivo"
+                                    },
+                                    {
+                                        "id": "7651074",
+                                        "name": "Explosivo"
+                                    },
+                                    {
+                                        "id": "7651075",
+                                        "name": "Tóxico ou infeccioso"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características químicas do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "FOODS_AND_DRINKS",
+                                "name": "Alimentos e bebidas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575926",
+                                        "name": "Para humanos"
+                                    },
+                                    {
+                                        "id": "7575927",
+                                        "name": "Para animais"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Alimentos e bebidas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEDICINES",
+                                "name": "Medicamentos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575930",
+                                        "name": "Para humanos com receita médica"
+                                    },
+                                    {
+                                        "id": "7575931",
+                                        "name": "Para humanos sem receita médica"
+                                    },
+                                    {
+                                        "id": "7575932",
+                                        "name": "Para animais com receita médica"
+                                    },
+                                    {
+                                        "id": "7575933",
+                                        "name": "Para animais sem receita médica"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Medicamentos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "BATTERIES_FEATURES",
+                                "name": "Características das baterias",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575934",
+                                        "name": "Lítio stand-alone (separadas ou isolado)"
+                                    },
+                                    {
+                                        "id": "7575935",
+                                        "name": "De lítio instaladas"
+                                    },
+                                    {
+                                        "id": "7575936",
+                                        "name": "Para carros (ácido-chumbo)"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características das baterias",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SHIPMENT_PACKING",
+                                "name": "Embalagem do envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435891",
+                                        "name": "Flyer"
+                                    },
+                                    {
+                                        "id": "7435892",
+                                        "name": "Caixa"
+                                    },
+                                    {
+                                        "id": "7575937",
+                                        "name": "Envelope"
+                                    },
+                                    {
+                                        "id": "7575939",
+                                        "name": "Auto-expedível"
+                                    },
+                                    {
+                                        "id": "27037932",
+                                        "name": "BEX"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Embalagem do envío",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ADDITIONAL_INFO_REQUIRED",
+                                "name": "Informação adicional requerida",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435893",
+                                        "name": "Possui código IMEI"
+                                    },
+                                    {
+                                        "id": "7435894",
+                                        "name": "Possui número de série"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Informação adicional requerida",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "EXCLUDED_PLATFORMS",
+                                "name": "Plataformas excluídas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "9936777",
+                                        "name": "Android"
+                                    },
+                                    {
+                                        "id": "9936778",
+                                        "name": "iOS"
+                                    },
+                                    {
+                                        "id": "9936779",
+                                        "name": "Desktop"
+                                    },
+                                    {
+                                        "id": "9936780",
+                                        "name": "Mobile"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Plataformas excluídas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_SUITABLE_FOR_SHIPMENT",
+                                "name": "Adequado para envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_DATA_SOURCE",
+                                "name": "Fonte do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Fonte do produto",
+                        "ui_config": {
+                            "tooltip": "Indique o país de origem do produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "Brasil"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "LIMITED_MARKETPLACE_VISIBILITY_REASONS",
+                                "name": "Razões de visibilidade limitada no Marketplace",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "24219544",
+                                        "name": "Pharma"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Razões de visibilidade limitada no Marketplace",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAS_COMPATIBILITIES",
+                                "name": "Tem compatibilidades",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Tem compatibilidades",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "CATALOG_TITLE",
+                                "name": "Título de catálogo",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Título de catálogo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SEARCH_ENHANCEMENT_FIELDS",
+                                "name": "Campos de aprimoramento de pesquisa",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Campos de aprimoramento de pesquisa",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_FEATURES",
+                                "name": "Características do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435885",
+                                        "name": "Contém líquido"
+                                    },
+                                    {
+                                        "id": "7435883",
+                                        "name": "Frágil"
+                                    },
+                                    {
+                                        "id": "7435888",
+                                        "name": "Com validade"
+                                    },
+                                    {
+                                        "id": "8847339",
+                                        "name": "Sem validade"
+                                    },
+                                    {
+                                        "id": "7575917",
+                                        "name": "Desinfetante e saneante"
+                                    },
+                                    {
+                                        "id": "7575924",
+                                        "name": "MAPA"
+                                    },
+                                    {
+                                        "id": "7575923",
+                                        "name": "Saúde e correlatos"
+                                    },
+                                    {
+                                        "id": "8721108",
+                                        "name": "Volumoso"
+                                    },
+                                    {
+                                        "id": "10490116",
+                                        "name": "Não voável"
+                                    },
+                                    {
+                                        "id": "12928414",
+                                        "name": "Não rotacionável"
+                                    },
+                                    {
+                                        "id": "41722098",
+                                        "name": "Dobrável"
+                                    },
+                                    {
+                                        "id": "52092586",
+                                        "name": "Magnético"
+                                    },
+                                    {
+                                        "id": "52233302",
+                                        "name": "Pode rolar"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_NEW_OFFER",
+                                "name": "Nova oferta",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SYI_PYMES_ID",
+                                "name": "syi pymes id",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "syi pymes id",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_FLAMMABLE",
+                                "name": "Inflamável",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_POSITIVE_IMPACT",
+                                "name": "Impacto positivo",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "OTHER",
+                "label": "Outros",
+                "relevance": 1,
+                "ui_config": []
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T15:48:36-03:00"
+}

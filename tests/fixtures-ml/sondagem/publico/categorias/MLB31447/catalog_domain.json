@@ -1,0 +1,3590 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/catalog_domains/MLB-T_SHIRTS",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "id": "MLB-T_SHIRTS",
+        "name": "Camisetas",
+        "numeric_id": 3409,
+        "multisite_catalog": false,
+        "is_generic": false,
+        "checked_categories": false,
+        "allow_primitive_products": true,
+        "catalogable": "NO",
+        "date_created": "2017-03-22T19:04:13Z",
+        "domain_structure_last_updated": "2026-10-01T10:30:57Z",
+        "apd_last_updated": "2026-09-29T13:44:02Z",
+        "products_last_updated": "2026-04-10T12:14:08Z",
+        "last_updated": "2026-10-01T10:30:57Z",
+        "compatibilities": [],
+        "pictures": [
+            {
+                "id": "796467-MLU30780963225_052019",
+                "url": "http://http2.mlstatic.com/D_NQ_NP_796467-MLU30780963225_052019-F.jpg",
+                "secure_url": "https://http2.mlstatic.com/D_NQ_NP_796467-MLU30780963225_052019-F.jpg",
+                "size": "510x548"
+            }
+        ],
+        "attributes": [
+            {
+                "id": "BRAND",
+                "name": "Marca",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "GRF",
+                        "MREQ_CBT",
+                        "MREQ_MCO",
+                        "MREQ_MEC",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLC",
+                        "MREQ_MLM",
+                        "MREQ_MLU",
+                        "MREQ_MPE"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "2786622",
+                        "value_name": "AY Not Dead"
+                    },
+                    {
+                        "value_id": "23128",
+                        "value_name": "Abercrombie & Fitch"
+                    },
+                    {
+                        "value_id": "433262",
+                        "value_name": "Admit One"
+                    },
+                    {
+                        "value_id": "433264",
+                        "value_name": "Airborn"
+                    },
+                    {
+                        "value_id": "433265",
+                        "value_name": "Altamont"
+                    },
+                    {
+                        "value_id": "14868",
+                        "value_name": "Armani"
+                    },
+                    {
+                        "value_id": "433267",
+                        "value_name": "Ayres"
+                    },
+                    {
+                        "value_id": "433263",
+                        "value_name": "Aéropostale"
+                    },
+                    {
+                        "value_id": "433268",
+                        "value_name": "Bolivia"
+                    },
+                    {
+                        "value_id": "2731558",
+                        "value_name": "Brooks"
+                    },
+                    {
+                        "value_id": "433269",
+                        "value_name": "Brooksfield"
+                    },
+                    {
+                        "value_id": "252895",
+                        "value_name": "Bross"
+                    },
+                    {
+                        "value_id": "428833",
+                        "value_name": "Burton"
+                    },
+                    {
+                        "value_id": "252310",
+                        "value_name": "Converse"
+                    },
+                    {
+                        "value_id": "433270",
+                        "value_name": "Cultura"
+                    },
+                    {
+                        "value_id": "511135",
+                        "value_name": "DC"
+                    },
+                    {
+                        "value_id": "2631277",
+                        "value_name": "Daniel Hechter"
+                    },
+                    {
+                        "value_id": "23461",
+                        "value_name": "Diesel"
+                    },
+                    {
+                        "value_id": "33243",
+                        "value_name": "Disney"
+                    },
+                    {
+                        "value_id": "23618",
+                        "value_name": "Dolce & Gabbana"
+                    },
+                    {
+                        "value_id": "433272",
+                        "value_name": "Ed Hardy"
+                    },
+                    {
+                        "value_id": "433273",
+                        "value_name": "Emerica"
+                    },
+                    {
+                        "value_id": "428837",
+                        "value_name": "Fox Head"
+                    },
+                    {
+                        "value_id": "433274",
+                        "value_name": "GAP"
+                    },
+                    {
+                        "value_id": "433275",
+                        "value_name": "Garzon García"
+                    },
+                    {
+                        "value_id": "35977846",
+                        "value_name": "Generic"
+                    },
+                    {
+                        "value_id": "433276",
+                        "value_name": "GoodPeople"
+                    },
+                    {
+                        "value_id": "433277",
+                        "value_name": "Grisino"
+                    },
+                    {
+                        "value_id": "14724",
+                        "value_name": "Guess"
+                    },
+                    {
+                        "value_id": "24338",
+                        "value_name": "Hollister"
+                    },
+                    {
+                        "value_id": "433278",
+                        "value_name": "Inkpronta"
+                    },
+                    {
+                        "value_id": "433279",
+                        "value_name": "Inside"
+                    },
+                    {
+                        "value_id": "433280",
+                        "value_name": "Jazmin Chebar"
+                    },
+                    {
+                        "value_id": "2153504",
+                        "value_name": "John L. Cook"
+                    },
+                    {
+                        "value_id": "23863",
+                        "value_name": "Kosiuko"
+                    },
+                    {
+                        "value_id": "23001",
+                        "value_name": "Lacoste"
+                    },
+                    {
+                        "value_id": "433282",
+                        "value_name": "Lee"
+                    },
+                    {
+                        "value_id": "14679",
+                        "value_name": "Levi's"
+                    },
+                    {
+                        "value_id": "235060",
+                        "value_name": "Mistral"
+                    },
+                    {
+                        "value_id": "14671",
+                        "value_name": "Nike"
+                    },
+                    {
+                        "value_id": "433283",
+                        "value_name": "No Fear"
+                    },
+                    {
+                        "value_id": "433284",
+                        "value_name": "Old Navy"
+                    },
+                    {
+                        "value_id": "24073",
+                        "value_name": "Ona Saez"
+                    },
+                    {
+                        "value_id": "433285",
+                        "value_name": "Ossira"
+                    },
+                    {
+                        "value_id": "154970",
+                        "value_name": "Paula Cahen D'Anvers"
+                    },
+                    {
+                        "value_id": "433286",
+                        "value_name": "Penguin"
+                    },
+                    {
+                        "value_id": "130933",
+                        "value_name": "Polo Ralph Lauren"
+                    },
+                    {
+                        "value_id": "433287",
+                        "value_name": "Pony"
+                    },
+                    {
+                        "value_id": "240356",
+                        "value_name": "Prototype"
+                    },
+                    {
+                        "value_id": "23132",
+                        "value_name": "Puma"
+                    },
+                    {
+                        "value_id": "55691",
+                        "value_name": "Quiksilver"
+                    },
+                    {
+                        "value_id": "9188",
+                        "value_name": "Reebok"
+                    },
+                    {
+                        "value_id": "433288",
+                        "value_name": "Reef"
+                    },
+                    {
+                        "value_id": "150271",
+                        "value_name": "Reserva"
+                    },
+                    {
+                        "value_id": "433289",
+                        "value_name": "Rever Pass"
+                    },
+                    {
+                        "value_id": "26680",
+                        "value_name": "Rip Curl"
+                    },
+                    {
+                        "value_id": "433290",
+                        "value_name": "Rusty"
+                    },
+                    {
+                        "value_id": "433291",
+                        "value_name": "Siamo Fuori"
+                    },
+                    {
+                        "value_id": "433292",
+                        "value_name": "Sismo"
+                    },
+                    {
+                        "value_id": "26704",
+                        "value_name": "Soho"
+                    },
+                    {
+                        "value_id": "428844",
+                        "value_name": "Stone"
+                    },
+                    {
+                        "value_id": "428938",
+                        "value_name": "Sweet"
+                    },
+                    {
+                        "value_id": "433293",
+                        "value_name": "Tannery"
+                    },
+                    {
+                        "value_id": "433294",
+                        "value_name": "Tascani"
+                    },
+                    {
+                        "value_id": "14711",
+                        "value_name": "Tommy Hilfiger"
+                    },
+                    {
+                        "value_id": "415948",
+                        "value_name": "Topper"
+                    },
+                    {
+                        "value_id": "433295",
+                        "value_name": "Tucci"
+                    },
+                    {
+                        "value_id": "415950",
+                        "value_name": "Under Armour"
+                    },
+                    {
+                        "value_id": "124578",
+                        "value_name": "Vans"
+                    },
+                    {
+                        "value_id": "433296",
+                        "value_name": "Wanama"
+                    },
+                    {
+                        "value_id": "44392",
+                        "value_name": "Wrangler"
+                    },
+                    {
+                        "value_id": "170888",
+                        "value_name": "X Games"
+                    },
+                    {
+                        "value_id": "433297",
+                        "value_name": "Zara"
+                    },
+                    {
+                        "value_id": "14810",
+                        "value_name": "adidas"
+                    }
+                ],
+                "hints": "Informe a marca verdadeira do produto ou 'Generic' se não tiver marca.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "LINE",
+                "name": "Linha",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MODEL",
+                "name": "Modelo",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "GRF",
+                        "MREQ_CBT",
+                        "MREQ_MCO",
+                        "MREQ_MEC",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLC",
+                        "MREQ_MLM",
+                        "MREQ_MLU",
+                        "MREQ_MPE"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "GENDER",
+                "name": "Gênero",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "GRF",
+                        "GTREQ",
+                        "MREQ",
+                        "MREQ_CBT"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "339665",
+                        "value_name": "Feminino"
+                    },
+                    {
+                        "value_id": "339666",
+                        "value_name": "Masculino"
+                    },
+                    {
+                        "value_id": "339668",
+                        "value_name": "Meninas"
+                    },
+                    {
+                        "value_id": "339667",
+                        "value_name": "Meninos"
+                    },
+                    {
+                        "value_id": "371795",
+                        "value_name": "Bebês"
+                    },
+                    {
+                        "value_id": "19159491",
+                        "value_name": "Sem gênero infantil"
+                    },
+                    {
+                        "value_id": "110461",
+                        "value_name": "Sem gênero"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "AGE_GROUP",
+                "name": "Idade",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "RO",
+                        "THI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "6725189",
+                        "value_name": "Adultos"
+                    },
+                    {
+                        "value_id": "1065183",
+                        "value_name": "Crianças"
+                    },
+                    {
+                        "value_id": "371795",
+                        "value_name": "Bebês"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "GARMENT_TYPE",
+                "name": "Tipo de roupa",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ",
+                        "MREQ_CBT"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "12038970",
+                        "value_name": "Camiseta"
+                    },
+                    {
+                        "value_id": "12038971",
+                        "value_name": "Camisa polo"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SALE_FORMAT",
+                "name": "Formato de venda",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "DPP"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "1359391",
+                        "value_name": "Unidade"
+                    },
+                    {
+                        "value_id": "1359392",
+                        "value_name": "Kit"
+                    }
+                ],
+                "tooltip": "É a forma como você vai vender o seu produto; pode ser em um kit ou individualmente. Kit significa vender várias unidades idênticas agrupadas, como por exemplo, 2 camisetas. Individual implica vender o produto separadamente, por exemplo, apenas 1 camiseta única.",
+                "output_group": [
+                    "SALES_CHARACTERISTICS"
+                ],
+                "input_component_config": {
+                    "group_id": "SALE_FORMAT"
+                },
+                "calculated": false
+            },
+            {
+                "id": "COLOR",
+                "name": "Cor",
+                "catalog_required": false,
+                "catalog_child_required": true,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "DPI",
+                        "DPP",
+                        "MREQ_CBT",
+                        "MREQ_MCO",
+                        "MREQ_MEC",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLC",
+                        "MREQ_MLM",
+                        "MREQ_MLU",
+                        "MREQ_MPE",
+                        "VPK"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "283148",
+                        "value_name": "Coral-claro"
+                    },
+                    {
+                        "value_id": "283149",
+                        "value_name": "Coral"
+                    },
+                    {
+                        "value_id": "283150",
+                        "value_name": "Laranja-claro"
+                    },
+                    {
+                        "value_id": "283151",
+                        "value_name": "Laranja-escuro"
+                    },
+                    {
+                        "value_id": "283156",
+                        "value_name": "Cáqui"
+                    },
+                    {
+                        "value_id": "283157",
+                        "value_name": "Verde-limão"
+                    },
+                    {
+                        "value_id": "283158",
+                        "value_name": "Verde-musgo"
+                    },
+                    {
+                        "value_id": "283152",
+                        "value_name": "Chocolate"
+                    },
+                    {
+                        "value_id": "283153",
+                        "value_name": "Palha"
+                    },
+                    {
+                        "value_id": "283154",
+                        "value_name": "Marrom-claro"
+                    },
+                    {
+                        "value_id": "283155",
+                        "value_name": "Marrom-escuro"
+                    },
+                    {
+                        "value_id": "283164",
+                        "value_name": "Dourado"
+                    },
+                    {
+                        "value_id": "51993",
+                        "value_name": "Vermelho"
+                    },
+                    {
+                        "value_id": "283165",
+                        "value_name": "Cinza"
+                    },
+                    {
+                        "value_id": "51994",
+                        "value_name": "Rosa"
+                    },
+                    {
+                        "value_id": "283160",
+                        "value_name": "Azul-turquesa"
+                    },
+                    {
+                        "value_id": "51996",
+                        "value_name": "Terracota"
+                    },
+                    {
+                        "value_id": "283161",
+                        "value_name": "Azul-marinho"
+                    },
+                    {
+                        "value_id": "283162",
+                        "value_name": "Índigo"
+                    },
+                    {
+                        "value_id": "51998",
+                        "value_name": "Bordô"
+                    },
+                    {
+                        "value_id": "283163",
+                        "value_name": "Rosa-chiclete"
+                    },
+                    {
+                        "value_id": "52000",
+                        "value_name": "Laranja"
+                    },
+                    {
+                        "value_id": "52001",
+                        "value_name": "Bege"
+                    },
+                    {
+                        "value_id": "52003",
+                        "value_name": "Nude"
+                    },
+                    {
+                        "value_id": "52005",
+                        "value_name": "Marrom"
+                    },
+                    {
+                        "value_id": "52007",
+                        "value_name": "Amarelo"
+                    },
+                    {
+                        "value_id": "52008",
+                        "value_name": "Creme"
+                    },
+                    {
+                        "value_id": "52010",
+                        "value_name": "Ocre"
+                    },
+                    {
+                        "value_id": "52012",
+                        "value_name": "Dourado-escuro"
+                    },
+                    {
+                        "value_id": "52014",
+                        "value_name": "Verde"
+                    },
+                    {
+                        "value_id": "52015",
+                        "value_name": "Verde-claro"
+                    },
+                    {
+                        "value_id": "52019",
+                        "value_name": "Verde-escuro"
+                    },
+                    {
+                        "value_id": "52021",
+                        "value_name": "Azul-celeste"
+                    },
+                    {
+                        "value_id": "52022",
+                        "value_name": "Água"
+                    },
+                    {
+                        "value_id": "52024",
+                        "value_name": "Azul-petróleo"
+                    },
+                    {
+                        "value_id": "52028",
+                        "value_name": "Azul"
+                    },
+                    {
+                        "value_id": "52029",
+                        "value_name": "Azul-claro"
+                    },
+                    {
+                        "value_id": "52031",
+                        "value_name": "Azul-aço"
+                    },
+                    {
+                        "value_id": "52033",
+                        "value_name": "Azul-escuro"
+                    },
+                    {
+                        "value_id": "52035",
+                        "value_name": "Violeta"
+                    },
+                    {
+                        "value_id": "52036",
+                        "value_name": "Lavanda"
+                    },
+                    {
+                        "value_id": "52038",
+                        "value_name": "Lilás"
+                    },
+                    {
+                        "value_id": "52042",
+                        "value_name": "Fúcsia"
+                    },
+                    {
+                        "value_id": "52043",
+                        "value_name": "Rosa-claro"
+                    },
+                    {
+                        "value_id": "52045",
+                        "value_name": "Rosa-pálido"
+                    },
+                    {
+                        "value_id": "52047",
+                        "value_name": "Violeta-escuro"
+                    },
+                    {
+                        "value_id": "52049",
+                        "value_name": "Preto"
+                    },
+                    {
+                        "value_id": "52051",
+                        "value_name": "Cinza-escuro"
+                    },
+                    {
+                        "value_id": "52053",
+                        "value_name": "Prateado"
+                    },
+                    {
+                        "value_id": "52055",
+                        "value_name": "Branco"
+                    },
+                    {
+                        "value_id": "338779",
+                        "value_name": "Ciano"
+                    }
+                ],
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "input_component_config": {
+                    "component_attributes": [
+                        "COLOR",
+                        "MAIN_COLOR"
+                    ],
+                    "component_connector": "",
+                    "component_type": "COLOR_INPUT",
+                    "hints": [],
+                    "label": {
+                        "en": "Color",
+                        "pt": "Cor",
+                        "es": "Color"
+                    }
+                },
+                "output_component_config": {
+                    "component_attributes": [
+                        "COLOR",
+                        "MAIN_COLOR"
+                    ],
+                    "component_connector": "",
+                    "component_type": "COLOR_OUTPUT",
+                    "hints": [],
+                    "label": {
+                        "en": "Color",
+                        "pt": "Cor",
+                        "es": "Color"
+                    }
+                },
+                "calculated": false
+            },
+            {
+                "id": "PRINT_DESIGN",
+                "name": "Desenho impresso",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "DPI",
+                        "DPP",
+                        "VPK"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "4519999",
+                        "value_name": "Caveira"
+                    },
+                    {
+                        "value_id": "6351487",
+                        "value_name": "Galáxia"
+                    },
+                    {
+                        "value_id": "6351486",
+                        "value_name": "Lobo"
+                    }
+                ],
+                "examples": "Lobo",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SIZE",
+                "name": "Tamanho",
+                "catalog_required": false,
+                "catalog_child_required": true,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "FREQ_CBT",
+                        "FREQ_MCO",
+                        "FREQ_MEC",
+                        "FREQ_MLA",
+                        "FREQ_MLB",
+                        "FREQ_MLC",
+                        "FREQ_MLM",
+                        "FREQ_MLU",
+                        "FREQ_MPE",
+                        "VPK"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "3259486",
+                        "value_name": "G7"
+                    },
+                    {
+                        "value_id": "3259494",
+                        "value_name": "11"
+                    },
+                    {
+                        "value_id": "3635470",
+                        "value_name": "G5"
+                    },
+                    {
+                        "value_id": "3423409",
+                        "value_name": "5"
+                    },
+                    {
+                        "value_id": "3423411",
+                        "value_name": "7"
+                    },
+                    {
+                        "value_id": "3259489",
+                        "value_name": "UN"
+                    },
+                    {
+                        "value_id": "4119847",
+                        "value_name": "4"
+                    },
+                    {
+                        "value_id": "3259470",
+                        "value_name": "6-9 M"
+                    },
+                    {
+                        "value_id": "3423405",
+                        "value_name": "1"
+                    },
+                    {
+                        "value_id": "3423407",
+                        "value_name": "3"
+                    },
+                    {
+                        "value_id": "3189094",
+                        "value_name": "16"
+                    },
+                    {
+                        "value_id": "3189167",
+                        "value_name": "10"
+                    },
+                    {
+                        "value_id": "3259473",
+                        "value_name": "18-24 M"
+                    },
+                    {
+                        "value_id": "4119848",
+                        "value_name": "6"
+                    },
+                    {
+                        "value_id": "3259446",
+                        "value_name": "12"
+                    },
+                    {
+                        "value_id": "3259469",
+                        "value_name": "3-6 M"
+                    },
+                    {
+                        "value_id": "3189177",
+                        "value_name": "15"
+                    },
+                    {
+                        "value_id": "10490141",
+                        "value_name": "G"
+                    },
+                    {
+                        "value_id": "4077651",
+                        "value_name": "XGG"
+                    },
+                    {
+                        "value_id": "3423416",
+                        "value_name": "14"
+                    },
+                    {
+                        "value_id": "2282666",
+                        "value_name": "M"
+                    },
+                    {
+                        "value_id": "3259487",
+                        "value_name": "G8"
+                    },
+                    {
+                        "value_id": "3189098",
+                        "value_name": "18"
+                    },
+                    {
+                        "value_id": "433336",
+                        "value_name": "GG"
+                    },
+                    {
+                        "value_id": "3329193",
+                        "value_name": "2"
+                    },
+                    {
+                        "value_id": "3189173",
+                        "value_name": "13"
+                    },
+                    {
+                        "value_id": "17552780",
+                        "value_name": "P"
+                    },
+                    {
+                        "value_id": "4900376",
+                        "value_name": "EGG"
+                    },
+                    {
+                        "value_id": "3567843",
+                        "value_name": "0-1 M"
+                    },
+                    {
+                        "value_id": "3423412",
+                        "value_name": "8"
+                    },
+                    {
+                        "value_id": "3423417",
+                        "value_name": "XXG"
+                    },
+                    {
+                        "value_id": "3635471",
+                        "value_name": "G6"
+                    },
+                    {
+                        "value_id": "3259471",
+                        "value_name": "9-12 M"
+                    },
+                    {
+                        "value_id": "3567844",
+                        "value_name": "2-3 M"
+                    },
+                    {
+                        "value_id": "6367305",
+                        "value_name": "Único"
+                    },
+                    {
+                        "value_id": "2282662",
+                        "value_name": "XXXG"
+                    },
+                    {
+                        "value_id": "3330808",
+                        "value_name": "PP"
+                    },
+                    {
+                        "value_id": "3259483",
+                        "value_name": "G4"
+                    },
+                    {
+                        "value_id": "3259482",
+                        "value_name": "G3"
+                    },
+                    {
+                        "value_id": "3635466",
+                        "value_name": "G1"
+                    },
+                    {
+                        "value_id": "3259472",
+                        "value_name": "12-18 M"
+                    },
+                    {
+                        "value_id": "3423413",
+                        "value_name": "9"
+                    },
+                    {
+                        "value_id": "3259481",
+                        "value_name": "G2"
+                    },
+                    {
+                        "value_id": "4160489",
+                        "value_name": "EG"
+                    },
+                    {
+                        "value_id": "3259490",
+                        "value_name": "Sob medida"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "FABRIC_DESIGN",
+                "name": "Desenho do tecido",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "DPI",
+                        "DPP",
+                        "VPK"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "930483",
+                        "value_name": "Lisa"
+                    },
+                    {
+                        "value_id": "34241287",
+                        "value_name": "Estampa localizada"
+                    },
+                    {
+                        "value_id": "2750846",
+                        "value_name": "Personalizado"
+                    },
+                    {
+                        "value_id": "3793854",
+                        "value_name": "Bordado"
+                    }
+                ],
+                "tooltip": "Refere-se ao design da estampa. Este campo deve ser preenchido com valores no masculino, se aplicável, por exemplo: 'Liso' 'Florido' 'Listrado' 'Geométrico'.",
+                "examples": "Liso",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SIZE_GRID_ROW_ID",
+                "name": "ID da linha da guia de tamanhos",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "GRID_ROW_ID"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "UNITS_PER_PACK",
+                "name": "Unidades por kit",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "CREQ",
+                        "DPP",
+                        "UYI_MCO",
+                        "UYI_MLA",
+                        "UYI_MLB",
+                        "UYI_MLC",
+                        "UYI_MLM"
+                    ]
+                },
+                "tooltip": "É a quantidade de produtos de cada kit, por exemplo 2 camisetas.",
+                "frontend_name": "Quantidade de camisetas",
+                "filter_config": {
+                    "filter_numeric_force_one": true,
+                    "filter_numeric_one_replacement_value": "PER_UNIT",
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": {
+                        "es": "unidades",
+                        "pt": "unidades"
+                    },
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "SALES_CHARACTERISTICS"
+                ],
+                "input_component_config": {
+                    "group_id": "SALE_FORMAT"
+                },
+                "calculated": false
+            },
+            {
+                "id": "DETAILED_MODEL",
+                "name": "Modelo detalhado",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_DEPENDENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI",
+                        "VDP"
+                    ]
+                },
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MAIN_COLOR",
+                "name": "Cor principal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "COLOR",
+                    "catalog_id": "COLOR"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_DEPENDENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "2450296",
+                        "value_name": "Amarelo",
+                        "meta": {
+                            "rgb": "FFED00"
+                        }
+                    },
+                    {
+                        "value_id": "2450293",
+                        "value_name": "Azul",
+                        "meta": {
+                            "rgb": "1717FF"
+                        }
+                    },
+                    {
+                        "value_id": "2450278",
+                        "value_name": "Azul celeste",
+                        "meta": {
+                            "rgb": "83DDFF"
+                        }
+                    },
+                    {
+                        "value_id": "2450281",
+                        "value_name": "Bege",
+                        "meta": {
+                            "parent_id": "2450291",
+                            "rgb": "F5F3DC"
+                        }
+                    },
+                    {
+                        "value_id": "2450308",
+                        "value_name": "Branco",
+                        "meta": {
+                            "rgb": "FFFFFF"
+                        }
+                    },
+                    {
+                        "value_id": "2450294",
+                        "value_name": "Cinza",
+                        "meta": {
+                            "rgb": "E1E1E1"
+                        }
+                    },
+                    {
+                        "value_id": "2450289",
+                        "value_name": "Dourado",
+                        "meta": {
+                            "rgb": "FFD700"
+                        }
+                    },
+                    {
+                        "value_id": "2450327",
+                        "value_name": "Laranja",
+                        "meta": {
+                            "rgb": "FF8C00"
+                        }
+                    },
+                    {
+                        "value_id": "2450291",
+                        "value_name": "Marrom",
+                        "meta": {
+                            "rgb": "A0522D"
+                        }
+                    },
+                    {
+                        "value_id": "46671867",
+                        "value_name": "Multicolorido",
+                        "meta": {
+                            "rgb": "FFFFFF"
+                        }
+                    },
+                    {
+                        "value_id": "2450303",
+                        "value_name": "Prateado",
+                        "meta": {
+                            "rgb": "CBCFD0"
+                        }
+                    },
+                    {
+                        "value_id": "2450295",
+                        "value_name": "Preto",
+                        "meta": {
+                            "rgb": "000000"
+                        }
+                    },
+                    {
+                        "value_id": "2450312",
+                        "value_name": "Rosa",
+                        "meta": {
+                            "rgb": "FCB1BE"
+                        }
+                    },
+                    {
+                        "value_id": "2450314",
+                        "value_name": "Verde",
+                        "meta": {
+                            "rgb": "0DA600"
+                        }
+                    },
+                    {
+                        "value_id": "2450307",
+                        "value_name": "Vermelho",
+                        "meta": {
+                            "rgb": "FF0000"
+                        }
+                    },
+                    {
+                        "value_id": "2450311",
+                        "value_name": "Violeta",
+                        "meta": {
+                            "rgb": "9F00FF"
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Cor",
+                        "es": "Color"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SIZE_GRID_ID",
+                "name": "ID da guia de tamanhos",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "GRID_ID"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI_MBO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_SPORTIVE",
+                "name": "É esportivo",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "frontend_name": "É esportiva",
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "IS_ATTRIBUTE_NAME"
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "RECOMMENDED_USES",
+                "name": "Usos recomendados",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "12039014",
+                        "value_name": "Tênis"
+                    },
+                    {
+                        "value_id": "12039015",
+                        "value_name": "Golfe"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "FABRIC_TYPE",
+                "name": "Tipo de tecido",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "12039023",
+                        "value_name": "Gabardine"
+                    },
+                    {
+                        "value_id": "12039024",
+                        "value_name": "Jean"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "COMPOSITION",
+                "name": "Composição",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "466793",
+                        "value_name": "Algodão"
+                    },
+                    {
+                        "value_id": "466794",
+                        "value_name": "Poliéster"
+                    }
+                ],
+                "examples": "60% Algodão 40% Poliéster",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SLEEVE_TYPE",
+                "name": "Tipo de manga",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ_CBT",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLM"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "466804",
+                        "value_name": "Curta"
+                    },
+                    {
+                        "value_id": "466805",
+                        "value_name": "Longa"
+                    },
+                    {
+                        "value_id": "498514",
+                        "value_name": "3/4"
+                    },
+                    {
+                        "value_id": "466806",
+                        "value_name": "Tomara que caia"
+                    },
+                    {
+                        "value_id": "39231826",
+                        "value_name": "Sem mangas"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "T_SHIRT_COLLAR_TYPE",
+                "name": "Tipo de gola",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "466787",
+                        "value_name": "Redonda"
+                    },
+                    {
+                        "value_id": "466789",
+                        "value_name": "Polo"
+                    },
+                    {
+                        "value_id": "466788",
+                        "value_name": "Gola V"
+                    },
+                    {
+                        "value_id": "34241291",
+                        "value_name": "Botões"
+                    },
+                    {
+                        "value_id": "34241292",
+                        "value_name": "Gola alta"
+                    },
+                    {
+                        "value_id": "34241293",
+                        "value_name": "Gola canoa"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WEDGE_SHAPE",
+                "name": "Forma de caimento",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "12039025",
+                        "value_name": "Reta"
+                    },
+                    {
+                        "value_id": "34241294",
+                        "value_name": "Larga"
+                    },
+                    {
+                        "value_id": "34241295",
+                        "value_name": "Slim"
+                    },
+                    {
+                        "value_id": "34241296",
+                        "value_name": "Oversized"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_SUITABLE_FOR_PREGNACY",
+                "name": "É apto para gestação",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "frontend_name": "É apta para gestação",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_HEIGHT",
+                "name": "Altura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WIDTH",
+                "name": "Largura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MAIN_MATERIAL",
+                "name": "Material principal",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "508652",
+                        "value_name": "Lantejoulas"
+                    },
+                    {
+                        "value_id": "4684513",
+                        "value_name": "Cetim"
+                    },
+                    {
+                        "value_id": "466793",
+                        "value_name": "Algodão"
+                    },
+                    {
+                        "value_id": "34241290",
+                        "value_name": "Viscolycra"
+                    },
+                    {
+                        "value_id": "3629910",
+                        "value_name": "Microfibra"
+                    },
+                    {
+                        "value_id": "5370276",
+                        "value_name": "Tule"
+                    },
+                    {
+                        "value_id": "4402106",
+                        "value_name": "Lycra"
+                    },
+                    {
+                        "value_id": "4327467",
+                        "value_name": "Bambu"
+                    },
+                    {
+                        "value_id": "433343",
+                        "value_name": "Seda"
+                    },
+                    {
+                        "value_id": "34241289",
+                        "value_name": "Algodão pima"
+                    },
+                    {
+                        "value_id": "466794",
+                        "value_name": "Poliéster"
+                    },
+                    {
+                        "value_id": "3580423",
+                        "value_name": "Poliamida"
+                    },
+                    {
+                        "value_id": "3630111",
+                        "value_name": "Lã"
+                    },
+                    {
+                        "value_id": "7980354",
+                        "value_name": "Náilon"
+                    },
+                    {
+                        "value_id": "462318",
+                        "value_name": "Linho"
+                    },
+                    {
+                        "value_id": "462316",
+                        "value_name": "Jeans"
+                    },
+                    {
+                        "value_id": "34241288",
+                        "value_name": "Piquet"
+                    },
+                    {
+                        "value_id": "3726493",
+                        "value_name": "Viscose"
+                    },
+                    {
+                        "value_id": "1258198",
+                        "value_name": "Camurça"
+                    },
+                    {
+                        "value_id": "84982094",
+                        "value_name": "Cirrê"
+                    },
+                    {
+                        "value_id": "6518971",
+                        "value_name": "Crepe"
+                    },
+                    {
+                        "value_id": "6336419",
+                        "value_name": "Crochê"
+                    },
+                    {
+                        "value_id": "3580424",
+                        "value_name": "Elastano"
+                    },
+                    {
+                        "value_id": "85684445",
+                        "value_name": "Malha"
+                    },
+                    {
+                        "value_id": "84982107",
+                        "value_name": "Moletom"
+                    },
+                    {
+                        "value_id": "433348",
+                        "value_name": "Renda"
+                    },
+                    {
+                        "value_id": "85686112",
+                        "value_name": "Tricô"
+                    }
+                ],
+                "tooltip": "É a matéria-prima usada para fabricar a maior parte do seu produto. Essa informação geralmente consta na etiqueta da peça.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_LENGTH",
+                "name": "Comprimento da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WEIGHT",
+                "name": "Peso da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "mass",
+                    "allowed_units": [
+                        "g",
+                        "kg",
+                        "lb",
+                        "mg",
+                        "oz"
+                    ],
+                    "default_unit": "g",
+                    "comparation_unit": "kg"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WITH_RECYCLED_MATERIALS",
+                "name": "Com materiais reciclados",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "GTIN",
+                "name": "Código universal de produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": true,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "CREQ_CBT",
+                        "CREQ_MCO",
+                        "CREQ_MEC",
+                        "CREQ_MLA",
+                        "CREQ_MLB",
+                        "CREQ_MLC",
+                        "CREQ_MLM",
+                        "CREQ_MLU",
+                        "UHI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                "hints": "Pode ser um EAN, UPC ou outro GTIN",
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "MANUFACTURING_TIME",
+                "name": "Disponibilidade de estoque",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "time",
+                    "allowed_units": [
+                        "anos",
+                        "dias",
+                        "h",
+                        "m",
+                        "meses",
+                        "ms",
+                        "s",
+                        "semanas",
+                        "µs"
+                    ],
+                    "default_unit": "dias",
+                    "comparation_unit": "s"
+                },
+                "tags": {
+                    "hierarchy": "SALE_TERMS",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI_MCO",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU"
+                    ]
+                },
+                "frontend_units": [
+                    "dias"
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "EMPTY_GTIN_REASON",
+                "name": "Motivo de GTIN vazio",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "CREQ",
+                        "THI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "17055158",
+                        "value_name": "O produto é uma peça artesanal"
+                    },
+                    {
+                        "value_id": "17055159",
+                        "value_name": "O produto é um kit ou pack"
+                    },
+                    {
+                        "value_id": "17055160",
+                        "value_name": "O produto não tem código cadastrado"
+                    },
+                    {
+                        "value_id": "17055161",
+                        "value_name": "Outro motivo"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "VERTICAL_TAGS",
+                "name": "Tags vertical",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "VHI"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "53559152",
+                        "value_name": "is_tom_brand"
+                    },
+                    {
+                        "value_id": "53559153",
+                        "value_name": "is_polos"
+                    },
+                    {
+                        "value_id": "53559154",
+                        "value_name": "is_social_brands"
+                    },
+                    {
+                        "value_id": "53559155",
+                        "value_name": "is_beauty_premium"
+                    },
+                    {
+                        "value_id": "53559156",
+                        "value_name": "has_dimensions_images"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WITH_VIRTUAL_TRY_ON",
+                "name": "Com provador virtual",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IMPORT_DECLARATION_NUMBER",
+                "name": "Número da DI",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_CBT",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLM",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "Número de 15 dígitos do documento aduaneiro que ampara a importação desta mercadoria somente venda de primeira mão). Este dado será usado para a emissão de notas fiscais vinculadas à venda deste produto.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INVOICE_PRODUCT_NAME",
+                "name": "Nome do produto na nota fiscal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "SAT_KEY",
+                "name": "Chave do produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021094",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": " A chave do produto é um código atribuído pelo SAT para classificar os produtos comercializados no país",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_KEY",
+                "name": "Chave da unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021108",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": "A chave da unidade de medida é um código padronizado pelo SAT.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_DESCRIPTION",
+                "name": "Unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "A unidade de medida é a forma como o SAT quantifica um produto. Exemplos: peça, caixa, kit.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IVA_FOR_RESALE",
+                "name": "IVA para revenda",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "81861612",
+                        "value_name": "Isento"
+                    },
+                    {
+                        "value_id": "81861613",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "81861614",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "81861616",
+                        "value_name": "16%"
+                    }
+                ],
+                "tooltip": "Escolha a alíquota do IVA (Imposto sobre o Valor Agregado) que deve ser paga pelo comprador em cada produto: 0%, 16% ou Isento.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IEPS",
+                "name": "IEPS",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "82021095",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "82021096",
+                        "value_name": "3%"
+                    },
+                    {
+                        "value_id": "82021097",
+                        "value_name": "6%"
+                    },
+                    {
+                        "value_id": "82021098",
+                        "value_name": "7%"
+                    },
+                    {
+                        "value_id": "82021099",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "82021100",
+                        "value_name": "9%"
+                    },
+                    {
+                        "value_id": "82021101",
+                        "value_name": "25%"
+                    },
+                    {
+                        "value_id": "82021102",
+                        "value_name": "26.5%"
+                    },
+                    {
+                        "value_id": "82021103",
+                        "value_name": "30%"
+                    },
+                    {
+                        "value_id": "82021104",
+                        "value_name": "30.4%"
+                    },
+                    {
+                        "value_id": "82021105",
+                        "value_name": "50%"
+                    },
+                    {
+                        "value_id": "82021106",
+                        "value_name": "53%"
+                    },
+                    {
+                        "value_id": "82021107",
+                        "value_name": "160%"
+                    }
+                ],
+                "tooltip": "scolha a alíquota do IEPS (Imposto Especial sobre Produção e Serviços) que deve ser paga pelo comprador nos produtos das categorias: combustível, bebidas e tabaco.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IS_SUITABLE_FOR_LACTANTING_PEOPLE",
+                "name": "É apto para as pessoas lactantes",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "frontend_name": "É apta para as pessoas lactantes",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "RELEASE_SEASON",
+                "name": "Temporada de lançamento",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "994283",
+                        "value_name": "Primavera/Verão"
+                    },
+                    {
+                        "value_id": "994284",
+                        "value_name": "Outono/Inverno"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "RELEASE_YEAR",
+                "name": "Ano de lançamento",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "filter_config": {
+                    "filter_numeric_max_value": 2030,
+                    "filter_numeric_min_value": 1900,
+                    "filter_numeric_reversed": true,
+                    "filter_numeric_value_suffix": "NONE",
+                    "filter_numeric_values": "DISCRETE",
+                    "filter_show_lower_bound": false,
+                    "filter_show_upper_bound": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WITH_EMBROIDERY",
+                "name": "Com bordado",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WITH_POSITIVE_IMPACT",
+                "name": "Com impacto positivo",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": [
+                        "RO"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": true
+            },
+            {
+                "id": "MPN",
+                "name": "MPN",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 2,
+                    "apd_tags": [
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SIZE_COVERAGE",
+                "name": "Cobertura de tamanho",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "18587623",
+                        "value_name": "Limited coverage"
+                    },
+                    {
+                        "value_id": "18587624",
+                        "value_name": "Partial coverage"
+                    },
+                    {
+                        "value_id": "18587625",
+                        "value_name": "Balanced coverage"
+                    },
+                    {
+                        "value_id": "18587626",
+                        "value_name": "Extended coverage"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "FILTRABLE_GENDER",
+                "name": "Gênero filtrável",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "18549360",
+                        "value_name": "Masculino"
+                    },
+                    {
+                        "value_id": "18549361",
+                        "value_name": "Feminino"
+                    },
+                    {
+                        "value_id": "18549362",
+                        "value_name": "Meninas"
+                    },
+                    {
+                        "value_id": "18549363",
+                        "value_name": "Meninos"
+                    },
+                    {
+                        "value_id": "18549364",
+                        "value_name": "Bebês"
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "es": "Género",
+                        "pt": "Gênero"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "FILTRABLE_SIZE",
+                "name": "Tamanho filtrável",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "13853812",
+                        "value_name": "PP"
+                    },
+                    {
+                        "value_id": "13853813",
+                        "value_name": "P"
+                    },
+                    {
+                        "value_id": "13853815",
+                        "value_name": "GG"
+                    },
+                    {
+                        "value_id": "12917795",
+                        "value_name": "M"
+                    },
+                    {
+                        "value_id": "12917804",
+                        "value_name": "G1"
+                    },
+                    {
+                        "value_id": "12917798",
+                        "value_name": "G2"
+                    },
+                    {
+                        "value_id": "12917801",
+                        "value_name": "G3"
+                    },
+                    {
+                        "value_id": "12917807",
+                        "value_name": "G4"
+                    },
+                    {
+                        "value_id": "12917765",
+                        "value_name": "G5"
+                    },
+                    {
+                        "value_id": "13853820",
+                        "value_name": "G6"
+                    },
+                    {
+                        "value_id": "13853814",
+                        "value_name": "G"
+                    },
+                    {
+                        "value_id": "12917774",
+                        "value_name": "XG"
+                    },
+                    {
+                        "value_id": "12189459",
+                        "value_name": "1 ano"
+                    },
+                    {
+                        "value_id": "12189461",
+                        "value_name": "2 anos"
+                    },
+                    {
+                        "value_id": "12189463",
+                        "value_name": "3 anos"
+                    },
+                    {
+                        "value_id": "12189465",
+                        "value_name": "4 anos"
+                    },
+                    {
+                        "value_id": "12189467",
+                        "value_name": "5 anos"
+                    },
+                    {
+                        "value_id": "12189469",
+                        "value_name": "6 anos"
+                    },
+                    {
+                        "value_id": "12189471",
+                        "value_name": "7 anos"
+                    },
+                    {
+                        "value_id": "12189473",
+                        "value_name": "8 anos"
+                    },
+                    {
+                        "value_id": "12189475",
+                        "value_name": "9 anos"
+                    },
+                    {
+                        "value_id": "12189477",
+                        "value_name": "10 anos"
+                    },
+                    {
+                        "value_id": "12189479",
+                        "value_name": "11 anos"
+                    },
+                    {
+                        "value_id": "12189481",
+                        "value_name": "12 anos"
+                    },
+                    {
+                        "value_id": "12189483",
+                        "value_name": "13 anos"
+                    },
+                    {
+                        "value_id": "12189485",
+                        "value_name": "14 anos"
+                    },
+                    {
+                        "value_id": "12189487",
+                        "value_name": "15 anos"
+                    },
+                    {
+                        "value_id": "12189489",
+                        "value_name": "16 anos"
+                    },
+                    {
+                        "value_id": "12917809",
+                        "value_name": "Prematuro"
+                    },
+                    {
+                        "value_id": "13735569",
+                        "value_name": "0-3 meses"
+                    },
+                    {
+                        "value_id": "12917811",
+                        "value_name": "3-6 meses"
+                    },
+                    {
+                        "value_id": "12917812",
+                        "value_name": "6-9 meses"
+                    },
+                    {
+                        "value_id": "12917813",
+                        "value_name": "9-12 meses"
+                    },
+                    {
+                        "value_id": "12917815",
+                        "value_name": "12-18 meses"
+                    },
+                    {
+                        "value_id": "12917817",
+                        "value_name": "18-24 meses"
+                    },
+                    {
+                        "value_id": "13735570",
+                        "value_name": "24-36 meses"
+                    },
+                    {
+                        "value_id": "16516783",
+                        "value_name": "G7"
+                    },
+                    {
+                        "value_id": "16516784",
+                        "value_name": "G8"
+                    },
+                    {
+                        "value_id": "12917785",
+                        "value_name": "XGG"
+                    },
+                    {
+                        "value_id": "19792292",
+                        "value_name": "XPP"
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Tamanho",
+                        "es-PE": "Talla",
+                        "es-MX": "Talla",
+                        "es-CL": "Talla",
+                        "es-CO": "Talla",
+                        "es-VE": "Talla",
+                        "es": "Talle"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "ITEM_CONDITION",
+                "name": "Condição do item",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "2230284",
+                        "value_name": "Novo"
+                    },
+                    {
+                        "value_id": "2230581",
+                        "value_name": "Usado"
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Condição",
+                        "es": "Condición"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_TOM_BRAND",
+                "name": "É marca TOM",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_group_id": -1,
+                    "filter_visibility": "DEFAULT"
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_EMERGING_BRAND",
+                "name": "É marca emergente",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_group_id": -1,
+                    "filter_visibility": "DEFAULT"
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_HIGHLIGHT_BRAND",
+                "name": "É marca destacada",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_group_id": -1
+                },
+                "output_group": [],
+                "calculated": false
+            }
+        ],
+        "metadata": {
+            "business_unit": "core",
+            "vertical": "APP & SPORTS"
+        },
+        "settings": {
+            "max_title_length": 60,
+            "max_pictures_per_item": 12,
+            "max_variations_allowed": 250
+        }
+    },
+    "capturado_em": "2026-10-01T15:48:45-03:00"
+}

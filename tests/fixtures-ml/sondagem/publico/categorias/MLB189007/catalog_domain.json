@@ -1,0 +1,3569 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/catalog_domains/MLB-ELECTRIC_DRILLS",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "id": "MLB-ELECTRIC_DRILLS",
+        "name": "Furadeiras elétricas",
+        "numeric_id": 3102,
+        "multisite_catalog": false,
+        "is_generic": false,
+        "checked_categories": false,
+        "allow_primitive_products": true,
+        "catalogable": "YES",
+        "date_created": "2015-07-22T12:37:41Z",
+        "domain_structure_last_updated": "2026-10-01T17:17:37Z",
+        "apd_last_updated": "2026-09-30T17:22:02Z",
+        "products_last_updated": "2026-10-01T15:39:49Z",
+        "last_updated": "2026-10-01T17:17:37Z",
+        "compatibilities": [],
+        "pictures": [
+            {
+                "id": "737111-MLU32195802977_092019",
+                "url": "http://http2.mlstatic.com/D_NQ_NP_737111-MLU32195802977_092019-F.jpg",
+                "secure_url": "https://http2.mlstatic.com/D_NQ_NP_737111-MLU32195802977_092019-F.jpg",
+                "size": "440x382"
+            }
+        ],
+        "attributes": [
+            {
+                "id": "BRAND",
+                "name": "Marca",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ_CBT",
+                        "MREQ_MCO",
+                        "MREQ_MEC",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLC",
+                        "MREQ_MLM",
+                        "MREQ_MLU",
+                        "MREQ_MPE"
+                    ]
+                },
+                "hints": "Informe a marca verdadeira do produto ou 'Genérica' se não tiver marca.",
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "LINE",
+                "name": "Linha",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "tooltip": "Indica a série ou grupo do produto de acordo com a classificação da marca ou fabricante, por exemplo: a linha “111” da marca “xxx” agrupa diferentes modelos de produtos.",
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MODEL",
+                "name": "Modelo",
+                "catalog_required": true,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "MREQ_CBT",
+                        "MREQ_MCO",
+                        "MREQ_MEC",
+                        "MREQ_MLA",
+                        "MREQ_MLB",
+                        "MREQ_MLC",
+                        "MREQ_MLM",
+                        "MREQ_MLU",
+                        "MREQ_MPE"
+                    ]
+                },
+                "tooltip": "É o nome específico do produto.",
+                "examples": "PFE-12EV",
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "PRESENTATION",
+                "name": "Apresentação",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "PARENT_PK",
+                    "granularity": "PARENT",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "2290294",
+                        "value_name": "Caixa de papelão"
+                    },
+                    {
+                        "value_id": "8729169",
+                        "value_name": "Maleta de transporte"
+                    }
+                ],
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "COLOR",
+                "name": "Cor",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "DPI",
+                        "DPP",
+                        "VPK"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "283148",
+                        "value_name": "Coral-claro"
+                    },
+                    {
+                        "value_id": "283149",
+                        "value_name": "Coral"
+                    },
+                    {
+                        "value_id": "283150",
+                        "value_name": "Laranja-claro"
+                    },
+                    {
+                        "value_id": "283151",
+                        "value_name": "Laranja-escuro"
+                    },
+                    {
+                        "value_id": "283156",
+                        "value_name": "Cáqui"
+                    },
+                    {
+                        "value_id": "283157",
+                        "value_name": "Verde-limão"
+                    },
+                    {
+                        "value_id": "283158",
+                        "value_name": "Verde-musgo"
+                    },
+                    {
+                        "value_id": "283152",
+                        "value_name": "Chocolate"
+                    },
+                    {
+                        "value_id": "283153",
+                        "value_name": "Palha"
+                    },
+                    {
+                        "value_id": "283154",
+                        "value_name": "Marrom-claro"
+                    },
+                    {
+                        "value_id": "283155",
+                        "value_name": "Marrom-escuro"
+                    },
+                    {
+                        "value_id": "283164",
+                        "value_name": "Dourado"
+                    },
+                    {
+                        "value_id": "51993",
+                        "value_name": "Vermelho"
+                    },
+                    {
+                        "value_id": "283165",
+                        "value_name": "Cinza"
+                    },
+                    {
+                        "value_id": "51994",
+                        "value_name": "Rosa"
+                    },
+                    {
+                        "value_id": "283160",
+                        "value_name": "Azul-turquesa"
+                    },
+                    {
+                        "value_id": "51996",
+                        "value_name": "Terracota"
+                    },
+                    {
+                        "value_id": "283161",
+                        "value_name": "Azul-marinho"
+                    },
+                    {
+                        "value_id": "283162",
+                        "value_name": "Índigo"
+                    },
+                    {
+                        "value_id": "51998",
+                        "value_name": "Bordô"
+                    },
+                    {
+                        "value_id": "283163",
+                        "value_name": "Rosa-chiclete"
+                    },
+                    {
+                        "value_id": "52000",
+                        "value_name": "Laranja"
+                    },
+                    {
+                        "value_id": "52001",
+                        "value_name": "Bege"
+                    },
+                    {
+                        "value_id": "52003",
+                        "value_name": "Nude"
+                    },
+                    {
+                        "value_id": "52005",
+                        "value_name": "Marrom"
+                    },
+                    {
+                        "value_id": "52007",
+                        "value_name": "Amarelo"
+                    },
+                    {
+                        "value_id": "52008",
+                        "value_name": "Creme"
+                    },
+                    {
+                        "value_id": "52010",
+                        "value_name": "Ocre"
+                    },
+                    {
+                        "value_id": "52012",
+                        "value_name": "Dourado-escuro"
+                    },
+                    {
+                        "value_id": "52014",
+                        "value_name": "Verde"
+                    },
+                    {
+                        "value_id": "52015",
+                        "value_name": "Verde-claro"
+                    },
+                    {
+                        "value_id": "52019",
+                        "value_name": "Verde-escuro"
+                    },
+                    {
+                        "value_id": "52021",
+                        "value_name": "Azul-celeste"
+                    },
+                    {
+                        "value_id": "52022",
+                        "value_name": "Água"
+                    },
+                    {
+                        "value_id": "52024",
+                        "value_name": "Azul-petróleo"
+                    },
+                    {
+                        "value_id": "52028",
+                        "value_name": "Azul"
+                    },
+                    {
+                        "value_id": "52029",
+                        "value_name": "Azul-claro"
+                    },
+                    {
+                        "value_id": "52031",
+                        "value_name": "Azul-aço"
+                    },
+                    {
+                        "value_id": "52033",
+                        "value_name": "Azul-escuro"
+                    },
+                    {
+                        "value_id": "52035",
+                        "value_name": "Violeta"
+                    },
+                    {
+                        "value_id": "52036",
+                        "value_name": "Lavanda"
+                    },
+                    {
+                        "value_id": "52038",
+                        "value_name": "Lilás"
+                    },
+                    {
+                        "value_id": "52042",
+                        "value_name": "Fúcsia"
+                    },
+                    {
+                        "value_id": "52043",
+                        "value_name": "Rosa-claro"
+                    },
+                    {
+                        "value_id": "52045",
+                        "value_name": "Rosa-pálido"
+                    },
+                    {
+                        "value_id": "52047",
+                        "value_name": "Violeta-escuro"
+                    },
+                    {
+                        "value_id": "52049",
+                        "value_name": "Preto"
+                    },
+                    {
+                        "value_id": "52051",
+                        "value_name": "Cinza-escuro"
+                    },
+                    {
+                        "value_id": "52053",
+                        "value_name": "Prateado"
+                    },
+                    {
+                        "value_id": "52055",
+                        "value_name": "Branco"
+                    },
+                    {
+                        "value_id": "338779",
+                        "value_name": "Ciano"
+                    }
+                ],
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "VOLTAGE",
+                "name": "Voltagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VPK_MCO",
+                        "VPK_MLB"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "198813",
+                        "value_name": "220V"
+                    },
+                    {
+                        "value_id": "39205162",
+                        "value_name": "127V"
+                    },
+                    {
+                        "value_id": "39205163",
+                        "value_name": "127/220V"
+                    },
+                    {
+                        "value_id": "106543",
+                        "value_name": "380V"
+                    },
+                    {
+                        "value_id": "24517453",
+                        "value_name": "480V"
+                    },
+                    {
+                        "value_id": "45522378",
+                        "value_name": "560V"
+                    },
+                    {
+                        "value_id": "22524318",
+                        "value_name": "600V"
+                    },
+                    {
+                        "value_id": "14223009",
+                        "value_name": "1.2V"
+                    },
+                    {
+                        "value_id": "6055455",
+                        "value_name": "1.5V"
+                    },
+                    {
+                        "value_id": "3625879",
+                        "value_name": "3V"
+                    },
+                    {
+                        "value_id": "2638487",
+                        "value_name": "4.5V"
+                    },
+                    {
+                        "value_id": "2499688",
+                        "value_name": "6V"
+                    },
+                    {
+                        "value_id": "8149915",
+                        "value_name": "9V"
+                    },
+                    {
+                        "value_id": "909022",
+                        "value_name": "12V"
+                    },
+                    {
+                        "value_id": "3323363",
+                        "value_name": "24V"
+                    },
+                    {
+                        "value_id": "14754561",
+                        "value_name": "48V"
+                    },
+                    {
+                        "value_id": "13244394",
+                        "value_name": "72V"
+                    },
+                    {
+                        "value_id": "2090739",
+                        "value_name": "18V"
+                    },
+                    {
+                        "value_id": "3314711",
+                        "value_name": "36V"
+                    },
+                    {
+                        "value_id": "1263450",
+                        "value_name": "60V"
+                    },
+                    {
+                        "value_id": "2453518",
+                        "value_name": "5V"
+                    }
+                ],
+                "tooltip": "Este campo é obrigatório caso o produto seja elétrico.",
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "FREQUENCY",
+                "name": "Frequência",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "NUMBER_UNIT_LIST"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_PK",
+                    "granularity": "CHILD",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VPK"
+                    ]
+                },
+                "examples": "50 Hz/60 Hz",
+                "frontend_units": [
+                    "Hz",
+                    "MHz"
+                ],
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "POWER",
+                "name": "Potência",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "power",
+                    "allowed_units": [
+                        "BTU",
+                        "BTU/s",
+                        "Cal/h",
+                        "TR",
+                        "VA",
+                        "W",
+                        "cv",
+                        "fg",
+                        "hp",
+                        "kW",
+                        "kcal/h",
+                        "mW"
+                    ],
+                    "default_unit": "W",
+                    "comparation_unit": "W"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_DEPENDENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VDP"
+                    ]
+                },
+                "frontend_units": [
+                    "W"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 2,
+                    "filter_numeric_range_overlapping": true,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "DETAILED_MODEL",
+                "name": "Modelo detalhado",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_DEPENDENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI",
+                        "VDP"
+                    ]
+                },
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [
+                    "GENERAL_CHARACTERISTICS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAIN_COLOR",
+                "name": "Cor principal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "COLOR",
+                    "catalog_id": "COLOR"
+                },
+                "tags": {
+                    "hierarchy": "CHILD_DEPENDENT",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "2450296",
+                        "value_name": "Amarelo",
+                        "meta": {
+                            "rgb": "FFED00"
+                        }
+                    },
+                    {
+                        "value_id": "2450293",
+                        "value_name": "Azul",
+                        "meta": {
+                            "rgb": "1717FF"
+                        }
+                    },
+                    {
+                        "value_id": "2450278",
+                        "value_name": "Azul celeste",
+                        "meta": {
+                            "rgb": "83DDFF"
+                        }
+                    },
+                    {
+                        "value_id": "2450308",
+                        "value_name": "Branco",
+                        "meta": {
+                            "rgb": "FFFFFF"
+                        }
+                    },
+                    {
+                        "value_id": "2450294",
+                        "value_name": "Cinza",
+                        "meta": {
+                            "rgb": "E1E1E1"
+                        }
+                    },
+                    {
+                        "value_id": "2450289",
+                        "value_name": "Dourado",
+                        "meta": {
+                            "rgb": "FFD700"
+                        }
+                    },
+                    {
+                        "value_id": "2450327",
+                        "value_name": "Laranja",
+                        "meta": {
+                            "rgb": "FF8C00"
+                        }
+                    },
+                    {
+                        "value_id": "2450291",
+                        "value_name": "Marrom",
+                        "meta": {
+                            "rgb": "A0522D"
+                        }
+                    },
+                    {
+                        "value_id": "2450303",
+                        "value_name": "Prateado",
+                        "meta": {
+                            "rgb": "CBCFD0"
+                        }
+                    },
+                    {
+                        "value_id": "2450295",
+                        "value_name": "Preto",
+                        "meta": {
+                            "rgb": "000000"
+                        }
+                    },
+                    {
+                        "value_id": "2450312",
+                        "value_name": "Rosa",
+                        "meta": {
+                            "rgb": "FCB1BE"
+                        }
+                    },
+                    {
+                        "value_id": "2450314",
+                        "value_name": "Verde",
+                        "meta": {
+                            "rgb": "0DA600"
+                        }
+                    },
+                    {
+                        "value_id": "2450307",
+                        "value_name": "Vermelho",
+                        "meta": {
+                            "rgb": "FF0000"
+                        }
+                    },
+                    {
+                        "value_id": "2450311",
+                        "value_name": "Violeta",
+                        "meta": {
+                            "rgb": "9F00FF"
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Cor",
+                        "es": "Color"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "POWER_SUPPLY_TYPES",
+                "name": "Tipos de alimentação",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "4491927",
+                        "value_name": "Bateria"
+                    },
+                    {
+                        "value_id": "49713698",
+                        "value_name": "Corrente doméstica"
+                    },
+                    {
+                        "value_id": "1176674",
+                        "value_name": "Pilha"
+                    },
+                    {
+                        "value_id": "54973049",
+                        "value_name": "Bateria/Corrente doméstica"
+                    },
+                    {
+                        "value_id": "7462936",
+                        "value_name": "Bateria/Pilha"
+                    },
+                    {
+                        "value_id": "53603543",
+                        "value_name": "Corrente doméstica/Pilha"
+                    },
+                    {
+                        "value_id": "53603544",
+                        "value_name": "Bateria/Corrente doméstica/Pilha"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BATTERIES_NUMBER",
+                "name": "Quantidade de baterias",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "BATTERY_AMPERAGE",
+                "name": "Amperagem da bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "electric_charge",
+                    "allowed_units": [
+                        "Ah",
+                        "mAh"
+                    ],
+                    "default_unit": "Ah",
+                    "comparation_unit": "mAh"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MANDREL_SIZE",
+                "name": "Tamanho do mandril",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "mm"
+                ],
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MIN_ROTATION_SPEED",
+                "name": "Velocidade mínima de rotação",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "frequency",
+                    "allowed_units": [
+                        "GHz",
+                        "Hz",
+                        "MHz",
+                        "kHz",
+                        "pps",
+                        "rpm",
+                        "rps"
+                    ],
+                    "default_unit": "rpm",
+                    "comparation_unit": "rpm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "rpm"
+                ],
+                "output_group": [
+                    "SPEED"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAX_ROTATION_SPEED",
+                "name": "Velocidade máxima de rotação",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "frequency",
+                    "allowed_units": [
+                        "GHz",
+                        "Hz",
+                        "MHz",
+                        "kHz",
+                        "pps",
+                        "rpm",
+                        "rps"
+                    ],
+                    "default_unit": "rpm",
+                    "comparation_unit": "MHz"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "rpm"
+                ],
+                "output_group": [
+                    "SPEED"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "BEATS_PER_MINUTE",
+                "name": "Batidas por minuto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "INCLUDES_CHARGER",
+                "name": "Inclui carregador",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "IS_WIRELESS",
+                "name": "É sem fio",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "IS_ATTRIBUTE_NAME"
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_SCREWDRIVER_FUNCTION",
+                "name": "Com função parafusadeira",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "WITH_WITHOUT_ATTRIBUTE_NAME",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "FUNCTIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_PERCUTOR_FUNCTION",
+                "name": "Com função percutor",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "WITH_WITHOUT_ATTRIBUTE_NAME",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "FUNCTIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "IS_SPADE_HANDLE_TYPE",
+                "name": "É de empunhadura tipo espada",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_SOFT_GRIP_HANDLE",
+                "name": "Com empunhadura soft grip",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IS_ANGLED",
+                "name": "É angular",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "OTHER_ACCESSORIES_INCLUDED",
+                "name": "Outros acessórios incluídos",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "2482349",
+                        "value_name": "Cabo"
+                    },
+                    {
+                        "value_id": "2482351",
+                        "value_name": "Limitador de velocidade"
+                    },
+                    {
+                        "value_id": "8908997",
+                        "value_name": "Maleta"
+                    },
+                    {
+                        "value_id": "2482348",
+                        "value_name": "Morsa"
+                    },
+                    {
+                        "value_id": "2482350",
+                        "value_name": "Mandril"
+                    },
+                    {
+                        "value_id": "2482345",
+                        "value_name": "Brocas"
+                    },
+                    {
+                        "value_id": "2482352",
+                        "value_name": "Medidor de profundidade"
+                    },
+                    {
+                        "value_id": "16840456",
+                        "value_name": "Cabo soft grip"
+                    }
+                ],
+                "output_group": [
+                    "OTHERS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "TECHNOLOGY_MOTOR_TYPE",
+                "name": "Tipo de tecnologia do motor",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "20444253",
+                        "value_name": "Sem escovas"
+                    },
+                    {
+                        "value_id": "20444254",
+                        "value_name": "Com escovas"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_HEIGHT",
+                "name": "Altura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WIDTH",
+                "name": "Largura da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_LENGTH",
+                "name": "Comprimento da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "cm",
+                        "ft",
+                        "m",
+                        "mm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "cm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_WEIGHT",
+                "name": "Peso da embalagem",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "mass",
+                    "allowed_units": [
+                        "g",
+                        "kg",
+                        "lb",
+                        "mg",
+                        "oz"
+                    ],
+                    "default_unit": "kg",
+                    "comparation_unit": "kg"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "IREQ_CBT",
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MCU",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLM",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "WITH_BATTERY_CHARGE_INDICATOR",
+                "name": "Com indicador de carga de bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "GTIN",
+                "name": "Código universal de produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": true,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "CREQ_CBT",
+                        "CREQ_MCO",
+                        "CREQ_MEC",
+                        "CREQ_MLA",
+                        "CREQ_MLB",
+                        "CREQ_MLC",
+                        "CREQ_MLM",
+                        "CREQ_MLU",
+                        "UHI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                "hints": "Pode ser um EAN, UPC ou outro GTIN",
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "SEC_STAMP",
+                "name": "Selo SEC",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "PICTURE_ID"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MCU",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLM",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "É o selo QR que identifica que o produto está em conformidade com os padrões de segurança elétrica.",
+                "input_group": "LEGAL",
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_LED_LIGHT",
+                "name": "Com luz LED",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "WITH_WITHOUT_ATTRIBUTE_NAME",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "ELECTRICAL_SAFETY_CERTIFICATE_NUMBER",
+                "name": "Número de certificado de segurança elétrica",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV"
+                    ]
+                },
+                "tooltip": "É o número do certificado que uma entidade certificadora do seu país atribui a produtos elétricos, depois de verificar que é seguro.",
+                "input_group": "LEGAL",
+                "output_group": [
+                    "PRODUCT_REGISTRIES"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "OCP_CERTIFICATION_AGENCY",
+                "name": "Organismo de certificação (OCP)",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MCU",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLM",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "11695662",
+                        "value_name": "Bureau Veritas Argentina S.A."
+                    },
+                    {
+                        "value_id": "11695663",
+                        "value_name": "Instituto del Gas Argentino S.A."
+                    },
+                    {
+                        "value_id": "11695664",
+                        "value_name": "Intertek Argentina Certificaciones S.A."
+                    },
+                    {
+                        "value_id": "11695665",
+                        "value_name": "INTI Instituto Nacional de Tecnología Industrial"
+                    },
+                    {
+                        "value_id": "11695666",
+                        "value_name": "IQC S.A."
+                    },
+                    {
+                        "value_id": "11695667",
+                        "value_name": "IRAM Instituto Argentino de Normalización y Certificación"
+                    },
+                    {
+                        "value_id": "11695668",
+                        "value_name": "Lenor S.R.L."
+                    },
+                    {
+                        "value_id": "11695669",
+                        "value_name": "Net Connection International S.R.L. (NCC)"
+                    },
+                    {
+                        "value_id": "11695670",
+                        "value_name": "Qetkra S.R.L."
+                    },
+                    {
+                        "value_id": "11695671",
+                        "value_name": "TÜV Rheinland Argentina S.A. (TUV)"
+                    },
+                    {
+                        "value_id": "11695672",
+                        "value_name": "UL de Argentina S.R.L."
+                    },
+                    {
+                        "value_id": "11695673",
+                        "value_name": "Outro (sem especificar)"
+                    }
+                ],
+                "tooltip": "É o organismo de certificação de produtos ou laboratório de testes em seu país que emitiu a certificação de segurança para seu produto.",
+                "input_group": "LEGAL",
+                "output_group": [
+                    "PRODUCT_REGISTRIES"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "HAZMAT_TRANSPORTABILITY",
+                "name": "Transportabilidade Hazmat",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "13414677",
+                        "value_name": "Livre"
+                    },
+                    {
+                        "value_id": "13414678",
+                        "value_name": "Limitado"
+                    },
+                    {
+                        "value_id": "13414679",
+                        "value_name": "Excedido"
+                    },
+                    {
+                        "value_id": "13414680",
+                        "value_name": "Indeterminado"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "EMPTY_GTIN_REASON",
+                "name": "Motivo de GTIN vazio",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "CREQ_CBT",
+                        "CREQ_MCO",
+                        "CREQ_MEC",
+                        "CREQ_MLA",
+                        "CREQ_MLB",
+                        "CREQ_MLC",
+                        "CREQ_MLM",
+                        "CREQ_MLU",
+                        "THI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "17055158",
+                        "value_name": "O produto é uma peça artesanal"
+                    },
+                    {
+                        "value_id": "17055159",
+                        "value_name": "O produto é um kit ou pack"
+                    },
+                    {
+                        "value_id": "17055160",
+                        "value_name": "O produto não tem código cadastrado"
+                    },
+                    {
+                        "value_id": "17055161",
+                        "value_name": "Outro motivo"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "AGID",
+                "name": "AGID",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": true,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "THI",
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "CELL_BATTERY_TYPE",
+                "name": "Tipo de pilha",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "6178423",
+                        "value_name": "AAA"
+                    },
+                    {
+                        "value_id": "6178424",
+                        "value_name": "AA"
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "IMPORT_DECLARATION_NUMBER",
+                "name": "Número da DI",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "INTEGER",
+                    "catalog_id": "INTEGER"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_CBT",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLM",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "Número de 15 dígitos do documento aduaneiro que ampara a importação desta mercadoria somente venda de primeira mão). Este dado será usado para a emissão de notas fiscais vinculadas à venda deste produto.",
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "PACKAGE_DATA_SOURCE",
+                "name": "Origem do dado do pacote de fábrica",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 1,
+                    "apd_tags": [
+                        "RO",
+                        "THI",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "INVOICE_PRODUCT_NAME",
+                "name": "Nome do produto na nota fiscal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "SAT_KEY",
+                "name": "Chave do produto",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021094",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": " A chave do produto é um código atribuído pelo SAT para classificar os produtos comercializados no país",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_KEY",
+                "name": "Chave da unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "82021108",
+                        "value_name": "Não existe no catálogo"
+                    }
+                ],
+                "tooltip": "A chave da unidade de medida é um código padronizado pelo SAT.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MEASURE_UNIT_DESCRIPTION",
+                "name": "Unidade de medida",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "tooltip": "A unidade de medida é a forma como o SAT quantifica um produto. Exemplos: peça, caixa, kit.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IVA_FOR_RESALE",
+                "name": "IVA para revenda",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "81861612",
+                        "value_name": "Isento"
+                    },
+                    {
+                        "value_id": "81861613",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "81861614",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "81861616",
+                        "value_name": "16%"
+                    }
+                ],
+                "tooltip": "Escolha a alíquota do IVA (Imposto sobre o Valor Agregado) que deve ser paga pelo comprador em cada produto: 0%, 16% ou Isento.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "IEPS",
+                "name": "IEPS",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 1,
+                    "item_dependent": true,
+                    "apd_tags": [
+                        "RO_MBO",
+                        "RO_MCO",
+                        "RO_MCR",
+                        "RO_MEC",
+                        "RO_MGT",
+                        "RO_MHN",
+                        "RO_MLA",
+                        "RO_MLB",
+                        "RO_MLC",
+                        "RO_MLU",
+                        "RO_MLV",
+                        "RO_MNI",
+                        "RO_MPA",
+                        "RO_MPE",
+                        "RO_MPY",
+                        "RO_MRD",
+                        "RO_MSV",
+                        "THI_MBO",
+                        "THI_MCO",
+                        "THI_MCR",
+                        "THI_MEC",
+                        "THI_MGT",
+                        "THI_MHN",
+                        "THI_MLA",
+                        "THI_MLB",
+                        "THI_MLC",
+                        "THI_MLU",
+                        "THI_MLV",
+                        "THI_MNI",
+                        "THI_MPA",
+                        "THI_MPE",
+                        "THI_MPY",
+                        "THI_MRD",
+                        "THI_MSV",
+                        "VHI_MBO",
+                        "VHI_MCO",
+                        "VHI_MCR",
+                        "VHI_MEC",
+                        "VHI_MGT",
+                        "VHI_MHN",
+                        "VHI_MLA",
+                        "VHI_MLB",
+                        "VHI_MLC",
+                        "VHI_MLU",
+                        "VHI_MLV",
+                        "VHI_MNI",
+                        "VHI_MPA",
+                        "VHI_MPE",
+                        "VHI_MPY",
+                        "VHI_MRD",
+                        "VHI_MSV"
+                    ]
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "82021095",
+                        "value_name": "0%"
+                    },
+                    {
+                        "value_id": "82021096",
+                        "value_name": "3%"
+                    },
+                    {
+                        "value_id": "82021097",
+                        "value_name": "6%"
+                    },
+                    {
+                        "value_id": "82021098",
+                        "value_name": "7%"
+                    },
+                    {
+                        "value_id": "82021099",
+                        "value_name": "8%"
+                    },
+                    {
+                        "value_id": "82021100",
+                        "value_name": "9%"
+                    },
+                    {
+                        "value_id": "82021101",
+                        "value_name": "25%"
+                    },
+                    {
+                        "value_id": "82021102",
+                        "value_name": "26.5%"
+                    },
+                    {
+                        "value_id": "82021103",
+                        "value_name": "30%"
+                    },
+                    {
+                        "value_id": "82021104",
+                        "value_name": "30.4%"
+                    },
+                    {
+                        "value_id": "82021105",
+                        "value_name": "50%"
+                    },
+                    {
+                        "value_id": "82021106",
+                        "value_name": "53%"
+                    },
+                    {
+                        "value_id": "82021107",
+                        "value_name": "160%"
+                    }
+                ],
+                "tooltip": "scolha a alíquota do IEPS (Imposto Especial sobre Produção e Serviços) que deve ser paga pelo comprador nos produtos das categorias: combustível, bebidas e tabaco.",
+                "input_group": "FISCAL_INFO",
+                "output_group": [],
+                "input_component_config": {
+                    "group_id": "FISCAL_INFO"
+                },
+                "calculated": false
+            },
+            {
+                "id": "MOTOR_AMPERAGE",
+                "name": "Amperagem do motor",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "electric_current",
+                    "allowed_units": [
+                        "A",
+                        "mA"
+                    ],
+                    "default_unit": "A",
+                    "comparation_unit": "A"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 5,
+                    "filter_numeric_range_epsilon": "1 A",
+                    "filter_numeric_range_overlapping": false,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_LOCK_BUTTON",
+                "name": "Com botão de bloqueio",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "BATTERY_VOLTAGE",
+                "name": "Voltagem da bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "198813",
+                        "value_name": "220V"
+                    },
+                    {
+                        "value_id": "39205162",
+                        "value_name": "127V"
+                    },
+                    {
+                        "value_id": "909022",
+                        "value_name": "12V"
+                    },
+                    {
+                        "value_id": "6084968",
+                        "value_name": "20V"
+                    }
+                ],
+                "filter_config": {
+                    "filter_vip_enabled": false
+                },
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "INCLUDES_BATTERY",
+                "name": "Inclui bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "INCLUDE_ATTRIBUTE_NAME",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "BATTERY_TYPE",
+                "name": "Tipo de bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "suggested_values": [
+                    {
+                        "value_id": "10831697",
+                        "value_name": "Íon de lítio"
+                    },
+                    {
+                        "value_id": "10831698",
+                        "value_name": "Li-air"
+                    },
+                    {
+                        "value_id": "5111456",
+                        "value_name": "Ni-Cd"
+                    }
+                ],
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "BATTERY_CHARGING_TIME",
+                "name": "Tempo de carga da bateria",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "time",
+                    "allowed_units": [
+                        "anos",
+                        "dias",
+                        "h",
+                        "m",
+                        "meses",
+                        "ms",
+                        "s",
+                        "semanas",
+                        "µs"
+                    ],
+                    "default_unit": "h",
+                    "comparation_unit": "s"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "h",
+                    "m",
+                    "s"
+                ],
+                "output_group": [
+                    "BATTERY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "NOISE_LEVEL",
+                "name": "Nível de ruído",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "sound_level",
+                    "allowed_units": [
+                        "dB"
+                    ],
+                    "default_unit": "dB",
+                    "comparation_unit": "dB"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAX_TORQUE",
+                "name": "Torque máximo",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "torque",
+                    "allowed_units": [
+                        "Nm",
+                        "ft-lbs",
+                        "in-lbs"
+                    ],
+                    "default_unit": "Nm",
+                    "comparation_unit": "Nm"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "output_group": [
+                    "SPECS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAX_WOOD_DRILLING_CAPACITY",
+                "name": "Capacidade máxima de perfuração em madeira",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "mm"
+                ],
+                "output_group": [
+                    "CAPACITY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAX_METAL_DRILLING_CAPACITY",
+                "name": "Capacidade máxima de perfuração em metal",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "mm"
+                ],
+                "output_group": [
+                    "CAPACITY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MAX_CONCRETE_DRILLING_CAPACITY",
+                "name": "Capacidade máxima de perfuração em betão",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "mm"
+                ],
+                "output_group": [
+                    "CAPACITY"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "LENGTH",
+                "name": "Comprimento",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "mm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "m",
+                    "mm"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 2,
+                    "filter_numeric_range_epsilon": 1,
+                    "filter_numeric_range_overlapping": false,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "WEIGHT_AND_DIMENSIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WIDTH",
+                "name": "Largura",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "m",
+                    "mm"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 2,
+                    "filter_numeric_range_epsilon": 1,
+                    "filter_numeric_range_overlapping": false,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "WEIGHT_AND_DIMENSIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "HEIGHT",
+                "name": "Altura",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "cm",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "\"",
+                    "cm",
+                    "m",
+                    "mm"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 2,
+                    "filter_numeric_range_epsilon": 1,
+                    "filter_numeric_range_overlapping": false,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "WEIGHT_AND_DIMENSIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WEIGHT",
+                "name": "Peso",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "mass",
+                    "allowed_units": [
+                        "ct",
+                        "g",
+                        "kg",
+                        "lb",
+                        "mcg",
+                        "mg",
+                        "oz",
+                        "t"
+                    ],
+                    "default_unit": "kg",
+                    "comparation_unit": "kg"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "g",
+                    "kg",
+                    "lb"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 1,
+                    "filter_numeric_range_overlapping": true,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "WEIGHT_AND_DIMENSIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "CABLE_LENGTH",
+                "name": "Comprimento do cabo",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "NUMBER_UNIT",
+                    "catalog_id": "NUMBER_UNIT",
+                    "magnitude": "length",
+                    "allowed_units": [
+                        "\"",
+                        "U",
+                        "cm",
+                        "ft",
+                        "in",
+                        "km",
+                        "m",
+                        "mil",
+                        "milhas",
+                        "mm",
+                        "mãos",
+                        "nm",
+                        "polegadas",
+                        "yd",
+                        "µm"
+                    ],
+                    "default_unit": "m",
+                    "comparation_unit": "m"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "frontend_units": [
+                    "cm",
+                    "m"
+                ],
+                "filter_config": {
+                    "filter_numeric_bound_multiplicity": 1,
+                    "filter_numeric_range_epsilon": 1,
+                    "filter_numeric_range_overlapping": false,
+                    "filter_numeric_value_prefix": "NONE",
+                    "filter_numeric_value_suffix": "UNIT_NAME",
+                    "filter_numeric_values": "RANGE"
+                },
+                "output_group": [
+                    "OTHERS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_VARIABLE_SPEED",
+                "name": "Com velocidade variável",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "WITH_WITHOUT_ATTRIBUTE_NAME"
+                },
+                "output_group": [
+                    "SPEED"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_ANTI_VIBRATION_SYSTEM",
+                "name": "Com sistema antivibração",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [
+                    "FUNCTIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_REVERSE_FUNCTION",
+                "name": "Com função reversa",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "filter_config": {
+                    "filter_boolean_values": "ONLY_TRUE",
+                    "filter_boolean_values_label": "WITH_WITHOUT_ATTRIBUTE_NAME",
+                    "filter_group_id": 1
+                },
+                "output_group": [
+                    "FUNCTIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "WITH_TORQUE_CONTROL",
+                "name": "Com controle de torque",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "BOOLEAN",
+                    "catalog_id": "BOOLEAN"
+                },
+                "tags": {
+                    "hierarchy": "FAMILY",
+                    "relevance": 2,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "242084",
+                        "value_name": "Não",
+                        "meta": {
+                            "value": false
+                        }
+                    },
+                    {
+                        "value_id": "242085",
+                        "value_name": "Sim",
+                        "meta": {
+                            "value": true
+                        }
+                    }
+                ],
+                "output_group": [
+                    "FUNCTIONS"
+                ],
+                "calculated": false
+            },
+            {
+                "id": "MPN",
+                "name": "MPN",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT",
+                    "multivalued": true
+                },
+                "tags": {
+                    "hierarchy": "PRODUCT_IDENTIFIER",
+                    "relevance": 2,
+                    "apd_tags": [
+                        "VDP",
+                        "VHI"
+                    ]
+                },
+                "output_group": [],
+                "calculated": false
+            },
+            {
+                "id": "ITEM_CONDITION",
+                "name": "Condição do item",
+                "catalog_required": false,
+                "catalog_child_required": false,
+                "catalog_primitive_required": false,
+                "type": {
+                    "id": "STRING",
+                    "catalog_id": "TEXT"
+                },
+                "tags": {
+                    "hierarchy": "ITEM",
+                    "relevance": 2,
+                    "item_dependent": true,
+                    "apd_tags": []
+                },
+                "allowed_values": [
+                    {
+                        "value_id": "2230581",
+                        "value_name": "Usado"
+                    },
+                    {
+                        "value_id": "2230582",
+                        "value_name": "Recondicionado"
+                    },
+                    {
+                        "value_id": "2230284",
+                        "value_name": "Novo"
+                    }
+                ],
+                "filter_config": {
+                    "filter_title": {
+                        "pt": "Condição",
+                        "es": "Condición"
+                    }
+                },
+                "output_group": [],
+                "calculated": false
+            }
+        ],
+        "metadata": {
+            "business_unit": "core",
+            "vertical": "HOME & INDUSTRY"
+        },
+        "settings": {
+            "max_title_length": 60,
+            "max_pictures_per_item": 12,
+            "max_variations_allowed": 100
+        }
+    },
+    "capturado_em": "2026-10-01T15:48:41-03:00"
+}
