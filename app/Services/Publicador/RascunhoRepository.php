@@ -10,6 +10,7 @@ use App\Models\PubRascunho;
 use App\Models\PubVariante;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\Schema\CategorySchema;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
@@ -256,6 +257,16 @@ class RascunhoRepository
     {
         return $r->imagens()->where('upload_status', 'uploaded')->whereNotNull('ml_picture_id')->pluck('ml_picture_id', 'id')
             ->mapWithKeys(fn ($ml, $id) => [(string) $id => $ml])->all();
+    }
+
+    /**
+     * A categoria escolhida (E2), ou a mesma categoria revisada depois que o
+     * schema mudou no ML (V-CAT-03): grava o hash que a conferência compara.
+     */
+    public function gravarCategoria(PubRascunho $r, CategorySchema $s): void
+    {
+        $r->update(['categoria_id' => $s->categoriaId, 'dominio_id' => $s->dominio(), 'schema_hash' => $s->hash()]);
+        $this->tocar($r);
     }
 
     /** Uma edição: a validação anterior deixa de valer (`08` §1). */

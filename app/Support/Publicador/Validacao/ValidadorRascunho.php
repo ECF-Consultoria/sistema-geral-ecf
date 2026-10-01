@@ -30,7 +30,7 @@ use App\Support\Publicador\Variacao\Variante;
 final class ValidadorRascunho
 {
     /** A etapa do wizard onde cada seção do formulário vive (`02` §1). */
-    private const ETAPA_DA_SECAO = [
+    public const ETAPA_DA_SECAO = [
         A::SECAO_PRINCIPAIS => 'E3', A::SECAO_CONDICAO => 'E3', A::SECAO_EIXO => 'E4',
         A::SECAO_VARIANTE => 'E5', A::SECAO_FICHA => 'E8', A::SECAO_AVANCADO => 'E8', A::SECAO_EMBALAGEM => 'E10',
     ];
