@@ -23,7 +23,13 @@
 
 As perguntas 5–11 seguem com o padrão proposto (§7.1) até você dizer o contrário.
 
-**Pergunta 15 (aberta):** nas contas multidepósito (23 de 33), o ML aceita o anúncio, mas ignora o estoque informado. Proposta para a Fase 1: **publicar normalmente** (mandando o estoque, porque o campo é obrigatório) e **avisar na tela**: "Nesta conta o estoque é controlado por depósito: depois de publicar, ajuste o estoque no Mercado Livre ou no seu sistema de estoque". Estoque por depósito pelo Publicador fica para a Fase 2. A alternativa da spec (bloquear essas contas) deixaria ~70% dos clientes de fora.
+**Pergunta 15 — respondida (01/10):** "o ideal é fazer tudo no sistema; se não der, publicar e avisar". Decisão **D11**: nas contas multidepósito, o Publicador mostra os depósitos da conta (`GET /users/{id}/stores/search?tags=stock_location`, nome = `description`) e a pessoa informa a quantidade **por depósito**, por variante. Pela documentação do ML (páginas de multi-origin, lidas só por busca porque o acesso direto dá 403 — **[HIP] até testar**):
+- **criação:** `POST /items/multiwarehouse`, com `stock_locations` iniciando o estoque de cada depósito (o `/items` comum ignora o `available_quantity` — confirmado pelo aviso 469);
+- **atualização:** `PUT /user-products/{user_product_id}/stock/type/seller_warehouse`, com o cabeçalho `x-version` lido antes em `GET /user-products/{id}/stock`, e `store_id` + `network_node_id` de cada depósito.
+
+Teste real: só numa conta com depósitos. A Dev 02 não tem; conta de cliente não recebe publicação. Se não der para ligar depósitos na Dev 02, o caminho sai testado só com mocks, e o "publicar e avisar" fica como plano B. Custo estimado: ~1,5 dia (cabe na folga atual).
+
+**Pergunta 15 (texto original):** nas contas multidepósito (23 de 33), o ML aceita o anúncio, mas ignora o estoque informado. Proposta para a Fase 1: **publicar normalmente** (mandando o estoque, porque o campo é obrigatório) e **avisar na tela**: "Nesta conta o estoque é controlado por depósito: depois de publicar, ajuste o estoque no Mercado Livre ou no seu sistema de estoque". Estoque por depósito pelo Publicador fica para a Fase 2. A alternativa da spec (bloquear essas contas) deixaria ~70% dos clientes de fora.
 
 ## Andamento
 
