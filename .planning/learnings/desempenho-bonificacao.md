@@ -505,6 +505,35 @@ Analista tem taxonomia **dupla**: o cargo vive em `user_setores → cargos.slug 
 
 Elegível pelo cargo **não** significa ter carteira. Quem tem zero empresas vinculadas não gera row mensal, e isso é correto — não inconsistência.
 
+### 7.1. Pessoa com dois cargos e junção de contas (Fase 159, 2026-09-30)
+
+Desde a migration `2026_09_30_100000` uma pessoa pode ter **analista E estrategista no
+mesmo setor** (`user_setores` unique `(user_id, setor_id, cargo_id)`). O que não é
+dedutível do código:
+
+- **A nota já suportava papel duplo** (regra D-02 da Fase 118: média das duas perguntas,
+  loja pesa 1×) — mas só quando a resposta de NPS tem `nps_score_assignments` por papel.
+  O **ramo legado** (resposta sem atribuição) usa UM cargo para a pessoa inteira
+  (`User::dimensaoNpsDesempenho`, o `is_principal`). Medido em produção: é marginal
+  (2026-08 = 1 nota legado no total). Meça de novo com
+  `desempenho:auditar-ramo-legado --user=N --mes=YYYY-MM` antes de unir contas — exit 2
+  = janela de coleta aberta, inconclusivo.
+- **Mantenha a linha principal num dos dois cargos de Desempenho.** Mexer no desempate de
+  `cargoDesempenhoSlug()` muda a dimensão de NPS de quem já tem cargo em dois setores
+  (Gustavo, Felipe) — é bônus.
+- **Unir duas contas (`usuarios:unificar-contas`) não tem dimensão de tempo na carteira:**
+  `company_users` é o estado atual, então mover a carteira vale para TODA competência sem
+  snapshot mensal — inclusive as anteriores ao corte. Por isso o comando recusa quando
+  `--a-partir − 1` não está consolidado. Depois da junção, reconsolidar ou invalidar um
+  mês anterior recalcula o destino com as lojas da origem.
+- **Desativar a conta de origem tira ela das telas de meses FECHADOS** (Ranking, Relatório
+  de Bonificação e Auditoria filtram `users.active`). O dado fica; a tela some.
+- Atribuições e imputações de NPS são por **mês de COLETA** (competência + 1): o corte da
+  competência 2026-09 é `>= 2026-10-01`. Respostas que chegarem antes da junção nascem na
+  origem — rodar a etapa de NPS de novo antes do `consolidar-mes`.
+- **Estado em 2026-10-01:** código no ar (`c7a58b3b`); a junção do Danilo (35 → 15) foi
+  **adiada pelo usuário** porque a trava acima bloqueou — ver §10.1.
+
 ## 8. Fontes financeiras
 
 Adman e Shopee. `shopee_metrics` tem faturamento e investimento, **não tem margem** — carteira só-Shopee usa placeholder de margem 1.0, que puxa a nota para baixo. A integração Shopee começou em 01/06/2026, então não há baseline antes disso.
@@ -577,6 +606,16 @@ verde em `tests/Feature/Desempenho/ConsolidarMesComSnapshotDiarioTest.php`.
 Ficou de fora do deploy do dia por decisão de escopo — o pedido em mesa era
 outro. Enquanto ela não subir, **julho/2026 segue sem fechar e toda rodada do
 cron continua falhando para 11 de 12**.
+
+**Ainda quebrado em 2026-10-01** (conferido em produção pela Fase 159):
+`SHOW INDEX FROM desempenho_score_snapshots` ainda tem
+`desempenho_score_snapshots_user_id_ref_date_unique`; o `laravel.log` tem 1062 do
+`[Desempenho Mensal]` para 2026-07 (229), 2026-08 (95 — inclusive a rodada agendada de
+01/10 09:56) e 2026-09 (9). Snapshots mensais vivos: 2026-06 = 10, 2026-07 = 1,
+2026-08 = 1. **Setembro (31/10 14:00) vai falhar igual.** A migration de correção continua
+só como arquivo NÃO COMMITADO no checkout `c:\xampp\htdocs\ecf_admin` — não está em
+origin/main. Ela bloqueia também a junção de contas da Fase 159 (§7.1). O usuário
+decidiu, em 01/10, adiar a junção sem decidir ainda sobre a correção.
 
 **A suíte não protege contra a repetição, e não tem como.** Os testes rodam em
 SQLite, que não exige índice de apoio para FK — lá o drop da 140001 sempre deu

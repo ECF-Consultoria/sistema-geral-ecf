@@ -2693,17 +2693,17 @@ Plans:
   5. A nota de quem acumula os dois papéis numa loja continua sendo a média das duas perguntas de NPS, com a loja pesando 1× — sem mudança de cálculo
   6. Comando de junção (dry-run por padrão) passa lojas, atribuições de NPS e imputações do user 35 para o 15 a partir da competência 2026-09, sem tocar competência consolidada; conferido por reconsulta ao banco
 
-**Plans:** 8 plans em 5 waves — decisões em `.planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/159-CONTEXT.md`
+**Plans:** 7/8 executados (código no ar em `c7a58b3b`, 2026-10-01); 159-08 adiado — decisões em `.planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/159-CONTEXT.md`
 
 Plans:
-- [ ] 159-01-PLAN.md — baseline de testes (D-12), unique de user_setores por cargo (D-01) e /users com dois cargos no mesmo setor (D-02) · wave 1
-- [ ] 159-02-PLAN.md — /administrativo/setores por cargo (D-10) e consumidores de Setor::membros sem duplicar pessoa · wave 2
-- [ ] 159-03-PLAN.md — empresa com a mesma pessoa nos dois papéis (D-03), selects (D-04), NPS por função (D-07) e menu (D-08) · wave 2
-- [ ] 159-04-PLAN.md — ranking, relatório, auditoria e portfolio nas duas abas com a mesma nota (D-05, SC5) · wave 2
-- [ ] 159-05-PLAN.md — comando usuarios:unificar-contas: dry-run, travas, censo (D-11), carteira, backup e desfazer (D-06) · wave 2
-- [ ] 159-06-PLAN.md — junção de NPS, imputações, snapshots, PPAs/onboardings e medição do ramo legado (D-09) · wave 3
-- [ ] 159-07-PLAN.md — regressão final, deploy com o usuário presente, SHOW INDEX no MariaDB e medições só de leitura · wave 4 (checkpoint)
-- [ ] 159-08-PLAN.md — junção 35 → 15 em produção com decisão e verificação humanas, segundo passe até 31/10 14:00 · wave 5 (checkpoint)
+- [x] 159-01-PLAN.md — baseline de testes (D-12), unique de user_setores por cargo (D-01) e /users com dois cargos no mesmo setor (D-02) · wave 1
+- [x] 159-02-PLAN.md — /administrativo/setores por cargo (D-10) e consumidores de Setor::membros sem duplicar pessoa · wave 2
+- [x] 159-03-PLAN.md — empresa com a mesma pessoa nos dois papéis (D-03), selects (D-04), NPS por função (D-07) e menu (D-08) · wave 2
+- [x] 159-04-PLAN.md — ranking, relatório, auditoria e portfolio nas duas abas com a mesma nota (D-05, SC5) · wave 2
+- [x] 159-05-PLAN.md — comando usuarios:unificar-contas: dry-run, travas, censo (D-11), carteira, backup e desfazer (D-06) · wave 2
+- [x] 159-06-PLAN.md — junção de NPS, imputações, snapshots, PPAs/onboardings e medição do ramo legado (D-09) · wave 3
+- [x] 159-07-PLAN.md — regressão final, deploy com o usuário presente, SHOW INDEX no MariaDB e medições só de leitura · wave 4 (checkpoint)
+- [ ] 159-08-PLAN.md — junção 35 → 15 em produção com decisão e verificação humanas, segundo passe até 31/10 14:00 · wave 5 (checkpoint) — **ADIADO pelo usuário em 2026-10-01**: junção bloqueada pelo consolidar-mes quebrado (learnings §10.1); ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
