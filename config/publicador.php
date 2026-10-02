@@ -56,6 +56,13 @@ return [
     // demais seguem no Anunciar antigo. Vazio = todas. A #459 é a conta de teste.
     'empresas_piloto' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_EMPRESAS_PILOTO', '459'))))),
 
+    // D21: contas liberadas para publicar, uma a uma pelo usuário depois do teste real;
+    // vazio = ninguém. Listas separadas por âncora (Company 5 não libera MlbEmpresa 5).
+    'contas_liberadas' => [
+        'companies' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_COMPANIES', env('PUBLICADOR_EMPRESAS_PILOTO', '459')))))),
+        'mlb_empresas' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_MLB_EMPRESAS', ''))))),
+    ],
+
     // D11 [HIP]: conta multidepósito cria pelo caminho próprio, com o estoque de cada
     // depósito. Formato lido na documentação por busca (acesso direto dá 403) e nunca
     // testado de verdade (a conta de teste não tem depósitos). Se o ML recusar com 4xx,

@@ -111,6 +111,72 @@ class MlbEmpresa extends Model implements ContaMercadoLivre
         return $this->projeto ?: (self::FASE_PARA_PROJETO[$this->fase ?? ''] ?? null);
     }
 
+    public const PROGRAMA_POLOS = 'polos';
+    public const PROGRAMA_INCUBADORA = 'incubadora';
+
+    /** Fases que, sem `projeto` gravado, caem em POLOS (derivadas de FASE_PARA_PROJETO). */
+    private static function fasesDePolos(): array
+    {
+        return array_keys(array_filter(self::FASE_PARA_PROJETO, fn ($p) => $p === 'POLOS'));
+    }
+
+    /**
+     * Escopo: empresas do programa do Publicador (D13). O programa NÃO é gravado — é derivado.
+     * Os três marcadores de Incubadora coexistem (o Router grava `tipo`, o painel conta por
+     * `projeto`/`fase`). Aplicar depois de `ativas()`. Mesma regra de programaPublicador().
+     */
+    public function scopePrograma(\Illuminate\Database\Eloquent\Builder $query, string $programa): \Illuminate\Database\Eloquent\Builder
+    {
+        $semProjeto = fn ($q) => $q->whereNull('projeto')->orWhere('projeto', '');
+
+        if ($programa === self::PROGRAMA_INCUBADORA) {
+            return $query->where(function ($q) use ($semProjeto) {
+                $q->where('projeto', 'Incubadora')
+                    ->orWhere(function ($q) use ($semProjeto) {
+                        $q->where($semProjeto)
+                            ->where(fn ($q) => $q->where('fase', 'Incubadora')->orWhere('tipo', 'INCUBADORA'));
+                    });
+            });
+        }
+
+        if ($programa === self::PROGRAMA_POLOS) {
+            return $query->where(function ($q) use ($semProjeto) {
+                $q->where('projeto', 'POLOS')
+                    ->orWhere(function ($q) use ($semProjeto) {
+                        $q->where($semProjeto)
+                            ->whereIn('fase', self::fasesDePolos())
+                            ->where(fn ($q) => $q->whereNull('tipo')->orWhere('tipo', '!=', 'INCUBADORA'));
+                    });
+            });
+        }
+
+        return $query->whereRaw('1 = 0');
+    }
+
+    /** Programa do Publicador desta empresa (mesma regra do scopePrograma), ou null. */
+    public function programaPublicador(): ?string
+    {
+        $projeto = (string) $this->projeto;
+
+        if ($projeto === 'Incubadora') {
+            return self::PROGRAMA_INCUBADORA;
+        }
+        if ($projeto === 'POLOS') {
+            return self::PROGRAMA_POLOS;
+        }
+        if ($projeto !== '') {
+            return null;
+        }
+        if ($this->fase === 'Incubadora' || $this->tipo === 'INCUBADORA') {
+            return self::PROGRAMA_INCUBADORA;
+        }
+        if (in_array($this->fase, self::fasesDePolos(), true)) {
+            return self::PROGRAMA_POLOS;
+        }
+
+        return null;
+    }
+
     /** Empresa cliente associada (pode ser NULL para POLOS sem Company cadastrada). */
     public function company(): BelongsTo
     {
