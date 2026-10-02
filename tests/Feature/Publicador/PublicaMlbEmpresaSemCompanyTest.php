@@ -126,7 +126,7 @@ class PublicaMlbEmpresaSemCompanyTest extends TestCase
         $this->assertSame(0, EstruturaAnuncio::count(), 'D16: sem oferta, nada vai para a aba Anúncios');
     }
 
-    public function test_sem_token_abrir_grava_o_erro_e_conferir_e_publicar_falham_com_v_acc_01(): void
+    public function test_sem_token_abrir_grava_o_erro_conferir_e_local_e_publicar_falha_com_v_acc_01(): void
     {
         MlToken::where('mlb_empresa_id', $this->empresa->id)->delete();
         $antes = count(Http::recorded());
@@ -134,9 +134,10 @@ class PublicaMlbEmpresaSemCompanyTest extends TestCase
         $r = app(EditorRascunhoService::class)->abrir($this->produto);
         $this->assertArrayHasKey('erro', $r->step_state['conta']);
 
+        // WR-B04: sem token = não liberada — a conferência é a local (D26); o V-ACC-01 é da publicação.
         $v = app(ConferenciaService::class)->conferir($this->r->fresh());
-        $this->assertSame(ConferenciaService::ERRO, $v->resultado);
-        $this->assertSame('V-ACC-01', $v->issues[0]['regra']);
+        $this->assertSame('L2', $v->camada);
+        $this->assertSame('V-ACC-01', $v->respostas_ml['motivo']);
 
         $this->assertSame('V-ACC-01', $this->tenta());
         $this->assertSame(0, $this->postsDeItem());

@@ -122,16 +122,45 @@ class ConferenciaContaNaoLiberadaTest extends TestCase
         $this->assertZeroChamadaDoCliente($requisicoes);
     }
 
-    public function test_sem_token_continua_erro_v_acc_01_e_sem_chamada(): void
+    /**
+     * WR-B04: sem token ativo é "não liberada" — mesmo numa conta da lista. A conferência local
+     * roda (antes gravava ERRO V-ACC-01 e a pessoa não via o que faltava no rascunho); o
+     * V-ACC-01 fica para a publicação, que exige a conta.
+     */
+    public function test_wr_b04_sem_token_confere_local_sem_chamada_mesmo_em_conta_liberada(): void
     {
-        $this->naoLiberar();
         MlToken::query()->delete();
 
         [$v, $requisicoes] = $this->conferirEObservar();
 
-        $this->assertSame(ConferenciaService::ERRO, $v->resultado);
-        $this->assertSame('V-ACC-01', $v->issues[0]['regra']);
+        $this->assertSame('L2', $v->camada);
+        $this->assertSame(ConferenciaService::LOCAL, $v->resultado, json_encode($v->issues, JSON_UNESCAPED_UNICODE));
+        $this->assertTrue($v->respostas_ml['local']);
+        $this->assertSame('V-ACC-01', $v->respostas_ml['motivo'], 'o motivo da conferência local: sem token');
+        $this->assertNotContains('V-ACC-01', array_column((array) $v->issues, 'regra'));
         $this->assertSame([], $requisicoes);
+        $this->assertNotSame(PubRascunho::VALIDATED, $this->r->fresh()->status);
+    }
+
+    public function test_wr_b04_foto_sem_token_fica_pendente_sem_erro_e_sobe_depois_da_reconexao(): void
+    {
+        $imagens = app(ImagemAssetService::class);
+        $foto = PubImagem::query()->where('rascunho_id', $this->r->id)->firstOrFail();
+        $foto->update(['upload_status' => PubImagem::PENDENTE, 'ml_picture_id' => null]);
+        Storage::disk('local')->put($foto->caminho, 'conteudo');
+        MlToken::query()->update(['status' => 'revoked']);
+
+        $imagens->enviarAoMl($foto->fresh());
+
+        $this->assertSame(PubImagem::PENDENTE, $foto->fresh()->upload_status);
+        $this->assertNull($foto->fresh()->upload_erro);
+        $this->assertSame(0, $this->chamadas('/pictures/items/upload'));
+
+        MlToken::query()->update(['status' => 'active']);
+        $imagens->enviarAoMl($foto->fresh());
+
+        $this->assertSame(PubImagem::ENVIADA, $foto->fresh()->upload_status);
+        $this->assertSame(1, $this->chamadas('/pictures/items/upload'));
     }
 
     public function test_estado_traz_conferencia_local_e_tem_arquivo_da_foto(): void

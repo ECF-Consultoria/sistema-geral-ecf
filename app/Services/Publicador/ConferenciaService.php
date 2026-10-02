@@ -26,7 +26,8 @@ use App\Support\Publicador\Variacao\Eixo;
  * A conferência com o Mercado Livre — L3 (`08` §4), na ordem da spec:
  *
  *   1. conta lida de novo (token renovado se preciso) e modelo igual ao do
- *      rascunho (V-ACC-01, V-ACC-02);
+ *      rascunho (V-ACC-01, V-ACC-02); conta não liberada ou sem token ativo
+ *      confere só local (D26, WR-B04);
  *   2. schema revalidado (V-CAT-03);
  *   3. fotos pendentes sobem ANTES — assim o validate também confere as fotos;
  *   4. L1/L2 sem bloqueio, senão para aqui (economiza chamadas e dá mensagem melhor);
@@ -77,13 +78,13 @@ class ConferenciaService
         $brutas = [];
 
         try {
-            // 1. Conta e modelo. Sem token, `conta()` lança V-ACC-01 (nenhuma chamada).
-            $ancora = $r->conta();
-
-            // D26: conta não liberada não recebe nada nosso — nem validate, nem foto, nem as leituras
-            // da conferência; só a conferência local contra o schema da categoria.
-            if (! ContasLiberadas::libera($ancora)) {
-                return $this->conferirLocal($r, $revisao);
+            // 1. Conta e modelo. D26: conta não liberada não recebe nada nosso — nem validate, nem
+            // foto, nem as leituras da conferência; só a conferência local contra o schema da categoria.
+            // WR-B04: sem token ativo é o mesmo caso (nenhuma chamada); o V-ACC-01 — reconectar — é
+            // exigido ao publicar (`PublicacaoService::iniciar`), não aqui.
+            $ancora = $r->produto->contaOuNula();
+            if ($ancora === null || ! ContasLiberadas::libera($ancora)) {
+                return $this->conferirLocal($r, $revisao, $ancora === null ? 'V-ACC-01' : 'CONTA-LIB');
             }
 
             $conta = $this->contas->contexto($ancora);
@@ -181,13 +182,16 @@ class ConferenciaService
     }
 
     /**
-     * D26: a conferência de uma conta NÃO liberada. Só L1/L2 contra o schema da categoria
-     * (leitura pública, token do app) — nenhuma chamada com o token do cliente. Fica gravada
-     * como camada L2 com resultado LOCAL/BLOQUEADO e nunca deixa o rascunho VALIDATED.
+     * D26: a conferência de uma conta NÃO liberada — ou sem token ativo (WR-B04). Só L1/L2 contra
+     * o schema da categoria (leitura pública, token do app) — nenhuma chamada com o token do
+     * cliente. Fica gravada como camada L2 com resultado LOCAL/BLOQUEADO e nunca deixa o rascunho
+     * VALIDATED.
+     *
+     * @param  string  $motivo  `CONTA-LIB` (fora da lista) ou `V-ACC-01` (sem token ativo), em `respostas_ml.motivo`
      */
-    private function conferirLocal(PubRascunho $r, int $revisao): PubValidacao
+    private function conferirLocal(PubRascunho $r, int $revisao, string $motivo = 'CONTA-LIB'): PubValidacao
     {
-        $brutas = ['local' => true, 'motivo' => 'CONTA-LIB'];
+        $brutas = ['local' => true, 'motivo' => $motivo];
 
         if (! $r->categoria_id) {
             return $this->gravar($r, $revisao, self::BLOQUEADO, [Problema::bloqueio('V-CAT-01', 'Escolha a categoria do produto.', ['etapa' => 'E2'], 'L2')], $brutas, null, 'L2');

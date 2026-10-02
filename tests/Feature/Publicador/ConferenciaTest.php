@@ -212,17 +212,18 @@ class ConferenciaTest extends TestCase
         $this->assertNotContains('V-REM-02', self::regras($this->conferir()));
     }
 
-    public function test_conta_desconectada_e_modelo_que_mudou(): void
+    public function test_modelo_que_mudou_bloqueia_e_conta_desconectada_confere_so_local(): void
     {
         $this->r->update(['modelo_publicacao' => MontadorDePlano::LEGADO]);
         $v = $this->conferir();
         $this->assertSame(['V-ACC-02'], self::regras($v));
 
+        // WR-B04: sem token ativo a conferência é a local (D26); o V-ACC-01 fica para publicar.
         MlToken::query()->update(['status' => 'revoked']);
         $v = $this->conferir();
-        $this->assertSame(ConferenciaService::ERRO, $v->resultado);
-        $this->assertSame('V-ACC-01', $v->issues[0]['regra']);
-        $this->assertStringContainsString('reconectada', $v->issues[0]['mensagem']);
+        $this->assertSame('L2', $v->camada);
+        $this->assertSame('V-ACC-01', $v->respostas_ml['motivo']);
+        $this->assertNotContains('V-ACC-01', self::regras($v));
     }
 
     public function test_edicao_durante_a_conferencia_nao_marca_validado(): void

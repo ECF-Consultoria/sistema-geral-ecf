@@ -5,6 +5,7 @@ namespace Tests\Feature\Publicador;
 use App\Jobs\Publicador\ConferirRascunhoJob;
 use App\Jobs\Publicador\PublicarRascunhoJob;
 use App\Models\MlbEmpresa;
+use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
@@ -180,6 +181,45 @@ class MlbPublicadorAcessoTest extends TestCase
         $arquivo = $this->admin()->get($r['imagens'][0]['url'])->assertOk();
         $this->assertStringStartsWith('image/', (string) $arquivo->headers->get('Content-Type'));
         $this->assertStringContainsString('private', (string) $arquivo->headers->get('Cache-Control'));
+    }
+
+    /**
+     * WR-B04: produto SEM token ativo é "não liberada" — em conta da lista também. A foto é
+     * guardada pendente e entra no grupo (antes: gravada e 422 "reconecte", fora do grupo, e o
+     * reenvio do mesmo arquivo passava calado); a conferência é a local; publicar pede reconectar.
+     */
+    public function test_wr_b04_sem_token_foto_entra_no_grupo_conferencia_e_local_e_publicar_pede_reconectar(): void
+    {
+        MlToken::query()->delete();
+        $this->r->imagens()->delete();
+        $this->repo->gravarAtribuicoes($this->r->fresh(), []);
+        $imagem = UploadedFile::fake()->image('capa.jpg', 1200, 1200); // o arquivo temporário vive enquanto o objeto viver
+        $bytes = file_get_contents($imagem->getPathname());
+        $antes = count(Http::recorded());
+
+        $r = $this->admin()->post($this->rota('fotos'), ['imagem' => UploadedFile::fake()->createWithContent('capa.jpg', $bytes)], ['Accept' => 'application/json'])->assertOk()->json();
+        $id = $r['imagens'][0]['id'];
+        $this->assertSame(PubImagem::PENDENTE, $r['imagens'][0]['upload_status']);
+        $this->assertTrue($r['foto']['nova']);
+        $this->assertSame([['imagem' => $id, 'grupo' => 'GENERAL', 'posicao' => 0]], array_map(fn ($a) => ['imagem' => (string) $a['imagem'], 'grupo' => $a['grupo'], 'posicao' => $a['posicao']], $r['atribuicoes']));
+        $this->assertFalse($r['publicacao_liberada']);
+
+        // O mesmo arquivo de novo: a mesma foto, uma vez só no grupo.
+        $r = $this->admin()->post($this->rota('fotos'), ['imagem' => UploadedFile::fake()->createWithContent('capa.jpg', $bytes)], ['Accept' => 'application/json'])->assertOk()->json();
+        $this->assertFalse($r['foto']['nova']);
+        $this->assertCount(1, $r['imagens']);
+        $this->assertCount(1, $r['atribuicoes']);
+
+        $this->admin()->postJson($this->rota('fotos.reenviar', ['imagem' => $id]))->assertOk()->assertJsonPath('imagens.0.upload_status', PubImagem::PENDENTE);
+
+        (new ConferirRascunhoJob($this->r->id))->handle(app(ConferenciaService::class));
+        $estado = $this->admin()->getJson($this->rota('abrir'))->assertOk()->json();
+        $this->assertTrue($estado['conferencia']['local']);
+        $this->assertNotContains('V-ACC-01', array_column($estado['conferencia']['issues'], 'regra'));
+
+        $this->admin()->postJson($this->rota('publicar'), ['ciente' => true])->assertUnprocessable()->assertJson(['regra' => 'V-ACC-01']);
+        Queue::assertNotPushed(PublicarRascunhoJob::class);
+        $this->assertSame([], array_slice(Http::recorded()->all(), $antes), 'sem token: nenhuma chamada ao ML');
     }
 
     // ═══ Sem token na resposta ══════════════════════════════════════════════

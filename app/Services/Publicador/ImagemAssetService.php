@@ -72,10 +72,11 @@ class ImagemAssetService
             return $imagem->fresh();
         }
 
-        $conta ??= $imagem->rascunho->conta();
-        // D26: conta não liberada não recebe foto; ela fica guardada aqui e sobe pelo `enviarPendentes`
-        // da conferência L3/publicação depois da liberação.
-        if (! ContasLiberadas::libera($conta)) {
+        // D26: conta não liberada não recebe foto; ela fica guardada aqui (pendente) e sobe pelo
+        // `enviarPendentes` da conferência L3/publicação depois da liberação. WR-B04: sem token ativo
+        // é o mesmo caso — a foto entra no grupo e o V-ACC-01 (reconectar) aparece ao publicar.
+        $conta ??= $imagem->rascunho->produto->contaOuNula();
+        if ($conta === null || ! ContasLiberadas::libera($conta)) {
             return $imagem;
         }
 
