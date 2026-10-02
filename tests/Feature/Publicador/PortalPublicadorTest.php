@@ -51,7 +51,7 @@ class PortalPublicadorTest extends TestCase
         $ator = $this->atorCliente($this->empresa);
         $this->ofertas = $this->listaDoGabarito($this->empresa, $ator);
         $this->anunciosDoGabarito($this->ofertas, $ator);
-        config(['publicador.empresas_piloto' => [$this->empresa->id]]);
+        config(['publicador.contas_liberadas.companies' => [$this->empresa->id]]);
 
         MlToken::create(['company_id' => $this->empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
             'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
@@ -93,7 +93,7 @@ class PortalPublicadorTest extends TestCase
     {
         $this->portal()->get(route('portal.auth.estrutura.anunciar'))->assertInertia(fn ($p) => $p->where('publicador_novo', true));
 
-        config(['publicador.empresas_piloto' => [999999]]);
+        config(['publicador.contas_liberadas.companies' => [999999]]);
         $this->portal()->getJson($this->rota('abrir'))->assertNotFound();
         $this->portal()->get(route('portal.auth.estrutura.anunciar'))->assertInertia(fn ($p) => $p->where('publicador_novo', false));
         $this->assertSame(0, PubRascunho::count());
@@ -102,7 +102,7 @@ class PortalPublicadorTest extends TestCase
     public function test_oferta_de_outra_empresa_e_404(): void
     {
         $outra = $this->empresaDoGabarito();
-        config(['publicador.empresas_piloto' => [$this->empresa->id, $outra->id]]);
+        config(['publicador.contas_liberadas.companies' => [$this->empresa->id, $outra->id]]);
         $ofertas = $this->listaDoGabarito($outra, $this->atorCliente($outra));
 
         $this->portal()->getJson(route('portal.auth.publicador.abrir', $ofertas['CAD-01']->id))->assertNotFound();

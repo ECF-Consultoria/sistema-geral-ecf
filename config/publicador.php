@@ -52,10 +52,6 @@ return [
     'trava_segundos' => 600,
     'reconciliar_apos_segundos' => 180,
 
-    // Piloto (usuário, 01/10): só estas empresas publicam pelo Publicador novo; as
-    // demais seguem no Anunciar antigo. Vazio = todas. A #459 é a conta de teste.
-    'empresas_piloto' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_EMPRESAS_PILOTO', '459'))))),
-
     // D21: contas liberadas para publicar, uma a uma pelo usuário depois do teste real;
     // vazio = ninguém. Listas separadas por âncora (Company 5 não libera MlbEmpresa 5).
     'contas_liberadas' => [

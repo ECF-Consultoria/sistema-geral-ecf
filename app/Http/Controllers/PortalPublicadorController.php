@@ -15,6 +15,7 @@ use App\Services\Publicador\ImagemAssetService;
 use App\Services\Publicador\PublicacaoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Portal\PortalContexto;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
@@ -27,7 +28,7 @@ use Illuminate\Validation\Rule;
  * a tela nunca adivinha o que o servidor gravou.
  *
  * ### Piloto
- * Só as empresas de `publicador.empresas_piloto` veem esta tela; as demais
+ * Só as empresas de `publicador.contas_liberadas` (companies) veem esta tela; as demais
  * seguem no Anunciar antigo. Fora do piloto, 404 — igual a uma oferta de outra
  * empresa: a empresa vem SEMPRE da sessão (`PortalContexto`).
  *
@@ -45,9 +46,8 @@ class PortalPublicadorController extends Controller
 
     public static function noPiloto(Company $empresa): bool
     {
-        $piloto = (array) config('publicador.empresas_piloto', []);
-
-        return $piloto === [] || in_array((int) $empresa->id, $piloto, true);
+        // Mesma regra da publicação (D21): vazio = ninguém. Sai junto com o Portal em 160-15.
+        return ContasLiberadas::libera($empresa);
     }
 
     public function abrir(int $oferta): JsonResponse

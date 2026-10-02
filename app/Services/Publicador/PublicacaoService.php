@@ -13,6 +13,7 @@ use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Support\Portal\AtorDoPortal;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Payload\ItemPlano;
@@ -65,10 +66,9 @@ class PublicacaoService
 
     public function iniciar(PubRascunho $r, AtorDoPortal $ator, bool $cienteDosAvisos = false): PubPublicacao
     {
-        $piloto = (array) config('publicador.empresas_piloto', []);
-        if ($piloto !== [] && ! in_array((int) $r->oferta?->company_id, $piloto, true)) {
-            throw new RegraViolada('PILOTO', 'O Publicador novo ainda está em teste e não publica para esta empresa.');
-        }
+        // D21: só publica em conta liberada uma a uma pelo usuário; a checagem é sobre a
+        // âncora que tem o token — a que de fato recebe o anúncio. Antes de qualquer gravação.
+        ContasLiberadas::exigir($r->conta());
 
         $p = DB::transaction(function () use ($r, $ator, $cienteDosAvisos) {
             $r = PubRascunho::whereKey($r->id)->lockForUpdate()->firstOrFail();

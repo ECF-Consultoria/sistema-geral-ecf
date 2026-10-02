@@ -485,10 +485,7 @@ class EditorRascunhoService
         if ($r->conta_checada_em && $r->conta_checada_em->gt(now()->subMinutes(self::CONTA_VALE_MINUTOS)) && isset($r->step_state['conta'])) {
             return;
         }
-        // Produto sem oferta: a conta por produto entra em 160-07; até lá não há o que ler aqui.
-        if ($r->oferta === null) {
-            return;
-        }
+        // A conta vem do produto (Company ou MlbEmpresa); sem token, `conta()` lança V-ACC-01 e o erro fica no estado.
         try {
             $conta = $this->contas->contexto($r->conta());
             $r->update([

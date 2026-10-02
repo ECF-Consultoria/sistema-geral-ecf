@@ -61,7 +61,7 @@ class PublicacaoTest extends TestCase
         parent::setUp();
         Queue::fake();
         $this->montarCenario();
-        config(['publicador.empresas_piloto' => [$this->empresa->id]]);
+        config(['publicador.contas_liberadas.companies' => [$this->empresa->id]]);
         $this->ator = AtorDoPortal::daEquipe(User::factory()->create(['name' => 'Dev ECF']));
 
         $this->criar = fn (array $corpo, int $n) => Http::response(['id' => sprintf('MLB90000000%02d', $n), 'user_product_id' => "MLBU{$n}", 'status' => 'active',
@@ -185,10 +185,15 @@ class PublicacaoTest extends TestCase
         $this->assertStringStartsWith('RN-90', $tenta(), 'editou depois de conferir');
 
         $this->conferir();
-        config(['publicador.empresas_piloto' => [999999]]);
-        $this->assertStringStartsWith('PILOTO', $tenta(), 'fora do piloto não publica');
+        config(['publicador.contas_liberadas.companies' => [999999]]);
+        $this->assertStringStartsWith('CONTA-LIB', $tenta(), 'conta não liberada não publica');
 
-        config(['publicador.empresas_piloto' => [$this->empresa->id]]);
+        // Liberar a MlbEmpresa de mesmo número NÃO libera a Company (listas separadas por âncora).
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => [$this->empresa->id]]]);
+        $this->assertStringStartsWith('CONTA-LIB', $tenta(), 'mlb_empresas não libera a Company de mesmo id');
+        $this->assertSame(0, $this->postsDeItem());
+
+        config(['publicador.contas_liberadas' => ['companies' => [$this->empresa->id], 'mlb_empresas' => []]]);
         $this->assertNull($tenta());
         $this->assertStringStartsWith('RN-93', $tenta(), 'uma publicação por vez');
         $this->assertSame(0, $this->postsDeItem());
