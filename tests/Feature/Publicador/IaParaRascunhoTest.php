@@ -367,4 +367,146 @@ class IaParaRascunhoTest extends TestCase
             ->assertJsonPath('publicador.rascunho_id', PubRascunho::where('produto_id', $this->produto->id)->value('id'))
             ->assertJsonPath('rascunho', null);
     }
+
+    // ═══ Fatia 2: variações ═════════════════════════════════════════════════
+
+    private function combinacao(string $cor, string $corId, string $tam, string $tamId, string $sku, int $qtd, float $preco): array
+    {
+        return [
+            'attribute_combinations' => [
+                ['id' => 'COLOR', 'name' => 'Cor', 'value_id' => $corId, 'value_name' => $cor],
+                ['id' => 'SIZE', 'name' => 'Tamanho', 'value_id' => $tamId, 'value_name' => $tam],
+            ],
+            'attributes' => [['id' => 'GTIN', 'value_name' => '7891234567895'], ['id' => 'SELLER_SKU', 'value_name' => $sku]],
+            'available_quantity' => $qtd,
+            'price' => $preco,
+            'picture_ids' => [],
+        ];
+    }
+
+    private function fichaCamiseta(array $variacoes): array
+    {
+        return ['category_id' => self::CAMISETA, 'titulo' => 'Camiseta Algodão Básica Unissex', 'atributos' => [], 'variacoes' => $variacoes];
+    }
+
+    public function test_variacoes_2x2_viram_eixos_e_quatro_variantes_com_sku_estoque_e_preco(): void
+    {
+        $ia = [
+            $this->combinacao('Coral-claro', '283148', 'G7', '3259486', 'CAM-CC-G7', 1, 70.0),
+            $this->combinacao('Coral-claro', '283148', '11', '3259494', 'CAM-CC-11', 2, 71.0),
+            $this->combinacao('Coral', '283149', 'G7', '3259486', 'CAM-C-G7', 3, 72.0),
+            $this->combinacao('Coral', '283149', '11', '3259494', 'CAM-C-11', 4, 73.0),
+        ];
+
+        $a = $this->rodar($this->analise($this->fichaCamiseta($ia)));
+
+        $s = $this->snap();
+        $this->assertTrue($a->resultado['publicador']['variacoes']);
+        $this->assertCount(2, $s->eixos);
+        $this->assertSame(['COLOR', 'SIZE'], array_map(fn ($e) => $e->chave, $s->eixos));
+        $this->assertSame('Cor', $s->eixos[0]->nome);
+        $this->assertTrue($s->eixos[0]->definesPicture, 'COLOR define foto no schema da camiseta');
+        $this->assertFalse($s->eixos[1]->definesPicture);
+        $this->assertCount(4, $s->variantes);
+
+        $porSku = [];
+        foreach ($s->variantes as $v) {
+            $this->assertFalse($v->orfa);
+            $porSku[$v->dados['atributos']['SELLER_SKU']['value_name']] = $v;
+        }
+        $this->assertEqualsCanonicalizing(['CAM-CC-G7', 'CAM-CC-11', 'CAM-C-G7', 'CAM-C-11'], array_keys($porSku));
+        // A variante "Coral / 11" recebeu os dados da combinação correspondente.
+        $v = $porSku['CAM-C-11'];
+        $this->assertSame(4, $v->dados['estoque']);
+        $this->assertEquals(73.0, $v->dados['precos']['gold_special']);
+        $this->assertEquals(219.9, $v->dados['precos']['gold_pro'], 'Premium prefere o preço Premium do cliente');
+        $this->assertSame('7891234567895', $v->dados['atributos']['GTIN']['value_name']);
+        $this->assertSame('Coral / 11', $v->rotulo($s->eixos));
+        $this->assertSame(3, $porSku['CAM-C-G7']->dados['estoque']);
+        $this->assertGreaterThanOrEqual(2, $a->resultado['publicador']['secoes']);
+        $this->afirmarSemRedeSemWizardAntigo();
+    }
+
+    public function test_valores_sem_value_id_casam_pelo_nome_normalizado(): void
+    {
+        $nome = fn (string $cor, string $tam, string $sku) => [
+            'attribute_combinations' => [
+                ['id' => 'COLOR', 'name' => 'Cor', 'value_name' => $cor],
+                ['id' => 'SIZE', 'name' => 'Tamanho', 'value_name' => $tam],
+            ],
+            'attributes' => [['id' => 'SELLER_SKU', 'value_name' => $sku]],
+            'available_quantity' => 5,
+            'price' => 50.0,
+        ];
+
+        $this->rodar($this->analise($this->fichaCamiseta([$nome('Preto', 'P', 'PR-P'), $nome('  preto ', 'M', 'PR-M')])));
+
+        $s = $this->snap();
+        $this->assertCount(1, $s->eixos[0]->valores, '"Preto" e "  preto " são o mesmo valor');
+        $this->assertCount(2, $s->eixos[1]->valores);
+        $this->assertCount(2, $s->variantes);
+        $skus = array_map(fn ($v) => $v->dados['atributos']['SELLER_SKU']['value_name'] ?? null, $s->variantes);
+        $this->assertEqualsCanonicalizing(['PR-P', 'PR-M'], $skus);
+    }
+
+    public function test_sem_variacoes_da_ia_o_rascunho_fica_com_a_variante_unica(): void
+    {
+        $a = $this->rodar($this->analise($this->fichaCamiseta([])));
+
+        $s = $this->snap();
+        $this->assertFalse($a->resultado['publicador']['variacoes']);
+        $this->assertSame([], $s->eixos);
+        $this->assertCount(1, $s->variantes);
+        $this->assertSame(8, $s->variantes[0]->dados['estoque']);
+    }
+
+    public function test_mais_eixos_que_o_limite_nao_grava_eixo_nenhum_e_avisa(): void
+    {
+        config(['publicador.max_eixos' => 1]);
+        $ia = [$this->combinacao('Coral', '283149', 'G7', '3259486', 'CAM-C-G7', 3, 72.0)];
+
+        $a = $this->rodar($this->analise($this->fichaCamiseta($ia)));
+
+        $this->assertSame([], $this->snap()->eixos);
+        $this->assertFalse($a->resultado['publicador']['variacoes']);
+        $this->assertStringContainsString('A IA sugeriu mais variações do que o Mercado Livre aceita; defina-as no card Variações.', $a->resultado['publicador']['aviso']);
+    }
+
+    public function test_rascunho_com_eixos_sem_substituir_mantem_os_eixos_e_avisa(): void
+    {
+        $r = $this->rascunho();
+        $this->editor->trocarCategoria($r, self::CAMISETA);
+        $this->editor->salvarEixos($r->fresh(), [['chave' => 'COLOR', 'nome' => 'Cor', 'defines_picture' => true, 'valores' => [['id' => '283149', 'nome' => 'Coral']]]]);
+        $ia = [$this->combinacao('Coral-claro', '283148', 'G7', '3259486', 'CAM-CC-G7', 1, 70.0)];
+
+        $a = $this->rodar($this->analise($this->fichaCamiseta($ia), substituir: false));
+
+        $s = $this->snap();
+        $this->assertSame(['COLOR'], array_map(fn ($e) => $e->chave, $s->eixos));
+        $this->assertSame('283149', $s->eixos[0]->valores[0]->valueId);
+        $this->assertFalse($a->resultado['publicador']['variacoes']);
+        $this->assertStringContainsString('já tem variações', $a->resultado['publicador']['aviso']);
+    }
+
+    public function test_substituir_troca_os_eixos_e_a_variante_antiga_com_dados_vira_orfa_pela_regra_do_motor(): void
+    {
+        $r = $this->rascunho();
+        $this->editor->trocarCategoria($r, self::CAMISETA);
+        $this->editor->salvarEixos($r->fresh(), [['chave' => 'COLOR', 'nome' => 'Cor', 'defines_picture' => true, 'valores' => [['id' => '283149', 'nome' => 'Coral']]]]);
+        $antiga = $this->snap()->variantes[0];
+        $this->editor->salvarVariantes($r->fresh(), [$antiga->chave => ['estoque' => 9, 'precos' => ['gold_special' => 10.0]]]);
+
+        $ia = [$this->combinacao('Coral-claro', '283148', 'G7', '3259486', 'CAM-CC-G7', 1, 70.0)];
+        $a = $this->rodar($this->analise($this->fichaCamiseta($ia), substituir: true));
+
+        $s = $this->snap();
+        $this->assertTrue($a->resultado['publicador']['variacoes']);
+        $this->assertSame(['COLOR', 'SIZE'], array_map(fn ($e) => $e->chave, $s->eixos));
+        $ativas = array_values(array_filter($s->variantes, fn ($v) => ! $v->orfa));
+        $this->assertCount(1, $ativas);
+        $this->assertSame('CAM-CC-G7', $ativas[0]->dados['atributos']['SELLER_SKU']['value_name']);
+        // A antiga não foi apagada por SQL: o motor a mantém (órfã) ou a regenerou, nunca perdeu o dado calado.
+        $this->assertGreaterThanOrEqual(1, count($s->variantes));
+        $this->assertSame(0, MlAnuncioRascunho::count());
+    }
 }
