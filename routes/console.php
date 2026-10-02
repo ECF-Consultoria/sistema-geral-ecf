@@ -512,6 +512,16 @@ Schedule::command('clicksign:verificar-varredura')
     ->name('clicksign-verificar-varredura')
     ->withoutOverlapping();
 
+// Fase 160 Plano 04 (FOTO-03, D-02) — varredura diária que recolhe foto de
+// referência do Creative Engine esquecida (job morto, operador que
+// desistiu). A deleção principal acontece NA HORA da aprovação
+// (`MlbAnuncioController::criativoAprovar()`); isto é a rede de segurança.
+// Diária, por idade do REGISTRO (não do arquivo) — ver docblock do comando.
+Schedule::command('creative:limpar-referencias')
+    ->dailyAt('04:10')
+    ->name('creative-limpar-referencias')
+    ->withoutOverlapping();
+
 // Demandas Dev — o Meet anexa gravação, transcrição e anotações do Gemini ao
 // evento alguns minutos depois do fim da reunião. A cada 30 min puxa esses links
 // das reuniões dev encerradas nos últimos 3 dias (só preenche link vazio).

@@ -1620,6 +1620,18 @@ class MlbAnuncioController extends Controller
             'ml_picture_url' => $resposta['url'],
         ]);
 
+        // FOTO-03 (Fase 160, Plano 04) — o papel da foto do cliente acabou:
+        // o Mercado Livre já tem a imagem. Apaga aqui, na hora, em vez de
+        // esperar a varredura diária. `try/catch` de propósito: uma falha ao
+        // apagar a referência NUNCA pode desfazer uma aprovação que já
+        // chegou ao ML — o que escapar é recolhido por
+        // `creative:limpar-referencias` em até 48h.
+        try {
+            $this->referenciaEfemera->apagar($criativo);
+        } catch (\Throwable $e) {
+            Log::warning("[Creative] Falha ao apagar referência do criativo {$criativo->id} após aprovação: {$e->getMessage()}");
+        }
+
         Log::info("[Creative] Criativo {$criativo->id} aprovado", [
             'rascunho_id' => $rascunho->id,
             'picture_id'  => $resposta['id'],

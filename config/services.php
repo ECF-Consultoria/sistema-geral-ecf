@@ -412,6 +412,17 @@ return [
         'provider'    => env('CREATIVE_IMAGE_PROVIDER', 'gemini'),
         'render_mode' => env('CREATIVE_RENDER_MODE', 'full_ai'),
 
+        // Fase 160 Plano 04 (FOTO-03) — janela da varredura diária
+        // `creative:limpar-referencias`. 48h é DUAS ORDENS DE GRANDEZA acima
+        // da vida máxima de um job de geração (`MlAnuncioCriativo::
+        // LIMITE_MINUTOS = 12`, com 2 tentativas) — é essa folga que torna a
+        // varredura estruturalmente incapaz de apagar um arquivo que algum
+        // job ainda possa estar lendo: quando a varredura alcança um
+        // registro desta idade, ou ele já terminou (pronto/aprovado/erro) ou
+        // está "em andamento" há muito mais tempo do que qualquer job real
+        // sobrevive — e nesse caso está travado por definição, não vivo.
+        'retencao_referencias_horas' => (int) env('CREATIVE_RETENCAO_HORAS', 48),
+
         'gemini' => [
             'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
             'key'      => env('GEMINI_API_KEY'),
