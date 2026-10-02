@@ -17,6 +17,13 @@ Revisão de 02/10/2026, depois do piloto no Portal (`16`). O motor do Publicador
 | D18 | O Anunciar sai do Portal **para todos os clientes** (o piloto e o formulário antigo do par, no ar desde 29/09) quando o interno estiver no ar — confirmado pelo usuário | Consequência de D12: publicar passa a ser só pela equipe ECF |
 | D19 | **Fase GSD completa** (`/gsd-plan-phase` → `/gsd-execute-phase`), com baseline de testes e VERIFICATION | A migration altera `pub_rascunhos`, que já tem dado em produção (CLAUDE.md) — escolha do usuário, mesmo sendo só 2 rascunhos de teste |
 
+| D20 | A Dev 02 vira empresa da **Incubadora** ligada à #459 | Testar pelo caminho real, com sincronização |
+| D21 | **Trava por conta** (company_id e mlb_empresa_id), começa só com a #459 | Conta de cliente nunca recebe publicação de teste |
+| D22 | Assistente antigo **escondido**: abre rascunhos antigos e "Anunciar semelhante"; remoção em fase própria | Não quebrar Histórico nem 4 rascunhos abertos |
+| D23 | Seletor **Polos · Incubadora · Gestão** | As contas da consultoria continuam no módulo |
+
+Medido em produção (02/10, leitura): 603 `MlbEmpresa` ativas, 3 da Incubadora, só 5 ligadas ao Portal, 34 com token ML próprio.
+
 ## 2. O problema de modelo
 
 Hoje cada rascunho é de uma **oferta do Portal**: `pub_rascunhos.oferta_id` NOT NULL →

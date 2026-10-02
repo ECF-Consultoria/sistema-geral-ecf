@@ -49,12 +49,27 @@ Baseline de testes antes de mexer, VERIFICATION no fim.
 ### Alteração em `pub_rascunhos` (decorre de D15)
 `produto_id` FK `pub_produtos` **unique**; `oferta_id` passa a nullable; os 2 rascunhos existentes ganham o seu `pub_produto` (origem `portal`, `company_id` 459, `oferta_id` atual) **na mesma migration**, sem perda. `oferta_id` NOT NULL hoje com FK `pubr_oferta_fk` e unique `pubr_oferta_uq` (migration `2026_10_01_200000_create_publicador_tables.php`).
 
+### Decisões da pesquisa (2026-10-02, perguntas Q1–Q4 do 160-RESEARCH §8)
+
+Medido em produção (só leitura, 02/10): a #459 **não** tem `MlbEmpresa`; 603 `MlbEmpresa` ativas, só **3** da Incubadora (por `projeto`/`fase`; `tipo='INCUBADORA'` = 0), só **5** com `company_id` (ligadas ao Portal), **34** tokens ML ativos por `mlb_empresa_id`; **4** rascunhos antigos abertos em `ml_anuncio_rascunhos`.
+
+### D20 — A Dev 02 entra como empresa da Incubadora
+Criar em produção uma `MlbEmpresa` "Dev 02 Testes API" no programa Incubadora, ligada à `Company` 459 (o teste real passa pelo caminho de verdade, inclusive "Sincronizar do Portal" — a #459 tem 5 ofertas). É escrita em produção: tarefa com o usuário presente, pré-requisito do E2E, não da fase. Cuidado da memória: preencher `email_cliente`/`cnpj`/`nome_contato` da #459 pode disparar contrato real (`CompanyGatilhoContratoObserver`) — não tocar nesses campos.
+
+### D21 — Trava por conta, liberada uma a uma
+A regra "conta de cliente nunca recebe publicação de teste" continua com trava no servidor: lista de contas liberadas por `company_id` **e** `mlb_empresa_id` (generaliza `publicador.empresas_piloto`), começando só pela #459. O usuário libera os clientes depois do teste real. `PublicacaoTest` "fora do piloto não publica" é preservado/adaptado.
+
+### D22 — O assistente antigo fica escondido nesta fase
+`wizard`/`AnunciarML.jsx` saem da entrada principal (o Publicador ocupa o lugar e a aba "Individual"), mas continuam abrindo os rascunhos antigos (`MlAnuncioRascunho`) e o "Anunciar semelhante" do Histórico. Remoção em fase própria. As suítes do wizard continuam valendo.
+
+### D23 — Três programas no seletor: Polos | Incubadora | Gestão
+As contas da consultoria (`Company` com token, fora de Polos/Incubadora) são o terceiro programa: continuam com Meus Anúncios, Em massa e Histórico e também usam o Publicador. Para `MlbEmpresa` sem `Company`, as abas que dependem de `{company}` (Meus/Massa/Histórico) ficam escondidas ou desabilitadas nesta fase.
+
 ## A critério do planejamento (Claude's Discretion)
 
 - Como generalizar `ClienteMlPublicador`, `ContaMlService`, `ImagemAssetService`, `ConferenciaService`, `PublicacaoService`, `EditorRascunhoService` de `Company`/`EstruturaOferta` para `PubProduto` + `ContaMercadoLivre` sem quebrar os 230 testes (adaptá-los é esperado; o comportamento coberto não muda).
 - A organização das telas (entrada com Polos | Incubadora, produtos da empresa, editor) — desde que siga o layout do Stitch aprovado (UI-SPEC) e reaproveite os componentes do piloto (`resources/js/Components/Publicador/*`).
 - Onde mora o controller interno (novo `MlbPublicadorController` ou métodos no `MlbAnuncioController`) — a regra do projeto pede controller enxuto.
-- O que acontece com a rota `wizard` antiga e com os rascunhos `MlAnuncioRascunho` abertos (manter leitura? migrar? avisar?) — decidir com dados (contagem em produção só por leitura) e, havendo dúvida, perguntar.
 
 ## Referências canônicas
 
