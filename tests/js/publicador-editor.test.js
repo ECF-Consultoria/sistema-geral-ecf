@@ -4,7 +4,7 @@ import { lerSemComentarios } from './_fonte.js';
 import { criarRota } from '../../resources/js/Components/Publicador/apoio.js';
 import {
     contarProntas, estadoDaConferencia, mesclarAlvos, mesclarVariantes, podeConferir, podePublicar,
-    rascunhoPreenchido, resumoDoLancamento, textoDaConferencia, totalDeAnuncios,
+    estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa, textoDaConferencia, totalDeAnuncios,
 } from '../../resources/js/Components/Publicador/derivados.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -132,4 +132,43 @@ test('derivados.js é puro: sem React nem alias @', () => {
     const f = lerSemComentarios('resources/js/Components/Publicador/derivados.js');
     assert.doesNotMatch(f, /from 'react'|from '@\//);
     assert.match(f, /local_bloqueado/);
+});
+
+// ─── Anunciar por IA ───
+
+test('textoDaEtapa: textos literais das etapas', () => {
+    assert.equal(textoDaEtapa('analise'), 'Analisando o produto…');
+    assert.equal(textoDaEtapa('titulos'), 'Escrevendo títulos…');
+    assert.equal(textoDaEtapa('descricao'), 'Escrevendo a descrição…');
+    assert.equal(textoDaEtapa('ficha'), 'Montando a ficha…');
+    assert.equal(textoDaEtapa('rascunho'), 'Preenchendo o rascunho…');
+});
+
+test('estadoDaIa: parado, andamento, concluido e erro', () => {
+    assert.equal(estadoDaIa(null).estado, 'parado');
+    for (const status of ['pendente', 'rodando']) {
+        const r = estadoDaIa({ status, etapa: 'ficha' });
+        assert.equal(r.estado, 'andamento');
+        assert.equal(r.texto, 'Montando a ficha…');
+    }
+    const c = estadoDaIa({ status: 'concluido', publicador: { rascunho_id: 5, secoes: ['a'], variacoes: 2 } });
+    assert.equal(c.estado, 'concluido');
+    assert.deepEqual(c.secoes, ['a']);
+    assert.equal(c.variacoes, 2);
+    const e = estadoDaIa({ status: 'erro', erro: 'falhou' });
+    assert.equal(e.estado, 'erro');
+    assert.equal(e.erro, 'falhou');
+});
+
+test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/useIaDoPublicador.js');
+    assert.match(f, /mlb\.anuncios\.ia\.analise\.store/);
+    assert.match(f, /mlb\.anuncios\.ia\.analise\.status/);
+    assert.match(f, /produto_id: produtoId/);
+    assert.match(f, /substituir/);
+    assert.match(f, /INTERVALO = 2500/);
+    assert.match(f, /LIMITE = 15 \* 60 \* 1000/);
+    assert.match(f, /publicador\.ia\.\$\{produtoId\}/);
+    assert.match(f, /sessionStorage\.removeItem/);
+    assert.match(f, /aoConcluir\.current\?\.\(/);
 });
