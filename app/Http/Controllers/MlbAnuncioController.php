@@ -4,18 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Jobs\GerarAnaliseAnuncioIaJob;
 use App\Jobs\GerarCriativoIaJob;
+use App\Jobs\PlanejarKitCriativosJob;
 use App\Jobs\PublicarAnuncioMlJob;
 use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAcervoMetricaDiaria;
 use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\CreativePermissao;
+use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
 use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
@@ -25,11 +29,13 @@ use App\Services\Mlb\Publicacao\MlGradeService;
 use App\Services\Mlb\Publicacao\MlImagemService;
 use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use App\Services\MercadoLivreService;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -70,6 +76,10 @@ class MlbAnuncioController extends Controller
         private CreativeEngineAtivo $creativeAtivo,
         // Fase 160 Plano 01: staging da foto de referência em disco privado (FOTO-02)
         private ReferenciaEfemeraService $referenciaEfemera,
+        // Fase 161: permissão explícita de planejar/gerar/regenerar/aprovar (OPS-04)
+        private CreativePermissao $creativePermissao,
+        // Fase 161: rótulos/objetivos padrão dos tipos de slot, para a resposta de status
+        private CreativeSlotCatalog $creativeSlotCatalog,
     ) {}
 
     /**
@@ -1364,7 +1374,17 @@ class MlbAnuncioController extends Controller
      */
     private function checarEscopoDoCriativo(Request $request, MlAnuncioCriativo $criativo): void
     {
-        $rascunho = $criativo->rascunho;
+        $this->checarEscopoDoRascunho($request, $criativo->rascunho);
+    }
+
+    /**
+     * Double-check de empresa pelo RASCUNHO — extraído quando o mesmo bloco
+     * precisou aparecer uma 3ª vez (Fase 161, `criativoKitStatus`, via
+     * `$kit->rascunho`), sem mudar comportamento nenhum dos dois call sites
+     * anteriores (`checarEscopoDoCriativo`).
+     */
+    private function checarEscopoDoRascunho(Request $request, ?MlAnuncioRascunho $rascunho): void
+    {
         if ($rascunho === null) {
             return;
         }
@@ -1644,6 +1664,179 @@ class MlbAnuncioController extends Controller
             'status'     => $criativo->status,
             'url'        => $resposta['url'],
             'picture_id' => $resposta['id'],
+        ]);
+    }
+
+    /**
+     * ─── Kit de 7 criativos (Fase 161) ───
+     *
+     * Dispara o planejamento do kit (PLAN-01/02/03/04) — SEMPRE 202 antes de
+     * qualquer chamada ao provedor: o planejamento roda fora da request, em
+     * `PlanejarKitCriativosJob` (fila `creative`). Nenhuma imagem é gerada
+     * aqui (objetivo do 161-02).
+     *
+     * Ordem obrigatória: (1) chave ligada, (2) criativo existe, (3)
+     * double-check de empresa, (4) permissão explícita — DEPOIS do escopo,
+     * para não revelar existência do criativo por diferença entre 403 e 404
+     * (OPS-04), (5)-(7) sob lock por rascunho (ver `planejarKitSobLock()` —
+     * check-then-act sem lock nasceria DOIS kits para o mesmo rascunho em
+     * duas requisições concorrentes de verdade, apontado pelo
+     * gsd-plan-checker em 2026-10-02), (8) despacho do job FORA do lock, (9) 202.
+     */
+    public function criativoKitPlanejar(Request $request, string $token): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        // OPS-04: conferida DEPOIS do escopo (não antes) — ver docblock acima.
+        $this->creativePermissao->exigir($request->user(), 'planejar');
+
+        $lock = Cache::lock("criativo-kit-planejar:{$criativo->rascunho_id}", 5);
+
+        try {
+            $resultado = $lock->block(3, fn () => $this->planejarKitSobLock($criativo, $request->user()));
+        } catch (LockTimeoutException) {
+            // Outra requisição está nos passos (5)-(7) agora mesmo — reusa o
+            // que existir em vez de arriscar um segundo kit para o mesmo
+            // rascunho.
+            Log::info("[Creative] Planejamento de kit concorrente — rascunho {$criativo->rascunho_id}, reutilizando o que existir.");
+
+            $kitExistente = MlAnuncioCriativoKit::where('rascunho_id', $criativo->rascunho_id)->latest('id')->first();
+
+            if ($kitExistente !== null) {
+                return response()->json(['kit_token' => $kitExistente->token, 'status' => $kitExistente->status], 202);
+            }
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Outra pessoa está planejando o kit deste rascunho agora. Tente novamente em alguns segundos.']],
+            ], 409);
+        }
+
+        if (($resultado['erro'] ?? false) === true) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Suba ao menos uma foto do produto antes de planejar o kit.']],
+            ], 422);
+        }
+
+        // (8) despacho do job FORA do lock — segurar o lock enquanto
+        // despacha é desperdício.
+        if (($resultado['criado'] ?? false) === true) {
+            PlanejarKitCriativosJob::dispatch($criativo->id, $resultado['kit_id']);
+
+            Log::info("[Creative] Kit planejamento enfileirado — kit {$resultado['kit_id']} (rascunho {$criativo->rascunho_id}) por " . $request->user()->name);
+        }
+
+        return response()->json(['kit_token' => $resultado['kit_token'], 'status' => $resultado['status']], 202);
+    }
+
+    /**
+     * Passos (5)-(7) do planejamento — DENTRO do lock por rascunho. Devolve
+     * um array simples (não HTTP) porque é chamado de dentro de
+     * `Cache::lock()->block()`.
+     *
+     * @return array{kit_token: string, status: string, kit_id?: int, criado?: bool, erro?: bool}
+     */
+    private function planejarKitSobLock(MlAnuncioCriativo $criativo, User $user): array
+    {
+        // (5) já existe kit em andamento/pronto para este rascunho? Devolve
+        // o mesmo token — idempotência de clique no nível do kit (GEN-06).
+        $kitExistente = MlAnuncioCriativoKit::where('rascunho_id', $criativo->rascunho_id)
+            ->whereIn('status', [
+                MlAnuncioCriativoKit::STATUS_PLANEJANDO,
+                MlAnuncioCriativoKit::STATUS_PLANEJADO,
+                MlAnuncioCriativoKit::STATUS_GERANDO,
+                MlAnuncioCriativoKit::STATUS_PARCIAL,
+                MlAnuncioCriativoKit::STATUS_PRONTO,
+            ])
+            ->first();
+
+        if ($kitExistente !== null) {
+            return ['kit_token' => $kitExistente->token, 'status' => $kitExistente->status];
+        }
+
+        // (6) sem referência viva não há o que planejar.
+        if ($criativo->referenciasVivas() === []) {
+            return ['kit_token' => '', 'status' => '', 'erro' => true];
+        }
+
+        // (7) cria o kit — todos os ids derivados do criativo e do usuário
+        // autenticado, nunca do corpo da requisição.
+        $kit = MlAnuncioCriativoKit::create([
+            'token'                  => Str::random(32),
+            'company_id'             => $criativo->company_id,
+            'mlb_empresa_id'         => $criativo->mlb_empresa_id,
+            'rascunho_id'            => $criativo->rascunho_id,
+            'user_id'                => $user->id,
+            'criativo_referencia_id' => $criativo->id,
+            'status'                 => MlAnuncioCriativoKit::STATUS_PLANEJANDO,
+        ]);
+
+        return ['kit_token' => $kit->token, 'status' => $kit->status, 'kit_id' => $kit->id, 'criado' => true];
+    }
+
+    /**
+     * Status do kit para o polling do painel — SÓ o que a tela usa (T-161-05).
+     * O `plano` cru NUNCA vai ao navegador — só a `estrategia` e os campos
+     * por slot (indice/tipo/rotulo/objetivo/status/token); `prompt`,
+     * `contexto`, `truth` e `imagem_path` dos slots nunca aparecem aqui.
+     *
+     * Chama `encerrarSeTravado()`/`recalcularStatus()` ANTES de responder —
+     * garante que o polling tem fim mesmo se o worker morreu calado (mesma
+     * disciplina de `criativoStatus`).
+     */
+    public function criativoKitStatus(Request $request, string $kitToken): JsonResponse
+    {
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $kit = MlAnuncioCriativoKit::where('token', $kitToken)->first();
+        abort_if($kit === null, 404, 'Kit não encontrado.');
+
+        $this->checarEscopoDoRascunho($request, $kit->rascunho);
+
+        $kit->encerrarSeTravado();
+        $kit->recalcularStatus();
+
+        $portador = $kit->criativoReferencia;
+
+        $slots = $kit->slots()->get()->map(function (MlAnuncioCriativo $slot) {
+            $padrao = $this->creativeSlotCatalog->padraoDe((string) $slot->slot) ?? [];
+
+            return [
+                'indice'   => $slot->slot_indice,
+                'tipo'     => $slot->slot,
+                'rotulo'   => $padrao['rotulo'] ?? $slot->slot,
+                'objetivo' => $slot->slot_plano['objetivo'] ?? ($padrao['objetivo_padrao'] ?? null),
+                'status'   => $slot->status,
+                'token'    => $slot->token,
+            ];
+        })->values();
+
+        return response()->json([
+            'kit_token'        => $kit->token,
+            'status'           => $kit->status,
+            'etapa'            => $kit->etapa,
+            'em_andamento'     => in_array($kit->status, MlAnuncioCriativoKit::STATUS_EM_ANDAMENTO, true),
+            'erro'             => $kit->erro_mensagem,
+            'estrategia'       => $kit->plano['estrategia'] ?? null,
+            'minimo_aprovadas' => $kit->minimo_aprovadas,
+            'referencias'      => $portador === null ? [] : collect($portador->referenciasVivas())
+                ->map(fn ($ref) => [
+                    'indice' => $ref['indice'],
+                    'nome'   => $ref['nome'],
+                    'url'    => route('mlb.anuncios.criativo.referencia.ver', [
+                        'token'  => $portador->token,
+                        'indice' => $ref['indice'],
+                    ]),
+                ])
+                ->values(),
+            'slots' => $slots,
         ]);
     }
 

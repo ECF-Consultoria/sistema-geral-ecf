@@ -167,4 +167,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('token', '[A-Za-z0-9]{32}')
             ->middleware('throttle:30,1')
             ->name('criativo.aprovar');
+
+        // Fase 161 Plano 01 — planejamento do kit de 7 (PLAN-01/02/03/04).
+        // Throttle:6,1 na rota de disparo é DINHEIRO, não estilo: mesma
+        // disciplina de `criativo.gerar` — esta chamada é de TEXTO (mais
+        // barata que imagem), mas ainda consome cota do provedor.
+        Route::post('/criativo/{token}/kit', [MlbAnuncioController::class, 'criativoKitPlanejar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:6,1')
+            ->name('criativo.kit.planejar');
+        Route::get('/criativo/kit/{kit}', [MlbAnuncioController::class, 'criativoKitStatus'])
+            ->where('kit', '[A-Za-z0-9]{32}')
+            ->name('criativo.kit.status');
     });

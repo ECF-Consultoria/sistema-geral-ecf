@@ -1,11 +1,16 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink, LayoutGrid } from 'lucide-react';
 
 // Um pouco acima dos 12 min em que o SERVIDOR encerra a geração
 // (MlAnuncioCriativo::LIMITE_MINUTOS) — quem decide é o servidor; este teto
 // só vale se nem ele responder.
 const LIMITE_ESPERA_MS = 14 * 60 * 1000;
+
+// Um pouco acima dos 25 min em que o SERVIDOR encerra o KIT
+// (MlAnuncioCriativoKit::LIMITE_MINUTOS, Fase 161) — mesma lógica do teto
+// acima, só que para o polling do kit.
+const LIMITE_ESPERA_KIT_MS = 27 * 60 * 1000;
 
 const ETAPA_LABEL = {
     contexto: 'montando o contexto',
@@ -44,10 +49,19 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     const [aprovando, setAprovando] = useState(false);
     const [erroAprovacao, setErroAprovacao] = useState(null);
 
+    // Fase 161 — plano do kit de 7 (PLAN-01/02/03/04). Nenhuma imagem é
+    // gerada nesta fatia; o kit só lista os slots planejados.
+    // { kit_token, status, etapa, em_andamento, erro, estrategia, minimo_aprovadas, slots: [{indice,tipo,rotulo,objetivo,status,token}] }
+    const [kit, setKit] = useState(null);
+    const [planejandoKit, setPlanejandoKit] = useState(false);
+    const [erroKit, setErroKit] = useState(null);
+
     const inputRef = useRef(null);
     const pollRef      = useRef(null);
     const cronoRef     = useRef(null);
     const pollDesdeRef  = useRef(null);
+    const pollKitRef      = useRef(null);
+    const pollKitDesdeRef = useRef(null);
 
     // Um único lugar para desarmar os dois timers — sem isto, sair da etapa
     // no meio da geração deixa polling rodando contra um componente
@@ -58,8 +72,13 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         pollDesdeRef.current = null;
     }
 
+    function pararTimerDoKit() {
+        if (pollKitRef.current) { clearInterval(pollKitRef.current); pollKitRef.current = null; }
+        pollKitDesdeRef.current = null;
+    }
+
     // Limpeza no unmount — nunca deixar polling vivo contra componente desmontado.
-    useEffect(() => pararTimers, []);
+    useEffect(() => () => { pararTimers(); pararTimerDoKit(); }, []);
 
     async function enviarReferencias(e) {
         const arquivos = Array.from(e.target.files ?? []);
@@ -183,6 +202,68 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         }
     }
 
+    /**
+     * PLAN-01/02/03/04 (Fase 161): dispara o planejamento do kit de 7 —
+     * responde na hora (202) e o polling acompanha. Nenhuma imagem é gerada
+     * nesta fatia (chega no 161-02).
+     */
+    async function planejarKit() {
+        if (!criativo?.token) return;
+
+        pararTimerDoKit();
+        setPlanejandoKit(true);
+        setErroKit(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.kit.planejar', { token: criativo.token }));
+
+            setKit({ kit_token: data.kit_token, status: data.status, etapa: null, em_andamento: true, erro: null, slots: [] });
+
+            pollKitRef.current = setInterval(consultarKit, 5000);
+            consultarKit(data.kit_token);
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível planejar o kit.');
+        } finally {
+            setPlanejandoKit(false);
+        }
+    }
+
+    async function consultarKit(tokenDoKit = null) {
+        const token = tokenDoKit ?? kit?.kit_token;
+        if (!token) return;
+
+        // Teto de espera no navegador — o servidor já encerra em 25 min
+        // (MlAnuncioCriativoKit::LIMITE_MINUTOS); isto cobre o caso em que
+        // nem o servidor responde.
+        pollKitDesdeRef.current ??= Date.now();
+        if (Date.now() - pollKitDesdeRef.current > LIMITE_ESPERA_KIT_MS) {
+            pararTimerDoKit();
+            setKit(k => ({ ...k, em_andamento: false, status: 'erro', erro: 'O planejamento passou do tempo limite e foi interrompido. Tente novamente.' }));
+            return;
+        }
+
+        try {
+            const { data } = await window.axios.get(route('mlb.anuncios.criativo.kit.status', { kit: token }));
+
+            setKit({
+                kit_token:        data.kit_token,
+                status:           data.status,
+                etapa:            data.etapa,
+                em_andamento:     data.em_andamento,
+                erro:             data.erro,
+                estrategia:       data.estrategia,
+                minimo_aprovadas: data.minimo_aprovadas,
+                slots:            data.slots ?? [],
+            });
+
+            if (!data.em_andamento) pararTimerDoKit();
+        } catch {
+            pararTimerDoKit();
+            setKit(k => ({ ...k, em_andamento: false, status: 'erro', erro: 'Perdi o contato com o planejamento. Tente novamente.' }));
+        }
+    }
+
     // OPS-03: a chave desligada deixa o wizard idêntico ao de hoje — nada
     // deste componente entra no DOM.
     if (!ativo) return null;
@@ -274,6 +355,67 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                             <p className="text-[12px] text-red-300">{criativo.erro}</p>
+                        </div>
+                    )}
+
+                    {/* Fase 161 — kit de 7 (PLAN-01/02/03/04). Fatia separada do fluxo
+                        de 1 imagem acima: nenhuma imagem é gerada aqui, só o plano. */}
+                    {criativo?.token && (
+                        <div className="border-t border-white/[0.08] pt-3">
+                            <button
+                                type="button"
+                                onClick={planejarKit}
+                                disabled={planejandoKit || kit?.em_andamento}
+                                className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
+                            >
+                                {planejandoKit || kit?.em_andamento
+                                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
+                                    : <><LayoutGrid className="h-4 w-4" /> Planejar kit de 7</>}
+                            </button>
+
+                            {kit?.em_andamento && (
+                                <p className="mt-1.5 text-[11px] text-sky-300/80">
+                                    {kit.etapa ? `montando o plano (${kit.etapa})` : 'preparando'}… leva só alguns segundos
+                                    (é uma chamada de texto, não de imagem).
+                                </p>
+                            )}
+
+                            {erroKit && (
+                                <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                                    <p className="text-[12px] text-red-300">{erroKit}</p>
+                                </div>
+                            )}
+
+                            {kit?.status === 'erro' && kit?.erro && (
+                                <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                                    <p className="text-[12px] text-red-300">{kit.erro}</p>
+                                </div>
+                            )}
+
+                            {kit?.slots?.length > 0 && (
+                                <div className="mt-3">
+                                    <p className="mb-2 text-[11px] font-medium text-white/50">
+                                        Plano do kit — {kit.slots.length} slots
+                                        {kit.minimo_aprovadas ? ` (mínimo recomendado: ${kit.minimo_aprovadas} aprovadas)` : ''}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                                        {kit.slots.map(slot => (
+                                            <div
+                                                key={slot.indice}
+                                                className="rounded-lg border border-white/[0.08] bg-ecf-bg p-2.5"
+                                            >
+                                                <p className="text-[11px] font-semibold text-white/80">
+                                                    {slot.indice}. {slot.rotulo}
+                                                </p>
+                                                <p className="mt-0.5 line-clamp-2 text-[10px] text-white/45">{slot.objetivo}</p>
+                                                <p className="mt-1 text-[10px] uppercase tracking-wide text-sky-300/70">{slot.status}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
