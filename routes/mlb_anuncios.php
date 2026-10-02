@@ -176,6 +176,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('token', '[A-Za-z0-9]{32}')
             ->middleware('throttle:6,1')
             ->name('criativo.kit.planejar');
+
+        // Fase 161 Plano 02 — geração das 7 imagens (GEN-01/02/03). Throttle:3,1
+        // é a PRIMEIRA barreira de custo, não proteção de abuso: cada chamada
+        // vale 7 imagens, cerca de US$ 0,71 (medição do spike 261001-nkx §16).
+        Route::post('/criativo/kit/{kit}/gerar', [MlbAnuncioController::class, 'criativoKitGerar'])
+            ->where('kit', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:3,1')
+            ->name('criativo.kit.gerar');
         Route::get('/criativo/kit/{kit}', [MlbAnuncioController::class, 'criativoKitStatus'])
             ->where('kit', '[A-Za-z0-9]{32}')
             ->name('criativo.kit.status');

@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink, LayoutGrid } from 'lucide-react';
+import KitCriativosGrade from './KitCriativosGrade';
 
 // Um pouco acima dos 12 min em que o SERVIDOR encerra a geração
 // (MlAnuncioCriativo::LIMITE_MINUTOS) — quem decide é o servidor; este teto
@@ -12,7 +13,10 @@ const LIMITE_ESPERA_MS = 14 * 60 * 1000;
 // acima, só que para o polling do kit.
 const LIMITE_ESPERA_KIT_MS = 27 * 60 * 1000;
 
-const ETAPA_LABEL = {
+// Exportado para `KitCriativosGrade.jsx` reusar (não duplicar) — a etapa é a
+// mesma string gravada por `GerarCriativoIaJob`, tanto no fluxo de 1 imagem
+// quanto por slot do kit (Fase 161).
+export const ETAPA_LABEL = {
     contexto: 'montando o contexto',
     truth:    'conferindo os fatos do produto',
     prompt:   'escrevendo o prompt',
@@ -55,6 +59,9 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     const [kit, setKit] = useState(null);
     const [planejandoKit, setPlanejandoKit] = useState(false);
     const [erroKit, setErroKit] = useState(null);
+    // Fase 161 Plano 02 — disparo das 7 imagens (GEN-01/02/03). Separado de
+    // `planejandoKit`: são dois cliques, dois estados de botão distintos.
+    const [gerandoKit, setGerandoKit] = useState(false);
 
     const inputRef = useRef(null);
     const pollRef      = useRef(null);
@@ -229,6 +236,34 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         }
     }
 
+    /**
+     * GEN-01/02/03 (Fase 161, Plano 02): dispara a geração das 7 imagens —
+     * responde na hora (202) e o MESMO polling do kit (`consultarKit`)
+     * acompanha o progresso de cada slot. Custa cota de verdade (~US$ 0,71
+     * por kit) — por isso o botão só aparece quando o plano está pronto.
+     */
+    async function gerarKit() {
+        if (!kit?.kit_token) return;
+
+        pararTimerDoKit();
+        setGerandoKit(true);
+        setErroKit(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.kit.gerar', { kit: kit.kit_token }));
+
+            setKit(k => ({ ...k, status: data.status, em_andamento: true, erro: null }));
+
+            pollKitRef.current = setInterval(consultarKit, 5000);
+            consultarKit(kit.kit_token);
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível iniciar a geração das imagens.');
+        } finally {
+            setGerandoKit(false);
+        }
+    }
+
     async function consultarKit(tokenDoKit = null) {
         const token = tokenDoKit ?? kit?.kit_token;
         if (!token) return;
@@ -329,7 +364,11 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {criativo?.token && (
+                    {/* Fluxo de 1 imagem (Fase 160) — sai de evidência quando existe
+                        kit (Fase 161): não é removido do arquivo, é o caminho de
+                        rollback enquanto a chave do Creative Engine estiver ligada
+                        em produção. */}
+                    {!kit && criativo?.token && (
                         <div>
                             <button
                                 type="button"
@@ -351,29 +390,33 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {criativo?.status === 'erro' && criativo?.erro && (
+                    {!kit && criativo?.status === 'erro' && criativo?.erro && (
                         <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                             <p className="text-[12px] text-red-300">{criativo.erro}</p>
                         </div>
                     )}
 
-                    {/* Fase 161 — kit de 7 (PLAN-01/02/03/04). Fatia separada do fluxo
-                        de 1 imagem acima: nenhuma imagem é gerada aqui, só o plano. */}
+                    {/* Fase 161 — kit de 7 (PLAN-01/02/03/04 + GEN-01/02/03 do 161-02).
+                        Botão de planejar só aparece ANTES de o kit existir; depois,
+                        `KitCriativosGrade` assume (status, botão "Gerar as 7 imagens"
+                        e a grade por slot). */}
                     {criativo?.token && (
                         <div className="border-t border-white/[0.08] pt-3">
-                            <button
-                                type="button"
-                                onClick={planejarKit}
-                                disabled={planejandoKit || kit?.em_andamento}
-                                className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
-                            >
-                                {planejandoKit || kit?.em_andamento
-                                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
-                                    : <><LayoutGrid className="h-4 w-4" /> Planejar kit de 7</>}
-                            </button>
+                            {!kit && (
+                                <button
+                                    type="button"
+                                    onClick={planejarKit}
+                                    disabled={planejandoKit}
+                                    className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
+                                >
+                                    {planejandoKit
+                                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
+                                        : <><LayoutGrid className="h-4 w-4" /> Planejar kit de 7</>}
+                                </button>
+                            )}
 
-                            {kit?.em_andamento && (
+                            {kit?.status === 'planejando' && (
                                 <p className="mt-1.5 text-[11px] text-sky-300/80">
                                     {kit.etapa ? `montando o plano (${kit.etapa})` : 'preparando'}… leva só alguns segundos
                                     (é uma chamada de texto, não de imagem).
@@ -387,40 +430,20 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                                 </div>
                             )}
 
-                            {kit?.status === 'erro' && kit?.erro && (
-                                <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                                    <p className="text-[12px] text-red-300">{kit.erro}</p>
-                                </div>
-                            )}
-
-                            {kit?.slots?.length > 0 && (
-                                <div className="mt-3">
-                                    <p className="mb-2 text-[11px] font-medium text-white/50">
-                                        Plano do kit — {kit.slots.length} slots
-                                        {kit.minimo_aprovadas ? ` (mínimo recomendado: ${kit.minimo_aprovadas} aprovadas)` : ''}
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                                        {kit.slots.map(slot => (
-                                            <div
-                                                key={slot.indice}
-                                                className="rounded-lg border border-white/[0.08] bg-ecf-bg p-2.5"
-                                            >
-                                                <p className="text-[11px] font-semibold text-white/80">
-                                                    {slot.indice}. {slot.rotulo}
-                                                </p>
-                                                <p className="mt-0.5 line-clamp-2 text-[10px] text-white/45">{slot.objetivo}</p>
-                                                <p className="mt-1 text-[10px] uppercase tracking-wide text-sky-300/70">{slot.status}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                            {kit && (
+                                <KitCriativosGrade
+                                    kit={kit}
+                                    referencias={kit.referencias ?? []}
+                                    onGerar={gerarKit}
+                                    gerando={gerandoKit}
+                                />
                             )}
                         </div>
                     )}
 
-                    {/* APROV-01: lado a lado — fotos originais × gerado por IA. */}
-                    {criativo?.referencias?.length > 0 && (
+                    {/* APROV-01: lado a lado — fotos originais × gerado por IA (fluxo
+                        de 1 imagem, Fase 160 — some quando existe kit, ver acima). */}
+                    {!kit && criativo?.referencias?.length > 0 && (
                         <div className={cn('grid gap-4', criativo?.imagem_url && 'sm:grid-cols-2')}>
                             <div>
                                 <p className="mb-2 text-[11px] font-medium text-white/50">

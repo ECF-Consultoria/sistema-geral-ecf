@@ -4,6 +4,7 @@ namespace Tests\Feature\Phase161;
 
 use App\Jobs\GerarCriativoIaJob;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlAnuncioRascunho;
@@ -38,7 +39,9 @@ class CriativoKitGeracaoTest extends TestCase
     {
         parent::setUp();
 
+        $this->withoutVite();
         Http::preventStrayRequests();
+        Configuracao::set('creative_engine_ativo', '1');
 
         config([
             'services.creative.gemini.base_url'       => 'https://gemini.teste/v1beta',
@@ -148,6 +151,16 @@ class CriativoKitGeracaoTest extends TestCase
         }
 
         return [$kit->fresh(), $portador->fresh()];
+    }
+
+    private function admin(): User
+    {
+        return User::factory()->create(['role' => 'admin']);
+    }
+
+    private function naoAdmin(): User
+    {
+        return User::factory()->create(['role' => 'consultor']);
     }
 
     private function rodar(MlAnuncioCriativo $criativo): void
@@ -395,5 +408,125 @@ class CriativoKitGeracaoTest extends TestCase
         GerarCriativoIaJob::dispatch($slot->id);
 
         Queue::assertPushed(GerarCriativoIaJob::class, 1);
+    }
+
+    // ═══ Task 3 — endpoint de disparo (criativo.kit.gerar) ══════════════
+
+    public function test_gerar_devolve_202_antes_de_chamar_o_provedor_e_enfileira_os_7(): void
+    {
+        Queue::fake();
+        [$kit] = $this->kitComPortadorE7Slots();
+
+        $resp = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token])
+        );
+
+        $resp->assertStatus(202);
+        $resp->assertJsonStructure(['kit_token', 'status', 'enfileirados']);
+        $resp->assertJsonPath('enfileirados', 7);
+        Queue::assertPushed(GerarCriativoIaJob::class, 7);
+
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_GERANDO, $kit->fresh()->status);
+    }
+
+    public function test_gerar_com_kit_ja_gerando_devolve_202_sem_redespachar(): void
+    {
+        Queue::fake();
+        [$kit] = $this->kitComPortadorE7Slots();
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_GERANDO]);
+
+        $resp = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token])
+        );
+
+        $resp->assertStatus(202);
+        $resp->assertJsonPath('enfileirados', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_gerar_com_kit_ainda_planejando_devolve_422_em_pt_br(): void
+    {
+        Queue::fake();
+        [$kit] = $this->kitComPortadorE7Slots();
+        $kit->update(['status' => MlAnuncioCriativoKit::STATUS_PLANEJANDO]);
+
+        $resp = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token])
+        );
+
+        $resp->assertStatus(422);
+        $this->assertNotEmpty($resp->json('erros.0.mensagem'));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_gerar_com_teto_de_imagens_atingido_devolve_422_com_motivo(): void
+    {
+        Queue::fake();
+        [$kit] = $this->kitComPortadorE7Slots();
+        $kit->update(['imagens_geradas' => 14]);
+
+        $resp = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token])
+        );
+
+        $resp->assertStatus(422);
+        $this->assertStringContainsString('máximo', $resp->json('erros.0.mensagem'));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_gerar_com_chave_desligada_devolve_404_sem_enfileirar(): void
+    {
+        Queue::fake();
+        Configuracao::set('creative_engine_ativo', '0');
+        [$kit] = $this->kitComPortadorE7Slots();
+
+        $this->actingAs($this->admin())
+            ->postJson(route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token]))
+            ->assertStatus(404);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_gerar_sem_permissao_devolve_403_sem_enfileirar(): void
+    {
+        Queue::fake();
+        [$kit] = $this->kitComPortadorE7Slots();
+
+        $resp = $this->actingAs($this->naoAdmin())->postJson(
+            route('mlb.anuncios.criativo.kit.gerar', ['kit' => $kit->token])
+        );
+
+        $resp->assertStatus(403);
+        Queue::assertNothingPushed();
+    }
+
+    // ═══ Task 3 — whitelist do status por slot (T-161-05/T-161-12) ═════
+
+    public function test_status_do_kit_inclui_etapa_erro_imagem_url_modelo_latencia_por_slot_sem_dados_sensiveis(): void
+    {
+        Http::fake(['gemini.teste/*' => Http::response($this->respostaImagemOk())]);
+        [$kit] = $this->kitComPortadorE7Slots();
+
+        $slotPronto = $kit->slots()->where('slot', 'hero')->first();
+        $this->rodar($slotPronto);
+
+        $resp = $this->actingAs($this->admin())->getJson(
+            route('mlb.anuncios.criativo.kit.status', ['kit' => $kit->token])
+        );
+
+        $resp->assertOk();
+        $resp->assertJsonStructure([
+            'slots' => [['indice', 'tipo', 'rotulo', 'objetivo', 'status', 'etapa', 'erro', 'token', 'imagem_url', 'modelo', 'latencia_ms']],
+        ]);
+
+        $corpo = $resp->getContent();
+        $this->assertStringNotContainsString('"prompt"', $corpo);
+        $this->assertStringNotContainsString('"contexto"', $corpo);
+        $this->assertStringNotContainsString('"truth"', $corpo);
+        $this->assertStringNotContainsString('imagem_path', $corpo);
+
+        $slotRespondido = collect($resp->json('slots'))->firstWhere('tipo', 'hero');
+        $this->assertNotNull($slotRespondido['imagem_url']);
+        $this->assertSame('modelo-imagem-teste', $slotRespondido['modelo']);
     }
 }

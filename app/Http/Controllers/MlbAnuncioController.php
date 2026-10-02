@@ -18,6 +18,7 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
@@ -80,6 +81,8 @@ class MlbAnuncioController extends Controller
         private CreativePermissao $creativePermissao,
         // Fase 161: rótulos/objetivos padrão dos tipos de slot, para a resposta de status
         private CreativeSlotCatalog $creativeSlotCatalog,
+        // Fase 161 Plano 02: despacho em ondas dos 7 slots do kit (GEN-03)
+        private CreativeKitDespachante $creativeKitDespachante,
     ) {}
 
     /**
@@ -1782,10 +1785,71 @@ class MlbAnuncioController extends Controller
     }
 
     /**
-     * Status do kit para o polling do painel — SÓ o que a tela usa (T-161-05).
-     * O `plano` cru NUNCA vai ao navegador — só a `estrategia` e os campos
-     * por slot (indice/tipo/rotulo/objetivo/status/token); `prompt`,
-     * `contexto`, `truth` e `imagem_path` dos slots nunca aparecem aqui.
+     * Dispara a geração das 7 imagens do kit (GEN-01/02/03) — SEMPRE 202
+     * antes de qualquer chamada ao provedor: o despacho só enfileira os
+     * jobs em `CreativeKitDespachante`, nenhuma imagem é gerada aqui.
+     *
+     * Ordem obrigatória (mesma disciplina de `criativoKitPlanejar`): (1)
+     * chave ligada, (2) kit existe, (3) double-check de empresa pelo
+     * rascunho, (4) permissão explícita (DEPOIS do escopo, OPS-04), (5)
+     * `encerrarSeTravado()`, (6) recusas em pt-BR (planejamento ainda não
+     * terminou, teto de imagens atingido), (7) idempotência — kit já
+     * `gerando` não redespacha (GEN-06), (8) despacho de verdade.
+     */
+    public function criativoKitGerar(Request $request, string $kitToken): JsonResponse
+    {
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $kit = MlAnuncioCriativoKit::where('token', $kitToken)->first();
+        abort_if($kit === null, 404, 'Kit não encontrado.');
+
+        $this->checarEscopoDoRascunho($request, $kit->rascunho);
+
+        // OPS-04: conferida DEPOIS do escopo (não antes) — mesma disciplina
+        // de `criativoKitPlanejar`.
+        $this->creativePermissao->exigir($request->user(), 'gerar');
+
+        $kit->encerrarSeTravado();
+
+        if ($kit->status === MlAnuncioCriativoKit::STATUS_PLANEJANDO
+            || ($kit->status === MlAnuncioCriativoKit::STATUS_ERRO && $kit->totalSlots() === 0)) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'O planejamento deste kit ainda não terminou — aguarde antes de gerar as imagens.']],
+            ], 422);
+        }
+
+        if ($kit->tetoDeImagensAtingido()) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => $kit->motivoDoTeto()]],
+            ], 422);
+        }
+
+        // GEN-06: kit já gerando não despacha de novo — o polling já está
+        // acompanhando o que foi disparado antes.
+        if ($kit->status === MlAnuncioCriativoKit::STATUS_GERANDO) {
+            return response()->json(['kit_token' => $kit->token, 'status' => $kit->status, 'enfileirados' => 0], 202);
+        }
+
+        $resultado = $this->creativeKitDespachante->despachar($kit);
+
+        Log::info("[Creative] Geração do kit {$kit->id} disparada — "
+            ."{$resultado['enfileirados']} enfileirados por " . $request->user()->name);
+
+        return response()->json([
+            'kit_token'    => $kit->token,
+            'status'       => $kit->fresh()->status,
+            'enfileirados' => $resultado['enfileirados'],
+        ], 202);
+    }
+
+    /**
+     * Status do kit para o polling do painel — SÓ o que a tela usa (T-161-05
+     * / T-161-12). O `plano` cru NUNCA vai ao navegador — só a `estrategia`
+     * e os campos por slot (indice/tipo/rotulo/objetivo/status/etapa/erro/
+     * token/imagem_url/modelo/latencia_ms); `prompt`, `contexto`, `truth` e
+     * `imagem_path` dos slots nunca aparecem aqui.
      *
      * Chama `encerrarSeTravado()`/`recalcularStatus()` ANTES de responder —
      * garante que o polling tem fim mesmo se o worker morreu calado (mesma
@@ -1809,12 +1873,21 @@ class MlbAnuncioController extends Controller
             $padrao = $this->creativeSlotCatalog->padraoDe((string) $slot->slot) ?? [];
 
             return [
-                'indice'   => $slot->slot_indice,
-                'tipo'     => $slot->slot,
-                'rotulo'   => $padrao['rotulo'] ?? $slot->slot,
-                'objetivo' => $slot->slot_plano['objetivo'] ?? ($padrao['objetivo_padrao'] ?? null),
-                'status'   => $slot->status,
-                'token'    => $slot->token,
+                'indice'      => $slot->slot_indice,
+                'tipo'        => $slot->slot,
+                'rotulo'      => $padrao['rotulo'] ?? $slot->slot,
+                'objetivo'    => $slot->slot_plano['objetivo'] ?? ($padrao['objetivo_padrao'] ?? null),
+                'status'      => $slot->status,
+                'etapa'       => $slot->etapa,
+                'erro'        => $slot->erro_mensagem,
+                'token'       => $slot->token,
+                // Só aponta para a rota quando a imagem existe (161-02) —
+                // a rota já faz escopo e `Cache-Control: private, no-store`.
+                'imagem_url'  => $slot->imagem_path !== null
+                    ? route('mlb.anuncios.criativo.imagem', ['token' => $slot->token])
+                    : null,
+                'modelo'      => $slot->modelo,
+                'latencia_ms' => $slot->latencia_ms,
             ];
         })->values();
 
