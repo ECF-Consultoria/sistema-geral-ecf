@@ -454,6 +454,28 @@ return [
             // por um endpoint que está fora do ar.
             'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT', 15),
         ],
+
+        // Fase 161 — kit de 7 criativos. Cada default documentado com a
+        // medição que o justifica (spike 261001-nkx): US$ 0,101 e ~12,5s por
+        // imagem, medidos em produção na 160-05.
+        'kit' => [
+            // PLAN-01: nunca menos que 7 slots planejados.
+            'slots' => (int) env('CREATIVE_KIT_SLOTS', 7),
+            // Quantas gerações da onda do 161-02 rodam ao mesmo tempo.
+            'paralelo' => (int) env('CREATIVE_KIT_PARALELO', 3),
+            // Intervalo entre ondas de despacho (161-02) — 15s cobre a
+            // latência medida de ~12,5s por imagem com folga.
+            'intervalo_s' => (int) env('CREATIVE_KIT_INTERVALO_S', 15),
+            // Teto de imagens por kit — 7 custam ~US$ 0,71 (7 × US$ 0,101);
+            // 14 impede um kit de custar mais que o dobro do previsto mesmo
+            // somando regenerações.
+            'max_imagens' => (int) env('CREATIVE_KIT_MAX_IMAGENS', 14),
+            'max_regeneracoes_asset' => (int) env('CREATIVE_KIT_MAX_REGEN_ASSET', 3),
+            'max_regeneracoes_kit'   => (int) env('CREATIVE_KIT_MAX_REGEN_KIT', 7),
+            // Sai de FOTOS_RECOMENDADAS_MIN (resources/js/lib/mlAnuncioRegras.js),
+            // não de número inventado.
+            'minimo_aprovadas' => (int) env('CREATIVE_KIT_MINIMO_APROVADAS', 3),
+        ],
     ],
 
 ];
