@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\MlAnuncioIaAnalise;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Ia\RascunhoAnuncioIaService;
+use App\Services\Publicador\IaParaRascunhoService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -168,7 +169,16 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
         // ─── Etapa 5: Rascunho — só grava, NUNCA publica ───
         // O pedido foi explícito: a IA cadastra tudo, mas quem publica é o
         // publicador, depois de conferir e subir as fotos.
-        if (empty($r['rascunho_id'])) {
+        //
+        // D14: do Publicador, o resultado vai para o rascunho novo (pub_*); o
+        // wizard antigo (D22) segue no caminho de sempre.
+        if ($analise->destinoPublicador() !== null) {
+            if (empty($r['publicador']['aplicado_em'])) {
+                $analise->update(['etapa' => 'rascunho']);
+                $r['publicador'] = app(IaParaRascunhoService::class)->aplicar($analise, $r);
+                $analise->update(['resultado' => $r]);
+            }
+        } elseif (empty($r['rascunho_id'])) {
             $analise->update(['etapa' => 'rascunho']);
             $rascunho = $rascunhos->criarRascunho($analise, $r);
 
@@ -196,6 +206,7 @@ class GerarAnaliseAnuncioIaJob implements ShouldQueue
             'categoria'   => $r['ficha']['category_id'] ?? null,
             'atributos'   => count($r['ficha']['atributos'] ?? []),
             'rascunho_id' => $r['rascunho_id'] ?? null,
+            'publicador_rascunho_id' => $r['publicador']['rascunho_id'] ?? null,
         ]);
     }
 

@@ -12,7 +12,11 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PubProduto;
 use App\Models\User;
+use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\IaParaRascunhoService;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
@@ -2206,14 +2210,22 @@ class MlbAnuncioController extends Controller
     public function iaAnaliseStore(Request $request): JsonResponse
     {
         $dados = $request->validate([
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
-            'produto'    => ['required', 'string', 'max:300'],
+            'company_id' => ['nullable', 'required_without:produto_id', 'integer', 'exists:companies,id'],
+            // D14: do Publicador o pedido é por produto (pub_produtos) e o
+            // resultado vai para o rascunho novo, não para o wizard antigo.
+            'produto_id' => ['nullable', 'required_without:company_id', 'integer', 'exists:pub_produtos,id'],
+            'substituir' => ['sometimes', 'boolean'],
+            'produto'    => ['required_without:produto_id', 'nullable', 'string', 'max:300'],
             'specs'      => ['nullable', 'string', 'max:8000'],
             // Produto da planilha do cliente (opcional): preço, estoque e
             // medidas do rascunho saem DAQUI, lidos no servidor — o navegador
             // só diz qual SKU.
             'sku'        => ['nullable', 'string', 'max:100'],
         ]);
+
+        if (! empty($dados['produto_id'])) {
+            return $this->iaAnaliseStorePublicador($request, $dados);
+        }
 
         $company = Company::findOrFail($dados['company_id']);
 
@@ -2266,6 +2278,76 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * D14: "Anunciar por IA" de um produto do Publicador. A análise nasce com o
+     * destino `publicador` (produto + rascunho + revisão do pedido) e o job grava
+     * no rascunho `pub_*` pelo motor. NÃO exige token: a IA só preenche rascunho.
+     *
+     * `substituir` só vale se a equipe não editar durante a geração (a revisão do
+     * rascunho é comparada na hora de aplicar) — o que se digita vence.
+     */
+    private function iaAnaliseStorePublicador(Request $request, array $dados): JsonResponse
+    {
+        $p = PubProduto::findOrFail((int) $dados['produto_id']);
+
+        // T-160-40: empresa arquivada ou sem dono não existe para o Publicador.
+        abort_if(app(ProgramasPublicadorService::class)->empresaDoProduto($p) === null, 404);
+
+        $r = app(EditorRascunhoService::class)->abrir($p);
+        if (IaParaRascunhoService::intocavel($r)) {
+            return response()->json(['message' => 'Este anúncio já foi publicado ou está publicando.'], 422);
+        }
+
+        $resultado = [
+            'destino' => [
+                'tipo'         => 'publicador',
+                'produto_id'   => $p->id,
+                'rascunho_id'  => $r->id,
+                'revisao_base' => (int) $r->revisao,
+                'substituir'   => (bool) ($dados['substituir'] ?? false),
+            ],
+        ];
+
+        // Dados do cliente (preço, estoque, medidas) pela planilha do onboarding, achados pelo SKU.
+        $sku = trim((string) $p->skuExibido());
+        if ($sku !== '' && $p->mlbEmpresa) {
+            $achado = collect($this->montarProdutosDoCliente($p->mlbEmpresa->implementacao?->dados))
+                ->first(fn ($x) => trim((string) $x['sku']) === $sku);
+            if ($achado !== null) {
+                $resultado['cliente'] = [
+                    'sku'          => $achado['sku'],
+                    'produto'      => $achado['produto'],
+                    'preco_c'      => $achado['preco_anunciado_c'],
+                    'preco_p'      => $achado['preco_anunciado_p'],
+                    'estoque'      => $achado['estoque'],
+                    'peso_kg'      => $achado['peso_kg'],
+                    'altura'       => $achado['altura'],
+                    'largura'      => $achado['largura'],
+                    'profundidade' => $achado['profundidade'],
+                ];
+            }
+        }
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id'     => $p->company_id,
+            'mlb_empresa_id' => $p->mlb_empresa_id,
+            'user_id'        => $request->user()->id,
+            'produto'        => trim((string) ($dados['produto'] ?? '')) ?: $p->nomeExibido(),
+            'loja'           => $p->contaOuNula()?->nomeContaMl() ?? ($p->mlbEmpresa?->nome ?? $p->company?->name ?? ''),
+            'specs'          => $dados['specs'] ?? null,
+            'status'         => MlAnuncioIaAnalise::STATUS_PENDENTE,
+            'resultado'      => $resultado,
+        ]);
+
+        GerarAnaliseAnuncioIaJob::dispatch($analise->id);
+
+        return response()->json([
+            'id'          => $analise->id,
+            'status'      => $analise->status,
+            'rascunho_id' => $r->id,
+        ], 202);
+    }
+
+    /**
      * Estado da análise — o front chama em intervalo até sair de "em andamento".
      *
      * Só devolve o que a tela usa. O prompt e o payload cru do provedor ficam
@@ -2275,7 +2357,9 @@ class MlbAnuncioController extends Controller
     {
         // Cada análise pertence a uma conta; sem esta checagem o id sequencial
         // viraria uma janela para o trabalho de outra empresa.
-        if ($analise->company_id !== null) {
+        // D14: a do Publicador não depende de token (a IA só preenche rascunho) e
+        // a rota já é role:admin; o escopo é o produto, não a conta.
+        if ($analise->company_id !== null && $analise->destinoPublicador() === null) {
             $company = Company::findOrFail($analise->company_id);
             $company->loadMissing('mlToken');
             abort_unless($company->mlToken !== null, 404);
@@ -2298,6 +2382,8 @@ class MlbAnuncioController extends Controller
             'analise'     => $analise->analise(),
             'modelo'      => $analise->modelo,
             'duracao_ms'  => $analise->duracao_ms,
+            // D14: o que a IA gravou no rascunho do Publicador (null no caminho antigo).
+            'publicador'  => $analise->resultado['publicador'] ?? null,
         ] + $this->preenchimentoIa($analise));
     }
 }

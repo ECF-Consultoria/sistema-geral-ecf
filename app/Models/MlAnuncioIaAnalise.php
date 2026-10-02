@@ -154,6 +154,18 @@ class MlAnuncioIaAnalise extends Model
         return $id !== null ? (int) $id : null;
     }
 
+    /**
+     * D14: destino quando a geração foi pedida de dentro do Publicador —
+     * `{tipo: 'publicador', produto_id, rascunho_id, revisao_base, substituir}`.
+     * Null no caminho antigo por empresa (wizard escondido, D22).
+     */
+    public function destinoPublicador(): ?array
+    {
+        $d = $this->resultado['destino'] ?? null;
+
+        return is_array($d) && ($d['tipo'] ?? null) === 'publicador' ? $d : null;
+    }
+
     public function descricao(): ?string
     {
         return $this->resultado['descricao'] ?? null;
