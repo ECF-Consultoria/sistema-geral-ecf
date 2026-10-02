@@ -382,8 +382,8 @@ outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-public
 
 Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
 Plans: 15 em 8 waves — 15 de 15 concluídos
-Status: Phase 160 — 15/15 planos executados; faltam code review e verificação da fase. 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — 160-15 concluído (Anunciar fora do Portal; gate final: Publicador 350/1637, PortalCliente 231/1872, test:js 624 com as 2 pré-existentes; MeuPainelControllerTest x2 = pré-existente registrado na 159)
+Status: Phase 160 — PAUSADA (handoff em .continue-here.md): 15/15 planos; review feito; correções 6 de 13. 160-14 é gate humano (aprovação visual).
+Last activity: 2026-10-02 — pausa pedida pelo usuário no meio das correções do code review (WR-B02 parcial, não commitado)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
