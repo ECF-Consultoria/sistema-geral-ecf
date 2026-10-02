@@ -381,9 +381,9 @@ frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição para
 outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
 
 Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
-Plans: 15 em 8 waves — 4 de 15 concluídos (160-01..04)
-Status: Executing Phase 160 — wave 3 (160-05, 160-06, 160-07). 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — wave 2 concluída (gate: Publicador 280/1198, PortalCliente 240/2123, test:js só as 2 falhas pré-existentes)
+Plans: 15 em 8 waves — 7 de 15 concluídos (160-01..07)
+Status: Executing Phase 160 — wave 4 (160-08, 160-09, 160-10). 160-14 é gate humano (aprovação visual).
+Last activity: 2026-10-02 — wave 3 concluída (gate: Publicador 323/1451, PortalCliente 240/2123, test:js só as 2 pré-existentes; Phase75 teve 1 falha INTERMITENTE de rede, anotada na baseline)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 

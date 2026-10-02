@@ -2738,9 +2738,9 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 160-05-PLAN.md — mesa do editor: Variações e estoque, Clássico e Premium, Logística, Descrição · wave 3
-- [ ] 160-06-PLAN.md — Sincronizar do Portal, produtos da empresa, cadastro manual, casca do editor e comando do D20 · wave 3
-- [ ] 160-07-PLAN.md — motor: conta do ML pelo produto (Company ou MlbEmpresa), trava de publicação por conta liberada (D21) e conferência só local sem foto em conta não liberada (D26) · wave 3
+- [x] 160-05-PLAN.md — mesa do editor: Variações e estoque, Clássico e Premium, Logística, Descrição · wave 3
+- [x] 160-06-PLAN.md — Sincronizar do Portal, produtos da empresa, cadastro manual, casca do editor e comando do D20 · wave 3
+- [x] 160-07-PLAN.md — motor: conta do ML pelo produto (Company ou MlbEmpresa), trava de publicação por conta liberada (D21) e conferência só local sem foto em conta não liberada (D26) · wave 3
 
 **Wave 4** *(blocked on Wave 3 completion)*
 

@@ -28,6 +28,17 @@ Grupo 8 (`test:js`), 474 passam e 2 falham:
 
 Nenhuma das duas tem relação com o Publicador (planilha / fases de Polos).
 
+## Falha INTERMITENTE conhecida (depende da rede — não é regressão)
+
+Grupo 3 (`tests/Feature/Phase75`): `PublicarEmpresaNaoAtribuidaTest::test_admin_nao_recebe_403_no_update`
+falhou uma vez no gate da wave 3 (2026-10-02) com 500 — `RuntimeException: [MLB Coleta] Falha ao obter
+app token: HTTP 400`. O teste não tem `Http::fake`: o `PUT /mlb/anuncios/rascunho/{id}` do assistente
+antigo valida o título por `MlCatalogoMetaService::categoria('')`, que pede um app token REAL ao ML
+(`MlColetaService::getAppToken`, client_credentials do `.env`). Na baseline a API respondeu 200; no
+gate respondeu 400; rodado de novo, sozinho, passou. A fase não tocou nesse caminho (só apagou
+`index`/`empresas` do `MlbAnuncioController`). Se reaparecer no gate final, rodar o teste isolado
+antes de chamar de regressão.
+
 ## Regra de comparação
 
 Gate da fase = cada grupo com contagem de testes maior ou igual à desta tabela e nenhuma falha nova; os testes do Portal Anunciar removidos em 160-15 saem da conta com nome listado. No grupo 8 as 2 falhas acima são o piso conhecido.
