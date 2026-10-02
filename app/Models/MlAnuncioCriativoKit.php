@@ -256,22 +256,43 @@ class MlAnuncioCriativoKit extends Model
         return $this->imagens_geradas >= $this->maxImagens();
     }
 
-    /** Respeita os dois tetos: o do ASSET (tentativas de regeneração dele) e o do KIT. */
+    /** Teto efetivo de regenerações do KIT inteiro — override por config. */
+    public function maxRegeneracoesKit(): int
+    {
+        return (int) config('services.creative.kit.max_regeneracoes_kit', self::MAX_REGENERACOES_KIT);
+    }
+
+    /** Teto efetivo de regenerações por ASSET (um dos 7 slots) — override por config. */
+    public function maxRegeneracoesAsset(): int
+    {
+        return (int) config('services.creative.kit.max_regeneracoes_asset', self::MAX_REGENERACOES_ASSET);
+    }
+
+    /**
+     * Respeita os dois tetos: o do ASSET e o do KIT, ambos contados por
+     * `regeneracoes` — coluna de CLIQUE do operador (161-03), nunca
+     * `tentativas` (essa também sobe em retentativa automática do Laravel,
+     * `GerarCriativoIaJob::$tries = 2`, sem nenhum clique — contaria
+     * retentativa de provedor como regeneração manual; ver docblock da
+     * migration `..._add_regeneracoes_...`).
+     */
     public function podeRegenerarAsset(MlAnuncioCriativo $asset): bool
     {
         if ($this->tetoDeImagensAtingido()) {
             return false;
         }
 
-        $maxRegeneracoesKit = (int) config('services.creative.kit.max_regeneracoes_kit', self::MAX_REGENERACOES_KIT);
-        if ($this->regeneracoes >= $maxRegeneracoesKit) {
+        if ($this->regeneracoes >= $this->maxRegeneracoesKit()) {
             return false;
         }
 
-        $maxRegeneracoesAsset = (int) config('services.creative.kit.max_regeneracoes_asset', self::MAX_REGENERACOES_ASSET);
+        return $asset->regeneracoes < $this->maxRegeneracoesAsset();
+    }
 
-        // `tentativas` conta a 1ª geração + regenerações; o teto é só sobre regenerações.
-        return ($asset->tentativas - 1) < $maxRegeneracoesAsset;
+    /** Quantas regenerações o ASSET ainda tem — nunca negativo. */
+    public function regeneracoesRestantesAsset(MlAnuncioCriativo $asset): int
+    {
+        return max(0, $this->maxRegeneracoesAsset() - $asset->regeneracoes);
     }
 
     /** Mensagem pt-BR do motivo do teto, para a tela — `null` quando não há teto batendo. */
@@ -281,9 +302,28 @@ class MlAnuncioCriativoKit extends Model
             return "Este kit já gerou o máximo de {$this->maxImagens()} imagens permitido.";
         }
 
-        $maxRegeneracoesKit = (int) config('services.creative.kit.max_regeneracoes_kit', self::MAX_REGENERACOES_KIT);
-        if ($this->regeneracoes >= $maxRegeneracoesKit) {
-            return "Este kit já atingiu o limite de {$maxRegeneracoesKit} regenerações.";
+        if ($this->regeneracoes >= $this->maxRegeneracoesKit()) {
+            return "Este kit já atingiu o limite de {$this->maxRegeneracoesKit()} regenerações.";
+        }
+
+        return null;
+    }
+
+    /**
+     * Mensagem pt-BR do teto que bloqueou a regeneração DESTE asset —
+     * tenta primeiro os tetos do KIT (`motivoDoTeto()`, que valem para
+     * qualquer slot) e só depois o teto individual do asset. `null` quando
+     * `podeRegenerarAsset()` seria `true`.
+     */
+    public function motivoDoTetoAsset(MlAnuncioCriativo $asset): ?string
+    {
+        $motivoDoKit = $this->motivoDoTeto();
+        if ($motivoDoKit !== null) {
+            return $motivoDoKit;
+        }
+
+        if ($asset->regeneracoes >= $this->maxRegeneracoesAsset()) {
+            return "Este slot já atingiu o limite de {$this->maxRegeneracoesAsset()} regenerações.";
         }
 
         return null;

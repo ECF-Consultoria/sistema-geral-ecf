@@ -187,4 +187,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/criativo/kit/{kit}', [MlbAnuncioController::class, 'criativoKitStatus'])
             ->where('kit', '[A-Za-z0-9]{32}')
             ->name('criativo.kit.status');
+
+        // Fase 161 Plano 03 — regenera UM slot do kit (APROV-02). Throttle:12,1
+        // é DINHEIRO, não estilo: cada chamada vale uma imagem, cerca de
+        // US$ 0,101 (medição do spike 261001-nkx §16) — mesma disciplina de
+        // `criativo.gerar`, só que com teto mais alto porque o operador pode
+        // precisar regenerar mais de um slot em sequência.
+        Route::post('/criativo/{token}/regenerar', [MlbAnuncioController::class, 'criativoRegenerar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:12,1')
+            ->name('criativo.regenerar');
     });

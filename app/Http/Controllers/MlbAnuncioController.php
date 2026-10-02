@@ -1671,6 +1671,100 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * Regenera UM slot de um kit (Fase 161, Plano 03, APROV-02) — "a mesma
+     * intenção, outra tentativa" (Decisão 10 do 161-03-PLAN.md): reusa o
+     * `slot_plano` já planejado, nunca replaneja, e enfileira UM job em
+     * `creative` — os outros 6 slots ficam intocados (status e
+     * `imagem_path` inalterados).
+     *
+     * Recurso EXCLUSIVO do kit: um criativo sem kit (fluxo de 1 imagem, Fase
+     * 160) tem como caminho equivalente subir uma foto nova — o painel já
+     * diz isso (ver a mensagem de `criativoGerar` para `status=pronto`).
+     *
+     * `regeneracoes` (deste criativo e do kit) conta CLIQUES do operador,
+     * propositalmente separada de `tentativas` (que também sobe em
+     * retentativa automática do Laravel, `GerarCriativoIaJob::$tries = 2`,
+     * sem nenhum clique) — ver docblock da migration
+     * `..._add_regeneracoes_...` e `MlAnuncioCriativoKit::podeRegenerarAsset()`.
+     *
+     * Ordem: (1) chave ligada, (2) criativo existe, (3) double-check de
+     * empresa, (4) permissão explícita (OPS-04), (5) recusas em pt-BR —
+     * criativo sem kit, `aprovado` (já foi ao ML), `pendente`/`rodando` (já
+     * está acontecendo) ou teto do asset/kit atingido —, (6) transação que
+     * reabre o slot e incrementa as duas contagens, (7) despacho de UM job
+     * (nunca onda — é um só), (8) recálculo do status do kit, (9) 202.
+     */
+    public function criativoRegenerar(Request $request, string $token): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco nem enfileirar.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        // OPS-04: conferida DEPOIS do escopo — mesma disciplina dos demais endpoints do kit.
+        $this->creativePermissao->exigir($request->user(), 'regenerar');
+
+        $kit = $criativo->kit;
+
+        if ($kit === null || $criativo->slot_indice === null) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Regenerar é um recurso do kit de 7 — suba uma foto nova para gerar outro criativo.']],
+            ], 422);
+        }
+
+        if ($criativo->status === MlAnuncioCriativo::STATUS_APROVADO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este slot já foi aprovado e enviado ao Mercado Livre — não é possível regenerar.']],
+            ], 422);
+        }
+
+        if (in_array($criativo->status, MlAnuncioCriativo::STATUS_EM_ANDAMENTO, true)) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este slot já está sendo gerado.']],
+            ], 422);
+        }
+
+        if (! $kit->podeRegenerarAsset($criativo)) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => $kit->motivoDoTetoAsset($criativo) ?? 'Este slot não pode ser regenerado agora.']],
+            ], 422);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($criativo, $kit) {
+            $criativo->update([
+                'status'        => MlAnuncioCriativo::STATUS_PENDENTE,
+                'etapa'         => null,
+                'erro_mensagem' => null,
+            ]);
+            $criativo->increment('regeneracoes');
+            $kit->increment('regeneracoes');
+        });
+
+        // Regeneração é um disparo SÓ (não é onda do despachante) — o
+        // `slot_plano` é exatamente o mesmo de antes (Decisão 10).
+        GerarCriativoIaJob::dispatch($criativo->id);
+
+        $kit->recalcularStatus();
+
+        Log::info("[Creative] Regeneração enfileirada — criativo {$criativo->id} (kit {$kit->id}, slot {$criativo->slot_indice}) por " . $request->user()->name);
+
+        $criativo->refresh();
+
+        return response()->json([
+            'token'                  => $criativo->token,
+            'status'                 => $criativo->status,
+            'regeneracoes_restantes' => $kit->regeneracoesRestantesAsset($criativo),
+        ], 202);
+    }
+
+    /**
      * ─── Kit de 7 criativos (Fase 161) ───
      *
      * Dispara o planejamento do kit (PLAN-01/02/03/04) — SEMPRE 202 antes de
@@ -1869,7 +1963,7 @@ class MlbAnuncioController extends Controller
 
         $portador = $kit->criativoReferencia;
 
-        $slots = $kit->slots()->get()->map(function (MlAnuncioCriativo $slot) {
+        $slots = $kit->slots()->get()->map(function (MlAnuncioCriativo $slot) use ($kit) {
             $padrao = $this->creativeSlotCatalog->padraoDe((string) $slot->slot) ?? [];
 
             return [
@@ -1888,6 +1982,11 @@ class MlbAnuncioController extends Controller
                     : null,
                 'modelo'      => $slot->modelo,
                 'latencia_ms' => $slot->latencia_ms,
+                // Fase 161 Plano 03 (APROV-02) — a tela mostra "restantes",
+                // nunca recalcula a régua: o servidor já aplicou os dois
+                // tetos (asset e kit) em `regeneracoesRestantesAsset()`.
+                'regeneracoes'            => $slot->regeneracoes,
+                'regeneracoes_restantes'  => $kit->regeneracoesRestantesAsset($slot),
             ];
         })->values();
 

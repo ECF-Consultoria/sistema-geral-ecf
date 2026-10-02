@@ -41,7 +41,7 @@ class MlAnuncioCriativo extends Model
         'token', 'company_id', 'mlb_empresa_id', 'rascunho_id', 'user_id',
         'kit_id', 'slot_indice', 'slot_plano',
         'slot', 'status', 'etapa', 'erro_mensagem', 'render_mode',
-        'provider', 'modelo', 'tentativas', 'latencia_ms',
+        'provider', 'modelo', 'tentativas', 'regeneracoes', 'latencia_ms',
         'contexto', 'truth', 'prompt',
         'referencias', 'referencias_apagadas_em',
         'imagem_path', 'imagem_mime', 'imagem_bytes',
