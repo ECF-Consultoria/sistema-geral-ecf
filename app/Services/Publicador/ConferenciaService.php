@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Payload\MontadorDePlano;
@@ -49,6 +50,12 @@ class ConferenciaService
     public const BLOQUEADO = 'BLOQUEADO';
     public const ERRO = 'ERRO';
 
+    /**
+     * Conferência só local (D26): a conta não está liberada, então nada foi ao Mercado Livre.
+     * Não libera publicar — `prontidao()` e `PublicacaoService::iniciar()` só aceitam OK/AVISOS.
+     */
+    public const LOCAL = 'LOCAL';
+
     /** Classes de resposta que impedem concluir a conferência (o ML não respondeu de fato). */
     private const SEM_RESPOSTA = [RespostaMl::SERVER, RespostaMl::NETWORK, RespostaMl::RATE_LIMIT, RespostaMl::AUTH];
 
@@ -67,8 +74,15 @@ class ConferenciaService
         $brutas = [];
 
         try {
-            // 1. Conta e modelo.
+            // 1. Conta e modelo. Sem token, `conta()` lança V-ACC-01 (nenhuma chamada).
             $ancora = $r->conta();
+
+            // D26: conta não liberada não recebe nada nosso — nem validate, nem foto, nem as leituras
+            // da conferência; só a conferência local contra o schema da categoria.
+            if (! ContasLiberadas::libera($ancora)) {
+                return $this->conferirLocal($r, $revisao);
+            }
+
             $conta = $this->contas->contexto($ancora);
             $brutas['conta'] = $conta->paraSnapshot();
             if ($r->modelo_publicacao !== null && $r->modelo_publicacao !== $conta->modelo) {
@@ -155,6 +169,44 @@ class ConferenciaService
     }
 
     /**
+     * D26: a conferência de uma conta NÃO liberada. Só L1/L2 contra o schema da categoria
+     * (leitura pública, token do app) — nenhuma chamada com o token do cliente. Fica gravada
+     * como camada L2 com resultado LOCAL/BLOQUEADO e nunca deixa o rascunho VALIDATED.
+     */
+    private function conferirLocal(PubRascunho $r, int $revisao): PubValidacao
+    {
+        $brutas = ['local' => true, 'motivo' => 'CONTA-LIB'];
+
+        if (! $r->categoria_id) {
+            return $this->gravar($r, $revisao, self::BLOQUEADO, [Problema::bloqueio('V-CAT-01', 'Escolha a categoria do produto.', ['etapa' => 'E2'], 'L2')], $brutas, null, 'L2');
+        }
+
+        try {
+            $categoria = $this->schemas->revalidar($r->categoria_id, $r->schema_hash)['schema'];
+        } catch (RegraViolada $e) {
+            return $this->gravar($r, $revisao, self::ERRO, [Problema::bloqueio($e->regra, $e->getMessage(), ['etapa' => 'E2'], 'L2')], $brutas, null, 'L2');
+        }
+
+        // A conta que a abertura já leu; sem ela, os mesmos padrões do estado da tela.
+        $lida = (array) ($r->step_state['conta'] ?? []);
+        $conta = new ContextoConta(
+            sellerId: (string) ($lida['sellerId'] ?? ''),
+            modelo: (string) ($r->modelo_publicacao ?? $lida['modelo'] ?? MontadorDePlano::UP),
+            tags: (array) ($lida['tags'] ?? []),
+            modosEnvio: $lida['modosEnvio'] ?? null,
+            depositos: $lida['depositos'] ?? null,
+            lidaEm: (string) ($lida['lidaEm'] ?? now()->toIso8601String()),
+        );
+
+        ['snapshot' => $snapshot] = $this->comEfetivos($r);
+        $schema = $this->classificar($categoria, $snapshot, $this->condicionaisGuardados($r));
+        // Fotos que não sobem de propósito não bloqueiam (V-IMG-08 só vale ao publicar).
+        $l2 = (new ValidadorRascunho())->validar($snapshot, $schema, $this->contextoValidacao($r, $conta, $schema, paraPublicar: false));
+
+        return $this->gravar($r, $revisao, $l2->temBloqueio() ? self::BLOQUEADO : self::LOCAL, $l2->problemas, $brutas, null, 'L2');
+    }
+
+    /**
      * Só o `/attributes/conditional`, para a tela chamar com espera de
      * digitação ao concluir E3 ou mudar um atributo de produto (`03` §6).
      * Guarda a resposta com a revisão (TC-33).
@@ -165,6 +217,10 @@ class ConferenciaService
     {
         if (! $r->categoria_id) {
             return [];
+        }
+        // D26: o `/attributes/conditional` vai com o payload e o token do cliente; conta não liberada = nada muda.
+        if (! ContasLiberadas::libera($r->produto->contaOuNula())) {
+            return null;
         }
 
         try {
@@ -221,14 +277,14 @@ class ConferenciaService
         return (new ClassificadorAtributos())->classificar($categoria, new ContextoClassificacao($s->condicao, $eixos, $condicionais));
     }
 
-    private function contextoValidacao(PubRascunho $r, ContextoConta $conta, SchemaClassificado $schema): ContextoValidacao
+    private function contextoValidacao(PubRascunho $r, ContextoConta $conta, SchemaClassificado $schema, bool $paraPublicar = true): ContextoValidacao
     {
         return new ContextoValidacao(
             modelo: $conta->modelo,
             tagsDaConta: $conta->tags,
             modosEnvio: $conta->modosEnvio,
             imagens: $this->repo->metadadosDasImagens($r),
-            paraPublicar: true,
+            paraPublicar: $paraPublicar,
             plausibilidade: (array) (config('publicador.plausibilidade')[$schema->dominio] ?? []),
             termosProibidosTitulo: (array) config('publicador.termos_proibidos_titulo', ContextoValidacao::TERMOS_PROIBIDOS_TITULO),
             hashSchemaDoRascunho: $r->schema_hash,
@@ -335,11 +391,11 @@ class ConferenciaService
     }
 
     /** @param list<Problema> $problemas */
-    private function gravar(PubRascunho $r, int $revisao, string $resultado, array $problemas, array $brutas, ?PayloadPlan $plano = null): PubValidacao
+    private function gravar(PubRascunho $r, int $revisao, string $resultado, array $problemas, array $brutas, ?PayloadPlan $plano = null, string $camada = 'L3'): PubValidacao
     {
         return $r->validacoes()->create([
             'revisao' => $revisao,
-            'camada' => 'L3',
+            'camada' => $camada,
             'plano_hash' => $plano?->hash(),
             'resultado' => $resultado,
             'issues' => array_map(fn (Problema $p) => [

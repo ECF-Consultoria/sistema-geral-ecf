@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Validacao\ContextoValidacao;
 use App\Support\Publicador\Validacao\Problema;
@@ -66,8 +67,15 @@ class ImagemAssetService
             return $imagem->fresh();
         }
 
+        $conta = $imagem->rascunho->conta();
+        // D26: conta não liberada não recebe foto; ela fica guardada aqui e sobe pelo `enviarPendentes`
+        // da conferência L3/publicação depois da liberação.
+        if (! ContasLiberadas::libera($conta)) {
+            return $imagem;
+        }
+
         $conteudo ??= Storage::disk(self::DISCO)->get($imagem->caminho);
-        $resposta = $this->cliente->enviarFoto($imagem->rascunho->conta(), $conteudo, basename($imagem->caminho));
+        $resposta = $this->cliente->enviarFoto($conta, $conteudo, basename($imagem->caminho));
 
         if ($resposta->ok() && is_array($resposta->corpo) && isset($resposta->corpo['id'])) {
             $variacoes = (array) ($resposta->corpo['variations'] ?? []);

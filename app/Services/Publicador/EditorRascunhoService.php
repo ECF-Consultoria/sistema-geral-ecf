@@ -362,6 +362,7 @@ class EditorRascunhoService
             'imagens' => $r->imagens()->orderBy('id')->get()->map(fn (PubImagem $i) => [
                 'id' => (string) $i->id, 'url' => $i->ml_url, 'largura' => $i->largura, 'altura' => $i->altura,
                 'upload_status' => $i->upload_status, 'erro' => $i->upload_erro['mensagem'] ?? null,
+                'tem_arquivo' => $i->caminho !== null,
             ])->all(),
             'atribuicoes' => $snapshot->imagens,
             'grupos_imagem' => $grupos,
@@ -380,6 +381,7 @@ class EditorRascunhoService
                 'id' => $v->id, 'revisao' => $v->revisao, 'resultado' => $v->resultado, 'vale' => $v->revisao === $r->revisao,
                 'em' => $v->created_at?->toIso8601String(), 'issues' => (array) $v->issues,
                 'itens' => count((array) ($v->respostas_ml['itens'] ?? [])),
+                'local' => $v->camada === 'L2',
             ] : null,
             'publicacao' => $p ? [
                 'id' => $p->id, 'status' => $p->status, 'motivo' => $p->conta_snapshot['motivo'] ?? null,
