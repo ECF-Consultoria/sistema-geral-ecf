@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils';
 // O valor é a linha do rascunho: `{value_id, value_name}`. Mexer no campo
 // tira o "revisar" (o valor veio migrado de outra categoria e agora foi visto).
 
-const OBRIGATORIO = 'rounded bg-red-500/10 px-1 text-[9.5px] font-semibold uppercase tracking-wide text-red-300';
-const RECOMENDADO = 'rounded bg-sky-500/10 px-1 text-[9.5px] font-semibold uppercase tracking-wide text-sky-300';
+const OBRIGATORIO = 'rounded bg-amber-300/15 px-1.5 py-px font-mono text-[10px] font-bold text-amber-300';
+const RECOMENDADO = 'rounded bg-sky-500/10 px-1.5 py-px font-mono text-[10px] font-semibold text-sky-300';
 
 export function RotuloAtributo({ atributo, valor }) {
     const vazio = valorVazio(valor);
@@ -48,7 +48,7 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         if (m && m[2]) setUnidade(m[2]);
     }, [v.value_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const classe = cn(CLASSE_INPUT, compacto && 'px-2 py-1.5 text-[12.5px]', 'disabled:opacity-50', erro && 'border-red-500/50');
+    const classe = cn(CLASSE_INPUT, compacto && 'px-2 py-1.5 text-[12.5px]', 'disabled:opacity-50', erro && 'border-amber-500');
 
     let campo;
     if (naoSeAplica) {
@@ -103,7 +103,7 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
                     Não se aplica
                 </label>
             )}
-            {erro ? <p className="text-[11.5px] text-red-300">{erro}</p> : (! compacto && a.dica && <p className="text-[11.5px] text-white/35">{a.dica}</p>)}
+            {erro ? <p className="text-[11.5px] font-medium text-amber-300">{erro}</p> : (! compacto && a.dica && <p className="text-[11.5px] text-white/35">{a.dica}</p>)}
         </div>
     );
 }

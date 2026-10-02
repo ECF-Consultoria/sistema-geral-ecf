@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { MousePointerClick, PlugZap, Search, X } from 'lucide-react';
+import { BookOpen, ChevronDown, MousePointerClick, PlugZap, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, CabecalhoEstrutura, LinkMl, Paginacao, Seletor, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import FormPublicacao from '@/Components/Portal/Estrutura/FormPublicacao';
@@ -93,6 +93,38 @@ function SemOfertas() {
     );
 }
 
+/**
+ * Piloto do Publicador: a lista de ofertas vira o seletor "Oferta N de M" do
+ * cabeçalho (desenho "Redesign Focado" do usuário, 02/10) — o formulário fica
+ * com a largura toda. Nativo de propósito (acessível, funciona no celular).
+ */
+function SeletorDeOferta({ ofertas, selecionada, onSelecionar, filtro, contagens, onFiltro }) {
+    const indice = ofertas.findIndex((o) => o.id === selecionada);
+
+    return (
+        <div className="flex flex-wrap items-center gap-2" data-seletor-oferta-piloto>
+            <label className="relative inline-flex items-center">
+                <span className="pointer-events-none absolute left-3 text-[12px] font-medium text-white">
+                    Oferta {indice + 1} de {ofertas.length}
+                </span>
+                <select value={selecionada ?? ''} onChange={(e) => onSelecionar(Number(e.target.value))} aria-label="Trocar de oferta"
+                    className="h-8 w-[150px] appearance-none rounded-md border border-white/[0.08] bg-ecf-card pr-8 text-[12px] text-transparent hover:border-white/20 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 [&>option]:bg-ecf-card [&>option]:text-white">
+                    {ofertas.map((o) => <option key={o.id} value={o.id}>{o.sku} — {o.nome ?? ''} · {o.prontidao.rotulo}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-white/40" />
+            </label>
+            <div className="inline-flex rounded-md border border-white/[0.08] bg-ecf-card p-0.5" role="tablist">
+                {[['a_anunciar', 'A anunciar'], ['publicados', 'Publicados']].map(([f, r]) => (
+                    <button key={f} type="button" role="tab" aria-selected={filtro === f} onClick={() => onFiltro(f)} data-filtro={f}
+                        className={cn('rounded px-2.5 py-1 text-[11.5px] transition-colors', filtro === f ? 'bg-white/[0.08] font-semibold text-white' : 'text-white/45 hover:text-white')}>
+                        {r} <span className="font-mono text-[10.5px] text-white/35">({contagens[f]})</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, filtros, vocabulario, ml_conectado = false, publicador_novo = false }) {
     const { filtro, contagens, ofertas, paginacao } = anunciar;
     const [selecionada, setSelecionada] = useState(null);
@@ -121,6 +153,33 @@ export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, fil
     const recarregarLista = () => router.reload({ only: ['anunciar'] });
 
     const semNada = contagens.a_anunciar + contagens.publicados === 0;
+
+    if (publicador_novo) {
+        return (
+            <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Anunciar">
+                <div className="mx-auto max-w-[1180px] px-4 py-8 sm:px-8">
+                    <div className="mb-6 flex items-center justify-between">
+                        <span className="font-mono text-[12px] font-semibold uppercase tracking-wider text-white/45">Mapeamento Estrutural · Anunciar</span>
+                        <button type="button" onClick={() => setAula(true)} className="flex items-center gap-1 text-[12px] text-white/45 transition-colors hover:text-white">
+                            <BookOpen size={14} /> Como funciona
+                        </button>
+                    </div>
+                    {! ml_conectado ? <SemConta /> : semNada ? <SemOfertas /> : selecionada !== null ? (
+                        <EditorPublicador key={selecionada} ofertaId={selecionada} onPublicou={recarregarLista}
+                            seletorOferta={<SeletorDeOferta ofertas={ofertas} selecionada={selecionada} onSelecionar={setSelecionada}
+                                filtro={filtro} contagens={contagens} onFiltro={trocarFiltro} />} />
+                    ) : (
+                        <div className="space-y-3">
+                            <SeletorDeOferta ofertas={ofertas} selecionada={null} onSelecionar={setSelecionada} filtro={filtro} contagens={contagens} onFiltro={trocarFiltro} />
+                            <p className="text-[13px] text-white/45">Nenhuma oferta neste filtro.</p>
+                        </div>
+                    )}
+                </div>
+                <ComoFunciona aberta={aula} onFechar={() => setAula(false)} />
+                <AvisoFlash />
+            </PortalClienteLayout>
+        );
+    }
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Anunciar">
@@ -177,9 +236,7 @@ export default function EstruturaAnunciar({ empresa, modulos = [], anunciar, fil
 
                         <section className="mt-4 min-w-0 lg:mt-0">
                             {selecionada !== null ? (
-                                publicador_novo
-                                    ? <EditorPublicador key={selecionada} ofertaId={selecionada} onPublicou={recarregarLista} />
-                                    : <FormPublicacao key={selecionada} ofertaId={selecionada} vocabulario={vocabulario} onPublicou={recarregarLista} />
+                                <FormPublicacao key={selecionada} ofertaId={selecionada} vocabulario={vocabulario} onPublicou={recarregarLista} />
                             ) : (
                                 <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-ecf-card p-5 text-[13px] text-white/50" data-form-vazio>
                                     <MousePointerClick size={18} className="shrink-0 text-ecf-yellow" />
