@@ -246,3 +246,82 @@ test('FaixaDeProdutos — aria-current, setas, "Ver todos", "+ Produto" e selo c
     assert.match(f, /mlb\.anuncios\.publicador\.editor/);
     assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// Lateral e página do editor (160-13).
+// ═══════════════════════════════════════════════════════════════════════
+
+const PAGINA = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
+const LATERAIS = [`${MESA}/LateralValidacao.jsx`, `${MESA}/LateralResumo.jsx`, PAGINA];
+
+for (const caminho of LATERAIS) {
+    const fonte = lerSemComentarios(caminho);
+
+    test(`${caminho} — tipografia 24/15/13/11px, pesos 400/700, sem sombra, sem HTML cru, sem gradiente amarelo`, () => {
+        assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl)\b/);
+        assert.doesNotMatch(fonte, /text-\[(?!24px\]|15px\]|13px\]|11px\])[0-9.]+px\]/);
+        assert.doesNotMatch(fonte, /font-(medium|semibold|extrabold|light|thin|black)\b/);
+        assert.doesNotMatch(fonte, /\bshadow-(sm|md|lg|xl)\b/);
+        assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+        assert.doesNotMatch(fonte, /portal\.auth/);
+        // O gradiente amarelo do botão primário mora só na barra; a lateral usa o botão dela.
+        assert.doesNotMatch(fonte, /from-\[#FFE600\]/);
+    });
+}
+
+test('LateralValidacao — 8 verificações pela fonte única, nota calma e D26 sem alarme', () => {
+    const f = lerSemComentarios(`${MESA}/LateralValidacao.jsx`);
+    assert.match(f, /SECOES\.map/);
+    assert.match(f, /Validação no Mercado Livre/);
+    assert.match(f, /prontos/);
+    assert.match(f, /Prontidão de envio/);
+    assert.match(f, /Falta pouco/);
+    assert.match(f, /Tudo pronto\. Pode conferir no Mercado Livre\./);
+    assert.match(f, /Li os avisos do Mercado Livre e quero publicar assim mesmo\./);
+    assert.match(f, /conferencia\.local/);
+    assert.match(f, /variante="linha"/);
+    assert.match(f, /pub\.conferencia\.texto/);
+    assert.match(f, /Ir para /);
+    assert.doesNotMatch(f, /AlertTriangle/);
+    // A caixa "Li os avisos" nunca aparece na conferência local.
+    assert.match(f, /! local && avisosMl\.length > 0/);
+    assert.doesNotMatch(f, /text-red-|border-red-|bg-red-/);
+});
+
+test('LateralResumo — pares do resumo, apoio por estado (D26) e andamento por item', () => {
+    const f = lerSemComentarios(`${MESA}/LateralResumo.jsx`);
+    for (const t of ['Resumo do lançamento', 'Conta de destino', 'Modo logístico', 'Anúncios Clássico', 'Anúncios Premium', 'Total',
+        'Libera quando o Mercado Livre aprovar a conferência.', 'Complete os itens da validação e confira no Mercado Livre.',
+        'Publicando…', 'Publicado no Mercado Livre', 'Parte foi publicada', 'Não foi publicado']) {
+        assert.ok(f.includes(t), `falta "${t}"`);
+    }
+    assert.equal((f.match(/esperam a liberação desta conta/g) ?? []).length, 1);
+    assert.match(f, /AvisoContaTravada variante="nota"/);
+    assert.match(f, /BotaoPublicar pub=\{pub\} primario=\{primario\}/);
+    assert.match(f, /publicador\.descricao/);
+    assert.match(f, /plano_b/);
+});
+
+test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo, duas colunas só em 1360px', () => {
+    const f = lerSemComentarios(PAGINA);
+    assert.match(f, /usePublicador\(\{ produtoId: produto\.id/);
+    assert.match(f, /useIaDoPublicador\(/);
+    assert.equal((f.match(/m=\{pub\.m\}/g) ?? []).length, 7);
+    for (const c of ['CardProduto', 'CardFichaTecnica', 'CardVariacoes', 'CardFotos', 'CardTiposEPrecos', 'CardLogistica', 'CardDescricao']) {
+        assert.match(f, new RegExp(`import ${c} from '@/Components/Publicador/Mesa/${c}'`));
+    }
+    assert.doesNotMatch(f, /ModoAnuncioTabs/);
+    assert.doesNotMatch(f, /fixed bottom-/);
+    assert.match(f, /min-\[1360px\]:grid-cols-\[minmax\(0,800px\)_320px\]/);
+    assert.match(f, /min-\[1360px\]:top-\[80px\]/);
+    assert.match(f, /matchMedia\(FAIXA_LARGA\)/);
+    assert.match(f, /removeEventListener\('change'/);
+    assert.match(f, /primarioNaLateral=\{largo\}/);
+    assert.match(f, /primario=\{largo\}/);
+    assert.match(f, /Não foi possível abrir o produto\./);
+    assert.match(f, /A conta do Mercado Livre precisa ser reconectada antes de conferir ou publicar\./);
+    assert.match(f, /A IA preencheu/);
+    assert.match(f, /A IA não montou as variações\. Defina-as no card Variações\./);
+    assert.match(f, /A IA não conseguiu preparar este anúncio\. Nada foi alterado\. Tente de novo ou preencha à mão\./);
+    assert.match(f, /await pub\.descarregar\(\)/);
+});
