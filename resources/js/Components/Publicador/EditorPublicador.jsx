@@ -7,7 +7,7 @@ import EditorDeEixos from './EditorDeEixos';
 import FotosPorGrupo from './FotosPorGrupo';
 import GradeVariantes from './GradeVariantes';
 import Problemas from './Problemas';
-import { NOME_TIPO, NOTA_TIPO, mensagemDe, paraNumero, paraTexto, problemasDoAtributo, rota } from './apoio';
+import { NOME_TIPO, NOTA_TIPO, SECOES, mensagemDe, paraNumero, paraTexto, problemasDoAtributo, rota, secaoDoProblema } from './apoio';
 import { cn } from '@/lib/utils';
 
 // ─── O Publicador no Anunciar (piloto) ──────────────────────────────────────
@@ -37,25 +37,6 @@ const STATUS_RASCUNHO = {
 const ESPERA_SALVAR = 900;
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
-
-// As seções do formulário e as etapas da spec (`02` §1) que cada uma resolve.
-const SECOES = [
-    { chave: 'categoria', titulo: 'Categoria', etapas: ['E2'] },
-    { chave: 'caracteristicas', titulo: 'Características', etapas: ['E3', 'E8'] },
-    { chave: 'variacoes', titulo: 'Variações', etapas: ['E4'], dica: 'cada combinação vira um anúncio da mesma família' },
-    { chave: 'fotos', titulo: 'Fotos', etapas: ['E6'], dica: 'a 1ª de cada grupo é a capa' },
-    { chave: 'variantes', titulo: 'Estoque, SKU e código', etapas: ['E5'] },
-    { chave: 'tipos', titulo: 'Clássico e Premium', etapas: ['E7'] },
-    { chave: 'envio', titulo: 'Envio, garantia e embalagem', etapas: ['E10'] },
-    { chave: 'descricao', titulo: 'Descrição', etapas: ['E9'] },
-];
-/** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para o trilho). */
-const secaoDoProblema = (p) => {
-    const e = p.alvo?.etapa;
-    if (e === 'E10' && ['preco', 'tipo'].includes(p.alvo?.campo)) return 'tipos';
-
-    return SECOES.find((s) => s.etapas.includes(e))?.chave ?? null;
-};
 
 const doEstado = (e) => ({
     atributos: e.atributos ?? {},

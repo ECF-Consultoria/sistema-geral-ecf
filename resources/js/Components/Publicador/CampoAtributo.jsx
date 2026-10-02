@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils';
 // O valor é a linha do rascunho: `{value_id, value_name}`. Mexer no campo
 // tira o "revisar" (o valor veio migrado de outra categoria e agora foi visto).
 
-const OBRIGATORIO = 'rounded bg-amber-300/15 px-1.5 py-px font-mono text-[10px] font-bold text-amber-300';
-const RECOMENDADO = 'rounded bg-sky-500/10 px-1.5 py-px font-mono text-[10px] font-semibold text-sky-300';
+const OBRIGATORIO = 'rounded bg-amber-300/15 px-1.5 py-px font-mono text-[11px] font-bold text-amber-300';
+const RECOMENDADO = 'rounded bg-sky-500/10 px-1.5 py-px font-mono text-[11px] font-bold text-sky-300';
 
 export function RotuloAtributo({ atributo, valor }) {
     const vazio = valorVazio(valor);
@@ -23,7 +23,7 @@ export function RotuloAtributo({ atributo, valor }) {
         <span className="flex items-start justify-between gap-2" title={atributo.tooltip ?? undefined}>
             <span>{atributo.nome}</span>
             <span className="flex shrink-0 gap-1">
-                {valor?.revisar && <span className="rounded bg-amber-500/15 px-1 text-[9.5px] font-semibold uppercase tracking-wide text-amber-300">revisar</span>}
+                {valor?.revisar && <span className="rounded bg-amber-500/15 px-1 text-[11px] font-bold uppercase tracking-wide text-amber-300">revisar</span>}
                 {vazio && atributo.obrigatoriedade === 'REQUIRED' && <span className={OBRIGATORIO}>obrigatório</span>}
                 {vazio && atributo.obrigatoriedade === 'RECOMMENDED' && <span className={RECOMENDADO}>dá exposição</span>}
             </span>
@@ -31,7 +31,7 @@ export function RotuloAtributo({ atributo, valor }) {
     );
 }
 
-export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null }) {
+export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null, variante = 'padrao' }) {
     const lista = useId();
     const v = valor ?? {};
     const naoSeAplica = v.value_id === '-1';
@@ -48,7 +48,9 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         if (m && m[2]) setUnidade(m[2]);
     }, [v.value_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const classe = cn(CLASSE_INPUT, compacto && 'px-2 py-1.5 text-[12.5px]', 'disabled:opacity-50', erro && 'border-amber-500');
+    // No tile o contorno é do Tile (borda âmbar quando vazio): o campo vira texto limpo.
+    const tile = variante === 'tile';
+    const classe = cn(CLASSE_INPUT, 'text-[13px]', compacto && 'px-2 py-1.5', tile && 'rounded-none border-0 bg-transparent px-0 py-0 focus:border-0', 'disabled:opacity-50', ! tile && erro && 'border-amber-500');
 
     let campo;
     if (naoSeAplica) {
@@ -97,13 +99,13 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         <div className="space-y-1" data-campo-atributo={a.id}>
             {campo}
             {podeNa && ! disabled && (
-                <label className="flex items-center gap-1.5 text-[11.5px] text-white/45">
+                <label className="flex items-center gap-1.5 text-[11px] text-white/45">
                     <input type="checkbox" checked={naoSeAplica} onChange={(e) => trocar(e.target.checked ? { value_id: '-1', value_name: null } : null)}
                         className="rounded border-white/20 bg-transparent text-ecf-yellow" />
                     Não se aplica
                 </label>
             )}
-            {erro ? <p className="text-[11.5px] font-medium text-amber-300">{erro}</p> : (! compacto && a.dica && <p className="text-[11.5px] text-white/35">{a.dica}</p>)}
+            {erro ? <p className="text-[11px] font-normal text-amber-300">{erro}</p> : (! compacto && ! tile && a.dica && <p className="text-[11px] text-white/35">{a.dica}</p>)}
         </div>
     );
 }

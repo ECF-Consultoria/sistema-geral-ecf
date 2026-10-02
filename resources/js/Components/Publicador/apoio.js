@@ -51,3 +51,43 @@ export const valorVazio = (v) => ! v || ((v.value_id ?? '') === '' && String(v.v
 
 /** Problemas que apontam para um atributo (do produto ou de uma variante). */
 export const problemasDoAtributo = (problemas, id, variante = null) => (problemas ?? []).filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
+
+// ─── As 8 verificações da lateral e os cards da mesa ────────────────────────
+//
+// Fonte única: o editor do Portal (piloto) e a mesa de anúncio importam daqui.
+// `dica` é só do piloto; a mesa não a usa.
+export const SECOES = [
+    { chave: 'categoria', titulo: 'Categoria', etapas: ['E2'] },
+    { chave: 'caracteristicas', titulo: 'Características', etapas: ['E3', 'E8'] },
+    { chave: 'variacoes', titulo: 'Variações', etapas: ['E4'], dica: 'cada combinação vira um anúncio da mesma família' },
+    { chave: 'fotos', titulo: 'Fotos', etapas: ['E6'], dica: 'a 1ª de cada grupo é a capa' },
+    { chave: 'variantes', titulo: 'Estoque, SKU e código', etapas: ['E5'] },
+    { chave: 'tipos', titulo: 'Clássico e Premium', etapas: ['E7'] },
+    { chave: 'envio', titulo: 'Envio, garantia e embalagem', etapas: ['E10'] },
+    { chave: 'descricao', titulo: 'Descrição', etapas: ['E9'] },
+];
+
+/** Em que card a seção se resolve (ids dos cards: `card-{valor}`). */
+export const CARD_DA_SECAO = {
+    categoria: 'produto', caracteristicas: 'ficha', variacoes: 'variacoes', variantes: 'variacoes',
+    fotos: 'fotos', tipos: 'tipos', envio: 'logistica', descricao: 'descricao',
+};
+
+/** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para a lateral). */
+export const secaoDoProblema = (p) => {
+    const e = p.alvo?.etapa;
+    if (e === 'E10' && ['preco', 'tipo'].includes(p.alvo?.campo)) return 'tipos';
+
+    return SECOES.find((s) => s.etapas.includes(e))?.chave ?? null;
+};
+
+/**
+ * Estado de cada seção para o chip do card: `{ [chave]: { faltam, completo } }`.
+ * Sem schema, toda seção além da categoria conta como incompleta (falta 1).
+ */
+export const estadoDasSecoes = (problemas, schema) => Object.fromEntries(SECOES.map((s) => {
+    if (! schema && s.chave !== 'categoria') return [s.chave, { faltam: 1, completo: false }];
+    const faltam = (problemas ?? []).filter((p) => p.severidade === 'BLOCKER' && secaoDoProblema(p) === s.chave).length;
+
+    return [s.chave, { faltam, completo: faltam === 0 }];
+}));
