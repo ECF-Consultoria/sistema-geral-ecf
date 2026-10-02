@@ -1520,6 +1520,122 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * Aprova o criativo `pronto` (Fase 160, Plano 03) — sobe a imagem ao
+     * Mercado Livre pelo caminho de SEMPRE (`MlImagemService::enviar()`,
+     * PUB-02) e grava o resultado na posição do slot em
+     * `ml_anuncio_rascunhos.payload.pictures` (PUB-01), na MESMA forma que
+     * o wizard produz (`['source' => url]`) — ver a seção da armadilha no
+     * topo do `160-03-PLAN.md`: só a forma idêntica garante que o próximo
+     * autosave do wizard, depois do front chamar `setImagemUrl()` (Task 3),
+     * reconstrua o mesmo array em vez de zerá-lo.
+     *
+     * O estado é o guarda (APROV-05): só `pronto` pode ser aprovado. Falha
+     * no upload ao ML (exceção ou resposta sem id) deixa o criativo
+     * INTOCADO em `pronto` — meia aprovação não existe.
+     */
+    public function criativoAprovar(Request $request, string $token): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco nem falar com o ML.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        $rascunho = $criativo->rascunho;
+        abort_unless($rascunho !== null, 422, 'O rascunho deste criativo não existe mais.');
+
+        // APROV-05: o estado é o guarda — mensagem distinta para "ainda
+        // gerando" (ou erro) e para "já aprovado", mas os dois são 422.
+        if ($criativo->status === MlAnuncioCriativo::STATUS_APROVADO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este criativo já foi aprovado.']],
+            ], 422);
+        }
+
+        if ($criativo->status !== MlAnuncioCriativo::STATUS_PRONTO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este criativo ainda não está pronto para ser aprovado.']],
+            ], 422);
+        }
+
+        if ($criativo->imagem_path === null) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'A imagem gerada deste criativo não foi encontrada.']],
+            ], 422);
+        }
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+        if (! $disco->exists($criativo->imagem_path)) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'A imagem gerada deste criativo não foi encontrada.']],
+            ], 422);
+        }
+
+        try {
+            $resposta = $this->imagem->enviar(
+                $rascunho->company,
+                $disco->get($criativo->imagem_path),
+                "criativo-{$criativo->token}.jpg",
+            );
+        } catch (\Throwable $e) {
+            // Detalhe técnico só no log; resposta genérica em pt-BR para o
+            // front (mesma disciplina de uploadImagem()). O criativo segue
+            // `pronto` — nada foi gravado, nada precisa ser desfeito.
+            Log::error("[Creative] Falha ao aprovar criativo {$criativo->id}: {$e->getMessage()}");
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        if ($resposta === null) {
+            Log::error("[Creative] Falha ao aprovar criativo {$criativo->id}: upload ao ML não retornou id.");
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        // PUB-01: substitui SÓ a posição do slot (hero = posição 0), preserva
+        // as demais fotos na ordem. Forma idêntica à do wizard (T-160-16).
+        $payload = $rascunho->payload ?? [];
+        $pictures = $payload['pictures'] ?? [];
+        $pictures[0] = ['source' => $resposta['url']];
+        $payload['pictures'] = array_values($pictures);
+        $rascunho->update(['payload' => $payload]);
+
+        $criativo->update([
+            'status'         => MlAnuncioCriativo::STATUS_APROVADO,
+            'aprovado_por'   => $request->user()->id,
+            'aprovado_em'    => now(),
+            'ml_picture_id'  => $resposta['id'],
+            'ml_picture_url' => $resposta['url'],
+        ]);
+
+        Log::info("[Creative] Criativo {$criativo->id} aprovado", [
+            'rascunho_id' => $rascunho->id,
+            'picture_id'  => $resposta['id'],
+            'usuario'     => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'ok'         => true,
+            'token'      => $criativo->token,
+            'status'     => $criativo->status,
+            'url'        => $resposta['url'],
+            'picture_id' => $resposta['id'],
+        ]);
+    }
+
+    /**
      * Cria um rascunho pré-preenchido a partir de um produto da planilha do cliente.
      *
      * Busca o produto pelo SKU dentro de mlb_implementacoes.dados, calcula preços

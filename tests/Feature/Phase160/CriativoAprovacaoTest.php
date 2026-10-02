@@ -196,7 +196,8 @@ class CriativoAprovacaoTest extends TestCase
             );
 
             $resposta->assertStatus(422);
-            $this->assertMatchesRegularExpression('/./u', (string) $resposta->json('message', $resposta->json('erros.0.mensagem') ?? ''));
+            $mensagem = $resposta->json('erros')[0]['mensagem'] ?? $resposta->json('message');
+            $this->assertNotEmpty($mensagem);
 
             $rascunho->refresh();
             $this->assertSame([], $rascunho->payload['pictures']);

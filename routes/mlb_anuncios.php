@@ -159,4 +159,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/criativo/{token}/imagem', [MlbAnuncioController::class, 'criativoImagem'])
             ->where('token', '[A-Za-z0-9]{32}')
             ->name('criativo.imagem');
+
+        // Fase 160 Plano 03 — aprovação (APROV-05/PUB-01/PUB-02). Throttle:30,1
+        // é só proteção de clique duplo (o botão já fica desabilitado durante a
+        // chamada); o custo caro já foi pago na geração, não aqui.
+        Route::post('/criativo/{token}/aprovar', [MlbAnuncioController::class, 'criativoAprovar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:30,1')
+            ->name('criativo.aprovar');
     });
