@@ -57,7 +57,6 @@ use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalEstruturaController;
-use App\Http\Controllers\PortalPublicadorController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -208,59 +207,8 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.precificacao.oferta')->name('portal.auth.estrutura.precificacao.oferta');
     Route::get('/estrutura/mapeamento', [PortalEstruturaController::class, 'mapeamento'])->name('portal.auth.estrutura.mapeamento');
     Route::get('/estrutura/agenda', [PortalEstruturaController::class, 'agendaIndex'])->name('portal.auth.estrutura.agenda');
-    // ── Anunciar (29/09/2026, ADR PORTAL-03): o par Clássico + Premium
-    // publicado pelo portal. A lista é Inertia; o formulário, a conferência
-    // e a publicação são JSON, por oferta. Publicar é síncrono (dois POST
-    // /items) e protegido por trava atômica no service.
-    Route::get('/estrutura/anunciar', [PortalEstruturaController::class, 'anunciarIndex'])->name('portal.auth.estrutura.anunciar');
-    Route::get('/estrutura/anunciar/categorias', [PortalEstruturaController::class, 'categoriasAnunciar'])
-        ->middleware('throttle:60,1,estrutura.anunciar.categorias')->name('portal.auth.estrutura.anunciar.categorias');
-    Route::get('/estrutura/anunciar/categorias/{categoria}', [PortalEstruturaController::class, 'categoriaAnunciar'])
-        ->where('categoria', 'MLB[0-9]+')->middleware('throttle:60,1,estrutura.anunciar.categoria')->name('portal.auth.estrutura.anunciar.categoria');
-    Route::get('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'abrirPublicacao'])
-        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.abrir')->name('portal.auth.estrutura.publicacao.abrir');
-    Route::put('/estrutura/ofertas/{oferta}/publicacao', [PortalEstruturaController::class, 'salvarPublicacao'])
-        ->whereNumber('oferta')->middleware('throttle:120,1,estrutura.publicacao.salvar')->name('portal.auth.estrutura.publicacao.salvar');
-    Route::post('/estrutura/ofertas/{oferta}/publicacao/fotos', [PortalEstruturaController::class, 'fotoPublicacao'])
-        ->whereNumber('oferta')->middleware('throttle:60,1,estrutura.publicacao.fotos')->name('portal.auth.estrutura.publicacao.fotos');
-    Route::post('/estrutura/ofertas/{oferta}/publicacao/validar', [PortalEstruturaController::class, 'validarPublicacao'])
-        ->whereNumber('oferta')->middleware('throttle:30,1,estrutura.publicacao.validar')->name('portal.auth.estrutura.publicacao.validar');
-    Route::post('/estrutura/ofertas/{oferta}/publicacao/publicar', [PortalEstruturaController::class, 'publicarPublicacao'])
-        ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.publicacao.publicar')->name('portal.auth.estrutura.publicacao.publicar');
-    // ── Publicador novo (01/10/2026, `.planning/publicador-ml-spec/`): o mesmo
-    // Anunciar, com variações, fotos por grupo e conferência/publicação em fila.
-    // Só para as empresas do piloto (`publicador.empresas_piloto`); as demais
-    // seguem no par acima. JSON por oferta; cada rota com a sua linha na allowlist.
-    Route::prefix('/estrutura/ofertas/{oferta}/publicador')->whereNumber('oferta')->group(function () {
-        Route::get('/', [PortalPublicadorController::class, 'abrir'])
-            ->middleware('throttle:120,1,publicador.abrir')->name('portal.auth.publicador.abrir');
-        Route::put('/', [PortalPublicadorController::class, 'salvar'])
-            ->middleware('throttle:180,1,publicador.salvar')->name('portal.auth.publicador.salvar');
-        Route::put('/categoria', [PortalPublicadorController::class, 'categoria'])
-            ->middleware('throttle:30,1,publicador.categoria')->name('portal.auth.publicador.categoria');
-        Route::put('/eixos', [PortalPublicadorController::class, 'eixos'])
-            ->middleware('throttle:120,1,publicador.eixos')->name('portal.auth.publicador.eixos');
-        Route::put('/variantes', [PortalPublicadorController::class, 'variantes'])
-            ->middleware('throttle:180,1,publicador.variantes')->name('portal.auth.publicador.variantes');
-        Route::post('/fotos', [PortalPublicadorController::class, 'foto'])
-            ->middleware('throttle:60,1,publicador.fotos')->name('portal.auth.publicador.fotos');
-        Route::put('/fotos', [PortalPublicadorController::class, 'atribuirFotos'])
-            ->middleware('throttle:180,1,publicador.fotos.atribuir')->name('portal.auth.publicador.fotos.atribuir');
-        Route::delete('/fotos/{imagem}', [PortalPublicadorController::class, 'removerFoto'])
-            ->whereNumber('imagem')->middleware('throttle:60,1,publicador.fotos.remover')->name('portal.auth.publicador.fotos.remover');
-        Route::post('/fotos/{imagem}/reenviar', [PortalPublicadorController::class, 'reenviarFoto'])
-            ->whereNumber('imagem')->middleware('throttle:30,1,publicador.fotos.reenviar')->name('portal.auth.publicador.fotos.reenviar');
-        Route::post('/condicionais', [PortalPublicadorController::class, 'condicionais'])
-            ->middleware('throttle:60,1,publicador.condicionais')->name('portal.auth.publicador.condicionais');
-        Route::post('/conferir', [PortalPublicadorController::class, 'conferir'])
-            ->middleware('throttle:20,1,publicador.conferir')->name('portal.auth.publicador.conferir');
-        Route::post('/publicar', [PortalPublicadorController::class, 'publicar'])
-            ->middleware('throttle:10,1,publicador.publicar')->name('portal.auth.publicador.publicar');
-        Route::post('/itens/{item}/descricao', [PortalPublicadorController::class, 'reenviarDescricao'])
-            ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('portal.auth.publicador.descricao');
-        Route::get('/simular', [PortalPublicadorController::class, 'simular'])
-            ->middleware('throttle:30,1,publicador.simular')->name('portal.auth.publicador.simular');
-    });
+    // O Anunciar saiu do Portal (02/10/2026, D18): a publicação passou para o
+    // Publicador interno (`mlb.anuncios.publicador.*`), feito pela equipe ECF.
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
         ->middleware('throttle:60,1,estrutura.ofertas.criar')->name('portal.auth.estrutura.ofertas.criar');
     Route::post('/estrutura/ofertas/{oferta}/combos', [PortalEstruturaController::class, 'criarCombos'])
