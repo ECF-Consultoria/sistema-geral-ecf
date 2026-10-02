@@ -2728,7 +2728,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 160-01-PLAN.md — baseline de testes, pub_produtos (oferta SET NULL, D27) + pub_rascunhos.produto_id com backfill (oferta_id dormente), modelo PubProduto, conferência no MariaDB local · wave 1
+- [x] 160-01-PLAN.md — baseline de testes, pub_produtos (oferta SET NULL, D27) + pub_rascunhos.produto_id com backfill (oferta_id dormente), modelo PubProduto, conferência no MariaDB local · wave 1
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
