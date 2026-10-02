@@ -7,6 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { router } from '@inertiajs/react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 import PainelAnunciarIa from '@/Pages/Mlb/components/PainelAnunciarIa';
+import PainelCriativosIa from '@/Pages/Mlb/components/PainelCriativosIa';
 import {
     analisarAnuncio, MODALIDADES_FRETE, DICAS_DESCRICAO, INFO_EXPOSICAO_TIER,
     PRECO_FRETE_GRATIS_OBRIGATORIO, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
@@ -1036,7 +1037,7 @@ function CompatibilidadeEditor({ veiculos, setVeiculos }) {
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null, creativeAtivo = false }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // ─── Navegação do wizard (WIZ-01) ───
@@ -2429,6 +2430,12 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             ════════════════════════════════════════════════════ */}
                         {etapa === 4 && (
                             <>
+                                {/* Fase 160 Plano 01: a tela não decide nada — `creativeAtivo` só
+                                    reflete a chave do servidor (OPS-03). Com a chave desligada, o
+                                    painel abaixo não renderiza nada e esta etapa fica idêntica
+                                    à de antes da Fase 160. */}
+                                <PainelCriativosIa empresa={empresa} rascunhoId={rascunhoId} ativo={creativeAtivo} />
+
                                 {/* Imagem, garantia, descrição */}
                                 <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                     <h2 className="mb-3 text-sm font-semibold text-white">5. Imagem, garantia e descrição</h2>
