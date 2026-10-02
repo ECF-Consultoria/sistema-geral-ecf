@@ -3,7 +3,11 @@
 // As rotas são todas por oferta (`portal.auth.publicador.*`) e TODA resposta
 // traz o estado inteiro do rascunho — a tela nunca adivinha o que foi gravado.
 
-export const rota = (nome, ofertaId, extra = {}) => route(`portal.auth.publicador.${nome}`, { oferta: ofertaId, ...extra });
+/** Monta o gerador de rotas de um editor: `criarRota('mlb.anuncios.publicador', 'produto')('salvar', 7)`. */
+export const criarRota = (prefixo, chave) => (nome, id, extra = {}) => route(`${prefixo}.${nome}`, { [chave]: id, ...extra });
+
+// Rotas do piloto do Portal — sai com o Portal (D18, 160-15).
+export const rota = criarRota('portal.auth.publicador', 'oferta');
 
 export const mensagemDe = (e) => {
     if (e?.code === 'ECONNABORTED') return 'O servidor demorou demais. Recarregue a página e confira antes de tentar de novo.';
