@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MlAnuncioRascunho;
+use App\Models\PubProduto;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\PublicadorSincronizaPortalService;
+use App\Support\Publicador\ContasLiberadas;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -61,6 +65,134 @@ class MlbPublicadorEntradaController extends Controller
                 'ate' => $deslocamento + $pagBase->count(),
             ],
             'filtros' => ['busca' => $busca, 'filtro' => $filtro],
+        ]);
+    }
+
+    /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */
+    public function produtos(string $conta)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        if ($alvo['chave'] !== $conta) {
+            return redirect()->route('mlb.anuncios.publicador.produtos', ['conta' => $alvo['chave']]);
+        }
+
+        $empresa = $this->programas->empresaParaTela($alvo);
+        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
+
+        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0];
+        foreach ($produtos as $p) {
+            match ($p['status']['chave']) {
+                'pronto' => $contagens['conferidos']++,
+                'publicado', 'parcial' => $contagens['publicados']++,
+                'erro' => $contagens['com_problema']++,
+                default => $contagens['rascunho']++,
+            };
+        }
+
+        // D22: o assistente antigo fica acessível só por este rodapé, sem aba nem card.
+        $companyId = $alvo['company']?->id;
+        $antigos = MlAnuncioRascunho::query()
+            ->whereIn('status', [MlAnuncioRascunho::STATUS_RASCUNHO, MlAnuncioRascunho::STATUS_VALIDADO, MlAnuncioRascunho::STATUS_ERRO])
+            ->where(function ($q) use ($companyId, $alvo) {
+                if ($companyId !== null) {
+                    $q->orWhere('company_id', $companyId);
+                }
+                if ($alvo['mlb_empresa'] !== null) {
+                    $q->orWhere('mlb_empresa_id', $alvo['mlb_empresa']->id);
+                }
+            })->count();
+
+        return Inertia::render('Mlb/Publicador/Produtos', [
+            'empresa' => $empresa,
+            'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
+            'produtos' => $produtos,
+            'contagens' => $contagens,
+            'rascunhos_antigos' => [
+                'total' => $antigos,
+                'url' => $companyId !== null && $antigos > 0 ? route('mlb.anuncios.wizard', ['company' => $companyId]) : null,
+            ],
+            'abas' => ['company_id' => $companyId],
+        ]);
+    }
+
+    /** "Sincronizar do Portal" (D16): só acrescenta produtos das ofertas novas. */
+    public function sincronizar(string $conta, PublicadorSincronizaPortalService $sincroniza)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $company = $alvo['company'];
+        if ($company === null || $this->programas->situacaoPortal($company)['situacao'] === 'sem_portal') {
+            return response()->json(['message' => 'Esta empresa não está ligada ao Portal do Cliente.'], 422);
+        }
+
+        $r = $sincroniza->sincronizar($alvo['mlb_empresa'], $company);
+
+        return response()->json([
+            'criados' => $r['criados'],
+            'ids' => $r['ids'],
+            'mensagem' => $r['criados'] > 0
+                ? ($r['criados'] === 1 ? '1 produto novo do Portal.' : $r['criados'].' produtos novos do Portal.')
+                : 'Nada novo no Portal.',
+            'portal' => $this->programas->situacaoPortal($company),
+        ]);
+    }
+
+    /** "+ Produto": cadastro manual para empresa sem Portal (D15). SKU repetido é aviso, não bloqueio. */
+    public function criarProduto(Request $request, string $conta)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $request->merge([
+            'sku' => trim((string) $request->input('sku')),
+            'nome' => trim((string) $request->input('nome')),
+        ]);
+        $dados = $request->validate([
+            'sku' => ['required', 'string', 'max:120'],
+            'nome' => ['required', 'string', 'max:255'],
+        ]);
+
+        $repetido = $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])
+            ->whereRaw('LOWER(sku) = ?', [mb_strtolower($dados['sku'])])->exists();
+
+        // As âncoras vêm do servidor (resolver), nunca do corpo da requisição.
+        $produto = PubProduto::create([
+            'mlb_empresa_id' => $alvo['mlb_empresa']?->id,
+            'company_id' => $alvo['company']?->id,
+            'sku' => $dados['sku'],
+            'nome' => $dados['nome'],
+            'origem' => PubProduto::ORIGEM_PUBLICADOR,
+        ]);
+
+        return response()->json([
+            'produto' => ['id' => $produto->id],
+            'url' => route('mlb.anuncios.publicador.editor', ['produto' => $produto->id]),
+            'aviso' => $repetido ? 'Já existe um produto com este SKU nesta empresa.' : null,
+        ], 201);
+    }
+
+    /** Casca do editor: produto, empresa, faixa de produtos e se a publicação está liberada. */
+    public function editor(int $produto)
+    {
+        $p = PubProduto::findOrFail($produto);
+        $alvo = $this->programas->empresaDoProduto($p);
+        abort_if($alvo === null, 404);
+
+        $lista = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
+
+        return Inertia::render('Mlb/Publicador/Editor', [
+            'produto' => [
+                'id' => $p->id, 'sku' => $p->skuExibido(), 'nome' => $p->nomeExibido(),
+                'origem' => $p->origem, 'oferta_id' => $p->oferta_id,
+            ],
+            'empresa' => $this->programas->empresaParaTela($alvo),
+            'produtos' => array_map(fn ($i) => [
+                'id' => $i['id'], 'sku' => $i['sku'], 'nome' => $i['nome'], 'status' => $i['status'],
+            ], $lista),
+            'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
         ]);
     }
 }

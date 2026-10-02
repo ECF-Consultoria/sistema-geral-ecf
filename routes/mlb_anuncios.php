@@ -29,6 +29,19 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // (?programa=polos|incubadora|gestao), só admins (D17).
         Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
 
+        // ─── Fase 160: Publicador interno — tela B (produtos da empresa) e casca do editor ───
+        // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-160-23).
+        Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
+            ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.produtos');
+        Route::post('publicador/empresas/{conta}/sincronizar', [MlbPublicadorEntradaController::class, 'sincronizar'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:20,1,publicador.sincronizar')->name('publicador.sincronizar');
+        Route::post('publicador/empresas/{conta}/produtos', [MlbPublicadorEntradaController::class, 'criarProduto'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
+        Route::get('publicador/produtos/{produto}/editor', [MlbPublicadorEntradaController::class, 'editor'])
+            ->whereNumber('produto')->name('publicador.editor');
+
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
         // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML

@@ -9,6 +9,7 @@ use App\Models\MlbImplementacao;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Models\PubValidacao;
 use App\Support\Publicador\ContasLiberadas;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -312,5 +313,183 @@ class ProgramasPublicadorService
                 $q->whereRaw('1 = 0');
             }
         });
+    }
+
+    /**
+     * Situação do Portal de UMA Company (mesma regra das linhas da tela A):
+     * sem_portal | nunca | novas | sincronizado.
+     *
+     * @return array{situacao: string, novas: int, sincronizado_em: ?string}
+     */
+    public function situacaoPortal(?Company $company): array
+    {
+        if ($company === null) {
+            return ['situacao' => 'sem_portal', 'novas' => 0, 'sincronizado_em' => null];
+        }
+
+        $total = (int) DB::table('estrutura_ofertas')->where('company_id', $company->id)->count();
+        $comProduto = (int) DB::table('pub_produtos')
+            ->join('estrutura_ofertas', 'estrutura_ofertas.id', '=', 'pub_produtos.oferta_id')
+            ->where('estrutura_ofertas.company_id', $company->id)
+            ->distinct()->count('pub_produtos.oferta_id');
+
+        if ($total === 0) {
+            $situacao = 'sem_portal';
+            $novas = 0;
+        } elseif ($comProduto === 0) {
+            $situacao = 'nunca';
+            $novas = $total;
+        } elseif ($comProduto < $total) {
+            $situacao = 'novas';
+            $novas = $total - $comProduto;
+        } else {
+            $situacao = 'sincronizado';
+            $novas = 0;
+        }
+
+        $valor = Cache::get('publicador.portal_sincronizado_em.company-'.$company->id)
+            ?? PubProduto::query()->where('origem', PubProduto::ORIGEM_PORTAL)->where('company_id', $company->id)->max('created_at');
+
+        return [
+            'situacao' => $situacao,
+            'novas' => $novas,
+            'sincronizado_em' => $valor ? \Illuminate\Support\Carbon::parse($valor)->toIso8601String() : null,
+        ];
+    }
+
+    /**
+     * A empresa "dona" do produto, para autorizar e montar o cabeçalho: a MlbEmpresa ativa
+     * com programa (D13) ou, sem ela, a Company (Gestão). Arquivada/sem dono = null (404).
+     *
+     * @return array{mlb_empresa: ?MlbEmpresa, company: ?Company, programa: string, chave: string}|null
+     */
+    public function empresaDoProduto(PubProduto $p): ?array
+    {
+        if ($p->mlb_empresa_id) {
+            $e = MlbEmpresa::query()->ativas()->find($p->mlb_empresa_id);
+
+            return $e?->programaPublicador() === null ? null : $this->resolver('empresa-'.$e->id);
+        }
+
+        if ($p->company_id) {
+            return $this->resolver('company-'.$p->company_id);
+        }
+
+        return null;
+    }
+
+    /**
+     * O objeto `empresa` do contrato das telas B e do editor. Nunca devolve access/refresh token.
+     */
+    public function empresaParaTela(array $alvo): array
+    {
+        /** @var ?MlbEmpresa $e */
+        $e = $alvo['mlb_empresa'];
+        /** @var ?Company $c */
+        $c = $alvo['company'];
+
+        $ancora = PubProduto::ancoraComToken($e, $c);
+        $token = $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo');
+
+        $linkReconexao = null;
+        if ($e !== null && $token !== 'ativo') {
+            $imp = MlbImplementacao::query()->where('empresa_id', $e->id)->first(['id', 'token']);
+            $linkReconexao = $imp?->token ? route('implementacao.conectar-ml', ['token' => $imp->token]) : null;
+        }
+
+        $identificador = $e !== null
+            ? ($c?->cnpj ?: ($e->cust_id ? 'CUST '.$e->cust_id : '#'.$e->id))
+            : ($c?->cnpj ?: ($c?->ml_store_id ? 'CUST '.$c->ml_store_id : '#'.$c?->id));
+
+        return [
+            'chave' => $alvo['chave'],
+            'tipo' => $e !== null ? 'mlb_empresa' : 'company',
+            'id' => $e?->id ?? $c?->id,
+            'nome' => $e !== null ? (string) $e->nome : (string) $c?->name,
+            'identificador' => $identificador,
+            'programa' => $alvo['programa'],
+            'programa_rotulo' => ['polos' => 'Polos', 'incubadora' => 'Incubadora', 'gestao' => 'Gestão'][$alvo['programa']],
+            'company_id' => $c?->id,
+            'token' => $token,
+            'link_reconexao' => $linkReconexao,
+            'portal' => $this->situacaoPortal($c),
+            'conta_nome' => $ancora?->nomeContaMl(),
+            'conta_ml_id' => $ancora?->mlToken?->ml_user_id !== null ? (string) $ancora->mlToken->ml_user_id : null,
+        ];
+    }
+
+    /**
+     * Produtos da conta para a tela B e a faixa do editor, em consultas agrupadas.
+     *
+     * @return list<array>
+     */
+    public function produtosParaTela(?MlbEmpresa $e, ?Company $c): array
+    {
+        $produtos = $this->produtosQuery($e, $c)->get();
+        if ($produtos->isEmpty()) {
+            return [];
+        }
+
+        $ids = $produtos->pluck('id')->all();
+        $rascunhos = collect();
+        $validacoes = [];
+        $anuncios = [];
+        $parciais = [];
+
+        foreach (array_chunk($ids, self::LOTE) as $lote) {
+            $rascunhos = $rascunhos->concat(PubRascunho::query()->whereIn('produto_id', $lote)->orderBy('id')->get());
+        }
+        $rascunhos = $rascunhos->groupBy('produto_id')->map(fn ($g) => $g->last());
+        $rascunhoIds = $rascunhos->pluck('id')->all();
+
+        foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
+            // Última validação por rascunho (maior id).
+            PubValidacao::query()->whereIn('rascunho_id', $lote)->orderBy('id')->get()
+                ->each(function ($v) use (&$validacoes) {
+                    $validacoes[$v->rascunho_id] = $v;
+                });
+
+            PubPublicacaoItem::query()
+                ->join('pub_publicacoes', 'pub_publicacoes.id', '=', 'pub_publicacao_itens.publicacao_id')
+                ->whereIn('pub_publicacoes.rascunho_id', $lote)
+                ->orderBy('pub_publicacao_itens.id')
+                ->get(['pub_publicacoes.rascunho_id as rascunho_id', 'pub_publicacao_itens.status', 'pub_publicacao_itens.ml_item_id',
+                    'pub_publicacao_itens.listing_type_id', 'pub_publicacao_itens.variante_chave'])
+                ->each(function ($i) use (&$anuncios, &$parciais) {
+                    $chave = $i->listing_type_id.'|'.$i->variante_chave;
+                    $parciais[$i->rascunho_id][$chave] = ($parciais[$i->rascunho_id][$chave] ?? false) || $i->status === PubPublicacaoItem::CREATED;
+                    if ($i->status === PubPublicacaoItem::CREATED && $i->ml_item_id) {
+                        $anuncios[$i->rascunho_id][$i->ml_item_id] = ['ml_item_id' => $i->ml_item_id, 'listing_type_id' => $i->listing_type_id];
+                    }
+                });
+        }
+
+        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais) {
+            $r = $rascunhos[$p->id] ?? null;
+            $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
+            $parcial = null;
+            if ($r && $r->status === PubRascunho::PARTIALLY_PUBLISHED) {
+                $mapa = $parciais[$r->id] ?? [];
+                $parcial = ['publicados' => count(array_filter($mapa)), 'total' => count($mapa)];
+            }
+            $atualizado = $p->updated_at;
+            if ($r?->updated_at && (! $atualizado || $r->updated_at->gt($atualizado))) {
+                $atualizado = $r->updated_at;
+            }
+
+            return [
+                'id' => $p->id,
+                'sku' => $p->skuExibido(),
+                'nome' => $p->nomeExibido(),
+                'origem' => $p->origem,
+                'oferta_id' => $p->oferta_id,
+                'rascunho_id' => $r?->id,
+                'status' => $status,
+                'status_rascunho' => $r?->status,
+                'anuncios' => $r ? array_values($anuncios[$r->id] ?? []) : [],
+                'parcial' => $parcial,
+                'atualizado_em' => $atualizado?->toIso8601String(),
+            ];
+        })->sortByDesc('atualizado_em')->values()->all();
     }
 }
