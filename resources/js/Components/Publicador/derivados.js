@@ -243,15 +243,44 @@ const ETAPAS_IA = {
 
 export const textoDaEtapa = (etapa) => ETAPAS_IA[etapa] ?? ETAPAS_IA.analise;
 
-/** Estado da IA a partir do `GET analise.status`: parado | andamento | concluido | erro. */
+/** `secoes` do resumo da IA: o servidor manda NÚMERO (quantas seções preencheu); qualquer outra coisa conta 0. */
+const numeroDeSecoes = (resumo) => {
+    const n = Number(resumo?.secoes);
+
+    return Number.isInteger(n) && n > 0 ? n : 0;
+};
+
+/**
+ * Estado da IA a partir do `GET analise.status`: parado | andamento | concluido | erro.
+ * `erro` é a mensagem do servidor, ou nula quando ele não disse nada.
+ */
 export const estadoDaIa = (resposta) => {
     if (! resposta) return { estado: 'parado', etapa: null, texto: null, erro: null, resumo: null };
     if (resposta.status === 'concluido') {
-        return { estado: 'concluido', etapa: null, texto: null, erro: null, resumo: resposta.publicador ?? null, secoes: resposta.publicador?.secoes ?? null, variacoes: resposta.publicador?.variacoes ?? null };
+        return { estado: 'concluido', etapa: null, texto: null, erro: null, resumo: resposta.publicador ?? null, secoes: numeroDeSecoes(resposta.publicador), variacoes: resposta.publicador?.variacoes ?? null };
     }
     if (resposta.status === 'erro') {
-        return { estado: 'erro', etapa: null, texto: null, erro: resposta.erro ?? 'Não foi possível concluir. Tente de novo.', resumo: null };
+        return { estado: 'erro', etapa: null, texto: null, erro: resposta.erro || null, resumo: null };
     }
 
     return { estado: 'andamento', etapa: resposta.etapa ?? null, texto: textoDaEtapa(resposta.etapa), erro: null, resumo: null };
+};
+
+/**
+ * O que a faixa de conclusão da IA diz (WR-F04), a partir de `resultado.publicador`:
+ * - `secoes`: quantas seções a IA preencheu (número);
+ * - `aviso`: a explicação do servidor (anúncio publicado, categoria recusada, IA que parou…);
+ * - `soPreencheuOVazio`: a pessoa pediu "Substituir", mas editou durante a geração — o
+ *   servidor então só preencheu o vazio (`sobrescreveu = false`);
+ * - `semVariacoes`: preencheu algo, mas não montou as variações.
+ */
+export const conclusaoDaIa = (resumo, { pediuSubstituir = false } = {}) => {
+    const secoes = numeroDeSecoes(resumo);
+
+    return {
+        secoes,
+        aviso: resumo?.aviso || null,
+        soPreencheuOVazio: pediuSubstituir === true && resumo?.sobrescreveu === false && secoes > 0,
+        semVariacoes: secoes > 0 && ! resumo?.variacoes,
+    };
 };

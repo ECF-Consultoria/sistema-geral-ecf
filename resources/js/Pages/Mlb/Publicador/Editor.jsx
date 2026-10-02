@@ -16,6 +16,7 @@ import CardFotos from '@/Components/Publicador/Mesa/CardFotos';
 import CardTiposEPrecos from '@/Components/Publicador/Mesa/CardTiposEPrecos';
 import CardLogistica from '@/Components/Publicador/Mesa/CardLogistica';
 import CardDescricao from '@/Components/Publicador/Mesa/CardDescricao';
+import { conclusaoDaIa } from '@/Components/Publicador/derivados';
 import { cn } from '@/lib/utils';
 
 // ─── Editor interno do Publicador: a "mesa de anúncio" (D24/D25; UI-SPEC §8) ─
@@ -111,6 +112,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
 
     const estado = pub.m.estado;
     const tokenExpirado = Boolean(estado?.conta?.erro);
+    const conclusao = conclusaoDaIa(ia.resumo, { pediuSubstituir: ia.pediuSubstituir });
 
     return (
         <AppLayout title="Publicador MLB">
@@ -143,19 +145,29 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                                     <p className="mt-1">Enquanto ela trabalha, a mesa fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
                                 </Faixa>
                             )}
+                            {/* WR-F04: `secoes` é número; o aviso e o "só o vazio" vêm do servidor. */}
                             {ia.estado === 'concluido' && ! iaFechada && (
                                 <Faixa icone={Sparkles} tom="azul" onFechar={() => setIaFechada(true)}>
-                                    <p>A IA preencheu {ia.resumo?.secoes?.length ?? 0} seções. Revise antes de conferir no Mercado Livre.</p>
-                                    {! ia.resumo?.variacoes && <p className="mt-1">A IA não montou as variações. Defina-as no card Variações.</p>}
+                                    <p>
+                                        {conclusao.secoes > 0
+                                            ? `A IA preencheu ${conclusao.secoes === 1 ? '1 seção' : `${conclusao.secoes} seções`}. Revise antes de conferir no Mercado Livre.`
+                                            : 'A IA não preencheu nenhuma seção.'}
+                                    </p>
+                                    {conclusao.aviso && <p className="mt-1">{conclusao.aviso}</p>}
+                                    {conclusao.soPreencheuOVazio && <p className="mt-1">Como houve edição durante a geração, a IA só preencheu o que estava vazio.</p>}
+                                    {conclusao.semVariacoes && <p className="mt-1">A IA não montou as variações. Defina-as no card Variações.</p>}
                                 </Faixa>
                             )}
+                            {/* Sem "Nada foi alterado": a IA pode ter gravado parte antes de cair (o hook relê ao terminar). */}
                             {ia.estado === 'erro' && (
                                 <Faixa
                                     icone={AlertTriangle}
                                     tom="vermelho"
                                     acao={<button type="button" onClick={ia.tentarDeNovo} className="shrink-0 rounded text-[13px] font-bold text-white hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Tentar de novo</button>}
                                 >
-                                    A IA não conseguiu preparar este anúncio. Nada foi alterado. Tente de novo ou preencha à mão.
+                                    <p>A IA não conseguiu preparar este anúncio.</p>
+                                    {ia.erro && <p className="mt-1">{ia.erro}</p>}
+                                    <p className="mt-1">Se ela chegou a preencher algo, já está nos cards. Tente de novo ou preencha à mão.</p>
                                 </Faixa>
                             )}
                             {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}

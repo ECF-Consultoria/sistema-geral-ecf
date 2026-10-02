@@ -41,6 +41,8 @@ export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcl
     const [analiseId, setAnaliseId] = useState(null);
     const [resposta, setResposta] = useState(null);
     const [erroDisparo, setErroDisparo] = useState(null);
+    // WR-F04: o pedido foi "Substituir"? A faixa avisa se, por edição no meio, a IA só preencheu o vazio.
+    const [pediuSubstituir, setPediuSubstituir] = useState(false);
     const desde = useRef(Date.now());
     const aoConcluir = useRef(onConcluiu);
     aoConcluir.current = onConcluiu;
@@ -51,6 +53,7 @@ export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcl
     useEffect(() => {
         setResposta(null);
         setErroDisparo(null);
+        setPediuSubstituir(false);
         const id = guardado(produtoId);
         desde.current = Date.now();
         setAnaliseId(id);
@@ -93,6 +96,7 @@ export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcl
 
     const disparar = async (substituir = false) => {
         setErroDisparo(null);
+        setPediuSubstituir(substituir === true);
         setResposta({ status: 'pendente', etapa: 'analise' });
         try {
             const { data } = await axios.post(route('mlb.anuncios.ia.analise.store'), { produto_id: produtoId, produto: nomeProduto, substituir });
@@ -112,6 +116,7 @@ export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcl
         etapa: e.etapa,
         textoEtapa: e.texto,
         resumo: e.resumo,
+        pediuSubstituir,
         erro: erroDisparo ?? e.erro,
         disparar,
         tentarDeNovo: () => disparar(false),

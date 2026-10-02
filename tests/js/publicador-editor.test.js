@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import { criarRota } from '../../resources/js/Components/Publicador/apoio.js';
 import {
-    contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, iguais, mesclarAlvos,
+    conclusaoDaIa, contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, iguais, mesclarAlvos,
     mesclarComPendentes, mesclarVariantes, podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa,
     textoDaConferencia, totalDeAnuncios,
 } from '../../resources/js/Components/Publicador/derivados.js';
@@ -383,13 +383,47 @@ test('estadoDaIa: parado, andamento, concluido e erro', () => {
         assert.equal(r.estado, 'andamento');
         assert.equal(r.texto, 'Montando a ficha…');
     }
-    const c = estadoDaIa({ status: 'concluido', publicador: { rascunho_id: 5, secoes: ['a'], variacoes: 2 } });
+    // WR-F04: o contrato do servidor (`IaParaRascunhoService::resumo`) manda `secoes` como NÚMERO.
+    const c = estadoDaIa({ status: 'concluido', publicador: { rascunho_id: 5, secoes: 3, variacoes: true, aviso: null, sobrescreveu: true } });
     assert.equal(c.estado, 'concluido');
-    assert.deepEqual(c.secoes, ['a']);
-    assert.equal(c.variacoes, 2);
+    assert.equal(c.secoes, 3);
+    assert.equal(c.variacoes, true);
     const e = estadoDaIa({ status: 'erro', erro: 'falhou' });
     assert.equal(e.estado, 'erro');
     assert.equal(e.erro, 'falhou');
+    // Sem mensagem do servidor, a página usa o próprio texto.
+    assert.equal(estadoDaIa({ status: 'erro', erro: null }).erro, null);
+});
+
+test('WR-F04 conclusaoDaIa: seções como número, aviso do servidor e "só o vazio" quando pediu substituir', () => {
+    assert.deepEqual(conclusaoDaIa({ secoes: 3, variacoes: true, aviso: null, sobrescreveu: true }, { pediuSubstituir: true }),
+        { secoes: 3, aviso: null, soPreencheuOVazio: false, semVariacoes: false });
+    // Pediu "Substituir", mas editou durante a geração: o servidor só preencheu o vazio.
+    assert.equal(conclusaoDaIa({ secoes: 2, variacoes: false, sobrescreveu: false }, { pediuSubstituir: true }).soPreencheuOVazio, true);
+    // Sem pedir "Substituir", sobrescreveu=false é o normal — nada a avisar.
+    assert.equal(conclusaoDaIa({ secoes: 2, sobrescreveu: false }, { pediuSubstituir: false }).soPreencheuOVazio, false);
+    // Publicação que começou no meio: zero seções e o aviso do servidor.
+    const parou = conclusaoDaIa({ secoes: 0, variacoes: false, aviso: 'A publicação começou enquanto a IA preenchia; ela parou ali e não mexeu mais no anúncio.', sobrescreveu: false }, { pediuSubstituir: true });
+    assert.equal(parou.secoes, 0);
+    assert.match(parou.aviso, /A publicação começou enquanto a IA preenchia/);
+    assert.equal(parou.soPreencheuOVazio, false);
+    assert.equal(parou.semVariacoes, false);
+    // O formato antigo (lista) não vira "N seções".
+    assert.equal(conclusaoDaIa({ secoes: ['a', 'b'] }).secoes, 0);
+    assert.equal(conclusaoDaIa(null).secoes, 0);
+});
+
+test('WR-F04 Editor: faixa da IA lê o número, mostra aviso, "só o vazio" e o erro do servidor', () => {
+    const f = lerSemComentarios(PAGINA_EDITOR);
+    assert.doesNotMatch(f, /secoes\?\.length/);
+    assert.match(f, /conclusaoDaIa\(ia\.resumo, \{ pediuSubstituir: ia\.pediuSubstituir \}\)/);
+    assert.match(f, /conclusao\.aviso && /);
+    assert.match(f, /Como houve edição durante a geração, a IA só preencheu o que estava vazio\./);
+    assert.match(f, /ia\.erro && /);
+    assert.doesNotMatch(f, /Nada foi alterado/);
+    const ia = lerSemComentarios('resources/js/Components/Publicador/useIaDoPublicador.js');
+    assert.match(ia, /setPediuSubstituir\(substituir === true\)/);
+    assert.match(ia, /pediuSubstituir,/);
 });
 
 test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
@@ -553,6 +587,7 @@ test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo
     assert.match(f, /A conta do Mercado Livre precisa ser reconectada antes de conferir ou publicar\./);
     assert.match(f, /A IA preencheu/);
     assert.match(f, /A IA não montou as variações\. Defina-as no card Variações\./);
-    assert.match(f, /A IA não conseguiu preparar este anúncio\. Nada foi alterado\. Tente de novo ou preencha à mão\./);
+    assert.match(f, /A IA não conseguiu preparar este anúncio\./);
+    assert.match(f, /Se ela chegou a preencher algo, já está nos cards\. Tente de novo ou preencha à mão\./);
     assert.match(f, /await pub\.descarregar\(\)/);
 });
