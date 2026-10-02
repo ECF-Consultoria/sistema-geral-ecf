@@ -326,6 +326,9 @@ O `spatie/laravel-activitylog` já registra eventos de todos os modelos principa
 | Nova permission_key `notificacoes.criar` (admin always, líder via AUTO_LIDERANCA) | Granular e atribuível via UI de setores existente; abrange Admin + Líderes + Administrativo com 1 chave | — v3.0 |
 | Cleanup de notificações lidas > 30d via scheduled command | Mantém tabela enxuta sem perder janela útil de auditoria | — v3.0 |
 | Targeting (individual/setor/líderes/todos) resolvido no dispatch | Expande para `user_ids` no momento do envio; evita lógica de "audiência" no read path | — v3.0 |
+| Publicador do Mercado Livre no sistema interno (`/mlb/anuncios`), Anunciar fora do Portal do Cliente | Gerar imagem e publicar não é tarefa do cliente; atende Polos, Incubadora e Gestão com o mesmo motor do piloto; rascunho ancorado no produto (`pub_produtos`) | ✓ Fase 160 (código; deploy e UAT pendentes) |
+| Trava "conta de cliente nunca recebe publicação" por conta, em toda escrita no ML | Regra do usuário; a âncora com token pode mudar entre o clique e o job | ✓ Fase 160 (CR-B01) |
+| Excluir empresa não apaga o histórico de publicação (FKs SET NULL) | Payload enviado e resposta do ML ficam guardados (D27, decisão do usuário) | ✓ Fase 160 (CR-B02) |
 
 ## Evolution
 
@@ -354,3 +357,5 @@ Clicksign entram como peças a integrar, não a reconstruir. **v22.0 permanece a
 Fase 133 executando, `133-05` pendente desde 19/08); Fases 134/135/136 avulsas aguardando gate
 humano. Numeração de fases continua a partir da 137. Trabalho no worktree
 `ecf_fluxo_entrada`, branch `feat/fluxo-entrada-empresas`.*
+
+*Last updated: 2026-10-02 — **Fase 160 (Publicador no sistema interno) fechada no código**, aprovada pelo usuário: `/mlb/anuncios` vira o Publicador (programa Polos | Incubadora | Gestão → empresa → produtos → mesa de anúncio), sincronizado com o Portal e com cadastro próprio para empresa sem Portal; o Anunciar saiu do Portal do Cliente. Branch `feat/publicador-ml-261001`, sem push nem deploy; 6 itens de conferência humana em `160-HUMAN-UAT.md`.*

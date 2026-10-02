@@ -374,16 +374,16 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
-## Posição paralela — Fase 160 (Publicador no sistema interno, /mlb/anuncios) — EM EXECUÇÃO
+## Posição paralela — Fase 160 (Publicador no sistema interno, /mlb/anuncios) — FECHADA NO CÓDIGO (aguarda deploy e UAT)
 
 **Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
 frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição paralela" pertencem a
 outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
 
-Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
+Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — COMPLETE (código); verificação human_needed
 Plans: 15 em 8 waves — 15 de 15 concluídos
-Status: Phase 160 — 15/15 planos; code review feito e corrigido (13 de 13 no escopo do usuário); falta a verificação da fase. 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — retomada; correções do review concluídas (Publicador 376/1874, PortalCliente 231/1872, test:js 645 com as 2 pré-existentes)
+Status: Phase 160 fechada em 2026-10-02 (aprovada pelo usuário). 6 itens de conferência humana em `160-HUMAN-UAT.md` — quase todos dependem do deploy, que NÃO foi feito nem pedido. Antes de push: `git fetch` e `git rev-list --left-right --count HEAD...origin/main`.
+Last activity: 2026-10-02 — fase fechada: verificação 8/8 no código (`160-VERIFICATION.md`), review corrigido (`160-REVIEW-FIX.md`)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
