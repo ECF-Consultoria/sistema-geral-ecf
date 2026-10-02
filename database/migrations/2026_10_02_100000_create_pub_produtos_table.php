@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Schema;
  * | coluna          | tipo                 | regra                                              |
  * |-----------------|----------------------|----------------------------------------------------|
  * | id              | bigint unsigned PK   |                                                    |
- * | mlb_empresa_id  | foreignId nullable   | FK `pubprod_empresa_fk` -> mlb_empresas, cascade   |
- * | company_id      | foreignId nullable   | FK `pubprod_company_fk` -> companies, cascade      |
+ * | mlb_empresa_id  | foreignId nullable   | FK `pubprod_empresa_fk` -> mlb_empresas, SET NULL  |
+ * | company_id      | foreignId nullable   | FK `pubprod_company_fk` -> companies, SET NULL     |
  * | oferta_id       | foreignId nullable   | FK `pubprod_oferta_fk` -> estrutura_ofertas, SET NULL; unique `pubprod_oferta_uq` |
  * | sku             | string(120)          |                                                    |
  * | nome            | string(255)          |                                                    |
@@ -30,7 +30,20 @@ use Illuminate\Support\Facades\Schema;
  * produto, que passa a se comportar como "cadastrado no Publicador", e não leva
  * rascunho nem histórico. O erro 1830 do MariaDB (SET NULL em coluna NOT NULL,
  * learnings `desempenho-bonificacao.md` §6) não se aplica: a coluna é anulável.
- * É o ÚNICO `nullOnDelete` da fase. NULL repetido passa em `unique` (MariaDB e
+ *
+ * `pubprod_empresa_fk` e `pubprod_company_fk` também são `nullOnDelete` (CR-B02 do
+ * code review, decisão do usuário em 02/10/2026): excluir a `MlbEmpresa` (gestor de
+ * Polos, `DELETE /mlb/empresas/{empresa}`) ou a `Company` NÃO apaga o histórico. Em
+ * CASCADE a exclusão levava produto → rascunho → publicações → itens, com o
+ * `ml_item_id`, o payload enviado e a resposta crua do ML de anúncios que seguem no
+ * ar — para produto de Polos sem Portal, o ÚNICO registro do que a ECF publicou. Com
+ * as duas âncoras nulas o produto fica órfão: some das telas (`empresaDoProduto()`
+ * devolve null → 404) e `conta()` lança V-ACC-01, mas o histórico fica. Mesma escolha
+ * do motor antigo (`2026_07_13_100001…`, "preserva o rascunho se a empresa for
+ * hard-deletada"). Banco onde esta migration já rodou com CASCADE (o MariaDB local)
+ * é consertado por `2026_10_02_200000_pub_produtos_ancoras_sem_cascata`.
+ *
+ * NULL repetido passa em `unique` (MariaDB e
  * SQLite). Nomes curtos `pubprod_*` (limite de 64 chars, erro 1059). O programa
  * (Polos/Incubadora) NÃO é gravado (D13). "Pelo menos uma âncora" é regra do
  * serviço, sem CHECK. Rodar no MariaDB local com `--path` (o SQLite dos testes não
@@ -42,8 +55,9 @@ return new class extends Migration
     {
         Schema::create('pub_produtos', function (Blueprint $t) {
             $t->id();
-            $t->foreignId('mlb_empresa_id')->nullable()->constrained('mlb_empresas', 'id', 'pubprod_empresa_fk')->cascadeOnDelete();
-            $t->foreignId('company_id')->nullable()->constrained('companies', 'id', 'pubprod_company_fk')->cascadeOnDelete();
+            // SET NULL (CR-B02): excluir a empresa não apaga o histórico de publicação.
+            $t->foreignId('mlb_empresa_id')->nullable()->constrained('mlb_empresas', 'id', 'pubprod_empresa_fk')->nullOnDelete();
+            $t->foreignId('company_id')->nullable()->constrained('companies', 'id', 'pubprod_company_fk')->nullOnDelete();
             $t->foreignId('oferta_id')->nullable()->constrained('estrutura_ofertas', 'id', 'pubprod_oferta_fk')->nullOnDelete();
             $t->string('sku', 120);
             $t->string('nome', 255);
