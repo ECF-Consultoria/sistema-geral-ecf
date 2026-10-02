@@ -2742,7 +2742,7 @@ Plans:
 
 **Ordem de construção (decrescente em risco, D-05):** a Fase 160 é a fundação arriscada — primeira vez que upload efêmero, context/truth builder, job assíncrono novo e aprovação chegam a produção juntos, mas entrega SÓ uma imagem, atrás de chave desligada. A Fase 161 escala de 1 para 7 com planejamento dinâmico e concorrência — não é usável ter 7 imagens sem conseguir regenerar a ruim ou aprovar o kit todo, por isso planner, geração paralela, regeneração manual, aprovação de kit e os guard-rails de publicação nascem **juntos** na mesma fase (anti-padrão de camada evitado de propósito). A Fase 162 adiciona confiabilidade automática (validador Gemini-juiz + regeneração automática) por cima de um kit que já funciona manualmente. A Fase 163 fecha o "→ V1" do nome da milestone: custo visível por projeto e a métrica real do POC contra anúncios já produzidos à mão.
 
-### Phase 160: Fatia fina ponta a ponta — um criativo real, do upload à aprovação
+### Phase 160: Fatia fina ponta a ponta — um criativo real, do upload à aprovação — ✅ COMPLETA (5/5, checkpoint humano aprovado em produção 2026-10-02)
 
 **Goal**: o operador sobe a foto original de um produto já cadastrado no publicador, pede a geração de UMA imagem via Gemini, vê o resultado ao lado da foto original, aprova, e a imagem aprovada entra no rascunho do anúncio — mínima e feia, mas real e usável em produção, atrás de uma chave que a equipe desliga sem deploy.
 **Depends on**: Nada como fase (fundação desta milestone); reusa o provider Gemini da V0.1 (spike `261001-nkx`), já em produção.
