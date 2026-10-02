@@ -21,6 +21,7 @@ class CreativeTestGemini extends Command
         {--prompt= : Prompt alternativo}
         {--modelo= : Força um modelo de imagem só nesta execução (para comparar modelos, §19)}
         {--tamanho= : Força o image_size (512px|1K|2K|4K) — o lite não aceita 2K}
+        {--sem-texto : Pula o teste de conectividade de texto (para rodadas em lote)}
         {--saida= : Onde gravar a imagem gerada}';
 
     protected $description = 'Prova técnica manual: testa conectividade e geração de imagem com a Gemini (custa crédito)';
@@ -40,7 +41,9 @@ class CreativeTestGemini extends Command
         $this->info('Chave da Gemini configurada (comprimento '.strlen($chave).', termina em "'.substr($chave, -4).'").');
 
         try {
-            $this->testarTexto($provider);
+            if (! $this->option('sem-texto')) {
+                $this->testarTexto($provider);
+            }
 
             $caminhosImagem = (array) $this->option('imagem');
 

@@ -322,3 +322,79 @@ depura caçar nome de modelo errado. A mensagem de 404 do provider foi reescrita
 ⚠️ **Custo de regeneração não está nas contas acima.** O §12.2 prevê até 2 tentativas por asset;
 no pior caso o kit dobra de preço. A taxa real de regeneração é uma das métricas do §19 e só o uso
 mede.
+
+---
+
+## 17. Kit de 7 nos três modelos (2026-10-02) — CORRIGE a conclusão da seção 16
+
+O usuário recusou, com razão, a conclusão da §16: um teste por modelo não condena modelo nenhum.
+E apontou o erro de leitura — o `lite` gerou o gabinete sem portas porque **uma das referências
+mostra o móvel sem portas** (a foto do interior aberto). Ele estava seguindo uma referência, não
+alucinando. A §16 condenou o `lite` por um comportamento que o próprio material de entrada induziu.
+
+Refeito: **kit de 7 criativos, mesmo produto, mesmos 3 ângulos, mesmos 7 prompts, nos 3 modelos**
+(21 imagens). Cada modelo no seu melhor: `lite` em 1K (teto dele), `flash` e `pro` em 2K.
+Saída em `storage/app/private/creative-testes/kit/<modelo>/`.
+
+Slots: 1-HERO, 2-LIFESTYLE, 3-ANGLES, 4-DETAIL, 5-INTERIOR, 6-BENEFITS, 7-SPECIFICATIONS.
+Os slots 6 e 7 **fixam as palavras exatas no prompt**, para conferir letra por letra quem reescreve.
+
+### ⚠️ A CORREÇÃO QUE MAIS IMPORTA: a §14 mediu a coisa errada
+
+**Os três modelos escreveram o texto PERFEITAMENTE** nos slots 6 e 7 — "Duas portas amplas",
+"Tres gavetas", "Tampo com rodabanca", "Pes em aluminio", todas exatas, em `lite`, `flash` e `pro`.
+No `lite` e no `pro` as chamadas ainda apontam para o elemento certo do móvel.
+
+A §14 concluiu que "o modelo reescreve texto". **Errado — faltou distinguir duas tarefas
+diferentes:**
+
+| tarefa | resultado |
+|---|---|
+| texto que o modelo precisa **LER de uma imagem de referência** e reproduzir | corrompe (§14: "Transactions"→"Transaations", "€28.345"→"€29.345") |
+| texto **DADO no prompt** como string exata para desenhar | **sai correto** (§17, nos três modelos) |
+
+Isso muda o desenho na direção OPOSTA à que a §15 sugeria. No Creative Engine, badge e headline vêm
+do **cadastro do anúncio**, passados ao prompt pelo `CreativePromptBuilder` (§8.5) — ou seja, caem
+no caso que FUNCIONA. O `COMPOSITE` do §9.2 **não é pré-requisito** para slot com texto, como a §15
+deu a entender. Ele continua valendo como opção de controle fino de layout/fonte, não como remendo
+de confiabilidade.
+
+Continua de pé da §14: nunca pedir ao modelo para COPIAR texto que só existe dentro de uma foto.
+
+### O que foi conferido imagem a imagem (8 das 21)
+
+| slot | lite (1K) | flash (2K) | pro (2K) |
+|---|---|---|---|
+| 1-HERO | ❌ **três portas** (produto tem duas) | ✓ fiel | ✓ fiel |
+| 2-LIFESTYLE | ✓ fiel (2 portas) | — | — |
+| 6-BENEFITS | ✓ texto exato, chamadas certas | — | ✓ texto exato, chamadas certas |
+| 7-SPECIFICATIONS | ✓ texto exato | ⚠️ texto exato, mas **fantasma do móvel** duplicado embaixo | ✓ texto exato, composição limpa |
+
+⚠️ **O erro do `lite` no HERO não é sistemático**: no LIFESTYLE do mesmo kit ele acertou as duas
+portas. É falha esporádica de contagem — exatamente o tipo de coisa que a validação automática do
+§8.8 e a revisão humana do §14.1 existem para pegar, e que o botão de regenerar resolve.
+
+⚠️ **O `flash` também falhou uma vez**, com o fantasma duplicado no slot 7. Nenhum dos três é
+imune; os três erram esporadicamente e em slots diferentes.
+
+### Custo medido do kit de 7
+
+| modelo | resolução | tempo total | custo do kit |
+|---|---|---|---|
+| `gemini-3.1-flash-lite-image` | 1K | ~50s | US$ 0,24 |
+| `gemini-3.1-flash-image` | 2K | ~112s | US$ 0,71 |
+| `gemini-3-pro-image` | 2K | ~158s | US$ 0,94 |
+
+### Conclusão (substitui a da §16)
+
+Nenhum modelo é descartável e nenhum é confiável sozinho — **a taxa de erro esporádico dos três
+justifica a validação automática + revisão humana que o plano já prevê**, e é o argumento mais forte
+a favor do botão "Regenerar" por imagem (§14.1 item 5).
+
+Para escolher: `flash` segue a recomendação por equilíbrio, mas agora **sem condenar o `lite`** —
+a 1/3 do preço e 1/2 do tempo ele entregou 3 dos 4 slots conferidos sem defeito, e pode ser a
+escolha certa para slots simples ou para a primeira tentativa antes de escalar para um modelo maior
+numa regeneração. Decisão do usuário.
+
+⚠️ **13 das 21 imagens ainda não foram conferidas uma a uma** (slots 3, 4, 5 nos três modelos e
+parte dos 2 e 6). A tabela acima é amostra, não censo.
