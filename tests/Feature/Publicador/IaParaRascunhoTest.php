@@ -8,15 +8,19 @@ use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\RascunhoSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
@@ -337,6 +341,38 @@ class IaParaRascunhoTest extends TestCase
         $this->assertSame('O anúncio já estava publicado; a IA não mudou nada.', $a->resultado['publicador']['aviso']);
         $this->assertSame(MlAnuncioIaAnalise::STATUS_CONCLUIDO, $a->status);
         $this->afirmarSemRedeSemWizardAntigo();
+    }
+
+    /**
+     * WR-B03: o "intocável" olha o FATO. Um item já criado no ML (ou uma publicação em andamento)
+     * protege o rascunho mesmo que o status tenha sido rebaixado — como a conferência antiga fazia.
+     */
+    public function test_wr_b03_item_criado_ou_publicacao_rodando_tornam_intocavel_qualquer_status(): void
+    {
+        Queue::fake();
+        $a = $this->analise($this->fichaCadeira(), substituir: true);
+        $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
+        $p = $r->publicacoes()->create(['revisao' => $r->revisao, 'modelo_publicacao' => 'UP', 'status' => PubPublicacao::PUBLISHED,
+            'chave_idempotencia' => (string) Str::uuid(), 'concluida_em' => now()]);
+        $p->itens()->create(['indice' => 0, 'listing_type_id' => 'gold_special', 'variante_chave' => '__single__', 'status' => PubPublicacaoItem::CREATED, 'ml_item_id' => 'MLB9000000001']);
+        $r->update(['status' => PubRascunho::VALIDATED]); // o anúncio está no ar; o status mente
+        $antes = $r->fresh()->only(['revisao', 'categoria_id', 'descricao', 'garantia']);
+
+        $a = $this->rodar($a);
+
+        $this->assertSame($antes, $r->fresh()->only(['revisao', 'categoria_id', 'descricao', 'garantia']));
+        $this->assertSame('O anúncio já estava publicado; a IA não mudou nada.', $a->resultado['publicador']['aviso']);
+        $this->actingAs($this->admin())->postJson(route('mlb.anuncios.ia.analise.store'), ['produto_id' => $this->produto->id])
+            ->assertStatus(422)->assertJsonPath('message', 'Este anúncio já foi publicado ou está publicando.');
+
+        // Publicação em andamento com o rascunho em DRAFT: também intocável.
+        $p->itens()->delete();
+        $p->update(['status' => PubPublicacao::RUNNING]);
+        $r->update(['status' => PubRascunho::DRAFT]);
+        $this->assertTrue(IaParaRascunhoService::intocavel($r->fresh()));
+
+        $p->update(['status' => PubPublicacao::FAILED]);
+        $this->assertFalse(IaParaRascunhoService::intocavel($r->fresh()), 'falhou sem nada no ar: a IA pode trabalhar');
     }
 
     public function test_garantia_sem_correspondencia_nao_grava_e_vira_aviso(): void

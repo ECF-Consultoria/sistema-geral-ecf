@@ -3,6 +3,8 @@
 namespace App\Services\Publicador;
 
 use App\Models\MlAnuncioIaAnalise;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
@@ -49,10 +51,17 @@ class IaParaRascunhoService
         private CategorySchemaRepository $schemas,
     ) {}
 
-    /** Rascunho em estado em que a IA não pode mexer (publicando/publicado). */
+    /**
+     * Rascunho em que a IA não pode mexer (publicando/publicado). WR-B03: decide pelo FATO —
+     * publicação em andamento ou algum item já criado no ML —, não só pelo status, que uma
+     * conferência antiga chegava a rebaixar para VALIDATED com o anúncio no ar.
+     */
     public static function intocavel(PubRascunho $r): bool
     {
-        return in_array($r->status, self::INTOCAVEIS, true);
+        return in_array($r->status, self::INTOCAVEIS, true)
+            || $r->publicacoes()->where('status', PubPublicacao::RUNNING)->exists()
+            || PubPublicacaoItem::whereIn('publicacao_id', $r->publicacoes()->select('id'))
+                ->where('status', PubPublicacaoItem::CREATED)->exists();
     }
 
     /**

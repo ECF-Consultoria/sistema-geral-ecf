@@ -56,6 +56,9 @@ class ConferenciaService
      */
     public const LOCAL = 'LOCAL';
 
+    /** Status que a conferência aprovada pode virar VALIDATED; publicando/publicado nunca (WR-B03). */
+    private const PODE_FICAR_VALIDADO = [PubRascunho::DRAFT, PubRascunho::VALIDATED, PubRascunho::FAILED];
+
     /** Classes de resposta que impedem concluir a conferência (o ML não respondeu de fato). */
     private const SEM_RESPOSTA = [RespostaMl::SERVER, RespostaMl::NETWORK, RespostaMl::RATE_LIMIT, RespostaMl::AUTH];
 
@@ -155,9 +158,18 @@ class ConferenciaService
                 : (array_filter($problemas, fn (Problema $p) => $p->severidade === Problema::AVISO) ? self::AVISOS : self::OK);
             $validacao = $this->gravar($r, $revisao, $status, $problemas, $brutas, $prep['plano']);
 
-            // Só marca VALIDATED se ninguém editou enquanto o ML respondia.
-            if ($status !== self::BLOQUEADO && $r->fresh()->revisao === $revisao) {
-                $r->update(['status' => PubRascunho::VALIDATED]);
+            // Só marca VALIDATED se ninguém editou enquanto o ML respondia — e NUNCA rebaixa um
+            // rascunho publicando/publicado/parcialmente publicado (WR-B03: "conferir" de um anúncio
+            // no ar o devolvia a VALIDATED e o abria à IA). Um UPDATE condicional só: sem corrida
+            // com o clique em Publicar nem com a edição.
+            if ($status !== self::BLOQUEADO) {
+                $marcou = PubRascunho::whereKey($r->id)->where('revisao', $revisao)
+                    ->whereIn('status', self::PODE_FICAR_VALIDADO)
+                    ->update(['status' => PubRascunho::VALIDATED, 'updated_at' => now()]);
+                if ($marcou > 0) {
+                    $r->status = PubRascunho::VALIDATED;
+                    $r->syncOriginalAttribute('status');
+                }
             }
 
             return $validacao;

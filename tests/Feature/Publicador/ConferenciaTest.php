@@ -240,6 +240,24 @@ class ConferenciaTest extends TestCase
         $this->assertSame($this->r->revisao, $v->revisao);
     }
 
+    /** WR-B03: "Conferir no ML" na barra de um anúncio no ar não o devolve a VALIDATED. */
+    public function test_wr_b03_conferir_nao_rebaixa_rascunho_publicando_ou_publicado(): void
+    {
+        foreach ([PubRascunho::PUBLISHING, PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED] as $status) {
+            $this->r->update(['status' => $status]);
+
+            $v = $this->conferir();
+
+            $this->assertSame(ConferenciaService::AVISOS, $v->resultado, 'a conferência continua sendo gravada');
+            $this->assertSame($status, $this->r->fresh()->status, "{$status} não pode virar VALIDATED");
+        }
+
+        // Rascunho cuja publicação falhou inteira (nada no ar) volta a ser conferível.
+        $this->r->update(['status' => PubRascunho::FAILED]);
+        $this->conferir();
+        $this->assertSame(PubRascunho::VALIDATED, $this->r->fresh()->status);
+    }
+
     public function test_job_vai_para_a_fila_high_e_um_por_rascunho(): void
     {
         Queue::fake();
