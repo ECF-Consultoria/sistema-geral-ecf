@@ -149,7 +149,17 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
 - Apagar a oferta pela Lista SKUs congela título/preço no rascunho
   (`SoltarProdutoDaOfertaService`, chamado em `EstruturaOfertaService::excluir`,
   que é o único caminho Eloquent). Apagar a `Company` apaga as ofertas pelo banco
-  e leva o `pub_produto` pela `pubprod_company_fk`, SEM congelar — fora do D27.
+  (o produto fica com `oferta_id` NULL SEM congelar título/preço — fora do D27),
+  mas NÃO leva mais o `pub_produto`.
+- `pubprod_empresa_fk` e `pubprod_company_fk` são SET NULL (CR-B02 do code review,
+  decisão do usuário em 02/10): excluir `MlbEmpresa` (o `DELETE /mlb/empresas/{empresa}`
+  é de gestor/líder de Polos, não de admin) ou `Company` mantém produto, rascunho,
+  publicações e itens — `ml_item_id`, payload e resposta crua do ML. Com as duas
+  âncoras nulas o produto vira órfão: some das telas (404 no editor) e `conta()`
+  lança V-ACC-01. Até 02/10 eram CASCADE e apagavam esse histórico; banco onde a
+  criação já rodou assim é consertado pela `2026_10_02_200000_pub_produtos_ancoras_sem_cascata`
+  (rodada no MariaDB local; em produção a criação já nasce SET NULL). Não voltar a
+  CASCADE: o `down()` dela não volta de propósito.
 - Company 5 ≠ MlbEmpresa 5. "Empresa polo" é `MlbEmpresa`; produto de polo pode
   não ter `company_id`.
 
@@ -159,6 +169,13 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   `config/publicador.php` ainda aceita `PUBLICADOR_EMPRESAS_PILOTO` como
   fallback de `contas_liberadas.companies` (o `.env` de produção pode ter só a
   antiga) — não remover o fallback.
+- A trava vale em TODA escrita, não só no clique (CR-B01): `iniciar()` grava a conta
+  fixada em `pub_publicacoes.ator.conta` (`chave` da âncora + `seller` da conferência —
+  sem migration, a coluna JSON já existia) e `PublicacaoService::contaFixada()` relê a
+  âncora do banco antes das fotos, de cada `POST /items` e de cada descrição: âncora
+  diferente, conta fora da lista ou token de outro vendedor → nada sai. Publicação
+  sem `ator.conta` (anterior a 02/10) falha FECHADO; conferência sem
+  `respostas_ml.conta.sellerId` não publica — teste que fabrica L3 precisa dele.
 - D26: conta NÃO liberada confere só LOCAL (camada `L2`, resultado `LOCAL`,
   `conferencia.local`), não recebe foto (a foto fica `pending`; miniatura por
   `mlb.anuncios.publicador.fotos.arquivo`) e nunca faz POST. A leitura de conta
