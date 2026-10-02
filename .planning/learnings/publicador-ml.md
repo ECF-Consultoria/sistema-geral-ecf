@@ -133,3 +133,68 @@ O que funcionou (01/10, F1.11):
 - Timeout do ML em teste: `Http::failedConnection()` (lança `ConnectionException`).
   Uma closure que lança outra exceção não fica em `Http::recorded()` — conte as
   chamadas por um contador próprio.
+
+## 9. Publicador interno (Fase 160, 02/10/2026)
+
+O que não se deduz do código, na ordem em que mais custou descobrir.
+
+**Modelo**
+- O rascunho é do PRODUTO (`pub_produtos`), não da oferta. O vínculo com a oferta
+  mora só no produto (`pub_produtos.oferta_id`); `pub_rascunhos.oferta_id` ficou
+  como coluna LEGADA DORMENTE de propósito (D27, opção (a)): não dropar, não
+  recriar `pubr_oferta_*` — dá erro 1553 no MariaDB (a FK é usada por um índice).
+  A oferta do rascunho vem do produto (`hasOneThrough`).
+- `pubprod_oferta_fk` é SET NULL: `nullOnDelete` vale em coluna ANULÁVEL (o 1830
+  do learnings de desempenho é só para coluna NOT NULL).
+- Apagar a oferta pela Lista SKUs congela título/preço no rascunho
+  (`SoltarProdutoDaOfertaService`, chamado em `EstruturaOfertaService::excluir`,
+  que é o único caminho Eloquent). Apagar a `Company` apaga as ofertas pelo banco
+  e leva o `pub_produto` pela `pubprod_company_fk`, SEM congelar — fora do D27.
+- Company 5 ≠ MlbEmpresa 5. "Empresa polo" é `MlbEmpresa`; produto de polo pode
+  não ter `company_id`.
+
+**Conta e trava**
+- A conta do ML é a âncora que TEM token (`PubProduto::conta()`), e a trava D21
+  olha essa âncora: `publicador.contas_liberadas` vazio = ninguém publica. O
+  `config/publicador.php` ainda aceita `PUBLICADOR_EMPRESAS_PILOTO` como
+  fallback de `contas_liberadas.companies` (o `.env` de produção pode ter só a
+  antiga) — não remover o fallback.
+- D26: conta NÃO liberada confere só LOCAL (camada `L2`, resultado `LOCAL`,
+  `conferencia.local`), não recebe foto (a foto fica `pending`; miniatura por
+  `mlb.anuncios.publicador.fotos.arquivo`) e nunca faz POST. A leitura de conta
+  ao abrir e o "Quanto eu recebo?" continuam: são GET.
+- D20: o passo em PRODUÇÃO é do usuário — `php artisan publicador:empresa-teste`
+  (simulação) e depois `--confirmar`. Só foi construído e testado.
+
+**O Anunciar saiu do Portal (D18, 160-15)**
+- As rotas `/estrutura/anunciar*`, `…/publicacao*` e `…/publicador*` respondem 404
+  para todos; saíram da allowlist de `RestringeDominioDoPortal`. O Mapeamento
+  Estrutural tem 5 submódulos. Quem publica é a equipe ECF, no admin.
+- O assistente antigo (`mlb.anuncios.wizard`) segue vivo SÓ para rascunhos antigos
+  e "Anunciar semelhante" (D22). `EstruturaPublicacao`/`estrutura_publicacoes` e
+  `MigracaoAnunciarAntigo` ficam (histórico e migração).
+- `EditorRascunhoService::estado()` não devolve mais `oferta` nem `piloto`; a
+  oferta é `produto.oferta_id`.
+
+**Testes e ambiente**
+- Teste de migration que usa `->change()` não roda com `RefreshDatabase`/`DatabaseMigrations`
+  no SQLite: o `migrate:rollback` do teardown quebra no `down()` de
+  `2026_09_14_100000_add_parent_id_to_company_groups_table` ("dropping foreign
+  keys by name"). `MigracaoProdutoRascunhoTest` chama `artisan('migrate')` no
+  `setUp`. O backfill só foi provado em SQLite (o MariaDB local tinha 0 linhas).
+- `testing.ensure_pages_exist = true`: teste de página nova lê `viewData('page')`
+  e a página React precisa existir.
+- Componente que nenhuma página importa NÃO é compilado pelo `npm run build`:
+  import quebrado ali só aparece quando alguém o importa — cheque com esbuild.
+  Depois de apagar arquivo de front, rode o build e confira o manifest.
+- `artisan route:list` trava o timeout nesta máquina com o `.env` local; com
+  `DB_CONNECTION=sqlite DB_DATABASE=:memory:` no ambiente do processo e
+  `timeout 120` roda. Alternativa: `Route::has()` num teste.
+- O Bash tool corrompe barras invertidas em `sed` (os imports viraram
+  `AppContracts...`): edite PHP/JS só com Edit/Write e confira com `php -l`.
+- Teste que passa por código do ML sem `Http::fake` é INTERMITENTE
+  (`Phase75/PublicarEmpresaNaoAtribuidaTest::test_admin_nao_recebe_403_no_update`
+  pede app token real e já falhou com HTTP 400; isolado, passou). Rode isolado
+  antes de chamar de regressão — e prefira consertar o teste com `Http::fake`.
+- Suíte inteira estoura 512 MB: rode por pasta, redirecione para arquivo e leia o
+  arquivo (`| tail` engole o exit code).
