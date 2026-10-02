@@ -69,6 +69,39 @@ class PortalEquipeController extends Controller
                 ->with('portal_aviso', 'Esse acesso expirou. Abra o portal de novo pelo sistema.');
         }
 
+        $this->abrirSessaoDeEquipe($request, $entrada, porLink: false);
+
+        return redirect()->route('portal.auth.inicio');
+    }
+
+    /**
+     * GET /equipe/link/{empresa}?signature=… — o link ABERTO de equipe.
+     *
+     * Só existe para empresa em `config('portal.link_equipe')` (loja de teste
+     * da ECF). A assinatura já foi conferida pelo middleware `signed`; o que
+     * se confere aqui é se a empresa continua na lista.
+     */
+    public function entrarPorLink(Request $request, string $empresa)
+    {
+        $entrada = $this->equipe->consumirLink((int) $empresa, $request->ip());
+
+        if (! $entrada) {
+            return redirect()->route('portal.entrada')
+                ->with('portal_aviso', 'Esse link do portal não está mais ativo.');
+        }
+
+        $this->abrirSessaoDeEquipe($request, $entrada, porLink: true);
+
+        return redirect()->route('portal.auth.inicio');
+    }
+
+    /**
+     * A sessão de equipe, nas duas portas (passagem e link aberto).
+     *
+     * @param  array{membro: \App\Models\User, empresa: Company}  $entrada
+     */
+    private function abrirSessaoDeEquipe(Request $request, array $entrada, bool $porLink): void
+    {
         // Derruba qualquer sessão de cliente que estivesse aberta neste
         // navegador. Sem isto, o analista que testou com a conta de um cliente
         // continuaria com a sessão dela por baixo — e a próxima ação sairia no
@@ -80,7 +113,9 @@ class PortalEquipeController extends Controller
         $request->session()->put(\App\Support\Portal\PortalContexto::SESSAO_EQUIPE, $entrada['membro']->id);
         $request->session()->put('portal_empresa_id', $entrada['empresa']->id);
 
-        return redirect()->route('portal.auth.inicio');
+        if ($porLink) {
+            $request->session()->put(\App\Support\Portal\PortalContexto::SESSAO_LINK, true);
+        }
     }
 
     /**
@@ -91,10 +126,19 @@ class PortalEquipeController extends Controller
      */
     public function sair(Request $request)
     {
+        // Lido ANTES de invalidar: depois a sessão já não diz mais nada.
+        $porLink = (bool) $request->session()->get(\App\Support\Portal\PortalContexto::SESSAO_LINK);
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         $dominio = config('portal.dominio_cliente');
+
+        // Quem entrou pelo link aberto não necessariamente tem login no admin
+        // — mandar para lá seria cair na tela de login de outro sistema.
+        if ($porLink) {
+            return redirect()->route('portal.entrada');
+        }
 
         // Sem domínio separado (local), a entrada do portal é o destino
         // sensato; com domínio separado, a pessoa veio do admin e é para lá

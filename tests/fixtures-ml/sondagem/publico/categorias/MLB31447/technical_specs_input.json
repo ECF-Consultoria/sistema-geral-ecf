@@ -1,0 +1,4176 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/categories/MLB31447/technical_specs/input",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "groups": [
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "BRAND",
+                                "name": "Marca",
+                                "relevance": 1,
+                                "tags": [
+                                    "grid_filter",
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "2786622",
+                                        "name": "AY Not Dead"
+                                    },
+                                    {
+                                        "id": "23128",
+                                        "name": "Abercrombie & Fitch"
+                                    },
+                                    {
+                                        "id": "433262",
+                                        "name": "Admit One"
+                                    },
+                                    {
+                                        "id": "433264",
+                                        "name": "Airborn"
+                                    },
+                                    {
+                                        "id": "433265",
+                                        "name": "Altamont"
+                                    },
+                                    {
+                                        "id": "14868",
+                                        "name": "Armani"
+                                    },
+                                    {
+                                        "id": "433267",
+                                        "name": "Ayres"
+                                    },
+                                    {
+                                        "id": "433263",
+                                        "name": "Aéropostale"
+                                    },
+                                    {
+                                        "id": "433268",
+                                        "name": "Bolivia"
+                                    },
+                                    {
+                                        "id": "2731558",
+                                        "name": "Brooks"
+                                    },
+                                    {
+                                        "id": "433269",
+                                        "name": "Brooksfield"
+                                    },
+                                    {
+                                        "id": "252895",
+                                        "name": "Bross"
+                                    },
+                                    {
+                                        "id": "428833",
+                                        "name": "Burton"
+                                    },
+                                    {
+                                        "id": "252310",
+                                        "name": "Converse"
+                                    },
+                                    {
+                                        "id": "433270",
+                                        "name": "Cultura"
+                                    },
+                                    {
+                                        "id": "511135",
+                                        "name": "DC"
+                                    },
+                                    {
+                                        "id": "2631277",
+                                        "name": "Daniel Hechter"
+                                    },
+                                    {
+                                        "id": "23461",
+                                        "name": "Diesel"
+                                    },
+                                    {
+                                        "id": "33243",
+                                        "name": "Disney"
+                                    },
+                                    {
+                                        "id": "23618",
+                                        "name": "Dolce & Gabbana"
+                                    },
+                                    {
+                                        "id": "433272",
+                                        "name": "Ed Hardy"
+                                    },
+                                    {
+                                        "id": "433273",
+                                        "name": "Emerica"
+                                    },
+                                    {
+                                        "id": "428837",
+                                        "name": "Fox Head"
+                                    },
+                                    {
+                                        "id": "433274",
+                                        "name": "GAP"
+                                    },
+                                    {
+                                        "id": "433275",
+                                        "name": "Garzon García"
+                                    },
+                                    {
+                                        "id": "35977846",
+                                        "name": "Generic"
+                                    },
+                                    {
+                                        "id": "433276",
+                                        "name": "GoodPeople"
+                                    },
+                                    {
+                                        "id": "433277",
+                                        "name": "Grisino"
+                                    },
+                                    {
+                                        "id": "14724",
+                                        "name": "Guess"
+                                    },
+                                    {
+                                        "id": "24338",
+                                        "name": "Hollister"
+                                    },
+                                    {
+                                        "id": "433278",
+                                        "name": "Inkpronta"
+                                    },
+                                    {
+                                        "id": "433279",
+                                        "name": "Inside"
+                                    },
+                                    {
+                                        "id": "433280",
+                                        "name": "Jazmin Chebar"
+                                    },
+                                    {
+                                        "id": "2153504",
+                                        "name": "John L. Cook"
+                                    },
+                                    {
+                                        "id": "23863",
+                                        "name": "Kosiuko"
+                                    },
+                                    {
+                                        "id": "23001",
+                                        "name": "Lacoste"
+                                    },
+                                    {
+                                        "id": "433282",
+                                        "name": "Lee"
+                                    },
+                                    {
+                                        "id": "14679",
+                                        "name": "Levi's"
+                                    },
+                                    {
+                                        "id": "235060",
+                                        "name": "Mistral"
+                                    },
+                                    {
+                                        "id": "14671",
+                                        "name": "Nike"
+                                    },
+                                    {
+                                        "id": "433283",
+                                        "name": "No Fear"
+                                    },
+                                    {
+                                        "id": "433284",
+                                        "name": "Old Navy"
+                                    },
+                                    {
+                                        "id": "24073",
+                                        "name": "Ona Saez"
+                                    },
+                                    {
+                                        "id": "433285",
+                                        "name": "Ossira"
+                                    },
+                                    {
+                                        "id": "154970",
+                                        "name": "Paula Cahen D'Anvers"
+                                    },
+                                    {
+                                        "id": "433286",
+                                        "name": "Penguin"
+                                    },
+                                    {
+                                        "id": "130933",
+                                        "name": "Polo Ralph Lauren"
+                                    },
+                                    {
+                                        "id": "433287",
+                                        "name": "Pony"
+                                    },
+                                    {
+                                        "id": "240356",
+                                        "name": "Prototype"
+                                    },
+                                    {
+                                        "id": "23132",
+                                        "name": "Puma"
+                                    },
+                                    {
+                                        "id": "55691",
+                                        "name": "Quiksilver"
+                                    },
+                                    {
+                                        "id": "9188",
+                                        "name": "Reebok"
+                                    },
+                                    {
+                                        "id": "433288",
+                                        "name": "Reef"
+                                    },
+                                    {
+                                        "id": "150271",
+                                        "name": "Reserva"
+                                    },
+                                    {
+                                        "id": "433289",
+                                        "name": "Rever Pass"
+                                    },
+                                    {
+                                        "id": "26680",
+                                        "name": "Rip Curl"
+                                    },
+                                    {
+                                        "id": "433290",
+                                        "name": "Rusty"
+                                    },
+                                    {
+                                        "id": "433291",
+                                        "name": "Siamo Fuori"
+                                    },
+                                    {
+                                        "id": "433292",
+                                        "name": "Sismo"
+                                    },
+                                    {
+                                        "id": "26704",
+                                        "name": "Soho"
+                                    },
+                                    {
+                                        "id": "428844",
+                                        "name": "Stone"
+                                    },
+                                    {
+                                        "id": "428938",
+                                        "name": "Sweet"
+                                    },
+                                    {
+                                        "id": "433293",
+                                        "name": "Tannery"
+                                    },
+                                    {
+                                        "id": "433294",
+                                        "name": "Tascani"
+                                    },
+                                    {
+                                        "id": "14711",
+                                        "name": "Tommy Hilfiger"
+                                    },
+                                    {
+                                        "id": "415948",
+                                        "name": "Topper"
+                                    },
+                                    {
+                                        "id": "433295",
+                                        "name": "Tucci"
+                                    },
+                                    {
+                                        "id": "415950",
+                                        "name": "Under Armour"
+                                    },
+                                    {
+                                        "id": "124578",
+                                        "name": "Vans"
+                                    },
+                                    {
+                                        "id": "433296",
+                                        "name": "Wanama"
+                                    },
+                                    {
+                                        "id": "44392",
+                                        "name": "Wrangler"
+                                    },
+                                    {
+                                        "id": "170888",
+                                        "name": "X Games"
+                                    },
+                                    {
+                                        "id": "433297",
+                                        "name": "Zara"
+                                    },
+                                    {
+                                        "id": "14810",
+                                        "name": "adidas"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Marca",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "hint": "Informe a marca verdadeira do produto ou 'Generic' se não tiver marca."
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "LINE",
+                                "name": "Linha",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Linha",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "MODEL",
+                                "name": "Modelo",
+                                "relevance": 1,
+                                "tags": [
+                                    "grid_filter",
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "GENDER",
+                                "name": "Gênero",
+                                "relevance": 1,
+                                "tags": [
+                                    "grid_template_required",
+                                    "grid_filter",
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "339665",
+                                        "name": "Feminino"
+                                    },
+                                    {
+                                        "id": "339666",
+                                        "name": "Masculino"
+                                    },
+                                    {
+                                        "id": "339668",
+                                        "name": "Meninas"
+                                    },
+                                    {
+                                        "id": "339667",
+                                        "name": "Meninos"
+                                    },
+                                    {
+                                        "id": "371795",
+                                        "name": "Bebês"
+                                    },
+                                    {
+                                        "id": "19159491",
+                                        "name": "Sem gênero infantil"
+                                    },
+                                    {
+                                        "id": "110461",
+                                        "name": "Sem gênero"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Gênero",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "AGE_GROUP",
+                                "name": "Idade",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "6725189",
+                                        "name": "Adultos"
+                                    },
+                                    {
+                                        "id": "1065183",
+                                        "name": "Crianças"
+                                    },
+                                    {
+                                        "id": "371795",
+                                        "name": "Bebês"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Idade",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "GARMENT_TYPE",
+                                "name": "Tipo de roupa",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "12038970",
+                                        "name": "Camiseta"
+                                    },
+                                    {
+                                        "id": "12038971",
+                                        "name": "Camisa polo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de roupa",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "SALE_FORMAT",
+                                "name": "Formato de venda",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "1359391",
+                                        "name": "Unidade"
+                                    },
+                                    {
+                                        "id": "1359392",
+                                        "name": "Kit"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Formato de venda",
+                        "ui_config": {
+                            "tooltip": "É a forma como você vai vender o seu produto; pode ser em um kit ou individualmente. Kit significa vender várias unidades idênticas agrupadas, como por exemplo, 2 camisetas. Individual implica vender o produto separadamente, por exemplo, apenas 1 camiseta única.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "COLOR",
+                                "name": "Cor",
+                                "relevance": 1,
+                                "tags": [
+                                    "defines_picture",
+                                    "allow_variations",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "283148",
+                                        "name": "Coral-claro"
+                                    },
+                                    {
+                                        "id": "283149",
+                                        "name": "Coral"
+                                    },
+                                    {
+                                        "id": "283150",
+                                        "name": "Laranja-claro"
+                                    },
+                                    {
+                                        "id": "283151",
+                                        "name": "Laranja-escuro"
+                                    },
+                                    {
+                                        "id": "283156",
+                                        "name": "Cáqui"
+                                    },
+                                    {
+                                        "id": "283157",
+                                        "name": "Verde-limão"
+                                    },
+                                    {
+                                        "id": "283158",
+                                        "name": "Verde-musgo"
+                                    },
+                                    {
+                                        "id": "283152",
+                                        "name": "Chocolate"
+                                    },
+                                    {
+                                        "id": "283153",
+                                        "name": "Palha"
+                                    },
+                                    {
+                                        "id": "283154",
+                                        "name": "Marrom-claro"
+                                    },
+                                    {
+                                        "id": "283155",
+                                        "name": "Marrom-escuro"
+                                    },
+                                    {
+                                        "id": "283164",
+                                        "name": "Dourado"
+                                    },
+                                    {
+                                        "id": "51993",
+                                        "name": "Vermelho"
+                                    },
+                                    {
+                                        "id": "283165",
+                                        "name": "Cinza"
+                                    },
+                                    {
+                                        "id": "51994",
+                                        "name": "Rosa"
+                                    },
+                                    {
+                                        "id": "283160",
+                                        "name": "Azul-turquesa"
+                                    },
+                                    {
+                                        "id": "51996",
+                                        "name": "Terracota"
+                                    },
+                                    {
+                                        "id": "283161",
+                                        "name": "Azul-marinho"
+                                    },
+                                    {
+                                        "id": "283162",
+                                        "name": "Índigo"
+                                    },
+                                    {
+                                        "id": "51998",
+                                        "name": "Bordô"
+                                    },
+                                    {
+                                        "id": "283163",
+                                        "name": "Rosa-chiclete"
+                                    },
+                                    {
+                                        "id": "52000",
+                                        "name": "Laranja"
+                                    },
+                                    {
+                                        "id": "52001",
+                                        "name": "Bege"
+                                    },
+                                    {
+                                        "id": "52003",
+                                        "name": "Nude"
+                                    },
+                                    {
+                                        "id": "52005",
+                                        "name": "Marrom"
+                                    },
+                                    {
+                                        "id": "52007",
+                                        "name": "Amarelo"
+                                    },
+                                    {
+                                        "id": "52008",
+                                        "name": "Creme"
+                                    },
+                                    {
+                                        "id": "52010",
+                                        "name": "Ocre"
+                                    },
+                                    {
+                                        "id": "52012",
+                                        "name": "Dourado-escuro"
+                                    },
+                                    {
+                                        "id": "52014",
+                                        "name": "Verde"
+                                    },
+                                    {
+                                        "id": "52015",
+                                        "name": "Verde-claro"
+                                    },
+                                    {
+                                        "id": "52019",
+                                        "name": "Verde-escuro"
+                                    },
+                                    {
+                                        "id": "52021",
+                                        "name": "Azul-celeste"
+                                    },
+                                    {
+                                        "id": "52022",
+                                        "name": "Água"
+                                    },
+                                    {
+                                        "id": "52024",
+                                        "name": "Azul-petróleo"
+                                    },
+                                    {
+                                        "id": "52028",
+                                        "name": "Azul"
+                                    },
+                                    {
+                                        "id": "52029",
+                                        "name": "Azul-claro"
+                                    },
+                                    {
+                                        "id": "52031",
+                                        "name": "Azul-aço"
+                                    },
+                                    {
+                                        "id": "52033",
+                                        "name": "Azul-escuro"
+                                    },
+                                    {
+                                        "id": "52035",
+                                        "name": "Violeta"
+                                    },
+                                    {
+                                        "id": "52036",
+                                        "name": "Lavanda"
+                                    },
+                                    {
+                                        "id": "52038",
+                                        "name": "Lilás"
+                                    },
+                                    {
+                                        "id": "52042",
+                                        "name": "Fúcsia"
+                                    },
+                                    {
+                                        "id": "52043",
+                                        "name": "Rosa-claro"
+                                    },
+                                    {
+                                        "id": "52045",
+                                        "name": "Rosa-pálido"
+                                    },
+                                    {
+                                        "id": "52047",
+                                        "name": "Violeta-escuro"
+                                    },
+                                    {
+                                        "id": "52049",
+                                        "name": "Preto"
+                                    },
+                                    {
+                                        "id": "52051",
+                                        "name": "Cinza-escuro"
+                                    },
+                                    {
+                                        "id": "52053",
+                                        "name": "Prateado"
+                                    },
+                                    {
+                                        "id": "52055",
+                                        "name": "Branco"
+                                    },
+                                    {
+                                        "id": "338779",
+                                        "name": "Ciano"
+                                    }
+                                ]
+                            },
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "MAIN_COLOR",
+                                "name": "Cor principal",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2450295",
+                                        "metadata": {
+                                            "rgb": "000000"
+                                        },
+                                        "name": "Preto"
+                                    },
+                                    {
+                                        "id": "2450293",
+                                        "metadata": {
+                                            "rgb": "1717FF"
+                                        },
+                                        "name": "Azul"
+                                    },
+                                    {
+                                        "id": "2450307",
+                                        "metadata": {
+                                            "rgb": "FF0000"
+                                        },
+                                        "name": "Vermelho"
+                                    },
+                                    {
+                                        "id": "2450311",
+                                        "metadata": {
+                                            "rgb": "9F00FF"
+                                        },
+                                        "name": "Violeta"
+                                    },
+                                    {
+                                        "id": "2450291",
+                                        "metadata": {
+                                            "rgb": "A0522D"
+                                        },
+                                        "name": "Marrom"
+                                    },
+                                    {
+                                        "id": "2450314",
+                                        "metadata": {
+                                            "rgb": "0DA600"
+                                        },
+                                        "name": "Verde"
+                                    },
+                                    {
+                                        "id": "2450327",
+                                        "metadata": {
+                                            "rgb": "FF8C00"
+                                        },
+                                        "name": "Laranja"
+                                    },
+                                    {
+                                        "id": "2450278",
+                                        "metadata": {
+                                            "rgb": "83DDFF"
+                                        },
+                                        "name": "Azul celeste"
+                                    },
+                                    {
+                                        "id": "2450312",
+                                        "metadata": {
+                                            "rgb": "FCB1BE"
+                                        },
+                                        "name": "Rosa"
+                                    },
+                                    {
+                                        "id": "2450289",
+                                        "metadata": {
+                                            "rgb": "FFD700"
+                                        },
+                                        "name": "Dourado"
+                                    },
+                                    {
+                                        "id": "2450303",
+                                        "metadata": {
+                                            "rgb": "CBCFD0"
+                                        },
+                                        "name": "Prateado"
+                                    },
+                                    {
+                                        "id": "2450296",
+                                        "metadata": {
+                                            "rgb": "FFED00"
+                                        },
+                                        "name": "Amarelo"
+                                    },
+                                    {
+                                        "id": "2450294",
+                                        "metadata": {
+                                            "rgb": "E1E1E1"
+                                        },
+                                        "name": "Cinza"
+                                    },
+                                    {
+                                        "id": "2450308",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Branco"
+                                    },
+                                    {
+                                        "id": "46671867",
+                                        "metadata": {
+                                            "rgb": "FFFFFF"
+                                        },
+                                        "name": "Multicolorido"
+                                    },
+                                    {
+                                        "id": "2450281",
+                                        "metadata": {
+                                            "rgb": "F5F3DC",
+                                            "parent_id": "2450291"
+                                        },
+                                        "name": "Bege"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COLOR_INPUT",
+                        "label": "Cor",
+                        "ui_config": {
+                            "connector": ""
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "PRINT_DESIGN",
+                                "name": "Desenho impresso",
+                                "relevance": 1,
+                                "tags": [
+                                    "defines_picture",
+                                    "allow_variations"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "4519999",
+                                        "name": "Caveira"
+                                    },
+                                    {
+                                        "id": "6351487",
+                                        "name": "Galáxia"
+                                    },
+                                    {
+                                        "id": "6351486",
+                                        "name": "Lobo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Desenho impresso",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "Lobo"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "SIZE",
+                                "name": "Tamanho",
+                                "relevance": 1,
+                                "tags": [
+                                    "allow_variations",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "3259486",
+                                        "name": "G7"
+                                    },
+                                    {
+                                        "id": "3259494",
+                                        "name": "11"
+                                    },
+                                    {
+                                        "id": "3635470",
+                                        "name": "G5"
+                                    },
+                                    {
+                                        "id": "3423409",
+                                        "name": "5"
+                                    },
+                                    {
+                                        "id": "3423411",
+                                        "name": "7"
+                                    },
+                                    {
+                                        "id": "3259489",
+                                        "name": "UN"
+                                    },
+                                    {
+                                        "id": "4119847",
+                                        "name": "4"
+                                    },
+                                    {
+                                        "id": "3259470",
+                                        "name": "6-9 M"
+                                    },
+                                    {
+                                        "id": "3423405",
+                                        "name": "1"
+                                    },
+                                    {
+                                        "id": "3423407",
+                                        "name": "3"
+                                    },
+                                    {
+                                        "id": "3189094",
+                                        "name": "16"
+                                    },
+                                    {
+                                        "id": "3189167",
+                                        "name": "10"
+                                    },
+                                    {
+                                        "id": "3259473",
+                                        "name": "18-24 M"
+                                    },
+                                    {
+                                        "id": "4119848",
+                                        "name": "6"
+                                    },
+                                    {
+                                        "id": "3259446",
+                                        "name": "12"
+                                    },
+                                    {
+                                        "id": "3259469",
+                                        "name": "3-6 M"
+                                    },
+                                    {
+                                        "id": "3189177",
+                                        "name": "15"
+                                    },
+                                    {
+                                        "id": "10490141",
+                                        "name": "G"
+                                    },
+                                    {
+                                        "id": "4077651",
+                                        "name": "XGG"
+                                    },
+                                    {
+                                        "id": "3423416",
+                                        "name": "14"
+                                    },
+                                    {
+                                        "id": "2282666",
+                                        "name": "M"
+                                    },
+                                    {
+                                        "id": "3259487",
+                                        "name": "G8"
+                                    },
+                                    {
+                                        "id": "3189098",
+                                        "name": "18"
+                                    },
+                                    {
+                                        "id": "433336",
+                                        "name": "GG"
+                                    },
+                                    {
+                                        "id": "3329193",
+                                        "name": "2"
+                                    },
+                                    {
+                                        "id": "3189173",
+                                        "name": "13"
+                                    },
+                                    {
+                                        "id": "17552780",
+                                        "name": "P"
+                                    },
+                                    {
+                                        "id": "4900376",
+                                        "name": "EGG"
+                                    },
+                                    {
+                                        "id": "3567843",
+                                        "name": "0-1 M"
+                                    },
+                                    {
+                                        "id": "3423412",
+                                        "name": "8"
+                                    },
+                                    {
+                                        "id": "3423417",
+                                        "name": "XXG"
+                                    },
+                                    {
+                                        "id": "3635471",
+                                        "name": "G6"
+                                    },
+                                    {
+                                        "id": "3259471",
+                                        "name": "9-12 M"
+                                    },
+                                    {
+                                        "id": "3567844",
+                                        "name": "2-3 M"
+                                    },
+                                    {
+                                        "id": "6367305",
+                                        "name": "Único"
+                                    },
+                                    {
+                                        "id": "2282662",
+                                        "name": "XXXG"
+                                    },
+                                    {
+                                        "id": "3330808",
+                                        "name": "PP"
+                                    },
+                                    {
+                                        "id": "3259483",
+                                        "name": "G4"
+                                    },
+                                    {
+                                        "id": "3259482",
+                                        "name": "G3"
+                                    },
+                                    {
+                                        "id": "3635466",
+                                        "name": "G1"
+                                    },
+                                    {
+                                        "id": "3259472",
+                                        "name": "12-18 M"
+                                    },
+                                    {
+                                        "id": "3423413",
+                                        "name": "9"
+                                    },
+                                    {
+                                        "id": "3259481",
+                                        "name": "G2"
+                                    },
+                                    {
+                                        "id": "4160489",
+                                        "name": "EG"
+                                    },
+                                    {
+                                        "id": "3259490",
+                                        "name": "Sob medida"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tamanho",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "FABRIC_DESIGN",
+                                "name": "Desenho do tecido",
+                                "relevance": 1,
+                                "tags": [
+                                    "defines_picture",
+                                    "allow_variations"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "930483",
+                                        "name": "Lisa"
+                                    },
+                                    {
+                                        "id": "34241287",
+                                        "name": "Estampa localizada"
+                                    },
+                                    {
+                                        "id": "2750846",
+                                        "name": "Personalizado"
+                                    },
+                                    {
+                                        "id": "3793854",
+                                        "name": "Bordado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Desenho do tecido",
+                        "ui_config": {
+                            "tooltip": "Refere-se ao design da estampa. Este campo deve ser preenchido com valores no masculino, se aplicável, por exemplo: 'Liso' 'Florido' 'Listrado' 'Geométrico'.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "Liso"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "SIZE_GRID_ROW_ID",
+                                "name": "ID da linha da guia de tamanhos",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "grid_row_id"
+                            }
+                        ],
+                        "component": "GRID_ROW_INPUT",
+                        "label": "ID da linha da guia de tamanhos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_PK",
+                                "id": "UNITS_PER_PACK",
+                                "name": "Quantidade de camisetas",
+                                "relevance": 1,
+                                "rendering_conditions": {
+                                    "inactive_render_mode": "HIDDEN",
+                                    "visibility_conditions": {
+                                        "conditions": [
+                                            {
+                                                "attribute_id": "SALE_FORMAT",
+                                                "operator": "IN",
+                                                "values": [
+                                                    {
+                                                        "id": "1359392",
+                                                        "name": "Pack"
+                                                    },
+                                                    {
+                                                        "name": "Kit"
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "operator": "AND"
+                                    }
+                                },
+                                "tags": [
+                                    "conditional_required",
+                                    "unit_yield"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Quantidade de camisetas",
+                        "ui_config": {
+                            "tooltip": "É a quantidade de produtos de cada kit, por exemplo 2 camisetas.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "MAIN",
+                "label": "Características principais",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "INVOICE_PRODUCT_NAME",
+                                "name": "Nome do produto na nota fiscal",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Nome do produto na nota fiscal",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SAT_KEY",
+                                "name": "Chave do produto",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "82021094",
+                                        "name": "Não existe no catálogo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Chave do produto",
+                        "ui_config": {
+                            "tooltip": " A chave do produto é um código atribuído pelo SAT para classificar os produtos comercializados no país",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEASURE_UNIT_KEY",
+                                "name": "Chave da unidade de medida",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "82021108",
+                                        "name": "Não existe no catálogo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Chave da unidade de medida",
+                        "ui_config": {
+                            "tooltip": "A chave da unidade de medida é um código padronizado pelo SAT.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEASURE_UNIT_DESCRIPTION",
+                                "name": "Unidade de medida",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Unidade de medida",
+                        "ui_config": {
+                            "tooltip": "A unidade de medida é a forma como o SAT quantifica um produto. Exemplos: peça, caixa, kit.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IVA_FOR_RESALE",
+                                "name": "IVA para revenda",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "81861612",
+                                        "name": "Isento"
+                                    },
+                                    {
+                                        "id": "81861613",
+                                        "name": "0%"
+                                    },
+                                    {
+                                        "id": "81861614",
+                                        "name": "8%"
+                                    },
+                                    {
+                                        "id": "81861616",
+                                        "name": "16%"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "IVA para revenda",
+                        "ui_config": {
+                            "tooltip": "Escolha a alíquota do IVA (Imposto sobre o Valor Agregado) que deve ser paga pelo comprador em cada produto: 0%, 16% ou Isento.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IEPS",
+                                "name": "IEPS",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "82021095",
+                                        "name": "0%"
+                                    },
+                                    {
+                                        "id": "82021096",
+                                        "name": "3%"
+                                    },
+                                    {
+                                        "id": "82021097",
+                                        "name": "6%"
+                                    },
+                                    {
+                                        "id": "82021098",
+                                        "name": "7%"
+                                    },
+                                    {
+                                        "id": "82021099",
+                                        "name": "8%"
+                                    },
+                                    {
+                                        "id": "82021100",
+                                        "name": "9%"
+                                    },
+                                    {
+                                        "id": "82021101",
+                                        "name": "25%"
+                                    },
+                                    {
+                                        "id": "82021102",
+                                        "name": "26.5%"
+                                    },
+                                    {
+                                        "id": "82021103",
+                                        "name": "30%"
+                                    },
+                                    {
+                                        "id": "82021104",
+                                        "name": "30.4%"
+                                    },
+                                    {
+                                        "id": "82021105",
+                                        "name": "50%"
+                                    },
+                                    {
+                                        "id": "82021106",
+                                        "name": "53%"
+                                    },
+                                    {
+                                        "id": "82021107",
+                                        "name": "160%"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "IEPS",
+                        "ui_config": {
+                            "tooltip": "scolha a alíquota do IEPS (Imposto Especial sobre Produção e Serviços) que deve ser paga pelo comprador nos produtos das categorias: combustível, bebidas e tabaco.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "FISCAL_INFO",
+                "label": "Dados fiscais do produto",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "VALUE_ADDED_TAX",
+                                "name": "Imposto sobre o valor acrescentado",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Imposto sobre o valor acrescentado",
+                        "ui_config": {
+                            "tooltip": "O imposto sobre valor agregado é aplicado sobre o preço de venda das compras de bens ou serviços.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IMPORT_DUTY",
+                                "name": "Imposto de importação",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "49553239",
+                                        "name": "0 %"
+                                    },
+                                    {
+                                        "id": "49553240",
+                                        "name": "1 %"
+                                    },
+                                    {
+                                        "id": "49553241",
+                                        "name": "2.5 %"
+                                    },
+                                    {
+                                        "id": "49553242",
+                                        "name": "4 %"
+                                    },
+                                    {
+                                        "id": "49553243",
+                                        "name": "5 %"
+                                    },
+                                    {
+                                        "id": "49553244",
+                                        "name": "8 %"
+                                    },
+                                    {
+                                        "id": "49553245",
+                                        "name": "9.5 %"
+                                    },
+                                    {
+                                        "id": "49553246",
+                                        "name": "10 %"
+                                    },
+                                    {
+                                        "id": "49553247",
+                                        "name": "14 %"
+                                    },
+                                    {
+                                        "id": "49553248",
+                                        "name": "15 %"
+                                    },
+                                    {
+                                        "id": "49553249",
+                                        "name": "18 %"
+                                    },
+                                    {
+                                        "id": "49553250",
+                                        "name": "19 %"
+                                    },
+                                    {
+                                        "id": "49553251",
+                                        "name": "20 %"
+                                    },
+                                    {
+                                        "id": "49553252",
+                                        "name": "23 %"
+                                    },
+                                    {
+                                        "id": "49553253",
+                                        "name": "25 %"
+                                    },
+                                    {
+                                        "id": "49553254",
+                                        "name": "26 %"
+                                    },
+                                    {
+                                        "id": "49553255",
+                                        "name": "70 %"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Imposto de importação",
+                        "ui_config": {
+                            "tooltip": "O imposto interno é aplicado apenas a produtos específicos considerados supérfluos ou de luxo, como bebidas alcohólicas, fornos de micro-ondas, entre outros.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "PRICING",
+                "label": "Preços",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "CHILD_DEPENDENT",
+                                "id": "DETAILED_MODEL",
+                                "name": "Modelo detalhado",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo detalhado",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "SIZE_GRID_ID",
+                                "name": "ID da guia de tamanhos",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "grid_id"
+                            }
+                        ],
+                        "component": "GRID_INPUT",
+                        "label": "ID da guia de tamanhos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_SPORTIVE",
+                                "name": "Esportiva",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "RECOMMENDED_USES",
+                                "name": "Usos recomendados",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "12039014",
+                                        "name": "Tênis"
+                                    },
+                                    {
+                                        "id": "12039015",
+                                        "name": "Golfe"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Usos recomendados",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "FABRIC_TYPE",
+                                "name": "Tipo de tecido",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "12039023",
+                                        "name": "Gabardine"
+                                    },
+                                    {
+                                        "id": "12039024",
+                                        "name": "Jean"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de tecido",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "COMPOSITION",
+                                "name": "Composição",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "466793",
+                                        "name": "Algodão"
+                                    },
+                                    {
+                                        "id": "466794",
+                                        "name": "Poliéster"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Composição",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "example": "60% Algodão 40% Poliéster"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "SLEEVE_TYPE",
+                                "name": "Tipo de manga",
+                                "relevance": 1,
+                                "tags": [
+                                    "required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "466804",
+                                        "name": "Curta"
+                                    },
+                                    {
+                                        "id": "466805",
+                                        "name": "Longa"
+                                    },
+                                    {
+                                        "id": "498514",
+                                        "name": "3/4"
+                                    },
+                                    {
+                                        "id": "466806",
+                                        "name": "Tomara que caia"
+                                    },
+                                    {
+                                        "id": "39231826",
+                                        "name": "Sem mangas"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de manga",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "T_SHIRT_COLLAR_TYPE",
+                                "name": "Tipo de gola",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "466787",
+                                        "name": "Redonda"
+                                    },
+                                    {
+                                        "id": "466789",
+                                        "name": "Polo"
+                                    },
+                                    {
+                                        "id": "466788",
+                                        "name": "Gola V"
+                                    },
+                                    {
+                                        "id": "34241291",
+                                        "name": "Botões"
+                                    },
+                                    {
+                                        "id": "34241292",
+                                        "name": "Gola alta"
+                                    },
+                                    {
+                                        "id": "34241293",
+                                        "name": "Gola canoa"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tipo de gola",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WEDGE_SHAPE",
+                                "name": "Forma de caimento",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "12039025",
+                                        "name": "Reta"
+                                    },
+                                    {
+                                        "id": "34241294",
+                                        "name": "Larga"
+                                    },
+                                    {
+                                        "id": "34241295",
+                                        "name": "Slim"
+                                    },
+                                    {
+                                        "id": "34241296",
+                                        "name": "Oversized"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Forma de caimento",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_SUITABLE_FOR_PREGNACY",
+                                "name": "Apta para gestação",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_WIDTH",
+                                "name": "Largura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "MAIN_MATERIAL",
+                                "name": "Material principal",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "508652",
+                                        "name": "Lantejoulas"
+                                    },
+                                    {
+                                        "id": "4684513",
+                                        "name": "Cetim"
+                                    },
+                                    {
+                                        "id": "466793",
+                                        "name": "Algodão"
+                                    },
+                                    {
+                                        "id": "34241290",
+                                        "name": "Viscolycra"
+                                    },
+                                    {
+                                        "id": "3629910",
+                                        "name": "Microfibra"
+                                    },
+                                    {
+                                        "id": "5370276",
+                                        "name": "Tule"
+                                    },
+                                    {
+                                        "id": "4402106",
+                                        "name": "Lycra"
+                                    },
+                                    {
+                                        "id": "4327467",
+                                        "name": "Bambu"
+                                    },
+                                    {
+                                        "id": "433343",
+                                        "name": "Seda"
+                                    },
+                                    {
+                                        "id": "34241289",
+                                        "name": "Algodão pima"
+                                    },
+                                    {
+                                        "id": "466794",
+                                        "name": "Poliéster"
+                                    },
+                                    {
+                                        "id": "3580423",
+                                        "name": "Poliamida"
+                                    },
+                                    {
+                                        "id": "3630111",
+                                        "name": "Lã"
+                                    },
+                                    {
+                                        "id": "7980354",
+                                        "name": "Náilon"
+                                    },
+                                    {
+                                        "id": "462318",
+                                        "name": "Linho"
+                                    },
+                                    {
+                                        "id": "462316",
+                                        "name": "Jeans"
+                                    },
+                                    {
+                                        "id": "34241288",
+                                        "name": "Piquet"
+                                    },
+                                    {
+                                        "id": "3726493",
+                                        "name": "Viscose"
+                                    },
+                                    {
+                                        "id": "1258198",
+                                        "name": "Camurça"
+                                    },
+                                    {
+                                        "id": "84982094",
+                                        "name": "Cirrê"
+                                    },
+                                    {
+                                        "id": "6518971",
+                                        "name": "Crepe"
+                                    },
+                                    {
+                                        "id": "6336419",
+                                        "name": "Crochê"
+                                    },
+                                    {
+                                        "id": "3580424",
+                                        "name": "Elastano"
+                                    },
+                                    {
+                                        "id": "85684445",
+                                        "name": "Malha"
+                                    },
+                                    {
+                                        "id": "84982107",
+                                        "name": "Moletom"
+                                    },
+                                    {
+                                        "id": "433348",
+                                        "name": "Renda"
+                                    },
+                                    {
+                                        "id": "85686112",
+                                        "name": "Tricô"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Material principal",
+                        "ui_config": {
+                            "tooltip": "É a matéria-prima usada para fabricar a maior parte do seu produto. Essa informação geralmente consta na etiqueta da peça.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    },
+                                    {
+                                        "id": "kg",
+                                        "name": "kg"
+                                    },
+                                    {
+                                        "id": "lb",
+                                        "name": "lb"
+                                    },
+                                    {
+                                        "id": "mg",
+                                        "name": "mg"
+                                    },
+                                    {
+                                        "id": "oz",
+                                        "name": "oz"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            },
+                            {
+                                "id": "kg",
+                                "name": "kg"
+                            },
+                            {
+                                "id": "lb",
+                                "name": "lb"
+                            },
+                            {
+                                "id": "mg",
+                                "name": "mg"
+                            },
+                            {
+                                "id": "oz",
+                                "name": "oz"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_RECYCLED_MATERIALS",
+                                "name": "Materiais reciclados",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "GTIN",
+                                "name": "Código universal de produto",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "multivalued",
+                                    "used_hidden",
+                                    "variation_attribute",
+                                    "conditional_required",
+                                    "validate"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Código universal de produto",
+                        "ui_config": {
+                            "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "hint": "Pode ser um EAN, UPC ou outro GTIN"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "EMPTY_GTIN_REASON",
+                                "name": "Motivo de GTIN vazio",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute",
+                                    "conditional_required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "17055158",
+                                        "name": "O produto é uma peça artesanal"
+                                    },
+                                    {
+                                        "id": "17055159",
+                                        "name": "O produto é um kit ou pack"
+                                    },
+                                    {
+                                        "id": "17055160",
+                                        "name": "O produto não tem código cadastrado"
+                                    },
+                                    {
+                                        "id": "17055161",
+                                        "name": "Outro motivo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Motivo de GTIN vazio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "VERTICAL_TAGS",
+                                "name": "Tags vertical",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "53559152",
+                                        "name": "is_tom_brand"
+                                    },
+                                    {
+                                        "id": "53559153",
+                                        "name": "is_polos"
+                                    },
+                                    {
+                                        "id": "53559154",
+                                        "name": "is_social_brands"
+                                    },
+                                    {
+                                        "id": "53559155",
+                                        "name": "is_beauty_premium"
+                                    },
+                                    {
+                                        "id": "53559156",
+                                        "name": "has_dimensions_images"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tags vertical",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "WITH_VIRTUAL_TRY_ON",
+                                "name": "Provador virtual",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IMPORT_DECLARATION_NUMBER",
+                                "name": "Número da DI",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Número da DI",
+                        "ui_config": {
+                            "tooltip": "Número de 15 dígitos do documento aduaneiro que ampara a importação desta mercadoria somente venda de primeira mão). Este dado será usado para a emissão de notas fiscais vinculadas à venda deste produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_SUITABLE_FOR_LACTANTING_PEOPLE",
+                                "name": "Apta para as pessoas lactantes",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "RELEASE_SEASON",
+                                "name": "Temporada de lançamento",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "994283",
+                                        "name": "Primavera/Verão"
+                                    },
+                                    {
+                                        "id": "994284",
+                                        "name": "Outono/Inverno"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Temporada de lançamento",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "RELEASE_YEAR",
+                                "name": "Ano de lançamento",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Ano de lançamento",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_EMBROIDERY",
+                                "name": "Bordado",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_POSITIVE_IMPACT",
+                                "name": "Impacto positivo",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "MPN",
+                                "name": "MPN",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "MPN",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SIZE_COVERAGE",
+                                "name": "Cobertura de tamanho",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "18587623",
+                                        "name": "Limited coverage"
+                                    },
+                                    {
+                                        "id": "18587624",
+                                        "name": "Partial coverage"
+                                    },
+                                    {
+                                        "id": "18587625",
+                                        "name": "Balanced coverage"
+                                    },
+                                    {
+                                        "id": "18587626",
+                                        "name": "Extended coverage"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Cobertura de tamanho",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "FILTRABLE_GENDER",
+                                "name": "Gênero filtrável",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "18549360",
+                                        "name": "Masculino"
+                                    },
+                                    {
+                                        "id": "18549361",
+                                        "name": "Feminino"
+                                    },
+                                    {
+                                        "id": "18549362",
+                                        "name": "Meninas"
+                                    },
+                                    {
+                                        "id": "18549363",
+                                        "name": "Meninos"
+                                    },
+                                    {
+                                        "id": "18549364",
+                                        "name": "Bebês"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Gênero filtrável",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "FILTRABLE_SIZE",
+                                "name": "Tamanho filtrável",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "13853812",
+                                        "name": "PP"
+                                    },
+                                    {
+                                        "id": "13853813",
+                                        "name": "P"
+                                    },
+                                    {
+                                        "id": "13853815",
+                                        "name": "GG"
+                                    },
+                                    {
+                                        "id": "12917795",
+                                        "name": "M"
+                                    },
+                                    {
+                                        "id": "12917804",
+                                        "name": "G1"
+                                    },
+                                    {
+                                        "id": "12917798",
+                                        "name": "G2"
+                                    },
+                                    {
+                                        "id": "12917801",
+                                        "name": "G3"
+                                    },
+                                    {
+                                        "id": "12917807",
+                                        "name": "G4"
+                                    },
+                                    {
+                                        "id": "12917765",
+                                        "name": "G5"
+                                    },
+                                    {
+                                        "id": "13853820",
+                                        "name": "G6"
+                                    },
+                                    {
+                                        "id": "13853814",
+                                        "name": "G"
+                                    },
+                                    {
+                                        "id": "12917774",
+                                        "name": "XG"
+                                    },
+                                    {
+                                        "id": "12189459",
+                                        "name": "1 ano"
+                                    },
+                                    {
+                                        "id": "12189461",
+                                        "name": "2 anos"
+                                    },
+                                    {
+                                        "id": "12189463",
+                                        "name": "3 anos"
+                                    },
+                                    {
+                                        "id": "12189465",
+                                        "name": "4 anos"
+                                    },
+                                    {
+                                        "id": "12189467",
+                                        "name": "5 anos"
+                                    },
+                                    {
+                                        "id": "12189469",
+                                        "name": "6 anos"
+                                    },
+                                    {
+                                        "id": "12189471",
+                                        "name": "7 anos"
+                                    },
+                                    {
+                                        "id": "12189473",
+                                        "name": "8 anos"
+                                    },
+                                    {
+                                        "id": "12189475",
+                                        "name": "9 anos"
+                                    },
+                                    {
+                                        "id": "12189477",
+                                        "name": "10 anos"
+                                    },
+                                    {
+                                        "id": "12189479",
+                                        "name": "11 anos"
+                                    },
+                                    {
+                                        "id": "12189481",
+                                        "name": "12 anos"
+                                    },
+                                    {
+                                        "id": "12189483",
+                                        "name": "13 anos"
+                                    },
+                                    {
+                                        "id": "12189485",
+                                        "name": "14 anos"
+                                    },
+                                    {
+                                        "id": "12189487",
+                                        "name": "15 anos"
+                                    },
+                                    {
+                                        "id": "12189489",
+                                        "name": "16 anos"
+                                    },
+                                    {
+                                        "id": "12917809",
+                                        "name": "Prematuro"
+                                    },
+                                    {
+                                        "id": "13735569",
+                                        "name": "0-3 meses"
+                                    },
+                                    {
+                                        "id": "12917811",
+                                        "name": "3-6 meses"
+                                    },
+                                    {
+                                        "id": "12917812",
+                                        "name": "6-9 meses"
+                                    },
+                                    {
+                                        "id": "12917813",
+                                        "name": "9-12 meses"
+                                    },
+                                    {
+                                        "id": "12917815",
+                                        "name": "12-18 meses"
+                                    },
+                                    {
+                                        "id": "12917817",
+                                        "name": "18-24 meses"
+                                    },
+                                    {
+                                        "id": "13735570",
+                                        "name": "24-36 meses"
+                                    },
+                                    {
+                                        "id": "16516783",
+                                        "name": "G7"
+                                    },
+                                    {
+                                        "id": "16516784",
+                                        "name": "G8"
+                                    },
+                                    {
+                                        "id": "12917785",
+                                        "name": "XGG"
+                                    },
+                                    {
+                                        "id": "19792292",
+                                        "name": "XPP"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Tamanho filtrável",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ITEM_CONDITION",
+                                "name": "Condição do item",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2230284",
+                                        "name": "Novo"
+                                    },
+                                    {
+                                        "id": "2230581",
+                                        "name": "Usado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Condição do item",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_TOM_BRAND",
+                                "name": "Marca TOM",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_EMERGING_BRAND",
+                                "name": "Marca emergente",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_HIGHLIGHT_BRAND",
+                                "name": "Marca destacada",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_SKU",
+                                "name": "SKU",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "SKU",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de envio",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de envio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WIDTH",
+                                "name": "Largura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAZMAT_TRANSPORTABILITY",
+                                "name": "Transportabilidade Hazmat",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "13414677",
+                                        "name": "Livre"
+                                    },
+                                    {
+                                        "id": "13414678",
+                                        "name": "Limitado"
+                                    },
+                                    {
+                                        "id": "13414679",
+                                        "name": "Excedido"
+                                    },
+                                    {
+                                        "id": "13414680",
+                                        "name": "Indeterminado"
+                                    },
+                                    {
+                                        "id": "75989961",
+                                        "name": "Notificado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Transportabilidade Hazmat",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_KIT",
+                                "name": "Kit",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "DESCRIPTIVE_TAGS",
+                                "name": "Tags descritivos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Tags descritivos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_CHEMICAL_FEATURES",
+                                "name": "Características químicas do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7651070",
+                                        "name": "Inflamável"
+                                    },
+                                    {
+                                        "id": "7651071",
+                                        "name": "Aerosol"
+                                    },
+                                    {
+                                        "id": "7651072",
+                                        "name": "Oxidante"
+                                    },
+                                    {
+                                        "id": "7651073",
+                                        "name": "Corrosivo"
+                                    },
+                                    {
+                                        "id": "7651074",
+                                        "name": "Explosivo"
+                                    },
+                                    {
+                                        "id": "7651075",
+                                        "name": "Tóxico ou infeccioso"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características químicas do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "FOODS_AND_DRINKS",
+                                "name": "Alimentos e bebidas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575926",
+                                        "name": "Para humanos"
+                                    },
+                                    {
+                                        "id": "7575927",
+                                        "name": "Para animais"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Alimentos e bebidas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEDICINES",
+                                "name": "Medicamentos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575930",
+                                        "name": "Para humanos com receita médica"
+                                    },
+                                    {
+                                        "id": "7575931",
+                                        "name": "Para humanos sem receita médica"
+                                    },
+                                    {
+                                        "id": "7575932",
+                                        "name": "Para animais com receita médica"
+                                    },
+                                    {
+                                        "id": "7575933",
+                                        "name": "Para animais sem receita médica"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Medicamentos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "BATTERIES_FEATURES",
+                                "name": "Características das baterias",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575934",
+                                        "name": "Lítio stand-alone (separadas ou isolado)"
+                                    },
+                                    {
+                                        "id": "7575935",
+                                        "name": "De lítio instaladas"
+                                    },
+                                    {
+                                        "id": "7575936",
+                                        "name": "Para carros (ácido-chumbo)"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características das baterias",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SHIPMENT_PACKING",
+                                "name": "Embalagem do envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435891",
+                                        "name": "Flyer"
+                                    },
+                                    {
+                                        "id": "7435892",
+                                        "name": "Caixa"
+                                    },
+                                    {
+                                        "id": "7575937",
+                                        "name": "Envelope"
+                                    },
+                                    {
+                                        "id": "7575939",
+                                        "name": "Auto-expedível"
+                                    },
+                                    {
+                                        "id": "27037932",
+                                        "name": "BEX"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Embalagem do envío",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ADDITIONAL_INFO_REQUIRED",
+                                "name": "Informação adicional requerida",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435893",
+                                        "name": "Possui código IMEI"
+                                    },
+                                    {
+                                        "id": "7435894",
+                                        "name": "Possui número de série"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Informação adicional requerida",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "EXCLUDED_PLATFORMS",
+                                "name": "Plataformas excluídas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "9936777",
+                                        "name": "Android"
+                                    },
+                                    {
+                                        "id": "9936778",
+                                        "name": "iOS"
+                                    },
+                                    {
+                                        "id": "9936779",
+                                        "name": "Desktop"
+                                    },
+                                    {
+                                        "id": "9936780",
+                                        "name": "Mobile"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Plataformas excluídas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_SUITABLE_FOR_SHIPMENT",
+                                "name": "Adequado para envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_DATA_SOURCE",
+                                "name": "Fonte do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Fonte do produto",
+                        "ui_config": {
+                            "tooltip": "Indique o país de origem do produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "Brasil"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "LIMITED_MARKETPLACE_VISIBILITY_REASONS",
+                                "name": "Razões de visibilidade limitada no Marketplace",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "24219544",
+                                        "name": "Pharma"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Razões de visibilidade limitada no Marketplace",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAS_COMPATIBILITIES",
+                                "name": "Tem compatibilidades",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Tem compatibilidades",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "CATALOG_TITLE",
+                                "name": "Título de catálogo",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Título de catálogo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SEARCH_ENHANCEMENT_FIELDS",
+                                "name": "Campos de aprimoramento de pesquisa",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Campos de aprimoramento de pesquisa",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_FEATURES",
+                                "name": "Características do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435885",
+                                        "name": "Contém líquido"
+                                    },
+                                    {
+                                        "id": "7435883",
+                                        "name": "Frágil"
+                                    },
+                                    {
+                                        "id": "7435888",
+                                        "name": "Com validade"
+                                    },
+                                    {
+                                        "id": "8847339",
+                                        "name": "Sem validade"
+                                    },
+                                    {
+                                        "id": "7575917",
+                                        "name": "Desinfetante e saneante"
+                                    },
+                                    {
+                                        "id": "7575924",
+                                        "name": "MAPA"
+                                    },
+                                    {
+                                        "id": "7575923",
+                                        "name": "Saúde e correlatos"
+                                    },
+                                    {
+                                        "id": "8721108",
+                                        "name": "Volumoso"
+                                    },
+                                    {
+                                        "id": "10490116",
+                                        "name": "Não voável"
+                                    },
+                                    {
+                                        "id": "12928414",
+                                        "name": "Não rotacionável"
+                                    },
+                                    {
+                                        "id": "41722098",
+                                        "name": "Dobrável"
+                                    },
+                                    {
+                                        "id": "52092586",
+                                        "name": "Magnético"
+                                    },
+                                    {
+                                        "id": "52233302",
+                                        "name": "Pode rolar"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_NEW_OFFER",
+                                "name": "Nova oferta",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SYI_PYMES_ID",
+                                "name": "syi pymes id",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "syi pymes id",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_FLAMMABLE",
+                                "name": "Inflamável",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de fábrica",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de fábrica",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "OTHER",
+                "label": "Outros",
+                "relevance": 1,
+                "ui_config": []
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T15:48:44-03:00"
+}

@@ -1,0 +1,108 @@
+{
+    "family_name": "Cadeira Escritório Executiva ECF Giratória",
+    "category_id": "MLB193945",
+    "price": 150,
+    "currency_id": "BRL",
+    "available_quantity": 1,
+    "buying_mode": "buy_it_now",
+    "listing_type_id": "gold_special",
+    "condition": "new",
+    "pictures": [
+        {
+            "id": "ML-A1"
+        },
+        {
+            "id": "ML-A2"
+        }
+    ],
+    "attributes": [
+        {
+            "id": "BRAND",
+            "value_name": "ECF"
+        },
+        {
+            "id": "MODEL",
+            "value_name": "Executiva"
+        },
+        {
+            "id": "INMETRO_CERTIFICATION_REGISTRATION_NUMBER",
+            "value_id": "-1",
+            "value_name": null
+        },
+        {
+            "id": "BACKREST_HEIGHT",
+            "value_name": "23 cm"
+        },
+        {
+            "id": "SEAT_DEPTH",
+            "value_name": "23 cm"
+        },
+        {
+            "id": "OFFICE_CHAIR_WIDTH",
+            "value_name": "60 cm"
+        },
+        {
+            "id": "MAX_CHAIR_HEIGHT",
+            "value_name": "110 cm"
+        },
+        {
+            "id": "REQUIRES_ASSEMBLY",
+            "value_id": "242085"
+        },
+        {
+            "id": "IS_GAMER",
+            "value_id": "242084"
+        },
+        {
+            "id": "IS_ERGONOMIC",
+            "value_id": "242085"
+        },
+        {
+            "id": "IS_SWIVEL",
+            "value_id": "242085"
+        },
+        {
+            "id": "INCLUDES_ASSEMBLY_MANUAL",
+            "value_id": "242085"
+        },
+        {
+            "id": "SELLER_PACKAGE_WIDTH",
+            "value_name": "60 cm"
+        },
+        {
+            "id": "SELLER_PACKAGE_LENGTH",
+            "value_name": "30 cm"
+        },
+        {
+            "id": "SELLER_PACKAGE_HEIGHT",
+            "value_name": "70 cm"
+        },
+        {
+            "id": "SELLER_PACKAGE_WEIGHT",
+            "value_name": "12000 g"
+        },
+        {
+            "id": "SELLER_SKU",
+            "value_name": "CAD"
+        },
+        {
+            "id": "GTIN",
+            "value_name": "7896553367645"
+        }
+    ],
+    "sale_terms": [
+        {
+            "id": "WARRANTY_TYPE",
+            "value_id": "2230280"
+        },
+        {
+            "id": "WARRANTY_TIME",
+            "value_name": "30 dias"
+        }
+    ],
+    "shipping": {
+        "mode": "me2",
+        "local_pick_up": false,
+        "free_shipping": true
+    }
+}

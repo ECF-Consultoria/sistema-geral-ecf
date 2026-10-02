@@ -1,0 +1,3113 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/categories/MLB47097/technical_specs/input",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "groups": [
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "BRAND",
+                                "name": "Marca",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "5059525",
+                                        "name": "ATE"
+                                    },
+                                    {
+                                        "id": "2515741",
+                                        "name": "Bendix"
+                                    },
+                                    {
+                                        "id": "4946",
+                                        "name": "Bosch"
+                                    },
+                                    {
+                                        "id": "2786247",
+                                        "name": "Brembo"
+                                    },
+                                    {
+                                        "id": "5059528",
+                                        "name": "Girling"
+                                    },
+                                    {
+                                        "id": "5059527",
+                                        "name": "Lucas"
+                                    },
+                                    {
+                                        "id": "5059524",
+                                        "name": "Perrot"
+                                    },
+                                    {
+                                        "id": "2786016",
+                                        "name": "Sumitomo"
+                                    },
+                                    {
+                                        "id": "2786025",
+                                        "name": "TRW"
+                                    },
+                                    {
+                                        "id": "5059526",
+                                        "name": "Teves"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Marca",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true,
+                            "hint": "Informe a marca verdadeira do produto ou 'Genérica' se não tiver marca."
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "LINE",
+                                "name": "Linha",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Linha",
+                        "ui_config": {
+                            "tooltip": "Indica a série ou grupo do produto de acordo com a classificação da marca ou fabricante, por exemplo: a linha “111” da marca “xxx” agrupa diferentes modelos de produtos.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "MODEL",
+                                "name": "Modelo",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Modelo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PARENT_PK",
+                                "id": "PART_NUMBER",
+                                "name": "Número de peça",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "required"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Número de peça",
+                        "ui_config": {
+                            "tooltip": "Adicione essa informação para que os compradores encontrem o seu anúncio mais rapidamente.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "MAIN",
+                "label": "Características principais",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "INMETRO_CERTIFICATION_REGISTRATION_NUMBER",
+                                "name": "Número de registro/certificação INMETRO",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Número de registro/certificação INMETRO",
+                        "ui_config": {
+                            "tooltip": "Informe a numeração de máximo 21 dígitos, com ponto, hífen ou barra (/), se houver. É o registro no Instituto Nacional de Metrologia, Qualidade e Tecnologia (INMETRO).",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "PRODUCT_REGISTRIES",
+                "label": "Registros de produtos",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "INVOICE_PRODUCT_NAME",
+                                "name": "Nome do produto na nota fiscal",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Nome do produto na nota fiscal",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SAT_KEY",
+                                "name": "Chave do produto",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "82021094",
+                                        "name": "Não existe no catálogo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Chave do produto",
+                        "ui_config": {
+                            "tooltip": " A chave do produto é um código atribuído pelo SAT para classificar os produtos comercializados no país",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEASURE_UNIT_KEY",
+                                "name": "Chave da unidade de medida",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "82021108",
+                                        "name": "Não existe no catálogo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Chave da unidade de medida",
+                        "ui_config": {
+                            "tooltip": "A chave da unidade de medida é um código padronizado pelo SAT.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEASURE_UNIT_DESCRIPTION",
+                                "name": "Unidade de medida",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Unidade de medida",
+                        "ui_config": {
+                            "tooltip": "A unidade de medida é a forma como o SAT quantifica um produto. Exemplos: peça, caixa, kit.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IVA_FOR_RESALE",
+                                "name": "IVA para revenda",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "81861612",
+                                        "name": "Isento"
+                                    },
+                                    {
+                                        "id": "81861613",
+                                        "name": "0%"
+                                    },
+                                    {
+                                        "id": "81861614",
+                                        "name": "8%"
+                                    },
+                                    {
+                                        "id": "81861616",
+                                        "name": "16%"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "IVA para revenda",
+                        "ui_config": {
+                            "tooltip": "Escolha a alíquota do IVA (Imposto sobre o Valor Agregado) que deve ser paga pelo comprador em cada produto: 0%, 16% ou Isento.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IEPS",
+                                "name": "IEPS",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "82021095",
+                                        "name": "0%"
+                                    },
+                                    {
+                                        "id": "82021096",
+                                        "name": "3%"
+                                    },
+                                    {
+                                        "id": "82021097",
+                                        "name": "6%"
+                                    },
+                                    {
+                                        "id": "82021098",
+                                        "name": "7%"
+                                    },
+                                    {
+                                        "id": "82021099",
+                                        "name": "8%"
+                                    },
+                                    {
+                                        "id": "82021100",
+                                        "name": "9%"
+                                    },
+                                    {
+                                        "id": "82021101",
+                                        "name": "25%"
+                                    },
+                                    {
+                                        "id": "82021102",
+                                        "name": "26.5%"
+                                    },
+                                    {
+                                        "id": "82021103",
+                                        "name": "30%"
+                                    },
+                                    {
+                                        "id": "82021104",
+                                        "name": "30.4%"
+                                    },
+                                    {
+                                        "id": "82021105",
+                                        "name": "50%"
+                                    },
+                                    {
+                                        "id": "82021106",
+                                        "name": "53%"
+                                    },
+                                    {
+                                        "id": "82021107",
+                                        "name": "160%"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "IEPS",
+                        "ui_config": {
+                            "tooltip": "scolha a alíquota do IEPS (Imposto Especial sobre Produção e Serviços) que deve ser paga pelo comprador nos produtos das categorias: combustível, bebidas e tabaco.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "FISCAL_INFO",
+                "label": "Dados fiscais do produto",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "VALUE_ADDED_TAX",
+                                "name": "Imposto sobre o valor acrescentado",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Imposto sobre o valor acrescentado",
+                        "ui_config": {
+                            "tooltip": "O imposto sobre valor agregado é aplicado sobre o preço de venda das compras de bens ou serviços.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IMPORT_DUTY",
+                                "name": "Imposto de importação",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "49553239",
+                                        "name": "0 %"
+                                    },
+                                    {
+                                        "id": "49553240",
+                                        "name": "1 %"
+                                    },
+                                    {
+                                        "id": "49553241",
+                                        "name": "2.5 %"
+                                    },
+                                    {
+                                        "id": "49553242",
+                                        "name": "4 %"
+                                    },
+                                    {
+                                        "id": "49553243",
+                                        "name": "5 %"
+                                    },
+                                    {
+                                        "id": "49553244",
+                                        "name": "8 %"
+                                    },
+                                    {
+                                        "id": "49553245",
+                                        "name": "9.5 %"
+                                    },
+                                    {
+                                        "id": "49553246",
+                                        "name": "10 %"
+                                    },
+                                    {
+                                        "id": "49553247",
+                                        "name": "14 %"
+                                    },
+                                    {
+                                        "id": "49553248",
+                                        "name": "15 %"
+                                    },
+                                    {
+                                        "id": "49553249",
+                                        "name": "18 %"
+                                    },
+                                    {
+                                        "id": "49553250",
+                                        "name": "19 %"
+                                    },
+                                    {
+                                        "id": "49553251",
+                                        "name": "20 %"
+                                    },
+                                    {
+                                        "id": "49553252",
+                                        "name": "23 %"
+                                    },
+                                    {
+                                        "id": "49553253",
+                                        "name": "25 %"
+                                    },
+                                    {
+                                        "id": "49553254",
+                                        "name": "26 %"
+                                    },
+                                    {
+                                        "id": "49553255",
+                                        "name": "70 %"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Imposto de importação",
+                        "ui_config": {
+                            "tooltip": "O imposto interno é aplicado apenas a produtos específicos considerados supérfluos ou de luxo, como bebidas alcohólicas, fornos de micro-ondas, entre outros.",
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "PRICING",
+                "label": "Preços",
+                "relevance": 1,
+                "ui_config": []
+            },
+            {
+                "components": [
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "MATERIAL",
+                                "name": "Material",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "5059544",
+                                        "name": "Baixos metais"
+                                    },
+                                    {
+                                        "id": "2282603",
+                                        "name": "Cerâmica"
+                                    },
+                                    {
+                                        "id": "112648",
+                                        "name": "Metal"
+                                    },
+                                    {
+                                        "id": "362186",
+                                        "name": "Orgânico"
+                                    },
+                                    {
+                                        "id": "362188",
+                                        "name": "Semimetálica"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Material",
+                        "ui_config": {
+                            "tooltip": "É a matéria-prima usada para fabricar o seu produto.",
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "POSITION",
+                                "name": "Posição",
+                                "relevance": 1,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "13701104",
+                                        "name": "Dianteira"
+                                    },
+                                    {
+                                        "id": "42089747",
+                                        "name": "Dianteira esquerda"
+                                    },
+                                    {
+                                        "id": "40668606",
+                                        "name": "Dianteira direita"
+                                    },
+                                    {
+                                        "id": "14276179",
+                                        "name": "Dianteira/Traseira"
+                                    },
+                                    {
+                                        "id": "42089748",
+                                        "name": "Traseira esquerda"
+                                    },
+                                    {
+                                        "id": "42089749",
+                                        "name": "Traseira direita"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Posição",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "QUANTITY_OF_PADS",
+                                "name": "Quantidade de pastilhas",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Quantidade de pastilhas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "INCLUDES_WEAR_SENSORS",
+                                "name": "Sensores de desgaste",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Inclui",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "ORIGIN",
+                                "name": "Origem",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "FMSI_NUMBER",
+                                "name": "Código FMSI",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Código FMSI",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "VEHICLE_TYPE",
+                                "name": "Tipo de veículo",
+                                "relevance": 1,
+                                "tags": [
+                                    "catalog_required",
+                                    "fixed",
+                                    "required"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "11377043",
+                                        "name": "Carro/Caminhonete"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "TEXT_OUTPUT",
+                        "label": "Tipo de veículo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "GTIN",
+                                "name": "Código universal de produto",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued",
+                                    "used_hidden",
+                                    "variation_attribute",
+                                    "validate"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Código universal de produto",
+                        "ui_config": {
+                            "tooltip": "Como posso encontrar o código?\n\nÉ a sequência numérica que identifica um produto de nível global e tem entre 8 e 14 dígitos. Procure-o na embalagem ou etiqueta, próximo ao código de barras. Adicione um código por variação de produto. Caso não o encontre, você pode solicitá-lo ao fabricante ou usar um buscador de códigos na internet.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "hint": "Pode ser um EAN, UPC ou outro GTIN"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "OEM",
+                                "name": "Código OEM",
+                                "relevance": 1,
+                                "tags": [
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Código OEM",
+                        "ui_config": {
+                            "tooltip": "É possível incluir letras e números.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_WIDTH",
+                                "name": "Largura da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "variation_attribute"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    },
+                                    {
+                                        "id": "kg",
+                                        "name": "kg"
+                                    },
+                                    {
+                                        "id": "lb",
+                                        "name": "lb"
+                                    },
+                                    {
+                                        "id": "mg",
+                                        "name": "mg"
+                                    },
+                                    {
+                                        "id": "oz",
+                                        "name": "oz"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            },
+                            {
+                                "id": "kg",
+                                "name": "kg"
+                            },
+                            {
+                                "id": "lb",
+                                "name": "lb"
+                            },
+                            {
+                                "id": "mg",
+                                "name": "mg"
+                            },
+                            {
+                                "id": "oz",
+                                "name": "oz"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IMPORT_DECLARATION_NUMBER",
+                                "name": "Número da DI",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Número da DI",
+                        "ui_config": {
+                            "tooltip": "Número de 15 dígitos do documento aduaneiro que ampara a importação desta mercadoria somente venda de primeira mão). Este dado será usado para a emissão de notas fiscais vinculadas à venda deste produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de fábrica",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de fábrica",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "REGULATORY_INFORMATION_QR_CODE",
+                                "name": "Código QR de Informações Regulatórias",
+                                "relevance": 1,
+                                "tags": [],
+                                "value_max_length": 255,
+                                "value_type": "picture_id"
+                            }
+                        ],
+                        "component": "PICTURE_INPUT",
+                        "label": "Código QR de Informações Regulatórias",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "mm",
+                                "hierarchy": "FAMILY",
+                                "id": "OUTER_PAD_THICKNESS",
+                                "name": "Espessura da pastilha exterior",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "U",
+                                        "name": "U"
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "in",
+                                        "name": "in"
+                                    },
+                                    {
+                                        "id": "km",
+                                        "name": "km"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mil",
+                                        "name": "mil"
+                                    },
+                                    {
+                                        "id": "milhas",
+                                        "name": "milhas"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    },
+                                    {
+                                        "id": "mãos",
+                                        "name": "mãos"
+                                    },
+                                    {
+                                        "id": "nm",
+                                        "name": "nm"
+                                    },
+                                    {
+                                        "id": "polegadas",
+                                        "name": "polegadas"
+                                    },
+                                    {
+                                        "id": "yd",
+                                        "name": "yd"
+                                    },
+                                    {
+                                        "id": "µm",
+                                        "name": "µm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "mm",
+                        "label": "Espessura da pastilha exterior",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "U",
+                                "name": "U"
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "in",
+                                "name": "in"
+                            },
+                            {
+                                "id": "km",
+                                "name": "km"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mil",
+                                "name": "mil"
+                            },
+                            {
+                                "id": "milhas",
+                                "name": "milhas"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            },
+                            {
+                                "id": "mãos",
+                                "name": "mãos"
+                            },
+                            {
+                                "id": "nm",
+                                "name": "nm"
+                            },
+                            {
+                                "id": "polegadas",
+                                "name": "polegadas"
+                            },
+                            {
+                                "id": "yd",
+                                "name": "yd"
+                            },
+                            {
+                                "id": "µm",
+                                "name": "µm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "mm",
+                                "hierarchy": "FAMILY",
+                                "id": "INNER_PAD_THICKNESS",
+                                "name": "Espessura da pastilha interior",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "U",
+                                        "name": "U"
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "in",
+                                        "name": "in"
+                                    },
+                                    {
+                                        "id": "km",
+                                        "name": "km"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mil",
+                                        "name": "mil"
+                                    },
+                                    {
+                                        "id": "milhas",
+                                        "name": "milhas"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    },
+                                    {
+                                        "id": "mãos",
+                                        "name": "mãos"
+                                    },
+                                    {
+                                        "id": "nm",
+                                        "name": "nm"
+                                    },
+                                    {
+                                        "id": "polegadas",
+                                        "name": "polegadas"
+                                    },
+                                    {
+                                        "id": "yd",
+                                        "name": "yd"
+                                    },
+                                    {
+                                        "id": "µm",
+                                        "name": "µm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "mm",
+                        "label": "Espessura da pastilha interior",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "U",
+                                "name": "U"
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "in",
+                                "name": "in"
+                            },
+                            {
+                                "id": "km",
+                                "name": "km"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mil",
+                                "name": "mil"
+                            },
+                            {
+                                "id": "milhas",
+                                "name": "milhas"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            },
+                            {
+                                "id": "mãos",
+                                "name": "mãos"
+                            },
+                            {
+                                "id": "nm",
+                                "name": "nm"
+                            },
+                            {
+                                "id": "polegadas",
+                                "name": "polegadas"
+                            },
+                            {
+                                "id": "yd",
+                                "name": "yd"
+                            },
+                            {
+                                "id": "µm",
+                                "name": "µm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "INCLUDES_BRAKE_PAD_SHIMS",
+                                "name": "Folha antirruído",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Inclui",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "SENSORS_NUMBER",
+                                "name": "Quantidade de sensores",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 18,
+                                "value_type": "number"
+                            }
+                        ],
+                        "component": "NUMBER_INPUT",
+                        "label": "Quantidade de sensores",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "mm",
+                                "hierarchy": "FAMILY",
+                                "id": "BRAKE_PAD_LONG",
+                                "name": "Comprimento",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "U",
+                                        "name": "U"
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "in",
+                                        "name": "in"
+                                    },
+                                    {
+                                        "id": "km",
+                                        "name": "km"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mil",
+                                        "name": "mil"
+                                    },
+                                    {
+                                        "id": "milhas",
+                                        "name": "milhas"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    },
+                                    {
+                                        "id": "mãos",
+                                        "name": "mãos"
+                                    },
+                                    {
+                                        "id": "nm",
+                                        "name": "nm"
+                                    },
+                                    {
+                                        "id": "polegadas",
+                                        "name": "polegadas"
+                                    },
+                                    {
+                                        "id": "yd",
+                                        "name": "yd"
+                                    },
+                                    {
+                                        "id": "µm",
+                                        "name": "µm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "mm",
+                        "label": "Comprimento",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "U",
+                                "name": "U"
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "in",
+                                "name": "in"
+                            },
+                            {
+                                "id": "km",
+                                "name": "km"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mil",
+                                "name": "mil"
+                            },
+                            {
+                                "id": "milhas",
+                                "name": "milhas"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            },
+                            {
+                                "id": "mãos",
+                                "name": "mãos"
+                            },
+                            {
+                                "id": "nm",
+                                "name": "nm"
+                            },
+                            {
+                                "id": "polegadas",
+                                "name": "polegadas"
+                            },
+                            {
+                                "id": "yd",
+                                "name": "yd"
+                            },
+                            {
+                                "id": "µm",
+                                "name": "µm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "mm",
+                                "hierarchy": "FAMILY",
+                                "id": "BRAKE_PAD_WIDTH",
+                                "name": "Largura",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "U",
+                                        "name": "U"
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "in",
+                                        "name": "in"
+                                    },
+                                    {
+                                        "id": "km",
+                                        "name": "km"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mil",
+                                        "name": "mil"
+                                    },
+                                    {
+                                        "id": "milhas",
+                                        "name": "milhas"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    },
+                                    {
+                                        "id": "mãos",
+                                        "name": "mãos"
+                                    },
+                                    {
+                                        "id": "nm",
+                                        "name": "nm"
+                                    },
+                                    {
+                                        "id": "polegadas",
+                                        "name": "polegadas"
+                                    },
+                                    {
+                                        "id": "yd",
+                                        "name": "yd"
+                                    },
+                                    {
+                                        "id": "µm",
+                                        "name": "µm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "mm",
+                        "label": "Largura",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "U",
+                                "name": "U"
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "in",
+                                "name": "in"
+                            },
+                            {
+                                "id": "km",
+                                "name": "km"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mil",
+                                "name": "mil"
+                            },
+                            {
+                                "id": "milhas",
+                                "name": "milhas"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            },
+                            {
+                                "id": "mãos",
+                                "name": "mãos"
+                            },
+                            {
+                                "id": "nm",
+                                "name": "nm"
+                            },
+                            {
+                                "id": "polegadas",
+                                "name": "polegadas"
+                            },
+                            {
+                                "id": "yd",
+                                "name": "yd"
+                            },
+                            {
+                                "id": "µm",
+                                "name": "µm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "mm",
+                                "hierarchy": "FAMILY",
+                                "id": "BRAKE_PAD_THICKNESS",
+                                "name": "Espessura da pastilha de freio",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "\"",
+                                        "name": "\""
+                                    },
+                                    {
+                                        "id": "U",
+                                        "name": "U"
+                                    },
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    },
+                                    {
+                                        "id": "ft",
+                                        "name": "ft"
+                                    },
+                                    {
+                                        "id": "in",
+                                        "name": "in"
+                                    },
+                                    {
+                                        "id": "km",
+                                        "name": "km"
+                                    },
+                                    {
+                                        "id": "m",
+                                        "name": "m"
+                                    },
+                                    {
+                                        "id": "mil",
+                                        "name": "mil"
+                                    },
+                                    {
+                                        "id": "milhas",
+                                        "name": "milhas"
+                                    },
+                                    {
+                                        "id": "mm",
+                                        "name": "mm"
+                                    },
+                                    {
+                                        "id": "mãos",
+                                        "name": "mãos"
+                                    },
+                                    {
+                                        "id": "nm",
+                                        "name": "nm"
+                                    },
+                                    {
+                                        "id": "polegadas",
+                                        "name": "polegadas"
+                                    },
+                                    {
+                                        "id": "yd",
+                                        "name": "yd"
+                                    },
+                                    {
+                                        "id": "µm",
+                                        "name": "µm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "mm",
+                        "label": "Espessura da pastilha de freio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "\"",
+                                "name": "\""
+                            },
+                            {
+                                "id": "U",
+                                "name": "U"
+                            },
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            },
+                            {
+                                "id": "ft",
+                                "name": "ft"
+                            },
+                            {
+                                "id": "in",
+                                "name": "in"
+                            },
+                            {
+                                "id": "km",
+                                "name": "km"
+                            },
+                            {
+                                "id": "m",
+                                "name": "m"
+                            },
+                            {
+                                "id": "mil",
+                                "name": "mil"
+                            },
+                            {
+                                "id": "milhas",
+                                "name": "milhas"
+                            },
+                            {
+                                "id": "mm",
+                                "name": "mm"
+                            },
+                            {
+                                "id": "mãos",
+                                "name": "mãos"
+                            },
+                            {
+                                "id": "nm",
+                                "name": "nm"
+                            },
+                            {
+                                "id": "polegadas",
+                                "name": "polegadas"
+                            },
+                            {
+                                "id": "yd",
+                                "name": "yd"
+                            },
+                            {
+                                "id": "µm",
+                                "name": "µm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "INCLUDES_MOUNTING_HARDWARE",
+                                "name": "Kit de montagem",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Inclui",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_ASBESTOS_FREE",
+                                "name": "Sem amianto",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "BRAKE_SYSTEM",
+                                "name": "Sistema de freios",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "5059549",
+                                        "name": "Disco"
+                                    },
+                                    {
+                                        "id": "5059550",
+                                        "name": "Tambor"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Sistema de freios",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ITEM_CONDITION",
+                                "name": "Condição do item",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "2230284",
+                                        "name": "Novo"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Condição do item",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "PRODUCT_IDENTIFIER",
+                                "id": "MPN",
+                                "name": "MPN",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "multivalued",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "MPN",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_SKU",
+                                "name": "SKU",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "variation_attribute"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "SKU",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_DATA_SOURCE",
+                                "name": "Origem do dado do pacote de envio",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Origem do dado do pacote de envio",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WIDTH",
+                                "name": "Largura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Largura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_LENGTH",
+                                "name": "Comprimento da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Comprimento da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "cm",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_HEIGHT",
+                                "name": "Altura da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "cm",
+                                        "name": "cm"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "cm",
+                        "label": "Altura da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "cm",
+                                "name": "cm"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "default_unit_id": "g",
+                                "hierarchy": "ITEM",
+                                "id": "SELLER_PACKAGE_WEIGHT",
+                                "name": "Peso da embalagem do vendor",
+                                "relevance": 1,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "units": [
+                                    {
+                                        "id": "g",
+                                        "name": "g"
+                                    }
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "number_unit"
+                            }
+                        ],
+                        "component": "NUMBER_UNIT_INPUT",
+                        "default_unified_unit_id": "g",
+                        "label": "Peso da embalagem do vendor",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": [
+                            {
+                                "id": "g",
+                                "name": "g"
+                            }
+                        ]
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAZMAT_TRANSPORTABILITY",
+                                "name": "Transportabilidade Hazmat",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "13414677",
+                                        "name": "Livre"
+                                    },
+                                    {
+                                        "id": "13414678",
+                                        "name": "Limitado"
+                                    },
+                                    {
+                                        "id": "13414679",
+                                        "name": "Excedido"
+                                    },
+                                    {
+                                        "id": "13414680",
+                                        "name": "Indeterminado"
+                                    },
+                                    {
+                                        "id": "75989961",
+                                        "name": "Notificado"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Transportabilidade Hazmat",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_KIT",
+                                "name": "Kit",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "DESCRIPTIVE_TAGS",
+                                "name": "Tags descritivos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Tags descritivos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_CHEMICAL_FEATURES",
+                                "name": "Características químicas do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7651070",
+                                        "name": "Inflamável"
+                                    },
+                                    {
+                                        "id": "7651071",
+                                        "name": "Aerosol"
+                                    },
+                                    {
+                                        "id": "7651072",
+                                        "name": "Oxidante"
+                                    },
+                                    {
+                                        "id": "7651073",
+                                        "name": "Corrosivo"
+                                    },
+                                    {
+                                        "id": "7651074",
+                                        "name": "Explosivo"
+                                    },
+                                    {
+                                        "id": "7651075",
+                                        "name": "Tóxico ou infeccioso"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características químicas do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "FOODS_AND_DRINKS",
+                                "name": "Alimentos e bebidas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575926",
+                                        "name": "Para humanos"
+                                    },
+                                    {
+                                        "id": "7575927",
+                                        "name": "Para animais"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Alimentos e bebidas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "MEDICINES",
+                                "name": "Medicamentos",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575930",
+                                        "name": "Para humanos com receita médica"
+                                    },
+                                    {
+                                        "id": "7575931",
+                                        "name": "Para humanos sem receita médica"
+                                    },
+                                    {
+                                        "id": "7575932",
+                                        "name": "Para animais com receita médica"
+                                    },
+                                    {
+                                        "id": "7575933",
+                                        "name": "Para animais sem receita médica"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Medicamentos",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "BATTERIES_FEATURES",
+                                "name": "Características das baterias",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7575934",
+                                        "name": "Lítio stand-alone (separadas ou isolado)"
+                                    },
+                                    {
+                                        "id": "7575935",
+                                        "name": "De lítio instaladas"
+                                    },
+                                    {
+                                        "id": "7575936",
+                                        "name": "Para carros (ácido-chumbo)"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características das baterias",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SHIPMENT_PACKING",
+                                "name": "Embalagem do envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435891",
+                                        "name": "Flyer"
+                                    },
+                                    {
+                                        "id": "7435892",
+                                        "name": "Caixa"
+                                    },
+                                    {
+                                        "id": "7575937",
+                                        "name": "Envelope"
+                                    },
+                                    {
+                                        "id": "7575939",
+                                        "name": "Auto-expedível"
+                                    },
+                                    {
+                                        "id": "27037932",
+                                        "name": "BEX"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Embalagem do envío",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "ADDITIONAL_INFO_REQUIRED",
+                                "name": "Informação adicional requerida",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435893",
+                                        "name": "Possui código IMEI"
+                                    },
+                                    {
+                                        "id": "7435894",
+                                        "name": "Possui número de série"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Informação adicional requerida",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "EXCLUDED_PLATFORMS",
+                                "name": "Plataformas excluídas",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "9936777",
+                                        "name": "Android"
+                                    },
+                                    {
+                                        "id": "9936778",
+                                        "name": "iOS"
+                                    },
+                                    {
+                                        "id": "9936779",
+                                        "name": "Desktop"
+                                    },
+                                    {
+                                        "id": "9936780",
+                                        "name": "Mobile"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Plataformas excluídas",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_SUITABLE_FOR_SHIPMENT",
+                                "name": "Adequado para envío",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_DATA_SOURCE",
+                                "name": "Fonte do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Fonte do produto",
+                        "ui_config": {
+                            "tooltip": "Indique o país de origem do produto.",
+                            "allow_custom_value": false,
+                            "allow_filtering": false,
+                            "example": "Brasil"
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "LIMITED_MARKETPLACE_VISIBILITY_REASONS",
+                                "name": "Razões de visibilidade limitada no Marketplace",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string",
+                                "values": [
+                                    {
+                                        "id": "24219544",
+                                        "name": "Pharma"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Razões de visibilidade limitada no Marketplace",
+                        "ui_config": {
+                            "allow_custom_value": true,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "HAS_COMPATIBILITIES",
+                                "name": "Tem compatibilidades",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Tem compatibilidades",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "CATALOG_TITLE",
+                                "name": "Título de catálogo",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Título de catálogo",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SEARCH_ENHANCEMENT_FIELDS",
+                                "name": "Campos de aprimoramento de pesquisa",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "Campos de aprimoramento de pesquisa",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "PRODUCT_FEATURES",
+                                "name": "Características do produto",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only",
+                                    "multivalued"
+                                ],
+                                "value_type": "list",
+                                "values": [
+                                    {
+                                        "id": "7435885",
+                                        "name": "Contém líquido"
+                                    },
+                                    {
+                                        "id": "7435883",
+                                        "name": "Frágil"
+                                    },
+                                    {
+                                        "id": "7435888",
+                                        "name": "Com validade"
+                                    },
+                                    {
+                                        "id": "8847339",
+                                        "name": "Sem validade"
+                                    },
+                                    {
+                                        "id": "7575917",
+                                        "name": "Desinfetante e saneante"
+                                    },
+                                    {
+                                        "id": "7575924",
+                                        "name": "MAPA"
+                                    },
+                                    {
+                                        "id": "7575923",
+                                        "name": "Saúde e correlatos"
+                                    },
+                                    {
+                                        "id": "8721108",
+                                        "name": "Volumoso"
+                                    },
+                                    {
+                                        "id": "10490116",
+                                        "name": "Não voável"
+                                    },
+                                    {
+                                        "id": "12928414",
+                                        "name": "Não rotacionável"
+                                    },
+                                    {
+                                        "id": "41722098",
+                                        "name": "Dobrável"
+                                    },
+                                    {
+                                        "id": "52092586",
+                                        "name": "Magnético"
+                                    },
+                                    {
+                                        "id": "52233302",
+                                        "name": "Pode rolar"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "COMBO",
+                        "label": "Características do produto",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "IS_NEW_OFFER",
+                                "name": "Nova oferta",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "ITEM",
+                                "id": "SYI_PYMES_ID",
+                                "name": "syi pymes id",
+                                "relevance": 2,
+                                "tags": [
+                                    "vip_hidden",
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_max_length": 255,
+                                "value_type": "string"
+                            }
+                        ],
+                        "component": "TEXT_INPUT",
+                        "label": "syi pymes id",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": false
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "IS_FLAMMABLE",
+                                "name": "Inflamável",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "É",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    },
+                    {
+                        "attributes": [
+                            {
+                                "hierarchy": "FAMILY",
+                                "id": "WITH_POSITIVE_IMPACT",
+                                "name": "Impacto positivo",
+                                "relevance": 2,
+                                "tags": [
+                                    "hidden",
+                                    "read_only"
+                                ],
+                                "value_type": "boolean",
+                                "values": [
+                                    {
+                                        "id": "242084",
+                                        "metadata": {
+                                            "value": false
+                                        },
+                                        "name": "Não"
+                                    },
+                                    {
+                                        "id": "242085",
+                                        "metadata": {
+                                            "value": true
+                                        },
+                                        "name": "Sim"
+                                    }
+                                ]
+                            }
+                        ],
+                        "component": "BOOLEAN_INPUT",
+                        "label": "Com",
+                        "ui_config": {
+                            "allow_custom_value": false,
+                            "allow_filtering": true
+                        },
+                        "unified_units": []
+                    }
+                ],
+                "id": "OTHER",
+                "label": "Outros",
+                "relevance": 1,
+                "ui_config": []
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T15:48:48-03:00"
+}

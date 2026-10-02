@@ -76,6 +76,9 @@ class RestringeDominioDoPortal
         // Não expõe nada por si: sem ticket válido, devolve para a entrada.
         'equipe/entrar',
         'equipe/sair',
+        // 01/10/2026 — link aberto de equipe, só para empresa listada em
+        // `portal.link_equipe` (loja de teste). Assinado; sem assinatura, 403.
+        'equipe/link/*',
 
         // Uma linha por rota, NUNCA `portal/*`. O curinga deixava passar
         // `/portal/usuarios` — a tela ADMIN de gerenciar acessos, que colide
@@ -150,6 +153,19 @@ class RestringeDominioDoPortal
         'portal/estrutura/ofertas/*/publicacao/fotos',
         'portal/estrutura/ofertas/*/publicacao/validar',
         'portal/estrutura/ofertas/*/publicacao/publicar',
+        // 01/10/2026 — Publicador novo (piloto): o mesmo Anunciar com variações.
+        'portal/estrutura/ofertas/*/publicador',
+        'portal/estrutura/ofertas/*/publicador/categoria',
+        'portal/estrutura/ofertas/*/publicador/eixos',
+        'portal/estrutura/ofertas/*/publicador/variantes',
+        'portal/estrutura/ofertas/*/publicador/fotos',
+        'portal/estrutura/ofertas/*/publicador/fotos/*',
+        'portal/estrutura/ofertas/*/publicador/fotos/*/reenviar',
+        'portal/estrutura/ofertas/*/publicador/condicionais',
+        'portal/estrutura/ofertas/*/publicador/conferir',
+        'portal/estrutura/ofertas/*/publicador/publicar',
+        'portal/estrutura/ofertas/*/publicador/itens/*/descricao',
+        'portal/estrutura/ofertas/*/publicador/simular',
         'portal/ppa',
         'portal/ppa/tarefas/*',
         'portal/empresa',

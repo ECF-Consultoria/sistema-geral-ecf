@@ -57,6 +57,7 @@ use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalEstruturaController;
+use App\Http\Controllers\PortalPublicadorController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -226,6 +227,40 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('oferta')->middleware('throttle:30,1,estrutura.publicacao.validar')->name('portal.auth.estrutura.publicacao.validar');
     Route::post('/estrutura/ofertas/{oferta}/publicacao/publicar', [PortalEstruturaController::class, 'publicarPublicacao'])
         ->whereNumber('oferta')->middleware('throttle:20,1,estrutura.publicacao.publicar')->name('portal.auth.estrutura.publicacao.publicar');
+    // ── Publicador novo (01/10/2026, `.planning/publicador-ml-spec/`): o mesmo
+    // Anunciar, com variações, fotos por grupo e conferência/publicação em fila.
+    // Só para as empresas do piloto (`publicador.empresas_piloto`); as demais
+    // seguem no par acima. JSON por oferta; cada rota com a sua linha na allowlist.
+    Route::prefix('/estrutura/ofertas/{oferta}/publicador')->whereNumber('oferta')->group(function () {
+        Route::get('/', [PortalPublicadorController::class, 'abrir'])
+            ->middleware('throttle:120,1,publicador.abrir')->name('portal.auth.publicador.abrir');
+        Route::put('/', [PortalPublicadorController::class, 'salvar'])
+            ->middleware('throttle:180,1,publicador.salvar')->name('portal.auth.publicador.salvar');
+        Route::put('/categoria', [PortalPublicadorController::class, 'categoria'])
+            ->middleware('throttle:30,1,publicador.categoria')->name('portal.auth.publicador.categoria');
+        Route::put('/eixos', [PortalPublicadorController::class, 'eixos'])
+            ->middleware('throttle:120,1,publicador.eixos')->name('portal.auth.publicador.eixos');
+        Route::put('/variantes', [PortalPublicadorController::class, 'variantes'])
+            ->middleware('throttle:180,1,publicador.variantes')->name('portal.auth.publicador.variantes');
+        Route::post('/fotos', [PortalPublicadorController::class, 'foto'])
+            ->middleware('throttle:60,1,publicador.fotos')->name('portal.auth.publicador.fotos');
+        Route::put('/fotos', [PortalPublicadorController::class, 'atribuirFotos'])
+            ->middleware('throttle:180,1,publicador.fotos.atribuir')->name('portal.auth.publicador.fotos.atribuir');
+        Route::delete('/fotos/{imagem}', [PortalPublicadorController::class, 'removerFoto'])
+            ->whereNumber('imagem')->middleware('throttle:60,1,publicador.fotos.remover')->name('portal.auth.publicador.fotos.remover');
+        Route::post('/fotos/{imagem}/reenviar', [PortalPublicadorController::class, 'reenviarFoto'])
+            ->whereNumber('imagem')->middleware('throttle:30,1,publicador.fotos.reenviar')->name('portal.auth.publicador.fotos.reenviar');
+        Route::post('/condicionais', [PortalPublicadorController::class, 'condicionais'])
+            ->middleware('throttle:60,1,publicador.condicionais')->name('portal.auth.publicador.condicionais');
+        Route::post('/conferir', [PortalPublicadorController::class, 'conferir'])
+            ->middleware('throttle:20,1,publicador.conferir')->name('portal.auth.publicador.conferir');
+        Route::post('/publicar', [PortalPublicadorController::class, 'publicar'])
+            ->middleware('throttle:10,1,publicador.publicar')->name('portal.auth.publicador.publicar');
+        Route::post('/itens/{item}/descricao', [PortalPublicadorController::class, 'reenviarDescricao'])
+            ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('portal.auth.publicador.descricao');
+        Route::get('/simular', [PortalPublicadorController::class, 'simular'])
+            ->middleware('throttle:30,1,publicador.simular')->name('portal.auth.publicador.simular');
+    });
     Route::post('/estrutura/ofertas', [PortalEstruturaController::class, 'criarOferta'])
         ->middleware('throttle:60,1,estrutura.ofertas.criar')->name('portal.auth.estrutura.ofertas.criar');
     Route::post('/estrutura/ofertas/{oferta}/combos', [PortalEstruturaController::class, 'criarCombos'])
@@ -358,6 +393,17 @@ Route::get('/equipe/entrar', [PortalEquipeController::class, 'entrar'])
     ->middleware('throttle:20,1')
     ->name('portal.equipe.entrar');
 Route::post('/equipe/sair', [PortalEquipeController::class, 'sair'])->name('portal.equipe.sair');
+
+// O link ABERTO de equipe — exceção para loja de teste da ECF, só para
+// empresa em `config('portal.link_equipe')`. `signed:relative` porque o host é
+// trocado para o do cliente depois de assinar (ver
+// `PortalEquipeService::urlDoLink()`). `{empresa}` sem model binding: a
+// assinatura é conferida ANTES de qualquer consulta, e sem ela um id
+// inexistente (404) e um existente (403) responderiam diferente.
+Route::get('/equipe/link/{empresa}', [PortalEquipeController::class, 'entrarPorLink'])
+    ->whereNumber('empresa')
+    ->middleware(['signed:relative', 'throttle:20,1'])
+    ->name('portal.equipe.link');
 
 // Entrada e login. Fora do grupo autenticado, por motivo óbvio.
 Route::get('/entrar', [PortalAuthController::class, 'entrada'])->name('portal.entrada');

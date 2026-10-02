@@ -1,0 +1,174 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/999999999/shipping_preferences",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "local_pick_up": false,
+        "modes": [
+            "custom",
+            "not_specified",
+            "me1",
+            "me2"
+        ],
+        "trusted_user": true,
+        "bulky": false,
+        "custom_calculator": "Axado",
+        "picking_type": null,
+        "thermal_printer": "ZPL2",
+        "option": "in",
+        "tags": [
+            "optional_me2_allowed",
+            "flex2_migration",
+            "fulfillment_with_self_service",
+            "dsa_confirmed"
+        ],
+        "me2_enablers": [
+            "bulky_cross_docking"
+        ],
+        "carrier_pickup": false,
+        "items_combination": "disabled",
+        "services": [
+            11,
+            21,
+            22,
+            23,
+            101,
+            102,
+            103,
+            991,
+            1051,
+            1061,
+            155413,
+            165366
+        ],
+        "logistics": [
+            {
+                "mode": "me2",
+                "types": [
+                    {
+                        "type": "cross_docking",
+                        "carrier_pickup": [
+                            10
+                        ],
+                        "services": [
+                            101,
+                            102,
+                            103,
+                            1051,
+                            1061,
+                            155413,
+                            165366
+                        ],
+                        "default": true,
+                        "status": "active"
+                    },
+                    {
+                        "type": "fulfillment",
+                        "carrier_pickup": [],
+                        "services": [
+                            101,
+                            102,
+                            103,
+                            1051,
+                            1061,
+                            155413,
+                            165366,
+                            991
+                        ],
+                        "default": false,
+                        "status": "active"
+                    }
+                ]
+            },
+            {
+                "mode": "me1",
+                "types": [
+                    {
+                        "type": "default",
+                        "carrier_pickup": [],
+                        "services": [
+                            21,
+                            23,
+                            22,
+                            11
+                        ],
+                        "default": true,
+                        "status": "active"
+                    }
+                ]
+            },
+            {
+                "mode": "custom",
+                "types": [
+                    {
+                        "type": "custom",
+                        "carrier_pickup": [],
+                        "services": null,
+                        "default": true,
+                        "status": "active"
+                    }
+                ]
+            },
+            {
+                "mode": "not_specified",
+                "types": [
+                    {
+                        "type": "not_specified",
+                        "carrier_pickup": [],
+                        "services": null,
+                        "default": true,
+                        "status": "active"
+                    }
+                ]
+            }
+        ],
+        "label": {
+            "print_danfe": true,
+            "print_browser": false,
+            "print_voucher": false,
+            "print_summary": true,
+            "thermal_printer": "ZPL2",
+            "page_size": "custom",
+            "page_format": "zpl",
+            "print_summary_cart": null
+        },
+        "content_declaration_disabled": true,
+        "mandatory_invoice_data": true,
+        "site_id": "MLB",
+        "free_configurations": [
+            {
+                "condition": {
+                    "value": null,
+                    "type": "all"
+                },
+                "rule": {
+                    "default": true,
+                    "free_mode": "country",
+                    "value": null,
+                    "free_shipping_flag": true
+                }
+            },
+            {
+                "condition": {
+                    "value": null,
+                    "type": "all"
+                },
+                "rule": {
+                    "default": false,
+                    "free_mode": "exclude_region",
+                    "value": [
+                        "BR-NO",
+                        "BR-NE"
+                    ],
+                    "free_shipping_flag": true
+                }
+            }
+        ],
+        "mandatory_settings": []
+    },
+    "capturado_em": "2026-10-01T16:35:19-03:00"
+}

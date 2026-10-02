@@ -1,0 +1,156 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/1555596317/shipping_preferences",
+        "query": null,
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "local_pick_up": false,
+        "modes": [
+            "custom",
+            "not_specified",
+            "me2"
+        ],
+        "trusted_user": true,
+        "bulky": false,
+        "custom_calculator": false,
+        "picking_type": null,
+        "thermal_printer": "ZPL2",
+        "option": "in",
+        "tags": [
+            "flex2_migration",
+            "fulfillment_with_self_service"
+        ],
+        "me2_enablers": [],
+        "carrier_pickup": false,
+        "items_combination": "enabled",
+        "services": [
+            21,
+            22,
+            23,
+            101,
+            102,
+            103,
+            991,
+            1031,
+            1041,
+            1051,
+            1061,
+            155413,
+            165366
+        ],
+        "logistics": [
+            {
+                "mode": "me2",
+                "types": [
+                    {
+                        "type": "drop_off",
+                        "carrier_pickup": [],
+                        "services": [
+                            21,
+                            22,
+                            23,
+                            1031,
+                            1041
+                        ],
+                        "default": true,
+                        "status": "active"
+                    },
+                    {
+                        "type": "fulfillment",
+                        "carrier_pickup": [],
+                        "services": [
+                            101,
+                            102,
+                            103,
+                            1051,
+                            1061,
+                            155413,
+                            165366,
+                            991
+                        ],
+                        "default": false,
+                        "status": "active"
+                    }
+                ]
+            },
+            {
+                "mode": "custom",
+                "types": [
+                    {
+                        "type": "custom",
+                        "carrier_pickup": [],
+                        "services": null,
+                        "default": true,
+                        "status": "active"
+                    }
+                ]
+            },
+            {
+                "mode": "not_specified",
+                "types": [
+                    {
+                        "type": "not_specified",
+                        "carrier_pickup": [],
+                        "services": null,
+                        "default": true,
+                        "status": "active"
+                    }
+                ]
+            }
+        ],
+        "label": {
+            "print_danfe": false,
+            "print_browser": false,
+            "print_voucher": false,
+            "print_summary": false,
+            "thermal_printer": "ZPL2",
+            "page_size": "custom",
+            "page_format": "pdf",
+            "print_summary_cart": null
+        },
+        "content_declaration_disabled": true,
+        "mandatory_invoice_data": false,
+        "site_id": "MLB",
+        "free_configurations": [
+            {
+                "condition": {
+                    "value": null,
+                    "type": "all"
+                },
+                "rule": {
+                    "default": true,
+                    "free_mode": "country",
+                    "value": null,
+                    "free_shipping_flag": true
+                }
+            },
+            {
+                "condition": {
+                    "value": null,
+                    "type": "all"
+                },
+                "rule": {
+                    "default": false,
+                    "free_mode": "exclude_region",
+                    "value": [
+                        "BR-NO",
+                        "BR-NE"
+                    ],
+                    "free_shipping_flag": true
+                }
+            }
+        ],
+        "mandatory_settings": {
+            "currency_id": "BRL",
+            "mode": "me2",
+            "activation_date": "2016-08-16T00:00:00.000-0300",
+            "price_limit": 0,
+            "mode_only_me2": "",
+            "activation_date_only_me2": ""
+        }
+    },
+    "capturado_em": "2026-10-01T16:00:30-03:00"
+}

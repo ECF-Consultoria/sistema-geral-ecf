@@ -1,0 +1,117 @@
+{
+    "requisicao": {
+        "metodo": "POST",
+        "caminho": "/items/validate",
+        "query": null,
+        "corpo": {
+            "category_id": "MLB31447",
+            "price": 150,
+            "currency_id": "BRL",
+            "available_quantity": 0,
+            "buying_mode": "buy_it_now",
+            "condition": "new",
+            "listing_type_id": "gold_special",
+            "pictures": [
+                {
+                    "source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+                }
+            ],
+            "attributes": [
+                {
+                    "id": "BRAND",
+                    "value_id": "2786622"
+                },
+                {
+                    "id": "MODEL",
+                    "value_name": "Sonda"
+                },
+                {
+                    "id": "GENDER",
+                    "value_id": "339665"
+                },
+                {
+                    "id": "GARMENT_TYPE",
+                    "value_id": "12038970"
+                },
+                {
+                    "id": "COLOR",
+                    "value_id": "283148"
+                },
+                {
+                    "id": "SLEEVE_TYPE",
+                    "value_id": "466804"
+                },
+                {
+                    "id": "MAIN_MATERIAL",
+                    "value_id": "508652"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WEIGHT",
+                    "value_name": "500 g"
+                },
+                {
+                    "id": "SELLER_PACKAGE_HEIGHT",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_LENGTH",
+                    "value_name": "20 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WIDTH",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_SKU",
+                    "value_name": "SONDA-ECF-001"
+                }
+            ],
+            "sale_terms": [
+                {
+                    "id": "WARRANTY_TYPE",
+                    "value_name": "Garantia do vendedor"
+                },
+                {
+                    "id": "WARRANTY_TIME",
+                    "value_name": "30 dias"
+                }
+            ],
+            "shipping": {
+                "mode": "me2",
+                "local_pick_up": false,
+                "free_shipping": false,
+                "logistic_type": "drop_off"
+            },
+            "family_name": "Teste Sonda ECF Camisetas e Regatas Modelo Basico"
+        }
+    },
+    "status": 400,
+    "resposta": {
+        "cause": [
+            {
+                "department": "structured-data",
+                "cause_id": 2511,
+                "type": "warning",
+                "code": "create.item.attribute.business_conditional",
+                "references": [
+                    "item.attributes"
+                ],
+                "message": "Attribute [AGE_GROUP] to be added with values [(6725189,null)]"
+            },
+            {
+                "department": "structured-data",
+                "cause_id": 2610,
+                "type": "error",
+                "code": "missing.fashion_grid.grid_id.values",
+                "references": [
+                    "item.attributes"
+                ],
+                "message": "Attribute [SIZE_GRID_ID] is missing"
+            }
+        ],
+        "message": "Validation error",
+        "error": "validation_error",
+        "status": 400
+    },
+    "capturado_em": "2026-10-01T16:00:45-03:00"
+}

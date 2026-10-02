@@ -1,0 +1,50 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/sites/MLB/domain_discovery/search",
+        "query": {
+            "q": "camiseta basica masculina algodao",
+            "limit": 8
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": [
+        {
+            "domain_id": "MLB-T_SHIRTS",
+            "domain_name": "Camisetas",
+            "category_id": "MLB31447",
+            "category_name": "Camisetas e Regatas",
+            "attributes": []
+        },
+        {
+            "domain_id": "MLB-T_SHIRTS",
+            "domain_name": "Camisetas",
+            "category_id": "MLB439327",
+            "category_name": "Camisetas e Regatas",
+            "attributes": []
+        },
+        {
+            "domain_id": "MLB-T_SHIRTS",
+            "domain_name": "Camisetas",
+            "category_id": "MLB414238",
+            "category_name": "Camisetas e Regatas",
+            "attributes": []
+        },
+        {
+            "domain_id": "MLB-T_SHIRTS",
+            "domain_name": "Camisetas",
+            "category_id": "MLB1398",
+            "category_name": "Camisetas e Regatas",
+            "attributes": []
+        },
+        {
+            "domain_id": "MLB-T_SHIRTS",
+            "domain_name": "Camisetas",
+            "category_id": "MLB420314",
+            "category_name": "Camisetas e Regatas",
+            "attributes": []
+        }
+    ],
+    "capturado_em": "2026-10-01T15:48:34-03:00"
+}

@@ -1,0 +1,137 @@
+{
+    "requisicao": {
+        "metodo": "POST",
+        "caminho": "/items/validate",
+        "query": null,
+        "corpo": {
+            "category_id": "MLB1430",
+            "price": 150,
+            "currency_id": "BRL",
+            "available_quantity": 1,
+            "buying_mode": "buy_it_now",
+            "condition": "new",
+            "listing_type_id": "gold_special",
+            "pictures": [
+                {
+                    "source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+                }
+            ],
+            "attributes": [
+                {
+                    "id": "BRAND",
+                    "value_id": "2786622"
+                },
+                {
+                    "id": "MODEL",
+                    "value_name": "Sonda"
+                },
+                {
+                    "id": "GENDER",
+                    "value_id": "339665"
+                },
+                {
+                    "id": "GARMENT_TYPE",
+                    "value_id": "12038970"
+                },
+                {
+                    "id": "COLOR",
+                    "value_id": "283148"
+                },
+                {
+                    "id": "SLEEVE_TYPE",
+                    "value_id": "466804"
+                },
+                {
+                    "id": "MAIN_MATERIAL",
+                    "value_id": "508652"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WEIGHT",
+                    "value_name": "500 g"
+                },
+                {
+                    "id": "SELLER_PACKAGE_HEIGHT",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_LENGTH",
+                    "value_name": "20 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WIDTH",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_SKU",
+                    "value_name": "SONDA-ECF-001"
+                }
+            ],
+            "sale_terms": [
+                {
+                    "id": "WARRANTY_TYPE",
+                    "value_name": "Garantia do vendedor"
+                },
+                {
+                    "id": "WARRANTY_TIME",
+                    "value_name": "30 dias"
+                }
+            ],
+            "shipping": {
+                "mode": "me2",
+                "local_pick_up": false,
+                "free_shipping": false,
+                "logistic_type": "drop_off"
+            },
+            "family_name": "Teste Sonda ECF Camisetas e Regatas Modelo Basico"
+        }
+    },
+    "status": 400,
+    "resposta": {
+        "cause": [
+            {
+                "department": "items",
+                "cause_id": 126,
+                "type": "error",
+                "code": "item.category_id.invalid",
+                "references": [
+                    "item.category_id"
+                ],
+                "message": "Is not allowed to post in category MLB1430. Make sure you're posting in a leaf category"
+            },
+            {
+                "department": "structured-data",
+                "cause_id": 3704,
+                "type": "warning",
+                "code": "item.attribute.missing_catalog_required",
+                "references": [
+                    "item.attributes"
+                ],
+                "message": "O campo \"Tamanho\" é obrigatório e não foi adicionado."
+            },
+            {
+                "department": "shipping",
+                "cause_id": 4053,
+                "type": "warning",
+                "code": "shipping.lost_me1_by_user",
+                "references": [
+                    "user.shipping_preferences.modes"
+                ],
+                "message": "User has not mode me1"
+            },
+            {
+                "department": "shipping",
+                "cause_id": 4056,
+                "type": "warning",
+                "code": "shipping.lost_me2_by_catalog",
+                "references": [
+                    "catalog.shipping_preferences.modes"
+                ],
+                "message": "Catalog has not mode me2"
+            }
+        ],
+        "message": "Validation error",
+        "error": "validation_error",
+        "status": 400
+    },
+    "capturado_em": "2026-10-01T16:00:48-03:00"
+}

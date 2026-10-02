@@ -1,0 +1,46 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/999999999/stores/search",
+        "query": {
+            "tags": "stock_location"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "paging": {
+            "limit": 50,
+            "total": 2
+        },
+        "results": [
+            {
+                "id": "DEPOSITO_1",
+                "user_id": "999999999",
+                "description": "Depósito 1",
+                "status": "active",
+                "tags": [
+                    "stock_location"
+                ],
+                "services": {
+                    "stock_location": [
+                        "cross_docking"
+                    ]
+                }
+            },
+            {
+                "id": "DEPOSITO_2",
+                "user_id": "999999999",
+                "description": "Depósito 2",
+                "status": "active",
+                "tags": [
+                    "stock_location"
+                ],
+                "services": {
+                    "stock_location": []
+                }
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T16:35:19-03:00"
+}

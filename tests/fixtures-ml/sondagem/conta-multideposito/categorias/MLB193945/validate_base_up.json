@@ -1,0 +1,131 @@
+{
+    "requisicao": {
+        "metodo": "POST",
+        "caminho": "/items/validate",
+        "query": null,
+        "corpo": {
+            "category_id": "MLB193945",
+            "price": 150,
+            "currency_id": "BRL",
+            "available_quantity": 1,
+            "buying_mode": "buy_it_now",
+            "condition": "new",
+            "listing_type_id": "gold_special",
+            "pictures": [
+                {
+                    "source": "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg"
+                }
+            ],
+            "attributes": [
+                {
+                    "id": "BRAND",
+                    "value_name": "Genérica"
+                },
+                {
+                    "id": "MODEL",
+                    "value_name": "Sonda"
+                },
+                {
+                    "id": "BACKREST_HEIGHT",
+                    "value_name": "10 cm"
+                },
+                {
+                    "id": "SEAT_DEPTH",
+                    "value_name": "10 cm"
+                },
+                {
+                    "id": "OFFICE_CHAIR_WIDTH",
+                    "value_name": "10 cm"
+                },
+                {
+                    "id": "MAX_CHAIR_HEIGHT",
+                    "value_name": "10 cm"
+                },
+                {
+                    "id": "REQUIRES_ASSEMBLY",
+                    "value_id": "242084"
+                },
+                {
+                    "id": "IS_GAMER",
+                    "value_id": "242084"
+                },
+                {
+                    "id": "IS_ERGONOMIC",
+                    "value_id": "242084"
+                },
+                {
+                    "id": "IS_SWIVEL",
+                    "value_id": "242084"
+                },
+                {
+                    "id": "INCLUDES_ASSEMBLY_MANUAL",
+                    "value_id": "242084"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WEIGHT",
+                    "value_name": "500 g"
+                },
+                {
+                    "id": "SELLER_PACKAGE_HEIGHT",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_LENGTH",
+                    "value_name": "20 cm"
+                },
+                {
+                    "id": "SELLER_PACKAGE_WIDTH",
+                    "value_name": "15 cm"
+                },
+                {
+                    "id": "SELLER_SKU",
+                    "value_name": "SONDA-ECF-001"
+                }
+            ],
+            "sale_terms": [
+                {
+                    "id": "WARRANTY_TYPE",
+                    "value_name": "Garantia do vendedor"
+                },
+                {
+                    "id": "WARRANTY_TIME",
+                    "value_name": "30 dias"
+                }
+            ],
+            "shipping": {
+                "mode": "me2",
+                "local_pick_up": false,
+                "free_shipping": false,
+                "logistic_type": "drop_off"
+            },
+            "family_name": "Teste Sonda ECF Cadeiras para Escritório Modelo Basico"
+        }
+    },
+    "status": 400,
+    "resposta": {
+        "cause": [
+            {
+                "department": "items",
+                "cause_id": 469,
+                "type": "warning",
+                "code": "item.available_quantity.ignored",
+                "references": [
+                    "item.available_quantity"
+                ],
+                "message": "available_quantity field is ignored for multi warehouse seller"
+            },
+            {
+                "department": "items",
+                "cause_id": 350,
+                "type": "warning",
+                "code": "item.shipping.mandatory_free_shipping",
+                "references": [],
+                "message": "Mandatory free shipping added"
+            }
+        ],
+        "message": "Validation error",
+        "error": "validation_error",
+        "status": 400
+    },
+    "capturado_em": "2026-10-01T16:35:20-03:00"
+}

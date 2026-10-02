@@ -1,0 +1,53 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/1555596317/available_listing_types",
+        "query": {
+            "category_id": "MLB31447"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "category_id": "MLB31447",
+        "available": [
+            {
+                "site_id": "MLB",
+                "id": "gold_pro",
+                "name": "Premium",
+                "remaining_listings": null
+            },
+            {
+                "site_id": "MLB",
+                "id": "gold_premium",
+                "name": "Diamante",
+                "remaining_listings": null
+            },
+            {
+                "site_id": "MLB",
+                "id": "gold_special",
+                "name": "Clássico",
+                "remaining_listings": null
+            },
+            {
+                "site_id": "MLB",
+                "id": "gold",
+                "name": "Ouro",
+                "remaining_listings": null
+            },
+            {
+                "site_id": "MLB",
+                "id": "silver",
+                "name": "Prata",
+                "remaining_listings": null
+            },
+            {
+                "site_id": "MLB",
+                "id": "bronze",
+                "name": "Bronze",
+                "remaining_listings": null
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T16:00:44-03:00"
+}

@@ -1,0 +1,100 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/1555596317/items/search",
+        "query": {
+            "seller_sku": "SONDA-ECF-INEXISTENTE"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "seller_id": "1555596317",
+        "results": [],
+        "paging": {
+            "limit": 50,
+            "offset": 0,
+            "total": 0
+        },
+        "query": null,
+        "orders": [
+            {
+                "id": "stop_time_asc",
+                "name": "Order by stop time ascending"
+            }
+        ],
+        "available_orders": [
+            {
+                "id": "stop_time_asc",
+                "name": "Order by stop time ascending"
+            },
+            {
+                "id": "stop_time_desc",
+                "name": "Order by stop time descending"
+            },
+            {
+                "id": "start_time_asc",
+                "name": "Order by start time ascending"
+            },
+            {
+                "id": "start_time_desc",
+                "name": "Order by start time descending"
+            },
+            {
+                "id": "available_quantity_asc",
+                "name": "Order by available quantity ascending"
+            },
+            {
+                "id": "available_quantity_desc",
+                "name": "Order by available quantity descending"
+            },
+            {
+                "id": "sold_quantity_asc",
+                "name": "Order by sold quantity ascending"
+            },
+            {
+                "id": "sold_quantity_desc",
+                "name": "Order by sold quantity descending"
+            },
+            {
+                "id": "price_asc",
+                "name": "Order by price ascending"
+            },
+            {
+                "id": "price_desc",
+                "name": "Order by price descending"
+            },
+            {
+                "id": "last_updated_desc",
+                "name": "Order by lastUpdated descending"
+            },
+            {
+                "id": "last_updated_asc",
+                "name": "Order by last updated ascending"
+            },
+            {
+                "id": "total_sold_quantity_asc",
+                "name": "Order by total sold quantity ascending"
+            },
+            {
+                "id": {
+                    "id": "total_sold_quantity_desc",
+                    "field": "sold_quantity",
+                    "missing": "_last",
+                    "order": "desc"
+                },
+                "name": "Order by total sold quantity descending"
+            },
+            {
+                "id": {
+                    "id": "inventory_id_asc",
+                    "field": "inventory_id",
+                    "missing": "_last",
+                    "order": "asc"
+                },
+                "name": "Order by inventory id ascending"
+            }
+        ]
+    },
+    "capturado_em": "2026-10-01T16:00:30-03:00"
+}

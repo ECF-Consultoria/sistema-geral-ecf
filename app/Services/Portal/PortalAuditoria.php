@@ -162,6 +162,28 @@ class PortalAuditoria
     }
 
     /**
+     * Alguém entrou pelo LINK ABERTO de equipe (`config('portal.link_equipe')`).
+     *
+     * Evento próprio, e não `equipe_entrou`: ali o `causedBy` é quem de fato
+     * clicou, provado pelo login do sistema interno; aqui é o DONO do link,
+     * e quem clicou pode ser qualquer um que o tenha recebido. O IP é a única
+     * pista de quem foi — e quem ler o histórico precisa saber disso.
+     */
+    public function equipeEntrouPorLink(\App\Models\User $dono, Company $empresa, ?string $ip): void
+    {
+        activity(self::CANAL)
+            ->performedOn($empresa)
+            ->causedBy($dono)
+            ->withProperties([
+                'evento'     => 'equipe_entrou_por_link',
+                'company_id' => $empresa->id,
+                'empresa'    => $empresa->name,
+                'ip'         => $ip,
+            ])
+            ->log("Link aberto do portal de {$empresa->name} usado (em nome de {$dono->name})");
+    }
+
+    /**
      * A equipe MEXEU em algo dentro do portal do cliente.
      *
      * Registrado à parte de {@see equipeEntrou} de propósito: ver e agir são

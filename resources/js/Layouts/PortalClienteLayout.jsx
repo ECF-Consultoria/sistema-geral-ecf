@@ -1,6 +1,7 @@
 import { Link, Head, router, usePage } from '@inertiajs/react';
-import { Calculator, ClipboardList, Eye, Home, LayoutGrid, Layers, ListChecks, LogOut } from 'lucide-react';
+import { Eye, LayoutGrid, LogOut } from 'lucide-react';
 import LogoEmpresa from '@/Components/Portal/LogoEmpresa';
+import TrilhoDock, { ICONES } from '@/Components/Portal/TrilhoDock';
 import { cn } from '@/lib/utils';
 
 // ─── Portal do Cliente — a moldura de todos os módulos ──────────────────────
@@ -11,10 +12,10 @@ import { cn } from '@/lib/utils';
 // outros — o menu vem pronto do backend (`App\Support\Portal\ModulosPortal`),
 // e uma página nova só precisa embrulhar seu conteúdo aqui.
 //
-// O visual é o mesmo de antes, de propósito: mesma faixa `#0b1220`, mesmas
-// bordas, mesmos raios e espaçamentos. O que mudou é que os itens deixaram de
-// ser âncoras (`#inicio`, `#pendencias`) e viraram links de rota — cada módulo
-// é uma página agora.
+// No computador (02/10/2026) o menu é um trilho minimizado que abre no hover,
+// com o efeito Dock nas teclas — ver `TrilhoDock`. O conteúdo ganha a largura
+// que a coluna fixa de 248 px ocupava. No celular nada muda: faixa no topo com
+// o menu em linha rolável.
 //
 // ### "Documentos" continua fora
 // A referência visual original trazia um item de Documentos com guias para
@@ -23,65 +24,17 @@ import { cn } from '@/lib/utils';
 // card de cada item. Item de menu para prateleira vazia é pior do que item
 // nenhum. Quando existir acervo, ele entra no catálogo de módulos.
 
-// `icone` chega como string do backend. Mapa explícito: nome fora desta lista
-// cai no genérico em vez de derrubar o render inteiro do menu.
-const ICONES = {
-    'home':           Home,
-    'list-checks':    ListChecks,
-    'clipboard-list': ClipboardList,
-    'calculator':     Calculator,
-    'layers':         Layers,
-};
-
-function ItemModulo({ modulo }) {
-    const Icone = ICONES[modulo.icone] ?? LayoutGrid;
-
-    return (
-        <Link
-            href={modulo.url}
-            aria-current={modulo.ativo ? 'page' : undefined}
-            className={cn(
-                'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] transition-colors',
-                modulo.ativo
-                    ? 'bg-ecf-yellow/10 text-ecf-yellow font-semibold'
-                    : 'text-white/55 hover:text-white hover:bg-white/[0.04]',
-            )}
-        >
-            <Icone size={15} className="shrink-0" />
-            <span className="truncate">{modulo.rotulo}</span>
-
-            {/* O badge acompanha o cliente por todo o portal: ele precisa ver
-                "3 pendências no Onboarding" enquanto está no PPA. Por isso a
-                contagem é calculada no `PortalClienteService`, para toda
-                página, e não em cada módulo. */}
-            {modulo.badge > 0 && (
-                <span className={cn(
-                    'ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold',
-                    modulo.ativo
-                        ? 'bg-ecf-yellow/15 text-ecf-yellow'
-                        : 'bg-white/[0.07] text-white/60',
-                )}>
-                    {modulo.badge}
-                </span>
-            )}
-        </Link>
-    );
-}
-
 /**
- * Os submódulos do módulo ativo (hoje só o Mapeamento Estrutural), numerados
- * na ordem do caminho. Abertos só quando o módulo está ativo: fora dele, o
- * item do módulo leva ao primeiro submódulo e o menu não cresce à toa.
- * "Em breve" aparece apagado e sem link.
+ * Os submódulos do módulo ativo no celular: uma segunda linha rolável, na
+ * ordem do caminho. "Em breve" aparece apagado e sem link.
  */
-function Submodulos({ submodulos, compacto = false }) {
+function SubmodulosCompactos({ submodulos }) {
     return (
-        <div className={cn(compacto ? 'flex gap-1.5 overflow-x-auto pb-0.5' : 'ml-[18px] mt-1 space-y-0.5 border-l border-white/[0.08] pl-2.5')} data-submodulos>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5" data-submodulos>
             {submodulos.map((s, i) => {
                 const numero = <span className={cn('w-3.5 shrink-0 text-[11px] tabular-nums', s.ativo ? 'text-ecf-yellow' : 'text-white/30')}>{i + 1}</span>;
                 const classe = cn(
-                    'flex items-center gap-2 rounded-lg transition-colors',
-                    compacto ? 'shrink-0 px-2.5 py-1.5 text-[12px]' : 'px-2.5 py-1.5 text-[12.5px]',
+                    'flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] transition-colors',
                     s.ativo ? 'bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
                 );
 
@@ -100,10 +53,6 @@ function Submodulos({ submodulos, compacto = false }) {
     );
 }
 
-/**
- * @param {{nome: string, logo_url: ?string, iniciais: string}} empresa
- * @param {Array} modulos  vem pronto de `ModulosPortal::paraEmpresa()`
- */
 /**
  * Faixa de sessão de equipe.
  *
@@ -135,6 +84,10 @@ function FaixaDeEquipe({ empresa }) {
     );
 }
 
+/**
+ * @param {{nome: string, logo_url: ?string, iniciais: string}} empresa
+ * @param {Array} modulos  vem pronto de `ModulosPortal::paraEmpresa()`
+ */
 export default function PortalClienteLayout({ empresa, modulos = [], titulo, children }) {
     // O ator vem das props da PÁGINA, não de uma prop deste componente. É
     // deliberado: assim uma tela nova do portal não pode esquecer de repassar
@@ -148,93 +101,59 @@ export default function PortalClienteLayout({ empresa, modulos = [], titulo, chi
 
             {equipe && <FaixaDeEquipe empresa={empresa} />}
 
-            {/* O `lg:flex` mora SEMPRE aqui, no wrapper que de fato envolve
-                `aside` + `main`. Antes ele era condicional: com `equipe` ficava
+            {/* O `lg:flex` mora SEMPRE aqui, no wrapper que de fato envolve o
+                menu + `main`. Antes ele era condicional: com `equipe` ficava
                 aqui, e sem `equipe` ia para o container de fora — que tem este
                 div como único filho. O resultado era que, no acesso POR TOKEN
                 (todo cliente que entra pelo link, onde `equipe` é sempre falso),
-                `aside` e `main` empilhavam como blocos. Como o `aside` tem
-                `lg:min-h-screen`, o conteúdo ia parar uma tela inteira abaixo:
-                a página parecia vazia e o console não acusava nada, porque nada
-                havia quebrado — estava fora da vista.
+                menu e `main` empilhavam como blocos e o conteúdo ia parar uma
+                tela inteira abaixo, sem erro nenhum no console.
 
                 A faixa de equipe continua acima das duas colunas por ficar
                 FORA deste div, que era o motivo de o wrapper existir. */}
             <div className="lg:flex">
 
-            <aside className="lg:w-[248px] lg:shrink-0 lg:min-h-screen bg-[#0b1220] border-b lg:border-b-0 lg:border-r border-white/[0.06]">
-                <div className="lg:sticky lg:top-0 p-4 lg:p-5">
-                    {/* A marca do cliente ocupa o lugar onde antes ficava fixo
-                        "ECF Consultoria". A nossa identidade não some do
-                        portal — ela continua no rodapé e nos responsáveis —,
-                        mas o topo é da empresa que está entrando. */}
-                    <div className="flex items-center justify-between gap-3">
-                        <LogoEmpresa empresa={empresa} tamanho="menu" />
-                        {/* No mobile a sidebar vira faixa: o nome da empresa vai
-                            para o lado da logo em vez de sumir. */}
-                        <p className="lg:hidden text-white/60 text-[12px] truncate">{empresa?.nome}</p>
-                    </div>
+            <TrilhoDock empresa={empresa} modulos={modulos} comFaixa={equipe} />
 
-                    <div className="hidden lg:block mt-6">
-                        <p className="text-white text-[13px] font-semibold truncate">Olá, {empresa?.nome}!</p>
-                        <p className="text-white/35 text-[12px] mt-0.5">Este é o portal da sua empresa.</p>
-                    </div>
-
-                    <nav className="hidden lg:block mt-6 space-y-1">
-                        {modulos.map((modulo) => (
-                            <div key={modulo.chave}>
-                                <ItemModulo modulo={modulo} />
-                                {modulo.ativo && modulo.submodulos?.length > 0 && <Submodulos submodulos={modulo.submodulos} />}
-                            </div>
-                        ))}
-                    </nav>
-
-                    {/* No mobile o menu vira uma linha rolável abaixo da faixa —
-                        sem isso o cliente de celular ficaria preso no módulo em
-                        que entrou, sem caminho para os outros. */}
-                    <nav className="lg:hidden mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
-                        {modulos.map((modulo) => {
-                            const Icone = ICONES[modulo.icone] ?? LayoutGrid;
-                            return (
-                                <Link
-                                    key={modulo.chave}
-                                    href={modulo.url}
-                                    aria-current={modulo.ativo ? 'page' : undefined}
-                                    className={cn(
-                                        'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] shrink-0 transition-colors',
-                                        modulo.ativo
-                                            ? 'bg-ecf-yellow/10 text-ecf-yellow font-semibold'
-                                            : 'text-white/55 bg-white/[0.03]',
-                                    )}
-                                >
-                                    <Icone size={13} /> {modulo.rotulo}
-                                    {modulo.badge > 0 && (
-                                        <span className="text-[11px] font-bold">({modulo.badge})</span>
-                                    )}
-                                </Link>
-                            );
-                        })}
-                    </nav>
-                    {/* No mobile, os submódulos do módulo ativo ganham uma
-                        segunda linha — a mesma régua, compacta. */}
-                    {modulos.filter((m) => m.ativo && m.submodulos?.length > 0).map((m) => (
-                        <div key={m.chave} className="lg:hidden mt-2">
-                            <Submodulos submodulos={m.submodulos} compacto />
-                        </div>
-                    ))}
-
-                    <div className="hidden lg:block mt-8 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
-                        <p className="text-white text-[12px] font-semibold">Dúvidas?</p>
-                        <p className="text-white/40 text-[12px] mt-1 leading-relaxed">
-                            Fale com o seu analista responsável — ele acompanha o seu processo com você.
-                        </p>
-                    </div>
-
-                    <p className="hidden lg:block mt-6 text-white/20 text-[11px]">
-                        Portal do Cliente · ECF Consultoria
-                    </p>
+            {/* No celular a moldura vira faixa no topo: marca, nome e o menu em
+                linha rolável — sem isso o cliente de celular ficaria preso no
+                módulo em que entrou, sem caminho para os outros. */}
+            <header className="lg:hidden bg-[#0b1220] border-b border-white/[0.06] p-4">
+                <div className="flex items-center justify-between gap-3">
+                    <LogoEmpresa empresa={empresa} tamanho="menu" />
+                    <p className="text-white/60 text-[12px] truncate">{empresa?.nome}</p>
                 </div>
-            </aside>
+
+                <nav className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+                    {modulos.map((modulo) => {
+                        const Icone = ICONES[modulo.icone] ?? LayoutGrid;
+                        return (
+                            <Link
+                                key={modulo.chave}
+                                href={modulo.url}
+                                aria-current={modulo.ativo ? 'page' : undefined}
+                                className={cn(
+                                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] shrink-0 transition-colors',
+                                    modulo.ativo
+                                        ? 'bg-ecf-yellow/10 text-ecf-yellow font-semibold'
+                                        : 'text-white/55 bg-white/[0.03]',
+                                )}
+                            >
+                                <Icone size={13} /> {modulo.rotulo}
+                                {modulo.badge > 0 && (
+                                    <span className="text-[11px] font-bold">({modulo.badge})</span>
+                                )}
+                            </Link>
+                        );
+                    })}
+                </nav>
+                {/* Os submódulos do módulo ativo ganham uma segunda linha. */}
+                {modulos.filter((m) => m.ativo && m.submodulos?.length > 0).map((m) => (
+                    <div key={m.chave} className="mt-2">
+                        <SubmodulosCompactos submodulos={m.submodulos} />
+                    </div>
+                ))}
+            </header>
 
             <main className="flex-1 min-w-0">{children}</main>
             </div>

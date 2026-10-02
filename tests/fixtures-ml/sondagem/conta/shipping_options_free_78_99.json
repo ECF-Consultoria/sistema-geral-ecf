@@ -1,0 +1,33 @@
+{
+    "requisicao": {
+        "metodo": "GET",
+        "caminho": "/users/1555596317/shipping_options/free",
+        "query": {
+            "item_price": 78.99,
+            "listing_type_id": "gold_special",
+            "mode": "me2",
+            "condition": "new",
+            "logistic_type": "drop_off",
+            "dimensions": "15x15x20,500",
+            "verbose": "true"
+        },
+        "corpo": null
+    },
+    "status": 200,
+    "resposta": {
+        "coverage": {
+            "all_country": {
+                "list_cost": 8.45,
+                "currency_id": "BRL",
+                "billable_weight": 750,
+                "discount": {
+                    "rate": 0.3,
+                    "type": "mandatory",
+                    "promoted_amount": 12.07
+                },
+                "free_shipping_by_meli": true
+            }
+        }
+    },
+    "capturado_em": "2026-10-01T16:00:30-03:00"
+}
