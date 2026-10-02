@@ -2755,7 +2755,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 160-13-PLAN.md — tela C: editor "mesa de anúncio" (barra, faixa, 7 cards, lateral, IA) · wave 6
+- [x] 160-13-PLAN.md — tela C: editor "mesa de anúncio" (barra, faixa, 7 cards, lateral, IA) · wave 6
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
