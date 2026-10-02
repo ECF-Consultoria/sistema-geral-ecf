@@ -21,6 +21,10 @@ final readonly class ProductTruth
      * @param  array<int, string>  $beneficiosVerificados
      * @param  array<int, string>  $claimsProibidas  nunca vazio (TRUTH-04)
      * @param  array<int, array{indice: int|null, mime: string|null, bytes: int|null, nome: string|null}>  $referenciasMeta
+     * @param  array<string, string>  $atributosIds  id do atributo → value_name (Fase 161,
+     *         `CreativeSlotCatalog::elegiveis()`) — id de atributo NÃO é material de prompt,
+     *         por isso fica FORA de `paraPrompt()`/`paraAuditoria()`. Último parâmetro, com
+     *         default, para não mudar a forma serializada já consumida pela Fase 160.
      */
     public function __construct(
         public ?string $marca,
@@ -30,6 +34,7 @@ final readonly class ProductTruth
         public array $beneficiosVerificados,
         public array $claimsProibidas,
         public array $referenciasMeta,
+        public array $atributosIds = [],
     ) {}
 
     /**

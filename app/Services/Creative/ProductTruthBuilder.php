@@ -82,6 +82,10 @@ class ProductTruthBuilder
             beneficiosVerificados: [],
             claimsProibidas: $this->claimsProibidas($contexto, $contagens),
             referenciasMeta: $contexto->referenciasMeta,
+            // Fase 161 — CreativeSlotCatalog::elegiveis() decide por id de
+            // atributo (nunca por rótulo traduzido). Fica FORA de
+            // paraPrompt()/paraAuditoria() (não é material de prompt).
+            atributosIds: $contexto->atributos,
         );
     }
 
