@@ -16,12 +16,16 @@ const CARDS = [
     `${BASE}/Mesa/CardProduto.jsx`,
     `${BASE}/Mesa/CardFichaTecnica.jsx`,
     `${BASE}/Mesa/CardFotos.jsx`,
+    `${BASE}/Mesa/CardVariacoes.jsx`,
+    `${BASE}/Mesa/CartaoVariante.jsx`,
 ];
 // Componentes de campo reaproveitados do piloto, normalizados nesta fase.
 const NORMALIZADOS = [
     `${BASE}/CampoAtributo.jsx`,
     `${BASE}/FotosPorGrupo.jsx`,
     `${BASE}/Problemas.jsx`,
+    `${BASE}/EditorDeEixos.jsx`,
+    `${BASE}/GradeVariantes.jsx`,
 ];
 
 for (const caminho of [...CARDS, ...NORMALIZADOS]) {
@@ -99,4 +103,38 @@ test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira not
     const fonte = lerSemComentarios(`${BASE}/FotosPorGrupo.jsx`);
     assert.match(fonte, /envioAoMl = true/);
     assert.match(fonte, /sobem para o Mercado Livre quando a publicação for liberada para esta conta/);
+});
+
+test('CartaoVariante — campos de estoque/SKU/GTIN vêm de GradeVariantes (sem duplicar a lógica de depósito)', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(fonte, /from '\.\.\/GradeVariantes'/);
+    assert.match(fonte, /CampoEstoque/);
+    assert.match(fonte, /CampoSku/);
+    assert.match(fonte, /CampoGtin/);
+    assert.doesNotMatch(fonte, /estoque_depositos/);
+});
+
+test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin por nome', () => {
+    const fonte = lerSemComentarios(`${BASE}/GradeVariantes.jsx`);
+    assert.match(fonte, /export function CampoEstoque\b/);
+    assert.match(fonte, /export function CampoSku\b/);
+    assert.match(fonte, /export function CampoGtin\b/);
+});
+
+test('CartaoVariante — preço usa precos_efetivos como placeholder; a dica da Precificação só com oferta_id', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(fonte, /precos_efetivos/);
+    assert.match(fonte, /produto\?\.oferta_id/);
+    assert.match(fonte, /em branco = o da Precificação/);
+});
+
+test('CartaoVariante — não existe campo de título por variante (o título é por tipo, Q-UI-10)', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.doesNotMatch(fonte, /data-titulo/);
+    assert.doesNotMatch(fonte, /titulo:/);
+});
+
+test('CardVariacoes — eixos editáveis por m.salvarEixos e fotos do servidor (grupos_imagem)', () => {
+    assert.match(lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`), /m\.salvarEixos/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`), /grupos_imagem/);
 });

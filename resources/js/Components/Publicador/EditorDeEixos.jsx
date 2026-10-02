@@ -30,7 +30,7 @@ function NovoValor({ atributo, onAdicionar, disabled }) {
     if (soLista) {
         return (
             <select value="" disabled={disabled} onChange={(e) => e.target.value && adicionar(atributo.valores.find((x) => String(x.id) === e.target.value)?.name ?? '')}
-                className={cn(CLASSE_INPUT, 'w-56 appearance-auto py-1.5 text-[12.5px] [&>option]:bg-ecf-card')} data-novo-valor={atributo.id}>
+                className={cn(CLASSE_INPUT, 'w-56 appearance-auto py-1.5 text-[13px] [&>option]:bg-ecf-card')} data-novo-valor={atributo.id}>
                 <option value="">+ valor…</option>
                 {atributo.valores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
@@ -40,7 +40,7 @@ function NovoValor({ atributo, onAdicionar, disabled }) {
     return (
         <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); adicionar(texto); }}>
             <input value={texto} onChange={(e) => setTexto(e.target.value)} disabled={disabled} placeholder="+ valor (Enter)"
-                list={daLista ? `valores-${atributo.id}` : undefined} className={cn(CLASSE_INPUT, 'w-48 py-1.5 text-[12.5px]')} data-novo-valor={atributo?.id ?? CUSTOM} />
+                list={daLista ? `valores-${atributo.id}` : undefined} className={cn(CLASSE_INPUT, 'w-48 py-1.5 text-[13px]')} data-novo-valor={atributo?.id ?? CUSTOM} />
             {daLista && <datalist id={`valores-${atributo.id}`}>{atributo.valores.map((x) => <option key={x.id} value={x.name} />)}</datalist>}
         </form>
     );
@@ -77,9 +77,9 @@ export default function EditorDeEixos({ eixos, schema, maxEixos = 3, disabled, o
                 return (
                     <div key={`${e.chave}-${i}`} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-eixo={e.chave}>
                         <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-semibold text-white">
+                            <span className="text-[13px] font-bold text-white">
                                 {e.nome}
-                                {e.defines_picture && <span className="ml-2 rounded-full border border-ecf-yellow/30 bg-ecf-yellow/10 px-2 py-0.5 text-[10.5px] font-semibold text-ecf-yellow">tem foto própria</span>}
+                                {e.defines_picture && <span className="ml-2 rounded-full border border-ecf-yellow/30 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">tem foto própria</span>}
                                 {e.chave === CUSTOM && <span className="ml-2 text-[11px] font-normal text-white/40">(nome próprio)</span>}
                             </span>
                             {! disabled && (
@@ -90,7 +90,7 @@ export default function EditorDeEixos({ eixos, schema, maxEixos = 3, disabled, o
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                             {e.valores.map((v, k) => (
-                                <span key={`${v.id ?? v.nome}-${k}`} className="inline-flex items-center gap-1 rounded-full border border-white/[0.12] bg-white/[0.05] px-2.5 py-1 text-[12.5px] text-white/85" data-valor={v.nome}>
+                                <span key={`${v.id ?? v.nome}-${k}`} className="inline-flex items-center gap-1 rounded-full border border-white/[0.12] bg-white/[0.05] px-2.5 py-1 text-[13px] text-white/85" data-valor={v.nome}>
                                     {v.nome}
                                     {! disabled && (
                                         <button type="button" onClick={() => mudar(lista.map((x, j) => (j === i ? { ...x, valores: x.valores.filter((_, m) => m !== k) } : x)))}
@@ -116,7 +116,7 @@ export default function EditorDeEixos({ eixos, schema, maxEixos = 3, disabled, o
                         <select value="" onChange={(ev) => {
                             const a = schema.atributos[ev.target.value];
                             if (a) mudar([...lista, { chave: a.id, nome: a.nome, defines_picture: !! a.define_foto, valores: [] }]);
-                        }} className={cn(CLASSE_INPUT, 'w-64 appearance-auto py-1.5 text-[12.5px] [&>option]:bg-ecf-card')} data-novo-eixo>
+                        }} className={cn(CLASSE_INPUT, 'w-64 appearance-auto py-1.5 text-[13px] [&>option]:bg-ecf-card')} data-novo-eixo>
                             <option value="">+ variar por… (da categoria)</option>
                             {candidatos.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
                         </select>
@@ -129,13 +129,13 @@ export default function EditorDeEixos({ eixos, schema, maxEixos = 3, disabled, o
                             setNomeProprio('');
                         }}>
                             <input value={nomeProprio} onChange={(ev) => setNomeProprio(ev.target.value)} maxLength={60} placeholder="ou um nome próprio (ex.: Estampa)"
-                                className={cn(CLASSE_INPUT, 'w-56 py-1.5 text-[12.5px]')} data-eixo-proprio />
+                                className={cn(CLASSE_INPUT, 'w-56 py-1.5 text-[13px]')} data-eixo-proprio />
                             <Botao type="submit" disabled={! nomeProprio.trim()}><Plus size={13} /></Botao>
                         </form>
                     )}
                 </div>
             )}
-            {cheio && ! disabled && <p className="text-[11.5px] text-white/40">No máximo {maxEixos} variações por anúncio.</p>}
+            {cheio && ! disabled && <p className="text-[11px] text-white/40">No máximo {maxEixos} variações por anúncio.</p>}
         </div>
     );
 }
