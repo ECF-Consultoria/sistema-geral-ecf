@@ -10,18 +10,24 @@ import { cn } from '@/lib/utils';
 // cursor passa, e a animação do Dock do React Bits (reactbits.dev/components/dock)
 // nos botões — a tecla mais perto do cursor cresce e as vizinhas acompanham.
 //
-// ### Sem a dependência `motion`
-// O Dock original usa `motion` (molas). No portal isso custou ~50 kB gzip no
-// layout de TODA página (learnings `react-bits-no-portal.md` §6) — e o público é
-// lojista, muito no celular. Aqui o mesmo efeito sai de CSS: a medida de cada
-// tecla é calculada pela distância vertical do cursor (a mesma curva do Dock:
-// base → ampliado → base em ±`DISTANCIA`) e escrita direto no estilo, uma vez
-// por quadro; a transição com leve passada do ponto faz o papel da mola.
+// ### Sem a dependência `motion`, mas com mola de verdade
+// O Dock original usa `motion`. No portal isso custou ~50 kB gzip no layout de
+// TODA página (learnings `react-bits-no-portal.md` §6). Aqui a mola é a mesma
+// (massa 0,1, rigidez 150, amortecimento 12 — o padrão do Dock), integrada
+// quadro a quadro num `requestAnimationFrame`, e a tecla cresce por
+// `transform: scale` — que a placa de vídeo anima sem recalcular a página.
+//
+// A primeira versão (02/10, manhã) animava `width/height` com transição CSS e o
+// usuário achou "travada": cada quadro recalculava o layout do menu inteiro e
+// cada movimento do mouse recomeçava a transição. E o "delay" era bug: o
+// movimento do mouse reiniciava o cronômetro de abrir, então o menu só abria
+// quando o mouse PARAVA. Agora abre no primeiro contato.
 //
 // ### Por que o painel SOBREPÕE em vez de empurrar
-// O `<aside>` é só o trilho que reserva 76 px no fluxo; quem abre é um painel
-// `absolute` por cima do conteúdo. Empurrar o layout a cada passada do mouse
-// faria a página inteira pular (mesma decisão da barra interna, 25/08).
+// O `<aside>` reserva 76 px no fluxo; o painel tem sempre 264 px e é RECORTADO
+// (`clip-path`) no trilho quando fechado. Abrir é animar o recorte: nada muda
+// de largura, nada recalcula, a página não pula. O recorte também corta o
+// clique — fechado, só o trilho recebe o mouse.
 //
 // ### Por que o "aberto" sobrevive à navegação
 // O layout do portal não é persistente no Inertia: remonta a cada página.
@@ -36,12 +42,13 @@ export const ICONES = {
     'layers':         Layers,
 };
 
-const BASE = 40;
-const AMPLIADO = 54;
-const DISTANCIA = 130;
-const ESPERA_ABRIR = 120;
-const ESPERA_FECHAR = 220;
+const ESCALA_MAX = 1.3;      // 40 px → 52 px; cada linha tem 52 px, a tecla ampliada não encosta na vizinha
+const DISTANCIA = 120;       // alcance do efeito, em px, acima e abaixo do cursor
+const MOLA = { massa: 0.1, rigidez: 150, amortecimento: 12 };
+const ESPERA_FECHAR = 160;
 const CHAVE = 'portal.menu.aberto';
+const RECORTE_FECHADO = 'inset(0 188px 0 0)';  // 264 − 76
+const RECORTE_ABERTO = 'inset(0 -64px 0 0)';   // deixa a sombra aparecer à direita
 
 const lerAberto = () => {
     try {
@@ -60,26 +67,39 @@ const gravarAberto = (v) => {
 
 const semMovimento = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-/** A curva do Dock: tamanho pela distância do cursor ao centro da tecla. */
-const tamanhoPelaDistancia = (d) => BASE + (AMPLIADO - BASE) * Math.max(0, 1 - Math.abs(d) / DISTANCIA);
+/** A curva do Dock: escala pela distância do cursor ao centro da tecla. */
+const escalaPelaDistancia = (d) => 1 + (ESCALA_MAX - 1) * Math.max(0, 1 - Math.abs(d) / DISTANCIA);
+
+/**
+ * Um passo da mola (Euler semi-implícito em sub-passos de 4 ms: com massa 0,1
+ * e amortecimento 12 a mola é "dura", e passo de 16 ms ficaria instável).
+ */
+function passoDaMola(m, alvo, dt) {
+    const passos = Math.max(1, Math.ceil(dt / 0.004));
+    const h = dt / passos;
+    for (let i = 0; i < passos; i++) {
+        const a = (-MOLA.rigidez * (m.x - alvo) - MOLA.amortecimento * m.v) / MOLA.massa;
+        m.v += a * h;
+        m.x += m.v * h;
+    }
+}
 
 function Tecla({ modulo, aberto }) {
     const Icone = ICONES[modulo.icone] ?? LayoutGrid;
 
     return (
         <Link href={modulo.url} aria-current={modulo.ativo ? 'page' : undefined} aria-label={modulo.rotulo}
-            className={cn('group flex items-center gap-3 rounded-2xl pr-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ecf-yellow/60',
+            className={cn('group flex h-[52px] items-center gap-3 rounded-2xl pr-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ecf-yellow/60',
                 aberto && ! modulo.ativo && 'hover:bg-white/[0.03]')}
             data-modulo={modulo.chave}>
-            {/* A coluna das teclas tem a largura da tecla AMPLIADA: crescer não empurra o rótulo para o lado. */}
             <span className="flex w-[56px] shrink-0 items-center justify-center">
-                <span data-dock-tecla style={{ width: BASE, height: BASE }}
-                    className={cn('relative flex items-center justify-center rounded-xl border transition-[width,height,background-color,border-color] duration-200 ease-[cubic-bezier(.34,1.56,.64,1)] motion-reduce:transition-none',
+                <span data-dock-tecla style={{ willChange: 'transform' }}
+                    className={cn('relative flex h-10 w-10 items-center justify-center rounded-xl border transition-colors',
                         modulo.ativo
                             ? 'border-ecf-yellow/40 bg-ecf-yellow/[0.12] text-ecf-yellow'
                             : 'border-white/[0.08] bg-[#11182b] text-white/60 group-hover:border-white/20 group-hover:text-white')}>
-                    <Icone className="h-[42%] w-[42%] min-h-[16px] min-w-[16px]" />
-                    {/* No trilho fechado o número some com o rótulo: o badge vira ponto na quina da tecla. */}
+                    <Icone size={17} />
+                    {/* No trilho fechado o número some com o rótulo: o badge vai para a quina da tecla. */}
                     {modulo.badge > 0 && ! aberto && (
                         <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-ecf-yellow px-1 text-[10px] font-bold text-black" data-badge-trilho>
                             {modulo.badge}
@@ -104,7 +124,7 @@ function Tecla({ modulo, aberto }) {
 
 function Submodulos({ submodulos }) {
     return (
-        <div className="ml-[37px] mt-1 space-y-0.5 border-l border-white/[0.08] pl-3" data-submodulos>
+        <div className="mb-1 ml-[37px] space-y-0.5 border-l border-white/[0.08] pl-3" data-submodulos>
             {submodulos.map((s, i) => {
                 const numero = <span className={cn('w-3.5 shrink-0 text-[11px] tabular-nums', s.ativo ? 'text-ecf-yellow' : 'text-white/30')}>{i + 1}</span>;
                 const classe = cn('flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] transition-colors',
@@ -133,53 +153,76 @@ function Submodulos({ submodulos }) {
 export default function TrilhoDock({ empresa, modulos, comFaixa = false }) {
     const [aberto, setAberto] = useState(lerAberto);
     const painel = useRef(null);
-    const relogio = useRef(null);
+    const fechar = useRef(null);
+    const cursor = useRef(null);       // Y do cursor sobre o menu; nulo = fora
+    const molas = useRef(new Map());   // tecla → { x: escala, v: velocidade }
     const quadro = useRef(null);
+    const ultimo = useRef(0);
 
     const marcar = (v) => {
         setAberto(v);
         gravarAberto(v);
     };
-    const abrirDepois = () => {
-        clearTimeout(relogio.current);
-        relogio.current = setTimeout(() => marcar(true), ESPERA_ABRIR);
+    const abrir = () => {
+        clearTimeout(fechar.current);
+        if (! aberto) marcar(true);
     };
     const fecharDepois = () => {
-        clearTimeout(relogio.current);
-        relogio.current = setTimeout(() => marcar(false), ESPERA_FECHAR);
+        clearTimeout(fechar.current);
+        fechar.current = setTimeout(() => marcar(false), ESPERA_FECHAR);
     };
 
-    // O efeito Dock: a cada movimento, no máximo uma medida por quadro.
-    const ampliar = (y) => {
-        if (semMovimento()) return;
-        cancelAnimationFrame(quadro.current);
-        quadro.current = requestAnimationFrame(() => {
-            painel.current?.querySelectorAll('[data-dock-tecla]').forEach((el) => {
-                const r = el.getBoundingClientRect();
-                const t = y === null ? BASE : tamanhoPelaDistancia(y - (r.top + r.height / 2));
-                el.style.width = `${t}px`;
-                el.style.height = `${t}px`;
-            });
+    // O efeito Dock: lê a posição das teclas (o `scale` não mexe no layout, então
+    // ler é barato), anda cada mola um passo e escreve só `transform`.
+    const animar = (agora) => {
+        const dt = Math.min(0.05, ultimo.current ? (agora - ultimo.current) / 1000 : 1 / 60);
+        ultimo.current = agora;
+        let emRepouso = cursor.current === null;
+
+        painel.current?.querySelectorAll('[data-dock-tecla]').forEach((el) => {
+            const r = el.getBoundingClientRect();
+            const alvo = cursor.current === null ? 1 : escalaPelaDistancia(cursor.current - (r.top + r.height / 2));
+            const m = molas.current.get(el) ?? { x: 1, v: 0 };
+            passoDaMola(m, alvo, dt);
+            if (Math.abs(m.x - alvo) > 0.001 || Math.abs(m.v) > 0.001) {
+                emRepouso = false;
+            } else {
+                m.x = alvo; // encaixa: sem `scale(1.0001)` sobrando
+                m.v = 0;
+            }
+            molas.current.set(el, m);
+            el.style.transform = m.x === 1 ? '' : `scale(${m.x.toFixed(4)})`;
         });
+
+        if (emRepouso) {
+            quadro.current = null;
+            ultimo.current = 0;
+
+            return;
+        }
+        quadro.current = requestAnimationFrame(animar);
+    };
+    const acordar = () => {
+        if (quadro.current === null && ! semMovimento()) quadro.current = requestAnimationFrame(animar);
     };
 
-    useEffect(() => () => { clearTimeout(relogio.current); cancelAnimationFrame(quadro.current); }, []);
+    useEffect(() => () => { clearTimeout(fechar.current); if (quadro.current) cancelAnimationFrame(quadro.current); }, []);
 
     return (
-        <aside className="relative hidden w-[76px] shrink-0 lg:block" data-trilho-portal data-aberto={aberto ? '1' : '0'}>
+        <aside className="relative hidden w-[76px] shrink-0 border-r border-white/[0.06] bg-[#0b1220] lg:block" data-trilho-portal data-aberto={aberto ? '1' : '0'}>
             <div ref={painel}
-                onPointerEnter={abrirDepois}
-                // Segundo cinto: o cursor parado em cima depois de navegar não dispara "enter" de novo.
-                onPointerMove={(e) => { if (! aberto) abrirDepois(); ampliar(e.clientY); }}
-                onPointerLeave={() => { fecharDepois(); ampliar(null); }}
-                onFocusCapture={() => { clearTimeout(relogio.current); marcar(true); }}
+                onPointerEnter={(e) => { abrir(); cursor.current = e.clientY; acordar(); }}
+                onPointerMove={(e) => { abrir(); cursor.current = e.clientY; acordar(); }}
+                onPointerLeave={() => { fecharDepois(); cursor.current = null; acordar(); }}
+                onFocusCapture={abrir}
                 onBlurCapture={(e) => { if (! painel.current?.contains(e.relatedTarget)) fecharDepois(); }}
-                // A faixa de equipe (44 px, também fixa no topo) fica por cima: o painel começa abaixo dela.
-                className={cn('sticky z-40 flex flex-col overflow-hidden border-r border-white/[0.06] bg-[#0b1220] transition-[width,box-shadow] duration-200 ease-out motion-reduce:transition-none',
+                style={{ clipPath: aberto ? RECORTE_ABERTO : RECORTE_FECHADO }}
+                className={cn('sticky z-40 flex w-[264px] flex-col border-r bg-[#0b1220] transition-[clip-path,box-shadow,border-color] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
+                    // A faixa de equipe (44 px, também fixa no topo) fica por cima: o painel começa abaixo dela.
                     comFaixa ? 'top-[44px] h-[calc(100vh-44px)]' : 'top-0 h-screen',
-                    aberto ? 'w-[264px] shadow-[12px_0_40px_rgba(0,0,0,0.45)]' : 'w-[76px]')}
+                    aberto ? 'border-white/[0.08] shadow-[16px_0_40px_rgba(0,0,0,0.5)]' : 'border-transparent')}
                 data-painel-menu>
-                {/* Topo: as iniciais no trilho; a marca e o "Olá" quando aberto. */}
+                {/* Topo: as iniciais no trilho; o "Olá" quando aberto. */}
                 <div className="flex h-[76px] shrink-0 items-center gap-3 px-[10px]">
                     <span className="flex w-[56px] shrink-0 items-center justify-center">
                         <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.12] bg-[#11182b] text-[13px] font-bold text-ecf-yellow" aria-hidden>
@@ -192,7 +235,7 @@ export default function TrilhoDock({ empresa, modulos, comFaixa = false }) {
                     </div>
                 </div>
 
-                <nav className="flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-[10px] pt-2" aria-label="Módulos do portal">
+                <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-[10px] pt-1" aria-label="Módulos do portal">
                     {modulos.map((modulo) => (
                         <div key={modulo.chave}>
                             <Tecla modulo={modulo} aberto={aberto} />
