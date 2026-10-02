@@ -204,3 +204,33 @@ tests/Unit/GeminiImageProviderTest.php` → `OK (7 tests, 21 assertions)`.
 Nenhuma chave hardcoded: `grep -rn "AIza" app config` → sem resultado.
 
 Nenhum arquivo `.jsx`/`.css` tocado: `git status --porcelain resources/` → 0 linhas.
+
+---
+
+## Fechamento do spike (2026-10-02) — a prova de fidelidade FOI executada
+
+A seção "Prova de fidelidade (manual) — NÃO EXECUTADA" acima vale só para o momento em que este
+SUMMARY foi escrito: não havia `GEMINI_API_KEY`. A chave chegou no mesmo dia, a prova rodou, e o
+registro completo está em `261001-nkx-NOTAS-PUBLICADOR.md` seções 13 a 20. Resumo do que mudou:
+
+**Entregue além do plano** (tudo medido contra a API real, não contra documentação):
+- Correção do parser: a resposta da Gemini NÃO tem a forma que a doc resume — o conteúdo vem em
+  `steps[] → model_output → content[]`. Os `Http::fake()` originais reproduziam a forma errada e por
+  isso os 7 testes passavam sobre código quebrado. 11 testes agora, com a forma medida.
+- Reserva de modelo para TEXTO (`GEMINI_TEXT_MODEL_FALLBACK`), que só a imagem tinha.
+- Mensagens de 429 e 404 reescritas: ambas mentiam no caso que realmente acontece (tier sem o
+  modelo; `image_size` não suportado pelo `lite`).
+- `--imagem` repetível (N ângulos do mesmo produto), `--modelo`, `--tamanho`, `--sem-texto`.
+
+**Veredito do §16 — produto preservado.** 21 imagens geradas (kit de 7 × 3 modelos) a partir de 3
+fotos reais de um gabinete de cozinha de cliente. Geometria, cor e acabamento preservados; texto
+dado no prompt sai exato nos três modelos.
+
+**Decisão do usuário:** `gemini-3.1-flash-image` é o modelo do V0.2 (§20 das notas).
+
+**Duas conclusões minhas que o usuário corrigiu e que ficaram registradas como correção, não
+apagadas:** (1) "o modelo reescreve texto" media a coisa errada — ver §17; (2) o pé central não era
+defeito dos modelos, era do produto, e o erro foi do prompt — ver §18.
+
+**Status:** spike COMPLETO. Nada em produção, nenhuma tabela, job, rota ou JSX criado — como
+planejado. O que fica para o V0.2 está na seção "Onde o spike fica" das notas.
