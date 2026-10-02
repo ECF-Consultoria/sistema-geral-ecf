@@ -180,6 +180,25 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   `conferencia.local`), não recebe foto (a foto fica `pending`; miniatura por
   `mlb.anuncios.publicador.fotos.arquivo`) e nunca faz POST. A leitura de conta
   ao abrir e o "Quanto eu recebo?" continuam: são GET.
+- Produto SEM token ativo é "não liberada" para foto e conferência (WR-B04): a foto
+  fica `pending` e entra no grupo, a conferência é a local (`respostas_ml.motivo =
+  V-ACC-01`; fora da lista, `CONTA-LIB`). O V-ACC-01 (reconectar) só aparece ao
+  publicar. Use `contaOuNula()` em código novo que só LÊ ou decide se escreve;
+  `conta()` (que lança) só onde a escrita é obrigatória.
+- Rascunho tem UMA trava de linha (WR-B02): `RascunhoRepository::travar()` =
+  `lockForUpdate` na linha de `pub_rascunhos`, pega por `iniciar`, pela IA (cada
+  escrita dela, em `IaParaRascunhoService::sobTrava`) e pelo editor (`salvar`,
+  `trocarCategoria`, `salvarEixos`, `salvarVariantes`). Escrita nova no rascunho:
+  travar PRIMEIRO e ler o snapshot DEPOIS, na mesma transação; o que pode ir ao ML
+  (schema) fica fora da trava. A IA grava só as chaves que preenche
+  (`mesclarAtributos`, `gravarTitulos`) — nunca `gravarAtributos`/`gravarAlvos`,
+  que regravam a lista inteira. No SQLite o `FOR UPDATE` não existe: os testes
+  simulam a corrida com um `CategorySchemaRepository` que age no meio do `obter()`
+  e um repositório que age depois do `snapshot()` (`IaParaRascunhoTest`, `wr_b02`).
+- O programa (Polos/Incubadora) compara `projeto`/`fase`/`tipo` sem caixa e sem
+  espaço nas pontas, IGUAL no SQL (`LOWER(TRIM(col))` no `scopePrograma`) e no PHP
+  (`programaPublicador()`) — WR-B05. `projeto` é texto livre; com a comparação
+  `_ci` do MariaDB de um lado e `===` do outro, "Polos" era listada e dava 404.
 - D20: o passo em PRODUÇÃO é do usuário — `php artisan publicador:empresa-teste`
   (simulação) e depois `--confirmar`. Só foi construído e testado.
 
@@ -215,3 +234,6 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   antes de chamar de regressão — e prefira consertar o teste com `Http::fake`.
 - Suíte inteira estoura 512 MB: rode por pasta, redirecione para arquivo e leia o
   arquivo (`| tail` engole o exit code).
+- `file_get_contents(UploadedFile::fake()->image(...)->getPathname())` em uma linha
+  falha ("No such file"): o arquivo temporário some quando o objeto é liberado.
+  Guarde o `UploadedFile` numa variável antes de ler.
