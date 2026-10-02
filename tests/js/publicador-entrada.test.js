@@ -159,12 +159,12 @@ const PAGINA_B = 'resources/js/Pages/Mlb/Publicador/Produtos.jsx';
 
 test('Tela B — navega ao editor por clique e Enter, e monta as abas com a conta do Publicador', () => {
     const fonte = lerSemComentarios(PAGINA_B);
-    assert.match(fonte, /mlb.anuncios.publicador.editor/);
+    assert.match(fonte, /mlb\.anuncios\.publicador\.editor/);
     assert.match(fonte, /tabIndex={0}/);
     assert.match(fonte, /'Enter'/);
     assert.match(fonte, /contaPublicador={/);
-    assert.match(fonte, /empresaId={abas.company_id}/);
-    assert.doesNotMatch(fonte, /mlb.anuncios.wizard/);
+    assert.match(fonte, /empresaId={abas\.company_id}/);
+    assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard/);
 });
 
 test('Tela B — D27: a pílula de origem decide por oferta_id', () => {
