@@ -92,14 +92,20 @@ test('D-22: a nota aparece como "de 86", nunca convertida para 100', () => {
 const fonteAbas = lerSemComentarios('resources/js/Pages/Mlb/ModoAnuncioTabs.jsx');
 
 test('abas: as 4 rotas do módulo estão presentes em ModoAnuncioTabs.jsx', () => {
-    for (const rota of ['mlb.anuncios.meus', 'mlb.anuncios.wizard', 'mlb.anuncios.massa', 'mlb.anuncios.historico']) {
+    for (const rota of ['mlb.anuncios.meus', 'mlb.anuncios.publicador.produtos', 'mlb.anuncios.massa', 'mlb.anuncios.historico']) {
         assert.match(fonteAbas, new RegExp(rota.replace(/\./g, '\\.')), `rota ${rota} sumiu do array MODOS`);
     }
 });
 
-test('abas: mlb.anuncios.meus vem ANTES de mlb.anuncios.wizard — Meus Anúncios é a aba inicial (D-13)', () => {
+test('abas: mlb.anuncios.meus vem ANTES de mlb.anuncios.publicador.produtos — Meus Anúncios é a aba inicial (D-13)', () => {
     const idxMeus = fonteAbas.indexOf('mlb.anuncios.meus');
-    const idxWizard = fonteAbas.indexOf('mlb.anuncios.wizard');
+    const idxWizard = fonteAbas.indexOf('mlb.anuncios.publicador.produtos');
     assert.ok(idxMeus !== -1 && idxWizard !== -1);
     assert.ok(idxMeus < idxWizard, 'Meus Anúncios precisa ser o PRIMEIRO item do array MODOS');
+});
+
+test('abas: ModoAnuncioTabs não aponta mais para mlb.anuncios.wizard (D22) e desabilita sem Company (D23)', () => {
+    assert.doesNotMatch(fonteAbas, /mlb.anuncios.wizard/);
+    assert.match(fonteAbas, /Disponível só para empresas cadastradas no sistema/);
+    assert.match(fonteAbas, /aria-disabled/);
 });

@@ -21,6 +21,8 @@ const ARQUIVOS = [
     DIR + 'SeletorPrograma.jsx',
     DIR + 'IndicadoresDoPrograma.jsx',
     DIR + 'PainelComoFunciona.jsx',
+    DIR + 'SeloStatusProduto.jsx',
+    DIR + 'ModalNovoProduto.jsx',
     'resources/js/Pages/Mlb/AnunciosEmpresas.jsx',
 ];
 
@@ -126,4 +128,28 @@ test('Tela A — sem itens inventados do Stitch e sem linha avermelhada', () => 
     const abertura = fonte.match(/className="h-14[^"]*"/);
     assert.ok(abertura, 'linha h-14 não encontrada');
     assert.doesNotMatch(abertura[0], /bg-red|border-red/);
+});
+
+test('ModoAnuncioTabs — Individual aponta para o Publicador e sem Company desabilita (D14, D22, D23)', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/ModoAnuncioTabs.jsx');
+    assert.match(fonte, /mlb\.anuncios\.publicador\.produtos/);
+    assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard/);
+    assert.match(fonte, /Disponível só para empresas cadastradas no sistema/);
+    assert.match(fonte, /aria-disabled/);
+});
+
+test('ModalNovoProduto — posta na rota do contrato e avisa SKU repetido sem bloquear', () => {
+    const fonte = lerSemComentarios(DIR + 'ModalNovoProduto.jsx');
+    assert.match(fonte, /mlb\.anuncios\.publicador\.produtos\.criar/);
+    assert.match(fonte, /router\.get\(data\.url\)/);
+    assert.match(fonte, /Criar e abrir/);
+    assert.match(fonte, /Nome do produto/);
+    assert.match(fonte, /toLowerCase/);
+});
+
+test('SeloStatusProduto — rótulos das sete situações', () => {
+    const fonte = lerSemComentarios(DIR + 'SeloStatusProduto.jsx');
+    for (const r of ['Sem rascunho', 'Rascunho', 'Faltam', 'Conferido', 'Publicando', 'Publicado', 'Parte publicada', 'Não publicado']) {
+        assert.ok(fonte.includes(r), r);
+    }
 });
