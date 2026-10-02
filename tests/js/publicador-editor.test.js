@@ -172,3 +172,77 @@ test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
     assert.match(f, /sessionStorage\.removeItem/);
     assert.match(f, /aoConcluir\.current\?\.\(/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// Casca do editor (160-13): barra, "Anunciar por IA" e faixa de produtos.
+// ═══════════════════════════════════════════════════════════════════════
+
+const MESA = 'resources/js/Components/Publicador/Mesa';
+const CASCA = [`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/FaixaDeProdutos.jsx`];
+
+for (const caminho of CASCA) {
+    const fonte = lerSemComentarios(caminho);
+
+    test(`${caminho} — tipografia 24/15/13/11px, pesos 400/700, sem sombra nem HTML cru`, () => {
+        assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl)\b/);
+        assert.doesNotMatch(fonte, /text-\[(?!24px\]|15px\]|13px\]|11px\])[0-9.]+px\]/);
+        assert.doesNotMatch(fonte, /font-(medium|semibold|extrabold|light|thin|black)\b/);
+        assert.doesNotMatch(fonte, /\bshadow-(sm|md|lg|xl)\b/);
+        assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+        assert.doesNotMatch(fonte, /portal\.auth/);
+    });
+}
+
+test('BarraDoEditor — 56px sticky, sem pendências, amarelo sólido só no primário e condicionado', () => {
+    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
+    assert.match(f, /sticky top-0/);
+    assert.match(f, /\bh-14\b/);
+    assert.doesNotMatch(f, /pendencias/);
+    assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
+    assert.equal((f.match(/from-\[#FFE600\]/g) ?? []).length, 1);
+    assert.match(f, /primario \? PRIMARIO : SECUNDARIO/);
+    assert.match(f, /primario=\{! primarioNaLateral\}/);
+    assert.match(f, /aria-live="polite"/);
+});
+
+test('BarraDoEditor — D26: conta não liberada vira "Conferir dados" com Lock e aria-describedby da nota', () => {
+    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
+    assert.match(f, /Conferir dados/);
+    assert.match(f, /Conferir no Mercado Livre/);
+    assert.match(f, /aria-describedby=\{pub\.liberada \? undefined : 'nota-conta-travada'\}/);
+    assert.match(f, /A publicação é liberada conta a conta\. Peça ao time de desenvolvimento\./);
+    assert.match(f, /Nesta conta a conferência é só local: a validação no Mercado Livre espera a liberação da conta\./);
+    assert.match(f, /pub\.liberada \? Rocket : Lock/);
+    assert.match(f, /podeConferir/);
+    assert.match(f, /podePublicar/);
+});
+
+test('BarraDoEditor — rótulos do publicar e estado publicado', () => {
+    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
+    for (const t of ['Publicar 1 anúncio', 'Publicar o que faltou', 'Publicando…', 'Publicado no Mercado Livre', 'Voltar aos produtos', 'Salvando…', 'ML conectado']) {
+        assert.ok(f.includes(t), `falta o texto "${t}"`);
+    }
+});
+
+test('BotaoAnunciarPorIa — confirma só com rascunho preenchido, descarrega antes e mostra a etapa', () => {
+    const f = lerSemComentarios(`${MESA}/BotaoAnunciarPorIa.jsx`);
+    assert.match(f, /rascunhoPreenchido\(pub\.m\.estado, pub\.m\.rasc\)/);
+    assert.match(f, /await pub\.descarregar\(\)/);
+    assert.match(f, /ia\.disparar\(substituir\)/);
+    assert.equal((f.match(/Substituir o que já está preenchido/g) ?? []).length, 1);
+    for (const t of ['Manter como está', 'Substituir com a IA', 'IA preparando…', 'Anunciar por IA']) assert.ok(f.includes(t), t);
+    assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
+});
+
+test('FaixaDeProdutos — aria-current, setas, "Ver todos", "+ Produto" e selo compacto', () => {
+    const f = lerSemComentarios(`${MESA}/FaixaDeProdutos.jsx`);
+    assert.match(f, /aria-current=\{ativo \? 'page' : undefined\}/);
+    assert.match(f, /ArrowRight/);
+    assert.match(f, /Ver todos/);
+    assert.match(f, /ModalNovoProduto/);
+    assert.match(f, /SeloStatusProduto status=\{p\.status\} compacto/);
+    assert.match(f, /@radix-ui\/react-popover/);
+    assert.match(f, /w-\[360px\]/);
+    assert.match(f, /mlb\.anuncios\.publicador\.editor/);
+    assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
+});
