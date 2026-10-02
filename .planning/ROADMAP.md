@@ -2750,8 +2750,8 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 160-11-PLAN.md — tela B: produtos da empresa; aba Individual leva ao Publicador; abas sem Company desabilitadas · wave 5
-- [ ] 160-12-PLAN.md — hook do editor (estado, salvamento, fila, derivados testados) e hook da IA · wave 5
+- [x] 160-11-PLAN.md — tela B: produtos da empresa; aba Individual leva ao Publicador; abas sem Company desabilitadas · wave 5
+- [x] 160-12-PLAN.md — hook do editor (estado, salvamento, fila, derivados testados) e hook da IA · wave 5
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
