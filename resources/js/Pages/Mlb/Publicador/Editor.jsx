@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { AlertTriangle, ChevronDown, Info, Loader2, Sparkles, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -61,12 +61,22 @@ function Faixa({ tom = 'azul', icone: Icone, children, acao, onFechar }) {
 }
 
 export default function Editor({ produto, empresa, produtos = [] }) {
-    const pub = usePublicador({ produtoId: produto.id, onPublicou: () => router.reload({ only: ['produtos'] }) });
+    // CR-F02: a IA grava o rascunho no servidor. Enquanto ela trabalha a mesa é só leitura e o
+    // salvamento automático para; quando ela termina (bem ou com erro), o hook relê o servidor
+    // ANTES de liberar a edição. A ref liga o fim da IA ao hook do editor, criado logo abaixo.
+    const depoisDaIa = useRef(() => {});
     const ia = useIaDoPublicador({
         produtoId: produto.id,
         nomeProduto: produto.nome,
-        onConcluiu: () => pub.recarregar(),
+        onConcluiu: () => depoisDaIa.current(),
+        onFalhou: () => depoisDaIa.current(),
     });
+    const pub = usePublicador({
+        produtoId: produto.id,
+        onPublicou: () => router.reload({ only: ['produtos'] }),
+        pausado: ia.estado === 'andamento',
+    });
+    depoisDaIa.current = pub.recarregarDepoisDaIa;
 
     const [abertos, setAbertos] = useState({});
     const [largo, setLargo] = useState(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(FAIXA_LARGA).matches : true));
@@ -129,7 +139,8 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                         <div aria-live="polite" className="space-y-3">
                             {ia.estado === 'andamento' && (
                                 <Faixa icone={Loader2} tom="azul">
-                                    <span className="font-bold">IA preparando…</span> {ia.textoEtapa}
+                                    <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>
+                                    <p className="mt-1">Enquanto ela trabalha, a mesa fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
                                 </Faixa>
                             )}
                             {ia.estado === 'concluido' && ! iaFechada && (

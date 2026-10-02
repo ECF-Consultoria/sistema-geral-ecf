@@ -33,15 +33,19 @@ const guardar = (produtoId, id) => {
 };
 
 /**
- * @param {{ produtoId: number, nomeProduto?: string, onConcluiu?: Function }} opcoes
+ * @param {{ produtoId: number, nomeProduto?: string, onConcluiu?: Function, onFalhou?: Function }} opcoes
+ *   `onFalhou` = a análise terminou com erro no servidor; a IA pode ter gravado parte do
+ *   rascunho antes de cair, então quem chama relê (CR-F02).
  */
-export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcluiu }) {
+export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcluiu, onFalhou }) {
     const [analiseId, setAnaliseId] = useState(null);
     const [resposta, setResposta] = useState(null);
     const [erroDisparo, setErroDisparo] = useState(null);
     const desde = useRef(Date.now());
     const aoConcluir = useRef(onConcluiu);
     aoConcluir.current = onConcluiu;
+    const aoFalhar = useRef(onFalhou);
+    aoFalhar.current = onFalhou;
 
     // Troca de produto na faixa (ou F5): retoma a análise guardada, se houver.
     useEffect(() => {
@@ -72,6 +76,7 @@ export default function useIaDoPublicador({ produtoId, nomeProduto = '', onConcl
                     guardar(produtoId, null);
                     setAnaliseId(null);
                     if (data.status === 'concluido') aoConcluir.current?.(data.publicador ?? null);
+                    else aoFalhar.current?.(data.erro ?? null);
                 }
             } catch (e) {
                 // Uma leitura que falha não para o acompanhamento; 404 = análise que não existe mais.

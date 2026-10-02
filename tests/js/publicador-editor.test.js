@@ -8,6 +8,7 @@ import {
 } from '../../resources/js/Components/Publicador/derivados.js';
 
 const HOOK = 'resources/js/Components/Publicador/usePublicador.js';
+const PAGINA_EDITOR = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
 
 /** Corpo de `const nome = …` até a próxima declaração no mesmo nível (4 espaços) do hook. */
 const corpo = (fonte, nome) => {
@@ -228,6 +229,71 @@ test('CR-F01 usePublicador: toda ação de estrutura descarrega antes, na fila, 
     assert.doesNotMatch(f, /rascRef\.current = rasc;/);
 });
 
+// ─── CR-F02: o salvamento automático não apaga o que a IA gravou ───
+
+test('CR-F02 salvamento manda só o campo editado: características e títulos da IA não voltam ao servidor', () => {
+    const base = rascDe();
+    // A pessoa só mexeu na garantia; atributos, títulos e descrição ficam fora do PUT.
+    assert.deepEqual(envioDoRascunho(rascDe({ garantia: { tipo: 'vendedor', tempo: 3, unidade: 'meses' } }), base), {
+        garantia: { tipo: 'vendedor', tempo: 3, unidade: 'meses' },
+    });
+});
+
+test('CR-F02 releitura depois da IA: o que ela gravou entra; o pendente da pessoa fica, campo a campo', () => {
+    const base = { rasc: rascDe(), vars: varsDe() };
+    // Antes da IA a pessoa editou BRAND, e esse salvamento falhou.
+    const local = { rasc: rascDe({ atributos: { BRAND: { value_name: 'Minha marca' }, MODEL: { value_name: 'X1' } } }), vars: varsDe() };
+    const servidor = {
+        rasc: rascDe({
+            atributos: { BRAND: { value_name: 'Acme' }, MODEL: { value_name: 'X1' }, COLOR: { value_name: 'Preto' }, MATERIAL: { value_name: 'Aço' } },
+            alvos: [{ listing_type_id: 'gold_special', titulo: 'Título da IA', ativo: true }, { listing_type_id: 'gold_pro', titulo: 'Título da IA', ativo: true }],
+            descricao: 'Descrição da IA',
+        }),
+        vars: varsDe(),
+    };
+    const r = mesclarComPendentes({ servidor, local, base });
+    assert.equal(r.rasc.atributos.BRAND.value_name, 'Minha marca');
+    assert.equal(r.rasc.atributos.COLOR.value_name, 'Preto');
+    assert.equal(r.rasc.atributos.MATERIAL.value_name, 'Aço');
+    assert.equal(r.rasc.alvos[0].titulo, 'Título da IA');
+    assert.equal(r.rasc.descricao, 'Descrição da IA');
+    // O que sai depois é o mapa mesclado (com o da IA), não a cópia de antes da IA.
+    assert.deepEqual(Object.keys(envioDoRascunho(r.rasc, servidor.rasc)), ['atributos']);
+    assert.equal(envioDoRascunho(r.rasc, servidor.rasc).atributos.COLOR.value_name, 'Preto');
+});
+
+test('CR-F02 Editor: mesa só leitura enquanto a IA trabalha e releitura no fim (concluída ou com erro)', () => {
+    const f = lerSemComentarios(PAGINA_EDITOR);
+    assert.match(f, /pausado: ia\.estado === 'andamento'/);
+    assert.match(f, /onConcluiu: \(\) => depoisDaIa\.current\(\)/);
+    assert.match(f, /onFalhou: \(\) => depoisDaIa\.current\(\)/);
+    assert.match(f, /depoisDaIa\.current = pub\.recarregarDepoisDaIa/);
+    assert.match(f, /a mesa fica só para leitura/);
+    assert.doesNotMatch(f, /onConcluiu: \(\) => pub\.recarregar\(\)/);
+    const ia = lerSemComentarios('resources/js/Components/Publicador/useIaDoPublicador.js');
+    assert.match(ia, /else aoFalhar\.current\?\.\(/);
+});
+
+test('CR-F02 usePublicador: pausa, só o editado no PUT e releitura depois do descarregar, sem PUT correndo com o GET', () => {
+    const f = lerSemComentarios(HOOK);
+    assert.match(corpo(f, 'disabled'), /\|\| pausado \|\| relendo/);
+    for (const nome of ['salvarRascAgora', 'salvarVarsAgora']) {
+        const c = corpo(f, nome);
+        assert.ok(c.indexOf('if (pausadoRef.current) return false;') > 0 && c.indexOf('if (pausadoRef.current) return false;') < c.indexOf('axios.put('), `${nome}: pausa antes do PUT`);
+    }
+    assert.match(corpo(f, 'salvarRascAgora'), /axios\.put\(rota\('salvar', produtoId\), envio\)/);
+    assert.match(corpo(f, 'salvarVarsAgora'), /\{ variantes: envio \}/);
+    const reler = corpo(f, 'reler');
+    assert.ok(reler.indexOf('await salvarTudoAgora()') < reler.indexOf("axios.get(rota('abrir'"), 'descarrega antes do GET');
+    assert.match(reler, /aplicarServidor\(data, \{ mesclar: true \}\)/);
+    assert.match(corpo(f, 'recarregar'), /await enfileirar\(\(\) => reler\(\{ descarregarAntes: true \}\)\)/);
+    assert.match(corpo(f, 'recarregarDepoisDaIa'), /enfileirar\(\(\) => reler\(\{ descarregarAntes: false \}\)\)/);
+    assert.doesNotMatch(f, /setRecarga/);
+    // A saída do produto não manda mais o documento inteiro.
+    assert.doesNotMatch(f, /axios\.put\(rota\('salvar', produtoId\), rascRef\.current\)/);
+    assert.doesNotMatch(f, /variantes: varsRef\.current/);
+});
+
 // ─── Gates de fonte do hook ───
 
 test('usePublicador: rotas internas, esperas e limites do piloto', () => {
@@ -415,7 +481,7 @@ test('LateralResumo — pares do resumo, apoio por estado (D26) e andamento por 
 
 test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo, duas colunas só em 1360px', () => {
     const f = lerSemComentarios(PAGINA);
-    assert.match(f, /usePublicador\(\{ produtoId: produto\.id/);
+    assert.match(f, /usePublicador\(\{\s*produtoId: produto\.id/);
     assert.match(f, /useIaDoPublicador\(/);
     assert.equal((f.match(/m=\{pub\.m\}/g) ?? []).length, 7);
     for (const c of ['CardProduto', 'CardFichaTecnica', 'CardVariacoes', 'CardFotos', 'CardTiposEPrecos', 'CardLogistica', 'CardDescricao']) {

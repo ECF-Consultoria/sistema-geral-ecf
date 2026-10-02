@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema } from './apoio.js';
 import {
@@ -19,6 +19,9 @@ import {
 // - Ações de estrutura (categoria, variações, fotos) descarregam antes e, na
 //   volta, trocam o estado inteiro MENOS o que foi digitado durante a ação
 //   (`mesclarComPendentes`), que segue por salvar.
+// - O salvamento automático manda só os campos editados. Enquanto a IA grava o
+//   rascunho no servidor (`pausado`), a mesa é só leitura e nada é salvo; ao fim
+//   da IA o hook relê o servidor ANTES de liberar a edição (CR-F02).
 // - Conferir e publicar vão para a fila do servidor: o hook acompanha até terminar.
 // A casca (160-13) só compõe; o contrato `m` abaixo é o que os cards da mesa leem.
 
@@ -42,9 +45,11 @@ const variantesDoEstado = (e) => Object.fromEntries((e.variantes ?? []).map((v) 
 }]));
 
 /**
- * @param {{ produtoId: number, onPublicou?: Function }} opcoes
+ * @param {{ produtoId: number, onPublicou?: Function, pausado?: boolean }} opcoes
+ *   `pausado` = a IA está gravando este rascunho no servidor: mesa só leitura e nenhum
+ *   salvamento sai até `recarregarDepoisDaIa` reler o que ela gravou (CR-F02).
  */
-export default function usePublicador({ produtoId, onPublicou }) {
+export default function usePublicador({ produtoId, onPublicou, pausado = false }) {
     const [estado, setEstado] = useState(null);
     const [rasc, setRasc] = useState(null);
     const [vars, setVars] = useState({});
@@ -59,7 +64,9 @@ export default function usePublicador({ produtoId, onPublicou }) {
     const [ciente, setCiente] = useState(false);
     const [simulacao, setSimulacao] = useState(null);
     const [simulando, setSimulando] = useState(false);
-    const [recarga, setRecarga] = useState(0);
+    const [relendo, setRelendo] = useState(false);
+    const pausadoRef = useRef(pausado);
+    pausadoRef.current = pausado;
     // As cópias locais vivem também em refs, atualizadas JUNTO com o estado (nunca no render):
     // quem salva ou mescla lê sempre a última versão, mesmo antes de o React renderizar.
     const rascRef = useRef(null);
@@ -128,24 +135,31 @@ export default function usePublicador({ produtoId, onPublicou }) {
 
     // Salvamentos que rodam DENTRO da fila. Nunca chamam `enfileirar` (a fila esperaria por si mesma).
     // Devolvem true quando o servidor ficou com tudo o que havia para salvar.
+    // CR-F02: vai SÓ o que foi editado (o servidor não mexe no que não veio) — nunca o documento
+    // inteiro, que apagaria o que a IA ou outra aba gravou nos outros campos. E, com a IA gravando
+    // no servidor (`pausado`), nada sai daqui: o pendente espera a releitura do fim da IA.
     const salvarRascAgora = async () => {
         clearTimeout(relogio.current.rasc);
-        if (! pendencias().rasc) return true;
-        const enviado = rascRef.current;
-        const r = await chamar(() => axios.put(rota('salvar', produtoId), enviado));
+        const envio = envioDoRascunho(rascRef.current, baseRef.current.rasc);
+        if (envio === null) return true;
+        if (pausadoRef.current) return false;
+        const r = await chamar(() => axios.put(rota('salvar', produtoId), envio));
         if (! r) return false;
-        baseRef.current = { ...baseRef.current, rasc: enviado };
+        baseRef.current = { ...baseRef.current, rasc: { ...baseRef.current.rasc, ...envio } };
         setSalvoEm(new Date());
 
         return true;
     };
     const salvarVarsAgora = async () => {
         clearTimeout(relogio.current.vars);
-        if (! pendencias().vars) return true;
-        const enviado = varsRef.current;
-        const r = await chamar(() => axios.put(rota('variantes', produtoId), { variantes: enviado }));
+        const envio = envioDasVariantes(varsRef.current, baseRef.current.vars);
+        if (envio === null) return true;
+        if (pausadoRef.current) return false;
+        const r = await chamar(() => axios.put(rota('variantes', produtoId), { variantes: envio }));
         if (! r) return false;
-        baseRef.current = { ...baseRef.current, vars: enviado };
+        const vars = { ...baseRef.current.vars };
+        for (const [chave, campos] of Object.entries(envio)) vars[chave] = { ...vars[chave], ...campos };
+        baseRef.current = { ...baseRef.current, vars };
         setSalvoEm(new Date());
 
         return true;
@@ -186,25 +200,44 @@ export default function usePublicador({ produtoId, onPublicou }) {
         setErroCarga(null);
         setAguardando(null);
         setSimulacao(null);
-        axios.get(rota('abrir', produtoId))
-            .then(({ data }) => {
+        enfileirar(async () => {
+            try {
+                const { data } = await axios.get(rota('abrir', produtoId));
                 if (! vivo) return;
                 aplicarServidor(data);
                 if (data.publicacao?.status === 'RUNNING') setAguardando({ tipo: 'publicacao', desde: Date.now() });
-            })
-            .catch((e) => vivo && setErroCarga(mensagemDe(e)))
-            .finally(() => vivo && setCarregando(false));
+            } catch (e) {
+                if (vivo) setErroCarga(mensagemDe(e));
+            } finally {
+                if (vivo) setCarregando(false);
+            }
+        });
 
         return () => {
             vivo = false;
             clearTimeout(relogio.current.rasc);
             clearTimeout(relogio.current.vars);
-            // Descarrega o que ficou por salvar no produto que está saindo (o id é o desta volta).
-            const p = pendencias();
-            if (p.rasc && rascRef.current) axios.put(rota('salvar', produtoId), rascRef.current).catch(() => {});
-            if (p.vars) axios.put(rota('variantes', produtoId), { variantes: varsRef.current }).catch(() => {});
+            // Descarrega, na fila, o que ficou por salvar no produto que está saindo (o id é o desta
+            // volta): só os campos pendentes, e sem mexer na tela (ela já é de outro produto).
+            const envioRasc = envioDoRascunho(rascRef.current, baseRef.current.rasc);
+            const envioVars = envioDasVariantes(varsRef.current, baseRef.current.vars);
+            if (envioRasc || envioVars) {
+                enfileirar(async () => {
+                    if (envioRasc) await axios.put(rota('salvar', produtoId), envioRasc).catch(() => {});
+                    if (envioVars) await axios.put(rota('variantes', produtoId), { variantes: envioVars }).catch(() => {});
+                });
+            }
         };
-    }, [produtoId, recarga]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── IA gravando no servidor (CR-F02) ──
+    // Saindo da pausa sem releitura (análise sumiu, prazo estourado): o pendente volta a ser salvo.
+    useEffect(() => {
+        if (pausado) return;
+        const p = pendencias();
+        if (p.rasc) agendar('rasc');
+        if (p.vars) agendar('vars');
+    }, [pausado]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Andamento da fila (conferência e publicação) ──
     useEffect(() => {
@@ -313,13 +346,57 @@ export default function usePublicador({ produtoId, onPublicou }) {
             setSimulando(false);
         }
     };
-    const recarregar = useCallback(() => setRecarga((n) => n + 1), []);
+    /**
+     * Relê o rascunho DENTRO da fila — nenhum PUT corre junto com este GET (CR-F02) — e
+     * aplica mesclando: o que ainda estiver por salvar fica na tela. `descarregarAntes` =
+     * salva o pendente antes de ler. Devolve se a leitura deu certo.
+     */
+    const reler = async ({ descarregarAntes }) => {
+        if (descarregarAntes) await salvarTudoAgora();
+        setCarregando(true);
+        setErroCarga(null);
+        try {
+            const { data } = await axios.get(rota('abrir', produtoId));
+            aplicarServidor(data, { mesclar: true });
+            setSimulacao(null);
+            setAguardando(data.publicacao?.status === 'RUNNING' ? { tipo: 'publicacao', desde: Date.now() } : null);
+
+            return true;
+        } catch (e) {
+            setErroCarga(mensagemDe(e));
+
+            return false;
+        } finally {
+            setCarregando(false);
+        }
+    };
+
+    /** Relê o servidor (reenviar descrição, "Tentar de novo"): salva o pendente, ESPERA, e só então lê. */
+    const recarregar = async () => {
+        setRelendo(true);
+        await enfileirar(() => reler({ descarregarAntes: true }));
+        setRelendo(false);
+    };
+
+    /**
+     * Fim da IA (concluída ou com erro — ela pode ter gravado parte). A mesa só é liberada
+     * depois de reler o que ela gravou. Sem descarregar antes: o pendente (salvamento que
+     * falhou) iria inteiro por cima do que a IA gravou; lido primeiro, ele é mesclado campo
+     * a campo e só então salvo.
+     */
+    const recarregarDepoisDaIa = async () => {
+        setRelendo(true);
+        const leu = await enfileirar(() => reler({ descarregarAntes: false }));
+        if (leu) setRelendo(false);
+        else setErro('Não foi possível ler o que a IA preencheu. Recarregue a página antes de continuar editando.');
+    };
 
     // ── Derivados ──
     const schema = estado?.schema ?? null;
     const publicando = estado?.publicacao?.status === 'RUNNING';
     const publicado = estado?.rascunho?.status === 'PUBLISHED';
-    const disabled = publicando || publicado || !! aguardando;
+    // CR-F02: com a IA gravando (`pausado`) ou relendo o servidor, a mesa é só leitura.
+    const disabled = publicando || publicado || !! aguardando || pausado || relendo;
     const variantes = estado ? mesclarVariantes(estado.variantes, vars) : [];
     const alvos = estado && rasc ? mesclarAlvos(estado.alvos, rasc.alvos) : [];
     const conf = estado?.conferencia ?? null;
@@ -392,7 +469,9 @@ export default function usePublicador({ produtoId, onPublicou }) {
         resumo: estado && rasc ? resumoDoLancamento(estado, rasc, variantes, alvos) : null,
         publicacao: estado?.publicacao ?? null,
         liberada,
+        relendo,
         recarregar,
+        recarregarDepoisDaIa,
         descarregar,
     };
 }
