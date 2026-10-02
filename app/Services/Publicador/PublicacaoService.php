@@ -3,7 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
-use App\Models\Company;
+use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
 use App\Models\PortalUsuario;
 use App\Models\PubPublicacao;
@@ -66,7 +66,7 @@ class PublicacaoService
     public function iniciar(PubRascunho $r, AtorDoPortal $ator, bool $cienteDosAvisos = false): PubPublicacao
     {
         $piloto = (array) config('publicador.empresas_piloto', []);
-        if ($piloto !== [] && ! in_array((int) $r->oferta->company_id, $piloto, true)) {
+        if ($piloto !== [] && ! in_array((int) $r->oferta?->company_id, $piloto, true)) {
             throw new RegraViolada('PILOTO', 'O Publicador novo ainda está em teste e não publica para esta empresa.');
         }
 
@@ -194,7 +194,7 @@ class PublicacaoService
         $p = PubPublicacao::findOrFail($item->publicacao_id);
         $r = PubRascunho::findOrFail($p->rascunho_id);
         if ($item->status === PubPublicacaoItem::CREATED && $item->ml_item_id && $r->descricao) {
-            $this->descricao($item, $r->oferta->company, $this->textoDaDescricao($r));
+            $this->descricao($item, $r->conta(), $this->textoDaDescricao($r));
         }
 
         return $item->fresh();
@@ -204,7 +204,7 @@ class PublicacaoService
 
     private function prepararItens(PubPublicacao $p, PubRascunho $r): void
     {
-        $empresa = $r->oferta->company;
+        $empresa = $r->conta();
         $conta = $this->contas->contexto($empresa);
         if ($conta->modelo !== $p->modelo_publicacao) {
             $this->encerrar($p, $r, 'A conta do Mercado Livre mudou de modelo de publicação. Revise o anúncio e confira de novo.');
@@ -310,7 +310,7 @@ class PublicacaoService
 
     private function processar(PubPublicacaoItem $item, PubRascunho $r, array $conta): void
     {
-        $empresa = $r->oferta->company;
+        $empresa = $r->conta();
 
         // SENT achado aqui = o Job anterior morreu entre gravar SENT e saber a resposta.
         if (in_array($item->status, [PubPublicacaoItem::SENT, PubPublicacaoItem::UNKNOWN], true)) {
@@ -336,7 +336,7 @@ class PublicacaoService
         }
     }
 
-    private function enviar(PubPublicacaoItem $item, Company $empresa): void
+    private function enviar(PubPublicacaoItem $item, ContaMercadoLivre $empresa): void
     {
         // ANTES do POST (D9): se o processo morrer daqui em diante, o item vai para a reconciliação.
         $item->update(['status' => PubPublicacaoItem::SENT, 'enviado_em' => now(), 'tentativas' => $item->tentativas + 1]);
@@ -392,7 +392,7 @@ class PublicacaoService
      *
      * @return bool decidiu (false = ainda é cedo; tentar na próxima fatia)
      */
-    private function reconciliar(PubPublicacaoItem $item, Company $empresa, string $sellerId): bool
+    private function reconciliar(PubPublicacaoItem $item, ContaMercadoLivre $empresa, string $sellerId): bool
     {
         $sku = collect((array) ($item->payload['attributes'] ?? []))->firstWhere('id', 'SELLER_SKU')['value_name'] ?? null;
         $enviado = $item->enviado_em ?? now();
@@ -452,7 +452,7 @@ class PublicacaoService
 
     private function depoisDeCriar(PubPublicacaoItem $item, PubRascunho $r): void
     {
-        $empresa = $r->oferta->company;
+        $empresa = $r->conta();
         if ($r->descricao && $item->descricao_status !== 'OK') {
             $this->descricao($item, $empresa, $this->textoDaDescricao($r));
         }
@@ -469,7 +469,7 @@ class PublicacaoService
         }
     }
 
-    private function descricao(PubPublicacaoItem $item, Company $empresa, ?string $texto): void
+    private function descricao(PubPublicacaoItem $item, ContaMercadoLivre $empresa, ?string $texto): void
     {
         if ($texto === null) {
             return;

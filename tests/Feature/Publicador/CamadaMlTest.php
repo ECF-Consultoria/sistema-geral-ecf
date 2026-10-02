@@ -4,6 +4,7 @@ namespace Tests\Feature\Publicador;
 
 use App\Models\Company;
 use App\Models\MlCategoriaSchema;
+use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -117,6 +118,54 @@ class CamadaMlTest extends TestCase
             $this->assertStringContainsString('reconectada', $e->getMessage());
         }
         $this->assertSame('revoked', $token->fresh()->status);
+    }
+
+    private function tokenDaMlbEmpresa(MlbEmpresa $e, string $access): MlToken
+    {
+        return MlToken::create([
+            'company_id' => null, 'mlb_empresa_id' => $e->id, 'ml_user_id' => '2000000001',
+            'access_token' => $access, 'refresh_token' => 'refresh-'.$access, 'token_type' => 'bearer',
+            'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now(),
+        ]);
+    }
+
+    private function bearerDe(string $sufixo): array
+    {
+        return Http::recorded(fn (Request $r) => str_contains($r->url(), $sufixo))
+            ->map(fn ($par) => $par[0]->header('Authorization')[0] ?? '')->values()->all();
+    }
+
+    public function test_mlb_empresa_sem_company_usa_o_token_da_propria_ancora(): void
+    {
+        $e = MlbEmpresa::create(['nome' => 'Loja Incubadora', 'projeto' => 'Incubadora'])->fresh();
+        $this->tokenDaMlbEmpresa($e, 'token-da-mlb-empresa');
+        Http::fake(['*/users/me' => Http::response(self::fixture('conta/usuario'))]);
+
+        $r = $this->cliente()->daConta($e, 'GET', '/users/me');
+
+        $this->assertTrue($r->ok());
+        $this->assertSame(['Bearer token-da-mlb-empresa'], $this->bearerDe('/users/me'));
+    }
+
+    /**
+     * Mutação: se o motor escolher a conta pelo id cru (ou pela âncora errada),
+     * o header Authorization troca de token e este teste quebra.
+     */
+    public function test_company_e_mlb_empresa_de_mesmo_id_nao_se_misturam(): void
+    {
+        $e = MlbEmpresa::create(['nome' => 'Loja Incubadora', 'projeto' => 'Incubadora'])->fresh();
+        // O setUp já criou a Company #1 e esta é a MlbEmpresa #1: mesmo número, âncoras diferentes.
+        $company = $this->empresa;
+        $this->assertSame($company->id, $e->id);
+        $this->tokenDaMlbEmpresa($e, 'token-da-mlb-empresa');
+        MlToken::create(['company_id' => $company->id, 'ml_user_id' => '1555596317', 'access_token' => 'token-da-company', 'refresh_token' => 'r-c',
+            'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
+        Http::fake(['*/users/me' => Http::response(self::fixture('conta/usuario'))]);
+
+        $this->cliente()->daConta($company, 'GET', '/users/me');
+        $this->cliente()->daConta($e, 'GET', '/users/me');
+
+        $this->assertSame(['Bearer token-da-company', 'Bearer token-da-mlb-empresa'], $this->bearerDe('/users/me'));
     }
 
     public function test_sem_conta_conectada(): void

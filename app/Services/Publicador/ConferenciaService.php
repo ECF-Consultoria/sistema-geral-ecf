@@ -68,8 +68,8 @@ class ConferenciaService
 
         try {
             // 1. Conta e modelo.
-            $empresa = $r->oferta->company;
-            $conta = $this->contas->contexto($empresa);
+            $ancora = $r->conta();
+            $conta = $this->contas->contexto($ancora);
             $brutas['conta'] = $conta->paraSnapshot();
             if ($r->modelo_publicacao !== null && $r->modelo_publicacao !== $conta->modelo) {
                 return $this->gravar($r, $revisao, self::BLOQUEADO, [Problema::bloqueio('V-ACC-02',
@@ -105,7 +105,7 @@ class ConferenciaService
             $problemas = $prep['l2']->problemas;
 
             // 6. Tipos de anúncio disponíveis.
-            $tipos = $this->cliente->daConta($empresa, 'GET', "/users/{$conta->sellerId}/available_listing_types", ['category_id' => $r->categoria_id]);
+            $tipos = $this->cliente->daConta($ancora, 'GET', "/users/{$conta->sellerId}/available_listing_types", ['category_id' => $r->categoria_id]);
             $brutas['tipos'] = ['status' => $tipos->status, 'corpo' => $tipos->corpo];
             $problemas = [...$problemas, ...self::tiposIndisponiveis($tipos, $prep['snapshot'])];
             if ((new ResultadoValidacao($problemas))->temBloqueio()) {
@@ -119,7 +119,7 @@ class ConferenciaService
             $doMl = [];
             $dicionario = (array) config('publicador_erros', []);
             foreach ($prep['plano']->itens as $item) {
-                $resp = $this->cliente->daConta($empresa, 'POST', '/items/validate', corpo: $item->payload);
+                $resp = $this->cliente->daConta($ancora, 'POST', '/items/validate', corpo: $item->payload);
                 $brutas['itens'][] = ['indice' => $item->indice, 'listing_type' => $item->listingTypeId, 'variante' => $item->varianteChave,
                     'payload' => $item->payload, 'status' => $resp->status, 'corpo' => $resp->corpo];
 
@@ -245,7 +245,7 @@ class ConferenciaService
             return ['ids' => null, 'bruta' => null];
         }
 
-        $resp = $this->cliente->daConta($r->oferta->company, 'POST', "/categories/{$r->categoria_id}/attributes/conditional", corpo: $primeiro->payload);
+        $resp = $this->cliente->daConta($r->conta(), 'POST', "/categories/{$r->categoria_id}/attributes/conditional", corpo: $primeiro->payload);
         $bruta = ['status' => $resp->status, 'corpo' => $resp->corpo];
         if (! $resp->ok() || ! is_array($resp->corpo)) {
             // Sem resposta, vale o que se sabia: o validate ainda confere tudo.
@@ -319,7 +319,7 @@ class ConferenciaService
 
         $problemas = [];
         foreach ($skus as $sku => $variantes) {
-            $resp = $this->cliente->daConta($r->oferta->company, 'GET', "/users/{$sellerId}/items/search", ['seller_sku' => $sku, 'status' => 'active']);
+            $resp = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/items/search", ['seller_sku' => $sku, 'status' => 'active']);
             $brutas['skus'][$sku] = ['status' => $resp->status, 'corpo' => $resp->corpo];
             if (! $resp->ok() || ! is_array($resp->corpo)) {
                 continue;

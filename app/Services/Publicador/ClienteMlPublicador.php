@@ -2,7 +2,7 @@
 
 namespace App\Services\Publicador;
 
-use App\Models\Company;
+use App\Contracts\ContaMercadoLivre;
 use App\Models\MlToken;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -42,10 +42,10 @@ class ClienteMlPublicador
         $this->dormir = $dormir ?? fn (int $segundos) => sleep($segundos);
     }
 
-    /** Chamada com o token da EMPRESA. */
-    public function daConta(Company $empresa, string $metodo, string $caminho, array $query = [], ?array $corpo = null, bool $repetir = true): RespostaMl
+    /** Chamada com o token da CONTA (Company ou MlbEmpresa). */
+    public function daConta(ContaMercadoLivre $conta, string $metodo, string $caminho, array $query = [], ?array $corpo = null, bool $repetir = true): RespostaMl
     {
-        return $this->executar($empresa, $metodo, $caminho, $repetir,
+        return $this->executar($conta, $metodo, $caminho, $repetir,
             fn (string $token) => $this->enviar($token, $metodo, $caminho, $query, $corpo));
     }
 
@@ -54,9 +54,9 @@ class ClienteMlPublicador
      * limite por minuto do ML aparece como 429 ou 400 `bad_request` (`06` §7):
      * o 429 é repetido aqui; o resto volta para quem chamou.
      */
-    public function enviarFoto(Company $empresa, string $conteudo, string $nome): RespostaMl
+    public function enviarFoto(ContaMercadoLivre $conta, string $conteudo, string $nome): RespostaMl
     {
-        return $this->executar($empresa, 'POST', '/pictures/items/upload', true, function (string $token) use ($conteudo, $nome) {
+        return $this->executar($conta, 'POST', '/pictures/items/upload', true, function (string $token) use ($conteudo, $nome) {
             try {
                 $resp = Http::withToken($token)->acceptJson()->timeout((int) config('publicador.timeout_segundos', 30))
                     ->attach('file', $conteudo, $nome)->post(self::API.'/pictures/items/upload');
@@ -69,9 +69,9 @@ class ClienteMlPublicador
     }
 
     /** O laço comum: token válido, UMA renovação em 401, novas tentativas por classe, registro sem token. */
-    private function executar(Company $empresa, string $metodo, string $caminho, bool $repetir, \Closure $envio): RespostaMl
+    private function executar(ContaMercadoLivre $conta, string $metodo, string $caminho, bool $repetir, \Closure $envio): RespostaMl
     {
-        $token = $this->tokenValido($empresa);
+        $token = $this->tokenValido($conta);
         $renovou = false;
 
         for ($tentativa = 1; ; $tentativa++) {
@@ -108,10 +108,10 @@ class ClienteMlPublicador
         return $resposta;
     }
 
-    /** O token da empresa, renovado com folga (`09` §6). Sem token ativo: a conta precisa ser reconectada. */
-    private function tokenValido(Company $empresa): MlToken
+    /** O token da conta, renovado com folga (`09` §6). Sem token ativo: a conta precisa ser reconectada. */
+    private function tokenValido(ContaMercadoLivre $conta): MlToken
     {
-        $token = $this->ml->ensureValidToken($empresa);
+        $token = $this->ml->ensureValidToken($conta);
         if (! $token) {
             throw self::desconectada();
         }

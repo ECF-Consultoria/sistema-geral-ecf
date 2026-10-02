@@ -260,7 +260,7 @@ class EditorRascunhoService
 
             $frete = null;
             if (isset($conta['sellerId']) && $pacote !== null) {
-                $f = $this->cliente->daConta($r->oferta->company, 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
+                $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
                     'item_price' => $preco, 'listing_type_id' => $alvo->listingTypeId, 'mode' => 'me2', 'condition' => $s->condicao === 'used' ? 'used' : 'new',
                     'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
                 ]);
@@ -490,7 +490,7 @@ class EditorRascunhoService
             return;
         }
         try {
-            $conta = $this->contas->contexto($r->oferta->company);
+            $conta = $this->contas->contexto($r->conta());
             $r->update([
                 'step_state' => [...(array) $r->step_state, 'conta' => $conta->paraSnapshot()],
                 'modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo,

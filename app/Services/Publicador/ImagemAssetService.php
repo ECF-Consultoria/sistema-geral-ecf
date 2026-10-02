@@ -67,7 +67,7 @@ class ImagemAssetService
         }
 
         $conteudo ??= Storage::disk(self::DISCO)->get($imagem->caminho);
-        $resposta = $this->cliente->enviarFoto($imagem->rascunho->oferta->company, $conteudo, basename($imagem->caminho));
+        $resposta = $this->cliente->enviarFoto($imagem->rascunho->conta(), $conteudo, basename($imagem->caminho));
 
         if ($resposta->ok() && is_array($resposta->corpo) && isset($resposta->corpo['id'])) {
             $variacoes = (array) ($resposta->corpo['variations'] ?? []);
