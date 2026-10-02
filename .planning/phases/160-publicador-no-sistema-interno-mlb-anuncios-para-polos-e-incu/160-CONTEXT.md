@@ -68,6 +68,12 @@ As contas da consultoria (`Company` com token, fora de Polos/Incubadora) são o 
 ### D24 — Layout NOVO, do zero, para o sistema interno
 O "Anunciar (Redesign Focado)" (seções 01–08 + trilho à direita) foi feito para o **Portal**. Em `/mlb/anuncios` o layout é outro, desenhado do zero para ferramenta interna (usuário, 02/10: "para o /mlb/anuncios tem que ser outro. gerar novo layout do zero"). Reaproveita-se a LÓGICA (estado do servidor, `CampoAtributo`, `EditorDeEixos`, `GradeVariantes`, `FotosPorGrupo`, `Problemas`, `apoio.js`), não a composição da tela. Valem as lições do piloto: nada de rodapé fixo alto com lista de pendências, nada de abas com contadores de aviso como estrutura principal, respiro, obrigatório à vista e opcional recolhido, estados calmos (sem vermelho enquanto se preenche). Identidade: ECF Admin Dark.
 
+### D25 — Layout aprovado: as duas telas do Stitch (02/10)
+Projeto "ECF Admin — Identidade" (`15646202289570387715`), design system ECF Admin Dark. Usuário: "por enquanto serve, principalmente o editor".
+- **Editor** (tela `3c7f275a9e9046338d1f6d2854b19c64`, TRAVADO): barra do topo (empresa + conta ML, "Salvo há Xs", Anunciar por IA, Conferir no ML, Publicar), faixa horizontal com os produtos da empresa e o estado de cada um, coluna principal em cartões (produto/categoria; ficha técnica com obrigatórios em blocos e opcionais recolhidos; um cartão por variação com estoque/SKU/código/fotos e Clássico | Premium lado a lado; logística; descrição), coluna direita (validação do ML com prontidão e pendências calmas; resumo do lote com o botão de publicar).
+- **Entrada** (tela `6179e11dac77472884f60d724cdec375`, direção): seletor de programa **com Gestão** (D23), busca, indicadores, tabela de empresas (conta ML, situação do Portal, produtos, publicados) e "Como funciona".
+- Sai o que o Stitch inventou e não existe no motor: "SLA de integração", "Dica do mentor", "regra de duplicidade para Ads", descrição em Markdown (o ML só aceita texto puro, RN-72), "Publicar em lote" no topo da entrada.
+
 ## A critério do planejamento (Claude's Discretion)
 
 - Como generalizar `ClienteMlPublicador`, `ContaMlService`, `ImagemAssetService`, `ConferenciaService`, `PublicacaoService`, `EditorRascunhoService` de `Company`/`EstruturaOferta` para `PubProduto` + `ContaMercadoLivre` sem quebrar os 230 testes (adaptá-los é esperado; o comportamento coberto não muda).
