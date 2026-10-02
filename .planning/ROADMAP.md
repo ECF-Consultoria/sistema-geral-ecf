@@ -2759,7 +2759,13 @@ Plans:
   4. O operador vê a imagem gerada ao lado da foto original usada como referência num componente separado com polling (padrão `PainelAnunciarIa`), aprova, e só então ela entra em `ml_anuncio_rascunhos.payload.pictures` respeitando o fluxo real de envio ao Mercado Livre via `MlImagemService::enviar()` — nenhuma imagem não aprovada chega ao rascunho (APROV-01, APROV-05, APROV-06, PUB-01, PUB-02)
   5. O módulo nasce atrás de uma chave que a equipe desliga sem deploy; a chave do Gemini nunca aparece em log, payload de log ou base64 registrado; e um duplo clique em "Gerar com IA" não dispara dois jobs para o mesmo produto (OPS-01, OPS-03, GEN-05, GEN-06)
 
-**Plans**: TBD
+**Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável)
+- [ ] 160-01-PLAN.md — Upload efêmero da foto de referência: tabela `ml_anuncio_criativos`, chave liga/desliga sem deploy e painel separado na etapa 5
+- [ ] 160-02-PLAN.md — Gerar UMA imagem de verdade: contexto + Product Truth + prompt, job na fila `high` e revisão lado a lado com polling
+- [ ] 160-03-PLAN.md — Aprovar: envio ao ML por `MlImagemService::enviar()` e gravação em `payload.pictures`
+- [ ] 160-04-PLAN.md — Retenção da foto efêmera (deleção na aprovação + varredura por idade do registro) e teste-guarda de segredo em log
+- [ ] 160-05-PLAN.md — Checkpoint humano: prova real com foto de cliente, números literais e a chave de volta ao desligado
+
 **UI hint**: yes
 
 ### Phase 161: Kit dinâmico de 7, geração paralela, regeneração e aprovação do kit
