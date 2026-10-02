@@ -13,11 +13,15 @@ use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Services\Publicador\CategorySchemaRepository;
+use App\Services\Publicador\ClienteMlPublicador;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\Schema\CategorySchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -373,6 +377,187 @@ class IaParaRascunhoTest extends TestCase
 
         $p->update(['status' => PubPublicacao::FAILED]);
         $this->assertFalse(IaParaRascunhoService::intocavel($r->fresh()), 'falhou sem nada no ar: a IA pode trabalhar');
+    }
+
+    // ═══ WR-B02: edição e publicação no meio da geração ═════════════════════
+
+    /**
+     * A pessoa (ou a publicação) age enquanto a IA lê o schema — o momento em que a IA pode
+     * estar esperando o ML. `$quando` escolhe a leitura; `$pessoa` roda uma vez só.
+     */
+    private function noMeioDaGeracao(\Closure $pessoa, ?\Closure $quando = null): void
+    {
+        $this->app->instance(CategorySchemaRepository::class, new class(app(ClienteMlPublicador::class), $pessoa, $quando) extends CategorySchemaRepository
+        {
+            public function __construct(ClienteMlPublicador $cliente, private ?\Closure $pessoa, private ?\Closure $quando)
+            {
+                parent::__construct($cliente);
+            }
+
+            public function obter(string $categoriaId, bool $forcar = false): CategorySchema
+            {
+                if ($this->pessoa !== null && ($this->quando === null || ($this->quando)())) {
+                    $pessoa = $this->pessoa;
+                    $this->pessoa = null;
+                    $pessoa();
+                }
+
+                return parent::obter($categoriaId, $forcar);
+            }
+        });
+    }
+
+    private function intocado(PubRascunho $r): array
+    {
+        $r = $r->fresh();
+
+        return [$r->only(['revisao', 'categoria_id', 'descricao', 'garantia']), $r->atributos()->count(), $r->alvos()->whereNotNull('titulo')->count()];
+    }
+
+    public function test_wr_b02_edicao_da_pessoa_durante_a_geracao_fica_mesmo_pedindo_substituir(): void
+    {
+        $a = $this->analise($this->fichaCadeira(), substituir: true);
+        $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
+        // Pediu "substituir", mas digitou característica, título e descrição enquanto a IA gerava.
+        $this->noMeioDaGeracao(fn () => $this->editor->salvar($r->fresh(), [
+            'atributos' => ['BRAND' => ['value_name' => 'Marca da equipe']],
+            'descricao' => 'Descrição da equipe',
+            'alvos' => [['listing_type_id' => 'gold_special', 'titulo' => 'Título da equipe', 'ativo' => true], ['listing_type_id' => 'gold_pro', 'titulo' => '', 'ativo' => true]],
+        ]));
+
+        $a = $this->rodar($a);
+
+        $s = $this->snap();
+        $this->assertSame('Marca da equipe', $s->atributos['BRAND']['value_name'], 'digitado vence: a IA não sobrescreve');
+        $this->assertSame('Título da equipe', $this->titulo('gold_special'));
+        $this->assertSame('Descrição da equipe', $r->fresh()->descricao);
+        // O que estava vazio a IA preencheu.
+        $this->assertSame(self::CADEIRA, $r->fresh()->categoria_id);
+        $this->assertSame('Executiva', $s->atributos['MODEL']['value_name']);
+        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $r->fresh()->garantia);
+        $this->assertFalse($a->resultado['publicador']['sobrescreveu']);
+        $this->afirmarSemRedeSemWizardAntigo();
+    }
+
+    public function test_wr_b02_publicacao_que_comeca_durante_a_geracao_deixa_o_rascunho_intocado(): void
+    {
+        $cenarios = [
+            'publicação em andamento' => fn (PubRascunho $r) => $r->publicacoes()->create(['revisao' => $r->revisao, 'modelo_publicacao' => 'UP',
+                'status' => PubPublicacao::RUNNING, 'chave_idempotencia' => (string) Str::uuid(), 'iniciada_em' => now()]),
+            'item já criado no ML' => fn (PubRascunho $r) => $r->publicacoes()->create(['revisao' => $r->revisao, 'modelo_publicacao' => 'UP',
+                'status' => PubPublicacao::PARTIALLY_PUBLISHED, 'chave_idempotencia' => (string) Str::uuid(), 'concluida_em' => now()])
+                ->itens()->create(['indice' => 0, 'listing_type_id' => 'gold_special', 'variante_chave' => '__single__',
+                    'status' => PubPublicacaoItem::CREATED, 'ml_item_id' => 'MLB9000000002']),
+        ];
+
+        foreach ($cenarios as $nome => $publicar) {
+            $this->produto = PubProduto::create(['mlb_empresa_id' => $this->empresa->id, 'sku' => 'CAD-'.Str::random(4), 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+            $a = $this->analise($this->fichaCadeira(), substituir: true);
+            $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
+            $antes = $this->intocado($r);
+            $this->noMeioDaGeracao(fn () => $publicar($r->fresh()));
+
+            $a = $this->rodar($a);
+
+            $this->assertSame($antes, $this->intocado($r), "{$nome}: a IA não grava nada");
+            $this->assertSame(0, $a->resultado['publicador']['secoes'], $nome);
+            $this->assertSame('O anúncio já estava publicado; a IA não mudou nada.', $a->resultado['publicador']['aviso'], $nome);
+        }
+        $this->afirmarSemRedeSemWizardAntigo();
+    }
+
+    public function test_wr_b02_publicacao_que_comeca_no_meio_da_aplicacao_para_a_ia_ali(): void
+    {
+        $a = $this->analise($this->fichaCadeira(), substituir: true);
+        $r = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail();
+        // A IA já gravou a categoria quando a equipe clica em Publicar.
+        $this->noMeioDaGeracao(
+            fn () => $r->publicacoes()->create(['revisao' => $r->fresh()->revisao, 'modelo_publicacao' => 'UP',
+                'status' => PubPublicacao::RUNNING, 'chave_idempotencia' => (string) Str::uuid(), 'iniciada_em' => now()]),
+            fn () => PubRascunho::whereKey($r->id)->value('categoria_id') !== null,
+        );
+
+        $a = $this->rodar($a);
+
+        $this->assertSame(self::CADEIRA, $r->fresh()->categoria_id, 'o que foi gravado antes do clique fica');
+        $this->assertNull($r->fresh()->descricao);
+        $this->assertArrayNotHasKey('BRAND', $this->snap()->atributos);
+        $this->assertNull($this->titulo('gold_special'));
+        $this->assertSame(1, $a->resultado['publicador']['secoes']);
+        $this->assertStringStartsWith('A publicação começou enquanto a IA preenchia; ela parou ali', (string) $a->resultado['publicador']['aviso']);
+    }
+
+    /**
+     * Sem "substituir", a IA grava SÓ as chaves que preenche — nunca a lista inteira que leu.
+     * O que a pessoa grava logo depois da leitura da IA (mudar um valor, acrescentar uma
+     * característica, trocar um título) não volta para o valor antigo.
+     */
+    public function test_wr_b02_ia_nunca_regrava_a_lista_inteira(): void
+    {
+        $r = $this->rascunho();
+        $this->editor->trocarCategoria($r, self::CADEIRA);
+        $this->editor->salvar($r->fresh(), [
+            'atributos' => ['MODEL' => ['value_name' => 'Modelo A']],
+            'alvos' => [['listing_type_id' => 'gold_special', 'titulo' => 'Título da equipe', 'ativo' => true], ['listing_type_id' => 'gold_pro', 'titulo' => '', 'ativo' => false]],
+        ]);
+        $a = $this->analise($this->fichaCadeira(), substituir: false);
+
+        $repo = new class extends RascunhoRepository
+        {
+            /** @var list<string> */
+            public array $listasInteiras = [];
+
+            public ?\Closure $depoisDeLer = null;
+
+            public int $nivelBase = 0;
+
+            public function snapshot(PubRascunho $r): RascunhoSnapshot
+            {
+                $s = parent::snapshot($r);
+                // Dispara na leitura feita DENTRO da escrita da IA (sob a trava).
+                if ($this->depoisDeLer !== null && DB::transactionLevel() > $this->nivelBase) {
+                    $f = $this->depoisDeLer;
+                    $this->depoisDeLer = null;
+                    $f($r);
+                }
+
+                return $s;
+            }
+
+            public function gravarAtributos(PubRascunho $r, array $atributos): void
+            {
+                $this->listasInteiras[] = 'atributos';
+                parent::gravarAtributos($r, $atributos);
+            }
+
+            public function gravarAlvos(PubRascunho $r, array $alvos): void
+            {
+                $this->listasInteiras[] = 'alvos';
+                parent::gravarAlvos($r, $alvos);
+            }
+        };
+        $repo->nivelBase = DB::transactionLevel();
+        $repo->depoisDeLer = function (PubRascunho $r) {
+            DB::table('pub_rascunho_atributos')->where('rascunho_id', $r->id)->where('attribute_id', 'MODEL')->update(['value_name' => 'Modelo B']);
+            DB::table('pub_rascunho_atributos')->insert(['rascunho_id' => $r->id, 'attribute_id' => 'LINE', 'value_name' => 'Linha da equipe',
+                'origem' => 'user', 'revisar' => false, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('pub_rascunho_alvos')->where('rascunho_id', $r->id)->where('listing_type_id', 'gold_special')->update(['titulo' => 'Título B da equipe']);
+        };
+        $this->app->instance(RascunhoRepository::class, $repo);
+
+        $this->rodar($a);
+
+        $this->assertNull($repo->depoisDeLer, 'a leitura sob a trava aconteceu');
+        $this->assertSame([], $repo->listasInteiras, 'a IA não regrava a lista inteira de características nem de tipos');
+        $s = $this->snap();
+        $this->assertSame('Modelo B', $s->atributos['MODEL']['value_name']);
+        $this->assertSame('Linha da equipe', $s->atributos['LINE']['value_name']);
+        $this->assertSame('ECF', $s->atributos['BRAND']['value_name'], 'o vazio a IA preencheu');
+        $this->assertSame('Título B da equipe', $this->titulo('gold_special'));
+        $this->assertSame('Cadeira de Escritório Executiva Giratória Ergonômica', $this->titulo('gold_pro'));
+        $alvo = PubRascunho::where('produto_id', $this->produto->id)->firstOrFail()->alvos()->where('listing_type_id', 'gold_pro')->firstOrFail();
+        $this->assertFalse((bool) $alvo->ativo, 'o título não liga o tipo que a pessoa desligou');
     }
 
     public function test_garantia_sem_correspondencia_nao_grava_e_vira_aviso(): void

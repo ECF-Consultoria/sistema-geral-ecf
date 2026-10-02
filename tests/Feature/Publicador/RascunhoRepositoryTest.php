@@ -216,4 +216,30 @@ class RascunhoRepositoryTest extends TestCase
         $this->assertSame(2, $r->fresh()->revisao);
         $this->assertSame(PubRascunho::DRAFT, $r->fresh()->status);
     }
+
+    /** WR-B02: as gravações parciais (as da IA) só tocam o que veio; o resto da lista fica. */
+    public function test_mesclar_atributos_e_gravar_titulos_so_tocam_o_que_veio(): void
+    {
+        $r = $this->rascunho();
+        $this->repo->gravarAlvos($r, [new Alvo('gold_special', 'Cadeira Executiva ECF', true), new Alvo('gold_pro', null, false)]);
+        $this->repo->gravarAtributos($r, ['BRAND' => ['value_name' => 'ECF'], 'MODEL' => ['value_name' => 'Executiva']]);
+        $posicoes = $r->alvos()->pluck('posicao', 'listing_type_id')->all();
+
+        $this->repo->mesclarAtributos($r, ['MODEL' => ['value_name' => 'Giratória', 'origem' => 'ia'], 'LINE' => ['value_name' => 'Linha', 'origem' => 'ia']]);
+        $this->repo->gravarTitulos($r, ['gold_pro' => '  Título Premium  ', 'gold_premium' => 'tipo que não existe']);
+
+        $s = $this->repo->snapshot($r->fresh());
+        $this->assertSame('ECF', $s->atributos['BRAND']['value_name'], 'o que não veio fica');
+        $this->assertSame('user', $s->atributos['BRAND']['origem']);
+        $this->assertSame('Giratória', $s->atributos['MODEL']['value_name']);
+        $this->assertSame('ia', $s->atributos['MODEL']['origem']);
+        $this->assertSame('Linha', $s->atributos['LINE']['value_name']);
+
+        $alvos = collect($s->alvos)->keyBy('listingTypeId');
+        $this->assertCount(2, $alvos, 'não cria alvo de tipo que não existe');
+        $this->assertSame('Cadeira Executiva ECF', $alvos['gold_special']->titulo);
+        $this->assertSame('Título Premium', $alvos['gold_pro']->titulo);
+        $this->assertFalse($alvos['gold_pro']->ativo, 'o título não liga o tipo desligado');
+        $this->assertSame($posicoes, $r->alvos()->pluck('posicao', 'listing_type_id')->all(), 'a ordem fica');
+    }
 }

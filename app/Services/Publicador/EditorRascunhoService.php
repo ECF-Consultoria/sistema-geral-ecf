@@ -99,6 +99,8 @@ class EditorRascunhoService
     public function salvar(PubRascunho $r, array $d): void
     {
         DB::transaction(function () use ($r, $d) {
+            // WR-B02: a mesma trava da IA e do `iniciar` — um escreve de cada vez.
+            $this->repo->travar($r);
             if (array_key_exists('atributos', $d)) {
                 $this->repo->gravarAtributos($r, array_filter((array) $d['atributos'], fn ($v) => is_array($v)));
             }
@@ -135,30 +137,38 @@ class EditorRascunhoService
      */
     public function trocarCategoria(PubRascunho $r, string $categoriaId): array
     {
+        // Os schemas são lidos antes da trava (podem ir ao ML); dentro dela vem o guardado.
         $nova = $this->schemas->obter($categoriaId);
-        $s = $this->repo->snapshot($r);
-        $novoSchema = (new ClassificadorAtributos())->classificar($nova, new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
-
-        $resultado = ['descartados' => [], 'eixos_removidos' => []];
-        $atributos = $s->atributos;
-        $eixos = $s->eixos;
         if ($r->categoria_id && $r->categoria_id !== $categoriaId) {
-            $anterior = (new ClassificadorAtributos())->classificar($this->schemas->obter($r->categoria_id), new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
-            $m = MigradorDeCategoria::migrar($anterior, $novoSchema, $s->atributos, $s->eixos);
-            $atributos = $m->atributos;
-            $eixos = $m->eixos;
-            $resultado = ['descartados' => $m->descartados, 'eixos_removidos' => $m->eixosRemovidos];
+            $this->schemas->obter($r->categoria_id);
         }
 
-        DB::transaction(function () use ($r, $nova, $atributos, $eixos, $s) {
+        return DB::transaction(function () use ($r, $nova, $categoriaId) {
+            // WR-B02: trava e relê — a categoria e os atributos de agora, não os de antes da leitura do ML.
+            $this->repo->travar($r);
+            $r->refresh();
+            $s = $this->repo->snapshot($r);
+            $novoSchema = (new ClassificadorAtributos())->classificar($nova, new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
+
+            $resultado = ['descartados' => [], 'eixos_removidos' => []];
+            $atributos = $s->atributos;
+            $eixos = $s->eixos;
+            if ($r->categoria_id && $r->categoria_id !== $categoriaId) {
+                $anterior = (new ClassificadorAtributos())->classificar($this->schemas->obter($r->categoria_id), new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
+                $m = MigradorDeCategoria::migrar($anterior, $novoSchema, $s->atributos, $s->eixos);
+                $atributos = $m->atributos;
+                $eixos = $m->eixos;
+                $resultado = ['descartados' => $m->descartados, 'eixos_removidos' => $m->eixosRemovidos];
+            }
+
             $this->repo->gravarCategoria($r, $nova);
             $this->repo->gravarAtributos($r, $atributos);
             if ($eixos != $s->eixos) {
                 $this->repo->gravarVariacao($r, $eixos, RegeneradorVariantes::regenerar($s->variantes, $eixos)->variantes);
             }
-        });
 
-        return $resultado;
+            return $resultado;
+        });
     }
 
     /**
@@ -169,7 +179,6 @@ class EditorRascunhoService
      */
     public function salvarEixos(PubRascunho $r, array $eixos): array
     {
-        $s = $this->repo->snapshot($r);
         $limite = (int) config('publicador.max_eixos', 3);
         if (count($eixos) > $limite) {
             throw new RegraViolada('V-VAR-03', "No máximo {$limite} variações por anúncio.");
@@ -184,13 +193,15 @@ class EditorRascunhoService
                 array_values(array_filter((array) ($e['valores'] ?? []), fn ($v) => trim((string) ($v['nome'] ?? '')) !== '')), array_keys(array_values(array_filter((array) ($e['valores'] ?? []), fn ($v) => trim((string) ($v['nome'] ?? '')) !== ''))))),
         ), $eixos, array_keys($eixos)));
 
-        $regen = RegeneradorVariantes::regenerar($s->variantes, $novos);
-        DB::transaction(function () use ($r, $novos, $regen) {
+        return DB::transaction(function () use ($r, $novos) {
+            // WR-B02: trava antes de ler as variantes — os dados que passam adiante são os de agora.
+            $this->repo->travar($r);
+            $regen = RegeneradorVariantes::regenerar($this->repo->snapshot($r)->variantes, $novos);
             $this->repo->gravarVariacao($r, $novos, $regen->variantes);
             $this->repo->tocar($r);
-        });
 
-        return ['conflitos' => $regen->conflitos, 'descartadas' => $regen->descartadas];
+            return ['conflitos' => $regen->conflitos, 'descartadas' => $regen->descartadas];
+        });
     }
 
     /**
@@ -199,27 +210,29 @@ class EditorRascunhoService
      */
     public function salvarVariantes(PubRascunho $r, array $porChave): void
     {
-        $s = $this->repo->snapshot($r);
-        $variantes = array_map(function (Variante $v) use ($porChave) {
-            $novo = $porChave[$v->chave] ?? null;
-            if (! is_array($novo)) {
-                return $v;
-            }
-            $dados = $v->dados;
-            foreach (['estoque', 'precos', 'atributos', 'estoque_depositos'] as $campo) {
-                if (array_key_exists($campo, $novo)) {
-                    $dados[$campo] = $novo[$campo];
+        DB::transaction(function () use ($r, $porChave) {
+            // WR-B02: trava antes de ler — o que não veio em `porChave` é regravado como está AGORA.
+            $this->repo->travar($r);
+            $s = $this->repo->snapshot($r);
+            $variantes = array_map(function (Variante $v) use ($porChave) {
+                $novo = $porChave[$v->chave] ?? null;
+                if (! is_array($novo)) {
+                    return $v;
                 }
-            }
-            if (is_array($dados['estoque_depositos'] ?? null) && $dados['estoque_depositos'] !== []) {
-                $dados['estoque'] = array_sum(array_map('intval', $dados['estoque_depositos']));
-            }
-            $v = $v->comDados($dados);
+                $dados = $v->dados;
+                foreach (['estoque', 'precos', 'atributos', 'estoque_depositos'] as $campo) {
+                    if (array_key_exists($campo, $novo)) {
+                        $dados[$campo] = $novo[$campo];
+                    }
+                }
+                if (is_array($dados['estoque_depositos'] ?? null) && $dados['estoque_depositos'] !== []) {
+                    $dados['estoque'] = array_sum(array_map('intval', $dados['estoque_depositos']));
+                }
+                $v = $v->comDados($dados);
 
-            return array_key_exists('ativa', $novo) && ! $v->publicada ? $v->comAtiva((bool) $novo['ativa']) : $v;
-        }, $s->variantes);
+                return array_key_exists('ativa', $novo) && ! $v->publicada ? $v->comAtiva((bool) $novo['ativa']) : $v;
+            }, $s->variantes);
 
-        DB::transaction(function () use ($r, $s, $variantes) {
             $this->repo->gravarVariacao($r, $s->eixos, $variantes);
             $this->repo->tocar($r);
         });

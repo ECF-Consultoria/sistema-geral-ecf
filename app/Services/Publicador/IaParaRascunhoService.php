@@ -15,15 +15,16 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Support\Facades\DB;
 
 /**
  * "Anunciar por IA" dentro do Publicador (D14): leva o resultado da geração em
  * fila (`GerarAnaliseAnuncioIaJob`) para o rascunho NOVO (`pub_*`) do produto.
  *
- * SEMPRE pela API do `EditorRascunhoService` — nunca SQL direto em `pub_*` —,
- * para que a saída da IA (não confiável) passe pelas mesmas normalizações do
- * motor. A IA nunca publica: só grava rascunho, e a conferência L1/L2/L3 segue
- * obrigatória antes de publicar.
+ * SEMPRE pelo motor (`EditorRascunhoService` / `RascunhoRepository`) — nunca SQL
+ * direto em `pub_*` —, para que a saída da IA (não confiável) passe pelas mesmas
+ * normalizações. A IA nunca publica: só grava rascunho, e a conferência L1/L2/L3
+ * segue obrigatória antes de publicar.
  *
  * Decisões desta implementação:
  * - Sem migration: o destino mora em `ml_anuncio_ia_analises.resultado.destino =
@@ -31,9 +32,15 @@ use App\Support\Publicador\Variacao\Variante;
  * - "Digitado vence" (UI-SPEC §8.2): `sobrescrever = destino.substituir === true E
  *   rascunho.revisao === destino.revisao_base`. Se a equipe editou durante a geração
  *   (a revisão subiu) ou o pedido não foi "substituir", a IA só preenche o vazio.
+ * - WR-B02: essa conta e o "intocável" são refeitos a CADA escrita, com o rascunho
+ *   relido sob `lockForUpdate` na mesma transação da gravação (`sobTrava`). A IA
+ *   grava só as chaves que preenche (`mesclarAtributos`, `gravarTitulos`) — nunca a
+ *   lista inteira lida antes, que desfaria o que a pessoa gravou no meio. A leitura
+ *   do schema (que pode ir ao ML) fica FORA da trava.
  * - Idempotência: o resumo fica em `resultado.publicador`; quem chama só aplica
  *   quando `aplicado_em` está vazio.
- * - Rascunho publicando, publicado ou parcialmente publicado nunca é alterado.
+ * - Rascunho publicando, publicado ou parcialmente publicado nunca é alterado; se a
+ *   publicação começar no meio da aplicação, a IA para ali.
  *
  * Duas fatias: (1) dados do anúncio — categoria, características, pacote, títulos,
  * descrição, garantia, variante única; (2) variações — eixos e variantes.
@@ -44,6 +51,17 @@ class IaParaRascunhoService
 
     /** Tipos de anúncio que recebem o título da IA (Clássico e Premium). */
     private const TIPOS_TITULO = ['gold_special', 'gold_pro'];
+
+    private const AVISO_PUBLICADO = 'O anúncio já estava publicado; a IA não mudou nada.';
+
+    private const AVISO_PAROU = 'A publicação começou enquanto a IA preenchia; ela parou ali e não mexeu mais no anúncio.';
+
+    /** WR-B02 — estado de UMA aplicação: o "substituir" que ainda vale e a revisão que a IA espera achar. */
+    private bool $sobrescrever = false;
+
+    private int $revisaoEsperada = -1;
+
+    private bool $gravou = false;
 
     public function __construct(
         private EditorRascunhoService $editor,
@@ -77,10 +95,14 @@ class IaParaRascunhoService
             return $this->resumo($destino['rascunho_id'] ?? null, 0, false, 'O rascunho deste anúncio não foi encontrado; a IA não mudou nada.', false);
         }
         if (self::intocavel($r)) {
-            return $this->resumo($r->id, 0, false, 'O anúncio já estava publicado; a IA não mudou nada.', false);
+            return $this->resumo($r->id, 0, false, self::AVISO_PUBLICADO, false);
         }
 
-        $sobrescrever = ($destino['substituir'] ?? false) === true && (int) $r->revisao === (int) ($destino['revisao_base'] ?? -1);
+        // "Digitado vence": o pedido diz se pode substituir; a revisão é conferida de novo a cada escrita (sobTrava).
+        $this->sobrescrever = ($destino['substituir'] ?? false) === true;
+        $this->revisaoEsperada = (int) ($destino['revisao_base'] ?? -1);
+        $this->gravou = false;
+
         $ficha = is_array($resultado['ficha'] ?? null) ? $resultado['ficha'] : [];
         $cliente = is_array($resultado['cliente'] ?? null) ? $resultado['cliente'] : null;
 
@@ -90,109 +112,219 @@ class IaParaRascunhoService
             $avisos[] = (string) $ficha['aviso'];
         }
 
-        // ─── (a) Categoria ───
+        // ─── (a) Categoria — o schema é lido antes da trava (pode ir ao ML) ───
         $categoria = trim((string) ($ficha['category_id'] ?? ''));
-        if ($categoria !== '' && ($r->categoria_id === null || ($sobrescrever && $r->categoria_id !== $categoria))) {
-            try {
-                $this->editor->trocarCategoria($r, $categoria);
+        if ($categoria !== '' && $categoria !== $r->categoria_id) {
+            $erroCategoria = $this->lerSchemas([$categoria, $r->categoria_id]);
+            $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($categoria, $erroCategoria, &$secoes, &$avisos) {
+                if ($r->categoria_id === $categoria || ($r->categoria_id !== null && ! $sobrescrever)) {
+                    return false;
+                }
+                if ($erroCategoria !== null) {
+                    $avisos[] = 'A categoria sugerida pela IA não pôde ser aplicada: '.$erroCategoria;
+
+                    return false;
+                }
+                try {
+                    $this->editor->trocarCategoria($r, $categoria);
+                } catch (RegraViolada $e) {
+                    $avisos[] = 'A categoria sugerida pela IA não pôde ser aplicada: '.$e->getMessage();
+
+                    return false;
+                }
                 $secoes['categoria'] = true;
-            } catch (RegraViolada $e) {
-                $avisos[] = 'A categoria sugerida pela IA não pôde ser aplicada: '.$e->getMessage();
+
+                return true;
+            });
+            if (! $vivo) {
+                return $this->parou($r->id, $secoes, $avisos);
             }
-            $r = $r->fresh();
         }
 
+        // Fora da trava: pode ir ao ML. Dentro dela só vale se a categoria ainda for esta.
+        $r = $r->fresh();
         $schema = $this->schemaDoRascunho($r);
         if ($r->categoria_id && $schema === null) {
             $avisos[] = 'Não foi possível ler a categoria no Mercado Livre agora; características e garantia ficaram para você.';
         }
 
-        // ─── (b) Características e (c) pacote — um só salvamento dos atributos ───
+        // ─── (b) Características, (c) pacote, (d) títulos, (e) descrição, (f) garantia — uma escrita ───
         $idsDeVariacao = $this->idsDeVariacao($ficha);
-        if ($schema !== null) {
-            $atuais = $this->repo->snapshot($r)->atributos;
-            $novos = $atuais;
+        $titulo = trim((string) ($ficha['titulo'] ?? ($a->titulos()[0]['texto'] ?? '')));
+        $descricao = $this->limparDescricao($a->descricao());
+        $textoGarantia = trim((string) ($ficha['garantia'] ?? ''));
+
+        $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($schema, $ficha, $idsDeVariacao, $titulo, $descricao, $textoGarantia, &$secoes, &$avisos) {
+            $schema = $this->schemaQueVale($schema, $r);
+            $snap = $this->repo->snapshot($r);
+
+            // Só as chaves que a IA preenche; o resto da lista fica como está.
+            $atributos = [];
             $tocouCaracteristicas = false;
-            foreach ($this->atributosDaIa($ficha, $schema, $idsDeVariacao) as $id => $valor) {
-                if ($this->preenchido($atuais[$id] ?? null) && ! $sobrescrever) {
-                    continue;
-                }
-                $novos[$id] = $valor + ['origem' => 'ia'];
-                $tocouCaracteristicas = true;
-            }
-
             $tocouPacote = false;
-            foreach ($this->pacote($ficha) as $id => $texto) {
-                if ($schema->atributo($id) === null || ($this->preenchido($atuais[$id] ?? null) && ! $sobrescrever)) {
-                    continue;
+            if ($schema !== null) {
+                foreach ($this->atributosDaIa($ficha, $schema, $idsDeVariacao) as $id => $valor) {
+                    if ($this->preenchido($snap->atributos[$id] ?? null) && ! $sobrescrever) {
+                        continue;
+                    }
+                    $atributos[$id] = $valor + ['origem' => 'ia'];
+                    $tocouCaracteristicas = true;
                 }
-                $novos[$id] = ['value_name' => $texto, 'origem' => 'ia'];
-                $tocouPacote = true;
+                foreach ($this->pacote($ficha) as $id => $texto) {
+                    if ($schema->atributo($id) === null || ($this->preenchido($snap->atributos[$id] ?? null) && ! $sobrescrever)) {
+                        continue;
+                    }
+                    $atributos[$id] = ['value_name' => $texto, 'origem' => 'ia'];
+                    $tocouPacote = true;
+                }
             }
-
-            if ($tocouCaracteristicas || $tocouPacote) {
-                $this->editor->salvar($r, ['atributos' => $novos]);
+            if ($atributos !== []) {
+                $this->repo->mesclarAtributos($r, $atributos);
                 $secoes['caracteristicas'] = $tocouCaracteristicas;
                 $secoes['envio'] = $tocouPacote;
             }
-        }
 
-        // ─── (d) Títulos Clássico e Premium, (e) descrição, (f) garantia ───
-        $campos = [];
-        $r = $r->fresh();
-        $snap = $this->repo->snapshot($r);
-
-        $titulo = trim((string) ($ficha['titulo'] ?? ($a->titulos()[0]['texto'] ?? '')));
-        if ($titulo !== '' && $snap->alvos !== []) {
-            $mudou = false;
-            $alvos = [];
-            foreach ($snap->alvos as $alvo) {
+            // Títulos Clássico e Premium: só o título dos tipos que já existem; ativo e ordem ficam.
+            $titulos = [];
+            if ($titulo !== '') {
                 $titulo60 = mb_substr($titulo, 0, 60);
-                $grava = in_array($alvo->listingTypeId, self::TIPOS_TITULO, true)
-                    && (trim((string) $alvo->titulo) === '' || $sobrescrever)
-                    && $alvo->titulo !== $titulo60;
-                $mudou = $mudou || $grava;
-                $alvos[] = ['listing_type_id' => $alvo->listingTypeId, 'titulo' => $grava ? $titulo60 : $alvo->titulo, 'ativo' => $alvo->ativo];
+                foreach ($snap->alvos as $alvo) {
+                    if (in_array($alvo->listingTypeId, self::TIPOS_TITULO, true)
+                        && (trim((string) $alvo->titulo) === '' || $sobrescrever)
+                        && $alvo->titulo !== $titulo60) {
+                        $titulos[$alvo->listingTypeId] = $titulo60;
+                    }
+                }
             }
-            if ($mudou) {
-                $campos['alvos'] = $alvos;
+            if ($titulos !== []) {
+                $this->repo->gravarTitulos($r, $titulos);
                 $secoes['tipos'] = true;
             }
-        }
 
-        $descricao = $this->limparDescricao($a->descricao());
-        if ($descricao !== '' && (trim((string) $r->descricao) === '' || $sobrescrever)) {
-            $campos['descricao'] = $descricao;
-            $secoes['descricao'] = true;
-        }
-
-        $textoGarantia = trim((string) ($ficha['garantia'] ?? ''));
-        if ($textoGarantia !== '' && ($this->garantiaVazia($r->garantia) || $sobrescrever)) {
-            $g = $schema !== null ? $this->garantia($textoGarantia, $schema) : null;
-            if ($g !== null) {
-                $campos['garantia'] = $g;
-                $secoes['envio'] = true;
-            } else {
-                $avisos[] = "A garantia sugerida pela IA (\"{$textoGarantia}\") não casa com as opções da categoria; defina-a no card de envio.";
+            $campos = [];
+            if ($descricao !== '' && (trim((string) $r->descricao) === '' || $sobrescrever)) {
+                $campos['descricao'] = $descricao;
+                $secoes['descricao'] = true;
             }
-        }
+            if ($textoGarantia !== '' && ($this->garantiaVazia($r->garantia) || $sobrescrever)) {
+                $g = $schema !== null ? $this->garantia($textoGarantia, $schema) : null;
+                if ($g !== null) {
+                    $campos['garantia'] = $g;
+                    $secoes['envio'] = true;
+                } else {
+                    $avisos[] = "A garantia sugerida pela IA (\"{$textoGarantia}\") não casa com as opções da categoria; defina-a no card de envio.";
+                }
+            }
 
-        if ($campos !== []) {
-            $this->editor->salvar($r, $campos);
+            // Um só toque por escrita: `salvar` já dá o seu; sem campos, o toque é aqui.
+            if ($campos !== []) {
+                $this->editor->salvar($r, $campos);
+            } elseif ($atributos !== [] || $titulos !== []) {
+                $this->repo->tocar($r);
+            }
+
+            return $campos !== [] || $atributos !== [] || $titulos !== [];
+        });
+        if (! $vivo) {
+            return $this->parou($r->id, $secoes, $avisos);
         }
 
         // ─── Fatia 2: variações; sem elas, a variante única recebe estoque e preço ───
-        $variacoes = $this->aplicarVariacoes($r->fresh(), $ficha, $cliente, $schema, $sobrescrever, $avisos);
+        $variacoes = false;
+        if (array_filter((array) ($ficha['variacoes'] ?? []), 'is_array') !== []) {
+            $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($ficha, $cliente, $schema, &$avisos, &$variacoes) {
+                return $variacoes = $this->aplicarVariacoes($r, $ficha, $cliente, $this->schemaQueVale($schema, $r), $sobrescrever, $avisos);
+            });
+            if (! $vivo) {
+                return $this->parou($r->id, $secoes, $avisos);
+            }
+        }
         if ($variacoes) {
             $secoes['variacoes'] = true;
             $secoes['variantes'] = true;
-        } elseif ($this->varianteUnica($r->fresh(), $cliente, $sobrescrever)) {
-            $secoes['variantes'] = true;
+        } elseif ($cliente !== null) {
+            $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($cliente, &$secoes) {
+                if (! $this->varianteUnica($r, $cliente, $sobrescrever)) {
+                    return false;
+                }
+                $secoes['variantes'] = true;
+
+                return true;
+            });
+            if (! $vivo) {
+                return $this->parou($r->id, $secoes, $avisos);
+            }
         }
 
         $aviso = $avisos === [] ? null : implode(' ', $avisos);
 
-        return $this->resumo($r->id, count(array_filter($secoes)), $variacoes, $aviso, $sobrescrever);
+        return $this->resumo($r->id, count(array_filter($secoes)), $variacoes, $aviso, $this->sobrescrever);
+    }
+
+    // ═══ Trava (WR-B02) ══════════════════════════════════════════════════════
+
+    /**
+     * Toda escrita da IA passa aqui: numa transação, o rascunho é relido com `lockForUpdate`
+     * (a mesma trava de `PublicacaoService::iniciar` e do editor) e só então se decide.
+     *
+     * - Publicando/publicado (`intocavel`, pelo fato) → não grava nada; a IA para.
+     * - "Substituir" vale enquanto a revisão for a que a IA espera: a do pedido e, depois, a
+     *   da última escrita dela. Revisão diferente = a pessoa editou no meio → daí até o fim
+     *   desta aplicação a IA só preenche o vazio.
+     *
+     * @param  callable(PubRascunho, bool): bool  $escrita  recebe o rascunho travado e se pode sobrescrever; devolve se gravou
+     * @return bool false = o rascunho ficou intocável (ou sumiu)
+     */
+    private function sobTrava(int $rascunhoId, callable $escrita): bool
+    {
+        return DB::transaction(function () use ($rascunhoId, $escrita) {
+            $r = PubRascunho::whereKey($rascunhoId)->lockForUpdate()->first();
+            if (! $r || self::intocavel($r)) {
+                return false;
+            }
+            if ($this->sobrescrever && (int) $r->revisao !== $this->revisaoEsperada) {
+                $this->sobrescrever = false;
+            }
+            if ($escrita($r, $this->sobrescrever)) {
+                $this->gravou = true;
+                $this->revisaoEsperada = (int) PubRascunho::whereKey($rascunhoId)->value('revisao');
+            }
+
+            return true;
+        });
+    }
+
+    /** A publicação começou no meio: o que já foi gravado fica, e o aviso diz que a IA parou. */
+    private function parou(int $rascunhoId, array $secoes, array $avisos): array
+    {
+        $aviso = $this->gravou ? implode(' ', [self::AVISO_PAROU, ...$avisos]) : self::AVISO_PUBLICADO;
+
+        return $this->resumo($rascunhoId, count(array_filter($secoes)), false, $aviso, $this->gravou && $this->sobrescrever);
+    }
+
+    /**
+     * Lê (e guarda) os schemas antes da trava, para que a troca de categoria lá dentro não vá ao ML.
+     *
+     * @param  list<?string>  $categorias
+     * @return ?string a mensagem, se alguma não pôde ser lida
+     */
+    private function lerSchemas(array $categorias): ?string
+    {
+        try {
+            foreach (array_filter($categorias) as $c) {
+                $this->schemas->obter($c);
+            }
+
+            return null;
+        } catch (RegraViolada $e) {
+            return $e->getMessage();
+        }
+    }
+
+    /** O schema lido fora da trava só vale se a pessoa não trocou a categoria enquanto isso. */
+    private function schemaQueVale(?SchemaClassificado $schema, PubRascunho $r): ?SchemaClassificado
+    {
+        return $schema !== null && $schema->categoriaId === (string) $r->categoria_id ? $schema : null;
     }
 
     // ═══ Fatia 2: variações ══════════════════════════════════════════════════
