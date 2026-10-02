@@ -2704,6 +2704,28 @@ Plans:
 - [x] 159-06-PLAN.md — junção de NPS, imputações, snapshots, PPAs/onboardings e medição do ramo legado (D-09) · wave 3
 - [x] 159-07-PLAN.md — regressão final, deploy com o usuário presente, SHOW INDEX no MariaDB e medições só de leitura · wave 4 (checkpoint)
 - [ ] 159-08-PLAN.md — junção 35 → 15 em produção com decisão e verificação humanas, segundo passe até 31/10 14:00 · wave 5 (checkpoint) — **ADIADO pelo usuário em 2026-10-01**: junção bloqueada pelo consolidar-mes quebrado (learnings §10.1); ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`
+
+## Fase avulsa — Publicador no sistema interno (fora de milestone)
+
+### Phase 160: Publicador no sistema interno (/mlb/anuncios), para Polos e Incubadora
+
+**Goal:** A equipe ECF publica no Mercado Livre pelo sistema interno, em `/mlb/anuncios`, escolhendo o programa (Polos ou Incubadora) e a empresa; o que o cliente preparou no Portal (Lista SKUs, títulos planejados, Precificação) entra já preenchido e ligado ao Portal, e empresa sem Portal tem os produtos cadastrados no próprio Publicador. O motor do Publicador do piloto (`app/Support/Publicador`, `app/Services/Publicador`, tabelas `pub_*`, conferência e publicação em fila) é reaproveitado inteiro; o Anunciar sai do Portal do Cliente.
+**Depends on:** nenhuma fase GSD — continua o Publicador do Portal (branch `feat/publicador-ml-261001`, em produção desde `13eedbb8`/`675e6c49`, piloto #459). Desenho e decisões D12–D19: `.planning/publicador-ml-spec/17-publicador-interno.md`; motor: `16-analise-do-portal.md`.
+**Por que GSD:** a migration altera `pub_rascunhos`, que já tem dado em produção (2 rascunhos de teste da #459) — decisão do usuário em 2026-10-02 (D19).
+**Success Criteria:**
+  1. `/mlb/anuncios` abre o Publicador: escolha Polos | Incubadora, lista das empresas do programa com conta do ML, situação do Portal (sincronizado / nunca / sem Portal) — só admins (D17)
+  2. "Sincronizar do Portal" cria, para cada oferta da Lista SKUs da empresa ainda sem produto no Publicador, um produto ligado à oferta; é idempotente e não apaga nada
+  3. Produto ligado ao Portal herda título planejado e preço da Precificação ao vivo; o que a equipe digita no Publicador vence (D16); publicar cadastra o MLB na aba Anúncios da oferta
+  4. Empresa sem Portal (MlbEmpresa sem Company) tem os produtos cadastrados no Publicador e publica com o token ancorado em `ml_tokens.mlb_empresa_id` (D15)
+  5. Os 2 rascunhos existentes em produção continuam abrindo, agora pelo seu produto; a migration roda no MariaDB local com `--path` sem perda
+  6. Meus Anúncios, Em massa e Histórico continuam funcionando; só o assistente individual é trocado; o "Anunciar por IA" vira botão dentro do Publicador (D14)
+  7. O Anunciar sai do Portal do Cliente para todos os clientes (menu, rotas e allowlist), sem afetar Lista SKUs, Precificação, Anúncios, Planejamento e Mapeamento (D18)
+  8. Layout das telas pelo Stitch (projeto "ECF Admin — Identidade"), conferido no navegador sem erro de console
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 160 to break down)
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
@@ -2727,3 +2749,5 @@ Plans:
 
 *Roadmap atualizado: 2026-09-10 - **Fase 142 (O cadastro da tabela progressiva vai para o contrato)** anexada. Pedido do usuario em 2026-09-09 olhando o fechamento em producao, com quatro itens: mostrar as faixas da tabela propria (hoje sai so a frase), mascara de dinheiro nos campos, mover o cadastro para dentro da pagina de contrato da empresa em pagina exclusiva, e deixar o fechamento so de leitura. O primeiro item e divida consciente do plano 137-09, que preferiu formulario em branco com aviso a valores adivinhados que sobrescreveriam preco real — custo aceito quando havia ZERO tabelas proprias. Depois da Fase 141 sao 169, das quais 168 presumidas esperando conferencia, entao a divida virou gargalo. Fases 1-141 preservadas.*
 *Roadmap atualizado: 2026-09-01 — Milestone v23.0 (Fluxo de Entrada de Novas Empresas) anexada: 7 fases (137-143) cobrindo os 31 REQ-IDs (ETAPA/COMERC/ADMIN/COMUNIC/DISTRIB/RESP/ONBRD/HIST) do REQUIREMENTS-v23.md, derivadas do PDF `.planning/seeds/fluxo-entrada-novas-empresas-260901.md` — pesquisa de domínio deliberadamente pulada (D0). Ordem dita pelo próprio fluxo do PDF: máquina de estados dos 9 status (137, fundação) → Comercial religado à etapa (138) → checklist administrativo + trava de finalização (139) → mensagem de boas-vindas generalizada (140) → distribuição da Coordenação + chegada aos responsáveis, DISTRIB e RESP fundidos numa fatia vertical só (141) → onboarding plugado na máquina de estados (142) → histórico e SLA por último, porque depende de toda transição anterior já emitir evento (143). Fase 150 mexe em migration sobre `companies` com dado de produção (~500 registros) e por isso é fase GSD obrigatória, com baseline de testes e VERIFICATION — sinalizado explicitamente na própria fase. D5 travada na abertura: HubSpot e Clicksign se integram, nunca se reconstroem — nenhuma fase desta milestone cria cliente de assinatura, webhook de contrato ou ingestão de deal ganho; o grupo Contrato do checklist (Fase 152) só lê o estado entregue pelas Fases 126/127/129/132 da v22.0. `phases.clear` NÃO foi executado — Fases 1-136 preservadas, incluindo os três blocos de "Posição paralela" com gate humano aberto (Fases 133, 135, 136) da v22.0/avulsas, seguindo a convenção de anexar milestones deste roadmap.*
+
+*Roadmap atualizado: 2026-10-02 - **Fase 160 (Publicador no sistema interno)** anexada como fase avulsa. Origem: depois do piloto do Publicador no Portal do Cliente (02/10), o usuario decidiu levar o Publicador para `/mlb/anuncios` no sistema interno (API de gerar imagens nao e coisa do cliente; atende Polos e Incubadora), com sincronizacao ligada ao Portal e cadastro de produtos para empresa sem Portal. GSD por alterar `pub_rascunhos` com dado em producao (D19). Fases 1-159 preservadas.*

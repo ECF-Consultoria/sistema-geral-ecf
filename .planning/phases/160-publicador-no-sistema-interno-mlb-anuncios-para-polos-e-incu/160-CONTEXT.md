@@ -1,0 +1,81 @@
+# Fase 160 — Publicador no sistema interno (/mlb/anuncios), para Polos e Incubadora — CONTEXT
+
+**Coletado em:** 2026-10-02, sessão direta com o usuário (sem discuss-phase formal — as decisões abaixo vieram de pergunta explícita, registradas em `.planning/publicador-ml-spec/17-publicador-interno.md`, D12–D19).
+**Por que é fase GSD:** a migration altera `pub_rascunhos`, que já tem dado em produção — 2 rascunhos de teste da empresa #459 "Dev 02 Testes API" (CLAUDE.md, "GSD obrigatório"; escolha explícita do usuário, D19).
+
+## O problema
+
+O Publicador do Mercado Livre foi construído em 01–02/10 dentro do **Portal do Cliente** (Anunciar, piloto só #459, em produção em `13eedbb8` → `675e6c49`). Depois de usá-lo, o usuário decidiu que publicar não é coisa do cliente:
+
+- vai ter API de gerar imagens (custo e controle da ECF);
+- o módulo atende **dois programas**, Polos e Incubadora, e a equipe publica por eles.
+
+Portanto o Publicador vira o assistente de `/mlb/anuncios` no sistema interno. O que o cliente preparou no Portal (Lista SKUs, títulos planejados na aba Anúncios, Precificação) entra **já preenchido**. Empresa sem Portal tem os produtos cadastrados no próprio Publicador.
+
+## O que já funciona e NÃO deve mudar
+
+- **O motor do Publicador** — `app/Support/Publicador/*` (núcleo puro: variações, schema, imagens, payload UP, L1/L2, mapeador de erros), `app/Services/Publicador/*` (repositório, conta, schema, imagens, conferência L3, publicação em fatias com SENT antes do POST e reconciliação por SKU), tabelas `pub_*`, Jobs `ConferirRascunhoJob`/`PublicarRascunhoJob` na fila `high`. 230 testes em `tests/Unit/Publicador` + `tests/Feature/Publicador`. A spec `.planning/publicador-ml-spec/` (00–16) continua valendo.
+- **As outras abas de `/mlb/anuncios`** — Meus Anúncios (`MeusAnuncios.jsx`), Em massa (`AnunciarMassa.jsx` + `GradeAnuncioGlide.jsx`, `publicar-lote`), Histórico (`AnunciosHistorico.jsx`) — e o motor ANTIGO que elas usam (`app/Services/Mlb/Publicacao/*`, `MlAnuncioRascunho`, `PublicarAnuncioMlJob`), que também é usado pelo Portal antigo, pelo acervo e pela IA.
+- **O token do ML com duas âncoras** — `ContaMercadoLivre` (Company e MlbEmpresa), `ml_tokens.mlb_empresa_id` desde 21/09, `MercadoLivreService::ensureValidToken(ContaMercadoLivre)`.
+- **O Portal do Cliente** fora do Anunciar: Lista SKUs, Precificação, Anúncios, Planejamento, Mapeamento — e o menu em trilho com Dock (`b2f243c0`/`ef6bd3a2`).
+- **Conta de cliente nunca recebe publicação de teste**: só a #459 (memória `feedback_conta_cliente_nunca_publicar`); confirmação do usuário antes de cada `POST /items` real.
+
+## Decisões travadas
+
+### D12 — O Publicador sai do Portal e vira o assistente de `/mlb/anuncios`
+Rotas em `routes/mlb_anuncios.php` (grupo `auth, verified, role:admin`, prefixo `mlb/anuncios`). O motor é o mesmo; muda o ponto de entrada e quem usa.
+
+### D13 — Ao entrar, escolhe-se Polos ou Incubadora
+Polos e Incubadora são `MlbEmpresa` (`tipo = 'INCUBADORA'` ou `fase`/`projeto` via `MlbEmpresa::FASE_PARA_PROJETO`; ver `EmpresaOperacionalRouter.php:389-394`). O programa **não é gravado** em tabela nova: deriva da `MlbEmpresa`. A lista mostra as empresas do programa com conta do ML (token por `company_id` ou `mlb_empresa_id`).
+
+### D14 — Troca SÓ o assistente individual
+`AnunciarML.jsx` (wizard, ~2.900 linhas) e a rota `wizard` dão lugar ao Publicador. Meus Anúncios, Em massa e Histórico ficam como estão. O "Anunciar por IA" (`PainelAnunciarIa.jsx`, `GerarAnaliseAnuncioIaJob`, `RascunhoAnuncioIaService`) vira **botão dentro do Publicador** — o que a IA gera precisa cair no rascunho NOVO (`pub_*`), não em `MlAnuncioRascunho`.
+
+### D15 — Empresa sem Portal: produtos cadastrados no Publicador
+535 de 539 `MlbEmpresa` de Polos não têm `Company`; o Portal pendura tudo em `Company` (`estrutura_ofertas.company_id`). Tabela nova **`pub_produtos`** (desenho no doc 17 §3.1): `mlb_empresa_id` nullable, `company_id` nullable, `oferta_id` nullable **unique** (vínculo com o Portal), `sku`, `nome`, `origem` (`portal` · `publicador`). O schema vai POR ESCRITO no plano antes da migration; armadilhas de MariaDB do learnings §6 (nomes curtos, sem `nullOnDelete`, `--path` no MariaDB local; verificação real é `SHOW INDEX`/`SHOW CREATE TABLE`, não o SQLite dos testes).
+
+### D16 — "Sincronizar do Portal" é LIGADO
+Produto com `oferta_id` herda título planejado e preço da Precificação ao vivo (`DadosEfetivosService` + `RascunhoSnapshot::comEfetivos()` — já é assim); o que a equipe digita vence. O botão só cria produtos para ofertas novas (idempotente, nunca apaga). Publicar cadastra o MLB na aba Anúncios **só quando há `oferta_id`**.
+
+### D17 — Acesso: só admins
+Como hoje (`role:admin` no grupo). `Permissions::MLB_ANUNCIAR` e o módulo `homologacao` ficam como estão.
+
+### D18 — O Anunciar sai do Portal para TODOS os clientes
+Quando o interno estiver no ar: sai o piloto (`PortalPublicadorController`, rotas `portal/estrutura/ofertas/*/publicador*`, linhas da allowlist de `RestringeDominioDoPortal`) **e** o formulário antigo do par (`/estrutura/anunciar`, `EstruturaPublicacaoService` como tela). O submódulo "Anunciar" sai do menu do Mapeamento Estrutural (`ModulosPortal`). Lista SKUs, Precificação, Anúncios, Planejamento e Mapeamento ficam.
+
+### D19 — Fase GSD completa
+Baseline de testes antes de mexer, VERIFICATION no fim.
+
+### Alteração em `pub_rascunhos` (decorre de D15)
+`produto_id` FK `pub_produtos` **unique**; `oferta_id` passa a nullable; os 2 rascunhos existentes ganham o seu `pub_produto` (origem `portal`, `company_id` 459, `oferta_id` atual) **na mesma migration**, sem perda. `oferta_id` NOT NULL hoje com FK `pubr_oferta_fk` e unique `pubr_oferta_uq` (migration `2026_10_01_200000_create_publicador_tables.php`).
+
+## A critério do planejamento (Claude's Discretion)
+
+- Como generalizar `ClienteMlPublicador`, `ContaMlService`, `ImagemAssetService`, `ConferenciaService`, `PublicacaoService`, `EditorRascunhoService` de `Company`/`EstruturaOferta` para `PubProduto` + `ContaMercadoLivre` sem quebrar os 230 testes (adaptá-los é esperado; o comportamento coberto não muda).
+- A organização das telas (entrada com Polos | Incubadora, produtos da empresa, editor) — desde que siga o layout do Stitch aprovado (UI-SPEC) e reaproveite os componentes do piloto (`resources/js/Components/Publicador/*`).
+- Onde mora o controller interno (novo `MlbPublicadorController` ou métodos no `MlbAnuncioController`) — a regra do projeto pede controller enxuto.
+- O que acontece com a rota `wizard` antiga e com os rascunhos `MlAnuncioRascunho` abertos (manter leitura? migrar? avisar?) — decidir com dados (contagem em produção só por leitura) e, havendo dúvida, perguntar.
+
+## Referências canônicas
+
+- `.planning/publicador-ml-spec/17-publicador-interno.md` — D12–D19 e o schema (fonte desta fase)
+- `.planning/publicador-ml-spec/16-analise-do-portal.md` — motor, D1–D11, plano por fases do piloto
+- `.planning/publicador-ml-spec/00`–`15` — a especificação do Publicador
+- `.planning/learnings/publicador-ml.md` — Http::fake acumula; Job em fatias com `release()`; conferência visual isolada (SQLite); pegadinhas de teste
+- `.planning/learnings/desempenho-bonificacao.md` §6 — armadilhas de MariaDB que o SQLite não pega
+- `routes/mlb_anuncios.php`, `app/Http/Controllers/MlbAnuncioController.php`, `resources/js/Pages/Mlb/*` — o módulo atual
+- `app/Services/MercadoLivreService.php` (`ContaMercadoLivre`, `ensureValidToken`), `app/Models/MlbEmpresa.php`, `app/Models/MlToken.php`
+
+## Ideias específicas do usuário
+
+- "ao entrar no publicador, vai ter essa opção de selecionar polos ou incubadora"
+- "a empresa que tiver na incubadora e no portal do cliente, podemos puxar os dados dela de acordo com o que preencheu no portal"
+- "vamos começar a publicar já vindo preenchido o que tem no portal do cliente, o que foi listado e preenchido lá"
+- Layout: criar pelo Stitch, combinando com o sistema interno (projeto "ECF Admin — Identidade", design system "ECF Admin Dark") e com a lógica do Anunciar do portal.
+
+## Fora desta fase
+
+- API de gerar imagens (é o motivo da mudança, mas é fase própria).
+- Permissão fina (`permission:mlb.anunciar`) e acesso de publicadores não-admin (D17: só admins).
+- Mudanças em Meus Anúncios, Em massa e Histórico.
+- O E2E na #459 (F1.12 do piloto) — pode rodar já no Publicador interno, com a confirmação do usuário antes de cada `POST /items`.
