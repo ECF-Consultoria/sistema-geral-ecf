@@ -4,6 +4,7 @@ namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
 use App\Models\EstruturaAnuncio;
+use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
@@ -477,6 +478,200 @@ class PublicacaoTest extends TestCase
         $this->assertArrayNotHasKey('stock_locations', $item->payload);
         $this->assertSame(400, $item->avisos['plano_b']['status'], 'a recusa do ML fica guardada');
         $this->assertSame(1, $this->postsDeItem());
+    }
+
+    // ═══ CR-B01: a conta fixada no clique vale em TODA escrita ═══════════════
+
+    /** Uma MlbEmpresa no MESMO produto (D20: a MlbEmpresa vem antes da Company na escolha da âncora). */
+    private function mlbEmpresaNoProduto(bool $comToken, bool $liberada): MlbEmpresa
+    {
+        $e = MlbEmpresa::create(['nome' => 'Dev 02 (Polos)', 'projeto' => 'POLOS', 'company_id' => $this->empresa->id]);
+        $this->produto->update(['mlb_empresa_id' => $e->id]);
+        if ($comToken) {
+            $this->tokenDaMlbEmpresa($e);
+        }
+        if ($liberada) {
+            config(['publicador.contas_liberadas.mlb_empresas' => [$e->id]]);
+        }
+
+        return $e;
+    }
+
+    private function tokenDaMlbEmpresa(MlbEmpresa $e, string $seller = '1555596317'): void
+    {
+        MlToken::create(['company_id' => null, 'mlb_empresa_id' => $e->id, 'ml_user_id' => $seller, 'access_token' => 'token-da-mlb-empresa', 'refresh_token' => 'x',
+            'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
+    }
+
+    private function chamadasComToken(string $token): int
+    {
+        return count(Http::recorded(fn (Request $q) => ($q->header('Authorization')[0] ?? '') === "Bearer {$token}"));
+    }
+
+    private function postsDeDescricao(): int
+    {
+        return count(Http::recorded(fn (Request $q) => $q->method() === 'POST' && str_ends_with($q->url(), '/description')));
+    }
+
+    /** 1º POST some no timeout: o item fica UNKNOWN esperando a reconciliação — a janela em que a âncora muda. */
+    private function publicacaoEsperandoReconciliar(): PubPublicacao
+    {
+        $this->criar = fn () => Http::failedConnection();
+        $this->conferir();
+        $p = $this->iniciar();
+        $this->assertFalse($this->fatia($p));
+        $this->assertSame(PubPublicacaoItem::UNKNOWN, $p->itens()->sole()->status);
+        $this->assertSame(1, $this->postsDeItem());
+        // Daqui em diante, qualquer POST /items "criaria" o anúncio — o teste prova que nenhum sai.
+        $this->criar = fn () => Http::response(['id' => 'MLB-NA-CONTA-ERRADA', 'status' => 'active'], 201);
+        $this->travel(4)->minutes();
+
+        return $p;
+    }
+
+    public function test_cr_b01_iniciar_fixa_a_ancora_e_o_vendedor_conferidos(): void
+    {
+        $p = $this->publicar();
+
+        $this->assertSame(['chave' => 'company-'.$this->empresa->id, 'seller' => '1555596317'], $p->ator['conta']);
+        $this->assertTrue($p->ator['equipe'], 'o ator continua gravado ao lado da conta');
+    }
+
+    public function test_cr_b01_iniciar_recusa_conferencia_de_outro_vendedor_ou_sem_vendedor(): void
+    {
+        $tenta = function () {
+            try {
+                $this->iniciar();
+
+                return null;
+            } catch (RegraViolada $e) {
+                return $e->regra.': '.$e->getMessage();
+            }
+        };
+        $this->conferir();
+
+        MlToken::where('company_id', $this->empresa->id)->update(['ml_user_id' => '7770001']); // reconectaram outra conta do ML na empresa
+        $this->assertStringStartsWith('RN-90: A conta do Mercado Livre deste produto mudou desde a conferência', (string) $tenta());
+
+        MlToken::where('company_id', $this->empresa->id)->update(['ml_user_id' => '1555596317']);
+        $this->r->validacoes()->latest('id')->first()->update(['respostas_ml' => []]); // conferência sem o vendedor lido
+        $this->assertStringStartsWith('RN-90: A conta do Mercado Livre deste produto mudou desde a conferência', (string) $tenta());
+
+        $this->assertSame(0, PubPublicacao::count());
+        $this->assertSame(0, $this->postsDeItem());
+    }
+
+    public function test_cr_b01_oauth_de_mlb_empresa_nao_liberada_concluido_no_meio_nao_recebe_post(): void
+    {
+        $e = $this->mlbEmpresaNoProduto(comToken: false, liberada: false);
+        $p = $this->publicacaoEsperandoReconciliar();
+        $this->assertSame('company-'.$this->empresa->id, $p->ator['conta']['chave']);
+
+        // Alguém conclui o OAuth da MlbEmpresa pelo link do Onboarding: a âncora do produto vira ela.
+        $this->tokenDaMlbEmpresa($e);
+        $this->assertTrue($this->fatia($p));
+
+        $this->assertSame(1, $this->postsDeItem(), 'nenhum POST /items depois da troca de âncora');
+        $this->assertSame(0, $this->chamadasComToken('token-da-mlb-empresa'), 'a conta não liberada não recebe nem leitura');
+        Http::assertNotSent(fn (Request $q) => $q->method() === 'POST' && str_contains($q->url(), '/description'));
+        $this->assertSame(PubPublicacao::FAILED, $p->fresh()->status);
+        $this->assertStringContainsString('mudou desde o clique em Publicar', $p->fresh()->conta_snapshot['motivo']);
+        $this->assertSame(PubPublicacaoItem::UNKNOWN, $p->itens()->sole()->status, 'o incerto continua incerto para a próxima reconciliar');
+    }
+
+    public function test_cr_b01_token_revogado_que_derruba_para_outra_ancora_nao_publica_nela(): void
+    {
+        // As DUAS âncoras liberadas: mesmo assim a troca de conta no meio para tudo.
+        $e = $this->mlbEmpresaNoProduto(comToken: true, liberada: true);
+        $p = $this->publicacaoEsperandoReconciliar();
+        $this->assertSame('empresa-'.$e->id, $p->ator['conta']['chave']);
+        $this->assertSame(0, $this->chamadasComToken('fake-access-token'), 'até aqui só o token da MlbEmpresa');
+
+        // O sync diário recebe invalid_grant e grava `revoked`: a âncora cai para a Company.
+        MlToken::where('mlb_empresa_id', $e->id)->update(['status' => 'revoked']);
+        $this->assertTrue($this->fatia($p));
+
+        $this->assertSame(1, $this->postsDeItem());
+        $this->assertSame(0, $this->chamadasComToken('fake-access-token'), 'a Company não recebe nada desta publicação');
+        $this->assertSame(PubPublicacao::FAILED, $p->fresh()->status);
+        $this->assertStringContainsString('mudou desde o clique em Publicar', $p->fresh()->conta_snapshot['motivo']);
+    }
+
+    public function test_cr_b01_conta_tirada_da_lista_com_publicacao_rodando_nao_recebe_post(): void
+    {
+        $p = $this->publicacaoEsperandoReconciliar();
+
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]); // .env + config:cache no meio
+        $this->assertTrue($this->fatia($p));
+
+        $this->assertSame(1, $this->postsDeItem());
+        $this->assertSame(PubPublicacao::FAILED, $p->fresh()->status);
+        $this->assertStringContainsString('não foi liberada', $p->fresh()->conta_snapshot['motivo']);
+    }
+
+    public function test_cr_b01_token_de_outro_vendedor_na_mesma_ancora_nao_recebe_post(): void
+    {
+        $p = $this->publicacaoEsperandoReconciliar();
+
+        MlToken::where('company_id', $this->empresa->id)->update(['ml_user_id' => '7770001']); // OAuth com outra conta do ML
+        $this->assertTrue($this->fatia($p));
+
+        $this->assertSame(1, $this->postsDeItem());
+        $this->assertSame(PubPublicacao::FAILED, $p->fresh()->status);
+        $this->assertStringContainsString('outro vendedor', $p->fresh()->conta_snapshot['motivo']);
+    }
+
+    public function test_cr_b01_conta_que_muda_entre_itens_da_mesma_fatia_para_o_resto_e_marca_o_motivo(): void
+    {
+        $this->tresCores();
+        $criar = $this->criar;
+        // O 1º item é criado; logo depois a conta sai da lista (antes da descrição e dos outros dois).
+        $this->criar = function (array $corpo, int $n) use ($criar) {
+            config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+
+            return $criar($corpo, $n);
+        };
+
+        $p = $this->publicar();
+
+        $this->assertSame(1, $this->postsDeItem(), 'só o item que saiu antes da troca');
+        $this->assertSame(0, $this->postsDeDescricao(), 'a descrição também é escrita: não sai');
+        $this->assertSame([PubPublicacaoItem::CREATED, PubPublicacaoItem::FAILED, PubPublicacaoItem::FAILED], $p->itens()->pluck('status')->all());
+        $this->assertStringContainsString('não foi liberada', $p->itens()->get()[1]->avisos['mensagem']);
+        $this->assertSame(PubPublicacao::FAILED, $p->status);
+        $this->assertSame(PubRascunho::PARTIALLY_PUBLISHED, $this->r->fresh()->status, 'o item criado continua contando');
+    }
+
+    public function test_cr_b01_reenviar_descricao_so_vai_para_a_conta_fixada_e_liberada(): void
+    {
+        $this->statusDescricao = 400;
+        $item = $this->publicar()->itens()->sole();
+        $this->assertSame(1, $this->postsDeDescricao());
+        $this->statusDescricao = 200;
+        $servico = app(PublicacaoService::class);
+        $tenta = function () use ($servico, $item) {
+            try {
+                $servico->reenviarDescricao($item->fresh());
+
+                return null;
+            } catch (RegraViolada $e) {
+                return $e->regra;
+            }
+        };
+
+        config(['publicador.contas_liberadas.companies' => []]);
+        $this->assertSame('CONTA-LIB', $tenta(), 'conta tirada da lista');
+
+        config(['publicador.contas_liberadas' => ['companies' => [$this->empresa->id], 'mlb_empresas' => []]]);
+        $e = $this->mlbEmpresaNoProduto(comToken: true, liberada: true);
+        $this->assertSame('V-ACC-03', $tenta(), 'a âncora do produto mudou: o item nasceu na Company');
+        $this->assertSame(1, $this->postsDeDescricao(), 'nenhum POST de descrição nas recusas');
+        $this->assertSame(0, $this->chamadasComToken('token-da-mlb-empresa'));
+
+        MlToken::where('mlb_empresa_id', $e->id)->delete();
+        $this->assertNull($tenta());
+        $this->assertSame('OK', $item->fresh()->descricao_status);
+        $this->assertSame(2, $this->postsDeDescricao());
     }
 
     // ═══ Job ═════════════════════════════════════════════════════════════════

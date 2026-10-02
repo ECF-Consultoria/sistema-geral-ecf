@@ -133,7 +133,8 @@ class MlbPublicadorAcessoTest extends TestCase
     public function test_publicar_em_conta_nao_liberada_e_422_conta_lib_sem_job_e_o_resto_segue(): void
     {
         $this->naoLiberar();
-        $this->r->validacoes()->create(['revisao' => $this->r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => []]);
+        $this->r->validacoes()->create(['revisao' => $this->r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => [],
+            'respostas_ml' => ['conta' => ['sellerId' => '1555596317']]]);
 
         $this->admin()->postJson($this->rota('publicar'), ['ciente' => true])->assertUnprocessable()->assertJson(['regra' => 'CONTA-LIB']);
         Queue::assertNotPushed(PublicarRascunhoJob::class);
@@ -185,7 +186,9 @@ class MlbPublicadorAcessoTest extends TestCase
 
     public function test_nenhuma_resposta_vaza_o_token_da_conta(): void
     {
-        $this->r->validacoes()->create(['revisao' => $this->r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => []]);
+        // Como a conferência real grava: o vendedor lido no `/users/me` (CR-B01 o exige para publicar).
+        $this->r->validacoes()->create(['revisao' => $this->r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => [],
+            'respostas_ml' => ['conta' => ['sellerId' => '1555596317']]]);
 
         $abrir = $this->admin()->getJson($this->rota('abrir'))->assertOk();
         $publicar = $this->admin()->postJson($this->rota('publicar'), ['ciente' => true])->assertStatus(202);

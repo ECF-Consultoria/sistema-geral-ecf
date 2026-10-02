@@ -209,8 +209,9 @@ class MlbPublicadorTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin', 'name' => 'Dev ECF']);
         $this->withoutVite()->actingAs($admin)->getJson($this->rota('abrir'))->assertOk();
         $r = PubRascunho::first();
-        // A conferência aprovada desta revisão (o caminho dela está no ConferenciaTest).
-        $r->validacoes()->create(['revisao' => $r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => []]);
+        // A conferência aprovada desta revisão (o caminho dela está no ConferenciaTest), com o vendedor lido.
+        $r->validacoes()->create(['revisao' => $r->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => [],
+            'respostas_ml' => ['conta' => ['sellerId' => '1555596317']]]);
 
         $estado = $this->withoutVite()->actingAs($admin)->postJson($this->rota('publicar'))->assertStatus(202)->json();
 
@@ -259,7 +260,8 @@ class MlbPublicadorTest extends TestCase
         $this->assertSame(['Bearer fake-token-mlb-empresa'], $bearers);
 
         $rasc = PubRascunho::where('produto_id', $p->id)->firstOrFail();
-        $rasc->validacoes()->create(['revisao' => $rasc->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => []]);
+        $rasc->validacoes()->create(['revisao' => $rasc->revisao, 'camada' => 'L3', 'plano_hash' => str_repeat('a', 64), 'resultado' => ConferenciaService::OK, 'issues' => [],
+            'respostas_ml' => ['conta' => ['sellerId' => '1555596317']]]);
         $this->mesa()->postJson(route('mlb.anuncios.publicador.publicar', $p->id))->assertStatus(202)->assertJsonPath('publicacao.status', 'RUNNING');
         Queue::assertPushedOn('high', PublicarRascunhoJob::class);
     }

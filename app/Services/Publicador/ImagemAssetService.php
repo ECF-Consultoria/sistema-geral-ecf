@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
 use App\Support\Publicador\ContasLiberadas;
@@ -55,7 +56,11 @@ class ImagemAssetService
         return ['imagem' => $this->enviarAoMl($imagem, $conteudo), 'problemas' => $problemas, 'nova' => true];
     }
 
-    public function enviarAoMl(PubImagem $imagem, ?string $conteudo = null): PubImagem
+    /**
+     * @param  ?ContaMercadoLivre  $conta  a conta já conferida por quem chama (a publicação passa a
+     *                                     fixada no clique — CR-B01); nula = a âncora do rascunho agora
+     */
+    public function enviarAoMl(PubImagem $imagem, ?string $conteudo = null, ?ContaMercadoLivre $conta = null): PubImagem
     {
         if ($imagem->upload_status === PubImagem::ENVIADA && $imagem->ml_picture_id) {
             return $imagem;
@@ -67,7 +72,7 @@ class ImagemAssetService
             return $imagem->fresh();
         }
 
-        $conta = $imagem->rascunho->conta();
+        $conta ??= $imagem->rascunho->conta();
         // D26: conta não liberada não recebe foto; ela fica guardada aqui e sobe pelo `enviarPendentes`
         // da conferência L3/publicação depois da liberação.
         if (! ContasLiberadas::libera($conta)) {
@@ -100,13 +105,14 @@ class ImagemAssetService
     /**
      * Sobe o que faltou antes de conferir/publicar (`08` §4 passo 4).
      *
+     * @param  ?ContaMercadoLivre  $conta  ver `enviarAoMl()`
      * @return list<PubImagem> as que continuam sem subir
      */
-    public function enviarPendentes(PubRascunho $r): array
+    public function enviarPendentes(PubRascunho $r, ?ContaMercadoLivre $conta = null): array
     {
         $falhas = [];
         foreach ($r->imagens()->where('upload_status', '!=', PubImagem::ENVIADA)->get() as $imagem) {
-            if ($this->enviarAoMl($imagem)->upload_status !== PubImagem::ENVIADA) {
+            if ($this->enviarAoMl($imagem, null, $conta)->upload_status !== PubImagem::ENVIADA) {
                 $falhas[] = $imagem->fresh();
             }
         }
