@@ -2744,9 +2744,9 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 160-08-PLAN.md — API JSON do editor interno por produto + CategoriaBuscaService extraído do Portal · wave 4
-- [ ] 160-09-PLAN.md — Anunciar por IA grava no rascunho novo (dados do anúncio e variações) · wave 4
-- [ ] 160-10-PLAN.md — tela A: entrada do Publicador em /mlb/anuncios e componentes compartilhados · wave 4
+- [x] 160-08-PLAN.md — API JSON do editor interno por produto + CategoriaBuscaService extraído do Portal · wave 4
+- [x] 160-09-PLAN.md — Anunciar por IA grava no rascunho novo (dados do anúncio e variações) · wave 4
+- [x] 160-10-PLAN.md — tela A: entrada do Publicador em /mlb/anuncios e componentes compartilhados · wave 4
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
