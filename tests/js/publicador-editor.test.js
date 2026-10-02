@@ -3,9 +3,20 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import { criarRota } from '../../resources/js/Components/Publicador/apoio.js';
 import {
-    contarProntas, estadoDaConferencia, mesclarAlvos, mesclarVariantes, podeConferir, podePublicar,
-    estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa, textoDaConferencia, totalDeAnuncios,
+    contarProntas, envioDasVariantes, envioDoRascunho, estadoDaConferencia, iguais, mesclarAlvos, mesclarComPendentes, mesclarVariantes,
+    podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa, textoDaConferencia, totalDeAnuncios,
 } from '../../resources/js/Components/Publicador/derivados.js';
+
+const HOOK = 'resources/js/Components/Publicador/usePublicador.js';
+
+/** Corpo de `const nome = …` até a próxima declaração no mesmo nível (4 espaços) do hook. */
+const corpo = (fonte, nome) => {
+    const i = fonte.indexOf(`const ${nome} = `);
+    assert.ok(i >= 0, `não achei "const ${nome} = "`);
+    const j = fonte.indexOf('\n    const ', i + 1);
+
+    return fonte.slice(i, j < 0 ? undefined : j);
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Editor do Publicador (160-12): derivados puros + gates de fonte do hook.
@@ -115,6 +126,106 @@ test('rascunhoPreenchido', () => {
     assert.equal(rascunhoPreenchido({ rascunho: {} }, { atributos: { BRAND: { value_name: 'X' } }, alvos: [], descricao: '' }), true);
     assert.equal(rascunhoPreenchido({ rascunho: {} }, { atributos: {}, alvos: [{ titulo: 'T' }], descricao: '' }), true);
     assert.equal(rascunhoPreenchido({ rascunho: {} }, { atributos: {}, alvos: [], descricao: 'texto' }), true);
+});
+
+// ─── CR-F01: ação de estrutura não descarta o que foi digitado ───
+
+const ENVIO = { modo: 'me2', frete_gratis: false, retirada: false };
+const rascDe = (extra = {}) => ({
+    atributos: { BRAND: { value_name: 'Acme' }, MODEL: { value_name: 'X1' } },
+    alvos: [{ listing_type_id: 'gold_special', titulo: 'Velho', ativo: true }, { listing_type_id: 'gold_pro', titulo: null, ativo: true }],
+    condicao: 'new', descricao: 'antes', envio: ENVIO, garantia: null,
+    ...extra,
+});
+const varsDe = (extra = {}) => ({ a: { ativa: true, estoque: 1, estoque_depositos: null, precos: {}, atributos: {} }, ...extra });
+
+test('CR-F01 iguais: profunda, null ≡ undefined e [] ≡ {} (o PHP manda [] para mapa vazio)', () => {
+    assert.equal(iguais({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] }), true);
+    assert.equal(iguais({ a: 1 }, { a: 2 }), false);
+    assert.equal(iguais(null, undefined), true);
+    assert.equal(iguais([], {}), true);
+    assert.equal(iguais([1], [1, 2]), false);
+    assert.equal(iguais({ x: { value_name: 'a' } }, { x: undefined }), false);
+});
+
+test('CR-F01 título digitado durante a ação de foto fica na tela e segue por salvar (cenário 1)', () => {
+    const base = { rasc: rascDe(), vars: varsDe() };
+    const local = { rasc: rascDe({ alvos: [{ listing_type_id: 'gold_special', titulo: 'Novo', ativo: true }, { listing_type_id: 'gold_pro', titulo: null, ativo: true }] }), vars: varsDe() };
+    const servidor = { rasc: rascDe(), vars: varsDe() };
+    const r = mesclarComPendentes({ servidor, local, base });
+    assert.equal(r.rasc.alvos[0].titulo, 'Novo');
+    assert.deepEqual(r.pendente, { rasc: true, vars: false });
+    assert.deepEqual(envioDoRascunho(r.rasc, servidor.rasc), { alvos: r.rasc.alvos });
+});
+
+test('CR-F01 descrição digitada enquanto as fotos sobem não volta (cenário 2)', () => {
+    const base = { rasc: rascDe(), vars: varsDe() };
+    const local = { rasc: rascDe({ descricao: 'texto novo' }), vars: varsDe() };
+    // O servidor responde à foto com o rascunho de antes (sem a descrição, que ainda não chegou lá).
+    const r = mesclarComPendentes({ servidor: { rasc: rascDe(), vars: varsDe() }, local, base });
+    assert.equal(r.rasc.descricao, 'texto novo');
+    assert.equal(r.pendente.rasc, true);
+});
+
+test('CR-F01 troca de categoria: o que o servidor descartou sai; o editado e o apagado durante a ação ficam como na tela', () => {
+    const base = { rasc: rascDe({ atributos: { BRAND: { value_name: 'Acme' }, MODEL: { value_name: 'X1' }, COLOR: { value_name: 'Azul' } } }), vars: varsDe() };
+    // Durante a ação: BRAND editado, COLOR apagado.
+    const local = { rasc: rascDe({ atributos: { BRAND: { value_name: 'Acme Pro' }, MODEL: { value_name: 'X1' } } }), vars: varsDe() };
+    // O servidor (categoria nova) descartou MODEL e ainda tem COLOR e o BRAND antigo.
+    const servidor = { rasc: rascDe({ atributos: { BRAND: { value_name: 'Acme' }, COLOR: { value_name: 'Azul' }, VOLTAGE: { value_name: '110' } } }), vars: varsDe() };
+    const r = mesclarComPendentes({ servidor, local, base });
+    assert.deepEqual(r.rasc.atributos, { BRAND: { value_name: 'Acme Pro' }, VOLTAGE: { value_name: '110' } });
+    assert.equal(r.pendente.rasc, true);
+});
+
+test('CR-F01 variantes: estoque digitado durante a ação fica; variante nova vem do servidor; a que sumiu cai', () => {
+    const base = { rasc: rascDe(), vars: varsDe({ b: { ativa: true, estoque: 5, precos: {}, atributos: {} } }) };
+    const local = { rasc: rascDe(), vars: varsDe({ a: { ativa: true, estoque: 9, estoque_depositos: null, precos: {}, atributos: {} }, b: { ativa: true, estoque: 5, precos: {}, atributos: {} } }) };
+    const servidor = { rasc: rascDe(), vars: { a: { ativa: true, estoque: 1, estoque_depositos: null, precos: { gold_special: 30 }, atributos: {} }, c: { ativa: true, estoque: 0, precos: {}, atributos: {} } } };
+    const r = mesclarComPendentes({ servidor, local, base });
+    assert.equal(r.vars.a.estoque, 9);
+    assert.deepEqual(r.vars.a.precos, { gold_special: 30 });
+    assert.deepEqual(r.vars.c, servidor.vars.c);
+    assert.equal(r.vars.b, undefined);
+    assert.deepEqual(r.pendente, { rasc: false, vars: true });
+    assert.deepEqual(envioDasVariantes(r.vars, servidor.vars), { a: { estoque: 9 } });
+});
+
+test('CR-F01 sem edição pendente a resposta do servidor vence inteira; sem cópia local (abertura) também', () => {
+    const base = { rasc: rascDe(), vars: varsDe() };
+    const servidor = { rasc: rascDe({ descricao: 'da IA', garantia: { tipo: 'fabrica' } }), vars: varsDe() };
+    const r = mesclarComPendentes({ servidor, local: { rasc: rascDe(), vars: varsDe() }, base });
+    assert.deepEqual(r.rasc, servidor.rasc);
+    assert.deepEqual(r.pendente, { rasc: false, vars: false });
+    const abertura = mesclarComPendentes({ servidor, local: { rasc: null, vars: {} }, base: { rasc: null, vars: {} } });
+    assert.equal(abertura.rasc, servidor.rasc);
+    // Opção de foto ligada na tela (não vem do servidor) e ainda não salva: fica.
+    const comOpcao = mesclarComPendentes({ servidor, local: { rasc: rascDe({ incluir_geral: true }), vars: varsDe() }, base });
+    assert.equal(comOpcao.rasc.incluir_geral, true);
+});
+
+test('CR-F01 envioDoRascunho e envioDasVariantes: só o que difere da base; nulo quando nada', () => {
+    assert.equal(envioDoRascunho(rascDe(), rascDe()), null);
+    assert.deepEqual(envioDoRascunho(rascDe({ descricao: 'x' }), rascDe()), { descricao: 'x' });
+    assert.equal(envioDasVariantes(varsDe(), varsDe()), null);
+    assert.deepEqual(envioDasVariantes(varsDe({ a: { ativa: false, estoque: 1, estoque_depositos: null, precos: {}, atributos: {} } }), varsDe()), { a: { ativa: false } });
+});
+
+test('CR-F01 usePublicador: toda ação de estrutura descarrega antes, na fila, e mescla a resposta', () => {
+    const f = lerSemComentarios(HOOK);
+    for (const nome of ['escolherCategoria', 'salvarEixos', 'enviarFotos', 'atribuirFotos', 'removerFoto', 'reenviarFoto']) {
+        assert.match(corpo(f, nome), /estruturar\(/, nome);
+        assert.doesNotMatch(corpo(f, nome), /chamar\(/, `${nome} não chama o servidor por fora da fila`);
+    }
+    const e = corpo(f, 'estruturar');
+    assert.match(e, /enfileirar\(async \(\) => \{\s*await salvarTudoAgora\(\);/);
+    assert.match(e, /chamar\(fazer, \{ tudo: true \}\)/);
+    assert.match(corpo(f, 'chamar'), /if \(tudo\) aplicarServidor\(data, \{ mesclar: true \}\)/);
+    assert.match(corpo(f, 'aplicarServidor'), /mesclarComPendentes\(/);
+    // "descarregar" espera o que já está em voo: entra na fila.
+    assert.match(f, /const descarregar = \(\) => enfileirar\(salvarTudoAgora\)/);
+    assert.doesNotMatch(f, /setRasc\(doEstado/);
+    assert.doesNotMatch(f, /rascRef\.current = rasc;/);
 });
 
 // ─── Gates de fonte do hook ───

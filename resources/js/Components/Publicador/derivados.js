@@ -16,6 +16,108 @@ export const mesclarAlvos = (alvosDoServidor, alvosLocais) => (alvosDoServidor ?
     ...((alvosLocais ?? []).find((x) => x.listing_type_id === a.listing_type_id) ?? {}),
 }));
 
+// ─── Cópia local × servidor (CR-F01) ────────────────────────────────────────
+//
+// O editor guarda três versões do que é digitado: a do SERVIDOR (a última
+// resposta), a LOCAL (o que está na tela) e a BASE — o que o servidor já tem
+// da cópia local (a última leitura, ou o último salvamento que deu certo).
+// Campo em que a local difere da base é edição que ainda não chegou ao
+// servidor: nenhuma resposta pode pisar nele, e ele continua por salvar.
+
+/**
+ * Igualdade profunda dos dados do rascunho. `null` e `undefined` contam como o
+ * mesmo vazio, e lista vazia é igual a objeto vazio (o PHP manda `[]` para mapa vazio).
+ */
+export const iguais = (a, b) => {
+    if (a === b) return true;
+    if (a === null || a === undefined || b === null || b === undefined) return (a ?? null) === (b ?? null);
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    if (Array.isArray(a) && Array.isArray(b) && a.length !== b.length) return false;
+    const chaves = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const k of chaves) {
+        if (! iguais(a[k], b[k])) return false;
+    }
+
+    return true;
+};
+
+/** Chaves de um objeto em que a cópia local difere da base. */
+const chavesDiferentes = (local, base) => [...new Set([...Object.keys(local ?? {}), ...Object.keys(base ?? {})])]
+    .filter((k) => ! iguais(local?.[k], base?.[k]));
+
+/** O que do rascunho ainda não chegou ao servidor: `{ chave: valor }` só das chaves de topo editadas; nulo se nada. */
+export const envioDoRascunho = (local, base) => {
+    if (! local) return null;
+    const campos = chavesDiferentes(local, base);
+
+    return campos.length ? Object.fromEntries(campos.map((k) => [k, local[k]])) : null;
+};
+
+/** O que das variantes ainda não chegou ao servidor: `{ chave: { campo: valor } }`; nulo se nada. */
+export const envioDasVariantes = (local, base) => {
+    const envio = {};
+    for (const [chave, v] of Object.entries(local ?? {})) {
+        const campos = chavesDiferentes(v, base?.[chave]);
+        if (campos.length) envio[chave] = Object.fromEntries(campos.map((k) => [k, v[k]]));
+    }
+
+    return Object.keys(envio).length ? envio : null;
+};
+
+/** Três vias, campo a campo: o editado (local ≠ base) fica; o resto vem do servidor. */
+const mesclarCampos = (servidor, local, base) => {
+    if (! local) return servidor;
+    const r = {};
+    for (const k of new Set([...Object.keys(servidor ?? {}), ...Object.keys(local), ...Object.keys(base ?? {})])) {
+        const v = iguais(local[k], base?.[k]) ? servidor?.[k] : local[k];
+        if (v !== undefined) r[k] = v;
+    }
+
+    return r;
+};
+
+/**
+ * Mescla a resposta de uma ação de estrutura (foto, categoria, variações) — ou de
+ * uma releitura — com a cópia local, sem descartar o que foi digitado e ainda não
+ * foi salvo (CR-F01). Atributos são decididos um a um, títulos por tipo de anúncio
+ * e variantes campo a campo; variante que o servidor não tem mais (eixo mudou) cai.
+ *
+ * @param {{ servidor: {rasc, vars}, local: {rasc, vars}, base: {rasc, vars} }} versoes
+ * @returns {{ rasc: object, vars: object, pendente: { rasc: boolean, vars: boolean } }}
+ *   `pendente` = sobrou edição por salvar (o salvamento automático precisa rodar).
+ */
+export const mesclarComPendentes = ({ servidor, local, base }) => {
+    const sr = servidor.rasc;
+    if (! local?.rasc || ! base?.rasc) return { rasc: sr, vars: servidor.vars ?? {}, pendente: { rasc: false, vars: false } };
+
+    const lr = local.rasc;
+    const br = base.rasc;
+    const rasc = {};
+    for (const k of new Set([...Object.keys(sr), ...Object.keys(lr), ...Object.keys(br)])) {
+        if (k === 'atributos') {
+            rasc.atributos = mesclarCampos(sr.atributos ?? {}, lr.atributos ?? {}, br.atributos ?? {});
+        } else if (k === 'alvos') {
+            rasc.alvos = (sr.alvos ?? []).map((a) => mesclarCampos(
+                a,
+                (lr.alvos ?? []).find((x) => x.listing_type_id === a.listing_type_id),
+                (br.alvos ?? []).find((x) => x.listing_type_id === a.listing_type_id),
+            ));
+        } else {
+            const v = iguais(lr[k], br[k]) ? sr[k] : lr[k];
+            if (v !== undefined) rasc[k] = v;
+        }
+    }
+
+    const vars = Object.fromEntries(Object.entries(servidor.vars ?? {})
+        .map(([chave, v]) => [chave, mesclarCampos(v, local.vars?.[chave], base.vars?.[chave])]));
+
+    return {
+        rasc,
+        vars,
+        pendente: { rasc: envioDoRascunho(rasc, sr) !== null, vars: envioDasVariantes(vars, servidor.vars) !== null },
+    };
+};
+
 /** Pode pedir a conferência: nada em andamento, sem bloqueio local, nada a salvar e com schema. */
 export const podeConferir = ({ disabled = false, bloqueiosLocais = 0, salvando = 0, schema = null } = {}) => (
     ! disabled && bloqueiosLocais === 0 && salvando === 0 && !! schema
