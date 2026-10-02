@@ -188,11 +188,13 @@ class MlbPublicadorEntradaController extends Controller
                 'id' => $p->id, 'sku' => $p->skuExibido(), 'nome' => $p->nomeExibido(),
                 'origem' => $p->origem, 'oferta_id' => $p->oferta_id,
             ],
-            'empresa' => $this->programas->empresaParaTela($alvo),
+            // WR-B01: a conta mostrada e o "liberada" são os do PRODUTO — a conta que confere e publica,
+            // a mesma do `publicacao_liberada` do JSON —, não os da empresa resolvida pela tela.
+            'empresa' => $this->programas->empresaParaTela($alvo, $p),
             'produtos' => array_map(fn ($i) => [
                 'id' => $i['id'], 'sku' => $i['sku'], 'nome' => $i['nome'], 'status' => $i['status'],
             ], $lista),
-            'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
+            'liberada' => ContasLiberadas::libera($p->contaOuNula()),
         ]);
     }
 }

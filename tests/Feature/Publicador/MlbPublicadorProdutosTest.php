@@ -14,6 +14,7 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -244,6 +245,46 @@ class MlbPublicadorProdutosTest extends TestCase
         $p = PubProduto::create(['company_id' => $c->id, 'sku' => 'L', 'nome' => 'Liberada', 'origem' => 'publicador']);
 
         $this->assertTrue($this->pagina(self::BASE.'/produtos/'.$p->id.'/editor')['props']['liberada']);
+    }
+
+    /**
+     * WR-B01: o produto do backfill (só `company_id`) aparece na tela da MlbEmpresa ligada; se ela
+     * ganha token, o cabeçalho da EMPRESA mostra a conta dela, mas o produto confere e publica pela
+     * Company. O editor e a linha da tela B mostram a conta do PRODUTO — e concordam com o JSON.
+     */
+    public function test_wr_b01_editor_e_tela_b_mostram_a_conta_que_publica_o_produto(): void
+    {
+        $c = Company::factory()->create(['name' => 'Dev 02 Testes API']);
+        MlToken::create(['company_id' => $c->id, 'ml_user_id' => '1555596317', 'access_token' => 'x', 'refresh_token' => 'y',
+            'expires_at' => now()->addHours(5), 'status' => 'active']);
+        $e = $this->empresa(['nome' => 'Dev 02 (Polos)', 'company_id' => $c->id], comToken: true); // conta da EMPRESA: 123456
+        config(['publicador.contas_liberadas' => ['companies' => [$c->id], 'mlb_empresas' => []]]);
+        $doBackfill = PubProduto::create(['company_id' => $c->id, 'sku' => 'BF1', 'nome' => 'Backfill', 'origem' => 'portal']);
+        $daEmpresa = PubProduto::create(['mlb_empresa_id' => $e->id, 'company_id' => $c->id, 'sku' => 'E1', 'nome' => 'Da empresa', 'origem' => 'publicador']);
+
+        $editor = $this->pagina(self::BASE.'/produtos/'.$doBackfill->id.'/editor')['props'];
+        $this->assertSame('empresa-'.$e->id, $editor['empresa']['chave'], 'a navegação continua sendo a da empresa');
+        $this->assertSame('Dev 02 Testes API', $editor['empresa']['conta_nome'], 'a conta que publica é a Company do produto');
+        $this->assertSame('1555596317', $editor['empresa']['conta_ml_id']);
+        $this->assertSame('ativo', $editor['empresa']['token']);
+        $this->assertTrue($editor['liberada']);
+        Http::preventStrayRequests();
+        Http::fake(); // a leitura da conta no abrir não sai para o ML de verdade
+        $json = $this->actingAs($this->admin())->getJson(route('mlb.anuncios.publicador.abrir', $doBackfill->id))->assertOk()->json();
+        $this->assertSame($editor['liberada'], $json['publicacao_liberada'], 'props e JSON concordam');
+
+        $doOutro = $this->pagina(self::BASE.'/produtos/'.$daEmpresa->id.'/editor')['props'];
+        $this->assertSame('Dev 02 (Polos)', $doOutro['empresa']['conta_nome']);
+        $this->assertSame('123456', $doOutro['empresa']['conta_ml_id']);
+        $this->assertFalse($doOutro['liberada'], 'a MlbEmpresa não está liberada');
+
+        $linhas = collect($this->pagina(self::BASE.'/empresas/empresa-'.$e->id)['props']['produtos'])->keyBy('sku');
+        $this->assertTrue($linhas['BF1']['conta_diferente']);
+        $this->assertSame('Dev 02 Testes API', $linhas['BF1']['conta_nome']);
+        $this->assertTrue($linhas['BF1']['liberada']);
+        $this->assertFalse($linhas['E1']['conta_diferente']);
+        $this->assertSame('Dev 02 (Polos)', $linhas['E1']['conta_nome']);
+        $this->assertFalse($linhas['E1']['liberada']);
     }
 
     public function test_404_para_arquivada_chave_invalida_e_produto_inexistente(): void

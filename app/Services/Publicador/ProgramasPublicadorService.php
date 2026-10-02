@@ -380,20 +380,28 @@ class ProgramasPublicadorService
 
     /**
      * O objeto `empresa` do contrato das telas B e do editor. Nunca devolve access/refresh token.
+     *
+     * WR-B01: com `$produto` (o editor), os campos da CONTA — `token`, `link_reconexao`,
+     * `conta_nome`, `conta_ml_id` — saem da âncora do PRODUTO, a mesma que confere e publica
+     * (`PubProduto::conta()`); o resto continua sendo da empresa da tela. Sem `$produto`
+     * (tela B), a conta é a da empresa.
      */
-    public function empresaParaTela(array $alvo): array
+    public function empresaParaTela(array $alvo, ?PubProduto $produto = null): array
     {
         /** @var ?MlbEmpresa $e */
         $e = $alvo['mlb_empresa'];
         /** @var ?Company $c */
         $c = $alvo['company'];
 
-        $ancora = PubProduto::ancoraComToken($e, $c);
+        $ancora = $produto !== null ? $produto->contaOuNula() : PubProduto::ancoraComToken($e, $c);
         $token = $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo');
 
+        // A reconexão é a da MlbEmpresa que daria a conta: a da tela ou, no editor, a do próprio produto
+        // (reconectar uma MlbEmpresa que o produto não tem não mudaria a conta dele).
+        $daReconexao = $produto !== null ? $produto->mlbEmpresa : $e;
         $linkReconexao = null;
-        if ($e !== null && $token !== 'ativo') {
-            $imp = MlbImplementacao::query()->where('empresa_id', $e->id)->first(['id', 'token']);
+        if ($daReconexao !== null && $token !== 'ativo') {
+            $imp = MlbImplementacao::query()->where('empresa_id', $daReconexao->id)->first(['id', 'token']);
             $linkReconexao = $imp?->token ? route('implementacao.conectar-ml', ['token' => $imp->token]) : null;
         }
 
@@ -425,10 +433,12 @@ class ProgramasPublicadorService
      */
     public function produtosParaTela(?MlbEmpresa $e, ?Company $c): array
     {
-        $produtos = $this->produtosQuery($e, $c)->get();
+        $produtos = $this->produtosQuery($e, $c)->with(['mlbEmpresa.mlToken', 'company.mlToken'])->get();
         if ($produtos->isEmpty()) {
             return [];
         }
+        // WR-B01: a conta que a tela mostra é a da empresa; a que publica é a do produto.
+        $chaveDaEmpresa = PubProduto::ancoraComToken($e, $c)?->chaveContaMl();
 
         $ids = $produtos->pluck('id')->all();
         $rascunhos = collect();
@@ -464,8 +474,9 @@ class ProgramasPublicadorService
                 });
         }
 
-        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais) {
+        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa) {
             $r = $rascunhos[$p->id] ?? null;
+            $conta = $p->contaOuNula();
             $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
             $parcial = null;
             if ($r && $r->status === PubRascunho::PARTIALLY_PUBLISHED) {
@@ -489,6 +500,10 @@ class ProgramasPublicadorService
                 'anuncios' => $r ? array_values($anuncios[$r->id] ?? []) : [],
                 'parcial' => $parcial,
                 'atualizado_em' => $atualizado?->toIso8601String(),
+                // WR-B01: a conta do PRODUTO (a que confere e publica) e se ela difere da do cabeçalho.
+                'conta_nome' => $conta?->nomeContaMl(),
+                'conta_diferente' => $conta?->chaveContaMl() !== $chaveDaEmpresa,
+                'liberada' => ContasLiberadas::libera($conta),
             ];
         })->sortByDesc('atualizado_em')->values()->all();
     }
