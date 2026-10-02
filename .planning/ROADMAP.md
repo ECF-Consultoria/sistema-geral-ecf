@@ -2709,11 +2709,12 @@ Plans:
 
 ### Phase 160: Publicador no sistema interno (/mlb/anuncios), para Polos e Incubadora
 
-**Goal:** A equipe ECF publica no Mercado Livre pelo sistema interno, em `/mlb/anuncios`, escolhendo o programa (Polos ou Incubadora) e a empresa; o que o cliente preparou no Portal (Lista SKUs, títulos planejados, Precificação) entra já preenchido e ligado ao Portal, e empresa sem Portal tem os produtos cadastrados no próprio Publicador. O motor do Publicador do piloto (`app/Support/Publicador`, `app/Services/Publicador`, tabelas `pub_*`, conferência e publicação em fila) é reaproveitado inteiro; o Anunciar sai do Portal do Cliente.
+**Goal:** A equipe ECF publica no Mercado Livre pelo sistema interno, em `/mlb/anuncios`, escolhendo o programa (Polos | Incubadora | Gestão, D23) e a empresa; o que o cliente preparou no Portal (Lista SKUs, títulos planejados, Precificação) entra já preenchido e ligado ao Portal, e empresa sem Portal tem os produtos cadastrados no próprio Publicador. O motor do Publicador do piloto (`app/Support/Publicador`, `app/Services/Publicador`, tabelas `pub_*`, conferência e publicação em fila) é reaproveitado inteiro; o Anunciar sai do Portal do Cliente.
 **Depends on:** nenhuma fase GSD — continua o Publicador do Portal (branch `feat/publicador-ml-261001`, em produção desde `13eedbb8`/`675e6c49`, piloto #459). Desenho e decisões D12–D19: `.planning/publicador-ml-spec/17-publicador-interno.md`; motor: `16-analise-do-portal.md`.
 **Por que GSD:** a migration altera `pub_rascunhos`, que já tem dado em produção (2 rascunhos de teste da #459) — decisão do usuário em 2026-10-02 (D19).
 **Success Criteria:**
-  1. `/mlb/anuncios` abre o Publicador: escolha Polos | Incubadora, lista das empresas do programa com conta do ML, situação do Portal (sincronizado / nunca / sem Portal) — só admins (D17)
+
+  1. `/mlb/anuncios` abre o Publicador: escolha Polos | Incubadora | Gestão (D23), lista das empresas do programa com conta do ML, situação do Portal (sincronizado / nunca / sem Portal) — só admins (D17)
   2. "Sincronizar do Portal" cria, para cada oferta da Lista SKUs da empresa ainda sem produto no Publicador, um produto ligado à oferta; é idempotente e não apaga nada
   3. Produto ligado ao Portal herda título planejado e preço da Precificação ao vivo; o que a equipe digita no Publicador vence (D16); publicar cadastra o MLB na aba Anúncios da oferta
   4. Empresa sem Portal (MlbEmpresa sem Company) tem os produtos cadastrados no Publicador e publica com o token ancorado em `ml_tokens.mlb_empresa_id` (D15)
@@ -2722,10 +2723,48 @@ Plans:
   7. O Anunciar sai do Portal do Cliente para todos os clientes (menu, rotas e allowlist), sem afetar Lista SKUs, Precificação, Anúncios, Planejamento e Mapeamento (D18)
   8. Layout das telas pelo Stitch (projeto "ECF Admin — Identidade"), conferido no navegador sem erro de console
 
-**Plans:** 0 plans
+**Plans:** 15 plans em 8 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 160 to break down)
+**Wave 1**
+
+- [ ] 160-01-PLAN.md — baseline de testes, pub_produtos (oferta SET NULL, D27) + pub_rascunhos.produto_id com backfill (oferta_id dormente), modelo PubProduto, conferência no MariaDB local · wave 1
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 160-02-PLAN.md — motor: rascunho nasce/abre pelo produto; efetivos e régua só com oferta; estado por produto e resumo de prontidão; oferta apagada no Portal congela título/preço e não leva o histórico (D27) · wave 2
+- [ ] 160-03-PLAN.md — programa da MlbEmpresa (D13), contas liberadas por âncora (D21) e backend da entrada Polos · Incubadora · Gestão · wave 2
+- [ ] 160-04-PLAN.md — mesa do editor: base dos cards, Produto e categoria, Ficha técnica, Fotos + normalização tipográfica · wave 2
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 160-05-PLAN.md — mesa do editor: Variações e estoque, Clássico e Premium, Logística, Descrição · wave 3
+- [ ] 160-06-PLAN.md — Sincronizar do Portal, produtos da empresa, cadastro manual, casca do editor e comando do D20 · wave 3
+- [ ] 160-07-PLAN.md — motor: conta do ML pelo produto (Company ou MlbEmpresa), trava de publicação por conta liberada (D21) e conferência só local sem foto em conta não liberada (D26) · wave 3
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 160-08-PLAN.md — API JSON do editor interno por produto + CategoriaBuscaService extraído do Portal · wave 4
+- [ ] 160-09-PLAN.md — Anunciar por IA grava no rascunho novo (dados do anúncio e variações) · wave 4
+- [ ] 160-10-PLAN.md — tela A: entrada do Publicador em /mlb/anuncios e componentes compartilhados · wave 4
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 160-11-PLAN.md — tela B: produtos da empresa; aba Individual leva ao Publicador; abas sem Company desabilitadas · wave 5
+- [ ] 160-12-PLAN.md — hook do editor (estado, salvamento, fila, derivados testados) e hook da IA · wave 5
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 160-13-PLAN.md — tela C: editor "mesa de anúncio" (barra, faixa, 7 cards, lateral, IA) · wave 6
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 160-14-PLAN.md — conferência visual isolada (SQLite + php -S + Puppeteer) e aprovação do usuário · wave 7 (checkpoint)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 160-15-PLAN.md — Anunciar sai do Portal (rotas, allowlist, menu), código morto removido, gate final contra a baseline e learnings · wave 8
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 

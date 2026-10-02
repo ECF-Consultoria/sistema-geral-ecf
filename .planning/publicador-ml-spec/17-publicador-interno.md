@@ -21,6 +21,8 @@ Revisão de 02/10/2026, depois do piloto no Portal (`16`). O motor do Publicador
 | D21 | **Trava por conta** (company_id e mlb_empresa_id), começa só com a #459 | Conta de cliente nunca recebe publicação de teste |
 | D22 | Assistente antigo **escondido**: abre rascunhos antigos e "Anunciar semelhante"; remoção em fase própria | Não quebrar Histórico nem 4 rascunhos abertos |
 | D23 | Seletor **Polos · Incubadora · Gestão** | As contas da consultoria continuam no módulo |
+| D26 | A trava por conta fecha também a **conferência no ML**: em conta não liberada, "Conferir" é só local (sem upload de fotos, sem `/items/validate`, sem consultas à conta) | Conta de cliente recebe no máximo leitura; validate só com o "pode" do usuário |
+| D27 | Oferta apagada no Portal: o **produto fica**, solto do Portal (`oferta_id` → NULL); rascunho e histórico de publicações continuam | Nada que já foi publicado some; payload e resposta do ML ficam guardados |
 
 Medido em produção (02/10, leitura): 603 `MlbEmpresa` ativas, 3 da Incubadora, só 5 ligadas ao Portal, 34 com token ML próprio.
 
