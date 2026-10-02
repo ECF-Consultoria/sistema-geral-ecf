@@ -62,10 +62,10 @@ class AnunciosPolosNaListagemTest extends TestCase
         return $empresa->fresh();
     }
 
-    private function cards(): array
+    private function cards(string $programa = 'polos'): array
     {
         return $this->actingAs($this->admin())
-            ->get(route('mlb.anuncios.index'))
+            ->get(route('mlb.anuncios.index', ['programa' => $programa]))
             ->assertOk()
             ->viewData('page')['props']['empresas'];
     }
@@ -107,12 +107,12 @@ class AnunciosPolosNaListagemTest extends TestCase
 
         $card = collect($this->cards())->firstWhere('nome', 'Unity Móveis');
 
-        $this->assertSame('polos', $card['origem']);
-        $this->assertFalse($card['conectada'], 'Sem token guardado, a empresa não está conectada.');
-        $this->assertFalse($card['pode_publicar'], 'Card sem token não pode levar ao wizard.');
+        $this->assertSame('mlb_empresa', $card['tipo']);
+        $this->assertSame('sem_token', $card['token'], 'Sem token guardado, a empresa não está conectada.');
+        $this->assertFalse($card['tem_token']);
+        $this->assertFalse($card['liberada'], 'Conta sem token não publica.');
         $this->assertNotNull($card['link_reconexao'], 'Precisa oferecer o caminho de reconexão.');
-        $this->assertSame('empresa-' . $empresa->id, $card['id'], 'A âncora do card é a MlbEmpresa, não uma Company.');
-        $this->assertStringContainsString('2026', (string) $card['autorizado_em']);
+        $this->assertSame('empresa-' . $empresa->id, $card['chave'], 'A âncora do card é a MlbEmpresa, não uma Company.');
     }
 
     public function test_empresa_de_polos_com_token_aparece_como_conectada(): void
@@ -130,14 +130,14 @@ class AnunciosPolosNaListagemTest extends TestCase
 
         $card = collect($this->cards())->firstWhere('nome', 'Já Reconectou');
 
-        $this->assertTrue($card['conectada']);
+        $this->assertSame('ativo', $card['token']);
         $this->assertTrue($card['tem_token']);
     }
 
     public function test_company_conectada_segue_igual_e_clicavel(): void
     {
-        // Regressão: a fonte antiga não pode mudar de forma. O `id` continua
-        // numérico, senão as URLs e favoritos existentes quebram.
+        // Regressão: a Company conectada segue listada (agora no programa Gestão) e o
+        // `id` continua o da Company; a chave distingue a âncora (`company-<id>`).
         $company = Company::factory()->create(['name' => 'Cliente Consultoria']);
 
         MlToken::create([
@@ -149,10 +149,11 @@ class AnunciosPolosNaListagemTest extends TestCase
             'status'        => 'active',
         ]);
 
-        $card = collect($this->cards())->firstWhere('nome', 'Cliente Consultoria');
+        $card = collect($this->cards('gestao'))->firstWhere('nome', 'Cliente Consultoria');
 
         $this->assertSame($company->id, $card['id']);
-        $this->assertSame('consultoria', $card['origem']);
-        $this->assertTrue($card['pode_publicar']);
+        $this->assertSame('company-' . $company->id, $card['chave']);
+        $this->assertSame('company', $card['tipo']);
+        $this->assertTrue($card['tem_token']);
     }
 }

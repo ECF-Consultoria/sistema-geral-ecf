@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\MlbAnuncioController;
+use App\Http\Controllers\MlbPublicadorEntradaController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -24,9 +25,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('mlb/anuncios')
     ->name('mlb.anuncios.')
     ->group(function () {
-        // ─── Momento 1: painel de cards ───
-        // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
-        Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
+        // Fase 160: a entrada do módulo é o Publicador (D12/D13) — empresas por programa
+        // (?programa=polos|incubadora|gestao), só admins (D17).
+        Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
