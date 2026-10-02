@@ -6,6 +6,7 @@ use App\Models\EstruturaOferta;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
 use App\Models\PubImagemAtribuicao;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
 use App\Support\Publicador\Payload\Alvo;
@@ -39,7 +40,8 @@ class RascunhoRepository
     public function criar(EstruturaOferta $oferta, array $alvos, ?array $ator = null): PubRascunho
     {
         return DB::transaction(function () use ($oferta, $alvos, $ator) {
-            $r = PubRascunho::create(['oferta_id' => $oferta->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
+            // 'produto_id': ponte até o motor receber o produto (160-02); oferta_id segue gravado pelos leitores por coluna.
+            $r = PubRascunho::create(['produto_id' => PubProduto::daOferta($oferta)->id, 'oferta_id' => $oferta->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
                 'envio' => ['modo' => 'me2', 'frete_gratis' => false, 'retirada' => false]]);
             $this->gravarAlvos($r, $alvos);
             $this->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [])]);
