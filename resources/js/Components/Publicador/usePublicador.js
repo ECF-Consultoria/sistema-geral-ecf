@@ -8,7 +8,7 @@ import {
 
 // ─── Lógica do editor do Publicador (D24) ───────────────────────────────────
 //
-// Portada do piloto do Portal (`EditorPublicador.jsx`): quem decide tudo é o
+// Nasceu no piloto do Portal (já removido, D18): quem decide tudo é o
 // servidor — toda resposta traz o estado inteiro do rascunho.
 // - Digitação (atributos, títulos, preços, estoque) fica numa cópia local e vai
 //   ao servidor com espera; a resposta atualiza o resto sem pisar no digitado.

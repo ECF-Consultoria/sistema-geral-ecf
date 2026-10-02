@@ -69,13 +69,6 @@ test('apoio.js — fonte única de SECOES (8 chaves, em ordem), secaoDoProblema 
     assert.deepEqual(chaves, ['categoria', 'caracteristicas', 'variacoes', 'fotos', 'variantes', 'tipos', 'envio', 'descricao']);
 });
 
-test('EditorPublicador.jsx — não declara mais SECOES nem secaoDoProblema: importa de ./apoio', () => {
-    const fonte = lerSemComentarios(`${BASE}/EditorPublicador.jsx`);
-    assert.doesNotMatch(fonte, /^const SECOES\b/m);
-    assert.doesNotMatch(fonte, /^const secaoDoProblema\b/m);
-    assert.match(fonte, /import \{[^}]*\bSECOES\b[^}]*\} from '\.\/apoio'/);
-});
-
 test('CardMesa — section com h3 e chevron com aria-expanded e aria-controls', () => {
     const fonte = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
     assert.match(fonte, /<section\b/);

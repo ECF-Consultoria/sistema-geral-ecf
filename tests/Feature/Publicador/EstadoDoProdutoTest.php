@@ -40,7 +40,7 @@ class EstadoDoProdutoTest extends TestCase
         $this->assertSame('Cadeira', $e['produto']['nome']);
         $this->assertSame($this->produto->oferta_id, $e['produto']['oferta_id']);
         $this->assertSame(PubProduto::ORIGEM_PORTAL, $e['produto']['origem']);
-        $this->assertSame($this->produto->oferta_id, $e['oferta']['id']);
+        $this->assertArrayNotHasKey('oferta', $e);   // a oferta vive só em `produto.oferta_id` (D27)
 
         $this->produto->oferta->update(['nome' => 'Cadeira Renomeada no Portal']);
 
@@ -54,7 +54,6 @@ class EstadoDoProdutoTest extends TestCase
         $r = $this->editor()->abrir($solto);
         $e = $this->editor()->estado($r);
 
-        $this->assertNull($e['oferta']);
         $this->assertSame('SOLTO-1', $e['produto']['sku']);
         $this->assertNull($e['produto']['oferta_id']);
         $this->assertSame(['gold_special' => null, 'gold_pro' => null], $e['efetivos']['titulos']);

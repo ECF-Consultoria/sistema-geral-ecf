@@ -1,13 +1,10 @@
 // ─── Publicador: o que todas as partes da tela usam ─────────────────────────
 //
-// As rotas são todas por oferta (`portal.auth.publicador.*`) e TODA resposta
+// As rotas são todas por produto (`mlb.anuncios.publicador.*`) e TODA resposta
 // traz o estado inteiro do rascunho — a tela nunca adivinha o que foi gravado.
 
 /** Monta o gerador de rotas de um editor: `criarRota('mlb.anuncios.publicador', 'produto')('salvar', 7)`. */
 export const criarRota = (prefixo, chave) => (nome, id, extra = {}) => route(`${prefixo}.${nome}`, { [chave]: id, ...extra });
-
-// Rotas do piloto do Portal — sai com o Portal (D18, 160-15).
-export const rota = criarRota('portal.auth.publicador', 'oferta');
 
 export const mensagemDe = (e) => {
     if (e?.code === 'ECONNABORTED') return 'O servidor demorou demais. Recarregue a página e confira antes de tentar de novo.';
@@ -20,25 +17,12 @@ export const mensagemDe = (e) => {
 export const NOME_TIPO = { gold_special: 'Clássico', gold_pro: 'Premium' };
 export const NOTA_TIPO = { gold_special: 'Menor comissão', gold_pro: 'Parcelado sem juros' };
 
-// As etapas da spec (`02` §1) e a aba onde cada uma mora.
+// As etapas da spec (`02` §1).
 export const NOME_ETAPA = {
     E0: 'Conta do Mercado Livre', E2: 'Categoria', E3: 'Características principais', E4: 'Variações',
     E5: 'Dados das variações', E6: 'Fotos', E7: 'Título', E8: 'Ficha técnica', E9: 'Descrição',
     E10: 'Condições de venda', E11: 'Conferência', E13: 'Publicação', OUTROS: 'Outros avisos do Mercado Livre',
 };
-export const ABA_DA_ETAPA = {
-    E0: 'revisao', E2: 'produto', E3: 'produto', E8: 'produto', E9: 'produto',
-    E4: 'variacoes', E5: 'variacoes', E6: 'variacoes',
-    E7: 'venda', E10: 'venda',
-    E11: 'revisao', E13: 'revisao', OUTROS: 'revisao',
-};
-
-export const ABAS = [
-    ['produto', '1 · Produto'],
-    ['variacoes', '2 · Variações e fotos'],
-    ['venda', '3 · Condições de venda'],
-    ['revisao', '4 · Revisão e publicação'],
-];
 
 export const GERAL = 'GENERAL';
 
@@ -58,13 +42,12 @@ export const problemasDoAtributo = (problemas, id, variante = null) => (problema
 
 // ─── As 8 verificações da lateral e os cards da mesa ────────────────────────
 //
-// Fonte única: o editor do Portal (piloto) e a mesa de anúncio importam daqui.
-// `dica` é só do piloto; a mesa não a usa.
+// Fonte única: a mesa de anúncio e o hook `usePublicador` importam daqui.
 export const SECOES = [
     { chave: 'categoria', titulo: 'Categoria', etapas: ['E2'] },
     { chave: 'caracteristicas', titulo: 'Características', etapas: ['E3', 'E8'] },
-    { chave: 'variacoes', titulo: 'Variações', etapas: ['E4'], dica: 'cada combinação vira um anúncio da mesma família' },
-    { chave: 'fotos', titulo: 'Fotos', etapas: ['E6'], dica: 'a 1ª de cada grupo é a capa' },
+    { chave: 'variacoes', titulo: 'Variações', etapas: ['E4'] },
+    { chave: 'fotos', titulo: 'Fotos', etapas: ['E6'] },
     { chave: 'variantes', titulo: 'Estoque, SKU e código', etapas: ['E5'] },
     { chave: 'tipos', titulo: 'Clássico e Premium', etapas: ['E7'] },
     { chave: 'envio', titulo: 'Envio, garantia e embalagem', etapas: ['E10'] },

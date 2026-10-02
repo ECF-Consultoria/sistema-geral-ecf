@@ -134,7 +134,6 @@ class OfertaExcluidaNoPortalTest extends TestCase
         $e = app(EditorRascunhoService::class)->estado($this->r->fresh());
 
         $this->assertNull($e['produto']['oferta_id']);
-        $this->assertNull($e['oferta']);
         $this->assertSame(['gold_special' => null, 'gold_pro' => null], $e['efetivos']['titulos']);
         $this->assertSame(['gold_special' => null, 'gold_pro' => null], $e['efetivos']['precos']);
         $titulos = array_column($e['alvos'], 'titulo', 'listing_type_id');

@@ -8,18 +8,14 @@ use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
-use App\Models\PubRascunho;
-use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\ColagemAnunciosService;
 use App\Services\Portal\Estrutura\EstruturaAgendaService;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
-use App\Services\Portal\Estrutura\EstruturaPublicacaoService;
 use App\Services\Portal\Estrutura\EstruturaVisaoService;
 use App\Services\Portal\PortalClienteService;
-use App\Services\Publicador\EditorRascunhoService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
@@ -54,7 +50,6 @@ class PortalEstruturaController extends Controller
         private EstruturaAgendaService $agenda,
         private AnunciosMercadoLivreService $anunciosMl,
         private EstruturaPrecificacaoService $precificacao,
-        private EstruturaPublicacaoService $publicacoes,
     ) {
     }
 
@@ -183,113 +178,6 @@ class PortalEstruturaController extends Controller
             'agenda'      => $this->visao->agenda($empresa),
             'vocabulario' => EstruturaVisaoService::vocabulario(),
         ]);
-    }
-
-    /**
-     * Anunciar: publicar o par Clássico + Premium de cada oferta no Mercado
-     * Livre, pelo portal (ADR PORTAL-03). A lista da esquerda vem paginada do
-     * servidor; o formulário da oferta escolhida vem por JSON
-     * (`abrirPublicacao`), como a estação do produto.
-     */
-    public function anunciarIndex(Request $request)
-    {
-        $empresa = PortalContexto::empresa();
-        $filtro = (string) $request->query('filtro', 'a_anunciar');
-        $busca = (string) $request->query('q', '');
-
-        $pagina = $this->publicacoes->pagina($empresa, $filtro, $busca, (int) $request->query('pagina', 1));
-        $piloto = PortalPublicadorController::noPiloto($empresa);
-        if ($piloto) {
-            $pagina['ofertas'] = $this->comProntidaoDoPublicador($pagina['ofertas']);
-        }
-
-        return Inertia::render('Portal/EstruturaAnunciar', [
-            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.anunciar', PortalContexto::ator()),
-            'anunciar'     => $pagina,
-            'filtros'      => ['filtro' => $filtro, 'q' => $busca],
-            'vocabulario'  => EstruturaVisaoService::vocabulario(),
-            'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
-            // Piloto do Publicador novo (variações, fotos por grupo, conferência em fila).
-            'publicador_novo' => $piloto,
-        ]);
-    }
-
-    /** Piloto do Publicador: o selo de cada card vem do rascunho novo, não do par antigo. */
-    private function comProntidaoDoPublicador(array $ofertas): array
-    {
-        $rascunhos = PubRascunho::with('produto:id,oferta_id')
-            ->whereHas('produto', fn ($q) => $q->whereIn('oferta_id', array_column($ofertas, 'id')))
-            ->get()->keyBy(fn (PubRascunho $r) => $r->produto->oferta_id);
-        $ultimas = PubValidacao::whereIn('rascunho_id', $rascunhos->pluck('id'))->orderBy('id')->get()->keyBy('rascunho_id');
-
-        return array_map(function ($o) use ($rascunhos, $ultimas) {
-            $r = $rascunhos[$o['id']] ?? null;
-
-            return [...$o, 'prontidao' => EditorRascunhoService::prontidao($r, $r ? ($ultimas[$r->id] ?? null) : null)];
-        }, $ofertas);
-    }
-
-    // ═══ Anunciar — o par de uma oferta (JSON) ══════════════════════════════
-
-    /** O formulário da oferta: dados efetivos, referências, categoria e pendências. Não grava. */
-    public function abrirPublicacao(int $oferta)
-    {
-        return response()->json($this->publicacoes->abrir($this->oferta($oferta)));
-    }
-
-    /** O rascunho, salvo sozinho pela tela. A regra de negócio mora no service. */
-    public function salvarPublicacao(Request $request, int $oferta)
-    {
-        $registro = $this->oferta($oferta);
-        $pub = $this->publicacoes->salvarRascunho($registro, $this->dadosPublicacao($request), PortalContexto::ator());
-
-        // A tela precisa saber se o que ficou salvo ainda é o que o ML aprovou,
-        // e o que ainda falta — as duas coisas saem da mesma leitura.
-        $aberto = $this->publicacoes->abrir($registro);
-
-        return response()->json(['publicacao' => $aberto['publicacao'], 'pendencias' => $aberto['pendencias'], 'status' => $pub->status]);
-    }
-
-    /** Uma foto do computador → Mercado Livre → `{id, url}` no rascunho. */
-    public function fotoPublicacao(Request $request, int $oferta)
-    {
-        $registro = $this->oferta($oferta);
-        $request->validate(['imagem' => ['required', 'file', 'image', 'max:10240']]);
-
-        $arquivo = $request->file('imagem');
-        $pub = $this->publicacoes->enviarFoto($registro, $arquivo->get(), $arquivo->getClientOriginalName(), PortalContexto::ator());
-
-        return response()->json(['fotos' => $pub->dados['fotos'], 'status' => $pub->status]);
-    }
-
-    /** Conferir com o Mercado Livre (pendências locais, depois /items/validate). */
-    public function validarPublicacao(int $oferta)
-    {
-        return response()->json($this->publicacoes->validar($this->oferta($oferta), PortalContexto::ator()));
-    }
-
-    /** Publicar o par (ou o que falta dele). Síncrono: dois POST /items. */
-    public function publicarPublicacao(int $oferta)
-    {
-        return response()->json($this->publicacoes->publicar($this->oferta($oferta), PortalContexto::ator()));
-    }
-
-    /** Categorias do ML para um texto — a sugestão pelo título e a busca do "trocar". */
-    public function categoriasAnunciar(Request $request)
-    {
-        $dados = $request->validate(['q' => ['required', 'string', 'max:200']]);
-
-        return response()->json($this->publicacoes->categorias($dados['q']));
-    }
-
-    /** A meta de uma categoria: caminho, limite do título, atributos obrigatórios. */
-    public function categoriaAnunciar(string $categoria)
-    {
-        $meta = $this->publicacoes->categoria($categoria);
-
-        abort_if($meta === null, 404);
-
-        return response()->json($meta);
     }
 
     // ═══ Ofertas ════════════════════════════════════════════════════════════
@@ -623,40 +511,6 @@ class PortalEstruturaController extends Controller
             // sai dele em `EstruturaAnuncio::normalizarMlb()`.
             'codigo_mlb'  => ['nullable', 'string', 'max:500'],
             'titulo'      => ['nullable', 'string', 'max:255'],
-        ]);
-    }
-
-    /** A forma do rascunho do par; a normalização (e o hash) é do service. */
-    private function dadosPublicacao(Request $request): array
-    {
-        return $request->validate([
-            'categoria_id'             => ['nullable', 'string', 'max:20'],
-            'categoria_nome'           => ['nullable', 'string', 'max:255'],
-            'categoria_origem'         => ['nullable', Rule::in(['sugerida', 'escolhida'])],
-            'atributos'                => ['nullable', 'array', 'max:100'],
-            'atributos.*'              => ['array'],
-            'atributos.*.value_id'     => ['nullable', 'string', 'max:100'],
-            'atributos.*.value_name'   => ['nullable', 'string', 'max:255'],
-            'fotos'                    => ['nullable', 'array', 'max:'.EstruturaPublicacaoService::MAX_FOTOS],
-            'fotos.*.id'               => ['required', 'string', 'max:100'],
-            'fotos.*.url'              => ['nullable', 'string', 'max:500'],
-            'estoque'                  => ['nullable', 'integer', 'min:0', 'max:99999'],
-            'condicao'                 => ['nullable', Rule::in(array_keys(EstruturaPublicacaoService::CONDICOES))],
-            'envio'                    => ['nullable', 'array'],
-            'envio.modo'               => ['nullable', Rule::in(array_keys(EstruturaPublicacaoService::ENVIOS))],
-            'envio.frete_gratis'       => ['nullable', 'boolean'],
-            'embalagem'                => ['nullable', 'array'],
-            'embalagem.peso_g'         => ['nullable', 'numeric', 'min:0', 'max:999999'],
-            'embalagem.altura_cm'      => ['nullable', 'numeric', 'min:0', 'max:9999'],
-            'embalagem.largura_cm'     => ['nullable', 'numeric', 'min:0', 'max:9999'],
-            'embalagem.comprimento_cm' => ['nullable', 'numeric', 'min:0', 'max:9999'],
-            'garantia'                 => ['nullable', Rule::in(EstruturaPublicacaoService::GARANTIAS)],
-            'descricao'                => ['nullable', 'string', 'max:50000'],
-            'tipos'                    => ['nullable', 'array'],
-            'tipos.classico.titulo'    => ['nullable', 'string', 'max:255'],
-            'tipos.classico.preco'     => ['nullable', 'numeric', 'min:0', 'max:9999999'],
-            'tipos.premium.titulo'     => ['nullable', 'string', 'max:255'],
-            'tipos.premium.preco'      => ['nullable', 'numeric', 'min:0', 'max:9999999'],
         ]);
     }
 

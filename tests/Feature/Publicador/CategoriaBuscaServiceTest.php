@@ -3,7 +3,6 @@
 namespace Tests\Feature\Publicador;
 
 use App\Models\User;
-use App\Services\Portal\Estrutura\EstruturaPublicacaoService;
 use App\Services\Publicador\CategoriaBuscaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -59,16 +58,6 @@ class CategoriaBuscaServiceTest extends TestCase
         $this->assertSame(['Acessórios para Veículos', 'Peças de Carros e Caminhonetes', 'Direção', 'Caixa de Direção'], $r[0]['caminho']);
         $this->assertSame(['id' => 'MLB447370', 'nome' => 'Cajas de Dirección Hidráulica', 'dominio' => self::DOMINIO, 'caminho' => []], $r[2]);
         $this->assertSame(3, $this->chamadasDeCategoria());
-    }
-
-    public function test_o_servico_do_portal_delega_e_devolve_exatamente_o_mesmo(): void
-    {
-        $this->fakeMl();
-
-        $novo = app(CategoriaBuscaService::class)->categorias('caixa de direção');
-        $portal = app(EstruturaPublicacaoService::class)->categorias('caixa de direção');
-
-        $this->assertSame($novo, $portal);
     }
 
     public function test_rota_do_editor_interno_responde_so_para_admin_e_exige_q(): void

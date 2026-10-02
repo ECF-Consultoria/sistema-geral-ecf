@@ -330,8 +330,6 @@ class EditorRascunhoService
         $p = $r->publicacoes()->latest('id')->first();
 
         return [
-            // 'oferta' fica por compatibilidade com o EditorPublicador.jsx do Portal, que sai em 160-15.
-            'oferta' => $r->produto->oferta ? ['id' => $r->produto->oferta->id, 'sku' => $r->produto->oferta->sku, 'nome' => $r->produto->oferta->nome] : null,
             'produto' => [
                 'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
                 'oferta_id' => $r->produto->oferta_id, 'origem' => $r->produto->origem,
@@ -399,7 +397,6 @@ class EditorRascunhoService
                 ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
                 ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
                 ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all(),
-            'piloto' => true,
         ];
     }
 
