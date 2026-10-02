@@ -19,6 +19,7 @@ use App\Models\MlbImplementacao;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
+use App\Services\Creative\CreativeKitPublicacao;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
@@ -83,6 +84,8 @@ class MlbAnuncioController extends Controller
         private CreativeSlotCatalog $creativeSlotCatalog,
         // Fase 161 Plano 02: despacho em ondas dos 7 slots do kit (GEN-03)
         private CreativeKitDespachante $creativeKitDespachante,
+        // Fase 161 Plano 03: dono de payload.pictures quando há kit (PUB-01/04)
+        private CreativeKitPublicacao $creativeKitPublicacao,
     ) {}
 
     /**
@@ -1566,6 +1569,9 @@ class MlbAnuncioController extends Controller
 
         $this->checarEscopoDoCriativo($request, $criativo);
 
+        // OPS-04: conferida DEPOIS do escopo — mesma disciplina dos demais endpoints do kit.
+        $this->creativePermissao->exigir($request->user(), 'aprovar');
+
         $rascunho = $criativo->rascunho;
         abort_unless($rascunho !== null, 422, 'O rascunho deste criativo não existe mais.');
 
@@ -1627,14 +1633,6 @@ class MlbAnuncioController extends Controller
             ], 422);
         }
 
-        // PUB-01: substitui SÓ a posição do slot (hero = posição 0), preserva
-        // as demais fotos na ordem. Forma idêntica à do wizard (T-160-16).
-        $payload = $rascunho->payload ?? [];
-        $pictures = $payload['pictures'] ?? [];
-        $pictures[0] = ['source' => $resposta['url']];
-        $payload['pictures'] = array_values($pictures);
-        $rascunho->update(['payload' => $payload]);
-
         $criativo->update([
             'status'         => MlAnuncioCriativo::STATUS_APROVADO,
             'aprovado_por'   => $request->user()->id,
@@ -1643,29 +1641,63 @@ class MlbAnuncioController extends Controller
             'ml_picture_url' => $resposta['url'],
         ]);
 
-        // FOTO-03 (Fase 160, Plano 04) — o papel da foto do cliente acabou:
-        // o Mercado Livre já tem a imagem. Apaga aqui, na hora, em vez de
-        // esperar a varredura diária. `try/catch` de propósito: uma falha ao
-        // apagar a referência NUNCA pode desfazer uma aprovação que já
-        // chegou ao ML — o que escapar é recolhido por
-        // `creative:limpar-referencias` em até 48h.
-        try {
-            $this->referenciaEfemera->apagar($criativo);
-        } catch (\Throwable $e) {
-            Log::warning("[Creative] Falha ao apagar referência do criativo {$criativo->id} após aprovação: {$e->getMessage()}");
+        $kit = $criativo->kit;
+
+        if ($kit !== null) {
+            // Decisão 8 (161-03): com kit, `payload.pictures` é reconstruído
+            // do zero a partir de TODOS os aprovados — nunca escrito por
+            // índice (criaria buracos quando a ordem de aprovação do
+            // operador não bate com `slot_indice`).
+            $this->creativeKitPublicacao->aplicarPictures($rascunho);
+        } else {
+            // PUB-01 (fluxo de 1 imagem, Fase 160): substitui SÓ a posição do
+            // slot (hero = posição 0), preserva as demais fotos na ordem.
+            // Forma idêntica à do wizard (T-160-16) — caminho INTOCADO.
+            $payload = $rascunho->payload ?? [];
+            $pictures = $payload['pictures'] ?? [];
+            $pictures[0] = ['source' => $resposta['url']];
+            $payload['pictures'] = array_values($pictures);
+            $rascunho->update(['payload' => $payload]);
+        }
+
+        // Armadilha 1 (161-03): com kit, a referência do PORTADOR só é
+        // apagada quando o KIT INTEIRO é aprovado (`criativoKitAprovar()`)
+        // — apagar aqui mataria a regeneração dos outros slots que ainda
+        // não foram aprovados. Sem kit, o comportamento é o de sempre
+        // (FOTO-03, Fase 160 Plano 04): apaga na hora, com `try/catch` que
+        // nunca desfaz uma aprovação já confirmada pelo Mercado Livre.
+        if ($kit === null) {
+            try {
+                $this->referenciaEfemera->apagar($criativo);
+            } catch (\Throwable $e) {
+                Log::warning("[Creative] Falha ao apagar referência do criativo {$criativo->id} após aprovação: {$e->getMessage()}");
+            }
         }
 
         Log::info("[Creative] Criativo {$criativo->id} aprovado", [
             'rascunho_id' => $rascunho->id,
+            'kit_id'      => $criativo->kit_id,
             'picture_id'  => $resposta['id'],
             'usuario'     => $request->user()->id,
         ]);
+
+        // Sem kit: a URL é a do próprio criativo (igual sempre foi). Com
+        // kit: a URL devolvida ao front é a do SLOT 1 (hero) — mesmo que
+        // não seja ele o slot recém-aprovado — para `onImagemAprovada(url)`
+        // continuar apontando o `imagemUrl` do wizard para a imagem
+        // principal certa (armadilha 2, 161-03-PLAN.md). Pode vir `null`
+        // quando o slot 1 ainda não foi aprovado — o autosave, no pior
+        // caso, só reduz a lista temporariamente; quem publica reconstrói
+        // (161-04).
+        $urlPrincipal = $kit === null
+            ? $resposta['url']
+            : $kit->slots()->where('slot_indice', 1)->first()?->ml_picture_url;
 
         return response()->json([
             'ok'         => true,
             'token'      => $criativo->token,
             'status'     => $criativo->status,
-            'url'        => $resposta['url'],
+            'url'        => $urlPrincipal,
             'picture_id' => $resposta['id'],
         ]);
     }
@@ -1987,6 +2019,10 @@ class MlbAnuncioController extends Controller
                 // tetos (asset e kit) em `regeneracoesRestantesAsset()`.
                 'regeneracoes'            => $slot->regeneracoes,
                 'regeneracoes_restantes'  => $kit->regeneracoesRestantesAsset($slot),
+                // Fase 161 Plano 03 (APROV-03) — link para a imagem já
+                // aprovada no Mercado Livre; a grade some os botões e mostra
+                // este link quando preenchido (evita segundo upload).
+                'ml_picture_url'          => $slot->ml_picture_url,
             ];
         })->values();
 
@@ -1998,6 +2034,11 @@ class MlbAnuncioController extends Controller
             'erro'             => $kit->erro_mensagem,
             'estrategia'       => $kit->plano['estrategia'] ?? null,
             'minimo_aprovadas' => $kit->minimo_aprovadas,
+            // Fase 161 Plano 03 (APROV-03) — a tela decide se "Aprovar kit"
+            // já pode ser clicado só com estes dois números; nunca recalcula
+            // a régua a partir dos slots.
+            'prontas'          => $kit->prontas(),
+            'aprovadas'        => $kit->aprovadas(),
             'referencias'      => $portador === null ? [] : collect($portador->referenciasVivas())
                 ->map(fn ($ref) => [
                     'indice' => $ref['indice'],
@@ -2009,6 +2050,167 @@ class MlbAnuncioController extends Controller
                 ])
                 ->values(),
             'slots' => $slots,
+        ]);
+    }
+
+    /**
+     * Aprova o KIT INTEIRO de uma vez (Fase 161, Plano 03, APROV-03): sobe
+     * cada slot `pronto` ao Mercado Livre por `MlImagemService::enviar()`
+     * (PUB-02, nenhum caminho novo), em ordem de `slot_indice`, e SÓ FECHA o
+     * kit (`status=aprovado`) quando NENHUM slot falhou e o mínimo
+     * congelado (`minimo_aprovadas`) foi atingido — meia aprovação não
+     * existe por slot (cada upload é definitivo assim que sobe), mas o KIT
+     * só fecha quando fecha (molde `publicarDuplo`: resultado por item,
+     * nunca tudo-ou-nada).
+     *
+     * Armadilha 1 (161-03-PLAN.md): a referência do PORTADOR só é apagada
+     * AQUI — na aprovação do kit inteiro —, nunca na aprovação de um slot
+     * isolado (`criativoAprovar()`), porque os slots ainda não aprovados
+     * podem precisar regenerar e leem a MESMA foto do portador.
+     *
+     * Ordem: (1) chave ligada, (2) kit existe, (3) double-check de empresa
+     * pelo rascunho, (4) permissão explícita (OPS-04), (5)
+     * `encerrarSeTravado()`, (6) recusas em pt-BR — kit já `aprovado`,
+     * mínimo não atingido —, (7) upload slot a slot (resumo por índice),
+     * (8) `aplicarPictures()` reconstrói o payload com o que subiu, (9) se
+     * e só se nada falhou e o mínimo foi atingido, fecha o kit e apaga a
+     * referência (try/catch que nunca desfaz aprovação já confirmada).
+     */
+    public function criativoKitAprovar(Request $request, string $kitToken): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco nem falar com o ML.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $kit = MlAnuncioCriativoKit::where('token', $kitToken)->first();
+        abort_if($kit === null, 404, 'Kit não encontrado.');
+
+        $this->checarEscopoDoRascunho($request, $kit->rascunho);
+
+        // OPS-04: conferida DEPOIS do escopo — mesma disciplina dos demais endpoints do kit.
+        $this->creativePermissao->exigir($request->user(), 'aprovar');
+
+        $kit->encerrarSeTravado();
+
+        if ($kit->status === MlAnuncioCriativoKit::STATUS_APROVADO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este kit já foi aprovado.']],
+            ], 422);
+        }
+
+        $disponiveis = $kit->prontas() + $kit->aprovadas();
+        if ($disponiveis < $kit->minimo_aprovadas) {
+            $faltam = $kit->minimo_aprovadas - $disponiveis;
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => "Faltam {$faltam} imagem(ns) pronta(s) para atingir o mínimo de {$kit->minimo_aprovadas} aprovadas."]],
+            ], 422);
+        }
+
+        $rascunho = $kit->rascunho;
+        abort_unless($rascunho !== null, 422, 'O rascunho deste kit não existe mais.');
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+
+        $aprovadas = 0;
+        $falharam  = [];
+
+        $slotsProntos = $kit->slots()
+            ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->orderBy('slot_indice')
+            ->get();
+
+        foreach ($slotsProntos as $slot) {
+            if ($slot->imagem_path === null || ! $disco->exists($slot->imagem_path)) {
+                Log::error("[Creative] Falha ao aprovar slot {$slot->id} do kit {$kit->id}: imagem não encontrada em disco.");
+                $falharam[] = $slot->slot_indice;
+                continue;
+            }
+
+            try {
+                $resposta = $this->imagem->enviar(
+                    $rascunho->company,
+                    $disco->get($slot->imagem_path),
+                    "criativo-{$slot->token}.jpg",
+                );
+            } catch (\Throwable $e) {
+                // Detalhe técnico só no log (nunca bytes) — o slot continua
+                // `pronto`, nada foi gravado, e os demais seguem na mesma
+                // chamada (um upload não aborta os outros).
+                Log::error("[Creative] Falha ao aprovar slot {$slot->id} do kit {$kit->id}: {$e->getMessage()}");
+                $falharam[] = $slot->slot_indice;
+                continue;
+            }
+
+            if ($resposta === null) {
+                Log::error("[Creative] Falha ao aprovar slot {$slot->id} do kit {$kit->id}: upload ao ML não retornou id.");
+                $falharam[] = $slot->slot_indice;
+                continue;
+            }
+
+            $slot->update([
+                'status'         => MlAnuncioCriativo::STATUS_APROVADO,
+                'aprovado_por'   => $request->user()->id,
+                'aprovado_em'    => now(),
+                'ml_picture_id'  => $resposta['id'],
+                'ml_picture_url' => $resposta['url'],
+            ]);
+
+            $aprovadas++;
+        }
+
+        // Decisão 8: reconstrói o payload do que SUBIU de verdade até aqui —
+        // roda sempre, mesmo em falha parcial, para a tela/rascunho ficarem
+        // coerentes com o que já está no Mercado Livre.
+        $totalEscrito = $this->creativeKitPublicacao->aplicarPictures($rascunho);
+
+        $kitFicaAprovado = $falharam === [] && $kit->aprovadas() >= $kit->minimo_aprovadas;
+
+        if ($kitFicaAprovado) {
+            $kit->update([
+                'status'       => MlAnuncioCriativoKit::STATUS_APROVADO,
+                'aprovado_por' => $request->user()->id,
+                'aprovado_em'  => now(),
+            ]);
+
+            // Armadilha 1: só agora — todo o kit fechou — o papel da foto
+            // do cliente termina. `try/catch`: falha ao apagar NUNCA desfaz
+            // uma aprovação que já chegou ao ML (mesma disciplina de
+            // `criativoAprovar()`); o que escapar é recolhido pela
+            // varredura diária (`creative:limpar-referencias`, FOTO-03).
+            $portador = $kit->criativoReferencia;
+            if ($portador !== null) {
+                try {
+                    $this->referenciaEfemera->apagar($portador);
+                } catch (\Throwable $e) {
+                    Log::warning("[Creative] Falha ao apagar referência do kit {$kit->id} após aprovação: {$e->getMessage()}");
+                }
+            }
+        }
+        // Falha parcial: o kit NÃO muda de status aqui de propósito —
+        // `recalcularStatus()` não sabe interpretar a mistura de slots
+        // `aprovado`+`pronto` (ele só conta pendente/rodando/pronto/erro);
+        // o estado de GERAÇÃO do kit não mudou, só o de APROVAÇÃO de cada
+        // slot individual.
+
+        Log::info("[Creative] Kit {$kit->id} aprovação em lote", [
+            'aprovadas'         => $aprovadas,
+            'falharam'          => $falharam,
+            'fotos_no_payload'  => $totalEscrito,
+            'kit_aprovado'      => $kitFicaAprovado,
+            'usuario'           => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'ok'        => $falharam === [],
+            'kit_token' => $kit->token,
+            'status'    => $kit->fresh()->status,
+            'aprovadas' => $aprovadas,
+            'falharam'  => $falharam,
+            'mensagem'  => $falharam === []
+                ? "{$aprovadas} imagem(ns) aprovada(s) com sucesso."
+                : "{$aprovadas} imagem(ns) subiu(ram); falhou o upload do(s) slot(s) " . implode(', ', $falharam) . '.',
         ]);
     }
 

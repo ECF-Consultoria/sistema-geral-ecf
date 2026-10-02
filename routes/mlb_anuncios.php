@@ -197,4 +197,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('token', '[A-Za-z0-9]{32}')
             ->middleware('throttle:12,1')
             ->name('criativo.regenerar');
+
+        // Fase 161 Plano 03 — aprova o kit inteiro (APROV-03). Throttle:12,1 é
+        // só proteção de clique duplo (o custo caro — as imagens — já foi
+        // pago na geração, não aqui).
+        Route::post('/criativo/kit/{kit}/aprovar', [MlbAnuncioController::class, 'criativoKitAprovar'])
+            ->where('kit', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:12,1')
+            ->name('criativo.kit.aprovar');
     });
