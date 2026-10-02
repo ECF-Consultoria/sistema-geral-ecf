@@ -374,6 +374,17 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
+## Posição paralela — Fase 160 (Publicador no sistema interno, /mlb/anuncios) — EM EXECUÇÃO
+
+**Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
+frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição paralela" pertencem a
+outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
+
+Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
+Plans: 15 em 8 waves — 0 de 15 concluídos
+Status: Executing Phase 160 — wave 1 (160-01) iniciando. 160-14 é gate humano (aprovação visual).
+Last activity: 2026-10-02 — início da execução
+
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
 **Preservado em 2026-09-01 na abertura da v23.0.** Este bloco era o "Current Position" até aqui.
