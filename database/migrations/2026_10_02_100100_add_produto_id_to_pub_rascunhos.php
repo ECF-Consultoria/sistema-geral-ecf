@@ -130,7 +130,7 @@ return new class extends Migration
         // No SQLite a FK não tem nome: cai pela forma de coluna (reconstrói a tabela).
         if ($this->hasForeignKey('pub_rascunhos', 'pubr_produto_fk')) {
             Schema::table('pub_rascunhos', function (Blueprint $t) {
-                $t->dropForeign(DB::getDriverName() === 'mysql' ? 'pubr_produto_fk' : ['produto_id']);
+                $t->dropForeign($this->emMysql() ? 'pubr_produto_fk' : ['produto_id']);
             });
         }
         if ($this->hasIndex('pub_rascunhos', 'pubr_produto_uq')) {
@@ -147,10 +147,20 @@ return new class extends Migration
         });
     }
 
+    /**
+     * MySQL OU MariaDB (WR-B06). O Laravel 11+ tem o driver `mariadb` próprio: comparar só
+     * com `'mysql'` mandava o MariaDB para o `PRAGMA` do SQLite — erro de sintaxe no passo 5,
+     * DEPOIS do NOT NULL (DDL não é transacional), e a migration ficava `Pending` para sempre.
+     */
+    private function emMysql(): bool
+    {
+        return in_array(DB::getDriverName(), ['mysql', 'mariadb'], true);
+    }
+
     /** Índice existe? Cross-driver (information_schema no MySQL/MariaDB; PRAGMA no SQLite). */
     private function hasIndex(string $table, string $index): bool
     {
-        if (DB::getDriverName() === 'mysql') {
+        if ($this->emMysql()) {
             return DB::table('information_schema.statistics')
                 ->where('table_schema', DB::getDatabaseName())
                 ->where('table_name', $table)
@@ -170,7 +180,7 @@ return new class extends Migration
     /** FK existe? information_schema no MySQL/MariaDB; no SQLite, pela coluna de origem (as FKs não têm nome lá). */
     private function hasForeignKey(string $table, string $fk): bool
     {
-        if (DB::getDriverName() === 'mysql') {
+        if ($this->emMysql()) {
             return DB::table('information_schema.REFERENTIAL_CONSTRAINTS')
                 ->where('CONSTRAINT_SCHEMA', DB::getDatabaseName())
                 ->where('TABLE_NAME', $table)
