@@ -381,9 +381,9 @@ frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição para
 outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
 
 Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
-Plans: 15 em 8 waves — 14 de 15 concluídos (160-01..14)
-Status: Executing Phase 160 — wave 8 (160-15: Anunciar sai do Portal + gate final). 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — 160-14 APROVADO pelo usuário ("aprovado"); servidor local desligado; 6 pendências não pedidas registradas no 160-14-SUMMARY
+Plans: 15 em 8 waves — 15 de 15 concluídos
+Status: Phase 160 — 15/15 planos executados; faltam code review e verificação da fase. 160-14 é gate humano (aprovação visual).
+Last activity: 2026-10-02 — 160-15 concluído (Anunciar fora do Portal; gate final: Publicador 350/1637, PortalCliente 231/1872, test:js 624 com as 2 pré-existentes; MeuPainelControllerTest x2 = pré-existente registrado na 159)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
