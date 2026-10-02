@@ -8,11 +8,14 @@ use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAcervoMetricaDiaria;
+use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
+use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\ReferenciaEfemeraService;
 use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
@@ -23,9 +26,11 @@ use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
@@ -60,6 +65,10 @@ class MlbAnuncioController extends Controller
         private MercadoLivreService $ml,
         // AUTO-01: compatibilidades de autopeças (detecção + cascata de veículos)
         private MlCompatibilidadeService $compat,
+        // Fase 160 Plano 01: leitor da chave liga/desliga do Creative Engine (OPS-03)
+        private CreativeEngineAtivo $creativeAtivo,
+        // Fase 160 Plano 01: staging da foto de referência em disco privado (FOTO-02)
+        private ReferenciaEfemeraService $referenciaEfemera,
     ) {}
 
     /**
@@ -150,6 +159,10 @@ class MlbAnuncioController extends Controller
             // HIST-86-2: quando o "Anunciar semelhante" do histórico manda ?rascunho=N,
             // o wizard já abre com o clone carregado. Sem o parâmetro vem null e nada muda.
             'abrirRascunhoId' => $rascunhoAlvoId,
+            // Fase 160 Plano 01: a tela não decide nada — só reflete a chave do
+            // servidor (OPS-03). Com a chave desligada, PainelCriativosIa.jsx
+            // não renderiza nada e a etapa 5 do wizard fica idêntica à de hoje.
+            'creativeAtivo' => $this->creativeAtivo->ativa(),
         ]);
     }
 
@@ -1226,6 +1239,118 @@ class MlbAnuncioController extends Controller
             'ok'         => true,
             'picture_id' => $resposta['id'],
             'url'        => $resposta['url'],
+        ]);
+    }
+
+    /**
+     * ─── Creative Engine (Fase 160) ───
+     *
+     * Upload da(s) foto(s) de referência do produto (FOTO-01), em disco
+     * privado (FOTO-02), atrás da chave liga/desliga (OPS-03).
+     *
+     * Ordem obrigatória: (1) chave ligada, (2) double-check de empresa,
+     * (3) validação de arquivo, (4) criação do criativo, (5) gravação em
+     * disco. A chave vem ANTES de tudo — com ela desligada a rota nem chega
+     * a olhar para o corpo da requisição (404 puro).
+     */
+    public function criativoReferenciaStore(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em disco nem banco.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        // FOTO-05: double-check de empresa — cópia literal do bloco de uploadImagem()
+        if ($rascunho->mlb_empresa_id !== null) {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // FOTO-04: tipo e tamanho validados antes de aceitar, mensagem em pt-BR.
+        $request->validate([
+            'referencias'   => ['required', 'array', 'max:' . ReferenciaEfemeraService::MAX_REFERENCIAS],
+            'referencias.*' => ['required', 'file', 'image', 'max:10240'],
+        ], [
+            'referencias.*.image' => 'Envie uma imagem (JPG ou PNG) de até 10 MB.',
+            'referencias.*.max'   => 'Envie uma imagem (JPG ou PNG) de até 10 MB.',
+            'referencias.required' => 'Envie ao menos uma foto do produto.',
+        ]);
+
+        // company_id/mlb_empresa_id/user_id SEMPRE derivados do rascunho e do
+        // usuário autenticado — nunca do corpo da requisição (T-160-01).
+        $criativo = MlAnuncioCriativo::create([
+            'token'          => Str::random(32),
+            'company_id'     => $rascunho->company_id,
+            'mlb_empresa_id' => $rascunho->mlb_empresa_id,
+            'rascunho_id'    => $rascunho->id,
+            'user_id'        => $request->user()->id,
+            'slot'           => 'hero',
+            'status'         => MlAnuncioCriativo::STATUS_PENDENTE,
+        ]);
+
+        $referencias = $this->referenciaEfemera->guardar($criativo, $request->file('referencias'));
+        $criativo->update(['referencias' => $referencias]);
+
+        return response()->json([
+            'ok'       => true,
+            'criativo' => [
+                'token'       => $criativo->token,
+                'status'      => $criativo->status,
+                'referencias' => collect($referencias)->map(fn ($ref) => [
+                    'indice' => $ref['indice'],
+                    'nome'   => $ref['nome'],
+                    'url'    => route('mlb.anuncios.criativo.referencia.ver', [
+                        'token'  => $criativo->token,
+                        'indice' => $ref['indice'],
+                    ]),
+                ])->values(),
+            ],
+        ], 201);
+    }
+
+    /**
+     * Leitura da foto de referência por token (FOTO-02) — nunca por URL
+     * pública nem adivinhável. `role:admin` no grupo de rotas + double-check
+     * de empresa pelo rascunho do criativo + `Cache-Control: private, no-store`.
+     */
+    public function criativoReferenciaVer(Request $request, string $token, int $indice): Response
+    {
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Referência não encontrada.');
+
+        $rascunho = $criativo->rascunho;
+        if ($rascunho !== null) {
+            if ($rascunho->mlb_empresa_id !== null) {
+                abort_unless(
+                    $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                    403,
+                    'Empresa não atribuída a este publicador.'
+                );
+            } else {
+                abort_unless(
+                    $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                    403,
+                    'Rascunho não pertence ao publicador autenticado.'
+                );
+            }
+        }
+
+        $referencia = collect($criativo->referenciasVivas())->firstWhere('indice', $indice);
+        abort_if($referencia === null, 404, 'Referência já foi removida.');
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+        abort_unless($disco->exists($referencia['path']), 404, 'Referência já foi removida.');
+
+        return response($disco->get($referencia['path']), 200, [
+            'Content-Type'  => $referencia['mime'] ?? 'image/jpeg',
+            'Cache-Control' => 'private, no-store',
         ]);
     }
 

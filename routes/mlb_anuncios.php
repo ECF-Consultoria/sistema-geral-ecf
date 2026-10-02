@@ -132,4 +132,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/ia/analise/{analise}', [MlbAnuncioController::class, 'iaAnaliseStatus'])
             ->whereNumber('analise')
             ->name('ia.analise.status');
+
+        // ─── Creative Engine (Fase 160) ───
+        // OPS-03: atrás da chave liga/desliga, conferida no controller ANTES de
+        // tudo (abort_unless 404) — com a chave desligada, estas duas rotas se
+        // comportam como se não existissem. Throttle no upload: cada foto
+        // consome disco e cada criativo vai consumir cota paga na 160-02.
+        Route::post('/rascunho/{rascunho}/criativo/referencia', [MlbAnuncioController::class, 'criativoReferenciaStore'])
+            ->middleware('throttle:20,1')
+            ->name('criativo.referencia');
+        Route::get('/criativo/{token}/referencia/{indice}', [MlbAnuncioController::class, 'criativoReferenciaVer'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->whereNumber('indice')
+            ->name('criativo.referencia.ver');
     });
