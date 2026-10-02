@@ -2782,7 +2782,12 @@ Plans:
   4. Antes de publicar, o sistema confere que existe kit aprovado com o mínimo de imagens atingido e que o limite de imagens da categoria do Mercado Livre é respeitado — publicar fora dessas condições é recusado (PUB-03, PUB-04)
   5. Gerar, regenerar e aprovar exigem permissão explícita verificada no servidor — não é só o gate `role:admin` do módulo (OPS-04)
 
-**Plans**: TBD
+**Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável, mesmo desenho da Fase 160)
+- [ ] 161-01-PLAN.md — Kit planejado: tabela de kit + colunas aditivas, catálogo de slots, planner híbrido com reconciliação determinística, permissão explícita e os 7 slots visíveis na tela (sem gerar imagem)
+- [ ] 161-02-PLAN.md — As 7 imagens de verdade: prompt por slot, unicidade do job por criativo, despacho em ondas com teto de custo e progresso por imagem
+- [ ] 161-03-PLAN.md — Regenerar a ruim, aprovar imagem por imagem e aprovar o kit, com a ordem dos slots e o limite de fotos da categoria
+- [ ] 161-04-PLAN.md — Guarda-corpo da publicação: kit aprovado obrigatório e re-aplicação das imagens no único chokepoint de publicação
+- [ ] 161-05-PLAN.md — Checkpoint humano: kit real de 7 com cota paga (~US$ 0,71), números lidos da tabela e estado deixado em produção
 **UI hint**: yes
 
 ### Phase 162: Validação automática (Gemini como juiz), regeneração automática e alerta de risco
