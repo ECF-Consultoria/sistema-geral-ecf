@@ -383,7 +383,7 @@ outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-public
 Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
 Plans: 15 em 8 waves — 13 de 15 concluídos (160-01..13)
 Status: Executing Phase 160 — wave 7 (160-14, conferência visual + GATE HUMANO). 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — wave 6 concluída (editor interno montado; test:js 625, só as 2 pré-existentes; 3 páginas no manifest)
+Last activity: 2026-10-02 — 160-14 Tarefa 1 concluída (39 capturas, 0 erro de console, barra 56px, fix ad56a461); AGUARDANDO aprovação visual do usuário (Tarefa 2) — servidor local 127.0.0.1:8160 no ar
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
