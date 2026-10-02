@@ -21,7 +21,10 @@ const ARQUIVOS = [
     DIR + 'SeletorPrograma.jsx',
     DIR + 'IndicadoresDoPrograma.jsx',
     DIR + 'PainelComoFunciona.jsx',
+    'resources/js/Pages/Mlb/AnunciosEmpresas.jsx',
 ];
+
+const PAGINA_A = 'resources/js/Pages/Mlb/AnunciosEmpresas.jsx';
 
 const TAMANHOS_OK = new Set(['24', '15', '13', '11']);
 
@@ -91,4 +94,36 @@ test('haQuanto — minutos, horas, dias, agora e inválido', () => {
     assert.equal(haQuanto('2026-10-02T11:59:50Z', agora), 'agora');
     assert.equal(haQuanto(null, agora), null);
     assert.equal(haQuanto('lixo', agora), null);
+});
+
+test('Tela A — lê o contrato de props e não referencia o wizard antigo nem pode_publicar', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    for (const p of ['programa', 'programas', 'indicadores', 'empresas', 'paginacao', 'filtros']) {
+        assert.ok(fonte.includes(p), p);
+    }
+    assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard|pode_publicar/);
+});
+
+test('Tela A — troca de programa, filtro, busca e página por router.get na rota de entrada', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.match(fonte, /router\.get\(route\('mlb\.anuncios\.index'\)/);
+    assert.match(fonte, /preserveState: true/);
+    assert.match(fonte, /pagina/);
+});
+
+test('Tela A — a linha abre a tela B por clique e por Enter (focável)', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.match(fonte, /mlb\.anuncios\.publicador\.produtos/);
+    assert.match(fonte, /tabIndex=\{0\}/);
+    assert.match(fonte, /onKeyDown/);
+    assert.match(fonte, /'Enter'/);
+});
+
+test('Tela A — sem itens inventados do Stitch e sem linha avermelhada', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.doesNotMatch(fonte, /Publicar em Lote|Filtros Avançados|\bSLA\b/i);
+    // vermelho só nos blocos de erro (carga e sincronizar), nunca no <tr>
+    const abertura = fonte.match(/className="h-14[^"]*"/);
+    assert.ok(abertura, 'linha h-14 não encontrada');
+    assert.doesNotMatch(abertura[0], /bg-red|border-red/);
 });
