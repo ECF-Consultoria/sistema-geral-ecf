@@ -18,6 +18,9 @@ const CARDS = [
     `${BASE}/Mesa/CardFotos.jsx`,
     `${BASE}/Mesa/CardVariacoes.jsx`,
     `${BASE}/Mesa/CartaoVariante.jsx`,
+    `${BASE}/Mesa/CardTiposEPrecos.jsx`,
+    `${BASE}/Mesa/CardLogistica.jsx`,
+    `${BASE}/Mesa/CardDescricao.jsx`,
 ];
 // Componentes de campo reaproveitados do piloto, normalizados nesta fase.
 const NORMALIZADOS = [
@@ -132,6 +135,35 @@ test('CartaoVariante — não existe campo de título por variante (o título é
     const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
     assert.doesNotMatch(fonte, /data-titulo/);
     assert.doesNotMatch(fonte, /titulo:/);
+});
+
+test('CardDescricao — texto simples (RN-72): sem Markdown, prévia ou regenerar', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardDescricao.jsx`);
+    assert.doesNotMatch(fonte, /markdown|prévia|regenerar/i);
+    assert.match(fonte, /<textarea/);
+});
+
+test('CardTiposEPrecos — máximo do título vem de schema.limites (fallback 60); vermelho só acima dele', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardTiposEPrecos.jsx`);
+    assert.match(fonte, /max_title_length/);
+    assert.match(fonte, /tamanho > maxTitulo/);
+    assert.match(fonte, /m\.copiarTituloDo/);
+    assert.match(fonte, /m\.simular\(\)/);
+});
+
+test('CardTiposEPrecos — a dica "vem da aba Anúncios" só com oferta_id', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardTiposEPrecos.jsx`);
+    assert.match(fonte, /produto\?\.oferta_id/);
+    assert.match(fonte, /vem da aba Anúncios/);
+});
+
+test('CardLogistica — Seletor nativo, modos de envio do servidor e medidas da seção EMBALAGEM', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardLogistica.jsx`);
+    assert.match(fonte, /Seletor/);
+    assert.match(fonte, /modos_envio/);
+    assert.match(fonte, /EMBALAGEM/);
+    assert.match(fonte, /SELLER_PACKAGE_WEIGHT/);
+    assert.doesNotMatch(fonte, /Coleta elegível/);
 });
 
 test('CardVariacoes — eixos editáveis por m.salvarEixos e fotos do servidor (grupos_imagem)', () => {
