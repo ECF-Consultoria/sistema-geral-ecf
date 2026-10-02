@@ -2759,7 +2759,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 160-14-PLAN.md — conferência visual isolada (SQLite + php -S + Puppeteer) e aprovação do usuário · wave 7 (checkpoint)
+- [x] 160-14-PLAN.md — conferência visual isolada (SQLite + php -S + Puppeteer) e aprovação do usuário · wave 7 (checkpoint)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
