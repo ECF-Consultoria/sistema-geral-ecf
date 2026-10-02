@@ -27,13 +27,13 @@ export default function LateralValidacao({ pub, onIrPara }) {
     const pct = total > 0 ? Math.round((pub.prontas / total) * 100) : 0;
     const tudoPronto = pub.prontas === total;
 
-    const conf = pub.m.estado?.conferencia ?? null;
     const local = pub.conferencia.local;
     const estadoConf = pub.conferencia.estado;
     const conferindo = estadoConf === 'conferindo';
-    const issuesMl = conf?.vale && ! local ? (conf.issues ?? []) : [];
-    const bloqueiosMl = issuesMl.filter((p) => p.severidade === 'BLOCKER' && p.camada === 'L3');
-    const avisosMl = issuesMl.filter((p) => p.severidade !== 'BLOCKER');
+    // WR-F07: tudo o que a conferência do ML apontou — inclusive o bloqueio da ficha (camada L2)
+    // achado nela, que antes não era listado e virava "o Mercado Livre apontou 0 pendência(s)".
+    const bloqueiosConf = pub.conferencia.bloqueios ?? [];
+    const avisosConf = pub.conferencia.listaDeAvisos ?? [];
     const pendenciasLocais = local && estadoConf === 'local_bloqueado'
         ? (pub.m.estado?.problemas ?? []).filter((p) => p.severidade === 'BLOCKER')
         : [];
@@ -125,13 +125,13 @@ export default function LateralValidacao({ pub, onIrPara }) {
                 </ul>
             )}
 
-            {bloqueiosMl.length > 0 && (
-                <div className="mt-3"><Problemas problemas={bloqueiosMl} onIr={irPorEtapa} /></div>
+            {bloqueiosConf.length > 0 && (
+                <div className="mt-3" data-pendencias-conferencia><Problemas problemas={bloqueiosConf} onIr={irPorEtapa} /></div>
             )}
 
-            {! local && avisosMl.length > 0 && (
+            {! local && avisosConf.length > 0 && (
                 <div className="mt-3 space-y-3">
-                    <Problemas problemas={avisosMl} onIr={irPorEtapa} />
+                    <Problemas problemas={avisosConf} onIr={irPorEtapa} />
                     {estadoConf === 'avisos' && (
                         <label className="flex items-start gap-2 text-[13px] font-normal text-white/70">
                             <input
@@ -141,7 +141,7 @@ export default function LateralValidacao({ pub, onIrPara }) {
                                 className="mt-1 rounded border-white/20 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow"
                                 data-ciente
                             />
-                            Li os avisos do Mercado Livre e quero publicar assim mesmo.
+                            Li os avisos da conferência e quero publicar assim mesmo.
                         </label>
                     )}
                 </div>

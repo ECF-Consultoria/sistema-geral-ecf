@@ -4,8 +4,8 @@ import axios from 'axios';
 import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema } from './apoio.js';
 import {
     contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, mesclarAlvos,
-    mesclarComPendentes, mesclarVariantes, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar, resumoDoLancamento,
-    textoDaConferencia, totalDeAnuncios,
+    mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar,
+    resumoDoLancamento, semRepetir, textoDaConferencia, totalDeAnuncios,
 } from './derivados.js';
 
 // ─── Lógica do editor do Publicador (D24) ───────────────────────────────────
@@ -524,19 +524,24 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         }),
     }));
 
-    // Problemas desta versão: os locais e os do ML (só quando a conferência do ML vale ou a publicação recusou algo).
+    // Problemas desta versão: os locais, os da conferência que ainda vale e os da publicação que recusou algo.
+    // WR-F07: da conferência do ML entram TODOS (o bloqueio da ficha achado nela é camada L2, não L3),
+    // sem repetir o que os locais já mostram — senão a seção diz "pronta" ao lado de um BLOQUEADO.
     const locais = estado?.problemas ?? [];
-    const doMl = [
-        ...(conf?.vale && ! conf.local ? (conf.issues ?? []).filter((p) => p.camada === 'L3') : []),
+    const daConferencia = pendenciasDaConferencia(conf);
+    const doServidor = [
+        ...semRepetir([...daConferencia.bloqueios, ...daConferencia.avisos], locais),
         ...(estado?.publicacao && estado.publicacao.status !== 'RUNNING' ? (estado.publicacao.problemas ?? []) : []),
     ];
-    const todos = [...locais, ...doMl];
+    const todos = [...locais, ...doServidor];
     const problemasDaSecao = (chave) => todos.filter((p) => secaoDoProblema(p) === chave);
     const problemasDoAtributo = (id, variante = null) => todos.filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
     const bloqueiosLocais = locais.filter((p) => p.severidade === 'BLOCKER').length;
 
     const estadoConf = estadoDaConferencia({ conf, aguardando, sujo: editando });
-    const nPendencias = (conf?.local ? locais : doMl).filter((p) => p.severidade === 'BLOCKER').length;
+    const nPendencias = conf?.local ? locais.filter((p) => p.severidade === 'BLOCKER').length : daConferencia.bloqueios.length;
+    // O texto só diz "o Mercado Livre apontou" quando tudo veio dele (camada L3).
+    const conferenciaDoMl = estadoConf === 'avisos' ? daConferencia.avisosDoMl : daConferencia.bloqueiosDoMl;
     const podeConferir = calcularPodeConferir({ disabled, bloqueiosLocais, salvando, schema });
     const podePublicar = calcularPodePublicar({ disabled, conf, sujo: editando, ciente, salvando, liberada });
 
@@ -573,10 +578,13 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         podePublicar,
         conferencia: {
             estado: estadoConf,
-            texto: textoDaConferencia(estadoConf, nPendencias, liberada),
+            texto: textoDaConferencia(estadoConf, nPendencias, liberada, conferenciaDoMl),
             pendencias: nPendencias,
             avisos: (conf?.issues ?? []).filter((p) => p.severidade !== 'BLOCKER').length,
             local: conf?.local === true,
+            // WR-F07: o que a conferência do ML apontou (L2 e L3), para a lateral listar.
+            bloqueios: daConferencia.bloqueios,
+            listaDeAvisos: daConferencia.avisos,
         },
         secoes: estado ? estadoDasSecoes(todos, schema) : {},
         prontas: estado ? contarProntas(todos, schema) : 0,

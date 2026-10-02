@@ -4,8 +4,8 @@ import { lerSemComentarios } from './_fonte.js';
 import { criarRota } from '../../resources/js/Components/Publicador/apoio.js';
 import {
     conclusaoDaIa, contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, iguais, mesclarAlvos,
-    mesclarComPendentes, mesclarVariantes, podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa,
-    textoDaConferencia, totalDeAnuncios,
+    mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido,
+    resumoDoLancamento, semRepetir, textoDaEtapa, textoDaConferencia, totalDeAnuncios,
 } from '../../resources/js/Components/Publicador/derivados.js';
 
 const HOOK = 'resources/js/Components/Publicador/usePublicador.js';
@@ -72,6 +72,7 @@ test('D26: conferência local nunca libera publicar', () => {
 
 test('estadoDaConferencia e textoDaConferencia: textos literais da UI-SPEC', () => {
     const vale = { vale: true };
+    // O 4º argumento diz que as pendências/avisos vieram todos do Mercado Livre (WR-F07).
     const casos = [
         [{ conf: null }, 'nao_conferido', 'Ainda não conferido no Mercado Livre'],
         [{ conf: null, aguardando: { tipo: 'conferencia' } }, 'conferindo', 'Conferindo cada anúncio com o Mercado Livre…'],
@@ -84,8 +85,57 @@ test('estadoDaConferencia e textoDaConferencia: textos literais da UI-SPEC', () 
     ];
     for (const [entrada, estado, texto] of casos) {
         assert.equal(estadoDaConferencia(entrada), estado);
-        assert.equal(textoDaConferencia(estado, 3), texto);
+        assert.equal(textoDaConferencia(estado, 3, true, true), texto);
     }
+});
+
+test('WR-F07 bloqueio da ficha achado na conferência do ML não vira "o Mercado Livre apontou"', () => {
+    // Conta liberada: conferência camada L3, parada no passo 4 por um bloqueio L2.
+    const l2 = { regra: 'V-ATT-01', severidade: 'BLOCKER', camada: 'L2', mensagem: 'Preencha a voltagem.', alvo: { etapa: 'E3', atributo: 'VOLTAGE' } };
+    const l3 = { regra: 'V-SAL-01', severidade: 'BLOCKER', camada: 'L3', mensagem: 'Esta conta não pode publicar como Premium nesta categoria.', alvo: { etapa: 'E10', campo: 'tipo' } };
+    const avisoL2 = { regra: 'V-TIT-02', severidade: 'WARNING', camada: 'L2', mensagem: 'Título curto.', alvo: { etapa: 'E7' } };
+    const conf = { vale: true, local: false, resultado: 'BLOQUEADO', issues: [l2, avisoL2] };
+
+    const p = pendenciasDaConferencia(conf);
+    assert.deepEqual(p.bloqueios, [l2]);
+    assert.deepEqual(p.avisos, [avisoL2]);
+    assert.equal(p.bloqueiosDoMl, false);
+    assert.equal(textoDaConferencia('bloqueado', p.bloqueios.length, true, p.bloqueiosDoMl), 'A conferência apontou 1 pendência(s)');
+    assert.doesNotMatch(textoDaConferencia('bloqueado', 1, true, false), /Mercado Livre/);
+    // Só do ML: aí sim o texto atribui a ele.
+    assert.equal(pendenciasDaConferencia({ ...conf, issues: [l3] }).bloqueiosDoMl, true);
+    // Misturado: texto neutro.
+    assert.equal(pendenciasDaConferencia({ ...conf, issues: [l2, l3] }).bloqueiosDoMl, false);
+    // Avisos só da ficha: "da conferência".
+    assert.equal(textoDaConferencia('avisos', 0, true, false), 'Conferido, com avisos da conferência');
+    // Conferência que não vale mais ou só local (D26): nada daqui (os locais cuidam).
+    assert.deepEqual(pendenciasDaConferencia({ ...conf, vale: false }).bloqueios, []);
+    assert.deepEqual(pendenciasDaConferencia({ ...conf, local: true }).bloqueios, []);
+    assert.deepEqual(pendenciasDaConferencia(null).bloqueios, []);
+});
+
+test('WR-F07 semRepetir: o bloqueio da conferência que os locais já mostram não conta duas vezes', () => {
+    const a = { regra: 'V-ATT-01', alvo: { etapa: 'E3', atributo: 'BRAND' } };
+    const b = { regra: 'V-ATT-01', alvo: { etapa: 'E3', atributo: 'VOLTAGE' } };
+    assert.deepEqual(semRepetir([a, b], [{ ...a, mensagem: 'outra' }]), [b]);
+    assert.deepEqual(semRepetir([a], []), [a]);
+});
+
+test('WR-F07 usePublicador e lateral: todas as pendências da conferência entram e são listadas, com texto pela origem', () => {
+    const f = lerSemComentarios(HOOK);
+    assert.match(f, /const daConferencia = pendenciasDaConferencia\(conf\)/);
+    assert.match(f, /semRepetir\(\[\.\.\.daConferencia\.bloqueios, \.\.\.daConferencia\.avisos\], locais\)/);
+    assert.doesNotMatch(f, /p\.camada === 'L3'/);
+    assert.match(f, /textoDaConferencia\(estadoConf, nPendencias, liberada, conferenciaDoMl\)/);
+    assert.match(f, /bloqueios: daConferencia\.bloqueios/);
+    const l = lerSemComentarios(`${MESA}/LateralValidacao.jsx`);
+    assert.match(l, /pub\.conferencia\.bloqueios/);
+    assert.match(l, /<Problemas problemas=\{bloqueiosConf\}/);
+    assert.doesNotMatch(l, /camada === 'L3'/);
+    assert.doesNotMatch(l, /Li os avisos do Mercado Livre/);
+    // CR-B01: a publicação que falha mostra o motivo do servidor (conta trocada, outro vendedor).
+    const r = lerSemComentarios(`${MESA}/LateralResumo.jsx`);
+    assert.match(r, /\{publicacao\.motivo && <p[^>]*>\{publicacao\.motivo\}<\/p>\}/);
 });
 
 test('D26: estados e textos locais nunca falam em aprovação do Mercado Livre', () => {
@@ -542,14 +592,15 @@ test('LateralValidacao — 8 verificações pela fonte única, nota calma e D26 
     assert.match(f, /Prontidão de envio/);
     assert.match(f, /Falta pouco/);
     assert.match(f, /Tudo pronto\. Pode conferir no Mercado Livre\./);
-    assert.match(f, /Li os avisos do Mercado Livre e quero publicar assim mesmo\./);
+    // WR-F07: o aviso pode ser da ficha (L2), não só do ML.
+    assert.match(f, /Li os avisos da conferência e quero publicar assim mesmo\./);
     assert.match(f, /conferencia\.local/);
     assert.match(f, /variante="linha"/);
     assert.match(f, /pub\.conferencia\.texto/);
     assert.match(f, /Ir para /);
     assert.doesNotMatch(f, /AlertTriangle/);
     // A caixa "Li os avisos" nunca aparece na conferência local.
-    assert.match(f, /! local && avisosMl\.length > 0/);
+    assert.match(f, /! local && avisosConf\.length > 0/);
     assert.doesNotMatch(f, /text-red-|border-red-|bg-red-/);
 });
 
@@ -584,7 +635,8 @@ test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo
     assert.match(f, /primarioNaLateral=\{largo\}/);
     assert.match(f, /primario=\{largo\}/);
     assert.match(f, /Não foi possível abrir o produto\./);
-    assert.match(f, /A conta do Mercado Livre precisa ser reconectada antes de conferir ou publicar\./);
+    // WR-B04/WR-F07: sem token a conferência local roda; só a do ML e a publicação pedem reconectar.
+    assert.match(f, /A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar\./);
     assert.match(f, /A IA preencheu/);
     assert.match(f, /A IA não montou as variações\. Defina-as no card Variações\./);
     assert.match(f, /A IA não conseguiu preparar este anúncio\./);

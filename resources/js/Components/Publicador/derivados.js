@@ -172,16 +172,48 @@ export const estadoDaConferencia = ({ conf = null, aguardando = null, sujo = fal
     return { OK: 'ok', AVISOS: 'avisos', BLOQUEADO: 'bloqueado', ERRO: 'erro' }[conf.resultado] ?? 'erro';
 };
 
+/**
+ * As pendências da conferência que ainda vale, com a origem (WR-F07). Em conta liberada
+ * a conferência é a do Mercado Livre (camada L3), mas ela pode parar ANTES do `validate`
+ * num bloqueio da ficha (camada L2, recalculado com a conta e os condicionais lidos na
+ * hora). Isso é pendência da conferência, não "o Mercado Livre apontou".
+ * Conferência só local (D26) fica de fora: ela é lida pelos problemas locais.
+ *
+ * @returns {{ bloqueios: Array, avisos: Array, bloqueiosDoMl: boolean, avisosDoMl: boolean }}
+ *   `…DoMl` = todos vieram do Mercado Livre (camada L3).
+ */
+export const pendenciasDaConferencia = (conf) => {
+    if (! conf?.vale || conf.local === true) return { bloqueios: [], avisos: [], bloqueiosDoMl: false, avisosDoMl: false };
+    const issues = conf.issues ?? [];
+    const bloqueios = issues.filter((p) => p.severidade === 'BLOCKER');
+    const avisos = issues.filter((p) => p.severidade !== 'BLOCKER');
+    const doMl = (lista) => lista.length > 0 && lista.every((p) => p.camada === 'L3');
+
+    return { bloqueios, avisos, bloqueiosDoMl: doMl(bloqueios), avisosDoMl: doMl(avisos) };
+};
+
+/** Problemas de `lista` que ainda não estão em `jaListados` (mesma regra e mesmo alvo). */
+export const semRepetir = (lista, jaListados) => {
+    const chave = (p) => `${p.regra}|${JSON.stringify(p.alvo ?? null)}`;
+    const vistos = new Set((jaListados ?? []).map(chave));
+
+    return (lista ?? []).filter((p) => ! vistos.has(chave(p)));
+};
+
 const AVISO_LOCAL = 'A validação no Mercado Livre espera a liberação desta conta.';
 
-export const textoDaConferencia = (estado, nPendencias = 0, liberada = true) => {
+/**
+ * Texto da linha de conferência. `doMl` = as pendências (ou os avisos) vieram todos do
+ * Mercado Livre; sem isso o texto não atribui a ele o que a conferência achou na ficha (WR-F07).
+ */
+export const textoDaConferencia = (estado, nPendencias = 0, liberada = true, doMl = false) => {
     const textos = {
         nao_conferido: liberada ? 'Ainda não conferido no Mercado Livre' : 'Ainda não conferido. Nesta conta a conferência é só local até a liberação.',
         conferindo: liberada ? 'Conferindo cada anúncio com o Mercado Livre…' : 'Conferindo os dados…',
         editado: 'Editado depois da última conferência. Confira de novo.',
         ok: 'Conferido: o Mercado Livre aprovou. Você já pode publicar.',
-        avisos: 'Conferido, com avisos do Mercado Livre',
-        bloqueado: `O Mercado Livre apontou ${nPendencias} pendência(s)`,
+        avisos: doMl ? 'Conferido, com avisos do Mercado Livre' : 'Conferido, com avisos da conferência',
+        bloqueado: doMl ? `O Mercado Livre apontou ${nPendencias} pendência(s)` : `A conferência apontou ${nPendencias} pendência(s)`,
         erro: 'A conferência não terminou. Tente de novo.',
         local: `Conferido aqui: nada falta na ficha. ${AVISO_LOCAL}`,
         local_bloqueado: `A conferência local apontou ${nPendencias} pendência(s). ${AVISO_LOCAL}`,

@@ -174,7 +174,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                             {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
                             {tokenExpirado && (
                                 <Faixa icone={AlertTriangle} tom="vermelho">
-                                    <p>A conta do Mercado Livre precisa ser reconectada antes de conferir ou publicar.</p>
+                                    <p>A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar.</p>
                                     {empresa.link_reconexao && <div className="mt-2"><LinkReconexao link={empresa.link_reconexao} /></div>}
                                 </Faixa>
                             )}
