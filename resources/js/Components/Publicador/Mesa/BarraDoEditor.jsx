@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { Check, CheckCircle2, Loader2, Lock, RefreshCw, Rocket } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Loader2, Lock, RefreshCw, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import BotaoAnunciarPorIa from './BotaoAnunciarPorIa';
 
@@ -48,7 +48,10 @@ export function BotaoPublicar({ pub, primario, className }) {
     );
 }
 
-/** "Salvo há Ns", atualizado a cada 10 s a partir de `salvoEm`. */
+/**
+ * Indicador do salvamento (WR-F02): "Salvo há Ns" (atualizado a cada 10 s) só quando nada
+ * sobra por salvar; salvamento que falhou mostra "Não salvo" — tentando de novo ou a mensagem.
+ */
 function Salvamento({ pub }) {
     const [, setTick] = useState(0);
     useEffect(() => {
@@ -57,15 +60,24 @@ function Salvamento({ pub }) {
         return () => clearInterval(t);
     }, []);
 
+    const { estado, mensagem } = pub.salvamento;
     const segundos = pub.salvoEm ? Math.max(0, Math.round((Date.now() - pub.salvoEm.getTime()) / 1000)) : null;
     const texto = segundos === null ? null : (segundos < 60 ? `Salvo há ${segundos}s` : `Salvo há ${Math.floor(segundos / 60)} min`);
 
     return (
-        <p aria-live="polite" className="flex items-center gap-1 text-[11px] font-normal text-white/55" data-salvamento>
-            {pub.salvando > 0 ? (
-                <><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Salvando…</>
-            ) : texto && (
-                <><Check size={12} className="text-emerald-400" aria-hidden="true" /> {texto}</>
+        <p aria-live="polite" title={estado === 'falhou' ? mensagem : undefined} className="flex min-w-0 items-center gap-1 text-[11px] font-normal text-white/55" data-salvamento={estado ?? 'nada'}>
+            {(estado === 'salvando' || estado === 'pendente') && (
+                <><Loader2 size={12} className="shrink-0 animate-spin" aria-hidden="true" /> Salvando…</>
+            )}
+            {estado === 'tentando' && (
+                <><AlertTriangle size={12} className="shrink-0 text-amber-300" aria-hidden="true" /> <span className="truncate text-amber-300">Não salvo — tentando de novo</span></>
+            )}
+            {estado === 'falhou' && (
+                <><AlertTriangle size={12} className="shrink-0 text-red-300" aria-hidden="true" /> <span className="truncate text-red-300">Não salvo — {mensagem}</span></>
+            )}
+            {estado === 'pausado' && <span className="truncate">Salva quando a IA terminar</span>}
+            {estado === 'salvo' && texto && (
+                <><Check size={12} className="shrink-0 text-emerald-400" aria-hidden="true" /> {texto}</>
             )}
         </p>
     );

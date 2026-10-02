@@ -118,6 +118,27 @@ export const mesclarComPendentes = ({ servidor, local, base }) => {
     };
 };
 
+// ─── Salvamento automático que falha (WR-F02) ───────────────────────────────
+
+/** Espera antes de cada nova tentativa de um salvamento que falhou (curta, poucas vezes). */
+const ESPERAS_NOVA_TENTATIVA = [2000, 5000, 15000];
+
+/** Milissegundos até a tentativa `n` (1 = a primeira depois da falha); nulo = desistiu. */
+export const esperaDaNovaTentativa = (n) => ESPERAS_NOVA_TENTATIVA[n - 1] ?? null;
+
+/**
+ * O que o indicador da barra mostra. "Salvo" só quando não sobra nada por salvar.
+ * @param {{ salvando?: number, pendente?: boolean, falha?: {mensagem: string, desistiu: boolean}|null, pausado?: boolean, salvoEm?: Date|null }} s
+ * @returns {'salvando'|'pendente'|'tentando'|'falhou'|'pausado'|'salvo'|null}
+ */
+export const estadoDoSalvamento = ({ salvando = 0, pendente = false, falha = null, pausado = false, salvoEm = null } = {}) => {
+    if (salvando > 0) return 'salvando';
+    if (falha) return falha.desistiu ? 'falhou' : 'tentando';
+    if (pendente) return pausado ? 'pausado' : 'pendente';
+
+    return salvoEm ? 'salvo' : null;
+};
+
 /** Pode pedir a conferência: nada em andamento, sem bloqueio local, nada a salvar e com schema. */
 export const podeConferir = ({ disabled = false, bloqueiosLocais = 0, salvando = 0, schema = null } = {}) => (
     ! disabled && bloqueiosLocais === 0 && salvando === 0 && !! schema

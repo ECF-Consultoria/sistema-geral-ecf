@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { router } from '@inertiajs/react';
 import axios from 'axios';
 import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema } from './apoio.js';
 import {
-    contarProntas, envioDasVariantes, envioDoRascunho, estadoDaConferencia, mesclarAlvos, mesclarComPendentes, mesclarVariantes,
-    podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar, resumoDoLancamento, textoDaConferencia, totalDeAnuncios,
+    contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, mesclarAlvos,
+    mesclarComPendentes, mesclarVariantes, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar, resumoDoLancamento,
+    textoDaConferencia, totalDeAnuncios,
 } from './derivados.js';
 
 // ─── Lógica do editor do Publicador (D24) ───────────────────────────────────
@@ -22,10 +24,14 @@ import {
 // - O salvamento automático manda só os campos editados. Enquanto a IA grava o
 //   rascunho no servidor (`pausado`), a mesa é só leitura e nada é salvo; ao fim
 //   da IA o hook relê o servidor ANTES de liberar a edição (CR-F02).
+// - Salvamento que falha tenta de novo sozinho (espera crescente, poucas vezes); o
+//   indicador deixa de dizer "Salvo" e, com algo por salvar, sair da página pede
+//   confirmação (WR-F02).
 // - Conferir e publicar vão para a fila do servidor: o hook acompanha até terminar.
 // A casca (160-13) só compõe; o contrato `m` abaixo é o que os cards da mesa leem.
 
 const ESPERA_SALVAR = 900;
+const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim e perdê-las?';
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
 
@@ -65,8 +71,13 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const [simulacao, setSimulacao] = useState(null);
     const [simulando, setSimulando] = useState(false);
     const [relendo, setRelendo] = useState(false);
+    // WR-F02: `{ mensagem, desistiu }` do salvamento automático que falhou; nulo = em dia.
+    const [falhaSalvar, setFalhaSalvar] = useState(null);
     const pausadoRef = useRef(pausado);
     pausadoRef.current = pausado;
+    const emVoo = useRef(0);
+    const tentativas = useRef({ rasc: 0, vars: 0 });
+    const erroDoSalvamento = useRef(false);
     // As cópias locais vivem também em refs, atualizadas JUNTO com o estado (nunca no render):
     // quem salva ou mescla lê sempre a última versão, mesmo antes de o React renderizar.
     const rascRef = useRef(null);
@@ -110,11 +121,16 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         if (r.pendente.vars) agendar('vars');
     };
 
-    /** Chamada que devolve o estado. `tudo` = ação de estrutura (troca também as cópias locais, mesclando). */
-    const chamar = async (promessa, { tudo = false } = {}) => {
+    /**
+     * Chamada que devolve o estado (nulo se falhou). `tudo` = ação de estrutura (troca também as
+     * cópias locais, mesclando). `fundo` = salvamento automático: não mexe na faixa de erro (quem
+     * avisa é o indicador da barra) e entrega a mensagem a `aoFalhar`.
+     */
+    const chamar = async (promessa, { tudo = false, fundo = false, aoFalhar } = {}) => {
         const n = ++ordem.current.enviada;
+        emVoo.current += 1;
         setSalvando((s) => s + 1);
-        setErro(null);
+        if (! fundo) setErro(null);
         try {
             const { data } = await promessa();
             // Uma resposta mais velha que a última aplicada não volta o estado no tempo.
@@ -125,11 +141,37 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
             return data;
         } catch (e) {
-            setErro(mensagemDe(e));
+            const mensagem = mensagemDe(e);
+            if (fundo) aoFalhar?.(mensagem); else setErro(mensagem);
 
             return null;
         } finally {
+            emVoo.current -= 1;
             setSalvando((s) => s - 1);
+        }
+    };
+
+    /** WR-F02: o salvamento que falhou tenta de novo sozinho, com espera crescente; esgotadas as tentativas, avisa. */
+    const salvamentoFalhou = (tipo, mensagem) => {
+        const espera = esperaDaNovaTentativa(++tentativas.current[tipo]);
+        if (espera !== null) {
+            clearTimeout(relogio.current[tipo]);
+            relogio.current[tipo] = setTimeout(() => enfileirar(tipo === 'rasc' ? salvarRascAgora : salvarVarsAgora), espera);
+            setFalhaSalvar({ mensagem, desistiu: false });
+
+            return;
+        }
+        setFalhaSalvar({ mensagem, desistiu: true });
+        erroDoSalvamento.current = true;
+        setErro(`As últimas alterações não foram salvas: ${mensagem} Elas continuam na tela; edite de novo para tentar outra vez.`);
+    };
+    const salvamentoEmDia = (tipo) => {
+        tentativas.current[tipo] = 0;
+        if (tentativas.current.rasc > 0 || tentativas.current.vars > 0) return;
+        setFalhaSalvar(null);
+        if (erroDoSalvamento.current) {
+            erroDoSalvamento.current = false;
+            setErro(null);
         }
     };
 
@@ -141,26 +183,46 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const salvarRascAgora = async () => {
         clearTimeout(relogio.current.rasc);
         const envio = envioDoRascunho(rascRef.current, baseRef.current.rasc);
-        if (envio === null) return true;
+        if (envio === null) {
+            salvamentoEmDia('rasc');
+
+            return true;
+        }
         if (pausadoRef.current) return false;
-        const r = await chamar(() => axios.put(rota('salvar', produtoId), envio));
-        if (! r) return false;
+        let falha = null;
+        const r = await chamar(() => axios.put(rota('salvar', produtoId), envio), { fundo: true, aoFalhar: (m) => { falha = m; } });
+        if (! r) {
+            salvamentoFalhou('rasc', falha);
+
+            return false;
+        }
         baseRef.current = { ...baseRef.current, rasc: { ...baseRef.current.rasc, ...envio } };
         setSalvoEm(new Date());
+        salvamentoEmDia('rasc');
 
         return true;
     };
     const salvarVarsAgora = async () => {
         clearTimeout(relogio.current.vars);
         const envio = envioDasVariantes(varsRef.current, baseRef.current.vars);
-        if (envio === null) return true;
+        if (envio === null) {
+            salvamentoEmDia('vars');
+
+            return true;
+        }
         if (pausadoRef.current) return false;
-        const r = await chamar(() => axios.put(rota('variantes', produtoId), { variantes: envio }));
-        if (! r) return false;
+        let falha = null;
+        const r = await chamar(() => axios.put(rota('variantes', produtoId), { variantes: envio }), { fundo: true, aoFalhar: (m) => { falha = m; } });
+        if (! r) {
+            salvamentoFalhou('vars', falha);
+
+            return false;
+        }
         const vars = { ...baseRef.current.vars };
         for (const [chave, campos] of Object.entries(envio)) vars[chave] = { ...vars[chave], ...campos };
         baseRef.current = { ...baseRef.current, vars };
         setSalvoEm(new Date());
+        salvamentoEmDia('vars');
 
         return true;
     };
@@ -179,14 +241,17 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         relogio.current[tipo] = setTimeout(() => enfileirar(tipo === 'rasc' ? salvarRascAgora : salvarVarsAgora), ESPERA_SALVAR);
     };
 
+    // Edição nova depois de uma falha ganha de novo todas as tentativas.
     const mudarRasc = (mudanca) => {
         const atual = rascRef.current;
         porRasc({ ...atual, ...(typeof mudanca === 'function' ? mudanca(atual) : mudanca) });
+        tentativas.current.rasc = 0;
         agendar('rasc');
     };
     const mudarVar = (chave, patch) => {
         const atual = varsRef.current;
         porVars({ ...atual, [chave]: { ...atual[chave], ...patch } });
+        tentativas.current.vars = 0;
         agendar('vars');
     };
     const mudarAtributo = (id, v) => mudarRasc((r) => ({
@@ -238,6 +303,52 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         if (p.rasc) agendar('rasc');
         if (p.vars) agendar('vars');
     }, [pausado]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Saída da página com algo por salvar (WR-F02) ──
+    // Fechar a aba ou F5: o navegador pergunta. Navegação do Inertia (links, faixa de produtos):
+    // a visita espera o salvamento; se ele não passar, pergunta antes de sair. Pré-carregamento e
+    // recarga parcial da própria página (`only`) não são saída.
+    const naoSalvo = () => emVoo.current > 0 || pendencias().rasc || pendencias().vars;
+    const naoSalvoRef = useRef(naoSalvo);
+    naoSalvoRef.current = naoSalvo;
+    const descarregarRef = useRef(descarregar);
+    descarregarRef.current = descarregar;
+    useEffect(() => {
+        let liberado = false;
+        const aoFecharAba = (e) => {
+            if (! naoSalvoRef.current()) return undefined;
+            e.preventDefault();
+            e.returnValue = '';
+
+            return '';
+        };
+        window.addEventListener('beforeunload', aoFecharAba);
+        const tirarGuarda = router.on('before', (event) => {
+            const visita = event.detail.visit;
+            if (liberado || visita.prefetch || visita.only?.length || visita.except?.length || visita.reset?.length) return true;
+            if (! naoSalvoRef.current()) return true;
+            descarregarRef.current().then((salvou) => {
+                if (! salvou && ! window.confirm(CONFIRMA_SAIR)) return;
+                liberado = true;
+                router.visit(visita.url, {
+                    method: visita.method,
+                    data: visita.data,
+                    replace: visita.replace,
+                    preserveScroll: visita.preserveScroll,
+                    preserveState: visita.preserveState,
+                    headers: visita.headers,
+                    onFinish: () => { liberado = false; },
+                });
+            });
+
+            return false;
+        });
+
+        return () => {
+            window.removeEventListener('beforeunload', aoFecharAba);
+            tirarGuarda();
+        };
+    }, []);
 
     // ── Andamento da fila (conferência e publicação) ──
     useEffect(() => {
@@ -448,6 +559,11 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         setAviso,
         salvando,
         salvoEm,
+        // WR-F02: o indicador da barra ("Salvo" só quando não sobra nada por salvar).
+        salvamento: {
+            estado: estadoDoSalvamento({ salvando, pendente: editando, falha: falhaSalvar, pausado, salvoEm }),
+            mensagem: falhaSalvar?.mensagem ?? null,
+        },
         aguardando,
         ciente,
         setCiente,

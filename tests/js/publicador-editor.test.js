@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import { criarRota } from '../../resources/js/Components/Publicador/apoio.js';
 import {
-    contarProntas, envioDasVariantes, envioDoRascunho, estadoDaConferencia, iguais, mesclarAlvos, mesclarComPendentes, mesclarVariantes,
-    podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa, textoDaConferencia, totalDeAnuncios,
+    contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, iguais, mesclarAlvos,
+    mesclarComPendentes, mesclarVariantes, podeConferir, podePublicar, estadoDaIa, rascunhoPreenchido, resumoDoLancamento, textoDaEtapa,
+    textoDaConferencia, totalDeAnuncios,
 } from '../../resources/js/Components/Publicador/derivados.js';
 
 const HOOK = 'resources/js/Components/Publicador/usePublicador.js';
 const PAGINA_EDITOR = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
+const MESA = 'resources/js/Components/Publicador/Mesa';
 
 /** Corpo de `const nome = …` até a próxima declaração no mesmo nível (4 espaços) do hook. */
 const corpo = (fonte, nome) => {
@@ -294,6 +296,59 @@ test('CR-F02 usePublicador: pausa, só o editado no PUT e releitura depois do de
     assert.doesNotMatch(f, /variantes: varsRef\.current/);
 });
 
+// ─── WR-F02: salvamento que falha tenta de novo e não diz "Salvo" ───
+
+test('WR-F02 esperaDaNovaTentativa: 2 s, 5 s, 15 s e então desiste', () => {
+    assert.equal(esperaDaNovaTentativa(1), 2000);
+    assert.equal(esperaDaNovaTentativa(2), 5000);
+    assert.equal(esperaDaNovaTentativa(3), 15000);
+    assert.equal(esperaDaNovaTentativa(4), null);
+});
+
+test('WR-F02 estadoDoSalvamento: "Salvo" só sem nada por salvar; falha vira "tentando" ou "falhou"', () => {
+    const salvoEm = new Date();
+    assert.equal(estadoDoSalvamento({ salvoEm }), 'salvo');
+    assert.equal(estadoDoSalvamento({}), null);
+    assert.equal(estadoDoSalvamento({ salvando: 1, salvoEm }), 'salvando');
+    assert.equal(estadoDoSalvamento({ pendente: true, salvoEm }), 'pendente');
+    assert.equal(estadoDoSalvamento({ pendente: true, pausado: true, salvoEm }), 'pausado');
+    assert.equal(estadoDoSalvamento({ pendente: true, falha: { mensagem: 'x', desistiu: false }, salvoEm }), 'tentando');
+    assert.equal(estadoDoSalvamento({ falha: { mensagem: 'x', desistiu: true }, salvoEm }), 'falhou');
+    // A nova tentativa em voo aparece como "Salvando…".
+    assert.equal(estadoDoSalvamento({ salvando: 1, falha: { mensagem: 'x', desistiu: false }, salvoEm }), 'salvando');
+});
+
+test('WR-F02 usePublicador: falha reagenda com espera crescente, avisa ao desistir e guarda a saída da página', () => {
+    const f = lerSemComentarios(HOOK);
+    for (const [nome, tipo] of [['salvarRascAgora', 'rasc'], ['salvarVarsAgora', 'vars']]) {
+        const c = corpo(f, nome);
+        assert.match(c, /fundo: true/, nome);
+        assert.match(c, new RegExp(`salvamentoFalhou\\('${tipo}', falha\\)`), nome);
+        assert.match(c, new RegExp(`salvamentoEmDia\\('${tipo}'\\)`), nome);
+    }
+    const falhou = corpo(f, 'salvamentoFalhou');
+    assert.match(falhou, /esperaDaNovaTentativa\(\+\+tentativas\.current\[tipo\]\)/);
+    assert.match(falhou, /setTimeout\(/);
+    assert.match(falhou, /desistiu: true/);
+    assert.match(falhou, /setErro\(/);
+    // Fechar a aba / F5 e navegação do Inertia.
+    assert.match(f, /addEventListener\('beforeunload', aoFecharAba\)/);
+    assert.match(f, /removeEventListener\('beforeunload', aoFecharAba\)/);
+    assert.match(f, /router\.on\('before'/);
+    assert.match(f, /visita\.prefetch \|\| visita\.only\?\.length/);
+    assert.match(f, /window\.confirm\(CONFIRMA_SAIR\)/);
+    assert.match(f, /salvamento: \{\s*estado: estadoDoSalvamento\(/);
+});
+
+test('WR-F02 BarraDoEditor: "Salvo há" só no estado salvo; falha mostra "Não salvo"', () => {
+    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
+    assert.match(f, /pub\.salvamento/);
+    assert.match(f, /estado === 'salvo' && texto/);
+    assert.ok(f.includes('Não salvo — tentando de novo'));
+    assert.match(f, /Não salvo — \{mensagem\}/);
+    assert.doesNotMatch(f, /pub\.salvando > 0 \? /);
+});
+
 // ─── Gates de fonte do hook ───
 
 test('usePublicador: rotas internas, esperas e limites do piloto', () => {
@@ -354,8 +409,7 @@ test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
 // Casca do editor (160-13): barra, "Anunciar por IA" e faixa de produtos.
 // ═══════════════════════════════════════════════════════════════════════
 
-const MESA = 'resources/js/Components/Publicador/Mesa';
-const CASCA = [`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/FaixaDeProdutos.jsx`];
+const CASCA =[`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/FaixaDeProdutos.jsx`];
 
 for (const caminho of CASCA) {
     const fonte = lerSemComentarios(caminho);
