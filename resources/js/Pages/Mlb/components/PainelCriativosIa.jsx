@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2 } from 'lucide-react';
+import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink } from 'lucide-react';
 
 // Um pouco acima dos 12 min em que o SERVIDOR encerra a geração
 // (MlAnuncioCriativo::LIMITE_MINUTOS) — quem decide é o servidor; este teto
@@ -27,14 +27,22 @@ const ETAPA_LABEL = {
  * `ativo` reflete só a chave do servidor (`creative_engine_ativo`, OPS-03) —
  * este componente não decide nada, só espelha: com a chave desligada, não
  * renderiza NADA.
+ *
+ * Plano 03: `onImagemAprovada(url)` — chamado depois que o servidor confirma
+ * a aprovação. O pai (AnunciarML.jsx) usa isso para fazer `setImagemUrl(url)`
+ * e evitar que o próximo autosave do wizard reconstrua `payload.pictures` a
+ * partir do state antigo (vazio) e apague a imagem aprovada — ver a seção da
+ * armadilha no topo do `160-03-PLAN.md`.
  */
-export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = false }) {
+export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = false, onImagemAprovada = null }) {
     const [aberto, setAberto] = useState(false);
     const [enviando, setEnviando] = useState(false);
     const [erroUpload, setErroUpload] = useState(null);
-    // { token, referencias: [{indice, nome, url}], status, etapa, em_andamento, erro, imagem_url, modelo, latencia_ms }
+    // { token, referencias: [{indice, nome, url}], status, etapa, em_andamento, erro, imagem_url, modelo, latencia_ms, ml_picture_url }
     const [criativo, setCriativo] = useState(null);
     const [segundos, setSegundos] = useState(0);
+    const [aprovando, setAprovando] = useState(false);
+    const [erroAprovacao, setErroAprovacao] = useState(null);
 
     const inputRef = useRef(null);
     const pollRef      = useRef(null);
@@ -145,6 +153,33 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         } catch {
             pararTimers();
             setCriativo(c => ({ ...c, em_andamento: false, status: 'erro', erro: 'Perdi o contato com a geração. Tente novamente.' }));
+        }
+    }
+
+    /**
+     * APROV-05/PUB-01/PUB-02: aprova a imagem pronta — o servidor faz o
+     * upload ao Mercado Livre (MlImagemService) e grava `payload.pictures`.
+     * `onImagemAprovada(url)` avisa o wizard para a mesma `url` entrar no
+     * state local (`setImagemUrl`) — sem isso o autosave zeraria a imagem.
+     */
+    async function aprovar() {
+        if (!criativo?.token) return;
+
+        setAprovando(true);
+        setErroAprovacao(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.aprovar', { token: criativo.token }));
+
+            setCriativo(c => ({ ...c, status: 'aprovado', ml_picture_url: data.url }));
+            onImagemAprovada?.(data.url);
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroAprovacao(
+                mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível aprovar a imagem. Tente novamente.',
+            );
+        } finally {
+            setAprovando(false);
         }
     }
 
@@ -275,7 +310,51 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                                         {criativo.modelo}
                                         {criativo.latencia_ms ? ` · ${Math.round(criativo.latencia_ms / 1000)}s` : ''}
                                     </p>
-                                    {/* botão Aprovar entra aqui (160-03) */}
+
+                                    {/* APROV-03/PUB-01: aprovar sobe ao ML e grava no rascunho —
+                                        só aparece com a geração pronta (APROV-05: o estado é o guarda). */}
+                                    {criativo.status === 'pronto' && (
+                                        <button
+                                            type="button"
+                                            onClick={aprovar}
+                                            disabled={aprovando}
+                                            className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                                        >
+                                            {aprovando
+                                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando ao Mercado Livre…</>
+                                                : <><CheckCircle2 className="h-4 w-4" /> Aprovar e usar no anúncio</>}
+                                        </button>
+                                    )}
+
+                                    {/* Nesta fase não existe "regenerar" — o botão não volta depois
+                                        de aprovado (evita duplo upload, T-160-19). */}
+                                    {criativo.status === 'aprovado' && (
+                                        <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                                            <p className="flex items-center gap-1.5 text-[12px] text-emerald-300">
+                                                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                                Aprovada — já é a imagem principal do anúncio.
+                                                {criativo.ml_picture_url && (
+                                                    <a
+                                                        href={criativo.ml_picture_url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 underline hover:text-emerald-200"
+                                                    >
+                                                        ver no Mercado Livre <ExternalLink className="h-3 w-3" />
+                                                    </a>
+                                                )}
+                                            </p>
+                                            <p className="mt-1 text-[11px] text-emerald-300/60">Regenerar chega na próxima fase.</p>
+                                        </div>
+                                    )}
+
+                                    {/* Falha de upload ao ML é retentável — o botão continua disponível. */}
+                                    {erroAprovacao && (
+                                        <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                                            <p className="text-[12px] text-red-300">{erroAprovacao}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

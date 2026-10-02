@@ -2434,7 +2434,14 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                     reflete a chave do servidor (OPS-03). Com a chave desligada, o
                                     painel abaixo não renderiza nada e esta etapa fica idêntica
                                     à de antes da Fase 160. */}
-                                <PainelCriativosIa empresa={empresa} rascunhoId={rascunhoId} ativo={creativeAtivo} />
+                                {/* Sem isto, o próximo autosave reconstruiria `pictures` a partir
+                                    do `imagemUrl` ainda vazio e apagaria a imagem aprovada (160-03). */}
+                                <PainelCriativosIa
+                                    empresa={empresa}
+                                    rascunhoId={rascunhoId}
+                                    ativo={creativeAtivo}
+                                    onImagemAprovada={(url) => setImagemUrl(url)}
+                                />
 
                                 {/* Imagem, garantia, descrição */}
                                 <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
