@@ -15,7 +15,7 @@ export default function SeloConta({ token = 'ativo', compacto = false }) {
         <span
             title={e.titulo}
             className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold',
+                'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-bold',
                 e.classe,
             )}
         >

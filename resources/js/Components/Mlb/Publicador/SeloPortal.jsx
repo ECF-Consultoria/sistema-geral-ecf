@@ -5,7 +5,7 @@ import { haQuanto } from './tempo';
 // Situação do Portal da empresa: sincronizado · novas · nunca · sem_portal.
 export default function SeloPortal({ portal }) {
     const situacao = portal?.situacao ?? 'sem_portal';
-    const base = 'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold';
+    const base = 'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-bold';
 
     if (situacao === 'sincronizado') {
         const tempo = haQuanto(portal.sincronizado_em);

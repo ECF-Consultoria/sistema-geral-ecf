@@ -56,7 +56,7 @@ export default function AvisoContaTravada({ variante = 'selo', className, childr
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/55',
+                'inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/55',
                 className,
             )}
         >

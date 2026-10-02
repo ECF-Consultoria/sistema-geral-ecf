@@ -78,9 +78,10 @@ export default function BarraDoEditor({ pub, empresa, primarioNaLateral, ia, onV
     const reconectar = empresa.token !== 'ativo';
     const voltar = () => onVoltar?.();
 
+    // -top-6: o <main> do AppLayout tem p-6 e o sticky cola na borda do CONTEÚDO, não do padding; sem isso sobra uma faixa de 24px por onde a página rola.
     return (
-        <div className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
-            <nav aria-label="Trilha" className="flex min-w-0 items-center gap-2 text-[13px] font-normal text-white/55">
+        <div className="sticky -top-6 z-20 flex h-14 items-center gap-4 border-b max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-2 max-sm:py-2 border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
+            <nav aria-label="Trilha" className="flex max-sm:hidden min-w-0 items-center gap-2 text-[13px] font-normal text-white/55">
                 <Link href={route('mlb.anuncios.index', { programa: empresa.programa })} onClick={voltar} className="shrink-0 hover:text-ecf-yellow">
                     Publicador MLB
                 </Link>
@@ -109,7 +110,7 @@ export default function BarraDoEditor({ pub, empresa, primarioNaLateral, ia, onV
 
             <div className="min-w-[90px] flex-1"><Salvamento pub={pub} /></div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 max-sm:w-full max-sm:flex-wrap">
                 {publicado ? (
                     <>
                         <span className="inline-flex items-center gap-2 text-[13px] font-bold text-emerald-400">

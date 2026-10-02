@@ -190,7 +190,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                     {/* Lateral: coluna sticky em ≥ 1360px; abaixo, card recolhido no topo (uma só árvore, para o aria-describedby achar a nota). */}
                     {estado && (
                         <aside className="order-first min-[1360px]:order-none" aria-label="Validação e resumo">
-                            <div className="min-[1360px]:sticky min-[1360px]:top-[80px] min-[1360px]:max-h-[calc(100vh-104px)] min-[1360px]:overflow-y-auto">
+                            <div className="min-[1360px]:sticky min-[1360px]:top-[56px] min-[1360px]:max-h-[calc(100vh-164px)] min-[1360px]:overflow-y-auto">
                                 <button
                                     type="button"
                                     onClick={() => setLateralAberta((v) => ! v)}

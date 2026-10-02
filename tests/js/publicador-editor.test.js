@@ -195,7 +195,7 @@ for (const caminho of CASCA) {
 
 test('BarraDoEditor — 56px sticky, sem pendências, amarelo sólido só no primário e condicionado', () => {
     const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
-    assert.match(f, /sticky top-0/);
+    assert.match(f, /sticky -top-6/);
     assert.match(f, /\bh-14\b/);
     assert.doesNotMatch(f, /pendencias/);
     assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
@@ -313,7 +313,7 @@ test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo
     assert.doesNotMatch(f, /ModoAnuncioTabs/);
     assert.doesNotMatch(f, /fixed bottom-/);
     assert.match(f, /min-\[1360px\]:grid-cols-\[minmax\(0,800px\)_320px\]/);
-    assert.match(f, /min-\[1360px\]:top-\[80px\]/);
+    assert.match(f, /min-\[1360px\]:top-\[56px\]/);
     assert.match(f, /matchMedia\(FAIXA_LARGA\)/);
     assert.match(f, /removeEventListener\('change'/);
     assert.match(f, /primarioNaLateral=\{largo\}/);

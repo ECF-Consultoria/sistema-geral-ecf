@@ -23,7 +23,7 @@ const FILTROS = [
 
 const COLUNAS = ['Empresa', 'Conta ML', 'Portal', 'Produtos', 'Publicados'];
 
-const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
 const contagem = (n, singular, plural) => (n > 0 ? `${n} ${n === 1 ? singular : plural}` : '—');
 
@@ -162,7 +162,7 @@ export default function AnunciosEmpresas({
                 ) : carregando ? (
                     <Esqueleto />
                 ) : (
-                    <div className="grid gap-8 min-[1360px]:grid-cols-[1fr_320px]">
+                    <div className="grid gap-8 min-[1600px]:grid-cols-[1fr_320px]">
                         <div className="min-w-0 space-y-8">
                             <IndicadoresDoPrograma indicadores={indicadores} onFiltrarProntos={() => aplicarFiltro('prontos')} />
 
@@ -267,7 +267,7 @@ export default function AnunciosEmpresas({
                                                             {contagem(e.publicados, 'anúncio', 'anúncios')}
                                                         </td>
                                                         <td className="px-4 py-2">
-                                                            <div className="flex items-center justify-end gap-2">
+                                                            <div className="flex flex-wrap items-center justify-end gap-2">
                                                                 {sincronizando(e) && (
                                                                     <BotaoSincronizarPortal
                                                                         conta={e.chave}
@@ -324,13 +324,13 @@ export default function AnunciosEmpresas({
                                 )}
                             </section>
 
-                            {/* Abaixo de 1360px o painel vira card recolhido no fim da página */}
-                            <div className="min-[1360px]:hidden">
+                            {/* Abaixo de 1600px (a 1440px a tabela com 2 botões por linha não cabe ao lado do painel) o painel vira card recolhido no fim da página */}
+                            <div className="min-[1600px]:hidden">
                                 <PainelComoFunciona variante="recolhido" />
                             </div>
                         </div>
 
-                        <div className="hidden min-[1360px]:block">
+                        <div className="hidden min-[1600px]:block">
                             <PainelComoFunciona variante="lateral" />
                         </div>
                     </div>

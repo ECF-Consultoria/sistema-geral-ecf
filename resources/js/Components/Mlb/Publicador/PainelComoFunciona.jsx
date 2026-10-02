@@ -27,7 +27,7 @@ export default function PainelComoFunciona({ variante = 'lateral' }) {
     return (
         <aside
             aria-label="Como funciona"
-            className={cn('rounded-xl bg-ecf-card p-4', variante === 'lateral' ? 'w-full min-[1360px]:w-[320px]' : 'w-full')}
+            className={cn('rounded-xl bg-ecf-card p-4', variante === 'lateral' ? 'w-full min-[1600px]:w-[320px]' : 'w-full')}
         >
             <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[15px] font-bold text-white">Como funciona</h2>
