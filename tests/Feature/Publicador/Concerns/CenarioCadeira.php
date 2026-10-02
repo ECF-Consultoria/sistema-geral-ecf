@@ -81,7 +81,13 @@ trait CenarioCadeira
             'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
         $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(app(MercadoLivreService::class), app(MlColetaService::class),
             function (int $s) { $this->esperas[] = $s; }));
-        $this->mock(DadosEfetivosService::class, fn ($m) => $m->shouldReceive('daOferta')->andReturnUsing(fn () => $this->efetivos));
+        // Espelha a regra real (D16): produto sem oferta não tem efetivos. Registrado UMA vez (learnings §5).
+        $this->mock(DadosEfetivosService::class, function ($m) {
+            $m->shouldReceive('daOferta')->andReturnUsing(fn () => $this->efetivos);
+            $m->shouldReceive('daProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
+                ? ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []]
+                : $this->efetivos);
+        });
 
         // O schema já guardado (24h): nenhuma chamada pública no teste.
         $schema = self::schema(self::CADEIRA);

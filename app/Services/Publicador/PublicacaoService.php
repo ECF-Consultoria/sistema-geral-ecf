@@ -520,7 +520,12 @@ class PublicacaoService
     {
         $ator = self::atorGravado((array) $p->ator);
         $tipoDoListing = array_flip(\App\Models\EstruturaPublicacao::LISTING_TYPES);
-        $oferta = $r->oferta;
+        // D16: sem oferta não há aba Anúncios para cadastrar (inclusive produto solto de oferta apagada — D27).
+        $produto = $r->produto;
+        if ($produto === null || $produto->oferta_id === null) {
+            return;
+        }
+        $oferta = $produto->oferta;
 
         foreach ($criados->groupBy('listing_type_id') as $listingType => $doTipo) {
             $tipo = $tipoDoListing[$listingType] ?? null;

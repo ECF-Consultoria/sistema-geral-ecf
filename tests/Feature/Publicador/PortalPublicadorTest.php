@@ -231,7 +231,7 @@ class PortalPublicadorTest extends TestCase
         $selo = fn () => collect($this->portal()->get(route('portal.auth.estrutura.anunciar'))->viewData('page')['props']['anunciar']['ofertas'])
             ->firstWhere('id', $cb3->id)['prontidao'];
 
-        $this->assertSame(['chave' => 'rascunho', 'rotulo' => 'a preencher'], $selo());
+        $this->assertSame(['chave' => 'rascunho', 'rotulo' => 'a preencher', 'faltam' => 0], $selo());
 
         $this->portal()->getJson($this->rota('abrir'))->assertOk();
         $this->assertSame('em preenchimento', $selo()['rotulo']);

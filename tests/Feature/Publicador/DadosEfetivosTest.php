@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Publicador;
 
+use App\Models\Company;
 use App\Models\EstruturaAnuncio;
+use App\Models\EstruturaOferta;
+use App\Models\PubProduto;
 use App\Services\Portal\Estrutura\PrecificacaoEstrutura;
 use App\Services\Publicador\DadosEfetivosService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,5 +48,29 @@ class DadosEfetivosTest extends TestCase
         // O MLB colado na aba Anúncios entra na lista dos que já são desta oferta.
         EstruturaAnuncio::where('oferta_id', $cb3->id)->update(['codigo_mlb' => 'MLB4000000001']);
         $this->assertSame(['MLB4000000001'], app(DadosEfetivosService::class)->daOferta($cb3->fresh())['mlbs']);
+    }
+
+    public function test_produto_sem_oferta_nao_tem_efetivos(): void
+    {
+        $empresa = Company::factory()->create();
+        $produto = PubProduto::create(['company_id' => $empresa->id, 'sku' => 'SOLTO-1', 'nome' => 'Solto', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+
+        $e = app(DadosEfetivosService::class)->daProduto($produto);
+
+        $this->assertSame(['gold_special' => null, 'gold_pro' => null], $e['titulos']);
+        $this->assertSame(['gold_special' => null, 'gold_pro' => null], $e['precos']);
+        $this->assertSame([], $e['mlbs']);
+    }
+
+    public function test_produto_do_portal_usa_os_efetivos_da_oferta(): void
+    {
+        $empresa = Company::factory()->create();
+        $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
+        EstruturaAnuncio::create(['oferta_id' => $oferta->id, 'tipo' => 'classico', 'titulo' => 'Cadeira Planejada', 'codigo_mlb' => 'MLB4000000009', 'status' => 'ativo']);
+        $produto = PubProduto::daOferta($oferta);
+        $svc = app(DadosEfetivosService::class);
+
+        $this->assertSame($svc->daOferta($oferta), $svc->daProduto($produto));
+        $this->assertSame('Cadeira Planejada', $svc->daProduto($produto)['titulos']['gold_special']);
     }
 }

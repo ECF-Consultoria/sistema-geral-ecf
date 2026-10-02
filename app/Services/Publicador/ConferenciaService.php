@@ -209,7 +209,7 @@ class ConferenciaService
     /** @return array{snapshot: RascunhoSnapshot, mlbs: list<string>} */
     private function comEfetivos(PubRascunho $r): array
     {
-        $e = $this->efetivos->daOferta($r->oferta);
+        $e = $this->efetivos->daProduto($r->produto);
 
         return ['snapshot' => $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']), 'mlbs' => $e['mlbs']];
     }

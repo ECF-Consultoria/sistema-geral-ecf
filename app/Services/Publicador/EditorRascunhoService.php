@@ -240,7 +240,7 @@ class EditorRascunhoService
         if (! $r->categoria_id) {
             return [];
         }
-        $e = $this->efetivos->daOferta($r->oferta);
+        $e = $this->efetivos->daProduto($r->produto);
         $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
         $primeira = $s->variantesAtivas()[0] ?? null;
         $conta = (array) ($r->step_state['conta'] ?? []);
@@ -291,8 +291,8 @@ class EditorRascunhoService
 
     public function estado(PubRascunho $r): array
     {
-        $r = $r->fresh(['oferta']);
-        $e = $this->efetivos->daOferta($r->oferta);
+        $r = $r->fresh(['produto.oferta']);
+        $e = $this->efetivos->daProduto($r->produto);
         $digitado = $this->repo->snapshot($r);
         $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos']);
 
@@ -316,6 +316,8 @@ class EditorRascunhoService
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
 
+        $this->gravarResumo($r, count(array_filter($problemas, fn (Problema $p) => $p->bloqueia())));
+
         $eixos = Eixo::ordenar($snapshot->eixos);
         $grupos = $schema ? ResolvedorGruposImagem::resolver($snapshot->variantes, $eixos, $snapshot->imagens, new OpcoesImagem(
             OpcoesImagem::UP, $schema->limites['max_pictures_per_item'] ?? null, $schema->limites['max_pictures_per_item_var'] ?? null,
@@ -328,7 +330,13 @@ class EditorRascunhoService
         $p = $r->publicacoes()->latest('id')->first();
 
         return [
-            'oferta' => ['id' => $r->oferta->id, 'sku' => $r->oferta->sku, 'nome' => $r->oferta->nome],
+            // 'oferta' fica por compatibilidade com o EditorPublicador.jsx do Portal, que sai em 160-15.
+            'oferta' => $r->produto->oferta ? ['id' => $r->produto->oferta->id, 'sku' => $r->produto->oferta->sku, 'nome' => $r->produto->oferta->nome] : null,
+            'produto' => [
+                'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
+                'oferta_id' => $r->produto->oferta_id, 'origem' => $r->produto->origem,
+                'mlb_empresa_id' => $r->produto->mlb_empresa_id, 'company_id' => $r->produto->company_id,
+            ],
             'rascunho' => [
                 'id' => $r->id, 'revisao' => $r->revisao, 'status' => $r->status,
                 'categoria_id' => $r->categoria_id, 'condicao' => $r->condicao, 'descricao' => $r->descricao,
@@ -394,6 +402,21 @@ class EditorRascunhoService
     }
 
     /**
+     * Resumo de bloqueios para a lista de produtos e para a faixa do editor. Não é uma
+     * edição: `DB::table` de propósito, para não subir `revisao` (a conferência continua
+     * valendo) nem mexer em `updated_at`. Só grava quando o número muda.
+     */
+    private function gravarResumo(PubRascunho $r, int $bloqueios): void
+    {
+        if ($bloqueios === ($r->step_state['resumo']['bloqueios'] ?? null)) {
+            return;
+        }
+        $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+        $atual['resumo'] = ['bloqueios' => $bloqueios, 'revisao' => $r->revisao];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    /**
      * O selo do card da oferta na lista do Anunciar, pelo rascunho do
      * Publicador (o da lista antiga lê o par antigo e diria "falta categoria").
      *
@@ -402,13 +425,14 @@ class EditorRascunhoService
     public static function prontidao(?PubRascunho $r, ?PubValidacao $ultima): array
     {
         if (! $r) {
-            return ['chave' => 'rascunho', 'rotulo' => 'a preencher'];
+            return ['chave' => 'rascunho', 'rotulo' => 'a preencher', 'faltam' => 0];
         }
         if ($r->status === PubRascunho::DRAFT && $ultima && $ultima->revisao === $r->revisao && in_array($ultima->resultado, [ConferenciaService::OK, ConferenciaService::AVISOS], true)) {
-            return ['chave' => 'pronto', 'rotulo' => 'conferido'];
+            return ['chave' => 'pronto', 'rotulo' => 'conferido', 'faltam' => (int) ($r->step_state['resumo']['bloqueios'] ?? 0)];
         }
+        $faltam = $r->status === PubRascunho::DRAFT ? (int) ($r->step_state['resumo']['bloqueios'] ?? 0) : 0;
 
-        return match ($r->status) {
+        return ['faltam' => $faltam] + match ($r->status) {
             PubRascunho::VALIDATED => ['chave' => 'pronto', 'rotulo' => 'conferido'],
             PubRascunho::PUBLISHING => ['chave' => 'publicando', 'rotulo' => 'publicando'],
             PubRascunho::PUBLISHED => ['chave' => 'publicado', 'rotulo' => 'publicado'],
