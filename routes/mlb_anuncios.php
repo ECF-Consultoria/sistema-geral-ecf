@@ -145,4 +145,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('token', '[A-Za-z0-9]{32}')
             ->whereNumber('indice')
             ->name('criativo.referencia.ver');
+
+        // Fase 160 Plano 02 — geração assíncrona (GEN-01/02). Throttle:6,1 na
+        // rota de disparo é DINHEIRO, não estilo: cada chamada ao provedor
+        // custa ~US$ 0,101 (medição do spike 261001-nkx §16).
+        Route::post('/criativo/{token}/gerar', [MlbAnuncioController::class, 'criativoGerar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:6,1')
+            ->name('criativo.gerar');
+        Route::get('/criativo/{token}', [MlbAnuncioController::class, 'criativoStatus'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->name('criativo.status');
+        Route::get('/criativo/{token}/imagem', [MlbAnuncioController::class, 'criativoImagem'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->name('criativo.imagem');
     });
