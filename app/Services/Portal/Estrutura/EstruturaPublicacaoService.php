@@ -12,10 +12,8 @@ use App\Services\Mlb\Publicacao\MlImagemService;
 use App\Services\Mlb\Publicacao\MlItemPayloadValidator;
 use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use App\Services\MlColetaService;
+use App\Services\Publicador\CategoriaBuscaService;
 use App\Support\Portal\AtorDoPortal;
-use Illuminate\Http\Client\Pool;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -47,16 +45,6 @@ use Illuminate\Validation\ValidationException;
 class EstruturaPublicacaoService
 {
     private const API_BASE = 'https://api.mercadolibre.com';
-
-    /**
-     * O cache dos metadados de categoria é do `MlCatalogoMetaService`
-     * (`Cache::remember` por id, 7 dias). A chave já é contrato de fato — o
-     * `MlbAnuncioController::preverCategoria` a lê direto — e é por ela que a
-     * leitura em paralelo de {@see self::categoriasEmLote()} aquece o MESMO
-     * cache que `categoria()` consome, sem alterar o service do admin.
-     */
-    private const CACHE_CATEGORIA = 'ml_meta_categoria_';
-    private const TTL_CATEGORIA = 604800;
 
     public const POR_PAGINA = 25;
 
@@ -95,6 +83,7 @@ class EstruturaPublicacaoService
         private MlItemPayloadValidator $tradutor,
         private EstruturaAnuncioService $anuncios,
         private EstruturaPrecificacaoService $precificacao,
+        private CategoriaBuscaService $buscaCategoria,
     ) {
     }
 
@@ -222,88 +211,8 @@ class EstruturaPublicacaoService
      */
     public function categorias(string $q): array
     {
-        $candidatos = [];
-
-        foreach ($this->meta->preverCategoria($q) as $c) {
-            $id = (string) ($c['category_id'] ?? '');
-            if ($id === '' || isset($candidatos[$id])) {
-                continue;
-            }
-            $candidatos[$id] = ['id' => $id, 'nome' => (string) ($c['category_name'] ?? $id), 'dominio' => $c['domain_name'] ?? null];
-        }
-
-        $metas = $this->categoriasEmLote(array_keys($candidatos));
-
-        return array_values(array_map(fn (array $c) => [
-            ...$c,
-            'caminho' => array_values(array_filter(array_column((array) data_get($metas[$c['id']] ?? [], 'path_from_root', []), 'name'))),
-        ], $candidatos));
-    }
-
-    /**
-     * `GET /categories/{id}` de várias categorias de uma vez. O que já está
-     * no cache do `MlCatalogoMetaService` sai de lá; o que falta é lido em
-     * PARALELO (`Http::pool`, app token — dado público) e gravado no mesmo
-     * cache, para `categoria()` e a próxima busca acharem pronto. Oito
-     * sugestões em série custavam ~1,5 s na primeira busca; em paralelo, o
-     * tempo de uma.
-     *
-     * `MercadoLivreService::getMany()` não serve aqui: exige a CONTA da
-     * empresa (token dela, refresh, lock) para um dado que é público e cujo
-     * cache é compartilhado por todas as contas — é a razão de o
-     * `MlCatalogoMetaService` usar o app token.
-     *
-     * Falha de UMA categoria não derruba as outras: ela entra vazia e NÃO é
-     * cacheada, para a próxima busca tentar de novo.
-     *
-     * @param  array<int, string>  $ids
-     * @return array<string, array>  id → corpo de GET /categories/{id} ([] quando falhou)
-     */
-    private function categoriasEmLote(array $ids): array
-    {
-        $saida = [];
-        $faltam = [];
-
-        foreach ($ids as $id) {
-            $cache = Cache::get(self::CACHE_CATEGORIA.$id);
-            if (is_array($cache) && $cache) {
-                $saida[$id] = $cache;
-            } else {
-                $faltam[] = $id;
-            }
-        }
-
-        // Uma só: o próprio service do admin, com o cache dele.
-        if (count($faltam) === 1) {
-            $saida[$faltam[0]] = $this->meta->categoria($faltam[0]);
-
-            return $saida;
-        }
-
-        if ($faltam) {
-            try {
-                $token = $this->coleta->getAppToken();
-                $respostas = Http::pool(fn (Pool $pool) => array_map(
-                    fn ($id) => $pool->as($id)->withToken($token)->timeout(15)->get(self::API_BASE."/categories/{$id}"),
-                    $faltam,
-                ));
-            } catch (\Throwable $e) {
-                Log::warning('[Estrutura Anunciar] leitura em lote de categorias falhou: '.$e->getMessage());
-                $respostas = [];
-            }
-
-            foreach ($faltam as $id) {
-                $r = $respostas[$id] ?? null;
-                if ($r instanceof Response && $r->successful() && is_array($r->json())) {
-                    $saida[$id] = (array) $r->json();
-                    Cache::put(self::CACHE_CATEGORIA.$id, $saida[$id], self::TTL_CATEGORIA);
-                } else {
-                    $saida[$id] = [];
-                }
-            }
-        }
-
-        return $saida;
+        // D18: a busca mora em CategoriaBuscaService; o Portal só delega até sair (160-15).
+        return $this->buscaCategoria->categorias($q);
     }
 
     /**
