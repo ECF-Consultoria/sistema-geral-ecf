@@ -2732,9 +2732,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 160-02-PLAN.md — motor: rascunho nasce/abre pelo produto; efetivos e régua só com oferta; estado por produto e resumo de prontidão; oferta apagada no Portal congela título/preço e não leva o histórico (D27) · wave 2
-- [ ] 160-03-PLAN.md — programa da MlbEmpresa (D13), contas liberadas por âncora (D21) e backend da entrada Polos · Incubadora · Gestão · wave 2
-- [ ] 160-04-PLAN.md — mesa do editor: base dos cards, Produto e categoria, Ficha técnica, Fotos + normalização tipográfica · wave 2
+- [x] 160-02-PLAN.md — motor: rascunho nasce/abre pelo produto; efetivos e régua só com oferta; estado por produto e resumo de prontidão; oferta apagada no Portal congela título/preço e não leva o histórico (D27) · wave 2
+- [x] 160-03-PLAN.md — programa da MlbEmpresa (D13), contas liberadas por âncora (D21) e backend da entrada Polos · Incubadora · Gestão · wave 2
+- [x] 160-04-PLAN.md — mesa do editor: base dos cards, Produto e categoria, Ficha técnica, Fotos + normalização tipográfica · wave 2
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

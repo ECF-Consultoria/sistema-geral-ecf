@@ -381,9 +381,9 @@ frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição para
 outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
 
 Phase: 160 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — EXECUTING
-Plans: 15 em 8 waves — 1 de 15 concluídos (160-01)
-Status: Executing Phase 160 — wave 2 (160-02, 160-03, 160-04). 160-14 é gate humano (aprovação visual).
-Last activity: 2026-10-02 — 160-01 concluído (pub_produtos + backfill; MariaDB local com as 2 migrations Ran)
+Plans: 15 em 8 waves — 4 de 15 concluídos (160-01..04)
+Status: Executing Phase 160 — wave 3 (160-05, 160-06, 160-07). 160-14 é gate humano (aprovação visual).
+Last activity: 2026-10-02 — wave 2 concluída (gate: Publicador 280/1198, PortalCliente 240/2123, test:js só as 2 falhas pré-existentes)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
