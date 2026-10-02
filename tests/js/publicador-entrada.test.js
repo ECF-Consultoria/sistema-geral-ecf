@@ -24,6 +24,7 @@ const ARQUIVOS = [
     DIR + 'SeloStatusProduto.jsx',
     DIR + 'ModalNovoProduto.jsx',
     'resources/js/Pages/Mlb/AnunciosEmpresas.jsx',
+    'resources/js/Pages/Mlb/Publicador/Produtos.jsx',
 ];
 
 const PAGINA_A = 'resources/js/Pages/Mlb/AnunciosEmpresas.jsx';
@@ -152,4 +153,46 @@ test('SeloStatusProduto — rótulos das sete situações', () => {
     for (const r of ['Sem rascunho', 'Rascunho', 'Faltam', 'Conferido', 'Publicando', 'Publicado', 'Parte publicada', 'Não publicado']) {
         assert.ok(fonte.includes(r), r);
     }
+});
+
+const PAGINA_B = 'resources/js/Pages/Mlb/Publicador/Produtos.jsx';
+
+test('Tela B — navega ao editor por clique e Enter, e monta as abas com a conta do Publicador', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /mlb.anuncios.publicador.editor/);
+    assert.match(fonte, /tabIndex={0}/);
+    assert.match(fonte, /'Enter'/);
+    assert.match(fonte, /contaPublicador={/);
+    assert.match(fonte, /empresaId={abas.company_id}/);
+    assert.doesNotMatch(fonte, /mlb.anuncios.wizard/);
+});
+
+test('Tela B — D27: a pílula de origem decide por oferta_id', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /produto.oferta_id/);
+    assert.match(fonte, /Veio do Portal; a oferta foi apagada lá e o produto ficou aqui./);
+});
+
+test('Tela B — polling de 5 s só com produto publicando, limpo no unmount', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /5000/);
+    assert.match(fonte, /clearInterval/);
+    assert.match(fonte, /only: \['produtos', 'contagens'\]/);
+});
+
+test('Tela B — faixa de conta travada, rodapé D22 e copy de sincronizar/vazio', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /variante="faixa"/);
+    assert.match(fonte, /Abrir no assistente antigo/);
+    assert.match(fonte, /Nada novo: todos os produtos do Portal já estão aqui./);
+    assert.match(fonte, /Esta empresa ainda não tem produtos./);
+    assert.match(fonte, /Nenhum produto cadastrado./);
+    assert.match(fonte, /Não foi possível abrir o produto./);
+});
+
+test('Tela B — nenhuma linha avermelhada', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    const abertura = fonte.match(/'h-14[^']*'/);
+    assert.ok(abertura, 'linha h-14 não encontrada');
+    assert.doesNotMatch(abertura[0], /bg-red|border-red/);
 });
