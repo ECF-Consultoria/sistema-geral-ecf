@@ -71,6 +71,12 @@ class MigracaoAnunciarAntigoTest extends TestCase
         $r = PubRascunho::sole();
         $s = (new RascunhoRepository())->snapshot($r);
 
+        // D15: a oferta ganhou o produto (origem portal), e rodar de novo não duplica.
+        $this->assertSame(1, \App\Models\PubProduto::where('oferta_id', $antiga->oferta_id)->where('origem', 'portal')->count());
+        $this->artisan('publicador:migrar-anunciar --apply')->assertSuccessful();
+        $this->assertSame(1, \App\Models\PubProduto::where('oferta_id', $antiga->oferta_id)->count());
+        $this->assertSame(1, PubRascunho::count());
+
         $this->assertSame(PubRascunho::DRAFT, $r->status);
         $this->assertSame('MLB193945', $s->categoriaId);
         $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $s->garantia);

@@ -6,6 +6,7 @@ use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaPublicacao;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
+use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
@@ -58,7 +59,7 @@ class MigracaoAnunciarAntigo
     public function planejar(EstruturaPublicacao $antiga): array
     {
         $oferta = $antiga->oferta;
-        if (PubRascunho::where('oferta_id', $oferta->id)->exists()) {
+        if (PubRascunho::whereRelation('produto', 'oferta_id', $oferta->id)->exists()) {
             return ['oferta_id' => $oferta->id, 'sku' => $oferta->sku, 'acao' => 'pular (já migrada)'];
         }
 
@@ -96,7 +97,7 @@ class MigracaoAnunciarAntigo
             $tipos = EstruturaPublicacao::LISTING_TYPES;
 
             $alvos = array_map(fn ($tipo) => new Alvo($tipos[$tipo], $plano['titulos'][$tipo], $antiga->mlItem($tipo) === null), ['classico', 'premium']);
-            $r = $this->repo->criar($oferta, $alvos, ['origem' => 'migracao_anunciar_antigo', 'estrutura_publicacao_id' => $antiga->id]);
+            $r = $this->repo->criar(PubProduto::daOferta($oferta), $alvos, ['origem' => 'migracao_anunciar_antigo', 'estrutura_publicacao_id' => $antiga->id]);
 
             $r->update([
                 'status' => $plano['status'],

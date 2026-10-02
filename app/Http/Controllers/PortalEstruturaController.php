@@ -217,7 +217,9 @@ class PortalEstruturaController extends Controller
     /** Piloto do Publicador: o selo de cada card vem do rascunho novo, não do par antigo. */
     private function comProntidaoDoPublicador(array $ofertas): array
     {
-        $rascunhos = PubRascunho::whereIn('oferta_id', array_column($ofertas, 'id'))->get()->keyBy('oferta_id');
+        $rascunhos = PubRascunho::with('produto:id,oferta_id')
+            ->whereHas('produto', fn ($q) => $q->whereIn('oferta_id', array_column($ofertas, 'id')))
+            ->get()->keyBy(fn (PubRascunho $r) => $r->produto->oferta_id);
         $ultimas = PubValidacao::whereIn('rascunho_id', $rascunhos->pluck('id'))->orderBy('id')->get()->keyBy('rascunho_id');
 
         return array_map(function ($o) use ($rascunhos, $ultimas) {

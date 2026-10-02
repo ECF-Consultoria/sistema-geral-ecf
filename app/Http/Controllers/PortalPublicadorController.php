@@ -6,6 +6,7 @@ use App\Jobs\Publicador\ConferirRascunhoJob;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Services\Publicador\ConferenciaService;
@@ -51,7 +52,8 @@ class PortalPublicadorController extends Controller
 
     public function abrir(int $oferta): JsonResponse
     {
-        return $this->responder(fn () => $this->editor->abrir($this->oferta($oferta)));
+        // Piloto do Portal: sai em 160-15 (D18); abre pelo produto da oferta.
+        return $this->responder(fn () => $this->editor->abrir(PubProduto::daOferta($this->oferta($oferta))));
     }
 
     public function salvar(Request $request, int $oferta): JsonResponse
@@ -276,7 +278,7 @@ class PortalPublicadorController extends Controller
 
     private function rascunho(int $oferta): PubRascunho
     {
-        return PubRascunho::where('oferta_id', $this->oferta($oferta)->id)->firstOrFail();
+        return PubRascunho::whereRelation('produto', 'oferta_id', $this->oferta($oferta)->id)->firstOrFail();
     }
 
     private function colocarNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo): void

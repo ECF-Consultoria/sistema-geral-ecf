@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\MlToken;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -43,7 +44,7 @@ class ImagensTest extends TestCase
         MlToken::create(['company_id' => $empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
             'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
         $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
-        $this->rascunho = (new RascunhoRepository())->criar($oferta, [new Alvo('gold_special', 'Cadeira')]);
+        $this->rascunho = (new RascunhoRepository())->criar(PubProduto::create(['company_id' => $empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PORTAL]), [new Alvo('gold_special', 'Cadeira')]);
 
         $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(app(MercadoLivreService::class), app(MlColetaService::class), fn () => null));
         $this->servico = app(ImagemAssetService::class);

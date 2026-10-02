@@ -3,10 +3,10 @@
 namespace App\Services\Publicador;
 
 use App\Models\EstruturaAnuncio;
-use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
+use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
@@ -59,20 +59,20 @@ class EditorRascunhoService
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
 
-    /** O rascunho da oferta: o que já existe, o migrado do Anunciar antigo, ou um novo com os tipos que faltam. */
-    public function abrir(EstruturaOferta $oferta): PubRascunho
+    /** O rascunho do produto: o que já existe, o migrado do Anunciar antigo (só com oferta), ou um novo com os tipos que faltam. */
+    public function abrir(PubProduto $produto): PubRascunho
     {
-        $r = PubRascunho::where('oferta_id', $oferta->id)->first();
-        if (! $r && ($antiga = EstruturaPublicacao::where('oferta_id', $oferta->id)->first())) {
+        $r = PubRascunho::where('produto_id', $produto->id)->first();
+        if (! $r && $produto->oferta_id !== null && ($antiga = EstruturaPublicacao::where('oferta_id', $produto->oferta_id)->first())) {
             $r = $this->migracao->aplicar($antiga);
         }
         if (! $r) {
-            $mlbs = $this->mlbsDaRegua($oferta);
-            $r = $this->repo->criar($oferta, array_map(
+            $mlbs = $this->mlbsDaRegua($produto);
+            $r = $this->repo->criar($produto, array_map(
                 fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
                 array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
             ), ['origem' => 'publicador']);
-            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $oferta->sku]]])]);
+            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]]])]);
         }
 
         // Migrado com categoria e sem hash: grava o hash do schema de hoje.
@@ -461,6 +461,10 @@ class EditorRascunhoService
         if ($r->conta_checada_em && $r->conta_checada_em->gt(now()->subMinutes(self::CONTA_VALE_MINUTOS)) && isset($r->step_state['conta'])) {
             return;
         }
+        // Produto sem oferta: a conta por produto entra em 160-07; até lá não há o que ler aqui.
+        if ($r->oferta === null) {
+            return;
+        }
         try {
             $conta = $this->contas->contexto($r->oferta->company);
             $r->update([
@@ -474,8 +478,12 @@ class EditorRascunhoService
     }
 
     /** @return array<string, ?string> tipo da régua → MLB que já conta */
-    private function mlbsDaRegua(EstruturaOferta $oferta): array
+    private function mlbsDaRegua(PubProduto $produto): array
     {
+        if ($produto->oferta_id === null) {
+            return ['classico' => null, 'premium' => null];
+        }
+        $oferta = $produto->oferta;
         $o = EstruturaConjunto::daEmpresa($oferta->company)->oferta($oferta->id) ?? ['anuncios' => []];
         $r = ['classico' => null, 'premium' => null];
         foreach ((array) $o['anuncios'] as $a) {
@@ -491,7 +499,7 @@ class EditorRascunhoService
     {
         $tipo = array_flip(EstruturaPublicacao::LISTING_TYPES)[$listingType] ?? null;
 
-        return $tipo ? $this->mlbsDaRegua($r->oferta)[$tipo] ?? null : null;
+        return $tipo ? $this->mlbsDaRegua($r->produto)[$tipo] ?? null : null;
     }
 
     /** @param list<Eixo> $eixos @return list<string> */

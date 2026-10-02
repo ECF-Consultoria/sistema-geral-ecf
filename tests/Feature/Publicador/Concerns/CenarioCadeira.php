@@ -7,6 +7,7 @@ use App\Models\EstruturaOferta;
 use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -49,6 +50,8 @@ trait CenarioCadeira
 
     protected PubRascunho $r;
 
+    protected PubProduto $produto;
+
     protected RascunhoRepository $repo;
 
     /** @var list<string> o que o `/attributes/conditional` devolve agora */
@@ -87,7 +90,8 @@ trait CenarioCadeira
 
         $this->repo = new RascunhoRepository();
         $oferta = EstruturaOferta::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
-        $this->r = $this->repo->criar($oferta, [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória')]);
+        $this->produto = PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PORTAL]);
+        $this->r = $this->repo->criar($this->produto, [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória')]);
         $this->repo->gravarCategoria($this->r, $schema);
         $this->repo->gravarAtributos($this->r, self::ATRIBUTOS);
         $this->variante(['SELLER_SKU' => ['value_name' => 'CAD-01'], 'GTIN' => ['value_name' => '7896553367645']]);

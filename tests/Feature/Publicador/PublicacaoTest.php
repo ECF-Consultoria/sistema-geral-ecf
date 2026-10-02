@@ -127,7 +127,7 @@ class PublicacaoTest extends TestCase
 
     public function test_publica_grava_o_mlb_descricao_estado_e_completa_o_planejado_da_regua(): void
     {
-        $planejado = EstruturaAnuncio::create(['oferta_id' => $this->r->oferta_id, 'tipo' => 'classico', 'titulo' => 'Planejado', 'status' => 'ativo']);
+        $planejado = EstruturaAnuncio::create(['oferta_id' => $this->r->produto->oferta_id, 'tipo' => 'classico', 'titulo' => 'Planejado', 'status' => 'ativo']);
 
         $this->conferir();
         $p = $this->iniciar();
@@ -155,7 +155,7 @@ class PublicacaoTest extends TestCase
 
         // O planejado da aba Anúncios ganhou o MLB — não nasceu um segundo Clássico.
         $this->assertSame('MLB9000000001', $planejado->fresh()->codigo_mlb);
-        $this->assertSame(1, EstruturaAnuncio::where('oferta_id', $this->r->oferta_id)->count());
+        $this->assertSame(1, EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->count());
 
         $this->assertStringNotContainsString('fake-access-token', json_encode(PubPublicacaoItem::all()->toArray()));
         $this->assertStringNotContainsString('fake-access-token', json_encode($p->fresh()->toArray()));
@@ -256,7 +256,7 @@ class PublicacaoTest extends TestCase
         [$problema] = app(PublicacaoService::class)->problemas($p);
         $this->assertSame('MODEL', $problema->alvo['atributo']);
         $this->assertSame('Preencha os atributos obrigatórios: «Modelo».', $problema->mensagem);
-        $this->assertSame(0, EstruturaAnuncio::where('oferta_id', $this->r->oferta_id)->count());
+        $this->assertSame(0, EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->count());
     }
 
     public function test_tc82_aviso_na_criacao_fica_visivel(): void
@@ -320,7 +320,7 @@ class PublicacaoTest extends TestCase
         $this->assertSame(['MLB9000000001', null, 'MLB9000000003'], $p->itens()->pluck('ml_item_id')->all());
         $this->assertSame([true, false, true], $this->r->variantes()->orderBy('posicao')->pluck('publicada')->map(fn ($x) => (bool) $x)->all());
         // A régua recebe o 1º item criado do tipo.
-        $this->assertSame(['MLB9000000001'], EstruturaAnuncio::where('oferta_id', $this->r->oferta_id)->pluck('codigo_mlb')->all());
+        $this->assertSame(['MLB9000000001'], EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->pluck('codigo_mlb')->all());
 
         // Retentar: o ML aceita agora; só o Azul vai.
         $this->criar = $criar;
@@ -331,7 +331,7 @@ class PublicacaoTest extends TestCase
         $this->assertSame(4, $this->postsDeItem());
         $this->assertSame(PubPublicacao::PUBLISHED, $nova->fresh()->status);
         $this->assertSame(PubRascunho::PUBLISHED, $this->r->fresh()->status);
-        $this->assertSame(['MLB9000000001'], EstruturaAnuncio::where('oferta_id', $this->r->oferta_id)->pluck('codigo_mlb')->all(), 'a régua não ganha um segundo Clássico');
+        $this->assertSame(['MLB9000000001'], EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->pluck('codigo_mlb')->all(), 'a régua não ganha um segundo Clássico');
     }
 
     // ═══ Timeout e reconciliação (RN-93, `09` §5) ════════════════════════════

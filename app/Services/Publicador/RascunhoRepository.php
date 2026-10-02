@@ -2,7 +2,6 @@
 
 namespace App\Services\Publicador;
 
-use App\Models\EstruturaOferta;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
 use App\Models\PubImagemAtribuicao;
@@ -33,15 +32,16 @@ use Illuminate\Support\Facades\DB;
 class RascunhoRepository
 {
     /**
+     * Um rascunho por produto; a oferta, quando há, é a do produto.
      * O rascunho nasce com a variante única (RN-40) e os alvos que a régua manda publicar.
      *
      * @param  list<Alvo>  $alvos
      */
-    public function criar(EstruturaOferta $oferta, array $alvos, ?array $ator = null): PubRascunho
+    public function criar(PubProduto $produto, array $alvos, ?array $ator = null): PubRascunho
     {
-        return DB::transaction(function () use ($oferta, $alvos, $ator) {
-            // 'produto_id': ponte até o motor receber o produto (160-02); oferta_id segue gravado pelos leitores por coluna.
-            $r = PubRascunho::create(['produto_id' => PubProduto::daOferta($oferta)->id, 'oferta_id' => $oferta->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
+        return DB::transaction(function () use ($produto, $alvos, $ator) {
+            // D27: só produto_id. pub_rascunhos.oferta_id é coluna legada dormente; a oferta (quando há) é a do produto.
+            $r = PubRascunho::create(['produto_id' => $produto->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
                 'envio' => ['modo' => 'me2', 'frete_gratis' => false, 'retirada' => false]]);
             $this->gravarAlvos($r, $alvos);
             $this->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [])]);
