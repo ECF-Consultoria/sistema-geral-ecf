@@ -5,6 +5,7 @@ namespace App\Services\Portal\Estrutura;
 use App\Models\Company;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Services\Publicador\SoltarProdutoDaOfertaService;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,7 +32,7 @@ use Illuminate\Validation\ValidationException;
  */
 class EstruturaOfertaService
 {
-    public function __construct(private EstruturaAnuncioService $anuncios)
+    public function __construct(private EstruturaAnuncioService $anuncios, private SoltarProdutoDaOfertaService $publicador)
     {
     }
 
@@ -204,6 +205,10 @@ class EstruturaOfertaService
 
         DB::transaction(function () use ($oferta, $empresa, $ator) {
             $devolvidos = 0;
+
+            // D27: o produto do Publicador fica, solto do Portal; antes de os anúncios irem para a espera e de o
+            // vínculo cair (FK SET NULL), o título e o preço que ele herdava passam a ser dele.
+            $this->publicador->antesDeExcluir($oferta);
 
             foreach ($oferta->anuncios()->get() as $anuncio) {
                 $this->anuncios->guardarNaEspera(
