@@ -21,7 +21,7 @@ function Linha({ p }) {
     const onde = [p.alvo?.listing_type && NOME_TIPO[p.alvo.listing_type], p.alvo?.itens?.length > 1 && `${p.alvo.itens.length} anúncios`].filter(Boolean).join(' · ');
 
     return (
-        <li className={cn('text-[12.5px]', ESTILO[p.severidade] ?? ESTILO.WARNING)} data-problema={p.regra} data-severidade={p.severidade}>
+        <li className={cn('text-[13px]', ESTILO[p.severidade] ?? ESTILO.WARNING)} data-problema={p.regra} data-severidade={p.severidade}>
             <span className="flex items-start gap-1.5">
                 <Icone size={13} className="mt-0.5 shrink-0" />
                 <span>{p.mensagem}{onde && <span className="text-white/35"> ({onde})</span>}</span>
@@ -46,10 +46,10 @@ export default function Problemas({ problemas, onIr, vazio = null, titulo = null
 
     return (
         <div className="space-y-2" data-problemas={problemas.length}>
-            {titulo && <p className="text-[12.5px] font-semibold text-white/80">{titulo}</p>}
+            {titulo && <p className="text-[13px] font-bold text-white/80">{titulo}</p>}
             {etapas.map((e) => (
                 <div key={e} data-etapa-problemas={e}>
-                    <div className="mb-0.5 flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-wide text-white/40">
+                    <div className="mb-0.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-white/40">
                         {NOME_ETAPA[e] ?? e}
                         {onIr && e !== 'OUTROS' && (
                             <button type="button" onClick={() => onIr(e)} className="inline-flex items-center gap-0.5 normal-case tracking-normal text-ecf-yellow/80 hover:text-ecf-yellow" data-ir-para={e}>

@@ -15,10 +15,13 @@ const CARDS = [
     `${BASE}/Mesa/comum.jsx`,
     `${BASE}/Mesa/CardProduto.jsx`,
     `${BASE}/Mesa/CardFichaTecnica.jsx`,
+    `${BASE}/Mesa/CardFotos.jsx`,
 ];
 // Componentes de campo reaproveitados do piloto, normalizados nesta fase.
 const NORMALIZADOS = [
     `${BASE}/CampoAtributo.jsx`,
+    `${BASE}/FotosPorGrupo.jsx`,
+    `${BASE}/Problemas.jsx`,
 ];
 
 for (const caminho of [...CARDS, ...NORMALIZADOS]) {
@@ -84,3 +87,16 @@ test('CardProduto — o selo de origem deriva de produto.oferta_id (D27), não d
     assert.match(fonte, /m\.escolherCategoria/);
 });
 
+test('CardFotos — regra de foto lê schema.limites (nada fixo) e usa os grupos do servidor', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardFotos.jsx`);
+    assert.doesNotMatch(fonte, /1200/);
+    assert.match(fonte, /limites/);
+    assert.match(fonte, /grupos_imagem/);
+    assert.match(fonte, /publicacao_liberada/);
+});
+
+test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira nota neutra (D26)', () => {
+    const fonte = lerSemComentarios(`${BASE}/FotosPorGrupo.jsx`);
+    assert.match(fonte, /envioAoMl = true/);
+    assert.match(fonte, /sobem para o Mercado Livre quando a publicação for liberada para esta conta/);
+});
