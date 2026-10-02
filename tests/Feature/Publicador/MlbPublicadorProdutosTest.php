@@ -287,6 +287,23 @@ class MlbPublicadorProdutosTest extends TestCase
         $this->assertFalse($linhas['E1']['liberada']);
     }
 
+    /** WR-B05: empresa listada na aba Polos com `projeto` em outra caixa ou com espaços abre a tela B e o editor. */
+    public function test_wr_b05_projeto_com_outra_caixa_ou_espacos_aparece_na_tela_a_e_abre_a_tela_b(): void
+    {
+        $polos = $this->empresa(['nome' => 'Caixa Mista', 'projeto' => 'Polos'], comToken: true);
+        $espacos = $this->empresa(['nome' => 'Com Espacos', 'projeto' => ' POLOS '], comToken: true);
+        $this->actingAs($this->admin());
+
+        $listadas = collect($this->get('/mlb/anuncios?programa=polos')->assertOk()->viewData('page')['props']['empresas'])->pluck('nome')->all();
+        $this->assertEqualsCanonicalizing(['Caixa Mista', 'Com Espacos'], $listadas);
+
+        foreach ([$polos, $espacos] as $e) {
+            $this->get(self::BASE.'/empresas/empresa-'.$e->id)->assertOk();
+            $p = PubProduto::create(['mlb_empresa_id' => $e->id, 'sku' => 'S'.$e->id, 'nome' => 'Produto', 'origem' => 'publicador']);
+            $this->get(self::BASE.'/produtos/'.$p->id.'/editor')->assertOk();
+        }
+    }
+
     public function test_404_para_arquivada_chave_invalida_e_produto_inexistente(): void
     {
         $e = $this->empresa();

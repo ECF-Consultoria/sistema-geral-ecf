@@ -87,6 +87,32 @@ class ProgramaPublicadorTest extends TestCase
         }
     }
 
+    /**
+     * WR-B05: `projeto` é texto livre. Caixa e espaços nas pontas não mudam o programa — nem no
+     * SQL (que no MariaDB já comparava sem caixa) nem no PHP (que era estrito e dava 404 ao abrir).
+     */
+    public function test_wr_b05_caixa_e_espacos_nas_pontas_dao_o_mesmo_programa_no_sql_e_no_php(): void
+    {
+        $esperado = [
+            'polos' => [['projeto' => 'Polos'], ['projeto' => ' POLOS '], ['projeto' => 'polos  '],
+                ['projeto' => '  ', 'fase' => 'm2'], ['projeto' => null, 'fase' => ' Encaminhar comercial ']],
+            'incubadora' => [['projeto' => 'INCUBADORA'], ['projeto' => ' incubadora'], ['projeto' => null, 'fase' => 'incubadora '],
+                ['projeto' => null, 'tipo' => 'Incubadora'], ['projeto' => null, 'fase' => 'M1', 'tipo' => ' incubadora ']],
+            'nenhum' => [['projeto' => 'Polos Sul'], ['projeto' => ' assessoria '], ['projeto' => null, 'fase' => 'M9']],
+        ];
+        $ids = [];
+        foreach ($esperado as $programa => $casos) {
+            foreach ($casos as $c) {
+                $e = $this->empresa($c);
+                $this->assertSame($programa === 'nenhum' ? null : $programa, $e->programaPublicador(), json_encode($c));
+                $ids[$programa][] = $e->id;
+            }
+        }
+
+        $this->assertEqualsCanonicalizing($ids['polos'], MlbEmpresa::programa('polos')->pluck('id')->all());
+        $this->assertEqualsCanonicalizing($ids['incubadora'], MlbEmpresa::programa('incubadora')->pluck('id')->all());
+    }
+
     public function test_libera_por_ancora(): void
     {
         config(['publicador.contas_liberadas' => ['companies' => [5], 'mlb_empresas' => [9]]]);

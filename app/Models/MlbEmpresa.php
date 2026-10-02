@@ -121,31 +121,55 @@ class MlbEmpresa extends Model implements ContaMercadoLivre
     }
 
     /**
+     * `projeto`/`fase`/`tipo` como o programa os compara (WR-B05): sem diferença de caixa (o MariaDB
+     * compara com collation `*_ci`) e sem os espaços das pontas. `projeto` é texto livre no
+     * cadastro: "Polos" aparecia na aba Polos pela comparação do banco e dava 404 ao abrir pela do
+     * PHP, que era estrita. O SQL do `scopePrograma` usa a MESMA normalização (`LOWER(TRIM(col))`
+     * — o `TRIM` do SQL tira só espaço, daí o `' '` aqui), então empresa listada sempre abre, no
+     * MariaDB e no SQLite dos testes.
+     */
+    private static function normalizado(?string $valor): string
+    {
+        return mb_strtolower(trim((string) $valor, ' '));
+    }
+
+    /** @return list<string> as fases de Polos já normalizadas */
+    private static function fasesDePolosNormalizadas(): array
+    {
+        return array_map(fn (string $fase) => self::normalizado($fase), self::fasesDePolos());
+    }
+
+    /**
      * Escopo: empresas do programa do Publicador (D13). O programa NÃO é gravado — é derivado.
      * Os três marcadores de Incubadora coexistem (o Router grava `tipo`, o painel conta por
-     * `projeto`/`fase`). Aplicar depois de `ativas()`. Mesma regra de programaPublicador().
+     * `projeto`/`fase`). Aplicar depois de `ativas()`. Mesma regra — e mesma normalização — de
+     * programaPublicador().
      */
     public function scopePrograma(\Illuminate\Database\Eloquent\Builder $query, string $programa): \Illuminate\Database\Eloquent\Builder
     {
-        $semProjeto = fn ($q) => $q->whereNull('projeto')->orWhere('projeto', '');
+        // WR-B05: LOWER(TRIM(col)) = normalizado(), nos dois bancos.
+        $igual = fn ($q, string $coluna, string $valor) => $q->whereRaw("LOWER(TRIM({$coluna})) = ?", [$valor]);
+        $semProjeto = fn ($q) => $q->whereNull('projeto')->orWhereRaw("TRIM(projeto) = ''");
 
         if ($programa === self::PROGRAMA_INCUBADORA) {
-            return $query->where(function ($q) use ($semProjeto) {
-                $q->where('projeto', 'Incubadora')
-                    ->orWhere(function ($q) use ($semProjeto) {
+            return $query->where(function ($q) use ($igual, $semProjeto) {
+                $igual($q, 'projeto', 'incubadora')
+                    ->orWhere(function ($q) use ($igual, $semProjeto) {
                         $q->where($semProjeto)
-                            ->where(fn ($q) => $q->where('fase', 'Incubadora')->orWhere('tipo', 'INCUBADORA'));
+                            ->where(fn ($q) => $igual($q, 'fase', 'incubadora')->orWhereRaw('LOWER(TRIM(tipo)) = ?', ['incubadora']));
                     });
             });
         }
 
         if ($programa === self::PROGRAMA_POLOS) {
-            return $query->where(function ($q) use ($semProjeto) {
-                $q->where('projeto', 'POLOS')
-                    ->orWhere(function ($q) use ($semProjeto) {
+            $fases = self::fasesDePolosNormalizadas();
+
+            return $query->where(function ($q) use ($igual, $semProjeto, $fases) {
+                $igual($q, 'projeto', 'polos')
+                    ->orWhere(function ($q) use ($semProjeto, $fases) {
                         $q->where($semProjeto)
-                            ->whereIn('fase', self::fasesDePolos())
-                            ->where(fn ($q) => $q->whereNull('tipo')->orWhere('tipo', '!=', 'INCUBADORA'));
+                            ->whereRaw('LOWER(TRIM(fase)) IN ('.implode(', ', array_fill(0, count($fases), '?')).')', $fases)
+                            ->where(fn ($q) => $q->whereNull('tipo')->orWhereRaw('LOWER(TRIM(tipo)) <> ?', ['incubadora']));
                     });
             });
         }
@@ -153,24 +177,25 @@ class MlbEmpresa extends Model implements ContaMercadoLivre
         return $query->whereRaw('1 = 0');
     }
 
-    /** Programa do Publicador desta empresa (mesma regra do scopePrograma), ou null. */
+    /** Programa do Publicador desta empresa (mesma regra e normalização do scopePrograma), ou null. */
     public function programaPublicador(): ?string
     {
-        $projeto = (string) $this->projeto;
+        $projeto = self::normalizado($this->projeto);
 
-        if ($projeto === 'Incubadora') {
+        if ($projeto === 'incubadora') {
             return self::PROGRAMA_INCUBADORA;
         }
-        if ($projeto === 'POLOS') {
+        if ($projeto === 'polos') {
             return self::PROGRAMA_POLOS;
         }
         if ($projeto !== '') {
             return null;
         }
-        if ($this->fase === 'Incubadora' || $this->tipo === 'INCUBADORA') {
+        $fase = self::normalizado($this->fase);
+        if ($fase === 'incubadora' || self::normalizado($this->tipo) === 'incubadora') {
             return self::PROGRAMA_INCUBADORA;
         }
-        if (in_array($this->fase, self::fasesDePolos(), true)) {
+        if (in_array($fase, self::fasesDePolosNormalizadas(), true)) {
             return self::PROGRAMA_POLOS;
         }
 
