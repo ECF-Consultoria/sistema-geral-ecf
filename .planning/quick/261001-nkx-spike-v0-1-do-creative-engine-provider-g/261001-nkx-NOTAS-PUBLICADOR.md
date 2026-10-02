@@ -398,3 +398,60 @@ numa regeneração. Decisão do usuário.
 
 ⚠️ **13 das 21 imagens ainda não foram conferidas uma a uma** (slots 3, 4, 5 nos três modelos e
 parte dos 2 e 6). A tabela acima é amostra, não censo.
+
+---
+
+## 18. O "pé a mais" NÃO era defeito — e o erro foi do prompt (2026-10-02)
+
+Os três modelos desenharam um pé central além dos quatro dos cantos. Foi levantado como defeito
+compartilhado e testado: prompt novo com `CONTAGEM OBRIGATORIA ... EXATAMENTE QUATRO pes conicos,
+um em cada canto. NAO desenhe nenhum pe adicional no meio`. Os três **mantiveram** o pé central.
+
+Antes de registrar como viés de modelo, o usuário conferiu a foto original: **o produto TEM cinco
+pés, com um centralizado**. Os modelos estavam seguindo a referência corretamente. Não houve
+defeito nenhum.
+
+### ⚠️ A lição é sobre o PROMPT, e vale mais que o teste
+
+Quem errou foi a instrução: afirmou "exatamente quatro pés" sem conferir o produto. Isso é
+literalmente a *forbidden claim* do §8.2 — característica que o cadastro não sustenta — só que
+cometida do lado de quem escreve o prompt, não do modelo.
+
+**Consequência direta para o `ProductTruthBuilder` (§8.2) e o `CreativePromptBuilder` (§8.5):**
+contagem de peça (portas, gavetas, pés, itens do kit) só pode entrar no prompt quando vier do
+CADASTRO ou de leitura conferida da referência. Jamais de suposição de quem monta o prompt, e
+jamais de "parece que são quatro". Um número errado no prompt é pior que número nenhum: o modelo
+obedece com confiança e o resultado passa despercebido na revisão, porque a imagem fica coerente
+consigo mesma.
+
+Isso reforça o desenho do §8.2: o Product Truth precisa ser explicitamente a lista do que foi
+VERIFICADO, e tudo que não estiver lá deve ficar fora do prompt em vez de ser preenchido por
+inferência.
+
+## 19. O defeito real do `lite`: contagem de portas e gavetas, em mais de um slot
+
+Separado do falso alarme dos pés, o `lite` tem um problema de verdade, apontado pelo usuário e
+conferido imagem a imagem no kit de 2026-10-02:
+
+| slot | esperado | o que o `lite` gerou |
+|---|---|---|
+| 1-HERO | 2 portas | **3 portas** |
+| 5-INTERIOR | coluna com 3 gavetas | **2 gavetas** |
+| 2-LIFESTYLE | 2 portas | 2 portas ✓ |
+| 6-BENEFITS / 7-SPECIFICATIONS | — | contagem ✓ e texto exato ✓ |
+
+Ou seja: **não é falha esporádica de um slot**, como a §17 registrou. É recorrente dentro do mesmo
+kit, no mesmo produto, com as mesmas referências. A §17 errou ao chamar de "esporádica" com base em
+dois slots; com o kit inteiro conferido, o `lite` erra contagem com frequência que o descarta para
+este uso.
+
+`flash` e `pro` não apresentaram erro de contagem em nenhum slot conferido.
+
+## 20. Decisão do usuário: `flash` é o modelo (2026-10-02)
+
+Escolhido pelo usuário depois de ver os três kits completos: **`gemini-3.1-flash-image`**.
+
+Bate com o medido: único sem erro de contagem entre os conferidos, entrega 2K (o `lite` só faz 1K),
+e fica no meio de tempo e preço — US$ 0,71 o kit de 7 contra US$ 0,94 do `pro`, e 112s contra 158s.
+O `pro` entrega a melhor fotografia mas custa 32% mais e foi o único a inventar adereço com texto
+(§16). É o default do V0.2; `GEMINI_IMAGE_MODEL` já está nele.
