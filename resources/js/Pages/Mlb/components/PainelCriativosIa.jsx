@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink, LayoutGrid } from 'lucide-react';
+import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, ExternalLink, LayoutGrid } from 'lucide-react';
 import KitCriativosGrade from './KitCriativosGrade';
 
 // Um pouco acima dos 12 min em que o SERVIDOR encerra a geração
@@ -72,6 +72,16 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     const [aprovandoKit, setAprovandoKit] = useState(false);
     const [erroAprovarKit, setErroAprovarKit] = useState(null);
 
+    // Quick 261003-l8o (correção 2) — texto opcional "o que não ficou bom?"
+    // por cartão, mapa {token: texto}; entra no corpo de `regenerar()` e é
+    // limpo depois do 202 (regeneração sem texto não reaproveita o anterior).
+    const [motivoPorSlot, setMotivoPorSlot] = useState({});
+
+    // Quick 261003-l8o (correção 3) — "Agora não" só ESCONDE a pergunta de
+    // confirmação (não cancela nem apaga o kit no servidor). Clicar de novo
+    // no botão único do painel (`iniciarKit`) traz a pergunta de volta.
+    const [confirmacaoRecusada, setConfirmacaoRecusada] = useState(false);
+
     const inputRef = useRef(null);
     const pollRef      = useRef(null);
     const cronoRef     = useRef(null);
@@ -128,33 +138,6 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         } finally {
             setEnviando(false);
             if (inputRef.current) inputRef.current.value = '';
-        }
-    }
-
-    async function gerar() {
-        if (!criativo?.token) return;
-
-        pararTimers();
-        setCriativo(c => ({ ...c, status: 'pendente', em_andamento: true, erro: null, etapa: null }));
-        setSegundos(0);
-        cronoRef.current = setInterval(() => setSegundos(s => s + 1), 1000);
-
-        try {
-            await window.axios.post(route('mlb.anuncios.criativo.gerar', { token: criativo.token }));
-
-            // 5s entre consultas — a geração leva minutos; perguntar mais
-            // vezes só gera ruído no log sem chegar mais rápido.
-            pollRef.current = setInterval(consultar, 5000);
-            consultar();
-        } catch (err) {
-            pararTimers();
-            const mensagens = err?.response?.data?.erros;
-            setCriativo(c => ({
-                ...c,
-                em_andamento: false,
-                status: 'erro',
-                erro: mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível iniciar a geração.',
-            }));
         }
     }
 
@@ -219,13 +202,24 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     }
 
     /**
-     * PLAN-01/02/03/04 (Fase 161): dispara o planejamento do kit de 7 —
-     * responde na hora (202) e o polling acompanha. Nenhuma imagem é gerada
-     * nesta fatia (chega no 161-02).
+     * Quick 261003-l8o (correções 1/3) — ÚNICO botão de gerar criativo do
+     * painel: chama o MESMO endpoint de planejamento (PLAN-01/02/03/04,
+     * Fase 161), renomeado de `planejarKit()` porque agora é o ponto de
+     * entrada único do fluxo (antes coexistia com "Gerar imagem com IA").
+     * É uma chamada de TEXTO — NÃO gasta cota de imagem; a confirmação de
+     * custo (com o valor em dólar) acontece no passo seguinte, dentro de
+     * `KitCriativosGrade` (bloco de confirmação, só quando `status ===
+     * 'planejado'`).
+     *
+     * Idempotente no servidor (`planejarKitSobLock`): clicar de novo com um
+     * kit já existente devolve o MESMO token, sem criar um segundo kit — é
+     * por isso que este botão também serve para TRAZER DE VOLTA a pergunta
+     * de confirmação depois de "Agora não" (reseta `confirmacaoRecusada`).
      */
-    async function planejarKit() {
+    async function iniciarKit() {
         if (!criativo?.token) return;
 
+        setConfirmacaoRecusada(false);
         pararTimerDoKit();
         setPlanejandoKit(true);
         setErroKit(null);
@@ -246,12 +240,26 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     }
 
     /**
+     * Quick 261003-l8o (correção 3) — "Agora não": só ESCONDE o bloco de
+     * confirmação (não cancela nem apaga o kit no servidor). O operador
+     * volta a vê-lo clicando de novo no botão único do painel.
+     */
+    function cancelarConfirmacao() {
+        setConfirmacaoRecusada(true);
+    }
+
+    /**
      * GEN-01/02/03 (Fase 161, Plano 02): dispara a geração das 7 imagens —
      * responde na hora (202) e o MESMO polling do kit (`consultarKit`)
      * acompanha o progresso de cada slot. Custa cota de verdade (~US$ 0,71
      * por kit) — por isso o botão só aparece quando o plano está pronto.
      */
     async function gerarKit() {
+        // Quick 261003-l8o (correção 3/4): guarda contra clique duplo ANTES
+        // de qualquer outra coisa — sem isso, dois cliques rápidos no botão
+        // "Gerar agora" (ambos ainda vendo `gerandoKit=false` por causa do
+        // ciclo de render do React) despachariam a geração duas vezes.
+        if (gerandoKit) return;
         if (!kit?.kit_token) return;
 
         pararTimerDoKit();
@@ -265,10 +273,12 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
 
             pollKitRef.current = setInterval(consultarKit, 5000);
             consultarKit(kit.kit_token);
+            // Sucesso: NÃO libera o botão aqui de propósito — ele fica morto
+            // até o polling trazer o kit fora de `em_andamento` (Quick
+            // 261003-l8o, correção 4). Só o `catch` abaixo libera na hora.
         } catch (err) {
             const mensagens = err?.response?.data?.erros;
             setErroKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível iniciar a geração das imagens.');
-        } finally {
             setGerandoKit(false);
         }
     }
@@ -279,26 +289,45 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
      * quando recusa. Depois do 202, religa o polling do kit (o slot volta
      * a "em andamento" e o kit, de volta a `gerando`) — sem isso a grade
      * ficaria mostrando "pendente" para sempre até o operador recarregar.
+     *
+     * Quick 261003-l8o (correção 2, T-L8O-01/03): `motivo` é o texto opcional
+     * "o que não ficou bom?" daquele cartão — `undefined` quando vazio (não
+     * manda string vazia, deixa o campo ausente de verdade). Limpo depois do
+     * 202: uma 2ª regeneração sem o operador escrever nada não reaproveita o
+     * texto da anterior (mesma disciplina do servidor em `regenerar_motivos`).
      */
     async function regenerar(token) {
         setProcessandoSlot(token);
         setErrosPorSlot(e => ({ ...e, [token]: null }));
 
         try {
-            await window.axios.post(route('mlb.anuncios.criativo.regenerar', { token }));
+            await window.axios.post(route('mlb.anuncios.criativo.regenerar', { token }), {
+                motivo: (motivoPorSlot[token] ?? '').trim() || undefined,
+            });
+
+            setMotivoPorSlot(m => ({ ...m, [token]: '' }));
 
             pararTimerDoKit();
             pollKitRef.current = setInterval(consultarKit, 5000);
             consultarKit();
         } catch (err) {
             const mensagens = err?.response?.data?.erros;
+            // Fallback intermediário para o formato `errors` da validação do
+            // Laravel (ex.: `motivo` acima de 300 caracteres) — o contrato
+            // principal continua sendo `erros[0].mensagem`.
+            const primeiraDeValidacao = Object.values(err?.response?.data?.errors ?? {}).flat()[0];
             setErrosPorSlot(e => ({
                 ...e,
-                [token]: mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível gerar de novo esta imagem.',
+                [token]: mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? primeiraDeValidacao ?? 'Não foi possível gerar de novo esta imagem.',
             }));
         } finally {
             setProcessandoSlot(null);
         }
+    }
+
+    /** Quick 261003-l8o (correção 2) — atualiza o texto do cartão `token`. */
+    function setMotivoDoSlot(token, valor) {
+        setMotivoPorSlot(m => ({ ...m, [token]: valor }));
     }
 
     /**
@@ -392,10 +421,17 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                 slots:            data.slots ?? [],
             });
 
-            if (!data.em_andamento) pararTimerDoKit();
+            if (!data.em_andamento) {
+                pararTimerDoKit();
+                // Quick 261003-l8o (correção 4): só AQUI o botão "Gerar
+                // agora" volta a ficar vivo — o polling, não o clique, é
+                // quem decide que a geração terminou.
+                setGerandoKit(false);
+            }
         } catch {
             pararTimerDoKit();
             setKit(k => ({ ...k, em_andamento: false, status: 'erro', erro: 'Perdi o contato com o planejamento. Tente novamente.' }));
+            setGerandoKit(false);
         }
     }
 
@@ -404,7 +440,6 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     if (!ativo) return null;
 
     const gerando = criativo?.em_andamento;
-    const podeGerar = criativo?.token && !gerando && criativo?.status !== 'pronto' && criativo?.status !== 'aprovado';
 
     return (
         <section className="mb-4 rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4">
@@ -415,7 +450,7 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
             >
                 <Sparkles className="h-4 w-4 shrink-0 text-sky-300" />
                 <span className="text-sm font-semibold text-white">Criativos por IA</span>
-                <span className="text-[11px] text-white/35">suba a foto original e gere a imagem com IA</span>
+                <span className="text-[11px] text-white/35">suba as fotos originais e gere o kit de 7 imagens</span>
                 {aberto
                     ? <ChevronDown className="ml-auto h-4 w-4 text-white/30" />
                     : <ChevronRight className="ml-auto h-4 w-4 text-white/30" />}
@@ -464,30 +499,16 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {/* Fluxo de 1 imagem (Fase 160) — sai de evidência quando existe
-                        kit (Fase 161): não é removido do arquivo, é o caminho de
-                        rollback enquanto a chave do Creative Engine estiver ligada
-                        em produção. */}
-                    {!kit && criativo?.token && (
-                        <div>
-                            <button
-                                type="button"
-                                onClick={gerar}
-                                disabled={!podeGerar}
-                                className="flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-                            >
-                                {gerando
-                                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando… {segundos}s</>
-                                    : <><Wand2 className="h-4 w-4" /> Gerar imagem com IA</>}
-                            </button>
-
-                            {gerando && (
-                                <p className="mt-1.5 text-[11px] text-sky-300/80">
-                                    {ETAPA_LABEL[criativo.etapa] ?? 'preparando'}… pode levar alguns minutos, e a tela
-                                    continua acompanhando mesmo se você recarregar a página.
-                                </p>
-                            )}
-                        </div>
+                    {/* Fluxo de 1 imagem (Fase 160) — Quick 261003-l8o (correção 1): o
+                        CAMINHO DE UI para começar uma geração deste jeito foi removido
+                        (o kit de 7 é a única entrada agora); esta área só continua
+                        acompanhando/aprovando um criativo que já estava em andamento
+                        ANTES deste deploy, para ele não ficar órfão sem como terminar. */}
+                    {!kit && criativo?.token && gerando && (
+                        <p className="text-[11px] text-sky-300/80">
+                            {ETAPA_LABEL[criativo.etapa] ?? 'preparando'}… pode levar alguns minutos, e a tela
+                            continua acompanhando mesmo se você recarregar a página.
+                        </p>
                     )}
 
                     {!kit && criativo?.status === 'erro' && criativo?.erro && (
@@ -497,23 +518,32 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {/* Fase 161 — kit de 7 (PLAN-01/02/03/04 + GEN-01/02/03 do 161-02).
-                        Botão de planejar só aparece ANTES de o kit existir; depois,
-                        `KitCriativosGrade` assume (status, botão "Gerar as 7 imagens"
-                        e a grade por slot). */}
+                    {/* Quick 261003-l8o (correções 1/3) — ÚNICO botão de gerar criativo
+                        do painel. Aparece ANTES de o kit existir e também volta a
+                        aparecer se o operador recusou a confirmação de custo (ver
+                        `confirmacaoRecusada`) — clicar de novo é o jeito de trazer a
+                        pergunta de volta. Depois, `KitCriativosGrade` assume (status,
+                        bloco de confirmação de custo e a grade por slot). */}
                     {criativo?.token && (
                         <div className="border-t border-white/[0.08] pt-3">
-                            {!kit && (
-                                <button
-                                    type="button"
-                                    onClick={planejarKit}
-                                    disabled={planejandoKit}
-                                    className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
-                                >
-                                    {planejandoKit
-                                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
-                                        : <><LayoutGrid className="h-4 w-4" /> Planejar kit de 7</>}
-                                </button>
+                            {(!kit || (kit.status === 'planejado' && confirmacaoRecusada)) && (
+                                <div>
+                                    <button
+                                        type="button"
+                                        onClick={iniciarKit}
+                                        disabled={planejandoKit || gerandoKit || kit?.em_andamento}
+                                        className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
+                                    >
+                                        {planejandoKit
+                                            ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
+                                            : <><LayoutGrid className="h-4 w-4" /> Gerar as 7 imagens</>}
+                                    </button>
+                                    <p className="mt-1 text-[11px] text-white/35">
+                                        Este clique só monta o plano (chamada de texto, não gasta cota de
+                                        imagem) — a geração de verdade é confirmada no passo seguinte, com
+                                        o custo em dólar declarado.
+                                    </p>
+                                </div>
                             )}
 
                             {kit?.status === 'planejando' && (
@@ -536,10 +566,15 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                                     referencias={kit.referencias ?? []}
                                     onGerar={gerarKit}
                                     gerando={gerandoKit}
+                                    kitEmAndamento={!!kit.em_andamento}
+                                    confirmacaoRecusada={confirmacaoRecusada}
+                                    onCancelarConfirmacao={cancelarConfirmacao}
                                     onRegenerar={regenerar}
                                     onAprovar={aprovarSlot}
                                     processando={processandoSlot}
                                     erros={errosPorSlot}
+                                    motivos={motivoPorSlot}
+                                    onMotivoChange={setMotivoDoSlot}
                                 />
                             )}
 
