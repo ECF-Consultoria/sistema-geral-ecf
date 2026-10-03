@@ -178,6 +178,48 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(3)->by('global');
         });
 
+        // ─── Creative Engine — teto de custo que fala português ──────────
+        //
+        // Quick 261003-l8o (correção 4): o 429 que o operador viu era o
+        // padrão do Laravel ("Too many attempts."), em inglês e sem prazo —
+        // o LIMITE é teto de custo e não sai, só a RESPOSTA muda. Chave por
+        // USUÁRIO (fallback de IP): todas as rotas do Creative Engine estão
+        // sob `auth` + `role:admin` (`user()` existe sempre), e por
+        // identidade evita que um escritório atrás de NAT compartilhado
+        // barre um publicador legítimo pelo vizinho — mesmo raciocínio dos
+        // limitadores do Portal do Cliente acima.
+        RateLimiter::for('creative-kit-planejar', function (Request $request) {
+            // 6 → 12/min: no fluxo de um botão só (Quick 261003-l8o), TODO
+            // clique em "Gerar as 7 imagens" passa por planejar primeiro —
+            // a chamada que encontra kit existente devolve o mesmo token
+            // sem gastar NADA de cota de imagem, mas consumia slot de
+            // throttle igual. Planejar é a chamada mais barata das três
+            // (texto, não imagem).
+            return Limit::perMinute(12)
+                ->by('creative-planejar:'.($request->user()?->id ?? $request->ip()))
+                ->response($this->respostaLimiteCriativo('planejar o kit'));
+        });
+
+        RateLimiter::for('creative-kit-gerar', function (Request $request) {
+            // 3 → 4/min: o fluxo novo acrescenta UM motivo legítimo de 2ª
+            // chamada no mesmo minuto (o operador recusa a confirmação, revê
+            // o plano e confirma depois). 4 kits/min = teto de ≈ US$ 2,84/
+            // min — o teto que de fato segura o dinheiro continua sendo por
+            // kit (`max_imagens`) + os tetos de regeneração por asset/kit.
+            return Limit::perMinute(4)
+                ->by('creative-gerar:'.($request->user()?->id ?? $request->ip()))
+                ->response($this->respostaLimiteCriativo('gerar as imagens do kit'));
+        });
+
+        RateLimiter::for('creative-regenerar', function (Request $request) {
+            // MESMO número de sempre (12/min) — já estava calibrado em
+            // US$ 0,101 por chamada; só a MENSAGEM muda (era a padrão do
+            // Laravel, em inglês).
+            return Limit::perMinute(12)
+                ->by('creative-regenerar:'.($request->user()?->id ?? $request->ip()))
+                ->response($this->respostaLimiteCriativo('gerar de novo uma imagem'));
+        });
+
         Event::listen(Login::class, function (Login $event) {
             activity('auth')
                 ->causedBy($event->user)
@@ -193,5 +235,29 @@ class AppServiceProvider extends ServiceProvider
                     ->log('Logout realizado');
             }
         });
+    }
+
+    /**
+     * Resposta em pt-BR do 429 dos três limitadores `creative-*` (Quick
+     * 261003-l8o, correção 4) — substitui o "Too many attempts." padrão do
+     * Laravel. `$headers['Retry-After']` já vem calculado pelo próprio
+     * Laravel a partir da janela do `Limit`; devolvê-lo como 3º argumento da
+     * resposta é o que preserva o header (T-L8O-08: sem nome de classe, de
+     * rota ou de kit na mensagem — só a ação, em português, e os segundos).
+     */
+    private function respostaLimiteCriativo(string $acao): callable
+    {
+        return function ($request, array $headers) use ($acao) {
+            $segundos = (int) ($headers['Retry-After'] ?? 60);
+
+            return response()->json([
+                'ok'          => false,
+                'erros'       => [[
+                    'mensagem' => "Você pediu para {$acao} muitas vezes em pouco tempo — este limite "
+                        ."existe para proteger o custo. Tente de novo em {$segundos} segundos.",
+                ]],
+                'retry_after' => $segundos,
+            ], 429, $headers);
+        };
     }
 }

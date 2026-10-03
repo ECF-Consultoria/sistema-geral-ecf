@@ -169,33 +169,42 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->name('criativo.aprovar');
 
         // Fase 161 Plano 01 — planejamento do kit de 7 (PLAN-01/02/03/04).
-        // Throttle:6,1 na rota de disparo é DINHEIRO, não estilo: mesma
-        // disciplina de `criativo.gerar` — esta chamada é de TEXTO (mais
-        // barata que imagem), mas ainda consome cota do provedor.
+        // Quick 261003-l8o (correção 4): limitador NOMEADO `creative-kit-
+        // planejar` (6 → 12/min) — no fluxo de um botão só, TODO clique
+        // passa por planejar, e a chamada que encontra kit existente não
+        // gasta NADA de cota de imagem (mas consumia slot de throttle
+        // igual); 12/min para de barrar o operador com os cliques
+        // idempotentes dele mesmo (causa mais provável do "Too many..."
+        // relatado). Resposta em pt-BR com os segundos, ver
+        // `AppServiceProvider::respostaLimiteCriativo()`.
         Route::post('/criativo/{token}/kit', [MlbAnuncioController::class, 'criativoKitPlanejar'])
             ->where('token', '[A-Za-z0-9]{32}')
-            ->middleware('throttle:6,1')
+            ->middleware('throttle:creative-kit-planejar')
             ->name('criativo.kit.planejar');
 
-        // Fase 161 Plano 02 — geração das 7 imagens (GEN-01/02/03). Throttle:3,1
-        // é a PRIMEIRA barreira de custo, não proteção de abuso: cada chamada
-        // vale 7 imagens, cerca de US$ 0,71 (medição do spike 261001-nkx §16).
+        // Fase 161 Plano 02 — geração das 7 imagens (GEN-01/02/03). Quick
+        // 261003-l8o (correção 4): limitador NOMEADO `creative-kit-gerar`
+        // (3 → 4/min) — o fluxo novo acrescenta UM motivo legítimo de 2ª
+        // chamada no mesmo minuto (operador recusa a confirmação, revê e
+        // confirma depois). 4 kits/min = teto de ≈ US$ 2,84/min; o teto que
+        // de fato segura o dinheiro continua sendo por kit (`max_imagens`)
+        // + os tetos de regeneração por asset/kit, nenhum dos dois mudou.
         Route::post('/criativo/kit/{kit}/gerar', [MlbAnuncioController::class, 'criativoKitGerar'])
             ->where('kit', '[A-Za-z0-9]{32}')
-            ->middleware('throttle:3,1')
+            ->middleware('throttle:creative-kit-gerar')
             ->name('criativo.kit.gerar');
         Route::get('/criativo/kit/{kit}', [MlbAnuncioController::class, 'criativoKitStatus'])
             ->where('kit', '[A-Za-z0-9]{32}')
             ->name('criativo.kit.status');
 
-        // Fase 161 Plano 03 — regenera UM slot do kit (APROV-02). Throttle:12,1
-        // é DINHEIRO, não estilo: cada chamada vale uma imagem, cerca de
-        // US$ 0,101 (medição do spike 261001-nkx §16) — mesma disciplina de
-        // `criativo.gerar`, só que com teto mais alto porque o operador pode
-        // precisar regenerar mais de um slot em sequência.
+        // Fase 161 Plano 03 — regenera UM slot do kit (APROV-02). Quick
+        // 261003-l8o (correção 4): limitador NOMEADO `creative-regenerar`,
+        // MESMO número de sempre (12/min — já calibrado em US$ 0,101 por
+        // chamada); só a MENSAGEM do 429 muda, de "Too many attempts." para
+        // pt-BR com os segundos.
         Route::post('/criativo/{token}/regenerar', [MlbAnuncioController::class, 'criativoRegenerar'])
             ->where('token', '[A-Za-z0-9]{32}')
-            ->middleware('throttle:12,1')
+            ->middleware('throttle:creative-regenerar')
             ->name('criativo.regenerar');
 
         // Fase 161 Plano 03 — aprova o kit inteiro (APROV-03). Throttle:12,1 é
