@@ -1,47 +1,81 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, ChevronDown, Info, Loader2, Sparkles, X } from 'lucide-react';
+import { AlertTriangle, Info, Loader2, Sparkles, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
 import useIaDoPublicador from '@/Components/Publicador/useIaDoPublicador';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
 import BarraDoEditor from '@/Components/Publicador/Mesa/BarraDoEditor';
 import FaixaDeProdutos from '@/Components/Publicador/Mesa/FaixaDeProdutos';
-import LateralValidacao from '@/Components/Publicador/Mesa/LateralValidacao';
-import LateralResumo from '@/Components/Publicador/Mesa/LateralResumo';
+import Trilho, { RodapeDaEtapa, resumoDaRevisao } from '@/Components/Publicador/Mesa/Trilho';
 import CardProduto from '@/Components/Publicador/Mesa/CardProduto';
 import CardFichaTecnica from '@/Components/Publicador/Mesa/CardFichaTecnica';
 import CardVariacoes from '@/Components/Publicador/Mesa/CardVariacoes';
 import CardTiposEPrecos from '@/Components/Publicador/Mesa/CardTiposEPrecos';
 import CardLogistica from '@/Components/Publicador/Mesa/CardLogistica';
 import CardDescricao from '@/Components/Publicador/Mesa/CardDescricao';
+import EtapaRevisar from '@/Components/Publicador/Mesa/EtapaRevisar';
+import { BASE_BOTAO, SECUNDARIO } from '@/Components/Publicador/Mesa/botoes';
 import { conclusaoDaIa } from '@/Components/Publicador/derivados';
+import { ETAPAS, ETAPA_INICIAL, TOTAL_ETAPAS_DE_CONTEUDO, contarEtapasCompletas, estadoDasEtapas, etapaValida } from '@/Components/Publicador/apoio';
 import { cn } from '@/lib/utils';
 
-// ─── Editor interno do Publicador: a "mesa de anúncio" (D24/D25; UI-SPEC §8) ─
+// ─── Editor interno do Publicador: a "mesa de anúncio", passo a passo (D24/D25; 03/10/2026) ─
 //
-// Compõe barra, faixa de produtos, os 6 cards e a lateral (as fotos moram no card de
-// variações desde 03/10/2026, uma galeria por variação, como no Mercado Livre). Toda a lógica mora
-// em `usePublicador` (rascunho, conferência, publicação) e `useIaDoPublicador`
-// (Anunciar por IA); aqui só há composição e o estado de tela.
+// Compõe barra, faixa de produtos, o TRILHO (as 7 etapas) e UM painel de etapa
+// por vez. Toda a lógica mora em `usePublicador` (rascunho, conferência,
+// publicação) e `useIaDoPublicador` (Anunciar por IA); aqui só há composição e
+// o estado de tela (qual etapa está aberta).
 //
-// ≥ 1360px: coluna principal + lateral sticky de 340px, e o botão primário está
-// no Resumo. Abaixo disso a lateral vira um card recolhido no topo e o primário
-// passa para a barra — nunca existem dois amarelos sólidos ao mesmo tempo.
-// A coluna principal ocupa a largura que sobra (docx §1, 03/10/2026): com o teto
-// antigo de 800px a tela larga ficava com metade vazia à direita.
+// Os seis cards de conteúdo ficam todos montados e só o da etapa aberta aparece
+// (`hidden`): o que a pessoa digitou numa etapa, uma "Nova variação" pela metade,
+// o EAN gerado uma vez por variação — tudo continua como estava quando ela
+// volta, e os efeitos de cada card rodam exatamente como na mesa de uma rolagem só.
+//
+// A etapa aberta sobrevive ao F5 e à troca de produto: vai para `?etapa=` na URL
+// (`history.replaceState`, sem mexer no estado do Inertia) e para o sessionStorage
+// por produto. Avançar nunca bloqueia; cada segmento do trilho leva à etapa.
+//
+// Um só amarelo sólido por tela: o "Continuar" do rodapé nas etapas 1–6 e, na
+// revisão, Conferir ou Publicar (o painel decide qual).
 
-const FAIXA_LARGA = '(min-width: 1360px)';
+const PARAMETRO_ETAPA = 'etapa';
+const chaveGuardada = (produtoId) => `publicador.etapa.${produtoId}`;
+
+/** A etapa inicial: a da URL, senão a guardada para o produto, senão a primeira. */
+const etapaInicial = (produtoId) => {
+    try {
+        const daUrl = new URLSearchParams(window.location.search).get(PARAMETRO_ETAPA);
+        if (daUrl) return etapaValida(daUrl);
+
+        return etapaValida(window.sessionStorage.getItem(chaveGuardada(produtoId)));
+    } catch {
+        return ETAPA_INICIAL;
+    }
+};
+
+const guardarEtapa = (produtoId, chave) => {
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.set(PARAMETRO_ETAPA, chave);
+        // Mesmo `state`: o Inertia guarda a página ali e não pode perdê-la.
+        window.history.replaceState(window.history.state, '', url);
+        window.sessionStorage.setItem(chaveGuardada(produtoId), chave);
+    } catch {
+        // Sem history/sessionStorage (modo restrito): a etapa só não sobrevive ao F5.
+    }
+};
 
 function Esqueleto() {
     return (
-        <div aria-hidden="true" className="animate-pulse space-y-6" data-esqueleto>
-            {[0, 1, 2].map((i) => <div key={i} className="h-48 rounded-xl border border-white/[0.08] bg-ecf-card" />)}
+        <div aria-hidden="true" className="animate-pulse space-y-4" data-esqueleto>
+            <div className="h-[62px] rounded-xl border border-white/[0.08] bg-ecf-card" />
+            <div className="h-[420px] rounded-xl border border-white/[0.08] bg-ecf-card" />
         </div>
     );
 }
 
-/** Faixa de aviso no topo da coluna principal (IA, aviso do hook, erro). */
+/** Faixa de aviso no topo do painel (IA, aviso do hook, erro). */
 function Faixa({ tom = 'azul', icone: Icone, children, acao, onFechar }) {
     const TOM = {
         azul: 'border-sky-400/25 bg-sky-400/10 text-sky-200',
@@ -81,30 +115,26 @@ export default function Editor({ produto, empresa, produtos = [] }) {
     });
     depoisDaIa.current = pub.recarregarDepoisDaIa;
 
-    const [abertos, setAbertos] = useState({});
-    const [largo, setLargo] = useState(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(FAIXA_LARGA).matches : true));
-    const [lateralAberta, setLateralAberta] = useState(false);
+    const [etapa, setEtapa] = useState(() => etapaInicial(produto.id));
     const [iaFechada, setIaFechada] = useState(false);
 
-    useEffect(() => {
-        const mq = window.matchMedia(FAIXA_LARGA);
-        const mudou = (e) => setLargo(e.matches);
-        setLargo(mq.matches);
-        mq.addEventListener('change', mudou);
-
-        return () => mq.removeEventListener('change', mudou);
-    }, []);
+    // Troca de produto pela faixa: a etapa é a da URL nova (ou a guardada para aquele produto).
+    useEffect(() => { setEtapa(etapaInicial(produto.id)); }, [produto.id]);
 
     // Uma análise nova reabre a faixa da IA que o usuário tinha dispensado.
     useEffect(() => { if (ia.estado === 'andamento') setIaFechada(false); }, [ia.estado]);
 
-    const alternar = (id) => setAbertos((a) => ({ ...a, [id]: a[id] === false }));
-
-    /** Abre o card e rola até ele (scroll-margin de 80px nos cards). */
-    const irPara = useCallback((id) => {
-        setAbertos((a) => ({ ...a, [id]: true }));
-        setTimeout(() => document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
-    }, []);
+    /** Abre a etapa, guarda na URL, rola até o painel e põe o foco no título dele. */
+    const irParaEtapa = useCallback((chave) => {
+        const destino = etapaValida(chave);
+        setEtapa(destino);
+        guardarEtapa(produto.id, destino);
+        setTimeout(() => {
+            const painel = document.getElementById(`etapa-${destino}`);
+            painel?.scrollIntoView({ block: 'start' });
+            painel?.querySelector('h2')?.focus({ preventScroll: true });
+        }, 0);
+    }, [produto.id]);
 
     // Trocar de produto: descarrega o que ficou por salvar e navega sem recarregar a página inteira.
     const trocar = async (id) => {
@@ -115,6 +145,18 @@ export default function Editor({ produto, empresa, produtos = [] }) {
     const estado = pub.m.estado;
     const tokenExpirado = Boolean(estado?.conta?.erro);
     const conclusao = conclusaoDaIa(ia.resumo, { pediuSubstituir: ia.pediuSubstituir });
+    const estadosDasEtapas = estadoDasEtapas(pub.secoes);
+    const rodape = (chave) => <RodapeDaEtapa atual={chave} onIr={irParaEtapa} />;
+
+    const CONTEUDO = {
+        produto: <CardProduto m={pub.m} rodape={rodape('produto')} />,
+        ficha: <CardFichaTecnica m={pub.m} rodape={rodape('ficha')} />,
+        variacoes: <CardVariacoes m={pub.m} rodape={rodape('variacoes')} />,
+        tipos: <CardTiposEPrecos m={pub.m} rodape={rodape('tipos')} />,
+        logistica: <CardLogistica m={pub.m} rodape={rodape('logistica')} />,
+        descricao: <CardDescricao m={pub.m} rodape={rodape('descricao')} />,
+        revisar: <EtapaRevisar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={irParaEtapa} rodape={rodape('revisar')} />,
+    };
 
     return (
         <AppLayout title="Publicador MLB">
@@ -125,115 +167,91 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                     pub={pub}
                     empresa={empresa}
                     produtoNome={produto.nome}
-                    primarioNaLateral={largo}
                     ia={ia}
                     onVoltar={() => pub.descarregar()}
                 />
                 <FaixaDeProdutos
                     produtos={produtos}
                     produtoId={produto.id}
-                    prontas={pub.prontas}
+                    prontas={estado ? contarEtapasCompletas(pub.secoes) : 0}
+                    total={TOTAL_ETAPAS_DE_CONTEUDO}
                     conta={empresa.chave}
                     onTrocar={trocar}
                 />
+                {estado && <Trilho estados={estadosDasEtapas} revisao={resumoDaRevisao(pub)} atual={etapa} onIr={irParaEtapa} />}
 
-                <div className="grid grid-cols-1 gap-6 px-6 py-8 min-[1360px]:grid-cols-[minmax(0,1fr)_340px] min-[1360px]:gap-8">
-                    <div className="min-w-0 space-y-6" data-coluna-principal>
-                        {/* Avisos do topo: IA, aviso do hook, erro, token expirado. */}
-                        <div aria-live="polite" className="space-y-3">
-                            {ia.estado === 'andamento' && (
-                                <Faixa icone={Loader2} tom="azul">
-                                    <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>
-                                    <p className="mt-1">Enquanto ela trabalha, a mesa fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
-                                </Faixa>
-                            )}
-                            {/* WR-F04: `secoes` é número; o aviso e o "só o vazio" vêm do servidor. */}
-                            {ia.estado === 'concluido' && ! iaFechada && (
-                                <Faixa icone={Sparkles} tom="azul" onFechar={() => setIaFechada(true)}>
-                                    <p>
-                                        {conclusao.secoes > 0
-                                            ? `A IA preencheu ${conclusao.secoes === 1 ? '1 seção' : `${conclusao.secoes} seções`}. Revise antes de conferir no Mercado Livre.`
-                                            : 'A IA não preencheu nenhuma seção.'}
-                                    </p>
-                                    {conclusao.aviso && <p className="mt-1">{conclusao.aviso}</p>}
-                                    {conclusao.soPreencheuOVazio && <p className="mt-1">Como houve edição durante a geração, a IA só preencheu o que estava vazio.</p>}
-                                    {conclusao.semVariacoes && <p className="mt-1">A IA não montou as variações. Defina-as no card Variações.</p>}
-                                </Faixa>
-                            )}
-                            {/* Sem "Nada foi alterado": a IA pode ter gravado parte antes de cair (o hook relê ao terminar). */}
-                            {ia.estado === 'erro' && (
-                                <Faixa
-                                    icone={AlertTriangle}
-                                    tom="vermelho"
-                                    acao={<button type="button" onClick={ia.tentarDeNovo} className="shrink-0 rounded text-[13px] font-bold text-white hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Tentar de novo</button>}
-                                >
-                                    <p>A IA não conseguiu preparar este anúncio.</p>
-                                    {ia.erro && <p className="mt-1">{ia.erro}</p>}
-                                    <p className="mt-1">Se ela chegou a preencher algo, já está nos cards. Tente de novo ou preencha à mão.</p>
-                                </Faixa>
-                            )}
-                            {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}
-                            {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
-                            {tokenExpirado && (
-                                <Faixa icone={AlertTriangle} tom="vermelho">
-                                    <p>A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar.</p>
-                                    {empresa.link_reconexao && <div className="mt-2"><LinkReconexao link={empresa.link_reconexao} /></div>}
-                                </Faixa>
-                            )}
-                        </div>
-
-                        {pub.erroCarga && ! estado && (
-                            <div role="alert" className="rounded-xl border border-white/[0.08] bg-ecf-card p-6">
-                                <p className="text-[15px] font-bold text-white">Não foi possível abrir o produto.</p>
-                                <p className="mt-1 text-[13px] font-normal text-white/55">{pub.erroCarga}</p>
-                                <div className="mt-4 flex gap-2">
-                                    <button type="button" onClick={pub.recarregar} className="inline-flex h-10 items-center rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                                        Tentar de novo
-                                    </button>
-                                    <Link href={route('mlb.anuncios.publicador.produtos', { conta: empresa.chave })} className="inline-flex h-10 items-center rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                                        Voltar aos produtos
-                                    </Link>
-                                </div>
-                            </div>
+                <div className="space-y-4 px-6 py-6 max-sm:px-4" data-coluna-principal>
+                    {/* Avisos do topo: IA, aviso do hook, erro, token expirado. */}
+                    <div aria-live="polite" className="space-y-3 empty:hidden">
+                        {ia.estado === 'andamento' && (
+                            <Faixa icone={Loader2} tom="azul">
+                                <p><span className="font-bold">IA preparando…</span> {ia.textoEtapa}</p>
+                                <p className="mt-1">Enquanto ela trabalha, a mesa fica só para leitura. O que ela preencher aparece aqui quando terminar.</p>
+                            </Faixa>
                         )}
-
-                        {! estado && ! pub.erroCarga && <Esqueleto />}
-
-                        {estado && (
-                            <>
-                                <CardProduto m={pub.m} aberto={abertos.produto !== false} onAlternar={() => alternar('produto')} />
-                                <CardFichaTecnica m={pub.m} aberto={abertos.ficha !== false} onAlternar={() => alternar('ficha')} />
-                                <CardVariacoes m={pub.m} aberto={abertos.variacoes !== false} onAlternar={() => alternar('variacoes')} />
-                                <CardTiposEPrecos m={pub.m} aberto={abertos.tipos !== false} onAlternar={() => alternar('tipos')} />
-                                <CardLogistica m={pub.m} aberto={abertos.logistica !== false} onAlternar={() => alternar('logistica')} />
-                                <CardDescricao m={pub.m} aberto={abertos.descricao !== false} onAlternar={() => alternar('descricao')} />
-                            </>
+                        {/* WR-F04: `secoes` é número; o aviso e o "só o vazio" vêm do servidor. */}
+                        {ia.estado === 'concluido' && ! iaFechada && (
+                            <Faixa icone={Sparkles} tom="azul" onFechar={() => setIaFechada(true)}>
+                                <p>
+                                    {conclusao.secoes > 0
+                                        ? `A IA preencheu ${conclusao.secoes === 1 ? '1 seção' : `${conclusao.secoes} seções`}. Revise antes de conferir no Mercado Livre.`
+                                        : 'A IA não preencheu nenhuma seção.'}
+                                </p>
+                                {conclusao.aviso && <p className="mt-1">{conclusao.aviso}</p>}
+                                {conclusao.soPreencheuOVazio && <p className="mt-1">Como houve edição durante a geração, a IA só preencheu o que estava vazio.</p>}
+                                {conclusao.semVariacoes && (
+                                    <p className="mt-1">
+                                        A IA não montou as variações. Defina-as na etapa Variações e fotos.{' '}
+                                        <button type="button" onClick={() => irParaEtapa('variacoes')} className="rounded font-bold text-white underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Ir para a etapa</button>
+                                    </p>
+                                )}
+                            </Faixa>
+                        )}
+                        {/* Sem "Nada foi alterado": a IA pode ter gravado parte antes de cair (o hook relê ao terminar). */}
+                        {ia.estado === 'erro' && (
+                            <Faixa
+                                icone={AlertTriangle}
+                                tom="vermelho"
+                                acao={<button type="button" onClick={ia.tentarDeNovo} className="shrink-0 rounded text-[13px] font-bold text-white hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Tentar de novo</button>}
+                            >
+                                <p>A IA não conseguiu preparar este anúncio.</p>
+                                {ia.erro && <p className="mt-1">{ia.erro}</p>}
+                                <p className="mt-1">Se ela chegou a preencher algo, já está nas etapas. Tente de novo ou preencha à mão.</p>
+                            </Faixa>
+                        )}
+                        {pub.aviso && <Faixa icone={Info} tom="neutro" onFechar={() => pub.setAviso(null)}>{pub.aviso}</Faixa>}
+                        {pub.erro && <Faixa icone={AlertTriangle} tom="vermelho" onFechar={() => pub.setErro(null)}>{pub.erro}</Faixa>}
+                        {tokenExpirado && (
+                            <Faixa icone={AlertTriangle} tom="vermelho">
+                                <p>A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar.</p>
+                                {empresa.link_reconexao && <div className="mt-2"><LinkReconexao link={empresa.link_reconexao} /></div>}
+                            </Faixa>
                         )}
                     </div>
 
-                    {/* Lateral: coluna sticky em ≥ 1360px; abaixo, card recolhido no topo (uma só árvore, para o aria-describedby achar a nota). */}
-                    {estado && (
-                        <aside className="order-first min-[1360px]:order-none" aria-label="Validação e resumo">
-                            <div className="min-[1360px]:sticky min-[1360px]:top-[56px] min-[1360px]:max-h-[calc(100vh-164px)] min-[1360px]:overflow-y-auto">
-                                <button
-                                    type="button"
-                                    onClick={() => setLateralAberta((v) => ! v)}
-                                    aria-expanded={lateralAberta}
-                                    aria-controls="lateral-corpo"
-                                    className="flex h-12 w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-ecf-card px-4 text-left text-[13px] font-normal text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow min-[1360px]:hidden"
-                                >
-                                    <span className="min-w-0 flex-1 truncate">
-                                        <span className="font-bold text-white">{pub.prontas} de {pub.totalSecoes} prontos</span> · {pub.conferencia.texto}
-                                    </span>
-                                    <ChevronDown size={16} className={cn('shrink-0 transition-transform', lateralAberta && 'rotate-180')} aria-hidden="true" />
+                    {pub.erroCarga && ! estado && (
+                        <div role="alert" className="rounded-xl border border-white/[0.08] bg-ecf-card p-6">
+                            <p className="text-[15px] font-bold text-white">Não foi possível abrir o produto.</p>
+                            <p className="mt-1 text-[13px] font-normal text-white/55">{pub.erroCarga}</p>
+                            <div className="mt-4 flex gap-2">
+                                <button type="button" onClick={pub.recarregar} className={cn(BASE_BOTAO, SECUNDARIO, 'font-normal')}>
+                                    Tentar de novo
                                 </button>
-                                <div id="lateral-corpo" className={cn('space-y-6 min-[1360px]:block', lateralAberta ? 'mt-3 block' : 'hidden')}>
-                                    <LateralValidacao pub={pub} onIrPara={irPara} />
-                                    <LateralResumo pub={pub} empresa={empresa} produtoId={produto.id} primario={largo} />
-                                </div>
+                                <Link href={route('mlb.anuncios.publicador.produtos', { conta: empresa.chave })} className={cn(BASE_BOTAO, SECUNDARIO, 'font-normal')}>
+                                    Voltar aos produtos
+                                </Link>
                             </div>
-                        </aside>
+                        </div>
                     )}
+
+                    {! estado && ! pub.erroCarga && <Esqueleto />}
+
+                    {/* Todos os painéis montados; só o da etapa aberta aparece (ver o comentário do topo). */}
+                    {estado && ETAPAS.map((e) => (
+                        <div key={e.chave} hidden={etapa !== e.chave} data-etapa={e.chave}>
+                            {CONTEUDO[e.chave]}
+                        </div>
+                    ))}
                 </div>
             </div>
         </AppLayout>

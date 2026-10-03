@@ -1,15 +1,15 @@
-import { ListChecks, Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { estadoDasSecoes, valorVazio } from '../apoio';
-import { CardMesa, ChipSecao, Tile } from './comum';
+import { ChipSecao, PainelDaEtapa, Tile } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Card 2 — Ficha técnica (check "Características") ───────────────────────
+// ─── Etapa 2 — Ficha técnica (check "Características") ──────────────────────
 //
 // Todos os campos da categoria abertos, como campos normais (docx §6,
 // 03/10/2026): nada recolhido nem rotulado "opcional"; o selo "obrigatório" só
 // aparece no que o ML exige. Os obrigatórios vêm primeiro. Os atributos da
-// seção EMBALAGEM não entram aqui: moram no card de logística.
+// seção EMBALAGEM não entram aqui: moram na etapa de envio.
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
 
@@ -62,7 +62,7 @@ function GradeTiles({ atributos, m }) {
     );
 }
 
-export default function CardFichaTecnica({ m, aberto = true, onAlternar }) {
+export default function CardFichaTecnica({ m, rodape = null }) {
     const schema = m.schema;
     const atributos = Object.values(schema?.atributos ?? {})
         .filter((a) => ['PRINCIPAIS', 'FICHA', 'AVANCADO'].includes(a.secao))
@@ -71,23 +71,24 @@ export default function CardFichaTecnica({ m, aberto = true, onAlternar }) {
         .map(({ a }) => a);
     const obrigatorios = atributos.filter((a) => a.secao === 'PRINCIPAIS' || a.obrigatoriedade === 'REQUIRED');
     const preenchidos = obrigatorios.filter((a) => ! valorVazio(m.rasc.atributos?.[a.id])).length;
-    const faltam = estadoDasSecoes(m.problemasDaSecao('caracteristicas'), schema).caracteristicas.faltam;
+    const problemas = m.problemasDaSecao('caracteristicas');
+    const faltam = estadoDasSecoes(problemas, schema).caracteristicas.faltam;
 
     const chip = (
-        <span className="inline-flex items-center gap-3">
+        <span className="inline-flex flex-wrap items-center gap-3">
             {schema && <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/55 tabular-nums" data-obrigatorios>{preenchidos} de {obrigatorios.length} obrigatórios</span>}
             <ChipSecao faltam={faltam} />
         </span>
     );
 
     return (
-        <CardMesa id="card-ficha" icone={ListChecks} titulo="Ficha técnica" chip={chip} aberto={aberto} onAlternar={onAlternar}
-            apoio={schema ? `Características da categoria ${schema.categoria_id}. Quanto mais completas, mais o anúncio aparece nas buscas e filtros.` : null}>
+        <PainelDaEtapa id="etapa-ficha" titulo="Ficha técnica" chip={chip} problemas={problemas} rodape={rodape}
+            apoio={schema ? `Características da categoria ${schema.categoria_id}. Quanto mais completas, mais o anúncio aparece nas buscas e filtros.` : 'As características vêm da categoria.'}>
             {! schema ? (
-                <p className="text-[13px] text-white/55">Escolha a categoria no card acima para ver as características.</p>
+                <p className="text-[13px] text-white/55">Escolha a categoria na etapa anterior para ver as características.</p>
             ) : (
                 atributos.length > 0 && <GradeTiles atributos={atributos} m={m} />
             )}
-        </CardMesa>
+        </PainelDaEtapa>
     );
 }

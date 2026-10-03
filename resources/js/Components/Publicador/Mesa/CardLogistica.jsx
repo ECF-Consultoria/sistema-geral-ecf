@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Info, Truck } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { CLASSE_INPUT, Seletor } from '@/Components/Portal/Estrutura/comum';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { estadoDasSecoes, valorVazio } from '../apoio';
 import { UNIDADES_MEDIDA, UNIDADES_PESO, daUnidadeMl, numeroDoAtributo, paraUnidadeMl, unidadeInicial } from '../ferramentas';
-import { CardMesa, ChipSecao, Tile } from './comum';
+import { ChipSecao, PainelDaEtapa, Tile } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Card 6 — Logística, dimensões e garantia (check "Envio") ───────────────
+// ─── Etapa 5 — Envio e garantia (check "Envio") ─────────────────────────────
 //
 // A modalidade vem do servidor (`conta.modos_envio`); aqui não se calcula
 // elegibilidade nenhuma. As medidas são atributos da seção EMBALAGEM do schema.
@@ -24,6 +24,7 @@ const ENVIOS = { me2: 'Mercado Envios', custom: 'Envio próprio', not_specified:
 const DIMENSOES = ['SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_LENGTH'];
 const PESO = 'SELLER_PACKAGE_WEIGHT';
 const ESPERA_FRETE = 1500;
+const ROTULO = 'mb-1 block text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 
 /** Uma medida do pacote com a unidade da tela; grava na unidade do ML. */
 function MedidaPacote({ m, a, tipo }) {
@@ -51,7 +52,7 @@ function MedidaPacote({ m, a, tipo }) {
     return (
         <Tile rotulo={<RotuloAtributo atributo={a} valor={valor} />} preenchido={preenchido} obrigatorio={a.obrigatoriedade === 'REQUIRED'} problema={recusa}>
             <div className="flex gap-1.5" data-campo-atributo={a.id}>
-                <input inputMode="decimal" value={texto} disabled={m.disabled} onChange={(e) => setTexto(e.target.value)} onBlur={() => gravar(texto, unidade)}
+                <input inputMode="decimal" value={texto} disabled={m.disabled} onChange={(e) => setTexto(e.target.value)} onBlur={() => gravar(texto, unidade)} aria-label={a.nome}
                     placeholder="0" className={cn(CLASSE_INPUT, 'min-w-0 py-1.5 text-[13px] tabular-nums disabled:opacity-50')} data-atributo={a.id} />
                 <select value={unidade} disabled={m.disabled} onChange={(e) => trocarUnidade(e.target.value)} aria-label={`Unidade de ${a.nome}`} data-unidade={a.id}
                     className={cn(CLASSE_INPUT, 'w-[72px] shrink-0 appearance-auto py-1.5 text-[13px] [&>option]:bg-ecf-card disabled:opacity-50')}>
@@ -79,9 +80,10 @@ function TileAtributo({ m, a }) {
 /** A unidade do ML é uma das que a tela sabe converter? Senão o campo fica o do schema. */
 const converte = (a, tipo) => (tipo === 'peso' ? UNIDADES_PESO : UNIDADES_MEDIDA)[a.unidade_padrao ?? a.unidades?.[0] ?? (tipo === 'peso' ? 'g' : 'cm')] === 1;
 
-export default function CardLogistica({ m, aberto = true, onAlternar }) {
+export default function CardLogistica({ m, rodape = null }) {
     const { schema, rasc, estado } = m;
-    const faltam = estadoDasSecoes(m.problemasDaSecao('envio'), schema).envio.faltam;
+    const problemas = m.problemasDaSecao('envio');
+    const faltam = estadoDasSecoes(problemas, schema).envio.faltam;
     const modos = estado.conta?.modos_envio ?? null;
     const embalagem = Object.values(schema?.atributos ?? {}).filter((a) => a.secao === 'EMBALAGEM');
     const dimensoes = DIMENSOES.map((id) => embalagem.find((a) => a.id === id)).filter(Boolean);
@@ -123,14 +125,14 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
     }, [freteObrigatorio, rasc.envio?.frete_gratis, m.disabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const chip = (
-        <span className="inline-flex items-center gap-3">
+        <span className="inline-flex flex-wrap items-center gap-3">
             {ENVIOS[modo] && <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/55" data-modalidade={modo}>{ENVIOS[modo]}</span>}
             <ChipSecao faltam={faltam} />
         </span>
     );
 
     return (
-        <CardMesa id="card-logistica" icone={Truck} titulo="Logística, dimensões e garantia" chip={chip} aberto={aberto} onAlternar={onAlternar}
+        <PainelDaEtapa id="etapa-logistica" titulo="Envio e garantia" chip={chip} problemas={problemas} rodape={rodape}
             apoio="É com as medidas do pacote fechado que o Mercado Livre calcula o frete.">
             {! schema ? (
                 <p className="text-[13px] text-white/55">Escolha a categoria para definir o envio.</p>
@@ -138,7 +140,7 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
                 <div className="space-y-6">
                     {(dimensoes.length > 0 || peso) && (
                         <div>
-                            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Pacote fechado</p>
+                            <p className={cn(ROTULO, 'mb-2')}>Pacote fechado</p>
                             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-medidas-pacote>
                                 {dimensoes.map((a) => (converte(a, 'medida') ? <MedidaPacote key={a.id} m={m} a={a} tipo="medida" /> : <TileAtributo key={a.id} m={m} a={a} />))}
                                 {peso && (converte(peso, 'peso') ? <MedidaPacote m={m} a={peso} tipo="peso" /> : <TileAtributo m={m} a={peso} />)}
@@ -152,9 +154,9 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
 
                     <div className="grid gap-4 lg:grid-cols-3">
                         <div data-tile-garantia>
-                            <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Garantia</span>
+                            <span className={ROTULO}>Garantia</span>
                             <div className="space-y-2">
-                                <Seletor valor={garantia?.tipo ?? ''} vazio="Escolha…" disabled={m.disabled} data-campo="garantia-tipo" className="text-[13px]"
+                                <Seletor valor={garantia?.tipo ?? ''} vazio="Escolha…" disabled={m.disabled} data-campo="garantia-tipo" className="text-[13px]" aria-label="Tipo de garantia"
                                     opcoes={Object.fromEntries(garantias.map((g) => [g.id, g.name]))}
                                     onChange={(t) => m.mudarRasc((r) => ({ garantia: t === null ? null : { ...(r.garantia ?? {}), tipo: t, ...(semGarantia(t) ? { tempo: null, unidade: null } : {}) } }))} />
                                 {garantia?.tipo && ! semGarantia(garantia.tipo) && (
@@ -162,7 +164,7 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
                                         <input type="number" min={1} value={garantia.tempo ?? ''} disabled={m.disabled} aria-label="Tempo de garantia"
                                             onChange={(e) => m.mudarRasc((r) => ({ garantia: { ...r.garantia, tempo: e.target.value === '' ? null : Number(e.target.value) } }))}
                                             className={cn(CLASSE_INPUT, 'text-[13px] tabular-nums')} data-campo="garantia-tempo" />
-                                        <Seletor valor={garantia.unidade ?? ''} vazio="…" disabled={m.disabled} data-campo="garantia-unidade" className="w-28 text-[13px]"
+                                        <Seletor valor={garantia.unidade ?? ''} vazio="…" disabled={m.disabled} data-campo="garantia-unidade" className="w-28 text-[13px]" aria-label="Unidade do tempo de garantia"
                                             opcoes={Object.fromEntries((schema.garantia?.unidades ?? ['dias', 'meses', 'anos']).map((u) => [u, u]))}
                                             onChange={(u) => m.mudarRasc((r) => ({ garantia: { ...r.garantia, unidade: u } }))} />
                                     </div>
@@ -171,17 +173,17 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
                         </div>
 
                         <label className="block">
-                            <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Forma de envio</span>
+                            <span className={ROTULO}>Forma de envio</span>
                             <Seletor valor={modo} disabled={m.disabled} data-campo="envio" className="text-[13px]" opcoes={opcoesEnvio}
                                 onChange={(novo) => m.mudarRasc((r) => ({ envio: { ...r.envio, modo: novo ?? 'me2' } }))} />
                         </label>
 
                         <div>
-                            <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Frete grátis</span>
+                            <span className={ROTULO}>Frete grátis</span>
                             <label className={cn('flex items-center gap-2.5 py-2', freteObrigatorio ? 'cursor-not-allowed' : 'cursor-pointer')}>
                                 <input type="checkbox" checked={!! rasc.envio?.frete_gratis || freteObrigatorio} disabled={m.disabled || freteObrigatorio}
                                     onChange={(e) => m.mudarRasc((r) => ({ envio: { ...r.envio, frete_gratis: e.target.checked } }))}
-                                    className="rounded border-white/20 bg-transparent text-ecf-yellow" data-campo="frete-gratis" />
+                                    className="rounded border-white/20 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-campo="frete-gratis" />
                                 <span className="text-[13px] text-white/70">Oferecer frete grátis para o comprador</span>
                             </label>
                             {frete?.conhecido && (
@@ -198,6 +200,6 @@ export default function CardLogistica({ m, aberto = true, onAlternar }) {
                     </div>
                 </div>
             )}
-        </CardMesa>
+        </PainelDaEtapa>
     );
 }

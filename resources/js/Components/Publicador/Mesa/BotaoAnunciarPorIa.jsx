@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 // substituir; vazio dispara direto. O que a IA fez e a faixa azul de conclusão
 // são da página — aqui só o disparo e o estado "IA preparando…".
 
-const FANTASMA = 'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-bold text-white/70 hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:pointer-events-none disabled:opacity-40';
+// Secundário com borda (não mais fantasma): na barra ele é a única ação, e a pessoa precisa achá-lo.
+const FANTASMA = 'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[13px] font-bold text-white/80 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:pointer-events-none disabled:opacity-40';
 
 export default function BotaoAnunciarPorIa({ ia, pub, compacto = false }) {
     const [confirmando, setConfirmando] = useState(false);
@@ -46,7 +47,7 @@ export default function BotaoAnunciarPorIa({ ia, pub, compacto = false }) {
                 className={FANTASMA}
             >
                 <Icone size={16} className={cn(andamento && 'animate-spin')} aria-hidden="true" />
-                <span className={cn(compacto && 'hidden min-[1360px]:inline')}>{rotulo}</span>
+                <span className={cn(compacto && 'hidden sm:inline')}>{rotulo}</span>
             </button>
 
             <Dialog open={confirmando} onOpenChange={setConfirmando}>

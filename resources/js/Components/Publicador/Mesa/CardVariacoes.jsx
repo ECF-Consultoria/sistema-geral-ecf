@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Layers, Plus, RotateCcw } from 'lucide-react';
+import { Plus, RotateCcw } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import EditorDeEixos from '../EditorDeEixos';
 import { AvisosDasFotos, BlocoDeFotos } from '../FotosPorGrupo';
@@ -7,13 +7,14 @@ import { GERAL, estadoDasSecoes } from '../apoio';
 import { eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, variantesSemGtin } from '../ferramentas';
 import CartaoVariante from './CartaoVariante';
 import NovaVariacao from './NovaVariacao';
-import { CardMesa } from './comum';
+import { PainelDaEtapa } from './comum';
 
-// ─── Card 3 — Variações, fotos e estoque (checks "Variações", "Fotos" e "Estoque") ──
+// ─── Etapa 3 — Variações e fotos (checks "Variações", "Fotos" e "Estoque") ──
 //
 // Como no Mercado Livre (03/10/2026): cada variação é um cartão com as próprias
 // fotos, estoque, código universal e SKU; "Nova variação" abre um cartão em
-// branco. O card Fotos separado deixou de existir — as fotos moram aqui.
+// branco. O preço é por variação e por tipo, mas mora na etapa seguinte
+// ("Título e preço"), junto dos títulos e do "Quanto eu recebo?".
 //
 // Por baixo continuam os eixos do servidor (quem gera as combinações e guarda
 // os dados das órfãs é ele); aqui só se envia a lista de eixos por `m.salvarEixos`.
@@ -33,7 +34,7 @@ const regraDaFoto = (limites) => {
 
 function ChipTotal({ faltam, total }) {
     return (
-        <span className="inline-flex items-center gap-3">
+        <span className="inline-flex flex-wrap items-center gap-3">
             <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/55 tabular-nums" data-total-anuncios={total}>Total a gerar: {total} {total === 1 ? 'anúncio' : 'anúncios'}</span>
             {faltam === 0 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.05em] text-emerald-400" data-chip-secao="completo">Completo</span>
@@ -46,8 +47,8 @@ function ChipTotal({ faltam, total }) {
     );
 }
 
-/** O grupo de fotos da variação, e com quais outras ela divide as fotos. */
-function fotosDaVariante(estado, v, rotulos) {
+/** O grupo de fotos da variação, e com quais outras ela divide as fotos (a revisão também usa). */
+export function fotosDaVariante(estado, v, rotulos) {
     if (Object.keys(v.valores ?? {}).length === 0) return { grupo: GERAL, com: [] };
     const g = (estado.grupos_imagem ?? []).find((x) => (x.variantes ?? []).includes(v.chave) || x.chave === v.chave);
     if (! g) return { grupo: null, com: [] };
@@ -55,7 +56,7 @@ function fotosDaVariante(estado, v, rotulos) {
     return { grupo: g.chave, com: (g.variantes ?? []).filter((c) => c !== v.chave).map((c) => rotulos[c]).filter(Boolean) };
 }
 
-export default function CardVariacoes({ m, aberto = true, onAlternar }) {
+export default function CardVariacoes({ m, rodape = null }) {
     const [novas, setNovas] = useState([]);
     const [avancado, setAvancado] = useState(false);
     const gerados = useRef(new Set());
@@ -66,7 +67,8 @@ export default function CardVariacoes({ m, aberto = true, onAlternar }) {
     const orfas = m.variantes.filter((v) => v.orfa);
     const alvosAtivos = (m.alvos ?? []).filter((a) => a.ativo);
     const total = alvosAtivos.length * atuais.filter((v) => v.ativa).length;
-    const situacao = estadoDasSecoes([...m.problemasDaSecao('variacoes'), ...m.problemasDaSecao('variantes'), ...m.problemasDaSecao('fotos')], schema);
+    const problemas = [...m.problemasDaSecao('variacoes'), ...m.problemasDaSecao('variantes'), ...m.problemasDaSecao('fotos')];
+    const situacao = estadoDasSecoes(problemas, schema);
     const faltam = situacao.variacoes.faltam + situacao.variantes.faltam + situacao.fotos.faltam;
     const temVariacoes = eixos.some((e) => e.valores.length > 0);
     const algumDefineFoto = eixos.some((e) => e.defines_picture && e.valores.length > 0);
@@ -117,8 +119,8 @@ export default function CardVariacoes({ m, aberto = true, onAlternar }) {
         : 'Sem variações: o anúncio sai como um produto único.';
 
     return (
-        <CardMesa id="card-variacoes" icone={Layers} titulo="Variações, fotos e estoque" chip={<ChipTotal faltam={faltam} total={total} />} aberto={aberto} onAlternar={onAlternar}
-            apoio={`Cada variação com as próprias fotos (${regraDaFoto(limites)}), estoque, código universal e SKU.`}>
+        <PainelDaEtapa id="etapa-variacoes" titulo="Variações e fotos" chip={<ChipTotal faltam={faltam} total={total} />} problemas={problemas} rodape={rodape}
+            apoio={`Cada variação com as próprias fotos (${regraDaFoto(limites)}), estoque, código universal e SKU. O preço fica na próxima etapa.`}>
             {! schema ? (
                 <p className="text-[13px] text-white/55">Escolha a categoria para definir as variações e as fotos.</p>
             ) : (
@@ -149,17 +151,17 @@ export default function CardVariacoes({ m, aberto = true, onAlternar }) {
                             <label className="mt-3 flex items-center gap-2 text-[13px] text-white/55">
                                 <input type="checkbox" checked={!! (m.rasc?.incluir_geral ?? estado.rascunho.incluir_geral)} disabled={m.disabled}
                                     onChange={(e) => m.mudarRasc({ incluir_geral: e.target.checked })}
-                                    className="rounded border-white/20 bg-transparent text-ecf-yellow" data-opcao="incluir-geral" />
+                                    className="rounded border-white/20 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-opcao="incluir-geral" />
                                 Colocar estas fotos no fim das fotos de cada variação
                             </label>
                         </BlocoDeFotos>
                     )}
 
-                    <div className="space-y-4">
+                    <div className="grid gap-4 2xl:grid-cols-2">
                         {atuais.map((v, i) => {
                             const { grupo, com } = fotosDaVariante(estado, v, rotulos);
 
-                            return <CartaoVariante key={v.chave} m={m} v={v} indice={i + 1} eixos={eixos} alvosAtivos={alvosAtivos} grupo={grupo} fotosCom={com} onRemover={removerDe(v)} />;
+                            return <CartaoVariante key={v.chave} m={m} v={v} indice={i + 1} eixos={eixos} grupo={grupo} fotosCom={com} onRemover={removerDe(v)} />;
                         })}
                         {novas.map((id) => (
                             <NovaVariacao key={id} m={m} eixos={eixos} schema={schema} onCancelar={() => fecharNova(id)} onCriada={() => fecharNova(id)} />
@@ -172,7 +174,7 @@ export default function CardVariacoes({ m, aberto = true, onAlternar }) {
 
                     {orfas.length > 0 && (
                         <details className="text-[13px] text-white/55" data-orfas={orfas.length}>
-                            <summary className="cursor-pointer">Variações tiradas que ainda guardam dados ({orfas.length})</summary>
+                            <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">Variações tiradas que ainda guardam dados ({orfas.length})</summary>
                             <ul className="mt-2 space-y-1">
                                 {orfas.map((v) => (
                                     <li key={v.chave} className="flex flex-wrap items-center gap-2">
@@ -190,6 +192,6 @@ export default function CardVariacoes({ m, aberto = true, onAlternar }) {
                     )}
                 </div>
             )}
-        </CardMesa>
+        </PainelDaEtapa>
     );
 }

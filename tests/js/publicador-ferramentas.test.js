@@ -94,9 +94,10 @@ test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e
 
 // ── Gates de fonte ──
 
-test('§1 — a mesa ocupa a largura (sem o teto de 800px)', () => {
+test('§1 — a mesa ocupa a largura (sem o teto de 800px); só a revisão tem a coluna de 340px', () => {
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
-    assert.match(f, /grid-cols-\[minmax\(0,1fr\)_340px\]/);
+    assert.doesNotMatch(f, /minmax\(0,800px\)|max-w-\[800px\]/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/EtapaRevisar.jsx`), /grid-cols-\[minmax\(0,1fr\)_340px\]/);
 });
 
 test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao escolher categoria com o Modelo vazio', () => {
@@ -189,7 +190,7 @@ test('Fotos dentro de cada variação: o card Fotos sumiu e a lateral leva às v
     assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo="Fotos" obrigatorio=\{v\.ativa\}/);
     assert.match(cartao, /onArquivos=\{m\.enviarFotos\}/);
     const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.match(card, /titulo="Variações, fotos e estoque"/);
+    assert.match(card, /titulo="Variações e fotos"/);
     assert.match(card, /<NovaVariacao /);
     // Sem eixo que defina a foto, cada variação ganha as próprias fotos.
     assert.match(card, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
@@ -198,7 +199,7 @@ test('Fotos dentro de cada variação: o card Fotos sumiu e a lateral leva às v
     assert.match(card, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
     assert.match(card, /trazer de volta/);
     const apoio = lerSemComentarios(`${BASE}/apoio.js`);
-    assert.match(apoio, /fotos: 'variacoes'/);
+    assert.match(apoio, /chave: 'variacoes', titulo: 'Variações e fotos', curto: 'Variações', secoes: \['variacoes', 'fotos', 'variantes'\]/);
 });
 
 test('NovaVariacao — a 1ª variação dá nome à que já existe (fica com os dados) e só depois cria a nova', () => {

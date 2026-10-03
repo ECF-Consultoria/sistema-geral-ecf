@@ -3,13 +3,13 @@ import * as Popover from '@radix-ui/react-popover';
 import { Plus, Search } from 'lucide-react';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
-import { SECOES } from '../apoio';
 import { cn } from '@/lib/utils';
 
 // ─── Faixa de produtos do editor (UI-SPEC §8.3) ─────────────────────────────
 //
 // Troca de produto sem recarregar a página inteira (a página faz o router.get).
-// O chip ativo é o único acento: amarelo translúcido. Acima de 12 produtos
+// O chip ativo é o único acento: amarelo translúcido, e mostra quantas etapas
+// do anúncio já estão completas (`prontas`/`total`). Acima de 12 produtos
 // aparece "Ver todos", com busca por SKU/nome.
 
 const LIMITE_CHIPS = 12;
@@ -21,7 +21,7 @@ const encurtar = (nome) => {
     return t.length > NOME_MAX ? `${t.slice(0, NOME_MAX - 1)}…` : t;
 };
 
-export default function FaixaDeProdutos({ produtos = [], produtoId, prontas = 0, conta, onTrocar }) {
+export default function FaixaDeProdutos({ produtos = [], produtoId, prontas = 0, total = 0, conta, onTrocar }) {
     const [modal, setModal] = useState(false);
     const [busca, setBusca] = useState('');
     const lista = useRef(null);
@@ -51,7 +51,7 @@ export default function FaixaDeProdutos({ produtos = [], produtoId, prontas = 0,
     };
 
     return (
-        <div className="flex h-12 items-center gap-3 border-b border-white/[0.06] px-6" data-faixa-produtos>
+        <div className="flex h-12 items-center gap-3 border-b border-white/[0.06] px-6 max-sm:px-4" data-faixa-produtos>
             <p className="shrink-0 text-[11px] font-bold uppercase tracking-[0.05em] text-white/55">
                 {produtos.length === 1 ? '1 produto' : `${produtos.length} produtos`}
             </p>
@@ -76,7 +76,7 @@ export default function FaixaDeProdutos({ produtos = [], produtoId, prontas = 0,
                                 <span className="text-[13px] font-normal">{encurtar(p.nome)}</span>
                                 <span className="font-mono text-[11px] font-normal text-white/55">{p.sku}</span>
                                 {ativo
-                                    ? <span className="text-[11px] font-bold text-white/70">{prontas}/{SECOES.length}</span>
+                                    ? <span className="text-[11px] font-bold text-white/70" title={`${prontas} de ${total} etapas completas`}>{prontas}/{total}</span>
                                     : <SeloStatusProduto status={p.status} compacto />}
                             </a>
                         </li>

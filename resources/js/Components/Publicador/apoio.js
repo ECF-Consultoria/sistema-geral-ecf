@@ -40,32 +40,60 @@ export const valorVazio = (v) => ! v || ((v.value_id ?? '') === '' && String(v.v
 /** Problemas que apontam para um atributo (do produto ou de uma variante). */
 export const problemasDoAtributo = (problemas, id, variante = null) => (problemas ?? []).filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
 
-// ─── As 8 verificações da lateral e os cards da mesa ────────────────────────
+// ─── As 8 verificações e as 7 etapas da mesa ────────────────────────────────
 //
 // Fonte única: a mesa de anúncio e o hook `usePublicador` importam daqui.
+// As VERIFICAÇÕES são do servidor (uma por grupo de regras); as ETAPAS são a
+// navegação da tela (03/10/2026: um passo por vez, como o cliente pediu). Cada
+// verificação se resolve em UMA etapa; a 7ª (revisar) não tem verificação — ela
+// lê a conferência.
 export const SECOES = [
     { chave: 'categoria', titulo: 'Categoria', etapas: ['E2'] },
     { chave: 'caracteristicas', titulo: 'Características', etapas: ['E3', 'E8'] },
     { chave: 'variacoes', titulo: 'Variações', etapas: ['E4'] },
     { chave: 'fotos', titulo: 'Fotos', etapas: ['E6'] },
     { chave: 'variantes', titulo: 'Estoque, SKU e código', etapas: ['E5'] },
-    { chave: 'tipos', titulo: 'Clássico e Premium', etapas: ['E7'] },
+    { chave: 'tipos', titulo: 'Título e preço', etapas: ['E7'] },
     { chave: 'envio', titulo: 'Envio, garantia e embalagem', etapas: ['E10'] },
     { chave: 'descricao', titulo: 'Descrição', etapas: ['E9'] },
 ];
 
-/** Em que card a seção se resolve (ids dos cards: `card-{valor}`). As fotos ficam nas variações (03/10/2026). */
-export const CARD_DA_SECAO = {
-    categoria: 'produto', caracteristicas: 'ficha', variacoes: 'variacoes', variantes: 'variacoes',
-    fotos: 'variacoes', tipos: 'tipos', envio: 'logistica', descricao: 'descricao',
-};
+/** As etapas, na ordem do trilho. `curto` é o nome em tela estreita; `secoes` são as verificações que ela fecha. */
+export const ETAPAS = [
+    { chave: 'produto', titulo: 'Produto e categoria', curto: 'Produto', secoes: ['categoria'] },
+    { chave: 'ficha', titulo: 'Ficha técnica', curto: 'Ficha', secoes: ['caracteristicas'] },
+    { chave: 'variacoes', titulo: 'Variações e fotos', curto: 'Variações', secoes: ['variacoes', 'fotos', 'variantes'] },
+    { chave: 'tipos', titulo: 'Título e preço', curto: 'Título e preço', secoes: ['tipos'] },
+    { chave: 'logistica', titulo: 'Envio e garantia', curto: 'Envio', secoes: ['envio'] },
+    { chave: 'descricao', titulo: 'Descrição', curto: 'Descrição', secoes: ['descricao'] },
+    { chave: 'revisar', titulo: 'Revisar e publicar', curto: 'Revisar', secoes: [] },
+];
 
-/** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para a lateral). */
+export const ETAPA_INICIAL = ETAPAS[0].chave;
+
+/** Em que etapa a verificação se resolve (ids dos painéis: `etapa-{valor}`). */
+export const ETAPA_DA_SECAO = Object.fromEntries(ETAPAS.flatMap((e) => e.secoes.map((s) => [s, e.chave])));
+
+/** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para a revisão). */
 export const secaoDoProblema = (p) => {
     const e = p.alvo?.etapa;
     if (e === 'E10' && ['preco', 'tipo'].includes(p.alvo?.campo)) return 'tipos';
 
     return SECOES.find((s) => s.etapas.includes(e))?.chave ?? null;
+};
+
+/** Em que etapa do trilho o problema se resolve; nulo = é da conta/conferência. */
+export const etapaDoProblema = (p) => {
+    const secao = secaoDoProblema(p);
+
+    return secao ? (ETAPA_DA_SECAO[secao] ?? null) : null;
+};
+
+/** A etapa que fecha a etapa `E…` da spec (para o "ir para" das pendências da conferência). */
+export const etapaDaEtapaMl = (etapaMl) => {
+    const secao = SECOES.find((s) => s.etapas.includes(etapaMl))?.chave ?? null;
+
+    return secao ? (ETAPA_DA_SECAO[secao] ?? null) : null;
 };
 
 /**
@@ -78,3 +106,25 @@ export const estadoDasSecoes = (problemas, schema) => Object.fromEntries(SECOES.
 
     return [s.chave, { faltam, completo: faltam === 0 }];
 }));
+
+/**
+ * Estado de cada etapa do trilho a partir do das seções: `{ [chave]: { faltam, completo } }`.
+ * A etapa de revisão não soma nada (ela lê a conferência, não as verificações).
+ */
+export const estadoDasEtapas = (secoes) => Object.fromEntries(ETAPAS.map((e) => {
+    const faltam = e.secoes.reduce((n, s) => n + (secoes?.[s]?.faltam ?? 0), 0);
+
+    return [e.chave, { faltam, completo: faltam === 0 }];
+}));
+
+/** Quantas etapas de conteúdo (todas menos a revisão) estão completas. */
+export const contarEtapasCompletas = (secoes) => {
+    const estados = estadoDasEtapas(secoes);
+
+    return ETAPAS.filter((e) => e.secoes.length > 0 && estados[e.chave].completo).length;
+};
+
+export const TOTAL_ETAPAS_DE_CONTEUDO = ETAPAS.filter((e) => e.secoes.length > 0).length;
+
+/** A etapa de uma chave qualquer (URL, link antigo): só as que existem; senão a inicial. */
+export const etapaValida = (chave) => (ETAPAS.some((e) => e.chave === chave) ? chave : ETAPA_INICIAL);

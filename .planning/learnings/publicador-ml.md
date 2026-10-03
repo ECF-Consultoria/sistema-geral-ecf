@@ -282,3 +282,10 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   as DUAS. Tirar com um eixo = tirar o valor (vira órfã com os dados; "trazer de volta" readiciona
   e o servidor reaproveita a chave); com mais de um eixo o servidor gera o produto cartesiano, então
   a tela desativa as combinações que nasceram junto e não foram pedidas.
+- **Editor passo a passo (03/10, redesenho pelo Fable com a skill frontend-design).** 7 etapas (`ETAPAS` e
+  `ETAPA_DA_SECAO` em `apoio.js`, que substituiu `CARD_DA_SECAO`); os 7 painéis ficam MONTADOS e só o atual
+  aparece (`hidden`) — de propósito: preserva "Nova variação" pela metade, o EAN gerado uma vez e o que foi
+  digitado. Etapa em `?etapa=` (`history.replaceState(window.history.state, …)`, sem mexer no estado do Inertia)
+  + sessionStorage por produto. Sticky dentro do `<main p-6>` do AppLayout: a barra usa `-top-6` e o trilho
+  `sm:top-8`; o painel compensa com `scroll-mt-[152px]`. Regra visual: um só amarelo sólido por tela, e é o
+  próximo passo (`publicarEhOProximoPasso`); o gradiente amarelo mora só em `Mesa/botoes.jsx`.

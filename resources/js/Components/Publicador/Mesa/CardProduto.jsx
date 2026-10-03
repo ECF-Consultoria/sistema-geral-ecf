@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Package, Search, X } from 'lucide-react';
+import { AlertTriangle, Loader2, Search, X } from 'lucide-react';
 import { CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
 import { estadoDasSecoes } from '../apoio';
-import { CardMesa, ChipSecao } from './comum';
+import { ChipSecao, PainelDaEtapa } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Card 1 — Produto e categoria (check "Categoria") ───────────────────────
+// ─── Etapa 1 — Produto e categoria (check "Categoria") ──────────────────────
+//
+// Duas colunas: o produto (nome, SKU, origem, condição) e a categoria no
+// Mercado Livre, que é o que esta etapa decide — tudo o mais depende dela.
 
 const CONDICOES = [['new', 'Novo'], ['used', 'Usado'], ['refurbished', 'Recondicionado']];
+const ROTULO = 'text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 
 /** Selo de origem: deriva de `oferta_id`, nunca de `origem` (que é só a origem histórica — D27). */
 function SeloOrigem({ produto }) {
@@ -45,13 +49,13 @@ function BuscaCategoria({ m, textoInicial, atual, onFechar }) {
         <div className="mt-4 space-y-2" data-busca-categoria>
             <div className="flex gap-2">
                 <input value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()}
-                    placeholder="ex.: cadeira de escritório giratória" className={cn(CLASSE_INPUT, 'text-[13px]')} data-campo="busca-categoria" />
+                    placeholder="ex.: cadeira de escritório giratória" className={cn(CLASSE_INPUT, 'text-[13px]')} data-campo="busca-categoria" aria-label="Descreva o produto para achar a categoria" />
                 <button type="button" onClick={buscar} disabled={buscando || ! busca.trim()} aria-label="Buscar categoria" data-acao="buscar-categoria"
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.10] bg-white/[0.04] text-white/80 hover:bg-white/[0.07] disabled:opacity-40">
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/[0.10] bg-white/[0.04] text-white/80 hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:opacity-40">
                     {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                 </button>
                 {atual && (
-                    <button type="button" onClick={onFechar} aria-label="Fechar busca" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white/55 hover:bg-white/[0.05] hover:text-white">
+                    <button type="button" onClick={onFechar} aria-label="Fechar busca" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white/55 hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
                         <X size={14} />
                     </button>
                 )}
@@ -66,7 +70,7 @@ function BuscaCategoria({ m, textoInicial, atual, onFechar }) {
                         return (
                             <li key={c.id}>
                                 <button type="button" onClick={async () => { await m.escolherCategoria(c.id); onFechar(); }} data-sugestao={c.id}
-                                    className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-white/[0.04]', c.id === atual ? 'text-ecf-yellow' : 'text-white/80')}>
+                                    className={cn('flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow', c.id === atual ? 'text-ecf-yellow' : 'text-white/80')}>
                                     <span className="min-w-0 leading-snug">
                                         {cam.length > 1 && <span className="text-white/40">{cam.slice(0, -1).join(' › ')} › </span>}
                                         <span className="font-bold">{folha}</span>
@@ -82,65 +86,68 @@ function BuscaCategoria({ m, textoInicial, atual, onFechar }) {
     );
 }
 
-export default function CardProduto({ m, aberto = true, onAlternar }) {
+export default function CardProduto({ m, rodape = null }) {
     const { produto, rascunho } = m.estado;
     const caminho = m.schema?.caminho ?? [];
     const [trocando, setTrocando] = useState(! rascunho.categoria_id);
-    const faltam = estadoDasSecoes(m.problemasDaSecao('categoria'), m.schema).categoria.faltam;
+    const problemas = m.problemasDaSecao('categoria');
+    const faltam = estadoDasSecoes(problemas, m.schema).categoria.faltam;
     const textoInicial = m.estado.alvos?.find((a) => a.titulo_efetivo)?.titulo_efetivo ?? produto.nome ?? '';
     const condicao = m.rasc.condicao ?? rascunho.condicao;
 
     return (
-        <CardMesa id="card-produto" icone={Package} titulo="Produto e categoria" chip={<ChipSecao faltam={faltam} />} aberto={aberto} onAlternar={onAlternar}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                    <SeloOrigem produto={produto} />
-                    <span className="text-[13px] text-white/55">SKU base <span className="font-mono text-white/80" data-sku>{produto.sku}</span></span>
-                </div>
-                <div role="radiogroup" aria-label="Condição" className="inline-flex rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-1" data-condicao>
-                    {CONDICOES.map(([valor, rotulo]) => (
-                        <button key={valor} type="button" role="radio" aria-checked={condicao === valor} disabled={m.disabled}
-                            onClick={() => m.mudarRasc({ condicao: valor })} data-condicao-opcao={valor}
-                            className={cn('rounded-lg border px-3 py-1 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:opacity-50',
-                                condicao === valor ? 'border-ecf-yellow/40 bg-ecf-yellow/10 font-bold text-ecf-yellow' : 'border-transparent font-normal text-white/55 hover:text-white')}>
-                            {rotulo}
-                        </button>
-                    ))}
-                </div>
-            </div>
+        <PainelDaEtapa id="etapa-produto" titulo="Produto e categoria" chip={<ChipSecao faltam={faltam} />} problemas={problemas} rodape={rodape}
+            apoio="A categoria define a ficha técnica, as variações possíveis e as regras de envio. Escolha a mais específica.">
+            <div className="grid gap-4 lg:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
+                <div className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-4" data-produto>
+                    <p className={ROTULO}>Produto</p>
+                    <p className="mt-1 text-[15px] font-bold leading-snug text-white">{produto.nome}</p>
+                    <p className="mt-1 text-[13px] text-white/55">SKU base <span className="font-mono text-white/80" data-sku>{produto.sku}</span></p>
+                    <div className="mt-3"><SeloOrigem produto={produto} /></div>
 
-            <h1 className="mt-4 font-display text-[24px] font-bold text-white">{produto.nome}</h1>
-
-            <div className="mt-6 rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-4" data-categoria={rascunho.categoria_id ?? ''}>
-                <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Categoria no Mercado Livre</p>
-                        {rascunho.categoria_id ? (
-                            <p className="mt-1 text-[13px] text-white/55">
-                                {caminho.slice(0, -1).map((c) => <span key={c}>{c} <span className="text-white/30">›</span> </span>)}
-                                <strong className="font-bold text-white">{caminho[caminho.length - 1] ?? rascunho.categoria_id}</strong>
-                                <span className="ml-2 font-mono text-[11px] text-white/40">{rascunho.categoria_id}</span>
-                            </p>
-                        ) : <p className="mt-1 text-[13px] text-white/55">Descreva o produto para achar a categoria no Mercado Livre.</p>}
+                    <p className={cn(ROTULO, 'mt-5')}>Condição</p>
+                    <div role="radiogroup" aria-label="Condição" className="mt-1 inline-flex rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-1" data-condicao>
+                        {CONDICOES.map(([valor, rotulo]) => (
+                            <button key={valor} type="button" role="radio" aria-checked={condicao === valor} disabled={m.disabled}
+                                onClick={() => m.mudarRasc({ condicao: valor })} data-condicao-opcao={valor}
+                                className={cn('rounded-lg border px-3 py-1 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:opacity-50',
+                                    condicao === valor ? 'border-ecf-yellow/40 bg-ecf-yellow/10 font-bold text-ecf-yellow' : 'border-transparent font-normal text-white/55 hover:text-white')}>
+                                {rotulo}
+                            </button>
+                        ))}
                     </div>
-                    {rascunho.categoria_id && ! trocando && ! m.disabled && (
-                        <button type="button" onClick={() => setTrocando(true)} data-acao="trocar-categoria"
-                            className="shrink-0 text-[13px] text-white/55 underline underline-offset-4 hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                            Alterar categoria
-                        </button>
+                </div>
+
+                <div className="rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-4" data-categoria={rascunho.categoria_id ?? ''}>
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <p className={ROTULO}>Categoria no Mercado Livre</p>
+                            {rascunho.categoria_id ? (
+                                <p className="mt-1 text-[13px] leading-relaxed text-white/55">
+                                    {caminho.slice(0, -1).map((c) => <span key={c}>{c} <span className="text-white/30">›</span> </span>)}
+                                    <strong className="font-bold text-white">{caminho[caminho.length - 1] ?? rascunho.categoria_id}</strong>
+                                    <span className="ml-2 font-mono text-[11px] text-white/40">{rascunho.categoria_id}</span>
+                                </p>
+                            ) : <p className="mt-1 text-[13px] text-white/55">Descreva o produto para achar a categoria no Mercado Livre.</p>}
+                        </div>
+                        {rascunho.categoria_id && ! trocando && ! m.disabled && (
+                            <button type="button" onClick={() => setTrocando(true)} data-acao="trocar-categoria"
+                                className="shrink-0 text-[13px] text-white/55 underline underline-offset-4 hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
+                                Alterar categoria
+                            </button>
+                        )}
+                    </div>
+                    {m.estado.erro_schema && <p className="mt-2 text-[13px] text-red-300">{m.estado.erro_schema}</p>}
+                    {trocando && ! m.disabled && (
+                        <BuscaCategoria m={m} textoInicial={textoInicial} atual={rascunho.categoria_id} onFechar={() => setTrocando(false)} />
+                    )}
+                    {m.aviso && (
+                        <p className="mt-4 flex items-start gap-2 rounded-[10px] border border-amber-400/25 bg-amber-400/[0.06] p-3 text-[13px] text-amber-200" data-aviso-categoria>
+                            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {m.aviso}
+                        </p>
                     )}
                 </div>
-                {m.estado.erro_schema && <p className="mt-2 text-[13px] text-red-300">{m.estado.erro_schema}</p>}
-                {trocando && ! m.disabled && (
-                    <BuscaCategoria m={m} textoInicial={textoInicial} atual={rascunho.categoria_id} onFechar={() => setTrocando(false)} />
-                )}
             </div>
-
-            {m.aviso && (
-                <p className="mt-4 flex items-start gap-2 rounded-[10px] border border-amber-400/25 bg-amber-400/[0.06] p-3 text-[13px] text-amber-200" data-aviso-categoria>
-                    <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {m.aviso}
-                </p>
-            )}
-        </CardMesa>
+        </PainelDaEtapa>
     );
 }
