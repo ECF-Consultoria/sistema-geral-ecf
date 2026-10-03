@@ -1720,11 +1720,19 @@ class MlbAnuncioController extends Controller
      * `..._add_regeneracoes_...` e `MlAnuncioCriativoKit::podeRegenerarAsset()`.
      *
      * Ordem: (1) chave ligada, (2) criativo existe, (3) double-check de
-     * empresa, (4) permissão explícita (OPS-04), (5) recusas em pt-BR —
-     * criativo sem kit, `aprovado` (já foi ao ML), `pendente`/`rodando` (já
-     * está acontecendo) ou teto do asset/kit atingido —, (6) transação que
-     * reabre o slot e incrementa as duas contagens, (7) despacho de UM job
-     * (nunca onda — é um só), (8) recálculo do status do kit, (9) 202.
+     * empresa, (4) permissão explícita (OPS-04), (4b) validação do `motivo`
+     * (Quick 261003-l8o, T-L8O-03 — único campo aceito do corpo), (5)
+     * recusas em pt-BR — criativo sem kit, `aprovado` (já foi ao ML),
+     * `pendente`/`rodando` (já está acontecendo) ou teto do asset/kit
+     * atingido —, (6) transação que acrescenta entrada em
+     * `regenerar_motivos`, reabre o slot e incrementa as duas contagens,
+     * (7) despacho de UM job (nunca onda — é um só), (8) recálculo do status
+     * do kit, (9) 202.
+     *
+     * `motivo` (opcional, até 300 caracteres): o que o operador escreveu em
+     * "o que não ficou bom?" — vira AJUSTE no prompt da regeneração
+     * (`CreativePromptBuilder::linhasVariacao()`), sanitizado e NUNCA tratado
+     * como fato sobre o produto (TRUTH-02/03 continuam intocados).
      */
     public function criativoRegenerar(Request $request, string $token): JsonResponse
     {
@@ -1738,6 +1746,15 @@ class MlbAnuncioController extends Controller
 
         // OPS-04: conferida DEPOIS do escopo — mesma disciplina dos demais endpoints do kit.
         $this->creativePermissao->exigir($request->user(), 'regenerar');
+
+        // Quick 261003-l8o (correção 2, T-L8O-01/03): único campo aceito do
+        // cliente — opcional, "o que não ficou bom?" do operador. Validado
+        // ANTES das recusas de estado, DEPOIS da permissão (mesma disciplina
+        // de ordem dos demais checks deste endpoint).
+        $request->validate(
+            ['motivo' => ['nullable', 'string', 'max:300']],
+            ['motivo.max' => 'O texto do que não ficou bom deve ter no máximo 300 caracteres.'],
+        );
 
         $kit = $criativo->kit;
 
@@ -1769,11 +1786,25 @@ class MlbAnuncioController extends Controller
             ], 422);
         }
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($criativo, $kit) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($criativo, $kit, $request) {
+            // Quick 261003-l8o (T-L8O-05): cada clique ACRESCENTA uma
+            // entrada (nunca sobrescreve) — é isso que impede o texto de uma
+            // regeneração anterior de vazar para a próxima e o que torna a
+            // métrica de motivos do §19 (OPS-02) exata. `texto` fica `null`
+            // quando o operador não escreveu nada.
+            $texto   = trim((string) $request->input('motivo', ''));
+            $motivos = $criativo->regenerar_motivos ?? [];
+            $motivos[] = [
+                'em'      => now()->toDateTimeString(),
+                'user_id' => $request->user()->id,
+                'texto'   => $texto !== '' ? $texto : null,
+            ];
+
             $criativo->update([
-                'status'        => MlAnuncioCriativo::STATUS_PENDENTE,
-                'etapa'         => null,
-                'erro_mensagem' => null,
+                'status'             => MlAnuncioCriativo::STATUS_PENDENTE,
+                'etapa'              => null,
+                'erro_mensagem'      => null,
+                'regenerar_motivos'  => $motivos,
             ]);
             $criativo->increment('regeneracoes');
             $kit->increment('regeneracoes');

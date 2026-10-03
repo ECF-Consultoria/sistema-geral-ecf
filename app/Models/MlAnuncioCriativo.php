@@ -43,6 +43,7 @@ class MlAnuncioCriativo extends Model
         'slot', 'status', 'etapa', 'erro_mensagem', 'render_mode',
         'provider', 'modelo', 'tentativas', 'regeneracoes', 'latencia_ms',
         'contexto', 'truth', 'prompt',
+        'regenerar_motivos',
         'referencias', 'referencias_apagadas_em',
         'imagem_path', 'imagem_mime', 'imagem_bytes',
         'aprovado_por', 'aprovado_em',
@@ -54,6 +55,10 @@ class MlAnuncioCriativo extends Model
         'contexto'                 => 'array',
         'truth'                    => 'array',
         'slot_plano'               => 'array',
+        // Quick 261003-l8o — histórico de auditoria das regenerações (quem
+        // pediu, quando, texto opcional) — NUNCA entra na whitelist de
+        // `criativoKitStatus()` (T-L8O-02).
+        'regenerar_motivos'        => 'array',
         'referencias'              => 'array',
         'referencias_apagadas_em'  => 'datetime',
         'aprovado_em'              => 'datetime',

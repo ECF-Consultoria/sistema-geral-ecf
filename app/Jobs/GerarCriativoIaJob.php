@@ -177,9 +177,21 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         // ─── Etapa 3: prompt ───
         // slot_plano preenchido (slot de um kit, Fase 161) usa paraSlot();
         // nulo mantém paraSlotHero() (fluxo sem kit, Fase 160, ainda em produção).
+        //
+        // Quick 261003-l8o (correção 2): $regeneracao vem do próprio
+        // criativo (contagem de CLIQUES do operador, já incrementada pelo
+        // controller ANTES de despachar este job) e $ajusteOperador é o
+        // texto do ÚLTIMO item de `regenerar_motivos` — nunca o de uma
+        // regeneração anterior (cada clique acrescenta uma entrada nova,
+        // mesmo sem texto). `paraSlotHero()` não recebe nenhum dos dois:
+        // o fluxo de 1 imagem (Fase 160) não regenera.
         $criativo->update(['etapa' => 'prompt']);
+        $regeneracao      = (int) $criativo->regeneracoes;
+        $motivos          = $criativo->regenerar_motivos ?? [];
+        $ultimoMotivo     = $motivos !== [] ? $motivos[array_key_last($motivos)] : null;
+        $ajusteOperador   = $ultimoMotivo['texto'] ?? null;
         $prompt = $criativo->slot_plano !== null
-            ? $promptBuilder->paraSlot($truth, $criativo->slot_plano)
+            ? $promptBuilder->paraSlot($truth, $criativo->slot_plano, $regeneracao, $ajusteOperador)
             : $promptBuilder->paraSlotHero($contexto, $truth);
         $criativo->update(['prompt' => $prompt]);
 
@@ -222,7 +234,9 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         }
 
         // GEN-05: sem chave, sem prompt, sem base64, sem payload — só o que
-        // ajuda a medir custo e desempenho.
+        // ajuda a medir custo e desempenho. Quick 261003-l8o: `regeneracao`
+        // (int) e `ajuste_chars` (tamanho em caracteres, nunca o texto) —
+        // NUNCA o texto do operador, nunca o prompt.
         Log::info("[Creative] Criativo {$criativo->id} gerado", [
             'slot'             => $criativo->slot,
             'kit_id'           => $criativo->kit_id,
@@ -231,6 +245,8 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
             'tamanho_bytes'    => $resultado->tamanhoBytes(),
             'qtd_referencias'  => count($contexto->imagensReferencia),
             'tentativa'        => $criativo->tentativas,
+            'regeneracao'      => $regeneracao,
+            'ajuste_chars'     => $ajusteOperador !== null ? mb_strlen($ajusteOperador) : 0,
             'duracao_total_ms' => (int) round((microtime(true) - $t0) * 1000),
         ]);
     }
