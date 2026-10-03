@@ -29,7 +29,7 @@ use Tests\TestCase;
 use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
- * Fase 160 / 160-09 (D14): o "Anunciar por IA" do Publicador grava no rascunho
+ * Fase 164 / 164-09 (D14): o "Anunciar por IA" do Publicador grava no rascunho
  * `pub_*` do produto, pelo motor. Nenhuma IA nem ML reais: o resultado da
  * geração é montado à mão e os schemas vêm gravados em `ml_categoria_schemas`.
  */

@@ -11,7 +11,7 @@ use App\Support\Publicador\RegraViolada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Fase 160-01: a âncora de produto do Publicador (D15) e a oferta solta (D27). */
+/** Fase 164-01: a âncora de produto do Publicador (D15) e a oferta solta (D27). */
 class PubProdutoTest extends TestCase
 {
     use RefreshDatabase;

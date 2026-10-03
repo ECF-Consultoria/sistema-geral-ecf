@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 /**
- * Tela A do Publicador (Fase 160): entrada em /mlb/anuncios, por programa
+ * Tela A do Publicador (Fase 164): entrada em /mlb/anuncios, por programa
  * (Polos · Incubadora · Gestão). Só admins — o grupo de rotas aplica role:admin (D17).
  */
 class MlbPublicadorEntradaController extends Controller

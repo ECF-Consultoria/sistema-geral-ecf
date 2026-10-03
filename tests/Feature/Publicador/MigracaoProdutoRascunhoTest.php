@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * Fase 160-01: backfill de pub_rascunhos -> pub_produtos (D15/D27). Sem RefreshDatabase: o change()
+ * Fase 164-01: backfill de pub_rascunhos -> pub_produtos (D15/D27). Sem RefreshDatabase: o change()
  * reconstrói a tabela no SQLite e não convive com a transação. Cada teste migra o próprio :memory:
  * (sem trait de rollback: o down() de outras migrations antigas não roda em SQLite).
  */

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gates de fonte da "mesa de anúncio" do Publicador interno (Fase 160,
+// Gates de fonte da "mesa de anúncio" do Publicador interno (Fase 164,
 // UI-SPEC §4/§5/§8.4). Lê a fonte SEM comentários (ver _fonte.js).
 //
-// A lista abaixo é o ponto de extensão: o plano 160-05 acrescenta os cards
+// A lista abaixo é o ponto de extensão: o plano 164-05 acrescenta os cards
 // dele aqui, e os gates de vocabulário passam a valer para eles também.
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
- * O Publicador interno (Fase 160, D12/D17): o editor da mesa da equipe, em JSON,
+ * O Publicador interno (Fase 164, D12/D17): o editor da mesa da equipe, em JSON,
  * por PRODUTO (`pub_produtos`). Só admin (grupo `role:admin` de `routes/mlb_anuncios.php`).
  * Cada resposta devolve o ESTADO inteiro do rascunho mais `publicacao_liberada` —
  * a tela nunca adivinha o que o servidor gravou.

@@ -11,7 +11,7 @@ use Tests\Feature\Publicador\Concerns\CenarioCadeira;
 use Tests\TestCase;
 
 /**
- * O estado do editor por PRODUTO (160-02): chave `produto` ao vivo, produto sem
+ * O estado do editor por PRODUTO (164-02): chave `produto` ao vivo, produto sem
  * oferta sem efetivos, e o resumo de bloqueios gravado sem mexer em revisão.
  */
 class EstadoDoProdutoTest extends TestCase

@@ -22,7 +22,7 @@ const corpo = (fonte, nome) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// Editor do Publicador (160-12): derivados puros + gates de fonte do hook.
+// Editor do Publicador (164-12): derivados puros + gates de fonte do hook.
 // ═══════════════════════════════════════════════════════════════════════
 
 test('criarRota monta a rota interna com o parâmetro do produto', () => {
@@ -490,7 +490,7 @@ test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Casca do editor (160-13): barra, "Anunciar por IA" e faixa de produtos.
+// Casca do editor (164-13): barra, "Anunciar por IA" e faixa de produtos.
 // ═══════════════════════════════════════════════════════════════════════
 
 const CASCA =[`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/FaixaDeProdutos.jsx`];
@@ -563,7 +563,7 @@ test('FaixaDeProdutos — aria-current, setas, "Ver todos", "+ Produto" e selo c
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Lateral e página do editor (160-13).
+// Lateral e página do editor (164-13).
 // ═══════════════════════════════════════════════════════════════════════
 
 const PAGINA = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';

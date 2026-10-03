@@ -134,7 +134,7 @@ O que funcionou (01/10, F1.11):
   Uma closure que lança outra exceção não fica em `Http::recorded()` — conte as
   chamadas por um contador próprio.
 
-## 9. Publicador interno (Fase 160, 02/10/2026)
+## 9. Publicador interno (Fase 164, 02/10/2026)
 
 O que não se deduz do código, na ordem em que mais custou descobrir.
 
@@ -202,7 +202,7 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
 - D20: o passo em PRODUÇÃO é do usuário — `php artisan publicador:empresa-teste`
   (simulação) e depois `--confirmar`. Só foi construído e testado.
 
-**O Anunciar saiu do Portal (D18, 160-15)**
+**O Anunciar saiu do Portal (D18, 164-15)**
 - As rotas `/estrutura/anunciar*`, `…/publicacao*` e `…/publicador*` respondem 404
   para todos; saíram da allowlist de `RestringeDominioDoPortal`. O Mapeamento
   Estrutural tem 5 submódulos. Quem publica é a equipe ECF, no admin.

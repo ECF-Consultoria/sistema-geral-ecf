@@ -25,7 +25,7 @@ use Tests\Feature\Publicador\Concerns\CenarioCadeira;
 use Tests\TestCase;
 
 /**
- * Segurança do editor interno (T-160-33..39, T-160-76): só admin; autorização por produto
+ * Segurança do editor interno (T-164-33..39, T-164-76): só admin; autorização por produto
  * (404 para inexistente, empresa arquivada ou sem dono); foto/item de outro rascunho é 404
  * (IDOR); a trava D21 (CONTA-LIB) vira 422 sem job; em conta não liberada a conferência é só
  * local e a miniatura da foto guardada vem da rota interna (D26); nenhum token na resposta.

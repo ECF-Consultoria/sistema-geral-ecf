@@ -26,12 +26,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('mlb/anuncios')
     ->name('mlb.anuncios.')
     ->group(function () {
-        // Fase 160: a entrada do módulo é o Publicador (D12/D13) — empresas por programa
+        // Fase 164: a entrada do módulo é o Publicador (D12/D13) — empresas por programa
         // (?programa=polos|incubadora|gestao), só admins (D17).
         Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
 
-        // ─── Fase 160: Publicador interno — tela B (produtos da empresa) e casca do editor ───
-        // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-160-23).
+        // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
+        // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
         Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.produtos');
         Route::post('publicador/empresas/{conta}/sincronizar', [MlbPublicadorEntradaController::class, 'sincronizar'])
@@ -43,7 +43,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('publicador/produtos/{produto}/editor', [MlbPublicadorEntradaController::class, 'editor'])
             ->whereNumber('produto')->name('publicador.editor');
 
-        // ─── Fase 160 (plano 08): API JSON do editor interno, por produto (D12/D17) ───
+        // ─── Fase 164 (plano 08): API JSON do editor interno, por produto (D12/D17) ───
         // Espelha o piloto do Portal (routes/web.php), com os mesmos throttles. Nomes: mlb.anuncios.publicador.<sufixo>.
         Route::get('publicador/categorias', [MlbPublicadorController::class, 'categorias'])
             ->middleware('throttle:60,1,publicador.categorias')->name('publicador.categorias');

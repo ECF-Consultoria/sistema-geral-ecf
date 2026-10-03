@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 160 Plano 160-01 (D15) — âncora de produto do Publicador interno.
+ * Fase 164 Plano 164-01 (D15) — âncora de produto do Publicador interno.
  *
  * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2), escrita antes da migration existir.
  * Só tabela NOVA; o ALTER de `pub_rascunhos` mora na migration seguinte

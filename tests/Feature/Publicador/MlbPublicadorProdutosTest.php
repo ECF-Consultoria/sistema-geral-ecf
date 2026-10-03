@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/** Fase 160 / 160-06: tela B (produtos da empresa), cadastro manual e casca do editor. */
+/** Fase 164 / 164-06: tela B (produtos da empresa), cadastro manual e casca do editor. */
 class MlbPublicadorProdutosTest extends TestCase
 {
     use RefreshDatabase;

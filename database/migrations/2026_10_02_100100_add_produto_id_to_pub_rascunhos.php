@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 160 Plano 160-01 (D15, D27) — `pub_rascunhos` passa a ser de um PRODUTO
+ * Fase 164 Plano 164-01 (D15, D27) — `pub_rascunhos` passa a ser de um PRODUTO
  * (`pub_produtos`), com backfill dos rascunhos que já existem em produção.
  *
  * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2). Tabela com dado real (#459):
@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  *   `pubr_produto_fk` -> pub_produtos com cascade. SEM `nullOnDelete`: a coluna é
  *   NOT NULL e SET NULL em coluna NOT NULL dá o erro 1830 do MariaDB.
  * - `oferta_id` passa a aceitar NULL e vira coluna LEGADA DORMENTE (D27, opção a):
- *   nada mais a grava depois do 160-02; o vínculo com a oferta mora em
+ *   nada mais a grava depois do 164-02; o vínculo com a oferta mora em
  *   `pub_produtos.oferta_id` (SET NULL ao apagar a oferta). `pubr_oferta_fk` e
  *   `pubr_oferta_uq` NÃO se dropam nem se recriam (DDL em FK de tabela com dado é
  *   a família do erro 1553); com a coluna NULL a cascata não leva rascunho, e NULL

@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * WR-B06: as migrations da fase 160 tratam o driver `mariadb` (Laravel 11+) como o
+ * WR-B06: as migrations da fase 164 tratam o driver `mariadb` (Laravel 11+) como o
  * `mysql`. Com `DB_CONNECTION=mariadb`, a detecção por `=== 'mysql'` mandava o MariaDB
  * para o `PRAGMA` do SQLite no meio do `up()` — depois do NOT NULL, com a migration
  * presa em `Pending`. O SQLite dos testes não roda o ramo do MariaDB; por isso a prova

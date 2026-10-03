@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Fase 160, CR-B02 do code review — as âncoras de `pub_produtos` deixam de ser
+ * Fase 164, CR-B02 do code review — as âncoras de `pub_produtos` deixam de ser
  * CASCADE e passam a SET NULL. Decisão do usuário (02/10/2026): excluir a
  * `MlbEmpresa` ou a `Company` NÃO apaga o histórico de publicação.
  *

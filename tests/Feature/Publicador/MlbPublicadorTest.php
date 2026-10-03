@@ -27,7 +27,7 @@ use Tests\TestCase;
 use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
- * O editor INTERNO do Publicador pelo HTTP (Fase 160, plano 08): o mesmo contrato do piloto do
+ * O editor INTERNO do Publicador pelo HTTP (Fase 164, plano 08): o mesmo contrato do piloto do
  * Portal, agora por produto e só para admin — abrir, cada parte que a pessoa edita, fotos,
  * conferir e publicar, sobre o gabarito da planilha e com o ML simulado pelas respostas reais
  * da sondagem. A segurança (403/404/IDOR/trava) está em MlbPublicadorAcessoTest.

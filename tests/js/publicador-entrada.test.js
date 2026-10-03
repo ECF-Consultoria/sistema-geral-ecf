@@ -4,8 +4,8 @@ import { lerSemComentarios } from './_fonte.js';
 import { haQuanto } from '../../resources/js/Components/Mlb/Publicador/tempo.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gates de fonte da entrada do Publicador (Fase 160, plano 10) e dos
-// componentes compartilhados com as telas B e C (160-11 e 160-13 acrescentam
+// Gates de fonte da entrada do Publicador (Fase 164, plano 10) e dos
+// componentes compartilhados com as telas B e C (164-11 e 164-13 acrescentam
 // os seus arquivos à lista abaixo). Lê a fonte SEM comentários.
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** Fase 160 / 160-06: "Sincronizar do Portal" idempotente e que nunca apaga (critério 2 do ROADMAP). */
+/** Fase 164 / 164-06: "Sincronizar do Portal" idempotente e que nunca apaga (critério 2 do ROADMAP). */
 class SincronizaPortalTest extends TestCase
 {
     use RefreshDatabase;

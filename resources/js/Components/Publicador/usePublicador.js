@@ -28,7 +28,7 @@ import {
 //   indicador deixa de dizer "Salvo" e, com algo por salvar, sair da página pede
 //   confirmação (WR-F02).
 // - Conferir e publicar vão para a fila do servidor: o hook acompanha até terminar.
-// A casca (160-13) só compõe; o contrato `m` abaixo é o que os cards da mesa leem.
+// A casca (164-13) só compõe; o contrato `m` abaixo é o que os cards da mesa leem.
 
 const ESPERA_SALVAR = 900;
 const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim e perdê-las?';

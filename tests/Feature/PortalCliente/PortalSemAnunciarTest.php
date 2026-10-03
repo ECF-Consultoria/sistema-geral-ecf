@@ -12,7 +12,7 @@ use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 
 /**
- * Critério 7 do ROADMAP da Fase 160 (D18): o Anunciar saiu do Portal do
+ * Critério 7 do ROADMAP da Fase 164 (D18): o Anunciar saiu do Portal do
  * Cliente, para todos os clientes. A publicação é feita pela equipe ECF no
  * Publicador interno (`/mlb/anuncios/publicador`).
  *

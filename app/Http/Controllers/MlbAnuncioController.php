@@ -2289,7 +2289,7 @@ class MlbAnuncioController extends Controller
     {
         $p = PubProduto::findOrFail((int) $dados['produto_id']);
 
-        // T-160-40: empresa arquivada ou sem dono não existe para o Publicador.
+        // T-164-40: empresa arquivada ou sem dono não existe para o Publicador.
         abort_if(app(ProgramasPublicadorService::class)->empresaDoProduto($p) === null, 404);
 
         $r = app(EditorRascunhoService::class)->abrir($p);

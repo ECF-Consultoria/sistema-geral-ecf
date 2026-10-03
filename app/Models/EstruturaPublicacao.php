@@ -67,7 +67,7 @@ class EstruturaPublicacao extends Model
     /**
      * O MLB de um tipo publicado POR AQUI. O que ainda falta publicar não sai
      * daqui: sai da régua (o Anunciar do Portal, que fazia essa conta, foi
-     * removido na Fase 160) — um Clássico importado conta, e este model não o conhece.
+     * removido na Fase 164) — um Clássico importado conta, e este model não o conhece.
      */
     public function mlItem(string $tipo): ?string
     {
@@ -77,7 +77,7 @@ class EstruturaPublicacao extends Model
     /**
      * A assinatura dos dados efetivos. Sobre a forma canônica que
      * o antigo `EstruturaPublicacaoService::normalizar()` produzia (mesma ordem
-     * de chaves sempre; o service saiu na Fase 160; o model fica, é a tabela
+     * de chaves sempre; o service saiu na Fase 164; o model fica, é a tabela
      * legada), senão o mesmo formulário daria hashes diferentes.
      */
     public static function hashDe(array $dados): string

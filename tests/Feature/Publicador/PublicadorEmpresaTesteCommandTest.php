@@ -7,7 +7,7 @@ use App\Models\MlbEmpresa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Fase 160 / 160-06: ferramenta do D20 (só no SQLite do teste; nunca executada contra banco real na fase). */
+/** Fase 164 / 164-06: ferramenta do D20 (só no SQLite do teste; nunca executada contra banco real na fase). */
 class PublicadorEmpresaTesteCommandTest extends TestCase
 {
     use RefreshDatabase;

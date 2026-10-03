@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
  * IMPORTANTE: troca de ROTA (router.get), não de estado local — cada modo é
  * uma página Inertia separada.
  *
- * Fase 160 (D14): "Individual" leva ao Publicador da empresa. O assistente
+ * Fase 164 (D14): "Individual" leva ao Publicador da empresa. O assistente
  * antigo (mlb.anuncios.wizard) saiu da entrada principal (D22) e só abre
  * rascunhos antigos e "Anunciar semelhante".
  * D23: sem Company (MlbEmpresa solta), as abas que dependem dela ficam

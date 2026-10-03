@@ -9,7 +9,7 @@ use App\Support\Publicador\RegraViolada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Fase 160 / 160-03: programa derivado da MlbEmpresa (D13) e contas liberadas por âncora (D21). */
+/** Fase 164 / 164-03: programa derivado da MlbEmpresa (D13) e contas liberadas por âncora (D21). */
 class ProgramaPublicadorTest extends TestCase
 {
     use RefreshDatabase;

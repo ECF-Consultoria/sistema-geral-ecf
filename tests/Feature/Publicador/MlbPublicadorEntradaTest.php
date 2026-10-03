@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-/** Fase 160 / 160-03: tela A — empresas do programa com conta do ML (critério 1 do ROADMAP). */
+/** Fase 164 / 164-03: tela A — empresas do programa com conta do ML (critério 1 do ROADMAP). */
 class MlbPublicadorEntradaTest extends TestCase
 {
     use RefreshDatabase;

@@ -23,7 +23,7 @@ use Tests\Feature\Publicador\Concerns\CenarioCadeira;
 use Tests\TestCase;
 
 /**
- * Critério 4 do ROADMAP da fase 160: uma `MlbEmpresa` (Incubadora) SEM Company
+ * Critério 4 do ROADMAP da fase 164: uma `MlbEmpresa` (Incubadora) SEM Company
  * abre, confere e publica com o token de `ml_tokens.mlb_empresa_id`, e o MLB
  * criado não vai para a aba Anúncios (não há oferta — D16). O ML é simulado.
  *
