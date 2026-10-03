@@ -5,8 +5,12 @@ namespace Tests\Feature\Publicador;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\PubEixoValor;
+use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
+use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Variacao\ChaveCanonica;
@@ -16,6 +20,7 @@ use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -40,7 +45,9 @@ class RascunhoRepositoryTest extends TestCase
         $empresa = Company::factory()->create();
         $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira Executiva']);
 
-        return $this->repo->criar($oferta, [new Alvo('gold_special', 'Cadeira Executiva ECF'), new Alvo('gold_pro', null)]);
+        $produto = PubProduto::create(['company_id' => $empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira Executiva', 'origem' => PubProduto::ORIGEM_PORTAL]);
+
+        return $this->repo->criar($produto, [new Alvo('gold_special', 'Cadeira Executiva ECF'), new Alvo('gold_pro', null)]);
     }
 
     private static function cor(array $nomes): Eixo
@@ -159,14 +166,44 @@ class RascunhoRepositoryTest extends TestCase
         $r->variantes()->create(['combinacao_chave' => ChaveCanonica::UNICA, 'combinacao_hash' => ChaveCanonica::hash(ChaveCanonica::UNICA)]);
     }
 
-    public function test_excluir_a_oferta_leva_o_rascunho(): void
+    public function test_excluir_a_oferta_solta_o_produto_e_guarda_rascunho_e_publicacoes(): void
     {
         $r = $this->rascunho();
+        $variantes = PubVariante::count();
+        $pub = PubPublicacao::create(['rascunho_id' => $r->id, 'revisao' => $r->revisao, 'modelo_publicacao' => 'items', 'status' => 'COMPLETED', 'chave_idempotencia' => (string) \Illuminate\Support\Str::uuid()]);
+        $item = PubPublicacaoItem::create(['publicacao_id' => $pub->id, 'indice' => 0, 'listing_type_id' => 'gold_special', 'variante_chave' => ChaveCanonica::UNICA, 'status' => PubPublicacaoItem::CREATED, 'payload' => ['title' => 'Cadeira Executiva ECF'], 'resposta' => ['id' => 'MLB9000000001']]);
 
         $r->oferta->delete();
 
-        $this->assertSame(0, PubRascunho::count());
-        $this->assertSame(0, PubVariante::count());
+        $produto = PubProduto::sole();
+        $this->assertNull($produto->oferta_id);
+        $this->assertSame(1, PubRascunho::count());
+        $this->assertSame($variantes, PubVariante::count());
+        $this->assertSame(1, PubPublicacao::count());
+        $this->assertSame(['title' => 'Cadeira Executiva ECF'], $item->fresh()->payload);
+        $this->assertSame(['id' => 'MLB9000000001'], $item->fresh()->resposta);
+    }
+
+    public function test_criar_com_produto_com_oferta_nao_grava_oferta_id_no_rascunho(): void
+    {
+        $r = $this->rascunho();
+
+        $this->assertNull(DB::table('pub_rascunhos')->where('id', $r->id)->value('oferta_id'));
+        $this->assertSame($r->produto->oferta_id, $r->oferta->id);
+    }
+
+    public function test_produto_sem_oferta_abre_com_dois_alvos_ativos_e_o_sku_do_produto(): void
+    {
+        $empresa = Company::factory()->create();
+        $produto = PubProduto::create(['company_id' => $empresa->id, 'sku' => 'SOLTO-1', 'nome' => 'Solto', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+
+        $r = app(EditorRascunhoService::class)->abrir($produto);
+
+        $this->assertNull(DB::table('pub_rascunhos')->where('id', $r->id)->value('oferta_id'));
+        $this->assertSame(['gold_special' => true, 'gold_pro' => true], $r->alvos->pluck('ativo', 'listing_type_id')->all());
+        $s = $this->repo->snapshot($r);
+        $this->assertSame('SOLTO-1', $s->variantes[0]->dados['atributos']['SELLER_SKU']['value_name']);
+        $this->assertSame($r->id, app(EditorRascunhoService::class)->abrir($produto)->id);
     }
 
     public function test_editar_sobe_a_revisao_e_derruba_a_validacao(): void
@@ -178,5 +215,31 @@ class RascunhoRepositoryTest extends TestCase
 
         $this->assertSame(2, $r->fresh()->revisao);
         $this->assertSame(PubRascunho::DRAFT, $r->fresh()->status);
+    }
+
+    /** WR-B02: as gravações parciais (as da IA) só tocam o que veio; o resto da lista fica. */
+    public function test_mesclar_atributos_e_gravar_titulos_so_tocam_o_que_veio(): void
+    {
+        $r = $this->rascunho();
+        $this->repo->gravarAlvos($r, [new Alvo('gold_special', 'Cadeira Executiva ECF', true), new Alvo('gold_pro', null, false)]);
+        $this->repo->gravarAtributos($r, ['BRAND' => ['value_name' => 'ECF'], 'MODEL' => ['value_name' => 'Executiva']]);
+        $posicoes = $r->alvos()->pluck('posicao', 'listing_type_id')->all();
+
+        $this->repo->mesclarAtributos($r, ['MODEL' => ['value_name' => 'Giratória', 'origem' => 'ia'], 'LINE' => ['value_name' => 'Linha', 'origem' => 'ia']]);
+        $this->repo->gravarTitulos($r, ['gold_pro' => '  Título Premium  ', 'gold_premium' => 'tipo que não existe']);
+
+        $s = $this->repo->snapshot($r->fresh());
+        $this->assertSame('ECF', $s->atributos['BRAND']['value_name'], 'o que não veio fica');
+        $this->assertSame('user', $s->atributos['BRAND']['origem']);
+        $this->assertSame('Giratória', $s->atributos['MODEL']['value_name']);
+        $this->assertSame('ia', $s->atributos['MODEL']['origem']);
+        $this->assertSame('Linha', $s->atributos['LINE']['value_name']);
+
+        $alvos = collect($s->alvos)->keyBy('listingTypeId');
+        $this->assertCount(2, $alvos, 'não cria alvo de tipo que não existe');
+        $this->assertSame('Cadeira Executiva ECF', $alvos['gold_special']->titulo);
+        $this->assertSame('Título Premium', $alvos['gold_pro']->titulo);
+        $this->assertFalse($alvos['gold_pro']->ativo, 'o título não liga o tipo desligado');
+        $this->assertSame($posicoes, $r->alvos()->pluck('posicao', 'listing_type_id')->all(), 'a ordem fica');
     }
 }

@@ -21,6 +21,36 @@ manualmente quando necessário.
 - **Deploy**: Não executar deploy sem autorização explícita do usuário
 <!-- GSD:project-end -->
 
+## Aviso de coordenação — Publicador (Fase 164) × Creative Engine (v24.0) — 03/10/2026
+<!-- AVISO-COORDENACAO-164 — bloco TEMPORÁRIO, escrito pelo ECF Dev. Apague-o quando o ECF Dev e quem mantém
+o Creative Engine combinarem a Fase 165. O hook `.claude/hooks/aviso-coordenacao.mjs` (em `.claude/settings.json`)
+para de avisar sozinho quando este marcador some; na mesma limpeza, dá para tirar o hook e o arquivo dele. -->
+
+
+**Para o Claude Code de quem mantém o Creative Engine (v24.0, Fases 160–163):** antes de (a) qualquer deploy ou
+push para a `main`, ou (b) mexer em `app/Services/Creative/`, nos endpoints `criativo*` do `MlbAnuncioController`,
+em `AnunciarML.jsx`, `PainelCriativosIa.jsx` ou `KitCriativosGrade.jsx`, mostre este aviso ao usuário e pergunte se
+ele já combinou com o ECF Dev. Não decida pelo usuário.
+
+- **Desde 03/10 `/mlb/anuncios` é o Publicador interno** (Fase 164, era 160 — renumerada por colisão com a v24.0):
+  programa → empresa → produtos → editor. A aba "Individual" abre o Publicador.
+- **O assistente antigo (`AnunciarML`) e o painel "Criativos por IA" continuam funcionando**, mas saíram da entrada.
+  Abrem pela URL `/mlb/anuncios/wizard/{company}`, por rascunho antigo, "Anunciar semelhante", Meus Anúncios e pelo
+  link "Gerar criativos no assistente antigo" na tela de produtos (só com `creative_engine_ativo`, para quem tem
+  `podeGerar` e em empresa com Company).
+- A `origin/main` foi integrada até a Fase 161 antes do deploy; os testes `Phase160`/`Phase161` passaram e nada do
+  Creative Engine foi alterado.
+- **Próximo passo do ECF Dev — Fase 165: levar os criativos para o card de Fotos do Publicador, só ACRESCENTANDO:**
+  coluna nova anulável `pub_rascunho_id` em `ml_anuncio_criativos` e `ml_anuncio_criativo_kits`; segundo caminho no
+  `CreativeContextBuilder` lendo o rascunho do Publicador (o do `payload` antigo fica igual); endpoints novos em
+  `mlb.anuncios.publicador.*`. No Publicador a imagem aprovada vira `pub_imagens` e só sobe ao ML na
+  conferência/publicação (trava de conta liberada). Não muda `MlPublicacaoService` nem o gate do PUB-03.
+- **Pergunta em aberto:** a Fase 162 vai mexer em `CreativeContextBuilder`, `ProductTruthBuilder` ou
+  `CreativePermissao`? Se sim, combinar a ordem com o ECF Dev antes.
+- **Deploy:** o `deploy.sh` só reinicia `ecf-worker:*`. Depois dele, `sudo -u www-data php artisan queue:restart`
+  pega `ecf-worker-high` e `ecf-worker-creative` sem matar job em andamento (o `supervisorctl restart` mataria uma
+  geração paga no meio).
+
 ## Conhecimento acumulado — LEIA ANTES de mexer em desempenho/bônus e em Polos
 
 **`.planning/learnings/desempenho-bonificacao.md`** — leitura obrigatória antes de tocar em nota de desempenho, ranking, carteira, snapshot mensal ou bonificação.

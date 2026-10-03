@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Payload\MontadorDePlano;
@@ -25,7 +26,8 @@ use App\Support\Publicador\Variacao\Eixo;
  * A conferência com o Mercado Livre — L3 (`08` §4), na ordem da spec:
  *
  *   1. conta lida de novo (token renovado se preciso) e modelo igual ao do
- *      rascunho (V-ACC-01, V-ACC-02);
+ *      rascunho (V-ACC-01, V-ACC-02); conta não liberada ou sem token ativo
+ *      confere só local (D26, WR-B04);
  *   2. schema revalidado (V-CAT-03);
  *   3. fotos pendentes sobem ANTES — assim o validate também confere as fotos;
  *   4. L1/L2 sem bloqueio, senão para aqui (economiza chamadas e dá mensagem melhor);
@@ -49,6 +51,15 @@ class ConferenciaService
     public const BLOQUEADO = 'BLOQUEADO';
     public const ERRO = 'ERRO';
 
+    /**
+     * Conferência só local (D26): a conta não está liberada, então nada foi ao Mercado Livre.
+     * Não libera publicar — `prontidao()` e `PublicacaoService::iniciar()` só aceitam OK/AVISOS.
+     */
+    public const LOCAL = 'LOCAL';
+
+    /** Status que a conferência aprovada pode virar VALIDATED; publicando/publicado nunca (WR-B03). */
+    private const PODE_FICAR_VALIDADO = [PubRascunho::DRAFT, PubRascunho::VALIDATED, PubRascunho::FAILED];
+
     /** Classes de resposta que impedem concluir a conferência (o ML não respondeu de fato). */
     private const SEM_RESPOSTA = [RespostaMl::SERVER, RespostaMl::NETWORK, RespostaMl::RATE_LIMIT, RespostaMl::AUTH];
 
@@ -67,9 +78,16 @@ class ConferenciaService
         $brutas = [];
 
         try {
-            // 1. Conta e modelo.
-            $empresa = $r->oferta->company;
-            $conta = $this->contas->contexto($empresa);
+            // 1. Conta e modelo. D26: conta não liberada não recebe nada nosso — nem validate, nem
+            // foto, nem as leituras da conferência; só a conferência local contra o schema da categoria.
+            // WR-B04: sem token ativo é o mesmo caso (nenhuma chamada); o V-ACC-01 — reconectar — é
+            // exigido ao publicar (`PublicacaoService::iniciar`), não aqui.
+            $ancora = $r->produto->contaOuNula();
+            if ($ancora === null || ! ContasLiberadas::libera($ancora)) {
+                return $this->conferirLocal($r, $revisao, $ancora === null ? 'V-ACC-01' : 'CONTA-LIB');
+            }
+
+            $conta = $this->contas->contexto($ancora);
             $brutas['conta'] = $conta->paraSnapshot();
             if ($r->modelo_publicacao !== null && $r->modelo_publicacao !== $conta->modelo) {
                 return $this->gravar($r, $revisao, self::BLOQUEADO, [Problema::bloqueio('V-ACC-02',
@@ -105,7 +123,7 @@ class ConferenciaService
             $problemas = $prep['l2']->problemas;
 
             // 6. Tipos de anúncio disponíveis.
-            $tipos = $this->cliente->daConta($empresa, 'GET', "/users/{$conta->sellerId}/available_listing_types", ['category_id' => $r->categoria_id]);
+            $tipos = $this->cliente->daConta($ancora, 'GET', "/users/{$conta->sellerId}/available_listing_types", ['category_id' => $r->categoria_id]);
             $brutas['tipos'] = ['status' => $tipos->status, 'corpo' => $tipos->corpo];
             $problemas = [...$problemas, ...self::tiposIndisponiveis($tipos, $prep['snapshot'])];
             if ((new ResultadoValidacao($problemas))->temBloqueio()) {
@@ -119,7 +137,7 @@ class ConferenciaService
             $doMl = [];
             $dicionario = (array) config('publicador_erros', []);
             foreach ($prep['plano']->itens as $item) {
-                $resp = $this->cliente->daConta($empresa, 'POST', '/items/validate', corpo: $item->payload);
+                $resp = $this->cliente->daConta($ancora, 'POST', '/items/validate', corpo: $item->payload);
                 $brutas['itens'][] = ['indice' => $item->indice, 'listing_type' => $item->listingTypeId, 'variante' => $item->varianteChave,
                     'payload' => $item->payload, 'status' => $resp->status, 'corpo' => $resp->corpo];
 
@@ -131,7 +149,9 @@ class ConferenciaService
                     $doMl[] = Problema::bloqueio('V-REM-01', 'O Mercado Livre não permite esta publicação nesta conta.', ['etapa' => 'E0', 'itens' => [$item->indice]], 'L3');
                 }
                 foreach ($resp->causas as $causa) {
-                    $doMl[] = MapeadorErrosMl::problema($causa, $item, $prep['schema'], $dicionario);
+                    if (! MapeadorErrosMl::ehRuido($causa)) {
+                        $doMl[] = MapeadorErrosMl::problema($causa, $item, $prep['schema'], $dicionario);
+                    }
                 }
             }
             $problemas = [...$problemas, ...MapeadorErrosMl::agrupar($doMl)];
@@ -141,9 +161,18 @@ class ConferenciaService
                 : (array_filter($problemas, fn (Problema $p) => $p->severidade === Problema::AVISO) ? self::AVISOS : self::OK);
             $validacao = $this->gravar($r, $revisao, $status, $problemas, $brutas, $prep['plano']);
 
-            // Só marca VALIDATED se ninguém editou enquanto o ML respondia.
-            if ($status !== self::BLOQUEADO && $r->fresh()->revisao === $revisao) {
-                $r->update(['status' => PubRascunho::VALIDATED]);
+            // Só marca VALIDATED se ninguém editou enquanto o ML respondia — e NUNCA rebaixa um
+            // rascunho publicando/publicado/parcialmente publicado (WR-B03: "conferir" de um anúncio
+            // no ar o devolvia a VALIDATED e o abria à IA). Um UPDATE condicional só: sem corrida
+            // com o clique em Publicar nem com a edição.
+            if ($status !== self::BLOQUEADO) {
+                $marcou = PubRascunho::whereKey($r->id)->where('revisao', $revisao)
+                    ->whereIn('status', self::PODE_FICAR_VALIDADO)
+                    ->update(['status' => PubRascunho::VALIDATED, 'updated_at' => now()]);
+                if ($marcou > 0) {
+                    $r->status = PubRascunho::VALIDATED;
+                    $r->syncOriginalAttribute('status');
+                }
             }
 
             return $validacao;
@@ -152,6 +181,47 @@ class ConferenciaService
 
             return $this->gravar($r, $revisao, self::ERRO, [Problema::bloqueio($e->regra, $e->getMessage(), ['etapa' => $etapa], 'L3')], $brutas);
         }
+    }
+
+    /**
+     * D26: a conferência de uma conta NÃO liberada — ou sem token ativo (WR-B04). Só L1/L2 contra
+     * o schema da categoria (leitura pública, token do app) — nenhuma chamada com o token do
+     * cliente. Fica gravada como camada L2 com resultado LOCAL/BLOQUEADO e nunca deixa o rascunho
+     * VALIDATED.
+     *
+     * @param  string  $motivo  `CONTA-LIB` (fora da lista) ou `V-ACC-01` (sem token ativo), em `respostas_ml.motivo`
+     */
+    private function conferirLocal(PubRascunho $r, int $revisao, string $motivo = 'CONTA-LIB'): PubValidacao
+    {
+        $brutas = ['local' => true, 'motivo' => $motivo];
+
+        if (! $r->categoria_id) {
+            return $this->gravar($r, $revisao, self::BLOQUEADO, [Problema::bloqueio('V-CAT-01', 'Escolha a categoria do produto.', ['etapa' => 'E2'], 'L2')], $brutas, null, 'L2');
+        }
+
+        try {
+            $categoria = $this->schemas->revalidar($r->categoria_id, $r->schema_hash)['schema'];
+        } catch (RegraViolada $e) {
+            return $this->gravar($r, $revisao, self::ERRO, [Problema::bloqueio($e->regra, $e->getMessage(), ['etapa' => 'E2'], 'L2')], $brutas, null, 'L2');
+        }
+
+        // A conta que a abertura já leu; sem ela, os mesmos padrões do estado da tela.
+        $lida = (array) ($r->step_state['conta'] ?? []);
+        $conta = new ContextoConta(
+            sellerId: (string) ($lida['sellerId'] ?? ''),
+            modelo: (string) ($r->modelo_publicacao ?? $lida['modelo'] ?? MontadorDePlano::UP),
+            tags: (array) ($lida['tags'] ?? []),
+            modosEnvio: $lida['modosEnvio'] ?? null,
+            depositos: $lida['depositos'] ?? null,
+            lidaEm: (string) ($lida['lidaEm'] ?? now()->toIso8601String()),
+        );
+
+        ['snapshot' => $snapshot] = $this->comEfetivos($r);
+        $schema = $this->classificar($categoria, $snapshot, $this->condicionaisGuardados($r));
+        // Fotos que não sobem de propósito não bloqueiam (V-IMG-08 só vale ao publicar).
+        $l2 = (new ValidadorRascunho())->validar($snapshot, $schema, $this->contextoValidacao($r, $conta, $schema, paraPublicar: false));
+
+        return $this->gravar($r, $revisao, $l2->temBloqueio() ? self::BLOQUEADO : self::LOCAL, $l2->problemas, $brutas, null, 'L2');
     }
 
     /**
@@ -165,6 +235,10 @@ class ConferenciaService
     {
         if (! $r->categoria_id) {
             return [];
+        }
+        // D26: o `/attributes/conditional` vai com o payload e o token do cliente; conta não liberada = nada muda.
+        if (! ContasLiberadas::libera($r->produto->contaOuNula())) {
+            return null;
         }
 
         try {
@@ -209,7 +283,7 @@ class ConferenciaService
     /** @return array{snapshot: RascunhoSnapshot, mlbs: list<string>} */
     private function comEfetivos(PubRascunho $r): array
     {
-        $e = $this->efetivos->daOferta($r->oferta);
+        $e = $this->efetivos->daProduto($r->produto);
 
         return ['snapshot' => $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']), 'mlbs' => $e['mlbs']];
     }
@@ -221,14 +295,14 @@ class ConferenciaService
         return (new ClassificadorAtributos())->classificar($categoria, new ContextoClassificacao($s->condicao, $eixos, $condicionais));
     }
 
-    private function contextoValidacao(PubRascunho $r, ContextoConta $conta, SchemaClassificado $schema): ContextoValidacao
+    private function contextoValidacao(PubRascunho $r, ContextoConta $conta, SchemaClassificado $schema, bool $paraPublicar = true): ContextoValidacao
     {
         return new ContextoValidacao(
             modelo: $conta->modelo,
             tagsDaConta: $conta->tags,
             modosEnvio: $conta->modosEnvio,
             imagens: $this->repo->metadadosDasImagens($r),
-            paraPublicar: true,
+            paraPublicar: $paraPublicar,
             plausibilidade: (array) (config('publicador.plausibilidade')[$schema->dominio] ?? []),
             termosProibidosTitulo: (array) config('publicador.termos_proibidos_titulo', ContextoValidacao::TERMOS_PROIBIDOS_TITULO),
             hashSchemaDoRascunho: $r->schema_hash,
@@ -245,7 +319,7 @@ class ConferenciaService
             return ['ids' => null, 'bruta' => null];
         }
 
-        $resp = $this->cliente->daConta($r->oferta->company, 'POST', "/categories/{$r->categoria_id}/attributes/conditional", corpo: $primeiro->payload);
+        $resp = $this->cliente->daConta($r->conta(), 'POST', "/categories/{$r->categoria_id}/attributes/conditional", corpo: $primeiro->payload);
         $bruta = ['status' => $resp->status, 'corpo' => $resp->corpo];
         if (! $resp->ok() || ! is_array($resp->corpo)) {
             // Sem resposta, vale o que se sabia: o validate ainda confere tudo.
@@ -319,7 +393,7 @@ class ConferenciaService
 
         $problemas = [];
         foreach ($skus as $sku => $variantes) {
-            $resp = $this->cliente->daConta($r->oferta->company, 'GET', "/users/{$sellerId}/items/search", ['seller_sku' => $sku, 'status' => 'active']);
+            $resp = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/items/search", ['seller_sku' => $sku, 'status' => 'active']);
             $brutas['skus'][$sku] = ['status' => $resp->status, 'corpo' => $resp->corpo];
             if (! $resp->ok() || ! is_array($resp->corpo)) {
                 continue;
@@ -335,11 +409,11 @@ class ConferenciaService
     }
 
     /** @param list<Problema> $problemas */
-    private function gravar(PubRascunho $r, int $revisao, string $resultado, array $problemas, array $brutas, ?PayloadPlan $plano = null): PubValidacao
+    private function gravar(PubRascunho $r, int $revisao, string $resultado, array $problemas, array $brutas, ?PayloadPlan $plano = null, string $camada = 'L3'): PubValidacao
     {
         return $r->validacoes()->create([
             'revisao' => $revisao,
-            'camada' => 'L3',
+            'camada' => $camada,
             'plano_hash' => $plano?->hash(),
             'resultado' => $resultado,
             'issues' => array_map(fn (Problema $p) => [

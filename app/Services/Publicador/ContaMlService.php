@@ -2,7 +2,7 @@
 
 namespace App\Services\Publicador;
 
-use App\Models\Company;
+use App\Contracts\ContaMercadoLivre;
 use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RegraViolada;
 
@@ -20,9 +20,9 @@ class ContaMlService
 {
     public function __construct(private ClienteMlPublicador $cliente) {}
 
-    public function contexto(Company $empresa): ContextoConta
+    public function contexto(ContaMercadoLivre $conta): ContextoConta
     {
-        $eu = $this->cliente->daConta($empresa, 'GET', '/users/me');
+        $eu = $this->cliente->daConta($conta, 'GET', '/users/me');
         if (! $eu->ok() || ! is_array($eu->corpo) || ! isset($eu->corpo['id'])) {
             throw new RegraViolada('V-ACC-01', 'Não foi possível ler a conta do Mercado Livre agora. Tente de novo em instantes.');
         }
@@ -30,12 +30,12 @@ class ContaMlService
         $sellerId = (string) $eu->corpo['id'];
         $tags = array_values(array_map('strval', (array) ($eu->corpo['tags'] ?? [])));
 
-        $envio = $this->cliente->daConta($empresa, 'GET', "/users/{$sellerId}/shipping_preferences");
+        $envio = $this->cliente->daConta($conta, 'GET', "/users/{$sellerId}/shipping_preferences");
         $modos = $envio->ok() && is_array($envio->corpo) ? array_values(array_map('strval', (array) ($envio->corpo['modes'] ?? []))) : null;
 
         $depositos = null;
         if (in_array('warehouse_management', $tags, true)) {
-            $lojas = $this->cliente->daConta($empresa, 'GET', "/users/{$sellerId}/stores/search", ['tags' => 'stock_location']);
+            $lojas = $this->cliente->daConta($conta, 'GET', "/users/{$sellerId}/stores/search", ['tags' => 'stock_location']);
             if ($lojas->ok() && is_array($lojas->corpo)) {
                 $depositos = array_values(array_map(fn ($l) => [
                     'store_id' => (string) $l['id'],

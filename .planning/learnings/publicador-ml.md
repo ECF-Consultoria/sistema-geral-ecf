@@ -133,3 +133,159 @@ O que funcionou (01/10, F1.11):
 - Timeout do ML em teste: `Http::failedConnection()` (lança `ConnectionException`).
   Uma closure que lança outra exceção não fica em `Http::recorded()` — conte as
   chamadas por um contador próprio.
+
+## 9. Publicador interno (Fase 164, 02/10/2026)
+
+O que não se deduz do código, na ordem em que mais custou descobrir.
+
+**Modelo**
+- O rascunho é do PRODUTO (`pub_produtos`), não da oferta. O vínculo com a oferta
+  mora só no produto (`pub_produtos.oferta_id`); `pub_rascunhos.oferta_id` ficou
+  como coluna LEGADA DORMENTE de propósito (D27, opção (a)): não dropar, não
+  recriar `pubr_oferta_*` — dá erro 1553 no MariaDB (a FK é usada por um índice).
+  A oferta do rascunho vem do produto (`hasOneThrough`).
+- `pubprod_oferta_fk` é SET NULL: `nullOnDelete` vale em coluna ANULÁVEL (o 1830
+  do learnings de desempenho é só para coluna NOT NULL).
+- Apagar a oferta pela Lista SKUs congela título/preço no rascunho
+  (`SoltarProdutoDaOfertaService`, chamado em `EstruturaOfertaService::excluir`,
+  que é o único caminho Eloquent). Apagar a `Company` apaga as ofertas pelo banco
+  (o produto fica com `oferta_id` NULL SEM congelar título/preço — fora do D27),
+  mas NÃO leva mais o `pub_produto`.
+- `pubprod_empresa_fk` e `pubprod_company_fk` são SET NULL (CR-B02 do code review,
+  decisão do usuário em 02/10): excluir `MlbEmpresa` (o `DELETE /mlb/empresas/{empresa}`
+  é de gestor/líder de Polos, não de admin) ou `Company` mantém produto, rascunho,
+  publicações e itens — `ml_item_id`, payload e resposta crua do ML. Com as duas
+  âncoras nulas o produto vira órfão: some das telas (404 no editor) e `conta()`
+  lança V-ACC-01. Até 02/10 eram CASCADE e apagavam esse histórico; banco onde a
+  criação já rodou assim é consertado pela `2026_10_02_200000_pub_produtos_ancoras_sem_cascata`
+  (rodada no MariaDB local; em produção a criação já nasce SET NULL). Não voltar a
+  CASCADE: o `down()` dela não volta de propósito.
+- Company 5 ≠ MlbEmpresa 5. "Empresa polo" é `MlbEmpresa`; produto de polo pode
+  não ter `company_id`.
+
+**Conta e trava**
+- A conta do ML é a âncora que TEM token (`PubProduto::conta()`), e a trava D21
+  olha essa âncora: `publicador.contas_liberadas` vazio = ninguém publica. O
+  `config/publicador.php` ainda aceita `PUBLICADOR_EMPRESAS_PILOTO` como
+  fallback de `contas_liberadas.companies` (o `.env` de produção pode ter só a
+  antiga) — não remover o fallback.
+- A trava vale em TODA escrita, não só no clique (CR-B01): `iniciar()` grava a conta
+  fixada em `pub_publicacoes.ator.conta` (`chave` da âncora + `seller` da conferência —
+  sem migration, a coluna JSON já existia) e `PublicacaoService::contaFixada()` relê a
+  âncora do banco antes das fotos, de cada `POST /items` e de cada descrição: âncora
+  diferente, conta fora da lista ou token de outro vendedor → nada sai. Publicação
+  sem `ator.conta` (anterior a 02/10) falha FECHADO; conferência sem
+  `respostas_ml.conta.sellerId` não publica — teste que fabrica L3 precisa dele.
+- D26: conta NÃO liberada confere só LOCAL (camada `L2`, resultado `LOCAL`,
+  `conferencia.local`), não recebe foto (a foto fica `pending`; miniatura por
+  `mlb.anuncios.publicador.fotos.arquivo`) e nunca faz POST. A leitura de conta
+  ao abrir e o "Quanto eu recebo?" continuam: são GET.
+- Produto SEM token ativo é "não liberada" para foto e conferência (WR-B04): a foto
+  fica `pending` e entra no grupo, a conferência é a local (`respostas_ml.motivo =
+  V-ACC-01`; fora da lista, `CONTA-LIB`). O V-ACC-01 (reconectar) só aparece ao
+  publicar. Use `contaOuNula()` em código novo que só LÊ ou decide se escreve;
+  `conta()` (que lança) só onde a escrita é obrigatória.
+- Rascunho tem UMA trava de linha (WR-B02): `RascunhoRepository::travar()` =
+  `lockForUpdate` na linha de `pub_rascunhos`, pega por `iniciar`, pela IA (cada
+  escrita dela, em `IaParaRascunhoService::sobTrava`) e pelo editor (`salvar`,
+  `trocarCategoria`, `salvarEixos`, `salvarVariantes`). Escrita nova no rascunho:
+  travar PRIMEIRO e ler o snapshot DEPOIS, na mesma transação; o que pode ir ao ML
+  (schema) fica fora da trava. A IA grava só as chaves que preenche
+  (`mesclarAtributos`, `gravarTitulos`) — nunca `gravarAtributos`/`gravarAlvos`,
+  que regravam a lista inteira. No SQLite o `FOR UPDATE` não existe: os testes
+  simulam a corrida com um `CategorySchemaRepository` que age no meio do `obter()`
+  e um repositório que age depois do `snapshot()` (`IaParaRascunhoTest`, `wr_b02`).
+- O programa (Polos/Incubadora) compara `projeto`/`fase`/`tipo` sem caixa e sem
+  espaço nas pontas, IGUAL no SQL (`LOWER(TRIM(col))` no `scopePrograma`) e no PHP
+  (`programaPublicador()`) — WR-B05. `projeto` é texto livre; com a comparação
+  `_ci` do MariaDB de um lado e `===` do outro, "Polos" era listada e dava 404.
+- D20: o passo em PRODUÇÃO é do usuário — `php artisan publicador:empresa-teste`
+  (simulação) e depois `--confirmar`. Só foi construído e testado.
+
+**O Anunciar saiu do Portal (D18, 164-15)**
+- As rotas `/estrutura/anunciar*`, `…/publicacao*` e `…/publicador*` respondem 404
+  para todos; saíram da allowlist de `RestringeDominioDoPortal`. O Mapeamento
+  Estrutural tem 5 submódulos. Quem publica é a equipe ECF, no admin.
+- O assistente antigo (`mlb.anuncios.wizard`) segue vivo SÓ para rascunhos antigos
+  e "Anunciar semelhante" (D22). `EstruturaPublicacao`/`estrutura_publicacoes` e
+  `MigracaoAnunciarAntigo` ficam (histórico e migração).
+- `EditorRascunhoService::estado()` não devolve mais `oferta` nem `piloto`; a
+  oferta é `produto.oferta_id`.
+
+**Testes e ambiente**
+- Teste de migration que usa `->change()` não roda com `RefreshDatabase`/`DatabaseMigrations`
+  no SQLite: o `migrate:rollback` do teardown quebra no `down()` de
+  `2026_09_14_100000_add_parent_id_to_company_groups_table` ("dropping foreign
+  keys by name"). `MigracaoProdutoRascunhoTest` chama `artisan('migrate')` no
+  `setUp`. O backfill só foi provado em SQLite (o MariaDB local tinha 0 linhas).
+- `testing.ensure_pages_exist = true`: teste de página nova lê `viewData('page')`
+  e a página React precisa existir.
+- Componente que nenhuma página importa NÃO é compilado pelo `npm run build`:
+  import quebrado ali só aparece quando alguém o importa — cheque com esbuild.
+  Depois de apagar arquivo de front, rode o build e confira o manifest.
+- `artisan route:list` trava o timeout nesta máquina com o `.env` local; com
+  `DB_CONNECTION=sqlite DB_DATABASE=:memory:` no ambiente do processo e
+  `timeout 120` roda. Alternativa: `Route::has()` num teste.
+- O Bash tool corrompe barras invertidas em `sed` (os imports viraram
+  `AppContracts...`): edite PHP/JS só com Edit/Write e confira com `php -l`.
+- Teste que passa por código do ML sem `Http::fake` é INTERMITENTE
+  (`Phase75/PublicarEmpresaNaoAtribuidaTest::test_admin_nao_recebe_403_no_update`
+  pede app token real e já falhou com HTTP 400; isolado, passou). Rode isolado
+  antes de chamar de regressão — e prefira consertar o teste com `Http::fake`.
+- Suíte inteira estoura 512 MB: rode por pasta, redirecione para arquivo e leia o
+  arquivo (`| tail` engole o exit code).
+- `file_get_contents(UploadedFile::fake()->image(...)->getPathname())` em uma linha
+  falha ("No such file"): o arquivo temporário some quando o objeto é liberado.
+  Guarde o `UploadedFile` numa variável antes de ler.
+
+- **Deploy com fila: `queue:restart`, não só o `deploy.sh`** (03/10). O `deploy.sh` reinicia apenas `ecf-worker:*`; a conferência e a publicação do Publicador rodam na fila `high` (`ecf-worker-high`) e o Creative Engine na `creative` (`ecf-worker-creative`, 3 processos). Depois do deploy, `sudo -u www-data php artisan queue:restart`: todo worker termina o job em andamento e volta com o código novo. `supervisorctl restart` mataria uma geração de criativo paga no meio. Conferir pelo uptime em `supervisorctl status`.
+
+## 10. Melhoria de 03/10/2026 (`melhoria_publicador.docx`, 6 itens)
+
+- **Frete grátis obrigatório: quem decide é `free_shipping_by_meli`, não o
+  `discount.type`.** Nas respostas reais da sondagem (`conta/shipping_options_free_*`)
+  o `discount.type` vem `mandatory` em TODAS as faixas — R$ 50, R$ 78,99, R$ 79 e
+  R$ 150. A diferença é que abaixo da faixa vem `free_shipping_by_meli: true` (o ML
+  banca) e a partir dela o campo some (o vendedor paga). Regra no código:
+  `type = mandatory` **e** sem `free_shipping_by_meli` = obrigatório para o vendedor
+  (`EditorRascunhoService::freteGratis`). O resumo da H-10 em `12-hipoteses` ("a R$ 79
+  vira mandatory") lê isso errado — não "corrija" a regra por ele. O limite nunca vai
+  para o código (RN-83). A flag de frete grátis é do rascunho inteiro, então a regra
+  consulta a variação mais barata e a mais cara de cada tipo: obrigatório só quando
+  até a mais barata cai na faixa; só a mais cara = `parcial` (o ML liga nela, aviso 350).
+- **O aviso 4053 `shipping.lost_me1_by_user` é ruído e sai da tela** (`MapeadorErrosMl::ehRuido`):
+  vem em toda conferência desta conta (N-16). Só some quando chega como `warning`; se o
+  ML voltar a mandar como `error` (bloqueava em 10/07), ele aparece. A resposta crua
+  continua guardada em `pub_validacoes.respostas_ml`; conferência gravada antes do
+  filtro é limpa na leitura (`estado()`).
+- **IA do Modelo/título: o Job NÃO grava no rascunho.** `GerarPalavrasChaveIaJob`
+  deixa o resultado no cache por pedido (`publicador:palavras:{rascunho}:{alvo}`) e a
+  TELA aplica pelo caminho normal de edição. Assim não existe uma segunda escrita
+  concorrente no rascunho (as travas do item 9) e o resultado de um pedido velho não
+  pisa no novo (`pedido` comparado dos dois lados). O pedido automático (ao escolher
+  categoria) só aplica se o Modelo continuar vazio na hora em que a IA termina.
+- **Preço "do Portal" é MOSTRADO, não gravado.** O campo exibe o efetivo da
+  Precificação como valor (selo "do Portal"); sair do campo com o mesmo valor não grava
+  nada — senão o preço congelaria (`16` §1.6). Só valor diferente vira digitado.
+- **SELLER_PACKAGE_* só aceitam `g` e `cm`** nas 4 categorias da sondagem. A tela
+  oferece kg/g e cm/mm/m e grava convertido (g inteiro, cm com 1 casa). Categoria cuja
+  unidade do ML não seja g/cm cai no campo genérico do schema.
+- **EAN-13 automático é do FRONT, uma vez por variação** (`CardVariacoes`, ref
+  `gerados`): apagar o código à mão não o faz voltar sozinho; o botão ao lado gera outro.
+  Mesmo algoritmo do assistente antigo e do `RascunhoAnuncioIaService` (prefixo 789).
+- **Variações e fotos juntas, como no ML (03/10, pedido depois do docx).** Não existe mais o
+  card Fotos: cada cartão de variação mostra o bloco do GRUPO de fotos dela (`grupos_imagem`).
+  Sem eixo que defina a foto, a tela liga `fotos_por_variante` sozinha — senão todas cairiam na
+  galeria geral. A 1ª "Nova variação" são DOIS `PUT /eixos`: primeiro a que já existe ganha o
+  valor (o `RegeneradorVariantes` passa os dados do `__single__` para ela, como ancestral) e só
+  depois entra a nova; mandar os dois valores de uma vez copiaria SKU/GTIN/preço do produto para
+  as DUAS. Tirar com um eixo = tirar o valor (vira órfã com os dados; "trazer de volta" readiciona
+  e o servidor reaproveita a chave); com mais de um eixo o servidor gera o produto cartesiano, então
+  a tela desativa as combinações que nasceram junto e não foram pedidas.
+- **Editor passo a passo (03/10, redesenho pelo Fable com a skill frontend-design).** 7 etapas (`ETAPAS` e
+  `ETAPA_DA_SECAO` em `apoio.js`, que substituiu `CARD_DA_SECAO`); os 7 painéis ficam MONTADOS e só o atual
+  aparece (`hidden`) — de propósito: preserva "Nova variação" pela metade, o EAN gerado uma vez e o que foi
+  digitado. Etapa em `?etapa=` (`history.replaceState(window.history.state, …)`, sem mexer no estado do Inertia)
+  + sessionStorage por produto. Sticky dentro do `<main p-6>` do AppLayout: a barra usa `-top-6` e o trilho
+  `sm:top-8`; o painel compensa com `scroll-mt-[152px]`. Regra visual: um só amarelo sólido por tela, e é o
+  próximo passo (`publicarEhOProximoPasso`); o gradiente amarelo mora só em `Mesa/botoes.jsx`.

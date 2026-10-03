@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\MlbAnuncioController;
+use App\Http\Controllers\MlbPublicadorController;
+use App\Http\Controllers\MlbPublicadorEntradaController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -24,9 +26,69 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('mlb/anuncios')
     ->name('mlb.anuncios.')
     ->group(function () {
-        // ─── Momento 1: painel de cards ───
-        // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
-        Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
+        // Fase 164: a entrada do módulo é o Publicador (D12/D13) — empresas por programa
+        // (?programa=polos|incubadora|gestao), só admins (D17).
+        Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
+
+        // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
+        // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
+        Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
+            ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.produtos');
+        Route::post('publicador/empresas/{conta}/sincronizar', [MlbPublicadorEntradaController::class, 'sincronizar'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:20,1,publicador.sincronizar')->name('publicador.sincronizar');
+        Route::post('publicador/empresas/{conta}/produtos', [MlbPublicadorEntradaController::class, 'criarProduto'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
+        Route::get('publicador/produtos/{produto}/editor', [MlbPublicadorEntradaController::class, 'editor'])
+            ->whereNumber('produto')->name('publicador.editor');
+
+        // ─── Fase 164 (plano 08): API JSON do editor interno, por produto (D12/D17) ───
+        // Espelha o piloto do Portal (routes/web.php), com os mesmos throttles. Nomes: mlb.anuncios.publicador.<sufixo>.
+        Route::get('publicador/categorias', [MlbPublicadorController::class, 'categorias'])
+            ->middleware('throttle:60,1,publicador.categorias')->name('publicador.categorias');
+        Route::prefix('publicador/produtos/{produto}')->whereNumber('produto')->name('publicador.')->group(function () {
+            Route::get('/', [MlbPublicadorController::class, 'abrir'])
+                ->middleware('throttle:120,1,publicador.abrir')->name('abrir');
+            Route::put('/', [MlbPublicadorController::class, 'salvar'])
+                ->middleware('throttle:180,1,publicador.salvar')->name('salvar');
+            Route::put('/categoria', [MlbPublicadorController::class, 'categoria'])
+                ->middleware('throttle:30,1,publicador.categoria')->name('categoria');
+            Route::put('/eixos', [MlbPublicadorController::class, 'eixos'])
+                ->middleware('throttle:120,1,publicador.eixos')->name('eixos');
+            Route::put('/variantes', [MlbPublicadorController::class, 'variantes'])
+                ->middleware('throttle:180,1,publicador.variantes')->name('variantes');
+            Route::post('/fotos', [MlbPublicadorController::class, 'foto'])
+                ->middleware('throttle:60,1,publicador.fotos')->name('fotos');
+            Route::put('/fotos', [MlbPublicadorController::class, 'atribuirFotos'])
+                ->middleware('throttle:180,1,publicador.fotos.atribuir')->name('fotos.atribuir');
+            Route::delete('/fotos/{imagem}', [MlbPublicadorController::class, 'removerFoto'])
+                ->whereNumber('imagem')->middleware('throttle:60,1,publicador.fotos.remover')->name('fotos.remover');
+            Route::post('/fotos/{imagem}/reenviar', [MlbPublicadorController::class, 'reenviarFoto'])
+                ->whereNumber('imagem')->middleware('throttle:30,1,publicador.fotos.reenviar')->name('fotos.reenviar');
+            // D26: miniatura da foto guardada que ainda não subiu ao ML (conta não liberada).
+            Route::get('/fotos/{imagem}/arquivo', [MlbPublicadorController::class, 'arquivoFoto'])
+                ->whereNumber('imagem')->middleware('throttle:240,1,publicador.fotos.arquivo')->name('fotos.arquivo');
+            Route::post('/condicionais', [MlbPublicadorController::class, 'condicionais'])
+                ->middleware('throttle:60,1,publicador.condicionais')->name('condicionais');
+            Route::post('/conferir', [MlbPublicadorController::class, 'conferir'])
+                ->middleware('throttle:20,1,publicador.conferir')->name('conferir');
+            Route::post('/publicar', [MlbPublicadorController::class, 'publicar'])
+                ->middleware('throttle:10,1,publicador.publicar')->name('publicar');
+            Route::post('/itens/{item}/descricao', [MlbPublicadorController::class, 'reenviarDescricao'])
+                ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('descricao');
+            Route::get('/simular', [MlbPublicadorController::class, 'simular'])
+                ->middleware('throttle:30,1,publicador.simular')->name('simular');
+            // Melhoria de 03/10/2026: frete grátis obrigatório, termos mais buscados e a IA do Modelo/título.
+            Route::get('/frete', [MlbPublicadorController::class, 'frete'])
+                ->middleware('throttle:60,1,publicador.frete')->name('frete');
+            Route::get('/termos', [MlbPublicadorController::class, 'termos'])
+                ->middleware('throttle:60,1,publicador.termos')->name('termos');
+            Route::post('/palavras-ia', [MlbPublicadorController::class, 'pedirPalavrasIa'])
+                ->middleware('throttle:20,1,publicador.palavras-ia')->name('palavras-ia');
+            Route::get('/palavras-ia/{alvo}', [MlbPublicadorController::class, 'palavrasIa'])
+                ->middleware('throttle:240,1,publicador.palavras-ia.status')->name('palavras-ia.status');
+        });
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do

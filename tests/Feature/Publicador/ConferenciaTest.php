@@ -212,17 +212,18 @@ class ConferenciaTest extends TestCase
         $this->assertNotContains('V-REM-02', self::regras($this->conferir()));
     }
 
-    public function test_conta_desconectada_e_modelo_que_mudou(): void
+    public function test_modelo_que_mudou_bloqueia_e_conta_desconectada_confere_so_local(): void
     {
         $this->r->update(['modelo_publicacao' => MontadorDePlano::LEGADO]);
         $v = $this->conferir();
         $this->assertSame(['V-ACC-02'], self::regras($v));
 
+        // WR-B04: sem token ativo a conferência é a local (D26); o V-ACC-01 fica para publicar.
         MlToken::query()->update(['status' => 'revoked']);
         $v = $this->conferir();
-        $this->assertSame(ConferenciaService::ERRO, $v->resultado);
-        $this->assertSame('V-ACC-01', $v->issues[0]['regra']);
-        $this->assertStringContainsString('reconectada', $v->issues[0]['mensagem']);
+        $this->assertSame('L2', $v->camada);
+        $this->assertSame('V-ACC-01', $v->respostas_ml['motivo']);
+        $this->assertNotContains('V-ACC-01', self::regras($v));
     }
 
     public function test_edicao_durante_a_conferencia_nao_marca_validado(): void
@@ -238,6 +239,24 @@ class ConferenciaTest extends TestCase
         $this->assertSame(ConferenciaService::AVISOS, $v->resultado);
         $this->assertSame(PubRascunho::DRAFT, $this->r->fresh()->status, 'a conferência vale para a revisão antiga');
         $this->assertSame($this->r->revisao, $v->revisao);
+    }
+
+    /** WR-B03: "Conferir no ML" na barra de um anúncio no ar não o devolve a VALIDATED. */
+    public function test_wr_b03_conferir_nao_rebaixa_rascunho_publicando_ou_publicado(): void
+    {
+        foreach ([PubRascunho::PUBLISHING, PubRascunho::PUBLISHED, PubRascunho::PARTIALLY_PUBLISHED] as $status) {
+            $this->r->update(['status' => $status]);
+
+            $v = $this->conferir();
+
+            $this->assertSame(ConferenciaService::AVISOS, $v->resultado, 'a conferência continua sendo gravada');
+            $this->assertSame($status, $this->r->fresh()->status, "{$status} não pode virar VALIDATED");
+        }
+
+        // Rascunho cuja publicação falhou inteira (nada no ar) volta a ser conferível.
+        $this->r->update(['status' => PubRascunho::FAILED]);
+        $this->conferir();
+        $this->assertSame(PubRascunho::VALIDATED, $this->r->fresh()->status);
     }
 
     public function test_job_vai_para_a_fila_high_e_um_por_rascunho(): void

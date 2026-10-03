@@ -1,7 +1,7 @@
 // ─── A ordem das fotos do par (Anunciar) ────────────────────────────────────
 //
 // A ordem da lista É a do anúncio: a 1ª é a capa e o Mercado Livre recebe
-// `pictures` nesta sequência (`EstruturaPublicacaoService::montarItem`).
+// `pictures` nesta sequência (no Publicador, `ResolvedorGruposImagem`).
 // Funções puras, sem React, para o arraste, os botões ◀ ▶, o "tornar capa" e
 // o teste em node (`tests/js/fotos-do-par.test.js`).
 //

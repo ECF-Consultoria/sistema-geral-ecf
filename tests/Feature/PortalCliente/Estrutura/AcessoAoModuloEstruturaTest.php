@@ -57,16 +57,15 @@ class AcessoAoModuloEstruturaTest extends TestCase
                     $estrutura = collect($modulos)->firstWhere('chave', 'estrutura');
 
                     return $estrutura['ativo']
-                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento', 'anunciar']
+                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento']
                         && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
-                        // 29/09: o Anunciar deixou de ser "em breve" (ADR PORTAL-03).
-                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null)
-                        && collect($estrutura['submodulos'])->firstWhere('chave', 'anunciar')['url'] === route('portal.auth.estrutura.anunciar');
+                        // 02/10 (D18): o Anunciar saiu do Portal — são 5 submódulos, todos abertos.
+                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null);
                 })
             );
 
         // Cada submódulo marca a si mesmo como ativo.
-        foreach (['anuncios' => 'Portal/EstruturaAnuncios', 'agenda' => 'Portal/EstruturaAgenda', 'mapeamento' => 'Portal/EstruturaMapeamento', 'anunciar' => 'Portal/EstruturaAnunciar'] as $rota => $componente) {
+        foreach (['anuncios' => 'Portal/EstruturaAnuncios', 'agenda' => 'Portal/EstruturaAgenda', 'mapeamento' => 'Portal/EstruturaMapeamento'] as $rota => $componente) {
             $sub = $rota === 'agenda' ? 'planejamento' : $rota;
             $sessao->get(route("portal.auth.estrutura.{$rota}"))
                 ->assertOk()

@@ -106,7 +106,7 @@ class AnunciosEscopoResponsavelTest extends TestCase
         $this->criarCompanySemToken(); // não deve aparecer no painel
 
         $this->actingAs($admin)
-            ->get('/mlb/anuncios')
+            ->get('/mlb/anuncios?programa=gestao')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciosEmpresas')
@@ -124,7 +124,7 @@ class AnunciosEscopoResponsavelTest extends TestCase
         $this->criarCompanyComToken(tokenExpirado: true);
 
         $this->actingAs($admin)
-            ->get('/mlb/anuncios')
+            ->get('/mlb/anuncios?programa=gestao')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciosEmpresas')

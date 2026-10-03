@@ -3,9 +3,10 @@
 namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
-use App\Models\Company;
+use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
 use App\Models\PortalUsuario;
+use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
@@ -13,6 +14,7 @@ use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Support\Portal\AtorDoPortal;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Payload\ItemPlano;
@@ -52,6 +54,9 @@ use Illuminate\Validation\ValidationException;
  */
 class PublicacaoService
 {
+    /** Regras que encerram a publicação por causa da CONTA: sem token, trocada, tirada da lista (CR-B01). */
+    private const REGRAS_DA_CONTA = ['V-ACC-01', 'V-ACC-03', 'CONTA-LIB'];
+
     public function __construct(
         private ConferenciaService $conferencia,
         private ContaMlService $contas,
@@ -65,12 +70,12 @@ class PublicacaoService
 
     public function iniciar(PubRascunho $r, AtorDoPortal $ator, bool $cienteDosAvisos = false): PubPublicacao
     {
-        $piloto = (array) config('publicador.empresas_piloto', []);
-        if ($piloto !== [] && ! in_array((int) $r->oferta->company_id, $piloto, true)) {
-            throw new RegraViolada('PILOTO', 'O Publicador novo ainda está em teste e não publica para esta empresa.');
-        }
+        // D21: só publica em conta liberada uma a uma pelo usuário; a checagem é sobre a
+        // âncora que tem o token — a que de fato recebe o anúncio. Antes de qualquer gravação.
+        $ancora = $r->conta();
+        ContasLiberadas::exigir($ancora);
 
-        $p = DB::transaction(function () use ($r, $ator, $cienteDosAvisos) {
+        $p = DB::transaction(function () use ($r, $ator, $cienteDosAvisos, $ancora) {
             $r = PubRascunho::whereKey($r->id)->lockForUpdate()->firstOrFail();
 
             if ($r->publicacoes()->where('status', PubPublicacao::RUNNING)->exists()) {
@@ -86,6 +91,13 @@ class PublicacaoService
                 throw new RegraViolada('RN-90', 'Há avisos do Mercado Livre: marque "Estou ciente" para publicar.');
             }
 
+            // CR-B01: o vendedor que a conferência leu tem de ser o dono do token de AGORA.
+            // Conferência sem vendedor (ou de outro vendedor) não autoriza publicar — falha fechada.
+            $sellerConferido = (string) ($v->respostas_ml['conta']['sellerId'] ?? '');
+            if ($sellerConferido === '' || $sellerConferido !== (string) ($ancora->mlToken?->ml_user_id ?? '')) {
+                throw new RegraViolada('RN-90', 'A conta do Mercado Livre deste produto mudou desde a conferência. Confira com o Mercado Livre de novo antes de publicar.');
+            }
+
             $p = $r->publicacoes()->create([
                 'revisao' => $r->revisao,
                 'modelo_publicacao' => (string) $r->modelo_publicacao,
@@ -93,7 +105,8 @@ class PublicacaoService
                 'status' => PubPublicacao::RUNNING,
                 'chave_idempotencia' => (string) Str::uuid(),
                 'iniciada_em' => now(),
-                'ator' => self::atorParaGravar($ator),
+                // A conta fixada no clique (âncora + vendedor): toda escrita do Job confere contra ela.
+                'ator' => [...self::atorParaGravar($ator), 'conta' => ['chave' => $ancora->chaveContaMl(), 'seller' => $sellerConferido]],
             ]);
             $r->update(['status' => PubRascunho::PUBLISHING]);
 
@@ -129,11 +142,12 @@ class PublicacaoService
                 if (microtime(true) - $inicio > $segundos) {
                     return false;
                 }
-                $this->processar($item, $r, $conta);
+                $this->processar($p, $item, $r, $conta);
             }
         } catch (RegraViolada $e) {
-            // Conta desconectada no meio: para tudo, nada é marcado como enviado à toa.
-            $this->encerrar($p, $r, $e->getMessage());
+            // Conta desconectada, trocada ou tirada da lista no meio: para tudo, nada é marcado como
+            // enviado à toa — e o item que não chegou a ir ao ML fica com o motivo (CR-B01).
+            $this->encerrar($p, $r, $e->getMessage(), falharPendentes: in_array($e->regra, self::REGRAS_DA_CONTA, true));
 
             return true;
         }
@@ -178,7 +192,9 @@ class PublicacaoService
             $resp = new RespostaMl((int) ($i->resposta['status'] ?? 0), $i->resposta['corpo'] ?? null);
             $plano = new ItemPlano($i->indice, $i->listing_type_id, $i->variante_chave, '', (array) $i->payload, []);
             foreach ($resp->causas as $causa) {
-                $saida[] = MapeadorErrosMl::problema($causa, $plano, $schema, $dicionario);
+                if (! MapeadorErrosMl::ehRuido($causa)) {
+                    $saida[] = MapeadorErrosMl::problema($causa, $plano, $schema, $dicionario);
+                }
             }
             if ($resp->causas === []) {
                 $saida[] = Problema::bloqueio('V-REM-01', (string) ($i->avisos['mensagem'] ?? 'O Mercado Livre recusou este item sem dizer o motivo.'), ['etapa' => 'E13', 'itens' => [$i->indice]], 'L3');
@@ -188,24 +204,61 @@ class PublicacaoService
         return MapeadorErrosMl::agrupar($saida);
     }
 
-    /** Reenvia a descrição de um item já criado (`09` §4: o item NÃO é recriado). */
+    /**
+     * Reenvia a descrição de um item já criado (`09` §4: o item NÃO é recriado).
+     * Vai SÓ para a conta em que o item nasceu (CR-B01): a fixada no clique, ainda liberada.
+     */
     public function reenviarDescricao(PubPublicacaoItem $item): PubPublicacaoItem
     {
         $p = PubPublicacao::findOrFail($item->publicacao_id);
         $r = PubRascunho::findOrFail($p->rascunho_id);
         if ($item->status === PubPublicacaoItem::CREATED && $item->ml_item_id && $r->descricao) {
-            $this->descricao($item, $r->oferta->company, $this->textoDaDescricao($r));
+            $this->descricao($p, $item, $r, $this->textoDaDescricao($r));
         }
 
         return $item->fresh();
+    }
+
+    // ═══ Conta fixada no clique (CR-B01) ═════════════════════════════════════
+
+    /**
+     * A conta que pode receber uma ESCRITA desta publicação. D21 vale em todo POST, não só no
+     * clique: a âncora é relida do banco agora (o token pode ter sido criado, revogado ou
+     * trocado por outro processo entre as fatias) e tem de ser a MESMA fixada em `iniciar()`,
+     * continuar liberada e ter o token do MESMO vendedor conferido. Qualquer diferença lança —
+     * nada é enviado (falha fechada; conta de cliente nunca recebe publicação por acidente).
+     */
+    private function contaFixada(PubPublicacao $p, PubRascunho $r): ContaMercadoLivre
+    {
+        $fixada = (array) ($p->ator['conta'] ?? []);
+        if (empty($fixada['chave']) || empty($fixada['seller'])) {
+            throw new RegraViolada('V-ACC-03', 'Esta publicação não registrou a conta do Mercado Livre no clique em Publicar. Nada foi enviado: confira com o Mercado Livre e publique de novo.');
+        }
+
+        $produto = PubProduto::with(['mlbEmpresa.mlToken', 'company.mlToken'])->find($r->produto_id);
+        $atual = $produto?->contaOuNula()
+            ?? throw new RegraViolada('V-ACC-01', 'A conta do Mercado Livre desta empresa precisa ser reconectada. Conecte de novo pelo Onboarding e volte aqui.');
+
+        if ($atual->chaveContaMl() !== $fixada['chave']) {
+            throw new RegraViolada('V-ACC-03', 'A conta do Mercado Livre deste produto mudou desde o clique em Publicar. Nada foi enviado para a conta nova: confira com o Mercado Livre de novo antes de publicar.');
+        }
+        ContasLiberadas::exigir($atual);
+        if ((string) ($atual->mlToken?->ml_user_id ?? '') !== (string) $fixada['seller']) {
+            throw new RegraViolada('V-ACC-03', 'A conexão desta empresa agora é de outro vendedor do Mercado Livre. Nada foi enviado: confira com o Mercado Livre de novo antes de publicar.');
+        }
+
+        return $atual;
     }
 
     // ═══ 1ª fatia ════════════════════════════════════════════════════════════
 
     private function prepararItens(PubPublicacao $p, PubRascunho $r): void
     {
-        $empresa = $r->oferta->company;
+        $empresa = $this->contaFixada($p, $r);
         $conta = $this->contas->contexto($empresa);
+        if ($conta->sellerId !== (string) $p->ator['conta']['seller']) {
+            throw new RegraViolada('V-ACC-03', 'A conexão desta empresa agora é de outro vendedor do Mercado Livre. Nada foi enviado: confira com o Mercado Livre de novo antes de publicar.');
+        }
         if ($conta->modelo !== $p->modelo_publicacao) {
             $this->encerrar($p, $r, 'A conta do Mercado Livre mudou de modelo de publicação. Revise o anúncio e confira de novo.');
 
@@ -219,7 +272,8 @@ class PublicacaoService
             return;
         }
 
-        $this->imagens->enviarPendentes($r);
+        // As fotos sobem para a conta fixada (a âncora não é resolvida de novo lá dentro).
+        $this->imagens->enviarPendentes($r, $empresa);
         $prep = $this->conferencia->preparar($r, $revalidado['schema'], $conta, $this->conferencia->condicionaisGuardados($r));
         if ($prep['plano'] === null || $prep['plano']->hash() !== $p->plano_hash) {
             // RN-91/D6: o que se publica é o que foi conferido — preço ou título efetivo mudou no meio.
@@ -308,9 +362,10 @@ class PublicacaoService
 
     // ═══ Um item ═════════════════════════════════════════════════════════════
 
-    private function processar(PubPublicacaoItem $item, PubRascunho $r, array $conta): void
+    private function processar(PubPublicacao $p, PubPublicacaoItem $item, PubRascunho $r, array $conta): void
     {
-        $empresa = $r->oferta->company;
+        // CR-B01: a âncora de cada fatia é relida e conferida contra a fixada no clique.
+        $empresa = $this->contaFixada($p, $r);
 
         // SENT achado aqui = o Job anterior morreu entre gravar SENT e saber a resposta.
         if (in_array($item->status, [PubPublicacaoItem::SENT, PubPublicacaoItem::UNKNOWN], true)) {
@@ -319,25 +374,29 @@ class PublicacaoService
             }
             $item->refresh();
             if ($item->status !== PubPublicacaoItem::PENDING) {
-                $this->depoisDeCriar($item, $r);
+                $this->depoisDeCriar($p, $item, $r);
 
                 return;
             }
         }
 
-        $this->enviar($item, $empresa);
+        $this->enviar($p, $item, $r);
         $item->refresh();
 
         if ($item->status === PubPublicacaoItem::UNKNOWN && $this->reconciliar($item, $empresa, (string) $conta['sellerId'])) {
             $item->refresh();
         }
         if ($item->status === PubPublicacaoItem::CREATED) {
-            $this->depoisDeCriar($item, $r);
+            $this->depoisDeCriar($p, $item, $r);
         }
     }
 
-    private function enviar(PubPublicacaoItem $item, Company $empresa): void
+    private function enviar(PubPublicacao $p, PubPublicacaoItem $item, PubRascunho $r): void
     {
+        // CR-B01: a trava D21 imediatamente antes do POST — a reconciliação acima pode ter levado
+        // segundos, e nesse meio a âncora pode ter mudado. Lança ANTES de marcar SENT: nada sai.
+        $empresa = $this->contaFixada($p, $r);
+
         // ANTES do POST (D9): se o processo morrer daqui em diante, o item vai para a reconciliação.
         $item->update(['status' => PubPublicacaoItem::SENT, 'enviado_em' => now(), 'tentativas' => $item->tentativas + 1]);
 
@@ -392,7 +451,7 @@ class PublicacaoService
      *
      * @return bool decidiu (false = ainda é cedo; tentar na próxima fatia)
      */
-    private function reconciliar(PubPublicacaoItem $item, Company $empresa, string $sellerId): bool
+    private function reconciliar(PubPublicacaoItem $item, ContaMercadoLivre $empresa, string $sellerId): bool
     {
         $sku = collect((array) ($item->payload['attributes'] ?? []))->firstWhere('id', 'SELLER_SKU')['value_name'] ?? null;
         $enviado = $item->enviado_em ?? now();
@@ -450,14 +509,14 @@ class PublicacaoService
             && $criado !== null && $criado->gte(\Carbon\Carbon::instance($enviado)->subMinutes(2));
     }
 
-    private function depoisDeCriar(PubPublicacaoItem $item, PubRascunho $r): void
+    private function depoisDeCriar(PubPublicacao $p, PubPublicacaoItem $item, PubRascunho $r): void
     {
-        $empresa = $r->oferta->company;
         if ($r->descricao && $item->descricao_status !== 'OK') {
-            $this->descricao($item, $empresa, $this->textoDaDescricao($r));
+            $this->descricao($p, $item, $r, $this->textoDaDescricao($r));
         }
 
-        // E14: o estado real logo depois de criar (under_review, pausado, qualidade).
+        // E14: o estado real logo depois de criar (under_review, pausado, qualidade) — da conta fixada.
+        $empresa = $this->contaFixada($p, $r);
         $estado = $this->cliente->daConta($empresa, 'GET', "/items/{$item->ml_item_id}");
         if ($estado->ok() && is_array($estado->corpo)) {
             $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'estado' => [
@@ -469,11 +528,13 @@ class PublicacaoService
         }
     }
 
-    private function descricao(PubPublicacaoItem $item, Company $empresa, ?string $texto): void
+    private function descricao(PubPublicacao $p, PubPublicacaoItem $item, PubRascunho $r, ?string $texto): void
     {
         if ($texto === null) {
             return;
         }
+        // CR-B01: a descrição é uma escrita no ML — só na conta fixada, ainda liberada.
+        $empresa = $this->contaFixada($p, $r);
         $resp = $this->cliente->daConta($empresa, 'POST', "/items/{$item->ml_item_id}/description", corpo: ['plain_text' => $texto]);
         $item->update(['descricao_status' => $resp->ok() ? 'OK' : 'FAILED']);
         if (! $resp->ok()) {
@@ -520,7 +581,12 @@ class PublicacaoService
     {
         $ator = self::atorGravado((array) $p->ator);
         $tipoDoListing = array_flip(\App\Models\EstruturaPublicacao::LISTING_TYPES);
-        $oferta = $r->oferta;
+        // D16: sem oferta não há aba Anúncios para cadastrar (inclusive produto solto de oferta apagada — D27).
+        $produto = $r->produto;
+        if ($produto === null || $produto->oferta_id === null) {
+            return;
+        }
+        $oferta = $produto->oferta;
 
         foreach ($criados->groupBy('listing_type_id') as $listingType => $doTipo) {
             $tipo = $tipoDoListing[$listingType] ?? null;
@@ -546,10 +612,19 @@ class PublicacaoService
         }
     }
 
-    private function encerrar(PubPublicacao $p, PubRascunho $r, string $motivo): void
+    private function encerrar(PubPublicacao $p, PubRascunho $r, string $motivo, bool $falharPendentes = false): void
     {
         // O que ficou SENT/UNKNOWN segue incerto: a próxima publicação reconcilia antes de reenviar.
         $p->itens()->where('status', PubPublicacaoItem::SENT)->update(['status' => PubPublicacaoItem::UNKNOWN]);
+        if ($falharPendentes) {
+            // CR-B01: o item que nunca foi ao ML vai para erro com o motivo da conta; o que já foi
+            // enviado antes (tentativas > 0) continua incerto, para a próxima publicação reconciliar.
+            foreach ($p->itens()->where('status', PubPublicacaoItem::PENDING)->get() as $i) {
+                $i->update($i->tentativas > 0
+                    ? ['status' => PubPublicacaoItem::UNKNOWN]
+                    : ['status' => PubPublicacaoItem::FAILED, 'avisos' => [...(array) $i->avisos, 'mensagem' => $motivo]]);
+            }
+        }
         $p->update(['status' => PubPublicacao::FAILED, 'concluida_em' => now(), 'conta_snapshot' => [...(array) $p->conta_snapshot, 'motivo' => $motivo]]);
         $this->concluirParcialSeHouver($p, $r);
         Log::warning("[Publicador] publicação {$p->id} do rascunho {$r->id} interrompida: {$motivo}");

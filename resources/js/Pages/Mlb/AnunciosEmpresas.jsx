@@ -1,238 +1,338 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
-import { Store, RefreshCw, Rocket, FileText, Search, PackageCheck, Loader2, Copy, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Rocket, Search } from 'lucide-react';
+import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
+import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
+import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
+import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
+import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
+import SeletorPrograma from '@/Components/Mlb/Publicador/SeletorPrograma';
+import IndicadoresDoPrograma from '@/Components/Mlb/Publicador/IndicadoresDoPrograma';
+import PainelComoFunciona from '@/Components/Mlb/Publicador/PainelComoFunciona';
 
-// ─── Estado do token ML da empresa ───
-const TOKEN_BADGE = {
-    ativo:         'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400',
-    expirado:      'bg-red-500/10 border border-red-500/30 text-red-400',
-    // Empresa de Polos que autorizou ANTES de 21/09/2026, quando o callback
-    // descartava o token. Autorizou de verdade — só não sobrou a credencial.
-    sem_token:     'bg-amber-500/10 border border-amber-500/30 text-amber-300',
-};
-const TOKEN_LABEL = {
-    ativo:     'Conta ML ativa',
-    expirado:  'Reconectar conta',
-    sem_token: 'Autorizada — falta reconectar',
-};
+const ROTULO_PROGRAMA = { polos: 'Polos', incubadora: 'Incubadora', gestao: 'Gestão' };
 
-function TokenBadge({ tokenExpirado, temToken = true }) {
-    const key = !temToken ? 'sem_token' : (tokenExpirado ? 'expirado' : 'ativo');
+const FILTROS = [
+    { chave: 'todos', rotulo: 'Todos' },
+    { chave: 'prontos', rotulo: 'Prontos para publicar' },
+    { chave: 'atencao', rotulo: 'Precisam de atenção' },
+    { chave: 'nunca', rotulo: 'Nunca sincronizado' },
+];
+
+const COLUNAS = ['Empresa', 'Conta ML', 'Portal', 'Produtos', 'Publicados'];
+
+const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+
+const contagem = (n, singular, plural) => (n > 0 ? `${n} ${n === 1 ? singular : plural}` : '—');
+
+// Casca de esqueleto: 4 cards + 8 linhas de 56px enquanto a visita carrega.
+function Esqueleto() {
     return (
-        <span className={cn(
-            'inline-block px-2 py-0.5 rounded text-[10px] font-medium border',
-            TOKEN_BADGE[key],
-        )}>
-            {TOKEN_LABEL[key]}
-        </span>
-    );
-}
-
-// Data do carimbo de autorização (ISO) em pt-BR curto.
-function fmtData(iso) {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime())
-        ? null
-        : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-/**
- * Card da empresa. Vira <button> só quando dá para publicar de verdade.
- *
- * Empresa de Polos ainda não abre o wizard: o controller resolve `{company}`
- * por binding de Company, e o acervo segue ancorado em company_id. Card que
- * abre quebrado é pior que card que se explica.
- */
-function CardEmpresa({ empresa, onAbrir, children }) {
-    const base = 'text-left rounded-2xl border p-4 transition border-white/[0.06] bg-ecf-card/60';
-
-    if (!empresa.pode_publicar) {
-        return <div className={cn(base, 'opacity-90')}>{children}</div>;
-    }
-
-    return (
-        <button onClick={onAbrir} className={cn(base, 'hover:border-white/20 hover:bg-white/[0.04] cursor-pointer')}>
-            {children}
-        </button>
-    );
-}
-
-/**
- * Rodapé do card de Polos: quando autorizou e como reconectar.
- *
- * O link é o mesmo link público do Onboarding que o cliente já recebeu — não
- * é um caminho novo. E precisa ser o NAVEGADOR DO CLIENTE: quem clica é quem
- * tem a sessão do ML, e um clique interno da ECF carimbaria a conta errada
- * (foi o que aconteceu com a Masitto em 27/08).
- */
-function RodapePolos({ empresa }) {
-    const [copiado, setCopiado] = useState(false);
-    const data = fmtData(empresa.autorizado_em);
-
-    async function copiar() {
-        try {
-            await navigator.clipboard.writeText(empresa.link_reconexao);
-            setCopiado(true);
-            setTimeout(() => setCopiado(false), 2000);
-        } catch {
-            setCopiado(false);
-        }
-    }
-
-    return (
-        <div className="space-y-1.5">
-            {data && (
-                <div className="text-[11px] text-white/35">
-                    autorizou em {data}
-                </div>
-            )}
-            {empresa.tem_token ? (
-                <div className="text-[11px] text-white/35">publicação em breve</div>
-            ) : empresa.link_reconexao ? (
-                <button
-                    type="button"
-                    onClick={copiar}
-                    className="flex items-center gap-1 text-[11px] text-ecf-yellow/80 hover:text-ecf-yellow"
-                >
-                    {copiado ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    <span>{copiado ? 'link copiado' : 'copiar link de reconexão'}</span>
-                </button>
-            ) : (
-                <div className="text-[11px] text-white/35">sem ficha — não há link</div>
-            )}
+        <div aria-hidden="true" className="animate-pulse">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => <div key={i} className="h-[104px] rounded-xl bg-ecf-card" />)}
+            </div>
+            <div className="mt-8 rounded-xl bg-ecf-card">
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <div key={i} className="h-14 border-b border-white/[0.06]" />)}
+            </div>
         </div>
     );
 }
 
 /**
- * Painel de cards de empresas — Momento 1 do módulo "Anunciar ML".
+ * Tela A do Publicador interno: entrada de /mlb/anuncios.
  *
- * DUAS fontes: `companies` com token (publicam de fato) e empresas de Polos que
- * autorizaram o OAuth do ML. As de Polos que autorizaram antes de 21/09/2026
- * aparecem como "Autorizada — falta reconectar": naquela época o callback
- * descartava o token, então a autorização foi real mas a credencial não existe.
- *
- * Só o card que pode publicar é clicável (`pode_publicar`) — ver `CardEmpresa`.
- *
- * Escopo por publicador está deferido: sob o gate role:admin todas as conectadas
- * aparecem. `tem_dados_cliente` marca as que têm planilha do cliente vinculada
- * (habilita pré-preenchimento na Phase 76).
+ * Programa (Polos · Incubadora · Gestão), busca, filtro e página vivem na URL e
+ * trocam por router.get com preserveState. Cada linha é uma conta do ML; clicar
+ * (ou Enter) abre a tela B de produtos da empresa. Conta não liberada (D21) é
+ * estado calmo: selo neutro, a linha continua abrindo. Sem fundo avermelhado em
+ * linha alguma: o estado fica só no selo.
  */
-export default function AnunciosEmpresas({ empresas = [] }) {
-    const [busca, setBusca] = useState('');
+export default function AnunciosEmpresas({
+    programa = 'polos',
+    programas = {},
+    indicadores = {},
+    empresas = [],
+    paginacao = { pagina: 1, por_pagina: 50, total: 0, de: 0, ate: 0 },
+    filtros = { busca: '', filtro: 'todos' },
+}) {
+    const [busca, setBusca] = useState(filtros.busca ?? '');
+    const [carregando, setCarregando] = useState(false);
+    const [erroCarga, setErroCarga] = useState(false);
+    const [status, setStatus] = useState(null); // { tipo: 'ok' | 'erro', texto }
+    const espera = useRef(null);
+    const primeira = useRef(true);
 
-    function abrirWizard(empresa) {
-        router.get(route('mlb.anuncios.wizard', { company: empresa.id }));
+    const rotuloPrograma = ROTULO_PROGRAMA[programa] ?? 'Polos';
+    const filtroAtual = filtros.filtro ?? 'todos';
+    const temBuscaOuFiltro = (filtros.busca ?? '') !== '' || filtroAtual !== 'todos';
+
+    function visitar(parametros) {
+        router.get(route('mlb.anuncios.index'), { programa, ...parametros }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            onStart: () => { setCarregando(true); setErroCarga(false); },
+            onFinish: () => setCarregando(false),
+            onError: () => setErroCarga(true),
+        });
     }
 
-    const filtradas = useMemo(() => {
-        const q = busca.trim().toLowerCase();
-        if (!q) return empresas;
-        return empresas.filter((e) => (e.nome ?? '').toLowerCase().includes(q));
-    }, [empresas, busca]);
+    // Busca com espera de 350 ms; nunca dispara na montagem.
+    useEffect(() => {
+        if (primeira.current) { primeira.current = false; return undefined; }
+        if (busca === (filtros.busca ?? '')) return undefined;
+        espera.current = setTimeout(() => {
+            visitar({ filtro: filtroAtual, busca: busca || undefined });
+        }, 350);
+        return () => clearTimeout(espera.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [busca]);
+
+    const trocarPrograma = (p) => {
+        setBusca('');
+        router.get(route('mlb.anuncios.index'), { programa: p }, {
+            preserveState: true,
+            onStart: () => { setCarregando(true); setErroCarga(false); },
+            onFinish: () => setCarregando(false),
+            onError: () => setErroCarga(true),
+        });
+    };
+
+    const aplicarFiltro = (filtro) => visitar({ filtro, busca: busca || undefined });
+    const irParaPagina = (pagina) => visitar({ filtro: filtroAtual, busca: busca || undefined, pagina });
+    const limparBusca = () => { setBusca(''); visitar({ filtro: filtroAtual }); };
+
+    const abrirProdutos = (e) => router.get(route('mlb.anuncios.publicador.produtos', { conta: e.chave }));
+
+    function aoConcluirSync(e, json) {
+        setStatus({ tipo: 'ok', texto: `${e.nome}: ${json?.mensagem ?? 'Nada novo no Portal.'}` });
+        router.reload({ only: ['empresas', 'indicadores', 'programas'] });
+    }
+
+    const sincronizando = (e) => e.company_id && e.portal?.situacao !== 'sem_portal';
+    const vazioDoPrograma = (indicadores.empresas ?? 0) === 0 && !temBuscaOuFiltro;
+    const precisaPaginar = paginacao.total > paginacao.por_pagina;
+    const ultimaPagina = Math.ceil(paginacao.total / paginacao.por_pagina);
 
     return (
-        <AppLayout title="Anunciar no Mercado Livre">
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <AppLayout title="Publicador Mercado Livre">
+            <div className="mx-auto max-w-[1240px] px-8 py-8">
 
                 {/* Cabeçalho */}
-                <div className="mb-6 flex items-center gap-3">
-                    <Rocket className="h-6 w-6 text-ecf-yellow" />
-                    <div>
-                        <h1 className="text-xl font-semibold text-white">Anunciar no Mercado Livre</h1>
-                        <p className="text-sm text-white/40">
-                            Selecione a empresa para criar ou continuar um anúncio. Empresas de Polos
-                            que autorizaram o Mercado Livre aparecem aqui com o estado da conexão.
-                        </p>
+                <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-ecf-yellow/20 bg-ecf-yellow/[0.12]">
+                            <Rocket className="h-[18px] w-[18px] text-ecf-yellow" aria-hidden="true" />
+                        </div>
+                        <div>
+                            <h1 className="font-display text-[24px] font-bold leading-tight text-white">Publicador Mercado Livre</h1>
+                            <p className="text-[13px] font-normal text-white/55">
+                                Publique no Mercado Livre o que o cliente preparou no Portal.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <label className="relative block w-[280px]">
+                            <span className="sr-only">Buscar empresa</span>
+                            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-white/40" aria-hidden="true" />
+                            <input
+                                type="search"
+                                value={busca}
+                                onChange={(ev) => setBusca(ev.target.value)}
+                                placeholder="Buscar empresa…"
+                                className="h-10 w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-10 pr-3 text-[13px] font-normal text-white placeholder:text-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                            />
+                        </label>
+                        <SeletorPrograma programa={programa} programas={programas} onTrocar={trocarPrograma} />
                     </div>
                 </div>
 
-                {/* Busca */}
-                {empresas.length > 0 && (
-                    <div className="mb-5 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-ecf-bg px-3 py-2">
-                        <Search className="h-4 w-4 text-white/30" />
-                        <input
-                            value={busca}
-                            onChange={(e) => setBusca(e.target.value)}
-                            placeholder="Buscar empresa…"
-                            className="w-full bg-transparent text-sm text-white placeholder-white/30 focus:outline-none"
-                        />
-                        <span className="shrink-0 text-[11px] text-white/30">
-                            {filtradas.length} de {empresas.length}
-                        </span>
+                {erroCarga ? (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] p-6 text-center">
+                        <p className="text-[13px] font-normal text-red-300">
+                            Não foi possível carregar as empresas. Atualize a página; se continuar, avise o time de desenvolvimento.
+                        </p>
+                        <button type="button" onClick={() => router.reload()} className={cn(BOTAO_SECUNDARIO, 'mt-4')}>
+                            Tentar de novo
+                        </button>
                     </div>
-                )}
-
-                {/* Grid de cards */}
-                {empresas.length === 0 ? (
-                    <div className="card-ecf rounded-2xl p-10 text-center text-white/40">
-                        Nenhuma empresa com conta ML conectada.
-                    </div>
+                ) : carregando ? (
+                    <Esqueleto />
                 ) : (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {filtradas.map((e) => (
-                            <CardEmpresa
-                                key={e.id}
-                                empresa={e}
-                                onAbrir={() => abrirWizard(e)}
-                            >
-                                {/* Nome + ícone */}
-                                <div className="mb-2 flex items-start gap-2">
-                                    <Store className="mt-0.5 h-4 w-4 shrink-0 text-white/40" />
-                                    <span className="text-sm font-medium leading-tight text-white">
-                                        {e.nome}
-                                    </span>
-                                    {e.origem === 'polos' && (
-                                        <span className="ml-auto shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/40">
-                                            Polos
-                                        </span>
+                    <div className="grid gap-8 min-[1600px]:grid-cols-[1fr_320px]">
+                        <div className="min-w-0 space-y-8">
+                            <IndicadoresDoPrograma indicadores={indicadores} onFiltrarProntos={() => aplicarFiltro('prontos')} />
+
+                            <section className="rounded-xl bg-ecf-card">
+                                <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+                                    <h2 className="text-[15px] font-bold text-white">Empresas de {rotuloPrograma}</h2>
+                                    <span className="font-mono text-[13px] tabular-nums text-white/55">{empresas.length} exibidas</span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 px-4 pb-4" role="group" aria-label="Filtro da lista">
+                                    {FILTROS.map((f) => {
+                                        const ativo = filtroAtual === f.chave;
+                                        return (
+                                            <button
+                                                key={f.chave}
+                                                type="button"
+                                                aria-pressed={ativo}
+                                                onClick={() => aplicarFiltro(f.chave)}
+                                                className={cn(
+                                                    'inline-flex h-10 items-center rounded-lg border px-4 text-[13px] font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                                                    ativo
+                                                        ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
+                                                        : 'border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.06]',
+                                                )}
+                                            >
+                                                {f.rotulo}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div aria-live="polite" className="px-4">
+                                    {status && (
+                                        <p
+                                            className={cn(
+                                                'mb-4 rounded-lg border px-3 py-2 text-[13px] font-normal',
+                                                status.tipo === 'ok'
+                                                    ? 'border-sky-500/25 bg-sky-500/[0.06] text-sky-200'
+                                                    : 'border-red-500/30 bg-red-500/[0.06] text-red-300',
+                                            )}
+                                        >
+                                            {status.texto}
+                                        </p>
                                     )}
                                 </div>
 
-                                {/* Badge de estado do token */}
-                                <div className="mb-3 flex items-center gap-1">
-                                    <TokenBadge tokenExpirado={e.token_expirado} temToken={e.tem_token} />
-                                    {e.token_expirado && e.tem_token && (
-                                        <RefreshCw className="h-3 w-3 text-red-400" />
-                                    )}
-                                </div>
+                                {vazioDoPrograma ? (
+                                    <div className="px-4 py-12 text-center">
+                                        <p className="text-[15px] font-bold text-white">
+                                            Nenhuma empresa de {rotuloPrograma} com conta do Mercado Livre.
+                                        </p>
+                                        <p className="mt-1 text-[13px] font-normal text-white/55">
+                                            Quando uma empresa do programa autorizar o Mercado Livre, ela aparece aqui.
+                                        </p>
+                                    </div>
+                                ) : empresas.length === 0 ? (
+                                    <div className="px-4 py-12 text-center">
+                                        <p className="text-[15px] font-bold text-white">
+                                            {(filtros.busca ?? '') !== ''
+                                                ? `Nenhuma empresa encontrada para “${filtros.busca}”.`
+                                                : 'Nenhuma empresa neste filtro.'}
+                                        </p>
+                                        <button type="button" onClick={limparBusca} className={cn(BOTAO_SECUNDARIO, 'mt-4')}>
+                                            Limpar busca
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-y border-white/[0.06]">
+                                                    {COLUNAS.map((c) => (
+                                                        <th key={c} scope="col" className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                                                            {c}
+                                                        </th>
+                                                    ))}
+                                                    <th scope="col" className="px-4 py-2"><span className="sr-only">Ações</span></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {empresas.map((e) => (
+                                                    <tr
+                                                        key={e.chave}
+                                                        tabIndex={0}
+                                                        onClick={() => abrirProdutos(e)}
+                                                        onKeyDown={(ev) => {
+                                                            if (ev.key === 'Enter' && ev.target === ev.currentTarget) abrirProdutos(e);
+                                                        }}
+                                                        className="h-14 cursor-pointer border-b border-white/[0.06] hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow"
+                                                    >
+                                                        <td className="px-4 py-2">
+                                                            <p className="text-[13px] font-normal text-white">{e.nome}</p>
+                                                            <p className="font-mono text-[11px] text-white/40">{e.identificador}</p>
+                                                            {!e.liberada && <AvisoContaTravada variante="selo" className="mt-1" />}
+                                                        </td>
+                                                        <td className="px-4 py-2"><SeloConta token={e.token} /></td>
+                                                        <td className="px-4 py-2"><SeloPortal portal={e.portal} /></td>
+                                                        <td className="px-4 py-2 text-[13px] font-normal tabular-nums text-white/70">
+                                                            {contagem(e.produtos, 'produto', 'produtos')}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-[13px] font-normal tabular-nums text-white/70">
+                                                            {contagem(e.publicados, 'anúncio', 'anúncios')}
+                                                        </td>
+                                                        <td className="px-4 py-2">
+                                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                                {sincronizando(e) && (
+                                                                    <BotaoSincronizarPortal
+                                                                        conta={e.chave}
+                                                                        onConcluido={(json) => aoConcluirSync(e, json)}
+                                                                        onErro={(texto) => setStatus({ tipo: 'erro', texto })}
+                                                                    />
+                                                                )}
+                                                                {e.token !== 'sem_token' ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(ev) => { ev.stopPropagation(); abrirProdutos(e); }}
+                                                                        className={BOTAO_SECUNDARIO}
+                                                                    >
+                                                                        Publicar →
+                                                                    </button>
+                                                                ) : (
+                                                                    <LinkReconexao link={e.link_reconexao} />
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
 
-                                {/* Marcadores */}
-                                <div className="space-y-1">
-                                    {e.tem_dados_cliente && (
-                                        <div className="flex items-center gap-1 text-[11px] text-violet-300/80">
-                                            <PackageCheck className="h-3 w-3" />
-                                            <span>dados do cliente disponíveis</span>
-                                        </div>
-                                    )}
-                                    {e.rascunhos_abertos > 0 && (
-                                        <div className="flex items-center gap-1 text-[11px] text-white/50">
-                                            <FileText className="h-3 w-3" />
-                                            <span>{e.rascunhos_abertos} rascunho{e.rascunhos_abertos !== 1 ? 's' : ''} em aberto</span>
-                                        </div>
-                                    )}
-                                    {/* BULK-04: contador de publicações em andamento — atualiza a cada reload do painel */}
-                                    {e.publicando_count > 0 && (
-                                        <div className="flex items-center gap-1 text-[11px] text-ecf-yellow/80">
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                            <span>{e.publicando_count} publicando…</span>
-                                        </div>
-                                    )}
-                                </div>
+                                {paginacao.total > 0 && (
+                                    <div className="flex items-center justify-between gap-4 p-4">
+                                        <p className="text-[13px] font-normal tabular-nums text-white/55">
+                                            Mostrando {paginacao.de}–{paginacao.ate} de {paginacao.total}
+                                        </p>
+                                        {precisaPaginar && (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={paginacao.pagina <= 1}
+                                                    onClick={() => irParaPagina(paginacao.pagina - 1)}
+                                                    className={cn(BOTAO_SECUNDARIO, 'disabled:cursor-not-allowed disabled:opacity-40')}
+                                                >
+                                                    <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Anterior
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={paginacao.pagina >= ultimaPagina}
+                                                    onClick={() => irParaPagina(paginacao.pagina + 1)}
+                                                    className={cn(BOTAO_SECUNDARIO, 'disabled:cursor-not-allowed disabled:opacity-40')}
+                                                >
+                                                    Próxima <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </section>
 
-                                {/* CTA */}
-                                <div className="mt-3">
-                                    {e.pode_publicar ? (
-                                        <span className="text-[11px] text-ecf-yellow/80">anunciar →</span>
-                                    ) : (
-                                        <RodapePolos empresa={e} />
-                                    )}
-                                </div>
-                            </CardEmpresa>
-                        ))}
+                            {/* Abaixo de 1600px (a 1440px a tabela com 2 botões por linha não cabe ao lado do painel) o painel vira card recolhido no fim da página */}
+                            <div className="min-[1600px]:hidden">
+                                <PainelComoFunciona variante="recolhido" />
+                            </div>
+                        </div>
+
+                        <div className="hidden min-[1600px]:block">
+                            <PainelComoFunciona variante="lateral" />
+                        </div>
                     </div>
                 )}
             </div>

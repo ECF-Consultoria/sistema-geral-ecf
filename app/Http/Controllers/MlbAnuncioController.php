@@ -16,6 +16,7 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PubProduto;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
@@ -23,6 +24,9 @@ use App\Services\Creative\CreativeKitPublicacao;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
+use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\IaParaRascunhoService;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
@@ -87,19 +91,6 @@ class MlbAnuncioController extends Controller
         // Fase 161 Plano 03: dono de payload.pictures quando há kit (PUB-01/04)
         private CreativeKitPublicacao $creativeKitPublicacao,
     ) {}
-
-    /**
-     * Momento 1: painel de cards — uma empresa por card com estado de conta ML.
-     *
-     * Publicador vê só as empresas onde responsavel_id === seu id.
-     * Admin vê todas. Filtro imposto na query do banco (não em PHP pós-busca).
-     */
-    public function index(Request $request)
-    {
-        return Inertia::render('Mlb/AnunciosEmpresas', [
-            'empresas' => $this->empresas($request),
-        ]);
-    }
 
     /**
      * Momento 2: wizard com a empresa já fixada (SEL-07).
@@ -3241,14 +3232,22 @@ class MlbAnuncioController extends Controller
     public function iaAnaliseStore(Request $request): JsonResponse
     {
         $dados = $request->validate([
-            'company_id' => ['required', 'integer', 'exists:companies,id'],
-            'produto'    => ['required', 'string', 'max:300'],
+            'company_id' => ['nullable', 'required_without:produto_id', 'integer', 'exists:companies,id'],
+            // D14: do Publicador o pedido é por produto (pub_produtos) e o
+            // resultado vai para o rascunho novo, não para o wizard antigo.
+            'produto_id' => ['nullable', 'required_without:company_id', 'integer', 'exists:pub_produtos,id'],
+            'substituir' => ['sometimes', 'boolean'],
+            'produto'    => ['required_without:produto_id', 'nullable', 'string', 'max:300'],
             'specs'      => ['nullable', 'string', 'max:8000'],
             // Produto da planilha do cliente (opcional): preço, estoque e
             // medidas do rascunho saem DAQUI, lidos no servidor — o navegador
             // só diz qual SKU.
             'sku'        => ['nullable', 'string', 'max:100'],
         ]);
+
+        if (! empty($dados['produto_id'])) {
+            return $this->iaAnaliseStorePublicador($request, $dados);
+        }
 
         $company = Company::findOrFail($dados['company_id']);
 
@@ -3301,6 +3300,76 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * D14: "Anunciar por IA" de um produto do Publicador. A análise nasce com o
+     * destino `publicador` (produto + rascunho + revisão do pedido) e o job grava
+     * no rascunho `pub_*` pelo motor. NÃO exige token: a IA só preenche rascunho.
+     *
+     * `substituir` só vale se a equipe não editar durante a geração (a revisão do
+     * rascunho é comparada na hora de aplicar) — o que se digita vence.
+     */
+    private function iaAnaliseStorePublicador(Request $request, array $dados): JsonResponse
+    {
+        $p = PubProduto::findOrFail((int) $dados['produto_id']);
+
+        // T-164-40: empresa arquivada ou sem dono não existe para o Publicador.
+        abort_if(app(ProgramasPublicadorService::class)->empresaDoProduto($p) === null, 404);
+
+        $r = app(EditorRascunhoService::class)->abrir($p);
+        if (IaParaRascunhoService::intocavel($r)) {
+            return response()->json(['message' => 'Este anúncio já foi publicado ou está publicando.'], 422);
+        }
+
+        $resultado = [
+            'destino' => [
+                'tipo'         => 'publicador',
+                'produto_id'   => $p->id,
+                'rascunho_id'  => $r->id,
+                'revisao_base' => (int) $r->revisao,
+                'substituir'   => (bool) ($dados['substituir'] ?? false),
+            ],
+        ];
+
+        // Dados do cliente (preço, estoque, medidas) pela planilha do onboarding, achados pelo SKU.
+        $sku = trim((string) $p->skuExibido());
+        if ($sku !== '' && $p->mlbEmpresa) {
+            $achado = collect($this->montarProdutosDoCliente($p->mlbEmpresa->implementacao?->dados))
+                ->first(fn ($x) => trim((string) $x['sku']) === $sku);
+            if ($achado !== null) {
+                $resultado['cliente'] = [
+                    'sku'          => $achado['sku'],
+                    'produto'      => $achado['produto'],
+                    'preco_c'      => $achado['preco_anunciado_c'],
+                    'preco_p'      => $achado['preco_anunciado_p'],
+                    'estoque'      => $achado['estoque'],
+                    'peso_kg'      => $achado['peso_kg'],
+                    'altura'       => $achado['altura'],
+                    'largura'      => $achado['largura'],
+                    'profundidade' => $achado['profundidade'],
+                ];
+            }
+        }
+
+        $analise = MlAnuncioIaAnalise::create([
+            'company_id'     => $p->company_id,
+            'mlb_empresa_id' => $p->mlb_empresa_id,
+            'user_id'        => $request->user()->id,
+            'produto'        => trim((string) ($dados['produto'] ?? '')) ?: $p->nomeExibido(),
+            'loja'           => $p->contaOuNula()?->nomeContaMl() ?? ($p->mlbEmpresa?->nome ?? $p->company?->name ?? ''),
+            'specs'          => $dados['specs'] ?? null,
+            'status'         => MlAnuncioIaAnalise::STATUS_PENDENTE,
+            'resultado'      => $resultado,
+        ]);
+
+        GerarAnaliseAnuncioIaJob::dispatch($analise->id);
+
+        return response()->json([
+            'id'          => $analise->id,
+            'status'      => $analise->status,
+            'rascunho_id' => $r->id,
+        ], 202);
+    }
+
+    /**
      * Estado da análise — o front chama em intervalo até sair de "em andamento".
      *
      * Só devolve o que a tela usa. O prompt e o payload cru do provedor ficam
@@ -3310,7 +3379,9 @@ class MlbAnuncioController extends Controller
     {
         // Cada análise pertence a uma conta; sem esta checagem o id sequencial
         // viraria uma janela para o trabalho de outra empresa.
-        if ($analise->company_id !== null) {
+        // D14: a do Publicador não depende de token (a IA só preenche rascunho) e
+        // a rota já é role:admin; o escopo é o produto, não a conta.
+        if ($analise->company_id !== null && $analise->destinoPublicador() === null) {
             $company = Company::findOrFail($analise->company_id);
             $company->loadMissing('mlToken');
             abort_unless($company->mlToken !== null, 404);
@@ -3333,157 +3404,8 @@ class MlbAnuncioController extends Controller
             'analise'     => $analise->analise(),
             'modelo'      => $analise->modelo,
             'duracao_ms'  => $analise->duracao_ms,
+            // D14: o que a IA gravou no rascunho do Publicador (null no caminho antigo).
+            'publicador'  => $analise->resultado['publicador'] ?? null,
         ] + $this->preenchimentoIa($analise));
-    }
-
-    /**
-     * Cards do painel — as DUAS fontes de conta ML.
-     *
-     * 1. `companies` com token (fluxo de sempre, `/ml-oauth`).
-     * 2. `mlb_empresas` de Polos/Onboarding que autorizaram o OAuth.
-     *
-     * A fonte 2 existia e era invisível aqui: o `callbackPolos` autorizava e
-     * DESCARTAVA o token (não havia onde gravar até `mlb_empresa_id` entrar em
-     * `ml_tokens`), então 246 empresas autorizadas nunca apareceram no módulo.
-     *
-     * As que autorizaram ANTES dessa correção aparecem com `conectada: false` e
-     * um link de reconexão: o token daquela autorização não existe em lugar
-     * nenhum para ser recuperado — não está em log nem em binlog, porque nunca
-     * foi escrito. O que sobrou (e segue valendo) é o `cust_id` capturado.
-     */
-    private function empresas(Request $request): Collection
-    {
-        return $this->empresasDeConsultoria()
-            ->concat($this->empresasDePolos())
-            ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values();
-    }
-
-    /** Fonte 1: `companies` com token — comportamento inalterado. */
-    private function empresasDeConsultoria(): Collection
-    {
-        // Fonte: companies com ml_token. O whereHas filtra no banco — só conectadas.
-        return Company::query()
-            ->whereHas('mlToken')
-            ->with('mlToken')
-            ->orderBy('name')
-            ->get()
-            ->map(function ($c) {
-                // Rascunhos em aberto contados por company_id (âncora do rascunho)
-                $abertos = MlAnuncioRascunho::where('company_id', $c->id)
-                    ->whereIn('status', [
-                        MlAnuncioRascunho::STATUS_RASCUNHO,
-                        MlAnuncioRascunho::STATUS_VALIDADO,
-                        MlAnuncioRascunho::STATUS_ERRO,
-                    ])
-                    ->count();
-
-                // BULK-04: contador de rascunhos em processo de publicação assíncrona
-                $publicando = MlAnuncioRascunho::where('company_id', $c->id)
-                    ->where('status', MlAnuncioRascunho::STATUS_PUBLICANDO)
-                    ->count();
-
-                // mlb_empresa ligada (se houver) → habilita dados do cliente (Phase 76)
-                $mlbEmp = MlbEmpresa::where('company_id', $c->id)
-                    ->with('implementacao')
-                    ->first();
-
-                return [
-                    'id'                => $c->id,   // âncora = company_id
-                    'nome'              => $c->name,
-                    'company_id'        => $c->id,
-                    // Expõe apenas booleans — access_token permanece hidden
-                    'tem_token'         => true,     // filtrado por whereHas('mlToken')
-                    'token_expirado'    => $c->mlToken?->isExpired() ?? false,
-                    'tem_dados_cliente' => $mlbEmp?->implementacao !== null,
-                    'rascunhos_abertos' => (int) $abertos,
-                    // BULK-04: quantos rascunhos estão em publicação assíncrona agora
-                    'publicando_count'  => (int) $publicando,
-                    // ─── campos da convivência com Polos ───
-                    'origem'            => 'consultoria',
-                    'conectada'         => true,
-                    'pode_publicar'     => true,
-                    'cust_id'           => $c->ml_store_id,
-                    'autorizado_em'     => $c->mlToken?->connected_at?->toISOString(),
-                    'link_reconexao'    => null,
-                ];
-            });
-    }
-
-    /**
-     * Fonte 2: empresas de Polos/Onboarding que autorizaram o OAuth do ML.
-     *
-     * Evidência de autorização = o carimbo `dados->ml_oauth` que o
-     * `callbackPolos` grava, e não `cust_id` preenchido: o Cust ID também pode
-     * ter sido digitado à mão por um consultor, e digitar não é autorizar.
-     *
-     * `scopeAtivas()` é obrigatório aqui — empresa arquivada saiu do projeto e
-     * não entra em listagem nenhuma de Polos (learnings de Polos §3).
-     *
-     * Contagens vêm de agregado, não de query por linha: são centenas de
-     * empresas, e o laço por empresa da fonte 1 viraria N+1 grosseiro aqui.
-     */
-    private function empresasDePolos(): Collection
-    {
-        $empresas = MlbEmpresa::query()
-            ->ativas()
-            ->with(['implementacao', 'mlToken'])
-            ->whereHas('implementacao', fn ($q) => $q->whereNotNull('dados->ml_oauth'))
-            ->get();
-
-        if ($empresas->isEmpty()) {
-            return collect();
-        }
-
-        $ids = $empresas->pluck('id');
-
-        // Um SELECT agrupado para os dois contadores, em vez de 2 por empresa.
-        $contagens = MlAnuncioRascunho::query()
-            ->whereIn('mlb_empresa_id', $ids)
-            ->selectRaw('mlb_empresa_id, status, COUNT(*) as total')
-            ->groupBy('mlb_empresa_id', 'status')
-            ->get()
-            ->groupBy('mlb_empresa_id');
-
-        $emAberto = [
-            MlAnuncioRascunho::STATUS_RASCUNHO,
-            MlAnuncioRascunho::STATUS_VALIDADO,
-            MlAnuncioRascunho::STATUS_ERRO,
-        ];
-
-        return $empresas->map(function (MlbEmpresa $e) use ($contagens, $emAberto) {
-            $porStatus = $contagens->get($e->id, collect());
-            $carimbo   = data_get($e->implementacao?->dados, 'ml_oauth', []);
-
-            // Sem token = autorizou antes da correção de 21/09/2026, quando o
-            // token era descartado. Precisa reconectar pelo mesmo link público
-            // do Onboarding — é um clique para quem já autorizou, porque o ML
-            // não repete a tela de consentimento para app já autorizado.
-            $token = $e->mlToken;
-
-            return [
-                'id'                => $e->chaveContaMl(),   // âncora = "empresa-<id>"
-                'nome'              => $e->nome,
-                'company_id'        => $e->company_id,
-                'tem_token'         => $token !== null,
-                'token_expirado'    => $token?->isExpired() ?? false,
-                'tem_dados_cliente' => $e->implementacao !== null,
-                'rascunhos_abertos' => (int) $porStatus->whereIn('status', $emAberto)->sum('total'),
-                'publicando_count'  => (int) $porStatus->where('status', MlAnuncioRascunho::STATUS_PUBLICANDO)->sum('total'),
-                // ─── campos da convivência com Polos ───
-                'origem'            => 'polos',
-                'conectada'         => $token !== null,
-                // Publicar ainda exige o refactor do controller para as duas
-                // âncoras (e o acervo ainda é ancorado em company_id). Enquanto
-                // isso o card não leva ao wizard — melhor não abrir do que
-                // abrir quebrado.
-                'pode_publicar'     => false,
-                'cust_id'           => $e->cust_id,
-                'autorizado_em'     => data_get($carimbo, 'autorizado_em'),
-                'link_reconexao'    => $e->implementacao?->token
-                    ? route('implementacao.conectar-ml', ['token' => $e->implementacao->token])
-                    : null,
-            ];
-        });
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
+use App\Models\PubProduto;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 
@@ -17,6 +18,22 @@ use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 class DadosEfetivosService
 {
     public function __construct(private EstruturaPrecificacaoService $precificacao) {}
+
+    /**
+     * D16: só produto ligado ao Portal tem efetivos (título planejado e preço da
+     * Precificação). Sem oferta não há o que herdar: o produto usa só o que a
+     * equipe digitou — e o digitado vence, porque `comEfetivos` só preenche o vazio.
+     *
+     * @return array{titulos: array<string, ?string>, precos: array<string, ?float>, mlbs: list<string>}
+     */
+    public function daProduto(PubProduto $produto): array
+    {
+        if ($produto->oferta_id === null) {
+            return ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []];
+        }
+
+        return $this->daOferta($produto->oferta);
+    }
 
     /**
      * `mlbs`: os anúncios que a régua já conhece desta oferta — o SKU repetido

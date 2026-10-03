@@ -1,87 +1,109 @@
-import { useRef, useState } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useRef } from 'react';
+import { AlertTriangle, Lock, RefreshCw } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import FotosDoPar from '@/Components/Portal/Estrutura/FotosDoPar';
-import { GERAL } from './apoio';
+import { cn } from '@/lib/utils';
 
-// ─── Fotos por grupo (E6, `06`) ─────────────────────────────────────────────
+// ─── Fotos de um grupo (E6, `06`) ───────────────────────────────────────────
 //
-// Uma coluna para a galeria geral e uma para cada valor do eixo que define a
-// foto (Cor, Estampa…). A foto solta numa coluna entra NELA; dentro de cada
-// coluna a ordem é a do anúncio (a 1ª é a capa), com o mesmo arrastar do par.
-// Quem decide a lista final de cada variante (grupo + geral, limites) é o
-// servidor (`ResolvedorGruposImagem`).
+// Desde 03/10/2026 as fotos moram DENTRO de cada variação, como no Mercado
+// Livre: cada cartão de variação mostra o bloco do grupo dela. O grupo é do
+// servidor (`ResolvedorGruposImagem`): o valor do eixo que define a foto (as
+// variações Preto/P e Preto/M dividem as fotos do Preto) ou a própria
+// variação. A galeria geral (`GENERAL`) vale para todas.
 //
-// Tirar a foto de um grupo só a tira dali; tirada do último lugar onde estava,
-// ela é apagada (não sobra foto solta sem uso).
+// A foto solta num bloco entra NELE; dentro do bloco a ordem é a do anúncio
+// (a 1ª é a capa), com o mesmo arrastar do par. Tirar a foto de um grupo só a
+// tira dali; tirada do último lugar onde estava, ela é apagada.
+//
+// `envioAoMl` (D26): em conta ainda não liberada a foto fica guardada aqui e
+// NÃO sobe ao Mercado Livre. A pendência então não é falha: aparece uma nota
+// neutra, sem "enviar de novo". Falha real (com `erro`) continua avisada.
 
-export default function FotosPorGrupo({ imagens, atribuicoes, grupos, maxFotos = 10, enviando, disabled, opcoes, onArquivos, onAtribuicoes, onExcluir, onReenviar, onOpcao }) {
-    const arquivo = useRef(null);
-    const [destino, setDestino] = useState(GERAL);
-    const porId = Object.fromEntries(imagens.map((i) => [String(i.id), i]));
+/** As fotos de um grupo, na ordem do anúncio. */
+export const fotosDoGrupo = (imagens, atribuicoes, grupo) => {
+    const porId = Object.fromEntries((imagens ?? []).map((i) => [String(i.id), i]));
 
-    const doGrupo = (grupo) => atribuicoes
+    return (atribuicoes ?? [])
         .filter((a) => a.grupo === grupo)
         .sort((a, b) => a.posicao - b.posicao)
         .map((a) => ({ id: String(a.imagem), url: porId[String(a.imagem)]?.url ?? null }));
+};
 
-    const reordenar = (grupo, lista) => onAtribuicoes([
-        ...atribuicoes.filter((a) => a.grupo !== grupo),
-        ...lista.map((f, i) => ({ imagem: f.id, grupo, posicao: i })),
-    ]);
+/** Falha = não subiu E (há erro OU a conta envia ao ML). Pendente sem erro em conta não liberada é só "guardada". */
+const falhasDe = (imagens, envioAoMl) => (imagens ?? []).filter((i) => i.upload_status !== 'uploaded').filter((i) => i.erro || envioAoMl);
 
-    const remover = (grupo, indice) => {
-        const id = doGrupo(grupo)[indice]?.id;
-        if (! id) return;
-        const restantes = atribuicoes.filter((a) => ! (a.grupo === grupo && String(a.imagem) === id));
-        if (restantes.some((a) => String(a.imagem) === id)) {
-            reordenar(grupo, doGrupo(grupo).filter((f) => f.id !== id));
-        } else {
-            onExcluir(id);
-        }
-    };
+function Falha({ f, disabled, onReenviar }) {
+    return (
+        <p className="flex flex-wrap items-center gap-2 text-[13px] text-amber-200" data-foto-falha={f.id}>
+            <AlertTriangle size={14} className="shrink-0" /> Foto {f.id}: {f.erro ?? 'ainda não subiu para o Mercado Livre.'}
+            {! disabled && <Botao variante="fantasma" className="py-1" onClick={() => onReenviar(f.id)}><RefreshCw size={12} /> enviar de novo</Botao>}
+        </p>
+    );
+}
 
-    const colunas = [{ chave: GERAL, rotulo: 'Geral', nota: 'vale para todas as variações' }, ...grupos.map((g) => ({ chave: g.chave, rotulo: g.rotulo, nota: `só ${g.rotulo}` }))];
-    const falhas = imagens.filter((i) => i.upload_status !== 'uploaded');
+/** Avisos que não são de um grupo: fotos guardadas (D26) e falhas de foto que não está em grupo nenhum. */
+export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true, disabled, onReenviar }) {
+    const guardadas = envioAoMl ? [] : (imagens ?? []).filter((i) => i.upload_status === 'pending' && ! i.erro);
+    const soltas = falhasDe(imagens, envioAoMl).filter((f) => ! (atribuicoes ?? []).some((a) => String(a.imagem) === String(f.id)));
 
     return (
-        <div className="space-y-3" data-fotos-por-grupo={colunas.length}>
-            {falhas.length > 0 && (
-                <div className="space-y-1 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3 text-[12.5px] text-amber-200" data-fotos-falhas={falhas.length}>
-                    {falhas.map((f) => (
-                        <p key={f.id} className="flex flex-wrap items-center gap-2">
-                            <AlertTriangle size={13} className="shrink-0" /> Foto {f.id}: {f.erro ?? 'ainda não subiu para o Mercado Livre.'}
-                            {! disabled && <Botao variante="fantasma" className="py-1" onClick={() => onReenviar(f.id)}><RefreshCw size={12} /> enviar de novo</Botao>}
-                        </p>
-                    ))}
+        <>
+            {guardadas.length > 0 && (
+                <p className="flex items-start gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-[13px] text-white/55" data-fotos-guardadas={guardadas.length}>
+                    <Lock size={14} className="mt-0.5 shrink-0" /> As fotos ficam guardadas aqui e sobem para o Mercado Livre quando a publicação for liberada para esta conta.
+                </p>
+            )}
+            {soltas.length > 0 && (
+                <div className="space-y-1 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3" data-fotos-falhas={soltas.length}>
+                    {soltas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}
                 </div>
             )}
+        </>
+    );
+}
 
-            {colunas.map((c) => (
-                <section key={c.chave} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-grupo-foto={c.chave}>
-                    <h4 className="mb-2 text-[13px] font-semibold text-white">{c.rotulo} <span className="text-[11.5px] font-normal text-white/40">· {c.nota}</span></h4>
-                    <FotosDoPar fotos={doGrupo(c.chave)} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === c.chave}
-                        onReordenar={(lista) => reordenar(c.chave, lista)} onRemover={(i) => remover(c.chave, i)}
-                        onAdicionar={() => { setDestino(c.chave); arquivo.current?.click(); }} onArquivos={(arquivos) => onArquivos(arquivos, c.chave)} />
-                </section>
-            ))}
+/**
+ * O bloco de fotos de UM grupo. `obrigatorio` = a variação precisa de foto própria (borda âmbar
+ * vazia); `minimo` = recomendado pela categoria (só o texto da contagem).
+ */
+export function BlocoDeFotos({
+    grupo, titulo, nota = null, imagens, atribuicoes, maxFotos = 10, minimo = null, obrigatorio = false, enviando, disabled,
+    envioAoMl = true, onArquivos, onAtribuicoes, onExcluir, onReenviar, children,
+}) {
+    const arquivo = useRef(null);
+    const fotos = fotosDoGrupo(imagens, atribuicoes, grupo);
+    const falhas = falhasDe(imagens, envioAoMl).filter((f) => (atribuicoes ?? []).some((a) => a.grupo === grupo && String(a.imagem) === String(f.id)));
 
-            <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos"
-                onChange={(e) => { onArquivos([...e.target.files], destino); e.target.value = ''; }} />
+    const reordenar = (lista) => onAtribuicoes([
+        ...(atribuicoes ?? []).filter((a) => a.grupo !== grupo),
+        ...lista.map((f, i) => ({ imagem: f.id, grupo, posicao: i })),
+    ]);
+    const remover = (indice) => {
+        const id = fotos[indice]?.id;
+        if (! id) return;
+        const restantes = (atribuicoes ?? []).filter((a) => ! (a.grupo === grupo && String(a.imagem) === id));
+        if (restantes.some((a) => String(a.imagem) === id)) reordenar(fotos.filter((f) => f.id !== id));
+        else onExcluir(id);
+    };
 
-            <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12.5px] text-white/65">
-                <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={opcoes.incluir_geral} disabled={disabled} onChange={(e) => onOpcao({ incluir_geral: e.target.checked })}
-                        className="rounded border-white/20 bg-transparent text-ecf-yellow" data-opcao="incluir-geral" />
-                    Repetir as fotos gerais no fim de cada variação
-                </label>
-                <label className="flex items-center gap-2" title="Uma coluna por combinação, em vez de uma por valor que define a foto">
-                    <input type="checkbox" checked={opcoes.fotos_por_variante} disabled={disabled} onChange={(e) => onOpcao({ fotos_por_variante: e.target.checked })}
-                        className="rounded border-white/20 bg-transparent text-ecf-yellow" data-opcao="fotos-por-variante" />
-                    Fotos diferentes para cada combinação
-                </label>
+    return (
+        <section id={`fotos-${grupo}`} className={cn('scroll-mt-20 rounded-[10px] border bg-white/[0.02] p-3', obrigatorio && fotos.length === 0 ? 'border-amber-400/50' : 'border-white/[0.08]')}
+            data-grupo-foto={grupo} data-fotos-no-grupo={fotos.length}>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <h5 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                    {titulo}{obrigatorio && fotos.length === 0 && <span className="ml-1 normal-case tracking-normal text-amber-300">(obrigatório)</span>}
+                    {nota && <span className="ml-1 font-normal normal-case tracking-normal text-white/40">· {nota}</span>}
+                </h5>
+                <span className="font-mono text-[11px] tabular-nums text-white/40">{fotos.length}/{maxFotos}{minimo ? ` · recomendado ${minimo}+` : ''}</span>
             </div>
-            <p className="text-[11.5px] text-white/35">JPG ou PNG, até 10 MB, com pelo menos 500 px (ideal 1200 px). Cada foto sobe para o Mercado Livre na hora.</p>
-        </div>
+            <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
+                onReordenar={reordenar} onRemover={remover}
+                onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
+            {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}</div>}
+            {children}
+            <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos" data-campo-fotos={grupo}
+                onChange={(e) => { onArquivos([...e.target.files], grupo); e.target.value = ''; }} />
+        </section>
     );
 }

@@ -3,14 +3,15 @@
 namespace App\Services\Publicador;
 
 use App\Models\EstruturaAnuncio;
-use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
+use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
+use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Payload\Alvo;
@@ -59,20 +60,20 @@ class EditorRascunhoService
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
 
-    /** O rascunho da oferta: o que já existe, o migrado do Anunciar antigo, ou um novo com os tipos que faltam. */
-    public function abrir(EstruturaOferta $oferta): PubRascunho
+    /** O rascunho do produto: o que já existe, o migrado do Anunciar antigo (só com oferta), ou um novo com os tipos que faltam. */
+    public function abrir(PubProduto $produto): PubRascunho
     {
-        $r = PubRascunho::where('oferta_id', $oferta->id)->first();
-        if (! $r && ($antiga = EstruturaPublicacao::where('oferta_id', $oferta->id)->first())) {
+        $r = PubRascunho::where('produto_id', $produto->id)->first();
+        if (! $r && $produto->oferta_id !== null && ($antiga = EstruturaPublicacao::where('oferta_id', $produto->oferta_id)->first())) {
             $r = $this->migracao->aplicar($antiga);
         }
         if (! $r) {
-            $mlbs = $this->mlbsDaRegua($oferta);
-            $r = $this->repo->criar($oferta, array_map(
+            $mlbs = $this->mlbsDaRegua($produto);
+            $r = $this->repo->criar($produto, array_map(
                 fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
                 array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
             ), ['origem' => 'publicador']);
-            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $oferta->sku]]])]);
+            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]]])]);
         }
 
         // Migrado com categoria e sem hash: grava o hash do schema de hoje.
@@ -99,6 +100,8 @@ class EditorRascunhoService
     public function salvar(PubRascunho $r, array $d): void
     {
         DB::transaction(function () use ($r, $d) {
+            // WR-B02: a mesma trava da IA e do `iniciar` — um escreve de cada vez.
+            $this->repo->travar($r);
             if (array_key_exists('atributos', $d)) {
                 $this->repo->gravarAtributos($r, array_filter((array) $d['atributos'], fn ($v) => is_array($v)));
             }
@@ -135,30 +138,38 @@ class EditorRascunhoService
      */
     public function trocarCategoria(PubRascunho $r, string $categoriaId): array
     {
+        // Os schemas são lidos antes da trava (podem ir ao ML); dentro dela vem o guardado.
         $nova = $this->schemas->obter($categoriaId);
-        $s = $this->repo->snapshot($r);
-        $novoSchema = (new ClassificadorAtributos())->classificar($nova, new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
-
-        $resultado = ['descartados' => [], 'eixos_removidos' => []];
-        $atributos = $s->atributos;
-        $eixos = $s->eixos;
         if ($r->categoria_id && $r->categoria_id !== $categoriaId) {
-            $anterior = (new ClassificadorAtributos())->classificar($this->schemas->obter($r->categoria_id), new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
-            $m = MigradorDeCategoria::migrar($anterior, $novoSchema, $s->atributos, $s->eixos);
-            $atributos = $m->atributos;
-            $eixos = $m->eixos;
-            $resultado = ['descartados' => $m->descartados, 'eixos_removidos' => $m->eixosRemovidos];
+            $this->schemas->obter($r->categoria_id);
         }
 
-        DB::transaction(function () use ($r, $nova, $atributos, $eixos, $s) {
+        return DB::transaction(function () use ($r, $nova, $categoriaId) {
+            // WR-B02: trava e relê — a categoria e os atributos de agora, não os de antes da leitura do ML.
+            $this->repo->travar($r);
+            $r->refresh();
+            $s = $this->repo->snapshot($r);
+            $novoSchema = (new ClassificadorAtributos())->classificar($nova, new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
+
+            $resultado = ['descartados' => [], 'eixos_removidos' => []];
+            $atributos = $s->atributos;
+            $eixos = $s->eixos;
+            if ($r->categoria_id && $r->categoria_id !== $categoriaId) {
+                $anterior = (new ClassificadorAtributos())->classificar($this->schemas->obter($r->categoria_id), new ContextoClassificacao($s->condicao, $this->idsDeEixo($s->eixos)));
+                $m = MigradorDeCategoria::migrar($anterior, $novoSchema, $s->atributos, $s->eixos);
+                $atributos = $m->atributos;
+                $eixos = $m->eixos;
+                $resultado = ['descartados' => $m->descartados, 'eixos_removidos' => $m->eixosRemovidos];
+            }
+
             $this->repo->gravarCategoria($r, $nova);
             $this->repo->gravarAtributos($r, $atributos);
             if ($eixos != $s->eixos) {
                 $this->repo->gravarVariacao($r, $eixos, RegeneradorVariantes::regenerar($s->variantes, $eixos)->variantes);
             }
-        });
 
-        return $resultado;
+            return $resultado;
+        });
     }
 
     /**
@@ -169,7 +180,6 @@ class EditorRascunhoService
      */
     public function salvarEixos(PubRascunho $r, array $eixos): array
     {
-        $s = $this->repo->snapshot($r);
         $limite = (int) config('publicador.max_eixos', 3);
         if (count($eixos) > $limite) {
             throw new RegraViolada('V-VAR-03', "No máximo {$limite} variações por anúncio.");
@@ -184,13 +194,15 @@ class EditorRascunhoService
                 array_values(array_filter((array) ($e['valores'] ?? []), fn ($v) => trim((string) ($v['nome'] ?? '')) !== '')), array_keys(array_values(array_filter((array) ($e['valores'] ?? []), fn ($v) => trim((string) ($v['nome'] ?? '')) !== ''))))),
         ), $eixos, array_keys($eixos)));
 
-        $regen = RegeneradorVariantes::regenerar($s->variantes, $novos);
-        DB::transaction(function () use ($r, $novos, $regen) {
+        return DB::transaction(function () use ($r, $novos) {
+            // WR-B02: trava antes de ler as variantes — os dados que passam adiante são os de agora.
+            $this->repo->travar($r);
+            $regen = RegeneradorVariantes::regenerar($this->repo->snapshot($r)->variantes, $novos);
             $this->repo->gravarVariacao($r, $novos, $regen->variantes);
             $this->repo->tocar($r);
-        });
 
-        return ['conflitos' => $regen->conflitos, 'descartadas' => $regen->descartadas];
+            return ['conflitos' => $regen->conflitos, 'descartadas' => $regen->descartadas];
+        });
     }
 
     /**
@@ -199,27 +211,29 @@ class EditorRascunhoService
      */
     public function salvarVariantes(PubRascunho $r, array $porChave): void
     {
-        $s = $this->repo->snapshot($r);
-        $variantes = array_map(function (Variante $v) use ($porChave) {
-            $novo = $porChave[$v->chave] ?? null;
-            if (! is_array($novo)) {
-                return $v;
-            }
-            $dados = $v->dados;
-            foreach (['estoque', 'precos', 'atributos', 'estoque_depositos'] as $campo) {
-                if (array_key_exists($campo, $novo)) {
-                    $dados[$campo] = $novo[$campo];
+        DB::transaction(function () use ($r, $porChave) {
+            // WR-B02: trava antes de ler — o que não veio em `porChave` é regravado como está AGORA.
+            $this->repo->travar($r);
+            $s = $this->repo->snapshot($r);
+            $variantes = array_map(function (Variante $v) use ($porChave) {
+                $novo = $porChave[$v->chave] ?? null;
+                if (! is_array($novo)) {
+                    return $v;
                 }
-            }
-            if (is_array($dados['estoque_depositos'] ?? null) && $dados['estoque_depositos'] !== []) {
-                $dados['estoque'] = array_sum(array_map('intval', $dados['estoque_depositos']));
-            }
-            $v = $v->comDados($dados);
+                $dados = $v->dados;
+                foreach (['estoque', 'precos', 'atributos', 'estoque_depositos'] as $campo) {
+                    if (array_key_exists($campo, $novo)) {
+                        $dados[$campo] = $novo[$campo];
+                    }
+                }
+                if (is_array($dados['estoque_depositos'] ?? null) && $dados['estoque_depositos'] !== []) {
+                    $dados['estoque'] = array_sum(array_map('intval', $dados['estoque_depositos']));
+                }
+                $v = $v->comDados($dados);
 
-            return array_key_exists('ativa', $novo) && ! $v->publicada ? $v->comAtiva((bool) $novo['ativa']) : $v;
-        }, $s->variantes);
+                return array_key_exists('ativa', $novo) && ! $v->publicada ? $v->comAtiva((bool) $novo['ativa']) : $v;
+            }, $s->variantes);
 
-        DB::transaction(function () use ($r, $s, $variantes) {
             $this->repo->gravarVariacao($r, $s->eixos, $variantes);
             $this->repo->tocar($r);
         });
@@ -240,7 +254,7 @@ class EditorRascunhoService
         if (! $r->categoria_id) {
             return [];
         }
-        $e = $this->efetivos->daOferta($r->oferta);
+        $e = $this->efetivos->daProduto($r->produto);
         $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
         $primeira = $s->variantesAtivas()[0] ?? null;
         $conta = (array) ($r->step_state['conta'] ?? []);
@@ -260,7 +274,7 @@ class EditorRascunhoService
 
             $frete = null;
             if (isset($conta['sellerId']) && $pacote !== null) {
-                $f = $this->cliente->daConta($r->oferta->company, 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
+                $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$conta['sellerId']}/shipping_options/free", [
                     'item_price' => $preco, 'listing_type_id' => $alvo->listingTypeId, 'mode' => 'me2', 'condition' => $s->condicao === 'used' ? 'used' : 'new',
                     'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
                 ]);
@@ -271,6 +285,77 @@ class EditorRascunhoService
         }
 
         return $saida;
+    }
+
+    /**
+     * Frete grátis obrigatório pela faixa de preço (melhoria de 03/10/2026, docx §5).
+     *
+     * Quem diz é o `shipping_options/free` (H-10): `discount.type = mandatory` SEM
+     * `free_shipping_by_meli` = o vendedor TEM de oferecer frete grátis; com
+     * `free_shipping_by_meli` o ML banca o frete abaixo da faixa. O limite (hoje
+     * R$ 79) nunca fica no código (RN-83). Consulta o menor e o maior preço das
+     * variações ativas de cada tipo: a flag de frete grátis é do rascunho inteiro,
+     * então ela só é obrigatória quando até a variação mais barata cai na faixa
+     * (`obrigatorio`); quando só as mais caras caem, é `parcial` (o ML liga nelas).
+     *
+     * @return array{conhecido: bool, obrigatorio: bool, parcial: bool, por_tipo: array<string, array{obrigatorio: bool, parcial: bool, menor: float, maior: float}>}
+     */
+    public function freteGratis(PubRascunho $r): array
+    {
+        $saida = ['conhecido' => false, 'obrigatorio' => false, 'parcial' => false, 'por_tipo' => []];
+        $conta = (array) ($r->step_state['conta'] ?? []);
+        if (! $r->categoria_id || ! isset($conta['sellerId'])) {
+            return $saida;
+        }
+        $e = $this->efetivos->daProduto($r->produto);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        // Fora do Mercado Envios não há frete grátis obrigatório.
+        if (($s->envio['modo'] ?? 'me2') !== 'me2') {
+            return ['conhecido' => true] + $saida;
+        }
+        $pacote = $this->dimensoes($s->atributos);
+
+        foreach ($s->alvosAtivos() as $alvo) {
+            $precos = array_values(array_filter(array_map(
+                fn (Variante $v) => (float) ($v->dados['precos'][$alvo->listingTypeId] ?? 0), $s->variantesAtivas(),
+            ), fn ($p) => $p > 0));
+            if ($precos === []) {
+                continue;
+            }
+            $menor = min($precos);
+            $maior = max($precos);
+            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote);
+            $doMenor = $consulta($menor);
+            $doMaior = $maior === $menor ? $doMenor : $consulta($maior);
+            if ($doMenor === null || $doMaior === null) {
+                continue;
+            }
+            $saida['por_tipo'][$alvo->listingTypeId] = ['obrigatorio' => $doMenor, 'parcial' => ! $doMenor && $doMaior, 'menor' => $menor, 'maior' => $maior];
+        }
+
+        $tipos = $saida['por_tipo'];
+
+        return [
+            'conhecido' => $tipos !== [],
+            'obrigatorio' => (bool) array_filter($tipos, fn ($t) => $t['obrigatorio']),
+            'parcial' => (bool) array_filter($tipos, fn ($t) => $t['parcial']),
+            'por_tipo' => $tipos,
+        ];
+    }
+
+    /** Nulo = o ML não respondeu (a tela segue sem a regra, como antes). */
+    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote): ?bool
+    {
+        $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/shipping_options/free", array_filter([
+            'item_price' => $preco, 'listing_type_id' => $listingType, 'mode' => 'me2', 'condition' => $condicao === 'used' ? 'used' : 'new',
+            'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+        ], fn ($x) => $x !== null));
+        $cobertura = $f->ok() && is_array($f->corpo) ? ($f->corpo['coverage']['all_country'] ?? null) : null;
+        if (! is_array($cobertura)) {
+            return null;
+        }
+
+        return ($cobertura['discount']['type'] ?? null) === 'mandatory' && empty($cobertura['free_shipping_by_meli']);
     }
 
     /** "AxLxC,peso" dos SELLER_PACKAGE_* (cm e g), como o `shipping_options/free` pede. */
@@ -291,8 +376,8 @@ class EditorRascunhoService
 
     public function estado(PubRascunho $r): array
     {
-        $r = $r->fresh(['oferta']);
-        $e = $this->efetivos->daOferta($r->oferta);
+        $r = $r->fresh(['produto.oferta']);
+        $e = $this->efetivos->daProduto($r->produto);
         $digitado = $this->repo->snapshot($r);
         $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos']);
 
@@ -316,6 +401,8 @@ class EditorRascunhoService
             $problemas = (new ValidadorRascunho())->validar($snapshot, $schema, $ctx)->problemas;
         }
 
+        $this->gravarResumo($r, count(array_filter($problemas, fn (Problema $p) => $p->bloqueia())));
+
         $eixos = Eixo::ordenar($snapshot->eixos);
         $grupos = $schema ? ResolvedorGruposImagem::resolver($snapshot->variantes, $eixos, $snapshot->imagens, new OpcoesImagem(
             OpcoesImagem::UP, $schema->limites['max_pictures_per_item'] ?? null, $schema->limites['max_pictures_per_item_var'] ?? null,
@@ -328,7 +415,11 @@ class EditorRascunhoService
         $p = $r->publicacoes()->latest('id')->first();
 
         return [
-            'oferta' => ['id' => $r->oferta->id, 'sku' => $r->oferta->sku, 'nome' => $r->oferta->nome],
+            'produto' => [
+                'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
+                'oferta_id' => $r->produto->oferta_id, 'origem' => $r->produto->origem,
+                'mlb_empresa_id' => $r->produto->mlb_empresa_id, 'company_id' => $r->produto->company_id,
+            ],
             'rascunho' => [
                 'id' => $r->id, 'revisao' => $r->revisao, 'status' => $r->status,
                 'categoria_id' => $r->categoria_id, 'condicao' => $r->condicao, 'descricao' => $r->descricao,
@@ -347,6 +438,8 @@ class EditorRascunhoService
             ], $eixos),
             'variantes' => array_map(fn (Variante $vd, Variante $ve) => [
                 'chave' => $vd->chave, 'rotulo' => $vd->rotulo($eixos), 'ativa' => $vd->ativa, 'orfa' => $vd->orfa, 'publicada' => $vd->publicada,
+                // Eixo → valor: a tela tira, restaura e cria variação pelo valor (cartão "como no ML", 03/10).
+                'valores' => array_map(fn (ValorEixo $val) => ['id' => $val->valueId, 'nome' => $val->valueName], $vd->valores),
                 'estoque' => $vd->dados['estoque'] ?? null, 'estoque_depositos' => $vd->dados['estoque_depositos'] ?? null,
                 'precos' => (array) ($vd->dados['precos'] ?? []), 'precos_efetivos' => (array) ($ve->dados['precos'] ?? []),
                 'atributos' => (array) ($vd->dados['atributos'] ?? []),
@@ -354,6 +447,7 @@ class EditorRascunhoService
             'imagens' => $r->imagens()->orderBy('id')->get()->map(fn (PubImagem $i) => [
                 'id' => (string) $i->id, 'url' => $i->ml_url, 'largura' => $i->largura, 'altura' => $i->altura,
                 'upload_status' => $i->upload_status, 'erro' => $i->upload_erro['mensagem'] ?? null,
+                'tem_arquivo' => $i->caminho !== null,
             ])->all(),
             'atribuicoes' => $snapshot->imagens,
             'grupos_imagem' => $grupos,
@@ -370,8 +464,11 @@ class EditorRascunhoService
             'problemas' => array_map([self::class, 'problemaParaTela'], $problemas),
             'conferencia' => $v ? [
                 'id' => $v->id, 'revisao' => $v->revisao, 'resultado' => $v->resultado, 'vale' => $v->revisao === $r->revisao,
-                'em' => $v->created_at?->toIso8601String(), 'issues' => (array) $v->issues,
+                'em' => $v->created_at?->toIso8601String(),
+                // Conferência gravada antes do filtro de ruído (03/10) ainda traz o 4053.
+                'issues' => array_values(array_filter((array) $v->issues, fn ($i) => ! MapeadorErrosMl::ehRuido((array) ($i['ml_causa'] ?? [])))),
                 'itens' => count((array) ($v->respostas_ml['itens'] ?? [])),
+                'local' => $v->camada === 'L2',
             ] : null,
             'publicacao' => $p ? [
                 'id' => $p->id, 'status' => $p->status, 'motivo' => $p->conta_snapshot['motivo'] ?? null,
@@ -389,8 +486,22 @@ class EditorRascunhoService
                 ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
                 ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
                 ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all(),
-            'piloto' => true,
         ];
+    }
+
+    /**
+     * Resumo de bloqueios para a lista de produtos e para a faixa do editor. Não é uma
+     * edição: `DB::table` de propósito, para não subir `revisao` (a conferência continua
+     * valendo) nem mexer em `updated_at`. Só grava quando o número muda.
+     */
+    private function gravarResumo(PubRascunho $r, int $bloqueios): void
+    {
+        if ($bloqueios === ($r->step_state['resumo']['bloqueios'] ?? null)) {
+            return;
+        }
+        $atual = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+        $atual['resumo'] = ['bloqueios' => $bloqueios, 'revisao' => $r->revisao];
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($atual, JSON_UNESCAPED_UNICODE)]);
     }
 
     /**
@@ -402,13 +513,14 @@ class EditorRascunhoService
     public static function prontidao(?PubRascunho $r, ?PubValidacao $ultima): array
     {
         if (! $r) {
-            return ['chave' => 'rascunho', 'rotulo' => 'a preencher'];
+            return ['chave' => 'rascunho', 'rotulo' => 'a preencher', 'faltam' => 0];
         }
         if ($r->status === PubRascunho::DRAFT && $ultima && $ultima->revisao === $r->revisao && in_array($ultima->resultado, [ConferenciaService::OK, ConferenciaService::AVISOS], true)) {
-            return ['chave' => 'pronto', 'rotulo' => 'conferido'];
+            return ['chave' => 'pronto', 'rotulo' => 'conferido', 'faltam' => (int) ($r->step_state['resumo']['bloqueios'] ?? 0)];
         }
+        $faltam = $r->status === PubRascunho::DRAFT ? (int) ($r->step_state['resumo']['bloqueios'] ?? 0) : 0;
 
-        return match ($r->status) {
+        return ['faltam' => $faltam] + match ($r->status) {
             PubRascunho::VALIDATED => ['chave' => 'pronto', 'rotulo' => 'conferido'],
             PubRascunho::PUBLISHING => ['chave' => 'publicando', 'rotulo' => 'publicando'],
             PubRascunho::PUBLISHED => ['chave' => 'publicado', 'rotulo' => 'publicado'],
@@ -461,8 +573,9 @@ class EditorRascunhoService
         if ($r->conta_checada_em && $r->conta_checada_em->gt(now()->subMinutes(self::CONTA_VALE_MINUTOS)) && isset($r->step_state['conta'])) {
             return;
         }
+        // A conta vem do produto (Company ou MlbEmpresa); sem token, `conta()` lança V-ACC-01 e o erro fica no estado.
         try {
-            $conta = $this->contas->contexto($r->oferta->company);
+            $conta = $this->contas->contexto($r->conta());
             $r->update([
                 'step_state' => [...(array) $r->step_state, 'conta' => $conta->paraSnapshot()],
                 'modelo_publicacao' => $r->modelo_publicacao ?? $conta->modelo,
@@ -474,8 +587,12 @@ class EditorRascunhoService
     }
 
     /** @return array<string, ?string> tipo da régua → MLB que já conta */
-    private function mlbsDaRegua(EstruturaOferta $oferta): array
+    private function mlbsDaRegua(PubProduto $produto): array
     {
+        if ($produto->oferta_id === null) {
+            return ['classico' => null, 'premium' => null];
+        }
+        $oferta = $produto->oferta;
         $o = EstruturaConjunto::daEmpresa($oferta->company)->oferta($oferta->id) ?? ['anuncios' => []];
         $r = ['classico' => null, 'premium' => null];
         foreach ((array) $o['anuncios'] as $a) {
@@ -491,7 +608,7 @@ class EditorRascunhoService
     {
         $tipo = array_flip(EstruturaPublicacao::LISTING_TYPES)[$listingType] ?? null;
 
-        return $tipo ? $this->mlbsDaRegua($r->oferta)[$tipo] ?? null : null;
+        return $tipo ? $this->mlbsDaRegua($r->produto)[$tipo] ?? null : null;
     }
 
     /** @param list<Eixo> $eixos @return list<string> */

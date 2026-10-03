@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\MlToken;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -40,10 +41,12 @@ class ImagensTest extends TestCase
         Storage::fake('public');
 
         $empresa = Company::factory()->create();
+        // D26: só conta liberada recebe foto; os casos abaixo testam o envio.
+        config(['publicador.contas_liberadas' => ['companies' => [$empresa->id], 'mlb_empresas' => []]]);
         MlToken::create(['company_id' => $empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
             'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
         $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
-        $this->rascunho = (new RascunhoRepository())->criar($oferta, [new Alvo('gold_special', 'Cadeira')]);
+        $this->rascunho = (new RascunhoRepository())->criar(PubProduto::create(['company_id' => $empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PORTAL]), [new Alvo('gold_special', 'Cadeira')]);
 
         $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(app(MercadoLivreService::class), app(MlColetaService::class), fn () => null));
         $this->servico = app(ImagemAssetService::class);
@@ -75,6 +78,31 @@ class ImagensTest extends TestCase
         $this->assertSame([1200, 1200, 'image/jpeg'], [$img->largura, $img->altura, $img->mime]);
         Storage::disk('local')->assertExists($img->caminho);
         $this->assertSame([], Storage::disk('public')->allFiles(), 'a foto do cliente não fica pública');
+    }
+
+    public function test_conta_nao_liberada_guarda_a_foto_sem_enviar(): void
+    {
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+
+        $r = $this->servico->receber($this->rascunho, self::jpg(), 'cadeira.jpg');
+
+        $img = $r['imagem'];
+        $this->assertTrue($r['nova']);
+        $this->assertSame(PubImagem::PENDENTE, $img->upload_status);
+        $this->assertNull($img->upload_erro);
+        $this->assertNull($img->ml_picture_id);
+        Storage::disk('local')->assertExists($img->caminho);
+        $this->assertSame(0, count(Http::recorded(fn (Request $q) => str_contains($q->url(), '/pictures/items/upload'))));
+
+        // Reenviar e enviarPendentes também não sobem.
+        $this->assertSame(PubImagem::PENDENTE, $this->servico->enviarAoMl($img)->upload_status);
+        $this->assertCount(1, $this->servico->enviarPendentes($this->rascunho));
+        Http::assertNothingSent();
+
+        // Liberada a conta, a mesma foto sobe pelo caminho normal.
+        config(['publicador.contas_liberadas' => ['companies' => [$this->rascunho->produto->company_id], 'mlb_empresas' => []]]);
+        $this->assertSame([], $this->servico->enviarPendentes($this->rascunho));
+        $this->assertSame(PubImagem::ENVIADA, $img->fresh()->upload_status);
     }
 
     public function test_tc56_foto_pequena_nao_e_guardada_nem_enviada(): void

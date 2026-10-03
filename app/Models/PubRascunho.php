@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Contracts\ContaMercadoLivre;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 /**
- * O rascunho do Publicador (`listing_draft` do `04`): um por oferta do
- * Mapeamento. As regras não moram aqui — moram no núcleo puro
+ * O rascunho do Publicador (`listing_draft` do `04`): um por produto do
+ * Publicador; a oferta vem do produto e `pub_rascunhos.oferta_id` é coluna
+ * legada dormente (D27). As regras não moram aqui — moram no núcleo puro
  * (`App\Support\Publicador`); este model só guarda. Quem converte banco ⇄
  * `RascunhoSnapshot` é o `RascunhoRepository`.
  *
@@ -40,9 +43,21 @@ class PubRascunho extends Model
         'revisao' => 'integer',
     ];
 
-    public function oferta(): BelongsTo
+    public function produto(): BelongsTo
     {
-        return $this->belongsTo(EstruturaOferta::class, 'oferta_id');
+        return $this->belongsTo(PubProduto::class, 'produto_id');
+    }
+
+    /** A conta do ML que publica este rascunho: a do produto. */
+    public function conta(): ContaMercadoLivre
+    {
+        return $this->produto->conta();
+    }
+
+    /** A oferta vem do produto (D27); `pub_rascunhos.oferta_id` é coluna legada dormente. */
+    public function oferta(): HasOneThrough
+    {
+        return $this->hasOneThrough(EstruturaOferta::class, PubProduto::class, 'id', 'id', 'produto_id', 'oferta_id');
     }
 
     public function alvos(): HasMany

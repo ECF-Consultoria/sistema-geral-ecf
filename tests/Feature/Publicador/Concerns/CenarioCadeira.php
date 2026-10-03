@@ -5,8 +5,10 @@ namespace Tests\Feature\Publicador\Concerns;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\MlCategoriaSchema;
+use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\PubImagem;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\MercadoLivreService;
 use App\Services\MlColetaService;
@@ -45,9 +47,12 @@ trait CenarioCadeira
         'INCLUDES_ASSEMBLY_MANUAL' => ['value_id' => '242085'],
     ];
 
-    protected Company $empresa;
+    /** A âncora da conta do cenário: Company (padrão) ou MlbEmpresa sem Company (Incubadora). */
+    protected Company|MlbEmpresa $empresa;
 
     protected PubRascunho $r;
+
+    protected PubProduto $produto;
 
     protected RascunhoRepository $repo;
 
@@ -71,14 +76,32 @@ trait CenarioCadeira
     /** @var list<int> esperas pedidas pelo cliente HTTP (o teste não dorme) */
     protected array $esperas = [];
 
-    protected function montarCenario(): void
+    /**
+     * @param  string  $ancora  'company' = a conta #459 de hoje (produto do Portal, com oferta);
+     *                         'mlb_empresa' = loja da Incubadora, SEM Company e SEM oferta, com o token em `mlb_empresa_id`
+     */
+    protected function montarCenario(string $ancora = 'company'): void
     {
-        $this->empresa = Company::factory()->create();
-        MlToken::create(['company_id' => $this->empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
-            'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
+        $tokenBase = ['ml_user_id' => '1555596317', 'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
+            'token_type' => 'bearer', 'expires_at' => now()->addHours(5), 'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()];
+        if ($ancora === 'mlb_empresa') {
+            $this->empresa = MlbEmpresa::create(['nome' => 'Loja Incubadora', 'projeto' => 'Incubadora'])->fresh();
+            MlToken::create(['company_id' => null, 'mlb_empresa_id' => $this->empresa->id, ...$tokenBase, 'access_token' => 'fake-token-mlb-empresa']);
+            config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => [$this->empresa->id]]]);
+        } else {
+            $this->empresa = Company::factory()->create();
+            MlToken::create(['company_id' => $this->empresa->id, ...$tokenBase]);
+            config(['publicador.contas_liberadas' => ['companies' => [$this->empresa->id], 'mlb_empresas' => []]]);
+        }
         $this->app->instance(ClienteMlPublicador::class, new ClienteMlPublicador(app(MercadoLivreService::class), app(MlColetaService::class),
             function (int $s) { $this->esperas[] = $s; }));
-        $this->mock(DadosEfetivosService::class, fn ($m) => $m->shouldReceive('daOferta')->andReturnUsing(fn () => $this->efetivos));
+        // Espelha a regra real (D16): produto sem oferta não tem efetivos. Registrado UMA vez (learnings §5).
+        $this->mock(DadosEfetivosService::class, function ($m) {
+            $m->shouldReceive('daOferta')->andReturnUsing(fn () => $this->efetivos);
+            $m->shouldReceive('daProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
+                ? ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []]
+                : $this->efetivos);
+        });
 
         // O schema já guardado (24h): nenhuma chamada pública no teste.
         $schema = self::schema(self::CADEIRA);
@@ -86,8 +109,13 @@ trait CenarioCadeira
             'technical_specs' => $schema->technicalSpecs, 'sale_terms' => $schema->saleTerms, 'schema_hash' => $schema->hash(), 'fetched_at' => now()]);
 
         $this->repo = new RascunhoRepository();
-        $oferta = EstruturaOferta::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
-        $this->r = $this->repo->criar($oferta, [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória')]);
+        if ($ancora === 'mlb_empresa') {
+            $this->produto = PubProduto::create(['mlb_empresa_id' => $this->empresa->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        } else {
+            $oferta = EstruturaOferta::create(['company_id' => $this->empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
+            $this->produto = PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01', 'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PORTAL]);
+        }
+        $this->r = $this->repo->criar($this->produto, [new Alvo('gold_special', 'Cadeira Escritório Executiva ECF Giratória')]);
         $this->repo->gravarCategoria($this->r, $schema);
         $this->repo->gravarAtributos($this->r, self::ATRIBUTOS);
         $this->variante(['SELLER_SKU' => ['value_name' => 'CAD-01'], 'GTIN' => ['value_name' => '7896553367645']]);

@@ -16,8 +16,8 @@ import { cn } from '@/lib/utils';
 // TÍTULO DO ANÚNCIO · TIPO · CATÁLOGO?. Toda oferta da Lista SKUs aparece com
 // as DUAS linhas que a régua pede — Clássico e Premium —, mesmo antes de
 // existirem: o iniciante escreve aqui o título de cada um, com o MLB vazio,
-// porque o anúncio ainda não foi publicado. O que falta para publicar de fato
-// (categoria, fotos, atributos) é do submódulo Anunciar, que vem depois.
+// porque o anúncio ainda não foi publicado. A publicação no Mercado Livre
+// (categoria, fotos, atributos) é feita pela equipe ECF.
 //
 // ### Publicado × planejado (decisão do usuário, 29/09)
 // Sem código MLB, o anúncio é PLANEJADO e não conta no progresso; com o

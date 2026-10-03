@@ -52,9 +52,12 @@ return [
     'trava_segundos' => 600,
     'reconciliar_apos_segundos' => 180,
 
-    // Piloto (usuário, 01/10): só estas empresas publicam pelo Publicador novo; as
-    // demais seguem no Anunciar antigo. Vazio = todas. A #459 é a conta de teste.
-    'empresas_piloto' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_EMPRESAS_PILOTO', '459'))))),
+    // D21: contas liberadas para publicar, uma a uma pelo usuário depois do teste real;
+    // vazio = ninguém. Listas separadas por âncora (Company 5 não libera MlbEmpresa 5).
+    'contas_liberadas' => [
+        'companies' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_COMPANIES', env('PUBLICADOR_EMPRESAS_PILOTO', '459')))))),
+        'mlb_empresas' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_CONTAS_LIBERADAS_MLB_EMPRESAS', ''))))),
+    ],
 
     // D11 [HIP]: conta multidepósito cria pelo caminho próprio, com o estoque de cada
     // depósito. Formato lido na documentação por busca (acesso direto dá 403) e nunca

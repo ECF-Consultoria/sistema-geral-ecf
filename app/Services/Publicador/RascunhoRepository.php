@@ -2,10 +2,10 @@
 
 namespace App\Services\Publicador;
 
-use App\Models\EstruturaOferta;
 use App\Models\PubEixo;
 use App\Models\PubEixoValor;
 use App\Models\PubImagemAtribuicao;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
 use App\Support\Publicador\Payload\Alvo;
@@ -32,14 +32,16 @@ use Illuminate\Support\Facades\DB;
 class RascunhoRepository
 {
     /**
+     * Um rascunho por produto; a oferta, quando há, é a do produto.
      * O rascunho nasce com a variante única (RN-40) e os alvos que a régua manda publicar.
      *
      * @param  list<Alvo>  $alvos
      */
-    public function criar(EstruturaOferta $oferta, array $alvos, ?array $ator = null): PubRascunho
+    public function criar(PubProduto $produto, array $alvos, ?array $ator = null): PubRascunho
     {
-        return DB::transaction(function () use ($oferta, $alvos, $ator) {
-            $r = PubRascunho::create(['oferta_id' => $oferta->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
+        return DB::transaction(function () use ($produto, $alvos, $ator) {
+            // D27: só produto_id. pub_rascunhos.oferta_id é coluna legada dormente; a oferta (quando há) é a do produto.
+            $r = PubRascunho::create(['produto_id' => $produto->id, 'status' => PubRascunho::DRAFT, 'ator' => $ator,
                 'envio' => ['modo' => 'me2', 'frete_gratis' => false, 'retirada' => false]]);
             $this->gravarAlvos($r, $alvos);
             $this->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [])]);
@@ -125,6 +127,53 @@ class RascunhoRepository
                 ]);
             }
         });
+    }
+
+    /**
+     * Atributos do PRODUTO por chave (WR-B02): grava SÓ os ids dados; os outros ficam como estão.
+     * Para quem escreve sem ser a tela (a IA) — nunca apaga o que a pessoa gravou no meio.
+     *
+     * @param  array<string, array>  $atributos
+     */
+    public function mesclarAtributos(PubRascunho $r, array $atributos): void
+    {
+        DB::transaction(function () use ($r, $atributos) {
+            foreach ($atributos as $id => $valor) {
+                $r->atributos()->updateOrCreate(['attribute_id' => $id], [
+                    ...self::colunasDeValor((array) $valor),
+                    'origem' => $valor['origem'] ?? 'user',
+                    'revisar' => (bool) ($valor['revisar'] ?? false),
+                ]);
+            }
+        });
+    }
+
+    /**
+     * O título de alvos que JÁ existem, por tipo de anúncio (WR-B02): não cria nem apaga alvo,
+     * não mexe em `ativo` nem na ordem — o resto da lista fica como está.
+     *
+     * @param  array<string, ?string>  $porTipo  listing_type_id → título
+     */
+    public function gravarTitulos(PubRascunho $r, array $porTipo): void
+    {
+        DB::transaction(function () use ($r, $porTipo) {
+            foreach ($porTipo as $tipo => $titulo) {
+                $r->alvos()->where('listing_type_id', $tipo)->update([
+                    'titulo' => trim((string) $titulo) === '' ? null : mb_substr(trim((string) $titulo), 0, 255),
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Trava a linha do rascunho até o fim da transação em curso (WR-B02). É a mesma trava de
+     * `PublicacaoService::iniciar`: editor, IA e publicação escrevem um de cada vez, e quem
+     * entra depois lê o que o outro gravou. Fora de transação não segura nada — chamar dentro
+     * de `DB::transaction`. (No SQLite dos testes o `FOR UPDATE` não existe: a ordem é que vale.)
+     */
+    public function travar(PubRascunho $r): void
+    {
+        PubRascunho::whereKey($r->id)->lockForUpdate()->value('id');
     }
 
     /** @param list<Alvo> $alvos */

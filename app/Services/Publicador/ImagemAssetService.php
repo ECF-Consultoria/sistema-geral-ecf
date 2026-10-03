@@ -2,8 +2,10 @@
 
 namespace App\Services\Publicador;
 
+use App\Contracts\ContaMercadoLivre;
 use App\Models\PubImagem;
 use App\Models\PubRascunho;
+use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Validacao\ContextoValidacao;
 use App\Support\Publicador\Validacao\Problema;
@@ -54,7 +56,11 @@ class ImagemAssetService
         return ['imagem' => $this->enviarAoMl($imagem, $conteudo), 'problemas' => $problemas, 'nova' => true];
     }
 
-    public function enviarAoMl(PubImagem $imagem, ?string $conteudo = null): PubImagem
+    /**
+     * @param  ?ContaMercadoLivre  $conta  a conta já conferida por quem chama (a publicação passa a
+     *                                     fixada no clique — CR-B01); nula = a âncora do rascunho agora
+     */
+    public function enviarAoMl(PubImagem $imagem, ?string $conteudo = null, ?ContaMercadoLivre $conta = null): PubImagem
     {
         if ($imagem->upload_status === PubImagem::ENVIADA && $imagem->ml_picture_id) {
             return $imagem;
@@ -66,8 +72,16 @@ class ImagemAssetService
             return $imagem->fresh();
         }
 
+        // D26: conta não liberada não recebe foto; ela fica guardada aqui (pendente) e sobe pelo
+        // `enviarPendentes` da conferência L3/publicação depois da liberação. WR-B04: sem token ativo
+        // é o mesmo caso — a foto entra no grupo e o V-ACC-01 (reconectar) aparece ao publicar.
+        $conta ??= $imagem->rascunho->produto->contaOuNula();
+        if ($conta === null || ! ContasLiberadas::libera($conta)) {
+            return $imagem;
+        }
+
         $conteudo ??= Storage::disk(self::DISCO)->get($imagem->caminho);
-        $resposta = $this->cliente->enviarFoto($imagem->rascunho->oferta->company, $conteudo, basename($imagem->caminho));
+        $resposta = $this->cliente->enviarFoto($conta, $conteudo, basename($imagem->caminho));
 
         if ($resposta->ok() && is_array($resposta->corpo) && isset($resposta->corpo['id'])) {
             $variacoes = (array) ($resposta->corpo['variations'] ?? []);
@@ -92,13 +106,14 @@ class ImagemAssetService
     /**
      * Sobe o que faltou antes de conferir/publicar (`08` §4 passo 4).
      *
+     * @param  ?ContaMercadoLivre  $conta  ver `enviarAoMl()`
      * @return list<PubImagem> as que continuam sem subir
      */
-    public function enviarPendentes(PubRascunho $r): array
+    public function enviarPendentes(PubRascunho $r, ?ContaMercadoLivre $conta = null): array
     {
         $falhas = [];
         foreach ($r->imagens()->where('upload_status', '!=', PubImagem::ENVIADA)->get() as $imagem) {
-            if ($this->enviarAoMl($imagem)->upload_status !== PubImagem::ENVIADA) {
+            if ($this->enviarAoMl($imagem, null, $conta)->upload_status !== PubImagem::ENVIADA) {
                 $falhas[] = $imagem->fresh();
             }
         }

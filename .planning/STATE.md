@@ -386,6 +386,17 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
+## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
+
+**Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
+frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição paralela" pertencem a
+outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-publicador-spec-261001`.
+
+Phase: 164 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — COMPLETE (código); verificação human_needed
+Plans: 15 em 8 waves — 15 de 15 concluídos
+Status: Phase 164 DEPLOYADA em 2026-10-03 — `origin/main` e VPS em `01da6664` (push `d9b77688..01da6664`, fast-forward), com a ponte "Gerar criativos no assistente antigo" na tela de produtos até a Fase 165 levar o Creative Engine para o card de Fotos. Migrations 2026_10_02_100000/100100/200000 rodaram; os 4 rascunhos da #459 ficaram ligados aos produtos 1–4. Workers reiniciados por `queue:restart` (inclui high e creative). 6 itens de UAT em `164-HUMAN-UAT.md`.
+Last activity: 2026-10-03 — deploy em produção conferido por reconsulta (HEAD, migrations, FKs, manifest, workers, HTTP)
+
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
 **Preservado em 2026-09-01 na abertura da v23.0.** Este bloco era o "Current Position" até aqui.
