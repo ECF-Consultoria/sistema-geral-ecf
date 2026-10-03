@@ -394,8 +394,8 @@ outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-public
 
 Phase: 164 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — COMPLETE (código); verificação human_needed
 Plans: 15 em 8 waves — 15 de 15 concluídos
-Status: Phase 164 fechada em 2026-10-02 (aprovada pelo usuário). 6 itens de conferência humana em `164-HUMAN-UAT.md` — quase todos dependem do deploy, que NÃO foi feito nem pedido. Antes de push: `git fetch` e `git rev-list --left-right --count HEAD...origin/main`.
-Last activity: 2026-10-02 — fase fechada: verificação 8/8 no código (`164-VERIFICATION.md`), review corrigido (`164-REVIEW-FIX.md`)
+Status: Phase 164 fechada em 2026-10-02 (aprovada pelo usuário). RENUMERADA de 160 para 164 (colisão com a v24.0 Creative Engine, outro dev) e já INTEGRADA com a origin/main (merge `dbbb79d3`, 91 à frente / 0 atrás; testes pós-merge verdes, inclusive os 66 do Creative Engine). DEPLOY EM ESPERA por decisão do usuário: o Creative Engine vive na etapa 5 do assistente antigo, que esta fase tira da entrada — alinhar com o outro dev antes de subir. 6 itens de UAT em `164-HUMAN-UAT.md`.
+Last activity: 2026-10-02 — renumeração 160→164 e merge da origin/main; deploy pausado pelo usuário
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
