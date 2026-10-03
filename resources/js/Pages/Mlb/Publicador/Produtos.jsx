@@ -76,6 +76,7 @@ export default function Produtos({
     produtos = [],
     contagens = {},
     rascunhos_antigos = { total: 0, url: null },
+    criativos_ia = { url: null },
     abas = { company_id: null },
 }) {
     const [filtro, setFiltro] = useState('todos');
@@ -338,6 +339,17 @@ export default function Produtos({
                         </div>
                     )}
                 </section>
+
+                {/* Ponte até a Fase 165: os criativos por IA ainda ficam no assistente antigo. */}
+                {criativos_ia?.url && (
+                    <p className="mt-6 text-[13px] font-normal text-white/40">
+                        Criativos por IA ainda ficam no assistente antigo, na etapa Imagem e frete
+                        {' · '}
+                        <Link href={criativos_ia.url} className="underline decoration-dotted underline-offset-2 hover:text-ecf-yellow">
+                            Gerar criativos no assistente antigo
+                        </Link>
+                    </p>
+                )}
 
                 {rascunhos_antigos?.url && (
                     <p className="mt-6 text-[13px] font-normal text-white/40">

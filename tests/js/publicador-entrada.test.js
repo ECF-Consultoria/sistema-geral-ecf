@@ -190,6 +190,14 @@ test('Tela B — faixa de conta travada, rodapé D22 e copy de sincronizar/vazio
     assert.match(fonte, /Não foi possível abrir o produto./);
 });
 
+test('Tela B — ponte dos criativos por IA só com a URL que o servidor decide (até a Fase 165)', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /criativos_ia = \{ url: null \}/);
+    assert.match(fonte, /\{criativos_ia\?\.url && \(/);
+    assert.match(fonte, /href=\{criativos_ia\.url\}/);
+    assert.match(fonte, /Gerar criativos no assistente antigo/);
+});
+
 test('Tela B — nenhuma linha avermelhada', () => {
     const fonte = lerSemComentarios(PAGINA_B);
     const abertura = fonte.match(/'h-14[^']*'/);

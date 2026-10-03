@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\MlAnuncioRascunho;
 use App\Models\PubProduto;
+use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Support\Publicador\ContasLiberadas;
@@ -69,7 +71,7 @@ class MlbPublicadorEntradaController extends Controller
     }
 
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */
-    public function produtos(string $conta)
+    public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -112,6 +114,14 @@ class MlbPublicadorEntradaController extends Controller
             'rascunhos_antigos' => [
                 'total' => $antigos,
                 'url' => $companyId !== null && $antigos > 0 ? route('mlb.anuncios.wizard', ['company' => $companyId]) : null,
+            ],
+            // Ponte até a Fase 165: os "Criativos por IA" (Creative Engine, v24.0) ainda moram na
+            // etapa "Imagem e frete" do assistente antigo, que só existe para empresa com Company.
+            // Só aparece com a chave do Creative Engine ligada e para quem pode gerar criativos.
+            'criativos_ia' => [
+                'url' => $companyId !== null && $creativeAtivo->ativa() && $creativePermissao->podeGerar($request->user())
+                    ? route('mlb.anuncios.wizard', ['company' => $companyId])
+                    : null,
             ],
             'abas' => ['company_id' => $companyId],
         ]);

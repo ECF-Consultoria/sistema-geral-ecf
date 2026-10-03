@@ -3,6 +3,7 @@
 namespace Tests\Feature\Publicador;
 
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\EstruturaOferta;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
@@ -95,6 +96,50 @@ class MlbPublicadorProdutosTest extends TestCase
         $this->assertSame($c->id, $p['abas']['company_id']);
         $this->assertSame(1, $p['rascunhos_antigos']['total']);
         $this->assertSame(route('mlb.anuncios.wizard', ['company' => $c->id]), $p['rascunhos_antigos']['url']);
+    }
+
+    /** Company de Gestão com token, para as provas da ponte dos criativos. */
+    private function companyComToken(): Company
+    {
+        $c = Company::factory()->create();
+        MlToken::create(['company_id' => $c->id, 'ml_user_id' => '9', 'access_token' => 'x', 'refresh_token' => 'y',
+            'expires_at' => now()->addHours(5), 'status' => 'active']);
+
+        return $c;
+    }
+
+    public function test_ponte_dos_criativos_so_aparece_com_a_chave_do_creative_engine_ligada(): void
+    {
+        $c = $this->companyComToken();
+
+        $desligada = $this->pagina(self::BASE.'/empresas/company-'.$c->id)['props'];
+        $this->assertNull($desligada['criativos_ia']['url']);
+
+        Configuracao::set('creative_engine_ativo', '1');
+        $ligada = $this->pagina(self::BASE.'/empresas/company-'.$c->id)['props'];
+        $this->assertSame(route('mlb.anuncios.wizard', ['company' => $c->id]), $ligada['criativos_ia']['url']);
+    }
+
+    public function test_ponte_dos_criativos_some_em_empresa_sem_company(): void
+    {
+        Configuracao::set('creative_engine_ativo', '1');
+        $e = $this->empresa([], true);
+
+        $p = $this->pagina(self::BASE.'/empresas/empresa-'.$e->id)['props'];
+
+        // O assistente antigo só existe para empresa com Company — sem ela não há para onde levar.
+        $this->assertNull($p['criativos_ia']['url']);
+    }
+
+    public function test_ponte_dos_criativos_respeita_a_lista_de_usuarios_do_creative_engine(): void
+    {
+        Configuracao::set('creative_engine_ativo', '1');
+        Configuracao::set('creative_engine_usuarios', '999999');
+        $c = $this->companyComToken();
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id)['props'];
+
+        $this->assertNull($p['criativos_ia']['url']);
     }
 
     public function test_company_ligada_a_polos_redireciona_para_a_empresa(): void
