@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Phase161;
 
+use App\Jobs\PublicarAnuncioMlJob;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\MlAnuncioCriativo;
@@ -10,6 +11,7 @@ use App\Models\MlAnuncioRascunho;
 use App\Models\MlToken;
 use App\Models\User;
 use App\Services\Creative\CreativeKitPublicacao;
+use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -250,5 +252,120 @@ class CriativoKitPublicacaoGateTest extends TestCase
             ['source' => $slot2->ml_picture_url],
             ['source' => $slot3->ml_picture_url],
         ], $rascunho->payload['pictures']);
+    }
+
+    // ═══ Task 2 — o gate plugado no chokepoint de publicação ════════════
+
+    /** GET /users/* (detecção de modelo) + POST /items + descrição, tudo ok. */
+    private function fakePublicacaoOk(string $itemId = 'MLB999'): void
+    {
+        Http::fake([
+            '*/users/*' => Http::response(['id' => '1489433777', 'tags' => []], 200),
+            '*/items'   => Http::response(['id' => $itemId], 200),
+            '*'         => Http::response([], 200),
+        ]);
+    }
+
+    public function test_publicar_rascunho_com_kit_nao_aprovado_e_recusado_sem_nada_criado_no_ml(): void
+    {
+        $this->fakePublicacaoOk();
+        [$rascunho] = $this->rascunhoComKit(MlAnuncioCriativoKit::STATUS_PRONTO, aprovados: 2);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.publicar', ['rascunho' => $rascunho->id]),
+        );
+
+        $resposta->assertStatus(422);
+        $mensagem = $resposta->json('erros')[0]['mensagem'] ?? '';
+        $this->assertStringContainsString('ainda não aprovado', $mensagem);
+
+        $rascunho->refresh();
+        $this->assertSame(MlAnuncioRascunho::STATUS_ERRO, $rascunho->status);
+
+        // Nada foi criado no Mercado Livre — nem a detecção de modelo chegou a rodar.
+        Http::assertNothingSent();
+    }
+
+    public function test_publicar_rascunho_com_kit_aprovado_envia_imagens_aprovadas_na_ordem_mesmo_com_autosave_reduzindo(): void
+    {
+        $this->fakePublicacaoOk('MLB777');
+
+        // O autosave do wizard reduziu payload.pictures a 1 item ANTES da chamada — a armadilha 2.
+        [$rascunho, $kit] = $this->rascunhoComKit(
+            MlAnuncioCriativoKit::STATUS_APROVADO,
+            aprovados: 3,
+            minimoAprovadas: 3,
+            pictures: [['source' => 'foto-do-autosave-sozinha.jpg']],
+        );
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.publicar', ['rascunho' => $rascunho->id]),
+        );
+
+        $resposta->assertOk()->assertJsonPath('ok', true)->assertJsonPath('ml_item_id', 'MLB777');
+
+        $rascunho->refresh();
+        $this->assertSame(MlAnuncioRascunho::STATUS_PUBLICADO, $rascunho->status);
+
+        $slot1 = $kit->slots()->where('slot_indice', 1)->first();
+        $slot2 = $kit->slots()->where('slot_indice', 2)->first();
+        $slot3 = $kit->slots()->where('slot_indice', 3)->first();
+
+        Http::assertSent(function ($request) use ($slot1, $slot2, $slot3) {
+            if (! str_contains($request->url(), '/items') || str_contains($request->url(), 'description')) {
+                return false;
+            }
+
+            return $request['pictures'] === [
+                ['source' => $slot1->ml_picture_url],
+                ['source' => $slot2->ml_picture_url],
+                ['source' => $slot3->ml_picture_url],
+            ];
+        });
+    }
+
+    public function test_publicar_rascunho_sem_kit_continua_identico_ao_de_antes_do_creative_engine(): void
+    {
+        $this->fakePublicacaoOk('MLB555');
+        [$rascunho] = $this->rascunhoSemKit([['source' => 'foto-unica-do-wizard.jpg']]);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.publicar', ['rascunho' => $rascunho->id]),
+        );
+
+        $resposta->assertOk()->assertJsonPath('ok', true)->assertJsonPath('ml_item_id', 'MLB555');
+
+        $rascunho->refresh();
+        $this->assertSame(MlAnuncioRascunho::STATUS_PUBLICADO, $rascunho->status);
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/items') || str_contains($request->url(), 'description')) {
+                return false;
+            }
+
+            return $request['pictures'] === [['source' => 'foto-unica-do-wizard.jpg']];
+        });
+    }
+
+    public function test_job_de_lote_com_kit_nao_aprovado_deixa_rascunho_em_erro_com_a_mesma_mensagem(): void
+    {
+        $this->fakePublicacaoOk();
+        [$rascunho] = $this->rascunhoComKit(MlAnuncioCriativoKit::STATUS_PRONTO, aprovados: 2);
+
+        $job = new PublicarAnuncioMlJob($rascunho->id);
+
+        try {
+            $job->handle(app(MlPublicacaoService::class));
+            $this->fail('O job deveria ter relançado a exceção do gate.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('ainda não aprovado', $e->getMessage());
+        }
+
+        $rascunho->refresh();
+        $this->assertSame(MlAnuncioRascunho::STATUS_ERRO, $rascunho->status);
+        $mensagem = $rascunho->validation_errors[0]['mensagem'] ?? '';
+        $this->assertStringContainsString('ainda não aprovado', $mensagem);
+
+        Http::assertNothingSent();
     }
 }
