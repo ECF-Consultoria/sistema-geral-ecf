@@ -618,12 +618,13 @@ test('LateralResumo — pares do resumo, apoio por estado (D26) e andamento por 
     assert.match(f, /plano_b/);
 });
 
-test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo, duas colunas só em 1360px', () => {
+test('Editor.jsx — compõe os 6 cards com m={pub.m} (fotos dentro das variações), sem abas nem rodapé fixo, duas colunas só em 1360px', () => {
     const f = lerSemComentarios(PAGINA);
     assert.match(f, /usePublicador\(\{\s*produtoId: produto\.id/);
     assert.match(f, /useIaDoPublicador\(/);
-    assert.equal((f.match(/m=\{pub\.m\}/g) ?? []).length, 7);
-    for (const c of ['CardProduto', 'CardFichaTecnica', 'CardVariacoes', 'CardFotos', 'CardTiposEPrecos', 'CardLogistica', 'CardDescricao']) {
+    assert.equal((f.match(/m=\{pub\.m\}/g) ?? []).length, 6);
+    assert.doesNotMatch(f, /CardFotos/);
+    for (const c of ['CardProduto', 'CardFichaTecnica', 'CardVariacoes', 'CardTiposEPrecos', 'CardLogistica', 'CardDescricao']) {
         assert.match(f, new RegExp(`import ${c} from '@/Components/Publicador/Mesa/${c}'`));
     }
     assert.doesNotMatch(f, /ModoAnuncioTabs/);

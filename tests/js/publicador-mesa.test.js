@@ -15,7 +15,7 @@ const CARDS = [
     `${BASE}/Mesa/comum.jsx`,
     `${BASE}/Mesa/CardProduto.jsx`,
     `${BASE}/Mesa/CardFichaTecnica.jsx`,
-    `${BASE}/Mesa/CardFotos.jsx`,
+    `${BASE}/Mesa/NovaVariacao.jsx`,
     `${BASE}/Mesa/CardVariacoes.jsx`,
     `${BASE}/Mesa/CartaoVariante.jsx`,
     `${BASE}/Mesa/CardTiposEPrecos.jsx`,
@@ -88,8 +88,8 @@ test('CardProduto — o selo de origem deriva de produto.oferta_id (D27), não d
     assert.match(fonte, /m\.escolherCategoria/);
 });
 
-test('CardFotos — regra de foto lê schema.limites (nada fixo) e usa os grupos do servidor', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardFotos.jsx`);
+test('Fotos dentro das variações (03/10) — regra lê schema.limites (nada fixo) e usa os grupos do servidor', () => {
+    const fonte = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
     assert.doesNotMatch(fonte, /1200/);
     assert.match(fonte, /limites/);
     assert.match(fonte, /grupos_imagem/);
@@ -167,7 +167,7 @@ test('CardLogistica — Seletor nativo, modos de envio do servidor e medidas da 
     assert.doesNotMatch(fonte, /Coleta elegível/);
 });
 
-test('CardVariacoes — eixos editáveis por m.salvarEixos e fotos do servidor (grupos_imagem)', () => {
+test('CardVariacoes — eixos editáveis por m.salvarEixos e cada cartão com o bloco de fotos do grupo dele', () => {
     assert.match(lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`), /m\.salvarEixos/);
-    assert.match(lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`), /grupos_imagem/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`), /<BlocoDeFotos grupo=\{grupo\}/);
 });

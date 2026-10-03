@@ -438,6 +438,8 @@ class EditorRascunhoService
             ], $eixos),
             'variantes' => array_map(fn (Variante $vd, Variante $ve) => [
                 'chave' => $vd->chave, 'rotulo' => $vd->rotulo($eixos), 'ativa' => $vd->ativa, 'orfa' => $vd->orfa, 'publicada' => $vd->publicada,
+                // Eixo → valor: a tela tira, restaura e cria variação pelo valor (cartão "como no ML", 03/10).
+                'valores' => array_map(fn (ValorEixo $val) => ['id' => $val->valueId, 'nome' => $val->valueName], $vd->valores),
                 'estoque' => $vd->dados['estoque'] ?? null, 'estoque_depositos' => $vd->dados['estoque_depositos'] ?? null,
                 'precos' => (array) ($vd->dados['precos'] ?? []), 'precos_efetivos' => (array) ($ve->dados['precos'] ?? []),
                 'atributos' => (array) ($vd->dados['atributos'] ?? []),

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    UNIDADES_MEDIDA, UNIDADES_PESO, daUnidadeMl, digitoEan13, eanValido, gerarEan13, gtinsEmUso, juntarTermo, numeroDoAtributo, paraUnidadeMl,
-    termoNoTitulo, unidadeInicial, variantesSemGtin,
+    UNIDADES_MEDIDA, UNIDADES_PESO, daUnidadeMl, digitoEan13, eanValido, eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, juntarTermo,
+    numeroDoAtributo, paraUnidadeMl, pedidoCompleto, termoNoTitulo, unidadeInicial, varianteDoPedido, variantesSemGtin,
 } from '../../resources/js/Components/Publicador/ferramentas.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -123,9 +123,9 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     assert.match(painel, /Ver também os que não citam o produto/);
 });
 
-test('§4 — Variações: "Adicionar variação" à vista e EAN-13 automático uma vez por variação', () => {
+test('§4 — Variações: "Nova variação" à vista e EAN-13 automático uma vez por variação', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.match(card, /Adicionar variação/);
+    assert.match(card, /Nova variação/);
     assert.match(card, /data-acao="adicionar-variacao"/);
     assert.match(card, /variantesSemGtin\(m\.variantes, schema\)/);
     assert.match(card, /gerados\.current\.add\(v\.chave\)/);
@@ -151,4 +151,61 @@ test('§6 — Ficha técnica: nada recolhido nem rotulado "opcional"; borda âmb
     assert.match(card, /titulo="Ficha técnica"/);
     const comum = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
     assert.match(comum, /preenchido \|\| ! obrigatorio \? 'border-white\/\[0\.08\]' : 'border-amber-400\/50'/);
+});
+
+// ── Variações e fotos juntas, como no Mercado Livre (03/10/2026, pedido depois do docx) ──
+
+const EIXOS = [{ chave: 'COLOR', nome: 'Cor', defines_picture: true, customizado: false, valores: [{ chave: 'COLOR=id:1', id: '1', nome: 'Preto' }] }];
+
+test('eixosComValores — acrescenta o valor novo (sem repetir, sem acento/caixa) no formato do PUT', () => {
+    assert.deepEqual(eixosComValores(EIXOS, { COLOR: { id: '2', nome: ' Azul ' } }), [
+        { chave: 'COLOR', nome: 'Cor', defines_picture: true, valores: [{ id: '1', nome: 'Preto' }, { id: '2', nome: 'Azul' }] },
+    ]);
+    assert.deepEqual(eixosComValores(EIXOS, { COLOR: { id: null, nome: 'preto' } })[0].valores.length, 1);
+    assert.deepEqual(eixosComValores(EIXOS, { COLOR: { nome: '  ' } })[0].valores.length, 1);
+});
+
+test('eixosSemValor — tira o valor; o eixo que fica vazio sai (volta ao produto único)', () => {
+    const dois = eixosComValores(EIXOS, { COLOR: { id: '2', nome: 'Azul' } });
+    assert.deepEqual(eixosSemValor(dois, 'COLOR', 'azul')[0].valores, [{ id: '1', nome: 'Preto' }]);
+    assert.deepEqual(eixosSemValor(EIXOS, 'COLOR', 'Preto'), []);
+});
+
+test('varianteDoPedido / pedidoCompleto — acha pela combinação de valores, sem caixa', () => {
+    const vs = [
+        { chave: 'a', valores: { COLOR: { nome: 'Preto' }, SIZE: { nome: 'P' } } },
+        { chave: 'b', valores: { COLOR: { nome: 'Azul' }, SIZE: { nome: 'P' } } },
+    ];
+    assert.equal(varianteDoPedido(vs, { COLOR: { nome: 'azul' }, SIZE: { nome: 'p' } })?.chave, 'b');
+    assert.equal(varianteDoPedido(vs, { COLOR: { nome: 'Verde' }, SIZE: { nome: 'P' } }), null);
+    assert.equal(varianteDoPedido(vs, {}), null);
+    assert.equal(pedidoCompleto(['COLOR', 'SIZE'], { COLOR: { nome: 'Azul' }, SIZE: { nome: '' } }), false);
+    assert.equal(pedidoCompleto(['COLOR'], { COLOR: { nome: 'Azul' } }), true);
+    assert.equal(pedidoCompleto([], {}), false);
+});
+
+test('Fotos dentro de cada variação: o card Fotos sumiu e a lateral leva às variações', () => {
+    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo="Fotos" obrigatorio=\{v\.ativa\}/);
+    assert.match(cartao, /onArquivos=\{m\.enviarFotos\}/);
+    const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
+    assert.match(card, /titulo="Variações, fotos e estoque"/);
+    assert.match(card, /<NovaVariacao /);
+    // Sem eixo que defina a foto, cada variação ganha as próprias fotos.
+    assert.match(card, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
+    // Tirar com um eixo = remover o valor (órfã com os dados); com mais = desativar.
+    assert.match(card, /eixosSemValor\(eixos, eixo\.chave/);
+    assert.match(card, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
+    assert.match(card, /trazer de volta/);
+    const apoio = lerSemComentarios(`${BASE}/apoio.js`);
+    assert.match(apoio, /fotos: 'variacoes'/);
+});
+
+test('NovaVariacao — a 1ª variação dá nome à que já existe (fica com os dados) e só depois cria a nova', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/NovaVariacao.jsx`);
+    assert.match(f, /const passo1 = await m\.salvarEixos\(\[\{ \.\.\.eixo, valores: \[\{ id: atual\.id/);
+    assert.match(f, /const passo2 = passo1 && await m\.salvarEixos/);
+    // Mais de um eixo: as combinações que nasceram junto e não foram pedidas ficam desativadas.
+    assert.match(f, /if \(v\.chave !== pedida\?\.chave && v\.ativa\) m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
+    assert.match(f, /Essa variação já existe\./);
 });

@@ -112,3 +112,40 @@ export const termoNoTitulo = (titulo, termo) => {
 
     return palavras.length > 0 && palavras.every((p) => tem.has(normalizar(p)));
 };
+
+// ── Variações "como no Mercado Livre" (03/10/2026) ──
+// Cada variação é um cartão com o valor dela em cada eixo. Por baixo continua o modelo
+// de eixos do servidor (`RegeneradorVariantes`): criar variação = acrescentar o valor ao
+// eixo; tirar = remover o valor (a variação vira órfã com os dados e pode voltar).
+
+const mesmoNome = (a, b) => normalizar(a).trim() === normalizar(b).trim();
+
+/** Os eixos do estado no formato do PUT /eixos. */
+export const eixosParaEnvio = (eixos) => (eixos ?? []).map(({ chave, nome, defines_picture, valores }) => ({
+    chave, nome, defines_picture: !! defines_picture, valores: (valores ?? []).map(({ id, nome: n }) => ({ id: id ?? null, nome: n })),
+}));
+
+/** Acrescenta a cada eixo o valor pedido, se ainda não estiver lá. `pedido` = `{ [chaveDoEixo]: { id, nome } }`. */
+export const eixosComValores = (eixos, pedido) => eixosParaEnvio(eixos).map((e) => {
+    const v = pedido?.[e.chave];
+    const nome = String(v?.nome ?? '').trim();
+    if (! nome || e.valores.some((x) => mesmoNome(x.nome, nome))) return e;
+
+    return { ...e, valores: [...e.valores, { id: v.id ?? null, nome }] };
+});
+
+/** Tira um valor do eixo; o eixo que fica sem valor sai (a última variação volta a ser o produto único). */
+export const eixosSemValor = (eixos, chaveDoEixo, nome) => eixosParaEnvio(eixos)
+    .map((e) => (e.chave === chaveDoEixo ? { ...e, valores: e.valores.filter((x) => ! mesmoNome(x.nome, nome)) } : e))
+    .filter((e) => e.valores.length > 0);
+
+/** A variação cujos valores batem com o pedido em todos os eixos pedidos. */
+export const varianteDoPedido = (variantes, pedido) => {
+    const pares = Object.entries(pedido ?? {});
+    if (pares.length === 0) return null;
+
+    return (variantes ?? []).find((v) => pares.every(([eixo, val]) => v.valores?.[eixo] && mesmoNome(v.valores[eixo].nome, val.nome))) ?? null;
+};
+
+/** O pedido está completo? (um valor não vazio para cada eixo) */
+export const pedidoCompleto = (chaves, pedido) => chaves.length > 0 && chaves.every((c) => String(pedido?.[c]?.nome ?? '').trim() !== '');

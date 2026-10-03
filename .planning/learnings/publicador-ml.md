@@ -273,3 +273,12 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
 - **EAN-13 automático é do FRONT, uma vez por variação** (`CardVariacoes`, ref
   `gerados`): apagar o código à mão não o faz voltar sozinho; o botão ao lado gera outro.
   Mesmo algoritmo do assistente antigo e do `RascunhoAnuncioIaService` (prefixo 789).
+- **Variações e fotos juntas, como no ML (03/10, pedido depois do docx).** Não existe mais o
+  card Fotos: cada cartão de variação mostra o bloco do GRUPO de fotos dela (`grupos_imagem`).
+  Sem eixo que defina a foto, a tela liga `fotos_por_variante` sozinha — senão todas cairiam na
+  galeria geral. A 1ª "Nova variação" são DOIS `PUT /eixos`: primeiro a que já existe ganha o
+  valor (o `RegeneradorVariantes` passa os dados do `__single__` para ela, como ancestral) e só
+  depois entra a nova; mandar os dois valores de uma vez copiaria SKU/GTIN/preço do produto para
+  as DUAS. Tirar com um eixo = tirar o valor (vira órfã com os dados; "trazer de volta" readiciona
+  e o servidor reaproveita a chave); com mais de um eixo o servidor gera o produto cartesiano, então
+  a tela desativa as combinações que nasceram junto e não foram pedidas.

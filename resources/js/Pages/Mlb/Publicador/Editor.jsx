@@ -12,7 +12,6 @@ import LateralResumo from '@/Components/Publicador/Mesa/LateralResumo';
 import CardProduto from '@/Components/Publicador/Mesa/CardProduto';
 import CardFichaTecnica from '@/Components/Publicador/Mesa/CardFichaTecnica';
 import CardVariacoes from '@/Components/Publicador/Mesa/CardVariacoes';
-import CardFotos from '@/Components/Publicador/Mesa/CardFotos';
 import CardTiposEPrecos from '@/Components/Publicador/Mesa/CardTiposEPrecos';
 import CardLogistica from '@/Components/Publicador/Mesa/CardLogistica';
 import CardDescricao from '@/Components/Publicador/Mesa/CardDescricao';
@@ -21,7 +20,8 @@ import { cn } from '@/lib/utils';
 
 // ─── Editor interno do Publicador: a "mesa de anúncio" (D24/D25; UI-SPEC §8) ─
 //
-// Compõe barra, faixa de produtos, os 7 cards e a lateral. Toda a lógica mora
+// Compõe barra, faixa de produtos, os 6 cards e a lateral (as fotos moram no card de
+// variações desde 03/10/2026, uma galeria por variação, como no Mercado Livre). Toda a lógica mora
 // em `usePublicador` (rascunho, conferência, publicação) e `useIaDoPublicador`
 // (Anunciar por IA); aqui só há composição e o estado de tela.
 //
@@ -204,7 +204,6 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                                 <CardProduto m={pub.m} aberto={abertos.produto !== false} onAlternar={() => alternar('produto')} />
                                 <CardFichaTecnica m={pub.m} aberto={abertos.ficha !== false} onAlternar={() => alternar('ficha')} />
                                 <CardVariacoes m={pub.m} aberto={abertos.variacoes !== false} onAlternar={() => alternar('variacoes')} />
-                                <CardFotos m={pub.m} aberto={abertos.fotos !== false} onAlternar={() => alternar('fotos')} />
                                 <CardTiposEPrecos m={pub.m} aberto={abertos.tipos !== false} onAlternar={() => alternar('tipos')} />
                                 <CardLogistica m={pub.m} aberto={abertos.logistica !== false} onAlternar={() => alternar('logistica')} />
                                 <CardDescricao m={pub.m} aberto={abertos.descricao !== false} onAlternar={() => alternar('descricao')} />

@@ -274,6 +274,38 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $this->assertCount(0, Http::recorded(fn (Request $q) => str_contains($q->url(), 'shipping_options/free')));
     }
 
+    // ═══ Variações e fotos juntas, como no ML (03/10) ═════════════════════════
+
+    public function test_primeira_variacao_herda_os_dados_e_cada_uma_tem_o_proprio_grupo_de_fotos(): void
+    {
+        $this->comCategoria();
+        $this->mesa()->putJson($this->rota('variantes'), ['variantes' => ['__single__' => ['estoque' => 5, 'precos' => ['gold_special' => 150]]]])->assertOk();
+
+        // O caminho da tela: 1º a que já existe ganha o valor (fica com os dados), depois nasce a nova.
+        $cor = ['chave' => 'COLOR', 'nome' => 'Cor', 'defines_picture' => true];
+        $this->mesa()->putJson($this->rota('eixos'), ['eixos' => [$cor + ['valores' => [['id' => '52049', 'nome' => 'Preto']]]]])->assertOk();
+        $r = $this->mesa()->putJson($this->rota('eixos'), ['eixos' => [$cor + ['valores' => [['id' => '52049', 'nome' => 'Preto'], ['id' => '52028', 'nome' => 'Azul']]]]])->assertOk()->json();
+
+        [$preto, $azul] = $r['variantes'];
+        $this->assertSame(['COLOR' => ['id' => '52049', 'nome' => 'Preto']], $preto['valores'], 'a tela tira e restaura pelo valor');
+        $this->assertSame(5, $preto['estoque'], 'a variação que já existia ficou com os dados');
+        $this->assertSame('CAD-01-CB3', $preto['atributos']['SELLER_SKU']['value_name']);
+        $this->assertNull($azul['estoque'], 'a nova nasce vazia');
+        $this->assertSame([], $r['variantes'][1]['atributos']);
+        // Cor define a foto: um grupo por cor, cada cartão acha o seu.
+        $this->assertSame([[$preto['chave']], [$azul['chave']]], array_column($r['grupos_imagem'], 'variantes'));
+
+        // Eixo que NÃO define foto: com "fotos por variação" (a tela liga sozinha) cada uma tem o próprio grupo.
+        $this->mesa()->putJson($this->rota('eixos'), ['eixos' => [
+            ['chave' => '~custom', 'nome' => 'Estampa', 'defines_picture' => false, 'valores' => [['nome' => 'Lisa'], ['nome' => 'Listrada']]],
+        ]])->assertOk();
+        $sem = $this->mesa()->getJson($this->rota('abrir'))->json('grupos_imagem');
+        $this->assertSame([], $sem, 'sem fotos por variação, todas usam a galeria geral');
+        $r = $this->mesa()->putJson($this->rota('salvar'), ['fotos_por_variante' => true])->assertOk()->json();
+        $this->assertTrue($r['rascunho']['fotos_por_variante']);
+        $this->assertSame(array_map(fn ($v) => [$v['chave']], array_values(array_filter($r['variantes'], fn ($v) => ! $v['orfa']))), array_column($r['grupos_imagem'], 'variantes'));
+    }
+
     // ═══ Aviso 4053 fora da tela (docx §5) ═══════════════════════════════════
 
     public function test_conferencia_gravada_com_o_aviso_4053_nao_o_mostra_mais(): void

@@ -54,10 +54,10 @@ export const SECOES = [
     { chave: 'descricao', titulo: 'Descrição', etapas: ['E9'] },
 ];
 
-/** Em que card a seção se resolve (ids dos cards: `card-{valor}`). */
+/** Em que card a seção se resolve (ids dos cards: `card-{valor}`). As fotos ficam nas variações (03/10/2026). */
 export const CARD_DA_SECAO = {
     categoria: 'produto', caracteristicas: 'ficha', variacoes: 'variacoes', variantes: 'variacoes',
-    fotos: 'fotos', tipos: 'tipos', envio: 'logistica', descricao: 'descricao',
+    fotos: 'variacoes', tipos: 'tipos', envio: 'logistica', descricao: 'descricao',
 };
 
 /** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para a lateral). */

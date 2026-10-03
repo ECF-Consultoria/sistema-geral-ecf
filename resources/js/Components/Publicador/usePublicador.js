@@ -419,11 +419,14 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
         return data;
     };
+    /** Devolve o estado novo (ou nulo, se o servidor recusou): quem cria variação confere o que nasceu. */
     const salvarEixos = async (eixos) => {
         const data = await estruturar(() => axios.put(rota('eixos', produtoId), { eixos }));
         if (Object.keys(data?.regeneracao?.conflitos ?? {}).length) {
             setAviso('Algumas variações juntaram dados diferentes (estoque, SKU): confira o card Variações.');
         }
+
+        return data;
     };
     const enviarFotos = async (arquivos, grupo) => {
         // Uma volta da fila por arquivo: o que se digita enquanto as fotos sobem é salvo entre elas.
