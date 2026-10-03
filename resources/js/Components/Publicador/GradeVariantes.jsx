@@ -1,6 +1,7 @@
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
 import CampoAtributo from './CampoAtributo';
+import { gerarEan13 } from './ferramentas';
 import { cn } from '@/lib/utils';
 
 // ─── Os dados de cada variação (E5) ─────────────────────────────────────────
@@ -59,16 +60,30 @@ export function CampoSku({ v, travada, onMudar, className }) {
     );
 }
 
-/** GTIN e, quando há o atributo, o motivo de não ter código universal (Q-UI-16). */
-export function CampoGtin({ v, schema, travada, onMudar, className }) {
+/**
+ * GTIN e, quando há o atributo, o motivo de não ter código universal (Q-UI-16).
+ * `existentes` (Set) liga o botão "Gerar": um EAN-13 novo do gerador interno, sem
+ * repetir os das outras variações (docx §4).
+ */
+export function CampoGtin({ v, schema, travada, onMudar, className, existentes = null }) {
     const motivo = schema?.atributos?.EMPTY_GTIN_REASON;
     if (! schema?.atributos?.GTIN) return null;
+    const semCodigo = !! atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id;
 
     return (
         <div>
-            <input value={atributoDa(v, 'GTIN')?.value_name ?? ''} disabled={travada || !! atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id} inputMode="numeric" maxLength={14}
-                onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'GTIN', e.target.value === '' ? null : { value_name: e.target.value.replace(/\D/g, '') })}
-                placeholder="EAN de 8 a 14 dígitos" className={cn(pequeno, 'w-40 font-mono tabular-nums', className)} data-gtin={v.chave} />
+            <div className="flex gap-1.5">
+                <input value={atributoDa(v, 'GTIN')?.value_name ?? ''} disabled={travada || semCodigo} inputMode="numeric" maxLength={14}
+                    onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'GTIN', e.target.value === '' ? null : { value_name: e.target.value.replace(/\D/g, '') })}
+                    placeholder="EAN de 8 a 14 dígitos" className={cn(pequeno, 'w-40 font-mono tabular-nums', className)} data-gtin={v.chave} />
+                {existentes && ! travada && ! semCodigo && (
+                    <button type="button" title="Gerar um EAN-13 válido novo (não repete os das outras variações)" aria-label={`Gerar código para ${v.rotulo}`} data-gerar-gtin={v.chave}
+                        onClick={() => mudarAtributoDaVariante(v, onMudar, 'GTIN', { value_name: gerarEan13(existentes) })}
+                        className="grid h-8 w-8 shrink-0 place-items-center self-center rounded-lg border border-white/[0.10] bg-white/[0.04] text-white/70 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
+                        <RefreshCw size={13} />
+                    </button>
+                )}
+            </div>
             {motivo && (
                 <select value={atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id ?? ''} disabled={travada}
                     onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'EMPTY_GTIN_REASON', e.target.value === '' ? null : { value_id: e.target.value, value_name: motivo.valores.find((x) => String(x.id) === e.target.value)?.name ?? null })}

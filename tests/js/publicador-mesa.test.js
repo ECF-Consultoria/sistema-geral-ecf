@@ -21,6 +21,7 @@ const CARDS = [
     `${BASE}/Mesa/CardTiposEPrecos.jsx`,
     `${BASE}/Mesa/CardLogistica.jsx`,
     `${BASE}/Mesa/CardDescricao.jsx`,
+    `${BASE}/Mesa/TermosMaisBuscados.jsx`,
 ];
 // Componentes de campo reaproveitados do piloto, normalizados nesta fase.
 const NORMALIZADOS = [
@@ -117,11 +118,18 @@ test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin por nome', (
     assert.match(fonte, /export function CampoGtin\b/);
 });
 
-test('CartaoVariante — preço usa precos_efetivos como placeholder; a dica da Precificação só com oferta_id', () => {
+test('CartaoVariante — preço MOSTRA o da Precificação do Portal (docx §4) sem gravá-lo; a dica só com oferta_id', () => {
     const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
     assert.match(fonte, /precos_efetivos/);
     assert.match(fonte, /produto\?\.oferta_id/);
-    assert.match(fonte, /em branco = o da Precificação/);
+    // O efetivo vira o VALOR do campo (não placeholder) com o selo "do Portal".
+    assert.match(fonte, /paraTexto\(temValor \? valor : efetivo\)/);
+    assert.match(fonte, /do Portal/);
+    assert.doesNotMatch(fonte, /placeholder=\{efetivo/);
+    // Igual ao do Portal ou apagado: continua seguindo a Precificação (não congela, `16` §1.6).
+    assert.match(fonte, /n === Number\(efetivo\)/);
+    assert.match(fonte, /onMudar\(null\)/);
+    assert.match(fonte, /A Precificação do Portal não tem preço para esta oferta/);
 });
 
 test('CartaoVariante — não existe campo de título por variante (o título é por tipo, Q-UI-10)', () => {

@@ -3,6 +3,7 @@ import { CheckCircle2, Images } from 'lucide-react';
 import { CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
 import { AtributosExtrasDaVariante, CampoEstoque, CampoGtin, CampoSku, atributosExtrasDaVariante } from '../GradeVariantes';
 import { GERAL, NOME_TIPO, paraNumero, paraTexto } from '../apoio';
+import { gtinsEmUso } from '../ferramentas';
 import { cn } from '@/lib/utils';
 
 // ─── Um cartão por combinação (card Variações e estoque, Q-UI-10/11/16) ─────
@@ -11,18 +12,49 @@ import { cn } from '@/lib/utils';
 // duplicada). O título é por TIPO de anúncio (card Clássico e Premium), nunca
 // por variante. Preço em branco cai no da Precificação (precos_efetivos).
 
-/** Preço de uma variante num tipo: texto local, número no blur, placeholder = o efetivo. */
-function CampoPreco({ valor, efetivo, disabled, onMudar, chave, tipo }) {
-    const [texto, setTexto] = useState(paraTexto(valor));
-    useEffect(() => setTexto(paraTexto(valor)), [valor]);
-    const falta = (valor === null || valor === undefined) && (efetivo === null || efetivo === undefined);
+/**
+ * Preço de uma variante num tipo. Sem preço digitado, o campo MOSTRA o preço importado da
+ * Precificação do Portal (docx §4) — mas não o grava: o rascunho segue lendo a Precificação na
+ * hora de conferir e publicar, para o preço não congelar (`16` §1.6). Digitar outro valor
+ * sobrepõe; "usar o do Portal" volta a seguir a Precificação.
+ */
+function CampoPreco({ valor, efetivo, disabled, onMudar, chave, tipo, comPortal }) {
+    const temValor = valor !== null && valor !== undefined;
+    const temEfetivo = efetivo !== null && efetivo !== undefined;
+    const [texto, setTexto] = useState(paraTexto(temValor ? valor : efetivo));
+    useEffect(() => setTexto(paraTexto(temValor ? valor : efetivo)), [valor, efetivo]); // eslint-disable-line react-hooks/exhaustive-deps
+    const falta = ! temValor && ! temEfetivo;
+    const doPortal = ! temValor && temEfetivo;
+
+    const sair = () => {
+        const n = paraNumero(texto);
+        // Igual ao do Portal (ou apagado) = continua seguindo a Precificação.
+        if (! temValor && (n === null || (temEfetivo && n === Number(efetivo)))) {
+            setTexto(paraTexto(efetivo));
+
+            return;
+        }
+        onMudar(n);
+    };
 
     return (
-        <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] font-bold text-white/40">R$</span>
-            <input value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={() => onMudar(paraNumero(texto))} disabled={disabled} inputMode="decimal"
-                placeholder={efetivo !== null && efetivo !== undefined ? paraTexto(efetivo) : '0,00'}
-                className={cn(CLASSE_INPUT, 'py-1.5 pl-9 font-mono text-[13px] tabular-nums disabled:opacity-60', falta && ! disabled && 'border-amber-400/50')} data-preco={`${chave}|${tipo}`} />
+        <div>
+            <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[11px] font-bold text-white/40">R$</span>
+                <input value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={sair} disabled={disabled} inputMode="decimal" placeholder="0,00"
+                    className={cn(CLASSE_INPUT, 'py-1.5 pl-9 font-mono text-[13px] tabular-nums disabled:opacity-60', doPortal && 'pr-24', falta && ! disabled && 'border-amber-400/50')}
+                    data-preco={`${chave}|${tipo}`} data-preco-origem={doPortal ? 'portal' : (temValor ? 'digitado' : 'vazio')} />
+                {doPortal && (
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold text-emerald-400">do Portal</span>
+                )}
+            </div>
+            {temValor && temEfetivo && Number(valor) !== Number(efetivo) && ! disabled && (
+                <button type="button" onClick={() => onMudar(null)} data-preco-voltar={`${chave}|${tipo}`}
+                    className="mt-1 text-[11px] text-white/55 underline underline-offset-2 hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
+                    usar o do Portal ({paraTexto(efetivo)})
+                </button>
+            )}
+            {falta && comPortal && <p className="mt-1 text-[11px] text-amber-300">A Precificação do Portal não tem preço para esta oferta. Preencha lá ou digite aqui.</p>}
         </div>
     );
 }
@@ -90,7 +122,7 @@ export default function CartaoVariante({ m, v, indice, eixos, alvosAtivos }) {
                 {schema?.atributos?.GTIN && (
                     <div>
                         <span className={ROTULO}>Código universal</span>
-                        <CampoGtin v={v} schema={schema} travada={travada} onMudar={m.mudarVar} className="w-full" />
+                        <CampoGtin v={v} schema={schema} travada={travada} onMudar={m.mudarVar} className="w-full" existentes={gtinsEmUso(m.variantes)} />
                     </div>
                 )}
                 <AtributosExtrasDaVariante v={v} extras={extras} travada={travada} onMudar={m.mudarVar} />
@@ -112,14 +144,14 @@ export default function CartaoVariante({ m, v, indice, eixos, alvosAtivos }) {
                         <div key={a.listing_type_id}>
                             <span className={ROTULO}>Preço {NOME_TIPO[a.listing_type_id]}</span>
                             <CampoPreco valor={v.precos?.[a.listing_type_id] ?? null} efetivo={v.precos_efetivos?.[a.listing_type_id] ?? null}
-                                disabled={travada || ! a.ativo} chave={v.chave} tipo={a.listing_type_id}
+                                disabled={travada || ! a.ativo} chave={v.chave} tipo={a.listing_type_id} comPortal={!! estado.produto?.oferta_id}
                                 onMudar={(num) => m.mudarVar(v.chave, { precos: { ...(v.precos ?? {}), [a.listing_type_id]: num } })} />
                         </div>
                     ))}
                 </div>
             )}
-            {estado.produto?.oferta_id && alvosAtivos.length > 0 && (
-                <p className="mt-2 text-[11px] text-white/40">em branco = o da Precificação</p>
+            {estado.produto?.oferta_id && alvosAtivos.some((a) => (v.precos?.[a.listing_type_id] ?? null) === null && (v.precos_efetivos?.[a.listing_type_id] ?? null) !== null) && (
+                <p className="mt-2 text-[11px] text-white/40">O preço marcado "do Portal" vem da Precificação e acompanha as mudanças de lá; digite outro valor para trocar só aqui.</p>
             )}
         </div>
     );

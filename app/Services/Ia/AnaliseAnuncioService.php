@@ -110,6 +110,41 @@ class AnaliseAnuncioService
         ];
     }
 
+    // ═══ Termos mais buscados → Modelo e título (Publicador, 03/10/2026) ═════
+    //
+    // NÃO são MAG T8: a equipe pediu (melhoria_publicador.docx §2 e §3) que a
+    // IA trabalhe em cima dos termos que o ML diz serem os mais buscados da
+    // categoria, descartando os que não têm a ver com o produto.
+
+    /**
+     * O campo Modelo como lista de buscas coerentes com o produto, separadas
+     * por vírgula ("cadeira escritorio, cadeira home office, ..."). Quem corta
+     * no limite exato é o `PalavrasChaveService` — o modelo erra contagem.
+     *
+     * @param  list<string>  $termos  do mais buscado para o menos
+     */
+    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite): array
+    {
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite), 2500);
+
+        return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
+    }
+
+    /**
+     * Um título sob o ruleset ECF montado com os termos mais buscados que têm
+     * a ver com o produto. `escolhidos` = os que a pessoa marcou na tela: entram
+     * na frente dos demais.
+     *
+     * @param  list<string>  $termos
+     * @param  list<string>  $escolhidos
+     */
+    public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo): array
+    {
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo), 2500);
+
+        return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
+    }
+
     // ═══ Chamada ao provedor ══════════════════════════════════════════════════
 
     /**
@@ -312,6 +347,71 @@ class AnaliseAnuncioService
 
         Responda APENAS com JSON válido, sem crases:
         {"titulos":[{"texto":"..."}]}
+        TXT;
+    }
+
+    private function listaDeTermos(array $termos): string
+    {
+        return $termos === []
+            ? '(o Mercado Livre não devolveu termos para esta categoria — use buscas reais que um comprador faria)'
+            : implode("\n", array_map(fn ($t, $i) => ($i + 1).'. '.$t, $termos, array_keys($termos)));
+    }
+
+    private function promptModelo(string $produto, string $caminho, array $termos, int $limite): string
+    {
+        $lista = $this->listaDeTermos($termos);
+
+        return <<<TXT
+        Produto: **{$produto}**
+        Categoria no Mercado Livre: {$caminho}
+
+        Termos mais buscados nesta categoria (do mais buscado para o menos):
+        {$lista}
+
+        Monte o valor do campo "Modelo" do anúncio no Mercado Livre: uma lista de
+        buscas que um comprador DESTE produto faria, separadas por vírgula e espaço.
+        Exemplo de formato: cadeira escritorio, cadeira para trabalho, cadeira home office, cadeira preta
+
+        REGRAS:
+        1. Use SÓ termos coerentes com o produto. Descarte os que descrevem outro
+           produto, outro uso ou outro público.
+        2. NUNCA use marca de concorrente nem nome de loja.
+        3. Prefira os termos da lista; complete com variações reais do nome do produto.
+        4. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
+        5. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
+           perto possível de {$limite} sem passar.
+
+        Responda APENAS com JSON válido, sem crases:
+        {"modelo":"..."}
+        TXT;
+    }
+
+    private function promptTituloPorTermos(string $produto, string $caminho, array $termos, array $escolhidos, int $maximo): string
+    {
+        $lista = $this->listaDeTermos($termos);
+        $marcados = $escolhidos === [] ? '' : "\n\nA equipe marcou estes termos como os mais importantes — priorize-os:\n- ".implode("\n- ", $escolhidos);
+        $minimo = max(1, $maximo - 2);
+
+        return <<<TXT
+        Gere UM título para o anúncio do produto **{$produto}** no Mercado Livre.
+        Categoria: {$caminho}
+
+        Termos mais buscados nesta categoria (do mais buscado para o menos):
+        {$lista}{$marcados}
+
+        FILTRO DE COERÊNCIA: use só os termos que descrevem ESTE produto. Descarte
+        termo de outro produto, outro uso, outro público, marca de concorrente ou loja.
+
+        REGRAS DOS TÍTULOS (ruleset ECF):
+        1. SEM PREPOSIÇÕES: proibido usar de, para, com, do, da, e, em.
+        2. SEM CORES no título.
+        3. PRODUTO/FUNÇÃO PRIMEIRO: o título começa pelo produto ou sua função.
+        4. SEM CARACTERES ESPECIAIS: sem parênteses, traços, aspas ou pontuação.
+        5. ENTRE {$minimo} E {$maximo} CARACTERES — conte de verdade, caractere por caractere.
+        6. Não repita palavra.
+
+        Responda APENAS com JSON válido, sem crases:
+        {"titulo":"..."}
         TXT;
     }
 

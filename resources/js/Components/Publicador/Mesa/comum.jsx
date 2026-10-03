@@ -52,12 +52,15 @@ export function CardMesa({ id, icone: Icone, titulo, apoio, chip, aberto = true,
     );
 }
 
-/** Um campo em "tile": rótulo 11px no topo; borda âmbar se obrigatório vazio; vermelha só com recusa do servidor. */
-export function Tile({ rotulo, preenchido = false, problema = null, children }) {
+/**
+ * Um campo em "tile": rótulo 11px no topo; borda âmbar só se OBRIGATÓRIO vazio (o campo
+ * que o ML não exige fica neutro — docx §6); vermelha só com recusa do servidor.
+ */
+export function Tile({ rotulo, preenchido = false, obrigatorio = true, problema = null, children }) {
     return (
-        <div className={cn('rounded-[10px] border bg-white/[0.03] p-3',
-            problema ? 'border-red-500/30' : (preenchido ? 'border-white/[0.08]' : 'border-amber-400/50'))}
-            data-tile={preenchido ? 'ok' : 'vazio'}>
+        <div className={cn('h-full rounded-[10px] border bg-white/[0.03] p-3',
+            problema ? 'border-red-500/30' : (preenchido || ! obrigatorio ? 'border-white/[0.08]' : 'border-amber-400/50'))}
+            data-tile={preenchido ? 'ok' : (obrigatorio ? 'vazio' : 'opcional')}>
             <div className="mb-1 flex items-start justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
                 <span className="min-w-0 flex-1">{rotulo}</span>
                 {preenchido && <Check size={14} className="shrink-0 text-emerald-400" aria-label="Preenchido" />}

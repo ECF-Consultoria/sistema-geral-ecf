@@ -25,9 +25,11 @@ import { cn } from '@/lib/utils';
 // em `usePublicador` (rascunho, conferência, publicação) e `useIaDoPublicador`
 // (Anunciar por IA); aqui só há composição e o estado de tela.
 //
-// ≥ 1360px: coluna principal + lateral sticky de 320px, e o botão primário está
+// ≥ 1360px: coluna principal + lateral sticky de 340px, e o botão primário está
 // no Resumo. Abaixo disso a lateral vira um card recolhido no topo e o primário
 // passa para a barra — nunca existem dois amarelos sólidos ao mesmo tempo.
+// A coluna principal ocupa a largura que sobra (docx §1, 03/10/2026): com o teto
+// antigo de 800px a tela larga ficava com metade vazia à direita.
 
 const FAIXA_LARGA = '(min-width: 1360px)';
 
@@ -135,7 +137,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                     onTrocar={trocar}
                 />
 
-                <div className="grid grid-cols-1 gap-6 px-8 py-8 min-[1360px]:grid-cols-[minmax(0,800px)_320px] min-[1360px]:gap-8">
+                <div className="grid grid-cols-1 gap-6 px-6 py-8 min-[1360px]:grid-cols-[minmax(0,1fr)_340px] min-[1360px]:gap-8">
                     <div className="min-w-0 space-y-6" data-coluna-principal>
                         {/* Avisos do topo: IA, aviso do hook, erro, token expirado. */}
                         <div aria-live="polite" className="space-y-3">

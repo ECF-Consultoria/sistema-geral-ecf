@@ -79,6 +79,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('descricao');
             Route::get('/simular', [MlbPublicadorController::class, 'simular'])
                 ->middleware('throttle:30,1,publicador.simular')->name('simular');
+            // Melhoria de 03/10/2026: frete grátis obrigatório, termos mais buscados e a IA do Modelo/título.
+            Route::get('/frete', [MlbPublicadorController::class, 'frete'])
+                ->middleware('throttle:60,1,publicador.frete')->name('frete');
+            Route::get('/termos', [MlbPublicadorController::class, 'termos'])
+                ->middleware('throttle:60,1,publicador.termos')->name('termos');
+            Route::post('/palavras-ia', [MlbPublicadorController::class, 'pedirPalavrasIa'])
+                ->middleware('throttle:20,1,publicador.palavras-ia')->name('palavras-ia');
+            Route::get('/palavras-ia/{alvo}', [MlbPublicadorController::class, 'palavrasIa'])
+                ->middleware('throttle:240,1,publicador.palavras-ia.status')->name('palavras-ia.status');
         });
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───

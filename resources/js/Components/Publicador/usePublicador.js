@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
-import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema } from './apoio.js';
+import { SECOES, criarRota, estadoDasSecoes, mensagemDe, secaoDoProblema, valorVazio } from './apoio.js';
 import {
     contarProntas, envioDasVariantes, envioDoRascunho, esperaDaNovaTentativa, estadoDaConferencia, estadoDoSalvamento, mesclarAlvos,
     mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar,
@@ -28,12 +28,17 @@ import {
 //   indicador deixa de dizer "Salvo" e, com algo por salvar, sair da página pede
 //   confirmação (WR-F02).
 // - Conferir e publicar vão para a fila do servidor: o hook acompanha até terminar.
+// - Termos mais buscados e a IA do Modelo/título (melhoria de 03/10/2026): a IA roda
+//   na fila do servidor; o hook acompanha o pedido e APLICA o resultado pelo caminho
+//   normal de edição (vira digitação salva como qualquer outra). Escolher categoria
+//   com o Modelo vazio já pede o Modelo à IA.
 // A casca (164-13) só compõe; o contrato `m` abaixo é o que os cards da mesa leem.
 
 const ESPERA_SALVAR = 900;
 const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim e perdê-las?';
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
+const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
@@ -73,6 +78,13 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const [relendo, setRelendo] = useState(false);
     // WR-F02: `{ mensagem, desistiu }` do salvamento automático que falhou; nulo = em dia.
     const [falhaSalvar, setFalhaSalvar] = useState(null);
+    // Termos mais buscados da categoria: `{ categoria, dados, carregando, erro }`.
+    const [termos, setTermos] = useState({ categoria: null, dados: null, carregando: false, erro: null });
+    // IA do Modelo/título por alvo: `{ status, erro, pedido, automatico, desde }`.
+    const [palavrasIa, setPalavrasIa] = useState({});
+    const palavrasRef = useRef({});
+    // Frete grátis obrigatório pela faixa de preço (resposta do servidor), nulo = não consultado.
+    const [frete, setFrete] = useState(null);
     const pausadoRef = useRef(pausado);
     pausadoRef.current = pausado;
     const emVoo = useRef(0);
@@ -265,6 +277,10 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         setErroCarga(null);
         setAguardando(null);
         setSimulacao(null);
+        setTermos({ categoria: null, dados: null, carregando: false, erro: null });
+        palavrasRef.current = {};
+        setPalavrasIa({});
+        setFrete(null);
         enfileirar(async () => {
             try {
                 const { data } = await axios.get(rota('abrir', produtoId));
@@ -393,6 +409,10 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         const data = await estruturar(() => axios.put(rota('categoria', produtoId), { categoria_id: id }));
         const fora = data?.migracao?.descartados ?? [];
         if (fora.length) setAviso(`Ficaram de fora na categoria nova: ${fora.map((d) => d.nome).join(', ')}.`);
+        // Docx §2: com a categoria escolhida, a IA monta o Modelo com os termos mais buscados — só se ele estiver vazio.
+        if (data?.schema?.atributos?.MODEL && valorVazio(rascRef.current?.atributos?.MODEL)) {
+            pedirPalavrasIa('modelo', { automatico: true });
+        }
     };
     const buscarCategorias = async (texto) => {
         const { data } = await axios.get(route('mlb.anuncios.publicador.categorias'), { params: { q: texto } });
@@ -457,6 +477,88 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             setSimulando(false);
         }
     };
+    // ── Termos mais buscados e IA do Modelo/título (docx §2 e §3) ──
+    const carregarTermos = async () => {
+        const categoria = estado?.rascunho?.categoria_id ?? null;
+        if (! categoria) return;
+        setTermos({ categoria, dados: null, carregando: true, erro: null });
+        try {
+            const { data } = await axios.get(rota('termos', produtoId));
+            setTermos({ categoria, dados: data, carregando: false, erro: null });
+        } catch (e) {
+            setTermos({ categoria, dados: null, carregando: false, erro: mensagemDe(e) });
+        }
+    };
+
+    const mudarIa = (alvo, patch) => {
+        palavrasRef.current = { ...palavrasRef.current, [alvo]: { ...(palavrasRef.current[alvo] ?? {}), ...patch } };
+        setPalavrasIa(palavrasRef.current);
+    };
+
+    /** `automatico` = pedido pela escolha de categoria: o resultado não pisa no que a pessoa escreveu enquanto isso. */
+    const pedirPalavrasIa = async (alvo, { escolhidos = [], automatico = false } = {}) => {
+        mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now() });
+        try {
+            const { data } = await axios.post(rota('palavras-ia', produtoId), { alvo, escolhidos });
+            mudarIa(alvo, { pedido: data.pedido });
+        } catch (e) {
+            mudarIa(alvo, { status: 'erro', erro: mensagemDe(e) });
+        }
+    };
+
+    const aplicarPalavras = (alvo, valor, automatico) => {
+        if (alvo === 'modelo') {
+            if (automatico && ! valorVazio(rascRef.current?.atributos?.MODEL)) {
+                mudarIa(alvo, { status: 'pronto', erro: null });
+
+                return;
+            }
+            mudarAtributo('MODEL', { value_id: null, value_name: valor, origem: 'ia', revisar: false });
+        } else {
+            const lt = alvo.replace('titulo_', '');
+            mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, titulo: valor } : x)) }));
+        }
+        mudarIa(alvo, { status: 'pronto', erro: null });
+    };
+
+    // Acompanha os pedidos em andamento; só aceita a resposta do PRÓPRIO pedido.
+    const rodandoIa = Object.entries(palavrasIa).filter(([, s]) => s.status === 'rodando').map(([alvo]) => alvo).join(',');
+    useEffect(() => {
+        if (! rodandoIa) return undefined;
+        const t = setInterval(async () => {
+            for (const alvo of rodandoIa.split(',')) {
+                const s = palavrasRef.current[alvo];
+                if (! s || s.status !== 'rodando' || ! s.pedido) continue;
+                if (Date.now() - s.desde > LIMITE_PALAVRAS_IA) {
+                    mudarIa(alvo, { status: 'erro', erro: 'A IA demorou demais. Tente de novo.' });
+                    continue;
+                }
+                try {
+                    const { data } = await axios.get(rota('palavras-ia.status', produtoId, { alvo }));
+                    if (data.pedido !== s.pedido) continue;
+                    if (data.status === 'pronto') aplicarPalavras(alvo, data.valor, s.automatico);
+                    else if (data.status === 'erro') mudarIa(alvo, { status: 'erro', erro: data.erro ?? 'A IA não conseguiu agora. Tente de novo.' });
+                } catch {
+                    // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.
+                }
+            }
+        }, INTERVALO_ANDAMENTO);
+
+        return () => clearInterval(t);
+    }, [rodandoIa, produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** Frete grátis obrigatório pela faixa de preço: salva o pendente antes (o servidor lê preço e pacote gravados). */
+    const consultarFrete = async () => {
+        await descarregar();
+        try {
+            const { data } = await axios.get(rota('frete', produtoId));
+            setFrete(data.frete_gratis ?? null);
+        } catch {
+            // Sem a resposta do ML a tela segue como antes: a escolha do frete grátis fica com a pessoa.
+            setFrete(null);
+        }
+    };
+
     /**
      * Relê o rascunho DENTRO da fila — nenhum PUT corre junto com este GET (CR-F02) — e
      * aplica mesclando: o que ainda estiver por salvar fica na tela. `descarregarAntes` =
@@ -552,6 +654,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         escolherCategoria, buscarCategorias, salvarEixos,
         enviarFotos, atribuirFotos, removerFoto, reenviarFoto, enviandoFoto,
         aviso, simular, simulacao, simulando, copiarTituloDo,
+        termos, carregarTermos, palavrasIa, pedirPalavrasIa, frete, consultarFrete,
     };
 
     return {

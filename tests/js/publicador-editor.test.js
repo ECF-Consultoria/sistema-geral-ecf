@@ -628,7 +628,9 @@ test('Editor.jsx — compõe os 7 cards com m={pub.m}, sem abas nem rodapé fixo
     }
     assert.doesNotMatch(f, /ModoAnuncioTabs/);
     assert.doesNotMatch(f, /fixed bottom-/);
-    assert.match(f, /min-\[1360px\]:grid-cols-\[minmax\(0,800px\)_320px\]/);
+    // Docx §1 (03/10/2026): a coluna principal ocupa a largura que sobra (o teto de 800px deixava meia tela vazia).
+    assert.match(f, /min-\[1360px\]:grid-cols-\[minmax\(0,1fr\)_340px\]/);
+    assert.doesNotMatch(f, /minmax\(0,800px\)/);
     assert.match(f, /min-\[1360px\]:top-\[56px\]/);
     assert.match(f, /matchMedia\(FAIXA_LARGA\)/);
     assert.match(f, /removeEventListener\('change'/);

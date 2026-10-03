@@ -37,6 +37,24 @@ final class MapeadorErrosMl
 
     private const FOTOS = ['173', '204', '3703', '3706'];
 
+    /**
+     * Avisos que o ML manda em TODA conferência da conta e não dizem nada sobre
+     * o anúncio (N-16): `4053 shipping.lost_me1_by_user` = a conta não usa o
+     * Mercado Envios 1. A equipe pediu para não vê-los (docx §5, 03/10/2026);
+     * a resposta crua continua guardada na conferência.
+     */
+    private const RUIDO = ['4053' => 'shipping.lost_me1_by_user'];
+
+    /** @param array{cause_id?: ?int, code?: string, type?: string} $causa */
+    public static function ehRuido(array $causa): bool
+    {
+        if (strtolower((string) ($causa['type'] ?? 'error')) !== 'warning') {
+            return false;
+        }
+
+        return isset(self::RUIDO[(string) ($causa['cause_id'] ?? '')]) || in_array((string) ($causa['code'] ?? ''), self::RUIDO, true);
+    }
+
     /** @param array{cause_id?: ?int, code?: string, type?: string, message?: string, references?: list<string>} $causa */
     public static function problema(array $causa, ?ItemPlano $item, ?SchemaClassificado $schema, array $dicionario): Problema
     {

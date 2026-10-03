@@ -11,6 +11,7 @@ use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
+use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Payload\Alvo;
@@ -286,6 +287,77 @@ class EditorRascunhoService
         return $saida;
     }
 
+    /**
+     * Frete grátis obrigatório pela faixa de preço (melhoria de 03/10/2026, docx §5).
+     *
+     * Quem diz é o `shipping_options/free` (H-10): `discount.type = mandatory` SEM
+     * `free_shipping_by_meli` = o vendedor TEM de oferecer frete grátis; com
+     * `free_shipping_by_meli` o ML banca o frete abaixo da faixa. O limite (hoje
+     * R$ 79) nunca fica no código (RN-83). Consulta o menor e o maior preço das
+     * variações ativas de cada tipo: a flag de frete grátis é do rascunho inteiro,
+     * então ela só é obrigatória quando até a variação mais barata cai na faixa
+     * (`obrigatorio`); quando só as mais caras caem, é `parcial` (o ML liga nelas).
+     *
+     * @return array{conhecido: bool, obrigatorio: bool, parcial: bool, por_tipo: array<string, array{obrigatorio: bool, parcial: bool, menor: float, maior: float}>}
+     */
+    public function freteGratis(PubRascunho $r): array
+    {
+        $saida = ['conhecido' => false, 'obrigatorio' => false, 'parcial' => false, 'por_tipo' => []];
+        $conta = (array) ($r->step_state['conta'] ?? []);
+        if (! $r->categoria_id || ! isset($conta['sellerId'])) {
+            return $saida;
+        }
+        $e = $this->efetivos->daProduto($r->produto);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        // Fora do Mercado Envios não há frete grátis obrigatório.
+        if (($s->envio['modo'] ?? 'me2') !== 'me2') {
+            return ['conhecido' => true] + $saida;
+        }
+        $pacote = $this->dimensoes($s->atributos);
+
+        foreach ($s->alvosAtivos() as $alvo) {
+            $precos = array_values(array_filter(array_map(
+                fn (Variante $v) => (float) ($v->dados['precos'][$alvo->listingTypeId] ?? 0), $s->variantesAtivas(),
+            ), fn ($p) => $p > 0));
+            if ($precos === []) {
+                continue;
+            }
+            $menor = min($precos);
+            $maior = max($precos);
+            $consulta = fn (float $preco) => $this->exigeFreteGratis($r, (string) $conta['sellerId'], $preco, $alvo->listingTypeId, $s->condicao, $pacote);
+            $doMenor = $consulta($menor);
+            $doMaior = $maior === $menor ? $doMenor : $consulta($maior);
+            if ($doMenor === null || $doMaior === null) {
+                continue;
+            }
+            $saida['por_tipo'][$alvo->listingTypeId] = ['obrigatorio' => $doMenor, 'parcial' => ! $doMenor && $doMaior, 'menor' => $menor, 'maior' => $maior];
+        }
+
+        $tipos = $saida['por_tipo'];
+
+        return [
+            'conhecido' => $tipos !== [],
+            'obrigatorio' => (bool) array_filter($tipos, fn ($t) => $t['obrigatorio']),
+            'parcial' => (bool) array_filter($tipos, fn ($t) => $t['parcial']),
+            'por_tipo' => $tipos,
+        ];
+    }
+
+    /** Nulo = o ML não respondeu (a tela segue sem a regra, como antes). */
+    private function exigeFreteGratis(PubRascunho $r, string $sellerId, float $preco, string $listingType, ?string $condicao, ?string $pacote): ?bool
+    {
+        $f = $this->cliente->daConta($r->conta(), 'GET', "/users/{$sellerId}/shipping_options/free", array_filter([
+            'item_price' => $preco, 'listing_type_id' => $listingType, 'mode' => 'me2', 'condition' => $condicao === 'used' ? 'used' : 'new',
+            'logistic_type' => 'drop_off', 'dimensions' => $pacote, 'verbose' => 'true',
+        ], fn ($x) => $x !== null));
+        $cobertura = $f->ok() && is_array($f->corpo) ? ($f->corpo['coverage']['all_country'] ?? null) : null;
+        if (! is_array($cobertura)) {
+            return null;
+        }
+
+        return ($cobertura['discount']['type'] ?? null) === 'mandatory' && empty($cobertura['free_shipping_by_meli']);
+    }
+
     /** "AxLxC,peso" dos SELLER_PACKAGE_* (cm e g), como o `shipping_options/free` pede. */
     private function dimensoes(array $atributos): ?string
     {
@@ -390,7 +462,9 @@ class EditorRascunhoService
             'problemas' => array_map([self::class, 'problemaParaTela'], $problemas),
             'conferencia' => $v ? [
                 'id' => $v->id, 'revisao' => $v->revisao, 'resultado' => $v->resultado, 'vale' => $v->revisao === $r->revisao,
-                'em' => $v->created_at?->toIso8601String(), 'issues' => (array) $v->issues,
+                'em' => $v->created_at?->toIso8601String(),
+                // Conferência gravada antes do filtro de ruído (03/10) ainda traz o 4053.
+                'issues' => array_values(array_filter((array) $v->issues, fn ($i) => ! MapeadorErrosMl::ehRuido((array) ($i['ml_causa'] ?? [])))),
                 'itens' => count((array) ($v->respostas_ml['itens'] ?? [])),
                 'local' => $v->camada === 'L2',
             ] : null,

@@ -192,7 +192,9 @@ class PublicacaoService
             $resp = new RespostaMl((int) ($i->resposta['status'] ?? 0), $i->resposta['corpo'] ?? null);
             $plano = new ItemPlano($i->indice, $i->listing_type_id, $i->variante_chave, '', (array) $i->payload, []);
             foreach ($resp->causas as $causa) {
-                $saida[] = MapeadorErrosMl::problema($causa, $plano, $schema, $dicionario);
+                if (! MapeadorErrosMl::ehRuido($causa)) {
+                    $saida[] = MapeadorErrosMl::problema($causa, $plano, $schema, $dicionario);
+                }
             }
             if ($resp->causas === []) {
                 $saida[] = Problema::bloqueio('V-REM-01', (string) ($i->avisos['mensagem'] ?? 'O Mercado Livre recusou este item sem dizer o motivo.'), ['etapa' => 'E13', 'itens' => [$i->indice]], 'L3');

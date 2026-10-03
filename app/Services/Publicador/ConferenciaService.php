@@ -149,7 +149,9 @@ class ConferenciaService
                     $doMl[] = Problema::bloqueio('V-REM-01', 'O Mercado Livre não permite esta publicação nesta conta.', ['etapa' => 'E0', 'itens' => [$item->indice]], 'L3');
                 }
                 foreach ($resp->causas as $causa) {
-                    $doMl[] = MapeadorErrosMl::problema($causa, $item, $prep['schema'], $dicionario);
+                    if (! MapeadorErrosMl::ehRuido($causa)) {
+                        $doMl[] = MapeadorErrosMl::problema($causa, $item, $prep['schema'], $dicionario);
+                    }
                 }
             }
             $problemas = [...$problemas, ...MapeadorErrosMl::agrupar($doMl)];

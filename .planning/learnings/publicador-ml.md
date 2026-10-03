@@ -239,3 +239,37 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   Guarde o `UploadedFile` numa variável antes de ler.
 
 - **Deploy com fila: `queue:restart`, não só o `deploy.sh`** (03/10). O `deploy.sh` reinicia apenas `ecf-worker:*`; a conferência e a publicação do Publicador rodam na fila `high` (`ecf-worker-high`) e o Creative Engine na `creative` (`ecf-worker-creative`, 3 processos). Depois do deploy, `sudo -u www-data php artisan queue:restart`: todo worker termina o job em andamento e volta com o código novo. `supervisorctl restart` mataria uma geração de criativo paga no meio. Conferir pelo uptime em `supervisorctl status`.
+
+## 10. Melhoria de 03/10/2026 (`melhoria_publicador.docx`, 6 itens)
+
+- **Frete grátis obrigatório: quem decide é `free_shipping_by_meli`, não o
+  `discount.type`.** Nas respostas reais da sondagem (`conta/shipping_options_free_*`)
+  o `discount.type` vem `mandatory` em TODAS as faixas — R$ 50, R$ 78,99, R$ 79 e
+  R$ 150. A diferença é que abaixo da faixa vem `free_shipping_by_meli: true` (o ML
+  banca) e a partir dela o campo some (o vendedor paga). Regra no código:
+  `type = mandatory` **e** sem `free_shipping_by_meli` = obrigatório para o vendedor
+  (`EditorRascunhoService::freteGratis`). O resumo da H-10 em `12-hipoteses` ("a R$ 79
+  vira mandatory") lê isso errado — não "corrija" a regra por ele. O limite nunca vai
+  para o código (RN-83). A flag de frete grátis é do rascunho inteiro, então a regra
+  consulta a variação mais barata e a mais cara de cada tipo: obrigatório só quando
+  até a mais barata cai na faixa; só a mais cara = `parcial` (o ML liga nela, aviso 350).
+- **O aviso 4053 `shipping.lost_me1_by_user` é ruído e sai da tela** (`MapeadorErrosMl::ehRuido`):
+  vem em toda conferência desta conta (N-16). Só some quando chega como `warning`; se o
+  ML voltar a mandar como `error` (bloqueava em 10/07), ele aparece. A resposta crua
+  continua guardada em `pub_validacoes.respostas_ml`; conferência gravada antes do
+  filtro é limpa na leitura (`estado()`).
+- **IA do Modelo/título: o Job NÃO grava no rascunho.** `GerarPalavrasChaveIaJob`
+  deixa o resultado no cache por pedido (`publicador:palavras:{rascunho}:{alvo}`) e a
+  TELA aplica pelo caminho normal de edição. Assim não existe uma segunda escrita
+  concorrente no rascunho (as travas do item 9) e o resultado de um pedido velho não
+  pisa no novo (`pedido` comparado dos dois lados). O pedido automático (ao escolher
+  categoria) só aplica se o Modelo continuar vazio na hora em que a IA termina.
+- **Preço "do Portal" é MOSTRADO, não gravado.** O campo exibe o efetivo da
+  Precificação como valor (selo "do Portal"); sair do campo com o mesmo valor não grava
+  nada — senão o preço congelaria (`16` §1.6). Só valor diferente vira digitado.
+- **SELLER_PACKAGE_* só aceitam `g` e `cm`** nas 4 categorias da sondagem. A tela
+  oferece kg/g e cm/mm/m e grava convertido (g inteiro, cm com 1 casa). Categoria cuja
+  unidade do ML não seja g/cm cai no campo genérico do schema.
+- **EAN-13 automático é do FRONT, uma vez por variação** (`CardVariacoes`, ref
+  `gerados`): apagar o código à mão não o faz voltar sozinho; o botão ao lado gera outro.
+  Mesmo algoritmo do assistente antigo e do `RascunhoAnuncioIaService` (prefixo 789).

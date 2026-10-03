@@ -11,6 +11,7 @@ use App\Services\Publicador\CategoriaBuscaService;
 use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\ImagemAssetService;
+use App\Services\Publicador\PalavrasChaveService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicacaoService;
 use App\Services\Publicador\RascunhoRepository;
@@ -261,6 +262,50 @@ class MlbPublicadorController extends Controller
         $r = $this->rascunho($produto);
 
         return response()->json(['simulacao' => $this->editor->simular($r)]);
+    }
+
+    /** Frete grátis obrigatório pela faixa de preço, como o ML responde hoje (docx §5). */
+    public function frete(int $produto): JsonResponse
+    {
+        return response()->json(['frete_gratis' => $this->editor->freteGratis($this->rascunho($produto))]);
+    }
+
+    /** Termos mais buscados da categoria do rascunho (docx §2 e §3). */
+    public function termos(int $produto, PalavrasChaveService $palavras): JsonResponse
+    {
+        $r = $this->rascunho($produto);
+        try {
+            return response()->json($palavras->termos($r));
+        } catch (RegraViolada $e) {
+            return response()->json(['message' => $e->getMessage(), 'regra' => $e->regra], 422);
+        } catch (\RuntimeException) {
+            return response()->json(['message' => 'O Mercado Livre não devolveu os termos agora. Tente de novo em instantes.'], 502);
+        }
+    }
+
+    /** Pede à IA o campo Modelo ou o título de um tipo; a tela acompanha por `palavrasIa`. */
+    public function pedirPalavrasIa(Request $request, int $produto, PalavrasChaveService $palavras): JsonResponse
+    {
+        $dados = $request->validate([
+            'alvo' => ['required', Rule::in(PalavrasChaveService::ALVOS)],
+            'escolhidos' => ['sometimes', 'array', 'max:20'],
+            'escolhidos.*' => ['string', 'max:120'],
+        ]);
+        $r = $this->rascunho($produto);
+        try {
+            $pedido = $palavras->pedir($r, $dados['alvo'], $dados['escolhidos'] ?? []);
+        } catch (RegraViolada $e) {
+            return response()->json(['message' => $e->getMessage(), 'regra' => $e->regra], 422);
+        }
+
+        return response()->json(['pedido' => $pedido, 'status' => 'rodando'], 202);
+    }
+
+    public function palavrasIa(int $produto, string $alvo, PalavrasChaveService $palavras): JsonResponse
+    {
+        abort_unless(in_array($alvo, PalavrasChaveService::ALVOS, true), 404);
+
+        return response()->json($palavras->estado($this->rascunho($produto), $alvo) ?? ['status' => 'nenhum']);
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
