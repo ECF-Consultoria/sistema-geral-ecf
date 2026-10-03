@@ -12,9 +12,10 @@ updated: 2026-10-02T23:59:00Z
 
 ## Tests
 
-### 1. Os 2 rascunhos de teste da #459 abrem pelo produto, em produção
+### 1. Os rascunhos de teste da #459 abrem pelo produto, em produção
 expected: Depois do deploy, a migration roda sem erro no MariaDB de produção e os 2 rascunhos existentes abrem no Publicador interno pelo seu produto, sem perda (SC5).
 result: [pending]
+evidencia_deploy: 03/10 — reconsulta ao banco depois do deploy: eram 4 rascunhos (não 2), todos ligados a produtos 1–4 (origem portal, company 459, ofertas 522–525), 0 sem produto, coluna dormente oferta_id vazia. Falta abrir na tela.
 
 ### 2. Trava única do rascunho no MariaDB real (WR-B02)
 expected: Salvar no editor enquanto a IA gera espera milissegundos pela trava `lockForUpdate`, sem deadlock e sem 500.
@@ -35,6 +36,7 @@ result: [pending]
 ### 6. Portal do cliente sem o Anunciar, em produção
 expected: Menu sem Anunciar e URL antiga dando 404; Lista SKUs, Precificação, Anúncios, Planejamento e Mapeamento intactos (SC7 — já coberto por `PortalSemAnunciarTest`).
 result: [pending]
+evidencia_deploy: 03/10 — `cliente.ecfconsultoria.com.br/estrutura/anunciar` responde 404 e o Portal EstruturaAnunciar saiu do manifest. Falta conferir o menu logado como cliente.
 
 ## Summary
 

@@ -237,3 +237,5 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
 - `file_get_contents(UploadedFile::fake()->image(...)->getPathname())` em uma linha
   falha ("No such file"): o arquivo temporário some quando o objeto é liberado.
   Guarde o `UploadedFile` numa variável antes de ler.
+
+- **Deploy com fila: `queue:restart`, não só o `deploy.sh`** (03/10). O `deploy.sh` reinicia apenas `ecf-worker:*`; a conferência e a publicação do Publicador rodam na fila `high` (`ecf-worker-high`) e o Creative Engine na `creative` (`ecf-worker-creative`, 3 processos). Depois do deploy, `sudo -u www-data php artisan queue:restart`: todo worker termina o job em andamento e volta com o código novo. `supervisorctl restart` mataria uma geração de criativo paga no meio. Conferir pelo uptime em `supervisorctl status`.

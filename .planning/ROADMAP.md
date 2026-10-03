@@ -2723,7 +2723,7 @@ Plans:
   7. O Anunciar sai do Portal do Cliente para todos os clientes (menu, rotas e allowlist), sem afetar Lista SKUs, Precificação, Anúncios, Planejamento e Mapeamento (D18)
   8. Layout das telas pelo Stitch (projeto "ECF Admin — Identidade"), conferido no navegador sem erro de console
 
-**Plans:** 15/15 concluídos (2026-10-02) — **FASE FECHADA no código**; verificação `human_needed` (8/8 critérios conferidos no código; 6 itens de conferência humana em `164-HUMAN-UAT.md`, quase todos dependem do deploy). Code review: 13 achados corrigidos no escopo do usuário (`164-REVIEW-FIX.md`); 14 warnings e 16 infos registrados como dívida em `164-REVIEW.md`. NÃO pushado, NÃO deployado.
+**Plans:** 15/15 concluídos (2026-10-02) — **FASE FECHADA no código**; verificação `human_needed` (8/8 critérios conferidos no código; 6 itens de conferência humana em `164-HUMAN-UAT.md`, quase todos dependem do deploy). Code review: 13 achados corrigidos no escopo do usuário (`164-REVIEW-FIX.md`); 14 warnings e 16 infos registrados como dívida em `164-REVIEW.md`. DEPLOYADA em 2026-10-03 (`01da6664`).
 
 Plans:
 **Wave 1**
@@ -2794,6 +2794,8 @@ Plans:
 *Roadmap atualizado: 2026-10-02 - **Fase 164 FECHADA no código** (worktree `C:/tmp/ecf-publicador-spec-261001`, branch `feat/publicador-ml-261001`, sem push nem deploy). 15 planos em 8 waves; gate visual 164-14 aprovado pelo usuário; gate final contra a baseline sem falha nova (Publicador 376/1874, PortalCliente 231/1872, test:js 645 com as 2 falhas pré-existentes). Code review achou 4 BLOCKERs (trava D21 só no clique, exclusão de empresa apagando o histórico, duas perdas de edição no editor) — corrigidos com mais 9 warnings, por escolha do usuário. Verificação `human_needed`: 6 itens em `164-HUMAN-UAT.md` (2 rascunhos da #459 em produção, trava no MariaDB real, salvamento do editor no navegador, D20, E2E na #459, Portal sem Anunciar em produção). Fases 1-159 preservadas.*
 
 *Roadmap atualizado: 2026-10-02 - A fase do **Publicador no sistema interno** foi **renumerada de 160 para 164**: a milestone v24.0 (Creative Engine, outro dev) chegou à origin/main reservando 160-163 enquanto esta fase rodava. Os commits antigos dela seguem com "160" no assunto (histórico); pasta, planos e referências passaram a 164.*
+
+*Roadmap atualizado: 2026-10-03 - **Fase 164 DEPLOYADA** (`01da6664`): integrada com a v24.0 até a Fase 161 dela, com a ponte "Gerar criativos no assistente antigo" na tela de produtos. A integração de verdade do Creative Engine no card de Fotos do Publicador fica para a Fase 165 (aditiva, combinada com o outro dev).*
 
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
 

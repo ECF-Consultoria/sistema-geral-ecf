@@ -386,7 +386,7 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
-## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — FECHADA NO CÓDIGO (aguarda deploy e UAT)
+## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
 **Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
 frontmatter deste arquivo (ver nota no topo), e os outros blocos "Posição paralela" pertencem a
@@ -394,8 +394,8 @@ outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-public
 
 Phase: 164 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — COMPLETE (código); verificação human_needed
 Plans: 15 em 8 waves — 15 de 15 concluídos
-Status: Phase 164 fechada em 2026-10-02 (aprovada pelo usuário). RENUMERADA de 160 para 164 (colisão com a v24.0 Creative Engine, outro dev) e já INTEGRADA com a origin/main (merge `dbbb79d3`, 91 à frente / 0 atrás; testes pós-merge verdes, inclusive os 66 do Creative Engine). DEPLOY EM ESPERA por decisão do usuário: o Creative Engine vive na etapa 5 do assistente antigo, que esta fase tira da entrada — alinhar com o outro dev antes de subir. 6 itens de UAT em `164-HUMAN-UAT.md`.
-Last activity: 2026-10-02 — renumeração 160→164 e merge da origin/main; deploy pausado pelo usuário
+Status: Phase 164 DEPLOYADA em 2026-10-03 — `origin/main` e VPS em `01da6664` (push `d9b77688..01da6664`, fast-forward), com a ponte "Gerar criativos no assistente antigo" na tela de produtos até a Fase 165 levar o Creative Engine para o card de Fotos. Migrations 2026_10_02_100000/100100/200000 rodaram; os 4 rascunhos da #459 ficaram ligados aos produtos 1–4. Workers reiniciados por `queue:restart` (inclui high e creative). 6 itens de UAT em `164-HUMAN-UAT.md`.
+Last activity: 2026-10-03 — deploy em produção conferido por reconsulta (HEAD, migrations, FKs, manifest, workers, HTTP)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
