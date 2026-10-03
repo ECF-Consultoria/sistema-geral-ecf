@@ -25,7 +25,10 @@ use Tests\TestCase;
  * Regressão coberta aqui: `status=pendente` é o estado de REPOUSO logo após
  * o upload da referência (160-01) — tratá-lo como "já em andamento" fazia o
  * PRIMEIRO clique em "Gerar" nunca despachar o job. Pego por
- * `test_gerar_devolve_202_e_enfileira_na_fila_high` nesta mesma task.
+ * `test_gerar_devolve_202_e_enfileira_na_fila_creative` nesta mesma task.
+ *
+ * `fila_creative` (não mais `high`): migração de fila decidida em 2026-10-02
+ * (Fase 161, Plano 02) — ver docblock de `GerarCriativoIaJob`.
  */
 class CriativoGeracaoEndpointsTest extends TestCase
 {
@@ -69,7 +72,7 @@ class CriativoGeracaoEndpointsTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
-    public function test_gerar_devolve_202_e_enfileira_na_fila_high(): void
+    public function test_gerar_devolve_202_e_enfileira_na_fila_creative(): void
     {
         Queue::fake();
         $criativo = $this->criativo();
@@ -77,7 +80,7 @@ class CriativoGeracaoEndpointsTest extends TestCase
         $resp = $this->actingAs($this->admin())->postJson(route('mlb.anuncios.criativo.gerar', ['token' => $criativo->token]));
 
         $resp->assertStatus(202);
-        Queue::assertPushedOn('high', GerarCriativoIaJob::class);
+        Queue::assertPushedOn('creative', GerarCriativoIaJob::class);
         $this->assertSame(MlAnuncioCriativo::STATUS_PENDENTE, $criativo->fresh()->status);
     }
 

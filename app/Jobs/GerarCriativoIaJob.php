@@ -18,19 +18,21 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Gera a imagem do criativo (contexto → Product Truth → prompt → provedor →
+ * Gera a imagem de UM slot (contexto → Product Truth → prompt → provedor →
  * disco), em etapas salvas parcialmente — mesma disciplina de
  * `GerarAnaliseAnuncioIaJob`: se a chamada ao provedor falhar, contexto/truth/
  * prompt já usados ficam gravados para depurar, em vez de se perder junto
  * com o erro.
  *
- * Fila `high`, NUNCA `default` (GEN-02) — medido em produção: a `default`
- * já represou 170 jobs e 395s de espera. `ShouldBeUnique` por rascunho
- * (GEN-06): duplo clique não gera dois criativos para o MESMO produto.
+ * Fila `creative` (Fase 161, worker dedicado já provisionado na VPS, ver
+ * `<migracao_de_fila_decidida_em_2026-10-02>` do 161-02-PLAN.md) — NUNCA
+ * `high` (que volta a ser exclusiva de trabalho interativo) nem `default`
+ * (represada, medição em produção).
  *
  * CUSTO: cada chamada ao provedor custa ~US$ 0,101 (medição do spike). Por
  * isso o job NUNCA chama o provedor para um criativo já travado/aprovado —
- * ver `encerrarSeTravada()` e o `return` antecipado no `handle()`.
+ * ver `encerrarSeTravada()` — nem para um slot de kit cujo teto de imagens já
+ * foi atingido — ver `tetoDeImagensAtingido()` no `handle()`.
  */
 class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
 {
@@ -45,7 +47,7 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
 
     public array $backoff = [20];
 
-    /** Teto do worker: o da `high` permite 300s para este job mais curto. */
+    /** Teto do worker: o da `creative` permite 300s para este job mais curto. */
     public int $timeout = 300;
 
     /**
@@ -60,29 +62,41 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
 
     public function __construct(public int $criativoId)
     {
-        // Fila `high`, NUNCA a `default` (GEN-02). Definido no construtor
+        // Fila `creative`, NUNCA `high` nem `default` (migração decidida em
+        // 2026-10-02 — ver docblock da classe). Definido no construtor
         // porque `Queueable` já declara `$queue` e redeclarar a propriedade
         // é erro fatal de PHP.
-        $this->onQueue('high');
+        $this->onQueue('creative');
     }
 
     /**
-     * Chave de unicidade por RASCUNHO (não por criativo) — GEN-06: duplo
-     * clique no mesmo rascunho não cria dois jobs simultâneos, mesmo que
-     * cada clique tenha criado um registro `MlAnuncioCriativo` diferente
-     * (o controller já recusa isso, mas o lock é a 2ª camada).
+     * Chave de unicidade por CRIATIVO (Fase 161, Plano 02) — ANTES era por
+     * RASCUNHO, o que fazia sentido quando existia UMA imagem por rascunho
+     * (Fase 160). Com o kit de 7, os 7 slots pertencem ao MESMO rascunho:
+     * despachar os 7 com a chave antiga fazia o Laravel aceitar o primeiro e
+     * descartar os outros 6 EM SILÊNCIO — sem erro, sem log, com a tela
+     * mostrando 6 slots eternamente "pendente" até a trava de tempo.
+     *
+     * GEN-06 (duplo clique não gera dois criativos para o mesmo produto)
+     * continua garantido por TRÊS camadas que não dependem desta chave: (a)
+     * o controller recusa disparo quando o criativo/kit já está em
+     * andamento; (b) o despachante do kit (`CreativeKitDespachante`) só
+     * despacha slot em `pendente`/`erro`, nunca `rodando`/`pronto`/
+     * `aprovado`; (c) no fluxo sem kit (Fase 160), o controller recusa
+     * reenviar um criativo `rodando`. O teste de duplo clique da 160-02
+     * (`test_gerar_duplo_clique_nao_enfileira_duas_vezes`) continua verde
+     * porque as duas chamadas são do MESMO criativo — a chave nova dá o
+     * mesmo valor nas duas, logo o comportamento observado não muda.
      */
     public function uniqueId(): string
     {
-        $criativo = MlAnuncioCriativo::find($this->criativoId);
-
-        return 'rascunho:'.($criativo?->rascunho_id ?? $this->criativoId);
+        return 'criativo:'.$this->criativoId;
     }
 
     /**
      * TTL do lock de unicidade em segundos. 600s > timeout(300s) + backoff
      * com folga — sem isto, um crash do worker deixaria o lock órfão e o
-     * rascunho nunca seria reenfileirado.
+     * criativo nunca seria reenfileirado.
      */
     public function uniqueFor(): int
     {
@@ -114,6 +128,32 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
+        $kit = $criativo->kit;
+
+        // Slot de um kit (Fase 161): o kit pode ter travado por tempo (e já
+        // ter encerrado este slot como erro) ou já ter atingido o teto de
+        // imagens pagas — nos dois casos, NUNCA chamar o provedor (é dinheiro).
+        if ($kit !== null) {
+            $kit->encerrarSeTravado();
+
+            $criativo->refresh();
+            if ($criativo->status === MlAnuncioCriativo::STATUS_ERRO) {
+                return;
+            }
+
+            if ($kit->tetoDeImagensAtingido()) {
+                $criativo->update([
+                    'status'        => MlAnuncioCriativo::STATUS_ERRO,
+                    'etapa'         => null,
+                    'erro_mensagem' => $kit->motivoDoTeto() ?? 'Este kit já atingiu o teto de imagens permitido.',
+                    'finished_at'   => now(),
+                ]);
+                $kit->recalcularStatus();
+
+                return;
+            }
+        }
+
         $criativo->update([
             'status'      => MlAnuncioCriativo::STATUS_RODANDO,
             'started_at'  => $criativo->started_at ?? now(),
@@ -135,8 +175,12 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         $criativo->update(['truth' => $truth->paraAuditoria()]);
 
         // ─── Etapa 3: prompt ───
+        // slot_plano preenchido (slot de um kit, Fase 161) usa paraSlot();
+        // nulo mantém paraSlotHero() (fluxo sem kit, Fase 160, ainda em produção).
         $criativo->update(['etapa' => 'prompt']);
-        $prompt = $promptBuilder->paraSlotHero($contexto, $truth);
+        $prompt = $criativo->slot_plano !== null
+            ? $promptBuilder->paraSlot($truth, $criativo->slot_plano)
+            : $promptBuilder->paraSlotHero($contexto, $truth);
         $criativo->update(['prompt' => $prompt]);
 
         // ─── Etapa 4: geração ───
@@ -150,8 +194,12 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         ));
 
         // ─── Etapa 5: salvando ───
+        // Caminho por slot (cada criativo tem token próprio, então não há
+        // colisão — o nome por slot é só para quem for depurar em disco).
+        // Regeneração sobrescreve o mesmo caminho — a rota de leitura já
+        // responde `Cache-Control: private, no-store`.
         $criativo->update(['etapa' => 'salvando']);
-        $caminho = "creative-geradas/{$criativo->token}/hero.jpg";
+        $caminho = "creative-geradas/{$criativo->token}/{$criativo->slot}.jpg";
         Storage::disk('local')->put($caminho, $resultado->bytes);
 
         $criativo->update([
@@ -165,9 +213,19 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
             'finished_at'  => now(),
         ]);
 
+        // Teto de custo (GEN-03/Decisão 6): a unidade faturada é a imagem
+        // efetivamente gerada — o incremento acontece DEPOIS do provedor
+        // devolver bytes, nunca antes.
+        if ($kit !== null) {
+            $kit->increment('imagens_geradas');
+            $kit->recalcularStatus();
+        }
+
         // GEN-05: sem chave, sem prompt, sem base64, sem payload — só o que
         // ajuda a medir custo e desempenho.
         Log::info("[Creative] Criativo {$criativo->id} gerado", [
+            'slot'             => $criativo->slot,
+            'kit_id'           => $criativo->kit_id,
             'modelo'           => $resultado->modelo,
             'latencia_ms'      => $resultado->latenciaMs,
             'tamanho_bytes'    => $resultado->tamanhoBytes(),
@@ -181,6 +239,10 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
      * Só marca erro quando o Laravel desiste de vez. O que já foi gravado
      * FICA (contexto/truth/prompt) — ajuda a depurar o que foi pedido. As
      * referências NÃO são apagadas: o operador vai tentar de novo.
+     *
+     * `recalcularStatus()` do kit (quando houver) é o que transforma "um
+     * slot falhou" em `parcial` em vez de deixar o kit preso em `gerando`
+     * (GEN-04) — os outros 6 slots continuam até `pronto` normalmente.
      */
     public function failed(\Throwable $e): void
     {
@@ -192,6 +254,8 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
             'erro_mensagem' => $e->getMessage(),
             'finished_at'   => now(),
         ]);
+
+        $criativo?->kit?->recalcularStatus();
 
         Log::error("[Creative] Criativo {$this->criativoId} falhou em definitivo: {$e->getMessage()}");
     }

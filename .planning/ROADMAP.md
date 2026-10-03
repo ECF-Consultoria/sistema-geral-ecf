@@ -2809,7 +2809,7 @@ Plans:
 
 **Ordem de construção (decrescente em risco, D-05):** a Fase 160 é a fundação arriscada — primeira vez que upload efêmero, context/truth builder, job assíncrono novo e aprovação chegam a produção juntos, mas entrega SÓ uma imagem, atrás de chave desligada. A Fase 161 escala de 1 para 7 com planejamento dinâmico e concorrência — não é usável ter 7 imagens sem conseguir regenerar a ruim ou aprovar o kit todo, por isso planner, geração paralela, regeneração manual, aprovação de kit e os guard-rails de publicação nascem **juntos** na mesma fase (anti-padrão de camada evitado de propósito). A Fase 162 adiciona confiabilidade automática (validador Gemini-juiz + regeneração automática) por cima de um kit que já funciona manualmente. A Fase 163 fecha o "→ V1" do nome da milestone: custo visível por projeto e a métrica real do POC contra anúncios já produzidos à mão.
 
-### Phase 160: Fatia fina ponta a ponta — um criativo real, do upload à aprovação
+### Phase 160: Fatia fina ponta a ponta — um criativo real, do upload à aprovação — ✅ COMPLETA (5/5, checkpoint humano aprovado em produção 2026-10-02)
 
 **Goal**: o operador sobe a foto original de um produto já cadastrado no publicador, pede a geração de UMA imagem via Gemini, vê o resultado ao lado da foto original, aprova, e a imagem aprovada entra no rascunho do anúncio — mínima e feia, mas real e usável em produção, atrás de uma chave que a equipe desliga sem deploy.
 **Depends on**: Nada como fase (fundação desta milestone); reusa o provider Gemini da V0.1 (spike `261001-nkx`), já em produção.
@@ -2849,7 +2849,12 @@ Plans:
   4. Antes de publicar, o sistema confere que existe kit aprovado com o mínimo de imagens atingido e que o limite de imagens da categoria do Mercado Livre é respeitado — publicar fora dessas condições é recusado (PUB-03, PUB-04)
   5. Gerar, regenerar e aprovar exigem permissão explícita verificada no servidor — não é só o gate `role:admin` do módulo (OPS-04)
 
-**Plans**: TBD
+**Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável, mesmo desenho da Fase 160)
+- [ ] 161-01-PLAN.md — Kit planejado: tabela de kit + colunas aditivas, catálogo de slots, planner híbrido com reconciliação determinística, permissão explícita e os 7 slots visíveis na tela (sem gerar imagem)
+- [ ] 161-02-PLAN.md — As 7 imagens de verdade: prompt por slot, unicidade do job por criativo, despacho em ondas com teto de custo e progresso por imagem
+- [ ] 161-03-PLAN.md — Regenerar a ruim, aprovar imagem por imagem e aprovar o kit, com a ordem dos slots e o limite de fotos da categoria
+- [ ] 161-04-PLAN.md — Guarda-corpo da publicação: kit aprovado obrigatório e re-aplicação das imagens no único chokepoint de publicação
+- [ ] 161-05-PLAN.md — Checkpoint humano: kit real de 7 com cota paga (~US$ 0,71), números lidos da tabela e estado deixado em produção
 **UI hint**: yes
 
 ### Phase 162: Validação automática (Gemini como juiz), regeneração automática e alerta de risco

@@ -1,13 +1,22 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Sparkles, UploadCloud, Loader2, AlertTriangle, ChevronDown, ChevronRight, Wand2, CheckCircle2, ExternalLink, LayoutGrid } from 'lucide-react';
+import KitCriativosGrade from './KitCriativosGrade';
 
 // Um pouco acima dos 12 min em que o SERVIDOR encerra a geração
 // (MlAnuncioCriativo::LIMITE_MINUTOS) — quem decide é o servidor; este teto
 // só vale se nem ele responder.
 const LIMITE_ESPERA_MS = 14 * 60 * 1000;
 
-const ETAPA_LABEL = {
+// Um pouco acima dos 25 min em que o SERVIDOR encerra o KIT
+// (MlAnuncioCriativoKit::LIMITE_MINUTOS, Fase 161) — mesma lógica do teto
+// acima, só que para o polling do kit.
+const LIMITE_ESPERA_KIT_MS = 27 * 60 * 1000;
+
+// Exportado para `KitCriativosGrade.jsx` reusar (não duplicar) — a etapa é a
+// mesma string gravada por `GerarCriativoIaJob`, tanto no fluxo de 1 imagem
+// quanto por slot do kit (Fase 161).
+export const ETAPA_LABEL = {
     contexto: 'montando o contexto',
     truth:    'conferindo os fatos do produto',
     prompt:   'escrevendo o prompt',
@@ -44,10 +53,31 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
     const [aprovando, setAprovando] = useState(false);
     const [erroAprovacao, setErroAprovacao] = useState(null);
 
+    // Fase 161 — plano do kit de 7 (PLAN-01/02/03/04). Nenhuma imagem é
+    // gerada nesta fatia; o kit só lista os slots planejados.
+    // { kit_token, status, etapa, em_andamento, erro, estrategia, minimo_aprovadas, slots: [{indice,tipo,rotulo,objetivo,status,token}] }
+    const [kit, setKit] = useState(null);
+    const [planejandoKit, setPlanejandoKit] = useState(false);
+    const [erroKit, setErroKit] = useState(null);
+    // Fase 161 Plano 02 — disparo das 7 imagens (GEN-01/02/03). Separado de
+    // `planejandoKit`: são dois cliques, dois estados de botão distintos.
+    const [gerandoKit, setGerandoKit] = useState(false);
+    // Fase 161 Plano 03 — regenerar/aprovar por slot (APROV-02/03).
+    // `processandoSlot` guarda o TOKEN do cartão com requisição em voo
+    // (desabilita só aquele cartão, não a grade inteira); `errosPorSlot` é
+    // um mapa {token: mensagem} para o erro ficar perto do cartão certo.
+    const [processandoSlot, setProcessandoSlot] = useState(null);
+    const [errosPorSlot, setErrosPorSlot] = useState({});
+    // Aprovar o KIT inteiro (APROV-03) — botão e erro separados dos de slot.
+    const [aprovandoKit, setAprovandoKit] = useState(false);
+    const [erroAprovarKit, setErroAprovarKit] = useState(null);
+
     const inputRef = useRef(null);
     const pollRef      = useRef(null);
     const cronoRef     = useRef(null);
     const pollDesdeRef  = useRef(null);
+    const pollKitRef      = useRef(null);
+    const pollKitDesdeRef = useRef(null);
 
     // Um único lugar para desarmar os dois timers — sem isto, sair da etapa
     // no meio da geração deixa polling rodando contra um componente
@@ -58,8 +88,13 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         pollDesdeRef.current = null;
     }
 
+    function pararTimerDoKit() {
+        if (pollKitRef.current) { clearInterval(pollKitRef.current); pollKitRef.current = null; }
+        pollKitDesdeRef.current = null;
+    }
+
     // Limpeza no unmount — nunca deixar polling vivo contra componente desmontado.
-    useEffect(() => pararTimers, []);
+    useEffect(() => () => { pararTimers(); pararTimerDoKit(); }, []);
 
     async function enviarReferencias(e) {
         const arquivos = Array.from(e.target.files ?? []);
@@ -183,6 +218,187 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
         }
     }
 
+    /**
+     * PLAN-01/02/03/04 (Fase 161): dispara o planejamento do kit de 7 —
+     * responde na hora (202) e o polling acompanha. Nenhuma imagem é gerada
+     * nesta fatia (chega no 161-02).
+     */
+    async function planejarKit() {
+        if (!criativo?.token) return;
+
+        pararTimerDoKit();
+        setPlanejandoKit(true);
+        setErroKit(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.kit.planejar', { token: criativo.token }));
+
+            setKit({ kit_token: data.kit_token, status: data.status, etapa: null, em_andamento: true, erro: null, slots: [] });
+
+            pollKitRef.current = setInterval(consultarKit, 5000);
+            consultarKit(data.kit_token);
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível planejar o kit.');
+        } finally {
+            setPlanejandoKit(false);
+        }
+    }
+
+    /**
+     * GEN-01/02/03 (Fase 161, Plano 02): dispara a geração das 7 imagens —
+     * responde na hora (202) e o MESMO polling do kit (`consultarKit`)
+     * acompanha o progresso de cada slot. Custa cota de verdade (~US$ 0,71
+     * por kit) — por isso o botão só aparece quando o plano está pronto.
+     */
+    async function gerarKit() {
+        if (!kit?.kit_token) return;
+
+        pararTimerDoKit();
+        setGerandoKit(true);
+        setErroKit(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.kit.gerar', { kit: kit.kit_token }));
+
+            setKit(k => ({ ...k, status: data.status, em_andamento: true, erro: null }));
+
+            pollKitRef.current = setInterval(consultarKit, 5000);
+            consultarKit(kit.kit_token);
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível iniciar a geração das imagens.');
+        } finally {
+            setGerandoKit(false);
+        }
+    }
+
+    /**
+     * APROV-02: regenera UM slot — a tela não decide nada (nem teto nem
+     * `slot_plano`), só lê o que o servidor devolveu em `erros[0].mensagem`
+     * quando recusa. Depois do 202, religa o polling do kit (o slot volta
+     * a "em andamento" e o kit, de volta a `gerando`) — sem isso a grade
+     * ficaria mostrando "pendente" para sempre até o operador recarregar.
+     */
+    async function regenerar(token) {
+        setProcessandoSlot(token);
+        setErrosPorSlot(e => ({ ...e, [token]: null }));
+
+        try {
+            await window.axios.post(route('mlb.anuncios.criativo.regenerar', { token }));
+
+            pararTimerDoKit();
+            pollKitRef.current = setInterval(consultarKit, 5000);
+            consultarKit();
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErrosPorSlot(e => ({
+                ...e,
+                [token]: mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível gerar de novo esta imagem.',
+            }));
+        } finally {
+            setProcessandoSlot(null);
+        }
+    }
+
+    /**
+     * APROV-03: aprova UM slot (mesmo endpoint do fluxo de 1 imagem,
+     * `criativo.aprovar` — a 160-03 generaliza aqui). `onImagemAprovada`
+     * recebe a URL do SLOT 1 que o servidor devolveu (não a do slot
+     * recém-aprovado) — pode ser `null` quando o slot 1 ainda não foi
+     * aprovado; é a mesma mitigação da armadilha do autosave desde a 160-03.
+     */
+    async function aprovarSlot(token) {
+        setProcessandoSlot(token);
+        setErrosPorSlot(e => ({ ...e, [token]: null }));
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.aprovar', { token }));
+
+            onImagemAprovada?.(data.url);
+            consultarKit();
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErrosPorSlot(e => ({
+                ...e,
+                [token]: mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível aprovar esta imagem.',
+            }));
+        } finally {
+            setProcessandoSlot(null);
+        }
+    }
+
+    /**
+     * APROV-03: aprova o KIT INTEIRO numa chamada — só habilitado quando
+     * `kit.prontas + kit.aprovadas >= kit.minimo_aprovadas` (número que vem
+     * do servidor, nunca recalculado aqui). Falha parcial (um slot não
+     * subiu) continua respondendo 200 com `ok:false` — a mensagem do
+     * servidor já resume quantas subiram.
+     */
+    async function aprovarKit() {
+        if (!kit?.kit_token) return;
+
+        setAprovandoKit(true);
+        setErroAprovarKit(null);
+
+        try {
+            const { data } = await window.axios.post(route('mlb.anuncios.criativo.kit.aprovar', { kit: kit.kit_token }));
+
+            if (!data.ok) {
+                setErroAprovarKit(data.mensagem ?? 'Algumas imagens não puderam ser aprovadas.');
+            }
+
+            onImagemAprovada?.(data.url);
+            consultarKit();
+        } catch (err) {
+            const mensagens = err?.response?.data?.erros;
+            setErroAprovarKit(mensagens?.[0]?.mensagem ?? err?.response?.data?.message ?? 'Não foi possível aprovar o kit.');
+        } finally {
+            setAprovandoKit(false);
+        }
+    }
+
+    async function consultarKit(tokenDoKit = null) {
+        const token = tokenDoKit ?? kit?.kit_token;
+        if (!token) return;
+
+        // Teto de espera no navegador — o servidor já encerra em 25 min
+        // (MlAnuncioCriativoKit::LIMITE_MINUTOS); isto cobre o caso em que
+        // nem o servidor responde.
+        pollKitDesdeRef.current ??= Date.now();
+        if (Date.now() - pollKitDesdeRef.current > LIMITE_ESPERA_KIT_MS) {
+            pararTimerDoKit();
+            setKit(k => ({ ...k, em_andamento: false, status: 'erro', erro: 'O planejamento passou do tempo limite e foi interrompido. Tente novamente.' }));
+            return;
+        }
+
+        try {
+            const { data } = await window.axios.get(route('mlb.anuncios.criativo.kit.status', { kit: token }));
+
+            setKit({
+                kit_token:        data.kit_token,
+                status:           data.status,
+                etapa:            data.etapa,
+                em_andamento:     data.em_andamento,
+                erro:             data.erro,
+                estrategia:       data.estrategia,
+                minimo_aprovadas: data.minimo_aprovadas,
+                // Fase 161 Plano 03 (APROV-03) — números que o botão "Aprovar
+                // kit" usa; a tela só exibe o que o servidor mandou, nunca
+                // recalcula a régua a partir dos slots.
+                prontas:          data.prontas ?? 0,
+                aprovadas:        data.aprovadas ?? 0,
+                referencias:      data.referencias ?? [],
+                slots:            data.slots ?? [],
+            });
+
+            if (!data.em_andamento) pararTimerDoKit();
+        } catch {
+            pararTimerDoKit();
+            setKit(k => ({ ...k, em_andamento: false, status: 'erro', erro: 'Perdi o contato com o planejamento. Tente novamente.' }));
+        }
+    }
+
     // OPS-03: a chave desligada deixa o wizard idêntico ao de hoje — nada
     // deste componente entra no DOM.
     if (!ativo) return null;
@@ -248,7 +464,11 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {criativo?.token && (
+                    {/* Fluxo de 1 imagem (Fase 160) — sai de evidência quando existe
+                        kit (Fase 161): não é removido do arquivo, é o caminho de
+                        rollback enquanto a chave do Creative Engine estiver ligada
+                        em produção. */}
+                    {!kit && criativo?.token && (
                         <div>
                             <button
                                 type="button"
@@ -270,15 +490,109 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                         </div>
                     )}
 
-                    {criativo?.status === 'erro' && criativo?.erro && (
+                    {!kit && criativo?.status === 'erro' && criativo?.erro && (
                         <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                             <p className="text-[12px] text-red-300">{criativo.erro}</p>
                         </div>
                     )}
 
-                    {/* APROV-01: lado a lado — fotos originais × gerado por IA. */}
-                    {criativo?.referencias?.length > 0 && (
+                    {/* Fase 161 — kit de 7 (PLAN-01/02/03/04 + GEN-01/02/03 do 161-02).
+                        Botão de planejar só aparece ANTES de o kit existir; depois,
+                        `KitCriativosGrade` assume (status, botão "Gerar as 7 imagens"
+                        e a grade por slot). */}
+                    {criativo?.token && (
+                        <div className="border-t border-white/[0.08] pt-3">
+                            {!kit && (
+                                <button
+                                    type="button"
+                                    onClick={planejarKit}
+                                    disabled={planejandoKit}
+                                    className="flex items-center gap-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 disabled:opacity-40"
+                                >
+                                    {planejandoKit
+                                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Planejando kit…</>
+                                        : <><LayoutGrid className="h-4 w-4" /> Planejar kit de 7</>}
+                                </button>
+                            )}
+
+                            {kit?.status === 'planejando' && (
+                                <p className="mt-1.5 text-[11px] text-sky-300/80">
+                                    {kit.etapa ? `montando o plano (${kit.etapa})` : 'preparando'}… leva só alguns segundos
+                                    (é uma chamada de texto, não de imagem).
+                                </p>
+                            )}
+
+                            {erroKit && (
+                                <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                                    <p className="text-[12px] text-red-300">{erroKit}</p>
+                                </div>
+                            )}
+
+                            {kit && (
+                                <KitCriativosGrade
+                                    kit={kit}
+                                    referencias={kit.referencias ?? []}
+                                    onGerar={gerarKit}
+                                    gerando={gerandoKit}
+                                    onRegenerar={regenerar}
+                                    onAprovar={aprovarSlot}
+                                    processando={processandoSlot}
+                                    erros={errosPorSlot}
+                                />
+                            )}
+
+                            {/* APROV-03: "Aprovar kit" só existe depois que o mínimo
+                                congelado no kit foi atingido — a tela NUNCA recalcula a
+                                régua, só lê prontas/aprovadas/minimo_aprovadas do servidor. */}
+                            {kit && kit.status !== 'aprovado' && kit.slots?.length > 0 && (() => {
+                                const disponiveis = (kit.prontas ?? 0) + (kit.aprovadas ?? 0);
+                                const minimo = kit.minimo_aprovadas ?? 0;
+                                const faltam = Math.max(0, minimo - disponiveis);
+                                const podeAprovarKit = faltam === 0 && !aprovandoKit;
+
+                                return (
+                                    <div className="mt-3 border-t border-white/[0.08] pt-3">
+                                        <button
+                                            type="button"
+                                            onClick={aprovarKit}
+                                            disabled={!podeAprovarKit}
+                                            className="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                                        >
+                                            {aprovandoKit
+                                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Aprovando o kit…</>
+                                                : <><CheckCircle2 className="h-4 w-4" /> Aprovar kit</>}
+                                        </button>
+                                        {faltam > 0 && (
+                                            <p className="mt-1 text-[11px] text-white/35">
+                                                Faltam {faltam} imagem(ns) pronta(s) para poder aprovar o kit (mínimo: {minimo}).
+                                            </p>
+                                        )}
+                                        {erroAprovarKit && (
+                                            <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                                                <p className="text-[12px] text-red-300">{erroAprovarKit}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {kit?.status === 'aprovado' && (
+                                <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                                    <p className="flex items-center gap-1.5 text-[12px] text-emerald-300">
+                                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                        Kit aprovado — as imagens já são do anúncio.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* APROV-01: lado a lado — fotos originais × gerado por IA (fluxo
+                        de 1 imagem, Fase 160 — some quando existe kit, ver acima). */}
+                    {!kit && criativo?.referencias?.length > 0 && (
                         <div className={cn('grid gap-4', criativo?.imagem_url && 'sm:grid-cols-2')}>
                             <div>
                                 <p className="mb-2 text-[11px] font-medium text-white/50">

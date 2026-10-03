@@ -167,9 +167,11 @@ class CriativoGeracaoTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/\b[0-9]+\s*(porta|gaveta)/ui', $criativo->prompt);
     }
 
-    // ═══ GEN-02 / GEN-06 — fila high e unicidade ════════════════════════
+    // ═══ GEN-02 / GEN-06 — fila creative e unicidade ═════════════════════
+    // (migração de fila decidida em 2026-10-02, Fase 161 Plano 02 — a fila
+    // ERA `high`; ver docblock de GerarCriativoIaJob)
 
-    public function test_job_e_despachado_na_fila_high(): void
+    public function test_job_e_despachado_na_fila_creative(): void
     {
         Queue::fake();
 
@@ -177,7 +179,7 @@ class CriativoGeracaoTest extends TestCase
 
         GerarCriativoIaJob::dispatch($criativo->id);
 
-        Queue::assertPushedOn('high', GerarCriativoIaJob::class);
+        Queue::assertPushedOn('creative', GerarCriativoIaJob::class);
     }
 
     public function test_dois_dispatches_do_mesmo_rascunho_geram_um_unico_job(): void

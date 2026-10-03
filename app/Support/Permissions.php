@@ -61,6 +61,17 @@ class Permissions
     public const MLB_COLETA                = 'mlb.coleta';
     /** Anunciar no Mercado Livre — criar e publicar anúncios na conta do cliente via API. */
     public const MLB_ANUNCIAR              = 'mlb.anunciar';
+    /**
+     * Fase 161 (OPS-04) — planejar, gerar, regenerar e aprovar criativos de
+     * imagem por IA (Creative Engine). Chave PRÓPRIA, independente de
+     * `MLB_ANUNCIAR`: o grupo de rotas é `role:admin` hoje (que já faz
+     * `hasPermission()` curto-circuitar `true` para qualquer admin — ver
+     * `CreativePermissao`), então esta key sozinha não restringe nada ainda.
+     * A 2ª camada que de fato restringe é a lista `creative_engine_usuarios`
+     * em `configuracoes`. Quando o grupo de rotas trocar `role:admin` por
+     * `permission:mlb.anunciar`, esta key passa a valer por si só.
+     */
+    public const MLB_CRIATIVOS_IA          = 'mlb.criativos_ia';
     /** Ver o Faturamento Polos (dados financeiros por polo). Escopado ao setor Polos — não vaza via mlb.projetos. */
     public const MLB_FATURAMENTO_POLOS     = 'mlb.faturamento_polos';
 
@@ -184,6 +195,7 @@ class Permissions
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
                 ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
+                ['key' => self::MLB_CRIATIVOS_IA,  'label' => 'Pub · Criativos por IA', 'description' => 'Planejar, gerar, regenerar e aprovar criativos de imagem por IA (consome cota paga)'],
                 ['key' => self::MLB_FATURAMENTO_POLOS, 'label' => 'Pub · Faturamento Polos', 'description' => 'Ver a página Faturamento Polos (financeiro por polo) — libera o setor Polos sem depender de admin'],
             ],
             'Shopee' => [

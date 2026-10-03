@@ -4,6 +4,7 @@ namespace App\Services\Mlb\Publicacao;
 
 use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
+use App\Services\Creative\CreativeKitPublicacao;
 use App\Services\Mlb\Publicacao\Builders\ClassicItemBuilder;
 use App\Services\Mlb\Publicacao\Builders\ItemBuilder;
 use App\Services\Mlb\Publicacao\Builders\UserProductItemBuilder;
@@ -30,6 +31,7 @@ class MlPublicacaoService
         private MercadoLivreService $ml,
         private MlItemPayloadValidator $validator,
         private MlCompatibilidadeService $compat,
+        private CreativeKitPublicacao $kitPublicacao,
     ) {}
 
     /**
@@ -107,6 +109,15 @@ class MlPublicacaoService
         $rascunho->update(['status' => MlAnuncioRascunho::STATUS_PUBLICANDO]);
 
         try {
+            // PUB-03/Decisão 12 (161-04-PLAN.md): o gate fica DENTRO do try, não antes dele —
+            // lançar aqui cai no catch abaixo, que já grava validation_errors em pt-BR e
+            // põe o rascunho em erro, sem precisar de mudança no controller/front.
+            // PUB-01/Decisão 13: aplicarPictures() roda logo depois, reconstruindo
+            // payload.pictures a partir do kit aprovado — neutraliza qualquer autosave do
+            // wizard que tenha reduzido a lista antes desta chamada. É no-op sem kit.
+            $this->kitPublicacao->conferir($rascunho);
+            $this->kitPublicacao->aplicarPictures($rascunho);
+
             $payload = $this->builderPara($company)->montar($rascunho->payload ?? []);
 
             $item   = $this->ml->post($company, '/items', $payload);

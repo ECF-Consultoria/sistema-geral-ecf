@@ -24,12 +24,19 @@ class CreativeContextBuilder
     /**
      * Monta o contexto a partir do rascunho ligado ao criativo.
      *
+     * As fotos de referência são lidas do PORTADOR
+     * (`$criativo->portadorDeReferencia()`, Fase 161) — no fluxo sem kit
+     * (Fase 160) o portador é o próprio criativo; nos 7 slots de um kit, as
+     * fotos vivem só no criativo que recebeu o upload, nunca em cada slot.
+     *
      * @throws \RuntimeException em pt-BR quando falta rascunho ou referência
      *                            viva — não dá para gerar nada sem os dois.
      */
     public function paraCriativo(MlAnuncioCriativo $criativo): CreativeContext
     {
-        if ($criativo->referenciasVivas() === []) {
+        $portador = $criativo->portadorDeReferencia();
+
+        if ($portador->referenciasVivas() === []) {
             throw new \RuntimeException(
                 'Este criativo não tem foto de referência viva — suba uma foto do produto antes de gerar.'
             );
@@ -80,8 +87,8 @@ class CreativeContextBuilder
             atributos: $atributos,
             variacoes: $variacoes,
             loja: $criativo->company?->nomeContaMl(),
-            imagensReferencia: $this->referenciaEfemera->bytesDe($criativo),
-            referenciasMeta: collect($criativo->referenciasVivas())
+            imagensReferencia: $this->referenciaEfemera->bytesDe($portador),
+            referenciasMeta: collect($portador->referenciasVivas())
                 ->map(fn ($ref) => [
                     'indice' => $ref['indice'] ?? null,
                     'mime'   => $ref['mime'] ?? null,

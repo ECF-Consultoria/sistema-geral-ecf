@@ -39,8 +39,9 @@ class MlAnuncioCriativo extends Model
 
     protected $fillable = [
         'token', 'company_id', 'mlb_empresa_id', 'rascunho_id', 'user_id',
+        'kit_id', 'slot_indice', 'slot_plano',
         'slot', 'status', 'etapa', 'erro_mensagem', 'render_mode',
-        'provider', 'modelo', 'tentativas', 'latencia_ms',
+        'provider', 'modelo', 'tentativas', 'regeneracoes', 'latencia_ms',
         'contexto', 'truth', 'prompt',
         'referencias', 'referencias_apagadas_em',
         'imagem_path', 'imagem_mime', 'imagem_bytes',
@@ -52,6 +53,7 @@ class MlAnuncioCriativo extends Model
     protected $casts = [
         'contexto'                 => 'array',
         'truth'                    => 'array',
+        'slot_plano'               => 'array',
         'referencias'              => 'array',
         'referencias_apagadas_em'  => 'datetime',
         'aprovado_em'              => 'datetime',
@@ -82,6 +84,23 @@ class MlAnuncioCriativo extends Model
     public function aprovador(): BelongsTo
     {
         return $this->belongsTo(User::class, 'aprovado_por');
+    }
+
+    /** Kit de 7 (Fase 161) ao qual este criativo pertence — nulo na forma da Fase 160. */
+    public function kit(): BelongsTo
+    {
+        return $this->belongsTo(MlAnuncioCriativoKit::class, 'kit_id');
+    }
+
+    /**
+     * O criativo que PORTA a foto de referência em disco (Decisão 1b do
+     * 161-01-PLAN.md): quando este criativo é um dos 7 slots de um kit, o
+     * portador é outro registro (`slot = 'referencia'`); quando não há kit
+     * (forma da Fase 160, ou o próprio portador), o portador é ele mesmo.
+     */
+    public function portadorDeReferencia(): self
+    {
+        return $this->kit?->criativoReferencia ?? $this;
     }
 
     public function emAndamento(): bool
