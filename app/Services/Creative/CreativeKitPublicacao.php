@@ -38,10 +38,71 @@ use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
  */
 class CreativeKitPublicacao
 {
-    public function __construct(private MlCatalogoMetaService $meta) {}
+    public function __construct(
+        private MlCatalogoMetaService $meta,
+        private CreativeEngineAtivo $creativeAtivo,
+    ) {}
 
     /** Fallback quando a categoria não informa (ou a chamada falhou) — mesmo padrão do front. */
     private const LIMITE_PADRAO = 12;
+
+    /**
+     * O kit deste rascunho, pelo MESMO critério usado por `aplicarPictures()`
+     * e por `conferir()` — o mais recente que não esteja `erro` (um kit que
+     * falhou não impede publicar o anúncio por outros meios). Extraído para
+     * não existirem duas definições de "o kit deste rascunho" (161-04-PLAN.md).
+     */
+    private function kitDoRascunho(MlAnuncioRascunho $rascunho): ?MlAnuncioCriativoKit
+    {
+        return MlAnuncioCriativoKit::where('rascunho_id', $rascunho->id)
+            ->where('status', '!=', MlAnuncioCriativoKit::STATUS_ERRO)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Gate de PUB-03 — chamar como primeira instrução DENTRO do `try` de
+     * `MlPublicacaoService::publicar()` (Decisão 12 do 161-04-PLAN.md).
+     *
+     * Só leitura e lançamento: nunca chama o Mercado Livre nem escreve no
+     * banco. Lança `\RuntimeException` com mensagem em pt-BR (sem id interno,
+     * sem status técnico) quando a publicação não pode seguir.
+     *
+     * @throws \RuntimeException quando há kit e ele não está pronto para publicar
+     */
+    public function conferir(MlAnuncioRascunho $rascunho): void
+    {
+        // Chave desligada: a publicação não ganha nenhuma conferência nova (OPS-03).
+        if (! $this->creativeAtivo->ativa()) {
+            return;
+        }
+
+        $kit = $this->kitDoRascunho($rascunho);
+
+        // Sem kit (ou só com kit em erro, que este critério já ignora):
+        // publica como sempre — é a não-regressão que este plano exige provar primeiro.
+        if ($kit === null) {
+            return;
+        }
+
+        if ($kit->status !== MlAnuncioCriativoKit::STATUS_APROVADO) {
+            $aprovadas = $kit->aprovadas();
+            $total     = $kit->totalSlots();
+
+            throw new \RuntimeException(
+                "Este anúncio tem um kit de criativos por IA ainda não aprovado ({$aprovadas} de {$total} imagens aprovadas). Aprove o kit antes de publicar."
+            );
+        }
+
+        $aprovadas = $kit->aprovadas();
+        if ($aprovadas < $kit->minimo_aprovadas) {
+            $faltam = $kit->minimo_aprovadas - $aprovadas;
+
+            throw new \RuntimeException(
+                "Este anúncio tem um kit de criativos por IA aprovado, mas com apenas {$aprovadas} de {$kit->minimo_aprovadas} imagens mínimas aprovadas (faltam {$faltam}). Aprove mais imagens antes de publicar."
+            );
+        }
+    }
 
     /**
      * Reconstrói `payload.pictures` do rascunho a partir dos criativos
@@ -56,10 +117,7 @@ class CreativeKitPublicacao
      */
     public function aplicarPictures(MlAnuncioRascunho $rascunho): int
     {
-        $kit = MlAnuncioCriativoKit::where('rascunho_id', $rascunho->id)
-            ->where('status', '!=', MlAnuncioCriativoKit::STATUS_ERRO)
-            ->latest('id')
-            ->first();
+        $kit = $this->kitDoRascunho($rascunho);
 
         if ($kit === null) {
             return 0;
