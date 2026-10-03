@@ -185,4 +185,39 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/ia/analise/{analise}', [MlbAnuncioController::class, 'iaAnaliseStatus'])
             ->whereNumber('analise')
             ->name('ia.analise.status');
+
+        // ─── Creative Engine (Fase 160) ───
+        // OPS-03: atrás da chave liga/desliga, conferida no controller ANTES de
+        // tudo (abort_unless 404) — com a chave desligada, estas duas rotas se
+        // comportam como se não existissem. Throttle no upload: cada foto
+        // consome disco e cada criativo vai consumir cota paga na 160-02.
+        Route::post('/rascunho/{rascunho}/criativo/referencia', [MlbAnuncioController::class, 'criativoReferenciaStore'])
+            ->middleware('throttle:20,1')
+            ->name('criativo.referencia');
+        Route::get('/criativo/{token}/referencia/{indice}', [MlbAnuncioController::class, 'criativoReferenciaVer'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->whereNumber('indice')
+            ->name('criativo.referencia.ver');
+
+        // Fase 160 Plano 02 — geração assíncrona (GEN-01/02). Throttle:6,1 na
+        // rota de disparo é DINHEIRO, não estilo: cada chamada ao provedor
+        // custa ~US$ 0,101 (medição do spike 261001-nkx §16).
+        Route::post('/criativo/{token}/gerar', [MlbAnuncioController::class, 'criativoGerar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:6,1')
+            ->name('criativo.gerar');
+        Route::get('/criativo/{token}', [MlbAnuncioController::class, 'criativoStatus'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->name('criativo.status');
+        Route::get('/criativo/{token}/imagem', [MlbAnuncioController::class, 'criativoImagem'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->name('criativo.imagem');
+
+        // Fase 160 Plano 03 — aprovação (APROV-05/PUB-01/PUB-02). Throttle:30,1
+        // é só proteção de clique duplo (o botão já fica desabilitado durante a
+        // chamada); o custo caro já foi pago na geração, não aqui.
+        Route::post('/criativo/{token}/aprovar', [MlbAnuncioController::class, 'criativoAprovar'])
+            ->where('token', '[A-Za-z0-9]{32}')
+            ->middleware('throttle:30,1')
+            ->name('criativo.aprovar');
     });

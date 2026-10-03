@@ -3,17 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\GerarAnaliseAnuncioIaJob;
+use App\Jobs\GerarCriativoIaJob;
 use App\Jobs\PublicarAnuncioMlJob;
 use App\Jobs\SyncMlAcervoCompanyJob;
 use App\Models\Company;
 use App\Models\MlAcervoItem;
 use App\Models\MlAcervoMetricaDiaria;
+use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PubProduto;
 use App\Models\User;
+use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\ReferenciaEfemeraService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -27,9 +31,11 @@ use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
@@ -64,6 +70,10 @@ class MlbAnuncioController extends Controller
         private MercadoLivreService $ml,
         // AUTO-01: compatibilidades de autopeças (detecção + cascata de veículos)
         private MlCompatibilidadeService $compat,
+        // Fase 160 Plano 01: leitor da chave liga/desliga do Creative Engine (OPS-03)
+        private CreativeEngineAtivo $creativeAtivo,
+        // Fase 160 Plano 01: staging da foto de referência em disco privado (FOTO-02)
+        private ReferenciaEfemeraService $referenciaEfemera,
     ) {}
 
     /**
@@ -141,6 +151,10 @@ class MlbAnuncioController extends Controller
             // HIST-86-2: quando o "Anunciar semelhante" do histórico manda ?rascunho=N,
             // o wizard já abre com o clone carregado. Sem o parâmetro vem null e nada muda.
             'abrirRascunhoId' => $rascunhoAlvoId,
+            // Fase 160 Plano 01: a tela não decide nada — só reflete a chave do
+            // servidor (OPS-03). Com a chave desligada, PainelCriativosIa.jsx
+            // não renderiza nada e a etapa 5 do wizard fica idêntica à de hoje.
+            'creativeAtivo' => $this->creativeAtivo->ativa(),
         ]);
     }
 
@@ -1217,6 +1231,410 @@ class MlbAnuncioController extends Controller
             'ok'         => true,
             'picture_id' => $resposta['id'],
             'url'        => $resposta['url'],
+        ]);
+    }
+
+    /**
+     * ─── Creative Engine (Fase 160) ───
+     *
+     * Upload da(s) foto(s) de referência do produto (FOTO-01), em disco
+     * privado (FOTO-02), atrás da chave liga/desliga (OPS-03).
+     *
+     * Ordem obrigatória: (1) chave ligada, (2) double-check de empresa,
+     * (3) validação de arquivo, (4) criação do criativo, (5) gravação em
+     * disco. A chave vem ANTES de tudo — com ela desligada a rota nem chega
+     * a olhar para o corpo da requisição (404 puro).
+     */
+    public function criativoReferenciaStore(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em disco nem banco.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        // FOTO-05: double-check de empresa — cópia literal do bloco de uploadImagem()
+        if ($rascunho->mlb_empresa_id !== null) {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // FOTO-04: tipo e tamanho validados antes de aceitar, mensagem em pt-BR.
+        $request->validate([
+            'referencias'   => ['required', 'array', 'max:' . ReferenciaEfemeraService::MAX_REFERENCIAS],
+            'referencias.*' => ['required', 'file', 'image', 'max:10240'],
+        ], [
+            'referencias.*.image' => 'Envie uma imagem (JPG ou PNG) de até 10 MB.',
+            'referencias.*.max'   => 'Envie uma imagem (JPG ou PNG) de até 10 MB.',
+            'referencias.required' => 'Envie ao menos uma foto do produto.',
+        ]);
+
+        // company_id/mlb_empresa_id/user_id SEMPRE derivados do rascunho e do
+        // usuário autenticado — nunca do corpo da requisição (T-160-01).
+        $criativo = MlAnuncioCriativo::create([
+            'token'          => Str::random(32),
+            'company_id'     => $rascunho->company_id,
+            'mlb_empresa_id' => $rascunho->mlb_empresa_id,
+            'rascunho_id'    => $rascunho->id,
+            'user_id'        => $request->user()->id,
+            'slot'           => 'hero',
+            'status'         => MlAnuncioCriativo::STATUS_PENDENTE,
+        ]);
+
+        $referencias = $this->referenciaEfemera->guardar($criativo, $request->file('referencias'));
+        $criativo->update(['referencias' => $referencias]);
+
+        return response()->json([
+            'ok'       => true,
+            'criativo' => [
+                'token'       => $criativo->token,
+                'status'      => $criativo->status,
+                'referencias' => collect($referencias)->map(fn ($ref) => [
+                    'indice' => $ref['indice'],
+                    'nome'   => $ref['nome'],
+                    'url'    => route('mlb.anuncios.criativo.referencia.ver', [
+                        'token'  => $criativo->token,
+                        'indice' => $ref['indice'],
+                    ]),
+                ])->values(),
+            ],
+        ], 201);
+    }
+
+    /**
+     * Leitura da foto de referência por token (FOTO-02) — nunca por URL
+     * pública nem adivinhável. `role:admin` no grupo de rotas + double-check
+     * de empresa pelo rascunho do criativo + `Cache-Control: private, no-store`.
+     */
+    public function criativoReferenciaVer(Request $request, string $token, int $indice): Response
+    {
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Referência não encontrada.');
+
+        $rascunho = $criativo->rascunho;
+        if ($rascunho !== null) {
+            if ($rascunho->mlb_empresa_id !== null) {
+                abort_unless(
+                    $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                    403,
+                    'Empresa não atribuída a este publicador.'
+                );
+            } else {
+                abort_unless(
+                    $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                    403,
+                    'Rascunho não pertence ao publicador autenticado.'
+                );
+            }
+        }
+
+        $referencia = collect($criativo->referenciasVivas())->firstWhere('indice', $indice);
+        abort_if($referencia === null, 404, 'Referência já foi removida.');
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+        abort_unless($disco->exists($referencia['path']), 404, 'Referência já foi removida.');
+
+        return response($disco->get($referencia['path']), 200, [
+            'Content-Type'  => $referencia['mime'] ?? 'image/jpeg',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /**
+     * Double-check de empresa pelo rascunho do criativo — cópia literal do
+     * bloco de `uploadImagem()`. Compartilhado pelos três endpoints do
+     * Plano 02 (gerar/status/imagem): o criativo pode já ter perdido o
+     * rascunho (excluído), e nesse caso nenhum escopo adicional é imposto
+     * (mesma tolerância de `criativoReferenciaVer`).
+     */
+    private function checarEscopoDoCriativo(Request $request, MlAnuncioCriativo $criativo): void
+    {
+        $rascunho = $criativo->rascunho;
+        if ($rascunho === null) {
+            return;
+        }
+
+        if ($rascunho->mlb_empresa_id !== null) {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+    }
+
+    /**
+     * Dispara a geração da imagem do criativo (GEN-01) — SEMPRE 202 antes de
+     * qualquer chamada ao provedor: a geração roda fora da request HTTP, no
+     * `GerarCriativoIaJob` (fila `high`).
+     *
+     * Idempotente: clique repetido num criativo já `emAndamento()` devolve
+     * 202 com o mesmo estado, SEM enfileirar de novo — 2ª camada depois do
+     * `ShouldBeUnique` do job (GEN-06). `pronto`/`aprovado` são recusados com
+     * 422: nesta fase não existe "regenerar" (chega em 160-04) — suba uma
+     * foto nova para gerar outro criativo.
+     *
+     * Throttle na ROTA, não aqui (`throttle:6,1`): cada chamada custa ~US$
+     * 0,101 (medição do spike) — dinheiro, não só proteção de abuso.
+     */
+    public function criativoGerar(Request $request, string $token): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco nem enfileirar.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        // ATENÇÃO: NÃO usar emAndamento() aqui. `pendente` é o estado de
+        // REPOUSO logo depois do upload da referência (160-01) — tratá-lo
+        // como "já em andamento" faria o PRIMEIRO clique em "Gerar" nunca
+        // despachar nada (bug pego em teste de aceitação, 2026-10-02). Só
+        // `rodando` significa de fato "já sendo processado agora"; para
+        // `pendente`, o `ShouldBeUnique` do próprio job (GEN-06) é quem
+        // garante que um clique duplo nesta janela não gera um segundo job.
+        if ($criativo->status === MlAnuncioCriativo::STATUS_RODANDO) {
+            return response()->json(['token' => $criativo->token, 'status' => $criativo->status], 202);
+        }
+
+        if ($criativo->status === MlAnuncioCriativo::STATUS_APROVADO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este criativo já foi aprovado — suba uma foto nova para gerar outro.']],
+            ], 422);
+        }
+
+        if ($criativo->status === MlAnuncioCriativo::STATUS_PRONTO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Regenerar chega na próxima fase; suba uma foto nova para gerar outro.']],
+            ], 422);
+        }
+
+        if ($criativo->referenciasVivas() === []) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Suba ao menos uma foto do produto antes de gerar.']],
+            ], 422);
+        }
+
+        $criativo->update(['status' => MlAnuncioCriativo::STATUS_PENDENTE, 'erro_mensagem' => null]);
+
+        GerarCriativoIaJob::dispatch($criativo->id);
+
+        Log::info("[Creative] Geração enfileirada — criativo {$criativo->id} (rascunho {$criativo->rascunho_id}) por " . $request->user()->name);
+
+        return response()->json(['token' => $criativo->token, 'status' => $criativo->status], 202);
+    }
+
+    /**
+     * Status do criativo para o polling do painel — SÓ o que a tela usa.
+     * NUNCA `prompt`/`contexto`/`truth` nem path de disco (T-160-10): isso
+     * fica no servidor, mesmo para o admin que disparou a geração.
+     *
+     * Chama `encerrarSeTravada()` ANTES de responder — garante que o
+     * polling tem fim mesmo se o worker morreu calado (mesma disciplina do
+     * job).
+     */
+    public function criativoStatus(Request $request, string $token): JsonResponse
+    {
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        $criativo->encerrarSeTravada();
+
+        return response()->json([
+            'token'        => $criativo->token,
+            'status'       => $criativo->status,
+            'etapa'        => $criativo->etapa,
+            'em_andamento' => $criativo->emAndamento(),
+            'erro'         => $criativo->erro_mensagem,
+            'started_at'   => $criativo->started_at,
+            'modelo'       => $criativo->modelo,
+            'latencia_ms'  => $criativo->latencia_ms,
+            'aprovado_em'  => $criativo->aprovado_em,
+            'referencias'  => collect($criativo->referenciasVivas())
+                ->map(fn ($ref) => [
+                    'indice' => $ref['indice'],
+                    'nome'   => $ref['nome'],
+                    'url'    => route('mlb.anuncios.criativo.referencia.ver', [
+                        'token'  => $criativo->token,
+                        'indice' => $ref['indice'],
+                    ]),
+                ])
+                ->values(),
+            'imagem_url' => $criativo->imagem_path !== null
+                ? route('mlb.anuncios.criativo.imagem', ['token' => $criativo->token])
+                : null,
+        ]);
+    }
+
+    /**
+     * Binário da imagem gerada — disco privado, nunca URL pública nem
+     * adivinhável (mesma disciplina de `criativoReferenciaVer`).
+     */
+    public function criativoImagem(Request $request, string $token): Response
+    {
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        abort_if($criativo->imagem_path === null, 404, 'Imagem ainda não foi gerada.');
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+        abort_unless($disco->exists($criativo->imagem_path), 404, 'Imagem não encontrada.');
+
+        return response($disco->get($criativo->imagem_path), 200, [
+            'Content-Type'  => $criativo->imagem_mime ?? 'image/jpeg',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /**
+     * Aprova o criativo `pronto` (Fase 160, Plano 03) — sobe a imagem ao
+     * Mercado Livre pelo caminho de SEMPRE (`MlImagemService::enviar()`,
+     * PUB-02) e grava o resultado na posição do slot em
+     * `ml_anuncio_rascunhos.payload.pictures` (PUB-01), na MESMA forma que
+     * o wizard produz (`['source' => url]`) — ver a seção da armadilha no
+     * topo do `160-03-PLAN.md`: só a forma idêntica garante que o próximo
+     * autosave do wizard, depois do front chamar `setImagemUrl()` (Task 3),
+     * reconstrua o mesmo array em vez de zerá-lo.
+     *
+     * O estado é o guarda (APROV-05): só `pronto` pode ser aprovado. Falha
+     * no upload ao ML (exceção ou resposta sem id) deixa o criativo
+     * INTOCADO em `pronto` — meia aprovação não existe.
+     */
+    public function criativoAprovar(Request $request, string $token): JsonResponse
+    {
+        // OPS-03: chave desligada → 404, sem tocar em banco nem falar com o ML.
+        abort_unless($this->creativeAtivo->ativa(), 404);
+
+        $criativo = MlAnuncioCriativo::where('token', $token)->first();
+        abort_if($criativo === null, 404, 'Criativo não encontrado.');
+
+        $this->checarEscopoDoCriativo($request, $criativo);
+
+        $rascunho = $criativo->rascunho;
+        abort_unless($rascunho !== null, 422, 'O rascunho deste criativo não existe mais.');
+
+        // APROV-05: o estado é o guarda — mensagem distinta para "ainda
+        // gerando" (ou erro) e para "já aprovado", mas os dois são 422.
+        if ($criativo->status === MlAnuncioCriativo::STATUS_APROVADO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este criativo já foi aprovado.']],
+            ], 422);
+        }
+
+        if ($criativo->status !== MlAnuncioCriativo::STATUS_PRONTO) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Este criativo ainda não está pronto para ser aprovado.']],
+            ], 422);
+        }
+
+        if ($criativo->imagem_path === null) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'A imagem gerada deste criativo não foi encontrada.']],
+            ], 422);
+        }
+
+        $disco = \Illuminate\Support\Facades\Storage::disk('local');
+        if (! $disco->exists($criativo->imagem_path)) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'A imagem gerada deste criativo não foi encontrada.']],
+            ], 422);
+        }
+
+        try {
+            $resposta = $this->imagem->enviar(
+                $rascunho->company,
+                $disco->get($criativo->imagem_path),
+                "criativo-{$criativo->token}.jpg",
+            );
+        } catch (\Throwable $e) {
+            // Detalhe técnico só no log; resposta genérica em pt-BR para o
+            // front (mesma disciplina de uploadImagem()). O criativo segue
+            // `pronto` — nada foi gravado, nada precisa ser desfeito.
+            Log::error("[Creative] Falha ao aprovar criativo {$criativo->id}: {$e->getMessage()}");
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        if ($resposta === null) {
+            Log::error("[Creative] Falha ao aprovar criativo {$criativo->id}: upload ao ML não retornou id.");
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        // PUB-01: substitui SÓ a posição do slot (hero = posição 0), preserva
+        // as demais fotos na ordem. Forma idêntica à do wizard (T-160-16).
+        $payload = $rascunho->payload ?? [];
+        $pictures = $payload['pictures'] ?? [];
+        $pictures[0] = ['source' => $resposta['url']];
+        $payload['pictures'] = array_values($pictures);
+        $rascunho->update(['payload' => $payload]);
+
+        $criativo->update([
+            'status'         => MlAnuncioCriativo::STATUS_APROVADO,
+            'aprovado_por'   => $request->user()->id,
+            'aprovado_em'    => now(),
+            'ml_picture_id'  => $resposta['id'],
+            'ml_picture_url' => $resposta['url'],
+        ]);
+
+        // FOTO-03 (Fase 160, Plano 04) — o papel da foto do cliente acabou:
+        // o Mercado Livre já tem a imagem. Apaga aqui, na hora, em vez de
+        // esperar a varredura diária. `try/catch` de propósito: uma falha ao
+        // apagar a referência NUNCA pode desfazer uma aprovação que já
+        // chegou ao ML — o que escapar é recolhido por
+        // `creative:limpar-referencias` em até 48h.
+        try {
+            $this->referenciaEfemera->apagar($criativo);
+        } catch (\Throwable $e) {
+            Log::warning("[Creative] Falha ao apagar referência do criativo {$criativo->id} após aprovação: {$e->getMessage()}");
+        }
+
+        Log::info("[Creative] Criativo {$criativo->id} aprovado", [
+            'rascunho_id' => $rascunho->id,
+            'picture_id'  => $resposta['id'],
+            'usuario'     => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'ok'         => true,
+            'token'      => $criativo->token,
+            'status'     => $criativo->status,
+            'url'        => $resposta['url'],
+            'picture_id' => $resposta['id'],
         ]);
     }
 

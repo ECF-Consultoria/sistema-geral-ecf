@@ -2792,3 +2792,123 @@ Plans:
 *Roadmap atualizado: 2026-10-02 - **Fase 164 (Publicador no sistema interno)** anexada como fase avulsa. Origem: depois do piloto do Publicador no Portal do Cliente (02/10), o usuario decidiu levar o Publicador para `/mlb/anuncios` no sistema interno (API de gerar imagens nao e coisa do cliente; atende Polos e Incubadora), com sincronizacao ligada ao Portal e cadastro de produtos para empresa sem Portal. GSD por alterar `pub_rascunhos` com dado em producao (D19). Fases 1-159 preservadas.*
 
 *Roadmap atualizado: 2026-10-02 - **Fase 164 FECHADA no código** (worktree `C:/tmp/ecf-publicador-spec-261001`, branch `feat/publicador-ml-261001`, sem push nem deploy). 15 planos em 8 waves; gate visual 164-14 aprovado pelo usuário; gate final contra a baseline sem falha nova (Publicador 376/1874, PortalCliente 231/1872, test:js 645 com as 2 falhas pré-existentes). Code review achou 4 BLOCKERs (trava D21 só no clique, exclusão de empresa apagando o histórico, duas perdas de edição no editor) — corrigidos com mais 9 warnings, por escolha do usuário. Verificação `human_needed`: 6 itens em `164-HUMAN-UAT.md` (2 rascunhos da #459 em produção, trava no MariaDB real, salvamento do editor no navegador, D20, E2E na #459, Portal sem Anunciar em produção). Fases 1-159 preservadas.*
+
+*Roadmap atualizado: 2026-10-02 - A fase do **Publicador no sistema interno** foi **renumerada de 160 para 164**: a milestone v24.0 (Creative Engine, outro dev) chegou à origin/main reservando 160-163 enquanto esta fase rodava. Os commits antigos dela seguem com "160" no assunto (histórico); pasta, planos e referências passaram a 164.*
+
+## Milestone v24.0 — Creative Engine (Fases 160-163)
+
+**Plano canônico:** `plano-incubadora-v1` (raiz do repo), §§7-20 · **Requirements:** `.planning/REQUIREMENTS-v24.md` · **Spike V0.1 (já entregue, não replanejar):** quick task `261001-nkx`, medições completas em `.planning/quick/261001-nkx-spike-v0-1-do-creative-engine-provider-g/261001-nkx-NOTAS-PUBLICADOR.md` (seções 1-20).
+
+**Goal:** transformar a etapa visual do publicador numa linha de produção assistida por IA — o operador sobe as fotos originais do cliente, clica em gerar, revisa, regenera o que não prestou, aprova, e as imagens aprovadas seguem para a publicação no Mercado Livre. A aprovação humana continua obrigatória em toda fase.
+
+**Decisões travadas (usuário, 2026-10-01/02 — D-01 a D-06 do REQUIREMENTS-v24.md, NÃO reabrir):** D-01 o Creative Engine mora DENTRO de `/mlb/anuncios` sob `role:admin` (`routes/mlb_anuncios.php`, name `mlb.anuncios.*`), não no módulo Incubadora · D-02 a foto original é **upload efêmero** — fica em disco privado com retenção curta, nunca acervo permanente, sem integração programática com o Google Drive do cliente · D-03 modo de renderização único desta milestone é `FULL_AI`; `COMPOSITE` fica preparado na arquitetura mas **não se constrói agora** (medição do spike nas seções 17-19 das notas mostrou que texto/número DADO no prompt sai correto nos três modelos — `COMPOSITE` não é pré-requisito de confiabilidade, só controle fino de layout futuro) · D-04 modelo default `gemini-3.1-flash-image` em 2K (único sem erro de contagem entre os conferidos no kit de 7; `lite` descartado para ambientação, `pro` alcançável por env) · **D-05 fatia fina ponta a ponta primeiro** — é a decisão que molda a Fase 160 e proíbe roadmap de camada-por-camada nesta milestone · D-06 o validador usa o Gemini como **juiz de visão** (imagem gerada + fotos originais + Product Truth → JSON estruturado), custo aceito (~+US$ 0,30/kit).
+
+**Reuso já identificado (não construir do zero):** `App\Services\Creative\Contracts\ImageGenerationProvider` + `GeminiImageProvider` + DTOs `CreativeGenerationRequest`/`CreativeGenerationResult` + `FalhaDeGeracaoTrocavel` (spike V0.1, intactos) · o padrão job-fila-`high`+polling já maduro em `App\Services\Ia\AnaliseAnuncioService` / `GerarAnaliseAnuncioIaJob` / `PainelAnunciarIa.jsx` (trava anti-loop `LIMITE_MINUTOS=15` de `ml_anuncio_ia_analises` é o precedente direto para VAL-06) · `App\Services\Mlb\Publicacao\MlImagemService::enviar()` para o envio real ao ML (PUB-02 proíbe caminho novo) · `ml_anuncio_rascunhos.payload.pictures` como destino das imagens aprovadas.
+
+**Risco central:** o plano canônico nomeia tabelas `creative_projects`/`creative_assets`, mas a convenção real do módulo é prefixo `ml_` com colunas snake_case em pt-BR (`ml_anuncio_rascunhos`, `ml_anuncio_ia_analises`) — a Fase 160 decide o nome real na hora de planejar, não herda o nome do plano canônico literalmente. Risco secundário conhecido (não é regressão, é característica medida): os três modelos de imagem erram contagem de peça esporadicamente (§17-19 das notas) — é exatamente por isso que VAL (Fase 162) e a regeneração manual (Fase 161) não são enfeite, são a rede de segurança que o spike mediu como necessária.
+
+**Ordem de construção (decrescente em risco, D-05):** a Fase 160 é a fundação arriscada — primeira vez que upload efêmero, context/truth builder, job assíncrono novo e aprovação chegam a produção juntos, mas entrega SÓ uma imagem, atrás de chave desligada. A Fase 161 escala de 1 para 7 com planejamento dinâmico e concorrência — não é usável ter 7 imagens sem conseguir regenerar a ruim ou aprovar o kit todo, por isso planner, geração paralela, regeneração manual, aprovação de kit e os guard-rails de publicação nascem **juntos** na mesma fase (anti-padrão de camada evitado de propósito). A Fase 162 adiciona confiabilidade automática (validador Gemini-juiz + regeneração automática) por cima de um kit que já funciona manualmente. A Fase 163 fecha o "→ V1" do nome da milestone: custo visível por projeto e a métrica real do POC contra anúncios já produzidos à mão.
+
+### Phase 160: Fatia fina ponta a ponta — um criativo real, do upload à aprovação
+
+**Goal**: o operador sobe a foto original de um produto já cadastrado no publicador, pede a geração de UMA imagem via Gemini, vê o resultado ao lado da foto original, aprova, e a imagem aprovada entra no rascunho do anúncio — mínima e feia, mas real e usável em produção, atrás de uma chave que a equipe desliga sem deploy.
+**Depends on**: Nada como fase (fundação desta milestone); reusa o provider Gemini da V0.1 (spike `261001-nkx`), já em produção.
+**Requirements**: FOTO-01, FOTO-02, FOTO-03, FOTO-04, FOTO-05, CTX-01, CTX-02, CTX-03, TRUTH-01, TRUTH-02, TRUTH-03, TRUTH-04, GEN-01, GEN-02, GEN-05, GEN-06, APROV-01, APROV-05, APROV-06, PUB-01, PUB-02, OPS-01, OPS-03
+
+> ⚠️ **Nomenclatura de tabela nova.** O plano canônico (§10) sugere `creative_projects`/`creative_assets`, mas a convenção real do módulo é prefixo `ml_` + snake_case pt-BR (`ml_anuncio_rascunhos`, `ml_anuncio_ia_analises`). Decidir o nome real no planejamento desta fase, não herdar o nome do plano literalmente — ler `.planning/quick/261001-nkx-.../261001-nkx-NOTAS-PUBLICADOR.md` §3 antes de desenhar a migration.
+> ⚠️ **Reusar o padrão job+fila+polling já maduro**, não inventar um novo: mesmo desenho de `GerarAnaliseAnuncioIaJob` (fila `high`, nunca `default` — medido em produção com 170 jobs represados e 395s de espera) e `PainelAnunciarIa.jsx` (componente separado com polling). Nenhum código novo inline em `AnunciarML.jsx` (2857 linhas).
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Na etapa de criativos do publicador (`/mlb/anuncios`), o operador sobe uma ou mais fotos originais do produto sem sair do fluxo; upload inválido (tipo/tamanho) é recusado com mensagem em pt-BR, e o escopo por empresa é conferido no servidor antes de aceitar (FOTO-01, FOTO-04, FOTO-05)
+  2. As fotos enviadas nunca ficam acessíveis por URL pública/adivinhável e são apagadas automaticamente depois de cumprirem seu papel na geração — o sistema não acumula acervo de imagem de cliente (FOTO-02, FOTO-03)
+  3. Clicar em "Gerar com IA" dispara um job na fila `high` (nunca `default`) que monta o contexto a partir do que o anúncio já tem — produto, marca, título, descrição, categoria, atributos, variações e as fotos enviadas como bytes — sem formulário duplicado, aplica o Product Truth (só fatos do cadastro ou de leitura conferida; contagem nunca por suposição; claims proibidas explícitas; o que não está no Truth fica fora do prompt) e devolve UMA imagem gerada pelo Gemini, sem bloquear a requisição HTTP (CTX-01, CTX-02, CTX-03, TRUTH-01, TRUTH-02, TRUTH-03, TRUTH-04, GEN-01, GEN-02)
+  4. O operador vê a imagem gerada ao lado da foto original usada como referência num componente separado com polling (padrão `PainelAnunciarIa`), aprova, e só então ela entra em `ml_anuncio_rascunhos.payload.pictures` respeitando o fluxo real de envio ao Mercado Livre via `MlImagemService::enviar()` — nenhuma imagem não aprovada chega ao rascunho (APROV-01, APROV-05, APROV-06, PUB-01, PUB-02)
+  5. O módulo nasce atrás de uma chave que a equipe desliga sem deploy; a chave do Gemini nunca aparece em log, payload de log ou base64 registrado; e um duplo clique em "Gerar com IA" não dispara dois jobs para o mesmo produto (OPS-01, OPS-03, GEN-05, GEN-06)
+
+**Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável)
+- [ ] 160-01-PLAN.md — Upload efêmero da foto de referência: tabela `ml_anuncio_criativos`, chave liga/desliga sem deploy e painel separado na etapa 5
+- [ ] 160-02-PLAN.md — Gerar UMA imagem de verdade: contexto + Product Truth + prompt, job na fila `high` e revisão lado a lado com polling
+- [ ] 160-03-PLAN.md — Aprovar: envio ao ML por `MlImagemService::enviar()` e gravação em `payload.pictures`
+- [ ] 160-04-PLAN.md — Retenção da foto efêmera (deleção na aprovação + varredura por idade do registro) e teste-guarda de segredo em log
+- [ ] 160-05-PLAN.md — Checkpoint humano: prova real com foto de cliente, números literais e a chave de volta ao desligado
+
+**UI hint**: yes
+
+### Phase 161: Kit dinâmico de 7, geração paralela, regeneração e aprovação do kit
+
+**Goal**: em vez de uma imagem fixa, o sistema planeja e gera um kit completo de 7 criativos escolhidos dinamicamente conforme o produto, com progresso por imagem, regeneração individual sem refazer o kit inteiro, aprovação do kit como um todo, e guarda-corpos antes de publicar — a experiência real de produção que a Fase 160 só provou em miniatura.
+**Depends on**: Fase 160 (precisa do pipeline ponta a ponta — upload, contexto, truth, geração, aprovação, publicação — já provado com 1 imagem antes de escalar para 7).
+**Requirements**: PLAN-01, PLAN-02, PLAN-03, PLAN-04, GEN-03, GEN-04, APROV-02, APROV-03, PUB-03, PUB-04, OPS-04
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Antes de gerar qualquer imagem, o sistema planeja no mínimo 7 criativos: o slot 1 é sempre a imagem principal e os slots 2-7 são escolhidos dinamicamente conforme produto, categoria e fatos disponíveis no Product Truth — nunca uma lista fixa — e o planejador só propõe slot cujo fato o Product Truth sustenta; o plano fica gravado para auditoria (PLAN-01, PLAN-02, PLAN-03, PLAN-04)
+  2. Os 7 assets geram em paralelo controlado respeitando limite de custo/cota, e o operador acompanha o progresso de cada imagem individualmente na mesma tela — a falha de gerar uma não trava as outras 6 (GEN-03, GEN-04)
+  3. O operador regenera uma imagem individual do kit sem precisar refazer as outras 6, e consegue tanto aprovar imagem por imagem quanto aprovar o kit inteiro de uma vez quando o critério mínimo é atingido (APROV-02, APROV-03)
+  4. Antes de publicar, o sistema confere que existe kit aprovado com o mínimo de imagens atingido e que o limite de imagens da categoria do Mercado Livre é respeitado — publicar fora dessas condições é recusado (PUB-03, PUB-04)
+  5. Gerar, regenerar e aprovar exigem permissão explícita verificada no servidor — não é só o gate `role:admin` do módulo (OPS-04)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 162: Validação automática (Gemini como juiz), regeneração automática e alerta de risco
+
+**Goal**: toda imagem gerada passa por um validador que usa o próprio Gemini como juiz de visão antes de chegar à revisão humana, reprova automaticamente falha de fidelidade ao produto, regenera uma vez sozinho usando o motivo da rejeição, e avisa o operador em pt-BR quando algo ficou arriscado — a rede de segurança que o spike (§17-19 das notas) mediu como necessária, porque os três modelos erram contagem esporadicamente e em slots diferentes.
+**Depends on**: Fase 161 (precisa do kit de 7 e da regeneração manual já existirem — o validador decide QUANDO acionar regeneração automática sobre a mesma infraestrutura).
+**Requirements**: VAL-01, VAL-02, VAL-03, VAL-04, VAL-05, VAL-06, APROV-04
+
+> ⚠️ **Reusar a disciplina de trava anti-loop já existente**, não inventar uma nova: `ml_anuncio_ia_analises.LIMITE_MINUTOS=15` é o precedente direto para VAL-06 (geração viva além do limite vira erro com mensagem, a tela nunca pergunta para sempre).
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Toda imagem gerada é validada automaticamente antes de chegar à revisão humana: o validador recebe a imagem gerada, as fotos originais e o Product Truth, e devolve um JSON estruturado que explica o problema — nunca só uma nota numérica (VAL-01, VAL-02, VAL-03)
+  2. Fidelidade ao produto é critério eliminatório: imagem que altera o produto é reprovada automaticamente, nunca só penalizada por nota (VAL-04)
+  3. Imagem reprovada é regenerada automaticamente uma vez usando o motivo da rejeição, com tentativas limitadas por asset — nunca um loop infinito (VAL-05, VAL-06)
+  4. Quando a validação aponta risco (inclusive depois da regeneração automática), a tela mostra o alerta ao lado da imagem com o motivo legível em pt-BR — nunca um código de erro técnico (APROV-04)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 163: Fechamento do POC — custo por projeto e medição com anúncios reais
+
+**Goal**: a equipe consegue ver o custo de cada projeto de criativos e decidir, com anúncios reais já produzidos à mão, se o Creative Engine está pronto para uso contínuo em produção — o "→ V1" do nome desta milestone.
+**Depends on**: Fases 160, 161 e 162 (custo por projeto só é completo depois que os três tipos de chamada — planejamento, geração e validação — existem; e o POC real precisa do kit de 7 com validação funcionando).
+**Requirements**: OPS-02
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Para qualquer projeto de criativos, é possível ver a quantidade de chamadas de planejamento, geração e validação, e as tentativas por asset — sem abrir log ou banco diretamente (OPS-02)
+  2. A equipe roda o Creative Engine contra pelo menos um anúncio real já produzido manualmente pela equipe e registra, lado a lado, os números do §"Métricas de aceite do POC" do REQUIREMENTS-v24.md — percentual aprovado sem regeneração, média de regenerações por kit, tempo até o kit ficar revisável, custo médio por kit e motivos mais comuns de rejeição (OPS-02 + avaliação qualitativa do POC, sem REQ-ID próprio — métrica de aceite, não comportamento de sistema)
+  3. A chave de ativação do Creative Engine (OPS-03, Fase 160) permanece desligada em produção até essa medição real sustentar a decisão de ligar — ligar é decisão humana explícita, não consequência automática de passar os testes
+
+**Plans**: TBD
+**UI hint**: yes
+
+**Fora de escopo desta milestone** (REQUIREMENTS-v24.md, não mapear em nenhuma fase): modo `COMPOSITE`/template engine de texto e badges — não é pré-requisito, medido no spike · integração programática com o Google Drive do cliente (D-02) · segmentação/recorte de produto para Product Lock mais forte · comparação com outros provedores de imagem · variantes A/B, geração em lote e biblioteca de templates por categoria · refazer qualquer parte do publicador existente.
+
+#### Coverage Map — Milestone v24.0
+
+| Requirement | Phase | Status |
+|---|---|---|
+| FOTO-01, FOTO-02, FOTO-03, FOTO-04, FOTO-05 | Phase 160 | Pending |
+| CTX-01, CTX-02, CTX-03 | Phase 160 | Pending |
+| TRUTH-01, TRUTH-02, TRUTH-03, TRUTH-04 | Phase 160 | Pending |
+| GEN-01, GEN-02, GEN-05, GEN-06 | Phase 160 | Pending |
+| APROV-01, APROV-05, APROV-06 | Phase 160 | Pending |
+| PUB-01, PUB-02 | Phase 160 | Pending |
+| OPS-01, OPS-03 | Phase 160 | Pending |
+| PLAN-01, PLAN-02, PLAN-03, PLAN-04 | Phase 161 | Pending |
+| GEN-03, GEN-04 | Phase 161 | Pending |
+| APROV-02, APROV-03 | Phase 161 | Pending |
+| PUB-03, PUB-04 | Phase 161 | Pending |
+| OPS-04 | Phase 161 | Pending |
+| VAL-01, VAL-02, VAL-03, VAL-04, VAL-05, VAL-06 | Phase 162 | Pending |
+| APROV-04 | Phase 162 | Pending |
+| OPS-02 | Phase 163 | Pending |
+
+**Cobertura:** 42/42 REQ-IDs do REQUIREMENTS-v24.md mapeados — FOTO(5) CTX(3) TRUTH(4) PLAN(4) GEN(6) VAL(6) APROV(6) PUB(4) OPS(4). Nenhum órfão, nenhuma duplicata.
+
+---
+
+*Roadmap atualizado: 2026-10-02 — **Milestone v24.0 (Creative Engine)** anexada: 4 fases (160-163) cobrindo os 42 REQ-IDs (FOTO/CTX/TRUTH/PLAN/GEN/VAL/APROV/PUB/OPS) do REQUIREMENTS-v24.md, derivadas do plano canônico `plano-incubadora-v1` §§7-20 e corrigidas pelas medições reais do spike V0.1 (`261001-nkx-NOTAS-PUBLICADOR.md`, seções 1-20) — pesquisa de arquitetura dispensada porque a investigação já foi feita no spike. Estrutura deliberadamente NÃO em camadas (fundação→contexto→planner→geração→validação→UI): por decisão explícita do usuário (D-05), a Fase 160 entrega uma fatia fina ponta a ponta — upload, contexto, Product Truth, UMA imagem gerada, aprovação humana e entrada no rascunho, tudo atrás de chave desligada — e cada fase seguinte enriquece sem nunca ficar isolada numa camada técnica: a Fase 161 escala de 1 para 7 imagens com planejamento dinâmico, geração paralela, regeneração manual e aprovação de kit (entregues juntos de propósito, porque um kit de 7 sem conseguir corrigir a imagem ruim não é usável), a Fase 162 soma o validador Gemini-como-juiz e a regeneração automática por cima do kit que já funciona manualmente, e a Fase 163 fecha o "→ V1" do nome da milestone com custo visível por projeto e a medição real do POC contra anúncios já produzidos à mão. Apenas 4 fases em vez da faixa sugerida de 5-7: os 42 requisitos se agrupam naturalmente em 3 blocos de risco decrescente mais o fechamento do POC — forçar uma 5ª fase exigiria separar partes que a própria regra anti-camada deste roadmap proíbe separar (ex.: aprovar o kit sem poder regenerar a imagem ruim do mesmo kit). Numeração contínua a partir de 160 (última fase existente: 159, da pessoa com dois cargos, fora de milestone). `phases.clear` NÃO foi executado — Fases 1-159 preservadas integralmente, incluindo a milestone v22.0 em 71% e a Fase 159-08 adiada pelo usuário em 2026-10-01 (ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`); nenhuma fase, decisão ou numeração anterior foi tocada.*
