@@ -289,6 +289,12 @@ class CriativoKitAprovacaoTest extends TestCase
         $rascunho->refresh();
         $this->assertCount(5, $rascunho->payload['pictures']);
 
+        // `url` da resposta é a do SLOT 1 (hero) — mesmo contrato de
+        // `criativoAprovar()`, para `onImagemAprovada(url)` continuar
+        // apontando o wizard para a imagem principal.
+        $slot1 = $kit->slots()->where('slot_indice', 1)->first();
+        $this->assertSame($slot1->ml_picture_url, $resposta->json('url'));
+
         // SÓ ENTÃO a referência do portador foi apagada.
         $portador = $kit->criativoReferencia;
         $this->assertNotNull($portador->fresh()->referencias_apagadas_em);

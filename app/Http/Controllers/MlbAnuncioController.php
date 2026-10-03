@@ -2202,12 +2202,18 @@ class MlbAnuncioController extends Controller
             'usuario'           => $request->user()->id,
         ]);
 
+        // Mesma regra de `criativoAprovar()`: o front usa a URL do SLOT 1
+        // (hero) para `onImagemAprovada(url)` — `null` quando ele não está
+        // entre os aprovados.
+        $urlPrincipal = $kit->slots()->where('slot_indice', 1)->first()?->ml_picture_url;
+
         return response()->json([
             'ok'        => $falharam === [],
             'kit_token' => $kit->token,
             'status'    => $kit->fresh()->status,
             'aprovadas' => $aprovadas,
             'falharam'  => $falharam,
+            'url'       => $urlPrincipal,
             'mensagem'  => $falharam === []
                 ? "{$aprovadas} imagem(ns) aprovada(s) com sucesso."
                 : "{$aprovadas} imagem(ns) subiu(ram); falhou o upload do(s) slot(s) " . implode(', ', $falharam) . '.',
