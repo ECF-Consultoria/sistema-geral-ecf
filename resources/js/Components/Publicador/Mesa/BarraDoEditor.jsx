@@ -8,10 +8,11 @@ import { BASE_BOTAO, SECUNDARIO } from './botoes';
 
 // ─── Barra superior do editor (UI-SPEC §8.1; Conceito E, 03/10/2026) ────────
 //
-// 56px, nunca lista pendências. É a trilha "Publicador MLB / empresa / produto":
-// o produto é o seletor (troca de produto e "+ Produto"), depois o indicador
-// real do salvamento e "Anunciar por IA". Conferir e Publicar moram no
-// Inspetor, então a barra não tem amarelo sólido nenhum.
+// 56px, nunca lista pendências nem conta progresso. É a trilha "Publicador MLB /
+// empresa / produto": o produto é o seletor (troca de produto e "+ Produto"),
+// depois o indicador real do salvamento e "Anunciar por IA". Conferir e
+// Publicar moram no fim da etapa "Condições de venda", então a barra não tem
+// amarelo sólido nenhum.
 
 /**
  * Indicador do salvamento (WR-F02): "Salvo há Ns" (atualizado a cada 10 s) só quando nada
@@ -48,7 +49,7 @@ function Salvamento({ pub }) {
     );
 }
 
-export default function BarraDoEditor({ pub, empresa, produto, produtos = [], onTrocar, prontas = 0, total = 0, ia, onVoltar }) {
+export default function BarraDoEditor({ pub, empresa, produto, produtos = [], onTrocar, ia, onVoltar }) {
     const publicado = pub.m.estado?.rascunho?.status === 'PUBLISHED';
     const rotuloPrograma = empresa.programa_rotulo ?? empresa.programa;
     const reconectar = empresa.token !== 'ativo';
@@ -88,7 +89,7 @@ export default function BarraDoEditor({ pub, empresa, produto, produtos = [], on
 
             {/* O produto em edição é o seletor: abre a lista da empresa para trocar ou criar. */}
             <div className="min-w-0 flex-1 max-sm:order-last max-sm:w-full max-sm:flex-none">
-                <SeletorDeProdutos produtos={produtos} produtoId={produto.id} produtoNome={produto.nome} prontas={prontas} total={total} conta={empresa.chave} onTrocar={onTrocar} />
+                <SeletorDeProdutos produtos={produtos} produtoId={produto.id} produtoNome={produto.nome} conta={empresa.chave} onTrocar={onTrocar} />
             </div>
 
             <div className="min-w-[90px] max-w-[220px] shrink-0 max-sm:min-w-0 max-sm:flex-1"><Salvamento pub={pub} /></div>

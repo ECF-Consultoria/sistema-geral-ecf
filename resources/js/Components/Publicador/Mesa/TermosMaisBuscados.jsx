@@ -45,7 +45,6 @@ export default function TermosMaisBuscados({ m, alvos, destino, onDestino, onUsa
                 <div className="flex items-center gap-2">
                     <TrendingUp size={14} className="text-white/55" />
                     <span className="text-[13px] font-bold text-white">Termos mais buscados na categoria</span>
-                    {dados && <span className="text-[11px] text-white/40">{relacionados} de {lista.length} têm a ver com o produto</span>}
                 </div>
                 {alvos.length > 1 && (
                     <div role="radiogroup" aria-label="Acrescentar no título do" className="inline-flex items-center gap-1 rounded-[10px] border border-white/[0.08] bg-white/[0.03] p-1 text-[11px]" data-destino-termos>

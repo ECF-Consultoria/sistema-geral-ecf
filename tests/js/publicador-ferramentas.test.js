@@ -94,14 +94,15 @@ test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e
 
 // ── Gates de fonte ──
 
-test('§1 — a mesa ocupa a largura (sem o teto de 800px): três colunas, árvore de 260px e Inspetor de 340px', () => {
+test('§1 — a tela ocupa a largura (sem o teto de 800px): coluna de 1200px com os campos em grade', () => {
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
     assert.doesNotMatch(f, /minmax\(0,800px\)|max-w-\[800px\]/);
-    assert.match(f, /min-\[1360px\]:grid-cols-\[260px_minmax\(0,1fr\)_340px\]/);
+    assert.match(f, /max-w-\[1200px\]/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`), /md:grid-cols-2 xl:grid-cols-3/);
 });
 
 test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao escolher categoria com o Modelo vazio', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardFichaTecnica.jsx`);
+    const card = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
     assert.match(card, /m\.pedirPalavrasIa\('modelo'\)/);
     assert.match(card, /LIMITE_MODELO = 120/);
     const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
@@ -114,7 +115,7 @@ test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao esco
 });
 
 test('§3 — título: painel de termos com filtro de coerência e a IA por tipo de anúncio', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardTitulos.jsx`);
+    const card = lerSemComentarios(`${BASE}/Mesa/EtapaProduto.jsx`);
     assert.match(card, /<TermosMaisBuscados /);
     assert.match(card, /m\.pedirPalavrasIa\(`titulo_\$\{lt\}`, \{ escolhidos \}\)/);
     assert.match(card, /juntarTermo\(/);
@@ -124,9 +125,9 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     assert.match(painel, /Ver também os que não citam o produto/);
 });
 
-test('§4 — Variações: "Nova variação" à vista e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.match(card, /Nova variação/);
+test('§4 — Variações: "Adicionar variação" à vista e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {
+    const card = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(card, /Adicionar variação/);
     assert.match(card, /data-acao="adicionar-variacao"/);
     assert.match(card, /variantesSemGtin\(m\.variantes, schema\)/);
     assert.match(card, /gerados\.current\.add\(v\.chave\)/);
@@ -134,8 +135,8 @@ test('§4 — Variações: "Nova variação" à vista e EAN-13 automático uma v
     assert.match(lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx'), /useEfeitosDasVariacoes\(m\)/);
 });
 
-test('§5 — Logística: unidades kg/g e cm/mm/m, a forma ESCOLHIDA marcada e frete grátis obrigatório vindo do ML (num hook que a página chama sempre)', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardLogistica.jsx`);
+test('§5 — Envio: unidades kg/g e cm/mm/m, a forma ESCOLHIDA marcada e frete grátis obrigatório vindo do ML (num hook que a página chama sempre)', () => {
+    const card = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);
     assert.match(card, /UNIDADES_PESO/);
     assert.match(card, /UNIDADES_MEDIDA/);
     assert.match(card, /data-modalidade=\{modo\}/);
@@ -146,15 +147,14 @@ test('§5 — Logística: unidades kg/g e cm/mm/m, a forma ESCOLHIDA marcada e f
     assert.match(lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx'), /useEfeitosDoEnvio\(m\)/);
 });
 
-test('§6 — Ficha técnica: nada recolhido nem rotulado "opcional"; borda âmbar só no obrigatório; "Outras características" é um grupo normal', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardFichaTecnica.jsx`);
+test('§6 — Ficha técnica: nada recolhido nem rotulado "opcional"; vermelho só no exigido e só depois do "Continuar"', () => {
+    const card = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
     assert.doesNotMatch(card, /opcion/i);
     assert.doesNotMatch(card, /aria-expanded/);
-    assert.match(card, /obrigatorio=\{a\.obrigatoriedade === 'REQUIRED'\}/);
-    assert.match(card, /Outras características/);
-    assert.match(lerSemComentarios(`${BASE}/apoio.js`), /chave: 'ficha', titulo: 'Ficha técnica'/);
+    assert.match(card, /const vazio = a\.obrigatoriedade === 'REQUIRED' && valorVazio\(valor\)/);
+    assert.match(card, /Mais características/);
     const comum = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
-    assert.match(comum, /preenchido \|\| ! obrigatorio \? 'border-white\/\[0\.08\]' : 'border-amber-400\/50'/);
+    assert.match(comum, /if \(! mostrar\) return null;/);
 });
 
 // ── Variações e fotos juntas, como no Mercado Livre (03/10/2026, pedido depois do docx) ──
@@ -188,24 +188,23 @@ test('varianteDoPedido / pedidoCompleto — acha pela combinação de valores, s
     assert.equal(pedidoCompleto([], {}), false);
 });
 
-test('Fotos dentro de cada variação: o item da variação traz as fotos dela; Excluir = tirar o valor (um eixo) ou desativar (mais eixos); "trazer de volta"', () => {
+test('Fotos dentro de cada variação: o bloco da variação traz as fotos dela; tirar = tirar o valor (um eixo) ou desativar (mais eixos); "trazer de volta"', () => {
     const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
-    // O título pode ser uma template string (`Fotos da variação ${v.rotulo}`): por isso `.+?` e não `[^}]+`.
-    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo=\{.+?\} obrigatorio=\{v\.ativa\}/);
+    // O título pode ser uma expressão: por isso `.+?` e não `[^}]+`.
+    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo=\{.+?\} erro=\{erroFotos\}/);
     assert.match(cartao, /onArquivos=\{m\.enviarFotos\}/);
-    const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
+    assert.match(cartao, /data-acao="alternar-variacao"/);
+    assert.match(cartao, /data-acao="excluir-variacao"/);
+    const card = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
     // Sem eixo que defina a foto, cada variação ganha as próprias fotos.
     assert.match(card, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
     // Tirar com um eixo = remover o valor (órfã com os dados); com mais = desativar.
     assert.match(card, /eixosSemValor\(eixos, eixo\.chave/);
     assert.match(card, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
     assert.match(card, /trazer de volta/);
-    const pagina = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
-    assert.match(pagina, /<NovaVariacao /);
-    assert.match(pagina, /acaoDeTirar\(m, v, eixos\)/);
-    assert.match(pagina, /data-acao="alternar-variacao"/);
-    assert.match(pagina, /data-acao="excluir-variacao"/);
-    // Problema de foto com `alvo.grupo` leva à variação dona do grupo.
+    assert.match(card, /<NovaVariacao /);
+    assert.match(card, /acaoDeTirar\(m, v, eixos\)/);
+    // Problema de foto com `alvo.grupo` cai na etapa Detalhes (onde mora o bloco da variação).
     assert.match(lerSemComentarios(`${BASE}/apoio.js`), /alvo\.grupo/);
 });
 

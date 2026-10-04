@@ -2,42 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    ITENS, SECOES, contarItensProntos, estadoDasSecoes, estadoDosItens, itemDoProblema, itemValido, primeiroItemPendente, problemasDaVariante, problemasDoItem,
-    proximoItem, sequenciaDeItens,
+    ETAPAS, SECOES, bloqueiosDaEtapa, estadoDasSecoes, etapaAnterior, etapaDoProblema, etapaValida, proximaEtapa, secaoDoProblema,
 } from '../../resources/js/Components/Publicador/apoio.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gates de fonte da "mesa de anúncio" do Publicador interno (Fase 164,
-// UI-SPEC §4/§5/§8.4; três colunas do Conceito E, 03/10/2026). Lê a fonte
+// Gates de fonte do editor do Publicador interno em 3 etapas (04/10/2026):
+// Produto, Detalhes e Condições de venda, como no Mercado Livre. Lê a fonte
 // SEM comentários (ver _fonte.js).
 //
-// A lista abaixo é o ponto de extensão: arquivo novo da mesa entra aqui, e os
-// gates de vocabulário passam a valer para ele também.
+// A lista abaixo é o ponto de extensão: arquivo novo do editor entra aqui, e
+// os gates de vocabulário passam a valer para ele também.
 // ═══════════════════════════════════════════════════════════════════════
 
 const BASE = 'resources/js/Components/Publicador';
+const PAGINA = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
 const CARDS = [
     `${BASE}/Mesa/comum.jsx`,
     `${BASE}/Mesa/botoes.jsx`,
-    `${BASE}/Mesa/Arvore.jsx`,
-    `${BASE}/Mesa/ItemDoCentro.jsx`,
-    `${BASE}/Mesa/AcoesDePublicacao.jsx`,
-    `${BASE}/Mesa/CampoPreco.jsx`,
-    `${BASE}/Mesa/CardProduto.jsx`,
-    `${BASE}/Mesa/CardFichaTecnica.jsx`,
-    `${BASE}/Mesa/NovaVariacao.jsx`,
-    `${BASE}/Mesa/CardVariacoes.jsx`,
+    `${BASE}/Mesa/Etapas.jsx`,
+    `${BASE}/Mesa/EtapaProduto.jsx`,
+    `${BASE}/Mesa/EtapaDetalhes.jsx`,
+    `${BASE}/Mesa/FotosEVariacoes.jsx`,
     `${BASE}/Mesa/CartaoVariante.jsx`,
-    `${BASE}/Mesa/CardFotos.jsx`,
-    `${BASE}/Mesa/CardTitulos.jsx`,
-    `${BASE}/Mesa/CardPrecos.jsx`,
-    `${BASE}/Mesa/CardLogistica.jsx`,
-    `${BASE}/Mesa/CardDescricao.jsx`,
+    `${BASE}/Mesa/NovaVariacao.jsx`,
+    `${BASE}/Mesa/EtapaCondicoes.jsx`,
+    `${BASE}/Mesa/CampoPreco.jsx`,
+    `${BASE}/Mesa/AcoesDePublicacao.jsx`,
     `${BASE}/Mesa/TermosMaisBuscados.jsx`,
 ];
-// O Inspetor reenvia descrição por rota própria: mesmas regras, menos a de rota.
-const COM_ROTA = [`${BASE}/Mesa/Inspetor.jsx`];
-// Componentes de campo reaproveitados do piloto, normalizados nesta fase.
+// "Revisar e publicar" reenvia a descrição por rota própria: mesmas regras, menos a de rota.
+const COM_ROTA = [`${BASE}/Mesa/Publicar.jsx`];
+// Componentes de campo reaproveitados do piloto, normalizados.
 const NORMALIZADOS = [
     `${BASE}/CampoAtributo.jsx`,
     `${BASE}/FotosPorGrupo.jsx`,
@@ -62,7 +57,7 @@ for (const caminho of [...CARDS, ...COM_ROTA, ...NORMALIZADOS]) {
 for (const caminho of [...CARDS, ...COM_ROTA]) {
     const fonte = lerSemComentarios(caminho);
 
-    test(`${caminho} — acento reservado: nenhum bg-ecf-yellow sólido no card`, () => {
+    test(`${caminho} — acento reservado: nenhum bg-ecf-yellow sólido`, () => {
         assert.doesNotMatch(fonte, /bg-ecf-yellow(?![/\w-])/);
     });
 
@@ -79,248 +74,230 @@ for (const caminho of CARDS) {
 }
 
 test('botoes.jsx é o único lugar do gradiente amarelo do primário', () => {
-    const comGradiente = [...CARDS, ...COM_ROTA, `${BASE}/Mesa/BarraDoEditor.jsx`, `${BASE}/Mesa/BotaoAnunciarPorIa.jsx`, `${BASE}/Mesa/SeletorDeProdutos.jsx`, 'resources/js/Pages/Mlb/Publicador/Editor.jsx']
+    const comGradiente = [...CARDS, ...COM_ROTA, `${BASE}/Mesa/BarraDoEditor.jsx`, `${BASE}/Mesa/BotaoAnunciarPorIa.jsx`, `${BASE}/Mesa/SeletorDeProdutos.jsx`, PAGINA]
         .filter((c) => /from-\[#FFE600\]/.test(lerSemComentarios(c)));
     assert.deepEqual(comGradiente, [`${BASE}/Mesa/botoes.jsx`]);
     assert.equal((lerSemComentarios(`${BASE}/Mesa/botoes.jsx`).match(/from-\[#FFE600\]/g) ?? []).length, 1);
 });
 
-// ─── apoio.js: fonte única das verificações e dos itens da árvore ───
-
-test('apoio.js — fonte única de SECOES (8 chaves, em ordem), secaoDoProblema, ITENS e itemDoProblema', () => {
-    const fonte = lerSemComentarios(`${BASE}/apoio.js`);
-    for (const nome of ['SECOES', 'ITENS', 'secaoDoProblema', 'itemDoProblema', 'problemasDaVariante', 'problemasDoItem', 'estadoDasSecoes', 'estadoDosItens', 'itemValido', 'sequenciaDeItens', 'proximoItem', 'primeiroItemPendente']) {
-        assert.match(fonte, new RegExp(`export const ${nome}\\b`), nome);
+test('Sem contador de estrutura em lugar nenhum: nada de "Faltam N", "Completo", "N/8", árvore ou inspetor (pedido do cliente, 04/10)', () => {
+    for (const c of [...CARDS, ...COM_ROTA, PAGINA, `${BASE}/Mesa/BarraDoEditor.jsx`, `${BASE}/Mesa/SeletorDeProdutos.jsx`]) {
+        const f = lerSemComentarios(c);
+        assert.doesNotMatch(f, /Faltam \$\{|'Falta 1'|>Completo<|Estrutura do anúncio|\{prontas\}|contarItensProntos|estadoDosItens/, c);
+        assert.doesNotMatch(f, /from '\.\/(Arvore|Inspetor|ItemDoCentro)'|Mesa\/(Arvore|Inspetor|ItemDoCentro)/, c);
+        assert.doesNotMatch(f, /\buppercase\b/, `${c} — rótulo em caixa-alta voltou`);
     }
+});
+
+// ─── apoio.js: as verificações do servidor e as 3 etapas ───
+
+test('apoio.js — SECOES (8 chaves, em ordem) e secaoDoProblema seguem a fonte única do hook', () => {
     assert.deepEqual(SECOES.map((s) => s.chave), ['categoria', 'caracteristicas', 'variacoes', 'fotos', 'variantes', 'tipos', 'envio', 'descricao']);
-});
-
-test('apoio.js — os 8 itens da árvore (Conceito E), em ordem; problema de variação/foto vai para a variação, de preço para "Preços e taxas"', () => {
-    assert.deepEqual(ITENS.map((i) => i.chave), ['produto', 'ficha', 'variacoes', 'fotos', 'titulos', 'precos', 'logistica', 'descricao']);
-    assert.deepEqual(ITENS.map((i) => i.titulo), ['Produto e categoria', 'Ficha técnica', 'Variações', 'Fotos', 'Títulos (Clássico, Premium)', 'Preços e taxas', 'Envio e garantia', 'Descrição']);
-    const variantes = [{ chave: 'COLOR=id:1', valores: { COLOR: {} } }, { chave: 'COLOR=id:2', valores: { COLOR: {} } }];
-    const grupoDe = (v) => v.chave;
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E5', variante: 'COLOR=id:2', campo: 'sku' } }, { variantes, grupoDe }), 'variacoes/COLOR=id:2');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E6', grupo: 'COLOR=id:1' } }, { variantes, grupoDe }), 'variacoes/COLOR=id:1');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E6', grupo: 'GENERAL' } }, { variantes, grupoDe }), 'fotos');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E10', campo: 'preco', variante: 'x' } }, { variantes, grupoDe }), 'precos');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E7' } }), 'titulos');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E3', atributo: 'BRAND' } }), 'ficha');
-    assert.equal(itemDoProblema({ alvo: { etapa: 'E0' } }), null);
-    // O item "Variações" fica só com o que não aponta para uma variação; "Fotos", só com a galeria geral.
-    const problemas = [
-        { severidade: 'BLOCKER', alvo: { etapa: 'E5', variante: 'COLOR=id:2', campo: 'sku' } },
-        { severidade: 'BLOCKER', alvo: { etapa: 'E6', grupo: 'COLOR=id:1' } },
-        { severidade: 'BLOCKER', alvo: { etapa: 'E6', grupo: 'GENERAL' } },
-        { severidade: 'BLOCKER', alvo: { etapa: 'E4' } },
-    ];
-    assert.equal(problemasDoItem('variacoes', problemas).length, 1);
-    assert.equal(problemasDoItem('fotos', problemas).length, 1);
-    assert.equal(problemasDaVariante(problemas, variantes[0], 'COLOR=id:1').length, 1);
-    assert.equal(problemasDaVariante(problemas, variantes[1], 'COLOR=id:2').length, 1);
-});
-
-test('estadoDosItens soma os bloqueios das variações em "Variações"; itemValido, sequência, próximo e primeiro pendente', () => {
-    const variantes = [{ chave: 'a', ativa: true, orfa: false, valores: { COLOR: {} } }, { chave: 'b', ativa: true, orfa: false, valores: { COLOR: {} } }];
-    const grupoDe = (v) => v.chave;
-    const problemas = [{ severidade: 'BLOCKER', alvo: { etapa: 'E6', grupo: 'b' } }, { severidade: 'WARNING', alvo: { etapa: 'E7' } }];
-    const estados = estadoDosItens(problemas, {}, { variantes, grupoDe });
-    assert.deepEqual(estados.variacoes, { faltam: 1, completo: false });
-    assert.deepEqual(estados.titulos, { faltam: 0, completo: true });
-    assert.equal(contarItensProntos(estados), 7);
-    // Sem schema só o produto pode estar pronto.
-    assert.equal(contarItensProntos(estadoDosItens([], null)), 1);
+    assert.equal(secaoDoProblema({ alvo: { etapa: 'E10', campo: 'preco' } }), 'tipos');
+    assert.equal(secaoDoProblema({ alvo: { etapa: 'E10', campo: 'garantia' } }), 'envio');
+    assert.equal(estadoDasSecoes([], null).fotos.faltam, 1);
     assert.equal(estadoDasSecoes([], null).categoria.completo, true);
-
-    assert.equal(itemValido('ficha/obrigatorios'), 'ficha/obrigatorios');
-    assert.equal(itemValido('ficha/qualquer'), 'ficha');
-    assert.equal(itemValido('variacoes/nova'), 'variacoes/nova');
-    assert.equal(itemValido('variacoes/a', { variantes }), 'variacoes/a');
-    assert.equal(itemValido('variacoes/sumiu', { variantes }), 'variacoes');
-    assert.equal(itemValido('nada'), null);
-
-    assert.deepEqual(sequenciaDeItens(variantes), ['produto', 'ficha', 'variacoes', 'variacoes/a', 'variacoes/b', 'fotos', 'titulos', 'precos', 'logistica', 'descricao']);
-    assert.equal(proximoItem('variacoes/b', variantes), 'fotos');
-    assert.equal(proximoItem('ficha/outras', variantes), 'variacoes');
-    assert.equal(proximoItem('variacoes/nova', variantes), 'variacoes/a');
-    assert.equal(proximoItem('descricao', variantes), null);
-
-    assert.equal(primeiroItemPendente(problemas, {}, { variantes, grupoDe }), 'variacoes/b');
-    assert.equal(primeiroItemPendente([], {}, { variantes, grupoDe }), null);
-    assert.equal(primeiroItemPendente([], null), 'produto');
 });
 
-// ─── Árvore, centro e Inspetor ───
-
-test('Arvore — 8 itens pela fonte única, subitens da ficha e das variações, ponto de status, "+ nova variação", progresso das verificações, seletor nativo e setas', () => {
-    const f = lerSemComentarios(`${BASE}/Mesa/Arvore.jsx`);
-    assert.match(f, /aria-label="Estrutura do anúncio"/);
-    assert.match(f, /ITENS\.map/);
-    assert.match(f, /aria-current=\{selecionado === item\.chave \? 'location' : undefined\}/);
-    assert.match(f, /data-item-arvore=\{item\.chave\}/);
-    assert.match(f, /<PontoDeStatus faltam=/);
-    assert.match(f, /chave="ficha\/obrigatorios"/);
-    assert.match(f, /chave="ficha\/outras"/);
-    assert.match(f, /Outras características/);
-    assert.doesNotMatch(f, /opcion/i);
-    assert.match(f, /itemDaVariante\(v\.chave\)/);
-    assert.match(f, /corDaVariante\(v, eixos\)/);
-    assert.match(f, /ITEM_NOVA_VARIACAO/);
-    assert.match(f, /nova variação/);
-    assert.match(f, /Verificações do Mercado Livre/);
-    assert.match(f, /role="progressbar"/);
-    assert.match(f, /data-arvore-seletor/);
-    assert.match(f, /ArrowDown/);
-    assert.match(f, /focus-visible:ring-2/);
+test('apoio.js — as 3 etapas, em ordem, e a navegação entre elas', () => {
+    assert.deepEqual(ETAPAS.map((e) => `${e.chave}:${e.titulo}`), ['produto:Produto', 'detalhes:Detalhes', 'condicoes:Condições de venda']);
+    assert.equal(etapaValida('detalhes'), 'detalhes');
+    assert.equal(etapaValida('ficha'), null);
+    assert.equal(etapaValida(null), null);
+    assert.equal(proximaEtapa('produto'), 'detalhes');
+    assert.equal(proximaEtapa('condicoes'), null);
+    assert.equal(etapaAnterior('produto'), null);
+    assert.equal(etapaAnterior('condicoes'), 'detalhes');
 });
 
-test('ItemDoCentro — trilha, título 24px focável com a pílula, ações do item, pendências e "Próximo item" secundário', () => {
-    const f = lerSemComentarios(`${BASE}/Mesa/ItemDoCentro.jsx`);
-    assert.match(f, /data-trilha/);
-    assert.match(f, /tabIndex=\{-1\}[^>]*font-display text-\[24px\]/);
-    assert.match(f, /data-pilula-pendencia=\{faltam\}/);
-    assert.match(f, /data-acoes-do-item/);
-    assert.match(f, /<PendenciasDaSecao problemas=\{problemas\} \/>/);
-    assert.match(f, /Próximo item: \{proximo\.titulo\}/);
-    assert.doesNotMatch(f, /primario|Continuar|Voltar/);
+test('etapaDoProblema — cada pendência do servidor cai na etapa onde se resolve', () => {
+    const e = (alvo) => etapaDoProblema({ alvo });
+    assert.equal(e({ etapa: 'E2' }), 'produto');
+    assert.equal(e({ etapa: 'E3', campo: 'condicao' }), 'produto');
+    assert.equal(e({ etapa: 'E7', alvo: 'gold_pro' }), 'produto');
+    assert.equal(e({ etapa: 'E3', atributo: 'BRAND' }), 'detalhes');
+    assert.equal(e({ etapa: 'E8', atributo: 'MODEL' }), 'detalhes');
+    assert.equal(e({ etapa: 'E4', atributo: 'COLOR' }), 'detalhes');
+    assert.equal(e({ etapa: 'E5', variante: 'COLOR=id:1', campo: 'sku' }), 'detalhes');
+    assert.equal(e({ grupo: 'COLOR=id:1' }), 'detalhes');
+    assert.equal(e({ etapa: 'E6', imagem: '7' }), 'detalhes');
+    assert.equal(e({ etapa: 'E9', campo: 'descricao' }), 'detalhes');
+    assert.equal(e({ etapa: 'E10', alvo: 'gold_special', variante: 'x', campo: 'preco' }), 'condicoes');
+    assert.equal(e({ etapa: 'E10', campo: 'garantia' }), 'condicoes');
+    assert.equal(e({ etapa: 'E10', atributo: 'SELLER_PACKAGE_WEIGHT' }), 'condicoes');
+    assert.equal(e({ etapa: 'E0' }), 'condicoes');
+    assert.equal(e({}), 'condicoes');
 });
 
-test('Inspetor — prévia só com dados reais, situação, avisos com "ir para", "Quanto eu recebo?" com m.simular e um só amarelo (Conferir até o ML aprovar, Publicar depois)', () => {
-    const f = lerSemComentarios(`${BASE}/Mesa/Inspetor.jsx`);
-    // Nada inventado da referência — só o TEXTO à vista (sem `/i`: senão `w-full` casa "FULL").
-    assert.doesNotMatch(f, /vendidos|MAIS VENDIDO|Mais vendido|FULL ·|Chegará|RGB 255|Cajamar|Oficial MLB|Margem de contribuição|sem juros|Simulador Live|Salvar esta/);
-    assert.match(f, /data-previa-titulo/);
-    assert.match(f, /data-previa-preco/);
-    assert.match(f, /data-previa-capa=/);
-    assert.match(f, /Sem título/);
-    assert.match(f, /Sem preço/);
-    assert.match(f, /data-situacao=\{situacao\.tom\}/);
-    assert.match(f, /data-ir-para=\{item\}/);
-    assert.match(f, /itemDoProblema\(p, \{ variantes, grupoDe \}\)/);
-    assert.match(f, /m\.simular\(\)/);
-    assert.match(f, /Você recebe/);
-    assert.match(f, /Tarifa do Mercado Livre/);
-    assert.match(f, /const publicarPrimario = publicarEhOProximoPasso\(pub\)/);
-    assert.match(f, /<BotaoConferir pub=\{pub\} primario=\{! publicarPrimario\}/);
-    assert.match(f, /<BotaoPublicar pub=\{pub\} primario=\{publicarPrimario\}/);
-    assert.match(f, /data-motivo-publicar/);
-    assert.match(f, /AvisoContaTravada variante="nota"/);
+test('bloqueiosDaEtapa — só BLOCKER da etapa; sem categoria, o aviso local vem primeiro', () => {
+    const problemas = [
+        { regra: 'V-TIT-01', severidade: 'BLOCKER', mensagem: 'Escreva o título do Clássico.', alvo: { etapa: 'E7', alvo: 'gold_special' } },
+        { regra: 'V-ATT-10', severidade: 'WARNING', mensagem: 'Preencha «Cor».', alvo: { etapa: 'E8', atributo: 'COLOR' } },
+        { regra: 'V-ATT-01', severidade: 'BLOCKER', mensagem: 'Preencha «Marca».', alvo: { etapa: 'E3', atributo: 'BRAND' } },
+    ];
+    assert.deepEqual(bloqueiosDaEtapa('produto', problemas).map((p) => p.regra), ['V-TIT-01']);
+    assert.deepEqual(bloqueiosDaEtapa('detalhes', problemas).map((p) => p.regra), ['V-ATT-01']);
+    assert.deepEqual(bloqueiosDaEtapa('condicoes', problemas), []);
+    const semCategoria = bloqueiosDaEtapa('produto', [], { temCategoria: false });
+    assert.equal(semCategoria[0].mensagem, 'Escolha a categoria do produto.');
+    assert.equal(bloqueiosDaEtapa('detalhes', [], { temCategoria: false })[0].mensagem, 'Escolha a categoria na etapa Produto.');
 });
 
-test('comum.jsx — PendenciasDaSecao (até 3 inteiras; acima, a primeira e "e mais N"), PontoDeStatus e Tile; nada de card recolhível', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
-    assert.match(fonte, /PENDENCIAS_A_VISTA = 3/);
-    assert.match(fonte, /export function PendenciasDaSecao/);
-    assert.match(fonte, /export function PontoDeStatus/);
-    assert.match(fonte, /<details className="group">/);
-    assert.match(fonte, /e mais \{resto === 1/);
-    assert.match(fonte, /<Problemas problemas=\{problemas\} \/>/);
-    assert.doesNotMatch(fonte, /PainelDaEtapa|CardMesa|aria-expanded/);
+// ─── Campos com cara de campo ───
+
+test('comum.jsx — campo de verdade: caixa de 44px com borda visível, rótulo normal em cima, erro só depois do "Continuar"', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
+    assert.match(f, /export const CAMPO = 'h-11 w-full rounded-lg border border-white\/20 bg-black\/40 px-3 text-\[15px\]/);
+    assert.match(f, /export const INVALIDO = 'border-red-400/);
+    assert.match(f, /<label htmlFor=\{htmlFor\} className="text-\[13px\] font-bold text-white\/90">/);
+    // Antes do "Continuar", nenhum campo fica vermelho.
+    assert.match(f, /if \(! mostrar\) return null;/);
+    assert.match(f, /return vazio \? 'Preencha este campo\.' : null;/);
+    // "Preencha…" do servidor não vale para campo já preenchido na tela (o servidor ainda não viu).
+    assert.match(f, /const PEDE_VALOR = \/\^\(Preencha\|Informe\|Escreva\|Escolha\|Adicione\)\\b\//);
+    assert.match(f, /! preenchido \|\| ! PEDE_VALOR\.test/);
+    // Os tiles e chips do desenho anterior não voltam.
+    assert.doesNotMatch(f, /export function (Tile|ChipSecao|PontoDeStatus|PendenciasDaSecao)\b|export const ROTULO\b/);
 });
 
-// ─── Cards ───
-
-test('CardProduto — o selo de origem deriva de produto.oferta_id (D27), não de origem', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardProduto.jsx`);
-    assert.match(fonte, /produto\??\.oferta_id/);
-    assert.match(fonte, /Item sincronizado do Portal/);
-    assert.match(fonte, /Cadastrado no Publicador/);
-    assert.match(fonte, /m\.buscarCategorias/);
-    assert.match(fonte, /m\.escolherCategoria/);
+test('CampoAtributo — variante "campo": a caixa do formulário, vermelha quando inválida; o "obrigatório"/"dá exposição" saiu do rótulo', () => {
+    const f = lerSemComentarios(`${BASE}/CampoAtributo.jsx`);
+    assert.match(f, /const grande = variante === 'campo'/);
+    assert.match(f, /cn\(CAMPO, invalido && INVALIDO\)/);
+    assert.match(f, /'aria-invalid': invalido \|\| undefined/);
+    assert.doesNotMatch(f, /variante === 'tile'|dá exposição|>obrigatório</);
+    assert.match(f, /revisar/);
 });
 
-test('Fotos dentro das variações (03/10) — regra lê schema.limites (nada fixo), grupos do servidor; o item "Fotos" é a galeria geral', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.doesNotMatch(fonte, /1200/);
-    assert.match(fonte, /limites/);
-    assert.match(fonte, /grupos_imagem/);
-    assert.match(fonte, /publicacao_liberada/);
-    const fotos = lerSemComentarios(`${BASE}/Mesa/CardFotos.jsx`);
-    assert.match(fotos, /<BlocoDeFotos grupo=\{GERAL\}/);
-    assert.match(fotos, /data-opcao="incluir-geral"/);
-    assert.match(fotos, /AvisosDasFotos/);
+test('Etapas — só os 3 nomes (sem contador nem check), etapa atual com aria-current="step", navegação livre', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/Etapas.jsx`);
+    assert.match(f, /ETAPAS\.map/);
+    assert.match(f, /aria-current=\{ativa \? 'step' : undefined\}/);
+    assert.match(f, /onClick=\{\(\) => onIr\(e\.chave\)\}/);
+    assert.doesNotMatch(f, /CheckCircle|Check\b|faltam|problemas/);
 });
 
-test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira nota neutra (D26)', () => {
+// ─── Etapa 1 — Produto ───
+
+test('EtapaProduto — selo de origem por oferta_id (D27); categoria por m.buscarCategorias/m.escolherCategoria; condição em rádio', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaProduto.jsx`);
+    assert.match(f, /if \(produto\.oferta_id\)/);
+    assert.match(f, /Sincronizado do Portal/);
+    assert.match(f, /Cadastrado no Publicador/);
+    assert.match(f, /m\.buscarCategorias/);
+    assert.match(f, /m\.escolherCategoria/);
+    assert.match(f, /type="radio" name="condicao"/);
+    assert.match(f, /useErroDoCampo\(\(a\) => a\.etapa === 'E2', \{ vazio: ! rascunho\.categoria_id \}\)/);
+});
+
+test('EtapaProduto — título por tipo LIGADO: máximo de schema.limites (fallback 60), vermelho acima dele, IA, "Copiar do", dica do Portal só com oferta_id', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaProduto.jsx`);
+    assert.match(f, /schema\?\.limites\?\.max_title_length \?\? MAX_TITULO_PADRAO/);
+    assert.match(f, /const MAX_TITULO_PADRAO = 60/);
+    assert.match(f, /tamanho > maxTitulo/);
+    assert.match(f, /ligados\.map\(\(a\) => \(\s*<CampoTitulo /);
+    assert.match(f, /x\.etapa === 'E7' && x\.alvo === lt/);
+    assert.match(f, /m\.copiarTituloDo/);
+    assert.match(f, /a\.titulo_efetivo && m\.estado\.produto\?\.oferta_id/);
+    assert.doesNotMatch(f, /data-preco/);
+});
+
+// ─── Etapa 2 — Detalhes ───
+
+test('FotosEVariacoes — regra da foto lê schema.limites (nada fixo), grupos do servidor, galeria geral opcional e os efeitos num hook', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.doesNotMatch(f, /1200/);
+    assert.match(f, /min_picture_width/);
+    assert.match(f, /grupos_imagem/);
+    assert.match(f, /<BlocoDeFotos grupo=\{GERAL\}/);
+    assert.match(f, /data-opcao="incluir-geral"/);
+    assert.match(f, /AvisosDasFotos/);
+    assert.match(f, /export function useEfeitosDasVariacoes\(m\)/);
+    assert.match(f, /export const acaoDeTirar/);
+    assert.match(f, /<CartaoVariante key=\{v\.chave\}/);
+    assert.match(f, /<NovaVariacao m=\{m\}/);
+    assert.match(f, /m\.salvarEixos/);
+});
+
+test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira nota neutra (D26); vazio só fica vermelho com `erro`', () => {
     const fonte = lerSemComentarios(`${BASE}/FotosPorGrupo.jsx`);
     assert.match(fonte, /envioAoMl = true/);
     assert.match(fonte, /sobem para o Mercado Livre quando a publicação for liberada para esta conta/);
+    assert.match(fonte, /erro \? 'border-red-400/);
+    assert.doesNotMatch(fonte, /border-amber-400\/50|\(obrigatório\)/);
 });
 
-test('CartaoVariante — fotos, estoque/SKU/GTIN de GradeVariantes ("gerar outro"), preço pelo CampoPreco compartilhado; sem título por variante', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
-    assert.match(fonte, /from '\.\.\/GradeVariantes'/);
-    assert.match(fonte, /CampoEstoque/);
-    assert.match(fonte, /CampoSku/);
-    assert.match(fonte, /CampoGtin[^>]*comRotulo/);
-    assert.doesNotMatch(fonte, /estoque_depositos/);
-    assert.match(fonte, /<BlocoDeFotos grupo=\{grupo\}/);
-    assert.match(fonte, /import CampoPreco from '\.\/CampoPreco'/);
-    assert.match(fonte, /precos_efetivos/);
-    assert.match(fonte, /produto\?\.oferta_id/);
-    assert.match(fonte, /eanValido\(gtin\)/);
-    assert.doesNotMatch(fonte, /data-titulo/);
-    assert.doesNotMatch(fonte, /titulo:/);
+test('CartaoVariante — fotos, estoque/SKU/código de GradeVariantes na caixa grande, extras da variação; sem preço nem título (moram em outras etapas)', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(f, /from '\.\.\/GradeVariantes'/);
+    assert.match(f, /<CampoEstoque grande /);
+    assert.match(f, /<CampoSku grande /);
+    assert.match(f, /<CampoGtin grande comRotulo /);
+    assert.match(f, /existentes=\{gtinsEmUso\(m\.variantes\)\}/);
+    assert.doesNotMatch(f, /estoque_depositos/);
+    assert.match(f, /<BlocoDeFotos grupo=\{grupo\}/);
+    assert.match(f, /x\.campo === 'estoque'/);
+    assert.match(f, /x\.campo === 'sku'/);
+    assert.match(f, /eanValido\(gtin\)/);
+    assert.doesNotMatch(f, /CampoPreco|data-titulo|titulo:/);
 });
 
-test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin por nome; CampoGtin aceita "gerar outro" com rótulo', () => {
+test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin; "gerar outro" com rótulo; `grande` usa a caixa do formulário', () => {
     const fonte = lerSemComentarios(`${BASE}/GradeVariantes.jsx`);
     assert.match(fonte, /export function CampoEstoque\b/);
     assert.match(fonte, /export function CampoSku\b/);
     assert.match(fonte, /export function CampoGtin\b/);
     assert.match(fonte, /comRotulo && <span>gerar outro<\/span>/);
+    assert.match(fonte, /const caixa = \(grande, invalido\) => \(grande \? cn\(CAMPO, invalido && INVALIDO\) : pequeno\)/);
 });
 
-test('CampoPreco — MOSTRA o da Precificação do Portal (docx §4) sem gravá-lo; o mesmo campo na variação e em "Preços e taxas"', () => {
+test('EtapaDetalhes — ficha inteira aberta: "Características principais" e "Mais características", sem "opcional"; descrição em texto simples', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
+    assert.match(f, /Características principais/);
+    assert.match(f, /Mais características/);
+    assert.doesNotMatch(f, /opcion|aria-expanded|<details/i);
+    assert.match(f, /a\.obrigatoriedade === 'REQUIRED' && valorVazio\(valor\)/);
+    assert.match(f, /<FotosEVariacoes m=\{m\} \/>/);
+    assert.match(f, /<textarea id="campo-descricao"/);
+    assert.doesNotMatch(f, /markdown|regenerar/i);
+});
+
+// ─── Etapa 3 — Condições de venda ───
+
+test('EtapaCondicoes — tipo de anúncio e preço juntos; preço por CampoPreco (do Portal só mostrado); efeitos do envio num hook', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);
+    assert.match(f, /Vender como/);
+    assert.match(f, /disabled=\{m\.disabled \|\| !! noAr\}/);
+    assert.match(f, /import CampoPreco from '\.\/CampoPreco'/);
+    assert.match(f, /precos_efetivos/);
+    assert.match(f, /x\.campo === 'preco' && x\.variante === v\.chave && x\.alvo === lt/);
+    assert.match(f, /m\.simular\(\)/);
+    assert.match(f, /modos_envio/);
+    assert.match(f, /a\.secao === 'EMBALAGEM'/);
+    assert.match(f, /SELLER_PACKAGE_WEIGHT/);
+    assert.match(f, /export function useEfeitosDoEnvio\(m\)/);
+    assert.doesNotMatch(f, /Coleta elegível/);
+});
+
+test('CampoPreco — MOSTRA o da Precificação do Portal (docx §4) sem gravá-lo', () => {
     const fonte = lerSemComentarios(`${BASE}/Mesa/CampoPreco.jsx`);
-    // O efetivo vira o VALOR do campo (não placeholder) com o selo "do Portal".
     assert.match(fonte, /paraTexto\(temValor \? valor : efetivo\)/);
     assert.match(fonte, /do Portal/);
     assert.doesNotMatch(fonte, /placeholder=\{efetivo/);
-    // Igual ao do Portal ou apagado: continua seguindo a Precificação (não congela, `16` §1.6).
     assert.match(fonte, /n === Number\(efetivo\)/);
     assert.match(fonte, /onMudar\(null\)/);
     assert.match(fonte, /A Precificação do Portal não tem preço para esta oferta/);
-    const precos = lerSemComentarios(`${BASE}/Mesa/CardPrecos.jsx`);
-    assert.match(precos, /import CampoPreco from '\.\/CampoPreco'/);
-    assert.match(precos, /precos_efetivos/);
-    assert.match(precos, /produto\?\.oferta_id/);
-    assert.match(precos, /data-tabela-precos/);
-    assert.match(precos, /m\.variantes\.filter\(\(v\) => ! v\.orfa\)/);
+    assert.match(fonte, /invalido && INVALIDO/);
 });
 
-test('CardDescricao — texto simples (RN-72): sem Markdown, prévia ou regenerar; caixa com largura de leitura', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardDescricao.jsx`);
-    assert.doesNotMatch(fonte, /markdown|prévia|regenerar/i);
-    assert.match(fonte, /<textarea/);
-    assert.match(fonte, /minmax\(0,860px\)/);
-});
-
-test('CardTitulos — máximo do título vem de schema.limites (fallback 60); vermelho só acima dele; a dica "vem da aba Anúncios" só com oferta_id', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardTitulos.jsx`);
-    assert.match(fonte, /max_title_length/);
-    assert.match(fonte, /tamanho > maxTitulo/);
-    assert.match(fonte, /m\.copiarTituloDo/);
-    assert.match(fonte, /produto\?\.oferta_id/);
-    assert.match(fonte, /vem da aba Anúncios/);
-    assert.doesNotMatch(fonte, /data-preco/);
-});
-
-test('CardLogistica — Seletor nativo, modos de envio do servidor, medidas da seção EMBALAGEM e os efeitos num hook', () => {
-    const fonte = lerSemComentarios(`${BASE}/Mesa/CardLogistica.jsx`);
-    assert.match(fonte, /Seletor/);
-    assert.match(fonte, /modos_envio/);
-    assert.match(fonte, /EMBALAGEM/);
-    assert.match(fonte, /SELLER_PACKAGE_WEIGHT/);
-    assert.match(fonte, /export function useEfeitosDoEnvio\(m\)/);
-    assert.doesNotMatch(fonte, /Coleta elegível/);
-});
-
-test('CardVariacoes — eixos por m.salvarEixos, lista com "Abrir" cada variação, "+ nova" abre o fluxo no centro e os efeitos (EAN, fotos por variação) num hook', () => {
-    const f = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.match(f, /m\.salvarEixos/);
-    assert.match(f, /export function useEfeitosDasVariacoes\(m\)/);
-    assert.match(f, /export const acaoDeTirar/);
-    assert.match(f, /data-abrir-variacao=\{v\.chave\}/);
-    assert.match(f, /onSelecionar\('variacoes\/nova'\)/);
+test('Publicar — situação, o que falta por etapa com "Corrigir em…", Conferir/Publicar (um só amarelo) e a prévia só com dados reais', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/Publicar.jsx`);
+    assert.match(f, /export function situacaoDaConferencia\(pub\)/);
+    assert.match(f, /onClick=\{\(\) => onIrPara\(e\.chave\)\}/);
+    assert.match(f, /<BotaoConferir pub=\{pub\} primario=\{! publicarPrimario\}/);
+    assert.match(f, /<BotaoPublicar pub=\{pub\} primario=\{publicarPrimario\}/);
+    assert.match(f, /AvisoContaTravada/);
+    assert.match(f, /mlb\.anuncios\.publicador\.descricao/);
+    assert.match(f, /data-previa-titulo/);
+    assert.doesNotMatch(f, /vendidos|FULL|parcelas|12x/);
 });

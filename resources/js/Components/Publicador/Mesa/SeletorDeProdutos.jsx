@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 // No Conceito E a barra é a trilha "Publicador MLB / empresa / produto"; o
 // produto é um botão que abre a lista da empresa (busca por SKU/nome, estado de
 // cada um, "+ Produto"). Troca de produto sem recarregar a página inteira (a
-// página faz o router.get). O ativo mostra quantos itens da árvore estão prontos.
+// página faz o router.get). Sem contador de progresso (pedido do cliente, 04/10/2026).
 
 const NOME_MAX = 40;
 const encurtar = (nome) => {
@@ -19,7 +19,7 @@ const encurtar = (nome) => {
     return t.length > NOME_MAX ? `${t.slice(0, NOME_MAX - 1)}…` : t;
 };
 
-export default function SeletorDeProdutos({ produtos = [], produtoId, produtoNome, prontas = 0, total = 0, conta, onTrocar }) {
+export default function SeletorDeProdutos({ produtos = [], produtoId, produtoNome, conta, onTrocar }) {
     const [aberto, setAberto] = useState(false);
     const [modal, setModal] = useState(false);
     const [busca, setBusca] = useState('');
@@ -57,14 +57,13 @@ export default function SeletorDeProdutos({ produtos = [], produtoId, produtoNom
                     <button type="button" title={`${produtoNome} — trocar de produto`} data-produto-em-edicao data-seletor-produtos
                         className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
                         <span className="min-w-0 truncate text-[13px] font-bold text-white">{encurtar(produtoNome)}</span>
-                        <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-bold text-white/70 tabular-nums" title={`${prontas} de ${total} itens prontos`}>{prontas}/{total}</span>
                         <ChevronDown size={14} className={cn('shrink-0 text-white/55 transition-transform', aberto && 'rotate-180')} aria-hidden="true" />
                     </button>
                 </Popover.Trigger>
                 <Popover.Portal>
                     <Popover.Content align="start" sideOffset={8} className="z-50 w-[360px] rounded-xl border border-white/[0.08] bg-ecf-card p-3" data-lista-produtos>
                         <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/55">{produtos.length === 1 ? '1 produto' : `${produtos.length} produtos`}</p>
+                            <p className="text-[13px] font-bold text-white/70">{produtos.length === 1 ? '1 produto' : `${produtos.length} produtos`}</p>
                             <button type="button" onClick={() => { setAberto(false); setModal(true); }}
                                 className="inline-flex items-center gap-1 rounded text-[13px] text-white/70 hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-acao="novo-produto">
                                 <Plus size={14} aria-hidden="true" /> Produto

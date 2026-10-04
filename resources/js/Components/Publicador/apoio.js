@@ -40,12 +40,13 @@ export const valorVazio = (v) => ! v || ((v.value_id ?? '') === '' && String(v.v
 /** Problemas que apontam para um atributo (do produto ou de uma variante). */
 export const problemasDoAtributo = (problemas, id, variante = null) => (problemas ?? []).filter((p) => p.alvo?.atributo === id && (variante === null || ! p.alvo?.variante || p.alvo.variante === variante));
 
-// ─── As 8 verificações e os itens da árvore do anúncio ──────────────────────
+// ─── As 8 verificações e as 3 etapas do anúncio ─────────────────────────────
 //
-// Fonte única: a mesa de anúncio e o hook `usePublicador` importam daqui.
-// As VERIFICAÇÕES são do servidor (uma por grupo de regras); os ITENS são a
-// árvore da coluna esquerda (Conceito E, 03/10/2026): o que a pessoa escolhe
-// para editar no centro. Cada verificação se resolve em um ou mais itens.
+// Fonte única: o editor e o hook `usePublicador` importam daqui.
+// As VERIFICAÇÕES são do servidor (uma por grupo de regras). As ETAPAS são o
+// que a pessoa vê (04/10/2026): três, como no Mercado Livre — Produto,
+// Detalhes e Condições de venda. Cada pendência do servidor cai na etapa onde
+// se resolve; o "Continuar" só avança quando a etapa não tem bloqueio.
 export const SECOES = [
     { chave: 'categoria', titulo: 'Categoria', etapas: ['E2'] },
     { chave: 'caracteristicas', titulo: 'Características', etapas: ['E3', 'E8'] },
@@ -57,40 +58,7 @@ export const SECOES = [
     { chave: 'descricao', titulo: 'Descrição', etapas: ['E9'] },
 ];
 
-/**
- * Os itens de primeiro nível da árvore, na ordem. `secoes` = as verificações que o item
- * fecha; `filtro` separa a verificação `tipos` entre títulos (E7/tipo) e preços (campo preco).
- * Os problemas de FOTO e de VARIANTE que apontam para uma variação (`alvo.variante`/`alvo.grupo`)
- * aparecem no subitem da variação (ver `problemasDaVariante`), não no item pai.
- */
-export const ITENS = [
-    { chave: 'produto', titulo: 'Produto e categoria', curto: 'Produto', secoes: ['categoria'] },
-    { chave: 'ficha', titulo: 'Ficha técnica', curto: 'Ficha', secoes: ['caracteristicas'] },
-    // Sem `fotos`: a foto de uma variação chega ao subitem dela por `problemasDaVariante`; o que
-    // sobra da verificação de fotos (galeria geral, limite do anúncio) é do item "Fotos".
-    { chave: 'variacoes', titulo: 'Variações', curto: 'Variações', secoes: ['variacoes', 'variantes'] },
-    { chave: 'fotos', titulo: 'Fotos', curto: 'Fotos', secoes: ['fotos'] },
-    { chave: 'titulos', titulo: 'Títulos (Clássico, Premium)', curto: 'Títulos', secoes: ['tipos'], filtro: (p) => p.alvo?.campo !== 'preco' },
-    { chave: 'precos', titulo: 'Preços e taxas', curto: 'Preços', secoes: ['tipos'], filtro: (p) => p.alvo?.campo === 'preco' },
-    { chave: 'logistica', titulo: 'Envio e garantia', curto: 'Envio', secoes: ['envio'] },
-    { chave: 'descricao', titulo: 'Descrição', curto: 'Descrição', secoes: ['descricao'] },
-];
-
-export const ITEM_INICIAL = ITENS[0].chave;
-
-/** Separa `ficha/obrigatorios`, `variacoes/COLOR=id:1` em `{ raiz, sub }` (o sub pode ter qualquer caractere). */
-export const partesDoItem = (chave) => {
-    const s = String(chave ?? '');
-    const i = s.indexOf('/');
-
-    return i === -1 ? { raiz: s, sub: null } : { raiz: s.slice(0, i), sub: s.slice(i + 1) };
-};
-
-export const itemDaVariante = (chaveDaVariante) => `variacoes/${chaveDaVariante}`;
-export const ITEM_NOVA_VARIACAO = 'variacoes/nova';
-export const SUBITENS_FICHA = ['obrigatorios', 'outras'];
-
-/** Em que seção o problema se resolve; nulo = é da conta/conferência (vai para o inspetor). */
+/** Em que seção o problema se resolve; nulo = é da conta/conferência. */
 export const secaoDoProblema = (p) => {
     const e = p.alvo?.etapa;
     if (e === 'E10' && ['preco', 'tipo'].includes(p.alvo?.campo)) return 'tipos';
@@ -99,50 +67,7 @@ export const secaoDoProblema = (p) => {
 };
 
 /**
- * Em que item da árvore o problema se resolve. Problema que aponta para uma variação
- * (`alvo.variante`, ou `alvo.grupo` de fotos) vai para o subitem dela; `grupoDe(chave)` diz o
- * grupo de fotos de cada variação (vem de `fotosDaVariante`). Nulo = conta/conferência.
- */
-export const itemDoProblema = (p, { variantes = [], grupoDe = () => null } = {}) => {
-    const alvo = p.alvo ?? {};
-    if (alvo.variante && variantes.some((v) => v.chave === alvo.variante)) return itemDaVariante(alvo.variante);
-    if (alvo.grupo && alvo.grupo !== GERAL) {
-        const dona = variantes.find((v) => grupoDe(v) === alvo.grupo);
-        if (dona) return itemDaVariante(dona.chave);
-    }
-    const secao = secaoDoProblema(p);
-    if (secao === 'tipos') return alvo.campo === 'preco' ? 'precos' : 'titulos';
-
-    return ITENS.find((i) => i.secoes.includes(secao) && (! i.filtro || i.filtro(p)))?.chave ?? null;
-};
-
-/** O item que fecha a etapa `E…` da spec (para o "ir para" das pendências da conferência). */
-export const itemDaEtapaMl = (etapaMl) => {
-    const secao = SECOES.find((s) => s.etapas.includes(etapaMl))?.chave ?? null;
-    if (secao === 'tipos') return 'titulos';
-
-    return ITENS.find((i) => i.secoes.includes(secao))?.chave ?? null;
-};
-
-/** Os problemas que apontam para UMA variação: `alvo.variante` igual, ou `alvo.grupo` igual ao grupo de fotos dela. */
-export const problemasDaVariante = (problemas, v, grupo) => (problemas ?? []).filter((p) => p.alvo?.variante === v.chave || (grupo && grupo !== GERAL && p.alvo?.grupo === grupo));
-
-/**
- * Os problemas de um item de primeiro nível. `variacoes` fica só com o que NÃO aponta para
- * uma variação (os dela estão no subitem); `fotos` fica com os da galeria geral.
- */
-export const problemasDoItem = (chave, problemas) => {
-    const item = ITENS.find((i) => i.chave === chave);
-    if (! item) return [];
-    const lista = (problemas ?? []).filter((p) => item.secoes.includes(secaoDoProblema(p)) && (! item.filtro || item.filtro(p)));
-    if (chave === 'variacoes') return lista.filter((p) => ! p.alvo?.variante && ! (p.alvo?.grupo && p.alvo.grupo !== GERAL));
-    if (chave === 'fotos') return lista.filter((p) => ! p.alvo?.variante && (! p.alvo?.grupo || p.alvo.grupo === GERAL));
-
-    return lista;
-};
-
-/**
- * Estado de cada seção para o chip do card: `{ [chave]: { faltam, completo } }`.
+ * Estado de cada seção: `{ [chave]: { faltam, completo } }` (o hook conta as prontas por aqui).
  * Sem schema, toda seção além da categoria conta como incompleta (falta 1).
  */
 export const estadoDasSecoes = (problemas, schema) => Object.fromEntries(SECOES.map((s) => {
@@ -155,76 +80,42 @@ export const estadoDasSecoes = (problemas, schema) => Object.fromEntries(SECOES.
 /** Quantos bloqueios há numa lista de problemas. */
 export const contarBloqueios = (problemas) => (problemas ?? []).filter((p) => p.severidade === 'BLOCKER').length;
 
-/**
- * Estado de cada item de primeiro nível: `{ [chave]: { faltam, completo } }`. Sem schema, tudo
- * menos o produto conta como incompleto. Em `variacoes` entram também os bloqueios das variações.
- */
-export const estadoDosItens = (problemas, schema, { variantes = [], grupoDe = () => null } = {}) => Object.fromEntries(ITENS.map((i) => {
-    if (! schema && i.chave !== 'produto') return [i.chave, { faltam: 1, completo: false }];
-    let faltam = contarBloqueios(problemasDoItem(i.chave, problemas));
-    if (i.chave === 'variacoes') {
-        faltam += variantes.filter((v) => ! v.orfa && v.ativa).reduce((n, v) => n + contarBloqueios(problemasDaVariante(problemas, v, grupoDe(v))), 0);
-    }
+export const ETAPAS = [
+    { chave: 'produto', titulo: 'Produto' },
+    { chave: 'detalhes', titulo: 'Detalhes' },
+    { chave: 'condicoes', titulo: 'Condições de venda' },
+];
+export const ETAPA_INICIAL = ETAPAS[0].chave;
 
-    return [i.chave, { faltam, completo: faltam === 0 }];
-}));
-
-export const contarItensProntos = (estados) => ITENS.filter((i) => estados[i.chave]?.completo).length;
+export const etapaValida = (chave) => (ETAPAS.some((e) => e.chave === chave) ? chave : null);
+export const proximaEtapa = (chave) => ETAPAS[ETAPAS.findIndex((e) => e.chave === chave) + 1]?.chave ?? null;
+export const etapaAnterior = (chave) => ETAPAS[ETAPAS.findIndex((e) => e.chave === chave) - 1]?.chave ?? null;
+export const tituloDaEtapa = (chave) => ETAPAS.find((e) => e.chave === chave)?.titulo ?? chave;
 
 /**
- * A chave de um item vinda de fora (URL, link antigo). Subitem de ficha só os dois conhecidos;
- * subitem de variação só se a variação existir (quando a lista é dada); senão cai no pai. Nulo = inválido.
+ * Em que etapa o problema se resolve:
+ * - Produto: categoria (E2), condição (E3 campo `condicao`) e títulos (E7);
+ * - Detalhes: fotos (`alvo.grupo`/`alvo.imagem`, E6), variações (E4, E5), ficha técnica (E3, E8) e descrição (E9);
+ * - Condições de venda: preço, envio, garantia e embalagem (E10) e o que é da conta ou da conferência (E0, E11, E13, sem etapa).
  */
-export const itemValido = (chave, { variantes = null } = {}) => {
-    const { raiz, sub } = partesDoItem(chave);
-    if (! ITENS.some((i) => i.chave === raiz)) return null;
-    if (sub === null) return raiz;
-    if (raiz === 'ficha') return SUBITENS_FICHA.includes(sub) ? chave : raiz;
-    if (raiz === 'variacoes') {
-        if (sub === 'nova') return chave;
-        if (variantes === null) return chave;
+export const etapaDoProblema = (p) => {
+    const alvo = p.alvo ?? {};
+    const e = alvo.etapa;
+    if (alvo.grupo || alvo.imagem) return 'detalhes';
+    if (e === 'E2' || e === 'E7' || (e === 'E3' && alvo.campo === 'condicao')) return 'produto';
+    if (['E3', 'E4', 'E5', 'E6', 'E8', 'E9'].includes(e)) return 'detalhes';
 
-        return variantes.some((v) => v.chave === sub && ! v.orfa) ? chave : raiz;
-    }
-
-    return raiz;
+    return 'condicoes';
 };
 
 /**
- * A ordem de leitura do anúncio para o "Próximo item": itens de primeiro nível, com as
- * variações (ativas, não órfãs) logo depois de "Variações". Subitens da ficha e "nova" ficam fora.
+ * O que impede a etapa de avançar: os bloqueios do servidor que caem nela e, sem categoria,
+ * o aviso local (sem categoria o servidor não tem schema para validar nada).
  */
-export const sequenciaDeItens = (variantes = []) => ITENS.flatMap((i) => (
-    i.chave === 'variacoes'
-        ? ['variacoes', ...variantes.filter((v) => ! v.orfa).map((v) => itemDaVariante(v.chave))]
-        : [i.chave]
-));
+export const bloqueiosDaEtapa = (etapa, problemas, { temCategoria = true } = {}) => {
+    const doServidor = (problemas ?? []).filter((p) => p.severidade === 'BLOCKER' && etapaDoProblema(p) === etapa);
+    if (temCategoria) return doServidor;
+    const mensagem = etapa === 'produto' ? 'Escolha a categoria do produto.' : 'Escolha a categoria na etapa Produto.';
 
-/** O item seguinte na sequência (nulo no fim); subitem da ficha conta como a ficha. */
-export const proximoItem = (chave, variantes = []) => {
-    const seq = sequenciaDeItens(variantes);
-    const { raiz, sub } = partesDoItem(chave);
-    const atual = seq.indexOf(seq.includes(chave) ? chave : raiz);
-    if (sub === 'nova') return seq[seq.indexOf('variacoes') + 1] ?? null;
-
-    return seq[atual + 1] ?? null;
-};
-
-/**
- * O primeiro item com bloqueio, na ordem de leitura (o que abre sozinho ao entrar);
- * nulo quando está tudo completo. Sem schema é o produto (a categoria vem antes de tudo).
- */
-export const primeiroItemPendente = (problemas, schema, { variantes = [], grupoDe = () => null } = {}) => {
-    if (! schema) return 'produto';
-    for (const chave of sequenciaDeItens(variantes)) {
-        const { raiz, sub } = partesDoItem(chave);
-        if (raiz === 'variacoes' && sub) {
-            const v = variantes.find((x) => x.chave === sub);
-            if (v?.ativa && contarBloqueios(problemasDaVariante(problemas, v, grupoDe(v))) > 0) return chave;
-        } else if (contarBloqueios(problemasDoItem(chave, problemas)) > 0) {
-            return chave;
-        }
-    }
-
-    return null;
+    return [{ regra: 'LOCAL-CATEGORIA', severidade: 'BLOCKER', mensagem, alvo: { etapa: 'E2' } }, ...doServidor];
 };
