@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    UNIDADES_MEDIDA, UNIDADES_PESO, daUnidadeMl, digitoEan13, eanValido, eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, juntarTermo,
-    numeroDoAtributo, paraUnidadeMl, pedidoCompleto, termoNoTitulo, unidadeInicial, varianteDoPedido, variantesSemGtin,
+    UNIDADES_MEDIDA, UNIDADES_PESO, conferirPacote, daUnidadeMl, digitoEan13, eanValido, eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, juntarTermo,
+    medidaEmCm, nomeDaCor, numeroDoAtributo, paraUnidadeMl, pedidoCompleto, pesoEmG, termoNoTitulo, tomDaCor, unidadeInicial, varianteDoPedido, variantesSemGtin,
 } from '../../resources/js/Components/Publicador/ferramentas.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -137,8 +137,11 @@ test('§4 — Variações: "Adicionar variação" à vista e EAN-13 automático 
 
 test('§5 — Envio: unidades kg/g e cm/mm/m, a forma ESCOLHIDA marcada e frete grátis obrigatório vindo do ML (num hook que a página chama sempre)', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);
-    assert.match(card, /UNIDADES_PESO/);
-    assert.match(card, /UNIDADES_MEDIDA/);
+    // As medidas do pacote moraram aqui até 04/10; hoje são de MedidasDoPacote (Detalhes e Envio as usam).
+    const pacote = lerSemComentarios(`${BASE}/Mesa/MedidasDoPacote.jsx`);
+    assert.match(pacote, /UNIDADES_PESO/);
+    assert.match(pacote, /UNIDADES_MEDIDA/);
+    assert.match(card, /<CamposDoPacote m=\{m\} prefixo="pacote" \/>/);
     assert.match(card, /data-modalidade=\{modo\}/);
     assert.doesNotMatch(card, /modos \?\? \[\]\)\.map\(\(modo\) => ENVIOS\[modo\]\)/);
     assert.match(card, /m\.consultarFrete\(\)/);
@@ -215,4 +218,126 @@ test('NovaVariacao — a 1ª variação dá nome à que já existe (fica com os 
     // Mais de um eixo: as combinações que nasceram junto e não foram pedidas ficam desativadas.
     assert.match(f, /if \(v\.chave !== pedida\?\.chave && v\.ativa\) m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
     assert.match(f, /Essa variação já existe\./);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Análise do Publicador de 04/10/2026: cor principal, fotos para todas as
+// variações, medidas do produto × pacote, frete grátis e formas de envio.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Os 14 tons da furadeira (MLB189007), como o /attributes devolve.
+const TONS = ['Preto', 'Azul', 'Vermelho', 'Violeta', 'Marrom', 'Verde', 'Laranja', 'Azul celeste', 'Rosa', 'Dourado', 'Prateado', 'Amarelo', 'Cinza', 'Branco']
+    .map((name, i) => ({ id: String(2450295 + i), name }));
+const tom = (nome) => tomDaCor(nome, TONS)?.name ?? null;
+
+test('tomDaCor — igual, começo do nome (o tom mais longo primeiro), sinônimo, ou nulo', () => {
+    assert.equal(tom('Preto'), 'Preto');
+    assert.equal(tom('  azul  '), 'Azul');
+    assert.equal(tom('Azul-petróleo'), 'Azul');
+    assert.equal(tom('Azul-celeste'), 'Azul celeste');
+    assert.equal(tom('Azul celeste claro'), 'Azul celeste');
+    assert.equal(tom('Verde-musgo'), 'Verde');
+    assert.equal(tom('Grafite'), 'Cinza');
+    assert.equal(tom('Bordô'), 'Vermelho');
+    assert.equal(tom('Coral-claro'), 'Laranja');
+    assert.equal(tom('Lilás'), 'Violeta');
+    assert.equal(tom('Prata'), 'Prateado');
+    // Sinônimo cujo tom a categoria não tem: nulo (a pessoa escolhe), nunca um tom inventado.
+    assert.equal(tom('Creme'), null);
+    assert.equal(tom('Estampa floral'), null);
+    assert.equal(tom(''), null);
+    assert.equal(tomDaCor('Azul', []), null);
+    // Devolve o valor da lista (id do ML), não um texto.
+    assert.deepEqual(tomDaCor('Azul-marinho', TONS), TONS[1]);
+});
+
+test('nomeDaCor — o valor do eixo Cor; sem eixo de cor, a Cor do produto', () => {
+    assert.equal(nomeDaCor({ valores: { COLOR: { nome: 'Azul-petróleo' } } }, { COLOR: { value_name: 'Preto' } }), 'Azul-petróleo');
+    assert.equal(nomeDaCor({ valores: { VOLTAGE: { nome: '110V' } } }, { COLOR: { value_name: ' Grafite ' } }), 'Grafite');
+    assert.equal(nomeDaCor({ valores: {} }, null), '');
+});
+
+test('medidaEmCm / pesoEmG — as unidades que o ML usa nas medidas do produto', () => {
+    assert.equal(medidaEmCm({ value_name: '120 mm' }), 12);
+    assert.equal(medidaEmCm({ value_name: '12,5 cm' }), 12.5);
+    assert.equal(medidaEmCm({ value_name: '1.2 m' }), 120);
+    assert.equal(medidaEmCm({ value_name: '2 "' }), 5.08);
+    assert.equal(medidaEmCm({ value_name: '3 léguas' }), null);
+    assert.equal(medidaEmCm(null), null);
+    assert.equal(pesoEmG({ value_name: '1.5 kg' }), 1500);
+    assert.equal(pesoEmG({ value_name: '500 g' }), 500);
+    assert.equal(Math.round(pesoEmG({ value_name: '1 lb' })), 454);
+});
+
+test('conferirPacote — pacote menor/mais leve que o produto, igual, ou nada a dizer', () => {
+    const produto = { HEIGHT: { value_name: '20 cm' }, WIDTH: { value_name: '150 mm' }, LENGTH: { value_name: '8 cm' }, WEIGHT: { value_name: '1.2 kg' } };
+    const pacote = (a, l, c, p) => ({
+        SELLER_PACKAGE_HEIGHT: { value_name: `${a} cm` }, SELLER_PACKAGE_WIDTH: { value_name: `${l} cm` },
+        SELLER_PACKAGE_LENGTH: { value_name: `${c} cm` }, SELLER_PACKAGE_WEIGHT: { value_name: `${p} g` },
+    });
+    // A caixa deitada noutra orientação continua contendo o produto: compara da maior para a menor medida.
+    assert.equal(conferirPacote({ ...produto, ...pacote(10, 22, 17, 1400) }), null);
+    assert.equal(conferirPacote({ ...produto, ...pacote(18, 15, 8, 1400) }), 'menor');
+    assert.equal(conferirPacote({ ...produto, ...pacote(22, 17, 10, 900) }), 'menor');
+    assert.equal(conferirPacote({ ...produto, ...pacote(20, 15, 8, 1200) }), 'igual');
+    // Sem as medidas do produto (a maioria das categorias), não há o que comparar.
+    assert.equal(conferirPacote(pacote(20, 15, 8, 1200)), null);
+    assert.equal(conferirPacote({}), null);
+});
+
+test('Cor principal — fica junto do nome da cor, preenche sozinha pelo nome e nunca troca a escolha da pessoa', () => {
+    const cor = lerSemComentarios(`${BASE}/Mesa/CorPrincipal.jsx`);
+    assert.match(cor, /export function ondeFicaOTom\(schema, eixos\)/);
+    assert.match(cor, /origem: 'user'/);
+    assert.match(cor, /rotulo="Cor principal"/);
+    const efeitos = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(efeitos, /if \(atual && atual\.origem !== 'auto'\) return null;/);
+    assert.match(efeitos, /tomDaCor\(nomeDaCor\(v, m\.rasc\?\.atributos\), tomAttr\.valores\)/);
+    assert.match(efeitos, /origem: 'auto'/);
+    // EAN e tom automáticos no mesmo ciclo: os dois gravam pela forma que lê a variação de agora.
+    assert.match(efeitos, /m\.mudarVar\(v\.chave, \(atual\) => \(\{ atributos: \{ \.\.\.\(atual\.atributos \?\? \{\}\), GTIN/);
+    assert.match(lerSemComentarios(`${BASE}/usePublicador.js`), /typeof patch === 'function' \? patch\(mesclarVariantes\(estado\?\.variantes, atual\)/);
+    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(cartao, /tom === 'variacao' && ! semVariacao && <TomDaVariante /);
+    assert.match(cartao, /filter\(\(a\) => ! \(tom && a\.id === 'MAIN_COLOR'\)\)/);
+    const ficha = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
+    assert.match(ficha, /a\.id === COR && tomAoLado && <TomDoProduto m=\{m\} \/>/);
+    assert.match(ficha, /Escolha na lista ou digite um nome próprio/);
+});
+
+test('Fotos para todas as variações — diz para que servem e avisa quando, desmarcadas, ficam fora dos anúncios', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(f, /const PARA_QUE_SERVEM = /);
+    assert.match(f, /embalagem, detalhes, medidas/);
+    assert.match(f, /Usar estas fotos em todas as variações/);
+    assert.match(f, /! incluir && temGerais/);
+    assert.match(f, /não entram em nenhum anúncio/);
+});
+
+test('Medidas — produto fora da caixa × pacote fechado em Detalhes; o Envio herda o mesmo pacote e confere só lá', () => {
+    const ficha = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
+    assert.match(ficha, /Produto fora da caixa/);
+    assert.match(ficha, /Produto embalado \(pacote fechado\)/);
+    assert.match(ficha, /<CamposDoPacote m=\{m\} prefixo="ficha-pacote" comErro=\{false\} \/>/);
+    assert.match(ficha, /rotulos=\{MEDIDAS_DO_PRODUTO\}/);
+    assert.match(ficha, /! doProduto\.includes\(a\.id\)/);
+    const envio = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);
+    assert.match(envio, /Medidas do produto embalado \(pacote fechado\)/);
+    assert.match(envio, /<AvisoDoPacote m=\{m\} \/>/);
+    const pacote = lerSemComentarios(`${BASE}/Mesa/MedidasDoPacote.jsx`);
+    assert.match(pacote, /a\.secao === 'EMBALAGEM'/);
+    assert.match(pacote, /SELLER_PACKAGE_WEIGHT/);
+    assert.match(pacote, /const erro = comErro \? erroDaEtapa : null;/);
+    assert.match(pacote, /conferirPacote\(m\.rasc\?\.atributos\)/);
+});
+
+test('Formas de envio — explicação da escolhida embaixo; conferir aplica antes a regra do frete grátis; prévia mostra o frete', () => {
+    const envio = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);
+    assert.match(envio, /export const EXPLICACAO_ENVIO = \{/);
+    assert.match(envio, /me2: 'Logística do Mercado Livre/);
+    assert.match(envio, /dica=\{EXPLICACAO_ENVIO\[modo\] \?\? null\}/);
+    const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
+    assert.match(hook, /const conferir = async \(\) => \{\s*await garantirFreteObrigatorio\(\);/);
+    assert.match(hook, /if \(regra\?\.obrigatorio && ! rascRef\.current\?\.envio\?\.frete_gratis\)/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/Publicar.jsx`), /data-previa-frete/);
 });

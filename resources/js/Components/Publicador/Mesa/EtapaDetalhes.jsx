@@ -1,6 +1,10 @@
+import { Fragment } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { valorVazio } from '../apoio';
+import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
+import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
+import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
 import { AREA, Campo, INVALIDO, LINK, Secao, Subtitulo, useErroDoCampo } from './comum';
 import FotosEVariacoes from './FotosEVariacoes';
 import { cn } from '@/lib/utils';
@@ -9,12 +13,21 @@ import { cn } from '@/lib/utils';
 //
 // A ficha técnica abre inteira, como campos normais (docx §6): primeiro as
 // características que o Mercado Livre pede, depois as que ajudam a aparecer
-// nos filtros — nunca a palavra "opcional", nada recolhido. Os atributos da
-// seção EMBALAGEM não entram aqui: moram em "Condições de venda", no envio.
+// nos filtros — nunca a palavra "opcional", nada recolhido.
+//
+// "Medidas e peso" (análise do Publicador, 04/10/2026): as do produto fora da
+// caixa (HEIGHT, WIDTH…, quando a categoria tem) e as do pacote fechado
+// (SELLER_PACKAGE_*) lado a lado, com nomes que não se confundem. O pacote é o
+// mesmo atributo que Condições de venda › Envio mostra — o envio herda daqui.
+// O vermelho do pacote fica na etapa que confere o envio (`comErro={false}`).
+//
+// A Cor aceita nome próprio; a Cor principal (tom dos filtros, lista fechada do
+// ML) fica ao lado dela quando a Cor é do produto (ver CorPrincipal.jsx).
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
 
 const MODELO = 'MODEL';
+const COR = 'COLOR';
 const LIMITE_MODELO = 120;
 const ORDEM = { PRINCIPAIS: 0, FICHA: 1, AVANCADO: 2 };
 const PESO = { REQUIRED: 0, RECOMMENDED: 1 };
@@ -29,22 +42,26 @@ const ordenadas = (schema) => atributosDaFicha(schema)
     .sort((x, y) => ((PESO[x.a.obrigatoriedade] ?? 2) - (PESO[y.a.obrigatoriedade] ?? 2)) || (ORDEM[x.a.secao] - ORDEM[y.a.secao]) || (x.i - y.i))
     .map(({ a }) => a);
 
-/** Um campo da ficha: o rótulo é o nome do atributo; vermelho só depois do "Continuar". */
-function CampoDaFicha({ m, a }) {
+/** Um campo da ficha: o rótulo é o nome do atributo (ou `rotulo`); vermelho só depois do "Continuar". */
+function CampoDaFicha({ m, a, rotulo = null }) {
     const valor = m.rasc.atributos?.[a.id];
     const id = `atributo-${a.id}`;
     const vazio = a.obrigatoriedade === 'REQUIRED' && valorVazio(valor);
     const erro = useErroDoCampo((x) => x.atributo === a.id && ! x.variante, { vazio, preenchido: ! valorVazio(valor) });
     const modelo = a.id === MODELO;
+    // Cor com nome próprio, como no ML: a lista só sugere.
+    const corLivre = a.id === COR && a.texto_livre;
     const ia = modelo ? (m.palavrasIa?.modelo ?? {}) : {};
     const rodando = ia.status === 'rodando';
     const tamanho = String(valor?.value_name ?? '').length;
 
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
-            <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro} dica={a.dica}
+            <Campo rotulo={<RotuloAtributo atributo={rotulo ? { ...a, nome: rotulo } : a} valor={valor} />} htmlFor={id} erro={erro}
+                dica={corLivre ? 'Escolha na lista ou digite um nome próprio (ex.: Azul-petróleo), como no Mercado Livre.' : a.dica}
                 extra={modelo ? <span className={cn('font-mono text-[13px] tabular-nums', tamanho > LIMITE_MODELO ? 'text-red-300' : 'text-white/45')} data-contador-modelo>{tamanho}/{LIMITE_MODELO}</span> : null}>
                 <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} invalido={!! erro} disabled={m.disabled || rodando}
+                    placeholder={corLivre ? 'Escolha na lista ou digite' : null}
                     onChange={(v) => m.mudarAtributo(a.id, v)} />
             </Campo>
             {modelo && ! m.disabled && (
@@ -60,17 +77,55 @@ function CampoDaFicha({ m, a }) {
     );
 }
 
-function Grade({ m, atributos }) {
+/** `rotulos` troca o nome do atributo (as medidas do produto). A Cor do produto ganha a Cor principal ao lado. */
+function Grade({ m, atributos, rotulos = {} }) {
+    const tomAoLado = ondeFicaOTom(m.schema, m.estado?.eixos) === 'ficha';
+
     return (
         <div className="grid gap-x-6 gap-y-6 md:grid-cols-2 xl:grid-cols-3">
-            {atributos.map((a) => <CampoDaFicha key={a.id} m={m} a={a} />)}
+            {atributos.map((a) => (
+                <Fragment key={a.id}>
+                    <CampoDaFicha m={m} a={a} rotulo={rotulos[a.id] ?? null} />
+                    {a.id === COR && tomAoLado && <TomDoProduto m={m} />}
+                </Fragment>
+            ))}
+        </div>
+    );
+}
+
+/** O produto sozinho × o pacote fechado, lado a lado (ver o comentário do topo). */
+function MedidasEPeso({ m }) {
+    const produto = medidasDoProduto(m.schema);
+    const { dimensoes, peso, outras } = atributosDoPacote(m.schema);
+    const temPacote = dimensoes.length > 0 || !! peso || outras.length > 0;
+    if (produto.length === 0 && ! temPacote) return null;
+
+    return (
+        <div className="mt-8 space-y-6 border-t border-white/[0.08] pt-8" data-grupo-ficha="medidas">
+            <Subtitulo descricao="São duas medidas diferentes: a do produto sozinho e a do pacote fechado que vai para o comprador.">Medidas e peso</Subtitulo>
+            <div data-medidas-produto={produto.length}>
+                <p className="mb-3 text-[13px] font-bold text-white/90">Produto fora da caixa</p>
+                {produto.length > 0
+                    ? <Grade m={m} atributos={produto} rotulos={MEDIDAS_DO_PRODUTO} />
+                    : <p className="text-[13px] text-white/45">Esta categoria do Mercado Livre não pede as medidas do produto sem embalagem.</p>}
+            </div>
+            {temPacote && (
+                <div data-medidas-pacote-ficha>
+                    <p className="text-[13px] font-bold text-white/90">Produto embalado (pacote fechado)</p>
+                    <p className="mb-3 mt-0.5 text-[13px] text-white/50">Com a caixa ou a embalagem. É com estas que o Mercado Livre calcula o frete; aparecem também em Condições de venda › Envio.</p>
+                    <CamposDoPacote m={m} prefixo="ficha-pacote" comErro={false} />
+                </div>
+            )}
+            <AvisoDoPacote m={m} />
         </div>
     );
 }
 
 function FichaTecnica({ m }) {
     const schema = m.schema;
-    const todas = schema ? ordenadas(schema) : [];
+    // As medidas do produto saem da grade: moram em "Medidas e peso", junto das do pacote.
+    const doProduto = medidasDoProduto(schema).map((a) => a.id);
+    const todas = schema ? ordenadas(schema).filter((a) => ! doProduto.includes(a.id)) : [];
     const principais = todas.filter(ehPrincipal);
     const mais = todas.filter((a) => ! ehPrincipal(a));
     const categoria = schema?.caminho?.[schema.caminho.length - 1] ?? null;
@@ -83,12 +138,11 @@ function FichaTecnica({ m }) {
                         <Subtitulo descricao="O Mercado Livre pede estas para publicar.">Características principais</Subtitulo>
                         {principais.length > 0 ? <Grade m={m} atributos={principais} /> : <p className="text-[13px] text-white/45">Nenhuma nesta categoria.</p>}
                     </div>
-                    {mais.length > 0 && (
-                        <div className="border-t border-white/[0.08] pt-8" data-grupo-ficha="mais">
-                            <Subtitulo descricao="Ajudam o comprador a achar o anúncio nos filtros.">Mais características</Subtitulo>
-                            <Grade m={m} atributos={mais} />
-                        </div>
-                    )}
+                    <div className="border-t border-white/[0.08] pt-8" data-grupo-ficha="mais">
+                        <Subtitulo descricao="Ajudam o comprador a achar o anúncio nos filtros.">Mais características</Subtitulo>
+                        {mais.length > 0 ? <Grade m={m} atributos={mais} /> : <p className="text-[13px] text-white/45">Nenhuma outra nesta categoria.</p>}
+                        <MedidasEPeso m={m} />
+                    </div>
                 </div>
             )}
         </Secao>

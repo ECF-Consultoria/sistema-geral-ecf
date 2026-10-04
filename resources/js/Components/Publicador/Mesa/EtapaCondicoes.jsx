@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Calculator, Info, Loader2 } from 'lucide-react';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
-import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { NOME_TIPO, NOTA_TIPO, valorVazio } from '../apoio';
-import { UNIDADES_MEDIDA, UNIDADES_PESO, daUnidadeMl, numeroDoAtributo, paraUnidadeMl, unidadeInicial } from '../ferramentas';
+import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
 import CampoPreco from './CampoPreco';
+import { AvisoDoPacote, CamposDoPacote, DIMENSOES, PESO, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
 import { BotaoAcao } from './botoes';
 import { CAMPO, Campo, ErroDoCampo, INVALIDO, SELECT, Secao, Subtitulo, useErroDoCampo } from './comum';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -16,16 +16,21 @@ import { cn, formatCurrency } from '@/lib/utils';
 // por variação e por tipo; "Quanto você recebe" simula tarifa e frete com
 // `m.simular`. Preço do Portal é MOSTRADO, não gravado (docx §4).
 //
-// Envio (docx §5): a modalidade vem do servidor (`conta.modos_envio`); as
-// medidas são atributos da seção EMBALAGEM, cada uma com a unidade escolhida na
-// tela (kg/g, cm/mm/m) e gravada no que o ML aceita (g e cm); o frete grátis
-// obrigatório pela faixa de preço vem do ML (`m.consultarFrete`). Os efeitos
-// ficam em `useEfeitosDoEnvio`, que a página chama sempre: a regra do frete
-// depende de preços e pacote, e precisa rodar em qualquer etapa.
+// Envio (docx §5): a modalidade vem do servidor (`conta.modos_envio`), com o
+// que cada uma quer dizer embaixo; as medidas são as do pacote FECHADO
+// (`MedidasDoPacote`, as mesmas de Detalhes › Mais características), com as do
+// produto fora da caixa ao lado só para comparar; o frete grátis obrigatório
+// pela faixa de preço vem do ML (`m.consultarFrete`). Os efeitos ficam em
+// `useEfeitosDoEnvio`, que a página chama sempre: a regra do frete depende de
+// preços e pacote, e precisa rodar em qualquer etapa.
 
 export const ENVIOS = { me2: 'Mercado Envios', custom: 'Envio próprio', not_specified: 'A combinar com o comprador' };
-const DIMENSOES = [['SELLER_PACKAGE_HEIGHT', 'Altura'], ['SELLER_PACKAGE_WIDTH', 'Largura'], ['SELLER_PACKAGE_LENGTH', 'Comprimento']];
-const PESO = 'SELLER_PACKAGE_WEIGHT';
+// O que cada forma de envio quer dizer (análise do Publicador, 04/10/2026).
+export const EXPLICACAO_ENVIO = {
+    me2: 'Logística do Mercado Livre: você imprime a etiqueta gerada pelo Mercado Livre e posta numa agência, ponto de coleta ou nos Correios, conforme a sua conta. O frete é calculado pelas medidas do pacote fechado.',
+    custom: 'Você envia por uma transportadora contratada por conta própria e define o custo do frete. A tabela de custos não é preenchida aqui: confira o frete no anúncio, no Mercado Livre, depois de publicar.',
+    not_specified: 'Para produto grande ou sem cobertura de entrega: o valor do frete e a entrega são combinados com o comprador pelo chat, depois da compra.',
+};
 const ESPERA_FRETE = 1500;
 
 const opcoesDeEnvio = (modos) => Object.fromEntries(Object.entries(ENVIOS).filter(([modo]) => ! modos || modos.includes(modo)));
@@ -200,68 +205,23 @@ function SecaoPreco({ m }) {
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
 
-/** Uma medida do pacote com a unidade da tela; grava na unidade do ML. */
-function MedidaPacote({ m, a, rotulo, tipo }) {
-    const valor = m.rasc.atributos?.[a.id];
-    const tabela = tipo === 'peso' ? UNIDADES_PESO : UNIDADES_MEDIDA;
-    const unidadeMl = a.unidade_padrao ?? a.unidades?.[0] ?? (tipo === 'peso' ? 'g' : 'cm');
-    const gravado = numeroDoAtributo(valor);
-    const [unidade, setUnidade] = useState(() => unidadeInicial(gravado, tipo));
-    const [texto, setTexto] = useState(() => daUnidadeMl(gravado, tabela[unidade] ?? 1));
-    useEffect(() => setTexto(daUnidadeMl(numeroDoAtributo(valor), tabela[unidade] ?? 1)), [valor?.value_name]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const preenchido = ! valorVazio(valor);
-    const id = `pacote-${a.id}`;
-    const erro = useErroDoCampo((x) => x.atributo === a.id, { vazio: a.obrigatoriedade === 'REQUIRED' && ! preenchido, preenchido });
-    const gravar = (t, u) => {
-        // g sem casas; cm com uma (o ML aceita 12.5 cm).
-        const n = paraUnidadeMl(t, tabela[u] ?? 1, tipo === 'peso' ? 0 : 1);
-        m.mudarAtributo(a.id, n === null ? null : { value_id: null, value_name: `${n} ${unidadeMl}`, origem: 'user', revisar: false });
-    };
-    const trocarUnidade = (u) => {
-        // O número na tela continua sendo o mesmo pacote: só muda a unidade em que é mostrado.
-        setUnidade(u);
-        setTexto(daUnidadeMl(numeroDoAtributo(valor), tabela[u] ?? 1));
-    };
+/** "Altura do produto 20 cm · Peso do produto 1,2 kg": as do produto fora da caixa, só para comparar. */
+function MedidasDoProdutoParaComparar({ m }) {
+    const preenchidas = medidasDoProduto(m.schema).filter((a) => ! valorVazio(m.rasc.atributos?.[a.id]));
+    if (preenchidas.length === 0) return null;
 
     return (
-        <Campo rotulo={rotulo} htmlFor={id} erro={erro} dica={unidade !== unidadeMl && preenchido ? `Vai ao Mercado Livre como ${valor?.value_name}.` : null}>
-            <div className="flex gap-2" data-campo-atributo={a.id}>
-                <input id={id} inputMode="decimal" value={texto} disabled={m.disabled} onChange={(e) => setTexto(e.target.value)} onBlur={() => gravar(texto, unidade)}
-                    placeholder="0" aria-invalid={!! erro || undefined} className={cn(CAMPO, 'min-w-0 tabular-nums', erro && INVALIDO)} data-atributo={a.id} />
-                <select value={unidade} disabled={m.disabled} onChange={(e) => trocarUnidade(e.target.value)} aria-label={`Unidade de ${rotulo}`} data-unidade={a.id}
-                    className={cn(SELECT, 'w-20 shrink-0')}>
-                    {Object.keys(tabela).map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-            </div>
-        </Campo>
+        <p className="text-[13px] text-white/50" data-medidas-produto-comparar>
+            Produto fora da caixa (Detalhes): {preenchidas.map((a) => `${MEDIDAS_DO_PRODUTO[a.id].replace(' do produto', '')} ${m.rasc.atributos[a.id].value_name}`).join(' · ')}.
+        </p>
     );
 }
-
-/** Atributo da embalagem que a tela não converte: o campo do schema. */
-function CampoEmbalagem({ m, a }) {
-    const valor = m.rasc.atributos?.[a.id];
-    const id = `pacote-${a.id}`;
-    const erro = useErroDoCampo((x) => x.atributo === a.id, { vazio: a.obrigatoriedade === 'REQUIRED' && valorVazio(valor), preenchido: ! valorVazio(valor) });
-
-    return (
-        <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro}>
-            <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} disabled={m.disabled} invalido={!! erro} onChange={(v) => m.mudarAtributo(a.id, v)} />
-        </Campo>
-    );
-}
-
-/** A unidade do ML é uma das que a tela sabe converter? Senão o campo fica o do schema. */
-const converte = (a, tipo) => (tipo === 'peso' ? UNIDADES_PESO : UNIDADES_MEDIDA)[a.unidade_padrao ?? a.unidades?.[0] ?? (tipo === 'peso' ? 'g' : 'cm')] === 1;
 
 function SecaoEnvio({ m }) {
     const { schema, rasc, estado } = m;
     const modos = estado.conta?.modos_envio ?? null;
-    const embalagem = Object.values(schema?.atributos ?? {}).filter((a) => a.secao === 'EMBALAGEM');
-    const ids = DIMENSOES.map(([id]) => id);
-    const dimensoes = DIMENSOES.map(([id, nome]) => [embalagem.find((a) => a.id === id), nome]).filter(([a]) => a);
-    const peso = embalagem.find((a) => a.id === PESO) ?? null;
-    const outras = embalagem.filter((a) => ! ids.includes(a.id) && a.id !== PESO);
+    const { dimensoes, peso, outras } = atributosDoPacote(schema);
+    const temPacote = dimensoes.length > 0 || !! peso || outras.length > 0;
     const opcoesEnvio = opcoesDeEnvio(modos);
     const modo = rasc.envio?.modo ?? 'me2';
     const frete = modo === 'me2' ? m.frete : null;
@@ -269,28 +229,25 @@ function SecaoEnvio({ m }) {
     const erroEnvio = useErroDoCampo((x) => x.campo === 'envio');
 
     return (
-        <Secao id="envio" titulo="Envio" descricao="É com as medidas do pacote fechado que o Mercado Livre calcula o frete.">
+        <Secao id="envio" titulo="Envio" descricao="O Mercado Livre calcula o frete pelas medidas do produto embalado, com a caixa fechada.">
             <div className="space-y-8">
-                <Campo rotulo="Forma de envio" htmlFor="campo-envio" erro={erroEnvio} className="max-w-md">
+                <Campo rotulo="Forma de envio" htmlFor="campo-envio" erro={erroEnvio} className="max-w-2xl" dica={EXPLICACAO_ENVIO[modo] ?? null}>
                     <select id="campo-envio" value={modo} disabled={m.disabled} data-campo="envio" aria-invalid={!! erroEnvio || undefined}
                         onChange={(e) => m.mudarRasc((r) => ({ envio: { ...r.envio, modo: e.target.value || 'me2' } }))}
-                        className={cn(SELECT, erroEnvio && INVALIDO)} data-modalidade={modo}>
+                        className={cn(SELECT, 'max-w-md', erroEnvio && INVALIDO)} data-modalidade={modo}>
                         {Object.entries(opcoesEnvio).map(([valor, nome]) => <option key={valor} value={valor}>{nome}</option>)}
                     </select>
                 </Campo>
 
-                {(dimensoes.length > 0 || peso) && (
-                    <div>
-                        <Subtitulo descricao="Com a embalagem, do jeito que vai para o comprador.">Pacote</Subtitulo>
-                        <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4" data-medidas-pacote>
-                            {dimensoes.map(([a, nome]) => (converte(a, 'medida') ? <MedidaPacote key={a.id} m={m} a={a} rotulo={nome} tipo="medida" /> : <CampoEmbalagem key={a.id} m={m} a={a} />))}
-                            {peso && (converte(peso, 'peso') ? <MedidaPacote m={m} a={peso} rotulo="Peso" tipo="peso" /> : <CampoEmbalagem m={m} a={peso} />)}
-                        </div>
+                {temPacote && (
+                    <div className="space-y-4" data-bloco-pacote>
+                        <Subtitulo descricao="Com a caixa ou a embalagem, do jeito que vai para o comprador, e não as do produto sozinho. São as mesmas de Detalhes › Mais características: mudar aqui muda lá.">
+                            Medidas do produto embalado (pacote fechado)
+                        </Subtitulo>
+                        <CamposDoPacote m={m} prefixo="pacote" />
+                        <MedidasDoProdutoParaComparar m={m} />
+                        <AvisoDoPacote m={m} />
                     </div>
-                )}
-
-                {outras.length > 0 && (
-                    <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">{outras.map((a) => <CampoEmbalagem key={a.id} m={m} a={a} />)}</div>
                 )}
 
                 {modo === 'me2' && (

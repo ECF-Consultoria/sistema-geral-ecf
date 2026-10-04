@@ -3,7 +3,8 @@ import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { BlocoDeFotos, fotosDoGrupo } from '../FotosPorGrupo';
 import { CampoEstoque, CampoGtin, CampoSku, atributosExtrasDaVariante } from '../GradeVariantes';
 import { valorVazio } from '../apoio';
-import { eanValido, gtinsEmUso } from '../ferramentas';
+import { eanValido, gtinsEmUso, nomeDaCor } from '../ferramentas';
+import { CampoCorPrincipal, ondeFicaOTom } from './CorPrincipal';
 import { Campo, useErroDoCampo } from './comum';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,22 @@ export function corDaVariante(v, eixos) {
     const hex = valor?.hex ?? valor?.rgb ?? null;
 
     return typeof hex === 'string' && /^#?[0-9a-f]{3,8}$/i.test(hex) ? (hex.startsWith('#') ? hex : `#${hex}`) : null;
+}
+
+/** A "Cor principal" da variação quando as variações são por Cor: o tom do nome dela (ver CorPrincipal.jsx). */
+function TomDaVariante({ v, a, travada, onMudar }) {
+    const valor = v.atributos?.MAIN_COLOR ?? null;
+    const erro = useErroDoCampo((x) => x.variante === v.chave && x.atributo === 'MAIN_COLOR', { vazio: a.obrigatoriedade === 'REQUIRED' && ! valor?.value_id });
+
+    return (
+        <CampoCorPrincipal id={`extra-MAIN_COLOR-${v.chave}`} atributo={a} valor={valor} nome={nomeDaCor(v, null)} disabled={travada} erro={erro}
+            onMudar={(novo) => onMudar(v.chave, (atual) => {
+                const atributos = { ...(atual.atributos ?? {}) };
+                if (novo === null) delete atributos.MAIN_COLOR; else atributos.MAIN_COLOR = novo;
+
+                return { atributos };
+            })} />
+    );
 }
 
 /** Atributo extra da variação (seção VARIANTE): o mesmo campo da ficha, gravado na variação. */
@@ -55,7 +72,9 @@ function CampoExtra({ v, a, travada, onMudar }) {
 export default function CartaoVariante({ m, v, eixos, grupo = null, fotosCom = [], onTirar = null }) {
     const { estado, schema } = m;
     const travada = m.disabled || v.publicada;
-    const extras = atributosExtrasDaVariante(schema);
+    // A "Cor principal" fica junto do nome da cor: aqui quando as variações são por Cor; na ficha quando a Cor é do produto.
+    const tom = ondeFicaOTom(schema, eixos);
+    const extras = atributosExtrasDaVariante(schema).filter((a) => ! (tom && a.id === 'MAIN_COLOR'));
     const limites = schema?.limites ?? {};
     const semVariacao = Object.keys(v.valores ?? {}).length === 0;
     const gtin = v.atributos?.GTIN?.value_name ?? '';
@@ -127,6 +146,7 @@ export default function CartaoVariante({ m, v, eixos, grupo = null, fotosCom = [
                                 <CampoGtin grande comRotulo id={`gtin-${v.chave}`} invalido={!! erroGtin} v={v} schema={schema} travada={travada} onMudar={m.mudarVar} existentes={gtinsEmUso(m.variantes)} />
                             </Campo>
                         )}
+                        {tom === 'variacao' && ! semVariacao && <TomDaVariante v={v} a={schema.atributos.MAIN_COLOR} travada={travada} onMudar={m.mudarVar} />}
                         {extras.map((a) => <CampoExtra key={a.id} v={v} a={a} travada={travada} onMudar={m.mudarVar} />)}
                     </div>
                 </div>

@@ -26,7 +26,7 @@ export function RotuloAtributo({ atributo, valor }) {
     );
 }
 
-export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null, variante = 'padrao', invalido = false, id }) {
+export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null, variante = 'padrao', invalido = false, id, placeholder = null }) {
     const lista = useId();
     const v = valor ?? {};
     const naoSeAplica = v.value_id === '-1';
@@ -81,7 +81,7 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         campo = (
             <>
                 <input {...aria} value={v.value_name ?? ''} disabled={disabled} maxLength={a.max || 255} className={classe} data-atributo={a.id}
-                    inputMode={a.tipo === 'number' ? 'decimal' : undefined} placeholder={a.exemplo ?? ''}
+                    inputMode={a.tipo === 'number' ? 'decimal' : undefined} placeholder={placeholder ?? a.exemplo ?? ''}
                     list={a.valores.length ? lista : undefined}
                     onChange={(e) => {
                         const texto = e.target.value;

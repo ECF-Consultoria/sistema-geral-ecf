@@ -26,6 +26,8 @@ const CARDS = [
     `${BASE}/Mesa/CartaoVariante.jsx`,
     `${BASE}/Mesa/NovaVariacao.jsx`,
     `${BASE}/Mesa/EtapaCondicoes.jsx`,
+    `${BASE}/Mesa/MedidasDoPacote.jsx`,
+    `${BASE}/Mesa/CorPrincipal.jsx`,
     `${BASE}/Mesa/CampoPreco.jsx`,
     `${BASE}/Mesa/AcoesDePublicacao.jsx`,
     `${BASE}/Mesa/TermosMaisBuscados.jsx`,
@@ -273,8 +275,9 @@ test('EtapaCondicoes — tipo de anúncio e preço juntos; preço por CampoPreco
     assert.match(f, /x\.campo === 'preco' && x\.variante === v\.chave && x\.alvo === lt/);
     assert.match(f, /m\.simular\(\)/);
     assert.match(f, /modos_envio/);
-    assert.match(f, /a\.secao === 'EMBALAGEM'/);
-    assert.match(f, /SELLER_PACKAGE_WEIGHT/);
+    // O pacote (seção EMBALAGEM) mora em MedidasDoPacote desde 04/10: Detalhes e Envio o mostram.
+    assert.match(f, /atributosDoPacote\(schema\)/);
+    assert.match(lerSemComentarios(`${BASE}/Mesa/MedidasDoPacote.jsx`), /a\.secao === 'EMBALAGEM'/);
     assert.match(f, /export function useEfeitosDoEnvio\(m\)/);
     assert.doesNotMatch(f, /Coleta elegível/);
 });

@@ -76,6 +76,102 @@ export const daUnidadeMl = (valorMl, fator) => {
     return Number.isFinite(n) ? String(Math.round(n * 1000) / 1000).replace('.', ',') : '';
 };
 
+// ── Medidas do produto × medidas do pacote (análise do Publicador, 04/10/2026) ──
+// O ML calcula o frete pelo pacote FECHADO (SELLER_PACKAGE_*, sempre cm e g). As medidas do
+// produto fora da caixa (HEIGHT, WIDTH…) chegam em várias unidades e só aparecem na ficha.
+
+/** Medidas genéricas do produto sozinho, com o rótulo que deixa claro que não são do pacote. */
+export const MEDIDAS_DO_PRODUTO = {
+    HEIGHT: 'Altura do produto', WIDTH: 'Largura do produto', LENGTH: 'Comprimento do produto', DEPTH: 'Profundidade do produto', WEIGHT: 'Peso do produto',
+};
+const PARA_CM = { mm: 0.1, cm: 1, m: 100, '"': 2.54, in: 2.54, ft: 30.48 };
+const PARA_G = { mg: 0.001, g: 1, kg: 1000, lb: 453.592, oz: 28.3495 };
+
+const converter = (valor, tabela) => {
+    const m = String(valor?.value_name ?? '').trim().match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/);
+    if (! m) return null;
+    const fator = tabela[m[2].trim().toLowerCase()];
+
+    return fator === undefined ? null : Number(m[1].replace(',', '.')) * fator;
+};
+/** "12,5 cm", "120 mm", '5 "' → cm. Nulo sem número ou com unidade desconhecida. */
+export const medidaEmCm = (valor) => converter(valor, PARA_CM);
+/** "2 kg", "500 g", "1 lb" → g. */
+export const pesoEmG = (valor) => converter(valor, PARA_G);
+
+/**
+ * O pacote fechado contém o produto: se ele sai MENOR (em alguma medida, comparando da maior
+ * para a menor, ou no peso), quase sempre foram digitadas as medidas do produto fora da caixa.
+ * Igual em tudo também é suspeito (a embalagem soma). Nulo quando não há como comparar ou está certo.
+ *
+ * @return {null|'menor'|'igual'}
+ */
+export function conferirPacote(atributos) {
+    const a = atributos ?? {};
+    const produto = ['HEIGHT', 'WIDTH', a.LENGTH ? 'LENGTH' : 'DEPTH'].map((id) => medidaEmCm(a[id]));
+    const pacote = ['SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_LENGTH'].map((id) => medidaEmCm(a[id]));
+    const pesoProduto = pesoEmG(a.WEIGHT);
+    const pesoPacote = pesoEmG(a.SELLER_PACKAGE_WEIGHT);
+    const medidas = ! produto.includes(null) && ! pacote.includes(null);
+    const pesos = pesoProduto !== null && pesoPacote !== null;
+    if (! medidas && ! pesos) return null;
+
+    const desc = (l) => [...l].sort((x, y) => y - x);
+    const [p, k] = medidas ? [desc(produto), desc(pacote)] : [[], []];
+    // Meio milímetro de folga: o pacote vai com uma casa, o produto pode vir em mm.
+    if ((medidas && k.some((x, i) => x < p[i] - 0.05)) || (pesos && pesoPacote < pesoProduto - 0.5)) return 'menor';
+    const igual = (! medidas || k.every((x, i) => Math.abs(x - p[i]) <= 0.05)) && (! pesos || Math.abs(pesoPacote - pesoProduto) <= 0.5);
+
+    return igual ? 'igual' : null;
+}
+
+// ── Cor e cor principal (análise do Publicador, 04/10/2026) ──
+// No ML a "Cor" (COLOR) aceita nome próprio (`allow_custom_value: true`) e a "Cor principal"
+// (MAIN_COLOR) é lista FECHADA (`allow_custom_value: false`, valor livre = erro 3510): é o tom
+// dos filtros. O nome é da pessoa; o tom sai do nome quando dá, e ela pode trocar.
+
+// Nomes comuns que não estão na lista de tons → o tom mais próximo (só vale se o tom existir na categoria).
+const SINONIMOS_DE_TOM = {
+    bordo: 'vermelho', vinho: 'vermelho', marsala: 'vermelho', grafite: 'cinza', chumbo: 'cinza', prata: 'prateado',
+    ouro: 'dourado', lilas: 'violeta', lavanda: 'violeta', roxo: 'violeta', indigo: 'violeta', fucsia: 'rosa', pink: 'rosa',
+    marinho: 'azul', turquesa: 'azul', petroleo: 'azul', anil: 'azul', celeste: 'azul celeste', creme: 'bege', nude: 'bege',
+    palha: 'bege', areia: 'bege', caqui: 'bege', chocolate: 'marrom', cafe: 'marrom', caramelo: 'marrom', tabaco: 'marrom',
+    terracota: 'laranja', coral: 'laranja', salmao: 'laranja', musgo: 'verde', oliva: 'verde', militar: 'verde', limao: 'verde',
+    agua: 'azul celeste', ciano: 'azul celeste', ocre: 'amarelo', gelo: 'branco', 'off white': 'branco',
+};
+const nomeDeCor = (s) => normalizar(s).replace(/[-_/]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * O tom (valor de MAIN_COLOR) para um nome de cor: igual a um tom; começa por um tom
+ * ("Azul-petróleo" → Azul, o mais longo primeiro: "Azul celeste" antes de "Azul"); ou por
+ * sinônimo ("Grafite" → Cinza). Nulo quando não dá para saber — a pessoa escolhe.
+ *
+ * @param {Array<{id: string, name: string}>} tons
+ */
+export function tomDaCor(nome, tons) {
+    const alvo = nomeDeCor(nome);
+    const lista = (tons ?? []).map((t) => ({ t, n: nomeDeCor(t.name) })).sort((x, y) => y.n.length - x.n.length);
+    if (! alvo || lista.length === 0) return null;
+    const achar = (n) => lista.find((x) => x.n === n)?.t ?? null;
+
+    const exato = achar(alvo);
+    if (exato) return exato;
+    const prefixo = lista.find((x) => alvo.startsWith(`${x.n} `));
+    if (prefixo) return prefixo.t;
+    for (const [chave, tom] of Object.entries(SINONIMOS_DE_TOM)) {
+        if (alvo === chave || alvo.startsWith(`${chave} `) || alvo.endsWith(` ${chave}`)) {
+            const t = achar(tom) ?? (tom.includes(' ') ? achar(tom.split(' ')[0]) : null);
+            if (t) return t;
+        }
+    }
+    const palavra = alvo.split(' ').map(achar).find(Boolean);
+
+    return palavra ?? null;
+}
+
+/** O nome da cor de uma variação: o valor do eixo Cor; sem eixo de cor, a Cor do produto. */
+export const nomeDaCor = (v, atributosDoProduto) => String(v?.valores?.COLOR?.nome ?? atributosDoProduto?.COLOR?.value_name ?? '').trim();
+
 /** O número de um atributo `number_unit` gravado ("1500 g" → 1500). */
 export const numeroDoAtributo = (valor) => {
     if (valor?.value_number !== undefined && valor?.value_number !== null && valor.value_number !== '') return Number(valor.value_number);

@@ -301,3 +301,35 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   da seção e a pendência da galeria geral ia para Variações; a foto de uma variação chega ao subitem dela por
   `problemasDaVariante`. (2) Subitem da árvore conta pela MESMA régua do pai (bloqueios do servidor,
   `problemasDoGrupoDaFicha`), nunca por campo vazio — senão fica âmbar com o pai verde.
+
+## 11. Análise da equipe de 04/10/2026 (cor, fotos gerais, medidas, envio)
+
+- **"Cor principal" (MAIN_COLOR) NÃO aceita nome próprio: não "conserte" isso.** Nas respostas reais
+  (`technical_specs_input` da furadeira) ela vem com `allow_custom_value: false` e o ML devolve 3510
+  para valor fora da lista (H-07). Quem aceita nome livre é a "Cor" (COLOR, `allow_custom_value: true`),
+  que é o nome que o comprador vê. O pedido "escolher da lista OU digitar" foi atendido como o ML faz no
+  componente COLOR_INPUT: o nome é livre e a "Cor principal" (o tom dos filtros) fica AO LADO dele e se
+  preenche sozinha pelo nome (`tomDaCor`, `origem: 'auto'`). Escolha da pessoa (`user`) ou da IA nunca é
+  trocada. Onde ela aparece depende de onde está a Cor (`ondeFicaOTom`): no cartão da variação quando
+  as variações são por Cor; na ficha, ao lado da Cor, quando a Cor é do produto.
+- **Desmarcar "Usar estas fotos em todas as variações" (`incluir_geral`) tira as fotos gerais de TODOS os
+  anúncios.** Com `fotos_por_variante` ligado (a tela liga sozinha), toda variação tem grupo próprio, e o
+  `ResolvedorGruposImagem` só junta a galeria geral se `incluirGeral`. A foto continua guardada (vira o
+  aviso V-IMG-11). Por isso a tela avisa quando está desmarcada.
+- **As medidas do produto e as do pacote tinham o MESMO rótulo.** Na furadeira (MLB189007) o ML manda
+  HEIGHT/WIDTH/LENGTH/WEIGHT (`hidden` → seção AVANCADO → "Mais características") com os nomes "Altura",
+  "Largura"…, iguais aos do pacote no Envio. Hoje elas saem da grade para "Medidas e peso", renomeadas
+  "… do produto" (`MEDIDAS_DO_PRODUTO`), ao lado do pacote fechado (SELLER_PACKAGE_*). O pacote aparece
+  em Detalhes E no Envio: é o mesmo atributo do rascunho, então mudar num muda no outro. O vermelho do
+  pacote só aparece no Envio (`comErro={false}` em Detalhes): é a etapa cujo "Continuar" o confere.
+  `conferirPacote` avisa (sem bloquear) pacote menor/igual ao produto, comparando da maior para a menor medida.
+- **Dois efeitos que gravam `atributos` da mesma variação no mesmo ciclo se apagam.** `mudarVar(chave, patch)`
+  troca `atributos` inteiro, e o `v` do render é velho para o segundo efeito: o EAN automático sumia
+  quando o tom automático gravava depois. Use a forma função, `mudarVar(chave, (atual) => ({ atributos: {
+  ...atual.atributos, X } }))`, que lê servidor + pendente de agora.
+- **"Conferir" aplica antes a regra do frete grátis** (`garantirFreteObrigatorio`): quem clicava logo
+  depois de mudar o preço mandava a conferência antes de a consulta da tela (1,5 s de espera) voltar. O
+  aviso 350 da conferência continua caindo em Envio.
+- **"Envio próprio" (custom) não leva a tabela de custos**: o payload manda só `mode`, `free_shipping`,
+  `local_pick_up` e `logistic_type` — sem `shipping.costs`. A explicação na tela diz isso; preencher a
+  tabela é trabalho novo, se a equipe pedir.

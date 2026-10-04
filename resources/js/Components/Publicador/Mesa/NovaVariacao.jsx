@@ -26,9 +26,11 @@ function CampoValor({ atributo, rotulo, valor, onChange, disabled }) {
     const id = useId();
     const opcoes = atributo?.valores ?? [];
     const soLista = opcoes.length > 0 && ! atributo?.texto_livre;
+    // Cor aceita nome próprio no ML (a "Cor principal" dos filtros sai dele, no cartão da variação).
+    const corLivre = atributo?.id === 'COLOR' && ! soLista;
 
     return (
-        <Campo rotulo={rotulo} htmlFor={id}>
+        <Campo rotulo={rotulo} htmlFor={id} dica={corLivre ? 'Escolha na lista ou digite um nome próprio, como Azul-petróleo.' : null}>
             {soLista ? (
                 <select id={id} value={valor?.id ?? ''} disabled={disabled} data-valor-novo={atributo?.id ?? CUSTOM}
                     onChange={(e) => onChange(e.target.value === '' ? null : { id: e.target.value, nome: opcoes.find((x) => String(x.id) === e.target.value)?.name ?? '' })}
@@ -39,6 +41,7 @@ function CampoValor({ atributo, rotulo, valor, onChange, disabled }) {
             ) : (
                 <>
                     <input id={id} value={valor?.nome ?? ''} disabled={disabled} maxLength={120} list={opcoes.length ? lista : undefined} data-valor-novo={atributo?.id ?? CUSTOM}
+                        placeholder={corLivre ? 'Escolha na lista ou digite' : undefined}
                         onChange={(e) => {
                             const igual = opcoes.find((x) => x.name.toLowerCase() === e.target.value.trim().toLowerCase());
                             onChange({ id: igual ? String(igual.id) : null, nome: igual ? igual.name : e.target.value });

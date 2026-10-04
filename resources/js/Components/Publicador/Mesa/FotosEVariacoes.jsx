@@ -3,7 +3,7 @@ import { ImagePlus, Plus, RotateCcw } from 'lucide-react';
 import EditorDeEixos from '../EditorDeEixos';
 import { AvisosDasFotos, BlocoDeFotos, fotosDoGrupo } from '../FotosPorGrupo';
 import { GERAL } from '../apoio';
-import { eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, variantesSemGtin } from '../ferramentas';
+import { eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, nomeDaCor, tomDaCor, variantesSemGtin } from '../ferramentas';
 import CartaoVariante from './CartaoVariante';
 import NovaVariacao from './NovaVariacao';
 import { BotaoAcao } from './botoes';
@@ -77,37 +77,77 @@ export function useEfeitosDasVariacoes(m) {
             const ean = gerarEan13(usados);
             usados.add(ean);
             gerados.current.add(v.chave);
-            m.mudarVar(v.chave, { atributos: { ...(v.atributos ?? {}), GTIN: { value_name: ean } } });
+            m.mudarVar(v.chave, (atual) => ({ atributos: { ...(atual.atributos ?? {}), GTIN: { value_name: ean } } }));
         }
     }, [chaveSemGtin]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Cor principal (MAIN_COLOR) pelo nome da cor, enquanto a pessoa não escolheu (ver CorPrincipal.jsx).
+    // Nome que não dá tom tira o automático; escolha da pessoa ou da IA fica.
+    const tomAttr = schema?.atributos?.MAIN_COLOR;
+    const tons = ! estado || m.disabled || tomAttr?.secao !== 'VARIANTE' ? [] : m.variantes
+        .filter((v) => ! v.orfa && ! v.publicada)
+        .map((v) => {
+            const atual = v.atributos?.MAIN_COLOR ?? null;
+            if (atual && atual.origem !== 'auto') return null;
+            const tom = tomDaCor(nomeDaCor(v, m.rasc?.atributos), tomAttr.valores);
+
+            return String(tom?.id ?? '') === String(atual?.value_id ?? '') ? null : { chave: v.chave, tom };
+        })
+        .filter(Boolean);
+    const chaveTons = tons.map(({ chave, tom }) => `${chave}:${tom?.id ?? ''}`).join('|');
+    useEffect(() => {
+        if (! chaveTons) return;
+        for (const { chave, tom } of tons) {
+            m.mudarVar(chave, (atual) => {
+                const atributos = { ...(atual.atributos ?? {}) };
+                if (tom) atributos.MAIN_COLOR = { value_id: String(tom.id), value_name: tom.name, origem: 'auto' }; else delete atributos.MAIN_COLOR;
+
+                return { atributos };
+            });
+        }
+    }, [chaveTons]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/** As fotos que valem para todas as variações (galeria geral), com "pôr no fim de cada variação". */
+// O que são as "fotos para todas as variações" (análise do Publicador, 04/10/2026: a equipe
+// não entendia para que servem). Desligar a inclusão deixa as fotos guardadas, mas fora de
+// todos os anúncios (`ResolvedorGruposImagem`: sem `incluirGeral` a galeria geral não entra
+// em variação que tem grupo próprio) — por isso o aviso quando está desligada.
+const PARA_QUE_SERVEM = 'Para fotos que valem para qualquer variação: embalagem, detalhes, medidas, o produto em uso. Envie uma vez e elas entram em todas as variações, depois das fotos de cada uma. Não precisa repetir em cada variação.';
+
+/** As fotos que valem para todas as variações (galeria geral). */
 function FotosParaTodas({ m }) {
     const { estado, schema } = m;
     const limites = schema?.limites ?? {};
     const temGerais = fotosDoGrupo(estado.imagens, estado.atribuicoes, GERAL).length > 0;
     const [aberto, setAberto] = useState(temGerais);
+    const incluir = !! (m.rasc?.incluir_geral ?? estado.rascunho.incluir_geral);
 
     if (! aberto && ! temGerais) {
         return (
-            <button type="button" onClick={() => setAberto(true)} disabled={m.disabled} className={LINK} data-acao="fotos-para-todas">
-                <ImagePlus size={16} aria-hidden="true" /> Adicionar fotos iguais para todas as variações
-            </button>
+            <div data-fotos-para-todas="fechado">
+                <button type="button" onClick={() => setAberto(true)} disabled={m.disabled} className={LINK} data-acao="fotos-para-todas">
+                    <ImagePlus size={16} aria-hidden="true" /> Adicionar fotos iguais para todas as variações
+                </button>
+                <p className="mt-1 text-[13px] text-white/50">{PARA_QUE_SERVEM}</p>
+            </div>
         );
     }
 
     return (
-        <BlocoDeFotos grupo={GERAL} titulo="Fotos para todas as variações" nota="aparecem em todas"
+        <BlocoDeFotos grupo={GERAL} titulo="Fotos para todas as variações" nota={incluir ? 'entram em todas, depois das fotos de cada uma' : 'fora dos anúncios'}
             imagens={estado.imagens} atribuicoes={estado.atribuicoes} maxFotos={limites.max_pictures_per_item ?? 10}
             enviando={m.enviandoFoto} disabled={m.disabled} envioAoMl={estado.publicacao_liberada === true}
             onArquivos={m.enviarFotos} onAtribuicoes={m.atribuirFotos} onExcluir={m.removerFoto} onReenviar={m.reenviarFoto}>
+            <p className="mt-3 text-[13px] text-white/50" data-explicacao-fotos-para-todas>{PARA_QUE_SERVEM}</p>
             <label className="mt-3 flex items-center gap-2 text-[13px] text-white/70">
-                <input type="checkbox" checked={!! (m.rasc?.incluir_geral ?? estado.rascunho.incluir_geral)} disabled={m.disabled}
+                <input type="checkbox" checked={incluir} disabled={m.disabled}
                     onChange={(e) => m.mudarRasc({ incluir_geral: e.target.checked })}
                     className="h-4 w-4 rounded border-white/40 bg-transparent text-ecf-yellow focus-visible:ring-2 focus-visible:ring-ecf-yellow" data-opcao="incluir-geral" />
-                Colocar estas fotos no fim das fotos de cada variação
+                Usar estas fotos em todas as variações
             </label>
+            {! incluir && temGerais && (
+                <p className="mt-1.5 text-[13px] text-amber-300" data-aviso-fotos-para-todas>Desmarcado: estas fotos ficam guardadas, mas não entram em nenhum anúncio.</p>
+            )}
         </BlocoDeFotos>
     );
 }

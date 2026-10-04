@@ -262,7 +262,10 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     };
     const mudarVar = (chave, patch) => {
         const atual = varsRef.current;
-        porVars({ ...atual, [chave]: { ...atual[chave], ...patch } });
+        // `patch` pode ser função da variação como está AGORA (servidor + o que falta salvar): dois efeitos
+        // no mesmo ciclo (EAN e cor principal automáticos) não apagam um o atributo do outro.
+        const p = typeof patch === 'function' ? patch(mesclarVariantes(estado?.variantes, atual).find((x) => x.chave === chave) ?? {}) : patch;
+        porVars({ ...atual, [chave]: { ...atual[chave], ...p } });
         tentativas.current.vars = 0;
         agendar('vars');
     };
@@ -454,6 +457,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
     const reenviarFoto = (imagemId) => estruturar(() => axios.post(rota('fotos.reenviar', produtoId, { imagem: imagemId })));
 
     const conferir = async () => {
+        await garantirFreteObrigatorio();
         const data = await enfileirar(async () => {
             await salvarTudoAgora();
 
@@ -556,9 +560,27 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         try {
             const { data } = await axios.get(rota('frete', produtoId));
             setFrete(data.frete_gratis ?? null);
+
+            return data.frete_gratis ?? null;
         } catch {
             // Sem a resposta do ML a tela segue como antes: a escolha do frete grátis fica com a pessoa.
             setFrete(null);
+
+            return null;
+        }
+    };
+
+    /**
+     * Antes da conferência, a mesma regra do frete grátis da tela (análise do Publicador, 04/10/2026):
+     * se a pessoa clicou antes de a consulta voltar (preço mudado agora há pouco), o anúncio iria sem
+     * frete grátis numa faixa em que o ML o exige. Pergunta de novo e marca; o `conferir` salva antes do POST.
+     */
+    const garantirFreteObrigatorio = async () => {
+        const envio = rascRef.current?.envio ?? {};
+        if ((envio.modo ?? 'me2') !== 'me2' || envio.frete_gratis || ! estado?.conta || estado.conta.erro || ! estado?.rascunho?.categoria_id) return;
+        const regra = await consultarFrete();
+        if (regra?.obrigatorio && ! rascRef.current?.envio?.frete_gratis) {
+            mudarRasc((r) => ({ envio: { ...r.envio, frete_gratis: true } }));
         }
     };
 

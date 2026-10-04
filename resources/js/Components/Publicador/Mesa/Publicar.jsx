@@ -67,6 +67,7 @@ function Previa({ m }) {
                 <p className={cn('mt-2 font-display text-[24px] leading-none tabular-nums', preco !== null ? 'text-neutral-950' : 'text-neutral-400')} data-previa-preco>
                     {preco !== null ? formatCurrency(preco) : 'Sem preço'}
                 </p>
+                {(rasc?.envio?.modo ?? 'me2') === 'me2' && rasc?.envio?.frete_gratis && <p className="mt-2 text-[13px] font-bold text-emerald-600" data-previa-frete>Frete grátis</p>}
                 {temVariacoes && v && <p className="mt-2 text-[13px] text-neutral-600" data-previa-variacao>{v.rotulo}</p>}
             </div>
         </div>
