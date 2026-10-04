@@ -1,15 +1,17 @@
 import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
-import { estadoDasSecoes, valorVazio } from '../apoio';
-import { ChipSecao, PainelDaEtapa, Tile } from './comum';
+import { valorVazio } from '../apoio';
+import { Tile } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Etapa 2 — Ficha técnica (check "Características") ──────────────────────
+// ─── Item "Ficha técnica" (e os subitens Obrigatórios / Outras características) ─
 //
 // Todos os campos da categoria abertos, como campos normais (docx §6,
 // 03/10/2026): nada recolhido nem rotulado "opcional"; o selo "obrigatório" só
-// aparece no que o ML exige. Os obrigatórios vêm primeiro. Os atributos da
-// seção EMBALAGEM não entram aqui: moram na etapa de envio.
+// aparece no que o ML exige. Dois grupos, na ordem do schema: os que o ML pede
+// (seção PRINCIPAIS ou REQUIRED) e as outras características — a árvore deixa
+// escolher um grupo só (`grupo`), ou os dois. Os atributos da seção EMBALAGEM
+// não entram aqui: moram em "Envio e garantia".
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
 
@@ -17,6 +19,43 @@ const MODELO = 'MODEL';
 const LIMITE_MODELO = 120;
 const ORDEM = { PRINCIPAIS: 0, FICHA: 1, AVANCADO: 2 };
 const PESO = { REQUIRED: 0, RECOMMENDED: 1 };
+
+/** As características da ficha (PRINCIPAIS, FICHA e AVANÇADO), como o card as lista. */
+export const atributosDaFicha = (schema) => Object.values(schema?.atributos ?? {}).filter((a) => ['PRINCIPAIS', 'FICHA', 'AVANCADO'].includes(a.secao));
+export const ehObrigatorio = (a) => a.secao === 'PRINCIPAIS' || a.obrigatoriedade === 'REQUIRED';
+export const obrigatoriosDaFicha = (atributos) => atributos.filter(ehObrigatorio);
+
+/**
+ * As pendências da ficha que caem num subitem ("obrigatorios" ou "outras"), pelo atributo que
+ * apontam. Pendência sem atributo fica só no item "Ficha técnica". A árvore e o centro contam
+ * por aqui — assim o subitem nunca fica âmbar com o item pai verde.
+ */
+export const problemasDoGrupoDaFicha = (problemas, schema, grupo) => (problemas ?? []).filter((p) => {
+    if (! p.alvo?.atributo) return false;
+    const a = schema?.atributos?.[p.alvo.atributo];
+
+    return a ? (grupo === 'obrigatorios') === ehObrigatorio(a) : grupo === 'outras';
+});
+
+/** Na ordem da tela: obrigatórios primeiro, depois por seção, depois pela ordem do schema. */
+const ordenadas = (schema) => atributosDaFicha(schema)
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => ((PESO[x.a.obrigatoriedade] ?? 2) - (PESO[y.a.obrigatoriedade] ?? 2)) || (ORDEM[x.a.secao] - ORDEM[y.a.secao]) || (x.i - y.i))
+    .map(({ a }) => a);
+
+/** "11 de 15" dos obrigatórios e o total de características preenchidas (para a árvore e o cabeçalho). */
+export const contagemDaFicha = (m) => {
+    const atributos = atributosDaFicha(m.schema);
+    const obrigatorios = obrigatoriosDaFicha(atributos);
+    const cheio = (a) => ! valorVazio(m.rasc?.atributos?.[a.id]);
+
+    return {
+        obrigatorios: obrigatorios.length,
+        obrigatoriosPreenchidos: obrigatorios.filter(cheio).length,
+        outras: atributos.length - obrigatorios.length,
+        outrasPreenchidas: atributos.filter((a) => ! ehObrigatorio(a) && cheio(a)).length,
+    };
+};
 
 /** A IA do Modelo: botão, andamento, erro e o contador dos 120 caracteres. */
 function IaDoModelo({ m, valor }) {
@@ -41,7 +80,7 @@ function IaDoModelo({ m, valor }) {
 
 function GradeTiles({ atributos, m }) {
     return (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {atributos.map((a) => {
                 const valor = m.rasc.atributos?.[a.id];
                 const preenchido = ! valorVazio(valor);
@@ -62,33 +101,30 @@ function GradeTiles({ atributos, m }) {
     );
 }
 
-export default function CardFichaTecnica({ m, rodape = null }) {
+/** `grupo`: 'obrigatorios' | 'outras' | nulo (os dois, com um título por grupo). */
+export default function CardFichaTecnica({ m, grupo = null }) {
     const schema = m.schema;
-    const atributos = Object.values(schema?.atributos ?? {})
-        .filter((a) => ['PRINCIPAIS', 'FICHA', 'AVANCADO'].includes(a.secao))
-        .map((a, i) => ({ a, i }))
-        .sort((x, y) => ((PESO[x.a.obrigatoriedade] ?? 2) - (PESO[y.a.obrigatoriedade] ?? 2)) || (ORDEM[x.a.secao] - ORDEM[y.a.secao]) || (x.i - y.i))
-        .map(({ a }) => a);
-    const obrigatorios = atributos.filter((a) => a.secao === 'PRINCIPAIS' || a.obrigatoriedade === 'REQUIRED');
-    const preenchidos = obrigatorios.filter((a) => ! valorVazio(m.rasc.atributos?.[a.id])).length;
-    const problemas = m.problemasDaSecao('caracteristicas');
-    const faltam = estadoDasSecoes(problemas, schema).caracteristicas.faltam;
+    if (! schema) return <p className="text-[13px] text-white/55">Escolha a categoria em "Produto e categoria" para ver as características.</p>;
+    const todas = ordenadas(schema);
+    const obrigatorios = todas.filter(ehObrigatorio);
+    const outras = todas.filter((a) => ! ehObrigatorio(a));
+    const c = contagemDaFicha(m);
 
-    const chip = (
-        <span className="inline-flex flex-wrap items-center gap-3">
-            {schema && <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/55 tabular-nums" data-obrigatorios>{preenchidos} de {obrigatorios.length} obrigatórios</span>}
-            <ChipSecao faltam={faltam} />
-        </span>
+    const Grupo = ({ titulo, contagem, atributos, chave }) => (
+        <section aria-label={titulo} data-grupo-ficha={chave}>
+            {grupo === null && (
+                <h3 className="mb-3 flex flex-wrap items-baseline gap-x-3 text-[15px] font-bold text-white">
+                    {titulo} <span className="text-[13px] font-normal text-white/45">{contagem}</span>
+                </h3>
+            )}
+            {atributos.length > 0 ? <GradeTiles atributos={atributos} m={m} /> : <p className="text-[13px] text-white/45">Nenhuma nesta categoria.</p>}
+        </section>
     );
 
     return (
-        <PainelDaEtapa id="etapa-ficha" titulo="Ficha técnica" chip={chip} problemas={problemas} rodape={rodape}
-            apoio={schema ? `Características da categoria ${schema.categoria_id}. Quanto mais completas, mais o anúncio aparece nas buscas e filtros.` : 'As características vêm da categoria.'}>
-            {! schema ? (
-                <p className="text-[13px] text-white/55">Escolha a categoria na etapa anterior para ver as características.</p>
-            ) : (
-                atributos.length > 0 && <GradeTiles atributos={atributos} m={m} />
-            )}
-        </PainelDaEtapa>
+        <div className="space-y-8">
+            {grupo !== 'outras' && <Grupo chave="obrigatorios" titulo="Pedidos pelo Mercado Livre" contagem={`${c.obrigatoriosPreenchidos} de ${c.obrigatorios} preenchidos`} atributos={obrigatorios} />}
+            {grupo !== 'obrigatorios' && <Grupo chave="outras" titulo="Outras características" contagem={`${c.outrasPreenchidas} de ${c.outras} preenchidas · quanto mais, mais o anúncio aparece nas buscas e filtros`} atributos={outras} />}
+        </div>
     );
 }

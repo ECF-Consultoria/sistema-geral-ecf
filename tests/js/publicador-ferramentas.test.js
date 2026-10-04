@@ -94,10 +94,10 @@ test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e
 
 // ── Gates de fonte ──
 
-test('§1 — a mesa ocupa a largura (sem o teto de 800px); só a revisão tem a coluna de 340px', () => {
+test('§1 — a mesa ocupa a largura (sem o teto de 800px): três colunas, árvore de 260px e Inspetor de 340px', () => {
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
     assert.doesNotMatch(f, /minmax\(0,800px\)|max-w-\[800px\]/);
-    assert.match(lerSemComentarios(`${BASE}/Mesa/EtapaRevisar.jsx`), /grid-cols-\[minmax\(0,1fr\)_340px\]/);
+    assert.match(f, /min-\[1360px\]:grid-cols-\[260px_minmax\(0,1fr\)_340px\]/);
 });
 
 test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao escolher categoria com o Modelo vazio', () => {
@@ -114,7 +114,7 @@ test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao esco
 });
 
 test('§3 — título: painel de termos com filtro de coerência e a IA por tipo de anúncio', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/CardTiposEPrecos.jsx`);
+    const card = lerSemComentarios(`${BASE}/Mesa/CardTitulos.jsx`);
     assert.match(card, /<TermosMaisBuscados /);
     assert.match(card, /m\.pedirPalavrasIa\(`titulo_\$\{lt\}`, \{ escolhidos \}\)/);
     assert.match(card, /juntarTermo\(/);
@@ -124,16 +124,17 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     assert.match(painel, /Ver também os que não citam o produto/);
 });
 
-test('§4 — Variações: "Nova variação" à vista e EAN-13 automático uma vez por variação', () => {
+test('§4 — Variações: "Nova variação" à vista e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
     assert.match(card, /Nova variação/);
     assert.match(card, /data-acao="adicionar-variacao"/);
     assert.match(card, /variantesSemGtin\(m\.variantes, schema\)/);
     assert.match(card, /gerados\.current\.add\(v\.chave\)/);
     assert.match(lerSemComentarios(`${BASE}/GradeVariantes.jsx`), /gerarEan13\(existentes\)/);
+    assert.match(lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx'), /useEfeitosDasVariacoes\(m\)/);
 });
 
-test('§5 — Logística: unidades kg/g e cm/mm/m, chip com a forma ESCOLHIDA e frete grátis obrigatório vindo do ML', () => {
+test('§5 — Logística: unidades kg/g e cm/mm/m, a forma ESCOLHIDA marcada e frete grátis obrigatório vindo do ML (num hook que a página chama sempre)', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/CardLogistica.jsx`);
     assert.match(card, /UNIDADES_PESO/);
     assert.match(card, /UNIDADES_MEDIDA/);
@@ -142,14 +143,16 @@ test('§5 — Logística: unidades kg/g e cm/mm/m, chip com a forma ESCOLHIDA e 
     assert.match(card, /m\.consultarFrete\(\)/);
     assert.match(card, /disabled=\{m\.disabled \|\| freteObrigatorio\}/);
     assert.doesNotMatch(card, /\b79\b/);
+    assert.match(lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx'), /useEfeitosDoEnvio\(m\)/);
 });
 
-test('§6 — Ficha técnica: nada recolhido nem rotulado "opcional"; borda âmbar só no obrigatório', () => {
+test('§6 — Ficha técnica: nada recolhido nem rotulado "opcional"; borda âmbar só no obrigatório; "Outras características" é um grupo normal', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/CardFichaTecnica.jsx`);
     assert.doesNotMatch(card, /opcion/i);
     assert.doesNotMatch(card, /aria-expanded/);
     assert.match(card, /obrigatorio=\{a\.obrigatoriedade === 'REQUIRED'\}/);
-    assert.match(card, /titulo="Ficha técnica"/);
+    assert.match(card, /Outras características/);
+    assert.match(lerSemComentarios(`${BASE}/apoio.js`), /chave: 'ficha', titulo: 'Ficha técnica'/);
     const comum = lerSemComentarios(`${BASE}/Mesa/comum.jsx`);
     assert.match(comum, /preenchido \|\| ! obrigatorio \? 'border-white\/\[0\.08\]' : 'border-amber-400\/50'/);
 });
@@ -185,21 +188,25 @@ test('varianteDoPedido / pedidoCompleto — acha pela combinação de valores, s
     assert.equal(pedidoCompleto([], {}), false);
 });
 
-test('Fotos dentro de cada variação: o card Fotos sumiu e a lateral leva às variações', () => {
+test('Fotos dentro de cada variação: o item da variação traz as fotos dela; Excluir = tirar o valor (um eixo) ou desativar (mais eixos); "trazer de volta"', () => {
     const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
-    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo="Fotos" obrigatorio=\{v\.ativa\}/);
+    // O título pode ser uma template string (`Fotos da variação ${v.rotulo}`): por isso `.+?` e não `[^}]+`.
+    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo=\{.+?\} obrigatorio=\{v\.ativa\}/);
     assert.match(cartao, /onArquivos=\{m\.enviarFotos\}/);
     const card = lerSemComentarios(`${BASE}/Mesa/CardVariacoes.jsx`);
-    assert.match(card, /titulo="Variações e fotos"/);
-    assert.match(card, /<NovaVariacao /);
     // Sem eixo que defina a foto, cada variação ganha as próprias fotos.
     assert.match(card, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
     // Tirar com um eixo = remover o valor (órfã com os dados); com mais = desativar.
     assert.match(card, /eixosSemValor\(eixos, eixo\.chave/);
     assert.match(card, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
     assert.match(card, /trazer de volta/);
-    const apoio = lerSemComentarios(`${BASE}/apoio.js`);
-    assert.match(apoio, /chave: 'variacoes', titulo: 'Variações e fotos', curto: 'Variações', secoes: \['variacoes', 'fotos', 'variantes'\]/);
+    const pagina = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
+    assert.match(pagina, /<NovaVariacao /);
+    assert.match(pagina, /acaoDeTirar\(m, v, eixos\)/);
+    assert.match(pagina, /data-acao="alternar-variacao"/);
+    assert.match(pagina, /data-acao="excluir-variacao"/);
+    // Problema de foto com `alvo.grupo` leva à variação dona do grupo.
+    assert.match(lerSemComentarios(`${BASE}/apoio.js`), /alvo\.grupo/);
 });
 
 test('NovaVariacao — a 1ª variação dá nome à que já existe (fica com os dados) e só depois cria a nova', () => {

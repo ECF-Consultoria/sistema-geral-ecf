@@ -289,3 +289,15 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   + sessionStorage por produto. Sticky dentro do `<main p-6>` do AppLayout: a barra usa `-top-6` e o trilho
   `sm:top-8`; o painel compensa com `scroll-mt-[152px]`. Regra visual: um só amarelo sólido por tela, e é o
   próximo passo (`publicarEhOProximoPasso`); o gradiente amarelo mora só em `Mesa/botoes.jsx`.
+- **Editor em 3 colunas (Conceito E do Stitch, 04/10 — substituiu o passo a passo e a "mesa de resumo").**
+  O cliente recusou, em ordem: formulário contínuo com tudo aberto, passo a passo (Voltar/Continuar) e blocos
+  fechados com resumo. Escolheu no Stitch (projeto `15646202289570387715`, 6 conceitos A–F, imagens em
+  `C:/tmp/ecf-publicador-melhoria-visual/stitch/`) a árvore à esquerda + item selecionado no centro + Inspetor
+  à direita. Itens em `ITENS` (`apoio.js`); subitem = `raiz/sub` (`ficha/obrigatorios`, `variacoes/<chave>`),
+  na URL como `?item=`. O centro monta UM item por vez, então os efeitos do anúncio inteiro (EAN automático,
+  "fotos por variação", regra do frete) saíram dos cards para hooks que a PÁGINA chama sempre
+  (`useEfeitosDasVariacoes`, `useEfeitosDoEnvio`) — efeito de card desmontado não roda.
+  Duas armadilhas já pagas: (1) `ITENS.variacoes` NÃO pode listar a seção `fotos` — o `find` pega o 1º item
+  da seção e a pendência da galeria geral ia para Variações; a foto de uma variação chega ao subitem dela por
+  `problemasDaVariante`. (2) Subitem da árvore conta pela MESMA régua do pai (bloqueios do servidor,
+  `problemasDoGrupoDaFicha`), nunca por campo vazio — senão fica âmbar com o pai verde.

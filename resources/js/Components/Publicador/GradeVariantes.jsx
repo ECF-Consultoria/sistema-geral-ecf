@@ -65,7 +65,7 @@ export function CampoSku({ v, travada, onMudar, className }) {
  * `existentes` (Set) liga o botão "Gerar": um EAN-13 novo do gerador interno, sem
  * repetir os das outras variações (docx §4).
  */
-export function CampoGtin({ v, schema, travada, onMudar, className, existentes = null }) {
+export function CampoGtin({ v, schema, travada, onMudar, className, existentes = null, comRotulo = false }) {
     const motivo = schema?.atributos?.EMPTY_GTIN_REASON;
     if (! schema?.atributos?.GTIN) return null;
     const semCodigo = !! atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id;
@@ -77,10 +77,11 @@ export function CampoGtin({ v, schema, travada, onMudar, className, existentes =
                     onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'GTIN', e.target.value === '' ? null : { value_name: e.target.value.replace(/\D/g, '') })}
                     placeholder="EAN de 8 a 14 dígitos" className={cn(pequeno, 'w-40 font-mono tabular-nums', className)} data-gtin={v.chave} />
                 {existentes && ! travada && ! semCodigo && (
+                    // `comRotulo` (item da variação, Conceito E): o botão diz "gerar outro"; na grade compacta fica só o ícone.
                     <button type="button" title="Gerar um EAN-13 válido novo (não repete os das outras variações)" aria-label={`Gerar código para ${v.rotulo}`} data-gerar-gtin={v.chave}
                         onClick={() => mudarAtributoDaVariante(v, onMudar, 'GTIN', { value_name: gerarEan13(existentes) })}
-                        className="grid h-8 w-8 shrink-0 place-items-center self-center rounded-lg border border-white/[0.10] bg-white/[0.04] text-white/70 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                        <RefreshCw size={13} />
+                        className={cn('inline-flex h-8 shrink-0 items-center justify-center gap-1.5 self-center rounded-lg border border-white/[0.10] bg-white/[0.04] text-white/70 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow', comRotulo ? 'px-3 text-[13px]' : 'w-8')}>
+                        <RefreshCw size={13} />{comRotulo && <span>gerar outro</span>}
                     </button>
                 )}
             </div>

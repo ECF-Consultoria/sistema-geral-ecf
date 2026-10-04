@@ -693,6 +693,8 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             listaDeAvisos: daConferencia.avisos,
         },
         secoes: estado ? estadoDasSecoes(todos, schema) : {},
+        // Todos os problemas desta versão (locais + conferência + publicação): a árvore e o Inspetor leem daqui.
+        problemas: todos,
         prontas: estado ? contarProntas(todos, schema) : 0,
         totalSecoes: SECOES.length,
         totalAnuncios: totalDeAnuncios(alvos, variantes),
