@@ -2826,6 +2826,27 @@ Plans:
 
 ---
 
+## Fase avulsa — Alavancas no Publicador (fora de milestone)
+
+### Phase 166: Alavancas no Publicador — promoções, cupons, publicidade e atacado da conta do cliente
+
+**Goal:** no Publicador interno (`/mlb/anuncios`), depois de escolher a empresa, a equipe escolhe entre **Publicar** (o fluxo atual da Fase 164) e **Alavancas**: uma área para ver, analisar e — onde a API do Mercado Livre permite — criar e alterar as alavancas de venda da conta do cliente: Central de promoções (convites, candidatos, inscrever/alterar/tirar anúncio, lista de exclusão das campanhas automáticas, desconto individual, campanha do vendedor, leve X pague Y), cupons do vendedor, publicidade (Product Ads) e atacado (preço por quantidade).
+**Requirements**: a definir no `/gsd-discuss-phase 166` (pesquisa de API em `166-PESQUISA-API.md`)
+**Depends on:** Phase 164 (Publicador interno, seleção de empresa e conta ML com token). Toca a Fase 41/44 (Sugadores) só se a publicidade reaproveitar o `MercadoLivreAdsService`.
+**Plans:** a definir
+
+**Já sabido (pesquisa de 2026-10-04, `166-PESQUISA-API.md`):**
+- Central de promoções e cupons: API completa (`/seller-promotions`, `app_version=v2`); cupom do vendedor só no Brasil; reputação verde, item ativo e exposição paga para criar desconto/campanha/cupom.
+- Publicidade: leitura documentada (campanhas, anúncios, ad groups, métricas, bonificações); escrita NÃO está na documentação brasileira e nunca foi provada (permissão "Advertising" do app ECF no DevCenter pendente desde 2026-06-27).
+- Atacado: só contas com a tag `business`; o formato absoluto (`/prices/standard/quantity`) é descontinuado em 2026-10-27 — usar o % B2B (`/prices/price-per-quantity`, header `x-version`).
+- Afiliados: fora — não há API para o vendedor.
+- Escrita em conta de cliente é o objetivo da fase, mas a regra do usuário de 2026-10-01 (só a #459 recebe escrita de teste) precisa ser revista na discussão antes de qualquer POST/PUT/DELETE real.
+
+Plans:
+- [ ] A definir (`/gsd-plan-phase 166`)
+
+---
+
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
 
 **Plano canônico:** `plano-incubadora-v1` (raiz do repo), §§7-20 · **Requirements:** `.planning/REQUIREMENTS-v24.md` · **Spike V0.1 (já entregue, não replanejar):** quick task `261001-nkx`, medições completas em `.planning/quick/261001-nkx-spike-v0-1-do-creative-engine-provider-g/261001-nkx-NOTAS-PUBLICADOR.md` (seções 1-20).
