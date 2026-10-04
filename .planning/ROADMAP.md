@@ -2797,6 +2797,35 @@ Plans:
 
 *Roadmap atualizado: 2026-10-03 - **Fase 164 DEPLOYADA** (`01da6664`): integrada com a v24.0 até a Fase 161 dela, com a ponte "Gerar criativos no assistente antigo" na tela de produtos. A integração de verdade do Creative Engine no card de Fotos do Publicador fica para a Fase 165 (aditiva, combinada com o outro dev).*
 
+## Fase avulsa — Creative Engine no Publicador novo (fora de milestone)
+
+### Phase 165: Creative Engine no Publicador novo — gerador de imagens dentro do editor
+
+**Goal:** o publicador gera o kit de criativos por IA (Creative Engine da v24.0) sem sair do editor do Publicador interno (`/mlb/anuncios`, editor em 3 etapas `cab40d48`, que substituiu as 3 colunas em 04/10) — a partir do rascunho do Publicador, não do assistente antigo — e as imagens que ele aprova viram fotos do próprio rascunho (fotos gerais ou da variação), que só sobem ao Mercado Livre na conferência/publicação, com a mesma trava de conta liberada.
+**Requirements**: CE165-01, CE165-02, CE165-03, CE165-04, CE165-05, CE165-06, CE165-07, CE165-08, CE165-09, CE165-10, CE165-11, CE165-12 (definidos em `165-RESEARCH.md`)
+**Depends on:** Phase 164 (Publicador interno; editor em 3 etapas `cab40d48`) e Phase 161 (kit de 7 da v24.0, em produção). **Coordenação:** a ordem com a Fase 162 (validador) do outro dev precisa ser combinada antes da execução — recado enviado pelo usuário em 2026-10-04.
+**Plans:** 8 plans
+
+**Escopo combinado (só ACRESCENTA, nada do que existe muda de comportamento):**
+- coluna anulável `pub_rascunho_id` em `ml_anuncio_criativos` e `ml_anuncio_criativo_kits` (tabelas COM dado em produção → por isso esta fase é GSD: baseline de testes, VERIFICATION);
+- segundo caminho no `CreativeContextBuilder::paraCriativo` lendo o rascunho do Publicador; o caminho do `payload` do assistente antigo fica byte a byte igual;
+- endpoints novos em `mlb.anuncios.publicador.criativos.*` reaproveitando planejar/gerar/regenerar/aprovar do kit, com o kit endereçado pelo `id` escopado ao rascunho (nenhum token de criativo chega ao navegador — D-13);
+- imagem aprovada vira `pub_imagens` no grupo certo (galeria geral ou variação) via `ImagemAssetService`; nunca envio direto ao ML;
+- tela: o `BlocoDeFotos` (fotos de cada variação e "Fotos para todas as variações", etapa Detalhes) ganha "Gerar com IA", que abre um painel NATIVO do Publicador (`Mesa/PainelCriativos.jsx` + `useCriativosDoPublicador`, D-08) — `PainelCriativosIa`/`KitCriativosGrade` do assistente antigo ficam intocados;
+- fora: `MlPublicacaoService`, `CreativeKitPublicacao`, gate do PUB-03, Fase 162.
+
+Plans:
+- [ ] 165-01-PLAN.md — checkpoint de coordenação com o outro dev, baseline de testes (commit próprio), migration aditiva (`pub_rascunho_id`, `pub_grupo`, `pub_imagem_id`) e models
+- [ ] 165-02-PLAN.md — adaptador `ContextoCriativoDoPublicador`, ramo novo no `CreativeContextBuilder` (valor da variação como fato) e trait de teste
+- [ ] 165-03-PLAN.md — serviços: imagem aprovada vira `pub_imagens` (D26, dedupe, sem truncar) e referências efêmeras das fotos do rascunho
+- [ ] 165-04-PLAN.md — controller, rotas `publicador.criativos.*` e presenter (atual, planejar, gerar, status, binários, aprovar uma)
+- [ ] 165-05-PLAN.md — regenerar, aprovar o kit, limitadores (429 em pt-BR) e D-13 (nenhum token no navegador; regressão das rotas antigas)
+- [ ] 165-06-PLAN.md — hook `useCriativosDoPublicador` e painel `Mesa/PainelCriativos.jsx`
+- [ ] 165-07-PLAN.md — "Gerar com IA" no `BlocoDeFotos` (link, não amarelo), Provider no `Editor.jsx` e prop `criativos_ia`
+- [ ] 165-08-PLAN.md — gate final contra o baseline, learnings §11 e conferência visual sem custo (checkpoint)
+
+---
+
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
 
 **Plano canônico:** `plano-incubadora-v1` (raiz do repo), §§7-20 · **Requirements:** `.planning/REQUIREMENTS-v24.md` · **Spike V0.1 (já entregue, não replanejar):** quick task `261001-nkx`, medições completas em `.planning/quick/261001-nkx-spike-v0-1-do-creative-engine-provider-g/261001-nkx-NOTAS-PUBLICADOR.md` (seções 1-20).
@@ -2919,3 +2948,5 @@ Plans:
 ---
 
 *Roadmap atualizado: 2026-10-02 — **Milestone v24.0 (Creative Engine)** anexada: 4 fases (160-163) cobrindo os 42 REQ-IDs (FOTO/CTX/TRUTH/PLAN/GEN/VAL/APROV/PUB/OPS) do REQUIREMENTS-v24.md, derivadas do plano canônico `plano-incubadora-v1` §§7-20 e corrigidas pelas medições reais do spike V0.1 (`261001-nkx-NOTAS-PUBLICADOR.md`, seções 1-20) — pesquisa de arquitetura dispensada porque a investigação já foi feita no spike. Estrutura deliberadamente NÃO em camadas (fundação→contexto→planner→geração→validação→UI): por decisão explícita do usuário (D-05), a Fase 160 entrega uma fatia fina ponta a ponta — upload, contexto, Product Truth, UMA imagem gerada, aprovação humana e entrada no rascunho, tudo atrás de chave desligada — e cada fase seguinte enriquece sem nunca ficar isolada numa camada técnica: a Fase 161 escala de 1 para 7 imagens com planejamento dinâmico, geração paralela, regeneração manual e aprovação de kit (entregues juntos de propósito, porque um kit de 7 sem conseguir corrigir a imagem ruim não é usável), a Fase 162 soma o validador Gemini-como-juiz e a regeneração automática por cima do kit que já funciona manualmente, e a Fase 163 fecha o "→ V1" do nome da milestone com custo visível por projeto e a medição real do POC contra anúncios já produzidos à mão. Apenas 4 fases em vez da faixa sugerida de 5-7: os 42 requisitos se agrupam naturalmente em 3 blocos de risco decrescente mais o fechamento do POC — forçar uma 5ª fase exigiria separar partes que a própria regra anti-camada deste roadmap proíbe separar (ex.: aprovar o kit sem poder regenerar a imagem ruim do mesmo kit). Numeração contínua a partir de 160 (última fase existente: 159, da pessoa com dois cargos, fora de milestone). `phases.clear` NÃO foi executado — Fases 1-159 preservadas integralmente, incluindo a milestone v22.0 em 71% e a Fase 159-08 adiada pelo usuário em 2026-10-01 (ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`); nenhuma fase, decisão ou numeração anterior foi tocada.*
+
+*Roadmap atualizado: 2026-10-04 - **Fase 165 (Creative Engine no Publicador novo)** anexada como fase avulsa, fora da milestone v24.0 (que é do outro dev). Origem: o usuário pediu o gerador de imagens dentro do Publicador novo e escolheu a integração de verdade (não a ponte por rascunho espelho). GSD porque altera `ml_anuncio_criativos` e `ml_anuncio_criativo_kits`, que têm dado em produção. Execução espera o ok do outro dev sobre a ordem com a Fase 162. Fases 1-164 preservadas.*
