@@ -8,11 +8,17 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\MlToken;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
+use App\Services\Portal\Estrutura\Produtos\ModeloProdutosXlsx;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 
@@ -30,9 +36,7 @@ class GravarLinhasTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Nenhuma chamada real ao ML: categoria nunca é pedida nestes testes.
         Cache::put('ml_app_token_coleta', 'app-token-teste', 3600);
-        Http::fake(['*' => Http::response([], 404)]);
     }
 
     private function vol(): array
@@ -177,5 +181,162 @@ class GravarLinhasTest extends TestCase
 
         $sessao->deleteJson(route('portal.auth.estrutura.produtos.ambientes.excluir', $id))->assertOk()->assertJsonPath('listas.ambientes', []);
         $this->assertSame(0, EstruturaAmbiente::where('company_id', $empresa->id)->count());
+    }
+
+    // ═══ Modelo e importação (D-13) ═════════════════════════════════════════
+
+    /** @var list<string> */
+    private array $temporarios = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->temporarios as $arquivo) {
+            @unlink($arquivo);
+        }
+        parent::tearDown();
+    }
+
+    /** Planilha sintética gravada em disco com a extensão pedida. */
+    private function planilha(array $linhas, string $extensao = 'xlsx'): UploadedFile
+    {
+        $planilha = new Spreadsheet();
+        $planilha->getActiveSheet()->setTitle('Produtos');
+        foreach ($linhas as $r => $celulas) {
+            foreach (array_values($celulas) as $c => $valor) {
+                if ($valor !== null) {
+                    $planilha->getActiveSheet()->setCellValueExplicit(
+                        \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1).($r + 1),
+                        (string) $valor, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING,
+                    );
+                }
+            }
+        }
+        $caminho = tempnam(sys_get_temp_dir(), 'prod167').'.xlsx';
+        IOFactory::createWriter($planilha, 'Xlsx')->save($caminho);
+        $this->temporarios[] = $caminho;
+
+        // Nome do cliente com a extensão pedida; o conteúdo é o mesmo zip.
+        return new UploadedFile($caminho, "produtos.{$extensao}", null, null, true);
+    }
+
+    public function test_modelo_baixa_o_xlsx_com_os_11_cabecalhos(): void
+    {
+        $r = $this->entrarNoPortal($this->empresaDoGabarito())
+            ->get(route('portal.auth.estrutura.produtos.modelo'))
+            ->assertOk()
+            ->assertDownload('modelo-produtos.xlsx');
+
+        $caminho = tempnam(sys_get_temp_dir(), 'mod167').'.xlsx';
+        $this->temporarios[] = $caminho;
+        file_put_contents($caminho, $r->streamedContent());
+
+        $folha = IOFactory::load($caminho)->getSheet(0);
+        $cabecalhos = [];
+        for ($c = 1; $c <= 11; $c++) {
+            $cabecalhos[] = (string) $folha->getCell([$c, 1])->getValue();
+        }
+        $this->assertSame(ModeloProdutosXlsx::CABECALHOS, $cabecalhos);
+    }
+
+    public function test_previa_da_importacao_nao_grava_nada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, 'Novo Um'], ['N2', null, null, 'Novo Dois']]);
+
+        $r = $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.produtos.importacao.previa'), ['arquivo' => $arquivo], ['Accept' => 'application/json'])
+            ->assertOk();
+
+        $this->assertNull($r->json('erro_geral'));
+        $this->assertSame(2, $r->json('totais.novos'));
+        $this->assertSame(0, EstruturaProduto::count());
+    }
+
+    public function test_previa_recusa_xlsm_csv_e_arquivo_grande(): void
+    {
+        $sessao = $this->entrarNoPortal($this->empresaDoGabarito());
+        $url = route('portal.auth.estrutura.produtos.importacao.previa');
+        $json = ['Accept' => 'application/json'];
+
+        $sessao->post($url, ['arquivo' => $this->planilha([['Ref', 'Produto'], ['A', 'B']], 'xlsm')], $json)
+            ->assertStatus(422)->assertJsonValidationErrors('arquivo');
+        $sessao->post($url, ['arquivo' => UploadedFile::fake()->createWithContent('produtos.csv', "Ref;Produto\nA;B\n")], $json)
+            ->assertStatus(422)->assertJsonValidationErrors('arquivo');
+        $sessao->post($url, ['arquivo' => UploadedFile::fake()->create('produtos.xlsx', 2049, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')], $json)
+            ->assertStatus(422)->assertJsonValidationErrors('arquivo');
+    }
+
+    public function test_aplicar_a_importacao_grava_e_avisa_pelo_flash_success(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, 'Novo Um'], ['N2', null, null, 'Novo Dois']]);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.produtos.importacao'), ['arquivo' => $arquivo])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Importação concluída: 2 novos, 0 atualizados.');
+
+        $this->assertSame(2, EstruturaProduto::where('company_id', $empresa->id)->count());
+    }
+
+    public function test_aplicar_com_erro_geral_volta_com_o_erro_em_arquivo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        // Sem a coluna Ref: o leitor devolve a mensagem fixa.
+        $arquivo = $this->planilha([['Coisa', 'Outra'], ['a', 'b']]);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.produtos.importacao'), ['arquivo' => $arquivo])
+            ->assertRedirect()
+            ->assertSessionHasErrors('arquivo');
+
+        $this->assertSame(0, EstruturaProduto::count());
+    }
+
+    // ═══ Fretes (D-16) ══════════════════════════════════════════════════════
+
+    private function umaVariacaoComVolumes($sessao, $empresa): EstruturaProdutoVariacao
+    {
+        $this->gravar($sessao, [['codigo' => 'FRT-1', 'nome' => 'Frete', 'volumes' => $this->vol(), 'custo' => '100,00']])->assertOk();
+
+        return EstruturaProdutoVariacao::where('company_id', $empresa->id)->firstOrFail();
+    }
+
+    public function test_fretes_sem_conta_conectada_nao_faz_requisicao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+        $v = $this->umaVariacaoComVolumes($sessao, $empresa);
+        Http::fake();
+
+        $r = $sessao->postJson(route('portal.auth.estrutura.produtos.fretes'), ['variacao_ids' => [$v->id]])->assertOk();
+
+        $this->assertFalse($r->json('conectado'));
+        Http::assertNothingSent();
+    }
+
+    public function test_fretes_com_conta_cotam_pela_api_e_nao_gravam_precificacao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+        $v = $this->umaVariacaoComVolumes($sessao, $empresa);
+        MlToken::create([
+            'company_id' => $empresa->id, 'ml_user_id' => '436501796',
+            'access_token' => 'fake-access-token', 'refresh_token' => 'fake-refresh-token',
+            'token_type' => 'bearer', 'scope' => 'read write offline_access',
+            'expires_at' => now()->addDays(6), 'last_refreshed_at' => now(),
+            'status' => 'active', 'connected_at' => now(),
+        ]);
+        Http::fake(fn (Request $r) => Http::response(['coverage' => ['all_country' => ['list_cost' => 23.45]]]));
+        $antes = EstruturaPrecificacao::count();
+
+        $r = $sessao->postJson(route('portal.auth.estrutura.produtos.fretes'), ['variacao_ids' => [$v->id]])->assertOk();
+
+        $this->assertTrue($r->json('conectado'));
+        $this->assertSame('api', $r->json("fretes.{$v->id}.origem"));
+        $this->assertEquals(23.45, $r->json("fretes.{$v->id}.valor"));
+        $this->assertSame(0, $r->json('pendentes'));
+        $this->assertSame($antes, EstruturaPrecificacao::count());
+        $this->assertStringNotContainsString('fake-access-token', $r->getContent());
     }
 }
