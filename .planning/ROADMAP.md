@@ -2865,7 +2865,7 @@ Plans:
 **Goal:** a aba **Produtos** da planilha `3Planejamento_Estrutural_ECF.xlsx` (a que o Emerson apresentou na reunião da Incubadora de 2026-10-05) vira sistema, como submódulo novo **Produtos** no Mapeamento Estrutural do Portal do Cliente: o cliente (e a equipe, pelo acesso de equipe ao portal) cadastra cada produto com código, grupo/variação, nome, família (linha de design), ambiente(s), categoria do ML, volumes (C×L×A e peso de cada), peso total e custo — por tela ou importando a planilha — e cada produto se liga às ofertas simples da Lista SKUs. É a base da geração automática das ofertas (fase seguinte): "cadastrar o produto uma vez" em vez de cadastrar cada anúncio.
 **Requirements**: PR167-01, PR167-02, PR167-03, PR167-04, PR167-05, PR167-06, PR167-07, PR167-08, PR167-09, PR167-10, PR167-11, PR167-12, PR167-13, PR167-14 (definidos em `167-RESEARCH.md`; decisões D-01..D-22 em `167-CONTEXT.md`; contrato de tela em `167-UI-SPEC.md`)
 **Depends on:** Mapeamento Estrutural do Portal (`estrutura_*`, ADR PORTAL-01/02) e Phase 164 (Publicador lê as ofertas do Mapeamento pelo "Sincronizar do Portal").
-**Plans:** 1/17 plans executed
+**Plans:** 2/17 plans executed
 
 **Já sabido (análise de 2026-10-05, na conversa com o usuário):**
 - A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
@@ -2879,7 +2879,7 @@ Plans:
 
 Plans:
 - [x] 167-01-PLAN.md — baseline de testes (commit próprio), desenho do schema, 6 tabelas novas + models e o ALTER `estrutura_ofertas.variacao_id` provado no MariaDB local
-- [ ] 167-02-PLAN.md — regras puras: config global do ML, NumeroBr, VolumesTexto, logística provável (ME2/Full/ME1/pendente, pacote empilhado), tabela de frete ECF e pendências
+- [x] 167-02-PLAN.md — regras puras: config global do ML, NumeroBr, VolumesTexto, logística provável (ME2/Full/ME1/pendente, pacote empilhado), tabela de frete ECF e pendências
 - [ ] 167-03-PLAN.md — famílias e ambientes como listas da empresa; oferta ligada no EstruturaOfertaService (criar, sincronizar, proteger na Lista SKUs)
 - [ ] 167-04-PLAN.md — SpreadsheetGrid estendido de forma aditiva (colar crescendo, Tab entre linhas, coluna picker, aparência portal, ações e nota por linha)
 - [ ] 167-05-PLAN.md — frete ME2: estimativa pela tabela ECF e cotação real pela conta do cliente, em lote e com cache (nada gravado)
