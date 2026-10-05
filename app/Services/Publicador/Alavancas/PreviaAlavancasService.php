@@ -192,21 +192,34 @@ class PreviaAlavancasService
         return ['tipo' => 'lote', 'lote' => $lote, 'total' => count($normalizados)];
     }
 
-    /** Round 2 em todo valor numérico não inteiro, em qualquer profundidade (mesma entrada, mesmo canônico). */
+    /** Campos que são número de verdade (dinheiro, percentual, quantidade); o resto é texto e passa intacto. */
+    private const CAMPOS_NUMERICOS = [
+        'deal_price', 'top_deal_price', 'discount_percentage', 'fixed_amount', 'fixed_percentage',
+        'min_purchase_amount', 'max_purchase_amount', 'budget', 'percentual', 'stock',
+        'buy_quantity', 'pay_quantity', 'quantidade_minima',
+    ];
+
+    /** Round 2 nos valores numéricos conhecidos, em qualquer profundidade (mesma entrada, mesmo canônico). */
     public function normalizar(array $itens): array
     {
-        return array_map(fn ($v) => $this->normalizarValor($v), array_values($itens));
+        return array_map(fn ($v) => $this->normalizarValor($v, null), array_values($itens));
     }
 
-    private function normalizarValor(mixed $v): mixed
+    private function normalizarValor(mixed $v, int|string|null $chave): mixed
     {
         if (is_array($v)) {
-            return array_map(fn ($x) => $this->normalizarValor($x), $v);
+            $r = [];
+            foreach ($v as $k => $x) {
+                $r[$k] = $this->normalizarValor($x, $k);
+            }
+
+            return $r;
         }
         if (is_float($v)) {
             return round($v, 2);
         }
-        if (is_string($v) && is_numeric($v) && ! ctype_digit($v)) {
+        // Só string de campo numérico conhecido: código de cupom `1E3` ou nome `2e3` não podem virar número (WR-BE-04).
+        if (is_string($v) && in_array($chave, self::CAMPOS_NUMERICOS, true) && is_numeric($v) && ! ctype_digit($v)) {
             return round((float) $v, 2);
         }
 

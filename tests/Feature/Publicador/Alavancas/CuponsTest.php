@@ -10,6 +10,7 @@ use App\Services\Publicador\Alavancas\Acoes\InscreverNoConvite;
 use App\Services\Publicador\Alavancas\Acoes\RemoverDoConvite;
 use App\Services\Publicador\Alavancas\DatasDoMl;
 use App\Services\Publicador\Alavancas\EscritorAlavancas;
+use App\Services\Publicador\Alavancas\PreviaAlavancasService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -283,5 +284,24 @@ class CuponsTest extends TestCase
         $this->assertSame('SELLER_COUPON_CAMPAIGN', $delete['query']['promotion_type']);
         $this->assertSame('C-MLB1234', $delete['query']['promotion_id']);
         $this->assertSame('cupom', $linha->alavanca);
+    }
+
+    public function test_codigo_e_nome_numericos_chegam_intactos_na_escrita_depois_de_normalizar(): void
+    {
+        $this->cenario();
+        $dados = $this->criar(['partial_coupon_code' => '1E3', 'name' => '2e3', 'fixed_percentage' => '10.456'])->dados();
+
+        // O mesmo caminho do confirmar: valida a forma e normaliza antes de montar a ação.
+        $normalizados = app(PreviaAlavancasService::class)->normalizar([$dados]);
+        $this->assertSame('1E3', $normalizados[0]['partial_coupon_code']);
+        $this->assertSame('2e3', $normalizados[0]['name']);
+        $this->assertSame(10.46, $normalizados[0]['fixed_percentage'], 'campo numérico conhecido continua arredondado');
+
+        $linha = $this->executar(new CriarCupom($this->contaAlavanca(), $normalizados[0]));
+
+        $this->assertSame(PubAlavancaEscrita::OK, $linha->resultado, (string) $linha->mensagem);
+        $corpo = $this->chamadasNaoGet()[0]['corpo'];
+        $this->assertSame('1E3', $corpo['partial_coupon_code']);
+        $this->assertSame('2e3', $corpo['name']);
     }
 }
