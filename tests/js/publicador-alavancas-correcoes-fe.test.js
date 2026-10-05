@@ -253,3 +253,14 @@ test('WR-FE-03: AbaPublicidade esconde os números enquanto a nova leitura não 
     assert.match(fonte, /\{! carregando && meus\.length > 0 && \(/);
     assert.doesNotMatch(fonte, /carregando && ! dados &&/);
 });
+
+// ─── WR-FE-04: bonificações — total é das ativas e as outras vêm marcadas ───
+test('WR-FE-04: AbaPublicidade rotula o total como das ativas e marca as inativas', () => {
+    const fonte = lerSemComentarios(`${PASTA}/AbaPublicidade.jsx`);
+    assert.match(fonte, /Saldo total das bonificações ativas/);
+    assert.match(fonte, /b\.status !== STATUS_ATIVA \? ' · inativa, fora do saldo total'/);
+    assert.match(fonte, /some\(\(b\) => b\.status === STATUS_ATIVA\)/);
+    assert.match(fonte, /const STATUS_ATIVA = 'ACTIVE'/);
+    // O número do servidor não é recalculado na tela.
+    assert.doesNotMatch(fonte, /reduce\(/);
+});

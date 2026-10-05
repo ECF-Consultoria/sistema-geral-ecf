@@ -15,6 +15,9 @@ const COLUNAS = ['Campanha', 'Situação', 'Orçamento diário', 'Estratégia', 
 // campaign_id 0 no Mercado Livre = o grupo de anúncios não está em nenhuma campanha.
 const FORA = '0';
 
+// Só bonificação ACTIVE entra no saldo total que o servidor soma; as outras aparecem marcadas.
+const STATUS_ATIVA = 'ACTIVE';
+
 const num = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 }));
 
 /** Ad Groups de uma campanha (ou os que ficam fora de campanha). */
@@ -133,14 +136,15 @@ export default function AbaPublicidade({ conta }) {
                             <p className="mt-2 text-[13px] font-normal text-white/55">{bonif.indisponivel}</p>
                         ) : (
                             <>
-                                <p className="mt-2 text-[13px] font-normal text-white/70">{`Saldo total ${fmtBRL(bonif.saldo_total)}`}</p>
-                                {(bonif.itens ?? []).length === 0 && <p className="mt-1 text-[13px] font-normal text-white/55">Nenhuma bonificação ativa.</p>}
+                                <p className="mt-2 text-[13px] font-normal text-white/70">{`Saldo total das bonificações ativas ${fmtBRL(bonif.saldo_total)}`}</p>
+                                {! (bonif.itens ?? []).some((b) => b.status === STATUS_ATIVA) && <p className="mt-1 text-[13px] font-normal text-white/55">Nenhuma bonificação ativa.</p>}
                                 <ul className="mt-2 space-y-1">
                                     {(bonif.itens ?? []).map((b, i) => (
                                         <li key={`${b.beneficio ?? 'b'}-${i}`} className="text-[13px] font-normal text-white/70">
                                             {`${b.beneficio ?? b.campanha ?? 'Bonificação'} — saldo ${fmtBRL(b.saldo)}`}
                                             {b.fim ? ` · vale até ${fmtData(b.fim)}` : ''}
                                             {b.dias_restantes !== null && b.dias_restantes !== undefined ? ` (${num(b.dias_restantes)} dias)` : ''}
+                                            {b.status !== STATUS_ATIVA ? ' · inativa, fora do saldo total' : ''}
                                         </li>
                                     ))}
                                 </ul>
