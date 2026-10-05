@@ -43,6 +43,19 @@ export function fmtData(valor, { hora = false } = {}) {
     return d.toLocaleString('pt-BR', opcoes).replace(',', '');
 }
 
+/**
+ * Dia (aaaa-mm-dd) de uma data do ML no fuso de São Paulo. Sem fuso, vale o próprio dia escrito;
+ * com `Z`/offset, converte (2026-10-05T02:00:00Z já é 04/10 em São Paulo). Vazio ou inválido: ''.
+ */
+export function diaSP(valor) {
+    if (! valor) return '';
+    const texto = String(valor).trim();
+    if (SO_DATA.test(texto) || SEM_FUSO.test(texto)) return texto.slice(0, 10);
+    const d = paraDate(texto);
+
+    return d ? d.toLocaleDateString('en-CA', { timeZone: FUSO }) : '';
+}
+
 /** Hoje (aaaa-mm-dd) no fuso de São Paulo. */
 export const hojeSP = () => new Date().toLocaleDateString('en-CA', { timeZone: FUSO });
 

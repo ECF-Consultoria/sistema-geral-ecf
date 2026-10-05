@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { CAMPO, SELECT } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
-import { hojeSP, lerNumero, somarDias } from '../formato';
+import { diaSP, hojeSP, lerNumero, somarDias } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 
 /** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
 const numero = (texto) => lerNumero(texto, { positivo: true });
 
 const texto = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
-const dia = (iso) => String(iso ?? '').slice(0, 10);
 
 /**
  * Criar ou alterar um cupom do vendedor. `cupom` (lido) liga o modo edição.
@@ -28,8 +27,8 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
         teto: texto(cupom?.teto),
         orcamento: texto(cupom?.orcamento),
         codigo: cupom?.codigo ?? '',
-        inicio: cupom ? dia(cupom.inicio) : hoje,
-        fim: cupom ? dia(cupom.fim) : somarDias(hoje, 6),
+        inicio: cupom ? diaSP(cupom.inicio) : hoje,
+        fim: cupom ? diaSP(cupom.fim) : somarDias(hoje, 6),
     });
     const [alvo, setAlvo] = useState(null);
     const mudar = (campo, valor) => setF((antes) => ({ ...antes, [campo]: valor }));
@@ -65,10 +64,10 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
         // Só vai o que mudou.
         const dados = { promotion_id: cupom.id };
         if (f.nome.trim() !== (cupom.nome ?? '')) dados.name = f.nome.trim();
-        if (f.fim !== dia(cupom.fim)) dados.finish_date = f.fim;
+        if (f.fim !== diaSP(cupom.fim)) dados.finish_date = f.fim;
         if (orcamento !== null && orcamento !== orcamentoAtual) dados.budget = orcamento;
         if (! travado) {
-            if (f.inicio !== dia(cupom.inicio)) dados.start_date = f.inicio;
+            if (f.inicio !== diaSP(cupom.inicio)) dados.start_date = f.inicio;
             if (! percentual && numero(f.valor) !== numero(texto(cupom.valor))) dados.fixed_amount = numero(f.valor);
             if (percentual && numero(f.percentual) !== numero(texto(cupom.percentual))) dados.fixed_percentage = numero(f.percentual);
             if (numero(f.compra) !== numero(texto(cupom.compra_minima))) dados.min_purchase_amount = numero(f.compra);

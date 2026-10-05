@@ -5,7 +5,7 @@ import { CAMPO, SELECT } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
 import { ROTULO_STATUS_PROMOCAO, ROTULO_TIPO } from '../rotulos';
-import { fmtData, hojeSP, lerNumero, somarDias } from '../formato';
+import { diaSP, fmtData, hojeSP, lerNumero, somarDias } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 import ItensDoConvite from './ItensDoConvite';
 import AdicionarProdutos from './AdicionarProdutos';
@@ -18,8 +18,6 @@ const SUBTIPOS = {
     BNSP: 'Desconto de P% comprando N (ex.: 50% de desconto comprando 2)',
     SPONTH: 'Desconto de P% na N-ésima unidade (ex.: 50% de desconto na 2ª unidade)',
 };
-
-const dia = (iso) => String(iso ?? '').slice(0, 10);
 
 const inteiro = (texto) => {
     const n = Number(String(texto ?? '').trim());
@@ -38,7 +36,7 @@ function Formulario({ original, liberada, motivo, onMontar, onCancelar }) {
     const hoje = hojeSP();
     const ativa = original?.status === 'started';
     const [f, setF] = useState(alterando
-        ? { ...VAZIO, tipo: original.tipo, nome: original.nome ?? '', inicio: dia(original.inicio), fim: dia(original.fim) }
+        ? { ...VAZIO, tipo: original.tipo, nome: original.nome ?? '', inicio: diaSP(original.inicio), fim: diaSP(original.fim) }
         : { ...VAZIO, inicio: hoje, fim: somarDias(hoje, 13) });
     const mudar = (campo, valor) => setF((antes) => ({ ...antes, [campo]: valor }));
 
@@ -64,8 +62,8 @@ function Formulario({ original, liberada, motivo, onMontar, onCancelar }) {
         // Só vai o que mudou.
         const dados = { promotion_id: original.id, promotion_type: original.tipo };
         if (f.nome.trim() !== (original.nome ?? '')) dados.name = f.nome.trim();
-        if (! datasTravadas && ! ativa && f.inicio !== dia(original.inicio)) dados.start_date = f.inicio;
-        if (! datasTravadas && f.fim !== dia(original.fim)) dados.finish_date = f.fim;
+        if (! datasTravadas && ! ativa && f.inicio !== diaSP(original.inicio)) dados.start_date = f.inicio;
+        if (! datasTravadas && f.fim !== diaSP(original.fim)) dados.finish_date = f.fim;
         if (volume && ! regraTravada) {
             if (inteiro(f.compra) !== null) dados.buy_quantity = inteiro(f.compra);
             if (inteiro(f.paga) !== null) dados.pay_quantity = inteiro(f.paga);

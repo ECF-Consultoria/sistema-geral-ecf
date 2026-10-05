@@ -124,3 +124,28 @@ test('WR-FE-09: nenhuma tela mantém cópia própria do parser (todas usam lerNu
         assert.match(lerSemComentarios(`${PASTA}/${arq}.jsx`), /lerNumero/, arq);
     }
 });
+
+// ─── WR-FE-07: dia em São Paulo, não em UTC ───
+test('WR-FE-07: diaSP converte instante com Z/offset para o dia de São Paulo', async () => {
+    const { diaSP } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(diaSP('2026-10-05T02:00:00Z'), '2026-10-04');
+    assert.equal(diaSP('2026-10-18T02:59:59Z'), '2026-10-17');
+    assert.equal(diaSP('2026-10-05T00:00:00-03:00'), '2026-10-05');
+    assert.equal(diaSP('2026-10-05T23:30:00-03:00'), '2026-10-05');
+});
+
+test('WR-FE-07: diaSP sem fuso devolve os 10 primeiros caracteres; vazio/inválido vira texto vazio', async () => {
+    const { diaSP } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(diaSP('2026-10-05'), '2026-10-05');
+    assert.equal(diaSP('2026-10-05T23:59:59'), '2026-10-05');
+    assert.equal(diaSP(null), '');
+    assert.equal(diaSP('lixo'), '');
+});
+
+test('WR-FE-07: FormCupom e CampanhasDoVendedor usam diaSP, sem cortar o ISO em UTC', () => {
+    for (const arq of ['Cupons/FormCupom', 'Promocoes/CampanhasDoVendedor']) {
+        const fonte = lerSemComentarios(`${PASTA}/${arq}.jsx`);
+        assert.match(fonte, /diaSP\(/, arq);
+        assert.doesNotMatch(fonte, /\.slice\(0, 10\)/, arq);
+    }
+});
