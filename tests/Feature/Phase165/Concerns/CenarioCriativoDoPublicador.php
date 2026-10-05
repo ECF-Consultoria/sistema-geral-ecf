@@ -91,13 +91,18 @@ trait CenarioCriativoDoPublicador
         return file_get_contents($arquivo->getPathname());
     }
 
+    /** Contador para o lado da imagem fake de `fotoComArquivo()` — garante sha256 único entre chamadas. */
+    private int $fotoComArquivoSeq = 0;
+
     /**
      * Uma foto COM arquivo em disco no grupo pedido (galeria geral por
-     * padrão) — serve de referência candidata para o Creative Engine.
+     * padrão) — serve de referência candidata para o Creative Engine. Lado
+     * variável (1200 + contador): chamar duas vezes no mesmo rascunho não
+     * pode colidir no unique de `(rascunho_id, sha256)`.
      */
     protected function fotoComArquivo(string $grupo = 'GENERAL'): PubImagem
     {
-        $bytes = self::jpeg();
+        $bytes = self::jpeg(1200 + (++$this->fotoComArquivoSeq));
         $sha = hash('sha256', $bytes);
         $caminho = "publicador/{$this->r->id}/{$sha}.jpg";
         Storage::disk('local')->put($caminho, $bytes);
