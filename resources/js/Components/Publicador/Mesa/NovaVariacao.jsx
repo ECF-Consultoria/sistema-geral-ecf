@@ -1,7 +1,8 @@
 import { useId, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
-import { Botao, CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
+import { Loader2, Plus } from 'lucide-react';
 import { eixosComValores, pedidoCompleto, varianteDoPedido } from '../ferramentas';
+import { BotaoAcao } from './botoes';
+import { CAMPO, Campo, LINK, SELECT } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── "Nova variação", como no Mercado Livre (03/10/2026) ────────────────────
@@ -18,36 +19,38 @@ import { cn } from '@/lib/utils';
 // nasceram junto e não foram pedidas ficam desativadas (dá para ligar depois).
 
 const CUSTOM = '~custom';
-const ROTULO = 'mb-1 block text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 
 /** O valor de um eixo: lista do ML vira seletor; texto livre aceita valor próprio com sugestões. */
 function CampoValor({ atributo, rotulo, valor, onChange, disabled }) {
     const lista = useId();
+    const id = useId();
     const opcoes = atributo?.valores ?? [];
     const soLista = opcoes.length > 0 && ! atributo?.texto_livre;
+    // Cor aceita nome próprio no ML (a "Cor principal" dos filtros sai dele, no cartão da variação).
+    const corLivre = atributo?.id === 'COLOR' && ! soLista;
 
     return (
-        <label className="block">
-            <span className={ROTULO}>{rotulo} <span className="normal-case tracking-normal text-amber-300">(obrigatório)</span></span>
+        <Campo rotulo={rotulo} htmlFor={id} dica={corLivre ? 'Escolha na lista ou digite um nome próprio, como Azul-petróleo.' : null}>
             {soLista ? (
-                <select value={valor?.id ?? ''} disabled={disabled} data-valor-novo={atributo?.id ?? CUSTOM}
+                <select id={id} value={valor?.id ?? ''} disabled={disabled} data-valor-novo={atributo?.id ?? CUSTOM}
                     onChange={(e) => onChange(e.target.value === '' ? null : { id: e.target.value, nome: opcoes.find((x) => String(x.id) === e.target.value)?.name ?? '' })}
-                    className={cn(CLASSE_INPUT, 'appearance-auto py-1.5 text-[13px] [&>option]:bg-ecf-card')}>
+                    className={SELECT}>
                     <option value="">Escolha…</option>
                     {opcoes.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                 </select>
             ) : (
                 <>
-                    <input value={valor?.nome ?? ''} disabled={disabled} maxLength={120} list={opcoes.length ? lista : undefined} data-valor-novo={atributo?.id ?? CUSTOM}
+                    <input id={id} value={valor?.nome ?? ''} disabled={disabled} maxLength={120} list={opcoes.length ? lista : undefined} data-valor-novo={atributo?.id ?? CUSTOM}
+                        placeholder={corLivre ? 'Escolha na lista ou digite' : undefined}
                         onChange={(e) => {
                             const igual = opcoes.find((x) => x.name.toLowerCase() === e.target.value.trim().toLowerCase());
                             onChange({ id: igual ? String(igual.id) : null, nome: igual ? igual.name : e.target.value });
                         }}
-                        className={cn(CLASSE_INPUT, 'py-1.5 text-[13px]')} />
+                        className={CAMPO} />
                     {opcoes.length > 0 && <datalist id={lista}>{opcoes.map((x) => <option key={x.id} value={x.name} />)}</datalist>}
                 </>
             )}
-        </label>
+        </Campo>
     );
 }
 
@@ -111,29 +114,21 @@ export default function NovaVariacao({ m, eixos, schema, onCancelar, onCriada })
     };
 
     return (
-        <div className="rounded-xl border border-dashed border-ecf-yellow/30 bg-ecf-yellow/[0.03] p-4" data-nova-variacao>
-            <div className="mb-4 flex items-center justify-between gap-2">
-                <h4 className="text-[13px] font-bold text-white">Nova variação</h4>
-                <button type="button" onClick={onCancelar} aria-label="Descartar nova variação" data-acao="descartar-nova-variacao"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-white/55 hover:bg-white/[0.05] hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                    <Trash2 size={14} />
-                </button>
-            </div>
+        <div className="rounded-xl border border-dashed border-white/25 bg-white/[0.02] p-5 max-sm:p-4" data-nova-variacao>
+            <h3 className="mb-5 text-[15px] font-bold text-white">Nova variação</h3>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
                 {primeira && (
-                    <label className="block">
-                        <span className={ROTULO}>O produto varia por</span>
-                        <select value={eixoNovo} onChange={(e) => { setEixoNovo(e.target.value); setPedido({}); setAtual(null); }} data-eixo-da-nova
-                            className={cn(CLASSE_INPUT, 'appearance-auto py-1.5 text-[13px] [&>option]:bg-ecf-card')}>
+                    <Campo rotulo="O produto varia por" htmlFor="eixo-da-nova">
+                        <select id="eixo-da-nova" value={eixoNovo} onChange={(e) => { setEixoNovo(e.target.value); setPedido({}); setAtual(null); }} data-eixo-da-nova className={SELECT}>
                             {candidatos.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
                             <option value={CUSTOM}>Outro (nome próprio)</option>
                         </select>
                         {eixoNovo === CUSTOM && (
-                            <input value={nomeProprio} onChange={(e) => setNomeProprio(e.target.value)} maxLength={60} placeholder="ex.: Estampa"
-                                className={cn(CLASSE_INPUT, 'mt-2 py-1.5 text-[13px]')} data-nome-eixo-proprio />
+                            <input value={nomeProprio} onChange={(e) => setNomeProprio(e.target.value)} maxLength={60} placeholder="ex.: Estampa" aria-label="Nome da variação"
+                                className={cn(CAMPO, 'mt-2')} data-nome-eixo-proprio />
                         )}
-                    </label>
+                    </Campo>
                 )}
                 {primeira && (
                     <CampoValor atributo={atributoNovo} rotulo={`${nomeDoEixoNovo || 'Valor'} da variação que já está preenchida`} valor={atual} onChange={setAtual} disabled={criando} />
@@ -145,16 +140,17 @@ export default function NovaVariacao({ m, eixos, schema, onCancelar, onCriada })
                 ))}
             </div>
 
-            {erro && <p className="mt-3 text-[13px] text-amber-300">{erro}</p>}
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Botao onClick={criar} disabled={! pronto || criando || m.disabled} data-acao="criar-variacao">
-                    {criando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Criar variação
-                </Botao>
-                <span className="text-[11px] text-white/40">
-                    {primeira
-                        ? 'A que já está preenchida fica com estoque, SKU e preço; a nova nasce em branco para você completar com fotos, estoque e código.'
-                        : 'Depois de criada, complete as fotos, o estoque e o código dela no cartão.'}
-                </span>
+            {erro && <p className="mt-4 text-[13px] text-red-300">{erro}</p>}
+            <p className="mt-4 text-[13px] text-white/50">
+                {primeira
+                    ? 'A que já está preenchida fica com estoque, SKU e preço; a nova nasce em branco para você completar com fotos, estoque e código.'
+                    : 'Depois de criada, complete as fotos, o estoque e o código dela.'}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+                <BotaoAcao onClick={criar} disabled={! pronto || criando || m.disabled} data-acao="criar-variacao">
+                    {criando ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} Criar variação
+                </BotaoAcao>
+                <button type="button" onClick={onCancelar} className={LINK} data-acao="descartar-nova-variacao">Cancelar</button>
             </div>
         </div>
     );

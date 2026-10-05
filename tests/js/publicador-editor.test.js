@@ -128,14 +128,14 @@ test('WR-F07 usePublicador e revisão: todas as pendências da conferência entr
     assert.doesNotMatch(f, /p\.camada === 'L3'/);
     assert.match(f, /textoDaConferencia\(estadoConf, nPendencias, liberada, conferenciaDoMl\)/);
     assert.match(f, /bloqueios: daConferencia\.bloqueios/);
-    // 03/10/2026: a lateral virou a coluna de ações da etapa "Revisar e publicar".
-    const l = lerSemComentarios(`${MESA}/RevisaoLancamento.jsx`);
-    assert.match(l, /pub\.conferencia\.bloqueios/);
-    assert.match(l, /<Problemas problemas=\{bloqueiosConf\}/);
+    // 04/10/2026 (3 etapas): quem lista as pendências é "Revisar e publicar", no fim da última etapa — TODAS
+    // (locais + conferência + publicação, `pub.problemas`), por etapa, bloqueios primeiro, com "Corrigir em …".
+    const l = lerSemComentarios(`${MESA}/Publicar.jsx`);
+    assert.match(l, /const lista = pub\.problemas\.filter\(\(p\) => p\.severidade !== 'INFO'\)/);
+    assert.match(l, /etapaDoProblema\(p\) === e\.chave/);
+    assert.match(l, /Corrigir em \{e\.titulo\}/);
     assert.doesNotMatch(l, /camada === 'L3'/);
     assert.doesNotMatch(l, /Li os avisos do Mercado Livre/);
-    // O que aponta para uma etapa já está no bloco dela (RevisaoDoAnuncio); aqui só o da conta/conferência.
-    assert.match(l, /const semEtapa = \(p\) => secaoDoProblema\(p\) === null/);
     // CR-B01: a publicação que falha mostra o motivo do servidor (conta trocada, outro vendedor).
     assert.match(l, /\{publicacao\.motivo && <p[^>]*>\{publicacao\.motivo\}<\/p>\}/);
 });
@@ -322,7 +322,7 @@ test('CR-F02 Editor: mesa só leitura enquanto a IA trabalha e releitura no fim 
     assert.match(f, /onConcluiu: \(\) => depoisDaIa\.current\(\)/);
     assert.match(f, /onFalhou: \(\) => depoisDaIa\.current\(\)/);
     assert.match(f, /depoisDaIa\.current = pub\.recarregarDepoisDaIa/);
-    assert.match(f, /a mesa fica só para leitura/);
+    assert.match(f, /o anúncio fica só para leitura/);
     assert.doesNotMatch(f, /onConcluiu: \(\) => pub\.recarregar\(\)/);
     const ia = lerSemComentarios('resources/js/Components/Publicador/useIaDoPublicador.js');
     assert.match(ia, /else aoFalhar\.current\?\.\(/);
@@ -473,8 +473,8 @@ test('WR-F04 Editor: faixa da IA lê o número, mostra aviso, "só o vazio" e o 
     assert.match(f, /Como houve edição durante a geração, a IA só preencheu o que estava vazio\./);
     assert.match(f, /ia\.erro && /);
     assert.doesNotMatch(f, /Nada foi alterado/);
-    // A faixa leva à etapa certa quando a IA não montou as variações.
-    assert.match(f, /onClick=\{\(\) => irParaEtapa\('variacoes'\)\}/);
+    // A faixa abre a etapa das variações quando a IA não montou as variações.
+    assert.match(f, /onClick=\{\(\) => irPara\('detalhes'\)\}/);
     const ia = lerSemComentarios('resources/js/Components/Publicador/useIaDoPublicador.js');
     assert.match(ia, /setPediuSubstituir\(substituir === true\)/);
     assert.match(ia, /pediuSubstituir,/);
@@ -494,10 +494,11 @@ test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Casca do editor (164-13): barra, "Anunciar por IA" e faixa de produtos.
+// Casca do editor (Conceito E, 03/10/2026): barra com a trilha, seletor de
+// produto (ex-faixa de produtos), "Anunciar por IA" e as ações de publicação.
 // ═══════════════════════════════════════════════════════════════════════
 
-const CASCA = [`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/FaixaDeProdutos.jsx`];
+const CASCA = [`${MESA}/BarraDoEditor.jsx`, `${MESA}/BotaoAnunciarPorIa.jsx`, `${MESA}/SeletorDeProdutos.jsx`];
 
 for (const caminho of CASCA) {
     const fonte = lerSemComentarios(caminho);
@@ -512,17 +513,41 @@ for (const caminho of CASCA) {
     });
 }
 
-test('BarraDoEditor — 56px sticky, linha do "onde estou" (empresa › produto), sem pendências e SEM amarelo sólido (o primário é da etapa)', () => {
+test('BarraDoEditor — 56px sticky, trilha "Publicador MLB / empresa / produto" (o produto é o seletor), salvamento real e SEM amarelo sólido', () => {
     const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
     assert.match(f, /sticky -top-6/);
     assert.match(f, /\bh-14\b/);
     assert.doesNotMatch(f, /pendencias/);
     assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
     assert.doesNotMatch(f, /from-\[#FFE600\]/);
-    assert.match(f, /<h1[^>]*data-produto-em-edicao[^>]*>\{produtoNome\}<\/h1>/);
+    assert.match(f, /<SeletorDeProdutos /);
+    assert.match(f, /aria-label="Trilha"/);
     assert.match(f, /aria-live="polite"/);
-    // Conferir e Publicar saíram da barra (03/10/2026): moram na etapa "Revisar e publicar".
+    // Conferir e Publicar moram no fim da etapa "Condições de venda", não na barra.
     assert.doesNotMatch(f, /data-acao="conferir"|data-acao="publicar"|BotaoPublicar|BotaoConferir/);
+    // Nada inventado da referência do Stitch: o salvamento é o real (automático).
+    assert.doesNotMatch(f, /Salvar esta|Oficial MLB/);
+});
+
+test('BarraDoEditor — estado publicado, salvamento e conexão', () => {
+    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
+    for (const t of ['Publicado no Mercado Livre', 'Voltar aos produtos', 'Salvando…', 'Salvo há', 'Não salvo', 'ML conectado', 'Reconectar']) {
+        assert.ok(f.includes(t), `falta o texto "${t}"`);
+    }
+});
+
+test('SeletorDeProdutos — popover com busca, aria-current, setas, "+ Produto" e selo compacto; sem contador de progresso', () => {
+    const f = lerSemComentarios(`${MESA}/SeletorDeProdutos.jsx`);
+    assert.match(f, /@radix-ui\/react-popover/);
+    assert.match(f, /aria-current=\{ativo \? 'page' : undefined\}/);
+    assert.match(f, /ArrowDown/);
+    assert.match(f, /ModalNovoProduto/);
+    assert.match(f, /SeloStatusProduto status=\{p\.status\} compacto/);
+    assert.match(f, /mlb\.anuncios\.publicador\.editor/);
+    assert.match(f, /Buscar por SKU ou nome/);
+    assert.doesNotMatch(f, /prontas|\{total\}/);
+    assert.match(f, /data-produto-em-edicao/);
+    assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
 });
 
 test('AcoesDePublicacao — D26: conta não liberada vira "Conferir dados" com Lock e aria-describedby da nota', () => {
@@ -539,13 +564,6 @@ test('AcoesDePublicacao — D26: conta não liberada vira "Conferir dados" com L
     for (const t of ['Publicar 1 anúncio', 'Publicar o que faltou', 'Publicando…']) assert.ok(f.includes(t), `falta o texto "${t}"`);
 });
 
-test('BarraDoEditor — estado publicado, salvamento e conexão', () => {
-    const f = lerSemComentarios(`${MESA}/BarraDoEditor.jsx`);
-    for (const t of ['Publicado no Mercado Livre', 'Voltar aos produtos', 'Salvando…', 'ML conectado']) {
-        assert.ok(f.includes(t), `falta o texto "${t}"`);
-    }
-});
-
 test('BotaoAnunciarPorIa — confirma só com rascunho preenchido, descarrega antes e mostra a etapa', () => {
     const f = lerSemComentarios(`${MESA}/BotaoAnunciarPorIa.jsx`);
     assert.match(f, /rascunhoPreenchido\(pub\.m\.estado, pub\.m\.rasc\)/);
@@ -556,108 +574,58 @@ test('BotaoAnunciarPorIa — confirma só com rascunho preenchido, descarrega an
     assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
 });
 
-test('FaixaDeProdutos — aria-current, setas, "Ver todos", "+ Produto" e selo compacto', () => {
-    const f = lerSemComentarios(`${MESA}/FaixaDeProdutos.jsx`);
-    assert.match(f, /aria-current=\{ativo \? 'page' : undefined\}/);
-    assert.match(f, /ArrowRight/);
-    assert.match(f, /Ver todos/);
-    assert.match(f, /ModalNovoProduto/);
-    assert.match(f, /SeloStatusProduto status=\{p\.status\} compacto/);
-    assert.match(f, /@radix-ui\/react-popover/);
-    assert.match(f, /w-\[360px\]/);
-    assert.match(f, /mlb\.anuncios\.publicador\.editor/);
-    assert.doesNotMatch(f, /bg-ecf-yellow(?![/\w-])/);
-    // O chip ativo conta etapas completas (vem da página), não as 8 verificações.
-    assert.match(f, /\{prontas\}\/\{total\}/);
-});
-
 // ═══════════════════════════════════════════════════════════════════════
-// Revisão e página do editor (164-13; passo a passo de 03/10/2026).
+// Página: 3 etapas como no Mercado Livre (pedido do cliente, 04/10/2026).
 // ═══════════════════════════════════════════════════════════════════════
 
 const PAGINA = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
-const REVISAO = [`${MESA}/RevisaoDoAnuncio.jsx`, `${MESA}/RevisaoLancamento.jsx`, `${MESA}/EtapaRevisar.jsx`, `${MESA}/Trilho.jsx`, PAGINA];
 
-for (const caminho of REVISAO) {
-    const fonte = lerSemComentarios(caminho);
-
-    test(`${caminho} — tipografia 24/15/13/11px, pesos 400/700, sem sombra, sem HTML cru, sem gradiente amarelo (ele mora em botoes.jsx)`, () => {
-        assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl)\b/);
-        assert.doesNotMatch(fonte, /text-\[(?!24px\]|15px\]|13px\]|11px\])[0-9.]+px\]/);
-        assert.doesNotMatch(fonte, /font-(medium|semibold|extrabold|light|thin|black)\b/);
-        assert.doesNotMatch(fonte, /\bshadow-(sm|md|lg|xl)\b/);
-        assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
-        assert.doesNotMatch(fonte, /portal\.auth/);
-        assert.doesNotMatch(fonte, /from-\[#FFE600\]/);
-    });
-}
-
-test('RevisaoLancamento — validação no ML em tom calmo (D26), ciente só fora da conferência local, vermelho só na publicação que falhou', () => {
-    const f = lerSemComentarios(`${MESA}/RevisaoLancamento.jsx`);
-    assert.match(f, /Validação no Mercado Livre/);
-    // WR-F07: o aviso pode ser da ficha (L2), não só do ML.
-    assert.match(f, /Li os avisos da conferência e quero publicar assim mesmo\./);
-    assert.match(f, /conferencia\.local/);
-    assert.match(f, /variante="linha"/);
-    assert.match(f, /pub\.conferencia\.texto/);
-    // A caixa "Li os avisos" nunca aparece na conferência local.
-    assert.match(f, /! local && \(avisosConf\.length > 0 \|\| estadoConf === 'avisos'\)/);
-    assert.doesNotMatch(f, /border-red-|bg-red-/);
-    // "ir para" das pendências da conferência leva à ETAPA.
-    assert.match(f, /etapaDaEtapaMl/);
+test(`${PAGINA} — tipografia 24/15/13/11px, pesos 400/700, sem sombra, sem HTML cru, sem gradiente amarelo (ele mora em botoes.jsx)`, () => {
+    const fonte = lerSemComentarios(PAGINA);
+    assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl)\b/);
+    assert.doesNotMatch(fonte, /text-\[(?!24px\]|15px\]|13px\]|11px\])[0-9.]+px\]/);
+    assert.doesNotMatch(fonte, /font-(medium|semibold|extrabold|light|thin|black)\b/);
+    assert.doesNotMatch(fonte, /\bshadow-(sm|md|lg|xl)\b/);
+    assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+    assert.doesNotMatch(fonte, /from-\[#FFE600\]/);
 });
 
-test('RevisaoLancamento — pares do resumo, apoio por estado (D26) e andamento por item', () => {
-    const f = lerSemComentarios(`${MESA}/RevisaoLancamento.jsx`);
-    for (const t of ['Resumo do lançamento', 'Conta de destino', 'Modo logístico', 'Anúncios Clássico', 'Anúncios Premium', 'Total',
-        'Libera quando o Mercado Livre aprovar a conferência.', 'Complete os itens da validação e confira no Mercado Livre.',
-        'Publicando…', 'Publicado no Mercado Livre', 'Parte foi publicada', 'Não foi publicado']) {
-        assert.ok(f.includes(t), `falta "${t}"`);
-    }
-    assert.equal((f.match(/esperam a liberação desta conta/g) ?? []).length, 1);
-    assert.match(f, /AvisoContaTravada variante="nota"/);
-    assert.match(f, /publicador\.descricao/);
-    assert.match(f, /plano_b/);
-});
-
-test('EtapaRevisar — anúncio à esquerda, números e ações à direita (340px, fixa em tela larga)', () => {
-    const f = lerSemComentarios(`${MESA}/EtapaRevisar.jsx`);
-    assert.match(f, /<RevisaoDoAnuncio pub=\{pub\} onIrPara=\{onIrPara\} \/>/);
-    assert.match(f, /<RevisaoLancamento pub=\{pub\} empresa=\{empresa\} produtoId=\{produtoId\} onIrPara=\{onIrPara\} \/>/);
-    assert.match(f, /min-\[1360px\]:grid-cols-\[minmax\(0,1fr\)_340px\]/);
-    assert.match(f, /min-\[1360px\]:sticky/);
-});
-
-test('Editor.jsx — trilho + UM painel por vez: os 6 cards e a revisão montados, só o da etapa aberta visível; etapa sobrevive ao F5; sem lateral, sem abas nem rodapé fixo', () => {
+test('Editor.jsx — 3 etapas: só os nomes no topo, uma coluna com as seções da etapa, Voltar/Continuar; etapa sobrevive ao F5', () => {
     const f = lerSemComentarios(PAGINA);
     assert.match(f, /usePublicador\(\{\s*produtoId: produto\.id/);
     assert.match(f, /useIaDoPublicador\(/);
-    assert.equal((f.match(/m=\{pub\.m\}/g) ?? []).length, 6);
-    assert.doesNotMatch(f, /CardFotos|LateralValidacao|LateralResumo/);
-    for (const c of ['CardProduto', 'CardFichaTecnica', 'CardVariacoes', 'CardTiposEPrecos', 'CardLogistica', 'CardDescricao', 'EtapaRevisar']) {
-        assert.match(f, new RegExp(`import ${c} from '@/Components/Publicador/Mesa/${c}'`));
-    }
-    assert.match(f, /import Trilho, \{ RodapeDaEtapa, resumoDaRevisao \} from '@\/Components\/Publicador\/Mesa\/Trilho'/);
-    assert.match(f, /<Trilho estados=\{estadosDasEtapas\} revisao=\{resumoDaRevisao\(pub\)\} atual=\{etapa\} onIr=\{irParaEtapa\} \/>/);
-    assert.match(f, /ETAPAS\.map\(\(e\) => \(/);
-    assert.match(f, /hidden=\{etapa !== e\.chave\}/);
-    assert.doesNotMatch(f, /ModoAnuncioTabs/);
-    assert.doesNotMatch(f, /fixed bottom-/);
-    // Docx §1 (03/10/2026): sem o teto de 800px; o painel ocupa a largura.
+    assert.match(f, /<Etapas atual=\{etapa\}/);
+    assert.match(f, /<EtapaProduto m=\{m\} \/>/);
+    assert.match(f, /<EtapaDetalhes m=\{m\} \/>/);
+    assert.match(f, /<EtapaCondicoes m=\{m\}>/);
+    assert.match(f, /<Publicar pub=\{pub\}/);
+    // Os desenhos recusados não voltam: árvore, inspetor, contador de estrutura, trilho, lateral.
+    assert.doesNotMatch(f, /Arvore|Inspetor|ItemDoCentro|estadoDosItens|contarItensProntos|prontas=|LateralValidacao|EtapaRevisar|Trilho|PainelPublicar/);
     assert.doesNotMatch(f, /minmax\(0,800px\)|max-w-\[800px\]/);
-    // A etapa aberta vai para a URL (sem mexer no estado do Inertia) e para o sessionStorage por produto.
+    assert.match(f, /max-w-\[1200px\]/);
+    // "Continuar": descarrega, confere a etapa pelo servidor e só avança sem bloqueio; senão marca e leva ao 1º campo.
+    assert.match(f, /await pub\.descarregar\(\);\s*setVerificar/);
+    assert.match(f, /bloqueiosDaEtapa\(etapa, pub\.problemas, \{ temCategoria \}\)/);
+    assert.match(f, /setTentou\(\(t\) => \(\{ \.\.\.t, \[etapa\]: true \}\)\)/);
+    assert.match(f, /querySelector\('\[aria-invalid="true"\]'\)/);
+    assert.match(f, /<ErrosDaEtapa value=\{\{ mostrar, problemas: pub\.problemas \}\}>/);
+    // "Corrigir em…" leva à etapa já marcada.
+    assert.match(f, /onIrPara=\{\(chave\) => irPara\(chave, \{ marcar: true \}\)\}/);
+    // Um amarelo por tela: "Continuar" nas etapas 1 e 2; na 3, Conferir/Publicar (em Publicar.jsx).
+    assert.equal((f.match(/BotaoAcao primario/g) ?? []).length, 1);
+    assert.match(f, /\{proxima && \(/);
+    assert.match(f, /sticky -bottom-6/);
+    // Os efeitos do anúncio inteiro rodam SEMPRE, em qualquer etapa.
+    assert.match(f, /useEfeitosDasVariacoes\(m\)/);
+    assert.match(f, /useEfeitosDoEnvio\(m\)/);
+    // A etapa vai para a URL (sem mexer no estado do Inertia) e para o sessionStorage por produto.
+    assert.match(f, /PARAMETRO_ETAPA = 'etapa'/);
     assert.match(f, /window\.history\.replaceState\(window\.history\.state, '', url\)/);
     assert.match(f, /sessionStorage\.setItem\(chaveGuardada\(produtoId\), chave\)/);
     assert.match(f, /etapaValida\(/);
-    // Trocar de etapa rola até o painel e põe o foco no título.
-    assert.match(f, /scrollIntoView\(\{ block: 'start' \}\)/);
-    assert.match(f, /querySelector\('h2'\)\?\.focus\(\{ preventScroll: true \}\)/);
     assert.match(f, /Não foi possível abrir o produto\./);
     // WR-B04/WR-F07: sem token a conferência local roda; só a do ML e a publicação pedem reconectar.
     assert.match(f, /A conta do Mercado Livre precisa ser reconectada antes de conferir no Mercado Livre ou publicar\./);
     assert.match(f, /A IA preencheu/);
-    assert.match(f, /A IA não montou as variações\. Defina-as na etapa Variações e fotos\./);
     assert.match(f, /A IA não conseguiu preparar este anúncio\./);
-    assert.match(f, /Se ela chegou a preencher algo, já está nas etapas\. Tente de novo ou preencha à mão\./);
-    assert.match(f, /await pub\.descarregar\(\)/);
 });

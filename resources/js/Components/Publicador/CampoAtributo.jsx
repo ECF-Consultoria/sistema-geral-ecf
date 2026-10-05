@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
-import { valorVazio } from './apoio';
+import { CAMPO, INVALIDO, SELECT } from './Mesa/comum';
 import { cn } from '@/lib/utils';
 
 // ─── Um atributo da categoria, desenhado pelo que o schema diz dele ─────────
@@ -12,26 +12,21 @@ import { cn } from '@/lib/utils';
 //
 // O valor é a linha do rascunho: `{value_id, value_name}`. Mexer no campo
 // tira o "revisar" (o valor veio migrado de outra categoria e agora foi visto).
+//
+// `variante="campo"` (formulário em 3 etapas, 04/10/2026): a caixa grande com
+// borda visível; `invalido` pinta a borda de vermelho. O rótulo é do `Campo`.
 
-const OBRIGATORIO = 'rounded bg-amber-300/15 px-1.5 py-px font-mono text-[11px] font-bold text-amber-300';
-const RECOMENDADO = 'rounded bg-sky-500/10 px-1.5 py-px font-mono text-[11px] font-bold text-sky-300';
-
+/** O nome do atributo e, se o valor veio da IA ou de outra categoria, o selo "revisar". */
 export function RotuloAtributo({ atributo, valor }) {
-    const vazio = valorVazio(valor);
-
     return (
-        <span className="flex items-start justify-between gap-2" title={atributo.tooltip ?? undefined}>
+        <span className="inline-flex flex-wrap items-baseline gap-2" title={atributo.tooltip ?? undefined}>
             <span>{atributo.nome}</span>
-            <span className="flex shrink-0 gap-1">
-                {valor?.revisar && <span className="rounded bg-amber-500/15 px-1 text-[11px] font-bold uppercase tracking-wide text-amber-300">revisar</span>}
-                {vazio && atributo.obrigatoriedade === 'REQUIRED' && <span className={OBRIGATORIO}>obrigatório</span>}
-                {vazio && atributo.obrigatoriedade === 'RECOMMENDED' && <span className={RECOMENDADO}>dá exposição</span>}
-            </span>
+            {valor?.revisar && <span className="rounded bg-amber-500/15 px-1.5 text-[11px] font-bold text-amber-300">revisar</span>}
         </span>
     );
 }
 
-export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null, variante = 'padrao' }) {
+export default function CampoAtributo({ atributo: a, valor, onChange, disabled = false, compacto = false, erro = null, variante = 'padrao', invalido = false, id, placeholder = null }) {
     const lista = useId();
     const v = valor ?? {};
     const naoSeAplica = v.value_id === '-1';
@@ -48,19 +43,22 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         if (m && m[2]) setUnidade(m[2]);
     }, [v.value_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // No tile o contorno é do Tile (borda âmbar quando vazio): o campo vira texto limpo.
-    const tile = variante === 'tile';
-    const classe = cn(CLASSE_INPUT, 'text-[13px]', compacto && 'px-2 py-1.5', tile && 'rounded-none border-0 bg-transparent px-0 py-0 focus:border-0', 'disabled:opacity-50', ! tile && erro && 'border-amber-500');
+    const grande = variante === 'campo';
+    const classe = grande
+        ? cn(CAMPO, invalido && INVALIDO)
+        : cn(CLASSE_INPUT, 'text-[13px] disabled:opacity-50', compacto && 'px-2 py-1.5', erro && 'border-amber-500');
+    const classeSelect = grande ? cn(SELECT, invalido && INVALIDO) : cn(classe, 'appearance-auto [&>option]:bg-ecf-card');
+    const aria = { id, 'aria-invalid': invalido || undefined };
 
     let campo;
     if (naoSeAplica) {
-        campo = <div className={cn(classe, 'text-white/45')}>Não se aplica</div>;
+        campo = <div className={cn(classe, 'flex items-center text-white/45')}>Não se aplica</div>;
     } else if ((a.tipo === 'list' || a.tipo === 'boolean') && a.valores.length > 0 && ! a.texto_livre) {
         campo = (
-            <select value={v.value_id ?? ''} disabled={disabled} className={cn(classe, 'appearance-auto [&>option]:bg-ecf-card')} data-atributo={a.id}
+            <select {...aria} value={v.value_id ?? ''} disabled={disabled} className={classeSelect} data-atributo={a.id}
                 onChange={(e) => {
-                    const id = e.target.value;
-                    trocar(id === '' ? null : { value_id: id, value_name: a.valores.find((x) => String(x.id) === id)?.name ?? null });
+                    const valorId = e.target.value;
+                    trocar(valorId === '' ? null : { value_id: valorId, value_name: a.valores.find((x) => String(x.id) === valorId)?.name ?? null });
                 }}>
                 <option value="">Escolha…</option>
                 {a.valores.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
@@ -69,10 +67,10 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
     } else if (a.tipo === 'number_unit') {
         const gravar = (n, u) => trocar(String(n).trim() === '' ? null : { value_id: null, value_name: `${String(n).trim()} ${u}`.trim() });
         campo = (
-            <div className="flex gap-1.5">
-                <input inputMode="decimal" value={numero} disabled={disabled} className={cn(classe, 'tabular-nums')} data-atributo={a.id}
+            <div className="flex gap-2">
+                <input {...aria} inputMode="decimal" value={numero} disabled={disabled} className={cn(classe, 'min-w-0 tabular-nums')} data-atributo={a.id}
                     placeholder={a.exemplo ?? ''} onChange={(e) => setNumero(e.target.value)} onBlur={() => gravar(numero, unidade)} />
-                <select value={unidade} disabled={disabled || a.unidades.length <= 1} className={cn(classe, 'w-24 shrink-0 appearance-auto [&>option]:bg-ecf-card')}
+                <select value={unidade} disabled={disabled || a.unidades.length <= 1} className={cn(classeSelect, grande ? 'w-28 shrink-0' : 'w-24 shrink-0')} aria-label={`Unidade de ${a.nome}`}
                     onChange={(e) => { setUnidade(e.target.value); gravar(numero, e.target.value); }} data-unidade={a.id}>
                     {a.unidades.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
@@ -82,8 +80,8 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
         // Texto, número sem unidade, ou lista que aceita valor próprio (sugestões).
         campo = (
             <>
-                <input value={v.value_name ?? ''} disabled={disabled} maxLength={a.max || 255} className={classe} data-atributo={a.id}
-                    inputMode={a.tipo === 'number' ? 'decimal' : undefined} placeholder={a.exemplo ?? ''}
+                <input {...aria} value={v.value_name ?? ''} disabled={disabled} maxLength={a.max || 255} className={classe} data-atributo={a.id}
+                    inputMode={a.tipo === 'number' ? 'decimal' : undefined} placeholder={placeholder ?? a.exemplo ?? ''}
                     list={a.valores.length ? lista : undefined}
                     onChange={(e) => {
                         const texto = e.target.value;
@@ -96,16 +94,16 @@ export default function CampoAtributo({ atributo: a, valor, onChange, disabled =
     }
 
     return (
-        <div className="space-y-1" data-campo-atributo={a.id}>
+        <div className={grande ? undefined : 'space-y-1'} data-campo-atributo={a.id}>
             {campo}
             {podeNa && ! disabled && (
-                <label className="flex items-center gap-1.5 text-[11px] text-white/45">
+                <label className={cn('flex items-center gap-2 text-white/55', grande ? 'mt-2 text-[13px]' : 'text-[11px]')}>
                     <input type="checkbox" checked={naoSeAplica} onChange={(e) => trocar(e.target.checked ? { value_id: '-1', value_name: null } : null)}
-                        className="rounded border-white/20 bg-transparent text-ecf-yellow" />
+                        className="rounded border-white/30 bg-transparent text-ecf-yellow" />
                     Não se aplica
                 </label>
             )}
-            {erro ? <p className="text-[11px] font-normal text-amber-300">{erro}</p> : (! compacto && ! tile && a.dica && <p className="text-[11px] text-white/35">{a.dica}</p>)}
+            {! grande && (erro ? <p className="text-[11px] font-normal text-amber-300">{erro}</p> : (! compacto && a.dica && <p className="text-[11px] text-white/35">{a.dica}</p>))}
         </div>
     );
 }

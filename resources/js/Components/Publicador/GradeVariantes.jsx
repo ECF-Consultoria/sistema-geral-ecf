@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
 import CampoAtributo from './CampoAtributo';
 import { gerarEan13 } from './ferramentas';
+import { CAMPO, INVALIDO, SELECT } from './Mesa/comum';
 import { cn } from '@/lib/utils';
 
 // ─── Os dados de cada variação (E5) ─────────────────────────────────────────
@@ -15,6 +16,8 @@ import { cn } from '@/lib/utils';
 
 export const FIXOS = ['SELLER_SKU', 'GTIN', 'EMPTY_GTIN_REASON'];
 const pequeno = cn(CLASSE_INPUT, 'px-2 py-1.5 text-[13px] disabled:opacity-50');
+// `grande` (formulário em 3 etapas, 04/10/2026): a caixa do `Campo`, com borda visível; `invalido` = vermelha.
+const caixa = (grande, invalido) => (grande ? cn(CAMPO, invalido && INVALIDO) : pequeno);
 
 // Troca um atributo da variante (null remove) sem tocar nos demais.
 const mudarAtributoDaVariante = (v, onMudar, id, valor) => {
@@ -25,18 +28,18 @@ const mudarAtributoDaVariante = (v, onMudar, id, valor) => {
 const atributoDa = (v, id) => v.atributos?.[id] ?? null;
 
 /** Estoque simples ou um campo por depósito (conta multidepósito, D11) com o total somado. */
-export function CampoEstoque({ v, conta, travada, onMudar }) {
+export function CampoEstoque({ v, conta, travada, onMudar, grande = false, invalido = false, id }) {
     const depositos = conta?.multi_deposito ? (conta.depositos ?? []) : [];
 
     if (depositos.length > 0) {
         return (
             <div className="space-y-1">
                 {depositos.map((d) => (
-                    <label key={d.store_id} className="flex items-center gap-1.5 text-[11px] text-white/50">
-                        <span className="w-24 truncate" title={d.nome}>{d.nome}</span>
+                    <label key={d.store_id} className={cn('flex items-center gap-2 text-white/50', grande ? 'text-[13px]' : 'text-[11px]')}>
+                        <span className={cn('truncate', grande ? 'w-36' : 'w-24')} title={d.nome}>{d.nome}</span>
                         <input type="number" min={0} max={99999} value={v.estoque_depositos?.[d.store_id] ?? ''} disabled={travada}
                             onChange={(e) => onMudar(v.chave, { estoque_depositos: { ...(v.estoque_depositos ?? {}), [d.store_id]: e.target.value === '' ? null : Number(e.target.value) } })}
-                            className={cn(pequeno, 'w-20 tabular-nums')} data-estoque-deposito={d.store_id} />
+                            className={cn(caixa(grande, invalido), grande ? 'w-28' : 'w-20', 'tabular-nums')} data-estoque-deposito={d.store_id} />
                     </label>
                 ))}
                 <p className="text-[11px] text-white/40">total {Object.values(v.estoque_depositos ?? {}).reduce((s, n) => s + (Number(n) || 0), 0)}</p>
@@ -45,18 +48,18 @@ export function CampoEstoque({ v, conta, travada, onMudar }) {
     }
 
     return (
-        <input type="number" min={0} max={99999} value={v.estoque ?? ''} disabled={travada}
+        <input id={id} type="number" min={0} max={99999} value={v.estoque ?? ''} disabled={travada} aria-invalid={invalido || undefined}
             onChange={(e) => onMudar(v.chave, { estoque: e.target.value === '' ? null : Number(e.target.value) })}
-            className={cn(pequeno, 'w-24 tabular-nums')} data-estoque={v.chave} />
+            className={cn(caixa(grande, invalido), grande ? 'w-full' : 'w-24', 'tabular-nums')} data-estoque={v.chave} />
     );
 }
 
 /** SKU da variante: chave da reconciliação (RN-93). */
-export function CampoSku({ v, travada, onMudar, className }) {
+export function CampoSku({ v, travada, onMudar, className, grande = false, invalido = false, id }) {
     return (
-        <input value={atributoDa(v, 'SELLER_SKU')?.value_name ?? ''} disabled={travada} maxLength={255}
+        <input id={id} value={atributoDa(v, 'SELLER_SKU')?.value_name ?? ''} disabled={travada} maxLength={255} aria-invalid={invalido || undefined}
             onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'SELLER_SKU', e.target.value === '' ? null : { value_name: e.target.value })}
-            className={cn(pequeno, 'w-36 font-mono', className)} data-sku={v.chave} />
+            className={cn(caixa(grande, invalido), grande ? 'w-full' : 'w-36', 'font-mono', className)} data-sku={v.chave} />
     );
 }
 
@@ -65,31 +68,33 @@ export function CampoSku({ v, travada, onMudar, className }) {
  * `existentes` (Set) liga o botão "Gerar": um EAN-13 novo do gerador interno, sem
  * repetir os das outras variações (docx §4).
  */
-export function CampoGtin({ v, schema, travada, onMudar, className, existentes = null }) {
+export function CampoGtin({ v, schema, travada, onMudar, className, existentes = null, comRotulo = false, grande = false, invalido = false, id }) {
     const motivo = schema?.atributos?.EMPTY_GTIN_REASON;
     if (! schema?.atributos?.GTIN) return null;
     const semCodigo = !! atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id;
 
     return (
         <div>
-            <div className="flex gap-1.5">
-                <input value={atributoDa(v, 'GTIN')?.value_name ?? ''} disabled={travada || semCodigo} inputMode="numeric" maxLength={14}
+            <div className={cn('flex', grande ? 'gap-2' : 'gap-1.5')}>
+                <input id={id} value={atributoDa(v, 'GTIN')?.value_name ?? ''} disabled={travada || semCodigo} inputMode="numeric" maxLength={14} aria-invalid={invalido || undefined}
                     onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'GTIN', e.target.value === '' ? null : { value_name: e.target.value.replace(/\D/g, '') })}
-                    placeholder="EAN de 8 a 14 dígitos" className={cn(pequeno, 'w-40 font-mono tabular-nums', className)} data-gtin={v.chave} />
+                    placeholder="EAN de 8 a 14 dígitos" className={cn(caixa(grande, invalido), grande ? 'min-w-0 flex-1' : 'w-40', 'font-mono tabular-nums', className)} data-gtin={v.chave} />
                 {existentes && ! travada && ! semCodigo && (
+                    // `comRotulo` (item da variação, Conceito E): o botão diz "gerar outro"; na grade compacta fica só o ícone.
                     <button type="button" title="Gerar um EAN-13 válido novo (não repete os das outras variações)" aria-label={`Gerar código para ${v.rotulo}`} data-gerar-gtin={v.chave}
                         onClick={() => mudarAtributoDaVariante(v, onMudar, 'GTIN', { value_name: gerarEan13(existentes) })}
-                        className="grid h-8 w-8 shrink-0 place-items-center self-center rounded-lg border border-white/[0.10] bg-white/[0.04] text-white/70 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                        <RefreshCw size={13} />
+                        className={cn('inline-flex shrink-0 items-center justify-center gap-1.5 self-center rounded-lg border border-white/[0.10] bg-white/[0.04] text-white/70 hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow', grande ? 'h-11' : 'h-8', comRotulo ? 'px-3 text-[13px]' : 'w-8')}>
+                        <RefreshCw size={13} />{comRotulo && <span>gerar outro</span>}
                     </button>
                 )}
             </div>
             {motivo && (
                 <select value={atributoDa(v, 'EMPTY_GTIN_REASON')?.value_id ?? ''} disabled={travada}
                     onChange={(e) => mudarAtributoDaVariante(v, onMudar, 'EMPTY_GTIN_REASON', e.target.value === '' ? null : { value_id: e.target.value, value_name: motivo.valores.find((x) => String(x.id) === e.target.value)?.name ?? null })}
-                    className={cn(pequeno, 'mt-1 w-40 appearance-auto text-[11px] [&>option]:bg-ecf-card', className)} data-motivo-gtin={v.chave}>
-                    <option value="">tem código</option>
-                    {motivo.valores.map((x) => <option key={x.id} value={x.id}>sem código: {x.name}</option>)}
+                    className={grande ? cn(SELECT, 'mt-2') : cn(pequeno, 'mt-1 w-40 appearance-auto text-[11px] [&>option]:bg-ecf-card', className)} data-motivo-gtin={v.chave}
+                    aria-label={`Código universal de ${v.rotulo}`}>
+                    <option value="">{grande ? 'O produto tem código universal' : 'tem código'}</option>
+                    {motivo.valores.map((x) => <option key={x.id} value={x.id}>{grande ? `Não tem código: ${x.name}` : `sem código: ${x.name}`}</option>)}
                 </select>
             )}
         </div>

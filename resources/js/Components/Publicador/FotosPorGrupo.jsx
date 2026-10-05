@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { AlertTriangle, Lock, RefreshCw } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import FotosDoPar from '@/Components/Portal/Estrutura/FotosDoPar';
+import { ErroDoCampo } from './Mesa/comum';
 import { cn } from '@/lib/utils';
 
 // ─── Fotos de um grupo (E6, `06`) ───────────────────────────────────────────
@@ -64,11 +65,11 @@ export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true, disable
 }
 
 /**
- * O bloco de fotos de UM grupo. `obrigatorio` = a variação precisa de foto própria (borda âmbar
- * vazia); `minimo` = recomendado pela categoria (só o texto da contagem).
+ * O bloco de fotos de UM grupo. `erro` = a mensagem depois do "Continuar" (borda vermelha; antes
+ * disso o bloco vazio fica neutro); `minimo` = recomendado pela categoria (só o texto da contagem).
  */
 export function BlocoDeFotos({
-    grupo, titulo, nota = null, imagens, atribuicoes, maxFotos = 10, minimo = null, obrigatorio = false, enviando, disabled,
+    grupo, titulo, nota = null, imagens, atribuicoes, maxFotos = 10, minimo = null, erro = null, enviando, disabled,
     envioAoMl = true, onArquivos, onAtribuicoes, onExcluir, onReenviar, children,
 }) {
     const arquivo = useRef(null);
@@ -88,19 +89,20 @@ export function BlocoDeFotos({
     };
 
     return (
-        <section id={`fotos-${grupo}`} className={cn('scroll-mt-20 rounded-[10px] border bg-white/[0.02] p-3', obrigatorio && fotos.length === 0 ? 'border-amber-400/50' : 'border-white/[0.08]')}
-            data-grupo-foto={grupo} data-fotos-no-grupo={fotos.length}>
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                <h5 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
-                    {titulo}{obrigatorio && fotos.length === 0 && <span className="ml-1 normal-case tracking-normal text-amber-300">(obrigatório)</span>}
-                    {nota && <span className="ml-1 font-normal normal-case tracking-normal text-white/40">· {nota}</span>}
+        <section id={`fotos-${grupo}`} className={cn('scroll-mt-24 rounded-lg border p-4', erro ? 'border-red-400 bg-red-500/[0.04]' : 'border-white/20 bg-black/40')}
+            data-grupo-foto={grupo} data-fotos-no-grupo={fotos.length} aria-invalid={erro ? true : undefined}>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <h5 className="text-[13px] font-bold text-white/90">
+                    {titulo}
+                    {nota && <span className="ml-1 font-normal text-white/50">· {nota}</span>}
                 </h5>
-                <span className="font-mono text-[11px] tabular-nums text-white/40">{fotos.length}/{maxFotos}{minimo ? ` · recomendado ${minimo}+` : ''}</span>
+                <span className="text-[13px] tabular-nums text-white/45">{fotos.length} de até {maxFotos}{minimo ? ` · recomendado ${minimo} ou mais` : ''}</span>
             </div>
             <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
                 onReordenar={reordenar} onRemover={remover}
                 onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
             {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}</div>}
+            <ErroDoCampo>{erro}</ErroDoCampo>
             {children}
             <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos" data-campo-fotos={grupo}
                 onChange={(e) => { onArquivos([...e.target.files], grupo); e.target.value = ''; }} />

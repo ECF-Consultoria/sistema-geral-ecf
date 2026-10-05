@@ -3,15 +3,16 @@ import { Link } from '@inertiajs/react';
 import { AlertTriangle, Check, CheckCircle2, Loader2, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import BotaoAnunciarPorIa from './BotaoAnunciarPorIa';
+import SeletorDeProdutos from './SeletorDeProdutos';
 import { BASE_BOTAO, SECUNDARIO } from './botoes';
 
-// ─── Barra superior do editor (UI-SPEC §8.1) ────────────────────────────────
+// ─── Barra superior do editor (UI-SPEC §8.1; Conceito E, 03/10/2026) ────────
 //
-// 56px, nunca lista pendências. É a linha do "onde estou": trilha → chip da
-// empresa → produto → salvamento → "Anunciar por IA". Desde 03/10/2026 o
-// Conferir e o Publicar saíram daqui: moram na etapa "Revisar e publicar",
-// então a barra não tem amarelo sólido nenhum — o primário da tela é o
-// "Continuar" da etapa (ou Conferir/Publicar, na revisão).
+// 56px, nunca lista pendências nem conta progresso. É a trilha "Publicador MLB /
+// empresa / produto": o produto é o seletor (troca de produto e "+ Produto"),
+// depois o indicador real do salvamento e "Anunciar por IA". Conferir e
+// Publicar moram no fim da etapa "Condições de venda", então a barra não tem
+// amarelo sólido nenhum.
 
 /**
  * Indicador do salvamento (WR-F02): "Salvo há Ns" (atualizado a cada 10 s) só quando nada
@@ -48,7 +49,7 @@ function Salvamento({ pub }) {
     );
 }
 
-export default function BarraDoEditor({ pub, empresa, produtoNome, ia, onVoltar }) {
+export default function BarraDoEditor({ pub, empresa, produto, produtos = [], onTrocar, ia, onVoltar }) {
     const publicado = pub.m.estado?.rascunho?.status === 'PUBLISHED';
     const rotuloPrograma = empresa.programa_rotulo ?? empresa.programa;
     const reconectar = empresa.token !== 'ativo';
@@ -56,13 +57,13 @@ export default function BarraDoEditor({ pub, empresa, produtoNome, ia, onVoltar 
 
     // -top-6: o <main> do AppLayout tem p-6 e o sticky cola na borda do CONTEÚDO, não do padding; sem isso sobra uma faixa de 24px por onde a página rola.
     return (
-        <div className="sticky -top-6 z-20 flex h-14 items-center gap-3 border-b max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-2 max-sm:py-2 max-sm:px-4 border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
+        <div className="sticky -top-6 z-20 flex h-14 items-center gap-2 border-b max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-2 max-sm:py-2 max-sm:px-4 border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
             <nav aria-label="Trilha" className="flex max-lg:hidden min-w-0 shrink-0 items-center gap-2 text-[13px] font-normal text-white/55">
                 <Link href={route('mlb.anuncios.index', { programa: empresa.programa })} onClick={voltar} className="shrink-0 rounded hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
                     Publicador MLB
                 </Link>
-                <span aria-hidden="true">/</span>
                 <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/70">{rotuloPrograma}</span>
+                <span aria-hidden="true">/</span>
             </nav>
 
             <Link
@@ -73,8 +74,8 @@ export default function BarraDoEditor({ pub, empresa, produtoNome, ia, onVoltar 
                 data-chip-empresa
             >
                 {! pub.liberada && <Lock size={12} className="shrink-0 text-white/55" aria-hidden="true" />}
-                <span className="max-w-[140px] truncate text-[13px] font-bold text-white min-[1360px]:max-w-[240px]">{empresa.nome}</span>
-                {empresa.identificador && <span className="hidden font-mono text-[11px] font-normal text-white/55 min-[1360px]:inline">{empresa.identificador}</span>}
+                <span className="max-w-[140px] truncate text-[13px] font-bold text-white min-[1360px]:max-w-[220px]">{empresa.nome}</span>
+                {empresa.identificador && <span className="hidden font-mono text-[11px] font-normal text-white/55 min-[1600px]:inline">{empresa.identificador}</span>}
                 <span
                     className={cn('hidden items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold min-[1360px]:inline-flex',
                         reconectar ? 'border-amber-300/25 bg-amber-300/10 text-amber-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400')}
@@ -84,9 +85,12 @@ export default function BarraDoEditor({ pub, empresa, produtoNome, ia, onVoltar 
                 </span>
             </Link>
 
-            {/* O produto em edição: a barra é a linha do "onde estou", e a faixa abaixo é só para trocar. */}
-            <span aria-hidden="true" className="max-sm:hidden text-white/30">›</span>
-            <h1 className="min-w-0 flex-1 truncate text-[13px] font-bold text-white max-sm:order-last max-sm:w-full max-sm:flex-none" title={produtoNome} data-produto-em-edicao>{produtoNome}</h1>
+            <span aria-hidden="true" className="max-sm:hidden text-white/30">/</span>
+
+            {/* O produto em edição é o seletor: abre a lista da empresa para trocar ou criar. */}
+            <div className="min-w-0 flex-1 max-sm:order-last max-sm:w-full max-sm:flex-none">
+                <SeletorDeProdutos produtos={produtos} produtoId={produto.id} produtoNome={produto.nome} conta={empresa.chave} onTrocar={onTrocar} />
+            </div>
 
             <div className="min-w-[90px] max-w-[220px] shrink-0 max-sm:min-w-0 max-sm:flex-1"><Salvamento pub={pub} /></div>
 

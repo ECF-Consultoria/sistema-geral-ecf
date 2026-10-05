@@ -1,105 +1,105 @@
-import { AlertTriangle, Check, CheckCircle2, ChevronDown } from 'lucide-react';
-import Problemas from '../Problemas';
+import { createContext, useContext } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Até este tanto de pendências a lista aparece inteira; acima, só a primeira e "e mais N" (abre no clique).
-const PENDENCIAS_A_VISTA = 3;
-
-// ─── Base dos painéis da mesa de anúncio (UI-SPEC §8.4, passo a passo de 03/10/2026) ──
+// ─── Base do formulário do anúncio (3 etapas, 04/10/2026) ───────────────────
 //
-// Cada card da mesa é o conteúdo de UMA etapa do trilho e se apresenta num
-// painel: título, apoio, chip de estado, as pendências que o servidor aponta
-// para a etapa e, no fim, o rodapé de navegação que a página injeta.
-// Cards de apresentação pura: recebem o contrato `m` e nunca chamam rota.
-// Estado calmo: vazio obrigatório = borda âmbar; vermelho só para valor que o
-// servidor recusou. Nada pisca e nada recolhe.
+// Pedido do cliente: "os campos nem parecem que são para preencher". Então
+// aqui não há tile nem cartão em volta de campo: rótulo normal (sem caixa-alta)
+// em cima, a caixa do campo com borda bem visível e espaço entre os campos.
+// As seções (`Secao`) são o único bloco, como no Mercado Livre.
+//
+// Erro só aparece DEPOIS do "Continuar" (`ErrosDaEtapa`): antes disso o campo
+// vazio fica neutro. Aí o campo fica com borda vermelha e a mensagem embaixo —
+// a do servidor quando há, senão "Preencha este campo.".
 
-export { estadoDasSecoes } from '../apoio';
+/** A caixa de um campo de texto/número: 44px, borda clara, foco amarelo. */
+export const CAMPO = 'h-11 w-full rounded-lg border border-white/20 bg-black/40 px-3 text-[15px] font-normal text-white placeholder:text-white/30 hover:border-white/35 focus:border-ecf-yellow focus:outline-none focus:ring-2 focus:ring-ecf-yellow/25 disabled:cursor-not-allowed disabled:opacity-50';
+/** O mesmo, num select nativo (o Radix com `value=""` derruba a tela). */
+export const SELECT = cn(CAMPO, 'appearance-auto [&>option]:bg-ecf-card');
+/** A caixa de texto longo (descrição). */
+export const AREA = 'w-full rounded-lg border border-white/20 bg-black/40 p-3 text-[15px] font-normal leading-relaxed text-white placeholder:text-white/30 hover:border-white/35 focus:border-ecf-yellow focus:outline-none focus:ring-2 focus:ring-ecf-yellow/25 disabled:cursor-not-allowed disabled:opacity-50';
+/** Borda vermelha do campo com erro (somar a CAMPO/SELECT/AREA). */
+export const INVALIDO = 'border-red-400 hover:border-red-400 focus:border-red-400 focus:ring-red-400/25';
+/** Botão de texto (Sugerir com IA, Copiar do…, Alterar): discreto, sublinha no hover. */
+export const LINK = 'inline-flex items-center gap-1.5 rounded text-[13px] font-bold text-white/70 underline-offset-4 hover:text-ecf-yellow hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:pointer-events-none disabled:opacity-50';
 
-/** Chip do cabeçalho: "Completo" (verde) ou "Falta 1" / "Faltam N" (neutro com ponto âmbar). */
-export function ChipSecao({ faltam }) {
-    if (faltam === 0) {
-        return (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.05em] text-emerald-400" data-chip-secao="completo">
-                <CheckCircle2 size={12} /> Completo
-            </span>
-        );
-    }
+const ContextoDeErros = createContext({ mostrar: false, problemas: [] });
+
+/** A etapa diz se já houve "Continuar" (`mostrar`) e quais são os problemas do rascunho. */
+export const ErrosDaEtapa = ContextoDeErros.Provider;
+
+// Mensagem do servidor que só pede o valor ("Preencha…", "Informe…"): não vale para campo já preenchido
+// (o servidor ainda não viu o que acabou de ser digitado).
+const PEDE_VALOR = /^(Preencha|Informe|Escreva|Escolha|Adicione)\b/;
+
+/**
+ * O erro de um campo depois do "Continuar". `filtro(alvo)` escolhe os bloqueios do campo;
+ * `vazio` = o campo é exigido e está vazio na tela (sem mensagem do servidor, vale "Preencha
+ * este campo."); `preenchido` = há valor na tela (aí "Preencha…" do servidor está velho).
+ * Antes do "Continuar", sempre nulo.
+ */
+export function useErroDoCampo(filtro, { vazio = false, preenchido = ! vazio } = {}) {
+    const { mostrar, problemas } = useContext(ContextoDeErros);
+    if (! mostrar) return null;
+    const meus = (problemas ?? []).filter((p) => p.severidade === 'BLOCKER' && filtro(p.alvo ?? {}) && (! preenchido || ! PEDE_VALOR.test(p.mensagem ?? '')));
+    if (meus.length > 0) return meus[0].mensagem;
+
+    return vazio ? 'Preencha este campo.' : null;
+}
+
+/** Mensagem de erro embaixo do campo. */
+export function ErroDoCampo({ id, children }) {
+    if (! children) return null;
 
     return (
-        <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.05em] text-white/55" data-chip-secao={faltam}>
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {faltam === 1 ? 'Falta 1' : `Faltam ${faltam}`}
-        </span>
+        <p id={id} className="mt-1.5 flex items-start gap-1.5 text-[13px] font-normal text-red-300" data-erro-campo>
+            <AlertCircle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> <span>{children}</span>
+        </p>
     );
 }
 
 /**
- * As pendências que o servidor aponta para a etapa. Poucas: a lista inteira. Muitas (a
- * ficha com 10 campos vazios): a primeira mensagem e "e mais N" — os campos já mostram
- * o próprio estado em âmbar, a lista é o complemento, não o alarme. Abre no clique.
+ * Um campo: rótulo em cima (13px, negrito, sem caixa-alta), o controle, e embaixo o erro ou a
+ * dica. `extra` fica à direita do rótulo (contador, "Sugerir com IA"). `htmlFor` liga o rótulo.
  */
-function PendenciasDaEtapa({ problemas }) {
-    if (problemas.length <= PENDENCIAS_A_VISTA) return <Problemas problemas={problemas} />;
-    const primeira = problemas.find((p) => p.severidade === 'BLOCKER') ?? problemas[0];
-    const resto = problemas.length - 1;
-
+export function Campo({ rotulo, htmlFor, extra = null, dica = null, erro = null, className, children }) {
     return (
-        <details className="group">
-            <summary className="flex cursor-pointer list-none items-start gap-2 rounded text-[13px] font-normal text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow [&::-webkit-details-marker]:hidden">
-                <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1">{primeira.mensagem} <span className="text-white/55">e mais {resto === 1 ? '1 pendência' : `${resto} pendências`}</span></span>
-                <ChevronDown size={14} className="mt-0.5 shrink-0 text-white/55 transition-transform group-open:rotate-180" aria-hidden="true" />
-            </summary>
-            <div className="mt-3 border-t border-amber-400/15 pt-3"><Problemas problemas={problemas} /></div>
-        </details>
-    );
-}
-
-/**
- * Painel de uma etapa: section + cabeçalho (título 24px, apoio, chip) + pendências
- * da etapa + conteúdo + rodapé. `problemas` são os que o servidor aponta para as
- * seções desta etapa (a lista só aparece se houver algum). O título recebe o foco
- * quando a pessoa troca de etapa (tabIndex -1; a página chama `focus()`).
- */
-export function PainelDaEtapa({ id, titulo, apoio, chip, problemas = [], rodape = null, children }) {
-    return (
-        // scroll-mt: ao trocar de etapa a página rola até aqui; a barra (56) e o trilho (87) ficam fixos por cima em ≥ sm, só a barra (2 linhas) abaixo.
-        <section id={id} aria-labelledby={`${id}-titulo`} className="scroll-mt-[96px] rounded-xl border border-white/[0.08] bg-ecf-card p-6 max-sm:p-4 sm:scroll-mt-[152px]" data-card={id}>
-            {/* Em tela estreita o chip desce para baixo do título; senão ele espremeria o título numa coluna. */}
-            <header className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-x-6">
-                <div className="min-w-0 sm:flex-1">
-                    <h2 id={`${id}-titulo`} tabIndex={-1} className="font-display text-[24px] font-bold leading-tight text-white outline-none">{titulo}</h2>
-                    {apoio && <p className="mt-1 max-w-[72ch] text-[13px] font-normal text-white/55">{apoio}</p>}
-                </div>
-                {chip && <div className="shrink-0 sm:pt-1.5">{chip}</div>}
-            </header>
-
-            {problemas.length > 0 && (
-                <div className="mt-5 rounded-[10px] border border-amber-400/20 bg-amber-400/[0.05] p-3" data-pendencias-etapa={problemas.length}>
-                    <PendenciasDaEtapa problemas={problemas} />
+        <div className={className} data-campo-rotulo={typeof rotulo === 'string' ? rotulo : undefined}>
+            {(rotulo || extra) && (
+                <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    {rotulo && <label htmlFor={htmlFor} className="text-[13px] font-bold text-white/90">{rotulo}</label>}
+                    {extra}
                 </div>
             )}
+            {children}
+            {erro ? <ErroDoCampo>{erro}</ErroDoCampo> : (dica && <p className="mt-1.5 text-[13px] font-normal text-white/50">{dica}</p>)}
+        </div>
+    );
+}
 
-            <div className="mt-6">{children}</div>
-            {rodape}
+/** Uma seção da etapa (o bloco do Mercado Livre): título 24px, descrição e o formulário. */
+export function Secao({ id, titulo, descricao = null, acao = null, children, className }) {
+    return (
+        <section id={id} aria-labelledby={id ? `${id}-titulo` : undefined} className={cn('scroll-mt-24 rounded-xl border border-white/[0.08] bg-ecf-card p-6 max-sm:p-4', className)} data-secao={id}>
+            <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h2 id={id ? `${id}-titulo` : undefined} className="font-display text-[24px] font-bold leading-tight text-white">{titulo}</h2>
+                    {descricao && <p className="mt-1 max-w-[72ch] text-[13px] font-normal text-white/55">{descricao}</p>}
+                </div>
+                {acao}
+            </header>
+            {children}
         </section>
     );
 }
 
-/**
- * Um campo em "tile": rótulo 11px no topo; borda âmbar só se OBRIGATÓRIO vazio (o campo
- * que o ML não exige fica neutro — docx §6); vermelha só com recusa do servidor.
- */
-export function Tile({ rotulo, preenchido = false, obrigatorio = true, problema = null, children }) {
+/** Subtítulo dentro de uma seção (ex.: "Características principais"). */
+export function Subtitulo({ children, descricao = null }) {
     return (
-        <div className={cn('h-full rounded-[10px] border bg-white/[0.03] p-3',
-            problema ? 'border-red-500/30' : (preenchido || ! obrigatorio ? 'border-white/[0.08]' : 'border-amber-400/50'))}
-            data-tile={preenchido ? 'ok' : (obrigatorio ? 'vazio' : 'opcional')}>
-            <div className="mb-1 flex items-start justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
-                <span className="min-w-0 flex-1">{rotulo}</span>
-                {preenchido && <Check size={14} className="shrink-0 text-emerald-400" aria-label="Preenchido" />}
-            </div>
-            {children}
+        <div className="mb-4">
+            <h3 className="text-[15px] font-bold text-white">{children}</h3>
+            {descricao && <p className="mt-0.5 text-[13px] font-normal text-white/50">{descricao}</p>}
         </div>
     );
 }
