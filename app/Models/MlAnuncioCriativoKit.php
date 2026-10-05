@@ -35,6 +35,18 @@ class MlAnuncioCriativoKit extends Model
     public const STATUS_EM_ANDAMENTO = [self::STATUS_PLANEJANDO, self::STATUS_GERANDO];
 
     /**
+     * Fase 165 (D-15, Q7): estados em que um kit do Publicador pode ser
+     * RETOMADO ao reabrir a tela — a mesma lista que `planejarKitSobLock()`
+     * do assistente antigo usa para achar o kit existente de um rascunho
+     * (`MlbAnuncioController.php:~1901`), aqui por `pub_rascunho_id` +
+     * `pub_grupo` em vez de `rascunho_id`.
+     */
+    public const STATUS_RETOMAVEIS = [
+        self::STATUS_PLANEJANDO, self::STATUS_PLANEJADO, self::STATUS_GERANDO,
+        self::STATUS_PARCIAL, self::STATUS_PRONTO,
+    ];
+
+    /**
      * Passou disto em andamento, não vai terminar: vira erro.
      *
      * Conta: planejamento (até ~2 min, é uma chamada de TEXTO) + as ondas de
@@ -86,6 +98,8 @@ class MlAnuncioCriativoKit extends Model
         // Fase 162 (D-06) — chamadas de juiz somadas no kit (OPS-02) e
         // quantas das `regeneracoes` do kit foram automáticas (VAL-05).
         'validacoes', 'regeneracoes_automaticas',
+        // Fase 165 (D-02/D-10) — ponte com o rascunho do Publicador.
+        'pub_rascunho_id', 'pub_grupo',
     ];
 
     protected $casts = [
@@ -123,6 +137,12 @@ class MlAnuncioCriativoKit extends Model
     public function criativoReferencia(): BelongsTo
     {
         return $this->belongsTo(MlAnuncioCriativo::class, 'criativo_referencia_id');
+    }
+
+    /** O rascunho do Publicador (Fase 165) — nulo no caminho do assistente antigo. */
+    public function pubRascunho(): BelongsTo
+    {
+        return $this->belongsTo(PubRascunho::class, 'pub_rascunho_id');
     }
 
     /** TODOS os criativos ligados ao kit — inclui o portador da referência. */
@@ -376,5 +396,38 @@ class MlAnuncioCriativoKit extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Fase 165 (D-15, Q7): o kit RETOMÁVEL de um (`pub_rascunho_id`,
+     * `pub_grupo`) do Publicador — no máximo um kit ativo por par, e reabrir
+     * o painel retoma o kit existente em vez de planejar outro. Filtra por
+     * `pub_rascunho_id` (indexado) e `STATUS_RETOMAVEIS` no SQL, e compara
+     * `pub_grupo` em PHP com `===` — a collation `_ci` do MariaDB casaria
+     * "txt:M" com "txt:m" num `where('pub_grupo', $grupo)` (learnings de
+     * bonificação §9, WR-B05), e `pub_grupo` não tem índice para a
+     * comparação SQL valer a pena.
+     */
+    public static function retomavelDoPublicador(int $pubRascunhoId, string $grupo): ?self
+    {
+        return static::where('pub_rascunho_id', $pubRascunhoId)
+            ->whereIn('status', self::STATUS_RETOMAVEIS)
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (self $kit) => $kit->pub_grupo === $grupo);
+    }
+
+    /**
+     * Fase 165 (D-15): o último kit APROVADO de um (`pub_rascunho_id`,
+     * `pub_grupo`) — molde literal de `retomavelDoPublicador()`, mesma razão
+     * para a comparação de `pub_grupo` em PHP com `===`.
+     */
+    public static function ultimoAprovadoDoPublicador(int $pubRascunhoId, string $grupo): ?self
+    {
+        return static::where('pub_rascunho_id', $pubRascunhoId)
+            ->where('status', self::STATUS_APROVADO)
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (self $kit) => $kit->pub_grupo === $grupo);
     }
 }

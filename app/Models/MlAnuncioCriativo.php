@@ -12,6 +12,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `2026_10_02_120000_create_ml_anuncio_criativos_table.php` para a decisão
  * de nomenclatura e de cardinalidade (esta fase gera uma imagem por pedido).
  *
+ * **Fase 165 (Creative Engine no Publicador novo), D-11.** No Publicador,
+ * "aprovado" = a imagem entrou em `pub_imagens` (`pub_imagem_id` preenchido)
+ * e `ml_picture_*` ficam NULOS — o envio ao Mercado Livre só acontece depois,
+ * na conferência/publicação do Publicador. NUNCA inferir "está no anúncio do
+ * Mercado Livre" a partir de `aprovado`; quem precisar saber isso tem que
+ * olhar `ml_picture_id`/`ml_picture_url` (assistente antigo) ou a atribuição
+ * em `pub_imagem_atribuicoes` (Publicador).
+ *
+ * **D-16.** Apagar `Company`/`MlbEmpresa` apaga este criativo pela cascata
+ * já existente (`company_id`/`mlb_empresa_id` com `cascadeOnDelete`/
+ * `nullOnDelete`, migration `2026_10_02_120000_...`), enquanto o
+ * `pub_produto`/`pub_rascunho` do Publicador fica (a FK de `pub_rascunho_id`
+ * aqui é `nullOnDelete` — apagar o RASCUNHO do Publicador não apaga o
+ * criativo, só desliga o vínculo). Comportamento aceito, não corrigido nesta
+ * fase.
+ *
  * @see \App\Services\Creative\ReferenciaEfemeraService
  */
 class MlAnuncioCriativo extends Model
@@ -71,6 +87,8 @@ class MlAnuncioCriativo extends Model
         // Fase 162 (D-06, VAL-01..06) — validação automática pelo juiz.
         'validacao_status', 'validacao', 'validacoes',
         'regeneracao_automatica', 'validacao_pedida_em', 'validacao_em',
+        // Fase 165 (D-02/D-10) — ponte com o rascunho do Publicador.
+        'pub_rascunho_id', 'pub_grupo', 'pub_imagem_id',
     ];
 
     protected $casts = [
@@ -122,6 +140,44 @@ class MlAnuncioCriativo extends Model
     public function kit(): BelongsTo
     {
         return $this->belongsTo(MlAnuncioCriativoKit::class, 'kit_id');
+    }
+
+    /** O rascunho do Publicador (Fase 165) — nulo no caminho do assistente antigo. */
+    public function pubRascunho(): BelongsTo
+    {
+        return $this->belongsTo(PubRascunho::class, 'pub_rascunho_id');
+    }
+
+    /**
+     * A foto do Publicador que esta imagem aprovada virou (Fase 165, D-11) —
+     * nulo até a aprovação, e sempre nulo no caminho do assistente antigo.
+     */
+    public function pubImagem(): BelongsTo
+    {
+        return $this->belongsTo(PubImagem::class, 'pub_imagem_id');
+    }
+
+    /**
+     * `pub_rascunho_id` efetivo deste criativo (Fase 165): o próprio, senão
+     * o do kit, senão o do portador de referência. Necessário porque
+     * `PlanejarKitCriativosJob` cria os 7 slots copiando só `rascunho_id`/
+     * `company_id`/`mlb_empresa_id`/`user_id` do portador (nunca as colunas
+     * novas) — por isso um slot sem `pub_rascunho_id` próprio resolve pelo
+     * kit, e o PORTADOR (que ainda não tem `kit_id` no momento em que o
+     * `CreativeContextBuilder` é chamado durante o planejamento) resolve
+     * pelo próprio valor.
+     */
+    public function pubRascunhoIdEfetivo(): ?int
+    {
+        $id = $this->pub_rascunho_id ?? $this->kit?->pub_rascunho_id ?? $this->portadorDeReferencia()->pub_rascunho_id;
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    /** `pub_grupo` efetivo deste criativo — mesma cadeia de `pubRascunhoIdEfetivo()`. */
+    public function pubGrupoEfetivo(): ?string
+    {
+        return $this->pub_grupo ?? $this->kit?->pub_grupo ?? $this->portadorDeReferencia()->pub_grupo;
     }
 
     /**
