@@ -244,3 +244,12 @@ test('WR-FE-01: ehConviteAberto tira campanha do vendedor, cupom, preço individ
 test('WR-FE-01: Convites.jsx filtra a lista por ehConviteAberto', () => {
     assert.match(lerSemComentarios(`${PASTA}/Promocoes/Convites.jsx`), /\(dados\?\.itens \?\? \[\]\)\.filter\(ehConviteAberto\)/);
 });
+
+// ─── WR-FE-03: troca de período não mostra número do período antigo ───
+test('WR-FE-03: AbaPublicidade esconde os números enquanto a nova leitura não chega', () => {
+    const fonte = lerSemComentarios(`${PASTA}/AbaPublicidade.jsx`);
+    assert.match(fonte, /\{carregando && <p[^>]*>Carregando…<\/p>\}/);
+    assert.match(fonte, /\{! carregando && dados && ! dados\.indisponivel && \(/);
+    assert.match(fonte, /\{! carregando && meus\.length > 0 && \(/);
+    assert.doesNotMatch(fonte, /carregando && ! dados &&/);
+});

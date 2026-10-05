@@ -32,7 +32,7 @@ function AdGroups({ conta, de, ate, campanha }) {
             {! carregando && ! erro && ! dados?.indisponivel && meus.length === 0 && (
                 <p className="text-[13px] font-normal text-white/55">Nenhum grupo de anúncios nesta janela.</p>
             )}
-            {meus.length > 0 && (
+            {! carregando && meus.length > 0 && (
                 <table className="w-full text-left text-[13px] font-normal text-white/70">
                     <thead>
                         <tr className="text-white/55">
@@ -83,14 +83,15 @@ export default function AbaPublicidade({ conta }) {
                 </p>
             </div>
 
-            {carregando && ! dados && <p className="text-[13px] font-normal text-white/55">Carregando…</p>}
+            {/* Trocou o período: os números do período antigo saem de cena até a nova leitura chegar. */}
+            {carregando && <p className="text-[13px] font-normal text-white/55">Carregando…</p>}
             {erro && <p className="text-[13px] font-normal text-white/55">{erro}</p>}
 
-            {dados?.indisponivel && (
+            {! carregando && dados?.indisponivel && (
                 <p className="rounded-xl bg-ecf-card p-4 text-[13px] font-normal text-white/55">{dados.indisponivel}</p>
             )}
 
-            {dados && ! dados.indisponivel && (
+            {! carregando && dados && ! dados.indisponivel && (
                 <>
                     <div className="overflow-x-auto rounded-xl bg-ecf-card p-4">
                         {campanhas.length === 0 ? (
