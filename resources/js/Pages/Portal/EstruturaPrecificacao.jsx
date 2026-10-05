@@ -196,6 +196,9 @@ function FreteHerdado({ calculo, de }) {
 
 /** Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços. */
 function LinhaPreco({ oferta, calculo, onAjustar }) {
+    // D-10: na oferta que veio do Produtos o custo mora no produto (167-08); a
+    // tela mostra o valor e não manda custo no salvar (o servidor o recusaria).
+    const doProduto = calculo.do_produto === true;
     const [custo, setCusto] = useState(paraTexto(calculo.custo.origem === 'digitado' ? calculo.custo.valor : null));
     const [freteC, setFreteC] = useState(paraTexto(calculo.frete_classico));
     const [freteP, setFreteP] = useState(paraTexto(calculo.frete_premium));
@@ -212,9 +215,9 @@ function LinhaPreco({ oferta, calculo, onAjustar }) {
     }, [custoDigitado, calculo.frete_classico, calculo.frete_premium]);
 
     const salvar = () => {
-        const dados = { custo: paraNumero(custo), frete_classico: paraNumero(freteC), frete_premium: paraNumero(freteP) };
+        const dados = { ...(doProduto ? {} : { custo: paraNumero(custo) }), frete_classico: paraNumero(freteC), frete_premium: paraNumero(freteP) };
         const norma = (v) => (v === '' || v === null || v === undefined ? '' : String(Number(v)));
-        const antes = { custo: custoDigitado, frete_classico: calculo.frete_classico, frete_premium: calculo.frete_premium };
+        const antes = { ...(doProduto ? {} : { custo: custoDigitado }), frete_classico: calculo.frete_classico, frete_premium: calculo.frete_premium };
         if (Object.keys(dados).every((k) => norma(dados[k]) === norma(antes[k]))) return;
 
         router.put(route('portal.auth.estrutura.precificacao.oferta', oferta.id), { ...dados, ...calculo.excecoes }, {
@@ -240,10 +243,22 @@ function LinhaPreco({ oferta, calculo, onAjustar }) {
                 <span className="block truncate text-[11.5px] text-white/40" title={oferta.nome ?? ''}>{oferta.nome}</span>
             </td>
             <td className="px-1.5 py-1.5">
-                <input value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
-                    placeholder={temComponentes && calculo.custo.calculado !== null ? paraTexto(calculo.custo.calculado) : 'R$'}
-                    className={CELULA} aria-label={`Custo de ${oferta.sku}`} data-celula="custo" />
-                {temComponentes && (
+                {doProduto ? (
+                    <span className="block text-right" data-custo-do-produto>
+                        <span className="block text-[13px] tabular-nums text-white/80">
+                            {calculo.custo.valor !== null && calculo.custo.valor !== undefined ? fmtReais(calculo.custo.valor) : 'sem custo'}
+                        </span>
+                        <span className="mt-0.5 block text-[12px] text-white/40">vem do produto</span>
+                        <a href={route('portal.auth.estrutura.produtos', { q: oferta.sku })} className="text-[12px] text-ecf-yellow hover:underline" data-acao="alterar-no-produtos">
+                            Alterar no Produtos
+                        </a>
+                    </span>
+                ) : (
+                    <input value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
+                        placeholder={temComponentes && calculo.custo.calculado !== null ? paraTexto(calculo.custo.calculado) : 'R$'}
+                        className={CELULA} aria-label={`Custo de ${oferta.sku}`} data-celula="custo" />
+                )}
+                {! doProduto && temComponentes && (
                     <span className="mt-0.5 block text-right text-[10.5px] text-white/35" data-custo-origem={calculo.custo.origem ?? ''}>
                         {calculo.custo.origem === 'componentes' ? 'soma dos componentes'
                             : calculo.custo.origem === 'digitado' ? (calculo.custo.calculado !== null ? `componentes: ${fmtReais(calculo.custo.calculado)}` : 'digitado')
@@ -295,7 +310,7 @@ function AjustarProduto({ alvo, parametros, onFechar }) {
     const salvar = () => {
         const c = alvo.calculo;
         router.put(route('portal.auth.estrutura.precificacao.oferta', alvo.oferta.id), {
-            custo: c.custo.origem === 'digitado' ? c.custo.valor : '',
+            ...(c.do_produto ? {} : { custo: c.custo.origem === 'digitado' ? c.custo.valor : '' }),
             frete_classico: c.frete_classico ?? '',
             frete_premium: c.frete_premium ?? '',
             ...Object.fromEntries(chaves.map(([k]) => [k, paraNumero(valores[k])])),
