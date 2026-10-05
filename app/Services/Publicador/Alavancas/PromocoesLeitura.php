@@ -62,7 +62,7 @@ class PromocoesLeitura
     }
 
     /** Detalhe de uma promoção. */
-    public function promocao(ContaAlavanca $c, string $id, string $tipo): array
+    public function promocao(ContaAlavanca $c, string $id, string $tipo, bool $atualizar = false): array
     {
         $this->entrada($tipo, $id);
 
@@ -73,7 +73,7 @@ class PromocoesLeitura
                 'pay_quantity', 'discount_percentage', 'allow_combination', 'benefits'];
 
             return array_intersect_key($corpo, array_flip($campos));
-        });
+        }, $atualizar);
     }
 
     /**
