@@ -6,6 +6,7 @@ import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
+import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
 
@@ -57,7 +58,7 @@ const dataBr = (iso) => {
 
 const lista = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0]);
 
-export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites }) {
+export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites, listas: listasIniciais }) {
     const [rows, setRows] = useState(() => derivar(produtos.linhas.length ? produtos.linhas.map((l) => linhaDaGrade(l, vocabulario.pendencias)) : [linhaEmBranco()]));
     const rowsRef = useRef(rows);
     const [estado, setEstado] = useState('ocioso');       // ocioso | salvando | salvo | rede
@@ -79,9 +80,19 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         setRows(proximas);
     }, []);
 
+    // Listas da empresa (família e ambiente): criar um nome no popover atualiza as duas.
+    const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
+
+    const editores = useMemo(() => ({
+        familia: (p) => <PickerLista tipo="familia" opcoes={listas.familias} valor={p.value} textoInicial={p.textoInicial}
+            onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
+        ambientes: (p) => <PickerLista tipo="ambiente" multiplo opcoes={listas.ambientes} valor={p.value} textoInicial={p.textoInicial}
+            onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
+    }), [listas]);
+
     const colunas = useMemo(
-        () => colunasDaGrade({ eixos: vocabulario.eixos, logisticas: vocabulario.logisticas }),
-        [vocabulario.eixos, vocabulario.logisticas],
+        () => colunasDaGrade({ eixos: vocabulario.eixos, logisticas: vocabulario.logisticas, editores }),
+        [vocabulario.eixos, vocabulario.logisticas, editores],
     );
 
     const temProdutos = produtos.tem_produtos || rows.some((r) => r.id);
@@ -138,6 +149,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             });
 
             aplicar(derivar(proximas));
+
+            if (data.listas) setListas(data.listas);
 
             const criadas = data.criadas_nas_listas ?? { familias: [], ambientes: [] };
             const partes = [];
