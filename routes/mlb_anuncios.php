@@ -170,6 +170,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 Route::post('/kit/{kit}/slots/{indice}/aprovar', [MlbPublicadorCriativoController::class, 'aprovar'])
                     ->whereNumber('kit')->whereNumber('indice')
                     ->middleware('throttle:30,1,publicador.criativos.aprovar')->name('slot.aprovar');
+                // Fase 165-05 (CE165-06/09/11) — regenerar uma imagem do kit
+                // e aprovar o kit inteiro, com os mesmos limitadores
+                // nomeados do Creative Engine (teto de custo).
+                Route::post('/kit/{kit}/slots/{indice}/regenerar', [MlbPublicadorCriativoController::class, 'regenerar'])
+                    ->whereNumber('kit')->whereNumber('indice')
+                    ->middleware('throttle:creative-regenerar')->name('slot.regenerar');
+                Route::post('/kit/{kit}/aprovar', [MlbPublicadorCriativoController::class, 'aprovarKit'])
+                    ->whereNumber('kit')
+                    ->middleware('throttle:30,1,publicador.criativos.aprovar')->name('kit.aprovar');
             });
         });
 

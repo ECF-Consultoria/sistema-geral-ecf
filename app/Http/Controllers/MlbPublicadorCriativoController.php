@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GerarCriativoIaJob;
 use App\Jobs\PlanejarKitCriativosJob;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
@@ -20,6 +21,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -359,6 +361,135 @@ class MlbPublicadorCriativoController extends Controller
             'imagem_id' => (string) $res['imagem_id'],
             'repetida' => $res['repetida'],
             'kit' => $this->presenter->paraTela($k->fresh(), $r),
+        ]);
+    }
+
+    /**
+     * Regenera UMA imagem do kit (Fase 165-05, CE165-06) — mesma
+     * orquestração do `criativoRegenerar()` antigo (`MlbAnuncioController`,
+     * linhas 1770-1849): "a mesma intenção, outra tentativa" (Decisão 10 do
+     * 161-03-PLAN.md) — reusa o `slot_plano` já planejado, nunca replaneja, e
+     * enfileira UM job em `creative`; os outros 6 slots ficam intocados.
+     *
+     * `motivo` (opcional, até 300 caracteres): o que o operador escreveu em
+     * "o que não ficou bom?". Sanitizado aqui (tamanho, sem quebra de linha
+     * nem caractere de controle já cuidado pela validação `string`/`max`) e
+     * NUNCA tratado como fato novo sobre o produto (TRUTH-02/03) —
+     * `GerarCriativoIaJob` lê `regeneracoes` e o ÚLTIMO item de
+     * `regenerar_motivos` direto do slot (não há parâmetro para passar
+     * daqui) e passa os dois para `CreativePromptBuilder::paraSlot()`, que
+     * só aceita o ajuste como VARIAÇÃO visual, nunca como novo atributo do
+     * produto. O texto nunca é gravado no log (T-L8O-02).
+     *
+     * Ordem: (1) rascunho → kit → slot, escopados; (2) permissão explícita;
+     * (3) validação do `motivo`; (4) recusas em pt-BR — kit fechado ou sem
+     * referência viva (ANTES de subir qualquer contador: sem referência o
+     * job falharia depois de já ter gasto o clique — info 2 da revisão),
+     * slot já aprovado (D-11: já está em `pub_imagens`), slot em andamento,
+     * teto do asset/kit; (5) transação que acrescenta entrada em
+     * `regenerar_motivos` e incrementa as duas contagens; (6) reinicia o
+     * relógio da tentativa (achado (b) do 165-01 — sem isto, um kit com mais
+     * de 12 min encerraria o slot regenerado como travado antes mesmo de
+     * rodar); (7) despacha UM job — NUNCA `recalcularStatus()` aqui (achado
+     * (a): com um slot aprovado misturado, o kit voltaria a `gerando`; o
+     * status de tela já vem do presenter); (8) 202.
+     */
+    public function regenerar(Request $request, int $produto, int $kit, int $indice): JsonResponse
+    {
+        $r = $this->rascunhoAutorizado($produto);
+        $kit = $this->kitDoRascunho($r, $kit);
+        $slot = $this->slotDoKit($kit, $indice);
+
+        $this->permissao->exigir($request->user(), 'regenerar');
+
+        $request->validate(
+            ['motivo' => ['nullable', 'string', 'max:300']],
+            ['motivo.max' => 'O texto do que não ficou bom deve ter no máximo 300 caracteres.'],
+        );
+
+        if ($kit->status === MlAnuncioCriativoKit::STATUS_APROVADO
+            || $kit->criativoReferencia?->referenciasVivas() === []) {
+            return $this->recusa('Este kit já foi fechado e as fotos de referência foram apagadas — gere outro kit para tentar de novo.');
+        }
+
+        if ($slot->status === MlAnuncioCriativo::STATUS_APROVADO) {
+            return $this->recusa('Esta imagem já está nas fotos do anúncio — não é possível gerar de novo.');
+        }
+
+        if (in_array($slot->status, MlAnuncioCriativo::STATUS_EM_ANDAMENTO, true)) {
+            return $this->recusa('Esta imagem já está sendo gerada.');
+        }
+
+        if (! $kit->podeRegenerarAsset($slot)) {
+            return $this->recusa($kit->motivoDoTetoAsset($slot) ?? 'Esta imagem não pode ser gerada de novo agora.');
+        }
+
+        DB::transaction(function () use ($slot, $kit, $request) {
+            // Quick 261003-l8o (T-L8O-05): cada clique ACRESCENTA uma
+            // entrada (nunca sobrescreve) — o texto de uma regeneração
+            // anterior nunca vaza para a próxima.
+            $texto = trim((string) $request->input('motivo', ''));
+            $motivos = $slot->regenerar_motivos ?? [];
+            $motivos[] = [
+                'em' => now()->toDateTimeString(),
+                'user_id' => $request->user()->id,
+                'texto' => $texto !== '' ? $texto : null,
+            ];
+
+            $slot->update([
+                'status' => MlAnuncioCriativo::STATUS_PENDENTE,
+                'etapa' => null,
+                'erro_mensagem' => null,
+                'regenerar_motivos' => $motivos,
+            ]);
+            $slot->increment('regeneracoes');
+            $kit->increment('regeneracoes');
+        });
+
+        $this->reiniciarRelogioDaTentativa($kit, [$slot->id]);
+
+        GerarCriativoIaJob::dispatch($slot->id);
+
+        // GEN-05/T-L8O-02: nunca o texto do motivo — só o que ajuda a rastrear quem pediu o quê.
+        Log::info("[Creative] Publicador: regeneração enfileirada — slot {$indice} do kit {$kit->id} por " . $request->user()->name);
+
+        return response()->json([
+            'indice' => $indice,
+            'status' => $slot->fresh()->status,
+            'regeneracoes_restantes' => $kit->fresh()->regeneracoesRestantesAsset($slot->fresh()),
+        ], 202);
+    }
+
+    /**
+     * Aprova o KIT INTEIRO de uma vez (Fase 165-05, CE165-09/D-04) — delega a
+     * `PublicadorCriativoAprovacaoService::aprovarKit()` (165-03): cada slot
+     * `pronto`, na ordem de `slot_indice`, pelo mesmo `aprovarSlot()`; o kit
+     * só fecha (`status = aprovado`) quando nenhum falhou e o mínimo
+     * congelado foi atingido. A referência efêmera do portador só é apagada
+     * AQUI — nunca na aprovação de um slot isolado (`aprovar()`), porque os
+     * slots ainda não aprovados podem precisar regenerar e leem a MESMA foto
+     * do portador (retenção, CE165-09).
+     */
+    public function aprovarKit(Request $request, int $produto, int $kit): JsonResponse
+    {
+        $r = $this->rascunhoAutorizado($produto);
+        $kit = $this->kitDoRascunho($r, $kit);
+
+        $this->permissao->exigir($request->user(), 'aprovar');
+
+        $res = $this->aprovacao->aprovarKit($r, $kit, $request->user());
+
+        if ($res['aprovadas'] === 0 && $res['ok'] === false) {
+            return $this->recusa($res['mensagem']);
+        }
+
+        return response()->json([
+            'ok' => $res['ok'],
+            'aprovadas' => $res['aprovadas'],
+            'falharam' => $res['falharam'],
+            'kit_aprovado' => $res['kit_aprovado'],
+            'mensagem' => $res['mensagem'],
+            'kit' => $this->presenter->paraTela($kit->fresh(), $r),
         ]);
     }
 
