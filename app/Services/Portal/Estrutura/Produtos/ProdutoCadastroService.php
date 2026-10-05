@@ -3,10 +3,12 @@
 namespace App\Services\Portal\Estrutura\Produtos;
 
 use App\Models\Company;
+use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVolume;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
+use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Database\QueryException;
@@ -40,6 +42,14 @@ use Illuminate\Validation\ValidationException;
  * campos que a linha trouxe (`presentes`) mudam. Em MODO_GRADE o mesmo código
  * é recusado (a grade devolve o `id` para editar).
  *
+ * ### Oferta ligada (D-08, D-09)
+ * Cada variação gravada tem UMA oferta simples na Lista SKUs (`variacao_id`), com
+ * SKU = código da variação e nome "Produto — Valor". Não há casamento por SKU com
+ * as ofertas que já existiam (D-09): elas ficam como estão, sem produto, e o SKU
+ * repetido é aviso que a Lista SKUs já dá. O vínculo é o que protege sku/nome/fase
+ * contra edição direta na Lista SKUs (167-03); a invariante é garantida pelo unique
+ * `eo_variacao_uq` e por `garantirOfertas`.
+ *
  * ### Sem backfill
  * Nada aqui toca em produtos antigos do Onboarding/Precificação: o catálogo
  * começa vazio e é preenchido por quem grava.
@@ -63,6 +73,7 @@ class ProdutoCadastroService
         private ListasDaEmpresaService $listas,
         private CategoriaSugestaoService $categorias,
         private ProdutoLinhas $linhas,
+        private EstruturaOfertaService $ofertas,
     ) {}
 
     /** Forma usada para comparar códigos: sem caixa, acento nem espaço nas pontas. */
@@ -85,7 +96,7 @@ class ProdutoCadastroService
         $erros = [];
         $avisos = [];
         $criadasNasListas = ['familias' => [], 'ambientes' => []];
-        $totais = ['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0];
+        $totais = ['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0, 'absorvidos_da_espera' => 0];
         $chaves = [];           // variacao_id => chave da linha no navegador
         $produtosTocados = [];  // produto_id => true
 
@@ -133,6 +144,7 @@ class ProdutoCadastroService
                 }
 
                 $totais[$res['resultado']]++;
+                $totais['absorvidos_da_espera'] += $res['absorvidos'];
                 $produtosTocados[$res['produto']->id] = true;
                 if ($campos['chave'] !== null) {
                     $chaves[$res['variacao']->id] = $campos['chave'];
@@ -141,6 +153,9 @@ class ProdutoCadastroService
 
             $gravadas = $totais['criadas'] + $totais['atualizadas'];
             if ($gravadas > 0) {
+                // Rede de segurança, na mesma transação: variação nunca fica sem oferta.
+                $this->garantirOfertas($empresa, $ator);
+
                 RegistroEstrutura::registrar($ator, $empresa, null, 'produtos_gravados',
                     "{$gravadas} variação(ões) gravada(s) no Produtos",
                     ['modo' => $modo, 'totais' => $totais, 'criadas_nas_listas' => $criadasNasListas]);
@@ -162,6 +177,112 @@ class ProdutoCadastroService
             'criadas_nas_listas' => $criadasNasListas,
             'totais'             => $totais,
         ];
+    }
+
+    // ═══ Oferta ligada à variação (D-08) ════════════════════════════════════
+
+    /** Nome da oferta: "Produto — Valor", ou só o produto quando a variação não tem valor. Diferencia V1/V2 na Lista SKUs e no "Sincronizar do Portal". */
+    public static function nomeDaOferta(string $nomeProduto, ?string $valor): string
+    {
+        $valor = trim((string) $valor);
+        $nome = $valor === '' ? $nomeProduto : "{$nomeProduto} — {$valor}";
+
+        return mb_substr($nome, 0, 255);
+    }
+
+    /** @return int quantos anúncios da espera a oferta nova absorveu */
+    private function criarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator): int
+    {
+        [, $absorvidos] = $this->ofertas->criar($empresa, [
+            'sku'         => $variacao->codigo,
+            'fase'        => EstruturaOferta::FASE_SIMPLES,
+            'nome'        => self::nomeDaOferta($produto->nome, $variacao->valor),
+            'variacao_id' => $variacao->id,
+        ], $ator);
+
+        return $absorvidos;
+    }
+
+    /** Acompanha código/nome na oferta ligada; se ela não existe (não deveria), cria. */
+    private function sincronizarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator): int
+    {
+        $oferta = EstruturaOferta::query()->where('variacao_id', $variacao->id)->first();
+        if (! $oferta) {
+            return $this->criarOferta($empresa, $produto, $variacao, $ator);
+        }
+
+        return $this->ofertas->sincronizarDaVariacao($oferta, $variacao->codigo, self::nomeDaOferta($produto->nome, $variacao->valor), $ator);
+    }
+
+    /**
+     * Reconciliador (D-11): toda variação da empresa sem oferta ligada ganha a sua.
+     * Idempotente — rodado de novo não cria nada.
+     *
+     * @return int quantas ofertas criou
+     */
+    public function garantirOfertas(Company $empresa, AtorDoPortal $ator): int
+    {
+        return DB::transaction(function () use ($empresa, $ator) {
+            $criadas = 0;
+            $faltam = EstruturaProdutoVariacao::query()
+                ->where('company_id', $empresa->id)
+                ->whereDoesntHave('oferta')
+                ->with('produto')
+                ->get();
+
+            foreach ($faltam as $v) {
+                $this->criarOferta($empresa, $v->produto, $v, $ator);
+                $criadas++;
+            }
+
+            return $criadas;
+        });
+    }
+
+    /**
+     * Exclui uma variação pela MESMA regra da Lista SKUs (D-22): componente de
+     * combo/kit bloqueia (ValidationException em 'oferta', desfaz tudo); anúncios
+     * voltam para a espera; o item do Publicador fica solto (D27). A última
+     * variação leva o produto junto — produto sem variação não existe.
+     *
+     * @return array{produto_excluido: bool, anuncios_para_espera: int, sku: ?string}
+     */
+    public function excluirVariacao(Company $empresa, int $variacaoId, AtorDoPortal $ator): array
+    {
+        $variacao = EstruturaProdutoVariacao::query()->where('company_id', $empresa->id)->findOrFail($variacaoId);
+
+        return DB::transaction(function () use ($empresa, $variacao, $ator) {
+            $sku = $variacao->codigo;
+            $produtoId = $variacao->produto_id;
+            $oferta = EstruturaOferta::query()->where('variacao_id', $variacao->id)->first();
+            $paraEspera = $oferta ? $oferta->anuncios()->count() : 0;
+
+            if ($oferta) {
+                // O restrict de componente sobe como ValidationException e desfaz tudo.
+                $this->ofertas->excluir($oferta, $ator, viaProduto: true);
+            }
+
+            $variacao->delete();
+
+            $produto = EstruturaProduto::query()->where('company_id', $empresa->id)->find($produtoId);
+            $produtoExcluido = false;
+            if ($produto && ! EstruturaProdutoVariacao::query()->where('produto_id', $produtoId)->exists()) {
+                $produto->ambientes()->detach();
+                $produto->delete();
+                $produtoExcluido = true;
+            }
+
+            RegistroEstrutura::registrar($ator, $empresa, null, 'variacao_excluida',
+                "Variação {$sku} excluída do Produtos",
+                ['sku' => $sku, 'produto_id' => $produtoId, 'anuncios_para_espera' => $paraEspera]);
+
+            if ($produtoExcluido) {
+                RegistroEstrutura::registrar($ator, $empresa, null, 'produto_excluido',
+                    'Produto excluído com a última variação', ['produto_id' => $produtoId, 'sku' => $sku]);
+            }
+
+            return ['produto_excluido' => $produtoExcluido, 'anuncios_para_espera' => $paraEspera, 'sku' => $sku];
+        });
     }
 
     // ═══ Estado do lote ═════════════════════════════════════════════════════
@@ -231,7 +352,7 @@ class ProdutoCadastroService
      * Grava UMA linha dentro do savepoint do chamador. Lança ValidationException
      * para a recusa da linha (nada foi gravado: o savepoint desfaz).
      *
-     * @return array{resultado: string, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
+     * @return array{resultado: string, absorvidos: int, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
      */
     private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado): array
     {
@@ -419,10 +540,24 @@ class ProdutoCadastroService
             }
         }
 
+        // ─── Oferta simples ligada (D-08): nasce com a variação e acompanha código/valor/nome ───
+        $absorvidos = 0;
+        if ($variacaoNova) {
+            $absorvidos += $this->criarOferta($empresa, $produto, $variacao, $ator);
+        } elseif ($mudouProduto || $mudouVariacao) {
+            $afetadas = $mudouProduto
+                ? EstruturaProdutoVariacao::query()->where('produto_id', $produto->id)->get()
+                : collect([$variacao]);
+            foreach ($afetadas as $v) {
+                $absorvidos += $this->sincronizarOferta($empresa, $produto, $v, $ator);
+            }
+        }
+
         $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao) ? 'atualizadas' : 'sem_mudanca');
 
         return [
             'resultado'          => $resultado,
+            'absorvidos'         => $absorvidos,
             'produto'            => $produto,
             'variacao'           => $variacao,
             'avisos'             => $avisos,

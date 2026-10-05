@@ -85,7 +85,7 @@ class CadastroDeProdutoTest extends TestCase
         $this->assertSame('1014', EstruturaProduto::first()->codigo);
         $this->assertSame(2, EstruturaProdutoVariacao::count());
         $this->assertSame(2, EstruturaProdutoVolume::count());
-        $this->assertSame(['criadas' => 2, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0], $r['totais']);
+        $this->assertSame(['criadas' => 2, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0, 'absorvidos_da_espera' => 0], $r['totais']);
         $this->assertSame(['k1', 'k2'], array_column($r['linhas'], 'chave'));
         $this->assertSame([1, 2], array_column($r['linhas'], 'ordem'));
         $this->assertSame(100.5, $r['linhas'][0]['custo']);
@@ -143,7 +143,7 @@ class CadastroDeProdutoTest extends TestCase
         $variacao->forceFill(['updated_at' => '2020-01-01 00:00:00'])->saveQuietly();
 
         $r = $this->svc()->gravarLinhas($empresa, [$linha], $ator, ProdutoCadastroService::MODO_IMPORTACAO);
-        $this->assertSame(['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 1, 'com_erro' => 0], $r['totais']);
+        $this->assertSame(['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 1, 'com_erro' => 0, 'absorvidos_da_espera' => 0], $r['totais']);
         $this->assertSame('2020-01-01 00:00:00', $variacao->fresh()->updated_at->format('Y-m-d H:i:s'));
 
         // Custo novo muda só aquela variação; o que a linha não trouxe (volumes) fica.
