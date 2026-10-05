@@ -488,6 +488,22 @@ próximo disponível (13), não o que o plano previa.
   de imagem PAGA no meio. A ponte "Gerar criativos no assistente antigo" na tela de produtos continua ativa até o
   Publicador estar em uso real.
 
+**PHP-FPM de produção tinha limite de upload menor do que a validação prometia (261005-si3, 05/10/2026)**
+- A validação de `referencias.*` no `MlbPublicadorCriativoController::planejar()` promete "até 10 MB",
+  mas o PHP-FPM de produção tinha `upload_max_filesize = 2M` / `post_max_size = 8M` — o PHP descartava
+  o corpo inteiro ANTES de o Laravel ver qualquer coisa, e a tela não dava nenhum sinal (a validação
+  normal reclamaria de `grupo` vazio, um campo que o operador nunca tocou). Subido para `12M` / `50M`
+  com `sudo systemctl reload php8.2-fpm` em 05/10/2026 (o nginx já permitia `client_max_body_size 50M`,
+  então só o PHP estava apertado). **Isto é config de VPS, fora do git** — como `pm.max_children` e
+  `sort_buffer_size` do item de desempenho/bonificação: não há arquivo no repositório que documente ou
+  reponha esse valor depois de uma reinstalação do PHP-FPM. Conferir com `php -i | grep -E
+  'post_max_size|upload_max_filesize'` na VPS antes de assumir que a validação da aplicação é a única
+  réstia.
+- O código ganhou uma defesa companheira (não substitui conferir o `.env`/`php.ini` da VPS): o
+  controller agora distingue "o PHP jogou o corpo fora por passar do limite" de "o operador mandou um
+  POST vazio de verdade", comparando `Content-Length` (sobrevive no cabeçalho) com `post_max_size` do
+  `ini_get()` — e devolve uma mensagem em pt-BR sobre o tamanho do arquivo em vez do 422 genérico.
+
 **Validador da Fase 162 chegou no meio da execução, sem estar nos planos**
 - Os 8 planos da 165 são de 04/10, escritos ANTES da Fase 162 (validador Gemini-como-juiz) mergear em
   `origin/main`. Três ondas diferentes (165-04, 165-05, 165-06) tiveram que acrescentar o MESMO gate por conta
