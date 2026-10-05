@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\Publicador\ConferirRascunhoJob;
-use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
@@ -155,7 +154,7 @@ class MlbPublicadorController extends Controller
             $r = $this->rascunho($produto);
             $res = $this->imagens->receber($r, $arquivo->get(), $arquivo->getClientOriginalName());
             if ($res['imagem']) {
-                $this->colocarNoGrupo($r, $res['imagem'], $grupo);
+                $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo);
             }
 
             return [$r, ['foto' => ['id' => $res['imagem']?->id ? (string) $res['imagem']->id : null, 'nova' => $res['nova'],
@@ -350,14 +349,4 @@ class MlbPublicadorController extends Controller
         return PubRascunho::where('produto_id', $this->produto($produto)->id)->firstOrFail();
     }
 
-    private function colocarNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo): void
-    {
-        $atuais = $this->repo->snapshot($r)->imagens;
-        $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
-        if (in_array((string) $imagem->id, array_map('strval', array_column($doGrupo, 'imagem')), true)) {
-            return;
-        }
-        $this->repo->gravarAtribuicoes($r, [...$atuais, ['imagem' => $imagem->id, 'grupo' => $grupo, 'posicao' => count($doGrupo)]]);
-        $this->repo->tocar($r);
-    }
 }
