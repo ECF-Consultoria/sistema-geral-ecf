@@ -2870,7 +2870,7 @@ Plans:
 **Já sabido (análise de 2026-10-05, na conversa com o usuário):**
 - A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
 - Regra de combinação medida na planilha (70 produtos → 199 ofertas: 70 Simples, 46 Combo, 44 Kit, 39 Combit — as 4 FASES que `EstruturaOferta` já tem): das 83 ofertas com 2+ produtos, **0 misturam família** e 82 dividem ao menos um ambiente; família + ambiente dão 105 pares possíveis e só 43 foram usados (o 3º filtro, "faz sentido", fica para a fase de geração). Por isso família e ambiente precisam nascer como dado estruturado, não texto livre.
-- Ambiente é múltiplo e a planilha já tem grafias divergentes ("Sala estar"/"Sala Estar", "Quarto/Sala estar") → lista fixa com marcação múltipla.
+- Ambiente é múltiplo e a planilha já tem grafias divergentes ("Sala estar"/"Sala Estar", "Quarto/Sala estar") → lista da própria empresa (criada uma vez, depois escolhida), com marcação múltipla (D-05 do 167-CONTEXT).
 - Conflito de nome: no Onboarding/Precificação, "família" significa "o mesmo produto em várias cores"; na planilha isso é Grupo + Variação, e Família é a linha de design.
 - Produto pode ter vários volumes (ex.: cristaleira em 2 caixas, cômoda em 3); o peso total é a soma.
 - A planilha tem catálogo e CUSTOS reais de cliente: NÃO commitar o `.xlsx`; ela fica na raiz do checkout principal (`C:/xampp/htdocs/ecf_admin/3Planejamento_Estrutural_ECF.xlsx`) para leitura local.
