@@ -1,8 +1,11 @@
-import { useRef } from 'react';
-import { AlertTriangle, Lock, RefreshCw } from 'lucide-react';
+import { useContext, useEffect, useId, useRef } from 'react';
+import { AlertTriangle, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import FotosDoPar from '@/Components/Portal/Estrutura/FotosDoPar';
-import { ErroDoCampo } from './Mesa/comum';
+import { GERAL } from './apoio';
+import { ErroDoCampo, LINK } from './Mesa/comum';
+import PainelCriativos from './Mesa/PainelCriativos';
+import { CriativosDoPublicador } from './useCriativosDoPublicador';
 import { cn } from '@/lib/utils';
 
 // ─── Fotos de um grupo (E6, `06`) ───────────────────────────────────────────
@@ -67,6 +70,15 @@ export function AvisosDasFotos({ imagens, atribuicoes, envioAoMl = true, disable
 /**
  * O bloco de fotos de UM grupo. `erro` = a mensagem depois do "Continuar" (borda vermelha; antes
  * disso o bloco vazio fica neutro); `minimo` = recomendado pela categoria (só o texto da contagem).
+ *
+ * Fase 165 (165-07): a IA mora AQUI porque o bloco está em todo lugar onde se cuida de foto — o
+ * cartão de cada variação e "Fotos para todas as variações" — sem precisar mudar nenhum dos dois.
+ * O contexto `CriativosDoPublicador` vem da página (Editor.jsx); sem ele (fora do editor, ou chave
+ * desligada) nada aparece. `useId()` distingue a instância: duas variações que dividem o mesmo
+ * grupo de fotos montam cada uma o próprio bloco, e só uma delas mostra o painel por vez
+ * (`reivindicar`, depois de um F5). O painel não se desmonta com o editor só-leitura — a releitura
+ * do rascunho depois de "Usar no anúncio" deixa `disabled` true por um instante, mas o painel
+ * continua montado (só as ações ficam desabilitadas).
  */
 export function BlocoDeFotos({
     grupo, titulo, nota = null, imagens, atribuicoes, maxFotos = 10, minimo = null, erro = null, enviando, disabled,
@@ -75,6 +87,21 @@ export function BlocoDeFotos({
     const arquivo = useRef(null);
     const fotos = fotosDoGrupo(imagens, atribuicoes, grupo);
     const falhas = falhasDe(imagens, envioAoMl).filter((f) => (atribuicoes ?? []).some((a) => a.grupo === grupo && String(a.imagem) === String(f.id)));
+
+    const criativos = useContext(CriativosDoPublicador);
+    const instancia = useId();
+    const visivel = !! criativos?.disponivel;
+    const aberto = visivel && criativos.alvo?.grupo === grupo && criativos.alvo.instancia === instancia;
+
+    useEffect(() => {
+        if (criativos?.alvo?.grupo === grupo && criativos.alvo.instancia === null) criativos.reivindicar(grupo, instancia);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [criativos?.alvo?.grupo, criativos?.alvo?.instancia, grupo, instancia]);
+
+    // As fotos deste bloco que já têm arquivo guardado; sem nenhuma, cai para a galeria geral.
+    const comArquivo = (lista) => lista.filter((f) => (imagens ?? []).find((i) => String(i.id) === String(f.id))?.tem_arquivo);
+    const doProprioBloco = comArquivo(fotos);
+    const sugeridas = (doProprioBloco.length > 0 ? doProprioBloco : comArquivo(fotosDoGrupo(imagens, atribuicoes, GERAL))).slice(0, 14);
 
     const reordenar = (lista) => onAtribuicoes([
         ...(atribuicoes ?? []).filter((a) => a.grupo !== grupo),
@@ -89,23 +116,36 @@ export function BlocoDeFotos({
     };
 
     return (
-        <section id={`fotos-${grupo}`} className={cn('scroll-mt-24 rounded-lg border p-4', erro ? 'border-red-400 bg-red-500/[0.04]' : 'border-white/20 bg-black/40')}
-            data-grupo-foto={grupo} data-fotos-no-grupo={fotos.length} aria-invalid={erro ? true : undefined}>
-            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h5 className="text-[13px] font-bold text-white/90">
-                    {titulo}
-                    {nota && <span className="ml-1 font-normal text-white/50">· {nota}</span>}
-                </h5>
-                <span className="text-[13px] tabular-nums text-white/45">{fotos.length} de até {maxFotos}{minimo ? ` · recomendado ${minimo} ou mais` : ''}</span>
-            </div>
-            <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
-                onReordenar={reordenar} onRemover={remover}
-                onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
-            {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}</div>}
-            <ErroDoCampo>{erro}</ErroDoCampo>
-            {children}
-            <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos" data-campo-fotos={grupo}
-                onChange={(e) => { onArquivos([...e.target.files], grupo); e.target.value = ''; }} />
-        </section>
+        <>
+            <section id={`fotos-${grupo}`} className={cn('scroll-mt-24 rounded-lg border p-4', erro ? 'border-red-400 bg-red-500/[0.04]' : 'border-white/20 bg-black/40')}
+                data-grupo-foto={grupo} data-fotos-no-grupo={fotos.length} aria-invalid={erro ? true : undefined}>
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h5 className="text-[13px] font-bold text-white/90">
+                        {titulo}
+                        {nota && <span className="ml-1 font-normal text-white/50">· {nota}</span>}
+                    </h5>
+                    <div className="flex items-center gap-3">
+                        {visivel && (
+                            <button type="button" data-gerar-com-ia={grupo} aria-expanded={aberto} disabled={disabled} className={LINK}
+                                onClick={() => (aberto ? criativos.fechar() : criativos.abrir(grupo, titulo, instancia))}>
+                                <Sparkles size={14} aria-hidden="true" /> Gerar com IA
+                            </button>
+                        )}
+                        <span className="text-[13px] tabular-nums text-white/45">{fotos.length} de até {maxFotos}{minimo ? ` · recomendado ${minimo} ou mais` : ''}</span>
+                    </div>
+                </div>
+                <FotosDoPar mesa fotos={fotos} editavel={! disabled} maxFotos={maxFotos} enviando={enviando === grupo}
+                    onReordenar={reordenar} onRemover={remover}
+                    onAdicionar={() => arquivo.current?.click()} onArquivos={(lista) => onArquivos(lista, grupo)} />
+                {falhas.length > 0 && <div className="mt-3 space-y-1">{falhas.map((f) => <Falha key={f.id} f={f} disabled={disabled} onReenviar={onReenviar} />)}</div>}
+                <ErroDoCampo>{erro}</ErroDoCampo>
+                {children}
+                <input ref={arquivo} type="file" accept="image/jpeg,image/png" multiple className="hidden" data-campo="fotos" data-campo-fotos={grupo}
+                    onChange={(e) => { onArquivos([...e.target.files], grupo); e.target.value = ''; }} />
+            </section>
+            {aberto && (
+                <PainelCriativos c={criativos} titulo={titulo} sugeridas={sugeridas} fotosNoGrupo={fotos.length} maxFotos={maxFotos} disabled={disabled} />
+            )}
+        </>
     );
 }

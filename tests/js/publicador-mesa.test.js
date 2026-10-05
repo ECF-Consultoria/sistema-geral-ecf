@@ -230,6 +230,28 @@ test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira not
     assert.doesNotMatch(fonte, /border-amber-400\/50|\(obrigatório\)/);
 });
 
+test('BlocoDeFotos — "Gerar com IA" pelo contexto (LINK, sem amarelo), painel logo abaixo do bloco pedido, por instância e montado durante a releitura, sugestões só com arquivo; o cartão da variação e "Fotos para todas" continuam usando o bloco', () => {
+    const f = lerSemComentarios(`${BASE}/FotosPorGrupo.jsx`);
+    assert.match(f, /useContext\(CriativosDoPublicador\)/);
+    assert.match(f, /useId\(\)/);
+    assert.match(f, /data-gerar-com-ia=\{grupo\}/);
+    assert.match(f, /Gerar com IA/);
+    assert.match(f, /className=\{LINK\}/);
+    assert.match(f, /criativos\.alvo\.instancia === instancia/);
+    assert.match(f, /criativos\.reivindicar\(grupo, instancia\)/);
+    assert.match(f, /\{aberto && \(?\s*<PainelCriativos c=\{criativos\}/);
+    assert.match(f, /disabled=\{disabled\}/);
+    assert.match(f, /tem_arquivo/);
+    assert.match(f, /criativos\.abrir\(grupo, titulo, instancia\)/);
+    assert.doesNotMatch(f, /route\(|bg-ecf-yellow|uppercase/);
+    assert.doesNotMatch(f, /const aberto = [^;]*disabled/);
+
+    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\}/);
+    const todas = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(todas, /<BlocoDeFotos grupo=\{GERAL\}/);
+});
+
 test('CartaoVariante — fotos, estoque/SKU/código de GradeVariantes na caixa grande, extras da variação; sem preço nem título (moram em outras etapas)', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
     assert.match(f, /from '\.\.\/GradeVariantes'/);

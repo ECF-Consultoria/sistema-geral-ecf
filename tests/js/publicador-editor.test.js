@@ -515,6 +515,14 @@ test('useCriativosDoPublicador: rotas por produto com kit_id, polling com limpez
     assert.doesNotMatch(f, /kit_token|\btoken\b/);
 });
 
+test('Editor — cria o hook dos criativos e envolve a página com o contexto', () => {
+    const f = lerSemComentarios(PAGINA_EDITOR);
+    assert.match(f, /useCriativosDoPublicador\(\{/);
+    assert.match(f, /criativos_ia === true/);
+    assert.match(f, /onAprovou: \(\) => pub\.recarregar\(\)/);
+    assert.match(f, /<CriativosDoPublicador\.Provider value=\{criativos\}>/);
+});
+
 // ═══════════════════════════════════════════════════════════════════════
 // Casca do editor (Conceito E, 03/10/2026): barra com a trilha, seletor de
 // produto (ex-faixa de produtos), "Anunciar por IA" e as ações de publicação.

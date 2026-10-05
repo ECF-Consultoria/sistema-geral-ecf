@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Info, Loader2, Spark
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
 import useIaDoPublicador from '@/Components/Publicador/useIaDoPublicador';
+import useCriativosDoPublicador, { CriativosDoPublicador } from '@/Components/Publicador/useCriativosDoPublicador';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
 import BarraDoEditor from '@/Components/Publicador/Mesa/BarraDoEditor';
 import Etapas from '@/Components/Publicador/Mesa/Etapas';
@@ -125,7 +126,7 @@ function ResumoDosErros({ bloqueios }) {
     );
 }
 
-export default function Editor({ produto, empresa, produtos = [] }) {
+export default function Editor({ produto, empresa, produtos = [], criativos_ia = false }) {
     // CR-F02: a IA grava o rascunho no servidor. Enquanto ela trabalha o editor é só leitura e o
     // salvamento automático para; quando ela termina (bem ou com erro), o hook relê o servidor
     // ANTES de liberar a edição. A ref liga o fim da IA ao hook do editor, criado logo abaixo.
@@ -144,6 +145,11 @@ export default function Editor({ produto, empresa, produtos = [] }) {
     depoisDaIa.current = pub.recarregarDepoisDaIa;
     const { m } = pub;
     const estado = m.estado;
+
+    // Fase 165 (165-07): o kit de criativos por IA — `disponivel` é a flag do servidor (D-06);
+    // ao usar uma imagem, o `BlocoDeFotos` (via contexto) relê o rascunho pelo caminho de
+    // estrutura, nunca mesclando o resultado por fora (useCriativosDoPublicador.js, topo).
+    const criativos = useCriativosDoPublicador({ produtoId: produto.id, disponivel: criativos_ia === true, onAprovou: () => pub.recarregar() });
 
     // Efeitos do anúncio inteiro (valem em qualquer etapa).
     useEfeitosDasVariacoes(m);
@@ -218,6 +224,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
         <AppLayout title="Publicador MLB">
             <Head title={`Publicador — ${produto.nome}`} />
 
+            <CriativosDoPublicador.Provider value={criativos}>
             <div className="-m-6" data-editor-publicador>
                 <BarraDoEditor pub={pub} empresa={empresa} produto={produto} produtos={produtos} onTrocar={trocar} ia={ia} onVoltar={() => pub.descarregar()} />
 
@@ -323,6 +330,7 @@ export default function Editor({ produto, empresa, produtos = [] }) {
                     </div>
                 )}
             </div>
+            </CriativosDoPublicador.Provider>
         </AppLayout>
     );
 }
