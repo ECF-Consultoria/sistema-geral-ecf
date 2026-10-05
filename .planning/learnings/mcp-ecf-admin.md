@@ -108,7 +108,53 @@ deploy do MCP (05/10/2026)"** em `oauth_clients` — foi usado para o teste de
 fumaça com token real (revogado em seguida com `mcp:revogar 24`). Pode ficar;
 não abre rota nenhuma.
 
-## 8. Operação
+## 8. `ler_tela`: o MCP abre QUALQUER tela — e as decisões que vieram junto
+
+Pedido do usuário em 05/10/2026: "tudo que tiver no sistema tem que ter no MCP".
+São ~190 telas de leitura; uma ferramenta por tela levaria meses. A saída foi
+uma ferramenta genérica (`app/Mcp/Telas/`):
+
+- **`NavegadorDeTelas` faz uma navegação INTERNA** pelo kernel HTTP com os
+  cabeçalhos do Inertia (`X-Inertia`, versão do manifest). Mesmos middlewares,
+  mesmo controller, mesmas travas — o número é o da tela por construção.
+  Três cuidados no código: sessão trocada para `array` durante a navegação
+  (senão cada consulta criaria linha em `sessions`), usuário do token posto no
+  guard `web`, e o `request` do container restaurado no fim (senão o log de
+  acesso gravaria o IP/rota da tela).
+- **Prop opcional/lazy** (`Inertia::optional`) só vem por recarregamento
+  parcial. O Inertia devolve `null` para chave pedida que a tela não tem —
+  tratar como "não existe", não como "vazio".
+- **`CatalogoDeTelas`**: GET com nome, atrás de `auth`, menos padrões de
+  arquivo/OAuth/portal e a lista `BLOQUEADAS` (GET que grava). **Rota GET nova
+  que grava tem que entrar em `BLOQUEADAS`** — o certo é ela virar POST. O teste
+  `test_toda_rota_bloqueada_existe_de_verdade` pega renomeação.
+- **Decisões do usuário (05/10/2026), não refaça sem perguntar:**
+  - só leitura continua valendo;
+  - abrir pelo MCP pode disparar o mesmo aquecimento de cache que a tela
+    dispara no navegador (Desempenho "calculando…", RefreshGrossBillingCache) —
+    o dashboard do consultor/mentor chega a calcular a nota na hora com cache
+    frio (`PerformanceController:492`), igual ao navegador;
+  - **dado pessoal (e-mail, telefone) e links/tokens de acesso vêm como a tela
+    mostra** — revoga a linha "não devolver CPF/telefone/e-mail" da
+    especificação. Só CREDENCIAL (senha, `access_token`, `refresh_token`,
+    `api_key`, `*_secret`) sai como "[oculto]" (`LeitorDeDados::CREDENCIAL`).
+- Prop compartilhado novo no `HandleInertiaRequests` precisa entrar em
+  `LeitorDeDados::COMPARTILHADOS` (há teste que avisa).
+- **Varredura das 197 rotas GET autenticadas (05/10/2026):** 111 só leem, 42 só
+  aquecem cache, 6 devolvem arquivo e **37 gravam ao serem abertas** — não dá
+  para confiar no nome. As que gravam dado de negócio ou usam token OAuth
+  guardado estão em `BLOQUEADAS`, com o motivo ao lado. Destaques que
+  surpreendem: `admin.contratos.show` e `comercial.entrada.show` sincronizam
+  etapa/checklist a cada abertura (criam `CompanyEtapaTransicao`);
+  `chamados.show` marca notificação como lida; os status de criativo/IA
+  encerram job travado; agenda e disponibilidade usam o token Google de OUTRA
+  pessoa (e o refresh apaga o token em `invalid_grant`).
+- O aquecimento que dashboard/performance/portfolio disparam
+  (`desempenho:warm-cache`) não grava só cache: faz upsert em
+  `desempenho_company_score_snapshots` de competência NÃO congelada — o mesmo
+  que o cron das 7h–22h faz a cada 8 min. Aceito como "igual à tela".
+
+## 9. Operação
 
 - Log de acesso: tabela `mcp_acessos` (usuário, ferramenta, argumentos,
   sucesso/erro, duração, IP, cliente OAuth).

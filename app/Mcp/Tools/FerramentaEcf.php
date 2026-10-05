@@ -26,8 +26,11 @@ use Throwable;
  *     de carteira que o controller aplica. O que o usuário não vê no Admin
  *     ele também não vê aqui. Ferramenta fora do perfil nem aparece na lista
  *     (`shouldRegister`), e mesmo chamada à força responde erro.
- *  2. **Nada se escreve.** Nenhuma ferramenta salva, altera status, marca como
- *     visto ou dispara job. A única escrita é a linha de log em `mcp_acessos`.
+ *  2. **Nada de negócio se escreve.** Nenhuma ferramenta salva, altera status
+ *     ou marca como visto; a escrita própria do MCP é a linha de log em
+ *     `mcp_acessos`. A exceção aceita (decisão de 05/10/2026) é a do
+ *     `ler_tela`: abrir uma tela pelo MCP equivale a abri-la no navegador,
+ *     inclusive o aquecimento de cache que algumas telas disparam.
  *
  * O `handle()` é fixo: confere o perfil, roda `consultar()`, transforma erro
  * em mensagem legível e grava o log de acesso — com ou sem erro.
@@ -88,7 +91,7 @@ abstract class FerramentaEcf extends Tool
 
             $dados = $this->consultar($request, $usuario);
 
-            return Response::structured($dados + ['consultado_em' => now()->toIso8601String()]);
+            return $this->responder($dados + ['consultado_em' => now()->toIso8601String()]);
         } catch (ErroDaFerramenta $e) {
             $erro = $e->getMessage();
 
@@ -105,6 +108,18 @@ abstract class FerramentaEcf extends Tool
         } finally {
             $this->registrarAcesso($request, $usuario, $erro, $inicio);
         }
+    }
+
+    /**
+     * Forma da resposta. Padrão: conteúdo estruturado (o pacote manda o JSON
+     * como `structuredContent` E como texto). Ferramenta de payload grande
+     * sobrescreve para mandar só o texto — senão o tamanho dobra.
+     *
+     * @param  array<string, mixed>  $dados
+     */
+    protected function responder(array $dados): Response|ResponseFactory
+    {
+        return Response::structured($dados);
     }
 
     // ═══ Paginação (limite + cursor) ═══
