@@ -2903,8 +2903,15 @@ Plans:
   3. Imagem reprovada é regenerada automaticamente uma vez usando o motivo da rejeição, com tentativas limitadas por asset — nunca um loop infinito (VAL-05, VAL-06)
   4. Quando a validação aponta risco (inclusive depois da regeneração automática), a tela mostra o alerta ao lado da imagem com o motivo legível em pt-BR — nunca um código de erro técnico (APROV-04)
 
-**Plans**: TBD
+**Plans**: 5 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 162-01-PLAN.md — juiz de visão: contrato novo de julgamento, caminho aditivo no GeminiImageProvider, prompt em pt-BR pedindo JSON, reconciliação no servidor, colunas de validação e comando `creative:validar-criativo`
+- [ ] 162-02-PLAN.md — validação automática no fluxo: `ValidarCriativoIaJob` na fila `creative`, trava de tempo (VAL-06) e gate de aprovação por slot e do kit (com confirmação de risco)
+- [ ] 162-03-PLAN.md — regeneração automática uma vez pelo motivo da rejeição, dentro do orçamento de regeneração já existente
+- [ ] 162-04-PLAN.md — alerta de risco em pt-BR na `KitCriativosGrade`, campos de validação na whitelist do `kit.status` e aprovação com risco assumido em dois passos
+- [ ] 162-05-PLAN.md — gate contra a baseline, checkpoint humano com custo declarado (até ~US$ 1,00) e learnings do validador
 
 ### Phase 163: Fechamento do POC — custo por projeto e medição com anúncios reais
 
