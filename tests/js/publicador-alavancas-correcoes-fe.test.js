@@ -173,3 +173,17 @@ test('WR-FE-08: FormCupom valida o período por periodoDeCupomOk, sem diferença
     assert.match(fonte, /periodoDeCupomOk\(f\.inicio, f\.fim\)/);
     assert.doesNotMatch(fonte, /86400000/);
 });
+
+// ─── WR-FE-05: lote fechado/esgotado também relê a tela ───
+test('WR-FE-05: ModalConfirmacao chama concluir ao fechar com lote e ao esgotar o polling', () => {
+    const fonte = lerSemComentarios(`${PASTA}/ModalConfirmacao.jsx`);
+    const fechar = corpoDaFuncao(fonte, 'fechar');
+    assert.match(fechar, /if \(loteId\) concluir\(lote\.dados \?\? null\)/);
+    assert.match(fonte, /if \(loteId && lote\.esgotou\) concluir\(lote\.dados \?\? null\)/);
+});
+
+test('WR-FE-05: concluir continua protegido pelo ref (uma releitura só)', () => {
+    const corpo = corpoDaFuncao(lerSemComentarios(`${PASTA}/ModalConfirmacao.jsx`), 'concluir');
+    assert.match(corpo, /if \(concluido\.current\) return;/);
+    assert.match(corpo, /concluido\.current = true;/);
+});

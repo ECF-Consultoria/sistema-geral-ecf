@@ -130,6 +130,8 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
 
     // Fechar é da pessoa, depois de ler o resultado: a tela recebe o resultado e decide o que desmontar.
     function fechar() {
+        // Fechou com o lote em andamento: a lista fica velha se ninguém reler, então entrega o que houver (uma vez só).
+        if (loteId) concluir(lote.dados ?? null);
         onFechar?.(ultimo.current);
     }
 
@@ -157,6 +159,12 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
         if (loteId && lote.dados?.terminado) concluir(lote.dados);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loteId, lote.dados?.terminado]);
+
+    // O polling passou do limite sem terminar: relê a tela com o que já houver (o envio segue em segundo plano).
+    useEffect(() => {
+        if (loteId && lote.esgotou) concluir(lote.dados ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loteId, lote.esgotou]);
 
     async function enviar() {
         setFase('enviando');
