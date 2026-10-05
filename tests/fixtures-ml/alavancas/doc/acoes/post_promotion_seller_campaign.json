@@ -1,0 +1,16 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "POST /seller-promotions/promotions (campanha do vendedor)",
+    "url": "https://developers.mercadolivre.com.br/pt_br/campanhas-do-vendedor",
+    "lida_em": "2026-10-04",
+    "nota": "Resposta de criacao copiada da doc (atualizada em 28/08/2025); a do VOLUME (C-MLB5790) segue o mesmo formato em campanhas-de-desconto-por-quantidade. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "id": "C-MLB360923",
+        "type": "SELLER_CAMPAIGN",
+        "sub_type": "FLEXIBLE_PERCENTAGE",
+        "status": "pending",
+        "start_date": "2023-07-17T00:00:00",
+        "finish_date": "2023-07-20T23:59:59",
+        "name": "campanha de teste do seller"
+    }
+}
