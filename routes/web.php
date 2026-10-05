@@ -57,6 +57,7 @@ use App\Http\Controllers\PortalClienteController;
 use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalEstruturaController;
+use App\Http\Controllers\PortalEstruturaProdutosController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -199,6 +200,37 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
     // quando o link antigo traz `?abrir=`/`?q=`/`?situacao=` (agenda, Jardinagem).
     Route::get('/estrutura', [PortalEstruturaController::class, 'entrada'])->name('portal.auth.estrutura');
     Route::get('/estrutura/lista', [PortalEstruturaController::class, 'lista'])->name('portal.auth.estrutura.lista');
+    // Fase 167 — Produtos: cadastro do produto e das variações. Cada rota tem o
+    // seu prefixo de throttle e a sua linha na allowlist do domínio do cliente.
+    Route::get('/estrutura/produtos', [PortalEstruturaProdutosController::class, 'index'])->name('portal.auth.estrutura.produtos');
+    Route::get('/estrutura/produtos/modelo', [PortalEstruturaProdutosController::class, 'modelo'])
+        ->middleware('throttle:30,1,estrutura.produtos.modelo')->name('portal.auth.estrutura.produtos.modelo');
+    Route::post('/estrutura/produtos/linhas', [PortalEstruturaProdutosController::class, 'gravarLinhas'])
+        ->middleware('throttle:120,1,estrutura.produtos.linhas')->name('portal.auth.estrutura.produtos.linhas');
+    Route::delete('/estrutura/produtos/variacoes/{variacao}', [PortalEstruturaProdutosController::class, 'excluirVariacao'])
+        ->whereNumber('variacao')->middleware('throttle:60,1,estrutura.produtos.variacoes.excluir')->name('portal.auth.estrutura.produtos.variacoes.excluir');
+    Route::post('/estrutura/produtos/importacao/previa', [PortalEstruturaProdutosController::class, 'previaImportacao'])
+        ->middleware('throttle:10,1,estrutura.produtos.importacao.previa')->name('portal.auth.estrutura.produtos.importacao.previa');
+    Route::post('/estrutura/produtos/importacao', [PortalEstruturaProdutosController::class, 'aplicarImportacao'])
+        ->middleware('throttle:6,1,estrutura.produtos.importacao')->name('portal.auth.estrutura.produtos.importacao');
+    Route::post('/estrutura/produtos/familias', [PortalEstruturaProdutosController::class, 'criarFamilia'])
+        ->middleware('throttle:60,1,estrutura.produtos.familias.criar')->name('portal.auth.estrutura.produtos.familias.criar');
+    Route::put('/estrutura/produtos/familias/{lista}', [PortalEstruturaProdutosController::class, 'renomearFamilia'])
+        ->whereNumber('lista')->middleware('throttle:60,1,estrutura.produtos.familias.renomear')->name('portal.auth.estrutura.produtos.familias.renomear');
+    Route::delete('/estrutura/produtos/familias/{lista}', [PortalEstruturaProdutosController::class, 'excluirFamilia'])
+        ->whereNumber('lista')->middleware('throttle:60,1,estrutura.produtos.familias.excluir')->name('portal.auth.estrutura.produtos.familias.excluir');
+    Route::post('/estrutura/produtos/ambientes', [PortalEstruturaProdutosController::class, 'criarAmbiente'])
+        ->middleware('throttle:60,1,estrutura.produtos.ambientes.criar')->name('portal.auth.estrutura.produtos.ambientes.criar');
+    Route::put('/estrutura/produtos/ambientes/{lista}', [PortalEstruturaProdutosController::class, 'renomearAmbiente'])
+        ->whereNumber('lista')->middleware('throttle:60,1,estrutura.produtos.ambientes.renomear')->name('portal.auth.estrutura.produtos.ambientes.renomear');
+    Route::delete('/estrutura/produtos/ambientes/{lista}', [PortalEstruturaProdutosController::class, 'excluirAmbiente'])
+        ->whereNumber('lista')->middleware('throttle:60,1,estrutura.produtos.ambientes.excluir')->name('portal.auth.estrutura.produtos.ambientes.excluir');
+    Route::get('/estrutura/produtos/categorias', [PortalEstruturaProdutosController::class, 'buscarCategorias'])
+        ->middleware('throttle:60,1,estrutura.produtos.categorias')->name('portal.auth.estrutura.produtos.categorias');
+    Route::post('/estrutura/produtos/categorias/sugerir', [PortalEstruturaProdutosController::class, 'sugerirCategorias'])
+        ->middleware('throttle:30,1,estrutura.produtos.categorias.sugerir')->name('portal.auth.estrutura.produtos.categorias.sugerir');
+    Route::post('/estrutura/produtos/fretes', [PortalEstruturaProdutosController::class, 'cotarFretes'])
+        ->middleware('throttle:20,1,estrutura.produtos.fretes')->name('portal.auth.estrutura.produtos.fretes');
     Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
     Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
     Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])

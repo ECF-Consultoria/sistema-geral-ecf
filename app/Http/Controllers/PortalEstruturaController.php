@@ -8,6 +8,7 @@ use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
+use App\Models\EstruturaProduto;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\ColagemAnunciosService;
 use App\Services\Portal\Estrutura\EstruturaAgendaService;
@@ -56,8 +57,10 @@ class PortalEstruturaController extends Controller
     // ═══ Visões ═════════════════════════════════════════════════════════════
 
     /**
-     * A porta do módulo. Sem nada na URL, abre a Lista SKUs — o primeiro passo
-     * de quem começa do zero. Os links antigos (`?abrir=ID` da agenda,
+     * A porta do módulo (D-21). Sem nada na URL, abre Produtos — o primeiro
+     * passo de quem começa do zero — para a empresa que já tem produto ou que
+     * ainda não tem oferta nenhuma; quem já trabalha só com ofertas (as 500
+     * importadas da #131) segue entrando pela Lista SKUs. Os links antigos (`?abrir=ID` da agenda,
      * `?abrir=ID&metricas=1` da Jardinagem, `?q=`/`?situacao=`/`?pagina=`)
      * eram da página que hoje é o Mapeamento: vão para ela, com a query intacta.
      */
@@ -65,8 +68,11 @@ class PortalEstruturaController extends Controller
     {
         $daVisaoAntiga = $request->hasAny(['abrir', 'q', 'situacao', 'pagina', 'metricas']);
 
+        $id = PortalContexto::empresa()->id;
+        $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists();
+
         return redirect()->route(
-            $daVisaoAntiga ? 'portal.auth.estrutura.mapeamento' : 'portal.auth.estrutura.lista',
+            $daVisaoAntiga ? 'portal.auth.estrutura.mapeamento' : ($abreProdutos ? 'portal.auth.estrutura.produtos' : 'portal.auth.estrutura.lista'),
             $request->query(),
         );
     }

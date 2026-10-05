@@ -107,10 +107,10 @@ class PortalSemAnunciarTest extends TestCase
         $this->assertTrue(Route::has('mlb.anuncios.wizard'));
     }
 
-    public function test_o_mapeamento_estrutural_tem_cinco_submodulos(): void
+    public function test_o_mapeamento_estrutural_tem_seis_submodulos(): void
     {
         $this->assertSame(
-            ['lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
+            ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
             array_keys((new \ReflectionClass(ModulosPortal::class))->getConstant('SUBMODULOS')[ModulosPortal::ESTRUTURA]),
         );
     }

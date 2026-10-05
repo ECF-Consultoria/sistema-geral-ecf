@@ -119,6 +119,22 @@ class RestringeDominioDoPortal
         // `portal/ppa/tarefas/*`. Nada fora do módulo mora sob `portal/estrutura`.
         'portal/estrutura',
         'portal/estrutura/lista',
+        // Fase 167 (05/10/2026) — Produtos. Uma linha por rota; o `*` só ocupa o
+        // id numérico (`whereNumber`). NUNCA `portal/estrutura/produtos/*`: o `*`
+        // do Str::is atravessa `/` e abriria rota que não existe aqui.
+        'portal/estrutura/produtos',
+        'portal/estrutura/produtos/modelo',
+        'portal/estrutura/produtos/linhas',
+        'portal/estrutura/produtos/variacoes/*',
+        'portal/estrutura/produtos/importacao',
+        'portal/estrutura/produtos/importacao/previa',
+        'portal/estrutura/produtos/familias',
+        'portal/estrutura/produtos/familias/*',
+        'portal/estrutura/produtos/ambientes',
+        'portal/estrutura/produtos/ambientes/*',
+        'portal/estrutura/produtos/categorias',
+        'portal/estrutura/produtos/categorias/sugerir',
+        'portal/estrutura/produtos/fretes',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',
