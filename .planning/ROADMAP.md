@@ -2843,7 +2843,7 @@ Plans:
 - Escrita em conta de cliente é o objetivo da fase, mas a regra do usuário de 2026-10-01 (só a #459 recebe escrita de teste) precisa ser revista na discussão antes de qualquer POST/PUT/DELETE real.
 
 Plans:
-- [ ] 166-01-PLAN.md — baseline de testes (commit próprio), trava própria das Alavancas (`AlavancasLiberadas` + config) e a tabela `pub_alavanca_escritas` com o desenho escrito
+- [x] 166-01-PLAN.md — baseline de testes (commit próprio), trava própria das Alavancas (`AlavancasLiberadas` + config) e a tabela `pub_alavanca_escritas` com o desenho escrito
 - [ ] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
 - [ ] 166-03-PLAN.md — núcleo de escrita: contrato `AcaoAlavanca`, `EscritorAlavancas` (trava, vendedor, histórico antes do envio, 423/5xx), assinatura da prévia e guarda do caminho único
 - [ ] 166-04-PLAN.md — matriz `TiposDePromocao`, datas e alertas (D-12), produtos da conta ao vivo e leitura da Central de promoções
