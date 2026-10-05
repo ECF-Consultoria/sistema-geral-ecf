@@ -50,6 +50,16 @@ function SkuRepetido() {
     );
 }
 
+// D-08: a oferta simples que nasceu de uma variação do Produtos aparece aqui,
+// mas quem manda nela é o Produtos (o servidor protege desde o 167-03).
+function DoProdutos() {
+    return (
+        <span className="whitespace-nowrap rounded-full bg-white/[0.06] px-2 py-1 text-[12px] text-white/60" title="Esta oferta vem do Produtos" data-do-produtos>
+            do Produtos
+        </span>
+    );
+}
+
 /** Editar e excluir — os mesmos em toda linha. */
 function AcoesOferta({ oferta, onEditar, onExcluir }) {
     return (
@@ -58,10 +68,18 @@ function AcoesOferta({ oferta, onEditar, onExcluir }) {
                 className="rounded-lg p-1.5 text-white/35 hover:bg-white/[0.06] hover:text-white">
                 <Pencil size={14} />
             </button>
+            {/* D-22: oferta ligada só se exclui pela variação, no Produtos. */}
+            {oferta.variacao_id ? (
+                <a href={route('portal.auth.estrutura.produtos', { q: oferta.sku })} title="Esta oferta vem do Produtos. Exclua a variação lá."
+                    data-acao="excluir-pelo-produtos" className="rounded-lg px-2 py-1.5 text-[12px] text-white/50 hover:bg-white/[0.06] hover:text-white">
+                    Excluir pelo Produtos
+                </a>
+            ) : (
             <button type="button" onClick={() => onExcluir(oferta)} title="Excluir" aria-label={`Excluir ${oferta.sku}`} data-acao="excluir-oferta"
                 className="rounded-lg p-1.5 text-white/35 hover:bg-red-500/10 hover:text-red-300">
                 <Trash2 size={14} />
             </button>
+            )}
         </span>
     );
 }
@@ -74,6 +92,7 @@ function LinhaCombo({ oferta, base, vocabulario, onEditar, onExcluir }) {
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="font-mono text-[12.5px] font-semibold text-white/90">{oferta.sku}</span>
                     <span className="truncate text-[13px] text-white/70">{oferta.nome}</span>
+                    {oferta.variacao_id && <DoProdutos />}
                     {oferta.sku_repetido && <SkuRepetido />}
                 </span>
             </span>
@@ -106,6 +125,7 @@ function CardProduto({ bloco, abertoInicial, vocabulario, onEditar, onExcluir, o
                         <span className="font-mono text-[14px] font-semibold text-white" data-titulo-bloco>{produto.sku}</span>
                         <span className="truncate text-[14px] text-white/80">{produto.nome}</span>
                         <PilulaFase fase={produto.fase} vocabulario={vocabulario} />
+                        {produto.variacao_id && <DoProdutos />}
                         {produto.sku_repetido && <SkuRepetido />}
                     </span>
                     <span className="mt-0.5 block text-[12px] text-white/40">
@@ -170,6 +190,7 @@ function SecaoKits({ blocos, nenhum, vocabulario, onEditar, onExcluir, onNovoKit
                             <span className="font-mono text-[13px] font-semibold text-white">{o.sku}</span>
                             <span className="truncate text-[13px] text-white/75">{o.nome}</span>
                             <PilulaFase fase={o.fase} vocabulario={vocabulario} />
+                            {o.variacao_id && <DoProdutos />}
                             {o.sku_repetido && <SkuRepetido />}
                         </span>
                         <span className="mt-0.5 block font-mono text-[11.5px] text-white/40" data-composicao>
