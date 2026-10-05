@@ -25,19 +25,9 @@ class MlbImplementacaoController extends Controller
 
     private function checkAccess(Request $request): void
     {
-        $user   = $request->user();
-        $perms  = $user->publication_permissions ?? [];
-        $role   = $user->publication_role;
-
-        abort_unless(
-            $user->role === 'admin'
-            || in_array('empresas', $perms)
-            || in_array($role, ['gestor', 'analista', 'lider'])
-            // Setor-based (novo): membros do setor Polos ganham mlb.implementacao e
-            // acessam o Onboarding sem depender dos campos legados publication_*.
-            || $user->hasPermission('mlb.implementacao'),
-            403
-        );
+        // A régua mora em AcessoImplementacaoPolos — a ferramenta
+        // `onboarding_polos` do MCP usa a mesma.
+        abort_unless(\App\Support\Acessos\AcessoImplementacaoPolos::permite($request->user()), 403);
     }
 
     /**

@@ -8,12 +8,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Passport\Contracts\OAuthenticatable;
+use Laravel\Passport\HasApiTokens;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class User extends Authenticatable
+// OAuthenticatable + HasApiTokens (Passport): é o que deixa o conector do MCP
+// (`/mcp`) entrar com o login do próprio usuário. O guard `web` não muda.
+class User extends Authenticatable implements OAuthenticatable
 {
-    use HasFactory, Notifiable, LogsActivity, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, LogsActivity, SoftDeletes;
 
     public function getActivitylogOptions(): LogOptions
     {

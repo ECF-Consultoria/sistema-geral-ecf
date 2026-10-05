@@ -8,10 +8,10 @@ use App\Models\ContratoServico;
 use App\Models\Goal;
 use App\Models\Onboarding;
 use App\Models\Servico;
-use App\Models\Setor;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
+use App\Services\Empresas\EmpresasVisiveisService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Onboarding\OnboardingSituacaoService;
 use App\Services\Portal\AcessosDoPortalService;
@@ -83,54 +83,13 @@ class CompanyController extends Controller
      * removida junto pra não deixar código órfão / não despachar jobs sem uso.
      */
     /**
-     * Slug do setor cujo LÍDER enxerga todas as empresas de `/companies`
-     * (Fase 157, D-B).
-     *
-     * Casa com `servicos.setor = 'performance'`, que é o valor que o catálogo
-     * de serviços já usava — a linha em `setores` foi criada pela migration
-     * `2026_09_10_140000_seed_setor_performance` justamente para os dois
-     * vocabulários passarem a se encontrar.
+     * Líder do setor Performance — quem distribui (D-B). A régua mora em
+     * {@see EmpresasVisiveisService}, junto com a de visibilidade por vínculo
+     * (Fase 157), porque o MCP lê a mesma lista desta tela.
      */
-    private const SETOR_DA_LIDERANCA = 'performance';
-
-    /**
-     * O usuário deve ver apenas as empresas em que está vinculado? (D-A)
-     *
-     * `true` só para quem tem cargo `analista` ou `estrategista` e **não** é
-     * admin nem líder do setor Performance.
-     *
-     * A régua é sobre CARGO, não sobre "não-admin": quem não tem nenhum dos
-     * dois cargos (ex.: um consultor de outro setor, um financeiro) continua
-     * vendo o que via. Restringir por exclusão em vez de por cargo tiraria
-     * acesso de gente que o pedido não menciona.
-     *
-     * O líder é a exceção explícita — ele precisa ver tudo para distribuir. O
-     * Luiz é líder E estrategista; a regra de líder vence, e a visão "só as
-     * minhas" fica disponível para ele pelo filtro da tela.
-     */
-    private function deveFiltrarPelaPropriaCarteira(?User $usuario): bool
-    {
-        if ($usuario === null || $usuario->isAdmin()) {
-            return false;
-        }
-
-        if ($this->ehLiderDaPerformance($usuario)) {
-            return false;
-        }
-
-        return $usuario->cargoDesempenhoSlug() !== null;
-    }
-
-    /** Líder do setor Performance — quem distribui (D-B). */
     private function ehLiderDaPerformance(?User $usuario): bool
     {
-        if ($usuario === null) {
-            return false;
-        }
-
-        $setorId = Setor::where('slug', self::SETOR_DA_LIDERANCA)->value('id');
-
-        return $setorId !== null && $usuario->isLiderDe($setorId);
+        return app(EmpresasVisiveisService::class)->ehLiderDaPerformance($usuario);
     }
 
     /**
@@ -243,7 +202,11 @@ class CompanyController extends Controller
         // depois, quando servia apenas à aba Onboarding.
         $usuario = $request->user();
 
-        $companies = Company::with([
+        // O universo da lista (sem MlbEmpresa, só Performance, visibilidade
+        // por vínculo da Fase 157) vem de EmpresasVisiveisService — a MESMA
+        // consulta que a ferramenta `listar_empresas` do MCP usa.
+        $companies = app(EmpresasVisiveisService::class)->consulta($usuario)
+            ->with([
                 // Fase 89 Plan 02 (CART-08): reapontado para as relações
                 // filtradas por setor performance — a coluna Analista/
                 // Estrategista nunca deve mostrar o responsável Shopee.
@@ -276,40 +239,6 @@ class CompanyController extends Controller
             ])
             // Grant ativo local (company_grants sincronizado da API ECF Drive) para a pendência "sem grant".
             ->withCount(['grants as grants_ativos_count' => fn($q) => $q->where('status', 'active')])
-            ->whereDoesntHave('mlbEmpresa')
-            // Phase 37 Plan 37-06 (REQ-37-07) — /companies refoca em Performance
-            // (Gestao + Mentoria). Empresas com contratos APENAS em Publicacao/Outros
-            // sao visiveis em /comercial/empresas/listagem (Plan 37-05). MlbEmpresa
-            // ja excluido acima (Phase 35 preservada).
-            ->whereHas('contratosServico', fn($q) =>
-                $q->where('contratos_servico.ativo', true)
-                  ->whereHas('servico', fn($qs) =>
-                      $qs->where('setor', Servico::SETOR_PERFORMANCE)
-                  )
-            )
-            // ─── Fase 157 (D-A) — VISIBILIDADE POR VÍNCULO ─────────────────
-            //
-            // Até aqui `/companies` mostrava TODAS as empresas de Performance
-            // para qualquer um com acesso à tela. Passa a mostrar só as do
-            // próprio usuário para quem tem cargo `analista` ou `estrategista`.
-            //
-            // ⚠️ Isto MUDA o que usuários atuais enxergam — quem via ~180
-            // empresas passa a ver só as suas. Foi pedido na letra ("vai
-            // aparecer apenas as empresas destinadas pra ele"), e está anotado
-            // aqui porque alguém vai estranhar antes de lembrar que foi pedido.
-            //
-            // Quem NÃO é filtrado, e por quê:
-            //  - admin: vê tudo, como sempre;
-            //  - líder do setor Performance: precisa ver tudo para distribuir;
-            //  - quem não tem nenhum dos dois cargos: comportamento inalterado
-            //    — a regra é sobre analista/estrategista, não sobre "não-admin".
-            ->when(
-                $this->deveFiltrarPelaPropriaCarteira($usuario),
-                fn ($q) => $q->whereHas(
-                    'users',
-                    fn ($qu) => $qu->where('users.id', $usuario->id)
-                )
-            )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
             // Fase 150 Plano 07 (ETAPA-05) — depois do when($custIdStatusFilter)
             // e depois do whereDoesntHave/whereHas acima: preservar a tela
