@@ -40,6 +40,18 @@ trait CenarioAlavancas
     protected array $esperas = [];
 
     /**
+     * Relógio parado no dia em que as fixtures foram escritas. Os prazos das fixtures
+     * (`deadline_date`, `start_date`) são datas absolutas de out/2026: sem isto, um
+     * convite "aberto" vence com o calendário e o teste quebra sem mudança de código
+     * (aconteceu na virada de 04 para 05/10 no PanoramaTest). O Laravel chama este
+     * método sozinho no setUp (setUp + nome da trait) e solta o relógio no tearDown.
+     */
+    protected function setUpCenarioAlavancas(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-04 12:00:00', 'America/Sao_Paulo'));
+    }
+
+    /**
      * @param  string  $ancora  'company' ou 'mlb_empresa' (Incubadora, SEM Company)
      * @param  bool  $liberada  se a trava própria das Alavancas libera a conta
      */
