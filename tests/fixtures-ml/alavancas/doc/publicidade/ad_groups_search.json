@@ -1,0 +1,32 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "https://developers.mercadolivre.com.br/pt_br/product-ads-para-catalogo-e-user-products-leitura (GET .../product_ads/ad_groups/search, api-version: 2, filters[item_ids] plural)",
+    "lida_em": "2026-10-04",
+    "nota": "Exemplo da doc adaptado ao MLB, ids sintéticos.",
+    "resposta": {
+        "paging": {"offset": 0, "total": 2, "limit": 50},
+        "results": [
+            {
+                "channel": "MARKETPLACE",
+                "title": "Termometro Digital Philips Avent",
+                "advertiser_id": 1000001,
+                "ad_group_type": "FAMILY",
+                "id": 960468947,
+                "campaign_id": 355189450,
+                "status": "ACTIVE",
+                "metrics": {"clicks": 2, "prints": 143, "cost": 7.28, "cpc": 3.64, "total_amount": 0.0, "units_quantity": 0, "acos": 0.0, "ctr": 1.4, "roas": 0.0}
+            },
+            {
+                "channel": "MARKETPLACE",
+                "title": "Anuncio fora de campanha",
+                "advertiser_id": 1000001,
+                "ad_group_type": "FAMILY",
+                "id": 960468948,
+                "campaign_id": 0,
+                "status": "ACTIVE",
+                "metrics": {"clicks": 0, "prints": 0, "cost": 0.0, "cpc": 0.0, "total_amount": 0.0, "units_quantity": 0, "acos": 0.0, "ctr": 0.0, "roas": 0.0}
+            }
+        ],
+        "metrics_summary": {"clicks": 2, "prints": 143, "cost": 7.28, "cpc": 3.64, "total_amount": 0.0, "units_quantity": 0, "acos": 0.0, "ctr": 1.4, "roas": 0.0}
+    }
+}

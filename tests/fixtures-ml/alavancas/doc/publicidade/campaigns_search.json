@@ -1,0 +1,37 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "https://developers.mercadolivre.com.br/pt_br/product-ads-para-catalogo-e-user-products-leitura (GET .../product_ads/campaigns/search, api-version: 2, metrics_summary=true)",
+    "lida_em": "2026-10-04",
+    "nota": "Exemplo da doc com valores de métrica preenchidos para os testes; ids sintéticos.",
+    "resposta": {
+        "paging": {"offset": 0, "total": 2, "limit": 50},
+        "results": [
+            {
+                "id": 355189450,
+                "name": "Campanha Verao",
+                "status": "active",
+                "last_updated": "2025-11-25T21:12:59.000Z",
+                "date_created": "2025-11-25T21:12:59.000Z",
+                "strategy": "VISIBILITY",
+                "acos_target": 50.0,
+                "roas_target": 2.0,
+                "channel": "marketplace",
+                "advertiser_id": 1000001,
+                "budget": 900.0,
+                "automatic_budget": false,
+                "metrics": {"clicks": 120, "prints": 9000, "cost": 300.0, "cpc": 2.5, "ctr": 1.33, "total_amount": 1500.0, "units_quantity": 12, "acos": 20.0, "roas": 5.0}
+            },
+            {
+                "id": 355189451,
+                "name": "Campanha Pausada",
+                "status": "paused",
+                "strategy": "PROFITABILITY",
+                "acos_target": 10.0,
+                "advertiser_id": 1000001,
+                "budget": 100.0,
+                "metrics": {"clicks": 0, "prints": 0, "cost": 0.0, "cpc": 0.0, "ctr": 0.0, "total_amount": 0.0, "units_quantity": 0, "acos": 0.0, "roas": 0.0}
+            }
+        ],
+        "metrics_summary": {"clicks": 120, "prints": 9000, "cost": 300.0, "cpc": 2.5, "ctr": 1.33, "total_amount": 1500.0, "units_quantity": 12, "acos": 20.0, "roas": 5.0}
+    }
+}
