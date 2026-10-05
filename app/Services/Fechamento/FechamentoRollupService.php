@@ -9,7 +9,6 @@ use App\Models\Servico;
 use App\Models\ShopeeMetric;
 use App\Services\AdmanService;
 use App\Services\Metrics\MetricPeriodResolver;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -58,13 +57,12 @@ use InvalidArgumentException;
  * Adman-driven inteira a subcontagem é sistemática (+3,4%, 34 de 48
  * empresas divergindo).
  *
- * ⚠️ O RECORTE que define o escopo: empresa `is_ml_driven` (token ML ativo)
- * NÃO usa a API. Para ela o `adman_metrics` é preenchido pelo sync do ML e
- * a conta Adman fica abandonada — o `/performance` não é régua. LAURA LAR
- * tem R$ 2,7 milhões em agosto na nossa base e a conta Adman dela devolve
- * R$ 12.966; aplicar a API nela destruiria o número certo. Empresa sem
- * `cust_id` também fica de fora (não há o que chamar). Shopee nunca muda —
- * continua vindo de `shopee_metrics`.
+ * Quick 261005-sm1 — o ESCOPO virou o mais simples possível: **toda empresa
+ * com `cust_id` lê o faturamento da Adman**. Caíram os recortes por token ML
+ * e por "as duas contas são o mesmo id" (ver o histórico completo no docblock
+ * de `podeUsarApiDaAdman()` — eles nasceram de um defeito de CADASTRO, não da
+ * API). Empresa sem `cust_id` continua de fora: não há o que chamar. Shopee
+ * nunca muda — continua vindo de `shopee_metrics`.
  */
 class FechamentoRollupService
 {
@@ -157,9 +155,10 @@ class FechamentoRollupService
      *
      * É um invólucro de propósito, não uma segunda implementação: quem aquece
      * o cache tem de aquecer exatamente as empresas que a tela vai consultar,
-     * e duplicar o critério dos três cortes (sem `cust_id`, Adman puro,
-     * `ml_driven` com a mesma loja) seria criar uma segunda régua que
-     * envelhece sozinha. O método privado segue intocado.
+     * e duplicar o critério seria criar uma segunda régua que envelhece
+     * sozinha. Quick 261005-sm1: o critério virou um só (ter `cust_id`), e o
+     * invólucro continua existindo pelo mesmo motivo — o dia em que ele
+     * voltar a ter condição, o aquecimento acompanha de graça.
      */
     public function podeLerFaturamentoDaAdman(Company $company): bool
     {
@@ -245,9 +244,10 @@ class FechamentoRollupService
      *
      * Quick 260911-eph: `$faturamentoDaApi` (default `false`, modo atual
      * intocado — nenhuma chamada HTTP) troca a fonte do `faturamento_ml`
-     * pelo `/performance` da Adman nas empresas que NÃO são `is_ml_driven`
-     * e têm `cust_id`. Exige `$companies` pela mesma razão que
-     * `$somenteContratadas`: é de lá que vêm `cust_id` e o token ML.
+     * pelo `/performance` da Adman. Quick 261005-sm1: em TODA empresa com
+     * `cust_id` (o recorte por token ML / contas iguais caiu — ver
+     * `podeUsarApiDaAdman()`). Exige `$companies` pela mesma razão que
+     * `$somenteContratadas`: é de lá que vem o `cust_id`.
      *
      * Quick 260930-njd: o mês CORRENTE passou a usar a API também — mas SÓ do
      * cache (`getCachedGrossBillingsMany()`), nunca ao vivo, e pedindo a
@@ -334,13 +334,12 @@ class FechamentoRollupService
         $janelaApi = $faturamentoDaApi ? $this->janelaDaAdman($mes) : null;
         $usarApi   = $faturamentoDaApi && $janelaApi !== null;
 
-        // Uma query para todos os tokens — o acessor `is_ml_driven` lê
-        // `mlToken` e faria N+1 no laço de ~201 empresas sem isto. Guard de
-        // tipo porque `$companies` é tipado como coleção genérica; só a
-        // Eloquent Collection tem `loadMissing()`.
-        if ($usarApi && $companies instanceof EloquentCollection) {
-            $companies->loadMissing('mlToken');
-        }
+        // Quick 261005-sm1 — aqui havia um `loadMissing('mlToken')` para o
+        // acessor `is_ml_driven` não fazer N+1 no laço de ~201 empresas. A
+        // decisão deixou de olhar o token (`podeUsarApiDaAdman()` só pergunta
+        // por `cust_id`, que vem das colunas da própria empresa), então a
+        // consulta extra saiu junto. Se algum critério voltar a depender de
+        // relação, o eager loading volta AQUI — nunca dentro do laço.
 
         // Modo cache-only: UMA leitura em lote (um round-trip, zero HTTP)
         // antes do laço, em vez de um `Cache::get` por empresa.
@@ -551,71 +550,104 @@ class FechamentoRollupService
     }
 
     /**
-     * Quick 260911-jpx — esta empresa pode ter o faturamento lido do
-     * `/performance` da Adman?
+     * Esta empresa pode ter o faturamento lido do `/performance` da Adman?
      *
-     * O corte NÃO é o token ML. É a conta Adman apontar para a MESMA loja do
-     * ML. O quick anterior (260911-eph) inferiu a regra de UM caso só — a
-     * LAURA LAR — e concluiu "empresa `ml_driven` tem conta Adman
-     * abandonada". Errado: o que a LAURA LAR tem de especial não é o token
-     * ML, é a conta Adman apontar para outra loja.
+     * ⚠️ **É A ÚNICA PORTA DESSA DECISÃO.** Quem está fora do serviço entra
+     * por `podeLerFaturamentoDaAdman()`, que é só um invólucro desta. Nunca
+     * replicar o critério em outro lugar.
      *
-     *   | empresa     | adman_account_id | ml_store_id |                 |
-     *   |-------------|------------------|-------------|-----------------|
-     *   | DESK DESIGN | 51493328         | 51493328    | mesma loja      |
-     *   | LAURA LAR   | 273196837        | 433720509   | contas distintas|
+     * **Regra de hoje (quick 261005-sm1, 2026-10-05):**
      *
-     * Medição em produção (2026-09-11) das 60 empresas `ml_driven` que têm
-     * conta Adman:
+     * 1. Sem `cust_id` → **não**, não há o que chamar. São 62 das 187
+     *    empresas ativas; seguem na soma diária de `adman_metrics`.
+     * 2. Com `cust_id` → **sim**. Sem mais nenhuma condição.
      *
-     *   | grupo          | empresas | o que a API devolve                   |
-     *   |----------------|----------|---------------------------------------|
-     *   | ids IGUAIS     | 58       | 53 entre -1% e +15% (ajuste retroativo)|
-     *   | ids DIFERENTES | 2        | MAXIGOLD +2118%, LAURA LAR -99,5%     |
+     * ─── Por que uma regra que foi criada de propósito foi revertida ────
      *
-     * As duas únicas anomalias são exatamente as de id trocado — o corte por
-     * `is_ml_driven` jogava fora 58 empresas boas para se proteger de 2, e
-     * deixava de fora justamente a DESK DESIGN, o caso que originou o
-     * trabalho (R$ 167.537,54 na soma diária contra R$ 170.363,19 na Adman).
+     * Até 2026-10-05 havia um terceiro corte: empresa `is_ml_driven` (token
+     * ML ativo) só lia da API quando `adman_account_id` e `ml_store_id`
+     * estavam os dois preenchidos e eram IGUAIS. Histórico, na ordem:
      *
-     * Os três cortes de hoje:
+     * - Quick 260911-eph: corte por `is_ml_driven` (nenhuma empresa com token
+     *   ML lia da API), inferido de UM caso — a LAURA LAR, cuja conta Adman
+     *   devolvia 99,5% menos que a nossa base.
+     * - Quick 260911-jpx: o corte passou a ser "a conta Adman aponta para a
+     *   MESMA loja do ML", porque o que a LAURA LAR tinha de especial não era
+     *   o token (DESK DESIGN também tem) e sim os ids distintos
+     *   (273196837 contra 433720509). Isso resgatou 58 empresas.
+     * - **2026-09-15: descobriu-se que o defeito da LAURA LAR era o TOKEN do
+     *   Mercado Livre**, que apontava para a conta da GRAN BELO — não a API
+     *   da Adman (registrado em `.planning/learnings/fechamento-tabela-por-empresa.md`).
+     *   A empresa foi desativada em 16/09. O recorte `ids-iguais` protegia de
+     *   um defeito de **cadastro**, e cobrava por isso o número errado de
+     *   outras empresas.
      *
-     * 1. Sem `cust_id` → **não**, não há o que chamar (são quase todas
-     *    empresas de teste).
-     * 2. Não `ml_driven` → **sim**, caminho Adman puro, inalterado. São 53
-     *    empresas em cobrança viva; este ramo não se toca.
-     * 3. `ml_driven` → **só** quando `adman_account_id` e `ml_store_id`
-     *    estão os dois preenchidos e são IGUAIS.
+     * Medição em produção em 2026-10-05, entre as 187 empresas ativas: 108 já
+     * usavam a Adman, 62 não têm `cust_id` nenhum e **17 tinham conta e eram
+     * recusadas**. Das 17, **16 não têm `adman_account_id`** — só
+     * `ml_store_id`, que é justamente por onde `cust_id` consulta a Adman, e
+     * a API responde normalmente (OUZOR TIME: R$ 654.533,87 numa chamada
+     * real). Só a MAXIGOLD SUPLEMENTOS tem as duas contas, diferentes. O
+     * custo do recorte em setembro/2026, com os números gravados:
+     * MAXIGOLD 3.324,98 contra 119.411,57 da Adman; OUZOR TIME 583.611,24
+     * contra 654.533,87.
      *
-     * Duas armadilhas travadas de propósito:
+     * Decisão do usuário (2026-10-05): usar o número da Adman para toda
+     * empresa que tenha conta lá, e tratar divergência de contas como
+     * **aviso visível** (`contasDivergem()`), nunca como troca silenciosa por
+     * um número pior.
      *
-     * - Comparação como STRING com `===`. Os dois campos são texto; `==`
-     *   faria coerção numérica e `'051' == '51'` daria true. Id com zero à
-     *   esquerda (ou espaço) é outra loja, não a mesma.
-     * - `filled()` nos dois lados. São 16 empresas `ml_driven` em produção
-     *   com token ML e sem conta Adman própria; sem o `filled()`,
-     *   `null === null` viraria "pode usar" e elas chamariam a API à toa.
+     * ⚠️ O que NÃO mudou e segue valendo:
      *
-     * Efeito medido em agosto/2026, autorizado pelo usuário em 2026-09-11:
-     * 51 → ~109 empresas pela API, +R$ 1.016.802,46 de faturamento somado e
-     * 2 empresas mudando de faixa (CAMILLO PARTS MATRIZ e LUCCAUTO.COM,
-     * R$ 3.000 → R$ 4.500). A régua de classificação em si
-     * (`FechamentoFaixaResolver`, `CobrancaCalculator`) não foi tocada —
-     * muda só QUEM pode ler o faturamento da API.
+     * - Nada disso acontece com a chave `fechamento_faturamento_da_api_ativo`
+     *   desligada — quem liga `faturamentoDaApi` é o chamador, e quem lê a
+     *   chave é `ConsolidarMesFechamento` e `AdminController::fechamento()`.
+     * - O fallback nunca silencioso: `cust_id` que a Adman não reconhece cai
+     *   para a soma diária com fonte `soma_diaria_fallback`. Empresa nenhuma
+     *   fica sem número.
+     * - A régua de classificação (`FechamentoFaixaResolver::classificar()`,
+     *   `CobrancaCalculator`) não foi tocada em nenhum dos três quicks —
+     *   muda só QUEM pode ler o faturamento da API.
      */
     private function podeUsarApiDaAdman(Company $company): bool
     {
-        if ($company->cust_id === null) {
-            return false;                       // nada a chamar
-        }
+        // Única condição: existir conta a consultar. `cust_id` é o acessor de
+        // `Company` (adman_account_id ?: ml_store_id) — não reimplementar a
+        // prioridade aqui.
+        return $company->cust_id !== null;
+    }
 
-        if (! $company->is_ml_driven) {
-            return true;                        // caminho Adman puro, inalterado
-        }
-
-        // ml_driven: só quando a conta Adman acompanha A MESMA loja do ML.
+    /**
+     * Quick 261005-sm1 — esta empresa tem as DUAS contas cadastradas e elas
+     * são diferentes?
+     *
+     * Este é o aviso que substituiu a trava `ids-iguais`: uma das duas contas
+     * provavelmente está errada, e foi exatamente isso que aconteceu com a
+     * LAURA LAR (token ML apontando para a conta da GRAN BELO). Em produção
+     * em 2026-10-05, entre as empresas que a trava recusava, só a MAXIGOLD
+     * SUPLEMENTOS cai aqui.
+     *
+     * ⚠️ **Não muda número nenhum.** O faturamento continua vindo da Adman;
+     * isto existe para alguém CONFERIR o cadastro. Transformar de novo o
+     * aviso em trava é voltar a cobrar o número errado de 17 empresas.
+     *
+     * ⚠️ O token ML NÃO entra no critério, de propósito: cadastro com duas
+     * contas diferentes merece conferência com ou sem token, e amarrar o
+     * aviso ao token recriaria a segunda régua que este quick acabou de
+     * remover. Consequência aceita: empresas cuja divergência já é conhecida
+     * e intencional (ADHARAPRINTSHOP e AVF_2K — ver
+     * `Company::getCustIdAttribute()`) podem aparecer na lista. O aviso é
+     * discreto e não bloqueia nada.
+     *
+     * Comparação como STRING com `!==`, mesma armadilha travada no quick
+     * 260911-jpx ao contrário: `==` faria coerção numérica e `'051' == '51'`
+     * diria "mesma conta". Id com zero à esquerda (ou espaço) é outra conta —
+     * e é justamente o tipo de cadastro que se quer ver.
+     */
+    public function contasDivergem(Company $company): bool
+    {
         return filled($company->adman_account_id)
             && filled($company->ml_store_id)
-            && (string) $company->adman_account_id === (string) $company->ml_store_id;
+            && (string) $company->adman_account_id !== (string) $company->ml_store_id;
     }
 }

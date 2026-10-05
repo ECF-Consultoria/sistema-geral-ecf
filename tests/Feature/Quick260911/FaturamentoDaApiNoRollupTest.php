@@ -19,19 +19,31 @@ use Tests\TestCase;
  * Quick 260911-eph — o faturamento do mês FECHADO passa a vir do
  * `/performance` da Adman, não da soma dos dias de `adman_metrics`.
  *
- * Quick 260911-jpx CORRIGIU o recorte: o corte não é o token ML, é a conta
- * Adman apontar para a MESMA loja do ML (`adman_account_id ===
- * ml_store_id`). Ver o docblock de `FechamentoRollupService::
- * podeUsarApiDaAdman()` para a medição em produção que sustenta isso.
+ * ⚠️ **Quick 261005-sm1 (2026-10-05) REVERTEU o recorte deste arquivo.** O
+ * quick 260911-jpx tinha trocado "empresa `ml_driven` nunca lê da API" por
+ * "só lê quando `adman_account_id === ml_store_id`". Em 2026-09-15
+ * descobriu-se que o defeito da LAURA LAR — o caso que gerou os dois
+ * recortes — era o TOKEN do Mercado Livre apontando para a conta da GRAN
+ * BELO, e não a API da Adman. O recorte protegia de um defeito de CADASTRO e
+ * cobrava por isso o número errado de 17 empresas (MAXIGOLD: R$ 3.324,98
+ * gravado contra R$ 119.411,57 na Adman; OUZOR TIME: R$ 583.611,24 contra
+ * R$ 654.533,87). A LAURA LAR foi desativada em 16/09.
+ *
+ * Regra de hoje: **`cust_id` preenchido → lê da API; `cust_id` nulo → soma
+ * diária**. Contas divergentes viraram AVISO (`contasDivergem()`), nunca
+ * trava.
+ *
+ * Os testes do recorte antigo foram REESCRITOS (não apagados): o invariante
+ * que eles protegiam continua testado — quem não tem `cust_id` não chama a
+ * API, o fallback funciona, Shopee não é tocado, o default não faz HTTP —
+ * e só a expectativa revertida pelo usuário mudou. Cada um diz no próprio
+ * docblock o que mudou e por quê.
  *
  * O que cada teste protege:
- *  - a correção em si (empresa Adman-driven lê da API);
- *  - o RECORTE que impede a correção de virar destruição: empresa
- *    `ml_driven` só lê da API quando os dois ids batem (DESK DESIGN,
- *    51493328 nos dois) e fica fora quando a conta Adman aponta para outra
- *    loja (LAURA LAR, 273196837 contra 433720509 — R$ 2,7 milhões na nossa
- *    base contra R$ 12.966 na Adman);
- *  - a comparação como STRING: `'051'` e `'51'` NÃO são a mesma loja;
+ *  - a correção em si (empresa com conta Adman lê da API);
+ *  - o alcance novo: empresa só com `ml_store_id` (16 em produção) e empresa
+ *    com as duas contas diferentes (MAXIGOLD) também leem da API;
+ *  - quem continua fora: empresa sem `cust_id` nenhum;
  *  - a regressão zero dos chamadores atuais (default `false` = ZERO chamada
  *    HTTP — a tela de fechamento renderiza a cada carregamento);
  *  - o fallback nunca silencioso.
@@ -118,40 +130,59 @@ class FaturamentoDaApiNoRollupTest extends TestCase
     }
 
     /**
-     * Quick 260911-jpx — este teste SUBSTITUI o
-     * `empresa_ml_driven_nao_chama_a_api_e_fica_na_soma_diaria` do quick
-     * anterior, que codificava a regra errada ("empresa `ml_driven` nunca
-     * chama a API"). O que tira a LAURA LAR da API não é o token ML: é a
-     * conta Adman apontar para OUTRA loja (273196837 contra 433720509).
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes este teste
+     * afirmava `empresa_ml_driven_com_ids_diferentes_nao_chama_a_api_e_fica_na_soma_diaria`
+     * — a trava do quick 260911-jpx, inferida da LAURA LAR.
+     *
+     * Por que a expectativa virou: o defeito da LAURA LAR era o TOKEN do
+     * Mercado Livre, que apontava para a conta da GRAN BELO (descoberto em
+     * 2026-09-15, learning `fechamento-tabela-por-empresa.md`); a API da
+     * Adman não tinha culpa. A empresa foi desativada em 16/09. A trava que
+     * ela motivou custava o número certo de 17 empresas — a MAXIGOLD
+     * SUPLEMENTOS, único caso de duas contas diferentes em produção, ficava
+     * gravada com R$ 3.324,98 quando a Adman devolve R$ 119.411,57 em
+     * setembro/2026.
+     *
+     * Agora a empresa LÊ da API e a divergência de contas sai como AVISO
+     * (`contasDivergem()`), que não muda número nenhum. O cenário da LAURA
+     * LAR fica aqui de propósito, com os ids e o número reais, para que a
+     * reversão seja legível por quem vier depois.
      */
     #[Test]
-    public function empresa_ml_driven_com_ids_diferentes_nao_chama_a_api_e_fica_na_soma_diaria(): void
+    public function empresa_com_as_duas_contas_diferentes_le_da_api_e_entra_no_aviso(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+        Carbon::setTestNow(Carbon::parse('2026-10-05'));
 
         $company = $this->empresaMlDriven(admanAccountId: '273196837', mlStoreId: '433720509');
 
-        // O caso LAURA LAR: a nossa base tem o número certo (sync do ML) e a
-        // conta Adman de outra loja devolveria uma fração disso (-99,5%).
-        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 2_700_000.00]);
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 3_324.98]);
 
-        $this->fakeApi(12_966.00);
+        // O número da MAXIGOLD em setembro/2026, medido em produção.
+        $this->fakeApi(119_411.57);
 
-        $resultado = app(FechamentoRollupService::class)->porEmpresa(
-            '2026-08',
+        $rollup    = app(FechamentoRollupService::class);
+        $resultado = $rollup->porEmpresa(
+            '2026-09',
             Company::whereKey($company->id)->get(),
             faturamentoDaApi: true,
+            // Mês fechado para o `Carbon::setTestNow()` acima seria outubro;
+            // aqui a competência é setembro, logo o ramo ao vivo vale.
         );
 
-        Http::assertNothingSent();
-        $this->assertEqualsWithDelta(2_700_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertEqualsWithDelta(119_411.57, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+
+        // O aviso existe e é o que substituiu a trava — ninguém troca número
+        // em silêncio, mas alguém precisa conferir o cadastro.
+        $this->assertTrue($rollup->contasDivergem($company->refresh()));
     }
 
     /**
-     * O caso DESK DESIGN — a empresa que originou o trabalho e que o corte
-     * antigo (por `is_ml_driven`) deixava de fora. Token ML ativo, mas a
-     * conta Adman acompanha a MESMA loja: 51493328 dos dois lados.
+     * O caso DESK DESIGN — a empresa que originou o trabalho e que o primeiro
+     * corte (por `is_ml_driven`, quick 260911-eph) deixava de fora. Token ML
+     * ativo e a conta Adman acompanhando a MESMA loja: 51493328 dos dois
+     * lados. Continua lendo da API, como desde 2026-09-11, e NÃO entra no
+     * aviso de contas divergentes.
      */
     #[Test]
     public function empresa_ml_driven_com_ids_iguais_le_o_faturamento_da_api(): void
@@ -164,7 +195,8 @@ class FaturamentoDaApiNoRollupTest extends TestCase
 
         $this->fakeApi(170_363.19);
 
-        $resultado = app(FechamentoRollupService::class)->porEmpresa(
+        $rollup    = app(FechamentoRollupService::class);
+        $resultado = $rollup->porEmpresa(
             '2026-08',
             Company::whereKey($company->id)->get(),
             faturamentoDaApi: true,
@@ -172,95 +204,126 @@ class FaturamentoDaApiNoRollupTest extends TestCase
 
         $this->assertEqualsWithDelta(170_363.19, $resultado[$company->id]['faturamento_ml'], 0.001);
         $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertFalse($rollup->contasDivergem($company->refresh()));
     }
 
     /**
-     * 16 empresas em produção: token ML ativo e nenhuma conta Adman própria.
-     * `cust_id` cai no `ml_store_id`, então o primeiro corte não as pega — é
-     * o `filled($company->adman_account_id)` que segura.
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes era
+     * `empresa_ml_driven_sem_adman_account_id_nao_chama_a_api`.
+     *
+     * Este é o grupo MAIS CARO do recorte revertido: das 17 empresas que a
+     * trava recusava em produção, **16 estão exatamente aqui** — token ML
+     * ativo e nenhuma conta Adman própria, só `ml_store_id`. E é pelo
+     * `ml_store_id` que o `cust_id` consulta a Adman: a API responde
+     * normalmente (OUZOR TIME devolveu R$ 654.533,87 numa chamada real em
+     * 2026-10-05, contra R$ 583.611,24 na nossa soma). O
+     * `filled($company->adman_account_id)` da regra antiga segurava um número
+     * que estava à disposição.
      */
     #[Test]
-    public function empresa_ml_driven_sem_adman_account_id_nao_chama_a_api(): void
+    public function empresa_so_com_ml_store_id_le_o_faturamento_da_api(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+        Carbon::setTestNow(Carbon::parse('2026-10-05'));
 
         $company = $this->empresaMlDriven(admanAccountId: null, mlStoreId: '51493328');
 
-        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 33_000.00]);
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 583_611.24]);
 
-        $this->fakeApi(99_999.00);
+        $this->fakeApi(654_533.87);
 
-        $resultado = app(FechamentoRollupService::class)->porEmpresa(
-            '2026-08',
+        $rollup    = app(FechamentoRollupService::class);
+        $resultado = $rollup->porEmpresa(
+            '2026-09',
             Company::whereKey($company->id)->get(),
             faturamentoDaApi: true,
         );
 
-        Http::assertNothingSent();
-        $this->assertEqualsWithDelta(33_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
-    }
+        $this->assertEqualsWithDelta(654_533.87, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
 
-    /** O lado oposto: conta Adman sem loja ML cadastrada. `null === null` não vira "pode usar". */
-    #[Test]
-    public function empresa_ml_driven_sem_ml_store_id_nao_chama_a_api(): void
-    {
-        Carbon::setTestNow(Carbon::parse('2026-09-11'));
-
-        $company = $this->empresaMlDriven(admanAccountId: '51493328', mlStoreId: null);
-
-        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 21_000.00]);
-
-        $this->fakeApi(99_999.00);
-
-        $resultado = app(FechamentoRollupService::class)->porEmpresa(
-            '2026-08',
-            Company::whereKey($company->id)->get(),
-            faturamentoDaApi: true,
-        );
-
-        Http::assertNothingSent();
-        $this->assertEqualsWithDelta(21_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+        // Uma conta só cadastrada não é divergência — não há com o que
+        // comparar, e o aviso que aparece sem motivo ensina a ignorar aviso.
+        $this->assertFalse($rollup->contasDivergem($company->refresh()));
     }
 
     /**
-     * A comparação é de STRING com `===`: `'051'` e `'51'` são lojas
-     * diferentes, e `' 51'` também. Com `==` o PHP coagiria para número e as
-     * três daria "mesma loja" — a empresa leria o faturamento de outra conta.
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes era
+     * `empresa_ml_driven_sem_ml_store_id_nao_chama_a_api`, o lado oposto do
+     * `filled()` da regra antiga (conta Adman sem loja ML cadastrada).
+     *
+     * Hoje `cust_id` cai no `adman_account_id` e a empresa lê da API como
+     * qualquer outra. O token ML deixou de participar da decisão — foi ele a
+     * pista falsa que gerou os dois recortes de 2026-09-11.
      */
     #[Test]
-    public function ids_que_so_parecem_iguais_nao_sao_a_mesma_loja(): void
+    public function empresa_com_token_ml_e_so_conta_adman_le_o_faturamento_da_api(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-09-11'));
+        Carbon::setTestNow(Carbon::parse('2026-10-05'));
+
+        $company = $this->empresaMlDriven(admanAccountId: '51493328', mlStoreId: null);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 21_000.00]);
+
+        $this->fakeApi(23_400.00);
+
+        $rollup    = app(FechamentoRollupService::class);
+        $resultado = $rollup->porEmpresa(
+            '2026-09',
+            Company::whereKey($company->id)->get(),
+            faturamentoDaApi: true,
+        );
+
+        $this->assertEqualsWithDelta(23_400.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertFalse($rollup->contasDivergem($company->refresh()));
+    }
+
+    /**
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes era
+     * `ids_que_so_parecem_iguais_nao_sao_a_mesma_loja`, e protegia a
+     * comparação de STRING da trava (`===`, nunca `==`, porque
+     * `'051' == '51'` daria true).
+     *
+     * A armadilha do `==` continua travada — só mudou de lado: agora a
+     * comparação é `!==` dentro de `contasDivergem()`, e com coerção
+     * numérica `'051'` e `'51'` virariam "mesma conta" e o AVISO desapareceria
+     * justamente no cadastro mais suspeito (zero à esquerda, espaço). O
+     * número, nos dois casos, vem da API — divergência de cadastro nunca
+     * volta a ser trava.
+     */
+    #[Test]
+    public function contas_que_so_parecem_iguais_entram_no_aviso(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-05'));
+
+        $rollup = app(FechamentoRollupService::class);
 
         foreach ([['051', '51'], [' 51', '51']] as [$admanAccountId, $mlStoreId]) {
             $company = $this->empresaMlDriven($admanAccountId, $mlStoreId);
 
-            AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-08-10', 'revenue' => 7_000.00]);
+            AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 7_000.00]);
 
-            $this->fakeApi(99_999.00);
+            $this->fakeApi(9_100.00);
 
-            $resultado = app(FechamentoRollupService::class)->porEmpresa(
-                '2026-08',
+            $resultado = $rollup->porEmpresa(
+                '2026-09',
                 Company::whereKey($company->id)->get(),
                 faturamentoDaApi: true,
             );
 
-            Http::assertNothingSent();
-            $this->assertEqualsWithDelta(7_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-            $this->assertSame(
-                FechamentoSnapshot::FONTE_SOMA_DIARIA,
-                $resultado[$company->id]['faturamento_fonte'],
-                "'{$admanAccountId}' e '{$mlStoreId}' não podem ser tratados como a mesma loja."
+            $this->assertEqualsWithDelta(9_100.00, $resultado[$company->id]['faturamento_ml'], 0.001);
+            $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+            $this->assertTrue(
+                $rollup->contasDivergem($company->refresh()),
+                "'{$admanAccountId}' e '{$mlStoreId}' não podem ser tratados como a mesma conta."
             );
         }
     }
 
     /**
-     * Regressão do ramo que NÃO se toca: sem token ML, a empresa lê da API
-     * como sempre leu — mesmo com os dois ids diferentes. São 53 empresas em
-     * cobrança viva por este caminho.
+     * Regressão do ramo que NUNCA foi tocado por nenhum dos três quicks: sem
+     * token ML, a empresa lê da API como sempre leu — mesmo com os dois ids
+     * diferentes. São 53 empresas em cobrança viva por este caminho.
      */
     #[Test]
     public function empresa_sem_token_ml_le_da_api_mesmo_com_ids_diferentes(): void

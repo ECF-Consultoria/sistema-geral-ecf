@@ -105,25 +105,26 @@ class WarmFechamentoFaturamentoTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    /**
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes este teste era
+     * `nao_aquece_quem_nao_pode_usar_a_adman` e usava DOIS cenários: a LAURA
+     * LAR (token ML + conta Adman de outra loja) e a empresa sem `cust_id`.
+     *
+     * Por que mudou: o recorte que tirava a LAURA LAR caiu — o defeito dela
+     * era o token do Mercado Livre, não a API da Adman (2026-09-15), e a
+     * trava custava o número certo de 17 empresas. Sobrou UM corte, e é ele
+     * que este teste protege: **empresa sem `cust_id` não é aquecida**, porque
+     * não há o que chamar.
+     *
+     * O invariante que continua valendo é o pareamento: o aquecimento usa o
+     * MESMO critério do rollup (`podeLerFaturamentoDaAdman()`), nunca uma
+     * segunda régua. Aquecer menos do que a tela consulta deixa a tela no
+     * fallback para sempre; aquecer mais gasta chamada à toa.
+     */
     #[Test]
-    public function nao_aquece_quem_nao_pode_usar_a_adman(): void
+    public function nao_aquece_empresa_sem_cust_id(): void
     {
         $this->hojeNoDiaDaMedicao();
-
-        // LAURA LAR: token ML ativo e conta Adman apontando para OUTRA loja.
-        $laura = Company::factory()->create([
-            'active'           => true,
-            'adman_account_id' => '273196837',
-            'ml_store_id'      => '433720509',
-        ]);
-        MlToken::create([
-            'company_id'    => $laura->id,
-            'ml_user_id'    => '999'.$laura->id,
-            'access_token'  => 'token-fake',
-            'refresh_token' => 'refresh-fake',
-            'status'        => 'active',
-            'expires_at'    => Carbon::now()->addDay(),
-        ]);
 
         // Empresa sem cust_id nenhum: não há o que chamar.
         Company::factory()->create(['active' => true, 'adman_account_id' => null, 'ml_store_id' => null]);
@@ -133,7 +134,41 @@ class WarmFechamentoFaturamentoTest extends TestCase
         $this->artisan('adman:warm-fechamento')->run();
 
         Http::assertNothingSent();
-        $this->assertNull($this->cacheDaJanelaDaTela('273196837'));
+    }
+
+    /**
+     * Quick 261005-sm1 — o lado novo do mesmo pareamento: empresa com as DUAS
+     * contas cadastradas e diferentes (em produção, a MAXIGOLD SUPLEMENTOS)
+     * passou a ser consultada pela tela, então PRECISA ser aquecida. Sem
+     * isto, ela cairia no `soma_diaria_fallback` todo dia — o número velho de
+     * sempre, com a cara de número novo.
+     */
+    #[Test]
+    public function aquece_empresa_com_as_duas_contas_diferentes(): void
+    {
+        $this->hojeNoDiaDaMedicao();
+
+        $maxigold = Company::factory()->create([
+            'active'           => true,
+            'adman_account_id' => '273196837',
+            'ml_store_id'      => '433720509',
+        ]);
+        MlToken::create([
+            'company_id'    => $maxigold->id,
+            'ml_user_id'    => '999'.$maxigold->id,
+            'access_token'  => 'token-fake',
+            'refresh_token' => 'refresh-fake',
+            'status'        => 'active',
+            'expires_at'    => Carbon::now()->addDay(),
+        ]);
+
+        $this->fakeApi(119_411.57);
+
+        $this->artisan('adman:warm-fechamento')->run();
+
+        // Aquecido na chave do `cust_id` (o acessor prioriza o
+        // `adman_account_id`) — a mesma que o rollup vai procurar.
+        $this->assertEqualsWithDelta(119_411.57, $this->cacheDaJanelaDaTela('273196837'), 0.001);
     }
 
     #[Test]

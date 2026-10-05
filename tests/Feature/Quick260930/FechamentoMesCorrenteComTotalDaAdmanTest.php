@@ -41,8 +41,14 @@ use Tests\TestCase;
  * 2. **Chave desligada = nada muda.** `fechamento_faturamento_da_api_ativo`
  *    nasce e permanece desligada; com ela desligada o resultado tem de ser
  *    byte a byte o de antes deste quick.
- * 3. **`podeUsarApiDaAdman()` intocado.** Quem não podia ler da Adman continua
- *    sem poder — inclusive a LAURA LAR (conta Adman apontando para outra loja).
+ * 3. **Quem não tem `cust_id` continua fora.** Não há o que chamar, e o
+ *    número segue vindo da soma diária.
+ *    ⚠️ Em 2026-10-05 (quick 261005-sm1) o critério de
+ *    `podeUsarApiDaAdman()` foi REDUZIDO a esse único corte: caíram os
+ *    recortes por token ML e por "as duas contas são o mesmo id", porque o
+ *    defeito da LAURA LAR era o token do Mercado Livre e não a API da Adman.
+ *    O teste que afirmava o recorte antigo foi reescrito logo abaixo,
+ *    preservando o invariante que ainda vale (zero HTTP no request).
  *
  * A Adman de verdade não é alcançável daqui — tudo com `Http::fake()`.
  */
@@ -266,13 +272,29 @@ class FechamentoMesCorrenteComTotalDaAdmanTest extends TestCase
         );
     }
 
+    /**
+     * ⚠️ REESCRITO em 2026-10-05 (quick 261005-sm1). Antes este teste
+     * afirmava `empresa_que_nao_pode_usar_a_adman_segue_na_soma_diaria` com o
+     * cenário da LAURA LAR (token ML ativo + conta Adman apontando para outra
+     * loja), e o cache aquecido era "o número errado da conta abandonada" que
+     * não podia ser lido.
+     *
+     * Por que a expectativa virou: o defeito da LAURA LAR era o TOKEN do
+     * Mercado Livre apontando para a conta da GRAN BELO (2026-09-15), não a
+     * API da Adman; a empresa foi desativada em 16/09 e o recorte que ela
+     * motivou custava o número certo de 17 empresas. Agora empresa com as
+     * duas contas cadastradas e diferentes LÊ do cache da Adman, e a
+     * divergência de cadastro sai como aviso.
+     *
+     * O invariante que o teste continua protegendo é o que mais importa aqui:
+     * **zero chamada HTTP dentro do request** — o número sai do cache ou não
+     * sai.
+     */
     #[Test]
-    public function empresa_que_nao_pode_usar_a_adman_segue_na_soma_diaria(): void
+    public function empresa_com_as_duas_contas_diferentes_le_do_cache_sem_nenhum_http(): void
     {
         $this->hojeNoDiaDaMedicao();
 
-        // LAURA LAR: token ML ativo e conta Adman apontando para OUTRA loja.
-        // `podeUsarApiDaAdman()` não foi tocado e ela continua fora.
         $company = Company::factory()->create([
             'adman_account_id' => '273196837',
             'ml_store_id'      => '433720509',
@@ -286,9 +308,10 @@ class FechamentoMesCorrenteComTotalDaAdmanTest extends TestCase
             'expires_at'    => Carbon::now()->addDay(),
         ]);
 
-        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 2_700_000.00]);
-        // Cache cheio do número errado da conta abandonada — não pode ser lido.
-        $this->aquecerCache('273196837', '2026-09-01', '2026-09-29', 12_966.00);
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => '2026-09-10', 'revenue' => 3_324.98]);
+        // `cust_id` é o `adman_account_id` (o acessor prioriza a Adman), e é
+        // por essa chave que o aquecimento grava.
+        $this->aquecerCache('273196837', '2026-09-01', '2026-09-29', 119_411.57);
 
         Http::fake();
 
@@ -300,8 +323,9 @@ class FechamentoMesCorrenteComTotalDaAdmanTest extends TestCase
         );
 
         Http::assertNothingSent();
-        $this->assertEqualsWithDelta(2_700_000.00, $resultado[$company->id]['faturamento_ml'], 0.001);
-        $this->assertSame(FechamentoSnapshot::FONTE_SOMA_DIARIA, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertEqualsWithDelta(119_411.57, $resultado[$company->id]['faturamento_ml'], 0.001);
+        $this->assertSame(FechamentoSnapshot::FONTE_API, $resultado[$company->id]['faturamento_fonte']);
+        $this->assertTrue($this->rollup()->contasDivergem($company->refresh()));
     }
 
     #[Test]
