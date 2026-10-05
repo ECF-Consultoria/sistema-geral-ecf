@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -217,3 +217,30 @@ for (const arq of ['Promocoes/CampanhasDoVendedor', 'AbaCupons']) {
         assert.match(adicionar.slice(0, adicionar.indexOf('/>')), /onConcluido=\{\(\) => setVersaoItens\(\(n\) => n \+ 1\)\}/);
     });
 }
+
+// ─── WR-FE-01: Convites usa o mesmo critério do Panorama ───
+test('WR-FE-01: CONVITES_DO_ML e STATUS_ENCERRADOS espelham o PHP', async () => {
+    const { CONVITES_DO_ML, STATUS_ENCERRADOS } = await import('../../resources/js/Components/Mlb/Alavancas/rotulos.js');
+    const lista = (php, nome) => [...php.match(new RegExp(String.raw`${nome} = \[([^\]]*)\]`))[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    const tipos = readFileSync(resolve(RAIZ, 'app/Services/Publicador/Alavancas/TiposDePromocao.php'), 'utf8');
+    const panorama = readFileSync(resolve(RAIZ, 'app/Services/Publicador/Alavancas/PanoramaService.php'), 'utf8');
+    assert.deepEqual([...CONVITES_DO_ML].sort(), lista(tipos, 'CONVITES_DO_ML').sort());
+    assert.deepEqual([...STATUS_ENCERRADOS].sort(), lista(panorama, 'STATUS_ENCERRADOS').sort());
+});
+
+test('WR-FE-01: ehConviteAberto tira campanha do vendedor, cupom, preço individual e encerradas', async () => {
+    const { ehConviteAberto } = await import('../../resources/js/Components/Mlb/Alavancas/rotulos.js');
+    assert.equal(ehConviteAberto({ tipo: 'DEAL', status: 'candidate', dias_para_vencer: 3 }), true);
+    assert.equal(ehConviteAberto({ tipo: 'DEAL', status: 'candidate', dias_para_vencer: 0 }), true);
+    assert.equal(ehConviteAberto({ tipo: 'DEAL', status: 'candidate' }), true);
+    assert.equal(ehConviteAberto({ tipo: 'DEAL', status: 'finished', dias_para_vencer: null }), false);
+    assert.equal(ehConviteAberto({ tipo: 'DEAL', status: 'started', dias_para_vencer: -1 }), false);
+    assert.equal(ehConviteAberto({ tipo: 'SELLER_CAMPAIGN', status: 'started', dias_para_vencer: 5 }), false);
+    assert.equal(ehConviteAberto({ tipo: 'SELLER_COUPON_CAMPAIGN', status: 'started' }), false);
+    assert.equal(ehConviteAberto({ tipo: 'PRICE_DISCOUNT', status: 'started' }), false);
+    assert.equal(ehConviteAberto(null), false);
+});
+
+test('WR-FE-01: Convites.jsx filtra a lista por ehConviteAberto', () => {
+    assert.match(lerSemComentarios(`${PASTA}/Promocoes/Convites.jsx`), /\(dados\?\.itens \?\? \[\]\)\.filter\(ehConviteAberto\)/);
+});

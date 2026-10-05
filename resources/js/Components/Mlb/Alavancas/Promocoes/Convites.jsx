@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useLeitura } from '../useAlavancas';
-import { ROTULO_STATUS_PROMOCAO, ROTULO_TIPO } from '../rotulos';
+import { ehConviteAberto, ROTULO_STATUS_PROMOCAO, ROTULO_TIPO } from '../rotulos';
 import { fmtData } from '../formato';
 import ItensDoConvite from './ItensDoConvite';
 
@@ -19,7 +19,8 @@ function textoDosBeneficios(b) {
 export default function Convites({ conta, liberada, motivo, limites }) {
     const { dados, erro, carregando, recarregar } = useLeitura('promocoes', conta);
     const [aberto, setAberto] = useState(null);
-    const convites = dados?.itens ?? [];
+    // Mesmo critério do Panorama: campanhas do vendedor e cupons têm seção própria; encerradas não entram.
+    const convites = (dados?.itens ?? []).filter(ehConviteAberto);
 
     return (
         <div className="space-y-3">

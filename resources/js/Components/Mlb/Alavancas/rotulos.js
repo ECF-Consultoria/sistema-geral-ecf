@@ -26,6 +26,23 @@ export const ROTULO_STATUS_PROMOCAO = {
     finished: 'Encerrado',
 };
 
+// Espelho de `TiposDePromocao::CONVITES_DO_ML` e `PanoramaService::STATUS_ENCERRADOS` (o teste confere).
+export const CONVITES_DO_ML = [
+    'DEAL', 'MARKETPLACE_CAMPAIGN', 'DOD', 'LIGHTNING', 'VOLUME', 'PRE_NEGOTIATED', 'SMART', 'PRICE_MATCHING', 'UNHEALTHY_STOCK',
+];
+export const STATUS_ENCERRADOS = ['finished', 'closed', 'cancelled', 'deleted'];
+
+/**
+ * Convite aberto do Mercado Livre — mesmo critério do `PanoramaService::convitesAbertos`: tipo de convite do ML
+ * e não vencido (com `dias_para_vencer`, só vale >= 0; sem ele, o status não pode ser de encerrada).
+ */
+export function ehConviteAberto(promocao) {
+    if (! promocao || ! CONVITES_DO_ML.includes(promocao.tipo)) return false;
+    const dias = promocao.dias_para_vencer ?? null;
+
+    return dias !== null ? dias >= 0 : ! STATUS_ENCERRADOS.includes(promocao.status);
+}
+
 export const ROTULO_RESULTADO = {
     PENDENTE: 'Enviando',
     OK: 'Feito',
