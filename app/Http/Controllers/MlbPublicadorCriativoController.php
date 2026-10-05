@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\PlanejarKitCriativosJob;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
@@ -21,6 +23,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Fase 165 (D-09) — o Creative Engine por PRODUTO do Publicador, em rotas
@@ -147,7 +150,7 @@ class MlbPublicadorCriativoController extends Controller
 
         try {
             $fotos = $this->referencias->selecionarFotos($r, $dados['imagens'] ?? []);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return $this->recusa(collect($e->errors())->collapse()->first() ?? 'Uma das fotos escolhidas não é deste anúncio.');
         }
 
@@ -189,7 +192,7 @@ class MlbPublicadorCriativoController extends Controller
                 return $this->recusa('Não foi possível guardar as fotos de referência. Tente de novo.');
             }
 
-            \App\Jobs\PlanejarKitCriativosJob::dispatch($resultado['portador']->id, $kit->id);
+            PlanejarKitCriativosJob::dispatch($resultado['portador']->id, $kit->id);
 
             Log::info("[Creative] Kit do Publicador {$kit->id} planejamento enfileirado (rascunho {$r->id}) por " . $user->name);
         }
@@ -203,7 +206,7 @@ class MlbPublicadorCriativoController extends Controller
      *
      * @return array{kit: MlAnuncioCriativoKit, portador?: MlAnuncioCriativo, criado: bool}
      */
-    private function planejarSobLock(PubRascunho $r, string $grupo, \App\Models\User $user): array
+    private function planejarSobLock(PubRascunho $r, string $grupo, User $user): array
     {
         $kitExistente = MlAnuncioCriativoKit::retomavelDoPublicador($r->id, $grupo);
 
