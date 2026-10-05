@@ -4,6 +4,7 @@ import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from './useAlavancas';
 import { fmtBRL, fmtInt } from './formato';
+import FotoProduto from './FotoProduto';
 
 /**
  * Produtos da conta, ao vivo, para escolher onde uma ação vai agir (as duas âncoras, com ou sem Company).
@@ -92,7 +93,7 @@ export default function SeletorDeProdutos({
                                         className="h-4 w-4"
                                     />
                                 )}
-                                {p.thumbnail && <img src={p.thumbnail} alt="" className="h-10 w-10 shrink-0 rounded object-cover" loading="lazy" />}
+                                <FotoProduto url={p.thumbnail} className="h-10 w-10" />
                                 <div className="min-w-[200px] flex-1 space-y-1">
                                     <p className="font-bold text-white/90">{p.titulo ?? p.id}</p>
                                     <p className="text-white/55">{p.id}{p.sku ? ` · SKU ${p.sku}` : ''}</p>

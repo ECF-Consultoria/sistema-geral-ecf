@@ -5,6 +5,7 @@ import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
 import { ROTULO_STATUS_PROMOCAO } from '../rotulos';
 import { fmtBRL, lerNumero } from '../formato';
+import FotoProduto from '../FotoProduto';
 import ModalConfirmacao from '../ModalConfirmacao';
 import TabelaAnalise from '../TabelaAnalise';
 
@@ -139,6 +140,7 @@ export default function ItensDoConvite({ conta, convite, liberada, motivo, limit
                                         className="mt-1 h-4 w-4"
                                     />
                                 )}
+                                <FotoProduto url={l.thumbnail} />
                                 <div className="min-w-[220px] flex-1 space-y-1">
                                     <p className="font-bold text-white/90">{l.titulo ?? l.item_id}</p>
                                     <p className="text-white/55">{l.item_id} · {ROTULO_STATUS_PROMOCAO[l.status] ?? l.status}</p>

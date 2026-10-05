@@ -116,7 +116,7 @@ test('CampanhasDoVendedor — um só amarelo no arquivo', () => {
 });
 
 test('AbaPromocoes — as cinco seções na ordem pedida, cada uma só montada quando aberta', () => {
-    const titulos = ['Convites do Mercado Livre', 'Desconto individual', 'Campanhas do vendedor', 'Campanhas automáticas', 'Produtos da conta'];
+    const titulos = ['Central de Promoções', 'Desconto individual', 'Campanhas do vendedor', 'Campanhas automáticas', 'Produtos da conta'];
     const posicoes = titulos.map((t) => aba.indexOf(`titulo="${t}"`));
     assert.ok(posicoes.every((p) => p >= 0), `seção ausente: ${posicoes}`);
     assert.deepEqual([...posicoes].sort((a, b) => a - b), posicoes);

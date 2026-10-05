@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 import { ROTULO_ACAO } from '../../resources/js/Components/Mlb/Alavancas/rotulos.js';
+import { fotoDoMl } from '../../resources/js/Components/Mlb/Alavancas/formato.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Aba Promoções das Alavancas (Fase 166-13): janela de confirmação, análise e
@@ -148,4 +149,19 @@ test('ROTULO_ACAO espelha as ações do RegistroDeAcoes', () => {
     const php = [...fonte.matchAll(/'([a-z_]+\.[a-z_]+)' =>/g)].map((m) => m[1]);
     assert.equal(php.length, 15);
     assert.deepEqual(Object.keys(ROTULO_ACAO).sort(), php.sort());
+});
+
+test('fotoDoMl — thumbnail do ML sempre por https; vazio vira null', () => {
+    assert.equal(fotoDoMl('http://http2.mlstatic.com/D_123-MLB1-I.jpg'), 'https://http2.mlstatic.com/D_123-MLB1-I.jpg');
+    assert.equal(fotoDoMl('https://http2.mlstatic.com/D_9-I.jpg'), 'https://http2.mlstatic.com/D_9-I.jpg');
+    assert.equal(fotoDoMl(''), null);
+    assert.equal(fotoDoMl(null), null);
+});
+
+test('ItensDoConvite e SeletorDeProdutos — mostram a foto de capa pelo FotoProduto', () => {
+    const foto = lerSemComentarios(`${PASTA}/FotoProduto.jsx`);
+    assert.match(foto, /fotoDoMl\(url\)/);
+    assert.match(foto, /onError=\{\(\) => setFalhou\(true\)\}/);
+    assert.match(itens, /<FotoProduto url=\{l\.thumbnail\} \/>/);
+    assert.match(lerSemComentarios(`${PASTA}/SeletorDeProdutos.jsx`), /<FotoProduto url=\{p\.thumbnail\}/);
 });

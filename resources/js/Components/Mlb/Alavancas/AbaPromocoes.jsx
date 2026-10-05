@@ -8,7 +8,7 @@ import CampanhasAutomaticas from './Promocoes/CampanhasAutomaticas';
 import TirarDeTodas from './Promocoes/TirarDeTodas';
 import SeletorDeProdutos from './SeletorDeProdutos';
 
-/** Aba Promoções (Convites do ML, Desconto individual, Campanhas do vendedor, Campanhas automáticas, Produtos da conta): cada seção só monta quando aberta, e uma só fica aberta por vez. */
+/** Aba Promoções (Central de Promoções = convites do ML, Desconto individual, Campanhas do vendedor, Campanhas automáticas, Produtos da conta): cada seção só monta quando aberta, e uma só fica aberta por vez. */
 export default function AbaPromocoes({ conta, liberada, motivo, limites }) {
     const [aberta, setAberta] = useState('convites-ml');
     const alternar = (id) => setAberta((atual) => (atual === id ? null : id));
@@ -21,7 +21,7 @@ export default function AbaPromocoes({ conta, liberada, motivo, limites }) {
             <p className="text-[13px] font-normal text-white/55">
                 Alterar o preço do anúncio depois pode derrubar o desconto ou tirar o produto da promoção.
             </p>
-            <Secao id="convites-ml" titulo="Convites do Mercado Livre" acao={botao('convites-ml')}>
+            <Secao id="convites-ml" titulo="Central de Promoções" acao={botao('convites-ml')}>
                 {aberta === 'convites-ml' && <Convites conta={conta} liberada={liberada} motivo={motivo} limites={limites} />}
             </Secao>
             <Secao id="desconto-individual" titulo="Desconto individual" acao={botao('desconto-individual')}>

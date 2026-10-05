@@ -11,6 +11,14 @@ export const fmtBRL = (n) => (vazio(n) ? '—' : Number(n).toLocaleString('pt-BR
 /** Porcentagem já em pontos (12,5 = 12,5%). */
 export const fmtPct = (n) => (vazio(n) ? '—' : `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`);
 
+/** Foto do ML sempre por https (o `thumbnail` do multiget costuma vir em http e a página é https). Vazio → null. */
+export function fotoDoMl(url) {
+    const texto = String(url ?? '').trim();
+    if (texto === '') return null;
+
+    return texto.replace(/^http:\/\//i, 'https://');
+}
+
 const SO_DATA = /^\d{4}-\d{2}-\d{2}$/;
 const SEM_FUSO = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
