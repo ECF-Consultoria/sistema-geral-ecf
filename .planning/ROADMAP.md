@@ -2860,6 +2860,26 @@ Plans:
 - [x] 166-15-PLAN.md — tela: abas Cupons e Atacado, na ordem final das abas
 - [x] 166-16-PLAN.md — gate final contra o baseline, migration no MariaDB local, conferência visual sem custo, prova real na #459 (checkpoint) e learnings §12
 
+### Phase 167: Cadastro de Produto no Mapeamento Estrutural — o cliente cadastra seus produtos (aba Produtos da planilha de Planejamento Estrutural)
+
+**Goal:** a aba **Produtos** da planilha `3Planejamento_Estrutural_ECF.xlsx` (a que o Emerson apresentou na reunião da Incubadora de 2026-10-05) vira sistema, como submódulo novo **Produtos** no Mapeamento Estrutural do Portal do Cliente: o cliente (e a equipe, pelo acesso de equipe ao portal) cadastra cada produto com código, grupo/variação, nome, família (linha de design), ambiente(s), categoria do ML, volumes (C×L×A e peso de cada), peso total e custo — por tela ou importando a planilha — e cada produto se liga às ofertas simples da Lista SKUs. É a base da geração automática das ofertas (fase seguinte): "cadastrar o produto uma vez" em vez de cadastrar cada anúncio.
+**Requirements**: TBD (sair da discussão da fase)
+**Depends on:** Mapeamento Estrutural do Portal (`estrutura_*`, ADR PORTAL-01/02) e Phase 164 (Publicador lê as ofertas do Mapeamento pelo "Sincronizar do Portal").
+**Plans:** 0 plans
+
+**Já sabido (análise de 2026-10-05, na conversa com o usuário):**
+- A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
+- Regra de combinação medida na planilha (70 produtos → 199 ofertas: 70 Simples, 46 Combo, 44 Kit, 39 Combit — as 4 FASES que `EstruturaOferta` já tem): das 83 ofertas com 2+ produtos, **0 misturam família** e 82 dividem ao menos um ambiente; família + ambiente dão 105 pares possíveis e só 43 foram usados (o 3º filtro, "faz sentido", fica para a fase de geração). Por isso família e ambiente precisam nascer como dado estruturado, não texto livre.
+- Ambiente é múltiplo e a planilha já tem grafias divergentes ("Sala estar"/"Sala Estar", "Quarto/Sala estar") → lista fixa com marcação múltipla.
+- Conflito de nome: no Onboarding/Precificação, "família" significa "o mesmo produto em várias cores"; na planilha isso é Grupo + Variação, e Família é a linha de design.
+- Produto pode ter vários volumes (ex.: cristaleira em 2 caixas, cômoda em 3); o peso total é a soma.
+- A planilha tem catálogo e CUSTOS reais de cliente: NÃO commitar o `.xlsx`; ela fica na raiz do checkout principal (`C:/xampp/htdocs/ecf_admin/3Planejamento_Estrutural_ECF.xlsx`) para leitura local.
+- Ligar oferta → produto altera `estrutura_ofertas`, tabela com dado em produção — é o motivo de esta fase ser GSD (regra do CLAUDE.md).
+- Fora desta fase (fases seguintes): geração automática das ofertas, logística pelas medidas, grade de MC 30/20/10/0 e tarifa por categoria pela API, cronograma por capacidade e checklist de alavancas.
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 167 to break down)
+
 ---
 
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
