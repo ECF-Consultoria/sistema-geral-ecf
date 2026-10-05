@@ -2,9 +2,23 @@
 
 namespace Tests\Feature\PortalCliente\Estrutura\Produtos;
 
+use App\Models\Company;
+use App\Models\EstruturaAmbiente;
+use App\Models\EstruturaFamilia;
+use App\Models\EstruturaOferta;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVolume;
+use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\LeitorPlanilhaProdutos;
 use App\Services\Portal\Estrutura\Produtos\ModeloProdutosXlsx;
+use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
+use App\Support\Portal\AtorDoPortal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Spatie\Activitylog\Models\Activity;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -24,6 +38,25 @@ class ModeloEImportacaoTest extends TestCase
 
     /** @var list<string> */
     private array $temporarios = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::put('ml_app_token_coleta', 'app-token-teste', 3600);
+
+        Http::fake(function (Request $r) {
+            if (preg_match('#/categories/(MLB\d+)$#', $r->url(), $m)) {
+                return $m[1] === 'MLB1'
+                    ? Http::response([
+                        'id' => 'MLB1', 'name' => 'Cristaleiras', 'children_categories' => [],
+                        'path_from_root' => [['id' => 'MLB9', 'name' => 'Moveis'], ['id' => 'MLB1', 'name' => 'Cristaleiras']],
+                    ])
+                    : Http::response(['message' => 'erro'], 500);
+            }
+
+            return Http::response([], 404);
+        });
+    }
 
     protected function tearDown(): void
     {
@@ -215,5 +248,249 @@ class ModeloEImportacaoTest extends TestCase
     public function test_o_teste_nao_cita_a_planilha_real_do_cliente(): void
     {
         $this->assertStringNotContainsString('3Planejamento'.'_Estrutural', (string) file_get_contents(__FILE__));
+    }
+
+    // ═══ Task 2: importador ═════════════════════════════════════════════════
+
+    private function importador(): ImportadorProdutos
+    {
+        return app(ImportadorProdutos::class);
+    }
+
+    private function ator(Company $empresa): AtorDoPortal
+    {
+        return $this->atorCliente($empresa);
+    }
+
+    /** @return array<string, int> */
+    private function contagens(): array
+    {
+        return [
+            'produtos'  => EstruturaProduto::count(),
+            'variacoes' => EstruturaProdutoVariacao::count(),
+            'volumes'   => EstruturaProdutoVolume::count(),
+            'ofertas'   => EstruturaOferta::count(),
+            'familias'  => EstruturaFamilia::count(),
+            'ambientes' => EstruturaAmbiente::count(),
+        ];
+    }
+
+    private function vol(): string
+    {
+        return "10\u{00D7}10\u{00D7}10 \u{00B7} 2,5";
+    }
+
+    public function test_previa_classifica_novos_atualizados_sem_mudanca_e_erros_sem_gravar_nada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->ator($empresa);
+
+        app(ProdutoCadastroService::class)->gravarLinhas($empresa, [
+            ['codigo' => 'E1', 'nome' => 'Existente Um', 'custo' => '10,00'],
+            ['codigo' => 'E2', 'nome' => 'Existente Dois', 'custo' => '5,00', 'volumes_texto' => $this->vol()],
+        ], $ator);
+
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['N1', null, null, 'Novo Um'],
+            ['N2', null, null, 'Novo Dois'],
+            ['N3', null, null, 'Novo Tres'],
+            ['E1', null, null, 'Existente Um', null, null, null, null, null, null, '20,00'],
+            ['E2', null, null, 'Existente Dois', null, null, null, null, $this->vol(), null, '5,00'],
+            [null, null, null, 'Sem Ref'],
+            ['X9', null, null, 'Custo ruim', null, null, null, null, null, null, 'abc'],
+        ]]);
+
+        $antes = $this->contagens();
+        $r = $this->importador()->previa($empresa, $caminho);
+
+        $this->assertNull($r['erro_geral']);
+        $this->assertSame(['novos' => 3, 'atualizados' => 1, 'sem_mudanca' => 1, 'erros' => 2], $r['totais']);
+        $this->assertSame(['custo'], $r['grupos']['atualizados'][0]['mudou']);
+        $this->assertSame('E1', $r['grupos']['atualizados'][0]['codigo']);
+        $this->assertSame([7, 8], array_column($r['grupos']['erros'], 'linha'));
+        $this->assertStringContainsString('código', $r['grupos']['erros'][0]['motivo']);
+        $this->assertSame($antes, $this->contagens(), 'a prévia não grava nada');
+    }
+
+    public function test_previa_limita_o_detalhe_a_200_mas_os_totais_sao_inteiros(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $linhas = [$this->cabecalho()];
+        for ($i = 1; $i <= 250; $i++) {
+            $linhas[] = ["R{$i}", null, null, "Produto {$i}"];
+        }
+
+        $r = $this->importador()->previa($empresa, $this->xlsx(['Produtos' => $linhas]));
+
+        $this->assertSame(250, $r['totais']['novos']);
+        $this->assertCount(ImportadorProdutos::DETALHE_MAXIMO, $r['grupos']['novos']);
+    }
+
+    public function test_previa_lista_familias_e_ambientes_novos_uma_vez_cada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['A1', null, null, 'Mesa', 'Linha Nova', 'Sala Jantar / Sala estar'],
+            ['A2', null, null, 'Cadeira', 'linha nova', 'Sala Estar'],
+        ]]);
+
+        $r = $this->importador()->previa($empresa, $caminho);
+
+        $this->assertCount(1, $r['criar_listas']['familias']);
+        $this->assertCount(2, $r['criar_listas']['ambientes']);
+        $this->assertSame(0, EstruturaFamilia::count());
+    }
+
+    public function test_avisos_de_volumes_peso_total_e_grupo_com_nomes_diferentes(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $dois = "10\u{00D7}10\u{00D7}10 \u{00B7} 2,5 | 5\u{00D7}5\u{00D7}5 \u{00B7} 1";
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['G-1', 'G', '1', 'Mesa Alfa', null, null, null, 3, $dois, 9],
+            ['G-2', 'G', '2', 'Mesa Beta'],
+        ]]);
+
+        $r = $this->importador()->previa($empresa, $caminho);
+
+        $this->assertSame(0, $r['totais']['erros']);
+        $texto = implode(' | ', $r['avisos']);
+        $this->assertStringContainsString('Nº volumes (3)', $texto);
+        $this->assertStringContainsString('Peso total (9 kg)', $texto);
+        $this->assertStringContainsString('usamos o da primeira linha', $texto);
+    }
+
+    public function test_aplicar_grava_pelo_servico_da_grade_cria_ofertas_e_registra_o_modo_importacao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['C-1', 'C', '1', 'Cristaleira', 'Linha C', 'Sala', null, 2, $this->vol(), null, '1.234,50'],
+            ['C-2', 'C', '2', 'Cristaleira'],
+            ['S-1', null, 'única', 'Solo'],
+            [null, null, null, 'Sem Ref'],
+        ]]);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
+
+        $this->assertSame(['novos' => 3, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1], $r);
+        $this->assertSame(2, EstruturaProduto::count());
+        $this->assertSame(3, EstruturaProdutoVariacao::count());
+        $this->assertSame(3, EstruturaOferta::whereNotNull('variacao_id')->count());
+        $this->assertSame(1234.5, (float) EstruturaProdutoVariacao::where('codigo', 'C-1')->value('custo'));
+        $log = Activity::where('log_name', 'portal')->orderByDesc('id')->get()
+            ->first(fn ($l) => $l->getExtraProperty('evento') === 'produtos_gravados');
+        $this->assertNotNull($log);
+        $this->assertSame('importacao', $log->getExtraProperty('modo'));
+    }
+
+    public function test_aplicar_refaz_o_plano_variacao_criada_entre_a_previa_e_a_confirmacao_conta_como_atualizada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->ator($empresa);
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['P-1', null, null, 'Primeiro', null, null, null, null, null, null, '30,00'],
+            ['P-2', null, null, 'Segundo'],
+        ]]);
+
+        $previa = $this->importador()->previa($empresa, $caminho);
+        $this->assertSame(2, $previa['totais']['novos']);
+
+        app(ProdutoCadastroService::class)->gravarLinhas($empresa, [['codigo' => 'P-1', 'nome' => 'Primeiro', 'custo' => '1,00']], $ator);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $ator);
+
+        $this->assertSame(1, $r['novos']);
+        $this->assertSame(1, $r['atualizados']);
+        $this->assertSame(2, EstruturaProdutoVariacao::count());
+        $this->assertSame(30.0, (float) EstruturaProdutoVariacao::where('codigo', 'P-1')->value('custo'));
+    }
+
+    public function test_reimportar_sem_uma_variacao_que_existe_nao_a_apaga_e_celula_em_branco_nao_apaga_dado(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->ator($empresa);
+        app(ProdutoCadastroService::class)->gravarLinhas($empresa, [
+            ['codigo' => 'K-1', 'nome' => 'Mantida', 'custo' => '7,00', 'volumes_texto' => $this->vol()],
+            ['codigo' => 'K-2', 'nome' => 'Outra', 'custo' => '8,00'],
+        ], $ator);
+
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['K-1', null, null, 'Mantida'],
+        ]]);
+        $r = $this->importador()->aplicar($empresa, $caminho, $ator);
+
+        $this->assertSame(0, $r['novos']);
+        $this->assertSame(2, EstruturaProdutoVariacao::count());
+        $k1 = EstruturaProdutoVariacao::where('codigo', 'K-1')->first();
+        $this->assertSame(7.0, (float) $k1->custo);
+        $this->assertSame(1, $k1->volumes()->count());
+        $this->assertSame(2, EstruturaOferta::whereNotNull('variacao_id')->count());
+    }
+
+    public function test_celulas_da_planilha_original_viram_ordem_eixo_volumes_e_categoria(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $dois = "186\u{00D7}43\u{00D7}12 \u{00B7} 27.8 | 97\u{00D7}42\u{00D7}12 \u{00B7} 12.1";
+        $caminho = $this->xlsx(['Planejamento' => [['x']], 'Produtos' => [
+            $this->cabecalho(),
+            [1014, 1014, 1, 'Cristaleira Exemplo', 'Linha Y', 'Sala / Cozinha', 'Cristaleiras', 2, $dois, 39.9, 100],
+            ['1014-2', 1014, 'Cor: Natural', 'Cristaleira Exemplo', 'Linha Y', 'Sala / Cozinha', 'Cristaleiras', null, 'SEM MEDIDAS'],
+            ['U-1', 'U', 'única', 'Mesa Exemplo', null, null, 'MLB1', 1, "120\u{00D7}80\u{00D7}10 \u{00B7} 25"],
+        ]]);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
+
+        $this->assertSame(0, $r['erros']);
+        $v1 = EstruturaProdutoVariacao::where('codigo', '1014')->first();
+        $this->assertSame(1, $v1->ordem);
+        $this->assertSame(2, $v1->volumes()->count());
+        $this->assertSame(27.8, (float) $v1->volumes()->first()->peso);
+        $this->assertSame(100.0, (float) $v1->custo);
+
+        $v2 = EstruturaProdutoVariacao::where('codigo', '1014-2')->first();
+        $this->assertSame('cor', $v2->eixo);
+        $this->assertSame('Natural', $v2->valor);
+        $this->assertSame(0, $v2->volumes()->count());
+
+        $cristaleira = $v1->produto;
+        $this->assertSame(EstruturaProduto::CATEGORIA_A_CONFIRMAR, $cristaleira->estadoCategoria());
+        $this->assertSame(['Cozinha', 'Sala'], $cristaleira->ambientes()->pluck('nome')->sort()->values()->all());
+
+        $solo = EstruturaProdutoVariacao::where('codigo', 'U-1')->first();
+        $this->assertSame(1, $solo->ordem);
+        $this->assertSame(EstruturaProduto::CATEGORIA_CONFIRMADA, $solo->produto->estadoCategoria());
+    }
+
+    public function test_formula_no_custo_vai_para_erros_e_nao_e_calculada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['F-1', null, null, 'Com formula', null, null, null, null, null, null, '=1+1'],
+        ]]);
+
+        $previa = $this->importador()->previa($empresa, $caminho);
+        $this->assertSame(1, $previa['totais']['erros']);
+        $this->assertSame(0, $previa['totais']['novos']);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
+        $this->assertSame(1, $r['erros']);
+        $this->assertSame(0, EstruturaProdutoVariacao::count());
+    }
+
+    public function test_arquivo_invalido_devolve_erro_geral_na_previa_e_na_confirmacao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $falso = tempnam(sys_get_temp_dir(), 'prod167').'.xlsx';
+        file_put_contents($falso, 'nada de zip');
+        $this->temporarios[] = $falso;
+
+        $this->assertNotNull($this->importador()->previa($empresa, $falso)['erro_geral']);
+        $this->assertNotNull($this->importador()->aplicar($empresa, $falso, $this->ator($empresa))['erro_geral']);
     }
 }
