@@ -27,6 +27,16 @@ test('ModalConfirmacao — prévia → confirmar com a assinatura do servidor', 
     assert.match(modal, /dados\?\.liberada !== false/);
 });
 
+test('ModalConfirmacao — "recebe" lê os números do contrato da prévia e diz a base do desconto', () => {
+    // Contrato 166-11: recebe.normal / recebe.promocao são números; frete_conhecido mora no próprio recebe.
+    // Ler .voce_recebe deles mostrava "—" na janela (achado da conferência visual do 166-16).
+    assert.doesNotMatch(modal, /\.voce_recebe/);
+    assert.match(modal, /fmtBRL\(normal\)/);
+    assert.match(modal, /fmtBRL\(promocao\)/);
+    assert.match(modal, /recebe\.frete_conhecido === false/);
+    assert.match(modal, /sobre o preço original \{fmtBRL\(item\.preco_original\)\}/);
+});
+
 test('ModalConfirmacao — Confirmar desliga sem assinatura ou conta não liberada e mostra o motivo', () => {
     assert.match(modal, /podeConfirmar = fase === 'previa' && ! erro && Boolean\(dados\?\.assinatura\) && liberada/);
     assert.match(modal, /<BotaoAcao primario disabled=\{! podeConfirmar\}/);

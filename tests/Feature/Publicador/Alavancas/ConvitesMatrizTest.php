@@ -186,9 +186,24 @@ class ConvitesMatrizTest extends TestCase
         $this->assertSame(100.0, $r['preco_atual']);
         $this->assertSame(90.0, $r['preco_promocao']);
         $this->assertSame(10.0, $r['desconto_percentual']);
+        $this->assertNull($r['preco_original'], 'original igual ao preço atual: nada a explicar na tela');
         $this->assertSame(3.0, $r['ml_banca']);
         $this->assertSame('2026-10-10T00:00:00', $r['prazo']['inicio']);
         $this->assertSame(3, $r['analise']['meli_percentage']);
+    }
+
+    public function test_resumo_diz_o_preco_original_quando_o_desconto_nao_e_sobre_o_preco_atual(): void
+    {
+        $this->cenario();
+        // Produto a R$ 100 com original_price R$ 120 (preço riscado): o % do ML é sobre os 120.
+        $this->entrada('SMART', 'S-1', ['status' => 'candidate', 'price' => 90, 'original_price' => 120, 'offer_id' => 'CANDIDATE-MLB1-1',
+            'meli_percentage' => 3, 'seller_percentage' => 7, 'start_date' => '2026-10-10T00:00:00', 'end_date' => '2026-10-20T23:59:59']);
+
+        $r = $this->inscrever('SMART', 'S-1')->resumo();
+
+        $this->assertSame(100.0, $r['preco_atual']);
+        $this->assertSame(25.0, $r['desconto_percentual']);
+        $this->assertSame(120.0, $r['preco_original']);
     }
 
     // ═══ Inscrever: recusas ═══

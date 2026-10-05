@@ -18,20 +18,25 @@ function textoDoResultado(escrita) {
     return escrita?.mensagem ?? 'Não foi possível concluir. Tente de novo.';
 }
 
-/** "recebe R$ N no preço normal → R$ P na promoção", com o aviso de frete ou de carrinho. */
+/**
+ * "recebe R$ N no preço normal → R$ P na promoção", com o aviso de frete ou de carrinho.
+ * Contrato da prévia (166-11): `normal` e `promocao` já são o valor (número), e o frete vem em
+ * `frete_conhecido` no próprio `recebe`.
+ */
 function LinhaRecebe({ recebe }) {
     if (! recebe) return null;
+    const temValor = (v) => v !== null && v !== undefined;
     const normal = recebe.normal;
     const promocao = recebe.promocao;
-    const semFrete = (r) => (r && r.frete_conhecido === false ? ' (sem frete)' : '');
+    const semFrete = recebe.frete_conhecido === false ? ' (sem frete)' : '';
 
     return (
         <div className="space-y-1">
-            {normal && (
+            {temValor(normal) && (
                 <p>
-                    A loja recebe {fmtBRL(normal.voce_recebe)}{semFrete(normal)} no preço normal
-                    {promocao && <> → {fmtBRL(promocao.voce_recebe)}{semFrete(promocao)} na promoção</>}
-                    {! promocao && recebe.depende_do_carrinho && <> · o desconto depende do carrinho</>}
+                    A loja recebe {fmtBRL(normal)}{semFrete} no preço normal
+                    {temValor(promocao) && <> → {fmtBRL(promocao)}{semFrete} na promoção</>}
+                    {! temValor(promocao) && recebe.depende_do_carrinho && <> · o desconto depende do carrinho</>}
                 </p>
             )}
             {recebe.margem && <p>Margem: {fmtBRL(recebe.margem.valor)} ({fmtPct(recebe.margem.percentual)})</p>}
@@ -54,7 +59,9 @@ function ItemDoResumo({ item }) {
                 <p>
                     Preço atual {fmtBRL(item.preco_atual)}
                     {(item.preco_promocao !== null && item.preco_promocao !== undefined) && <> → preço na promoção {fmtBRL(item.preco_promocao)}</>}
-                    {(item.desconto_percentual !== null && item.desconto_percentual !== undefined) && <> ({fmtPct(item.desconto_percentual)} de desconto)</>}
+                    {(item.desconto_percentual !== null && item.desconto_percentual !== undefined) && (
+                        <> ({fmtPct(item.desconto_percentual)} de desconto{item.preco_original ? <> sobre o preço original {fmtBRL(item.preco_original)}</> : null})</>
+                    )}
                 </p>
             )}
             {item.prazo && (item.prazo.inicio || item.prazo.fim) && (

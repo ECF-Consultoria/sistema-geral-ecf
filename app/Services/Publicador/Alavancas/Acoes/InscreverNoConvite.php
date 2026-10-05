@@ -152,6 +152,9 @@ final class InscreverNoConvite extends AcaoAlavanca
             'preco_atual' => $atual !== null ? (float) $atual : null,
             'preco_promocao' => $promo !== null ? (float) $promo : null,
             'desconto_percentual' => ($base && $promo !== null) ? round((1 - (float) $promo / (float) $base) * 100, 2) : null,
+            // O % é sobre o original_price do ML (o preço riscado que o comprador vê); quando ele difere do
+            // preço atual, a tela diz sobre qual preço foi calculado — senão "100 → 85 (29%)" parece erro.
+            'preco_original' => ($base !== null && $atual !== null && (float) $base !== (float) $atual) ? (float) $base : null,
             'prazo' => ['inicio' => $this->entrada['inicio'] ?? null, 'fim' => $this->entrada['fim'] ?? null],
             'ml_banca' => ($meli !== null && $base) ? round((float) $base * (float) $meli / 100, 2) : null,
             'linhas' => $linhas,

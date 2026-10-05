@@ -123,6 +123,8 @@ final class AlterarNoConvite extends AcaoAlavanca
             'preco_atual' => $atual !== null ? (float) $atual : null,
             'preco_promocao' => $promo !== null ? (float) $promo : null,
             'desconto_percentual' => ($base && $promo !== null) ? round((1 - (float) $promo / (float) $base) * 100, 2) : null,
+            // Mesmo critério do InscreverNoConvite: o % é sobre o preço sem promoção, dito na tela quando difere.
+            'preco_original' => ($base !== null && $atual !== null && (float) $base !== (float) $atual) ? (float) $base : null,
             'prazo' => ['inicio' => $this->entrada['inicio'] ?? null, 'fim' => $this->entrada['fim'] ?? null],
             'ml_banca' => ($meli !== null && $base) ? round((float) $base * (float) $meli / 100, 2) : null,
             'linhas' => $linhas,
