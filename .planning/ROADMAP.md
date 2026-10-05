@@ -2844,7 +2844,7 @@ Plans:
 
 Plans:
 - [x] 166-01-PLAN.md — baseline de testes (commit próprio), trava própria das Alavancas (`AlavancasLiberadas` + config) e a tabela `pub_alavanca_escritas` com o desenho escrito
-- [ ] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
+- [x] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
 - [ ] 166-03-PLAN.md — núcleo de escrita: contrato `AcaoAlavanca`, `EscritorAlavancas` (trava, vendedor, histórico antes do envio, 423/5xx), assinatura da prévia e guarda do caminho único
 - [ ] 166-04-PLAN.md — matriz `TiposDePromocao`, datas e alertas (D-12), produtos da conta ao vivo e leitura da Central de promoções
 - [ ] 166-05-PLAN.md — publicidade só leitura pelos endpoints atuais (guarda contra os desligados), leitura de cupons, panorama e o comando `publicador:sondar-alavancas`
