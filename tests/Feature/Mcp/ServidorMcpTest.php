@@ -101,12 +101,14 @@ class ServidorMcpTest extends TestCase
             ->assertSee('só de leitura');
     }
 
-    public function test_admin_ve_as_sete_ferramentas(): void
+    public function test_admin_ve_as_nove_ferramentas(): void
     {
         $this->assertSame([
             'alertas_estrategicos',
             'demandas_dev',
+            'ler_tela',
             'listar_empresas',
+            'listar_telas',
             'onboarding_polos',
             'painel_executivo',
             'ppa',
@@ -116,11 +118,12 @@ class ServidorMcpTest extends TestCase
 
     public function test_usuario_sem_perfil_nao_ve_ferramenta_de_fora_do_perfil(): void
     {
-        // Consultor sem nenhuma permissão de setor: só o PPA (a tela /ppa só
-        // exige login) e os alertas (rota role:admin,consultor,mentor).
+        // Consultor sem nenhuma permissão de setor: o PPA (a tela /ppa só
+        // exige login), os alertas (rota role:admin,consultor,mentor) e as
+        // genéricas — que abrem só as telas que o perfil dele abre.
         $consultor = User::factory()->create(['role' => 'consultor', 'active' => true]);
 
-        $this->assertSame(['alertas_estrategicos', 'ppa'], $this->ferramentasVisiveis($consultor));
+        $this->assertSame(['alertas_estrategicos', 'ler_tela', 'listar_telas', 'ppa'], $this->ferramentasVisiveis($consultor));
 
         // E chamar à força uma ferramenta de fora do perfil não devolve dado:
         // para o servidor ela nem existe para este usuário.
@@ -133,7 +136,7 @@ class ServidorMcpTest extends TestCase
     {
         $ferramentas = $this->rpc($this->admin(), 'tools/list')->assertOk()->json('result.tools');
 
-        $this->assertCount(7, $ferramentas);
+        $this->assertCount(9, $ferramentas);
         foreach ($ferramentas as $f) {
             $this->assertTrue($f['annotations']['readOnlyHint'] ?? false, "{$f['name']} não se declara só leitura");
             $this->assertFalse($f['annotations']['destructiveHint'] ?? true, "{$f['name']} se declara destrutiva");
