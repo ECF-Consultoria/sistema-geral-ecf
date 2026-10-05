@@ -41,6 +41,15 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Creative\GeminiImageProvider::class,
         );
 
+        // Fase 162 (D-06) — contrato SEPARADO de julgamento (juiz de visão).
+        // Mesma implementação Gemini, amarrada ao contrato novo e estreito
+        // (ver docblock de ImageJudgementProvider para o motivo de não ter
+        // entrado como método novo no contrato de geração).
+        $this->app->singleton(
+            \App\Services\Creative\Contracts\ImageJudgementProvider::class,
+            \App\Services\Creative\GeminiImageProvider::class,
+        );
+
         // Fase 135 Plano 03 — catálogo fechado de resolvers automáticos do
         // Onboarding geral (D-09). Lista EXPLÍCITA de instâncias — nunca
         // descoberta implícita por diretório. Os Planos 05/06 acrescentam

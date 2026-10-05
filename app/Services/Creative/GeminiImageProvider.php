@@ -3,8 +3,11 @@
 namespace App\Services\Creative;
 
 use App\Services\Creative\Contracts\ImageGenerationProvider;
+use App\Services\Creative\Contracts\ImageJudgementProvider;
 use App\Services\Creative\Dto\CreativeGenerationRequest;
 use App\Services\Creative\Dto\CreativeGenerationResult;
+use App\Services\Creative\Dto\CreativeJudgementRequest;
+use App\Services\Creative\Dto\CreativeJudgementResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -54,7 +57,7 @@ use Illuminate\Support\Facades\Log;
  * logado, e o base64 (de entrada OU de saída) jamais aparece em log — só
  * modelo, latência, status, tamanho em bytes e quantidade de referências.
  */
-class GeminiImageProvider implements ImageGenerationProvider
+class GeminiImageProvider implements ImageGenerationProvider, ImageJudgementProvider
 {
     /**
      * Erros em que vale passar para o modelo reserva: sobrecarga, timeout de
@@ -118,6 +121,86 @@ class GeminiImageProvider implements ImageGenerationProvider
         }
 
         throw new \RuntimeException($erro?->getMessage() ?? 'Nenhum modelo de texto configurado (GEMINI_TEXT_MODEL).');
+    }
+
+    /**
+     * Julga N imagens contra o prompt (Fase 162, D-06) — MESMA disciplina de
+     * reserva: tenta `judge_model`, depois `judge_fallbacks` NA ORDEM, nunca
+     * retentando o MESMO modelo. Implementa `ImageJudgementProvider`; esta
+     * classe é compartilhada com a Fase 165 — `gerarImagem()`/`gerarTexto()`
+     * não mudam nenhuma linha.
+     */
+    public function julgar(CreativeJudgementRequest $pedido): CreativeJudgementResult
+    {
+        $cfg = $this->configGemini();
+
+        $modelos = $this->listaDeModelos($cfg['judge_model'] ?? null, $cfg['judge_fallbacks'] ?? '');
+
+        $erro = null;
+
+        foreach ($modelos as $modelo) {
+            try {
+                return $this->julgarComModelo($cfg, $modelo, $pedido);
+            } catch (FalhaDeGeracaoTrocavel $e) {
+                $erro = $e;
+                Log::warning("[Creative] Modelo de juiz {$modelo} falhou, tentando o próximo: {$e->getMessage()}");
+            }
+        }
+
+        throw new \RuntimeException($erro?->getMessage() ?? 'Nenhum modelo de juiz configurado (GEMINI_JUDGE_MODEL).');
+    }
+
+    /**
+     * Uma chamada de julgamento, um modelo. Monta o `input` exatamente como
+     * MEDIDO em 2026-10-05: bloco de texto do prompt seguido de um bloco de
+     * imagem por item de `$pedido->imagens`, na ordem recebida, e chama
+     * `/interactions` SEM `response_format` — é a ausência dela que faz a
+     * API devolver TEXTO em vez de imagem.
+     */
+    private function julgarComModelo(array $cfg, string $modelo, CreativeJudgementRequest $pedido): CreativeJudgementResult
+    {
+        $input = [['type' => 'text', 'text' => $pedido->prompt]];
+
+        foreach ($pedido->imagens as $imagem) {
+            $input[] = [
+                'type'      => 'image',
+                'mime_type' => $imagem['mime'],
+                'data'      => base64_encode($imagem['bytes']),
+            ];
+        }
+
+        $t0 = microtime(true);
+
+        $resposta = $this->chamarInteractions($cfg, [
+            'model' => $modelo,
+            'input' => $input,
+        ], $modelo);
+
+        $duracaoMs = (int) round((microtime(true) - $t0) * 1000);
+
+        $texto = $this->extrairTexto($resposta);
+
+        if (trim($texto) === '') {
+            Log::warning('[Creative] Veredito do juiz vazio', [
+                'modelo'      => $modelo,
+                'latencia_ms' => $duracaoMs,
+                'qtd_imagens' => count($pedido->imagens),
+            ]);
+
+            throw new FalhaDeGeracaoTrocavel("O modelo {$modelo} respondeu vazio ao julgar a imagem.");
+        }
+
+        // GEN-05: JAMAIS o prompt, JAMAIS base64, JAMAIS a chave, JAMAIS o
+        // corpo inteiro da resposta. O texto do veredito vai para a coluna
+        // (Task 3), nunca para o log.
+        Log::info('[Creative] Veredito do juiz', [
+            'modelo'        => $modelo,
+            'latencia_ms'   => $duracaoMs,
+            'qtd_imagens'   => count($pedido->imagens),
+            'tamanho_texto' => strlen($texto),
+        ]);
+
+        return new CreativeJudgementResult(texto: $texto, modelo: $modelo, latenciaMs: $duracaoMs);
     }
 
     private function gerarTextoComModelo(array $cfg, string $modelo, string $prompt): string
