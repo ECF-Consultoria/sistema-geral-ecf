@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
-import { Loader2, Wand2, AlertTriangle, CheckCircle2, RefreshCw, ThumbsUp, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import { Loader2, Wand2, AlertTriangle, CheckCircle2, RefreshCw, ThumbsUp, ExternalLink, ShieldCheck } from 'lucide-react';
 import { ETAPA_LABEL } from './PainelCriativosIa';
 
 /** Rótulo em pt-BR do status de cada um dos 7 cartões. */
@@ -9,6 +10,41 @@ const STATUS_SLOT_LABEL = {
     pronto:   'pronto',
     aprovado: 'aprovado',
     erro:     'erro',
+};
+
+/**
+ * Fase 162 Plano 04 (APROV-04/VAL-03) — rótulo, cor e ícone por estado de
+ * `validacao_status`. `null`/ausente (dado legado, ou fluxo sem kit) não
+ * entra aqui de propósito: o cartão não muda de aparência nesse caso.
+ *
+ * Nunca usar aqui o vocabulário interno do juiz ("veredito", "fidelidade",
+ * "eliminatório") — regra do projeto sobre jargão em UI.
+ */
+const VALIDACAO_UI = {
+    pendente: {
+        label: 'validando automaticamente…',
+        className: 'text-sky-300/70',
+        Icon: Loader2,
+        spin: true,
+    },
+    aprovada: {
+        label: 'validação automática: sem problema',
+        className: 'text-emerald-400/60',
+        Icon: ShieldCheck,
+        spin: false,
+    },
+    reprovada: {
+        label: 'Risco apontado pela validação',
+        className: 'text-red-300',
+        Icon: AlertTriangle,
+        spin: false,
+    },
+    indisponivel: {
+        label: 'não foi possível validar automaticamente — confira você mesmo',
+        className: 'text-amber-300',
+        Icon: AlertTriangle,
+        spin: false,
+    },
 };
 
 /**
@@ -57,6 +93,11 @@ export default function KitCriativosGrade({
     motivos = {},
     onMotivoChange,
 }) {
+    // Fase 162 Plano 04 (APROV-04) — "aprovar mesmo assim" exige dois passos:
+    // o 1º clique só abre a pergunta; o 2º (dentro dela) de fato confirma.
+    // Estado LOCAL chaveado por token, mesmo padrão de `motivos` no painel.
+    const [confirmandoRisco, setConfirmandoRisco] = useState({});
+
     if (!kit) return null;
 
     const podeGerar = kit.status === 'planejado' && !gerando && !kitEmAndamento;
@@ -143,6 +184,19 @@ export default function KitCriativosGrade({
                 </div>
             )}
 
+            {/* Fase 162 Plano 04 (VAL-04 em lote) — aviso de topo: a tela não
+                recalcula régua nenhuma, só lê `reprovadas` do servidor (mesma
+                disciplina de `prontas`/`aprovadas`). */}
+            {kit.reprovadas > 0 && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                    <p className="text-[12px] text-red-300">
+                        {kit.reprovadas === 1 ? '1 imagem foi reprovada' : `${kit.reprovadas} imagens foram reprovadas`}{' '}
+                        pela validação automática — gere de novo ou aprove uma a uma assumindo o risco.
+                    </p>
+                </div>
+            )}
+
             {kit.slots?.length > 0 && (
                 <div>
                     <p className="mb-2 text-[11px] font-medium text-white/50">
@@ -184,6 +238,48 @@ export default function KitCriativosGrade({
                                     )}
                                     {STATUS_SLOT_LABEL[slot.status] ?? slot.status}
                                 </p>
+
+                                {/* Fase 162 Plano 04 (APROV-04/VAL-03) — indicador curto do
+                                    veredito da validação automática. `null`/ausente (dado
+                                    legado) não renderiza nada — aparência idêntica à de hoje. */}
+                                {slot.validacao_status && VALIDACAO_UI[slot.validacao_status] && (
+                                    <p className={cn('mt-1 flex items-center gap-1 text-[10px]', VALIDACAO_UI[slot.validacao_status].className)}>
+                                        {(() => {
+                                            const { Icon, spin } = VALIDACAO_UI[slot.validacao_status];
+                                            return <Icon className={cn('h-3 w-3 shrink-0', spin && 'animate-spin')} />;
+                                        })()}
+                                        {VALIDACAO_UI[slot.validacao_status].label}
+                                    </p>
+                                )}
+
+                                {/* Bloco de alerta com o motivo de verdade — só para
+                                    reprovada/indisponivel. Texto vem PRONTO do servidor
+                                    (`validacao_mensagem`); a tela nunca monta frase nem
+                                    traduz código (T-162-13). */}
+                                {(slot.validacao_status === 'reprovada' || slot.validacao_status === 'indisponivel') && slot.validacao_mensagem && (
+                                    <div
+                                        className={cn(
+                                            'mt-1.5 rounded border px-2 py-1.5',
+                                            slot.validacao_status === 'reprovada'
+                                                ? 'border-red-500/30 bg-red-500/10'
+                                                : 'border-amber-500/25 bg-amber-500/[0.06]',
+                                        )}
+                                    >
+                                        <p className={cn('text-[10px]', slot.validacao_status === 'reprovada' ? 'text-red-300' : 'text-amber-300')}>
+                                            {slot.validacao_mensagem}
+                                        </p>
+                                        {slot.validacao_problemas?.length > 0 && (
+                                            <ul className="mt-1 space-y-0.5">
+                                                {slot.validacao_problemas.map((problema, i) => (
+                                                    <li key={i} className="text-[9px] text-white/50">
+                                                        <span className="font-semibold uppercase text-white/60">{problema.gravidade}</span>
+                                                        {' — '}{problema.explicacao}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                )}
 
                                 {slot.modelo && (
                                     <p className="mt-0.5 text-[9px] text-white/35">
@@ -276,7 +372,10 @@ export default function KitCriativosGrade({
                                             </p>
                                         )}
 
-                                        {slot.status === 'pronto' && (
+                                        {/* Fase 162 Plano 04 (APROV-04) — o estado é o guarda,
+                                            nunca `slot.status` isolado: `pode_aprovar` já
+                                            embute a validação (pendente/reprovada bloqueiam). */}
+                                        {slot.status === 'pronto' && slot.pode_aprovar && !slot.exige_confirmacao_risco && (
                                             <button
                                                 type="button"
                                                 onClick={() => onAprovar?.(slot.token)}
@@ -289,6 +388,55 @@ export default function KitCriativosGrade({
                                                 Usar esta imagem no anúncio
                                             </button>
                                         )}
+
+                                        {/* Reprovada: nunca aprova em um clique só. O 1º clique
+                                            só abre a pergunta (bloco abaixo, fora desta fileira)
+                                            — o servidor (Plano 02) já exige `confirmar_risco`,
+                                            isto é só a tela pedindo antes de mandar. */}
+                                        {slot.status === 'pronto' && slot.exige_confirmacao_risco && !confirmandoRisco[slot.token] && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setConfirmandoRisco(c => ({ ...c, [slot.token]: true }))}
+                                                disabled={processando === slot.token}
+                                                className="flex items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] font-medium text-red-300 disabled:opacity-40"
+                                            >
+                                                <AlertTriangle className="h-3 w-3" />
+                                                Aprovar mesmo assim
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 2º passo da confirmação de risco — pergunta explícita
+                                    com o risco escrito, nunca dentro da fileira compacta de
+                                    botões acima (texto não cabe ali). */}
+                                {slot.status === 'pronto' && slot.exige_confirmacao_risco && confirmandoRisco[slot.token] && (
+                                    <div className="mt-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5">
+                                        <p className="text-[10px] text-red-300">
+                                            A validação automática apontou risco nesta imagem. Usar ela mesmo assim no
+                                            anúncio?
+                                        </p>
+                                        <div className="mt-1.5 flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => onAprovar?.(slot.token, true)}
+                                                disabled={processando === slot.token}
+                                                className="flex items-center gap-1 rounded bg-red-500 px-2 py-1 text-[10px] font-medium text-white disabled:opacity-40"
+                                            >
+                                                {processando === slot.token
+                                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                                    : <ThumbsUp className="h-3 w-3" />}
+                                                Sim, usar esta imagem
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setConfirmandoRisco(c => ({ ...c, [slot.token]: false }))}
+                                                disabled={processando === slot.token}
+                                                className="rounded border border-white/15 bg-white/[0.04] px-2 py-1 text-[10px] text-white/60 hover:text-white disabled:opacity-40"
+                                            >
+                                                Cancelar
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 

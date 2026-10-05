@@ -336,13 +336,21 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
      * recebe a URL do SLOT 1 que o servidor devolveu (não a do slot
      * recém-aprovado) — pode ser `null` quando o slot 1 ainda não foi
      * aprovado; é a mesma mitigação da armadilha do autosave desde a 160-03.
+     *
+     * Fase 162 Plano 04 (APROV-04) — `confirmarRisco` é o 2º passo que
+     * `KitCriativosGrade` já exige na tela antes de chegar aqui; o
+     * SERVIDOR (Plano 02) é quem de fato recusa sem `confirmar_risco` numa
+     * imagem reprovada — isto só carrega a confirmação no corpo.
      */
-    async function aprovarSlot(token) {
+    async function aprovarSlot(token, confirmarRisco = false) {
         setProcessandoSlot(token);
         setErrosPorSlot(e => ({ ...e, [token]: null }));
 
         try {
-            const { data } = await window.axios.post(route('mlb.anuncios.criativo.aprovar', { token }));
+            const { data } = await window.axios.post(
+                route('mlb.anuncios.criativo.aprovar', { token }),
+                confirmarRisco ? { confirmar_risco: true } : {},
+            );
 
             onImagemAprovada?.(data.url);
             consultarKit();
@@ -417,6 +425,10 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                 // recalcula a régua a partir dos slots.
                 prontas:          data.prontas ?? 0,
                 aprovadas:        data.aprovadas ?? 0,
+                // Fase 162 Plano 04 (VAL-04 em lote) — idem: números prontos
+                // do servidor, nunca recalculados aqui.
+                prontas_sem_risco: data.prontas_sem_risco,
+                reprovadas:        data.reprovadas ?? 0,
                 referencias:      data.referencias ?? [],
                 slots:            data.slots ?? [],
             });
@@ -582,7 +594,11 @@ export default function PainelCriativosIa({ empresa, rascunhoId = null, ativo = 
                                 congelado no kit foi atingido — a tela NUNCA recalcula a
                                 régua, só lê prontas/aprovadas/minimo_aprovadas do servidor. */}
                             {kit && kit.status !== 'aprovado' && kit.slots?.length > 0 && (() => {
-                                const disponiveis = (kit.prontas ?? 0) + (kit.aprovadas ?? 0);
+                                // Fase 162 Plano 04 (VAL-04 em lote) — `prontas_sem_risco`
+                                // nunca conta slot reprovado nem ainda em validação; cai
+                                // para `prontas` quando o servidor ainda não manda o campo
+                                // novo (não-regressão com dado legado).
+                                const disponiveis = (kit.prontas_sem_risco ?? kit.prontas ?? 0) + (kit.aprovadas ?? 0);
                                 const minimo = kit.minimo_aprovadas ?? 0;
                                 const faltam = Math.max(0, minimo - disponiveis);
                                 const podeAprovarKit = faltam === 0 && !aprovandoKit;
