@@ -11,6 +11,7 @@ use App\Support\Portal\ModulosPortal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Spatie\Activitylog\Models\Activity;
 use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 
@@ -171,5 +172,76 @@ class AcessoAosProdutosTest extends TestCase
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
         $this->assertCount(13, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+    }
+
+    // ─── Empresa sempre da sessão (T-167-41) e origem no log (T-167-46) ─────
+
+    public function test_company_id_do_corpo_e_ignorado_e_o_produto_nasce_na_empresa_da_sessao(): void
+    {
+        $minha = $this->empresaDoGabarito();
+        $outra = $this->empresaDoGabarito();
+
+        $this->entrarNoPortal($minha)
+            ->postJson(route('portal.auth.estrutura.produtos.linhas'), [
+                'company_id' => $outra->id,
+                'linhas'     => [$this->linha('P-1', ['company_id' => $outra->id])],
+            ])->assertOk();
+
+        $this->assertSame(1, EstruturaProduto::where('company_id', $minha->id)->count());
+        $this->assertSame(0, EstruturaProduto::where('company_id', $outra->id)->count());
+    }
+
+    public function test_ids_de_outra_empresa_respondem_404(): void
+    {
+        $minha = $this->empresaDoGabarito();
+        $outra = $this->empresaDoGabarito();
+        $this->gravarNaOutra($outra);
+        $variacaoAlheia = \App\Models\EstruturaProdutoVariacao::where('company_id', $outra->id)->firstOrFail();
+        $familiaAlheia = \App\Models\EstruturaFamilia::create(['company_id' => $outra->id, 'nome' => 'Alheia']);
+        $ambienteAlheio = \App\Models\EstruturaAmbiente::create(['company_id' => $outra->id, 'nome' => 'Alheio']);
+
+        $sessao = $this->entrarNoPortal($minha);
+
+        $sessao->deleteJson(route('portal.auth.estrutura.produtos.variacoes.excluir', $variacaoAlheia->id))->assertNotFound();
+        $sessao->putJson(route('portal.auth.estrutura.produtos.familias.renomear', $familiaAlheia->id), ['nome' => 'X'])->assertNotFound();
+        $sessao->deleteJson(route('portal.auth.estrutura.produtos.familias.excluir', $familiaAlheia->id))->assertNotFound();
+        $sessao->putJson(route('portal.auth.estrutura.produtos.ambientes.renomear', $ambienteAlheio->id), ['nome' => 'X'])->assertNotFound();
+        $sessao->deleteJson(route('portal.auth.estrutura.produtos.ambientes.excluir', $ambienteAlheio->id))->assertNotFound();
+
+        $this->assertSame(1, \App\Models\EstruturaProdutoVariacao::where('company_id', $outra->id)->count());
+        $this->assertSame('Alheia', $familiaAlheia->fresh()->nome);
+    }
+
+    /** Grava direto pelo serviço: uma sessão HTTP só vale para uma empresa por teste. */
+    private function gravarNaOutra(Company $outra): void
+    {
+        app(\App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService::class)
+            ->gravarLinhas($outra, [$this->linha('ALHEIO-1')], $this->atorCliente($outra));
+    }
+
+    public function test_a_origem_no_log_e_cliente_quando_grava_o_cliente(): void
+    {
+        $this->entrarNoPortal($this->empresaDoGabarito())
+            ->postJson(route('portal.auth.estrutura.produtos.linhas'), ['linhas' => [$this->linha('C-1')]])
+            ->assertOk();
+
+        $this->assertSame('cliente', $this->origemDoUltimoLote());
+    }
+
+    public function test_a_origem_no_log_e_interno_quando_grava_a_equipe(): void
+    {
+        $this->entrarComoEquipe($this->admin(), $this->empresaDoGabarito())
+            ->postJson(route('portal.auth.estrutura.produtos.linhas'), ['linhas' => [$this->linha('E-1')]])
+            ->assertOk();
+
+        $this->assertSame('interno', $this->origemDoUltimoLote());
+    }
+
+    private function origemDoUltimoLote(): ?string
+    {
+        $log = Activity::query()->where('properties->evento', 'produtos_gravados')->latest('id')->first();
+        $this->assertNotNull($log, 'nenhum activity produtos_gravados');
+
+        return $log->properties['origem'] ?? null;
     }
 }

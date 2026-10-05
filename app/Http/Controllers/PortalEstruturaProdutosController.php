@@ -74,6 +74,77 @@ class PortalEstruturaProdutosController extends Controller
         ]);
     }
 
+    // ═══ Escritas por JSON ══════════════════════════════════════════════════
+
+    /**
+     * Grava as linhas da grade (até 200). Erro de uma linha não impede as
+     * outras: o resultado traz `erros` por linha e `linhas` já calculadas no
+     * servidor (logística, peso cubado, frete, pendências).
+     */
+    public function gravarLinhas(Request $request)
+    {
+        $request->validate([
+            'linhas'   => 'required|array|min:1|max:'.ProdutoCadastroService::MAX_GRADE,
+            'linhas.*' => 'array',
+        ]);
+
+        $resultado = $this->cadastro->gravarLinhas(
+            PortalContexto::empresa(),
+            $request->input('linhas'),
+            PortalContexto::ator(),
+            ProdutoCadastroService::MODO_GRADE,
+        );
+
+        return response()->json([...$resultado, 'listas' => $this->listasDaEmpresa()]);
+    }
+
+    /** Exclui uma variação (D-22: mesma regra da Lista SKUs). */
+    public function excluirVariacao(int $variacao)
+    {
+        $res = $this->cadastro->excluirVariacao(PortalContexto::empresa(), $variacao, PortalContexto::ator());
+
+        $mensagem = "Variação {$res['sku']} excluída.";
+        if ($res['anuncios_para_espera'] > 0) {
+            $mensagem .= " {$res['anuncios_para_espera']} anúncio(s) voltaram para a área de espera.";
+        }
+
+        return response()->json([
+            'produto_excluido'     => $res['produto_excluido'],
+            'anuncios_para_espera' => $res['anuncios_para_espera'],
+            'mensagem'             => $mensagem,
+        ]);
+    }
+
+    public function criarFamilia(Request $request)
+    {
+        return $this->criarLista($request, ListasDaEmpresaService::FAMILIA);
+    }
+
+    public function renomearFamilia(Request $request, int $lista)
+    {
+        return $this->renomearLista($request, ListasDaEmpresaService::FAMILIA, $lista);
+    }
+
+    public function excluirFamilia(int $lista)
+    {
+        return $this->excluirLista(ListasDaEmpresaService::FAMILIA, $lista);
+    }
+
+    public function criarAmbiente(Request $request)
+    {
+        return $this->criarLista($request, ListasDaEmpresaService::AMBIENTE);
+    }
+
+    public function renomearAmbiente(Request $request, int $lista)
+    {
+        return $this->renomearLista($request, ListasDaEmpresaService::AMBIENTE, $lista);
+    }
+
+    public function excluirAmbiente(int $lista)
+    {
+        return $this->excluirLista(ListasDaEmpresaService::AMBIENTE, $lista);
+    }
+
     // ═══ Internos ═══════════════════════════════════════════════════════════
 
     /** @return array{familias: list<array>, ambientes: list<array>} */
@@ -85,5 +156,35 @@ class PortalEstruturaProdutosController extends Controller
             'familias'  => $this->listas->lista($empresa, ListasDaEmpresaService::FAMILIA),
             'ambientes' => $this->listas->lista($empresa, ListasDaEmpresaService::AMBIENTE),
         ];
+    }
+
+    private function criarLista(Request $request, string $tipo)
+    {
+        $dados = $request->validate(['nome' => 'required|string|max:80']);
+        [$item, $criado] = $this->listas->criar(PortalContexto::empresa(), $tipo, $dados['nome'], PortalContexto::ator());
+
+        return response()->json([
+            'item'   => ['id' => (int) $item->id, 'nome' => $item->nome],
+            'criado' => $criado,
+            'listas' => $this->listasDaEmpresa(),
+        ]);
+    }
+
+    private function renomearLista(Request $request, string $tipo, int $id)
+    {
+        $dados = $request->validate(['nome' => 'required|string|max:80']);
+        $item = $this->listas->renomear(PortalContexto::empresa(), $tipo, $id, $dados['nome'], PortalContexto::ator());
+
+        return response()->json([
+            'item'   => ['id' => (int) $item->id, 'nome' => $item->nome],
+            'listas' => $this->listasDaEmpresa(),
+        ]);
+    }
+
+    private function excluirLista(string $tipo, int $id)
+    {
+        $this->listas->excluir(PortalContexto::empresa(), $tipo, $id, PortalContexto::ator());
+
+        return response()->json(['listas' => $this->listasDaEmpresa()]);
     }
 }
