@@ -216,4 +216,29 @@ class MlAnuncioCriativo extends Model
     {
         return $this->validacao['mensagem'] ?? null;
     }
+
+    /**
+     * Encerra como `indisponivel` a validação travada em `pendente` há mais
+     * de `LIMITE_VALIDACAO_MINUTOS` (VAL-06) — molde literal de
+     * `encerrarSeTravada()` desta mesma classe. Idempotente: quando não está
+     * travada, não faz nada. É esta função que garante que o operador NUNCA
+     * fica preso num `pendente` eterno — chamada tanto pelo
+     * `ValidarCriativoIaJob` quanto pelos dois endpoints de aprovação
+     * (162-02-PLAN.md, Task 2).
+     */
+    public function encerrarValidacaoSeTravada(): void
+    {
+        if (! $this->validacaoTravada()) {
+            return;
+        }
+
+        $this->update([
+            'validacao_status' => self::VALIDACAO_INDISPONIVEL,
+            'validacao_em'     => now(),
+            'validacao'        => [
+                'status'   => self::VALIDACAO_INDISPONIVEL,
+                'mensagem' => 'A validação automática não terminou em ' . self::LIMITE_VALIDACAO_MINUTOS . ' minutos (worker parado?) — confira a imagem você mesmo antes de aprovar.',
+            ],
+        ]);
+    }
 }

@@ -8,6 +8,7 @@ use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\Dto\CreativeGenerationRequest;
 use App\Services\Creative\ProductTruthBuilder;
+use App\Jobs\ValidarCriativoIaJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -214,15 +215,27 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         $caminho = "creative-geradas/{$criativo->token}/{$criativo->slot}.jpg";
         Storage::disk('local')->put($caminho, $resultado->bytes);
 
+        // Fase 162 (D-06, VAL-01): toda imagem gerada entra em validação
+        // automática sem ninguém clicar em nada — gravado na MESMA update()
+        // do status=pronto para não existir instante em que o criativo está
+        // pronto sem validação pedida. `validacao.ativa` desligada (OPS-03
+        // do validador) é o desligamento sem deploy: nem marca `pendente`
+        // nem despacha o job de validação.
+        $validacaoAtiva = (bool) config('services.creative.validacao.ativa', true);
+
         $criativo->update([
-            'status'       => MlAnuncioCriativo::STATUS_PRONTO,
-            'etapa'        => null,
-            'imagem_path'  => $caminho,
-            'imagem_mime'  => $resultado->mime,
-            'imagem_bytes' => $resultado->tamanhoBytes(),
-            'modelo'       => $resultado->modelo,
-            'latencia_ms'  => $resultado->latenciaMs,
-            'finished_at'  => now(),
+            'status'              => MlAnuncioCriativo::STATUS_PRONTO,
+            'etapa'               => null,
+            'imagem_path'         => $caminho,
+            'imagem_mime'         => $resultado->mime,
+            'imagem_bytes'        => $resultado->tamanhoBytes(),
+            'modelo'              => $resultado->modelo,
+            'latencia_ms'         => $resultado->latenciaMs,
+            'finished_at'         => now(),
+            'validacao_status'    => $validacaoAtiva
+                ? MlAnuncioCriativo::VALIDACAO_PENDENTE
+                : MlAnuncioCriativo::VALIDACAO_INDISPONIVEL,
+            'validacao_pedida_em' => $validacaoAtiva ? now() : null,
         ]);
 
         // Teto de custo (GEN-03/Decisão 6): a unidade faturada é a imagem
@@ -231,6 +244,13 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         if ($kit !== null) {
             $kit->increment('imagens_geradas');
             $kit->recalcularStatus();
+        }
+
+        // Job SEPARADO, chave de unicidade PRÓPRIA (`validacao:{id}`) —
+        // nunca despachado de dentro deste handle() com a mesma chave do
+        // próprio job de geração (Decisão 1 do 162-02-PLAN.md).
+        if ($validacaoAtiva) {
+            ValidarCriativoIaJob::dispatch($criativo->id);
         }
 
         // GEN-05: sem chave, sem prompt, sem base64, sem payload — só o que
