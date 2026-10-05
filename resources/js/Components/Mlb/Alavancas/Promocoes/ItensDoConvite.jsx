@@ -142,7 +142,6 @@ export default function ItensDoConvite({ conta, convite, liberada, motivo, limit
                                         type="checkbox"
                                         aria-label={`Selecionar ${l.item_id}`}
                                         checked={marcados.includes(l.item_id)}
-                                        disabled={! liberada}
                                         onChange={() => marcar(l.item_id)}
                                         className="mt-1 h-4 w-4"
                                     />

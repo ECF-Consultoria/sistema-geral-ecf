@@ -106,6 +106,19 @@ test('ItensDoConvite — "Tirar" segue capacidades.remover e explica com o motiv
     assert.match(itens, /title=\{! liberada \? motivo : \(l\.capacidades\.remover \? undefined : l\.capacidades\.motivo\)\}/);
 });
 
+test('ItensDoConvite — conta não liberada ainda seleciona e analisa; só a escrita fica desligada (D-03)', () => {
+    // A caixa de seleção alimenta a TabelaAnalise: travá-la escondia a análise da conta não liberada.
+    const caixa = itens.slice(itens.indexOf('type="checkbox"'), itens.indexOf('onChange={() => marcar('));
+    assert.doesNotMatch(caixa, /disabled/);
+    assert.match(itens, /<TabelaAnalise conta=\{conta\} pedidos=\{pedidos\}/);
+    assert.match(itens, /primario\s+disabled=\{! liberada\}/);
+});
+
+test('Alavancas.jsx — a faixa de conta travada não repete o motivo do servidor', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Alavancas.jsx');
+    assert.match(f, /<AvisoAlavancasTravadas variante="faixa" className="mb-6" \/>/);
+});
+
 test('Convites — um convite aberto por vez', () => {
     assert.match(convites, /useState\(null\)/);
     assert.match(convites, /setAberto\(estaAberto \? null : c\.id\)/);

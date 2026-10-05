@@ -84,7 +84,7 @@ export default function Alavancas({ empresa, alavancas }) {
                 ) : (
                     <>
                         {! alavancas.liberada && (
-                            <AvisoAlavancasTravadas variante="faixa" className="mb-6">{alavancas.motivo}</AvisoAlavancasTravadas>
+                            <AvisoAlavancasTravadas variante="faixa" className="mb-6" />
                         )}
 
                         <div className="mb-6">
