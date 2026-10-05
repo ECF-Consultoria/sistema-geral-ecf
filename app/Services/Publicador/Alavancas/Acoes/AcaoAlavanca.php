@@ -3,6 +3,7 @@
 namespace App\Services\Publicador\Alavancas\Acoes;
 
 use App\Services\Publicador\Alavancas\ContaAlavanca;
+use App\Services\Publicador\Alavancas\LeiturasDaAcao;
 use App\Services\Publicador\Alavancas\RequisicaoMl;
 use App\Support\Publicador\Erros\RespostaMl;
 
@@ -14,6 +15,21 @@ use App\Support\Publicador\Erros\RespostaMl;
 abstract class AcaoAlavanca
 {
     final public function __construct(protected ContaAlavanca $conta, protected array $dados) {}
+
+    /** Memória de leituras compartilhada com as outras ações da mesma prévia/confirmação/fatia (166-07). */
+    protected ?LeiturasDaAcao $leituras = null;
+
+    public function usarLeituras(LeiturasDaAcao $leituras): static
+    {
+        $this->leituras = $leituras;
+
+        return $this;
+    }
+
+    protected function leituras(): LeiturasDaAcao
+    {
+        return $this->leituras ??= LeiturasDaAcao::para($this->conta);
+    }
 
     /** Chave do registro, até 32 caracteres (ex.: `convite.inscrever`). */
     abstract public static function nome(): string;

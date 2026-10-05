@@ -55,9 +55,22 @@ final class TiposDePromocao
 
     public const EXIGEM_REPUTACAO = ['PRICE_DISCOUNT', 'SELLER_CAMPAIGN', 'SELLER_COUPON_CAMPAIGN'];
 
+    /** Rótulos em pt-BR (os mesmos de `rotulos.js`, 166-12); usados nos resumos das ações. */
+    public const ROTULOS = [
+        'DEAL' => 'Campanha tradicional', 'MARKETPLACE_CAMPAIGN' => 'Cofinanciada pelo ML', 'VOLUME' => 'Leve mais, pague menos',
+        'DOD' => 'Oferta do dia', 'LIGHTNING' => 'Oferta relâmpago', 'PRICE_DISCOUNT' => 'Desconto individual',
+        'PRE_NEGOTIATED' => 'Desconto pré-acordado', 'SELLER_CAMPAIGN' => 'Campanha do vendedor', 'SMART' => 'Cofinanciada automatizada',
+        'PRICE_MATCHING' => 'Preço competitivo', 'UNHEALTHY_STOCK' => 'Liquidação de estoque Full', 'SELLER_COUPON_CAMPAIGN' => 'Cupom do vendedor',
+    ];
+
     private const MOTIVO_SMART = 'Aceite este convite no Mercado Livre: a leitura não trouxe o código da oferta (offer_id).';
     private const MOTIVO_MARKETPLACE = 'Para mudar o preço: tire o produto, ajuste o preço do anúncio e inscreva de novo.';
     private const MOTIVO_OFERTA_ATIVA = 'Oferta ativa não pode ser retirada; pause o anúncio no Mercado Livre se precisar.';
+
+    public static function rotulo(string $tipo): string
+    {
+        return self::ROTULOS[$tipo] ?? $tipo;
+    }
 
     /**
      * O que a tela e as ações podem oferecer para um tipo e a entrada do item nele.
