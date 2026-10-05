@@ -24,6 +24,11 @@ final class LeiturasDaAcao
     /** @var array<string, array> */
     private array $promocoes = [];
 
+    private ?array $exclusaoDaConta = null;
+
+    /** @var array<string, array> */
+    private array $exclusaoDoItem = [];
+
     public function __construct(
         private ContaAlavanca $conta,
         private ProdutosDaContaService $produtosDaConta,
@@ -118,6 +123,18 @@ final class LeiturasDaAcao
     public function promocao(string $id, string $tipo): array
     {
         return $this->promocoes[$tipo.'|'.$id] ??= $this->promocoesLeitura->promocao($this->conta, $id, $tipo);
+    }
+
+    /** @return array{excluida: bool} */
+    public function exclusaoDaConta(): array
+    {
+        return $this->exclusaoDaConta ??= $this->promocoesLeitura->exclusaoDaConta($this->conta);
+    }
+
+    /** @return array{item_id: string, excluido: bool} */
+    public function exclusaoDoItem(string $itemId): array
+    {
+        return $this->exclusaoDoItem[$itemId] ??= $this->promocoesLeitura->exclusaoDoItem($this->conta, $itemId);
     }
 
     private function chave(string $tipo, ?string $promocaoId, string $itemId): string

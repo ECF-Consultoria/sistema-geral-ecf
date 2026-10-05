@@ -195,7 +195,7 @@ class PromocoesLeitura
     {
         $corpo = $this->ler($c, '/seller-promotions/exclusion-list/seller');
 
-        return ['excluida' => self::verdadeiro($corpo['exclusion_status'] ?? false)];
+        return ['excluida' => self::estaExcluido($corpo)];
     }
 
     /** @return array{item_id: string, excluido: bool} */
@@ -204,7 +204,7 @@ class PromocoesLeitura
         $this->itemValido($itemId);
         $corpo = $this->ler($c, '/seller-promotions/exclusion-list/seller/'.rawurlencode($itemId));
 
-        return ['item_id' => $itemId, 'excluido' => self::verdadeiro($corpo['exclusion_status'] ?? false)];
+        return ['item_id' => $itemId, 'excluido' => self::estaExcluido($corpo)];
     }
 
     // ═══ Internos ═══
@@ -374,6 +374,22 @@ class PromocoesLeitura
     private function ttl(): int
     {
         return (int) config('publicador.alavancas.cache.itens_promocao', 60);
+    }
+
+    /**
+     * A doc (gerenciar-ofertas, relida em 04/10/2026) mostra a leitura da conta como
+     * `{"excluded": "not_excluded"}` / `"excluded"`; a leitura por item não traz exemplo de resposta.
+     * Aceita esse formato e, por tolerância, o `exclusion_status` que o POST usa.
+     */
+    private static function estaExcluido(array $corpo): bool
+    {
+        if (array_key_exists('excluded', $corpo)) {
+            $v = $corpo['excluded'];
+
+            return $v === true || $v === 'true' || $v === 'excluded';
+        }
+
+        return self::verdadeiro($corpo['exclusion_status'] ?? false);
     }
 
     private static function verdadeiro(mixed $v): bool
