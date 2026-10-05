@@ -121,6 +121,7 @@ class PortalSemAnunciarTest extends TestCase
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
         foreach ([
+            'produtos'     => 'Portal/EstruturaProdutos',
             'lista'        => 'Portal/EstruturaLista',
             'precificacao' => 'Portal/EstruturaPrecificacao',
             'anuncios'     => 'Portal/EstruturaAnuncios',

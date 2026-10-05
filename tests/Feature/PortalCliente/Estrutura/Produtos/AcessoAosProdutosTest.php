@@ -87,7 +87,7 @@ class AcessoAosProdutosTest extends TestCase
             ->get(route('portal.auth.estrutura.produtos'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Portal/EstruturaProdutos', false)
+                ->component('Portal/EstruturaProdutos')
                 ->has('produtos.linhas')
                 ->has('filtros')
                 ->has('listas.familias')
@@ -108,7 +108,7 @@ class AcessoAosProdutosTest extends TestCase
         $this->withoutVite()->entrarComoEquipe($this->admin(), $empresa)
             ->get(route('portal.auth.estrutura.produtos'))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('Portal/EstruturaProdutos', false));
+            ->assertInertia(fn ($page) => $page->component('Portal/EstruturaProdutos'));
     }
 
     public function test_a_equipe_analista_da_carteira_tambem_abre(): void

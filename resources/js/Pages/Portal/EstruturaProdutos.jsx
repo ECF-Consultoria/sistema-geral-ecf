@@ -5,6 +5,7 @@ import { CheckCircle2, Plus, Search, Trash2, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
 
@@ -65,6 +66,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [selecionar, setSelecionar] = useState(null);
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [aula, setAula] = useState(false);
+    const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
 
     const sujas = useRef(new Map());                      // _k → versão da última edição
     const versao = useRef(0);
@@ -259,7 +261,9 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     const excluir = (row) => {
         // Linha que ainda não foi gravada some sem pedir confirmação.
-        if (! row.id) removerLocal(row._k);
+        if (! row.id) { removerLocal(row._k); return; }
+        const irmas = rowsRef.current.filter((r) => r.produto_id === row.produto_id).length;
+        setExclusao({ linha: row, ultima: irmas <= 1 });
     };
 
     /** Colar com os cabeçalhos do modelo: mapeia por NOME de coluna e vira linhas novas. */
@@ -398,6 +402,13 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
             </div>
 
+            <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima}
+                onFechar={() => setExclusao(null)}
+                onExcluida={(resposta) => {
+                    removerLocal(exclusao.linha._k);
+                    setExclusao(null);
+                    if (resposta?.mensagem) setAviso(resposta.mensagem);
+                }} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[
                 '1. Cadastre o produto e as variações (cor, tamanho…).',
                 '2. Informe medidas, peso e custo — o sistema mostra o tipo de envio e o frete.',
