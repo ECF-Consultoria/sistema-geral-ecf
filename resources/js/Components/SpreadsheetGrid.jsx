@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { lerTsvDoExcel, proximaEditavel } from '@/lib/gradeTeclado';
 import {
@@ -64,6 +64,32 @@ function TextareaPopup({ label, value, onChange, onSave, onCancel }) {
                         <button onClick={onSave} className="px-4 py-1.5 rounded-lg bg-ecf-yellow text-[#252525] font-semibold text-[12px] hover:brightness-110 transition-all">Salvar</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Camada do picker: popover ancorado no retangulo da celula ─────────────────
+// Clique fora = fechar (quem decide se grava e o editor, via registrarFechar). Depois de
+// montar, mede e recoloca para caber na viewport (vira para cima se nao couber embaixo).
+function CamadaPicker({ anchor, onFora, children }) {
+    const boxRef = useRef(null);
+    const [pos, setPos] = useState({ top: (anchor?.bottom ?? 0) + 4, left: anchor?.left ?? 0 });
+    useLayoutEffect(() => {
+        const el = boxRef.current;
+        if (!el || !anchor) return;
+        const { width, height } = el.getBoundingClientRect();
+        let top = anchor.bottom + 4;
+        let left = anchor.left;
+        if (top + height > window.innerHeight - 8) top = Math.max(8, anchor.top - height - 4);
+        if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+        setPos({ top, left });
+    }, [anchor]);
+    return (
+        <div className="fixed inset-0 z-[200]" onMouseDown={onFora}>
+            <div ref={boxRef} style={{ position: 'fixed', top: pos.top, left: pos.left }}
+                onMouseDown={e => e.stopPropagation()}>
+                {children}
             </div>
         </div>
     );
@@ -214,6 +240,22 @@ function RowPanel({ row, columns, rowNum, onSave, onClose }) {
  *   rowKey        chave estavel da linha (usada no key do React e no `selecionar`).
  *   onRowsCommit  (prev, next) => void - avisa a pagina que as linhas mudaram (para salvar so o que mudou).
  *   tabWrap       Tab anda so pelas colunas editaveis, passa para a linha de baixo e cria linha na ultima.
+ *   variant       'padrao' (default, igual ao de sempre) | 'portal' (linha de 40px, celula com cara de campo).
+ *   ariaLabel     liga role="grid" + aria-label na grade.
+ *   rowClassName  (row, i) => className extra na <tr>.
+ *   rowActions    (row, i) => nodo; desenha uma coluna fixa de 56px a direita.
+ *   rowNote       (row, i) => nodo|null; desenha uma <tr> de largura total abaixo da linha.
+ *   selecionar    { chave, coluna, n } - seleciona e foca a celula da linha com row[rowKey] === chave,
+ *                 na coluna `coluna`, sempre que `n` muda (a pagina poe o foco na linha nova sem API imperativa).
+ *
+ * Campos extras de coluna (Fase 167):
+ *   type 'picker'  popover ancorado na celula (Enter/Espaco/F2/duplo clique, ou digitar abre com textoInicial).
+ *                  renderEditor({ row, value, anchor, textoInicial, onCommit(patch), onClose, registrarFechar(fn) }):
+ *                  onCommit grava um patch de VARIOS campos na linha; registrarFechar(fn) diz o que fazer ao
+ *                  clicar fora/Esc (fechar grava). Sem fn registrada, so fecha.
+ *   renderCell(value, row)  substitui o texto da celula (fora da edicao).
+ *   placeholder    texto fraco em celula editavel vazia.
+ *   separador      true = filete a esquerda (agrupamento visual).
  */
 export function SpreadsheetGrid({
     columns, rows, onChange,
@@ -229,7 +271,15 @@ export function SpreadsheetGrid({
     rowKey = null,
     onRowsCommit = null,
     tabWrap = false,
+    variant = 'padrao',
+    ariaLabel = null,
+    rowClassName = null,
+    rowActions = null,
+    rowNote = null,
+    selecionar = null,
 }) {
+    const portal = variant === 'portal';
+    const altura = portal ? 40 : 26;
     const C = columns.length;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const mkEmpty = () => Object.fromEntries(columns.map(c => [c.id, c.type === 'checkbox' ? false : '']));
@@ -280,6 +330,8 @@ export function SpreadsheetGrid({
     );
 
     const [textareaPopup, setTextareaPopup] = useState(null); // { r, c, value }
+    const [pickerAberto, setPickerAberto] = useState(null);   // { r, c, anchor: DOMRect, textoInicial }
+    const fecharRef = useRef(null); // o que o editor do picker pediu para rodar ao clicar fora/Esc
 
     const gridRef      = useRef(null);
     const inputRef     = useRef(null);
@@ -424,6 +476,51 @@ export function SpreadsheetGrid({
         emitir(n);
     }
 
+    // Patch de VARIOS campos na linha (editor do picker): uma unica emissao, um unico passo de historico.
+    function aplicarPatch(r, patch) {
+        const { origIdx: oIdx, rows: orig, novaLinha } = ctx.current;
+        const oi = r < oIdx.length ? oIdx[r] : r;
+        if (oi === -2) return;
+        const newRows = [...orig];
+        while (newRows.length <= oi) newRows.push(novaLinha());
+        newRows[oi] = { ...newRows[oi], ...patch };
+        pushHistory(newRows);
+        emitir(newRows);
+    }
+
+    function fecharPicker() {
+        fecharRef.current = null;
+        setPickerAberto(null);
+        requestAnimationFrame(() => gridRef.current?.focus());
+    }
+
+    // Esc fecha o picker; fechar GRAVA quando o editor registrou como (registrarFechar).
+    useEffect(() => {
+        if (!pickerAberto) return undefined;
+        function aoTecla(e) {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            fecharRef.current ? fecharRef.current() : fecharPicker();
+        }
+        document.addEventListener('keydown', aoTecla, true);
+        return () => document.removeEventListener('keydown', aoTecla, true);
+    }, [pickerAberto]);
+
+    // A pagina pede o foco numa celula (ex.: Ref da linha nova) trocando `selecionar.n`.
+    useEffect(() => {
+        if (!selecionar || !rowKey) return;
+        const { chave, coluna } = selecionar;
+        const ri = ctx.current.displayed.findIndex(rw => !rw.__groupHeader && rw[rowKey] === chave);
+        const ci = columns.findIndex(c => c.id === coluna);
+        if (ri < 0 || ci < 0) return;
+        setSelA({ r: ri, c: ci }); setSelB({ r: ri, c: ci });
+        requestAnimationFrame(() => {
+            gridRef.current?.focus();
+            gridRef.current?.querySelector(`[data-cell="${ri}-${ci}"]`)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        });
+    }, [selecionar?.n]);
+
     function undo() {
         if (historyIdx.current <= 0) return;
         historyIdx.current--;
@@ -491,6 +588,12 @@ export function SpreadsheetGrid({
     function startEdit(r, c, initChar = null) {
         const col = columns[c];
         if (!col || col.type === 'readonly') return;
+        if (col.type === 'picker') {
+            const td = gridRef.current?.querySelector(`[data-cell="${r}-${c}"]`);
+            fecharRef.current = null;
+            setPickerAberto({ r, c, anchor: td ? td.getBoundingClientRect() : null, textoInicial: initChar });
+            return;
+        }
         if (col.type === 'checkbox') {
             const cur = getVal(r, c);
             applyMulti([{ r, c, value: !(cur === true || cur === '1' || cur === 'true') }]);
@@ -708,7 +811,7 @@ export function SpreadsheetGrid({
             }
             case 'Enter': {
                 const col = columns[c];
-                if (col?.type === 'select' || col?.type === 'tags' || col?.type === 'textarea') { startEdit(r, c); }
+                if (col?.type === 'select' || col?.type === 'tags' || col?.type === 'textarea' || col?.type === 'picker') { startEdit(r, c); }
                 else if (tabWrap && !mutado && r === R - 1) { criarLinhaAte(R); setSelA({ r: R, c }); setSelB({ r: R, c }); }
                 else { const nr = nextR(r, 1); setSelA({ r: nr, c }); setSelB({ r: nr, c }); }
                 e.preventDefault(); break;
@@ -725,6 +828,8 @@ export function SpreadsheetGrid({
             default:
                 if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
                     const col = columns[c];
+                    // Espaco abre o picker (sem texto inicial); outro caractere abre com ele.
+                    if (col.type === 'picker' && e.key === ' ') { startEdit(r, c); e.preventDefault(); return; }
                     if (col.type !== 'readonly' && col.type !== 'select' && col.type !== 'checkbox' && col.type !== 'tags') startEdit(r, c, e.key);
                 }
         }
@@ -827,7 +932,7 @@ export function SpreadsheetGrid({
             // Select: dropdown customizado (overflow:hidden no td quebraria o nativo)
             if (col.type === 'select') return (
                 <>
-                    <div style={{ height: 26 }} className="w-full px-2 flex items-center text-[12px] text-white/90 truncate select-none">
+                    <div style={{ height: altura }} className="w-full px-2 flex items-center text-[12px] text-white/90 truncate select-none">
                         {editVal || <span className="text-white/30">—</span>}
                     </div>
                     <div
@@ -874,11 +979,16 @@ export function SpreadsheetGrid({
                     value={editVal} onChange={e => setEditVal(e.target.value)}
                     onBlur={() => commit()}
                     onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') { editingStateRef.current = null; setEditing(null); requestAnimationFrame(() => gridRef.current?.focus()); e.preventDefault(); } else if (e.key === 'Enter') { commit(1,0); e.preventDefault(); } else if (e.key === 'Tab') { commit(0,e.shiftKey?-1:1); e.preventDefault(); } }}
-                    className={commonCls} style={{ minWidth: 0, height: 26 }} />
+                    className={commonCls} style={{ minWidth: 0, height: altura }} />
             );
         }
 
         // Display mode
+        if (col.renderCell) return (
+            <div style={{ height: altura, overflow: 'hidden' }} className={cn('w-full', cfClass)}>
+                {col.renderCell(val, displayed[ri])}
+            </div>
+        );
         if (col.type === 'checkbox') {
             const checked = val === true || val === '1' || val === 'true';
             return (
@@ -890,19 +1000,19 @@ export function SpreadsheetGrid({
             );
         }
         if (col.type === 'tags') return (
-            <div style={{ height: 26, overflow: 'hidden' }} className="w-full px-1.5 flex items-center">
+            <div style={{ height: altura, overflow: 'hidden' }} className="w-full px-1.5 flex items-center">
                 <TagPills value={val} options={col.options} max={3} />
             </div>
         );
         if (col.type === 'url' && val) return (
             <a href={String(val)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                style={{ height: 26, overflow: 'hidden' }} className="w-full px-2 flex items-center text-[12px] text-blue-400 hover:underline truncate">
+                style={{ height: altura, overflow: 'hidden' }} className="w-full px-2 flex items-center text-[12px] text-blue-400 hover:underline truncate">
                 {String(val)}
             </a>
         );
         return (
-            <div style={{ height: 26, overflow: 'hidden' }} className={cn('w-full px-2 flex items-center text-[12px] truncate', col.type === 'readonly' ? 'text-white/50' : 'text-white/85', col.align === 'right' && 'justify-end', cfClass)}>
-                {dispVal}
+            <div style={{ height: altura, overflow: 'hidden' }} className={cn('w-full px-2 flex items-center truncate', portal ? 'text-[13px]' : 'text-[12px]', col.type === 'readonly' ? 'text-white/50' : 'text-white/85', portal && (col.type === 'readonly' || col.compute) && 'text-white/60', col.align === 'right' && 'justify-end', cfClass)}>
+                {dispVal !== '' && dispVal != null ? dispVal : (col.placeholder && col.type !== 'readonly' && !col.compute ? <span className="text-white/25">{col.placeholder}</span> : dispVal)}
             </div>
         );
     }
@@ -990,7 +1100,8 @@ export function SpreadsheetGrid({
 
             {/* ── Grid ── */}
             <div className="overflow-auto select-none">
-                <div ref={gridRef} tabIndex={0} onKeyDown={handleKeyDown} className="outline-none inline-block min-w-full">
+                <div ref={gridRef} tabIndex={0} onKeyDown={handleKeyDown} className="outline-none inline-block min-w-full"
+                    role={ariaLabel ? 'grid' : undefined} aria-label={ariaLabel ?? undefined}>
                     <table className="border-collapse" style={{ tableLayout: 'fixed' }}>
                         <thead>
                             {headerGroups && (
@@ -1010,11 +1121,13 @@ export function SpreadsheetGrid({
                                 {columns.map((col, ci) => {
                                     const frozen = col.frozen;
                                     return (
-                                        <th key={col.id}
+                                        <th key={col.id} role="columnheader"
                                             style={{ width: colWidths[ci], minWidth: 40, ...(frozen ? { position: 'sticky', left: getStickyLeft(ci), zIndex: 15 } : {}) }}
                                             onClick={() => handleHeaderClick(ci)}
                                             className={cn(
                                                 'relative group text-left px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 bg-[#12131a] border border-white/[0.07] whitespace-nowrap overflow-hidden',
+                                                portal && 'h-10 text-[12px] normal-case tracking-normal bg-ecf-card-2 sticky top-0 z-[12]',
+                                                col.separador && 'border-l border-white/[0.08]',
                                                 col.type !== 'readonly' && !col.compute && 'cursor-pointer hover:bg-white/[0.04] hover:text-white/60',
                                                 sortCol === ci && 'text-ecf-yellow/80 bg-ecf-yellow/5',
                                                 frozen && 'shadow-[2px_0_4px_rgba(0,0,0,0.3)]',
@@ -1032,6 +1145,7 @@ export function SpreadsheetGrid({
                                         </th>
                                     );
                                 })}
+                                {rowActions && <th role="columnheader" style={{ width: 56, minWidth: 56 }} className={cn('border border-white/[0.07] bg-[#12131a] sticky right-0 z-20', portal && 'bg-ecf-card-2 top-0')} />}
                             </tr>
                         </thead>
 
@@ -1041,7 +1155,7 @@ export function SpreadsheetGrid({
                                 if (row.__groupHeader) {
                                     return (
                                         <tr key={`g${ri}`}>
-                                            <td colSpan={C + 1}
+                                            <td colSpan={C + 1 + (rowActions ? 1 : 0)}
                                                 className="border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 cursor-pointer"
                                                 onClick={() => setCollapsed(p => { const n = new Set(p); n.has(row.__val) ? n.delete(row.__val) : n.add(row.__val); return n; })}>
                                                 <div className="flex items-center gap-2 text-white/60 text-[11px] font-semibold">
@@ -1054,12 +1168,14 @@ export function SpreadsheetGrid({
                                     );
                                 }
 
+                                const nota = rowNote ? rowNote(row, ri) : null;
                                 return (
-                                    <tr key={rowKey ? (row[rowKey] ?? ri) : ri}>
+                                    <Fragment key={rowKey ? (row[rowKey] ?? ri) : ri}>
+                                    <tr className={cn(rowClassName?.(row, ri))}>
                                         {/* Row number */}
                                         <td
                                             className="text-center text-[10px] text-white/20 bg-[#12131a] border border-white/[0.07] cursor-pointer hover:bg-white/[0.04] sticky left-0 z-10"
-                                            style={{ height: 26 }}
+                                            style={{ height: altura }}
                                             onDoubleClick={() => setPanelRow(ri)}
                                             title="Duplo clique para abrir painel"
                                         >
@@ -1076,7 +1192,7 @@ export function SpreadsheetGrid({
 
                                             return (
                                                 <td key={col.id}
-                                                    style={{ height: 26, padding: 0, position: 'relative', ...(frozen ? { left: getStickyLeft(ci), zIndex: 5 } : {}) }}
+                                                    style={{ height: altura, padding: 0, position: 'relative', ...(frozen ? { left: getStickyLeft(ci), zIndex: 5 } : {}) }}
                                                     className={cn(
                                                         isEdit && col.type === 'select' ? 'text-[12px] overflow-visible z-[100]' : 'text-[12px] overflow-hidden',
                                                         frozen && 'sticky shadow-[2px_0_4px_rgba(0,0,0,0.3)]',
@@ -1089,7 +1205,14 @@ export function SpreadsheetGrid({
                                                         col.type === 'readonly' && 'bg-white/[0.015]',
                                                         col.type !== 'readonly' && !isEdit && 'cursor-cell',
                                                         frozen && !isEdit && !active && !inSel && 'bg-[#0b0c12]',
+                                                        // Aparencia "portal": editavel parece campo, ativa tem contorno amarelo,
+                                                        // calculada some o fundo. Vem por ultimo para sobrepor as classes de cima.
+                                                        portal && ((col.type === 'readonly' || col.compute) ? 'bg-transparent cursor-default' : !hasErr && !inSel && !inFill && !isEdit && !active && 'bg-black/40 hover:bg-white/[0.04] cursor-text'),
+                                                        portal && (isEdit || active) && 'border border-white/[0.06] outline outline-1 -outline-offset-1 outline-ecf-yellow/60',
+                                                        col.separador && 'border-l border-white/[0.08]',
                                                     )}
+                                                    aria-readonly={(col.type === 'readonly' || col.compute) ? 'true' : undefined}
+                                                    data-cell={`${ri}-${ci}`}
                                                     onMouseDown={e => handleCellMouseDown(e, ri, ci)}
                                                     onMouseEnter={() => handleCellMouseEnter(ri, ci)}
                                                     onDoubleClick={() => startEdit(ri, ci)}
@@ -1109,13 +1232,25 @@ export function SpreadsheetGrid({
                                                 </td>
                                             );
                                         })}
+                                        {rowActions && (
+                                            <td style={{ width: 56, minWidth: 56, height: altura, padding: 0 }}
+                                                className="sticky right-0 z-10 bg-[#0b0c12] border border-white/[0.06]">
+                                                {rowActions(row, ri)}
+                                            </td>
+                                        )}
                                     </tr>
+                                    {nota && (
+                                        <tr>
+                                            <td colSpan={C + 1 + (rowActions ? 1 : 0)} className="border border-white/[0.06] p-0">{nota}</td>
+                                        </tr>
+                                    )}
+                                    </Fragment>
                                 );
                             })}
                         </tbody>
 
                         {/* Footer */}
-                        {footerModes.some(m => m !== null) && (
+                        {!portal && footerModes.some(m => m !== null) && (
                             <tfoot>
                                 <tr>
                                     <td className="bg-[#12131a] border border-white/[0.07] sticky left-0 text-center text-[9px] text-white/20 px-1" style={{ height: 24 }}>
@@ -1177,6 +1312,22 @@ export function SpreadsheetGrid({
                     }}
                     onCancel={() => { setTextareaPopup(null); requestAnimationFrame(() => gridRef.current?.focus()); }}
                 />
+            )}
+
+            {/* Picker: popover da coluna type 'picker' */}
+            {pickerAberto && columns[pickerAberto.c]?.renderEditor && !displayed[pickerAberto.r]?.__groupHeader && (
+                <CamadaPicker anchor={pickerAberto.anchor}
+                    onFora={() => (fecharRef.current ? fecharRef.current() : fecharPicker())}>
+                    {columns[pickerAberto.c].renderEditor({
+                        row: displayed[pickerAberto.r],
+                        value: getVal(pickerAberto.r, pickerAberto.c),
+                        anchor: pickerAberto.anchor,
+                        textoInicial: pickerAberto.textoInicial,
+                        onCommit: patch => aplicarPatch(pickerAberto.r, patch),
+                        onClose: fecharPicker,
+                        registrarFechar: fn => { fecharRef.current = fn; },
+                    })}
+                </CamadaPicker>
             )}
 
             {/* Row Panel */}

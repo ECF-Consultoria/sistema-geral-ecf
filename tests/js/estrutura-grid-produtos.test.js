@@ -70,3 +70,64 @@ test('com tabWrap o Tab pula calculadas e cria linha pelo makeRow', () => {
 test('o Onboarding publico nao passa nenhuma prop nova', () => {
     assert.ok(!/growOnPaste|tabWrap|variant=|makeRow|onRowsCommit|rowActions/.test(onboarding));
 });
+
+// ─── Task 2: coluna picker, aparencia portal, acoes e nota por linha ───
+
+test('as props de aparencia e linha tem default que preserva o comportamento antigo', () => {
+    for (const p of [
+        "variant = 'padrao'", 'ariaLabel = null', 'rowClassName = null',
+        'rowActions = null', 'rowNote = null', 'selecionar = null',
+    ]) {
+        assert.ok(fonte.includes(p), `faltou a prop ${p}`);
+    }
+});
+
+test('coluna picker abre o editor da coluna ancorado na celula', () => {
+    assert.match(fonte, /col\.type === 'picker'/);
+    assert.match(fonte, /renderEditor\(/);
+    assert.match(fonte, /getBoundingClientRect\(\)/);
+    assert.match(fonte, /data-cell=/);
+    // Enter, Espaco, F2 e duplo clique abrem; caractere digitado abre com textoInicial.
+    assert.match(fonte, /col\?\.type === 'textarea' \|\| col\?\.type === 'picker'/);
+    assert.match(fonte, /e\.key === ' '/);
+    assert.match(fonte, /case 'F2':\s+startEdit\(r, c\)/);
+    assert.match(fonte, /onDoubleClick=\{\(\) => startEdit\(ri, ci\)\}/);
+    assert.match(fonte, /textoInicial/);
+});
+
+test('o editor do picker recebe onCommit(patch) e registrarFechar; clique fora e Esc gravam', () => {
+    assert.match(fonte, /function aplicarPatch\(r, patch\)/);
+    assert.match(fonte, /onCommit: patch => aplicarPatch\(/);
+    assert.match(fonte, /registrarFechar: fn => \{ fecharRef\.current = fn; \}/);
+    assert.match(fonte, /fecharRef\.current \? fecharRef\.current\(\) : fecharPicker\(\)/);
+    assert.match(fonte, /key === 'Escape'/);
+});
+
+test('variant portal muda altura, campo editavel, celula ativa, calculada e cabecalho', () => {
+    assert.match(fonte, /variant === 'portal'/);
+    assert.match(fonte, /const altura = portal \? 40 : 26/);
+    assert.ok(fonte.includes('bg-black/40'));
+    assert.ok(fonte.includes('outline-ecf-yellow/60'));
+    assert.ok(fonte.includes('text-white/60'));
+    assert.ok(fonte.includes('bg-ecf-card-2'));
+    assert.ok(fonte.includes('sticky top-0'));
+    // O padrao mantem a borda azul de sempre.
+    assert.ok(fonte.includes("'border-2 border-[#2563eb]'"));
+});
+
+test('acoes, nota e classe por linha, e acessibilidade da grade', () => {
+    assert.match(fonte, /rowActions\(row, ri\)/);
+    assert.match(fonte, /rowNote\(row, ri\)/);
+    assert.match(fonte, /rowClassName\?\.\(row, ri\)/);
+    assert.match(fonte, /role=\{ariaLabel \? 'grid' : undefined\}/);
+    assert.match(fonte, /role="columnheader"/);
+    assert.match(fonte, /aria-readonly=\{/);
+});
+
+test('placeholder, renderCell, separador e selecionar', () => {
+    assert.match(fonte, /col\.placeholder/);
+    assert.match(fonte, /col\.renderCell\(/);
+    assert.match(fonte, /col\.separador/);
+    assert.match(fonte, /selecionar\?\.n/);
+    assert.match(fonte, /rw\[rowKey\] === chave/);
+});
