@@ -185,3 +185,12 @@ test('rotulos — ROTULO_RESULTADO cobre os 5 resultados do modelo', () => {
 test('rotulos — ROTULO_ACAO tem as 15 ações do registro', () => {
     assert.equal(Object.keys(ROTULO_ACAO).length, 15);
 });
+
+// ─── formato.js: janela de datas sem depender do relógio ───
+
+test('janelaDeDias — 30 dias terminando em 05/10/2026, contando o último', async () => {
+    const { janelaDeDias } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.deepEqual(janelaDeDias(30, '2026-10-05'), { de: '2026-09-06', ate: '2026-10-05' });
+    assert.deepEqual(janelaDeDias(7, '2026-10-05'), { de: '2026-09-29', ate: '2026-10-05' });
+    assert.deepEqual(janelaDeDias(90, '2026-10-05'), { de: '2026-07-08', ate: '2026-10-05' });
+});

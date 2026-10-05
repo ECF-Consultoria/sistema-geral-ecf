@@ -22,3 +22,17 @@ export function fmtData(valor, { hora = false } = {}) {
 
     return d.toLocaleString('pt-BR', opcoes).replace(',', '');
 }
+
+/** Hoje (aaaa-mm-dd) no fuso de São Paulo. */
+export const hojeSP = () => new Date().toLocaleDateString('en-CA', { timeZone: FUSO });
+
+/**
+ * Janela de `dias` dias terminando em `hoje` (inclusive): `{ de, ate }` em aaaa-mm-dd.
+ * `hoje` entra por parâmetro para o teste não depender do relógio.
+ */
+export function janelaDeDias(dias, hoje = hojeSP()) {
+    const fim = new Date(`${hoje}T12:00:00Z`);
+    const inicio = new Date(fim.getTime() - (dias - 1) * 86400000);
+
+    return { de: inicio.toISOString().slice(0, 10), ate: hoje };
+}
