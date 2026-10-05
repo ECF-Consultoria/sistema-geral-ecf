@@ -95,8 +95,8 @@ export default function FaixasDoAnuncio({ conta, item, liberada, motivo }) {
         setAlvo({ itens: [{ item_id: item, faixas, remover_absoluto: removerAbsoluto }] });
     }
 
+    // Só relê: a janela fecha no "Fechar" da pessoa, depois de ler o resultado.
     function aoConcluir() {
-        setAlvo(null);
         recarregar();
     }
 

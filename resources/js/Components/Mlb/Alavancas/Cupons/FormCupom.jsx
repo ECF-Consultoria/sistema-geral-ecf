@@ -21,7 +21,7 @@ const dia = (iso) => String(iso ?? '').slice(0, 10);
  * Criar ou alterar um cupom do vendedor. `cupom` (lido) liga o modo edição.
  * Em cupom ativo só o fim, o orçamento e o nome mudam; o servidor recusa o resto (ALAV-CUP-03/04).
  */
-export default function FormCupom({ conta, cupom = null, liberada, motivo, onConcluido, onCancelar }) {
+export default function FormCupom({ conta, cupom = null, liberada, motivo, onConcluido, onEncerrado, onCancelar }) {
     const editando = Boolean(cupom);
     const ativo = cupom?.status === 'started';
     const hoje = hojeSP();
@@ -90,9 +90,15 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
     const descontoOk = percentual ? (numero(f.percentual) !== null && numero(f.teto) !== null) : numero(f.valor) !== null;
     const pronto = f.nome.trim() !== '' && periodoOk && orcamentoOk && (editando ? montada.mudou : (descontoOk && numero(f.compra) !== null));
 
+    // Só relê: a janela fica aberta para a pessoa ler OK, ERRO, RECUSADA ou INCERTO.
     function aoConcluir(resultado) {
-        setAlvo(null);
         onConcluido?.(resultado);
+    }
+
+    // Ao fechar a janela: o formulário só some quando o cupom foi gravado (OK); no erro ele fica para corrigir.
+    function aoFechar(resultado) {
+        setAlvo(null);
+        if (resultado?.resultado === 'OK') onEncerrado?.(resultado);
     }
 
     const rotulo = 'mb-1 block text-[11px] font-normal text-white/55';
@@ -182,7 +188,7 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
                     acao={alvo.acao}
                     itens={alvo.itens}
                     titulo={alvo.titulo}
-                    onFechar={() => setAlvo(null)}
+                    onFechar={aoFechar}
                     onConcluido={aoConcluir}
                 />
             )}

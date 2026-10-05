@@ -102,9 +102,9 @@ function AndamentoDoLote({ lote }) {
 /**
  * A janela que TODA escrita das Alavancas usa: prévia → confirmar → resultado ou lote.
  *
- * Props: `aberto`, `onFechar`, `conta` (chave da conta), `acao` (nome do RegistroDeAcoes, ex.
+ * Props: `aberto`, `onFechar(resultado)` (a pessoa leu o resultado; `resultado` é o último entregue ao `onConcluido`), `conta` (chave da conta), `acao` (nome do RegistroDeAcoes, ex.
  * 'convite.inscrever'), `itens` (o que o servidor pede para a ação), `titulo` e `onConcluido(resultado)`
- * (a tela relê a lista; `resultado` é a escrita única ou o lote). O botão Confirmar só liga com a
+ * (a tela SÓ relê a lista — nunca desmonta a janela ali; `resultado` é a escrita única ou o lote). O botão Confirmar só liga com a
  * assinatura do servidor e conta liberada.
  */
 export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens, titulo = 'Confirmar alteração', onConcluido }) {
@@ -116,13 +116,21 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
     const [loteId, setLoteId] = useState(null);
     const [tentativa, setTentativa] = useState(0);
     const concluido = useRef(false);
+    // Último resultado entregue ao `onConcluido`; o `onFechar` o recebe para a tela decidir o que fechar.
+    const ultimo = useRef(null);
 
     const lote = useLote(conta, loteId);
 
     function concluir(valor) {
         if (concluido.current) return;
         concluido.current = true;
+        ultimo.current = valor ?? null;
         onConcluido?.(valor);
+    }
+
+    // Fechar é da pessoa, depois de ler o resultado: a tela recebe o resultado e decide o que desmontar.
+    function fechar() {
+        onFechar?.(ultimo.current);
     }
 
     useEffect(() => {
@@ -184,7 +192,7 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
     const encerrado = fase === 'resultado' || (fase === 'lote' && lote.dados?.terminado);
 
     return (
-        <Dialog open={aberto} onOpenChange={(v) => { if (! v && fase !== 'enviando') onFechar?.(); }}>
+        <Dialog open={aberto} onOpenChange={(v) => { if (! v && fase !== 'enviando') fechar(); }}>
             <DialogContent className="max-w-2xl rounded-2xl border-white/[0.08] bg-ecf-card p-6 shadow-none">
                 <DialogTitle className="text-[15px] font-bold text-white">{titulo}</DialogTitle>
                 <DialogDescription className="text-[13px] font-normal text-white/55">
@@ -240,7 +248,7 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
                 )}
 
                 <div className="flex justify-end gap-2">
-                    <BotaoAcao onClick={onFechar} disabled={fase === 'enviando'}>{encerrado ? 'Fechar' : 'Cancelar'}</BotaoAcao>
+                    <BotaoAcao onClick={fechar} disabled={fase === 'enviando'}>{encerrado ? 'Fechar' : 'Cancelar'}</BotaoAcao>
                     {precisaRefazer && (
                         <BotaoAcao onClick={() => setTentativa((n) => n + 1)}>Conferir de novo</BotaoAcao>
                     )}

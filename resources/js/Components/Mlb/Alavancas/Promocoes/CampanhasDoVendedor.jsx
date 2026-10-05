@@ -182,9 +182,15 @@ export default function CampanhasDoVendedor({ conta, liberada, motivo, limites }
     const [alvo, setAlvo] = useState(null);
     const campanhas = (dados?.itens ?? []).filter((c) => TIPOS_DO_VENDEDOR.includes(c.tipo));
 
+    // Só relê a lista; o formulário fecha no `aoFechar`, quando a pessoa já leu o resultado.
     function aoConcluir() {
-        setForm(null);
         recarregar();
+    }
+
+    // Fechar a janela: o formulário só some se a escrita deu certo (OK); no erro ele fica para corrigir.
+    function aoFechar(resultado) {
+        setAlvo(null);
+        if (resultado?.resultado === 'OK') setForm(null);
     }
 
     return (
@@ -278,7 +284,7 @@ export default function CampanhasDoVendedor({ conta, liberada, motivo, limites }
                     acao={alvo.acao}
                     itens={alvo.itens}
                     titulo={alvo.titulo}
-                    onFechar={() => setAlvo(null)}
+                    onFechar={aoFechar}
                     onConcluido={aoConcluir}
                 />
             )}

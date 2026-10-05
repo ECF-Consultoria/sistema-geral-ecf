@@ -23,8 +23,8 @@ export default function AbaCupons({ conta, liberada, motivo, limites }) {
     const [alvo, setAlvo] = useState(null);
     const cupons = dados?.itens ?? [];
 
+    // Só relê a lista; o formulário fecha no `onEncerrado`, depois que a pessoa leu o resultado.
     function aoConcluir() {
-        setForm(null);
         recarregar();
     }
 
@@ -47,6 +47,7 @@ export default function AbaCupons({ conta, liberada, motivo, limites }) {
                     liberada={liberada}
                     motivo={motivo}
                     onConcluido={aoConcluir}
+                    onEncerrado={() => setForm(null)}
                     onCancelar={() => setForm(null)}
                 />
             )}
