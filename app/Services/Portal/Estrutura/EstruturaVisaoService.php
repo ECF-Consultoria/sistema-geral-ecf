@@ -724,6 +724,8 @@ class EstruturaVisaoService
             ...$this->resumo($o),
             'logistica'     => $o['logistica'],
             'observacoes'   => $o['observacoes'],
+            // Selo "do Produtos" na Lista SKUs: oferta ligada a uma variação (Fase 167).
+            'variacao_id'   => $o['variacao_id'] ?? null,
             'unidades'      => $o['unidades'],
             'componentes'   => array_map(fn ($c) => [
                 ...$this->resumo($conjunto->oferta($c['id']) ?? ['id' => $c['id'], 'sku' => '?', 'nome' => null, 'fase' => 'simples']),

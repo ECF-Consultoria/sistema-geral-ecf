@@ -47,7 +47,7 @@ final class EstruturaConjunto
         $ofertas = EstruturaOferta::query()
             ->where('company_id', $empresa->id)
             ->orderBy('id')
-            ->get(['id', 'sku', 'fase', 'nome', 'logistica', 'observacoes']);
+            ->get(['id', 'variacao_id', 'sku', 'fase', 'nome', 'logistica', 'observacoes']);
 
         $componentes = EstruturaOfertaComponente::query()
             ->join('estrutura_ofertas as o', 'o.id', '=', 'estrutura_oferta_componentes.oferta_id')
@@ -88,6 +88,7 @@ final class EstruturaConjunto
                 'nome'        => $o->nome,
                 'logistica'   => $o->logistica,
                 'observacoes' => $o->observacoes,
+                'variacao_id' => $o->variacao_id !== null ? (int) $o->variacao_id : null,
                 'componentes' => $comps,
                 'unidades'    => ReguaEstrutura::unidades($o->fase, $comps),
                 'anuncios'    => $ans,
