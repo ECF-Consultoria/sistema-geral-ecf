@@ -37,7 +37,9 @@ test('ModalConfirmacao — mostra estimativa, sem frete e depende do carrinho', 
     assert.match(modal, /\(estimativa\)/);
     assert.match(modal, /\(sem frete\)/);
     assert.match(modal, /depende do carrinho/);
-    assert.match(modal, /analise_limitada/);
+    // A análise limitada chega em resumo.avisos com o teto real do servidor; o modal não repete com número fixo.
+    assert.match(modal, /\(resumo\.avisos \?\? \[\]\)\.map/);
+    assert.doesNotMatch(modal, /Análise dos \d+ primeiros/);
     assert.match(modal, /Parte dos números não foi calculada agora/);
 });
 

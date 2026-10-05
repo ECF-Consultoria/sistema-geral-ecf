@@ -204,9 +204,6 @@ export default function ModalConfirmacao({ aberto, onFechar, conta, acao, itens,
                         {dados.parcial && (
                             <p className="text-[13px] font-normal text-white/55">Parte dos números não foi calculada agora; a escrita não depende deles.</p>
                         )}
-                        {dados.analise_limitada && (
-                            <p className="text-[13px] font-normal text-white/55">Análise dos 20 primeiros produtos; a escrita vale para todos.</p>
-                        )}
                     </div>
                 )}
 
