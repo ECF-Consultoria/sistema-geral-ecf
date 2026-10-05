@@ -1,0 +1,48 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "GET /seller-promotions/promotions/{id}/items?promotion_type=DEAL",
+    "lida_em": "2026-10-04",
+    "nota": "O cursor vem em searchAfter (camelCase) nesta fixture; o código aceita search_after também. Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "results": [
+            {
+                "id": "MLB1000000001",
+                "status": "candidate",
+                "price": 100,
+                "original_price": 120,
+                "min_discounted_price": 70,
+                "max_discounted_price": 95,
+                "suggested_discounted_price": 85
+            },
+            {
+                "id": "MLB1000000007",
+                "status": "pending",
+                "price": 100,
+                "original_price": 100,
+                "new_price": 88,
+                "min_discounted_price": 70,
+                "max_discounted_price": 95,
+                "suggested_discounted_price": 85,
+                "start_date": "2026-10-05T00:00:00",
+                "end_date": "2026-10-31T23:59:59"
+            },
+            {
+                "id": "MLB1000000003",
+                "status": "started",
+                "price": 90,
+                "original_price": 100,
+                "min_discounted_price": 60,
+                "max_discounted_price": 95,
+                "suggested_discounted_price": 85,
+                "start_date": "2026-10-01T00:00:00",
+                "end_date": "2026-10-31T23:59:59"
+            }
+        ],
+        "paging": {
+            "offset": 0,
+            "limit": 50,
+            "total": 3,
+            "searchAfter": "cursor-fixture-001"
+        }
+    }
+}

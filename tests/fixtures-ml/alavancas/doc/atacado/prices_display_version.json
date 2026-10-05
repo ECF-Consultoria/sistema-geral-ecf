@@ -1,0 +1,26 @@
+{
+    "origem": "doc-oficial",
+    "url": "https://developers.mercadolivre.com.br/pt_br/pxq-porcentagem-b2b",
+    "pagina": "Identificar versão de preços: GET /items/{id}/prices?display_version=true",
+    "lida_em": "2026-10-04",
+    "status": 200,
+    "resposta": {
+        "id": "MLB4918386917",
+        "prices": [
+            {
+                "id": "1",
+                "type": "standard",
+                "amount": 100,
+                "regular_amount": null,
+                "currency_id": "BRL",
+                "last_updated": "2026-07-20T18:54:46Z",
+                "conditions": {
+                    "context_restrictions": [],
+                    "start_time": null,
+                    "end_time": null
+                }
+            }
+        ],
+        "version": 9
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "POST /seller-promotions/items/{item_id} (https://developers.mercadolivre.com.br/pt_br/gerenciar-ofertas)",
+    "lida_em": "2026-10-04",
+    "nota": "Resposta de sucesso da inscricao/alteracao: price e original_price do item na oferta. A pagina gerenciar-ofertas foi relida por curl em 04/10/2026, mas o exemplo de resposta do POST nao pode ser conferido ali (a pagina so mostra o DELETE e a lista de itens); por isso fica como resumo. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "price": 90,
+        "original_price": 100
+    }
+}

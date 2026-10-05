@@ -1,0 +1,38 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "GET /seller-promotions/promotions/{id}/items?promotion_type=SMART",
+    "lida_em": "2026-10-04",
+    "nota": "O segundo item vem SEM offer_id de propósito (só leitura, orientação 3). Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "results": [
+            {
+                "id": "MLB1000000001",
+                "status": "candidate",
+                "price": 100,
+                "original_price": 100,
+                "offer_id": "CANDIDATE-MLB1000000001-123",
+                "meli_percentage": 3,
+                "seller_percentage": 7,
+                "min_discounted_price": 85,
+                "max_discounted_price": 90,
+                "suggested_discounted_price": 90,
+                "boosted_offer": true,
+                "discount_meli_boost_amount": 2.5,
+                "total_price_for_boosted_offer": 87.5
+            },
+            {
+                "id": "MLB1000000007",
+                "status": "candidate",
+                "price": 50,
+                "original_price": 50,
+                "meli_percentage": 3,
+                "seller_percentage": 7
+            }
+        ],
+        "paging": {
+            "offset": 0,
+            "limit": 50,
+            "total": 2
+        }
+    }
+}

@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link2, PencilLine, Plus, Search } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
@@ -174,6 +175,10 @@ export default function Produtos({
                             Produto
                         </button>
                     </div>
+                </div>
+
+                <div className="mb-4">
+                    <AreaTabs area="publicar" conta={empresa.chave} />
                 </div>
 
                 <div className="mb-6">

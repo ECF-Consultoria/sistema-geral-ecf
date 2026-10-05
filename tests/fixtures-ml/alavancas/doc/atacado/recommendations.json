@@ -1,0 +1,83 @@
+{
+    "origem": "doc-oficial",
+    "url": "https://developers.mercadolivre.com.br/pt_br/pxq-porcentagem-b2b",
+    "pagina": "Recomendações: POST /prices-per-quantity/v1/recommendations",
+    "lida_em": "2026-10-04",
+    "status": 200,
+    "nota": "O terceiro item tem is_incoherent_quantity=true por ajuste do teste (a doc traz false nos tres).",
+    "resposta": {
+        "site_id": "MLB",
+        "item_id": "MLB4958146279",
+        "seller_id": 3426677654,
+        "price": {
+            "sale_price_amount": 185,
+            "standard_amount": 185,
+            "currency": "BRL"
+        },
+        "recommendations": [
+            {
+                "is_incoherent_quantity": false,
+                "quantity": 2,
+                "amount": 176.97,
+                "discount": {
+                    "amount": 8.03,
+                    "percentage": 4.340541
+                },
+                "profit": {
+                    "amount": 330.29,
+                    "amount_by_unit": 165.15
+                },
+                "shipping": {
+                    "original_cost": 39.7,
+                    "cost": 23.65,
+                    "discount": {
+                        "amount": 8.03,
+                        "percentage": 40.428212
+                    }
+                }
+            },
+            {
+                "is_incoherent_quantity": false,
+                "quantity": 5,
+                "amount": 170.08,
+                "discount": {
+                    "amount": 14.92,
+                    "percentage": 8.064865
+                },
+                "profit": {
+                    "amount": 330.29,
+                    "amount_by_unit": 165.15
+                },
+                "shipping": {
+                    "original_cost": 39.7,
+                    "cost": 23.65,
+                    "discount": {
+                        "amount": 8.03,
+                        "percentage": 40.428212
+                    }
+                }
+            },
+            {
+                "is_incoherent_quantity": true,
+                "quantity": 10,
+                "amount": 167.98,
+                "discount": {
+                    "amount": 17.02,
+                    "percentage": 9.2
+                },
+                "profit": {
+                    "amount": 330.29,
+                    "amount_by_unit": 165.15
+                },
+                "shipping": {
+                    "original_cost": 39.7,
+                    "cost": 23.65,
+                    "discount": {
+                        "amount": 8.03,
+                        "percentage": 40.428212
+                    }
+                }
+            }
+        ]
+    }
+}

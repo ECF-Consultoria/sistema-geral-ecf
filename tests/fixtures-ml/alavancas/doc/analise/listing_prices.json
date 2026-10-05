@@ -1,0 +1,30 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "GET /sites/{SITE}/listing_prices (exemplo da página comissao-por-vender; site MLA no exemplo, o formato é o mesmo no MLB)",
+    "url": "https://developers.mercadolivre.com.br/pt_br/comissao-por-vender",
+    "lida_em": "2026-10-04",
+    "nota": "Lida por curl na página pública da documentação (nenhuma chamada à API). A doc mostra a resposta como lista; na consulta com listing_type_id a API devolve um objeto. O serviço aceita os dois formatos. Valores do exemplo da doc, sem dado de conta.",
+    "resposta": [
+        {
+            "currency_id": "ARS",
+            "listing_type_id": "gold_pro",
+            "listing_type_name": "Premium",
+            "listing_exposure": "highest",
+            "listing_fee_amount": 0,
+            "listing_fee_details": {
+                "fixed_fee": 0,
+                "gross_amount": 0
+            },
+            "requires_picture": true,
+            "sale_fee_amount": 2000,
+            "sale_fee_details": {
+                "financing_add_on_fee": 23,
+                "fixed_fee": 200,
+                "gross_amount": 2000,
+                "meli_percentage_fee": 13,
+                "percentage_fee": 36
+            },
+            "stop_time": "2043-06-01T00:00:00.000-04:00"
+        }
+    ]
+}

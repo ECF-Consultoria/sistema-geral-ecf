@@ -1,0 +1,10 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "GET /seller-promotions/exclusion-list/seller",
+    "url": "https://developers.mercadolivre.com.br/pt_br/gerenciar-ofertas",
+    "lida_em": "2026-10-04",
+    "nota": "Formato da doc: excluded = \"excluded\" (conta excluida) ou \"not_excluded\". Valor \"excluded\" escolhido para exercitar o caso verdadeiro. Corrige a suposicao exclusion_status do 166-04.",
+    "resposta": {
+        "excluded": "excluded"
+    }
+}

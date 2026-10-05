@@ -21,6 +21,8 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_02_100000_create_pub_produtos_table.php',
         '2026_10_02_100100_add_produto_id_to_pub_rascunhos.php',
         '2026_10_02_200000_pub_produtos_ancoras_sem_cascata.php',
+        // Fase 166: não consulta o driver; a varredura garante que continue assim.
+        '2026_10_05_100000_create_pub_alavanca_escritas_table.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */

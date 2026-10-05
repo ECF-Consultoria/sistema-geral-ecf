@@ -1,0 +1,23 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "POST /seller-promotions/promotions (cupom do vendedor)",
+    "url": "https://developers.mercadolivre.com.br/pt_br/cupons-do-vendedor",
+    "lida_em": "2026-10-04",
+    "nota": "Resposta de criacao copiada da doc (atualizada em 28/08/2025), FIXED_AMOUNT com codigo. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "id": "C-MLB1234",
+        "type": "SELLER_COUPON_CAMPAIGN",
+        "sub_type": "FIXED_AMOUNT",
+        "fixed_amount": 200,
+        "min_purchase_amount": 1000,
+        "status": "pending",
+        "start_date": "2023-10-14T00:00:00Z",
+        "finish_date": "2023-11-01T02:59:59Z",
+        "name": "test_coupon",
+        "coupon_code": "NICKNMY_CODE",
+        "redeems_per_user": 1,
+        "budget": 10000,
+        "remaining_budget": 10000,
+        "used_coupons": 0
+    }
+}

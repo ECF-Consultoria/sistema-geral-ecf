@@ -1,0 +1,12 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "https://developers.mercadolivre.com.br/pt_br/product-ads-para-catalogo-e-user-products-leitura (GET /advertising/advertisers?product_id=PADS, Api-Version: 1)",
+    "lida_em": "2026-10-04",
+    "nota": "Exemplo da doc, com ids sintéticos; nenhum dado de conta de cliente.",
+    "resposta": {
+        "advertisers": [
+            {"advertiser_id": 111, "site_id": "MLM", "advertiser_name": "Advertiser BBB", "account_name": "MLM - XYZ"},
+            {"advertiser_id": 1000001, "site_id": "MLB", "advertiser_name": "Advertiser AAA", "account_name": "MLB - XZY"}
+        ]
+    }
+}

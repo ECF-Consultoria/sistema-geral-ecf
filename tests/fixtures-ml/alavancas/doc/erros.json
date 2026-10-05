@@ -1,0 +1,16 @@
+{
+    "origem": "doc-oficial-resumo",
+    "lida_em": "2026-10-04",
+    "casos": [
+        {"pagina": "promocoes-descontos", "status": 400, "codigo": "ERROR_CREDIBILITY_DISCOUNTED_PRICE", "corpo": {"message": "Discounted price is not credible", "error": "bad_request", "status": 400, "cause": [{"error_code": "ERROR_CREDIBILITY_DISCOUNTED_PRICE", "error_message": "Discounted price is not credible"}]}},
+        {"pagina": "promocoes-descontos", "status": 400, "codigo": "buyer_discount_not_in_range", "corpo": {"message": "Invalid discount", "error": "bad_request", "status": 400, "cause": [{"error_code": "buyer_discount_not_in_range", "error_message": "buyer discount not in range"}]}},
+        {"pagina": "preco-por-quantidade", "status": 409, "codigo": "item.version", "corpo": {"error": "The version provided is not the current one", "code": "item.version", "status": 409}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "Version must be provided", "corpo": {"error": "Version must be provided", "status": 400}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "5599", "corpo": {"code": "prices.validator.validation.failed", "cause_id": 5599, "error": "Amount above recommended"}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "5598", "corpo": {"code": "prices.validator.validation.failed", "cause_id": 5598, "error": "Quantity is incoherent"}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "5512", "corpo": {"code": "prices.validator.validation.failed", "cause_id": 5512, "error": "invalid coherence order"}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "5531", "corpo": {"code": "prices.validator.validation.failed", "cause_id": 5531, "error": "Category is not enabled for B2B PxQ pricing"}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "prices.validator.validation.failed", "mensagem_contem": "no máximo 5 faixas", "corpo": {"code": "prices.validator.validation.failed", "error": "Maximum 5 price_per_quantity entries are allowed"}},
+        {"pagina": "preco-por-quantidade", "status": 400, "codigo": "prices.validator.validation.failed", "mensagem_contem": "maior que 0 e menor que 100", "corpo": {"code": "prices.validator.validation.failed", "error": "Percentage must be greater than 0 and less than 100"}}
+    ]
+}

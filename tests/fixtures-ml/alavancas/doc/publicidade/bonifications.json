@@ -1,0 +1,12 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "https://developers.mercadolivre.com.br/pt_br/bonificacoes-para-product-ads (GET /advertising/advertisers/bonifications; só Authorization, sem parâmetro nem cabeçalho de versão)",
+    "lida_em": "2026-10-04",
+    "nota": "Os dois exemplos da doc (nível campanha e nível conta) numa lista só; a doc nomeia a lista 'bonification'.",
+    "resposta": {
+        "bonification": [
+            {"status": "ACTIVE", "creation_date": "2025-09-30T20:00:14Z", "end_date": "2025-10-10T16:00:04Z", "campaign_name": "Liquida 10.10", "currency_id": "BRL", "level": "Campaign", "amount": 10000, "balance": 7500, "days_remaining": 1, "campaign_id": 354548091, "campaign_status": "deleted", "benefit_name": "smart_benefit"},
+            {"status": "ACTIVE", "creation_date": "2025-10-30T04:00:00Z", "end_date": "2025-12-31T04:00:00Z", "currency_id": "BRL", "level": "Account", "amount": 10, "balance": 10, "days_remaining": 54, "campaign_id": 0, "benefit_name": "manual"}
+        ]
+    }
+}

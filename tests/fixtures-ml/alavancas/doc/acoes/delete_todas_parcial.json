@@ -1,0 +1,20 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "DELETE /seller-promotions/items/{item_id} (https://developers.mercadolivre.com.br/pt_br/gerenciar-ofertas)",
+    "lida_em": "2026-10-04",
+    "nota": "Formato de successful_ids[] ({offer_id, error}) e errors[] conferido na doc por curl em 04/10/2026. O caso PARCIAL (errors preenchido) e montado por nos a partir desse formato: a doc mostra so o caso sem erros. Ids sinteticos.",
+    "resposta": {
+        "successful_ids": [
+            {
+                "offer_id": "OFFER-MLB1000000001-10000081416",
+                "error": null
+            }
+        ],
+        "errors": [
+            {
+                "offer_id": "OFFER-MLB1000000001-10000081567",
+                "error": "423_ENTITY_LOCKED"
+            }
+        ]
+    }
+}

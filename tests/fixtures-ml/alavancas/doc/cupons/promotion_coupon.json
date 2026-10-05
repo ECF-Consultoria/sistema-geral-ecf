@@ -1,0 +1,23 @@
+{
+    "origem": "doc-oficial",
+    "pagina": "https://developers.mercadolivre.com.br/pt_br/cupons-do-vendedor (GET /seller-promotions/promotions/{id}?promotion_type=SELLER_COUPON_CAMPAIGN)",
+    "lida_em": "2026-10-04",
+    "nota": "Exemplo da doc (FIXED_PERCENTAGE com código), com status started e saldo consumido para os testes.",
+    "resposta": {
+        "id": "C-MLB1234",
+        "type": "SELLER_COUPON_CAMPAIGN",
+        "sub_type": "FIXED_PERCENTAGE",
+        "fixed_percentage": 10,
+        "min_purchase_amount": 1000,
+        "max_purchase_amount": 200,
+        "status": "started",
+        "start_date": "2026-10-01T00:00:00Z",
+        "finish_date": "2026-11-01T02:59:59Z",
+        "name": "test_coupon",
+        "coupon_code": "NICKNMY_CODE",
+        "redeems_per_user": 1,
+        "budget": 10000,
+        "remaining_budget": 8200,
+        "used_coupons": 9
+    }
+}

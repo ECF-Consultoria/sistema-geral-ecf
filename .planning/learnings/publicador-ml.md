@@ -333,3 +333,70 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
 - **"Envio próprio" (custom) não leva a tabela de custos**: o payload manda só `mode`, `free_shipping`,
   `local_pick_up` e `logistic_type` — sem `shipping.costs`. A explicação na tela diz isso; preencher a
   tabela é trabalho novo, se a equipe pedir.
+
+## 12. Alavancas no Publicador (Fase 166, 05/10/2026)
+
+Promoções, cupons, publicidade (só leitura) e atacado % B2B na tela da empresa, `Mlb/Publicador/Alavancas`. O que
+não se deduz do código:
+
+**Travas e escrita**
+- Duas travas INDEPENDENTES. `publicador.alavancas.contas_liberadas` NÃO cai na lista da publicação (D-03): liberar uma
+  não libera a outra, e a tela mostra "Publicação ainda não liberada" ao lado de Alavancas liberadas sem ser defeito.
+  O default 459 está no código; **conferir o `.env` de produção antes do deploy** (`PUBLICADOR_ALAVANCAS_LIBERADAS_COMPANIES=459`
+  e nada mais).
+- TODA escrita passa pelo `EscritorAlavancas` (um teste de fonte varre a pasta e proíbe `Http::` e método não-GET fora
+  dele). A consulta de recomendações do PxQ é POST na conta do cliente: vai por `consultaPorPost`, sob a mesma trava
+  (mesmo critério do D26 da 164 para o `/items/validate`).
+- A linha do histórico nasce PENDENTE com `enviado_em` gravado ANTES do HTTP. Reentrega do job com `enviado_em` preenchido
+  vira INCERTO e NÃO reenvia; 5xx e falha de rede também são INCERTO, nunca se repete. 423 repete até 3 envios. O histórico
+  por empresa filtra pelas âncoras do resolver (`daEmpresa`): é o que impede IDOR por id de linha ou de lote.
+- Prévia assinada (HMAC) + uso único (`Cache::add`, 10 min): a trava é avaliada ANTES da assinatura; conta não liberada
+  devolve `liberada:false`, `assinatura:null` e na tela os botões de escrita nem ligam (não dá para abrir a janela).
+
+**Regras do ML que a tela segue**
+- O `offer_id` vem SEMPRE da leitura do servidor, nunca do navegador. SMART e PRICE_MATCHING sem `CANDIDATE-` ficam só
+  leitura ("aceite no Mercado Livre"); DOD e LIGHTNING ativos não saem; MARKETPLACE e VOLUME não mudam preço (tirar,
+  mudar o preço do anúncio fora, reinscrever).
+- Cupom sem produtos não vale para nenhuma venda (achado 3 do RESEARCH); orçamento do cupom só sobe; o código enviado
+  tem no máximo 10 caracteres (a doc corrigiu o 15 que o plano supunha).
+- **Armadilha 1: aumentar o preço de um anúncio derruba o PRICE_DISCOUNT e tira o item de cofinanciada/VOLUME.** Hoje nenhum
+  código do projeto grava preço em anúncio existente; quem um dia gravar preço pelo Publicador precisa consultar
+  `GET /seller-promotions/items/{id}` antes.
+- Atacado: só % B2B, corpo aninhado (`conditions.context_restrictions`, `min_purchase_unit`, `eligible: true`); a `X-Version`
+  é relida no preparo, imediatamente antes do POST; 409 nunca se repete; `remove-absolute-pxq` só com confirmação. O PxQ
+  absoluto morre em 27/10/2026. A faixa mantida vai só com `{"id": "N"}`.
+- Publicidade: `ads/search` foi removido em 30/05/2026 (Ad Groups no lugar) e os legados de Product Ads dão 404 desde
+  27/05/2026. `MercadoLivreAdsService::listAds` (Sugadores) usa um deles: achado lateral, fora da fase, ainda por corrigir.
+- "Quanto a loja recebe" em cofinanciada e boost é ESTIMATIVA (A3) até comparar com o Seller Center; `MlbEmpresa` sem
+  `Company` nunca tem margem (o custo mora na Precificação do Portal).
+
+**Teste e conferência**
+- `Http::fake` das Alavancas casa por MÉTODO dentro de UMA closure (a mesma URL é GET, POST e DELETE); fake acumulado e o
+  1º stub vence (§5). As fixtures do ML têm prazos ABSOLUTOS de out/2026: o relógio dos testes é parado em 2026-10-04 12:00
+  (America/Sao_Paulo) por `setUpCenarioAlavancas()` da trait `CenarioAlavancas` (`470399a9`) — na virada de 04 para
+  05/10 o `PanoramaTest` quebrou sem mudança de código. Teste novo com data usa a trait ou para o relógio.
+- O aviso de análise limitada vem do servidor em `resumo.avisos` com o teto real (`itens_analise_previa`); a tela não
+  repete a frase com número fixo (`d0a3269e`).
+- Conferência visual sem custo e sem ML real: `PUBLICADOR_ML_API_BASE=http://127.0.0.1:8167` aponta o cliente para um
+  servidor de mentira (`php -S` com roteador que responde pelas fixtures), e só vale fora de produção (o
+  `ClienteMlPublicador` força o host oficial com `app()->isProduction()`). Mais o recheio do §7: SQLite em arquivo,
+  `CACHE_STORE=file`, `Cache::put('ml_app_token_coleta', ...)` para o token de aplicação e `ASSET_URL` vazio. A tarifa da
+  fixture `listing_prices` é de outro país e dá "recebe" negativo: o servidor de mentira calcula a tarifa pelo preço.
+  `artisan db:table` quebra no PHP local sem `intl`: use `information_schema`.
+- Imagem de produto quebrada nas capturas é esperada (as fixtures apontam para o CDN do ML e o Chrome headless não sai).
+- Com `CACHE_STORE=file`, a tarifa e o frete lidos do servidor de mentira ficam no cache em arquivo do WORKTREE
+  (`storage/framework/cache`), e não somem com o SQLite novo. Trocou a resposta do servidor de mentira? Rode
+  `php artisan cache:clear` com as MESMAS variáveis de ambiente antes de capturar — senão a tela mostra o número velho.
+  Na conferência de 05/10 isso apareceu como "recebe −R$ 1.900" num produto de R$ 100 e parecia bug de cálculo.
+- A conferência de 05/10 achou 4 defeitos que os testes de fonte não pegavam (janela com "recebe —" por ler o campo
+  errado do contrato da prévia; "100 → 85 (29%)" sem dizer que o % é sobre o `original_price`; conta não liberada sem
+  conseguir analisar convites; motivo repetido na faixa). Gate de fonte não substitui olhar a tela com dados.
+
+**Suposições do RESEARCH, estado em 05/10/2026** (o que os SUMMARY conferiram; o resto fica para a prova real na #459)
+- Conferidas na doc por curl: forma do POST/DELETE do desconto individual, `exclusion-list` (a leitura devolve
+  `{"excluded": ...}` e o POST usa `exclusion_status`), `version` na RAIZ do `GET /items/{id}/prices?display_version=true`,
+  bonificações sem cabeçalho de versão, subtipos do leve mais, pague menos (BNGM/BNSP/SPONTH).
+- NÃO conferidas (só `Http::fake`): A1 (as faixas e a `version` virem juntas no mesmo GET com `show-all-prices`; senão a
+  tela mostra ALAV-B2B-09), a forma do PxQ absoluto em `prices[]` (a detecção é por `min_purchase_unit` > 1 sem
+  `percentage`), A3 (estimativa de cofinanciada contra o Seller Center), A9 (convite "aberto") e a Questão 1 (forma de
+  `benefits` nos candidatos). A permissão "Promoções" do app no DevCenter também só se prova em produção (Questão 5).
