@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { lerTsvDoExcel, proximaEditavel } from '@/lib/gradeTeclado';
 import {
     ArrowUp, ArrowDown, ArrowUpDown, Search, X, Download, Upload,
     ChevronRight, ChevronDown, Check, AlertCircle, Edit3, Layers,
@@ -202,6 +203,17 @@ function RowPanel({ row, columns, rowNum, onSave, onClose }) {
  *   validate?: { required?, min?, max?, pattern?, message? },
  *   conditionalFormat?: (value, row) => string | null,   extra className
  * }>
+ *
+ * Props opcionais (Fase 167 - tela de Produtos). TODAS aditivas: ausentes, a grade
+ * se comporta exatamente como antes (o Onboarding publico do cliente depende disso).
+ *   growOnPaste   colar do Excel CRESCE a grade (evento DOM paste). Antes o excedente era
+ *                 descartado em silencio: colar 70 linhas gravava 10.
+ *   onPasteBlock  (matriz, {row, col}) => true  - a pagina cuida do colar (ex.: cabecalho do modelo).
+ *   maxPasteRows  limite de linhas por colagem; excedido chama onPasteLimit(qtd) e nao cola.
+ *   makeRow       () => linha nova da pagina (default: linha vazia da grade).
+ *   rowKey        chave estavel da linha (usada no key do React e no `selecionar`).
+ *   onRowsCommit  (prev, next) => void - avisa a pagina que as linhas mudaram (para salvar so o que mudou).
+ *   tabWrap       Tab anda so pelas colunas editaveis, passa para a linha de baixo e cria linha na ultima.
  */
 export function SpreadsheetGrid({
     columns, rows, onChange,
@@ -209,10 +221,22 @@ export function SpreadsheetGrid({
     headerGroups = null,
     exportFilename = 'planilha',
     showImportExport = true,
+    growOnPaste = false,
+    onPasteBlock = null,
+    maxPasteRows = null,
+    onPasteLimit = null,
+    makeRow = null,
+    rowKey = null,
+    onRowsCommit = null,
+    tabWrap = false,
 }) {
     const C = columns.length;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const mkEmpty = () => Object.fromEntries(columns.map(c => [c.id, c.type === 'checkbox' ? false : '']));
+    // Linha de DADO nova: a pagina pode ter o seu molde (ids, defaults). O preenchimento
+    // visual ate minRows segue com mkEmpty - aquilo e so espaco, nao e linha.
+    const novaLinha = () => (makeRow ? makeRow() : mkEmpty());
+    const ehEditavel = col => !!col && col.type !== 'readonly' && !col.compute;
 
     // ── Column widths (resize) ────────────────────────────────────────────────
     const [colWidths, setColWidths] = useState(() => columns.map(c => c.width ?? 100));
@@ -330,7 +354,9 @@ export function SpreadsheetGrid({
     }, [rows, sortCol, sortDir, filter, groupBy, collapsed, minRows]);
 
     const R = displayed.length;
-    ctx.current = { displayed, origIdx, rows, columns, onChange, R, C, fillEnd, selA };
+    // Visao filtrada/ordenada/agrupada: linha nova nao tem lugar visivel - vai para o fim de `rows`.
+    const mutado = !!(filter || sortCol !== null || groupBy);
+    ctx.current = { displayed, origIdx, rows, columns, onChange, R, C, fillEnd, selA, novaLinha, onRowsCommit, mutado, onPasteBlock, maxPasteRows, onPasteLimit };
 
     useEffect(() => { setSelA({ r: 0, c: 0 }); setSelB({ r: 0, c: 0 }); setEditing(null); }, [sortCol, sortDir, filter, groupBy]);
 
@@ -365,30 +391,90 @@ export function SpreadsheetGrid({
         return fmtVal(col, v);
     }
 
-    function applyMulti(changes, skipHistory = false) {
-        const { origIdx: oIdx, rows: orig, columns: cols, onChange: onCh } = ctx.current;
+    // Ponto UNICO de emissao de linhas: alem de entregar a pagina, avisa o que mudou
+    // (prev -> next) para ela gravar so as linhas alteradas.
+    function emitir(next) {
+        const prev = ctx.current.rows;
+        ctx.current.onChange(next);
+        ctx.current.onRowsCommit?.(prev, next);
+    }
+
+    // `crescerAte`: garante que exista a linha de indice `crescerAte` (Tab/Enter na ultima linha).
+    // Em cada mudanca, `oi` explicito sobrepoe o mapeamento da visao (usado ao colar alem do exibido).
+    function applyMulti(changes, skipHistory = false, crescerAte = null) {
+        const { origIdx: oIdx, rows: orig, columns: cols, novaLinha } = ctx.current;
         let newRows = [...orig];
-        for (const { r, c, value } of changes) {
+        for (const { r, c, value, oi: oiExplicito } of changes) {
             if (cols[c]?.type === 'readonly') continue;
-            const oi = r < oIdx.length ? oIdx[r] : r;
+            const oi = oiExplicito !== undefined ? oiExplicito : (r < oIdx.length ? oIdx[r] : r);
             if (oi === -2) continue; // group header
-            while (newRows.length <= oi) newRows.push(mkEmpty());
+            while (newRows.length <= oi) newRows.push(novaLinha());
             newRows[oi] = { ...newRows[oi], [cols[c].id]: value };
         }
+        if (crescerAte !== null) while (newRows.length <= crescerAte) newRows.push(novaLinha());
         if (!skipHistory) pushHistory(newRows);
-        onCh(newRows);
+        emitir(newRows);
+    }
+
+    // Acrescenta linhas ate existir o indice `ate` (sem alterar celula nenhuma).
+    function criarLinhaAte(ate) {
+        const n = [...ctx.current.rows];
+        while (n.length <= ate) n.push(ctx.current.novaLinha());
+        pushHistory(n);
+        emitir(n);
     }
 
     function undo() {
         if (historyIdx.current <= 0) return;
         historyIdx.current--;
-        ctx.current.onChange(JSON.parse(historyRef.current[historyIdx.current]));
+        emitir(JSON.parse(historyRef.current[historyIdx.current]));
     }
     function redo() {
         if (historyIdx.current >= historyRef.current.length - 1) return;
         historyIdx.current++;
-        ctx.current.onChange(JSON.parse(historyRef.current[historyIdx.current]));
+        emitir(JSON.parse(historyRef.current[historyIdx.current]));
     }
+
+    // Colar do Excel (growOnPaste): posicional a partir da celula ativa, SEM o corte
+    // pelo tamanho da grade - o applyMulti cresce com novaLinha(). Colunas calculadas/readonly
+    // sao ignoradas. Chamada pelo listener de `paste`, que vive num effect de montagem unica:
+    // por isso le tudo de ctx.current (closure velha de props seria um bug silencioso).
+    function colarMatriz(matriz) {
+        const { selA: sa, columns: cols, displayed: disp, rows: orig, mutado: visaoMutada,
+                onPasteBlock: bloquear, maxPasteRows: maxL, onPasteLimit: aoLimite, C: nCols } = ctx.current;
+        if (!matriz.length) return;
+        if (bloquear?.(matriz, { row: sa.r, col: sa.c }) === true) return;
+        if (maxL && matriz.length > maxL) { aoLimite?.(matriz.length); return; }
+        const changes = [];
+        matriz.forEach((linha, ri) => {
+            const tr = sa.r + ri;
+            if (disp[tr]?.__groupHeader) return;
+            linha.forEach((val, ci) => {
+                const tc = sa.c + ci;
+                if (tc >= nCols || !ehEditavel(cols[tc])) return;
+                const ch = { r: tr, c: tc, value: val };
+                // Com filtro/ordenacao, o que passa do exibido vai para o FIM de rows.
+                if (visaoMutada && tr >= disp.length) ch.oi = orig.length + (tr - disp.length);
+                changes.push(ch);
+            });
+        });
+        if (changes.length) applyMulti(changes);
+    }
+
+    useEffect(() => {
+        if (!growOnPaste) return undefined;
+        function aoColar(e) {
+            // Edicao aberta (input da celula) ou foco fora da grade: o navegador cuida sozinho.
+            if (editingStateRef.current) return;
+            if (!gridRef.current || !gridRef.current.contains(document.activeElement)) return;
+            const texto = e.clipboardData ? e.clipboardData.getData('text') : '';
+            if (!texto) return;
+            e.preventDefault();
+            colarMatriz(lerTsvDoExcel(texto));
+        }
+        document.addEventListener('paste', aoColar);
+        return () => document.removeEventListener('paste', aoColar);
+    }, [growOnPaste]);
 
     // ── Validation ───────────────────────────────────────────────────────────
     function validateCell(r, c, value) {
@@ -429,9 +515,19 @@ export function SpreadsheetGrid({
         editingStateRef.current = null; // limpa imediatamente — bloqueia re-entrada (ex: onBlur após Enter)
         const err = validateCell(r, c, editVal);
         setErrors(p => { const n = { ...p }; if (err) n[`${r}_${c}`] = err; else delete n[`${r}_${c}`]; return n; });
-        if (columns[c].type !== 'select') applyMulti([{ r, c, value: editVal }]);
+        let nr = clamp(r + dr, 0, R - 1), nc = clamp(c + dc, 0, C - 1);
+        let cresce = false;
+        // tabWrap: Tab corre so pelas editaveis e, na ultima celula da ultima linha, cria a linha.
+        if (tabWrap && !ctx.current.mutado) {
+            if (dr === 0 && dc !== 0) {
+                const res = proximaEditavel(columns, r, c, dc > 0 ? 1 : -1, R);
+                if (res.criarLinha) { cresce = true; nr = R; nc = Math.max(0, columns.findIndex(ehEditavel)); }
+                else { nr = res.r; nc = res.c; }
+            } else if (dr === 1 && r === R - 1) { cresce = true; nr = R; nc = c; }
+        }
+        if (columns[c].type !== 'select') applyMulti([{ r, c, value: editVal }], false, cresce ? R : null);
+        else if (cresce) criarLinhaAte(R);
         setEditing(null);
-        const nr = clamp(r + dr, 0, R - 1), nc = clamp(c + dc, 0, C - 1);
         setSelA({ r: nr, c: nc }); setSelB({ r: nr, c: nc });
         requestAnimationFrame(() => gridRef.current?.focus());
     }
@@ -522,7 +618,7 @@ export function SpreadsheetGrid({
                 }
                 cells.push(cur.trim()); return cells;
             };
-            const { columns: cols, onChange: onCh } = ctx.current;
+            const { columns: cols } = ctx.current;
             const headers = parseRow(lines[0]).map(h => h.toLowerCase());
             const colMap = cols.map(col => headers.findIndex(h => h === col.label.toLowerCase() || h === col.id.toLowerCase()));
             const hasMatch = colMap.some(i => i >= 0);
@@ -538,7 +634,7 @@ export function SpreadsheetGrid({
                 return row;
             });
             pushHistory(newRows);
-            onCh(newRows);
+            emitir(newRows);
         };
         reader.readAsText(file, 'UTF-8');
         e.target.value = '';
@@ -563,6 +659,9 @@ export function SpreadsheetGrid({
         }
 
         if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+            // growOnPaste: sai SEM preventDefault para o navegador disparar o evento `paste`
+            // (o listener le o clipboardData e cresce a grade). Sem a prop, caminho antigo.
+            if (growOnPaste) return;
             navigator.clipboard.readText().then(text => {
                 const pRows = text.split(/\r?\n/).filter(Boolean).map(row => row.split('\t'));
                 const changes = [];
@@ -590,10 +689,27 @@ export function SpreadsheetGrid({
             case 'ArrowDown':  { const nr = nextR(r,  1); setSelA(p => ({ ...p, r: nr })); setSelB(e.shiftKey ? (p => ({ ...p, r: nr })) : (_ => ({ r: nr, c }))); e.preventDefault(); break; }
             case 'ArrowLeft':  { const nc = clamp(c-1,0,C-1); setSelA(p => ({ ...p, c: nc })); setSelB(e.shiftKey ? (p => ({ ...p, c: nc })) : (_ => ({ r, c: nc }))); e.preventDefault(); break; }
             case 'ArrowRight': { const nc = clamp(c+1,0,C-1); setSelA(p => ({ ...p, c: nc })); setSelB(e.shiftKey ? (p => ({ ...p, c: nc })) : (_ => ({ r, c: nc }))); e.preventDefault(); break; }
-            case 'Tab':   { const nc = clamp(c+(e.shiftKey?-1:1),0,C-1); setSelA({ r, c: nc }); setSelB({ r, c: nc }); e.preventDefault(); break; }
+            case 'Tab': {
+                if (tabWrap) {
+                    let alvo = proximaEditavel(columns, r, c, e.shiftKey ? -1 : 1, R);
+                    if (alvo.criarLinha) {
+                        // Visao filtrada/ordenada nao tem onde mostrar a linha nova: fica parado.
+                        if (mutado) alvo = { r, c };
+                        else {
+                            criarLinhaAte(R);
+                            alvo = { r: R, c: Math.max(0, columns.findIndex(ehEditavel)) };
+                        }
+                    }
+                    setSelA(alvo); setSelB(alvo);
+                } else {
+                    const nc = clamp(c+(e.shiftKey?-1:1),0,C-1); setSelA({ r, c: nc }); setSelB({ r, c: nc });
+                }
+                e.preventDefault(); break;
+            }
             case 'Enter': {
                 const col = columns[c];
                 if (col?.type === 'select' || col?.type === 'tags' || col?.type === 'textarea') { startEdit(r, c); }
+                else if (tabWrap && !mutado && r === R - 1) { criarLinhaAte(R); setSelA({ r: R, c }); setSelB({ r: R, c }); }
                 else { const nr = nextR(r, 1); setSelA({ r: nr, c }); setSelB({ r: nr, c }); }
                 e.preventDefault(); break;
             }
@@ -643,7 +759,7 @@ export function SpreadsheetGrid({
     useEffect(() => {
         function up() {
             if (fillDrag.current) {
-                const { fillEnd: fe, selA: sa, columns: cols, onChange: onCh } = ctx.current;
+                const { fillEnd: fe, selA: sa, columns: cols } = ctx.current;
                 if (fe) {
                     const dr = fe.r - sa.r, dc = fe.c - sa.c;
                     const changes = [];
@@ -939,7 +1055,7 @@ export function SpreadsheetGrid({
                                 }
 
                                 return (
-                                    <tr key={ri}>
+                                    <tr key={rowKey ? (row[rowKey] ?? ri) : ri}>
                                         {/* Row number */}
                                         <td
                                             className="text-center text-[10px] text-white/20 bg-[#12131a] border border-white/[0.07] cursor-pointer hover:bg-white/[0.04] sticky left-0 z-10"
@@ -1033,7 +1149,7 @@ export function SpreadsheetGrid({
             {/* Adicionar linhas */}
             {!filter && !sortCol && !groupBy && (
                 <button
-                    onClick={() => { const n = [...rows, ...Array.from({length: 10}, mkEmpty)]; pushHistory(n); onChange(n); }}
+                    onClick={() => { const n = [...rows, ...Array.from({length: 10}, novaLinha)]; pushHistory(n); emitir(n); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05] text-white/30 hover:text-white/60 text-[11px] transition-all"
                 >
                     + 10 linhas
