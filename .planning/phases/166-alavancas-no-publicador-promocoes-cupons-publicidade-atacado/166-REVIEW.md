@@ -4,6 +4,8 @@ reviewed: 2026-10-05
 depth: standard
 files_reviewed: 76
 status: issues_found
+fixed: 16
+open: 12
 findings:
   critical: 3
   warning: 14
@@ -311,3 +313,41 @@ O operador cria cupom ou grava faixas, o Mercado Livre recusa (ou não confirma)
 _Reviewed: 2026-10-05_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+# Correções aplicadas (2026-10-05)
+
+Os 3 críticos e os warnings que mexem em dinheiro, em dado enviado ao ML ou no que a pessoa lê antes/depois de
+confirmar foram corrigidos antes da verificação, um commit por achado, cada um com teste.
+
+| Achado | Commit | Como ficou |
+|---|---|---|
+| CR-BE-01 | `097a6883` | `ALAV-B2B-10` quando a leitura não traz as faixas (em `carregar()` e no GET relido do preparo); ids relidos diferentes → `ALAV-B2B-08`. Sem POST. Anúncio sem atacado (sem a tag do ML) aceita a chave ausente como lista vazia — senão a 1ª gravação nunca passaria. |
+| WR-BE-02 + IN-BE-01 | `a5105e58` | linhas do lote abertas em transação; falha do dispatch vira ERRO `ALAV-LOTE-FILA` e devolve a assinatura; ids `MLB\d{1,17}` e `promotion_id {1,40}` com `/D` |
+| WR-BE-03 | `ff533d4a` | `validarForma` guarda só `$v->validated()` |
+| WR-BE-04 | `db0f5587` | `normalizar()` só converte campos numéricos conhecidos (código de cupom `1E3` fica intacto) |
+| CR-FE-01 | `609bbe33` | `onConcluido` só relê; janela e formulário fecham no `onFechar`, depois de a pessoa ler o resultado |
+| CR-FE-02 | `449b1aa4` | `fmtData` formata `YYYY-MM-DD` sem conversão de fuso |
+| WR-FE-09 | `c42b42c0` | `lerNumero` único em `formato.js` para entrada pt-BR ("1.500" = 1500; "1.500,50" = 1500,5) |
+| WR-FE-07 | `25e412b1` | `diaSP` converte ISO com fuso para o dia de São Paulo |
+| WR-FE-08 | `ce7222be` | período do cupom em dias inclusivos (1 a 31), igual ao servidor |
+| WR-FE-05 | `339152b8` | fechar a janela ou esgotar o lote relê a lista (uma vez) |
+| WR-FE-10 | `bdd06303` | `useLote` com `setTimeout` encadeado, sem leitura em voo duplicada nem resposta velha |
+| WR-FE-06 | `f1996406` | incluir produtos relê os itens abertos ao lado |
+| WR-FE-01 | `2f2928d8` | Convites filtra pelo mesmo critério do panorama (`CONVITES_DO_ML`, não encerrados), com teste-espelho contra o PHP |
+| WR-FE-03 | `8cbcdff8` | publicidade esconde os números do período antigo enquanto carrega |
+| WR-FE-04 | `61957134` | rótulo "Saldo total das bonificações ativas" e marca nas inativas |
+
+Gate depois das correções: Unit/Publicador 243 ✓, Feature/Publicador 560 ✓, PortalCliente 231 ✓, JS 949 (só as 2
+falhas do baseline), build ok.
+
+**Ficam abertos (registrados, não corrigidos):**
+- **WR-BE-01** — a assinatura cobre a entrada do navegador, não o estado resolvido no servidor; o confirmar relê o ML e
+  escreve com o estado ATUAL (o que é o comportamento desejado para `offer_id`/status), mas não avisa se o preço atual
+  mudou nos 10 minutos da prévia. Decisão de produto (avisar × recusar), fora da fase.
+- **WR-BE-05** — teto local de preço só em DEAL e desconto individual; nos demais tipos o ML é quem recusa e a prévia
+  mostra o % em destaque. Criar regra de "desconto alto demais" é regra de negócio — não inventada aqui.
+- **WR-FE-02** — grupos de anúncios limitados aos 50 mais clicados e filtrados no cliente: precisa de filtro por campanha
+  no servidor. Só leitura; vai junto com a evolução da Publicidade (escrita depende da permissão "Advertising").
+- Infos IN-BE-02..06 e IN-FE-01..05.
