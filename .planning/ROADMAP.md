@@ -2849,7 +2849,7 @@ Plans:
 - [x] 166-04-PLAN.md — matriz `TiposDePromocao`, datas e alertas (D-12), produtos da conta ao vivo e leitura da Central de promoções
 - [x] 166-05-PLAN.md — publicidade só leitura pelos endpoints atuais (guarda contra os desligados), leitura de cupons, panorama e o comando `publicador:sondar-alavancas`
 - [x] 166-06-PLAN.md — análise: quanto a loja recebe (normal × promoção), ML banca como estimativa, margem pela Precificação e alertas
-- [ ] 166-07-PLAN.md — ações de convite pela matriz (inscrever/alterar/tirar/tirar de todas) e desconto individual
+- [x] 166-07-PLAN.md — ações de convite pela matriz (inscrever/alterar/tirar/tirar de todas) e desconto individual
 - [ ] 166-08-PLAN.md — campanha do vendedor e leve X pague Y, lista de exclusão das campanhas automáticas e cupons do vendedor
 - [x] 166-09-PLAN.md — atacado em % B2B: leitura com versão, recomendações sob a trava e gravação com `X-Version`
 - [ ] 166-10-PLAN.md — rotas e controller de leitura (página, JSON, histórico por empresa), só admin, duas âncoras
