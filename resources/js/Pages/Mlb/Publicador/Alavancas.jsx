@@ -5,6 +5,7 @@ import { useState } from 'react';
 import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
 import AvisoAlavancasTravadas from '@/Components/Mlb/Alavancas/AvisoAlavancasTravadas';
 import Panorama from '@/Components/Mlb/Alavancas/Panorama';
+import AbaPromocoes from '@/Components/Mlb/Alavancas/AbaPromocoes';
 import AbaPublicidade from '@/Components/Mlb/Alavancas/AbaPublicidade';
 import Historico from '@/Components/Mlb/Alavancas/Historico';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
@@ -13,8 +14,9 @@ import { LINK } from '@/Components/Publicador/Mesa/comum';
 
 const ROTULO_PROGRAMA = { polos: 'Polos', incubadora: 'Incubadora', gestao: 'Gestão' };
 
-// Ordem final: Promoções | Cupons | Publicidade | Atacado (as demais entram nos planos 166-13 a 166-15).
+// Ordem final: Promoções | Cupons | Publicidade | Atacado (Cupons e Atacado entram nos planos 166-14 e 166-15).
 const ABAS = [
+    { chave: 'promocoes', rotulo: 'Promoções' },
     { chave: 'publicidade', rotulo: 'Publicidade' },
 ];
 
@@ -114,6 +116,9 @@ export default function Alavancas({ empresa, alavancas }) {
                         </div>
 
                         {verHistorico && <Historico conta={conta} />}
+                        {! verHistorico && aba === 'promocoes' && (
+                            <AbaPromocoes conta={conta} liberada={alavancas.liberada} motivo={alavancas.motivo} limites={alavancas.limites} />
+                        )}
                         {! verHistorico && aba === 'publicidade' && <AbaPublicidade conta={conta} />}
                     </>
                 )}
