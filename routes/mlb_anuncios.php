@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
@@ -42,6 +43,53 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
         Route::get('publicador/produtos/{produto}/editor', [MlbPublicadorEntradaController::class, 'editor'])
             ->whereNumber('produto')->name('publicador.editor');
+
+        // ─── Fase 166: Alavancas (D-01/D-02/D-06) — só leitura aqui; escrita no 166-11 ───
+        // {conta} = empresa-N | company-N; a conta vem do resolver, nunca do corpo (IDOR).
+        Route::prefix('publicador/empresas/{conta}/alavancas')
+            ->where(['conta' => '(empresa|company)-[0-9]+'])
+            ->name('publicador.alavancas.')
+            ->group(function () {
+                Route::get('/', [MlbAlavancasController::class, 'index'])->name('index');
+                Route::get('panorama', [MlbAlavancasController::class, 'panorama'])
+                    ->middleware('throttle:60,1,alavancas.panorama')->name('panorama');
+                Route::get('promocoes', [MlbAlavancasController::class, 'promocoes'])
+                    ->middleware('throttle:60,1,alavancas.promocoes')->name('promocoes');
+                Route::get('promocoes/{promocao}/itens', [MlbAlavancasController::class, 'itensDaPromocao'])
+                    ->where('promocao', '[A-Za-z0-9-]{1,40}')
+                    ->middleware('throttle:120,1,alavancas.promocoes.itens')->name('promocoes.itens');
+                Route::get('produtos', [MlbAlavancasController::class, 'produtos'])
+                    ->middleware('throttle:60,1,alavancas.produtos')->name('produtos');
+                Route::get('produtos/{item}/promocoes', [MlbAlavancasController::class, 'promocoesDoItem'])
+                    ->where('item', 'MLB[0-9]+')
+                    ->middleware('throttle:120,1,alavancas.produtos.promocoes')->name('produtos.promocoes');
+                Route::post('analise', [MlbAlavancasController::class, 'analise'])
+                    ->middleware('throttle:20,1,alavancas.analise')->name('analise');
+                Route::get('cupons', [MlbAlavancasController::class, 'cupons'])
+                    ->middleware('throttle:60,1,alavancas.cupons')->name('cupons');
+                Route::get('exclusao', [MlbAlavancasController::class, 'exclusao'])
+                    ->middleware('throttle:60,1,alavancas.exclusao')->name('exclusao');
+                Route::get('exclusao/{item}', [MlbAlavancasController::class, 'exclusaoDoItem'])
+                    ->where('item', 'MLB[0-9]+')
+                    ->middleware('throttle:120,1,alavancas.exclusao.item')->name('exclusao.item');
+                Route::get('publicidade', [MlbAlavancasController::class, 'publicidade'])
+                    ->middleware('throttle:30,1,alavancas.publicidade')->name('publicidade');
+                Route::get('publicidade/ad-groups', [MlbAlavancasController::class, 'adGroups'])
+                    ->middleware('throttle:30,1,alavancas.publicidade.ad-groups')->name('publicidade.ad-groups');
+                Route::get('atacado', [MlbAlavancasController::class, 'atacado'])
+                    ->middleware('throttle:30,1,alavancas.atacado')->name('atacado');
+                Route::get('atacado/{item}', [MlbAlavancasController::class, 'atacadoDoItem'])
+                    ->where('item', 'MLB[0-9]+')
+                    ->middleware('throttle:60,1,alavancas.atacado.item')->name('atacado.item');
+                Route::post('atacado/{item}/recomendacoes', [MlbAlavancasController::class, 'recomendacoes'])
+                    ->where('item', 'MLB[0-9]+')
+                    ->middleware('throttle:30,1,alavancas.recomendacoes')->name('atacado.recomendacoes');
+                Route::get('historico', [MlbAlavancasController::class, 'historico'])
+                    ->middleware('throttle:60,1,alavancas.historico')->name('historico');
+                Route::get('historico/{escrita}', [MlbAlavancasController::class, 'historicoMostrar'])
+                    ->whereNumber('escrita')
+                    ->middleware('throttle:120,1,alavancas.historico.mostrar')->name('historico.mostrar');
+            });
 
         // ─── Fase 164 (plano 08): API JSON do editor interno, por produto (D12/D17) ───
         // Espelha o piloto do Portal (routes/web.php), com os mesmos throttles. Nomes: mlb.anuncios.publicador.<sufixo>.
