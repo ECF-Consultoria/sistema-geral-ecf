@@ -2855,7 +2855,7 @@ Plans:
 - [x] 166-10-PLAN.md — rotas e controller de leitura (página, JSON, histórico por empresa), só admin, duas âncoras
 - [x] 166-11-PLAN.md — escrita HTTP: registro das ações, prévia assinada, confirmar (403 fora da lista) e lote por job na fila `high`
 - [x] 166-12-PLAN.md — tela: barra Publicar | Alavancas, página da área, panorama, histórico, aba Publicidade e gates de fonte
-- [ ] 166-13-PLAN.md — tela: janela de confirmação, análise e convites do ML
+- [x] 166-13-PLAN.md — tela: janela de confirmação, análise e convites do ML
 - [ ] 166-14-PLAN.md — tela: produtos da conta (com "tirar de todas as promoções"), desconto individual, campanhas do vendedor e campanhas automáticas
 - [ ] 166-15-PLAN.md — tela: abas Cupons e Atacado, na ordem final das abas
 - [ ] 166-16-PLAN.md — gate final contra o baseline, migration no MariaDB local, conferência visual sem custo, prova real na #459 (checkpoint) e learnings §12
