@@ -131,6 +131,17 @@ Precificação do Mapeamento tem frete digitado; a classificação Full/ME2/ME1 
 
 ---
 
+## Perguntas abertas da pesquisa (05/10, depois do 167-RESEARCH)
+
+| Pergunta | Opções | Escolha |
+|----------|--------|---------|
+| Frete calculado preenche a Precificação? | Só mostrar (Recomendado) · Preencher quando vazio | Só mostrar |
+| Eixo da variação | Lista fechada (Recomendado) · Texto livre | Lista fechada |
+| Tela de entrada do Mapeamento | Produtos para quem começa (Recomendado) · Sempre Produtos · Continua na Lista SKUs | Produtos para quem começa |
+| Excluir variação com anúncios | Como na Lista SKUs (Recomendado) · Bloquear | Como na Lista SKUs |
+
+---
+
 ## Claude's Discretion
 
 - Preço usado para cotar o frete (faixa) e os avisos de limite de frete grátis.

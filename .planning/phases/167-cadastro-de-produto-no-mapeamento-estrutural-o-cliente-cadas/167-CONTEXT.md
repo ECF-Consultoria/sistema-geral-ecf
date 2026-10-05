@@ -99,6 +99,19 @@ um monte de vezes anúncio". Na planilha, a aba Produtos é onde o cliente cadas
 - **D-18:** Logística e frete de **kits e combos** (pacote juntando produtos diferentes) ficam para a fase de
   geração das ofertas.
 
+### Decisões depois da pesquisa (05/10, perguntas abertas do 167-RESEARCH)
+- **D-19:** O frete ME2 calculado no produto é **só exibido** nesta fase: não preenche o `frete_*` da Precificação
+  e não muda o preço efetivo que o Publicador herda. A fase de preço decide como usar.
+- **D-20:** O **eixo** da variação é **lista fechada** — Cor, Tamanho, Voltagem, Material, Sabor, Outro (a mesma
+  `VARIACAO_TIPOS` do Onboarding), para virar o atributo de variação do ML ao publicar. O **valor** (Natural,
+  Preto) é livre. A importação aceita também a coluna "Variação" ordinal da planilha real (`1`, `2`, `única`).
+- **D-21:** **Entrada do Mapeamento:** empresa sem ofertas antigas, ou que já tem produtos, entra em **Produtos**;
+  empresa que já trabalha pela Lista SKUs (ofertas sem produto, ex.: as 500 importadas da #131) continua entrando
+  na **Lista SKUs**.
+- **D-22:** **Excluir variação cuja oferta tem anúncios:** igual à Lista SKUs — confirmação mostrando quantos
+  anúncios; os anúncios voltam para a área de espera e o item do Publicador fica solto (D27 da Fase 164). Só
+  bloqueia quando a oferta é componente de combo/kit/combit.
+
 ### Claude's Discretion
 - **Preço usado para cotar o frete.** O frete do ML depende da faixa de preço, e o preço sai do custo + frete.
   Estimar o preço pelo custo da variação com os parâmetros da Precificação da empresa
