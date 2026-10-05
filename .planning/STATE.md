@@ -2,28 +2,12 @@
 gsd_state_version: 1.0
 milestone: v22.0
 milestone_name: Administrativo + Clicksign
-status: executing
-stopped_at: "Correção 4 do 140-02 — a correção do .docx (defeito 3) funcionou muito bem em produção:"
-last_updated: "2026-10-05T19:42:32.362Z"
-last_activity: 2026-10-05
-progress:
-  total_phases: 19
-  completed_phases: 14
-  total_plans: 130
-  completed_plans: 125
-  percent: 74
----
-
----
-gsd_state_version: 1.0
-milestone: v22.0
-milestone_name: Administrativo + Clicksign
-status: Ready to execute
+status: verifying
 stopped_at: Phase 137 context gathered
 last_updated: "2026-09-02T18:34:53.394Z"
 last_activity: 2026-08-19 — chave `administrativo_bloqueio_ativo` LIGADA em produção; 133-05 desbloqueado
 progress:
-  [██████████] 96%
+  total_phases: 14
   completed_phases: 10
   total_plans: 92
   completed_plans: 89
@@ -118,7 +102,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 167 — cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas
+**Current focus:** Phase 152 — checklist-administrativo-trava-de-finaliza-o-v23-0 — **EM
 EXECUÇÃO** (10 planos em 9 waves, planejada em 2026-09-09). Anterior: Fase 151 — Área Comercial
 conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current Position.
 
@@ -131,8 +115,7 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 
 ## Current Position
 
-Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plan: 2 of 17
+Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
 ### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
 
@@ -179,7 +162,6 @@ HUMANA, não de implementação, e está declarada aqui em vez de a milestone se
 dizer conferida ponta a ponta.
 
 **O que falta antes de considerar a milestone entregue:**
-
 1. ~~Conferência visual das telas das Fases 153-156~~ — **FEITA em 2026-09-10**, com a ressalva de cobertura acima (2 caminhos de escrita não exercitados à mão).
 2. Decisão de deploy — 2 migrations novas e 1 chave de permissão a liberar.
 3. A v22.0 continua **NÃO fechada**: Fase 133 e o plano `133-05` seguem abertos desde 19/08.
@@ -404,6 +386,18 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
+## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — EM EXECUÇÃO
+
+**Bloco escrito à mão de propósito** (2026-10-05): os comandos `state.*` do GSD corrompem o
+frontmatter deste arquivo — o `state.begin-phase` desta fase o fez de novo e foi revertido.
+Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
+`C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
+
+Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
+Plans: 17 em 13 ondas, execução em sequência — 1 de 17 concluídos
+Status: 167-01 concluído — baseline `a4e86b1b` (commit próprio), 6 tabelas novas + `estrutura_ofertas.variacao_id` provados no MariaDB local com `--path` (13 ofertas antes e depois, 0 com `variacao_id`; tabelas ficaram aplicadas no `ecf_admin` local).
+Last activity: 2026-10-05 — 167-01 concluído
+
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
 **Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
@@ -413,7 +407,7 @@ outras sessões. Branch `feat/publicador-ml-261001`, worktree `C:/tmp/ecf-public
 Phase: 164 (publicador-no-sistema-interno-mlb-anuncios-para-polos-e-incu) — COMPLETE (código); verificação human_needed
 Plans: 15 em 8 waves — 15 de 15 concluídos
 Status: Phase 164 DEPLOYADA em 2026-10-03 — `origin/main` e VPS em `01da6664` (push `d9b77688..01da6664`, fast-forward), com a ponte "Gerar criativos no assistente antigo" na tela de produtos até a Fase 165 levar o Creative Engine para o card de Fotos. Migrations 2026_10_02_100000/100100/200000 rodaram; os 4 rascunhos da #459 ficaram ligados aos produtos 1–4. Workers reiniciados por `queue:restart` (inclui high e creative). 6 itens de UAT em `164-HUMAN-UAT.md`.
-Last activity: 2026-10-05
+Last activity: 2026-10-03 — deploy em produção conferido por reconsulta (HEAD, migrations, FKs, manifest, workers, HTTP)
 
 ## Posição paralela — Fase 133 (v22.0, Liga o bloqueio) — MILESTONE NÃO FECHADA
 
@@ -555,9 +549,7 @@ o acumulativo**, o pedido original do usuário. `AdminController::fechamento()` 
 móvel de 30 dias (`Carbon::now()->subDays(30)`) trocada por `FechamentoRollupService::janela()`
 (mês-calendário fechado, D-06); bifurcação explícita competência-fechada (lê
 `fechamento_snapshots`/`fechamento_grupo_snapshots`, nunca recalcula) x competência-aberta (rollup
-
 + `FechamentoFaixaResolver` ao vivo, mesma precedência de estado do comando
-
 `fechamento:consolidar-mes`); agregação de grupo migrada de `parent_company_id` para
 `CompanyGroup` (D-08/D-09/D-10 — soma das membros define a faixa); progressão sem coluna
 acumulada (D-06), lida do histórico congelado; props novas: `faturamento_ml/shopee`,
@@ -1410,9 +1402,7 @@ Gate `Phase122|...|Phase143|Quick260909|Quick260910|Quick260911`: **707 testes /
 28 errors / 0 failures** — os 28 errors são TODOS `UNIQUE constraint failed: setores.nome` (a
 migration `seed_setor_performance` da outra sessão, alheia, não consertada aqui; conferido bloco a
 bloco: 28 blocos de erro, 28 casando `setores.nome`). 707 − 28 = **679 passando** = 656 do baseline
-
 + 23 testes novos. **Falhas novas atribuíveis a este plano: 0.** Conferência extra da suíte de NPS
-
 (`--filter="Nps|NPS"`): 614 testes, 47 errors (todos `setores.nome`) e 4 failures **alheias** —
 hash de token e política de `expires_at` (esperado hoje+7d, obtido fim do mês); os três arquivos
 têm zero referências a `CompanyGroup`/`company_group`, então a causalidade está excluída. Não
@@ -2086,7 +2076,6 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 | Phase 152 P08 | 50min | 3 tasks | 4 files |
 | Phase 152 P09 | 40min | 3 tasks | 4 files |
 | Phase 152 P10 | 45min | 3 tasks | 2 files |
-
 ## Accumulated Context
 
 ### Roadmap Evolution
@@ -2882,7 +2871,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-10-05T19:42:25.488Z
+Last session: 2026-09-08T17:30:00Z
 Stopped at: Correção 4 do 140-02 — a correção do .docx (defeito 3) funcionou muito bem em produção:
 ilegíveis caíram de 19 para 3, tabelas lidas subiram de 33 para 47 (de 85 contratos). Investigados
 os 28 que ainda saíam "não deu para entender", em dois grupos, quatro formatos novos. GRUPO 1 (valor
@@ -3177,4 +3166,3 @@ Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 i
 - [Phase 152]: 152-10: o ramo D-16 (contrato_assinado fechando por ContratoLiberacao, sem envelope assinado) NAO foi conferido visualmente — o usuario nao tinha dado real de liberacao e preencher motivo inventado gravaria justificativa falsa. Segue coberto so por ContratoAssinadoPorLiberacaoTest. Lacuna de VERIFICACAO declarada, nao de implementacao
 - [Phase 152]: 152-10: ASSET_URL fixo no .env do worktree (caminho do Apache) faz `artisan serve` servir HTML apontando para a porta 80; com o Apache desligado a tela vem BRANCA sem erro nenhum. Correcao: ASSET_URL VAZIO, que faz o Laravel derivar do request e funciona nos dois. Backup em .env.bak-139
 - [Phase 152]: 152-10: fixtures do gate MANTIDAS no MariaDB local e documentadas com o passo a passo de remocao — empresas 418/419 e usuario 50 (`entrada139@ecfconsultoria.com.br`, setor `conferencia-entrada-139`). Escrito porque o usuario de review da Shopee (users.id=30) segue em PRODUCAO desde 16/07 por ninguem ter anotado
-- [Phase ?]: 167-01: eo_variacao_fk com nullOnDelete (nullable, sem 1830/1451); company_id denormalizado em variações para unique por empresa
