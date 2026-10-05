@@ -24,6 +24,9 @@ final class GravarFaixasAtacado extends AcaoAlavanca
 
     private ?string $versao = null;
 
+    /** @var list<string> ids das faixas vistas em carregar(), para conferir contra o GET relido no preparo */
+    private array $idsLidos = [];
+
     /** @var list<array{id: ?string, percentual: float, quantidade_minima: int}> */
     private array $finais = [];
 
@@ -78,8 +81,13 @@ final class GravarFaixasAtacado extends AcaoAlavanca
             throw new RegraViolada('ALAV-B2B-07', 'Este anúncio tem faixas em valor fixo. Marque a substituição para gravar em percentual.');
         }
 
+        // CR-BE-01: sem a lista atual não dá para saber o que a escrita apagaria (faixa omitida é excluída).
+        if ($leitura['faixas'] === null) {
+            throw new RegraViolada('ALAV-B2B-10', 'O Mercado Livre não devolveu as faixas atuais deste anúncio; sem elas, gravar poderia apagar as que já existem. Nada foi enviado.');
+        }
+
         $atuais = [];
-        foreach ((array) ($leitura['faixas'] ?? []) as $a) {
+        foreach ($leitura['faixas'] as $a) {
             $atuais[$a['id']] = $a;
         }
 
@@ -107,6 +115,16 @@ final class GravarFaixasAtacado extends AcaoAlavanca
         $this->finais = $finais;
         $this->recriadas = $recriadas;
         $this->leitura = $leitura;
+        $this->idsLidos = $this->ordenar(array_keys($atuais));
+    }
+
+    /** @param list<int|string> $ids @return list<string> */
+    private function ordenar(array $ids): array
+    {
+        $ids = array_map('strval', $ids);
+        sort($ids, SORT_STRING);
+
+        return $ids;
     }
 
     public function resumo(): array
@@ -178,6 +196,23 @@ final class GravarFaixasAtacado extends AcaoAlavanca
         if ($versao === null || $versao === '') {
             throw new RegraViolada('ALAV-B2B-09', 'O Mercado Livre não devolveu a versão do preço deste anúncio. Nada foi enviado.');
         }
+
+        // CR-BE-01: o GET relido também precisa trazer as faixas, e elas não podem ter mudado desde a conferência.
+        // Sem a chave, só se aceita quando a conferência também não viu faixa nenhuma (anúncio sem atacado).
+        $this->carregar();
+        $corpo = is_array($r->corpo) ? $r->corpo : [];
+        if (! array_key_exists('price_per_quantity', $corpo)) {
+            if ($this->idsLidos !== []) {
+                throw new RegraViolada('ALAV-B2B-10', 'O Mercado Livre não devolveu as faixas atuais deste anúncio; sem elas, gravar poderia apagar as que já existem. Nada foi enviado.');
+            }
+            $relidos = [];
+        } else {
+            $relidos = $this->ordenar(array_map(fn ($f) => is_array($f) ? (string) ($f['id'] ?? '') : '', (array) $corpo['price_per_quantity']));
+        }
+        if ($relidos !== $this->idsLidos) {
+            throw new RegraViolada('ALAV-B2B-08', 'As faixas deste anúncio mudaram enquanto você revisava. Recarregue as faixas e revise. Nada foi enviado.');
+        }
+
         $this->versao = (string) $versao;
     }
 

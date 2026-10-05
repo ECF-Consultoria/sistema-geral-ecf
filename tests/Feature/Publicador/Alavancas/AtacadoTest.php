@@ -233,4 +233,61 @@ class AtacadoTest extends TestCase
             $this->assertStringNotContainsString('standard/quantity', $c['caminho']);
         }
     }
+
+    public function test_leitura_sem_faixas_conhecidas_recusa_sem_post_e_nao_apaga_nada(): void
+    {
+        $this->cenario('prices_display_version');
+        // Anúncio com a tag de atacado, mas a resposta de preços sem `price_per_quantity` (faixas desconhecidas).
+        $this->responder('GET', '#^/items/MLB1$#', ['id' => 'MLB1', 'tags' => ['standard_price_by_quantity']]);
+
+        $linha = $this->gravar(['faixas' => [$this->faixa(5, 2)]]);
+
+        $this->assertSame(PubAlavancaEscrita::RECUSADA, $linha->resultado);
+        $this->assertSame('ALAV-B2B-10', $linha->erro_codigo);
+        $this->assertStringContainsString('Nada foi enviado', (string) $linha->mensagem);
+        $this->assertSame([], $this->posts());
+        $this->assertNull($linha->enviado_em);
+    }
+
+    public function test_preparo_sem_faixas_no_get_relido_recusa_sem_post(): void
+    {
+        $this->cenario();
+        $chamadas = 0;
+        $this->responder('GET', '#^/items/MLB1/prices$#', function () use (&$chamadas) {
+            $chamadas++;
+            $corpo = $this->precos;
+            if ($chamadas > 1) {
+                unset($corpo['price_per_quantity']); // o GET do preparo vem sem as faixas
+            }
+
+            return Http::response($corpo, 200);
+        });
+
+        $linha = $this->gravar(['faixas' => [$this->faixa(3.63, 2, '12')]]);
+
+        $this->assertSame(PubAlavancaEscrita::RECUSADA, $linha->resultado);
+        $this->assertSame('ALAV-B2B-10', $linha->erro_codigo);
+        $this->assertSame([], $this->posts());
+    }
+
+    public function test_faixas_mudaram_entre_a_conferencia_e_o_preparo_recusa_sem_post(): void
+    {
+        $this->cenario();
+        $chamadas = 0;
+        $this->responder('GET', '#^/items/MLB1/prices$#', function () use (&$chamadas) {
+            $chamadas++;
+            $corpo = $this->precos;
+            if ($chamadas > 1) {
+                array_pop($corpo['price_per_quantity']); // alguém excluiu uma faixa no meio do caminho
+            }
+
+            return Http::response($corpo, 200);
+        });
+
+        $linha = $this->gravar(['faixas' => [$this->faixa(3.63, 2, '12')]]);
+
+        $this->assertSame(PubAlavancaEscrita::RECUSADA, $linha->resultado);
+        $this->assertSame('ALAV-B2B-08', $linha->erro_codigo);
+        $this->assertSame([], $this->posts());
+    }
 }
