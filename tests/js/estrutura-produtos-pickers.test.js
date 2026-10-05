@@ -13,6 +13,7 @@ import { lerSemComentarios } from './_fonte.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 const picker = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PickerLista.jsx');
+const volumes = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/EditorVolumes.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
@@ -47,6 +48,7 @@ test('PickerLista: a comparação ignora caixa, acento e espaços', () => {
 
 test('PickerLista: nada de HTML cru', () => {
     assert.ok(! picker.includes('dangerouslySetInnerHTML'));
+    assert.ok(! volumes.includes('dangerouslySetInnerHTML'));
 });
 
 test('a página liga os editores às colunas', () => {
@@ -54,5 +56,33 @@ test('a página liga os editores às colunas', () => {
     assert.match(pagina, /colunasDaGrade\(\{[^}]*editores/);
     assert.match(pagina, /familia:\s*\(p\)/);
     assert.match(pagina, /ambientes:\s*\(p\)/);
+    assert.match(pagina, /volumes:\s*\(p\)/);
     assert.match(pagina, /setListas\(data\.listas\)/);
+});
+
+test('EditorVolumes: rótulos, remover e o pacote do servidor', () => {
+    for (const t of ['Comp.', 'Larg.', 'Alt.', '(cm)', 'Peso (kg)', 'Remover', 'Pacote para o frete']) {
+        assert.ok(volumes.includes(t), `faltou ${t}`);
+    }
+    assert.match(volumes, /row\??\.pacote/);
+    assert.match(volumes, /Fechar/);
+    assert.ok(! volumes.includes('Salvar'));
+});
+
+test('EditorVolumes: Enter no peso cria a próxima caixa e fechar grava', () => {
+    assert.match(volumes, /'Enter'/);
+    assert.match(volumes, /registrarFechar/);
+    assert.match(volumes, /volumes_digitados/);
+    assert.match(volumes, /volumes_texto/);
+    assert.ok(volumes.includes('Ex.: 186×43×12 · 27,8 | 97×42×12 · 12,1'));
+});
+
+test('EditorVolumes: não calcula pacote, cubagem nem soma de pesos', () => {
+    assert.ok(! /6000|reduce\(.*kg|Math\.max\(.*\.c/.test(volumes));
+    assert.ok(! /parseFloat|Number\(/.test(volumes), 'quem interpreta o número é o servidor');
+});
+
+test('o POST das linhas manda as caixas digitadas como array de volumes', () => {
+    assert.match(lib, /volumes_digitados/);
+    assert.match(lib, /out\.volumes = /);
 });

@@ -133,7 +133,9 @@ export function linhaParaServidor(row) {
         if (/^MLB\d+$/i.test(t)) out.categoria_ml_id = t;
         else out.categoria_texto = t;
     }
-    if (alterou('volumes_texto') && String(row.volumes_texto ?? '').trim() !== '') out.volumes_texto = row.volumes_texto;
+    // Caixas digitadas no editor vão como lista (vazia = limpar); o servidor interpreta os números.
+    if (Array.isArray(row.volumes_digitados)) out.volumes = row.volumes_digitados;
+    else if (alterou('volumes_texto') && String(row.volumes_texto ?? '').trim() !== '') out.volumes_texto = row.volumes_texto;
     if (alterou('custo') && String(row.custo ?? '').trim() !== '') out.custo = row.custo;
 
     return out;

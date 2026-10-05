@@ -6,6 +6,7 @@ import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
+import EditorVolumes from '@/Components/Portal/Estrutura/Produtos/EditorVolumes';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
@@ -88,6 +89,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
         ambientes: (p) => <PickerLista tipo="ambiente" multiplo opcoes={listas.ambientes} valor={p.value} textoInicial={p.textoInicial}
             onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
+        volumes: (p) => <EditorVolumes row={p.row} textoInicial={p.textoInicial}
+            onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} />,
     }), [listas]);
 
     const colunas = useMemo(
