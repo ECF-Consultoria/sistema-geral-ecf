@@ -16,6 +16,12 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // MCP (`/mcp`): o conector entra só por authorization_code + refresh
+        // token. O fluxo "device code" do Passport vem ligado por padrão e
+        // abriria rotas que ninguém usa. Desligado no REGISTER porque o
+        // Passport registra as rotas no boot dele, que roda antes do nosso.
+        \Laravel\Passport\Passport::$deviceCodeGrantEnabled = false;
+
         // Phase 20 — registra EcfDriveService como singleton resolvendo de config/services.php
         $this->app->singleton(\App\Services\EcfDriveService::class, function ($app) {
             return new \App\Services\EcfDriveService(
@@ -137,6 +143,27 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('adman-api', function () {
             return Limit::perMinute(8)->by('global');
         });
+
+        // ─── MCP do ECF Admin (`/mcp`) ──────────────────────────────────
+        // Limite por USUÁRIO (o token OAuth já identifica quem chama): 60
+        // chamadas/min cobre uma conversa normal do Claude, que dispara 5 a 15
+        // ferramentas por pergunta, e barra laço descontrolado antes de pesar
+        // no banco. Sem usuário (token inválido) cai no IP.
+        RateLimiter::for('mcp', function (Request $request) {
+            return Limit::perMinute(60)->by('mcp:'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
+        });
+
+        // Tela de "Autorizar acesso" que o conector mostra depois do login.
+        // A do pacote depende de um CSS que o nosso Vite não gera; esta é a
+        // versão em pt-BR com as cores do sistema, autocontida.
+        \Laravel\Passport\Passport::authorizationView(
+            fn (array $parametros) => view('mcp.authorize', $parametros)
+        );
+        // Validade: o token de acesso vence em 1 dia e o conector renova
+        // sozinho com o refresh token (30 dias). Sem isto o Passport emite
+        // token de 1 ANO — e revogar seria a única forma de expirar.
+        \Laravel\Passport\Passport::tokensExpireIn(now()->addDay());
+        \Laravel\Passport\Passport::refreshTokensExpireIn(now()->addDays(30));
 
         // Phase 41 — Rate limiter ML por seller (NAO global). 60 req/min por seller_id
         // alinha com §3 do plano de migracao Sugadores Adman→ML ("Comecar conservador,
