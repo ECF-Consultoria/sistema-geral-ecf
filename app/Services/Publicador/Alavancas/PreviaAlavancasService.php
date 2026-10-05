@@ -244,7 +244,7 @@ class PreviaAlavancasService
                 continue;
             }
             // WR-BE-03: só o que as regras declaram segue adiante (chave extra não vai ao histórico nem às colunas).
-            $validos[] = $item;
+            $validos[] = $v->validated();
         }
         if ($erros !== []) {
             throw ValidationException::withMessages($erros);

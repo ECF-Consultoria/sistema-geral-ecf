@@ -101,4 +101,41 @@ class ConfirmarRobustezTest extends TestCase
         }
         $this->assertSame([], $this->escritasNoMl());
     }
+
+    public function test_chave_extra_longa_e_descartada_e_nao_chega_ao_historico(): void
+    {
+        $this->cenarioDeal(2);
+        Queue::fake();
+        $lixo = str_repeat('x', 500);
+        $itens = array_map(fn ($i) => [...$this->itemDeal($i), 'lixo' => $lixo, 'ator_nome' => $lixo], range(1, 2));
+        $assinatura = $this->previaDe('convite.inscrever', $itens)->assertOk()->json('assinatura');
+
+        $r = $this->confirmarCom('convite.inscrever', $itens, $assinatura);
+
+        $r->assertStatus(202);
+        $linhas = PubAlavancaEscrita::where('lote_uuid', $r->json('lote'))->get();
+        $this->assertCount(2, $linhas);
+        foreach ($linhas as $l) {
+            $this->assertArrayNotHasKey('lixo', $l->payload['dados']);
+            $this->assertArrayNotHasKey('ator_nome', $l->payload['dados']);
+            $this->assertSame('DEAL', $l->payload['dados']['promotion_type'], 'chave declarada segue');
+            $this->assertStringNotContainsString($lixo, json_encode($l->payload));
+        }
+    }
+
+    public function test_promotion_id_longo_em_acao_que_nao_declara_a_regra_nao_estoura_a_coluna(): void
+    {
+        $this->cenarioDeal(2);
+        Queue::fake();
+        $itens = array_map(fn ($i) => ['item_id' => "MLB{$i}", 'promotion_id' => str_repeat('a', 60), 'promotion_type' => str_repeat('T', 60)], range(1, 2));
+        $assinatura = $this->assinaturaForjada('desconto.remover', array_map(fn ($i) => ['item_id' => $i['item_id']], $itens));
+
+        $r = $this->confirmarCom('desconto.remover', $itens, $assinatura);
+
+        $r->assertStatus(202);
+        foreach (PubAlavancaEscrita::where('lote_uuid', $r->json('lote'))->get() as $l) {
+            $this->assertNull($l->promotion_id);
+            $this->assertSame('PRICE_DISCOUNT', $l->promotion_type, 'vem da própria ação, não do corpo');
+        }
+    }
 }
