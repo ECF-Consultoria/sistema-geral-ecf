@@ -132,9 +132,15 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
     const [arquivos, setArquivos] = useState([]);
     const arquivoRef = useRef(null);
 
+    // Chave ESTÁVEL (ids, não a identidade do array): `sugeridas` chega pronta do `BlocoDeFotos`
+    // (que já memoiza, 261005-si3), mas depender da IDENTIDADE do array aqui de novo reabriria o
+    // mesmo risco caso algum chamador futuro pare de memoizar — o efeito só deve reagir quando as
+    // fotos sugeridas de fato mudam de conteúdo, nunca a cada render.
+    const chaveSugeridas = sugeridas.map((f) => f.id).join(',');
     useEffect(() => {
         if (c.fase === 'escolhendo') setMarcadas(new Set(sugeridas.slice(0, 14).map((f) => f.id)));
-    }, [c.fase, sugeridas]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [c.fase, chaveSugeridas]);
 
     if (c.fase === 'parado') return null;
 

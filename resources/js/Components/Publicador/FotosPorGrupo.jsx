@@ -1,4 +1,4 @@
-import { useContext, useEffect, useId, useRef } from 'react';
+import { useContext, useEffect, useId, useMemo, useRef } from 'react';
 import { AlertTriangle, Lock, RefreshCw, Sparkles } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import FotosDoPar from '@/Components/Portal/Estrutura/FotosDoPar';
@@ -85,7 +85,12 @@ export function BlocoDeFotos({
     envioAoMl = true, onArquivos, onAtribuicoes, onExcluir, onReenviar, children,
 }) {
     const arquivo = useRef(null);
-    const fotos = fotosDoGrupo(imagens, atribuicoes, grupo);
+    // `useMemo`: sem isto, `fotos`/`sugeridas` eram arrays NOVOS a cada render (mesmo sem mudar
+    // conteúdo) e o `useEffect([c.fase, sugeridas])` do PainelCriativos (Mesa/PainelCriativos.jsx)
+    // reabria toda vez que QUALQUER coisa não relacionada reenderizava a página (o contexto
+    // `CriativosDoPublicador` reconstrói um objeto novo a cada render de quem chama o hook) —
+    // apagando em silêncio o que a pessoa tinha marcado/desmarcado no painel (261005-si3).
+    const fotos = useMemo(() => fotosDoGrupo(imagens, atribuicoes, grupo), [imagens, atribuicoes, grupo]);
     const falhas = falhasDe(imagens, envioAoMl).filter((f) => (atribuicoes ?? []).some((a) => a.grupo === grupo && String(a.imagem) === String(f.id)));
 
     const criativos = useContext(CriativosDoPublicador);
@@ -100,8 +105,12 @@ export function BlocoDeFotos({
 
     // As fotos deste bloco que já têm arquivo guardado; sem nenhuma, cai para a galeria geral.
     const comArquivo = (lista) => lista.filter((f) => (imagens ?? []).find((i) => String(i.id) === String(f.id))?.tem_arquivo);
-    const doProprioBloco = comArquivo(fotos);
-    const sugeridas = (doProprioBloco.length > 0 ? doProprioBloco : comArquivo(fotosDoGrupo(imagens, atribuicoes, GERAL))).slice(0, 14);
+    const sugeridas = useMemo(() => {
+        const doProprioBloco = comArquivo(fotos);
+
+        return (doProprioBloco.length > 0 ? doProprioBloco : comArquivo(fotosDoGrupo(imagens, atribuicoes, GERAL))).slice(0, 14);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fotos, imagens, atribuicoes]);
 
     const reordenar = (lista) => onAtribuicoes([
         ...(atribuicoes ?? []).filter((a) => a.grupo !== grupo),
