@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 2 de 17 concluídos
-Status: 167-02 concluído — config/estrutura_produtos.php (regras do ML + tabela de frete 29x8), LogisticaProduto, TabelaFreteEcf, PendenciasDoProduto, NumeroBr e VolumesTexto; 45 testes unitários e a pasta Estrutura (93) verdes. 167-01 antes: baseline e 6 tabelas novas + estrutura_ofertas.variacao_id no MariaDB local.
-Last activity: 2026-10-05 — 167-02 concluído
+Plans: 17 em 13 ondas, execução em sequência — 3 de 17 concluídos
+Status: 167-03 concluído — ListasDaEmpresaService (família/ambiente por empresa, normalização no PHP) e oferta ligada à variação no EstruturaOfertaService (criar, sincronizarDaVariacao, proteção na Lista SKUs); pasta Estrutura (109) e suítes de Publicador G2/G3/G5 verdes.
+Last activity: 2026-10-05 — 167-03 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
