@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 10 de 17 concluídos
-Status: 167-10 concluído — submódulo Produtos no Portal: 1º do menu, 14 rotas com throttle próprio e 13 linhas na allowlist, entrada D-21, gravação de linhas/exclusão/listas/modelo/importação/categorias/fretes por HTTP com empresa da sessão e origem cliente/interno; PortalCliente (363) e PortalEstrutura (54) verdes. A página Portal/EstruturaProdutos nasce no 167-11.
-Last activity: 2026-10-05 — 167-10 concluído
+Plans: 17 em 13 ondas, execução em sequência — 11 de 17 concluídos
+Status: 167-11 concluído — página real Portal/EstruturaProdutos: tabela editável (14 colunas, Ref e Produto fixas), gravação por linha em 800 ms com erro por linha, colar do Excel (com cabeçalho do modelo mapeia por nome), + variação copiando a 1ª, janela de exclusão D-22; logística/frete/Falta só exibem o que o servidor devolveu. Build real com a página no manifest; test:js só com as 2 falhas do baseline; PortalCliente (363) verde. Editores de família/ambiente/categoria/volumes vêm nos 167-13/14.
+Last activity: 2026-10-05 — 167-11 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
