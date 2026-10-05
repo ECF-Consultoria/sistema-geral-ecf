@@ -9,6 +9,29 @@ seu roadmap: *"Execução espera o ok do outro dev sobre a ordem com a Fase 162"
 
 ---
 
+## ATUALIZAÇÃO 2026-10-05 (depois da nossa conversa por fora)
+
+Você autorizou verbalmente a execução em paralelo e disse que já está numa etapa avançada da 165.
+Então o que vale agora é isto, e NÃO a pausa total escrita mais abaixo:
+
+**As duas fases correm em paralelo, separadas por ARQUIVO.** A Fase 162 (validador) se comprometeu a
+não tocar em nada do seu território: `CreativeContextBuilder`, `ProductTruthBuilder`,
+`CreativePermissao` (só usa `exigir()`), `CreativePromptBuilder`, e nada de `Publicador/`,
+`PubProduto*`, `MlbPublicador*` ou `resources/js/**/Publicador/**`. O validador lê o Product Truth
+das COLUNAS já gravadas em `ml_anuncio_criativos`, nunca pelos builders — o que, de quebra, faz ele
+cobrir os dois caminhos de contexto da sua 165 sem adaptação nenhuma.
+
+⚠️ **O único ponto de atrito que sobra é o `MlbAnuncioController.php`.** Você acrescenta métodos
+novos; nós editamos dois já existentes (`criativoAprovar` e `criativoKitAprovar`). É seguro para o
+merge de texto, mas é o arquivo onde um conflito pode aparecer. Se der conflito aí, o nosso lado
+cede — é só avisar.
+
+⚠️ **Colunas novas nossas** em `ml_anuncio_criativos`: `validacao_status`, `validacao`, `validacoes`,
+`regeneracao_automatica`, `validacao_pedida_em`, `validacao_em`. No kit: `validacoes`,
+`regeneracoes_automaticas`. Nenhuma colide com `pub_rascunho_id`/`pub_grupo`/`pub_imagem_id`.
+
+---
+
 ## Decisão: a sua Fase 165 vai primeiro
 
 **Pode executar.** Não vamos tocar em `app/Services/Creative/`, nos endpoints `criativo*` do
