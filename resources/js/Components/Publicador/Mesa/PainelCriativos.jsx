@@ -130,7 +130,19 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
 export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrupo = 0, maxFotos = 10, disabled = false }) {
     const [marcadas, setMarcadas] = useState(() => new Set(sugeridas.slice(0, 14).map((f) => f.id)));
     const [arquivos, setArquivos] = useState([]);
+    const [miniaturas, setMiniaturas] = useState([]);
     const arquivoRef = useRef(null);
+
+    // Miniatura do arquivo escolhido no computador (261005-si3): sem isto o único sinal de que
+    // "deu certo" era um nome de arquivo em texto cinza, fácil de não notar — a pessoa que
+    // escolhe a foto não tinha como saber se tinha funcionado. `URL.createObjectURL` só lê o
+    // arquivo local (nada sobe ao servidor aqui); a limpeza evita vazar memória a cada escolha.
+    useEffect(() => {
+        const urls = arquivos.map((a) => URL.createObjectURL(a));
+        setMiniaturas(urls);
+
+        return () => urls.forEach((u) => URL.revokeObjectURL(u));
+    }, [arquivos]);
 
     // Chave ESTÁVEL (ids, não a identidade do array): `sugeridas` chega pronta do `BlocoDeFotos`
     // (que já memoiza, 261005-si3), mas depender da IDENTIDADE do array aqui de novo reabriria o
@@ -202,20 +214,33 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                                 onChange={(e) => { setArquivos((a) => [...a, ...Array.from(e.target.files ?? [])]); e.target.value = ''; }} />
                         </div>
                         {arquivos.length > 0 && (
-                            <ul className="space-y-1">
-                                {arquivos.map((a, i) => (
-                                    <li key={`${a.name}-${i}`} className="flex items-center gap-2 text-[13px] font-normal text-white/70">
-                                        {a.name}
-                                        <button type="button" onClick={() => tirarArquivo(i)} className={LINK}><X size={12} /> tirar</button>
-                                    </li>
-                                ))}
-                            </ul>
+                            <div className="space-y-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-2" data-arquivos-escolhidos={arquivos.length}>
+                                <p className="flex items-center gap-1.5 text-[13px] font-normal text-emerald-300">
+                                    <Check size={14} /> {arquivos.length} {arquivos.length === 1 ? 'foto escolhida do computador' : 'fotos escolhidas do computador'}
+                                </p>
+                                <ul className="flex flex-wrap gap-2">
+                                    {arquivos.map((a, i) => (
+                                        <li key={`${a.name}-${i}`} className="flex items-center gap-1.5 text-[13px] font-normal text-white/70">
+                                            <img src={miniaturas[i]} alt={a.name} className="h-10 w-10 rounded object-cover" />
+                                            <span className="max-w-[12ch] truncate" title={a.name}>{a.name}</span>
+                                            <button type="button" onClick={() => tirarArquivo(i)} className={LINK}><X size={12} /> tirar</button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
 
                         <p className="text-[13px] font-normal text-white/50">
                             A IA usa estas fotos só como referência. A cópia usada é apagada quando o kit é aprovado (ou em até 48 horas).
                         </p>
-                        <p className="text-[13px] font-normal text-white/50">Até 14 fotos de referência.</p>
+                        {/* 261005-si3 (Task 3): o usuário tinha razão — o tamanho mínimo do Mercado Livre vale para a foto
+                            do ANÚNCIO, não para esta. Conferido no servidor: `referencias.*` valida só imagem + até 10 MB,
+                            nenhuma dimensão. A imagem GERADA pela IA é que passa pela mesma conferência das demais fotos
+                            quando usada no anúncio — mas isso é sobre o resultado, não sobre a foto que você envia aqui. */}
+                        <p className="text-[13px] font-normal text-white/50">
+                            Esta foto é só para a IA se inspirar: pode ter qualquer tamanho, não precisa ser do tamanho que o Mercado Livre exige para o anúncio.
+                        </p>
+                        <p className="text-[13px] font-normal text-white/50">{totalEscolhido} de até 14 fotos de referência escolhidas.</p>
 
                         <BotaoAcao data-acao="planejar-criativos" disabled={naoPodePlanejar}
                             onClick={() => c.planejar({ imagens: [...marcadas], arquivos })}>

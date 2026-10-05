@@ -129,6 +129,14 @@ class MlbPublicadorCriativoController extends Controller
 
         $this->permissao->exigir($request->user(), 'planejar');
 
+        // 261005-si3: quando o POST passa de `post_max_size`, o PHP descarta o corpo inteiro
+        // ANTES do Laravel — a validação normal "acharia" que faltou `grupo` (campo que o
+        // operador nunca viu e nunca preencheu à mão), confundindo quem só tentou enviar uma
+        // foto grande. Avisar isto primeiro, com a mensagem certa.
+        if ($this->corpoDescartadoPeloPhp($request)) {
+            return $this->recusa('Esta foto é grande demais para o servidor aceitar agora. Envie uma imagem de até 10 MB.');
+        }
+
         $dados = $request->validate([
             'grupo' => ['required', 'string', 'max:600'],
             'imagens' => ['nullable', 'array', 'max:' . PublicadorCriativoReferenciaService::MAX],
@@ -574,5 +582,36 @@ class MlbPublicadorCriativoController extends Controller
     private function recusa(string $mensagem, int $status = 422): JsonResponse
     {
         return response()->json(['ok' => false, 'erros' => [['mensagem' => $mensagem]]], $status);
+    }
+
+    /**
+     * 261005-si3: o `Content-Length` sobrevive no cabeçalho (vai ANTES do corpo) mesmo quando o
+     * PHP descarta o corpo por passar de `post_max_size` — comparar os dois distingue "o PHP
+     * jogou tudo fora" de "o operador mandou um POST de verdade vazio".
+     */
+    private function corpoDescartadoPeloPhp(Request $request): bool
+    {
+        if (! $request->isMethod('post') || $request->post() !== [] || $request->allFiles() !== []) {
+            return false;
+        }
+
+        $limite = self::bytesDoIni((string) ini_get('post_max_size'));
+        $tamanho = (int) $request->server('CONTENT_LENGTH', 0);
+
+        return $limite > 0 && $tamanho > $limite;
+    }
+
+    private static function bytesDoIni(string $valor): int
+    {
+        $valor = trim($valor);
+        $numero = (int) $valor;
+        $unidade = strtolower(substr($valor, -1));
+
+        return match ($unidade) {
+            'g' => $numero * 1024 ** 3,
+            'm' => $numero * 1024 ** 2,
+            'k' => $numero * 1024,
+            default => $numero,
+        };
     }
 }
