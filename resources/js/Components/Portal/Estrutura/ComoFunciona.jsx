@@ -31,7 +31,27 @@ const REGRAS = [
     'Olhe suas vendas: cliente que compra 2, 4 unidades está pedindo um combo que você ainda não criou.',
 ];
 
-export default function ComoFunciona({ aberta, onFechar }) {
+/**
+ * `passos` (opcional, lista de textos): quando dada, o painel mostra só esses
+ * passos — é o que a tela de Produtos usa. Sem a prop, nada muda: as 4 fases,
+ * o passo a passo e as regras de ouro do Mapeamento.
+ */
+export default function ComoFunciona({ aberta, onFechar, passos = null }) {
+    if (passos) {
+        return (
+            <Sheet open={aberta} onOpenChange={(v) => ! v && onFechar()}>
+                <SheetContent className="overflow-y-auto">
+                    <div className="px-6 py-5 space-y-4 text-white" data-como-funciona-passos>
+                        <DialogTitle className="font-display text-xl font-bold">Como funciona</DialogTitle>
+                        <ol className="space-y-2">
+                            {passos.map((p) => <li key={p} className="text-[13px] leading-relaxed text-white/70">{p}</li>)}
+                        </ol>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        );
+    }
+
     return (
         <Sheet open={aberta} onOpenChange={(v) => ! v && onFechar()}>
             <SheetContent className="overflow-y-auto">
