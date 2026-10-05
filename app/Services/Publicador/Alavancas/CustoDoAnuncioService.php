@@ -32,7 +32,7 @@ class CustoDoAnuncioService
             return [];
         }
 
-        $ids = array_values(array_unique(array_filter($itemIds, fn ($id) => is_string($id) && preg_match('/^MLB\d+$/', $id))));
+        $ids = array_values(array_unique(array_filter($itemIds, fn ($id) => is_string($id) && preg_match('/^MLB\d{1,17}$/D', $id))));
         if ($ids === []) {
             return [];
         }

@@ -45,7 +45,7 @@ class AnaliseAlavancasService
         $ids = [];
         foreach ($pedidos as $p) {
             $id = $p['item_id'] ?? null;
-            if (is_string($id) && preg_match('/^MLB\d+$/', $id)) {
+            if (is_string($id) && preg_match('/^MLB\d{1,17}$/D', $id)) {
                 $ids[] = $id;
             }
         }

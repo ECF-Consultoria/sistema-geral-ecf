@@ -27,7 +27,7 @@ final class RemoverDeTodas extends AcaoAlavanca
 
     public static function regras(): array
     {
-        return ['item_id' => ['required', 'regex:/^MLB\d+$/']];
+        return ['item_id' => ['required', 'regex:/^MLB\d{1,17}$/D']];
     }
 
     public function alavanca(): string

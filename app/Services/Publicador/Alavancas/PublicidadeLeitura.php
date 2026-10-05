@@ -126,7 +126,7 @@ class PublicidadeLeitura
             return ['ad_groups' => [], 'indisponivel' => $adv['indisponivel']];
         }
 
-        $ids = array_slice(array_values(array_filter($itens, fn ($i) => is_string($i) && preg_match('/^MLB\d+$/', $i))), 0, 20);
+        $ids = array_slice(array_values(array_filter($itens, fn ($i) => is_string($i) && preg_match('/^MLB\d{1,17}$/D', $i))), 0, 20);
         $caminho = sprintf(self::AD_GROUPS, $adv['advertiser_id']);
         $query = ['date_from' => $de, 'date_to' => $ate, 'limit' => 50, 'sort' => 'desc', 'sort_by' => 'clicks', 'metrics' => self::METRICAS];
         if ($ids !== []) {

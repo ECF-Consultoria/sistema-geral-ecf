@@ -120,7 +120,7 @@ class MlbAlavancasController extends Controller
         $max = (int) config('publicador.alavancas.limites.itens_por_analise', 10);
         $dados = $request->validate([
             'itens' => ['required', 'array', 'min:1', "max:{$max}"],
-            'itens.*.item_id' => ['required', 'regex:/^MLB\d+$/'],
+            'itens.*.item_id' => ['required', 'regex:/^MLB\d{1,17}$/D'],
             'itens.*.preco_promocao' => ['nullable', 'numeric', 'gt:0'],
             'itens.*.promotion_type' => ['nullable', Rule::in(TiposDePromocao::TODOS)],
             'itens.*.meli_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -195,7 +195,7 @@ class MlbAlavancasController extends Controller
 
         $itens = array_values(array_filter(array_map('trim', explode(',', (string) ($dados['itens'] ?? ''))), fn (string $i) => $i !== ''));
         foreach ($itens as $id) {
-            if (! preg_match('/^MLB\d+$/', $id)) {
+            if (! preg_match('/^MLB\d{1,17}$/D', $id)) {
                 throw ValidationException::withMessages(['itens' => 'Use só códigos de anúncio, como MLB123, separados por vírgula.']);
             }
         }

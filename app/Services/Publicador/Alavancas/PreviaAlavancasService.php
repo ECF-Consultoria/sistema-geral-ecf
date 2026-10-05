@@ -3,11 +3,14 @@
 namespace App\Services\Publicador\Alavancas;
 
 use App\Jobs\Publicador\ExecutarLoteAlavancaJob;
+use App\Models\PubAlavancaEscrita;
 use App\Models\User;
 use App\Services\Publicador\Alavancas\Acoes\AcaoAlavanca;
 use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -155,11 +158,36 @@ class PreviaAlavancasService
         }
 
         // Vários: uma linha PENDENTE por produto e o job (fila high) processa em fatias.
+        // WR-BE-02: as linhas nascem todas ou nenhuma; e se o job não entrar na fila, nenhuma fica PENDENTE sem dono.
         $lote = (string) Str::uuid();
-        foreach ($normalizados as $dados) {
-            $this->escritor->abrirLinha(new $classe($c, $dados), $u, $lote);
+        $chaveAssinatura = 'alavancas:assinatura:'.sha1((string) $assinatura);
+        try {
+            DB::transaction(function () use ($normalizados, $classe, $c, $u, $lote) {
+                foreach ($normalizados as $dados) {
+                    $this->escritor->abrirLinha(new $classe($c, $dados), $u, $lote);
+                }
+            });
+        } catch (\Throwable $e) {
+            // Nada foi aberto nem enviado: devolve a confirmação para a pessoa poder tentar de novo.
+            Cache::forget($chaveAssinatura);
+            throw $e;
         }
-        ExecutarLoteAlavancaJob::dispatch($lote, $u->id);
+
+        try {
+            ExecutarLoteAlavancaJob::dispatch($lote, $u->id);
+        } catch (\Throwable $e) {
+            Log::error("[Alavancas] lote {$lote} não entrou na fila: ".$e->getMessage());
+            PubAlavancaEscrita::query()->where('lote_uuid', $lote)
+                ->where('resultado', PubAlavancaEscrita::PENDENTE)->whereNull('enviado_em')
+                ->update([
+                    'resultado' => PubAlavancaEscrita::ERRO,
+                    'erro_codigo' => 'ALAV-LOTE-FILA',
+                    'mensagem' => 'Não consegui colocar o lote na fila de processamento. Nada foi enviado ao Mercado Livre; refaça a conferência e confirme de novo.',
+                    'concluido_em' => now(),
+                ]);
+            Cache::forget($chaveAssinatura);
+            throw $e;
+        }
 
         return ['tipo' => 'lote', 'lote' => $lote, 'total' => count($normalizados)];
     }
@@ -215,6 +243,7 @@ class PreviaAlavancasService
 
                 continue;
             }
+            // WR-BE-03: só o que as regras declaram segue adiante (chave extra não vai ao histórico nem às colunas).
             $validos[] = $item;
         }
         if ($erros !== []) {

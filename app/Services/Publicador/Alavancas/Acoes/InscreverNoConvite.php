@@ -28,9 +28,9 @@ final class InscreverNoConvite extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'item_id' => ['required', 'regex:/^MLB\d+$/'],
+            'item_id' => ['required', 'regex:/^MLB\d{1,17}$/D'],
             'promotion_type' => ['required', Rule::in(array_values(array_diff(TiposDePromocao::TODOS, ['PRICE_DISCOUNT'])))],
-            'promotion_id' => ['nullable', 'regex:/^[A-Za-z0-9-]{1,40}$/'],
+            'promotion_id' => ['nullable', 'regex:/^[A-Za-z0-9-]{1,40}$/D'],
             'deal_price' => ['nullable', 'numeric', 'gt:0'],
             'top_deal_price' => ['nullable', 'numeric', 'gt:0'],
             'stock' => ['nullable', 'integer', 'min:1'],

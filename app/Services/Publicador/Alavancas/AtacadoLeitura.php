@@ -155,7 +155,7 @@ class AtacadoLeitura
 
     private function itemValido(string $itemId): void
     {
-        if (! preg_match('/^MLB\d+$/', $itemId)) {
+        if (! preg_match('/^MLB\d{1,17}$/D', $itemId)) {
             throw new RegraViolada('ALAV-ENT', 'Identificador de anúncio inválido.');
         }
     }

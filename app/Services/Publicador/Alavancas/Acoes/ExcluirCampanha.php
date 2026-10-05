@@ -21,7 +21,7 @@ final class ExcluirCampanha extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/'],
+            'promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/D'],
             'promotion_type' => ['required', 'in:SELLER_CAMPAIGN,VOLUME'],
         ];
     }

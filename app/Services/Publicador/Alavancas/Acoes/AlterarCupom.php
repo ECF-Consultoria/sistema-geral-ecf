@@ -34,7 +34,7 @@ final class AlterarCupom extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/'],
+            'promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/D'],
             'name' => ['nullable', 'string', 'max:60'],
             'fixed_amount' => ['nullable', 'numeric', 'gt:0'],
             'fixed_percentage' => ['nullable', 'numeric', 'gt:0', 'lt:100'],

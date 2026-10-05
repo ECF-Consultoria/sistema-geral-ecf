@@ -29,7 +29,7 @@ final class CriarDescontoIndividual extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'item_id' => ['required', 'regex:/^MLB\d+$/'],
+            'item_id' => ['required', 'regex:/^MLB\d{1,17}$/D'],
             'deal_price' => ['required', 'numeric', 'gt:0'],
             'top_deal_price' => ['nullable', 'numeric', 'gt:0'],
             'start_date' => ['required', 'date_format:Y-m-d'],

@@ -41,7 +41,7 @@ final class GravarFaixasAtacado extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'item_id' => ['required', 'regex:/^MLB\d+$/'],
+            'item_id' => ['required', 'regex:/^MLB\d{1,17}$/D'],
             'faixas' => ['present', 'array', 'max:5'],
             'faixas.*.id' => ['nullable', 'string', 'max:40'],
             'faixas.*.percentual' => ['required', 'numeric'],

@@ -20,7 +20,7 @@ final class ExcluirCupom extends AcaoAlavanca
 
     public static function regras(): array
     {
-        return ['promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/']];
+        return ['promotion_id' => ['required', 'regex:/^[A-Za-z0-9-]{1,40}$/D']];
     }
 
     public function alavanca(): string

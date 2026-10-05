@@ -22,7 +22,7 @@ final class GravarExclusaoDoItem extends AcaoAlavanca
     public static function regras(): array
     {
         return [
-            'item_id' => ['required', 'regex:/^MLB\d+$/'],
+            'item_id' => ['required', 'regex:/^MLB\d{1,17}$/D'],
             'excluir' => ['required', 'boolean'],
         ];
     }

@@ -17,7 +17,7 @@ use App\Support\Publicador\RegraViolada;
 class PromocoesLeitura
 {
     /** Id de promoção ou de tipo: letras, números e hífen. */
-    public const TIPO_ID = '/^[A-Za-z0-9-]{1,40}$/';
+    public const TIPO_ID = '/^[A-Za-z0-9-]{1,40}$/D';
 
     private const STATUS_ITEM = ['candidate', 'pending', 'started'];
 
@@ -164,7 +164,7 @@ class PromocoesLeitura
     public function entradasDaPromocao(ContaAlavanca $c, string $promocaoId, string $tipo, array $itemIds): array
     {
         $this->entrada($tipo, $promocaoId);
-        $faltam = array_flip(array_unique(array_filter($itemIds, fn ($i) => is_string($i) && preg_match('/^MLB\d+$/', $i))));
+        $faltam = array_flip(array_unique(array_filter($itemIds, fn ($i) => is_string($i) && preg_match('/^MLB\d{1,17}$/D', $i))));
         $achados = [];
         $cursor = null;
         $paginas = max(1, (int) config('publicador.alavancas.limites.paginas_preload', 20));
@@ -335,7 +335,7 @@ class PromocoesLeitura
 
     private function itemValido(string $itemId): void
     {
-        if (! preg_match('/^MLB\d+$/', $itemId)) {
+        if (! preg_match('/^MLB\d{1,17}$/D', $itemId)) {
             throw new RegraViolada('ALAV-ENT', 'Anúncio inválido.');
         }
     }

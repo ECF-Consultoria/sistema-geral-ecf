@@ -48,7 +48,7 @@ class ProdutosDaContaService
      */
     public function porIds(ContaAlavanca $c, array $ids): array
     {
-        $ids = array_values(array_unique(array_filter($ids, fn ($id) => is_string($id) && preg_match('/^MLB\d+$/', $id))));
+        $ids = array_values(array_unique(array_filter($ids, fn ($id) => is_string($id) && preg_match('/^MLB\d{1,17}$/D', $id))));
         $mapa = [];
 
         foreach (array_chunk($ids, max(1, (int) config('mlb_acervo.lote_multiget', 20))) as $lote) {
