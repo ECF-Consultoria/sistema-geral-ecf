@@ -36,3 +36,11 @@ export function janelaDeDias(dias, hoje = hojeSP()) {
 
     return { de: inicio.toISOString().slice(0, 10), ate: hoje };
 }
+
+/** aaaa-mm-dd mais `dias` dias (conta em UTC ao meio-dia, sem depender do fuso da máquina). */
+export function somarDias(ymd, dias) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + dias);
+
+    return d.toISOString().slice(0, 10);
+}

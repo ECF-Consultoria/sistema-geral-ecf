@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
-import { fmtBRL, fmtData, fmtPct, hojeSP } from '../formato';
+import { fmtBRL, fmtData, fmtPct, hojeSP, somarDias } from '../formato';
 import SeletorDeProdutos from '../SeletorDeProdutos';
 import ModalConfirmacao from '../ModalConfirmacao';
 import TabelaAnalise from '../TabelaAnalise';
@@ -18,14 +18,6 @@ const numero = (texto) => {
 };
 
 const paraCampo = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
-
-/** aaaa-mm-dd mais `dias` dias (conta em UTC ao meio-dia, sem depender do fuso da máquina). */
-export function somarDias(ymd, dias) {
-    const d = new Date(`${ymd}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() + dias);
-
-    return d.toISOString().slice(0, 10);
-}
 
 /**
  * Uma linha por produto escolhido: desconto atual, faixa sugerida e os campos de preço.

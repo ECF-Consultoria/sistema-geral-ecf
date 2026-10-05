@@ -38,6 +38,7 @@ export default function ItensDoConvite({ conta, convite, liberada, motivo, limit
     const [linhas, setLinhas] = useState([]);
     const [precos, setPrecos] = useState({});
     const [estoques, setEstoques] = useState({});
+    const [semPontos, setSemPontos] = useState({});
     const [marcados, setMarcados] = useState([]);
     const [alvo, setAlvo] = useState(null);
 
@@ -168,6 +169,23 @@ export default function ItensDoConvite({ conta, convite, liberada, motivo, limit
                                         />
                                     </label>
                                 )}
+                                {convite.tipo === 'SELLER_CAMPAIGN' && l.capacidades.alterar && (
+                                    <div className="max-w-[240px] space-y-1">
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={Boolean(semPontos[l.item_id])}
+                                                disabled={! liberada || l.status === 'started'}
+                                                onChange={(ev) => setSemPontos((p) => ({ ...p, [l.item_id]: ev.target.checked }))}
+                                                className="h-4 w-4"
+                                            />
+                                            <span>Tirar o preço do Mercado Pontos</span>
+                                        </label>
+                                        {l.status === 'started' && (
+                                            <p className="text-[11px] font-normal text-white/55">Campanha iniciada: o preço só pode baixar.</p>
+                                        )}
+                                    </div>
+                                )}
                                 {l.capacidades.pede_estoque && (
                                     <label className="block w-32">
                                         <span className="mb-1 block text-[11px] font-normal text-white/55">
@@ -191,7 +209,13 @@ export default function ItensDoConvite({ conta, convite, liberada, motivo, limit
                                             onClick={() => setAlvo({
                                                 acao: 'convite.alterar',
                                                 titulo: 'Alterar preço na promoção',
-                                                itens: [{ item_id: l.item_id, promotion_id: convite.id, promotion_type: convite.tipo, deal_price: numero(precoDe(l)) }],
+                                                itens: [{
+                                                    item_id: l.item_id,
+                                                    promotion_id: convite.id,
+                                                    promotion_type: convite.tipo,
+                                                    deal_price: numero(precoDe(l)),
+                                                    ...(semPontos[l.item_id] ? { remove_loyalty: true } : {}),
+                                                }],
                                             })}
                                         >
                                             Alterar preço
