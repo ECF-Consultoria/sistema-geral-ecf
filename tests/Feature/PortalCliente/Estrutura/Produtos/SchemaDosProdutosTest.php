@@ -5,6 +5,7 @@ namespace Tests\Feature\PortalCliente\Estrutura\Produtos;
 use App\Models\Company;
 use App\Models\EstruturaAmbiente;
 use App\Models\EstruturaFamilia;
+use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaProdutoVolume;
@@ -139,6 +140,54 @@ class SchemaDosProdutosTest extends TestCase
         $this->assertSame(2, $produto->ambientes()->count());
 
         $this->assertSame(['cor', 'tamanho', 'voltagem', 'material', 'sabor', 'outro'], array_keys(EstruturaProdutoVariacao::EIXOS));
+    }
+
+    public function test_a_oferta_ganha_variacao_id_unico(): void
+    {
+        $a = $this->empresaDoGabarito();
+        $this->assertTrue(Schema::hasColumn('estrutura_ofertas', 'variacao_id'));
+        $variacao = $this->variacao($this->produto($a, 'P1'), 'V1');
+
+        EstruturaOferta::create(['company_id' => $a->id, 'variacao_id' => $variacao->id, 'sku' => 'V1', 'fase' => 'simples']);
+
+        $this->expectException(QueryException::class);
+        EstruturaOferta::create(['company_id' => $a->id, 'variacao_id' => $variacao->id, 'sku' => 'V1-b', 'fase' => 'simples']);
+    }
+
+    public function test_down_e_up_da_migration_do_vinculo_mantem_as_ofertas_e_up_e_idempotente(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
+        $this->assertSame(9, EstruturaOferta::count());
+
+        $migration = require database_path('migrations/2026_10_06_100100_add_variacao_id_to_estrutura_ofertas.php');
+        // O SQLite reconstrói a tabela para dropar coluna/FK; com FK ligada (adiada ate o fim da transacao) e filhas apontando
+        // para ela (componentes), o drop falha. Só no teste: no MariaDB o DDL é in-place.
+        DB::statement('PRAGMA defer_foreign_keys = ON');
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('estrutura_ofertas', 'variacao_id'));
+        $this->assertSame(9, EstruturaOferta::count(), 'down só tira o vínculo, nunca a oferta');
+
+        $migration->up();
+        $migration->up(); // idempotente
+        $this->assertTrue(Schema::hasColumn('estrutura_ofertas', 'variacao_id'));
+        $this->assertSame(9, EstruturaOferta::count());
+        $this->assertSame(9, EstruturaOferta::whereNull('variacao_id')->count(), 'sem backfill');
+    }
+
+    public function test_apagar_a_variacao_deixa_a_oferta_viva_sem_vinculo(): void
+    {
+        $a = $this->empresaDoGabarito();
+        $variacao = $this->variacao($this->produto($a, 'P1'), 'V1');
+        $oferta = EstruturaOferta::create(['company_id' => $a->id, 'variacao_id' => $variacao->id, 'sku' => 'V1', 'fase' => 'simples']);
+        $this->assertTrue($oferta->ligadaAProduto());
+
+        $variacao->delete();
+
+        $oferta = $oferta->fresh();
+        $this->assertNotNull($oferta);
+        $this->assertNull($oferta->variacao_id);
+        $this->assertFalse($oferta->ligadaAProduto());
     }
 
     public function test_estado_da_categoria(): void

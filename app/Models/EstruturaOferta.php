@@ -49,11 +49,23 @@ class EstruturaOferta extends Model
         'combinar'           => 'Combinar com comprador',
     ];
 
-    protected $fillable = ['company_id', 'sku', 'fase', 'nome', 'logistica', 'observacoes'];
+    protected $fillable = ['company_id', 'variacao_id', 'sku', 'fase', 'nome', 'logistica', 'observacoes'];
 
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    /** A variação do produto de onde esta oferta nasceu (Fase 167); null nas ofertas antigas e nos combos. */
+    public function variacao(): BelongsTo
+    {
+        return $this->belongsTo(EstruturaProdutoVariacao::class, 'variacao_id');
+    }
+
+    /** Oferta simples criada pelo Produtos (D-08): sku, nome e fase vêm da variação e são protegidos no serviço. */
+    public function ligadaAProduto(): bool
+    {
+        return $this->variacao_id !== null;
     }
 
     /** O que entra nesta oferta (vazio numa simples). */

@@ -37,4 +37,16 @@ Eles são atualizados no plano que mexe no menu/entrada, não contam como regres
 
 ## Prova no MariaDB 10.4 (preenchida no 167-01 e no 167-17)
 
-(preenchida no 167-01, Task 3)
+### 167-01 (05/10/2026, MariaDB 10.4 local, `.env` com `DB_CONNECTION=mysql`, banco `ecf_admin`)
+
+Só `migrate`/`migrate:rollback` com `--path=` das 2 migrations da fase; nenhum `migrate` sem `--path`.
+
+1. `estrutura_ofertas` ANTES: 13 linhas.
+2. `migrate --path=...create_estrutura_produtos_tables.php`: DONE (464 ms), sem 1059/1830.
+3. `migrate --path=...add_variacao_id_to_estrutura_ofertas.php`: DONE (90 ms), sem 1553.
+4. `SHOW CREATE TABLE estrutura_ofertas`: `variacao_id bigint(20) unsigned DEFAULT NULL`, `UNIQUE KEY eo_variacao_uq (variacao_id)`, `CONSTRAINT eo_variacao_fk ... REFERENCES estrutura_produto_variacoes (id) ON DELETE SET NULL`; `eo_company_idx`/`eo_company_fk` intactos.
+5. `SHOW INDEX FROM estrutura_produto_variacoes`: `PRIMARY`, `epv_company_cod_uq (company_id, codigo)` unique, `epv_produto_idx (produto_id, ordem)`.
+6. `migrate:rollback` do ALTER e depois da criação (ordem inversa), e de novo as duas migrations: tudo DONE, sem erro (idempotência).
+7. `estrutura_ofertas` DEPOIS: 13 linhas (igual), 0 com `variacao_id`; `DELETE_RULE` da `eo_variacao_fk` = SET NULL.
+
+As tabelas ficam aplicadas no banco local ao fim.
