@@ -8,6 +8,7 @@ import Panorama from '@/Components/Mlb/Alavancas/Panorama';
 import AbaPromocoes from '@/Components/Mlb/Alavancas/AbaPromocoes';
 import AbaCupons from '@/Components/Mlb/Alavancas/AbaCupons';
 import AbaPublicidade from '@/Components/Mlb/Alavancas/AbaPublicidade';
+import AbaAtacado from '@/Components/Mlb/Alavancas/AbaAtacado';
 import Historico from '@/Components/Mlb/Alavancas/Historico';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
@@ -20,6 +21,7 @@ const ABAS = [
     { chave: 'promocoes', rotulo: 'Promoções' },
     { chave: 'cupons', rotulo: 'Cupons' },
     { chave: 'publicidade', rotulo: 'Publicidade' },
+    { chave: 'atacado', rotulo: 'Atacado' },
 ];
 
 const ABA_INICIAL = () => {
@@ -125,6 +127,9 @@ export default function Alavancas({ empresa, alavancas }) {
                             <AbaCupons conta={conta} liberada={alavancas.liberada} motivo={alavancas.motivo} limites={alavancas.limites} />
                         )}
                         {! verHistorico && aba === 'publicidade' && <AbaPublicidade conta={conta} />}
+                        {! verHistorico && aba === 'atacado' && (
+                            <AbaAtacado conta={conta} liberada={alavancas.liberada} motivo={alavancas.motivo} />
+                        )}
                     </>
                 )}
             </div>
