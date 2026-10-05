@@ -59,3 +59,26 @@ test('CR-FE-01: FormCupom e AbaCupons fecham o formulário só no onEncerrado (r
     assert.match(form, /resultado\?\.resultado === 'OK'\) onEncerrado/);
     assert.match(aba, /onEncerrado=\{\(\) => setForm\(null\)\}/);
 });
+
+// ─── CR-FE-02: fmtData não desloca data pura ───
+test('CR-FE-02: data pura aaaa-mm-dd sai igual, sem conversão de fuso', async () => {
+    const { fmtData } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(fmtData('2026-10-05'), '05/10/2026');
+    assert.equal(fmtData('2026-10-18'), '18/10/2026');
+    assert.equal(fmtData('2026-01-01', { hora: true }), '01/01/2026');
+});
+
+test('CR-FE-02: instante com Z ou offset continua convertido para São Paulo', async () => {
+    const { fmtData } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(fmtData('2026-10-05T02:00:00Z'), '04/10/2026');
+    assert.equal(fmtData('2026-10-05T15:30:00Z', { hora: true }), '05/10/2026 12:30');
+    assert.equal(fmtData('2026-10-05T00:00:00-03:00'), '05/10/2026');
+});
+
+test('CR-FE-02: ISO sem fuso vale horário de São Paulo, e vazio/inválido vira traço', async () => {
+    const { fmtData } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(fmtData('2026-10-05T23:59:59'), '05/10/2026');
+    assert.equal(fmtData('2026-10-05T23:59:59', { hora: true }), '05/10/2026 23:59');
+    assert.equal(fmtData(null), '—');
+    assert.equal(fmtData('lixo'), '—');
+});

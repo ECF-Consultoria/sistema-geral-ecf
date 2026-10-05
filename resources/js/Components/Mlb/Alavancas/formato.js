@@ -11,11 +11,31 @@ export const fmtBRL = (n) => (vazio(n) ? '—' : Number(n).toLocaleString('pt-BR
 /** Porcentagem já em pontos (12,5 = 12,5%). */
 export const fmtPct = (n) => (vazio(n) ? '—' : `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`);
 
-/** dd/mm/aaaa no fuso de São Paulo; com `hora`, acrescenta hh:mm. */
+const SO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+const SEM_FUSO = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/** Data pura (aaaa-mm-dd) → Date com o instante certo; ISO sem fuso vale horário de São Paulo (UTC-3, sem horário de verão). */
+function paraDate(valor) {
+    const texto = String(valor).trim();
+    const d = new Date(SEM_FUSO.test(texto) ? `${texto.replace(' ', 'T')}-03:00` : texto);
+
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * dd/mm/aaaa no fuso de São Paulo; com `hora`, acrescenta hh:mm.
+ * Data pura (aaaa-mm-dd) não é instante: sai como veio, sem conversão de fuso (senão 05/10 viraria 04/10).
+ */
 export function fmtData(valor, { hora = false } = {}) {
     if (! valor) return '—';
-    const d = new Date(valor);
-    if (Number.isNaN(d.getTime())) return '—';
+    const texto = String(valor).trim();
+    if (SO_DATA.test(texto)) {
+        const [a, m, d] = texto.split('-');
+
+        return `${d}/${m}/${a}`;
+    }
+    const d = paraDate(texto);
+    if (! d) return '—';
     const opcoes = hora
         ? { timeZone: FUSO, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }
         : { timeZone: FUSO, day: '2-digit', month: '2-digit', year: 'numeric' };
