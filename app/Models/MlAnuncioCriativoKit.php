@@ -330,6 +330,20 @@ class MlAnuncioCriativoKit extends Model
         return max(0, $this->maxRegeneracoesAsset() - $asset->regeneracoes);
     }
 
+    /**
+     * `regeneracoes_automaticas` é SUBCONJUNTO de `regeneracoes`, nunca soma
+     * paralela (Fase 162, Plano 03, VAL-05): toda regeneração automática do
+     * `ValidarCriativoIaJob` incrementa as DUAS colunas na mesma transação.
+     * Esta diferença — o que sobrou depois de tirar as automáticas — é
+     * regeneração por CLIQUE do operador, e é o que separa decisão do juiz
+     * de decisão humana na métrica de "média de regenerações por kit"
+     * (§19 / Fase 163).
+     */
+    public function regeneracoesManuais(): int
+    {
+        return max(0, $this->regeneracoes - $this->regeneracoes_automaticas);
+    }
+
     /** Mensagem pt-BR do motivo do teto, para a tela — `null` quando não há teto batendo. */
     public function motivoDoTeto(): ?string
     {

@@ -4,12 +4,14 @@ namespace App\Jobs;
 
 use App\Models\MlAnuncioCriativo;
 use App\Services\Creative\CreativeJuiz;
+use App\Services\Creative\Dto\CreativeValidacao;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -144,6 +146,12 @@ class ValidarCriativoIaJob implements ShouldQueue, ShouldBeUnique
 
         $criativo->kit?->recalcularStatus();
 
+        // VAL-05/VAL-06 (162-03): reprovada pode regenerar sozinha, UMA vez,
+        // dentro do MESMO orçamento da regeneração manual — ver
+        // talvezRegenerar(). Quando regenera, o próprio método reabre o
+        // slot e chama de novo o recalcularStatus() do kit.
+        $this->talvezRegenerar($criativo, $validacao);
+
         // Nunca o texto do veredito (já está na coluna), nunca prompt, nunca
         // base64, nunca a chave.
         Log::info('[Creative] Validação concluída', [
@@ -155,6 +163,121 @@ class ValidarCriativoIaJob implements ShouldQueue, ShouldBeUnique
             'latencia_ms'   => $validacao->latenciaMs,
             'qtd_problemas' => count($validacao->problemas),
         ]);
+    }
+
+    /**
+     * VAL-05 + VAL-06: regenera automaticamente a imagem REPROVADA pelo
+     * juiz, UMA vez por asset, dentro do MESMO orçamento da regeneração
+     * manual — `MlAnuncioCriativoKit::podeRegenerarAsset()`, nenhum teto
+     * paralelo. Qualquer condição falsa abaixo encerra sem gastar nada.
+     * Molde literal da transação de `MlbAnuncioController::criativoRegenerar()`.
+     *
+     * Retorna `true` quando de fato regenerou (para quem chamar decidir se
+     * precisa recalcular algo de novo).
+     */
+    private function talvezRegenerar(MlAnuncioCriativo $criativo, CreativeValidacao $validacao): bool
+    {
+        // `indisponivel` NUNCA regenera — gastar imagem por falha NOSSA de
+        // validação (provedor fora do ar, JSON inválido) seria queimar
+        // dinheiro sem evidência de defeito na imagem.
+        if (! $validacao->reprovada()) {
+            return false;
+        }
+
+        // OPS: chave desligável sem deploy — rede de segurança igual à de
+        // `services.creative.validacao.ativa`.
+        if (! (bool) config('services.creative.validacao.regenerar_automatico', true)) {
+            return false;
+        }
+
+        // VAL-06: a trava anti-loop — uma vez por asset, para sempre. Mesmo
+        // que a 2ª imagem também seja reprovada, não há 3ª tentativa
+        // automática.
+        if ($criativo->regeneracao_automatica === true) {
+            return false;
+        }
+
+        $kit = $criativo->kit;
+
+        // Regenerar é recurso do KIT (mesma regra de criativoRegenerar()) —
+        // o fluxo de 1 imagem da Fase 160 (sem kit) não regenera.
+        if ($kit === null || $criativo->slot_indice === null) {
+            return false;
+        }
+
+        // O MESMO orçamento da regeneração manual — teto de imagens do
+        // kit, teto de regenerações do kit e teto por asset. Nada de
+        // limite paralelo.
+        if (! $kit->podeRegenerarAsset($criativo)) {
+            return false;
+        }
+
+        // Texto montado no SERVIDOR a partir do motivo (já sanitizado e
+        // cortado em 200 pelo CreativeJuiz) — cortado de novo em 300
+        // caracteres porque é ele que o GerarCriativoIaJob vai ler como
+        // $ajusteOperador (caminho JÁ EXISTENTE de paraSlot(), trava de
+        // coordenação com a Fase 165 — zero linha no CreativePromptBuilder).
+        // O texto NUNCA afirma contagem — só manda seguir as fotos de
+        // referência (TRUTH-02/03): a autoridade sobre o produto é a foto
+        // original, nunca uma frase gerada por outro modelo.
+        $motivoCurto = $validacao->motivoCurto ?? 'a validação identificou um risco de divergência com o produto';
+        $texto = mb_substr(
+            "A validação automática reprovou a imagem anterior: {$motivoCurto}. Refaça seguindo exatamente as fotos de referência.",
+            0,
+            300,
+        );
+
+        DB::transaction(function () use ($criativo, $kit, $validacao, $texto) {
+            // Aditivo, nunca sobrescrita — mesma disciplina de
+            // `criativoRegenerar()`. `origem` é chave NOVA: entradas antigas
+            // (sem a chave) continuam lidas como manuais por ausência, nada
+            // a migrar. `user_id` NULL é o que distingue a automática da
+            // manual no histórico (nenhuma entrada manual tem `user_id` nulo).
+            $motivos = $criativo->regenerar_motivos ?? [];
+            $motivos[] = [
+                'em'        => now()->toDateTimeString(),
+                'user_id'   => null,
+                'origem'    => 'automatica',
+                'texto'     => $texto,
+                'validacao' => [
+                    'status' => MlAnuncioCriativo::VALIDACAO_REPROVADA,
+                    'motivo' => $validacao->motivoCurto,
+                ],
+            ];
+
+            $criativo->update([
+                'status'                 => MlAnuncioCriativo::STATUS_PENDENTE,
+                'etapa'                  => null,
+                'erro_mensagem'          => null,
+                'regeneracao_automatica' => true,
+                'regenerar_motivos'      => $motivos,
+            ]);
+            $criativo->increment('regeneracoes');
+            $kit->increment('regeneracoes');
+            $kit->increment('regeneracoes_automaticas');
+        });
+
+        // Job SEPARADO (GerarCriativoIaJob) — seguro despachar AQUI porque o
+        // lock `ShouldBeUnique` de `criativo:{id}` pertence a ELE, e já
+        // terminou (quem está rodando agora é este job de VALIDAÇÃO, chave
+        // PRÓPRIA `validacao:{id}`). Mover esta linha para dentro do
+        // `handle()` do job de geração reintroduziria a perda silenciosa da
+        // Decisão 1 do 162-02-PLAN.md.
+        GerarCriativoIaJob::dispatch($criativo->id);
+
+        $kit->recalcularStatus();
+
+        // Nunca o texto do motivo — só o tamanho em caracteres, mesma
+        // disciplina do `ajuste_chars` do job de geração.
+        Log::info('[Creative] Regeneração automática enfileirada', [
+            'criativo_id'  => $criativo->id,
+            'kit_id'       => $kit->id,
+            'slot_indice'  => $criativo->slot_indice,
+            'regeneracoes' => $criativo->regeneracoes,
+            'motivo_chars' => mb_strlen($texto),
+        ]);
+
+        return true;
     }
 
     /**
