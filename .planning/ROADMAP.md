@@ -2847,7 +2847,7 @@ Plans:
 - [x] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
 - [x] 166-03-PLAN.md — núcleo de escrita: contrato `AcaoAlavanca`, `EscritorAlavancas` (trava, vendedor, histórico antes do envio, 423/5xx), assinatura da prévia e guarda do caminho único
 - [x] 166-04-PLAN.md — matriz `TiposDePromocao`, datas e alertas (D-12), produtos da conta ao vivo e leitura da Central de promoções
-- [ ] 166-05-PLAN.md — publicidade só leitura pelos endpoints atuais (guarda contra os desligados), leitura de cupons, panorama e o comando `publicador:sondar-alavancas`
+- [x] 166-05-PLAN.md — publicidade só leitura pelos endpoints atuais (guarda contra os desligados), leitura de cupons, panorama e o comando `publicador:sondar-alavancas`
 - [ ] 166-06-PLAN.md — análise: quanto a loja recebe (normal × promoção), ML banca como estimativa, margem pela Precificação e alertas
 - [ ] 166-07-PLAN.md — ações de convite pela matriz (inscrever/alterar/tirar/tirar de todas) e desconto individual
 - [ ] 166-08-PLAN.md — campanha do vendedor e leve X pague Y, lista de exclusão das campanhas automáticas e cupons do vendedor
