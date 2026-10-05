@@ -2863,9 +2863,9 @@ Plans:
 ### Phase 167: Cadastro de Produto no Mapeamento Estrutural — o cliente cadastra seus produtos (aba Produtos da planilha de Planejamento Estrutural)
 
 **Goal:** a aba **Produtos** da planilha `3Planejamento_Estrutural_ECF.xlsx` (a que o Emerson apresentou na reunião da Incubadora de 2026-10-05) vira sistema, como submódulo novo **Produtos** no Mapeamento Estrutural do Portal do Cliente: o cliente (e a equipe, pelo acesso de equipe ao portal) cadastra cada produto com código, grupo/variação, nome, família (linha de design), ambiente(s), categoria do ML, volumes (C×L×A e peso de cada), peso total e custo — por tela ou importando a planilha — e cada produto se liga às ofertas simples da Lista SKUs. É a base da geração automática das ofertas (fase seguinte): "cadastrar o produto uma vez" em vez de cadastrar cada anúncio.
-**Requirements**: TBD (sair da discussão da fase)
+**Requirements**: PR167-01, PR167-02, PR167-03, PR167-04, PR167-05, PR167-06, PR167-07, PR167-08, PR167-09, PR167-10, PR167-11, PR167-12, PR167-13, PR167-14 (definidos em `167-RESEARCH.md`; decisões D-01..D-22 em `167-CONTEXT.md`; contrato de tela em `167-UI-SPEC.md`)
 **Depends on:** Mapeamento Estrutural do Portal (`estrutura_*`, ADR PORTAL-01/02) e Phase 164 (Publicador lê as ofertas do Mapeamento pelo "Sincronizar do Portal").
-**Plans:** 0 plans
+**Plans:** 17 plans (13 ondas; execução em sequência neste worktree)
 
 **Já sabido (análise de 2026-10-05, na conversa com o usuário):**
 - A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
@@ -2875,10 +2875,26 @@ Plans:
 - Produto pode ter vários volumes (ex.: cristaleira em 2 caixas, cômoda em 3); o peso total é a soma.
 - A planilha tem catálogo e CUSTOS reais de cliente: NÃO commitar o `.xlsx`; ela fica na raiz do checkout principal (`C:/xampp/htdocs/ecf_admin/3Planejamento_Estrutural_ECF.xlsx`) para leitura local.
 - Ligar oferta → produto altera `estrutura_ofertas`, tabela com dado em produção — é o motivo de esta fase ser GSD (regra do CLAUDE.md).
-- Fora desta fase (fases seguintes): geração automática das ofertas, logística pelas medidas, grade de MC 30/20/10/0 e tarifa por categoria pela API, cronograma por capacidade e checklist de alavancas.
+- Fora desta fase (fases seguintes): geração automática das ofertas, logística e frete de kits/combos (a logística provável, o peso cubado e o frete ME2 POR VARIAÇÃO entraram nesta fase — D-15/D-16 do 167-CONTEXT), grade de MC 30/20/10/0 e tarifa por categoria pela API, cronograma por capacidade e checklist de alavancas.
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 167 to break down)
+- [ ] 167-01-PLAN.md — baseline de testes (commit próprio), desenho do schema, 6 tabelas novas + models e o ALTER `estrutura_ofertas.variacao_id` provado no MariaDB local
+- [ ] 167-02-PLAN.md — regras puras: config global do ML, NumeroBr, VolumesTexto, logística provável (ME2/Full/ME1/pendente, pacote empilhado), tabela de frete ECF e pendências
+- [ ] 167-03-PLAN.md — famílias e ambientes como listas da empresa; oferta ligada no EstruturaOfertaService (criar, sincronizar, proteger na Lista SKUs)
+- [ ] 167-04-PLAN.md — SpreadsheetGrid estendido de forma aditiva (colar crescendo, Tab entre linhas, coluna picker, aparência portal, ações e nota por linha)
+- [ ] 167-05-PLAN.md — frete ME2: estimativa pela tabela ECF e cotação real pela conta do cliente, em lote e com cache (nada gravado)
+- [ ] 167-06-PLAN.md — normalizador de linha, linha da tela com campos calculados no servidor e gravarLinhas (produto, variações, volumes, listas, categoria)
+- [ ] 167-07-PLAN.md — oferta simples ligada a cada variação (sem tocar nas antigas) e exclusão de variação pela regra da Lista SKUs (D-22)
+- [ ] 167-08-PLAN.md — Precificação lê o custo da variação nas ofertas ligadas; Publicador herda sem mudança
+- [ ] 167-09-PLAN.md — planilha-modelo .xlsx, leitor seguro e importação com prévia (acrescentar e atualizar, nada apagado)
+- [ ] 167-10-PLAN.md — controller, rotas com throttle próprio, allowlist do domínio, Produtos 1º do menu, entrada do Mapeamento (D-21) e testes de acesso
+- [ ] 167-11-PLAN.md — tela de Produtos: tabela editável com gravação por linha, + variação, estado vazio e confirmação de exclusão
+- [ ] 167-12-PLAN.md — Lista SKUs com selo "do Produtos" e campos protegidos; Precificação com o custo do produto somente leitura
+- [ ] 167-13-PLAN.md — família/ambiente escolhidos na célula (criar uma vez) e editor de volumes dentro da grade
+- [ ] 167-14-PLAN.md — categoria real do ML na célula, sugestões em lote revisadas e consulta de fretes no ML
+- [ ] 167-15-PLAN.md — janelas de importação com prévia e de famílias e ambientes; menu Planilha
+- [ ] 167-16-PLAN.md — celular: cartões por produto e formulário em Sheet
+- [ ] 167-17-PLAN.md — gate final contra o baseline, prova final no MariaDB, gabarito da planilha real, conferência visual (checkpoint) e learnings §31
 
 ---
 
