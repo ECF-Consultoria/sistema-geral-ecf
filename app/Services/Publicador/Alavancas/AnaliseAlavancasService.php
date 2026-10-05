@@ -40,7 +40,7 @@ class AnaliseAlavancasService
      *                                `seller_percentage`, `boost` {ativo, desconto_ml, preco_boost}, `estoque_minimo`
      * @return array{itens: list<array>, parcial: bool}
      */
-    public function analisar(ContaAlavanca $c, array $pedidos): array
+    public function analisar(ContaAlavanca $c, array $pedidos, ?array $produtosLidos = null): array
     {
         $ids = [];
         foreach ($pedidos as $p) {
@@ -51,7 +51,8 @@ class AnaliseAlavancasService
         }
         $ids = array_values(array_unique($ids));
 
-        $mapa = $ids === [] ? [] : $this->produtos->porIds($c, $ids);
+        // `$produtosLidos` (166-11): produtos que a prévia já leu em bloco; evita reler o mesmo multiget.
+        $mapa = $ids === [] ? [] : ($produtosLidos !== null ? array_intersect_key($produtosLidos, array_flip($ids)) : $this->produtos->porIds($c, $ids));
 
         try {
             $reputacao = $this->leitor->ler($c)['reputacao'] ?? null;

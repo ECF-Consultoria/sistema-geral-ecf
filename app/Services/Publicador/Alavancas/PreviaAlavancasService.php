@@ -70,7 +70,16 @@ class PreviaAlavancasService
             $max = (int) config('publicador.alavancas.limites.itens_analise_previa', 20);
             $limitada = count($pedidos) > $max;
             $indices = array_slice(array_keys($pedidos), 0, $max);
-            $resultado = $this->analise->analisar($c, array_map(fn ($i) => $pedidos[$i], $indices));
+            $pedidosAnalisados = array_map(fn ($i) => $pedidos[$i], $indices);
+            // Os produtos já foram lidos em bloco acima: a análise reaproveita, sem novo multiget.
+            $lidos = [];
+            foreach ($pedidosAnalisados as $p) {
+                $id = (string) ($p['item_id'] ?? '');
+                if ($id !== '' && ($produto = $leituras->produto($id)) !== null) {
+                    $lidos[$id] = $produto;
+                }
+            }
+            $resultado = $this->analise->analisar($c, $pedidosAnalisados, $lidos);
             $parcial = (bool) ($resultado['parcial'] ?? false);
             foreach ($indices as $k => $i) {
                 if (isset($resultado['itens'][$k])) {

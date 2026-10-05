@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\MlbAlavancasController;
+use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
@@ -89,6 +90,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 Route::get('historico/{escrita}', [MlbAlavancasController::class, 'historicoMostrar'])
                     ->whereNumber('escrita')
                     ->middleware('throttle:120,1,alavancas.historico.mostrar')->name('historico.mostrar');
+
+                // 166-11: escrita (D-04) — prévia assinada, confirmação e acompanhamento do lote.
+                Route::post('escritas/previa', [MlbAlavancasEscritaController::class, 'previa'])
+                    ->middleware('throttle:60,1,alavancas.previa')->name('escritas.previa');
+                Route::post('escritas', [MlbAlavancasEscritaController::class, 'confirmar'])
+                    ->middleware('throttle:30,1,alavancas.escrever')->name('escritas.confirmar');
+                Route::get('lotes/{lote}', [MlbAlavancasEscritaController::class, 'lote'])
+                    ->whereUuid('lote')
+                    ->middleware('throttle:240,1,alavancas.lotes')->name('lotes');
             });
 
         // ─── Fase 164 (plano 08): API JSON do editor interno, por produto (D12/D17) ───
