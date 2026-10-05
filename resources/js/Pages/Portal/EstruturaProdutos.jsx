@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
-import { CheckCircle2, Plus, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import EditorVolumes from '@/Components/Portal/Estrutura/Produtos/EditorVolumes';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
+import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
+import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
 
@@ -29,6 +31,7 @@ import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlo
 
 const ESPERA_GRAVAR_MS = 800;
 const ESPERA_REDE_MS = 5000;
+const LOTE_SUGESTOES = 10;
 
 let contadorDeChave = 0;
 const novaChave = () => `n${++contadorDeChave}`;
@@ -69,6 +72,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [aula, setAula] = useState(false);
     const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
+    const [sugerindo, setSugerindo] = useState(false);
+    const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
 
     const sujas = useRef(new Map());                      // _k → versão da última edição
     const versao = useRef(0);
@@ -89,6 +94,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
         ambientes: (p) => <PickerLista tipo="ambiente" multiplo opcoes={listas.ambientes} valor={p.value} textoInicial={p.textoInicial}
             onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} onListas={setListas} />,
+        categoria: (p) => <PickerCategoria row={p.row} textoInicial={p.textoInicial} onCommit={p.onCommit} onClose={p.onClose} />,
         volumes: (p) => <EditorVolumes row={p.row} textoInicial={p.textoInicial}
             onCommit={p.onCommit} onClose={p.onClose} registrarFechar={p.registrarFechar} />,
     }), [listas]);
@@ -233,6 +239,48 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         return () => clearTimeout(t);
     }, [busca]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // ─── Categoria sugerida em lote (D-06): nada é aceito sozinho ───────────
+
+    const haPendenteDeCategoria = rows.some((r) => r.id && r.categoria_estado !== 'confirmada');
+
+    const sugerirCategorias = async () => {
+        if (sugerindo) return;
+        const ids = [...new Set(rowsRef.current.filter((r) => r.id && r.produto_id && r.categoria_estado !== 'confirmada').map((r) => r.produto_id))];
+        if (ids.length === 0) return;
+        setSugerindo(true);
+        setAviso(null);
+        const itens = [];
+        let indisponivel = false;
+        try {
+            for (let i = 0; i < ids.length; i += LOTE_SUGESTOES) {
+                const { data } = await axios.post(route('portal.auth.estrutura.produtos.categorias.sugerir'), { produto_ids: ids.slice(i, i + LOTE_SUGESTOES) });
+                itens.push(...(data.sugestoes ?? []));
+                if (data.indisponivel) indisponivel = true;
+            }
+            setSugestoes({ itens, indisponivel });
+        } catch (e) {
+            setAviso('Não deu para buscar sugestões agora. Você pode tentar de novo ou escolher na tabela.');
+        } finally {
+            setSugerindo(false);
+        }
+    };
+
+    /** Aceitar marcadas: grava pela 1ª variação de cada produto; o servidor confere a folha e devolve o grupo. */
+    const aceitarSugestoes = (marcadas) => {
+        const proximas = rowsRef.current.map((r) => {
+            const s = marcadas.find((m) => m.produto_id === r.produto_id);
+            if (! s || ! r._primeira) return r;
+            sujas.current.set(r._k, ++versao.current);
+
+            return { ...r, categoria_ml_id: s.sugestao.id, categoria_ml_nome: s.sugestao.nome, categoria_ml_caminho: s.sugestao.caminho_texto,
+                categoria: s.sugestao.nome, _categoriaEscolhida: true };
+        });
+        aplicar(derivar(proximas));
+        setSugestoes(null);
+        clearTimeout(temporizador.current);
+        enviar();
+    };
+
     // ─── Ações ──────────────────────────────────────────────────────────────
 
     const focar = (chave, coluna) => setSelecionar((s) => ({ chave, coluna, n: (s?.n ?? 0) + 1 }));
@@ -342,6 +390,15 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     </p>
                 </div>
 
+                {(haPendenteDeCategoria || sugerindo) && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Botao variante="fantasma" onClick={sugerirCategorias} disabled={sugerindo} data-acao="sugerir-categorias">
+                            {sugerindo ? <Loader2 size={14} className="animate-spin" /> : null}
+                            {sugerindo ? 'Buscando sugestões…' : 'Sugerir categorias'}
+                        </Botao>
+                    </div>
+                )}
+
                 {aviso && (
                     <div className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-aviso-lote>
                         <span>{aviso}</span>
@@ -425,6 +482,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     setExclusao(null);
                     if (resposta?.mensagem) setAviso(resposta.mensagem);
                 }} />
+            <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
+                onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[
                 '1. Cadastre o produto e as variações (cor, tamanho…).',
                 '2. Informe medidas, peso e custo — o sistema mostra o tipo de envio e o frete.',

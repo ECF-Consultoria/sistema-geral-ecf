@@ -98,6 +98,9 @@ export function campoEditaveis(row) {
 
 /** Houve mudança do cliente nesta linha? (compara só os campos editáveis) */
 export function mudou(antes, depois) {
+    // Categoria escolhida no picker troca o id mesmo quando o nome da folha é igual.
+    if (depois?._categoriaEscolhida && depois.categoria_ml_id !== antes?.categoria_ml_id) return true;
+
     return CAMPOS_EDITAVEIS.some((c) => String(antes?.[c] ?? '') !== String(depois?.[c] ?? ''));
 }
 
@@ -128,7 +131,10 @@ export function linhaParaServidor(row) {
     if (alterou('ambientes_texto') && (row.ambientes_texto || row.id)) {
         out.ambientes = String(row.ambientes_texto ?? '').split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
     }
-    if (alterou('categoria')) {
+    if (row._categoriaEscolhida && row.categoria_ml_id) {
+        // Escolhida no picker: vai o id (o servidor confere se é folha), nunca o nome como texto.
+        out.categoria_ml_id = row.categoria_ml_id;
+    } else if (alterou('categoria')) {
         const t = String(row.categoria ?? '').trim();
         if (/^MLB\d+$/i.test(t)) out.categoria_ml_id = t;
         else out.categoria_texto = t;
