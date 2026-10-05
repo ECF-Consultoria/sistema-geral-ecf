@@ -1,0 +1,299 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "GET /items?ids=...&attributes=... (multiget: lista de {code, body})",
+    "lida_em": "2026-10-04",
+    "nota": "MLB1000000002 = 404; 03 grátis; 04 usado; 05 pausado; 06 com code 200 mas de OUTRO vendedor (999000111); 07 só com SELLER_SKU em atributos. Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": [
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000001",
+                "seller_id": 1555596317,
+                "title": "Produto de teste MLB1000000001",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "active",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "gold_special",
+                "category_id": "MLB1000",
+                "condition": "new",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000001",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000001.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": "SKU-MLB1000000001",
+                "attributes": [
+                    {
+                        "id": "SELLER_PACKAGE_HEIGHT",
+                        "value_name": "10 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WIDTH",
+                        "value_name": "12 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_LENGTH",
+                        "value_name": "20 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WEIGHT",
+                        "value_name": "300 g"
+                    }
+                ]
+            }
+        },
+        {
+            "code": 404,
+            "body": {
+                "message": "Item with id MLB1000000002 not found",
+                "error": "not_found",
+                "status": 404,
+                "cause": []
+            }
+        },
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000003",
+                "seller_id": 1555596317,
+                "title": "Produto de teste MLB1000000003",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "active",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "free",
+                "category_id": "MLB1000",
+                "condition": "new",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000003",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000003.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": "SKU-MLB1000000003",
+                "attributes": [
+                    {
+                        "id": "SELLER_PACKAGE_HEIGHT",
+                        "value_name": "10 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WIDTH",
+                        "value_name": "12 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_LENGTH",
+                        "value_name": "20 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WEIGHT",
+                        "value_name": "300 g"
+                    }
+                ]
+            }
+        },
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000004",
+                "seller_id": 1555596317,
+                "title": "Produto de teste MLB1000000004",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "active",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "gold_special",
+                "category_id": "MLB1000",
+                "condition": "used",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000004",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000004.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": "SKU-MLB1000000004",
+                "attributes": [
+                    {
+                        "id": "SELLER_PACKAGE_HEIGHT",
+                        "value_name": "10 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WIDTH",
+                        "value_name": "12 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_LENGTH",
+                        "value_name": "20 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WEIGHT",
+                        "value_name": "300 g"
+                    }
+                ]
+            }
+        },
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000005",
+                "seller_id": 1555596317,
+                "title": "Produto de teste MLB1000000005",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "paused",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "gold_special",
+                "category_id": "MLB1000",
+                "condition": "new",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000005",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000005.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": "SKU-MLB1000000005",
+                "attributes": [
+                    {
+                        "id": "SELLER_PACKAGE_HEIGHT",
+                        "value_name": "10 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WIDTH",
+                        "value_name": "12 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_LENGTH",
+                        "value_name": "20 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WEIGHT",
+                        "value_name": "300 g"
+                    }
+                ]
+            }
+        },
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000006",
+                "seller_id": 999000111,
+                "title": "Produto de teste MLB1000000006",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "active",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "gold_special",
+                "category_id": "MLB1000",
+                "condition": "new",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000006",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000006.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": "SKU-MLB1000000006",
+                "attributes": [
+                    {
+                        "id": "SELLER_PACKAGE_HEIGHT",
+                        "value_name": "10 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WIDTH",
+                        "value_name": "12 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_LENGTH",
+                        "value_name": "20 cm"
+                    },
+                    {
+                        "id": "SELLER_PACKAGE_WEIGHT",
+                        "value_name": "300 g"
+                    }
+                ]
+            }
+        },
+        {
+            "code": 200,
+            "body": {
+                "id": "MLB1000000007",
+                "seller_id": 1555596317,
+                "title": "Produto de teste MLB1000000007",
+                "price": 100,
+                "original_price": null,
+                "base_price": 100,
+                "status": "active",
+                "available_quantity": 10,
+                "sold_quantity": 2,
+                "listing_type_id": "gold_special",
+                "category_id": "MLB1000",
+                "condition": "new",
+                "shipping": {
+                    "mode": "me2",
+                    "logistic_type": "cross_docking",
+                    "free_shipping": false,
+                    "dimensions": "10x10x10,300"
+                },
+                "permalink": "https://produto.mercadolivre.com.br/MLB1000000007",
+                "thumbnail": "https://http2.mlstatic.com/MLB1000000007.jpg",
+                "catalog_listing": false,
+                "tags": [
+                    "good_quality_thumbnail"
+                ],
+                "variations": [],
+                "seller_custom_field": null,
+                "attributes": [
+                    {
+                        "id": "SELLER_SKU",
+                        "value_name": "SKU-ATRIBUTO"
+                    }
+                ]
+            }
+        }
+    ]
+}

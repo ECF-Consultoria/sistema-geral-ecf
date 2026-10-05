@@ -1,0 +1,39 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "GET /seller-promotions/items/{item_id}",
+    "lida_em": "2026-10-04",
+    "nota": "Lista (não objeto) de entradas; PRICE_DISCOUNT/DOD/LIGHTNING não têm promotion_id. Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": [
+        {
+            "id": "P-MLB1001",
+            "type": "DEAL",
+            "status": "started",
+            "price": 90,
+            "original_price": 100,
+            "start_date": "2026-10-01T00:00:00",
+            "finish_date": "2026-10-31T23:59:59"
+        },
+        {
+            "id": "D-MLB7007",
+            "type": "DOD",
+            "status": "pending",
+            "price": 80,
+            "original_price": 100,
+            "start_date": "2026-10-12T00:00:00",
+            "finish_date": "2026-10-12T23:59:59",
+            "stock": {
+                "min": 5,
+                "max": 50
+            }
+        },
+        {
+            "type": "PRICE_DISCOUNT",
+            "status": "candidate",
+            "price": 100,
+            "original_price": 100,
+            "min_discounted_price": 80,
+            "max_discounted_price": 95,
+            "suggested_discounted_price": 90
+        }
+    ]
+}

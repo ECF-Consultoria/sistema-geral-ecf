@@ -1,0 +1,92 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "gerenciar-ofertas: GET /seller-promotions/users/{user_id}",
+    "lida_em": "2026-10-04",
+    "nota": "Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "results": [
+            {
+                "id": "P-MLB1001",
+                "type": "DEAL",
+                "status": "started",
+                "start_date": "2026-10-01T00:00:00",
+                "finish_date": "2026-10-31T23:59:59",
+                "deadline_date": "2026-10-07T23:59:59",
+                "name": "Ofertas da Semana"
+            },
+            {
+                "id": "C-MLB2002",
+                "type": "MARKETPLACE_CAMPAIGN",
+                "status": "candidate",
+                "start_date": "2026-11-01T00:00:00",
+                "finish_date": "2026-11-15T23:59:59",
+                "deadline_date": "2026-10-20T23:59:59",
+                "name": "Black Friday",
+                "benefits": {
+                    "type": "REBATE",
+                    "meli_percent": 5,
+                    "seller_percent": 10
+                }
+            },
+            {
+                "id": "P-MLB3003",
+                "type": "SMART",
+                "status": "candidate",
+                "start_date": "2026-10-10T00:00:00",
+                "finish_date": "2026-10-20T23:59:59",
+                "deadline_date": "2026-10-09T23:59:59",
+                "name": "Preço inteligente",
+                "benefits": {
+                    "type": "REBATE",
+                    "meli_percent": 3,
+                    "seller_percent": 7
+                }
+            },
+            {
+                "id": "P-MLB4004",
+                "type": "SELLER_CAMPAIGN",
+                "status": "started",
+                "start_date": "2026-10-02T00:00:00",
+                "finish_date": "2026-10-15T23:59:59",
+                "name": "Campanha da loja",
+                "sub_type": "FLEXIBLE_PERCENTAGE"
+            },
+            {
+                "id": "P-MLB5005",
+                "type": "SELLER_COUPON_CAMPAIGN",
+                "status": "started",
+                "start_date": "2026-10-01T00:00:00",
+                "finish_date": "2026-10-31T23:59:59",
+                "name": "Cupom de outubro",
+                "sub_type": "FIXED_PERCENTAGE"
+            },
+            {
+                "id": "P-MLB6006",
+                "type": "VOLUME",
+                "status": "candidate",
+                "start_date": "2026-10-05T00:00:00",
+                "finish_date": "2026-10-25T23:59:59",
+                "deadline_date": "2026-10-04T23:59:59",
+                "name": "Leve 3 pague 2",
+                "benefits": {
+                    "buy_quantity": 3,
+                    "pay_quantity": 2
+                }
+            },
+            {
+                "id": "P-MLB7007",
+                "type": "DOD",
+                "status": "candidate",
+                "start_date": "2026-10-12T00:00:00",
+                "finish_date": "2026-10-12T23:59:59",
+                "deadline_date": "2026-10-10T23:59:59",
+                "name": "Oferta do dia"
+            }
+        ],
+        "paging": {
+            "offset": 0,
+            "limit": 50,
+            "total": 7
+        }
+    }
+}

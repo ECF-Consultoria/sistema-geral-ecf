@@ -1,0 +1,9 @@
+{
+    "origem": "doc-oficial-resumo",
+    "pagina": "GET /seller-promotions/exclusion-list/seller",
+    "lida_em": "2026-10-04",
+    "nota": "Montada pelos campos citados no RESEARCH/PESQUISA-API, sem reler a página por curl nesta execução; trocar por doc-oficial ao ligar a escrita. Nenhum dado de conta de cliente.",
+    "resposta": {
+        "exclusion_status": "true"
+    }
+}
