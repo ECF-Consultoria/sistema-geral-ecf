@@ -4,6 +4,7 @@ use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorController;
+use App\Http\Controllers\MlbPublicadorCriativoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
 use Illuminate\Support\Facades\Route;
 
@@ -146,6 +147,30 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->middleware('throttle:20,1,publicador.palavras-ia')->name('palavras-ia');
             Route::get('/palavras-ia/{alvo}', [MlbPublicadorController::class, 'palavrasIa'])
                 ->middleware('throttle:240,1,publicador.palavras-ia.status')->name('palavras-ia.status');
+
+            // Fase 165 — Creative Engine por produto do Publicador (D-03/D-09). Nomes:
+            // mlb.anuncios.publicador.criativos.*. O kit vai pelo id numérico escopado;
+            // nenhum token de 32 caracteres na URL nem no JSON (D-13) — ver docblock do
+            // controller.
+            Route::prefix('criativos')->name('criativos.')->group(function () {
+                Route::get('/', [MlbPublicadorCriativoController::class, 'atual'])
+                    ->middleware('throttle:240,1,publicador.criativos.status')->name('atual');
+                Route::post('/kit', [MlbPublicadorCriativoController::class, 'planejar'])
+                    ->middleware('throttle:creative-kit-planejar')->name('kit.planejar');
+                Route::get('/kit/{kit}', [MlbPublicadorCriativoController::class, 'status'])
+                    ->whereNumber('kit')->middleware('throttle:240,1,publicador.criativos.status')->name('kit.status');
+                Route::post('/kit/{kit}/gerar', [MlbPublicadorCriativoController::class, 'gerar'])
+                    ->whereNumber('kit')->middleware('throttle:creative-kit-gerar')->name('kit.gerar');
+                Route::get('/kit/{kit}/referencias/{indice}', [MlbPublicadorCriativoController::class, 'referencia'])
+                    ->whereNumber('kit')->whereNumber('indice')
+                    ->middleware('throttle:240,1,publicador.criativos.arquivo')->name('kit.referencia');
+                Route::get('/kit/{kit}/slots/{indice}/imagem', [MlbPublicadorCriativoController::class, 'imagem'])
+                    ->whereNumber('kit')->whereNumber('indice')
+                    ->middleware('throttle:240,1,publicador.criativos.arquivo')->name('slot.imagem');
+                Route::post('/kit/{kit}/slots/{indice}/aprovar', [MlbPublicadorCriativoController::class, 'aprovar'])
+                    ->whereNumber('kit')->whereNumber('indice')
+                    ->middleware('throttle:30,1,publicador.criativos.aprovar')->name('slot.aprovar');
+            });
         });
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
