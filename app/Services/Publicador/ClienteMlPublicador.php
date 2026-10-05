@@ -43,10 +43,10 @@ class ClienteMlPublicador
     }
 
     /** Chamada com o token da CONTA (Company ou MlbEmpresa). */
-    public function daConta(ContaMercadoLivre $conta, string $metodo, string $caminho, array $query = [], ?array $corpo = null, bool $repetir = true): RespostaMl
+    public function daConta(ContaMercadoLivre $conta, string $metodo, string $caminho, array $query = [], ?array $corpo = null, bool $repetir = true, array $cabecalhos = []): RespostaMl
     {
         return $this->executar($conta, $metodo, $caminho, $repetir,
-            fn (string $token) => $this->enviar($token, $metodo, $caminho, $query, $corpo));
+            fn (string $token) => $this->enviar($token, $metodo, $caminho, $query, $corpo, $cabecalhos));
     }
 
     /**
@@ -59,7 +59,7 @@ class ClienteMlPublicador
         return $this->executar($conta, 'POST', '/pictures/items/upload', true, function (string $token) use ($conteudo, $nome) {
             try {
                 $resp = Http::withToken($token)->acceptJson()->timeout((int) config('publicador.timeout_segundos', 30))
-                    ->attach('file', $conteudo, $nome)->post(self::API.'/pictures/items/upload');
+                    ->attach('file', $conteudo, $nome)->post($this->api().'/pictures/items/upload');
 
                 return new RespostaMl($resp->status(), $resp->json() ?? ($resp->body() === '' ? null : $resp->body()));
             } catch (ConnectionException $e) {
@@ -135,12 +135,20 @@ class ClienteMlPublicador
         }
     }
 
-    private function enviar(string $token, string $metodo, string $caminho, array $query, ?array $corpo): RespostaMl
+    private function enviar(string $token, string $metodo, string $caminho, array $query, ?array $corpo, array $cabecalhos = []): RespostaMl
     {
         try {
-            $req = Http::withToken($token)->acceptJson()->timeout((int) config('publicador.timeout_segundos', 30));
-            $url = self::API.$caminho.($query && $metodo !== 'GET' ? '?'.http_build_query($query) : '');
-            $resp = $metodo === 'GET' ? $req->get($url, $query) : $req->send($metodo, $url, ['json' => $corpo ?? []]);
+            // Cabeçalhos extras vêm só de constantes dos serviços (Ads: api-version; atacado: X-Version).
+            $req = Http::withToken($token)->acceptJson()->withHeaders($cabecalhos)->timeout((int) config('publicador.timeout_segundos', 30));
+            $url = $this->api().$caminho.($query && $metodo !== 'GET' ? '?'.http_build_query($query) : '');
+            if ($metodo === 'GET') {
+                $resp = $req->get($url, $query);
+            } elseif ($metodo === 'DELETE' && $corpo === null) {
+                // DELETE sem corpo sai sem corpo (o ML recusa DELETE com JSON vazio em alguns caminhos).
+                $resp = $req->send('DELETE', $url);
+            } else {
+                $resp = $req->send($metodo, $url, ['json' => $corpo ?? []]);
+            }
 
             $retryAfter = $resp->header('Retry-After');
 
@@ -148,6 +156,16 @@ class ClienteMlPublicador
         } catch (ConnectionException $e) {
             return new RespostaMl(0, ['erro_de_rede' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * A base configurável existe só para a conferência visual local (166-16); em
+     * produção é sempre o host oficial, para nenhum `.env` mandar o token de
+     * cliente a outro host.
+     */
+    private function api(): string
+    {
+        return app()->isProduction() ? self::API : rtrim((string) config('publicador.ml_api_base', self::API), '/');
     }
 
     private function repetir(RespostaMl $r, int $tentativa, bool $repetirFalhaDeServidor): bool
