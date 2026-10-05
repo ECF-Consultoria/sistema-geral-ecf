@@ -31,6 +31,7 @@ const CARDS = [
     `${BASE}/Mesa/CampoPreco.jsx`,
     `${BASE}/Mesa/AcoesDePublicacao.jsx`,
     `${BASE}/Mesa/TermosMaisBuscados.jsx`,
+    `${BASE}/Mesa/PainelCriativos.jsx`,
 ];
 // "Revisar e publicar" reenvia a descrição por rota própria: mesmas regras, menos a de rota.
 const COM_ROTA = [`${BASE}/Mesa/Publicar.jsx`];
@@ -291,6 +292,27 @@ test('CampoPreco — MOSTRA o da Precificação do Portal (docx §4) sem gravá-
     assert.match(fonte, /onMudar\(null\)/);
     assert.match(fonte, /A Precificação do Portal não tem preço para esta oferta/);
     assert.match(fonte, /invalido && INVALIDO/);
+});
+
+test('PainelCriativos — confirmação de custo antes de gerar, \'Agora não\', motivo ≤ 300, gerar de novo só com kit aberto e referência viva, usar/pôr de novo/usar o kit, aviso de limite, texto da publicação e nada do assistente antigo', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/PainelCriativos.jsx`);
+    assert.match(f, /CUSTO_POR_IMAGEM_USD = 0\.101/);
+    assert.match(f, /US\$/);
+    assert.match(f, /Agora não/);
+    assert.match(f, /data-confirmar-custo/);
+    assert.match(f, /c\.gerar/);
+    assert.match(f, /c\.recusarConfirmacao/);
+    assert.match(f, /maxLength=\{300\}/);
+    assert.match(f, /kit\.status !== 'aprovado'/);
+    assert.match(f, /kit\.referencias/);
+    assert.match(f, /c\.regenerar\(s\.indice\)/);
+    assert.match(f, /c\.aprovar\(s\.indice\)/);
+    assert.match(f, /Pôr de novo no anúncio/);
+    assert.match(f, /c\.aprovarKit/);
+    assert.match(f, /data-aviso-capacidade/);
+    assert.match(f, /fotosNoGrupo \+ kit\.prontas > maxFotos/);
+    assert.match(f, /entram no anúncio do Mercado Livre só na publicação/);
+    assert.doesNotMatch(f, /PainelCriativosIa|KitCriativosGrade|axios|primario|kit_token|só na conferência/);
 });
 
 test('Publicar — situação, o que falta por etapa com "Corrigir em…", Conferir/Publicar (um só amarelo) e a prévia só com dados reais', () => {

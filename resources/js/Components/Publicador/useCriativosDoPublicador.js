@@ -190,13 +190,20 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
         }
     };
 
-    const aprovar = async (indice) => {
+    // `confirmarRisco` (divergência do plano, código manda — ver 165-04-SUMMARY.md): o presenter
+    // manda `validacao_status`/`exige_confirmacao_risco` por slot (gate da Fase 162); uma imagem
+    // reprovada pelo juiz só sobe com `confirmar_risco=true` explícito — sem isto o servidor
+    // recusa com 422 e a tela mostraria a reprovada como se tivesse sido só uma falha qualquer.
+    const aprovar = async (indice, confirmarRisco = false) => {
         if (! kit?.kit_id) return;
         setProcessando(`aprovar-${indice}`);
         setErro(null);
 
         try {
-            const { data } = await axios.post(rota('criativos.slot.aprovar', produtoId, { kit: kit.kit_id, indice }));
+            const { data } = await axios.post(
+                rota('criativos.slot.aprovar', produtoId, { kit: kit.kit_id, indice }),
+                confirmarRisco ? { confirmar_risco: true } : {},
+            );
             setKit(data.kit);
             aoAprovar.current?.();
         } catch (e) {
