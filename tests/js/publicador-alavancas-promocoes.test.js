@@ -73,7 +73,7 @@ test('useAlavancas — escrita e acompanhamento do lote', () => {
     assert.match(hook, /rota\('escritas\.previa', conta\)/);
     assert.match(hook, /rota\('escritas\.confirmar', conta\)/);
     assert.match(hook, /rota\('lotes', conta, \{ lote \}\)/);
-    assert.match(hook, /clearInterval/);
+    assert.match(hook, /clearTimeout/);
 });
 
 test('TabelaAnalise — pede a análise pela rota, mostra estimativa e nunca ordena', () => {

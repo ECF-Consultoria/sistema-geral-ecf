@@ -187,3 +187,22 @@ test('WR-FE-05: concluir continua protegido pelo ref (uma releitura só)', () =>
     assert.match(corpo, /if \(concluido\.current\) return;/);
     assert.match(corpo, /concluido\.current = true;/);
 });
+
+// ─── WR-FE-10: polling do lote sem sobreposição ───
+test('WR-FE-10: useLote encadeia as leituras (sem setInterval) e descarta resposta velha', () => {
+    const fonte = lerSemComentarios(`${PASTA}/useAlavancas.js`);
+    const lote = fonte.slice(fonte.indexOf('export function useLote'));
+    assert.doesNotMatch(lote, /setInterval|clearInterval/);
+    assert.match(lote, /if \(! vivo \|\| emVoo\) return;/);
+    assert.match(lote, /numero > ultimaAplicada/);
+    assert.match(lote, /temporizador = setTimeout\(ler, INTERVALO_LOTE\)/);
+});
+
+test('WR-FE-10: useLote para no desmonte, ao terminar e em 403/404', () => {
+    const fonte = lerSemComentarios(`${PASTA}/useAlavancas.js`);
+    const lote = fonte.slice(fonte.indexOf('export function useLote'));
+    assert.match(lote, /vivo = false;\s*clearTimeout\(temporizador\);/);
+    assert.match(lote, /if \(r\.data\?\.terminado\) fim = true;/);
+    assert.match(lote, /\[403, 404\]\.includes\(e\.response\?\.status\)\) fim = true/);
+    assert.match(lote, /if \(vivo && ! fim\)/);
+});

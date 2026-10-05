@@ -64,31 +64,47 @@ export function useLote(conta, lote) {
         setEstado({ dados: null, erro: null, esgotou: false });
 
         let vivo = true;
+        let emVoo = false;
+        let fim = false;
+        let temporizador = null;
+        let ultimaPedida = 0;
+        let ultimaAplicada = 0;
         const inicio = Date.now();
-        let intervalo = null;
 
-        const ler = () => axios.get(rota('lotes', conta, { lote }))
-            .then((r) => {
-                if (! vivo) return;
-                setEstado({ dados: r.data, erro: null, esgotou: false });
-                if (r.data?.terminado) clearInterval(intervalo);
-            })
-            .catch((e) => {
-                if (vivo) setEstado((s) => ({ ...s, erro: mensagemDe(e) }));
-            })
-            .finally(() => {
-                if (vivo && Date.now() - inicio > LIMITE_LOTE) {
-                    clearInterval(intervalo);
-                    setEstado((s) => ({ ...s, esgotou: true }));
+        async function ler() {
+            // Nunca duas leituras ao mesmo tempo: a próxima só é agendada quando esta termina.
+            if (! vivo || emVoo) return;
+            emVoo = true;
+            const numero = ++ultimaPedida;
+            try {
+                const r = await axios.get(rota('lotes', conta, { lote }));
+                // Resposta mais velha que a já aplicada nunca desfaz `terminado`.
+                if (vivo && numero > ultimaAplicada) {
+                    ultimaAplicada = numero;
+                    setEstado({ dados: r.data, erro: null, esgotou: false });
+                    if (r.data?.terminado) fim = true;
                 }
-            });
+            } catch (e) {
+                if (vivo && numero > ultimaAplicada) setEstado((s) => ({ ...s, erro: mensagemDe(e) }));
+                // Lote inexistente ou sem permissão não melhora sozinho: para de insistir.
+                if ([403, 404].includes(e.response?.status)) fim = true;
+            } finally {
+                emVoo = false;
+                if (vivo && ! fim) {
+                    if (Date.now() - inicio > LIMITE_LOTE) {
+                        setEstado((s) => ({ ...s, esgotou: true }));
+                    } else {
+                        temporizador = setTimeout(ler, INTERVALO_LOTE);
+                    }
+                }
+            }
+        }
 
         ler();
-        intervalo = setInterval(ler, INTERVALO_LOTE);
 
         return () => {
             vivo = false;
-            clearInterval(intervalo);
+            clearTimeout(temporizador);
         };
     }, [conta, lote]);
 
