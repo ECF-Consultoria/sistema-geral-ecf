@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 12 de 17 concluídos
-Status: 167-12 concluído — Lista SKUs com pílula "do Produtos", exclusão só pelo Produtos e SKU/Nome/Fase em texto no FormOferta; Precificação com custo somente leitura (do_produto) e payload sem custo. Build real conferido; test:js só com as 2 falhas do baseline; PortalCliente (363) verde.
-Last activity: 2026-10-05 — 167-12 concluído
+Plans: 17 em 13 ondas, execução em sequência — 13 de 17 concluídos
+Status: 167-13 concluído — família/ambiente escolhidos na célula (PickerLista: criar uma vez, usar grafia existente, orientação para / , |) e volumes editados por caixas (EditorVolumes, pacote exibido do servidor). Build real conferido; test:js só com as 2 falhas do baseline; PortalCliente (363) verde.
+Last activity: 2026-10-05 — 167-13 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
