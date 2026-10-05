@@ -384,6 +384,13 @@ não se deduz do código:
   fixture `listing_prices` é de outro país e dá "recebe" negativo: o servidor de mentira calcula a tarifa pelo preço.
   `artisan db:table` quebra no PHP local sem `intl`: use `information_schema`.
 - Imagem de produto quebrada nas capturas é esperada (as fixtures apontam para o CDN do ML e o Chrome headless não sai).
+- Com `CACHE_STORE=file`, a tarifa e o frete lidos do servidor de mentira ficam no cache em arquivo do WORKTREE
+  (`storage/framework/cache`), e não somem com o SQLite novo. Trocou a resposta do servidor de mentira? Rode
+  `php artisan cache:clear` com as MESMAS variáveis de ambiente antes de capturar — senão a tela mostra o número velho.
+  Na conferência de 05/10 isso apareceu como "recebe −R$ 1.900" num produto de R$ 100 e parecia bug de cálculo.
+- A conferência de 05/10 achou 4 defeitos que os testes de fonte não pegavam (janela com "recebe —" por ler o campo
+  errado do contrato da prévia; "100 → 85 (29%)" sem dizer que o % é sobre o `original_price`; conta não liberada sem
+  conseguir analisar convites; motivo repetido na faixa). Gate de fonte não substitui olhar a tela com dados.
 
 **Suposições do RESEARCH, estado em 05/10/2026** (o que os SUMMARY conferiram; o resto fica para a prova real na #459)
 - Conferidas na doc por curl: forma do POST/DELETE do desconto individual, `exclusion-list` (a leitura devolve
