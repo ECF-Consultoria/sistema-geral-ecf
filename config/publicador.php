@@ -68,4 +68,60 @@ return [
         'campo' => 'stock_locations',
     ],
 
+    // ═══ Alavancas (Fase 166) ═══
+    'alavancas' => [
+
+        // D-03 (166): separada da trava de publicação de propósito — sem fallback para
+        // as variáveis daquela trava (nem a antiga de piloto); vazio = ninguém;
+        // Company 5 ≠ MlbEmpresa 5. Liberar uma não libera a outra.
+        'contas_liberadas' => [
+            'companies' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_ALAVANCAS_LIBERADAS_COMPANIES', '459'))))),
+            'mlb_empresas' => array_values(array_filter(array_map('intval', explode(',', (string) env('PUBLICADOR_ALAVANCAS_LIBERADAS_MLB_EMPRESAS', ''))))),
+        ],
+
+        // D-12 (166): alertas simples; null/false desliga o alerta; nenhum alerta bloqueia ação.
+        // `4_light_green` é suposição A4 do RESEARCH (reputação que ainda permite desconto/cupom).
+        'alertas' => [
+            'convite_vence_em_dias' => 3,
+            'recebido_queda_percentual' => 10,
+            'estoque_minimo' => true,
+            'reputacao_ok' => ['5_green', '4_light_green'],
+        ],
+
+        // Segundos de cache das leituras; escrita bem-sucedida invalida a conta.
+        'cache' => [
+            'conta' => 300,
+            'panorama' => 120,
+            'itens_promocao' => 60,
+            'produtos' => 300,
+            'tarifa' => 3600,
+            'frete' => 3600,
+            'anunciante' => 86400,
+        ],
+
+        // itens_por_lote = Questão 4 do RESEARCH, decidido pelo orquestrador: 50 por confirmação.
+        // paginas_preload: páginas de itens de uma promoção lidas de uma vez na prévia/confirmação
+        // de vários produtos. itens_analise_previa: a prévia calcula "quanto recebe" só dos 20 primeiros.
+        'limites' => [
+            'itens_por_lote' => 50,
+            'itens_por_analise' => 10,
+            'chamadas_analise_por_minuto' => 120,
+            'offset_maximo_produtos' => 1000,
+            'paginas_convites' => 4,
+            'cupons_detalhados' => 20,
+            'tentativas_423' => 3,
+            'espera_423_segundos' => 2,
+            'janela_publicidade_dias' => 90,
+            'paginas_preload' => 20,
+            'itens_analise_previa' => 20,
+        ],
+
+        // D-04 (166): a assinatura da prévia de uma escrita vale este tempo.
+        'previa_validade_minutos' => 10,
+    ],
+
+    // Só a conferência visual local (plano 166-16) aponta para um servidor de mentira;
+    // em produção o cliente IGNORA este valor e usa o host oficial (plano 166-02).
+    'ml_api_base' => env('PUBLICADOR_ML_API_BASE', 'https://api.mercadolibre.com'),
+
 ];
