@@ -2831,9 +2831,9 @@ Plans:
 ### Phase 166: Alavancas no Publicador — promoções, cupons, publicidade e atacado da conta do cliente
 
 **Goal:** no Publicador interno (`/mlb/anuncios`), depois de escolher a empresa, a equipe escolhe entre **Publicar** (o fluxo atual da Fase 164) e **Alavancas**: uma área para ver, analisar e — onde a API do Mercado Livre permite — criar e alterar as alavancas de venda da conta do cliente: Central de promoções (convites, candidatos, inscrever/alterar/tirar anúncio, lista de exclusão das campanhas automáticas, desconto individual, campanha do vendedor, leve X pague Y), cupons do vendedor, publicidade (Product Ads) e atacado (preço por quantidade).
-**Requirements**: a definir no `/gsd-discuss-phase 166` (pesquisa de API em `166-PESQUISA-API.md`)
+**Requirements**: AL166-01, AL166-02, AL166-03, AL166-04, AL166-05, AL166-06, AL166-07, AL166-08, AL166-09, AL166-10, AL166-11, AL166-12, AL166-13, AL166-14, AL166-15, AL166-16, AL166-17, AL166-18, AL166-19, AL166-20 (definidos em `166-RESEARCH.md`; decisões D-01..D-13 em `166-CONTEXT.md`)
 **Depends on:** Phase 164 (Publicador interno, seleção de empresa e conta ML com token). Toca a Fase 41/44 (Sugadores) só se a publicidade reaproveitar o `MercadoLivreAdsService`.
-**Plans:** a definir
+**Plans:** 16 plans
 
 **Já sabido (pesquisa de 2026-10-04, `166-PESQUISA-API.md`):**
 - Central de promoções e cupons: API completa (`/seller-promotions`, `app_version=v2`); cupom do vendedor só no Brasil; reputação verde, item ativo e exposição paga para criar desconto/campanha/cupom.
@@ -2843,7 +2843,22 @@ Plans:
 - Escrita em conta de cliente é o objetivo da fase, mas a regra do usuário de 2026-10-01 (só a #459 recebe escrita de teste) precisa ser revista na discussão antes de qualquer POST/PUT/DELETE real.
 
 Plans:
-- [ ] A definir (`/gsd-plan-phase 166`)
+- [ ] 166-01-PLAN.md — baseline de testes (commit próprio), trava própria das Alavancas (`AlavancasLiberadas` + config) e a tabela `pub_alavanca_escritas` com o desenho escrito
+- [ ] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
+- [ ] 166-03-PLAN.md — núcleo de escrita: contrato `AcaoAlavanca`, `EscritorAlavancas` (trava, vendedor, histórico antes do envio, 423/5xx), assinatura da prévia e guarda do caminho único
+- [ ] 166-04-PLAN.md — matriz `TiposDePromocao`, datas e alertas (D-12), produtos da conta ao vivo e leitura da Central de promoções
+- [ ] 166-05-PLAN.md — publicidade só leitura pelos endpoints atuais (guarda contra os desligados), leitura de cupons, panorama e o comando `publicador:sondar-alavancas`
+- [ ] 166-06-PLAN.md — análise: quanto a loja recebe (normal × promoção), ML banca como estimativa, margem pela Precificação e alertas
+- [ ] 166-07-PLAN.md — ações de convite pela matriz (inscrever/alterar/tirar/tirar de todas) e desconto individual
+- [ ] 166-08-PLAN.md — campanha do vendedor e leve X pague Y, lista de exclusão das campanhas automáticas e cupons do vendedor
+- [ ] 166-09-PLAN.md — atacado em % B2B: leitura com versão, recomendações sob a trava e gravação com `X-Version`
+- [ ] 166-10-PLAN.md — rotas e controller de leitura (página, JSON, histórico por empresa), só admin, duas âncoras
+- [ ] 166-11-PLAN.md — escrita HTTP: registro das ações, prévia assinada, confirmar (403 fora da lista) e lote por job na fila `high`
+- [ ] 166-12-PLAN.md — tela: barra Publicar | Alavancas, página da área, panorama, histórico, aba Publicidade e gates de fonte
+- [ ] 166-13-PLAN.md — tela: janela de confirmação, análise e convites do ML
+- [ ] 166-14-PLAN.md — tela: produtos da conta (com "tirar de todas as promoções"), desconto individual, campanhas do vendedor e campanhas automáticas
+- [ ] 166-15-PLAN.md — tela: abas Cupons e Atacado, na ordem final das abas
+- [ ] 166-16-PLAN.md — gate final contra o baseline, migration no MariaDB local, conferência visual sem custo, prova real na #459 (checkpoint) e learnings §12
 
 ---
 

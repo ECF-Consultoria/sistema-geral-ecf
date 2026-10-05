@@ -634,19 +634,27 @@ Não aplicável: fase aditiva (greenfield dentro do Publicador), sem renomear ne
 | A9 | `GET /seller-promotions/users/{id}` aceita `limit`/`offset` e pagina como o resto | Matriz | Contas com > 50 convites ficam truncadas; ler `paging.total` e avisar |
 | A10 | Convite/promoção criada pelo vendedor tem id `C-MLB…` e pelo ML `P-MLB…` (só nos exemplos da doc) | §Matriz | Separar "seus" de "do ML" por `type`, não por prefixo (usar `type` sempre) |
 
-## Questões abertas
+## Questões abertas (RESOLVED)
 
 1. **Como obter o `offer_id` do candidato em SMART/PRICE_MATCHING?**
    - O que sabemos: o POST exige `offer_id` (`CANDIDATE-MLB…-NNN`), e a doc diz que o candidato nasce "sem offer_id"; o id do candidato chega pela notificação `public candidate` (`GET /seller-promotions/candidates/{id}`), que está fora da fase.
    - O que falta: se `GET …/promotions/{id}/items` (candidatos) ou `GET /seller-promotions/items/{item}` (`ref_id`) devolve esse `CANDIDATE-…`.
    - Recomendação: sondagem somente-leitura na #459 (Wave 0) antes de planejar a tarefa de SMART/PRICE_MATCHING; se não vier, entregar esses dois tipos como **somente leitura** nesta fase e dizer na tela ("aceite no Mercado Livre"), sem inventar o id.
+   - **RESOLVIDA:** sem `offer_id` começando por `CANDIDATE-` na leitura do servidor, SMART e PRICE_MATCHING ficam SÓ LEITURA com o texto "Aceite este convite no Mercado Livre…"; o servidor nunca inventa o id nem aceita o do navegador. Cobertura: `TiposDePromocao::capacidades` (166-04), `InscreverNoConvite` com ALAV-CONV-03 (166-07) e a tela (166-13). A sondagem (166-05) mostra se a leitura traz o id.
 2. **Quais tipos de convite existem de fato na #459?** A conta é loja real (MGSTOREL) com 65 vendas; talvez só `SMART`/`PRICE_DISCOUNT` candidatos. Escrita real de teste exige item com candidato — decidir com o usuário qual anúncio usar ("Item de teste - Não ofertar").
+   - **RESOLVIDA:** o anúncio de teste da #459 é escolhido com o usuário no checkpoint da prova real (166-16, Task 4, pré-condição (d)); os tipos de convite que a conta tem aparecem no panorama e na sondagem (166-05). Nenhum código depende disso.
 3. **Boost:** a doc não diz se o `discount_meli_boost_amount` aumenta o que a loja recebe. Validar com uma oferta real; até lá, linha separada.
+   - **RESOLVIDA:** cofinanciada e boost aparecem em linha separada marcada "estimativa", fora da soma do "quanto recebe", até a comparação com o Seller Center na prova real (166-06; 166-16, Task 4, passo 4).
 4. **Quantos itens por lote e qual teto de itens por confirmação?** Sugestão: 50 itens por lote, 1 job. Confirmar com o usuário se há necessidade de mais.
+   - **RESOLVIDA:** teto de 50 produtos por confirmação em `publicador.alavancas.limites.itens_por_lote` (166-01), aplicado na prévia e no confirmar (166-11), com lote por job na fila `high`; a análise da prévia vai até os 20 primeiros (`itens_analise_previa`).
 5. **Permissão "Promoções" no app ECF do DevCenter está ligada?** Sem ela, todo POST/PUT/DELETE de `seller-promotions` dá 403 mesmo com `write`. É pré-requisito de ambiente (ação do dono do app), não de código.
+   - **RESOLVIDA:** pré-requisito de ambiente, não de código — conferido no checkpoint da prova real (166-16, Task 4, passo 1); o 403 vira a mensagem "O aplicativo ECF não tem a permissão de Promoções no DevCenter…" (`MapeadorErroAlavanca`, 166-02).
 6. **`PUBLICADOR_ALAVANCAS_LIBERADAS_COMPANIES` em produção:** o default `459` está no código; o `.env` de produção precisa ser conferido antes do deploy para não liberar mais do que a #459 por engano (`ssh` só com autorização).
+   - **RESOLVIDA:** conferir o `.env` de produção antes do deploy, fora da fase — pré-condição (b) do checkpoint do 166-16 e anotado no `166-16-SUMMARY.md`.
 7. **A barra "Publicar \| Alavancas" também nas telas Meus Anúncios / Em massa / Histórico?** D-01 só pede na tela da empresa; quem estiver em "Meus Anúncios" precisa voltar à tela da empresa para ir às Alavancas. Recomendação: não mexer nelas nesta fase; reavaliar depois.
+   - **RESOLVIDA:** a barra fica só na tela da empresa (`Produtos.jsx`) nesta fase (166-12); Meus Anúncios, Em massa e Histórico não mudam.
 8. **Sondagem somente-leitura em produção** (`publicador:sondar-alavancas --empresa=459`, mesmo roteiro de `publicador:sondar` do learnings §3, rodado pelo USUÁRIO na VPS): capturaria `/users/me`, `/seller-promotions/users/{id}`, `/seller-promotions/items/{id}`, `/items/{id}/prices`, Ads — as fixtures reais que tirariam A1, A3, A9 e a Questão 1. Recomendado como primeiro plano da fase (leitura pura).
+   - **RESOLVIDA:** o comando `publicador:sondar-alavancas` é construído e testado no 166-05 (só GET, autocontido, só contas da lista das Alavancas); a execução na VPS é do usuário, opcional, e não bloqueia nenhum plano (as fixtures da doc bastam para o código).
 
 ## Disponibilidade de Ambiente
 

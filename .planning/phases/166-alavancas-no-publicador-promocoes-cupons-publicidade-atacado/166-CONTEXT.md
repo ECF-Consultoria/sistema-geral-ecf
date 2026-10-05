@@ -71,6 +71,10 @@ em 2026-10-04).
   `.../ads/search`, ad groups, `/advertising/advertisers/bonifications`) — NUNCA pelos legados
   desligados em 2026-05-27. Criar/pausar/mover campanha fica fora até: (a) a permissão "Advertising" do
   app ECF ser ligada no DevCenter e (b) a escrita ser provada na #459 (não na Bymobille, que é cliente).
+  - *Atualização da pesquisa (2026-10-04):* a leitura por anúncio citada acima (`.../ads/search`) foi
+    removida pelo Mercado Livre em 30/05/2026 ("substituída pelas métricas de Ad Group"); a fase lê campanhas,
+    Ad Groups (`.../product_ads/ad_groups/search`, `api-version: 2`) e bonificações (`166-RESEARCH.md` §7). A decisão
+    não muda: publicidade continua SÓ LEITURA nesta fase.
 - **D-10 — Atacado: ver e editar.** Mostrar se a conta tem a tag `business`; se tiver, ver e editar até
   5 faixas no formato **% B2B** (`POST /items/{id}/prices/price-per-quantity` com `x-version`), nunca
   pelo absoluto (`/prices/standard/quantity`, descontinuado para B2B em 2026-10-27). Sem `business`, a

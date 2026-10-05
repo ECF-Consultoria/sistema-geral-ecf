@@ -1,8 +1,8 @@
 ---
 phase: 166
 slug: alavancas-no-publicador-promocoes-cupons-publicidade-atacado
-status: draft
-nyquist_compliant: false
+status: planned
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-10-04
 ---
@@ -62,6 +62,13 @@ created: 2026-10-04
 | AL166-20 | mapeador de erros; 423 até 3×; escrita nunca repetida em 5xx/timeout | unit + feature | `phpunit tests/Unit/Publicador/Alavancas/MapeadorErroAlavancaTest.php` e `tests/Feature/Publicador/Alavancas/RobustezTest.php` | ❌ W0 | ⬜ |
 
 *Status: ⬜ pendente · ✅ verde · ❌ vermelho · ⚠️ intermitente*
+
+**Acrescentados pelo planejamento (os planos são a fonte; nomes acima seguem valendo):**
+`tests/Feature/Publicador/Alavancas/{AtacadoLeituraTest, ClienteCabecalhosTest, ContextoAlavancasTest, CuponsLeituraTest, CustoDoAnuncioTest, LeiturasHttpTest, PromocoesLeituraTest, SondarAlavancasCommandTest, TravaEscritaHttpTest}.php`,
+`tests/Feature/Publicador/Alavancas/Fakes/AcaoDeTeste.php`,
+`tests/Unit/Publicador/Alavancas/{AssinaturaDaPreviaTest, FaixasAtacadoRegrasTest, RegistroDeAcoesTest, TiposDePromocaoTest}.php` e
+`tests/js/publicador-alavancas-{promocoes, vendedor, cupons-atacado}.test.js` (além de `tests/js/publicador-alavancas.test.js`,
+com o teste de contrato das rotas que têm parâmetro de caminho).
 
 ---
 
