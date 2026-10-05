@@ -2858,7 +2858,7 @@ Plans:
 - [x] 166-13-PLAN.md — tela: janela de confirmação, análise e convites do ML
 - [x] 166-14-PLAN.md — tela: produtos da conta (com "tirar de todas as promoções"), desconto individual, campanhas do vendedor e campanhas automáticas
 - [x] 166-15-PLAN.md — tela: abas Cupons e Atacado, na ordem final das abas
-- [ ] 166-16-PLAN.md — gate final contra o baseline, migration no MariaDB local, conferência visual sem custo, prova real na #459 (checkpoint) e learnings §12
+- [x] 166-16-PLAN.md — gate final contra o baseline, migration no MariaDB local, conferência visual sem custo, prova real na #459 (checkpoint) e learnings §12
 
 ---
 
