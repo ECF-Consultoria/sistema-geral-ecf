@@ -206,3 +206,14 @@ test('WR-FE-10: useLote para no desmonte, ao terminar e em 403/404', () => {
     assert.match(lote, /\[403, 404\]\.includes\(e\.response\?\.status\)\) fim = true/);
     assert.match(lote, /if \(vivo && ! fim\)/);
 });
+
+// ─── WR-FE-06: incluir produtos relê o ItensDoConvite aberto ao lado ───
+for (const arq of ['Promocoes/CampanhasDoVendedor', 'AbaCupons']) {
+    test(`${arq} — WR-FE-06: AdicionarProdutos sobe a versão e o ItensDoConvite remonta por key`, () => {
+        const fonte = lerSemComentarios(`${PASTA}/${arq}.jsx`);
+        assert.match(fonte, /const \[versaoItens, setVersaoItens\] = useState\(0\)/);
+        assert.match(fonte, /<ItensDoConvite key=\{`\$\{c\.id\}-\$\{versaoItens\}`\}/);
+        const adicionar = fonte.slice(fonte.indexOf('<AdicionarProdutos'));
+        assert.match(adicionar.slice(0, adicionar.indexOf('/>')), /onConcluido=\{\(\) => setVersaoItens\(\(n\) => n \+ 1\)\}/);
+    });
+}

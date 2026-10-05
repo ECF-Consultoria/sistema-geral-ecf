@@ -174,6 +174,8 @@ export default function CampanhasDoVendedor({ conta, liberada, motivo, limites }
     const [form, setForm] = useState(null);
     const [aberta, setAberta] = useState(null);
     const [alvo, setAlvo] = useState(null);
+    // Sobe quando produtos entram na campanha: a lista de itens aberta ao lado é relida.
+    const [versaoItens, setVersaoItens] = useState(0);
     const campanhas = (dados?.itens ?? []).filter((c) => TIPOS_DO_VENDEDOR.includes(c.tipo));
 
     // Só relê a lista; o formulário fecha no `aoFechar`, quando a pessoa já leu o resultado.
@@ -256,7 +258,7 @@ export default function CampanhasDoVendedor({ conta, liberada, motivo, limites }
                         </div>
                         {estaAberta && (
                             <>
-                                <ItensDoConvite conta={conta} convite={c} liberada={liberada} motivo={motivo} limites={limites} />
+                                <ItensDoConvite key={`${c.id}-${versaoItens}`} conta={conta} convite={c} liberada={liberada} motivo={motivo} limites={limites} />
                                 <AdicionarProdutos
                                     conta={conta}
                                     promocao={c}
@@ -264,6 +266,7 @@ export default function CampanhasDoVendedor({ conta, liberada, motivo, limites }
                                     liberada={liberada}
                                     motivo={motivo}
                                     limites={limites}
+                                    onConcluido={() => setVersaoItens((n) => n + 1)}
                                 />
                             </>
                         )}

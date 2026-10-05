@@ -21,6 +21,8 @@ export default function AbaCupons({ conta, liberada, motivo, limites }) {
     const [form, setForm] = useState(null);
     const [aberto, setAberto] = useState(null);
     const [alvo, setAlvo] = useState(null);
+    // Sobe quando produtos entram no cupom: a lista de itens aberta ao lado é relida.
+    const [versaoItens, setVersaoItens] = useState(0);
     const cupons = dados?.itens ?? [];
 
     // Só relê a lista; o formulário fecha no `onEncerrado`, depois que a pessoa leu o resultado.
@@ -103,7 +105,7 @@ export default function AbaCupons({ conta, liberada, motivo, limites }) {
                         </div>
                         {estaAberto && (
                             <>
-                                <ItensDoConvite conta={conta} convite={convite} liberada={liberada} motivo={motivo} limites={limites} />
+                                <ItensDoConvite key={`${c.id}-${versaoItens}`} conta={conta} convite={convite} liberada={liberada} motivo={motivo} limites={limites} />
                                 <AdicionarProdutos
                                     conta={conta}
                                     promocao={convite}
@@ -111,6 +113,7 @@ export default function AbaCupons({ conta, liberada, motivo, limites }) {
                                     liberada={liberada}
                                     motivo={motivo}
                                     limites={limites}
+                                    onConcluido={() => setVersaoItens((n) => n + 1)}
                                 />
                             </>
                         )}
