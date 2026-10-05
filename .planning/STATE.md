@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 8 de 17 concluídos
-Status: 167-08 concluído — a Precificação lê o custo da variação nas ofertas ligadas (origem 'produto', do_produto), recusa custo digitado nelas e o Publicador herda sem mudança; Estrutura, PortalEstrutura e suítes do Publicador G2/G3/G5 verdes.
-Last activity: 2026-10-05 — 167-08 concluído
+Plans: 17 em 13 ondas, execução em sequência — 9 de 17 concluídos
+Status: 167-09 concluído — planilha-modelo .xlsx (11 colunas), leitor seguro (2 MB, 1.000 linhas, sem calcular fórmula) e ImportadorProdutos com prévia sem gravar e confirmação que refaz o plano pelo gravarLinhas; Estrutura (180) e PortalEstrutura (54) verdes.
+Last activity: 2026-10-05 — 167-09 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
