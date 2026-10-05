@@ -39,3 +39,58 @@ export function useLeitura(nome, conta, params = {}, { ativo = true } = {}) {
 
     return { dados: estado.dados, erro: estado.erro, carregando: estado.carregando, recarregar: buscar };
 }
+
+// ─── Escrita: toda ação passa pela prévia assinada e só então pela confirmação ───
+
+/** Intervalo entre duas leituras do andamento de um lote, e o tempo máximo acompanhando. */
+const INTERVALO_LOTE = 2500;
+const LIMITE_LOTE = 4 * 60 * 1000;
+
+/** Prévia: só lê no Mercado Livre e devolve o resumo com a assinatura. */
+export const previa = (conta, acao, itens) => axios.post(rota('escritas.previa', conta), { acao, itens });
+
+/** Confirmação: o servidor confere a assinatura antes de escrever. */
+export const confirmar = (conta, acao, itens, assinatura) => axios.post(rota('escritas.confirmar', conta), { acao, itens, assinatura });
+
+/**
+ * Acompanha um lote até terminar (ou até o tempo limite). Sem `lote` não faz nada.
+ * Devolve `{ dados, erro, esgotou }`; `dados` é a resposta de `lotes/{lote}`.
+ */
+export function useLote(conta, lote) {
+    const [estado, setEstado] = useState({ dados: null, erro: null, esgotou: false });
+
+    useEffect(() => {
+        if (! lote) return undefined;
+        setEstado({ dados: null, erro: null, esgotou: false });
+
+        let vivo = true;
+        const inicio = Date.now();
+        let intervalo = null;
+
+        const ler = () => axios.get(rota('lotes', conta, { lote }))
+            .then((r) => {
+                if (! vivo) return;
+                setEstado({ dados: r.data, erro: null, esgotou: false });
+                if (r.data?.terminado) clearInterval(intervalo);
+            })
+            .catch((e) => {
+                if (vivo) setEstado((s) => ({ ...s, erro: mensagemDe(e) }));
+            })
+            .finally(() => {
+                if (vivo && Date.now() - inicio > LIMITE_LOTE) {
+                    clearInterval(intervalo);
+                    setEstado((s) => ({ ...s, esgotou: true }));
+                }
+            });
+
+        ler();
+        intervalo = setInterval(ler, INTERVALO_LOTE);
+
+        return () => {
+            vivo = false;
+            clearInterval(intervalo);
+        };
+    }, [conta, lote]);
+
+    return estado;
+}
