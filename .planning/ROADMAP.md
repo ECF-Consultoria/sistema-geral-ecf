@@ -2833,7 +2833,7 @@ Plans:
 **Goal:** no Publicador interno (`/mlb/anuncios`), depois de escolher a empresa, a equipe escolhe entre **Publicar** (o fluxo atual da Fase 164) e **Alavancas**: uma área para ver, analisar e — onde a API do Mercado Livre permite — criar e alterar as alavancas de venda da conta do cliente: Central de promoções (convites, candidatos, inscrever/alterar/tirar anúncio, lista de exclusão das campanhas automáticas, desconto individual, campanha do vendedor, leve X pague Y), cupons do vendedor, publicidade (Product Ads) e atacado (preço por quantidade).
 **Requirements**: AL166-01, AL166-02, AL166-03, AL166-04, AL166-05, AL166-06, AL166-07, AL166-08, AL166-09, AL166-10, AL166-11, AL166-12, AL166-13, AL166-14, AL166-15, AL166-16, AL166-17, AL166-18, AL166-19, AL166-20 (definidos em `166-RESEARCH.md`; decisões D-01..D-13 em `166-CONTEXT.md`)
 **Depends on:** Phase 164 (Publicador interno, seleção de empresa e conta ML com token). Toca a Fase 41/44 (Sugadores) só se a publicidade reaproveitar o `MercadoLivreAdsService`.
-**Plans:** 16 plans
+**Plans:** 16/16 plans — código COMPLETO em 2026-10-05 (verificação `human_needed`: 20/20 requisitos, 13/13 decisões; falta só a prova real na #459, pós-deploy — `166-HUMAN-UAT.md`)
 
 **Já sabido (pesquisa de 2026-10-04, `166-PESQUISA-API.md`):**
 - Central de promoções e cupons: API completa (`/seller-promotions`, `app_version=v2`); cupom do vendedor só no Brasil; reputação verde, item ativo e exposição paga para criar desconto/campanha/cupom.
