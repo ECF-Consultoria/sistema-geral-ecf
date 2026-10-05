@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 6 de 17 concluídos
-Status: 167-06 concluído — NormalizadorDeLinha (função pura), ProdutoLinhas (linha com logística/frete/pendências do servidor, 100 por página) e ProdutoCadastroService::gravarLinhas (savepoint por linha, código único sem caixa/acento, listas, categoria só folha, 1 log por lote); pasta Estrutura + Unit/PortalEstrutura 197 testes OK.
-Last activity: 2026-10-05 — 167-06 concluído
+Plans: 17 em 13 ondas, execução em sequência — 7 de 17 concluídos
+Status: 167-07 concluído — cada variação gravada nasce com a oferta simples ligada na Lista SKUs (criar, sincronizar, garantirOfertas) e excluirVariacao reaproveita a regra da Lista SKUs (D-22); Estrutura, PortalEstrutura e suítes do Publicador G2/G3/G5 verdes.
+Last activity: 2026-10-05 — 167-07 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
