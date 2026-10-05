@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
 use App\Models\EstruturaPrecificacaoParametros;
+use App\Services\Portal\Estrutura\Produtos\ProdutoCustos;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,10 @@ use Illuminate\Validation\ValidationException;
  *
  * O resumo é sobre TODAS as ofertas da empresa; o detalhe, só das ofertas da
  * página — mesma divisão da `paginaOfertas` (ADR PORTAL-01 §Escala).
+ *
+ * Fase 167: D-10 — oferta ligada a produto usa o custo da variação (o custo
+ * digitado aqui não vale para ela); D-19 — o frete calculado no Produtos NÃO
+ * entra nesta Precificação.
  */
 class EstruturaPrecificacaoService
 {
@@ -37,12 +42,19 @@ class EstruturaPrecificacaoService
 
         $custos = $linhas->map(fn (EstruturaPrecificacao $l) => $l->custo)->all();
 
+        // Ligada ⇒ o custo é o do produto, inclusive null. O mesmo mapa alimenta os
+        // combos via PrecificacaoEstrutura::custo, então a função pura não muda.
+        $doProduto = ProdutoCustos::daEmpresa($empresa);
+        foreach ($doProduto as $id => $c) {
+            $custos[$id] = $c;
+        }
+
         $resumo = ['total' => 0, 'precificadas' => 0, 'sem_custo' => 0, 'sem_frete' => 0, 'impossivel' => 0];
         $porOferta = [];
         $daPagina = array_flip($idsDaPagina);
 
         foreach ($conjunto->ofertas() as $o) {
-            $calculo = $this->calcular($o, $linhas[$o['id']] ?? null, $custos, $parametros);
+            $calculo = $this->calcular($o, $linhas[$o['id']] ?? null, $custos, $parametros, $doProduto);
 
             $resumo['total']++;
             match ($calculo['pendencia']) {
@@ -81,12 +93,21 @@ class EstruturaPrecificacaoService
     /** @param  array<string, mixed>  $dados */
     public function salvarOferta(EstruturaOferta $oferta, array $dados, AtorDoPortal $ator): EstruturaPrecificacao
     {
+        $ligada = $oferta->ligadaAProduto();
+        if ($ligada && isset($dados['custo']) && $dados['custo'] !== '') {
+            throw ValidationException::withMessages(['custo' => 'O custo desta oferta vem do Produtos. Altere lá.']);
+        }
+
         $valores = [
             'custo'          => $this->dinheiro($dados['custo'] ?? null, 'custo'),
             'frete_classico' => $this->dinheiro($dados['frete_classico'] ?? null, 'frete_classico'),
             'frete_premium'  => $this->dinheiro($dados['frete_premium'] ?? null, 'frete_premium'),
             ...$this->percentuais($dados, EstruturaPrecificacao::EXCECOES, permiteNulo: true),
         ];
+        if ($ligada) {
+            // Não sobrescreve a coluna antiga: ela é ignorada na leitura.
+            unset($valores['custo']);
+        }
 
         return DB::transaction(function () use ($oferta, $valores, $ator) {
             $linha = EstruturaPrecificacao::updateOrCreate(['oferta_id' => $oferta->id], $valores);
@@ -103,15 +124,20 @@ class EstruturaPrecificacaoService
      *
      * @param  array<int, ?float>  $custos
      * @param  array<string, float>  $empresa
+     * @param  array<int, ?float>  $doProduto
      */
-    private function calcular(array $o, ?EstruturaPrecificacao $linha, array $custos, array $empresa): array
+    private function calcular(array $o, ?EstruturaPrecificacao $linha, array $custos, array $empresa, array $doProduto = []): array
     {
         $excecoes = array_combine(
             EstruturaPrecificacao::EXCECOES,
             array_map(fn ($k) => $linha?->{$k}, EstruturaPrecificacao::EXCECOES),
         );
         $p = PrecificacaoEstrutura::parametros($empresa, $excecoes);
-        $custo = PrecificacaoEstrutura::custo($linha?->custo, $o['componentes'], $custos);
+        $ligada = array_key_exists($o['id'], $doProduto);
+        $custo = PrecificacaoEstrutura::custo($ligada ? $doProduto[$o['id']] : $linha?->custo, $o['componentes'], $custos);
+        if ($ligada && $custo['valor'] !== null) {
+            $custo['origem'] = 'produto';
+        }
 
         $tipos = [];
         foreach (PrecificacaoEstrutura::fretes($linha?->frete_classico, $linha?->frete_premium) as $tipo => $frete) {
@@ -132,6 +158,7 @@ class EstruturaPrecificacaoService
 
         return [
             'custo'          => $custo,
+            'do_produto'     => $ligada,
             'frete_classico' => $linha?->frete_classico,
             'frete_premium'  => $linha?->frete_premium,
             'excecoes'       => $excecoes,
