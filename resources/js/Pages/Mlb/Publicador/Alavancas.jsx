@@ -4,6 +4,8 @@ import { Link } from '@inertiajs/react';
 import { useState } from 'react';
 import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
 import AvisoAlavancasTravadas from '@/Components/Mlb/Alavancas/AvisoAlavancasTravadas';
+import Panorama from '@/Components/Mlb/Alavancas/Panorama';
+import Historico from '@/Components/Mlb/Alavancas/Historico';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
 import { LINK } from '@/Components/Publicador/Mesa/comum';
@@ -76,6 +78,10 @@ export default function Alavancas({ empresa, alavancas }) {
                             <AvisoAlavancasTravadas variante="faixa" className="mb-6">{alavancas.motivo}</AvisoAlavancasTravadas>
                         )}
 
+                        <div className="mb-6">
+                            <Panorama conta={conta} />
+                        </div>
+
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-2" role="group" aria-label="Alavanca">
                                 {ABAS.map((a) => {
@@ -103,6 +109,8 @@ export default function Alavancas({ empresa, alavancas }) {
                                 {verHistorico ? 'Voltar às alavancas' : 'Histórico de alterações'}
                             </button>
                         </div>
+
+                        {verHistorico && <Historico conta={conta} />}
                     </>
                 )}
             </div>

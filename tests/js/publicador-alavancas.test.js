@@ -100,7 +100,9 @@ test('AvisoAlavancasTravadas — calmo, com o texto combinado e sem a palavra "P
 /** Rotas do grupo `publicador.alavancas.` cujo caminho tem parâmetro além de `{conta}`. */
 function rotasComParametro() {
     const fonte = readFileSync(resolve(RAIZ, 'routes/mlb_anuncios.php'), 'utf8');
-    const grupo = fonte.slice(fonte.indexOf("->name('publicador.alavancas.')"));
+    const desde = fonte.slice(fonte.indexOf("->name('publicador.alavancas.')"));
+    // O grupo acaba no primeiro `});` recuado em 12 espaços; o que vem depois é de outras rotas.
+    const grupo = desde.slice(0, desde.search(/\r?\n {12}\}\);/));
     const achadas = {};
     for (const m of grupo.matchAll(/Route::(?:get|post)\('([^']*)'[^;]*?->name\('([^']+)'\);/g)) {
         const params = [...m[1].matchAll(/\{(\w+)\}/g)].map((p) => p[1]);
