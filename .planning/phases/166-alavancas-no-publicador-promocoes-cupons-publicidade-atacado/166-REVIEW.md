@@ -5,12 +5,12 @@ depth: standard
 files_reviewed: 76
 status: issues_found
 fixed: 16
-open: 12
+open: 13
 findings:
   critical: 3
-  warning: 14
+  warning: 15
   info: 11
-  total: 28
+  total: 29
 ---
 
 # Fase 166 — Code Review
@@ -23,7 +23,7 @@ Alavancas + diff do `Produtos.jsx`). Base do diff: `2a279068`.
 | Parte | Critical | Warning | Info |
 |---|---|---|---|
 | Backend | 1 (CR-BE-01) | 5 | 6 |
-| Frontend | 2 (CR-FE-01, CR-FE-02) | 9 | 5 |
+| Frontend | 2 (CR-FE-01, CR-FE-02) | 10 | 5 |
 
 # Parte 1 — Backend
 
