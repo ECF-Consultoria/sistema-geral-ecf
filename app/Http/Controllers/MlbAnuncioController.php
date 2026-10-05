@@ -1582,6 +1582,48 @@ class MlbAnuncioController extends Controller
             ], 422);
         }
 
+        // Fase 162 (VAL-01/04/06) — a validação automática é GATE no
+        // SERVIDOR, não só a tela escondendo o botão. VAL-06 primeiro:
+        // pendente há mais de 10 min nunca termina — libera como
+        // `indisponivel` antes de recusar por estar "em andamento".
+        $criativo->encerrarValidacaoSeTravada();
+        $criativo->refresh();
+
+        if ($criativo->validacao_status === MlAnuncioCriativo::VALIDACAO_PENDENTE) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'A validação automática desta imagem ainda está em andamento. Aguarde alguns segundos e tente de novo.']],
+            ], 422);
+        }
+
+        // T-162-09: único campo aceito do corpo neste endpoint — mesma
+        // disciplina do `motivo` de `criativoRegenerar()`.
+        $request->validate(['confirmar_risco' => ['sometimes', 'boolean']]);
+
+        if ($criativo->validacao_status === MlAnuncioCriativo::VALIDACAO_REPROVADA) {
+            if (! $request->boolean('confirmar_risco')) {
+                // VAL-04: reprovada só sobe com confirmação explícita de
+                // risco. Mensagem do veredito, montada no servidor — nunca
+                // id interno, nunca nome de classe (T-162-13).
+                return response()->json([
+                    'ok'    => false,
+                    'erros' => [['mensagem' => $criativo->validacaoMensagem() ?? 'A validação automática identificou um risco nesta imagem. Confira antes de aprovar.']],
+                ], 422);
+            }
+
+            // T-162-10: override auditado NA TABELA (não só no log) — quem
+            // assumiu o risco e quando. Merge no array existente: NUNCA
+            // sobrescreve o veredito gravado pelo juiz.
+            $validacaoComOverride = $criativo->validacao ?? [];
+            $validacaoComOverride['override'] = [
+                'user_id' => $request->user()->id,
+                'em'      => now()->toDateTimeString(),
+            ];
+            $criativo->update(['validacao' => $validacaoComOverride]);
+
+            Log::warning("[Creative] Aprovação com risco confirmado — criativo {$criativo->id} (kit {$criativo->kit_id}) por " . $request->user()->name);
+        }
+
         if ($criativo->imagem_path === null) {
             return response()->json([
                 'ok'    => false,
