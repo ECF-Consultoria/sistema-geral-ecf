@@ -2057,10 +2057,31 @@ class MlbAnuncioController extends Controller
         $kit->encerrarSeTravado();
         $kit->recalcularStatus();
 
+        // Fase 162 Plano 04: a trava de tempo da validação (VAL-06) tem
+        // efeito visível AQUI — é o endpoint do polling. Molde literal do
+        // mesmo laço em `criativoKitAprovar()`: slot pendente há mais de
+        // `LIMITE_VALIDACAO_MINUTOS` libera como `indisponivel` antes de
+        // montar a resposta, nunca deixando a tela presa em "validando…".
+        $kit->slots()
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_PENDENTE)
+            ->get()
+            ->each(fn (MlAnuncioCriativo $slot) => $slot->encerrarValidacaoSeTravada());
+
         $portador = $kit->criativoReferencia;
 
         $slots = $kit->slots()->get()->map(function (MlAnuncioCriativo $slot) use ($kit) {
             $padrao = $this->creativeSlotCatalog->padraoDe((string) $slot->slot) ?? [];
+
+            // Fase 162 Plano 04 (APROV-04/VAL-03) — flags calculadas no
+            // SERVIDOR; a tela nunca recalcula a régua de validação (mesma
+            // disciplina de `pode_aprovar`/`exige_confirmacao_risco` com o
+            // gate real de `criativoAprovar()`).
+            $podeAprovar = $slot->status === MlAnuncioCriativo::STATUS_PRONTO
+                && $slot->validacao_status !== MlAnuncioCriativo::VALIDACAO_PENDENTE
+                && $slot->validacao_status !== MlAnuncioCriativo::VALIDACAO_REPROVADA;
+
+            $exigeConfirmacaoRisco = $slot->status === MlAnuncioCriativo::STATUS_PRONTO
+                && $slot->validacao_status === MlAnuncioCriativo::VALIDACAO_REPROVADA;
 
             return [
                 'indice'      => $slot->slot_indice,
@@ -2087,6 +2108,21 @@ class MlbAnuncioController extends Controller
                 // aprovada no Mercado Livre; a grade some os botões e mostra
                 // este link quando preenchido (evita segundo upload).
                 'ml_picture_url'          => $slot->ml_picture_url,
+                // Fase 162 Plano 04 (APROV-04/VAL-03) — whitelist fechada:
+                // só estes 5 campos; nada do json cru de `validacao` vaza
+                // (nunca `fidelidade`, `tipo`, `override`, `motivo_curto`
+                // por item — T-162-18).
+                'validacao_status'   => $slot->validacao_status,
+                'validacao_mensagem' => $slot->validacaoMensagem(),
+                'validacao_problemas' => collect($slot->validacao['problemas'] ?? [])
+                    ->map(fn ($problema) => [
+                        'gravidade'  => $problema['gravidade'] ?? null,
+                        'explicacao' => $problema['explicacao'] ?? null,
+                    ])
+                    ->values()
+                    ->all(),
+                'pode_aprovar'            => $podeAprovar,
+                'exige_confirmacao_risco' => $exigeConfirmacaoRisco,
             ];
         })->values();
 
@@ -2103,6 +2139,11 @@ class MlbAnuncioController extends Controller
             // a régua a partir dos slots.
             'prontas'          => $kit->prontas(),
             'aprovadas'        => $kit->aprovadas(),
+            // Fase 162 Plano 04 (VAL-04 em lote) — a tela não recalcula régua
+            // nenhuma (decisão da 161-03): precisa destes dois números prontos
+            // do servidor para o botão "Aprovar kit" e para o aviso de topo.
+            'prontas_sem_risco' => $kit->prontasSemRisco(),
+            'reprovadas'        => $kit->reprovadas(),
             'referencias'      => $portador === null ? [] : collect($portador->referenciasVivas())
                 ->map(fn ($ref) => [
                     'indice' => $ref['indice'],
