@@ -441,6 +441,18 @@ return [
             'text_fallbacks'  => env('GEMINI_TEXT_MODEL_FALLBACK', 'gemini-3.5-flash-lite'),
             'image_fallbacks' => env('GEMINI_IMAGE_MODEL_FALLBACK', ''),
 
+            // Fase 162 (D-06) — juiz de visão. MEDIDO em 2026-10-05, com a
+            // chave de produção, contra o caso real (gabinete de 2 portas x
+            // imagem gerada com 3): os DOIS modelos pegaram o defeito certo,
+            // mas o `lite` respondeu em 2,7s contra 4,9s do `flash` e é mais
+            // barato — por isso é o default do JUIZ, com o `flash` como
+            // reserva. ⚠️ Isto NÃO contradiz a D-04: o `lite` segue
+            // descartado para GERAR imagem (erra contagem de forma
+            // recorrente); julgar e gerar são tarefas diferentes, e esta é a
+            // medição que vale para o juiz.
+            'judge_model'     => env('GEMINI_JUDGE_MODEL', 'gemini-3.5-flash-lite'),
+            'judge_fallbacks' => env('GEMINI_JUDGE_MODEL_FALLBACK', 'gemini-3.8-flash'),
+
             // Mercado Livre: §13.3 pede 1200x1200. "2K" em "1:1" atende com
             // folga o mínimo de 500px do ML.
             'aspect_ratio' => env('GEMINI_ASPECT_RATIO', '1:1'),
@@ -475,6 +487,22 @@ return [
             // Sai de FOTOS_RECOMENDADAS_MIN (resources/js/lib/mlAnuncioRegras.js),
             // não de número inventado.
             'minimo_aprovadas' => (int) env('CREATIVE_KIT_MINIMO_APROVADAS', 3),
+        ],
+
+        // Fase 162 (D-06, VAL-01..06) — validação automática pelo juiz
+        // Gemini. `ativa`: chave de aborto rápido sem deploy (OPS-03), igual
+        // ao `enabled` do bloco acima. `max_validacoes_asset`: teto de
+        // chamadas de juiz por asset (DoS de custo, T-162-04).
+        // `regenerar_automatico`: VAL-05, implementado no Plano 03 desta
+        // fase — a chave já nasce aqui para não exigir migration de config
+        // depois. `max_problemas`: teto de itens gravados na coluna
+        // `validacao` (defesa em profundidade contra resposta hostil/longa
+        // do modelo).
+        'validacao' => [
+            'ativa'                => (bool) env('CREATIVE_VALIDACAO_ATIVA', true),
+            'max_validacoes_asset' => (int) env('CREATIVE_MAX_VALIDACOES_ASSET', 3),
+            'regenerar_automatico' => (bool) env('CREATIVE_VAL_REGEN_AUTO', true),
+            'max_problemas'        => (int) env('CREATIVE_VAL_MAX_PROBLEMAS', 5),
         ],
     ],
 

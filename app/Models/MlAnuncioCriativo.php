@@ -24,6 +24,16 @@ class MlAnuncioCriativo extends Model
     public const STATUS_APROVADO = 'aprovado';
     public const STATUS_ERRO     = 'erro';
 
+    /**
+     * Estados de `validacao_status` (Fase 162, D-06). NULL (fora destas
+     * constantes) significa "nunca passou por validação" — é o estado dos
+     * 12 criativos que já existem hoje; nunca confundir com `reprovada`.
+     */
+    public const VALIDACAO_PENDENTE    = 'pendente';
+    public const VALIDACAO_APROVADA    = 'aprovada';
+    public const VALIDACAO_REPROVADA   = 'reprovada';
+    public const VALIDACAO_INDISPONIVEL = 'indisponivel';
+
     /** Estados em que ainda vale a pena o front continuar perguntando. */
     public const STATUS_EM_ANDAMENTO = [self::STATUS_PENDENTE, self::STATUS_RODANDO];
 
@@ -37,6 +47,15 @@ class MlAnuncioCriativo extends Model
      */
     public const LIMITE_MINUTOS = 12;
 
+    /**
+     * Validação viva além deste limite nunca vai terminar (Fase 162,
+     * molde literal de `LIMITE_MINUTOS` desta mesma classe e de
+     * `MlAnuncioIaAnalise::LIMITE_MINUTOS`). O juiz medido (prova técnica
+     * 2026-10-05) responde em 2,7s–4,9s; 10 min cobre fila lenta com três
+     * ordens de grandeza de folga.
+     */
+    public const LIMITE_VALIDACAO_MINUTOS = 10;
+
     protected $fillable = [
         'token', 'company_id', 'mlb_empresa_id', 'rascunho_id', 'user_id',
         'kit_id', 'slot_indice', 'slot_plano',
@@ -49,6 +68,9 @@ class MlAnuncioCriativo extends Model
         'aprovado_por', 'aprovado_em',
         'ml_picture_id', 'ml_picture_url',
         'started_at', 'finished_at',
+        // Fase 162 (D-06, VAL-01..06) — validação automática pelo juiz.
+        'validacao_status', 'validacao', 'validacoes',
+        'regeneracao_automatica', 'validacao_pedida_em', 'validacao_em',
     ];
 
     protected $casts = [
@@ -64,6 +86,11 @@ class MlAnuncioCriativo extends Model
         'aprovado_em'              => 'datetime',
         'started_at'               => 'datetime',
         'finished_at'              => 'datetime',
+        // Fase 162 — veredito estruturado do juiz (CreativeValidacao::paraColuna()).
+        'validacao'                => 'array',
+        'regeneracao_automatica'   => 'boolean',
+        'validacao_pedida_em'      => 'datetime',
+        'validacao_em'             => 'datetime',
     ];
 
     public function company(): BelongsTo
@@ -159,5 +186,34 @@ class MlAnuncioCriativo extends Model
         }
 
         return $this->referencias ?? [];
+    }
+
+    /**
+     * Pedido de validação em andamento — NUNCA confundir com NULL (que
+     * significa "nunca passou por validação", o estado dos 12 criativos já
+     * em produção). Fase 162 — vocabulário para a migration e para o juiz;
+     * a transição travada→indisponível é do Plano 02.
+     */
+    public function validacaoPendente(): bool
+    {
+        return $this->validacao_status === self::VALIDACAO_PENDENTE;
+    }
+
+    /**
+     * Pendente há mais de `LIMITE_VALIDACAO_MINUTOS`? Então nunca vai
+     * terminar. Conta de `validacao_pedida_em` (instante em que o pedido foi
+     * registrado) — equivalente ao `created_at` do molde de `travada()`.
+     */
+    public function validacaoTravada(): bool
+    {
+        return $this->validacaoPendente()
+            && $this->validacao_pedida_em !== null
+            && $this->validacao_pedida_em->lt(now()->subMinutes(self::LIMITE_VALIDACAO_MINUTOS));
+    }
+
+    /** A frase pt-BR já pronta para a tela (APROV-04) — nunca remontada no front. */
+    public function validacaoMensagem(): ?string
+    {
+        return $this->validacao['mensagem'] ?? null;
     }
 }

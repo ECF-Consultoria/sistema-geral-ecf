@@ -83,6 +83,9 @@ class MlAnuncioCriativoKit extends Model
         'total_slots', 'minimo_aprovadas', 'imagens_geradas', 'regeneracoes',
         'aprovado_por', 'aprovado_em',
         'started_at', 'finished_at',
+        // Fase 162 (D-06) — chamadas de juiz somadas no kit (OPS-02) e
+        // quantas das `regeneracoes` do kit foram automáticas (VAL-05).
+        'validacoes', 'regeneracoes_automaticas',
     ];
 
     protected $casts = [
