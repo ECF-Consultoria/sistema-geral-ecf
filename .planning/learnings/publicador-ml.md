@@ -400,3 +400,123 @@ não se deduz do código:
   tela mostra ALAV-B2B-09), a forma do PxQ absoluto em `prices[]` (a detecção é por `min_purchase_unit` > 1 sem
   `percentage`), A3 (estimativa de cofinanciada contra o Seller Center), A9 (convite "aberto") e a Questão 1 (forma de
   `benefits` nos candidatos). A permissão "Promoções" do app no DevCenter também só se prova em produção (Questão 5).
+
+## 13. Creative Engine no Publicador (Fase 165, 05/10/2026)
+
+Nota de numeração: o `165-08-PLAN.md` (escrito em 04/10) pedia esta seção como "## 11." — mas duas outras seções
+(11 "Análise da equipe" e 12 "Alavancas", Fase 166) já ocupavam esse número quando a fase 165 terminou de executar,
+em 05/10. Mesmo padrão do item abaixo sobre planos que envelhecem: o número certo, no momento de escrever, é o
+próximo disponível (13), não o que o plano previa.
+
+**Escopo e token**
+- O kit do Publicador é achado pela cadeia criativo → kit → portador, via `pubRascunhoIdEfetivo()` (resolve
+  próprio → kit → portador). Os 7 slots do kit NÃO têm as colunas `pub_*`: o `PlanejarKitCriativosJob` (herdado,
+  não tocado por esta fase) não as copia para o slot, e não precisa — só o kit e o criativo-portador carregam
+  `pub_rascunho_id`/`pub_grupo`.
+- Nenhum token de 32 caracteres do Publicador sai do servidor; o kit é endereçado pelo `id` numérico, escopado por
+  `pub_rascunho_id` em toda rota nova. Motivo, nos dois sentidos: as rotas antigas `criativo.*` nunca conferem
+  escopo com `rascunho_id` NULL — `kit.status` antigo devolve os tokens do kit/slots/portador de um kit do
+  Publicador sem recusar (provado em `RotasAntigasComKitDoPublicadorTest`), e o `planejar` antigo faz
+  `where('rascunho_id', $criativo->rascunho_id)` (nunca `whereNull`), então um kit do Publicador (`rascunho_id`
+  sempre NULL) jamais é achado por ali — mas um criativo ANTIGO cujo rascunho foi apagado também cai em
+  `rascunho_id IS NULL` e por essa mesma lógica poderia colidir. Estado da guarda nas rotas antigas em 05/10:
+  **ainda não existe** — o `abort_if` de 1 linha proposto no checkpoint do 165-01 não foi acrescentado (fora do
+  `files_modified` de todos os 8 planos; ninguém tocou `MlbAnuncioController.php`). O risco fica aceito e
+  registrado (T-165-20); o teste que prova isso (`RotasAntigasComKitDoPublicadorTest`, caso 2) sai
+  **"incomplete" de propósito**, nunca "verde por acidente" — e se liga sozinho no dia em que a guarda chegar.
+  Não expor token em tela nova enquanto essa guarda não existir.
+- "Aprovado" no Publicador = foto está em `pub_imagens` (`pub_imagem_id` preenchido no slot), com
+  `ml_picture_id`/`ml_picture_url` do slot **sempre nulos** (D-11) — a classe de aprovação nunca referencia esses
+  dois campos nem o serviço de upload direto do assistente antigo. Em conta liberada, o arquivo sobe ao Mercado
+  Livre NA HORA (`ImagemAssetService::receber()`, fora de transação), como qualquer foto do Publicador; ele só
+  entra DENTRO de um anúncio na publicação, nunca na aprovação.
+
+**Status calculado, relógio da tentativa, regenerar**
+- `MlAnuncioCriativoKit::recalcularStatus()` (método herdado, não tocado) vira `gerando` quando há um slot
+  `aprovado` misturado com `pronto`/`pendente` — cai no `default` do `match` interno dele. A tela do Publicador
+  não sofre com isso: ela lê `PublicadorCriativoKitPresenter::statusEfetivo()`, que segue 8 passos fechados
+  (aprovado → planejando → sem slot → planejado-com-tudo-pendente → gerando → erro-total → parcial → pronto) e só
+  cai para o status gravado quando nenhum slot está aprovado — um kit `gerando` com um aprovado no meio aparece
+  como `pronto` na tela, sem precisar corrigir (ou sequer chamar) `recalcularStatus()`.
+- O motor mede o tempo-limite pelo `created_at` (slot 12 min, kit 25 min) e encerra o item "travado" antes de
+  gerar de novo. No Publicador, o `created_at` do kit e dos slots recém-despachados é **regravado a cada
+  tentativa** (`reiniciarRelogioDaTentativa()`, chamado antes de despachar o job de gerar/regenerar) — sem isso,
+  um kit retomado horas depois do planejamento original seria encerrado como travado na hora de gerar. O início
+  REAL da tentativa fica em `started_at`: qualquer leitura futura que precise saber "quando o kit nasceu" (um
+  relatório, uma auditoria) tem que ler `started_at`, não `created_at`. No assistente antigo esse problema de
+  leitura continua existindo — a fase 165 só resolveu o caso do Publicador, que é o próprio que regrava o relógio.
+- Regenerar um slot recusa ANTES de subir o contador `regeneracoes` quando o kit está fechado ou sem referência
+  efêmera viva — a ordem importa: se o job rodasse primeiro e falhasse depois, a tentativa já teria sido "gasta"
+  sem produzir nada. O controller do Publicador confere essas duas condições antes de despachar.
+
+**Referência efêmera, comparação de grupo, FK em teste**
+- A referência efêmera do Publicador nasce a partir de `pub_imagens` (fotos do próprio rascunho, não upload novo):
+  em modo de teste, um `UploadedFile` é construído sobre `Storage::disk('local')->path()` do arquivo já salvo, e
+  há exatamente UMA chamada a `ReferenciaEfemeraService::guardar()` por lote — os índices das referências dentro
+  do portador são por CHAMADA (0-based), não por foto; chamar `guardar()` duas vezes para duas fotos criaria dois
+  portadores com índice 0 cada, não um portador com índices 0 e 1.
+- `pub_grupo` é comparado em **PHP** (`===`) nos helpers de retomada (`retomavelDoPublicador`/
+  `ultimoAprovadoDoPublicador`), nunca só num `where()` do SQL — a collation `_ci` (case-insensitive) do MariaDB
+  casaria "Preto" com "preto" como o mesmo grupo, o que SQL puro não evitaria. E `pub_grupo` (varchar 600) não tem
+  índice, de propósito: a consulta de retomada filtra primeiro por `pub_rascunho_id` (indexado) e só depois
+  compara o grupo em PHP sobre o resultado já filtrado — um índice numa coluna de 600 bytes estouraria o limite de
+  chave do InnoDB em `utf8mb4`.
+- No SQLite dos testes as FKs ficam ligadas dentro da transação do `RefreshDatabase`: apagar o `pub_rascunho`
+  zera `pub_rascunho_id` do criativo via `nullOnDelete` e ele cai de volta no caminho ANTIGO, com a mensagem
+  antiga — isso é o comportamento esperado para um rascunho DE FATO apagado. A mensagem do ramo NOVO (criativo
+  órfão por corrida, id apontando para um rascunho que nunca existiu ou que some no meio da requisição) só
+  aparece testada com `PRAGMA defer_foreign_keys = ON` dentro do teste — `PRAGMA foreign_keys = OFF` sozinho é
+  **ignorado** pelo SQLite dentro de uma transação já aberta (a do `RefreshDatabase`); só o `defer_foreign_keys`
+  consegue simular a janela de corrida sem desligar a integridade de verdade.
+- Migration aditiva com FK + índice explícito: no `down()`, `dropForeign()` tem que vir ANTES de `dropIndex()`,
+  porque o MariaDB reaproveita o índice explícito como o índice interno da própria FK — dropar o índice primeiro
+  dá 1553 ("cannot drop index needed in a foreign key constraint"). A migration `2026_10_03_090100` do Creative
+  Engine (herdada, fora do `files_modified` desta fase) faz a ordem CONTRÁRIA no `down()` — risco só em rollback,
+  não em uso normal; avisar antes de rodar `migrate:rollback` dela num MariaDB real.
+
+**Conferência sem custo e deploy**
+- Com `GEMINI_BASE_URL` apontando para uma porta fechada, o `CreativePlanner` cai no plano DETERMINÍSTICO (sem
+  chamar a IA de texto) e o kit termina `planejado` com 7 slots — não em erro. Para ver o estado de ERRO de
+  propósito, é preciso semear um kit já em `erro` (ou um kit `planejando` velho, que o `encerrarSeTravado()` fecha
+  na hora). Em NENHUM cenário de conferência local clicar "Gerar agora" com `QUEUE_CONNECTION=sync`: os 7
+  `GerarCriativoIaJob` rodariam dentro da própria requisição HTTP, chamando o provedor de imagem de verdade.
+- Apagar `Company`/`MlbEmpresa` apaga os criativos pela CASCATA do Creative Engine (herdada), enquanto o
+  `pub_produto` correspondente fica (SET NULL nas âncoras dele, D27 do item 9 acima) — ou seja, depois de apagar a
+  empresa, o produto do Publicador sobrevive mas os criativos relacionados a ele não.
+- Deploy desta fase: migration aditiva (`php artisan migrate --force`) + `sudo -u www-data php artisan
+  queue:restart` (cobre a fila `creative`, 3 processos) — nunca `supervisorctl restart`, que mataria uma geração
+  de imagem PAGA no meio. A ponte "Gerar criativos no assistente antigo" na tela de produtos continua ativa até o
+  Publicador estar em uso real.
+
+**Validador da Fase 162 chegou no meio da execução, sem estar nos planos**
+- Os 8 planos da 165 são de 04/10, escritos ANTES da Fase 162 (validador Gemini-como-juiz) mergear em
+  `origin/main`. Três ondas diferentes (165-04, 165-05, 165-06) tiveram que acrescentar o MESMO gate por conta
+  própria — nenhuma delas podia esperar a outra terminar: o presenter (`validacao_status`/`pode_aprovar`/
+  `exige_confirmacao_risco` por slot), o controller (`aprovar()` recusa `pendente`, exige `confirmar_risco=true`
+  para `reprovada`, com override auditado) e o painel React (dois cliques explícitos para "aprovar mesmo assim",
+  nunca o mesmo botão de uma imagem aprovada). Sem isso em qualquer uma das três camadas, o Publicador teria
+  aprovado em silêncio — ou falhado com um 422 sem explicação — uma imagem que o juiz já tinha reprovado. Quem
+  mexer num plano desenhado antes de uma fase vizinha que ainda não tinha mergeado: ler o código real da fase
+  vizinha antes de implementar, não só a prosa do plano.
+
+**O painel só existe de verdade quando alguém o monta na página**
+- As ondas 165-01 a 165-06 entregaram migration, dois serviços novos, 7+2 endpoints HTTP, o presenter, o hook
+  (`useCriativosDoPublicador`) e o painel (`Mesa/PainelCriativos.jsx`) com TODAS as suítes verdes — e a tela real
+  do editor continuava sem nenhum botão "Gerar com IA", porque nenhum arquivo de página importava
+  `FotosPorGrupo.jsx`/`Editor.jsx` com o contexto ligado. Isso só aconteceu na onda 165-07, que montou o
+  `<CriativosDoPublicador.Provider>` em `Editor.jsx` e leu o contexto dentro de `BlocoDeFotos`. Suíte 100% verde
+  não significa funcionalidade visível — e `npm run build` sozinho também não prova isso (um componente que
+  nenhuma página importa compila sem erro e simplesmente não entra em bundle nenhum).
+
+**Ambiente, composer e git — custou tempo sem ser do Creative Engine**
+- O `composer.lock` trazido pelo merge do `origin/main` (o MCP do outro dev, `laravel/mcp` + `laravel/passport`)
+  exige **PHP ≥ 8.4.1** (`symfony/psr-http-message-bridge` resolvido em v8.1.0) — mas `composer.json` segue
+  declarando `"php": "^8.2"` e esta máquina roda PHP **8.2.12**. `composer install` recusa com "lock file does not
+  contain a compatible set of packages for your PHP version"; o `--ignore-platform-req=php-64bit` (que resolve o
+  problema do `vendor/` destruído por junction, registrado no learnings do projeto) **não é suficiente** aqui — é
+  preciso `--ignore-platform-reqs` (sem a exceção de um só requisito). Depois de instalar assim, os 36 testes do
+  `tests/Feature/Mcp` passam normalmente em PHP 8.2: o lock está mais restritivo do que o código precisa de fato.
+- `git commit -- <caminho>` **não pega arquivo novo (untracked)** — dá `pathspec '<caminho>' did not match any
+  file(s) known to git`. É preciso `git add -- <caminho>` antes do commit. Isso importa especificamente neste
+  projeto porque a árvore é compartilhada entre sessões e a regra é nunca usar `git add -A`/`git add .` — então
+  todo arquivo NOVO (não só modificado) precisa do `add` explícito, um por um, antes do `commit -- `.

@@ -48,11 +48,26 @@ grupo 4, as 2 falhas acima são o piso conhecido — qualquer falha ADICIONAL é
 
 ## Depois (165-08)
 
-(vazio — preenchido no plano de gate final da fase)
+- Data/hora: 2026-10-05, depois do merge com `origin/main` (commit `bca07716`, que trouxe MCP do outro dev — `laravel/mcp`
+  + `laravel/passport` — além das fases 164/166 já contabilizadas no "Antes").
+- Mesmos comandos do baseline, rodados um a um, saída em arquivo fora do repositório
+  (`scratchpad/165-08/depois-{creative,pub,phase165,js3,js-full}.txt`), `echo exit=$?` depois de cada um — nenhum `| tail`.
+- Comando novo (Task 1): `C:/xampp/php/php.exe -d memory_limit=1024M vendor/bin/phpunit tests/Unit/Phase165 tests/Feature/Phase165`.
 
 | # | Grupo | Antes (165-01) | Depois (165-08) | Diferença |
 |---|---|---|---|---|
-| 1 | Creative Engine (antigo) | 164 / 758 / 0 / 0 | | |
-| 2 | Publicador | 803 / 4039 / 0 / 0 | | |
-| 3 | JS (3 arquivos) | 155 / — / 0 / 0 | | |
-| 4 | `npm run test:js` | 958 / — / 2 / 1 | | |
+| 1 | Creative Engine (antigo) | 164 / 758 / 0 / 0 | 164 / 758 / 0 / exit 0 | Nenhuma — mesmo número de testes e asserções, 0 falhas. 1 deprecation do PHPUnit (pré-existente, não é falha) |
+| 2 | Publicador | 803 / 4039 / 0 / 0 | 803 / 4039 / 0 / exit 0 | Nenhuma — idêntico ao baseline |
+| 3 | JS (3 arquivos) | 155 / — / 0 / 0 | 164 / — / 0 / exit 0 | +9 testes nos MESMOS três arquivos (ondas da própria fase 165 acrescentaram `BlocoDeFotos`/`PainelCriativos` a `publicador-editor.test.js`), 0 falhas |
+| 4 | `npm run test:js` (suíte JS completa) | 958 / — / 2 / 1 | 967 / — / 2 / exit 1 | +9 testes (mesmo delta do grupo 3); as MESMAS 2 falhas pré-existentes de Polos (`estrutura-grade-glide.test.js`/`polosEntrantes.test.js`), nenhuma falha nova |
+| 5 | Phase165 (novo nesta linha) | não existe em 165-01 (tests/Unit/Phase165 e tests/Feature/Phase165 nasceram nesta fase) | 152 / 847 / 0 / exit 0, 1 **incomplete** | O incomplete é `RotasAntigasComKitDoPublicadorTest` (`tests/Feature/Phase165/RotasAntigasComKitDoPublicadorTest.php:149`, `markTestIncomplete`) — a guarda das rotas antigas `criativo.*` com `rascunho_id` NULL ainda não existe; risco aceito desde a onda 1 (T-165-20). Não é falha nova, é risco já registrado |
+
+**Regra do gate (CLAUDE.md, fase por risco): PASSOU.**
+- Creative Engine antigo: mesmo número de testes do baseline, 0 falhas. ✔
+- Publicador: igual ao baseline (≥ baseline), 0 falhas. ✔
+- JS: nenhuma falha nova (as 2 do grupo 4 são o piso conhecido, documentado desde `164-BASELINE-TESTES.md`). ✔
+- Nenhuma falha NOVA em nenhum grupo.
+
+**Fora da tabela do baseline, medido à parte pelo orquestrador (não é dos 4 grupos originais, referência apenas):**
+`tests/Feature/Mcp` (módulo do outro dev, trazido pelo merge) — 36 testes, 332 asserções, 0 falhas. Não é escopo da fase 165 e
+não entra na tabela de comparação; registrado aqui só para não parecer que foi esquecido.
