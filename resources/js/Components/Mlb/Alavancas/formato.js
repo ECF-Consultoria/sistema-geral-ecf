@@ -95,3 +95,20 @@ export function lerNumero(texto, { positivo = false } = {}) {
 
     return Number.isFinite(n) && (! positivo || n > 0) ? n : null;
 }
+
+/** Dias contados nas duas pontas, como `DatasDoMl::diasInclusivos` do servidor (07 a 07 = 1). null se faltar/for inválida. */
+export function diasInclusivos(de, ate) {
+    if (! SO_DATA.test(String(de ?? '')) || ! SO_DATA.test(String(ate ?? ''))) return null;
+    const a = new Date(`${de}T12:00:00Z`);
+    const b = new Date(`${ate}T12:00:00Z`);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+
+    return Math.round((b - a) / 86400000) + 1;
+}
+
+/** Período do cupom: o fim não vem antes do início e vale de 1 a 31 dias inclusivos (ALAV-CUP-02). */
+export function periodoDeCupomOk(inicio, fim) {
+    const dias = diasInclusivos(inicio, fim);
+
+    return dias !== null && fim >= inicio && dias >= 1 && dias <= 31;
+}

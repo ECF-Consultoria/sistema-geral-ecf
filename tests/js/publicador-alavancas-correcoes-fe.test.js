@@ -149,3 +149,27 @@ test('WR-FE-07: FormCupom e CampanhasDoVendedor usam diaSP, sem cortar o ISO em 
         assert.doesNotMatch(fonte, /\.slice\(0, 10\)/, arq);
     }
 });
+
+// ─── WR-FE-08: período do cupom em dias inclusivos, como o servidor ───
+test('WR-FE-08: diasInclusivos conta as duas pontas', async () => {
+    const { diasInclusivos } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(diasInclusivos('2026-10-07', '2026-10-07'), 1);
+    assert.equal(diasInclusivos('2026-10-05', '2026-11-04'), 31);
+    assert.equal(diasInclusivos('2026-10-05', '2026-11-05'), 32);
+    assert.equal(diasInclusivos('', '2026-11-05'), null);
+});
+
+test('WR-FE-08: periodoDeCupomOk aceita 1 dia e 31 dias, recusa 32 dias e fim antes do início', async () => {
+    const { periodoDeCupomOk } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(periodoDeCupomOk('2026-10-07', '2026-10-07'), true);
+    assert.equal(periodoDeCupomOk('2026-10-05', '2026-11-04'), true);
+    assert.equal(periodoDeCupomOk('2026-10-05', '2026-11-05'), false);
+    assert.equal(periodoDeCupomOk('2026-10-07', '2026-10-06'), false);
+    assert.equal(periodoDeCupomOk('', ''), false);
+});
+
+test('WR-FE-08: FormCupom valida o período por periodoDeCupomOk, sem diferença de datas própria', () => {
+    const fonte = lerSemComentarios(`${PASTA}/Cupons/FormCupom.jsx`);
+    assert.match(fonte, /periodoDeCupomOk\(f\.inicio, f\.fim\)/);
+    assert.doesNotMatch(fonte, /86400000/);
+});

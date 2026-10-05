@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { CAMPO, SELECT } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
-import { diaSP, hojeSP, lerNumero, somarDias } from '../formato';
+import { diaSP, hojeSP, lerNumero, periodoDeCupomOk, somarDias } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 
 /** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
@@ -38,7 +38,6 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
     const travado = editando && ativo;
     const orcamentoAtual = numero(texto(cupom?.orcamento));
     const orcamento = numero(f.orcamento);
-    const dias = f.inicio && f.fim ? Math.round((new Date(`${f.fim}T12:00:00Z`) - new Date(`${f.inicio}T12:00:00Z`)) / 86400000) : null;
 
     function montar() {
         if (! editando) {
@@ -78,7 +77,8 @@ export default function FormCupom({ conta, cupom = null, liberada, motivo, onCon
     }
 
     const montada = montar();
-    const periodoOk = dias !== null && dias >= 1 && dias <= 31 && f.fim >= f.inicio;
+    // O servidor conta dias inclusivos (início = fim é 1 dia; 31 dias de diferença seriam 32).
+    const periodoOk = periodoDeCupomOk(f.inicio, f.fim);
     const orcamentoOk = orcamento !== null && (! editando || orcamento >= (orcamentoAtual ?? 0));
     const descontoOk = percentual ? (numero(f.percentual) !== null && numero(f.teto) !== null) : numero(f.valor) !== null;
     const pronto = f.nome.trim() !== '' && periodoOk && orcamentoOk && (editando ? montada.mudou : (descontoOk && numero(f.compra) !== null));
