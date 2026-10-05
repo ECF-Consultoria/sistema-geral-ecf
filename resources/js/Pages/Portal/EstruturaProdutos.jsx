@@ -32,6 +32,7 @@ import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlo
 const ESPERA_GRAVAR_MS = 800;
 const ESPERA_REDE_MS = 5000;
 const LOTE_SUGESTOES = 10;
+const VOLTAS_FRETE = 10;
 
 let contadorDeChave = 0;
 const novaChave = () => `n${++contadorDeChave}`;
@@ -73,6 +74,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [aula, setAula] = useState(false);
     const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
     const [sugerindo, setSugerindo] = useState(false);
+    const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
 
     const sujas = useRef(new Map());                      // _k → versão da última edição
@@ -100,8 +102,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     }), [listas]);
 
     const colunas = useMemo(
-        () => colunasDaGrade({ eixos: vocabulario.eixos, logisticas: vocabulario.logisticas, editores }),
-        [vocabulario.eixos, vocabulario.logisticas, editores],
+        () => colunasDaGrade({ eixos: vocabulario.eixos, logisticas: vocabulario.logisticas, editores, consultando }),
+        [vocabulario.eixos, vocabulario.logisticas, editores, consultando],
     );
 
     const temProdutos = produtos.tem_produtos || rows.some((r) => r.id);
@@ -281,6 +283,35 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         enviar();
     };
 
+    // ─── Frete real pela conta do cliente (D-16): só quando a pessoa pede ────
+
+    const linhasMe2 = rows.filter((r) => r.id && (r.logistica === 'me2' || r.logistica === 'me2_full'));
+
+    const consultarFretes = async () => {
+        if (consultando.size > 0) return;
+        const ids = rowsRef.current.filter((r) => r.id && (r.logistica === 'me2' || r.logistica === 'me2_full')).map((r) => r.id);
+        if (ids.length === 0) return;
+        setConsultando(new Set(ids));
+        setAviso(null);
+        let falhou = false;
+        try {
+            for (let volta = 0; volta < VOLTAS_FRETE; volta++) {
+                const { data } = await axios.post(route('portal.auth.estrutura.produtos.fretes'), { variacao_ids: ids });
+                const fretes = data.fretes ?? {};
+                aplicar(derivar(rowsRef.current.map((r) => (fretes[r.id] ? { ...r, frete: fretes[r.id] } : r))));
+                if (data.falhou) falhou = true;
+                if (! data.pendentes || data.pendentes <= 0) break;
+            }
+            setAviso(falhou
+                ? 'Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.'
+                : 'Fretes atualizados.');
+        } catch (e) {
+            setAviso('Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.');
+        } finally {
+            setConsultando(new Set());
+        }
+    };
+
     // ─── Ações ──────────────────────────────────────────────────────────────
 
     const focar = (chave, coluna) => setSelecionar((s) => ({ chave, coluna, n: (s?.n ?? 0) + 1 }));
@@ -390,17 +421,23 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     </p>
                 </div>
 
-                {(haPendenteDeCategoria || sugerindo) && (
+                {(haPendenteDeCategoria || sugerindo || (ml_conectado && linhasMe2.length > 0)) && (
                     <div className="flex flex-wrap items-center gap-2">
                         <Botao variante="fantasma" onClick={sugerirCategorias} disabled={sugerindo} data-acao="sugerir-categorias">
                             {sugerindo ? <Loader2 size={14} className="animate-spin" /> : null}
                             {sugerindo ? 'Buscando sugestões…' : 'Sugerir categorias'}
                         </Botao>
+                        {ml_conectado && linhasMe2.length > 0 && (
+                            <Botao variante="fantasma" onClick={consultarFretes} disabled={consultando.size > 0} data-acao="consultar-fretes">
+                                {consultando.size > 0 ? <Loader2 size={14} className="animate-spin" /> : null}
+                                {consultando.size > 0 ? 'Consultando…' : 'Consultar fretes no Mercado Livre'}
+                            </Botao>
+                        )}
                     </div>
                 )}
 
                 {aviso && (
-                    <div className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-aviso-lote>
+                    <div role="status" className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-aviso-lote>
                         <span>{aviso}</span>
                         <button type="button" onClick={() => setAviso(null)} className="text-white/35 hover:text-white" aria-label="Dispensar aviso"><X size={13} /></button>
                     </div>

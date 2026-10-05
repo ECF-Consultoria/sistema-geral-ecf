@@ -77,3 +77,45 @@ test('categoria escolhida vai ao servidor como id, nunca como texto', () => {
     assert.match(lib, /_categoriaEscolhida && row\.categoria_ml_id/);
     assert.match(lib, /out\.categoria_ml_id = row\.categoria_ml_id/);
 });
+
+test('coluna Frete ME2: todos os estados do UI-SPEC', () => {
+    assert.match(lib, /export function renderFrete\(row, \{ consultando = false \}/);
+    for (const t of ['consultando', 'sem frete aqui', 'Informe o custo para o frete usar o preço certo.',
+        'Neste preço o frete pode mudar de faixa.', 'Não deu para consultar o Mercado Livre agora. Tente de novo.',
+        'Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora; ainda não calculamos aqui.']) {
+        assert.ok(lib.includes(t), t);
+    }
+    assert.match(lib, /row\.logistica === 'me1'/);
+    assert.match(lib, /'pendente'/);
+    assert.match(lib, /frete\.alerta_faixa \? h\(AlertTriangle/);
+    assert.match(lib, /text-amber-300/);
+    assert.match(lib, /h\(Loader2/);
+    // apoios vêm de textoFrete: estimativa, ML, não consultado, faixa de referência
+    for (const t of ["'ML'", "'estimativa'", "'não consultado'", "'faixa de referência'"]) assert.ok(lib.includes(t), t);
+});
+
+test('peso cubado: "cobrado" só quando o servidor diz e tooltip "Peso cobrado"', () => {
+    assert.match(lib, /row\.cubado_cobrado \? h\('span'[^)]*'cobrado'\)/);
+    assert.ok(lib.includes('Peso cobrado: '));
+});
+
+test('"Consultar fretes no Mercado Livre": só com conta conectada e linha ME2, repete até zerar', () => {
+    assert.ok(pagina.includes("'portal.auth.estrutura.produtos.fretes'"));
+    assert.match(pagina, /ml_conectado && linhasMe2\.length > 0/);
+    assert.match(pagina, /r\.logistica === 'me2' \|\| r\.logistica === 'me2_full'/);
+    assert.ok(pagina.includes('Consultar fretes no Mercado Livre'));
+    assert.ok(pagina.includes('Consultando…'));
+    assert.match(pagina, /VOLTAS_FRETE = 10/);
+    assert.match(pagina, /volta < VOLTAS_FRETE/);
+    assert.match(pagina, /data\.pendentes/);
+    assert.ok(pagina.includes('Fretes atualizados.'));
+    assert.ok(pagina.includes('Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.'));
+    assert.match(pagina, /role="status"/);
+});
+
+test('o frete é só exibido: nenhuma regra de faixa, cubagem ou preço no JS (D-19)', () => {
+    for (const fonte of [lib, pagina]) {
+        assert.ok(! /\b79\b/.test(fonte) && ! /6000/.test(fonte), 'literal de regra de frete');
+    }
+    assert.ok(! pagina.includes('estrutura_precificacoes'));
+});

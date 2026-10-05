@@ -1,4 +1,5 @@
 import { createElement as h } from 'react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -54,6 +55,47 @@ export function textoFrete(frete) {
     else if (frete.preco_origem === 'referencia') apoio = 'faixa de referência';
 
     return { valor, apoio };
+}
+
+const TIP_ME1 = 'Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora; ainda não calculamos aqui.';
+const TIP_FALHOU = 'Não deu para consultar o Mercado Livre agora. Tente de novo.';
+const TIP_REFERENCIA = 'Informe o custo para o frete usar o preço certo.';
+const TIP_FAIXA = 'Neste preço o frete pode mudar de faixa.';
+
+/**
+ * Célula "Frete ME2": só mostra o que o servidor mandou (estimativa da tabela ECF, valor
+ * do ML, falha, faixa de referência, ME1 e o alerta de faixa). Nenhum limite mora aqui.
+ */
+export function renderFrete(row, { consultando = false } = {}) {
+    if (! row?.id) return celula();
+    const apoio = (t, title) => h('span', { className: 'truncate text-[12px] text-white/45', title }, t);
+
+    if (consultando) {
+        return celula(h(Loader2, { size: 12, className: 'shrink-0 animate-spin text-white/45', 'aria-hidden': 'true' }), apoio('consultando'));
+    }
+    if (row.logistica === 'me1') {
+        return celula(h('span', { className: 'text-white/60', title: TIP_ME1 }, '—'), apoio('sem frete aqui', TIP_ME1));
+    }
+    if (! row.logistica || row.logistica === 'pendente' || ! row.frete || row.frete.valor == null) {
+        return celula(h('span', { className: 'text-white/60' }, '—'));
+    }
+    const t = textoFrete(row.frete);
+    const tip = row.frete.falhou ? TIP_FALHOU : row.frete.preco_origem === 'referencia' ? TIP_REFERENCIA : undefined;
+
+    return celula(
+        h('span', { className: 'tabular-nums text-white/60' }, t.valor),
+        apoio(t.apoio, tip),
+        row.frete.alerta_faixa ? h(AlertTriangle, { size: 12, className: 'shrink-0 text-amber-300', title: TIP_FAIXA, 'aria-label': TIP_FAIXA }) : null,
+    );
+}
+
+/** Célula "Peso cubado": "cobrado" só quando o cubado é o faturado (decisão do servidor). */
+export function renderPesoCubado(row) {
+    if (row?.peso_cubado == null) return celula();
+    const cobrado = row.cubado_cobrado ? h('span', { className: 'text-[12px] text-white/45' }, 'cobrado') : null;
+
+    return h('div', { className: 'flex h-full w-full items-center gap-1 px-2 text-[13px] tabular-nums text-white/60', title: `Peso cobrado: ${fmtKg(row.peso_faturado, 2)}` },
+        fmtKg(row.peso_cubado, 2), cobrado);
 }
 
 /** "custo · categoria", na ordem que o servidor mandou. */
@@ -154,7 +196,7 @@ const fraco = (t) => h('span', { className: 'text-white/25' }, t);
  * As 14 colunas do contrato de tela, na ordem. `editores` (opcional) troca
  * Família, Ambiente, Categoria e Volumes por picker quando os planos 13/14 chegarem.
  */
-export function colunasDaGrade({ eixos = {}, logisticas = {}, editores = {} } = {}) {
+export function colunasDaGrade({ eixos = {}, logisticas = {}, editores = {}, consultando = new Set() } = {}) {
     const picker = (col, chave) => (editores[chave] ? { ...col, type: 'picker', renderEditor: editores[chave] } : col);
     const produto = (valor, row) => (row?._primeira === false ? 'text-white/40' : null);
 
@@ -205,13 +247,7 @@ export function colunasDaGrade({ eixos = {}, logisticas = {}, editores = {} } = 
                 : h('div', { className: 'flex h-full w-full items-center justify-end px-2 text-[13px] tabular-nums text-white/85' },
                     /^-?\d+([.,]\d+)?$/.test(String(v)) ? reais(String(v).replace(',', '.')) : String(v))) },
         { id: 'peso_cubado', label: 'Peso cubado', type: 'readonly', width: 96, separador: true,
-            renderCell: (v, row) => {
-                if (row?.peso_cubado == null) return celula();
-                const cobrado = row.cubado_cobrado ? h('span', { className: 'text-[12px] text-white/45' }, 'cobrado') : null;
-
-                return h('div', { className: 'flex h-full w-full items-center gap-1 px-2 text-[13px] tabular-nums text-white/60', title: `Peso cobrado: ${fmtKg(row.peso_faturado, 2)}` },
-                    fmtKg(row.peso_cubado, 2), cobrado);
-            } },
+            renderCell: (v, row) => renderPesoCubado(row) },
         { id: 'logistica', label: 'Logística', type: 'readonly', width: 104,
             renderCell: (v, row) => {
                 const chave = row?.logistica ?? 'pendente';
@@ -222,16 +258,7 @@ export function colunasDaGrade({ eixos = {}, logisticas = {}, editores = {} } = 
                     title: chave === 'pendente' ? 'Pendente: completar cadastro' : undefined }, rotulo));
             } },
         { id: 'frete', label: 'Frete ME2', type: 'readonly', width: 120,
-            renderCell: (v, row) => {
-                if (! row?.id) return celula();
-                const t = textoFrete(row.frete);
-
-                return celula(
-                    t.valor ? h('span', { className: 'tabular-nums text-white/60' }, t.valor) : null,
-                    h('span', { className: 'truncate text-[12px] text-white/45' }, t.apoio),
-                    row.frete?.alerta_faixa ? h('span', { className: 'text-[12px] text-amber-300', title: 'Neste preço o frete pode mudar de faixa.' }, '!') : null,
-                );
-            } },
+            renderCell: (v, row) => renderFrete(row, { consultando: consultando.has(row?.id) }) },
         { id: 'falta', label: 'Falta', type: 'readonly', width: 160,
             renderCell: (v, row) => h('div', { className: 'flex h-full w-full items-center px-2 text-[12px] text-white/40', title: String(row?.falta ?? '') },
                 h('span', { className: 'truncate' }, row?.falta ?? '')) },
