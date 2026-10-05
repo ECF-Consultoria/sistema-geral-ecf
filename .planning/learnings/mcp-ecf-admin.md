@@ -87,7 +87,28 @@ Polos. O MCP repete cada tela e as descrições das ferramentas avisam o Claude
 para não comparar os totais. Unificar a definição é decisão de produto, não do
 MCP.
 
-## 7. Operação
+## 7. Deploy de pacote novo: o `deploy.sh` derruba o site por ~30 s
+
+O `deploy.sh` faz `git reset --hard` → `npx vite build` → **só então**
+`composer install`. Quando o commit traz um pacote novo que o código de boot
+usa (aqui: `User implements OAuthenticatable` e `Passport::` no
+`AppServiceProvider`), o código novo roda com o vendor ANTIGO até o composer
+terminar. No deploy do MCP (05/10/2026, `2c889100`) foram **24 respostas 500
+entre 16:35:50 e 16:36:23** (`Class "Laravel\Passport\Passport" not found`),
+medidas no nginx e no `laravel.log`. Nenhum outro erro.
+
+Para o próximo pacote novo de boot: rodar `composer install` na VPS com o
+`composer.lock` novo ANTES do `deploy.sh` (o vendor aceita pacote a mais sem
+quebrar o código antigo), ou aceitar a janela e avisar antes. Atenção: o
+nginx loga em UTC e o Laravel em horário de Brasília (19:35 no nginx = 16:35
+no laravel.log).
+
+Na subida também ficou um cliente OAuth "personal access" chamado **"Teste de
+deploy do MCP (05/10/2026)"** em `oauth_clients` — foi usado para o teste de
+fumaça com token real (revogado em seguida com `mcp:revogar 24`). Pode ficar;
+não abre rota nenhuma.
+
+## 8. Operação
 
 - Log de acesso: tabela `mcp_acessos` (usuário, ferramenta, argumentos,
   sucesso/erro, duração, IP, cliente OAuth).
