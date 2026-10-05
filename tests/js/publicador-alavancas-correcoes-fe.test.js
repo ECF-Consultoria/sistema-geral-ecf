@@ -82,3 +82,45 @@ test('CR-FE-02: ISO sem fuso vale horário de São Paulo, e vazio/inválido vira
     assert.equal(fmtData(null), '—');
     assert.equal(fmtData('lixo'), '—');
 });
+
+// ─── WR-FE-09: leitura única de número pt-BR ───
+test('WR-FE-09: lerNumero — com vírgula, ponto é milhar e vírgula é decimal', async () => {
+    const { lerNumero } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(lerNumero('1.500,50'), 1500.5);
+    assert.equal(lerNumero('12,50'), 12.5);
+    assert.equal(lerNumero('1.234.567,8'), 1234567.8);
+});
+
+test('WR-FE-09: lerNumero — sem vírgula, ponto + 3 dígitos é milhar; o resto é decimal', async () => {
+    const { lerNumero } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(lerNumero('1.500'), 1500);
+    assert.equal(lerNumero('1.299'), 1299);
+    assert.equal(lerNumero('1.500.000'), 1500000);
+    assert.equal(lerNumero('1.5'), 1.5);
+    assert.equal(lerNumero('85.90'), 85.9);
+    assert.equal(lerNumero('0.500'), 0.5);
+    assert.equal(lerNumero('1500'), 1500);
+});
+
+test('WR-FE-09: lerNumero — vazio e inválido viram null; `positivo` recusa zero e negativo', async () => {
+    const { lerNumero } = await import('../../resources/js/Components/Mlb/Alavancas/formato.js');
+    assert.equal(lerNumero(''), null);
+    assert.equal(lerNumero('  '), null);
+    assert.equal(lerNumero(null), null);
+    assert.equal(lerNumero('abc'), null);
+    assert.equal(lerNumero('1,2,3'), null);
+    assert.equal(lerNumero('0'), 0);
+    assert.equal(lerNumero('0', { positivo: true }), null);
+    assert.equal(lerNumero('-5', { positivo: true }), null);
+});
+
+test('WR-FE-09: nenhuma tela mantém cópia própria do parser (todas usam lerNumero)', () => {
+    for (const caminho of JSX_DA_PASTA) {
+        const fonte = lerSemComentarios(caminho);
+        assert.doesNotMatch(fonte, /includes\(','\)/, `${caminho} tem parser próprio`);
+        assert.doesNotMatch(fonte, /\.replace\(',', '\.'\)/, `${caminho} tem parser próprio`);
+    }
+    for (const arq of ['Promocoes/ItensDoConvite', 'Promocoes/AdicionarProdutos', 'Promocoes/DescontoIndividual', 'Cupons/FormCupom', 'Atacado/FaixasDoAnuncio', 'Promocoes/CampanhasDoVendedor']) {
+        assert.match(lerSemComentarios(`${PASTA}/${arq}.jsx`), /lerNumero/, arq);
+    }
+});

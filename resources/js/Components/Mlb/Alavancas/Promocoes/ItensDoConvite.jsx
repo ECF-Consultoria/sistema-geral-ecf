@@ -4,7 +4,7 @@ import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
 import { ROTULO_STATUS_PROMOCAO } from '../rotulos';
-import { fmtBRL } from '../formato';
+import { fmtBRL, lerNumero } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 import TabelaAnalise from '../TabelaAnalise';
 
@@ -15,15 +15,8 @@ const FILTROS = [
     { status: 'started', rotulo: 'Ativos' },
 ];
 
-/** Aceita "12,50" e "12.5"; vazio ou inválido vira null. */
-const numero = (texto) => {
-    const bruto = String(texto ?? '').trim();
-    if (bruto === '') return null;
-    // Com vírgula, o ponto é separador de milhar; sem vírgula, o ponto é o decimal.
-    const n = Number(bruto.includes(',') ? bruto.split('.').join('').replace(',', '.') : bruto);
-
-    return Number.isFinite(n) && n > 0 ? n : null;
-};
+/** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
+const numero = (texto) => lerNumero(texto, { positivo: true });
 
 /** O texto do campo de preço de uma linha: o sugerido ou, na falta, o preço da promoção. */
 const valorInicial = (l) => String(l.preco_sugerido ?? l.preco ?? '').replace('.', ',');

@@ -5,7 +5,7 @@ import { CAMPO, SELECT } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
 import { ROTULO_STATUS_PROMOCAO, ROTULO_TIPO } from '../rotulos';
-import { fmtData, hojeSP, somarDias } from '../formato';
+import { fmtData, hojeSP, lerNumero, somarDias } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 import ItensDoConvite from './ItensDoConvite';
 import AdicionarProdutos from './AdicionarProdutos';
@@ -27,12 +27,8 @@ const inteiro = (texto) => {
     return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-const decimal = (texto) => {
-    const bruto = String(texto ?? '').trim().replace(',', '.');
-    const n = Number(bruto);
-
-    return bruto !== '' && Number.isFinite(n) && n > 0 ? n : null;
-};
+/** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
+const decimal = (texto) => lerNumero(texto, { positivo: true });
 
 const VAZIO = { tipo: 'SELLER_CAMPAIGN', nome: '', inicio: '', fim: '', sub: 'BNGM', compra: '', paga: '', percentual: '', combina: null };
 

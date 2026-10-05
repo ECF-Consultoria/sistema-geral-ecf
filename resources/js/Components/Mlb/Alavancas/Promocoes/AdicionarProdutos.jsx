@@ -3,16 +3,11 @@ import { cn } from '@/lib/utils';
 import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import SeletorDeProdutos from '../SeletorDeProdutos';
+import { lerNumero } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 
-/** Aceita "12,50" e "12.5"; vazio ou inválido vira null. */
-const numero = (texto) => {
-    const bruto = String(texto ?? '').trim();
-    if (bruto === '') return null;
-    const n = Number(bruto.includes(',') ? bruto.split('.').join('').replace(',', '.') : bruto);
-
-    return Number.isFinite(n) && n > 0 ? n : null;
-};
+/** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
+const numero = (texto) => lerNumero(texto, { positivo: true });
 
 /**
  * Põe produtos escolhidos na conta numa promoção que o vendedor criou (campanha ou cupom).

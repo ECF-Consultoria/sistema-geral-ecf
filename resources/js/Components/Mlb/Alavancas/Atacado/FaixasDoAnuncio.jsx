@@ -6,19 +6,13 @@ import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { mensagemDe } from '@/Components/Publicador/apoio';
 import { rota, useLeitura } from '../useAlavancas';
-import { fmtBRL } from '../formato';
+import { fmtBRL, lerNumero } from '../formato';
 import ModalConfirmacao from '../ModalConfirmacao';
 
 const MAXIMO = 5;
 
-/** Aceita "12,5" e "12.5"; vazio ou inválido vira null. */
-const numero = (t) => {
-    const bruto = String(t ?? '').trim();
-    if (bruto === '') return null;
-    const n = Number(bruto.replace(',', '.'));
-
-    return Number.isFinite(n) ? n : null;
-};
+/** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
+const numero = (texto) => lerNumero(texto);
 
 const texto = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
 const linhaDe = (f) => ({ id: f.id ?? null, percentual: texto(f.percentual), quantidade: texto(f.quantidade_minima), original: f });

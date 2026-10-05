@@ -3,19 +3,13 @@ import { cn } from '@/lib/utils';
 import { CAMPO } from '@/Components/Publicador/Mesa/comum';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { useLeitura } from '../useAlavancas';
-import { fmtBRL, fmtData, fmtPct, hojeSP, somarDias } from '../formato';
+import { fmtBRL, fmtData, fmtPct, hojeSP, lerNumero, somarDias } from '../formato';
 import SeletorDeProdutos from '../SeletorDeProdutos';
 import ModalConfirmacao from '../ModalConfirmacao';
 import TabelaAnalise from '../TabelaAnalise';
 
-/** Aceita "12,50" e "12.5"; vazio ou inválido vira null. */
-const numero = (texto) => {
-    const bruto = String(texto ?? '').trim();
-    if (bruto === '') return null;
-    const n = Number(bruto.includes(',') ? bruto.split('.').join('').replace(',', '.') : bruto);
-
-    return Number.isFinite(n) && n > 0 ? n : null;
-};
+/** Entrada pt-BR ("1.500" é mil e quinhentos): a leitura única fica em `lerNumero`. */
+const numero = (texto) => lerNumero(texto, { positivo: true });
 
 const paraCampo = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
 

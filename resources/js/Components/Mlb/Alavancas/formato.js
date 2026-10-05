@@ -64,3 +64,21 @@ export function somarDias(ymd, dias) {
 
     return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Lê número digitado em pt-BR. Com vírgula, `.` é milhar e `,` é decimal ("1.500,50" → 1500,5).
+ * Sem vírgula, ponto seguido de exatamente 3 dígitos (grupos a partir do 1º dígito não nulo) é milhar
+ * ("1.500" → 1500, "1.500.000" → 1500000); os demais casos são decimal ("1.5" → 1,5; "85.90" → 85,9).
+ * Vazio ou inválido vira null; `positivo` também recusa zero e negativo.
+ */
+export function lerNumero(texto, { positivo = false } = {}) {
+    const bruto = String(texto ?? '').trim();
+    if (bruto === '') return null;
+    let normal = bruto;
+    if (bruto.includes(',')) normal = bruto.split('.').join('').replace(',', '.');
+    else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(bruto)) normal = bruto.split('.').join('');
+    if (! /^-?\d+(\.\d+)?$/.test(normal)) return null;
+    const n = Number(normal);
+
+    return Number.isFinite(n) && (! positivo || n > 0) ? n : null;
+}
