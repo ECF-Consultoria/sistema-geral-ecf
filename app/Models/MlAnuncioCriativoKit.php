@@ -157,6 +157,38 @@ class MlAnuncioCriativoKit extends Model
         return $this->slots()->where('status', MlAnuncioCriativo::STATUS_PRONTO)->count();
     }
 
+    /**
+     * Slots `pronto` cujo `validacao_status` NÃO é `reprovada` nem
+     * `pendente` — ou seja: `aprovada`, `indisponivel` ou NULL (dado
+     * legado, nunca passou por validação). É o número que de fato PODE
+     * subir ao Mercado Livre agora (Fase 162, VAL-04 em lote): aprovar o
+     * kit nunca sobe uma imagem reprovada em silêncio.
+     *
+     * ⚠️ `whereNotIn` sozinho excluiria as linhas NULL (semântica SQL de
+     * `NOT IN` com NULL nunca é verdadeira) — por isso o `orWhereNull`.
+     */
+    public function prontasSemRisco(): int
+    {
+        return $this->slots()
+            ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->where(function ($query) {
+                $query->whereNotIn('validacao_status', [
+                    MlAnuncioCriativo::VALIDACAO_REPROVADA,
+                    MlAnuncioCriativo::VALIDACAO_PENDENTE,
+                ])->orWhereNull('validacao_status');
+            })
+            ->count();
+    }
+
+    /** Slots `pronto` reprovados pela validação automática — para a mensagem de recusa. */
+    public function reprovadas(): int
+    {
+        return $this->slots()
+            ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_REPROVADA)
+            ->count();
+    }
+
     public function comErro(): int
     {
         return $this->slots()->where('status', MlAnuncioCriativo::STATUS_ERRO)->count();

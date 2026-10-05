@@ -2155,6 +2155,15 @@ class MlbAnuncioController extends Controller
 
         $kit->encerrarSeTravado();
 
+        // Fase 162 (VAL-06): a tela chama este endpoint depois de polling,
+        // então a trava de tempo da validação precisa valer AQUI também —
+        // cada slot `pendente` travado há mais de 10 min libera como
+        // `indisponivel` antes de decidir se o mínimo foi atingido.
+        $kit->slots()
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_PENDENTE)
+            ->get()
+            ->each(fn (MlAnuncioCriativo $slot) => $slot->encerrarValidacaoSeTravada());
+
         if ($kit->status === MlAnuncioCriativoKit::STATUS_APROVADO) {
             return response()->json([
                 'ok'    => false,
@@ -2162,13 +2171,37 @@ class MlbAnuncioController extends Controller
             ], 422);
         }
 
-        $disponiveis = $kit->prontas() + $kit->aprovadas();
+        // Fase 162 (VAL-04 em lote): `prontasSemRisco()` nunca conta slot
+        // reprovado nem ainda em validação — aprovar o kit NUNCA sobe uma
+        // imagem reprovada em silêncio.
+        $disponiveis = $kit->prontasSemRisco() + $kit->aprovadas();
         if ($disponiveis < $kit->minimo_aprovadas) {
             $faltam = $kit->minimo_aprovadas - $disponiveis;
 
+            $mensagem = "Faltam {$faltam} imagem(ns) para o mínimo de {$kit->minimo_aprovadas} aprovadas.";
+
+            $reprovadasCount = $kit->reprovadas();
+            $pendentesCount  = $kit->slots()->where('validacao_status', MlAnuncioCriativo::VALIDACAO_PENDENTE)->count();
+
+            $partes = [];
+            if ($reprovadasCount > 0) {
+                $partes[] = $reprovadasCount === 1
+                    ? '1 imagem foi reprovada na validação automática'
+                    : "{$reprovadasCount} imagens foram reprovadas na validação automática";
+            }
+            if ($pendentesCount > 0) {
+                $partes[] = $pendentesCount === 1
+                    ? '1 ainda está sendo validada'
+                    : "{$pendentesCount} ainda estão sendo validadas";
+            }
+
+            if ($partes !== []) {
+                $mensagem .= ' ' . implode(' e ', $partes) . ' — gere de novo ou aprove essas imagens uma a uma assumindo o risco.';
+            }
+
             return response()->json([
                 'ok'    => false,
-                'erros' => [['mensagem' => "Faltam {$faltam} imagem(ns) pronta(s) para atingir o mínimo de {$kit->minimo_aprovadas} aprovadas."]],
+                'erros' => [['mensagem' => $mensagem]],
             ], 422);
         }
 
@@ -2180,8 +2213,31 @@ class MlbAnuncioController extends Controller
         $aprovadas = 0;
         $falharam  = [];
 
+        // Fase 162 (VAL-04 em lote): reprovadas/pendentes são PULADAS, nunca
+        // tratadas como falha de upload — não entram em `falharam` para não
+        // contaminar a regra de `$kitFicaAprovado`.
+        $reprovadas = $kit->slots()
+            ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_REPROVADA)
+            ->orderBy('slot_indice')
+            ->pluck('slot_indice')
+            ->all();
+
+        $validando = $kit->slots()
+            ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->where('validacao_status', MlAnuncioCriativo::VALIDACAO_PENDENTE)
+            ->orderBy('slot_indice')
+            ->pluck('slot_indice')
+            ->all();
+
         $slotsProntos = $kit->slots()
             ->where('status', MlAnuncioCriativo::STATUS_PRONTO)
+            ->where(function ($query) {
+                $query->whereNotIn('validacao_status', [
+                    MlAnuncioCriativo::VALIDACAO_REPROVADA,
+                    MlAnuncioCriativo::VALIDACAO_PENDENTE,
+                ])->orWhereNull('validacao_status');
+            })
             ->orderBy('slot_indice')
             ->get();
 
@@ -2229,7 +2285,15 @@ class MlbAnuncioController extends Controller
         // coerentes com o que já está no Mercado Livre.
         $totalEscrito = $this->creativeKitPublicacao->aplicarPictures($rascunho);
 
-        $kitFicaAprovado = $falharam === [] && $kit->aprovadas() >= $kit->minimo_aprovadas;
+        // Fase 162 (Decisão 4 do 162-02-PLAN.md): o kit só fecha quando NÃO
+        // há slot pulado por risco ou validação em andamento — fechar o kit
+        // apaga a foto de referência do portador (Armadilha 1 da 161-03) e
+        // isso mataria a regeneração do slot reprovado/pendente que o
+        // operador ainda vai querer corrigir.
+        $kitFicaAprovado = $falharam === []
+            && $reprovadas === []
+            && $validando === []
+            && $kit->aprovadas() >= $kit->minimo_aprovadas;
 
         if ($kitFicaAprovado) {
             $kit->update([
@@ -2261,6 +2325,8 @@ class MlbAnuncioController extends Controller
         Log::info("[Creative] Kit {$kit->id} aprovação em lote", [
             'aprovadas'         => $aprovadas,
             'falharam'          => $falharam,
+            'reprovadas'        => $reprovadas,
+            'validando'         => $validando,
             'fotos_no_payload'  => $totalEscrito,
             'kit_aprovado'      => $kitFicaAprovado,
             'usuario'           => $request->user()->id,
@@ -2271,16 +2337,32 @@ class MlbAnuncioController extends Controller
         // entre os aprovados.
         $urlPrincipal = $kit->slots()->where('slot_indice', 1)->first()?->ml_picture_url;
 
+        $mensagem = "{$aprovadas} imagem(ns) aprovada(s) com sucesso.";
+        if ($falharam !== []) {
+            $mensagem = "{$aprovadas} imagem(ns) subiu(ram); falhou o upload do(s) slot(s) " . implode(', ', $falharam) . '.';
+        } elseif ($reprovadas !== [] || $validando !== []) {
+            // Fase 162: pular reprovada/pendente não é falha de upload — a
+            // mensagem de sucesso parcial diz isso em pt-BR, sem termo técnico.
+            $partes = [];
+            if ($reprovadas !== []) {
+                $partes[] = 'reprovada(s) na validação automática';
+            }
+            if ($validando !== []) {
+                $partes[] = 'ainda em validação';
+            }
+            $mensagem .= ' ' . implode(' e ', $partes) . ' — pulada(s) por enquanto, não sobe(em) em lote.';
+        }
+
         return response()->json([
-            'ok'        => $falharam === [],
-            'kit_token' => $kit->token,
-            'status'    => $kit->fresh()->status,
-            'aprovadas' => $aprovadas,
-            'falharam'  => $falharam,
-            'url'       => $urlPrincipal,
-            'mensagem'  => $falharam === []
-                ? "{$aprovadas} imagem(ns) aprovada(s) com sucesso."
-                : "{$aprovadas} imagem(ns) subiu(ram); falhou o upload do(s) slot(s) " . implode(', ', $falharam) . '.',
+            'ok'         => $falharam === [],
+            'kit_token'  => $kit->token,
+            'status'     => $kit->fresh()->status,
+            'aprovadas'  => $aprovadas,
+            'falharam'   => $falharam,
+            'reprovadas' => $reprovadas,
+            'validando'  => $validando,
+            'url'        => $urlPrincipal,
+            'mensagem'   => $mensagem,
         ]);
     }
 

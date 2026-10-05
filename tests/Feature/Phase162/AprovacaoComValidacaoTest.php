@@ -5,6 +5,7 @@ namespace Tests\Feature\Phase162;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
@@ -258,6 +259,173 @@ class AprovacaoComValidacaoTest extends TestCase
         $this->assertStringNotContainsString((string) $criativo->id, $mensagem);
         $this->assertStringNotContainsString('Exception', $mensagem);
         $this->assertStringNotContainsString('App\\', $mensagem);
+    }
+
+    // ═══ Task 3 — aprovar o kit nunca sobe reprovada em silêncio (VAL-04) ═
+
+    /**
+     * Monta um kit com portador (referência viva em disco) + N slots
+     * `pronto`, cada um com `validacao_status` dado em `$statusPorSlot`
+     * (índice 0-based na ordem de `slot_indice`).
+     *
+     * @param  array<int, ?string>  $statusPorSlot
+     * @return array{0: MlAnuncioCriativoKit, 1: \Illuminate\Support\Collection<int, MlAnuncioCriativo>, 2: MlAnuncioRascunho}
+     */
+    private function kitComSlotsProntos(int $minimoAprovadas, array $statusPorSlot): array
+    {
+        Storage::fake('local');
+
+        $company = $this->companyConectada();
+        $userId  = User::factory()->create(['role' => 'admin'])->id;
+
+        $rascunho = MlAnuncioRascunho::create([
+            'company_id'  => $company->id,
+            'user_id'     => $userId,
+            'category_id' => 'MLB1574',
+            'payload'     => ['title' => 'Gabinete de cozinha', 'category_id' => 'MLB1574', 'description' => 'x', 'attributes' => [], 'pictures' => []],
+            'status'      => MlAnuncioRascunho::STATUS_RASCUNHO,
+        ]);
+
+        // Semeia o cache de categoria (molde de CriativoKitAprovacaoTest) —
+        // sem isto, `aplicarPictures()` bateria na API real do ML para
+        // metadados e o `Http::fake()` genérico do upload devolveria a
+        // forma errada (sem `access_token`), estourando no refresh de token.
+        \Illuminate\Support\Facades\Cache::put('ml_meta_categoria_MLB1574', ['settings' => ['max_pictures_per_item' => 12]], 3600);
+
+        $portadorToken = Str::random(32);
+        Storage::disk('local')->put("creative-referencias/{$portadorToken}/0.jpg", 'bytes-da-foto-original');
+        $portador = MlAnuncioCriativo::create([
+            'token'       => $portadorToken,
+            'company_id'  => $company->id,
+            'rascunho_id' => $rascunho->id,
+            'user_id'     => $userId,
+            'slot'        => 'referencia',
+            'status'      => MlAnuncioCriativo::STATUS_PRONTO,
+            'referencias' => [
+                ['indice' => 0, 'nome' => 'foto.jpg', 'path' => "creative-referencias/{$portadorToken}/0.jpg", 'mime' => 'image/jpeg'],
+            ],
+        ]);
+
+        $kit = MlAnuncioCriativoKit::create([
+            'token'                  => Str::random(32),
+            'company_id'             => $company->id,
+            'rascunho_id'            => $rascunho->id,
+            'user_id'                => $userId,
+            'criativo_referencia_id' => $portador->id,
+            'status'                 => MlAnuncioCriativoKit::STATUS_PRONTO,
+            'total_slots'            => count($statusPorSlot),
+            'minimo_aprovadas'       => $minimoAprovadas,
+            'imagens_geradas'        => count($statusPorSlot),
+        ]);
+        $portador->update(['kit_id' => $kit->id]);
+
+        $tipos = ['hero', 'white_background', 'angles', 'detail', 'lifestyle', 'benefits', 'specifications'];
+        $slots = collect();
+        foreach ($statusPorSlot as $i => $validacaoStatus) {
+            $token = Str::random(32);
+            $tipo  = $tipos[$i] ?? "slot-{$i}";
+            Storage::disk('local')->put("creative-geradas/{$token}/{$tipo}.jpg", 'bytes-da-imagem-gerada');
+
+            $slots->push(MlAnuncioCriativo::create([
+                'token'            => $token,
+                'company_id'       => $company->id,
+                'rascunho_id'      => $rascunho->id,
+                'user_id'          => $userId,
+                'kit_id'           => $kit->id,
+                'slot'             => $tipo,
+                'slot_indice'      => $i + 1,
+                'slot_plano'       => ['indice' => $i + 1, 'tipo' => $tipo, 'objetivo' => "Objetivo {$tipo}."],
+                'status'           => MlAnuncioCriativo::STATUS_PRONTO,
+                'imagem_path'      => "creative-geradas/{$token}/{$tipo}.jpg",
+                'imagem_mime'      => 'image/jpeg',
+                'validacao_status' => $validacaoStatus,
+            ]));
+        }
+
+        return [$kit->fresh(), $slots, $rascunho->fresh()];
+    }
+
+    public function test_aprovar_kit_com_1_reprovada_abaixo_do_minimo_recusa_citando_a_reprovada(): void
+    {
+        $this->fakeUploadMlComContador();
+        // 3 prontas, 1 delas reprovada: só 2 "sem risco" -> abaixo do mínimo de 3.
+        [$kit] = $this->kitComSlotsProntos(3, [
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_REPROVADA,
+        ]);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.aprovar', ['kit' => $kit->token]),
+        );
+
+        $resposta->assertStatus(422);
+        $this->assertStringContainsString('reprovada', $resposta->json('erros.0.mensagem'));
+        Http::assertNothingSent();
+    }
+
+    public function test_aprovar_kit_com_4_prontas_e_1_reprovada_sobe_3_e_nao_fecha_o_kit(): void
+    {
+        $this->fakeUploadMlComContador();
+        [$kit, , $rascunho] = $this->kitComSlotsProntos(3, [
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_REPROVADA,
+            null,
+        ]);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.aprovar', ['kit' => $kit->token]),
+        );
+
+        $resposta->assertOk()->assertJsonPath('aprovadas', 3);
+        $this->assertSame([3], $resposta->json('reprovadas'));
+        Http::assertSentCount(3);
+
+        $kit->refresh();
+        $this->assertNotSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->status);
+
+        // A referência do portador NÃO foi apagada — o reprovado ainda
+        // pode ser regenerado.
+        $portador = $kit->criativoReferencia;
+        $this->assertNull($portador->fresh()->referencias_apagadas_em);
+    }
+
+    public function test_aprovar_kit_todo_aprovado_na_validacao_fecha_como_antes(): void
+    {
+        $this->fakeUploadMlComContador();
+        [$kit, , $rascunho] = $this->kitComSlotsProntos(3, [
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+            MlAnuncioCriativo::VALIDACAO_APROVADA,
+        ]);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.aprovar', ['kit' => $kit->token]),
+        );
+
+        $resposta->assertOk()->assertJsonPath('aprovadas', 3);
+
+        $kit->refresh();
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->status);
+
+        $portador = $kit->criativoReferencia;
+        $this->assertNotNull($portador->fresh()->referencias_apagadas_em);
+    }
+
+    public function test_aprovar_kit_com_validacao_status_nulo_fecha_como_antes_nao_regressao(): void
+    {
+        $this->fakeUploadMlComContador();
+        [$kit] = $this->kitComSlotsProntos(3, [null, null, null]);
+
+        $resposta = $this->actingAs($this->admin())->postJson(
+            route('mlb.anuncios.criativo.kit.aprovar', ['kit' => $kit->token]),
+        );
+
+        $resposta->assertOk()->assertJsonPath('aprovadas', 3);
+
+        $kit->refresh();
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->status);
     }
 
     // ═══ T-162-09 — escopo/permissão continuam ANTES do gate novo ═══════
