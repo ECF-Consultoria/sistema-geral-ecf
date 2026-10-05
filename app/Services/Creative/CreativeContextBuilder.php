@@ -3,7 +3,10 @@
 namespace App\Services\Creative;
 
 use App\Models\MlAnuncioCriativo;
+use App\Models\PubRascunho;
 use App\Services\Creative\Dto\CreativeContext;
+use App\Services\Publicador\Criativos\ContextoCriativoDoPublicador;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 
 /**
  * ÚNICA fronteira entre o publicador (`ml_anuncio_rascunhos.payload`) e o
@@ -16,6 +19,13 @@ use App\Services\Creative\Dto\CreativeContext;
  * Nada de formulário novo: tudo vem do que já está cadastrado no rascunho
  * (CTX-01) — título, categoria, descrição, atributos, variações — mais a
  * loja (conta ML da empresa) e as fotos de referência já enviadas (160-01).
+ *
+ * Fase 165 (Creative Engine no Publicador novo, D-02): duas fontes, nunca
+ * ambas no mesmo criativo. `pubRascunhoIdEfetivo()` escolhe: não nulo vai
+ * para `paraPublicador()`, que lê o rascunho do Publicador (`pub_rascunhos`)
+ * pelo adaptador `ContextoCriativoDoPublicador` — a MESMA fronteira única
+ * (CTX-02), só que do outro lado. O caminho do `payload` antigo (abaixo)
+ * fica intocado.
  */
 class CreativeContextBuilder
 {
@@ -40,6 +50,15 @@ class CreativeContextBuilder
             throw new \RuntimeException(
                 'Este criativo não tem foto de referência viva — suba uma foto do produto antes de gerar.'
             );
+        }
+
+        // Fase 165 (D-02): o Publicador é identificado por `pub_rascunho_id`
+        // — no próprio criativo, no kit, ou no portador (resolvido por
+        // `pubRascunhoIdEfetivo()`, Fase 165-01). Quando presente, o
+        // contexto vem do rascunho do Publicador, nunca do `payload`.
+        $pubRascunhoId = $criativo->pubRascunhoIdEfetivo();
+        if ($pubRascunhoId !== null) {
+            return $this->paraPublicador($criativo, $portador, $pubRascunhoId);
         }
 
         $rascunho = $criativo->rascunho;
@@ -97,6 +116,54 @@ class CreativeContextBuilder
                 ])
                 ->values()
                 ->all(),
+        );
+    }
+
+    /**
+     * Fase 165 (D-02/D-14): contexto do Publicador, a partir do rascunho
+     * `pub_rascunhos` identificado por `$pubRascunhoId` — nunca do `payload`
+     * do rascunho antigo. Lido pelo adaptador `ContextoCriativoDoPublicador`,
+     * que é quem conhece `RascunhoRepository`/`DadosEfetivosService`; este
+     * builder continua sendo a ÚNICA porta do DTO `CreativeContext` (CTX-02).
+     */
+    private function paraPublicador(MlAnuncioCriativo $criativo, MlAnuncioCriativo $portador, int $pubRascunhoId): CreativeContext
+    {
+        $rascunho = PubRascunho::with('produto')->find($pubRascunhoId);
+
+        if ($rascunho === null) {
+            // Só acontece na corrida (o id ainda aponta para um rascunho que
+            // sumiu entre a leitura do criativo e a montagem do contexto):
+            // apagado de verdade, o `nullOnDelete` já teria zerado a coluna
+            // e o criativo cairia no ramo antigo, com a mensagem de sempre.
+            throw new \RuntimeException(
+                'O rascunho do Publicador deste criativo não existe mais — não há contexto para gerar a partir dele.'
+            );
+        }
+
+        $grupo = $criativo->pubGrupoEfetivo() ?? ResolvedorGruposImagem::GERAL;
+        $dados = app(ContextoCriativoDoPublicador::class)->montar($rascunho, $grupo);
+
+        return new CreativeContext(
+            rascunhoId: 0,
+            produto: $dados['produto'],
+            marca: $dados['atributos']['BRAND'] ?? null,
+            modelo: $dados['atributos']['MODEL'] ?? null,
+            categoriaId: $dados['categoria_id'],
+            descricao: $dados['descricao'],
+            atributos: $dados['atributos'],
+            variacoes: $dados['variacoes'],
+            loja: $dados['loja'],
+            imagensReferencia: $this->referenciaEfemera->bytesDe($portador),
+            referenciasMeta: collect($portador->referenciasVivas())
+                ->map(fn ($ref) => [
+                    'indice' => $ref['indice'] ?? null,
+                    'mime'   => $ref['mime'] ?? null,
+                    'bytes'  => $ref['bytes'] ?? null,
+                    'nome'   => $ref['nome'] ?? null,
+                ])
+                ->values()
+                ->all(),
+            pubRascunhoId: $rascunho->id,
         );
     }
 }

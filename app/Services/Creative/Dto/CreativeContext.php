@@ -11,6 +11,12 @@ namespace App\Services\Creative\Dto;
  * durante a geração; banco e log recebem só metadado (`referenciasMeta`,
  * via `paraAuditoria()`). Nunca serializar este DTO inteiro: bytes de foto
  * de cliente não podem entrar em coluna nem em log (FOTO-01/GEN-05).
+ *
+ * Fase 165 (Creative Engine no Publicador novo): `pubRascunhoId` existe só
+ * para o ramo do Publicador (`CreativeContextBuilder::paraPublicador()`) —
+ * nesse ramo `rascunhoId` vale `0` porque o campo é `int` não nulo e o
+ * rascunho de origem é o do Publicador (`pub_rascunhos`), não o do
+ * assistente antigo.
  */
 final readonly class CreativeContext
 {
@@ -32,6 +38,7 @@ final readonly class CreativeContext
         public ?string $loja,
         public array $imagensReferencia,
         public array $referenciasMeta,
+        public ?int $pubRascunhoId = null,
     ) {}
 
     /**
@@ -43,7 +50,7 @@ final readonly class CreativeContext
      */
     public function paraAuditoria(): array
     {
-        return [
+        $auditoria = [
             'rascunho_id'      => $this->rascunhoId,
             'produto'          => $this->produto,
             'marca'            => $this->marca,
@@ -55,5 +62,14 @@ final readonly class CreativeContext
             'loja'             => $this->loja,
             'referencias_meta' => $this->referenciasMeta,
         ];
+
+        // Fase 165: só acrescenta a chave quando preenchida — o ramo antigo
+        // (payload do assistente antigo) continua com as MESMAS 10 chaves,
+        // na mesma ordem, de sempre.
+        if ($this->pubRascunhoId !== null) {
+            $auditoria['pub_rascunho_id'] = $this->pubRascunhoId;
+        }
+
+        return $auditoria;
     }
 }
