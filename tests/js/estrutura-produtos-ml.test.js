@@ -27,6 +27,18 @@ test('PickerCategoria: busca com debounce de 350 ms, preenchida com o nome do pr
     assert.match(picker, /caminho_texto/);
 });
 
+test('PickerCategoria: busca dentro do limite do servidor (2 a 120) e 422 sem culpar o ML (FE-WR-08)', () => {
+    assert.match(picker, /MINIMO_BUSCA = 2/);
+    assert.match(picker, /MAXIMO_BUSCA = 120/);
+    assert.match(picker, /useState\(\(\) => String\(textoInicial \?\? row\?\.nome \?\? ''\)\.slice\(0, MAXIMO_BUSCA\)\)/, 'nome longo abre cortado');
+    assert.ok(picker.includes('maxLength={MAXIMO_BUSCA}'));
+    assert.match(picker, /if \(q\.length < MINIMO_BUSCA\) \{ setItens\(\[\]\); setEstado\('curta'\); return undefined; \}/, 'menos de 2 letras nem chama o servidor');
+    assert.ok(picker.includes('Digite ao menos 2 letras.'));
+    assert.match(picker, /e\.response\?\.status === 422 \? 'recusada' : 'indisponivel'/);
+    const recusada = picker.slice(picker.indexOf("estado === 'recusada'"), picker.indexOf('</p>', picker.indexOf("estado === 'recusada'")));
+    assert.ok(! recusada.includes('Tentar de novo') && ! recusada.includes('Mercado Livre'), '422 não oferece repetir o mesmo erro');
+});
+
 test('PickerCategoria: não-folha não é selecionável e explica', () => {
     assert.ok(picker.includes('Escolha uma mais específica'));
     assert.match(picker, /item\.folha === false\) return/);
