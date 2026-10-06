@@ -41,49 +41,67 @@ const apagar = (chave) => {
 
 const caminhoDaLista = () => new URL(route('portal.auth.estrutura.produtos'), window.location.origin).pathname;
 
+// Validades (revisão FE-IN-04): o retorno vale enquanto a pessoa edita a ficha; a volta é
+// consumida logo que a lista monta, então só vale por instantes.
+const RETORNO_VALE_MS = 2 * 60 * 60 * 1000;
+const VOLTA_VALE_MS = 2 * 60 * 1000;
+
+const recente = (registro, validade) => typeof registro?.em === 'number' && Date.now() - registro.em <= validade;
+
+/** Id de produto aceito para montar seletor: inteiro positivo, nada cru. */
+const idValido = (id) => Number.isInteger(id) && id > 0;
+
 /** Chamada pela lista antes de abrir a ficha: guarda onde estava. */
 export function guardarRetorno() {
-    gravar(CHAVE_RETORNO, { url: window.location.pathname + window.location.search, scrollY: window.scrollY });
+    gravar(CHAVE_RETORNO, { url: window.location.pathname + window.location.search, scrollY: window.scrollY, em: Date.now() });
 }
 
-/** Para onde "← Produtos" leva: a lista com a busca/página de antes, ou a lista pura. */
+/** Para onde "← Produtos" leva: a lista com a busca/página de antes (se recente), ou a lista pura. */
 export function urlDeVolta() {
     const lista = caminhoDaLista();
-    const url = ler(CHAVE_RETORNO)?.url;
+    const retorno = ler(CHAVE_RETORNO);
+    const url = recente(retorno, RETORNO_VALE_MS) ? retorno.url : null;
 
     if (typeof url === 'string' && (url === lista || url.startsWith(`${lista}?`))) return url;
 
     return lista;
 }
 
-/** Volta para a lista. A "volta" só é gravada em onStart: se a pessoa desistir na confirmação, nada fica. */
+/**
+ * Volta para a lista. A "volta" só é gravada em onStart: se a pessoa desistir na confirmação, nada
+ * fica; se a visita começar e não chegar (rede, cancelada), ela é apagada no fim.
+ */
 export function voltarParaLista({ aviso = null, produtoId = null, replace = false } = {}) {
     const retorno = ler(CHAVE_RETORNO);
+    let chegou = false;
 
     router.visit(urlDeVolta(), {
         replace,
-        onStart: () => gravar(CHAVE_VOLTA, { aviso, produtoId, scrollY: retorno?.scrollY ?? 0 }),
+        onStart: () => gravar(CHAVE_VOLTA, { aviso, produtoId, scrollY: retorno?.scrollY ?? 0, em: Date.now() }),
+        onSuccess: () => { chegou = true; },
+        onFinish: () => { if (! chegou) apagar(CHAVE_VOLTA); },
     });
 }
 
-/** A lista chama ao montar: lê e APAGA o que a ficha deixou. */
+/** A lista chama ao montar: lê e APAGA o que a ficha deixou (só vale se for de agora). */
 export function pegarVolta() {
     const volta = ler(CHAVE_VOLTA);
     apagar(CHAVE_VOLTA);
+    if (! volta || ! recente(volta, VOLTA_VALE_MS)) return null;
 
-    return volta;
+    return { ...volta, produtoId: idValido(volta.produtoId) ? volta.produtoId : null };
 }
 
 /** Rola até onde a pessoa estava (ou até o produto novo). O Inertia reseta a rolagem depois de trocar a página: rAF duplo. */
 export function rolarParaVolta(volta) {
     if (! volta) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (volta.produtoId) {
+        if (idValido(volta.produtoId)) {
             document.querySelector(`[data-produto-id="${volta.produtoId}"]`)?.scrollIntoView({ block: 'center' });
 
             return;
         }
-        window.scrollTo(0, volta.scrollY ?? 0);
+        window.scrollTo(0, Number(volta.scrollY) || 0);
     }));
 }
 
@@ -118,6 +136,7 @@ export function pegarUltimoProduto() {
 
 /** Traz o cartão para a tela só se ele estiver fora dela — depois de `rolarParaVolta` (rAF triplo). */
 export function mostrarCartao(produtoId) {
+    if (! idValido(produtoId)) return;
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
         const cartao = document.querySelector(`[data-produto-id="${produtoId}"]`);
         if (! cartao) return;

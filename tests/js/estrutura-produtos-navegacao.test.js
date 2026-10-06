@@ -1,7 +1,7 @@
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    apagarRascunho, entradaAtual, gravarRascunho, lerRascunho, passosAte,
+    apagarRascunho, entradaAtual, gravarRascunho, guardarRetorno, lerRascunho, passosAte, pegarVolta, rolarParaVolta, urlDeVolta,
 } from '../../resources/js/lib/produtosNavegacao.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -96,4 +96,74 @@ test('volta do histórico: com Navigation API, anda até a entrada da ficha, par
     assert.equal(passosAte('ficha'), -1);
 
     assert.equal(passosAte('sumiu'), 1, 'entrada que não existe mais: caso comum');
+});
+
+// ─── Retorno e volta com validade (FE-IN-04) ────────────────────────────────
+
+const naLista = (search = '') => {
+    globalThis.route = () => 'https://admin.test/portal/estrutura/produtos';
+    globalThis.window = {
+        sessionStorage: memoria(),
+        location: { origin: 'https://admin.test', pathname: '/portal/estrutura/produtos', search },
+        scrollY: 640,
+    };
+};
+
+test('retorno: guarda busca, página, rolagem e carimbo; a volta leva para a mesma lista', () => {
+    naLista('?q=mesa&pagina=3');
+    guardarRetorno();
+
+    const r = JSON.parse(window.sessionStorage.getItem('ecf.produtos.retorno'));
+    assert.equal(r.url, '/portal/estrutura/produtos?q=mesa&pagina=3');
+    assert.equal(r.scrollY, 640);
+    assert.equal(typeof r.em, 'number');
+    assert.equal(urlDeVolta(), '/portal/estrutura/produtos?q=mesa&pagina=3');
+});
+
+test('retorno: de horas atrás não vale — a ficha aberta por URL volta para a lista pura', () => {
+    naLista();
+    window.sessionStorage.setItem('ecf.produtos.retorno', JSON.stringify({ url: '/portal/estrutura/produtos?q=velha', scrollY: 0, em: Date.now() - 3 * 60 * 60 * 1000 }));
+    assert.equal(urlDeVolta(), '/portal/estrutura/produtos');
+
+    window.sessionStorage.setItem('ecf.produtos.retorno', JSON.stringify({ url: '/portal/estrutura/produtos?q=sem-carimbo' }));
+    assert.equal(urlDeVolta(), '/portal/estrutura/produtos', 'sem carimbo também não vale');
+});
+
+test('retorno: nunca vira redirecionamento aberto', () => {
+    naLista();
+    for (const url of ['https://mal.test/', '//mal.test', '/portal/estrutura/produtosX', '/outra']) {
+        window.sessionStorage.setItem('ecf.produtos.retorno', JSON.stringify({ url, em: Date.now() }));
+        assert.equal(urlDeVolta(), '/portal/estrutura/produtos', url);
+    }
+});
+
+test('volta: velha não mostra "Produto salvo." de novo, e é consumida ao ler', () => {
+    naLista();
+    window.sessionStorage.setItem('ecf.produtos.volta', JSON.stringify({ aviso: 'Produto salvo.', produtoId: null, scrollY: 0, em: Date.now() - 5 * 60 * 1000 }));
+    assert.equal(pegarVolta(), null);
+
+    window.sessionStorage.setItem('ecf.produtos.volta', JSON.stringify({ aviso: 'Produto salvo.', produtoId: 12, scrollY: 300, em: Date.now() }));
+    const volta = pegarVolta();
+    assert.equal(volta.aviso, 'Produto salvo.');
+    assert.equal(volta.produtoId, 12);
+    assert.equal(pegarVolta(), null, 'recarregar a lista não repete o aviso');
+});
+
+test('volta: produtoId estranho não chega ao seletor', () => {
+    naLista();
+    window.sessionStorage.setItem('ecf.produtos.volta', JSON.stringify({ aviso: null, produtoId: '1"] , body [x="', scrollY: 50, em: Date.now() }));
+    const volta = pegarVolta();
+    assert.equal(volta.produtoId, null);
+
+    const seletores = [];
+    globalThis.requestAnimationFrame = (f) => f();
+    globalThis.document = { querySelector: (s) => { seletores.push(s); return null; } };
+    let rolou = null;
+    window.scrollTo = (x, y) => { rolou = y; };
+    rolarParaVolta({ produtoId: '1"]', scrollY: 50 });
+    assert.deepEqual(seletores, [], 'nada cru vira seletor');
+    assert.equal(rolou, 50);
+
+    rolarParaVolta({ produtoId: 7, scrollY: 0 });
+    assert.deepEqual(seletores, ['[data-produto-id="7"]']);
 });
