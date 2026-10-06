@@ -145,6 +145,11 @@ test('Guarda: alteração não salva pede confirmação ao sair por link, botão
     }
 });
 
+test('Guarda: volta a valer se a visita confirmada falhar ou for cancelada (FE-WR-03)', () => {
+    assert.ok(pagina.includes("const tirarFim = router.on('finish', () => { liberado.current = false; });"));
+    assert.ok(pagina.includes('tirarFim();'), 'o ouvinte sai junto com a ficha');
+});
+
 test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a ficha (FE-CR-02)', () => {
     // Em captura no window: roda antes do ouvinte do Inertia, que troca a página sem o evento `before`.
     assert.ok(pagina.includes("window.addEventListener('popstate', aoNavegarNoHistorico, true)"));

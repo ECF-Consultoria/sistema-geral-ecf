@@ -58,10 +58,15 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
             return false;
         });
+        // A visita liberada terminou e a ficha continua aqui (a rede caiu, a sessão expirou, outra visita
+        // cancelou a primeira): a guarda volta a valer, como no usePublicador (FE-WR-03). Saindo de
+        // verdade a ficha desmonta e este ouvinte vai junto.
+        const tirarFim = router.on('finish', () => { liberado.current = false; });
 
         return () => {
             window.removeEventListener('beforeunload', aoFecharAba);
             tirarGuarda();
+            tirarFim();
         };
     }, []);
 
