@@ -386,15 +386,15 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
-## Posição paralela — Fase 168 (Geração de ofertas: Combo, Kit e Combit sugeridos) — EM PLANEJAMENTO
+## Posição paralela — Fase 168 (Geração de ofertas: Combo, Kit e Combit sugeridos) — PLANEJADA
 
 **Bloco escrito à mão de propósito** (2026-10-06): os comandos `state.*` do GSD corrompem o frontmatter.
 Mesmo worktree e branch da 167 (`C:/tmp/ecf-publicador-spec-261001`, `feat/publicador-ml-261001`).
 
-Phase: 168 (geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos) — PLANNING
-Plans: a definir
-Status: CONTEXT escrito com as decisões do usuário de 06/10 ("faça o recomendado"): pares de TIPO numa lista da ECF, quantidades por tipo editáveis por produto, sem IA, nada vira oferta sozinho. Pesquisa em andamento (mede a aba Planejamento só por contagens). Depois: UI-SPEC, planos, checagem.
-Last activity: 2026-10-06 — CONTEXT da 168
+Phase: 168 (geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos) — READY TO EXECUTE (esperando o ok do usuário ao resumo)
+Plans: 16 em 9 ondas — 0 de 16 concluídos (checkpoints humanos: 168-02 lista-semente de pares; 168-16 conferência visual)
+Status: pesquisa (gabarito 106/129 no cenário B; ~71 com a semente literal do D-07), UI-SPEC aprovada, PATTERNS, 16 planos aprovados pelo checker na iteração 2 (1 blocker de `migrate` sem `--path` corrigido). D-01..D-20 e PR168-01..15 cobertos. Próximo: o usuário aprova o resumo → `/gsd-execute-phase 168`.
+Last activity: 2026-10-06 — planos da 168 aprovados pelo checker
 
 ## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — DEPLOYADA
 

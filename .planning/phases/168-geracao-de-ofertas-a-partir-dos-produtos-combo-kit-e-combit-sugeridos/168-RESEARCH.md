@@ -585,19 +585,21 @@ $nome  = $tipo && $resto !== null ? "Kit {$n} {$tipo['plural']} {$resto}" : "Com
 | A5 | A semente de pares tirada da planilha pode ser commitada em `config` (são tipos genéricos, sem produto/SKU/custo) | Persistência | Médio: o usuário pode considerar que revela a estrutura do catálogo do cliente (Questão Aberta 3) |
 | A6 | A baseline de testes do fim da 167 (G1 224/1543 etc.) ainda vale na árvore de hoje | Validation | Baixo: a Onda 0 mede de novo antes de mexer |
 
-## Questões Abertas
+## Questões Abertas (RESOLVED)
 
-1. **As quantidades do D-07 batem com a planilha? (decisão do usuário)**
+> Todas fechadas no `168-CONTEXT.md` em 06/10, aplicando a recomendação ("faça o recomendado"). A lista-semente de pares é confirmada pelo usuário no checkpoint do 168-02.
+
+1. **RESOLVED (D-13):** As quantidades do D-07 batem com a planilha? (decisão do usuário)
    - O que sabemos: com as quantidades **literais** (cadeira 2/4/6, banqueta 2/3/4, mesa só 1) o gerador acerta 25 de 46 Combos e 10 de 25 Combits. A planilha tem cadeira **×8** (7 combos), banco ×2/×4, e vários tipos com Combit ×2 (mesa 8, cama 2, outro tipo 6, banco 5). O que a reunião disse ("2/4/6/8/10, nunca 5") também inclui 8.
    - O que falta: se o 8 (e 10) entra no padrão da cadeira, se banco tem padrão, e se "mesa ×2 no Combit" é desejado.
    - Recomendação: **semear exatamente o D-07** (travado) e mostrar os números acima ao usuário; a ECF acrescenta pelo admin (`qtd_combo`/`qtd_combit` por tipo) sem deploy. Não alterar o D-07 por conta própria.
-2. **Trios (Kit/Combit com 3 itens) ficam fora da v1?**
+2. **RESOLVED (D-16):** Trios (Kit/Combit com 3 itens) ficam fora da v1?
    - O que sabemos: 21 das 83 composições da planilha (25%) têm 3 itens; um gerador de trios propõe 124 para acertar 12.
    - Recomendação: v1 só com 2 itens; a pessoa monta o trio à mão na Lista SKUs. Se quiserem trios, é um passo posterior com tipo "complementar" por par, não um produto cartesiano.
-3. **A lista-semente de pares de tipo pode ser commitada?** São 21–23 pares de tipos genéricos (sem produto, SKU ou custo), mas descrevem a estrutura de um catálogo real. Recomendação: gerar por roteiro local fora do repo, mostrar ao usuário a lista (só os pares) e commitar só depois do ok; os pares citados no CONTEXT (mesa+cadeira, mesa+banco, cama+criado-mudo) já são seguros.
-4. **Tela admin da ECF na v1 ou semente + comando?** Recomendado: tela admin pequena (PR168-14). Se cortar, a lista só cresce por deploy.
-5. **Seletor de tipo também na ficha da 167?** Recomendado **não** (a escolha vive na tela de sugestões, sem mudança visual na ficha aprovada). Se a UI-SPEC pedir, vai para conferência visual do usuário (D-10).
-6. **Cotação real do frete (API do ML) por sugestão?** Recomendado: só a tabela da ECF "estimado" na lista (zero requisição) e um botão de cotar a página, ME2 apenas, no teto da 167. Em 06/10 a tabela da ECF ficou a < 1% do ML.
+3. **RESOLVED (D-20, confirmação no checkpoint do 168-02):** A lista-semente de pares de tipo pode ser commitada? São 21–23 pares de tipos genéricos (sem produto, SKU ou custo), mas descrevem a estrutura de um catálogo real. Recomendação: gerar por roteiro local fora do repo, mostrar ao usuário a lista (só os pares) e commitar só depois do ok; os pares citados no CONTEXT (mesa+cadeira, mesa+banco, cama+criado-mudo) já são seguros.
+4. **RESOLVED (D-15):** Tela admin da ECF na v1 ou semente + comando? Recomendado: tela admin pequena (PR168-14). Se cortar, a lista só cresce por deploy.
+5. **RESOLVED (D-12):** Seletor de tipo também na ficha da 167? Recomendado **não** (a escolha vive na tela de sugestões, sem mudança visual na ficha aprovada). Se a UI-SPEC pedir, vai para conferência visual do usuário (D-10).
+6. **RESOLVED (D-18):** Cotação real do frete (API do ML) por sugestão? Recomendado: só a tabela da ECF "estimado" na lista (zero requisição) e um botão de cotar a página, ME2 apenas, no teto da 167. Em 06/10 a tabela da ECF ficou a < 1% do ML.
 
 ## Disponibilidade do Ambiente
 

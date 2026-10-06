@@ -2,7 +2,7 @@
 phase: 168
 slug: geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-10-06
 ---
@@ -111,3 +111,44 @@ O planejador detalha por tarefa (ID `168-NN-TT`).
 - [ ] `nyquist_compliant: true` no frontmatter.
 
 **Aprovação:** pendente
+
+---
+
+## Mapa por tarefa (planejamento, 06/10)
+
+Cada tarefa de código escreve o teste ANTES do código, no próprio plano (tarefa `tdd="true"`); por isso a "Onda 0" de
+arquivos de teste não é um plano separado: o 168-01 só mede a baseline, e cada arquivo da tabela da seção "Mapa requisito →
+teste" nasce na tarefa indicada abaixo. Toda tarefa tem `<automated>`; os checkpoints (168-02 T3, 168-16 T3) são as únicas
+sem comando, e nenhuma sequência de 3 tarefas fica sem verificação automática.
+
+| Tarefa | Requisitos | Arquivo de teste | Comando |
+|---|---|---|---|
+| 168-01-T1 | PR168-12, PR168-13 | baseline G1..G7 | grupos do baseline |
+| 168-02-T1 | PR168-04, PR168-05 | `Geracao/TipoDoProdutoTest`, `Geracao/CatalogoDaEcfTest` | `phpunit tests/Unit/PortalEstrutura/Geracao` |
+| 168-02-T2 | PR168-15 | roteiro local (só contagens) | falha se houver `.xlsx` ou saída do roteiro versionados ou não rastreados (`git ls-files` + `git status --porcelain`) |
+| 168-03-T1 | PR168-06, PR168-04 | `Geracao/ChaveDeComposicaoTest`, `Geracao/QuantidadesTest` | phpunit dos 2 arquivos |
+| 168-03-T2 | PR168-03 | `Geracao/VariacoesEmParaleloTest` | phpunit do arquivo |
+| 168-04-T1 | PR168-09 | `Geracao/NomesSugeridosTest` | phpunit do arquivo |
+| 168-04-T2 | PR168-10 | `Geracao/ConjuntoLogisticoTest` | phpunit do arquivo |
+| 168-05-T1/T2 | PR168-11, PR168-08 | `tests/js/estrutura-sugestoes-selecao.test.js` (comportamental) | `node --test` do arquivo |
+| 168-06-T1/T2 | PR168-04, PR168-13 | `Sugestoes/TiposEParesTest`, `MigracoesDaFaseDetectamMariaDbTest` + G5 | phpunit dos arquivos |
+| 168-06-T3 | PR168-13 | prova no MariaDB 10.4 (`--path`) | `migrate:status --path=` |
+| 168-07-T1 | PR168-01, PR168-02, PR168-03 | `Geracao/GeradorDeSugestoesTest`, `Geracao/GeradorRegrasDurasTest` | phpunit dos 2 arquivos |
+| 168-07-T2 | PR168-15 | `Geracao/GabaritoDaGeracaoTest` (15/5/8) | `phpunit tests/Unit/PortalEstrutura/Geracao` |
+| 168-08-T1 | PR168-05 | `Sugestoes/CatalogoSinteticoTest` (forma do catálogo de teste) | phpunit do arquivo |
+| 168-08-T2 | PR168-01, PR168-05, PR168-06 | `Sugestoes/RetratoDoCatalogoTest` | phpunit do arquivo |
+| 168-09-T1/T2 | PR168-14 | `Sugestoes/AdminTiposEParesTest` + `DevControllerTest` | phpunit dos arquivos |
+| 168-10-T1 | PR168-11 | `Sugestoes/ListaDeSugestoesTest` | phpunit do arquivo |
+| 168-10-T2 | PR168-10 | `Sugestoes/LogisticaDoConjuntoTest` | `phpunit tests/Feature/PortalCliente/Estrutura/Sugestoes` |
+| 168-11-T1 | PR168-08, PR168-06 | `Sugestoes/AceitarSugestaoTest`, `Sugestoes/NadaDuplicadoTest` | phpunit dos 2 arquivos |
+| 168-11-T2 | PR168-07, PR168-05 | `Sugestoes/DescarteDeSugestaoTest`, `Sugestoes/GeracaoDoProdutoTest` | `phpunit tests/Feature/PortalCliente/Estrutura/Sugestoes` |
+| 168-12-T1/T2 | PR168-14 | `tests/js/estrutura-geracao-admin.test.js` + manifest | `node --test` do arquivo |
+| 168-13-T1/T2 | PR168-12, PR168-11, PR168-10 | `Sugestoes/AcessoAsSugestoesTest` + G3 | phpunit dos arquivos |
+| 168-14-T1 | PR168-11 | `tests/js/estrutura-sugestoes-componentes.test.js` (gate dos 6 componentes) | `node --test` do arquivo |
+| 168-14-T2 | PR168-11, PR168-08 | `tests/js/estrutura-sugestoes.test.js` (página, aceite/descarte) | `node --test` dos arquivos |
+| 168-14-T3 | PR168-11, PR168-09 | `tests/js/estrutura-sugestoes.test.js` (guarda, frete, estados vazios) + manifest | `node --test` dos arquivos |
+| 168-15-T1 | PR168-05, PR168-11 | `tests/js/estrutura-sugestoes-abas.test.js` (Sem tipo, JanelaTipo) | `node --test` dos arquivos |
+| 168-15-T2 | PR168-07 | `tests/js/estrutura-sugestoes-abas.test.js` (Descartadas) | `node --test` dos arquivos |
+| 168-15-T3 | PR168-11 | `estrutura-produtos-topo.test.js` + manifest | `node --test` dos arquivos |
+| 168-16-T1 | PR168-13, PR168-15 | G1..G8, MariaDB final, gabarito real | grupos do baseline |
+| 168-16-T2 | PR168-11 | guarda do SQLite (recusa do MariaDB testada) + roteiro puppeteer T1..T14 | `curl` do servidor de conferência |
