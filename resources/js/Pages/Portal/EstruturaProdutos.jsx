@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
-import { Loader2, Plus, Search, X } from 'lucide-react';
+import { Loader2, Plus, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
@@ -9,16 +9,22 @@ import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/Jan
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
+import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
+import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
 import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
-import { guardarRetorno, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
+import { gravarModo, guardarRetorno, lerModo, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
+//
+// D-25: o desenho segue a REF-1 (Visual grande) e a REF-3 (Lista) com as cores
+// do sistema. D-26: o seletor troca o desenho sem navegar e a escolha fica no
+// navegador (`lerModo`/`gravarModo`).
 //
 // D-23: nada de planilha dentro do sistema. Os produtos aparecem numa lista de
 // cartões (uma variação por linha dentro do cartão, D-03) e UMA ficha do
 // produto, em PÁGINA INTEIRA com URL própria (167-19, D-27), é o único lugar de
 // editar: clicar no cartão ou em "Adicionar produto" navega até ela, e salvar
-// volta para cá com a busca, a página e a rolagem de antes.
+// volta para cá com a busca, a página, o modo e a rolagem de antes.
 //
 // D-24: a planilha só existe como ARQUIVO: baixar o modelo (.xlsx), preencher
 // fora e importar com prévia. Para cadastrar muitos de uma vez, é por aí.
@@ -42,6 +48,7 @@ const LINK_SECUNDARIO = 'inline-flex items-center justify-center gap-1.5 rounded
 export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites, listas: listasIniciais }) {
     const [linhas, setLinhas] = useState(() => produtos.linhas.map((l) => linhaDoServidor(l, vocabulario.pendencias)));
     const [aviso, setAviso] = useState(null);
+    const [modo, setModo] = useState(() => lerModo());   // 'grande' | 'lista' — lido já no 1º render, para a rolagem da volta cair no lugar
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [aula, setAula] = useState(false);
     const [sugerindo, setSugerindo] = useState(false);
@@ -54,6 +61,11 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
 
     const temProdutos = produtos.tem_produtos || linhas.length > 0;
+
+    const trocarModo = (m) => {
+        setModo(m);
+        gravarModo(m);
+    };
 
     // ─── Dados vindos do servidor (busca, página, importação, listas) ───────
 
@@ -205,45 +217,21 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         }
     };
 
-    const acoes = (
-        <>
-            <Botao variante="secundario" onClick={() => setGerindoListas(true)} data-acao="familias-ambientes">Famílias e ambientes</Botao>
-            <Botao variante="secundario" onClick={() => setImportando(true)} data-acao="importar-planilha">Importar planilha</Botao>
-            <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-modelo" className={LINK_SECUNDARIO}>
-                Baixar modelo (.xlsx)
-            </a>
-            <Botao variante={temProdutos ? 'primario' : 'secundario'} onClick={() => abrirFicha(null)} data-acao="adicionar-produto">
-                <Plus size={14} /> Adicionar produto
-            </Botao>
-        </>
-    );
-
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Produtos">
-            <div className="mx-auto max-w-6xl space-y-4 px-4 py-6">
-                <CabecalhoEstrutura etapa="produtos" onComoFunciona={() => setAula(true)} acoes={acoes}
+            <div className="mx-auto w-full max-w-[1600px] px-4 pb-10 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11">
+                <CabecalhoEstrutura etapa="produtos" amplo onComoFunciona={() => setAula(true)}
                     descricao="Cadastre cada produto uma vez, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs." />
 
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative min-w-[200px] flex-1">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar código ou nome…"
-                            className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] py-2 pl-8 pr-8 text-[13px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
-                            data-busca />
-                        {busca && (
-                            <button type="button" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/35 hover:text-white" aria-label="Limpar busca">
-                                <X size={14} />
-                            </button>
-                        )}
-                    </div>
+                <div className="mt-8">
+                    <BarraAcoesProdutos temProdutos={temProdutos} busca={busca} onBusca={setBusca}
+                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)}
+                        onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} />
                 </div>
 
-                {(haPendenteDeCategoria || sugerindo || (ml_conectado && linhasMe2.length > 0)) && (
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Botao variante="fantasma" onClick={sugerirCategorias} disabled={sugerindo} data-acao="sugerir-categorias">
-                            {sugerindo ? <Loader2 size={14} className="animate-spin" /> : null}
-                            {sugerindo ? 'Buscando sugestões…' : 'Sugerir categorias'}
-                        </Botao>
+                {temProdutos && (
+                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                        <SeletorVisualizacao modo={modo} onModo={trocarModo} />
                         {ml_conectado && linhasMe2.length > 0 && (
                             <Botao variante="fantasma" onClick={consultarFretes} disabled={consultando.size > 0} data-acao="consultar-fretes">
                                 {consultando.size > 0 ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -254,14 +242,14 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
 
                 {aviso && (
-                    <div role="status" className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-aviso-lote>
+                    <div role="status" className="mt-4 flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-aviso-lote>
                         <span>{aviso}</span>
                         <button type="button" onClick={() => setAviso(null)} className="text-white/35 hover:text-white" aria-label="Dispensar aviso"><X size={13} /></button>
                     </div>
                 )}
 
                 {! temProdutos && (
-                    <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-estado-vazio>
+                    <section className="mt-6 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-estado-vazio>
                         <h2 className="text-[15px] font-semibold text-white">Cadastre seus produtos uma vez</h2>
                         <p className="mx-auto mt-2 max-w-lg text-[13px] text-white/50">
                             Aqui ficam os produtos que você vende, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs. Cadastre um produto por vez aqui ou importe a planilha-modelo preenchida.
@@ -279,20 +267,22 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
 
                 {temProdutos && filtros.q && produtos.linhas.length === 0 && (
-                    <p className="py-10 text-center text-[13px] text-white/45">Nenhum produto com essa busca.</p>
+                    <p className="mt-6 py-10 text-center text-[13px] text-white/45">Nenhum produto com essa busca.</p>
                 )}
 
-                <ListaProdutos linhas={linhas} vocabulario={vocabulario} consultando={consultando} onAbrir={abrirFicha} />
+                <div className="mt-5">
+                    <ListaProdutos linhas={linhas} vocabulario={vocabulario} consultando={consultando} modo={modo} onAbrir={abrirFicha} />
+                </div>
 
                 {! ml_conectado && (
-                    <p className="text-[12px] text-white/45" data-nota-frete>
+                    <p className="mt-4 text-[12px] text-white/45" data-nota-frete>
                         O frete é uma estimativa pela tabela da ECF (vigente desde {dataBr(frete_tabela?.vigente_desde)}, reputação {frete_tabela?.reputacao}). Conectando sua conta do Mercado Livre, mostramos o valor real.
                     </p>
                 )}
 
                 {produtos.paginacao.paginas > 1 && (
-                    <Paginacao rotulo="produtos" paginacao={{ ...produtos.paginacao, blocos: produtos.paginacao.total, por_pagina: 100 }}
-                        onIr={(pagina) => visitar({ q: busca || undefined, pagina })} />
+                    <div className="mt-4"><Paginacao rotulo="produtos" paginacao={{ ...produtos.paginacao, blocos: produtos.paginacao.total, por_pagina: 100 }}
+                        onIr={(pagina) => visitar({ q: busca || undefined, pagina })} /></div>
                 )}
             </div>
 

@@ -14,6 +14,7 @@ import { lerSemComentarios } from './_fonte.js';
 const picker = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PickerCategoria.jsx');
 const janela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+const barra = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx');
 const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaDadosGerais.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
@@ -68,9 +69,9 @@ test('a página sugere em lotes de 10, sem contador, e só grava o que foi marca
     assert.ok(pagina.includes("'portal.auth.estrutura.produtos.categorias.sugerir'"));
     assert.match(pagina, /LOTE_SUGESTOES = 10/);
     assert.match(pagina, /produto_ids: ids\.slice\(i, i \+ LOTE_SUGESTOES\)/);
-    assert.ok(pagina.includes('Buscando sugestões…'));
+    assert.ok(barra.includes('Buscando sugestões…'));
     assert.ok(! /\d+ de \d+/.test(pagina) && ! pagina.includes('{i} de'));
-    assert.ok(pagina.includes('Sugerir categorias'));
+    assert.ok(barra.includes('Sugerir categorias'));
     assert.match(ficha, /<PickerCategoria row=\{primeira\}/);
     assert.match(pagina, /const aceitarSugestoes = async/);
     assert.match(pagina, /onAceitar=\{aceitarSugestoes\}/);

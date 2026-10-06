@@ -12,6 +12,7 @@ import { lerSemComentarios } from './_fonte.js';
 
 const importacao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaImportacao.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+const barra = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx');
 
 test('JanelaImportacao: textos do UI-SPEC', () => {
     for (const t of [
@@ -46,11 +47,11 @@ test('JanelaImportacao: cores dos grupos, erros abertos e sem caixa-alta', () =>
 });
 
 test('Página: modelo é link de download (não axios) e importar é botão, sem menu Planilha', () => {
-    assert.match(pagina, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download/);
+    assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download/);
     assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.modelo'/.test(pagina));
-    assert.ok(pagina.includes('Baixar modelo (.xlsx)'));
-    assert.ok(pagina.includes('Importar planilha'));
-    assert.ok(pagina.includes('data-acao="importar-planilha"') && pagina.includes('data-acao="baixar-modelo"'));
+    assert.ok(barra.includes('Baixar modelo') && ! barra.includes('Baixar modelo (.xlsx)'));
+    assert.ok(barra.includes('Importar planilha'));
+    assert.ok(barra.includes('data-acao="importar-planilha"') && barra.includes('data-acao="baixar-modelo"'));
     assert.ok(! pagina.includes('menu-planilha'));
     assert.ok(pagina.includes('Baixar planilha-modelo'));
     assert.match(pagina, /<JanelaImportacao /);
@@ -84,7 +85,7 @@ test('JanelaListas: usa as rotas de família e ambiente e atualiza o mesmo estad
     assert.match(listasJanela, /onListas\(data\.listas\)/);
     assert.match(pagina, /<JanelaListas [\s\S]*?onListas=\{setListas\}/);
     assert.match(pagina, /only: \['produtos', 'listas'\]/);
-    assert.ok(pagina.includes('Famílias e ambientes'));
+    assert.ok(barra.includes('Famílias e ambientes'));
 });
 
 test('JanelaListas: sem contagem total nem barra de progresso', () => {
