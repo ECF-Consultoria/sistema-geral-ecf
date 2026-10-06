@@ -162,3 +162,91 @@ script local, `base64 -w0`, `pscp` para `/tmp`, decodificar e rodar.
 esperando stdin e o comando nunca volta. Sempre
 `php artisan tinker /tmp/x.php > /tmp/x.out 2>&1 < /dev/null` e depois leia o
 arquivo. Perdi duas rodadas nisso.
+
+---
+
+## 6. O faturamento passou a ser o do painel da Shopee (2026-10-06, quick `261006-fac`)
+
+**Isto SUPERA o parágrafo final da seção 2** ("a base é `total_amount`, mantido
+com frete por decisão do usuário"). No mesmo dia, com os números na mesa, o
+usuário decidiu o contrário, literal: *"Quero que o faturamento das empresas no
+sistemas seja exatamente igual ao faturamento mostrado no painel da shopee, se é
+com frete ou sem frete não importa."* A história anterior fica registrada porque
+explica os valores gravados **antes** de 06/10.
+
+A régua nova, em `ShopeeService::fetchOrdersSummary()`:
+
+```
+revenue = Σ (pedidos com `pay_time` não vazio)
+            Σ (itens)  model_discounted_price × model_quantity_purchased
+```
+
+Sem frete, **sem filtro de status**, **sem descontar item cancelado/devolvido**.
+
+### As duas coisas que estavam erradas (medidas contra a API, não dedutíveis)
+
+**1. O painel conta no PAGAMENTO, não no status de hoje.** Pedido pago e
+cancelado depois continua sendo faturamento. O filtro `UNPAID|CANCELLED|IN_CANCEL`
+descartava isso: na CAMILLO MATRIZ (#1) em 30/09 eram R$ 1.434,94 em dois pedidos
+pagos e cancelados pelo comprador em seguida (R$ 1.398,13 e R$ 36,81) — painel
+R$ 8.953,89, nosso valor gravado R$ 6.953,31, régua nova R$ 9.133,89.
+
+⚠️ **E o painel conta o pedido pago POR INTEIRO.** Descontar o item cancelado
+(`cancelled_qty`/`returned_qty`) **passa do alvo em 16,6%**. Parece a correção
+óbvia e está errada — não desconte.
+
+**2. O valor sai do ITEM, não do pedido.** `total_amount` (itens + frete −
+promoções) às vezes fica **acima** e às vezes **abaixo** do preço dos itens: na
+ITUFARMA1 (#225) um pedido tinha total R$ 31,42 contra R$ 48,46 de item, 54% de
+diferença. Não existe fator de conversão: a única base estável é o item.
+
+**A janela do dia é BRT (−03:00).** Cinco fusos testados; só o BRT fecha — UTC
+erra +12% e GMT+8 erra −16%. Não "normalize" para UTC.
+
+### Evidência: setembro/2026 inteiro contra a planilha manual do time
+
+| loja | planilha | regra antiga | regra nova |
+|---|---|---|---|
+| Edumac Parts #144 | 21.149,30 | −6,09% | **0,00% (ao centavo)** |
+| Camillo Filial RS #358 | 20.330,13 | −6,75% | **0,00% (ao centavo)** |
+| Camillo Matriz #1 | 147.312,67 | −13,71% | −0,44% |
+| Tuki Pet #364 | 79.910,90 | −5,92% | +0,30% |
+| Interior Magazine #370 | 132.835,11 | −1,24% | +0,49% |
+| Camillo Filial SC #131 | 268.932,28 | −10,07% | +0,82% |
+| Itadecor Magazine #369 | 55.891,19 | −1,77% | +1,32% |
+| Gran Belo #212 | 311.945,63 | −7,33% | +5,53% (único fora) |
+
+Dias isolados lidos no painel pelo usuário: Camillo Matriz 30/09 → painel
+R$ 8.953,89 (nosso R$ 6.953,31, régua nova R$ 9.133,89); ITUFARMA1 #225 30/09 →
+painel R$ 603,72 (nosso R$ 597,17, régua nova R$ 609,13).
+
+**Pendência conhecida, não regressão:** o resíduo é pequeno e **sempre para
+cima** — provavelmente desconto aplicado no pedido e não no item. Não vale
+perseguir sem uma medição nova.
+
+### Por que mexer num método só bastou
+
+`fetchOrdersSummary()` é **ponto único**: os 11 consumidores leem
+`shopee_metrics.revenue` (`FechamentoRollupService`, `ConsolidarMesFechamento`,
+`VerificarConsolidacaoFechamento`, `FechamentoConferenciaFaturamentoService`,
+`AdminController`, `DashboardController`, `PortfolioController`,
+`ShopeeMetricDiffService`, `RelerDiasShopee`, `ShopeeMetric`) e **nenhum deles
+replica a conta**. Corrigir a coleta propaga para fechamento, dashboard, carteira
+e desempenho de uma vez. Se algum dia alguém duplicar essa soma fora do service,
+esta propriedade morre.
+
+⚠️ **A régua nova só vale para o que for coletado daqui pra frente.** Os valores
+já gravados seguem na régua antiga — mês fechado ainda lê snapshot congelado
+(ver `project_snapshot_congelado_mes_fechado`), então recoletar setembro das 19
+empresas **e refazer o fechamento** é passo humano separado, com gate, porque
+muda competência passada e, por tabela, carteira/desempenho/bônus.
+
+### Nota sobre a suíte
+
+`--filter="Shopee|Phase158|Phase60"` tinha **7 falhas antes** de qualquer edição
+e as mesmas 7 depois: `DesempenhoShopeeScoreTest` (3, `var_margem_pct` vem null),
+`Phase119\CompanyScoreServiceFonteTest` (3) e
+`Phase158\CalculadoraNoPortalTest` (1, ícone no mapa do layout). **Não são
+regressão de quem mexe na coleta** — nenhuma delas faz fake de
+`get_order_detail`; todas semeiam `shopee_metrics` direto no banco. Rode o gate
+antes de editar para ter essa referência.
