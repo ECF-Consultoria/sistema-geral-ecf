@@ -26,6 +26,24 @@ class ShopeeService
 {
     private const STATE_TTL = 604800; // 7 dias para o cliente autorizar
 
+    /**
+     * Trava de segurança da paginação de pedidos de UMA janela. Quick
+     * 261006-dv3: era 2000 e o loop parava calado ao atingir — agora o
+     * `fetchOrdersSummary` loga `Log::error` quando trunca (ver lá).
+     */
+    private const MAX_ORDERS_POR_JANELA = 10000;
+
+    /**
+     * TTL da trava que serializa o refresh por empresa. PRECISA ser maior que
+     * o `Http::timeout(30)` de dentro da trava: com os 15s de antes, uma
+     * resposta lenta da Shopee fazia a trava expirar COM A REQUEST EM VOO, um
+     * segundo processo entrava e usava o mesmo `refresh_token` — que é rotativo
+     * e single-use. Um dos dois recebia refresh inválido e o token era
+     * REVOGADO, que é exatamente a "desconexão sozinha" relatada pelo setor
+     * Shopee (quick 261006-dv3).
+     */
+    private const REFRESH_LOCK_TTL = 60;
+
     // Caminhos de auth (assinatura PÚBLICA — só partner_id+path+timestamp)
     private const PATH_AUTH        = '/api/v2/shop/auth_partner';
     private const PATH_TOKEN_GET   = '/api/v2/auth/token/get';
@@ -211,7 +229,7 @@ class ShopeeService
         $companyId = $token->company_id;
 
         try {
-            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $force) {
+            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", self::REFRESH_LOCK_TTL)->block(10, function () use ($token, $force) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
@@ -463,7 +481,19 @@ class ShopeeService
 
             $cursor = $data['next_cursor'] ?? '';
             $more   = (bool) ($data['more'] ?? false);
-        } while ($more && $cursor !== '' && count($orderSns) < 2000);
+        } while ($more && $cursor !== '' && count($orderSns) < self::MAX_ORDERS_POR_JANELA);
+
+        // Quick 261006-dv3: o corte existe como trava de segurança, mas parar
+        // calado faz o faturamento do dia sair truncado sem ninguém saber —
+        // a GENUINEAUTOMOTIVE já faz ~980 pedidos num dia normal, e um dia de
+        // promoção passa fácil do limite antigo (2000). Se truncar, grita.
+        if ($more && count($orderSns) >= self::MAX_ORDERS_POR_JANELA) {
+            Log::error(
+                "[Shopee] Faturamento TRUNCADO empresa {$company->id} ({$company->name}) janela {$dateFrom}→{$dateTo}: "
+                . 'parou em ' . count($orderSns) . ' pedidos e a Shopee ainda tinha mais. '
+                . 'O valor deste dia está INCOMPLETO — reduza a janela ou suba MAX_ORDERS_POR_JANELA.'
+            );
+        }
 
         // 2) Detalhe em lotes de 50 → soma valores
         $revenue = 0.0;
@@ -581,36 +611,104 @@ class ShopeeService
 
     /**
      * Sincroniza o faturamento de UM dia da empresa para shopee_metrics.
-     * Dias sem pedidos não geram linha (mantém a tabela enxuta). Retorna a
-     * métrica gravada ou null (dia vazio / sem token).
+     *
+     * Dia sem pedido válido:
+     * - se NÃO existe linha → não grava (mantém a tabela enxuta, como sempre);
+     * - se JÁ existe linha → grava o ZERO. Quick 261006-dv3: antes devolvia
+     *   `null` e deixava o valor velho no banco, então pedido cancelado depois
+     *   da coleta nunca baixava o número — a releitura só sabia subir. Também é
+     *   o que preenche as linhas que o `syncAdsDay` criou sozinho (`revenue = 0`
+     *   por default da coluna, `synced_at` NULL): 15 delas em 4 empresas em
+     *   06/10/2026, indistinguíveis de dia sem venda.
+     *
+     * Retorna a métrica gravada ou null (dia vazio e sem linha prévia).
      */
     public function syncCompanyDay(Company $company, string $date): ?ShopeeMetric
     {
         $summary = $this->fetchOrdersSummary($company, $date, $date);
 
         if (($summary['orders_count'] ?? 0) === 0) {
-            return null;
+            // Dia sem pedido e SEM linha prévia: não inventa linha.
+            if (! $this->linhaDoDia($company, $date)) {
+                return null;
+            }
+
+            // Linha existe e o dia não tem mais pedido válido — zera de verdade.
+            return $this->upsertDia($company, $date, [
+                'revenue'       => 0,
+                'orders_count'  => 0,
+                'sold_quantity' => 0,
+                'synced_at'     => now(),
+            ]);
         }
 
-        return ShopeeMetric::updateOrCreate(
-            ['company_id' => $company->id, 'reference_date' => $date],
-            [
-                'revenue'       => $summary['revenue'],
-                'orders_count'  => $summary['orders_count'],
-                'sold_quantity' => $summary['sold_quantity'],
-                'synced_at'     => now(),
-            ]
-        );
+        return $this->upsertDia($company, $date, [
+            'revenue'       => $summary['revenue'],
+            'orders_count'  => $summary['orders_count'],
+            'sold_quantity' => $summary['sold_quantity'],
+            'synced_at'     => now(),
+        ]);
+    }
+
+    /**
+     * A linha de `shopee_metrics` daquele dia, ou null.
+     *
+     * Usa `whereDate` (não igualdade crua) pelo mesmo motivo documentado em
+     * `ShopeeMetricDiffService::naJanela()`: `reference_date` tem cast `date`, e
+     * em SQLite o valor é serializado como `Y-m-d 00:00:00`, que não casa com a
+     * string `Y-m-d` numa comparação direta.
+     */
+    private function linhaDoDia(Company $company, string $date): ?ShopeeMetric
+    {
+        return ShopeeMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', $date)
+            ->first();
+    }
+
+    /**
+     * Grava os campos informados no dia da empresa, criando a linha se não
+     * existir. Preserva as colunas que não vieram em `$dados` — é o que permite
+     * ao app 'ads' fazer merge na mesma linha do faturamento.
+     *
+     * ⚠️ POR QUE NÃO `updateOrCreate(['company_id','reference_date'])`, que era
+     * o que estava aqui: o match por igualdade crua de `reference_date` só
+     * funciona no MySQL/MariaDB (coluna DATE, comparação tolerante). No SQLite
+     * dos testes o valor gravado é `Y-m-d 00:00:00` e o `where` por `Y-m-d` não
+     * casa — o `updateOrCreate` tentava INSERT e estourava a unique
+     * `(company_id, reference_date)`. Ninguém tinha visto porque nenhum teste
+     * regravava um dia que já existia; a releitura diária faz exatamente isso
+     * (quick 261006-dv3).
+     */
+    private function upsertDia(Company $company, string $date, array $dados): ShopeeMetric
+    {
+        $linha = $this->linhaDoDia($company, $date);
+
+        if ($linha) {
+            $linha->update($dados);
+
+            return $linha->fresh();
+        }
+
+        return ShopeeMetric::create(array_merge($dados, [
+            'company_id'     => $company->id,
+            'reference_date' => $date,
+        ]));
     }
 
     /**
      * Sincroniza os Ads de UM dia da empresa para shopee_metrics (colunas ad_*).
      * Só faz sentido no app 'ads' — instancie com new ShopeeService('ads').
      *
-     * Faz merge na MESMA linha do faturamento: updateOrCreate por
-     * (company_id, reference_date) grava SÓ as colunas ad_*, sem tocar em
-     * revenue/orders (que vêm do app 'erp'). Dia sem gasto E sem impressão não
-     * grava linha (mantém a tabela enxuta). Retorna a métrica ou null (dia vazio).
+     * Faz merge na MESMA linha do faturamento (via `upsertDia`): grava SÓ as
+     * colunas ad_*, sem tocar em revenue/orders (que vêm do app 'erp'). Dia sem
+     * gasto E sem impressão não grava linha (mantém a tabela enxuta). Retorna a
+     * métrica ou null (dia vazio).
+     *
+     * ⚠️ Quando a linha do dia ainda NÃO existe, este método a cria com
+     * `revenue = 0` (default da coluna) e `synced_at` NULL — um buraco do sync
+     * de faturamento fica indistinguível de dia sem venda (15 linhas em 4
+     * empresas em 06/10/2026). Quem conserta é o `shopee:reler-dias`, que relê
+     * o faturamento daquele dia e grava o valor certo em cima.
      *
      * ⚠️ Não chamar com datas > 6 meses atrás — a Shopee devolve
      *    ads.performance.error_date_too_old (o comando shopee:sync-ads faz o clamp).
@@ -624,17 +722,14 @@ class ShopeeService
             return null;
         }
 
-        return ShopeeMetric::updateOrCreate(
-            ['company_id' => $company->id, 'reference_date' => $date],
-            [
-                'ad_expense'           => $ads['expense'],
-                'ad_impressions'       => $ads['impressions'],
-                'ad_clicks'            => $ads['clicks'],
-                'ad_broad_gmv'         => $ads['broad_gmv'],
-                'ad_broad_orders'      => $ads['broad_orders'],
-                'ad_broad_conversions' => $ads['broad_conversions'],
-                'ad_synced_at'         => now(),
-            ]
-        );
+        return $this->upsertDia($company, $date, [
+            'ad_expense'           => $ads['expense'],
+            'ad_impressions'       => $ads['impressions'],
+            'ad_clicks'            => $ads['clicks'],
+            'ad_broad_gmv'         => $ads['broad_gmv'],
+            'ad_broad_orders'      => $ads['broad_orders'],
+            'ad_broad_conversions' => $ads['broad_conversions'],
+            'ad_synced_at'         => now(),
+        ]);
     }
 }

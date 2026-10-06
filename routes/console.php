@@ -233,6 +233,23 @@ Schedule::command('shopee:sync-ads')
     ->name('sync-shopee-ads')
     ->withoutOverlapping();
 
+// Quick 261006-dv3 — relê os últimos dias JÁ coletados da Shopee. O `shopee:sync`
+// (11:15) grava D-1 uma vez e nunca volta; o pedido muda de estado depois (UNPAID
+// que vira pago, cancelamento, devolução) e para os DOIS lados — medido em
+// 06/10/2026: GENUINEAUTOMOTIVE 04/10 +2,5%, MPozenato 20/08 −1,3%. Até aqui cada
+// mês ficava congelado no último backfill manual que alguém lembrasse de rodar.
+//
+// 19:30 = depois do adman:reler-dias (19:00) e longe da janela das 11h, onde já
+// competem shopee:sync, shopee:sync-ads, ml:sync, adman:sync e os dois warm.
+//
+// ⚠️ Mexe em `shopee_metrics`, que alimenta carteira/desempenho/bônus — desejado.
+// Mas NÃO recalcula snapshot de desempenho: competência consolidada só muda por
+// `desempenho:consolidar-mes --mes=`, decisão humana (mesma regra do Adman).
+Schedule::command('shopee:reler-dias')
+    ->dailyAt('19:30')
+    ->name('reler-dias-shopee')
+    ->withoutOverlapping();
+
 // Fase 109 (SHOP-DES-01/02) — aquece o cache do ShopeeMetricDiffService
 // (Carteira/Desempenho lêem daqui via MetricDiffDispatcher). Mesmo padrão do
 // warm-diff Adman (§9.2) — cache DIÁRIO, auto-invalida à meia-noite. 11:35 =

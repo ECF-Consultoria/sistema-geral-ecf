@@ -34,8 +34,15 @@ class SyncShopeeCompanyJob implements ShouldQueue
 
     public int $tries = 1;
 
-    // Loja movimentada × ~60 dias pagina muitos pedidos/Ads; 1200s dá folga.
-    public int $timeout = 1200;
+    // Loja movimentada × ~60 dias pagina muitos pedidos/Ads.
+    //
+    // Era 1200s e NÃO dava folga: `[Shopee] Sync manual (job) FALHOU empresa 132:
+    // SyncShopeeCompanyJob has timed out` apareceu 10 vezes entre 24/07 e 22/09
+    // de 2026 (GENUINEAUTOMOTIVE, ~980 pedidos/dia × ~60 dias × paginação de 50
+    // em 50 com 0,3s entre chamadas, mais o sync de Ads na sequência). Estourar
+    // no meio deixa o mês gravado PELA METADE, que é como nasceu o incidente do
+    // fechamento de 01/10/2026 (ver FechamentoConferenciaFaturamentoService).
+    public int $timeout = 3600;
 
     /**
      * @param  int          $companyId  Empresa a sincronizar.
