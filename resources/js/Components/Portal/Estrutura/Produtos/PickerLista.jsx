@@ -24,12 +24,27 @@ export const chaveDeLista = (nome) => String(nome ?? '')
 
 const temSeparador = (t) => /[/,|]/.test(t);
 
+const partesDe = (v) => String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+const contem = (lista, nome) => lista.some((x) => chaveDeLista(x) === chaveDeLista(nome));
+
 export default function PickerLista({ tipo, multiplo = false, opcoes = [], valor, textoInicial, onCommit, onClose, registrarFechar, onListas }) {
     const rotulo = tipo === 'familia' ? 'família' : 'ambiente';
     const [busca, setBusca] = useState(textoInicial ?? '');
-    const [marcados, setMarcados] = useState(() => (multiplo
-        ? String(valor ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-        : []));
+    const [marcados, setMarcados] = useState(() => (multiplo ? partesDe(valor) : []));
+
+    // Ambiente tirado (ou posto) por fora com o picker aberto — o X do chip: as caixas acompanham, sem
+    // perder o que a pessoa já marcou aqui, e o fechar não traz o ambiente de volta (revisão FE-IN-08).
+    const valorVisto = useRef(valor);
+    useEffect(() => {
+        if (! multiplo) return;
+        const antes = partesDe(valorVisto.current);
+        const agora = partesDe(valor);
+        valorVisto.current = valor;
+        const sairam = antes.filter((n) => ! contem(agora, n));
+        const entraram = agora.filter((n) => ! contem(antes, n));
+        if (sairam.length === 0 && entraram.length === 0) return;
+        setMarcados((atual) => [...atual.filter((m) => ! contem(sairam, m)), ...entraram.filter((n) => ! contem(atual, n))]);
+    }, [valor, multiplo]);
     const [ativo, setAtivo] = useState(0);
     const [erro, setErro] = useState(null);
     const [criando, setCriando] = useState(false);

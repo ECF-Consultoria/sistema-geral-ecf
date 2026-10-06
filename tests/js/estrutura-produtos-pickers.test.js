@@ -48,6 +48,12 @@ test('PickerLista: a comparação ignora caixa, acento e espaços', () => {
     assert.match(picker, /replace\(\/\\s\+\/g, ' '\)/);
 });
 
+test('PickerLista: X do chip com o picker aberto não faz o ambiente voltar ao fechar (FE-IN-08)', () => {
+    assert.ok(picker.includes('const valorVisto = useRef(valor);'));
+    assert.match(picker, /useEffect\(\(\) => \{\s*if \(! multiplo\) return;[\s\S]*?setMarcados\(\(atual\) => \[\.\.\.atual\.filter\(\(m\) => ! contem\(sairam, m\)\)/);
+    assert.match(picker, /\}, \[valor, multiplo\]\);/, 'acompanha o valor que vem de fora');
+});
+
 test('PickerLista: nada de HTML cru', () => {
     assert.ok(! picker.includes('dangerouslySetInnerHTML'));
 });
