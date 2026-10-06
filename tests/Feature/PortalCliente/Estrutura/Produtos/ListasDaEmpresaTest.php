@@ -197,6 +197,39 @@ class ListasDaEmpresaTest extends TestCase
         $this->assertSame(2, EstruturaAmbiente::count());
     }
 
+    /** BE-WR-07: a lista sai com o uso de cada item numa consulta só, e resolver nomes lê a lista uma vez. */
+    public function test_lista_e_resolver_nomes_nao_fazem_uma_consulta_por_item(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $produto = EstruturaProduto::create(['company_id' => $empresa->id, 'codigo' => 'P1', 'nome' => 'P1']);
+        foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $i => $n) {
+            [$f] = $this->svc()->criar($empresa, 'familia', "Familia {$n}", $ator);
+            [$a] = $this->svc()->criar($empresa, 'ambiente', "Ambiente {$n}", $ator);
+            if ($i < 2) {
+                $produto->update(['familia_id' => $f->id]);
+                $produto->ambientes()->attach($a->id);
+            }
+        }
+
+        $consultas = 0;
+        \Illuminate\Support\Facades\DB::listen(function () use (&$consultas) {
+            $consultas++;
+        });
+
+        $familias = $this->svc()->lista($empresa, 'familia');
+        $ambientes = $this->svc()->lista($empresa, 'ambiente');
+        $this->assertSame(2, $consultas, 'uma consulta por tipo de lista, com o uso junto');
+        $this->assertSame([0, 1, 0, 0, 0, 0], array_column($familias, 'em_uso'));
+        $this->assertSame([1, 1, 0, 0, 0, 0], array_column($ambientes, 'em_uso'));
+
+        $consultas = 0;
+        $r = $this->svc()->resolverNomes($empresa, 'ambiente', ['ambiente a', 'AMBIENTE B', 'Ambiente C', 'Ambiente Novo'], null);
+        $this->assertSame(1, $consultas, 'a lista é lida uma vez para todos os nomes');
+        $this->assertCount(3, $r['ids']);
+        $this->assertSame(['Ambiente Novo'], $r['novos']);
+    }
+
     public function test_tipo_desconhecido_e_recusado(): void
     {
         $empresa = $this->empresaDoGabarito();

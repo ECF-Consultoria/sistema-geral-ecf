@@ -358,6 +358,7 @@ class ProdutoCadastroService
             'existiam'          => [],   // produto_id => true (já existia antes do lote)
             'definidos'         => [],   // produto_id => campos pedidos pela 1ª linha
             'categorias'        => [],   // id MLB => detalhe|null (memo do lote)
+            'listas'            => [ListasDaEmpresaService::FAMILIA => null, ListasDaEmpresaService::AMBIENTE => null], // chave => item, carregado 1x por lote
         ];
 
         foreach ($produtos as $p) {
@@ -397,6 +398,7 @@ class ProdutoCadastroService
             $estado['definidos'][$produto->id] = $res['pedido'];
         }
         $estado['categorias'] = $res['categorias'];
+        $estado['listas'] = $res['listas'];
     }
 
     // ═══ Uma linha ══════════════════════════════════════════════════════════
@@ -495,14 +497,14 @@ class ProdutoCadastroService
                 // `familia: null` explícito: o produto fica sem família (BE-IN-05).
                 $dadosProduto['familia_id'] = null;
             } elseif ($mudarFamilia) {
-                $r = $this->listas->resolverNomes($empresa, ListasDaEmpresaService::FAMILIA, [$campos['familia']], $ator);
+                $r = $this->listas->resolverNomes($empresa, ListasDaEmpresaService::FAMILIA, [$campos['familia']], $ator, $estado['listas'][ListasDaEmpresaService::FAMILIA]);
                 $familiaId = $r['ids'][0] ?? null;
                 $criadas['familias'] = $r['novos'];
                 $dadosProduto['familia_id'] = $familiaId;
             }
 
             if (in_array('ambientes', $presentes, true)) {
-                $r = $this->listas->resolverNomes($empresa, ListasDaEmpresaService::AMBIENTE, $campos['ambientes'], $ator);
+                $r = $this->listas->resolverNomes($empresa, ListasDaEmpresaService::AMBIENTE, $campos['ambientes'], $ator, $estado['listas'][ListasDaEmpresaService::AMBIENTE]);
                 $ambienteIds = $r['ids'];
                 $criadas['ambientes'] = $r['novos'];
             }
@@ -643,6 +645,8 @@ class ProdutoCadastroService
                 'categoria' => in_array('categoria', $presentes, true) ? ($campos['categoria_ml_id'] ?? $campos['categoria_texto'] ?? '') : null,
             ],
             'categorias'         => $categorias,
+            // Mapas das listas com o que esta linha criou: só passam a valer se a linha gravar.
+            'listas'             => $estado['listas'],
         ];
     }
 

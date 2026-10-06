@@ -61,6 +61,7 @@ class FreteMe2Service
     public function estimar(Company $empresa, array $itens): array
     {
         $parametros = EstruturaPrecificacaoParametros::daEmpresa($empresa->id);
+        $cotados = $this->cotadosEmCache($empresa, $itens, $parametros);
         $saida = [];
 
         foreach ($itens as $id => $item) {
@@ -69,8 +70,7 @@ class FreteMe2Service
                 continue;
             }
 
-            $saida[$id] = Cache::get($this->chaveFinal($empresa, $id, $item, $parametros))
-                ?? $this->pelaTabela($parametros, $item);
+            $saida[$id] = $cotados[$id] ?? $this->pelaTabela($parametros, $item);
         }
 
         return $saida;
@@ -97,13 +97,14 @@ class FreteMe2Service
         $abertos = [];
         $pendentes = 0;
         $falhou = false;
+        $cotados = $this->cotadosEmCache($empresa, $itens, $parametros);
 
         foreach ($itens as $id => $item) {
             if (! $this->ehMe2($item)) {
                 $fretes[$id] = $this->vazio();
                 continue;
             }
-            $cache = Cache::get($this->chaveFinal($empresa, $id, $item, $parametros));
+            $cache = $cotados[$id] ?? null;
             if ($cache) {
                 $fretes[$id] = $cache;
                 continue;
@@ -287,6 +288,35 @@ class FreteMe2Service
                 $r instanceof Response                     => new \RuntimeException("cotação respondeu HTTP {$r->status()}"),
                 default                                    => new \RuntimeException('cotação sem resposta'),
             };
+        }
+
+        return $saida;
+    }
+
+    /**
+     * As cotações finais já guardadas, de todos os itens ME2 numa leitura só
+     * (`Cache::many`): com o store `database`, `Cache::get` por variação era uma
+     * consulta por variação em toda lista de 100 produtos (BE-WR-07).
+     *
+     * @return array<int|string, ?array> id do item => cotação em cache | null
+     */
+    private function cotadosEmCache(Company $empresa, array $itens, array $parametros): array
+    {
+        $chaves = [];
+        foreach ($itens as $id => $item) {
+            if ($this->ehMe2($item)) {
+                $chaves[$id] = $this->chaveFinal($empresa, $id, $item, $parametros);
+            }
+        }
+        if ($chaves === []) {
+            return [];
+        }
+
+        $guardados = Cache::many(array_values(array_unique($chaves)));
+        $saida = [];
+        foreach ($chaves as $id => $chave) {
+            $valor = $guardados[$chave] ?? null;
+            $saida[$id] = is_array($valor) ? $valor : null;
         }
 
         return $saida;

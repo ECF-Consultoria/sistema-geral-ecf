@@ -119,6 +119,30 @@ class FreteDoProdutoTest extends TestCase
         $this->assertTrue($f['alerta_faixa']);
     }
 
+    /** BE-WR-07: com o cache no banco, a estimativa de 30 variações lê o cache numa consulta só. */
+    public function test_estimar_le_o_cache_numa_consulta_so(): void
+    {
+        config(['cache.default' => 'database']);
+        $empresa = $this->empresaDoGabarito();
+        $itens = [];
+        for ($i = 0; $i < 30; $i++) {
+            $itens["v{$i}"] = $this->item(93, 30 + $i, 6, 9.5, 100);
+        }
+
+        $leituras = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$leituras) {
+            if (str_starts_with(strtolower($q->sql), 'select') && str_contains($q->sql, '"cache"')) {
+                $leituras++;
+            }
+        });
+
+        $r = $this->svc()->estimar($empresa, $itens);
+
+        $this->assertCount(30, $r);
+        $this->assertSame('tabela_ecf', $r['v0']['origem']);
+        $this->assertSame(1, $leituras);
+    }
+
     // ═══ Task 2: cotação real ═══
 
     public function test_cotar_chama_o_endpoint_certo_com_as_dimensoes_certas(): void

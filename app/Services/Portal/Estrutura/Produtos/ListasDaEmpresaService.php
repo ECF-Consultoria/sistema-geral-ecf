@@ -58,18 +58,40 @@ class ListasDaEmpresaService
         return trim((string) preg_replace('/\s+/u', ' ', $nome));
     }
 
-    /** @return list<array{id: int, nome: string, em_uso: int}> */
+    /**
+     * A lista com o uso de cada item numa consulta só (`withCount`): ela sai em toda
+     * tela e em toda resposta de escrita, e um `count()` por item era N+1 (BE-WR-07).
+     *
+     * @return list<array{id: int, nome: string, em_uso: int}>
+     */
     public function lista(Company $empresa, string $tipo): array
     {
         $modelo = $this->modelo($tipo);
 
         return $modelo::query()
             ->where('company_id', $empresa->id)
+            ->withCount('produtos')
             ->orderBy('nome')
             ->get()
-            ->map(fn (Model $i) => ['id' => (int) $i->id, 'nome' => $i->nome, 'em_uso' => $this->emUso($tipo, $i)])
+            ->map(fn (Model $i) => ['id' => (int) $i->id, 'nome' => $i->nome, 'em_uso' => (int) $i->produtos_count])
             ->values()
             ->all();
+    }
+
+    /**
+     * Os itens da empresa indexados pela `chave()` — carregados UMA vez para resolver
+     * todos os nomes de um lote (BE-WR-07). Na mesma chave vale o item mais antigo.
+     *
+     * @return array<string, Model>
+     */
+    public function mapa(Company $empresa, string $tipo): array
+    {
+        $mapa = [];
+        foreach ($this->modelo($tipo)::query()->where('company_id', $empresa->id)->orderBy('id')->get() as $item) {
+            $mapa[self::chave($item->nome)] ??= $item;
+        }
+
+        return $mapa;
     }
 
     /** @return array{0: Model, 1: bool} o item e se foi criado agora */
@@ -159,10 +181,15 @@ class ListasDaEmpresaService
      * grafia vence). Com `$ator` nulo só SIMULA — nada é gravado (serve à prévia
      * da importação); com ator, cria os que faltam.
      *
+     * `$mapa` (de `mapa()`) evita reler a lista inteira a cada nome: quem resolve
+     * várias linhas passa o mesmo mapa e ele é carregado só na 1ª vez (nulo) e
+     * recebe os itens criados aqui (BE-WR-07).
+     *
      * @param  array<int, string>  $nomes
+     * @param  array<string, Model>|null  $mapa
      * @return array{ids: list<int>, novos: list<string>}
      */
-    public function resolverNomes(Company $empresa, string $tipo, array $nomes, ?AtorDoPortal $ator): array
+    public function resolverNomes(Company $empresa, string $tipo, array $nomes, ?AtorDoPortal $ator, ?array &$mapa = null): array
     {
         $this->modelo($tipo);
 
@@ -177,9 +204,14 @@ class ListasDaEmpresaService
 
         $ids = [];
         $novos = [];
+        if ($unicos === []) {
+            return ['ids' => $ids, 'novos' => $novos];
+        }
 
-        foreach ($unicos as $nome) {
-            $existente = $this->achar($empresa, $tipo, $nome);
+        $mapa ??= $this->mapa($empresa, $tipo);
+
+        foreach ($unicos as $chave => $nome) {
+            $existente = $mapa[$chave] ?? null;
 
             if ($existente) {
                 $ids[] = (int) $existente->id;
@@ -192,6 +224,7 @@ class ListasDaEmpresaService
             }
 
             [$item, $criado] = $this->criar($empresa, $tipo, $nome, $ator);
+            $mapa[self::chave($item->nome)] = $item;
             $ids[] = (int) $item->id;
             if ($criado) {
                 $novos[] = $item->nome;

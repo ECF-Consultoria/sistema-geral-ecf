@@ -311,6 +311,42 @@ class CadastroDeProdutoTest extends TestCase
         $this->assertSame(0, \App\Models\EstruturaAnuncioEspera::count());
     }
 
+    /** BE-WR-07: família e ambientes do lote saem de um mapa carregado uma vez, não de uma leitura da lista por nome. */
+    public function test_lote_com_familia_e_ambientes_le_cada_lista_uma_vez(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        EstruturaFamilia::create(['company_id' => $empresa->id, 'nome' => 'Farmhouse']);
+        EstruturaAmbiente::create(['company_id' => $empresa->id, 'nome' => 'Sala']);
+        EstruturaAmbiente::create(['company_id' => $empresa->id, 'nome' => 'Hall']);
+
+        $linhas = [];
+        for ($i = 1; $i <= 30; $i++) {
+            $linhas[] = ['codigo' => "F-{$i}", 'nome' => "Produto {$i}", 'familia' => 'farmhouse', 'ambientes' => 'Sala / hall'];
+        }
+        $linhas[] = ['codigo' => 'F-31', 'nome' => 'Produto 31', 'familia' => 'Nordic', 'ambientes' => 'Quarto'];
+
+        $leituras = ['estrutura_familias' => 0, 'estrutura_ambientes' => 0];
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$leituras) {
+            foreach (array_keys($leituras) as $tabela) {
+                if (str_starts_with(strtolower($q->sql), 'select') && preg_match('/from "'.$tabela.'"/', $q->sql)) {
+                    $leituras[$tabela]++;
+                }
+            }
+        });
+
+        $r = $this->svc()->gravarLinhas($empresa, $linhas, $ator);
+
+        $this->assertSame(31, $r['totais']['criadas']);
+        $this->assertSame(['Nordic'], $r['criadas_nas_listas']['familias']);
+        $this->assertSame(['Quarto'], $r['criadas_nas_listas']['ambientes']);
+        // 1 mapa por lista + 1 leitura do `criar()` para o nome novo + 1 do eager load da resposta.
+        $this->assertLessThanOrEqual(3, $leituras['estrutura_familias']);
+        $this->assertLessThanOrEqual(3, $leituras['estrutura_ambientes']);
+        $this->assertSame(2, EstruturaFamilia::where('company_id', $empresa->id)->count());
+        $this->assertSame(3, EstruturaAmbiente::where('company_id', $empresa->id)->count());
+    }
+
     public function test_categoria_que_nao_e_folha_e_recusada_e_a_linha_nao_grava(): void
     {
         $empresa = $this->empresaDoGabarito();
