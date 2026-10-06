@@ -121,6 +121,27 @@ um monte de vezes anúncio". Na planilha, a aba Produtos é onde o cliente cadas
 - **D-24:** A **importação por arquivo continua** (D-13/D-14): baixar o modelo, preencher FORA do sistema e
   importar com prévia. Dentro do sistema só aparece a prévia do que vai entrar.
 
+### Referências visuais do usuário (06/10, depois do 167-18) — `167-REFERENCIA-VISUAL.md` + `167-REF-*.jpg`
+- **D-25:** O **layout** das 3 referências é para reproduzir praticamente 1:1 (proporções, grid, espaçamentos,
+  hierarquia, posição das ações): `167-REF-1-visual-grande.jpg`, `167-REF-2-ficha-do-produto.jpg`,
+  `167-REF-3-lista.jpg`. **Cores e identidade continuam as do sistema** (tokens `ecf-*`; o amarelo `ecf-yellow` já é
+  do sistema). As referências NÃO definem campos, regras nem obrigatoriedade.
+- **D-26:** Seletor **[Visual grande] [Lista]** na mesma página, sem navegar: os mesmos produtos em cartões grandes
+  (REF-1) ou em cartões horizontais (REF-3, que NÃO é tabela). Preferência guardada no navegador.
+- **D-27:** **Ficha do produto em página inteira** (REF-2), estilo Bling: dentro do `PortalClienteLayout`, com URL
+  própria (`/portal/estrutura/produtos/{id}` e `/novo`), breadcrumb "← Produtos / Nome"; NADA de painel lateral,
+  modal ou lista ao lado. Substitui o painel do 167-18 (o D-23 continua: nada de planilha). Ao voltar, preserva
+  busca, página, modo e scroll. No celular, a mesma página empilhada.
+- **D-28:** Os **campos são os reais do sistema** — não limitar ao mockup: produto (nome, família, ambientes,
+  categoria ML com estado), variação (Ref, eixo da lista fechada, valor LIVRE — D-20 —, custo), volumes ilimitados,
+  variações ilimitadas, vínculo com a oferta. Só **Ref e nome** são obrigatórios; o resto vira "Falta". Calculados
+  (nº de volumes, peso total, logística provável, peso cubado, frete ME2) aparecem como leitura, não como input.
+- **D-29:** **Foto:** o quadro da foto existe no layout (ícone + iniciais do produto), **sem upload** nesta fase —
+  fotos seguem fora da Fase 167.
+- **D-30:** Fica de fora o que não tem dado real: "Ver no Mercado Livre", sino e avatar (o Portal já tem barra
+  própria). Bolinha de cor da variação só quando o eixo é Cor e o valor é uma cor conhecida; senão, neutra. Menu ⋮
+  do cartão só com ações reais (abrir a ficha, ver a oferta na Lista SKUs).
+
 ### Claude's Discretion
 - **Preço usado para cotar o frete.** O frete do ML depende da faixa de preço, e o preço sai do custo + frete.
   Estimar o preço pelo custo da variação com os parâmetros da Precificação da empresa
