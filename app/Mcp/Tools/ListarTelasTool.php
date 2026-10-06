@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Telas\AvisosDeTela;
 use App\Mcp\Telas\CatalogoDeTelas;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -54,7 +55,9 @@ class ListarTelasTool extends FerramentaEcf
                 'parametros' => $t['parametros'],
             ]);
 
-        return [
+        $dica = AvisosDeTela::paraBusca($busca, $modulo, $usuario);
+
+        return ($dica ? ['dica' => $dica] : []) + [
             ...$this->paginar($telas, $request),
             'modulos' => app(CatalogoDeTelas::class)->paraUsuario($usuario)->pluck('modulo')->unique()->sort()->values()->all(),
             'como_usar' => 'Abra com ler_tela {"tela": "<nome>", "parametros": {...}}. Sem "campo", vem o resumo da tela; depois peça o campo que interessa.',

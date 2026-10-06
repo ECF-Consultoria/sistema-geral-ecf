@@ -180,10 +180,11 @@ Pedido do usuário: "para quem tiver conectado poder alterar e preencher coisas
 refaça sem perguntar): **tudo** que a tela grava, **grava direto** (sem passo de
 confirmação no servidor) e "pode editar o que quiser".
 
-- **Ninguém precisa reconectar.** O token OAuth tem um escopo só (`mcp:use`),
-  sem separar leitura de escrita; as ferramentas novas aparecem na próxima
-  conversa. Criar um escopo de escrita separado OBRIGARIA todo mundo a
-  reconectar — por isso não foi feito.
+- **O token não precisa ser refeito.** O OAuth tem um escopo só (`mcp:use`),
+  sem separar leitura de escrita; criar um escopo de escrita separado
+  invalidaria todos os tokens — por isso não foi feito. MAS a ferramenta nova
+  não aparece "na próxima conversa": o claude.ai guarda a lista de
+  ferramentas em cache — ver §11.
 - **Toda gravação passa pelo formulário da tela**, pela mesma navegação
   interna do `ler_tela` (`app/Mcp/Telas/NavegacaoInterna.php`), agora com
   POST/PUT/PATCH/DELETE: validação, permissão, aviso, log de atividade e
@@ -258,4 +259,14 @@ papel por guard ou sessão, só o Portal do Cliente, que fica fora).
   A 16ª ferramenta iria para uma 2ª página que nem todo cliente busca e
   sumiria da conversa sem erro nenhum. `EcfAdminServer` usa página de 50; o
   `ServidorMcpTest` confere que não há `nextCursor`.
-
+- **O claude.ai guarda a lista de ferramentas em cache.** Medido no nginx
+  (06/10/2026): `tools/list` (resposta de ~28 KB) às 11:47, 11:55 e 14:40 de
+  Brasília; o deploy do `ler_ticket` foi ~15:00; a conversa das 15:20 só fez
+  `initialize` (~3,3 KB) + `tools/call` e usou a lista das 14:40, sem o
+  `ler_ticket` — o modelo leu `chamados.index` e disse "só 1 ticket". Não dá
+  para saber o prazo do cache. Para ver ferramenta nova na hora: desconectar e
+  reconectar o conector no claude.ai. Defesa do servidor que não depende disso:
+  `AvisosDeTela` põe um "aviso" na RESPOSTA do `ler_tela`/`listar_telas`
+  quando a tela engana pelo nome (hoje: `chamados.index`) — a resposta chega
+  ao modelo mesmo com a lista velha. Medir pelo nginx: `grep '"POST /mcp'` e
+  olhar o tamanho da resposta (`tools/list` é a grande).

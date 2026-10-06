@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Mcp\ErroDaFerramenta;
+use App\Mcp\Telas\AvisosDeTela;
 use App\Mcp\Telas\CatalogoDeTelas;
 use App\Mcp\Telas\LeitorDeDados;
 use App\Mcp\Telas\NavegadorDeTelas;
@@ -93,6 +94,7 @@ class LerTelaTool extends FerramentaEcf
         }
 
         $base = array_filter([
+            'aviso'      => AvisosDeTela::paraTela($pagina['tela'], $usuario),
             'tela'       => $pagina['tela'],
             'endereco'   => $pagina['endereco'],
             'componente' => $pagina['componente'],
