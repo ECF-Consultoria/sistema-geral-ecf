@@ -8,12 +8,12 @@
 
 | # | Grupo (comando) | Testes | Asserções | Falhas | Erros | Pulados | Exit | Tempo | Depois (167-17) |
 |---|---|---|---|---|---|---|---|---|---|
-| G1 | `tests/Feature/PortalCliente/Estrutura` | 83 | 724 | 0 | 0 | 0 | 0 | 47 s | |
-| G2 | `DadosEfetivosTest` + `SincronizaPortalTest` + `MigracaoAnunciarAntigoTest` + `Alavancas/CustoDoAnuncioTest` | 22 | 118 | 0 | 0 | 0 | 0 | 7 s | |
-| G3 | `PortalCliente/DominioLiberaTodoModuloTest` + `PortalSemAnunciarTest` | 7 | 155 | 0 | 0 | 0 | 0 | 7 s | |
-| G4 | `tests/Feature/PortalCliente` (inteiro, inclui G1 e G3) | 231 | 1872 | 0 | 0 | 0 | 0 | 57 s | |
-| G5 | `OfertaExcluidaNoPortalTest` + `ExclusaoDaEmpresaPreservaHistoricoTest` + `MigracoesDaFaseDetectamMariaDbTest` | 15 | 84 | 0 | 0 | 0 | 0 | 6 s | |
-| G6 | `npm run test:js` (node --test) | 958 | n/d | 2 | 0 | 0 | 1 | 2 s | |
+| G1 | `tests/Feature/PortalCliente/Estrutura` | 83 | 724 | 0 | 0 | 0 | 0 | 47 s | 215 testes, 1457 asserções, exit 0, 43 s (83 + 132 da fase) |
+| G2 | `DadosEfetivosTest` + `SincronizaPortalTest` + `MigracaoAnunciarAntigoTest` + `Alavancas/CustoDoAnuncioTest` | 22 | 118 | 0 | 0 | 0 | 0 | 7 s | 22 testes, 118 asserções, exit 0, 7 s |
+| G3 | `PortalCliente/DominioLiberaTodoModuloTest` + `PortalSemAnunciarTest` | 7 | 155 | 0 | 0 | 0 | 0 | 7 s | 7 testes, 178 asserções, exit 0, 8 s |
+| G4 | `tests/Feature/PortalCliente` (inteiro, inclui G1 e G3) | 231 | 1872 | 0 | 0 | 0 | 0 | 57 s | 363 testes, 2628 asserções, exit 0, 80 s (231 + 132 da fase) |
+| G5 | `OfertaExcluidaNoPortalTest` + `ExclusaoDaEmpresaPreservaHistoricoTest` + `MigracoesDaFaseDetectamMariaDbTest` | 15 | 84 | 0 | 0 | 0 | 0 | 6 s | 16 testes, 89 asserções, exit 0, 5 s |
+| G6 | `npm run test:js` (node --test) | 958 | n/d | 2 | 0 | 0 | 1 | 2 s | 1032 testes, 1030 passam, 2 falham (as mesmas 2 de antes), exit 1, ~12 s |
 
 Os números de G1, G2 e G3 batem com o esperado do RESEARCH (83/724, 22/118, 7/155).
 
@@ -50,3 +50,50 @@ Só `migrate`/`migrate:rollback` com `--path=` das 2 migrations da fase; nenhum 
 7. `estrutura_ofertas` DEPOIS: 13 linhas (igual), 0 com `variacao_id`; `DELETE_RULE` da `eo_variacao_fk` = SET NULL.
 
 As tabelas ficam aplicadas no banco local ao fim.
+
+### 167-17 (06/10/2026, rodada final, a partir do estado final da fase)
+
+Mesmas duas migrations, só com `--path=`; banco `ecf_admin` (MariaDB 10.4 local, conexão `mysql`), compartilhado, nenhum `migrate` puro.
+
+1. `estrutura_ofertas` ANTES: 13 linhas, 0 com `variacao_id`.
+2. `migrate:rollback --path=` do ALTER (95 ms, DONE) e depois da criação (40 ms, DONE).
+3. `migrate --path=` da criação (558 ms, DONE) e do ALTER (145 ms, DONE), sem 1059/1553/1830.
+4. `SHOW CREATE TABLE estrutura_ofertas`: `variacao_id bigint(20) unsigned DEFAULT NULL`, `UNIQUE KEY eo_variacao_uq (variacao_id)`, `CONSTRAINT eo_variacao_fk FOREIGN KEY (variacao_id) REFERENCES estrutura_produto_variacoes (id) ON DELETE SET NULL`, `eo_company_fk ... ON DELETE CASCADE` intacta.
+5. `SHOW INDEX FROM estrutura_produto_variacoes`: `PRIMARY`, `epv_company_cod_uq (company_id, codigo)` único, `epv_produto_idx (produto_id, ordem)`.
+6. `information_schema.REFERENTIAL_CONSTRAINTS`: `eo_variacao_fk` = SET NULL, `eo_company_fk` = CASCADE.
+7. `estrutura_ofertas` DEPOIS: 13 linhas (igual), 0 com `variacao_id`. As tabelas ficam aplicadas no banco local.
+8. Produção: este worktree não tem `.vps_cmd.sh`, então a contagem de `estrutura_ofertas` em produção NÃO foi feita aqui. **Pendência pré-deploy:** contar as linhas de `estrutura_ofertas` na VPS (só leitura) antes de rodar a migration com `--path` (suposição A1 do RESEARCH: ADD COLUMN nullable é instantâneo no MariaDB 10.4).
+
+## Gate final (167-17, 06/10/2026) — comandos idênticos aos do baseline, saída em arquivo, exit capturado
+
+| Grupo | Testes | Asserções | Falhas | Exit | Leitura |
+|---|---|---|---|---|---|
+| G1 `PortalCliente/Estrutura` | 215 | 1457 | 0 | 0 | 83 antigos (741 asserções agora, contra 724) + 132 de `Estrutura/Produtos` |
+| G2 | 22 | 118 | 0 | 0 | igual ao baseline |
+| G3 | 7 | 178 | 0 | 0 | mesmos 7 testes, 178 asserções contra 155 (mais asserções, nenhuma falha) |
+| G4 `PortalCliente` inteiro | 363 | 2628 | 0 | 0 | 231 antigos + 132 da fase |
+| G5 | 16 | 89 | 0 | 0 | 15 antigos + 1 teste (nenhuma falha) |
+| G6 `npm run test:js` | 1032 | n/d | 2 | 1 | 1030 passam; as 2 falhas são as MESMAS pré-existentes (`Características secundárias...` e `FASES_TERMINAIS...`); +74 testes JS |
+| Novo: `PortalCliente/Estrutura/Produtos` | 132 | 716 | 0 | 0 | suíte da fase |
+| Novo: `tests/Unit/PortalEstrutura` | 54 | 189 | 0 | 0 | suíte da fase |
+| Novo: `node --test` dos gates JS da fase (`estrutura-grid-produtos`, `estrutura-produtos*`) | 67 | n/d | 0 | 0 | suíte da fase |
+
+Falhas novas: **0**. Os 2 testes que mudaram de propósito no 167-10 (D-21) passam atualizados:
+`PortalSemAnunciarTest::test_o_mapeamento_estrutural_tem_cinco_submodulos` (menu com Produtos) e
+`AcessoAoModuloEstruturaTest::test_a_entrada_abre_a_lista_e_os_links_antigos_vao_para_o_mapeamento` (a entrada abre Produtos para empresa sem ofertas).
+
+## Gabarito da planilha real (D-15) — só contagens
+
+Aba Produtos da planilha real, lida localmente (fora do repositório) por `LeitorPlanilhaProdutos::ler` → `NormalizadorDeLinha::normalizar` → `LogisticaProduto::daVolumes`. Script no scratchpad, apagado depois; nenhum nome, nenhum custo impresso ou gravado.
+
+| Medida | Contagem |
+|---|---|
+| Variações lidas | 70 |
+| Erro geral de leitura | não |
+| Linhas com erro no normalizador | 0 |
+| ME1 | 55 |
+| ME2 | 8 |
+| ME2 · Full | 6 |
+| Pendente (sem medidas) | 1 |
+
+Bate com o esperado (55 / 8 / 6 / 1). Frete real por API numa conta conectada (D-16): **verificação manual pendente**, para depois do deploy e só com conta conectada e "pode" do usuário.

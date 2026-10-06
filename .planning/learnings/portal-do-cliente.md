@@ -949,3 +949,55 @@ usa o frete do outro (ADR PORTAL-02, revisão de 30/09). Ao receber "a conta
 está errada" aqui, olhar primeiro o DADO gravado (`estrutura_precificacoes`)
 antes da fórmula — foi o que achou a causa em minutos.
 
+
+## 31. Produtos no Mapeamento Estrutural (Fase 167, 06/10/2026)
+
+O cliente cadastra o produto (uma linha por VARIAÇÃO) e a oferta simples da Lista
+SKUs nasce dele. O que não se deduz do código:
+
+- **A aba Produtos real, medida (70 variações):** a coluna "Variação" é um
+  ORDINAL (`1`, `2`, `única`), não "Cor: Natural" — o normalizador aceita os
+  dois formatos; há 11 grafias diferentes de ambiente para os mesmos poucos
+  ambientes (por isso o ambiente vira lista da empresa, com "Usar “Sala Estar”"
+  quando só muda caixa/acento); 55 de 70 são ME1, 8 ME2, 6 ME2·Full, 1 sem
+  medida. Conclusão de produto: a cotação de frete pela API só atinge ~20% das
+  linhas (as ME2); as ME1 (55 de 70) ficam fora dessa cotação. Conferir com
+  `LeitorPlanilhaProdutos` + `LogisticaProduto::daVolumes`
+  — saída só em contagens, a planilha tem custo real do cliente.
+- **`nullOnDelete` × `restrict` no `variacao_id` da oferta.** `restrict` daria
+  1451 na cascata de `Company` (apagar a empresa apaga ofertas e variações na
+  mesma transação; a ordem não é garantida). Com `nullOnDelete` a coluna
+  nullable e SEM backfill dispensa o 1830 e a oferta sobrevive à variação. A
+  proteção "não exclua variação que entra num combo" é então de SERVIÇO
+  (`excluirVariacao` recusa), não de banco — o banco só impede o órfão.
+- **ME2/Full usam o peso REAL; o cubado só entra no frete.** Regra de elegibilidade
+  (peso ≤ 30 kg, soma ≤ 200 cm, maior lado ≤ 100 cm; Full: ≤ 20 kg e ≤ 80 cm) olha
+  o peso real. O faturado só usa o cubado quando ele passa do mínimo do config
+  (5 kg) e do real. A tabela de frete da ECF casa por faixa com
+  `MATCH(peso − 0,0001)` como a planilha: peso exatamente 0,3 fica em "até 0,3".
+  Tirar o −0,0001 move todo peso redondo uma faixa para cima.
+- **`SpreadsheetGrid` descartava a colagem além das linhas exibidas** (colar 70
+  linhas gravava 10). Foi estendido só com props OPCIONAIS (`growOnPaste`,
+  `tabWrap`, `makeRow`, `rowKey`, `onRowsCommit`, `variant`, `rowActions`,
+  `rowNote`, coluna `picker`); sem elas, o comportamento é o de antes — o
+  Onboarding não muda. O colar usa o evento DOM `paste` lendo tudo de um ref
+  (listener de montagem única).
+- **"Família" aqui é linha de design** (Farmhouse, Nordic), não o grupo de
+  variações (esse é o "Grupo/produto"). É lista da empresa; não confundir com a
+  "família" da Precificação.
+- **Custo da oferta ligada vem da VARIAÇÃO.** A Precificação mostra "vem do
+  produto" e `salvarOferta` RECUSA custo em oferta ligada.
+  Oferta antiga (sem produto) continua editável.
+- **Categoria tem três estados:** texto livre ("a confirmar", sem id), id NÃO
+  validado (o ML estava fora do ar: guarda o id, avisa "não validada agora") e
+  confirmada (folha validada no ML, com caminho). Texto colado no campo do id
+  nunca vira id. Categoria já confirmada e igual à do produto não é revalidada
+  (a grade devolve a categoria em toda linha).
+- **Pendências de verificação manual (não dá para provar sem conta conectada):**
+  (1) a leitura real de `shipping_options/free` numa conta de cliente — A2 do
+  RESEARCH: o ML pode IGNORAR as dimensões enviadas e devolver o mesmo frete
+  para tudo; até medir, o frete é rotulado "estimado"; (2) contar
+  `estrutura_ofertas` em produção antes de rodar a migration do vínculo.
+- **Entrada de equipe para conferir a tela:** o ticket vale 60 segundos e é de
+  uso único; para conferência demorada, emitir de novo na hora de abrir. A rota
+  é `/equipe/entrar?t=...` (fora do prefixo `/portal`).
