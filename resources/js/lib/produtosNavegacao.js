@@ -134,14 +134,18 @@ export function pegarUltimoProduto() {
     return ultimo.id;
 }
 
-/** Traz o cartão para a tela só se ele estiver fora dela — depois de `rolarParaVolta` (rAF triplo). */
+/**
+ * Traz o cartão para a tela só se ele estiver INTEIRAMENTE fora dela — depois de `rolarParaVolta`
+ * (rAF triplo). Cartão cortado na borda ou mais alto que a janela já está à vista: rolar desfaria a
+ * rolagem restaurada do D-27 (revisão FE-WR-06).
+ */
 export function mostrarCartao(produtoId) {
     if (! idValido(produtoId)) return;
     requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
         const cartao = document.querySelector(`[data-produto-id="${produtoId}"]`);
         if (! cartao) return;
         const { top, bottom } = cartao.getBoundingClientRect();
-        if (top < 0 || bottom > window.innerHeight) cartao.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (bottom <= 0 || top >= window.innerHeight) cartao.scrollIntoView({ block: 'center', behavior: 'smooth' });
     })));
 }
 

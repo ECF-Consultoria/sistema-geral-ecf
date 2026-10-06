@@ -1,7 +1,7 @@
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    apagarRascunho, entradaAtual, gravarRascunho, guardarRetorno, lerRascunho, passosAte, pegarVolta, rolarParaVolta, urlDeVolta,
+    apagarRascunho, entradaAtual, gravarRascunho, guardarRetorno, lerRascunho, mostrarCartao, passosAte, pegarVolta, rolarParaVolta, urlDeVolta,
 } from '../../resources/js/lib/produtosNavegacao.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -166,4 +166,25 @@ test('volta: produtoId estranho não chega ao seletor', () => {
 
     rolarParaVolta({ produtoId: 7, scrollY: 0 });
     assert.deepEqual(seletores, ['[data-produto-id="7"]']);
+});
+
+// ─── Destaque da volta só rola quando o cartão está fora da tela (FE-WR-06) ──
+
+test('mostrarCartao: rola só com o cartão inteiramente fora; cortado na borda ou alto demais fica', () => {
+    globalThis.requestAnimationFrame = (f) => f();
+    const casos = [
+        { rect: { top: 900, bottom: 1100 }, rola: true, nome: 'todo abaixo da tela' },
+        { rect: { top: -300, bottom: -10 }, rola: true, nome: 'todo acima da tela' },
+        { rect: { top: 700, bottom: 900 }, rola: false, nome: 'cortado embaixo' },
+        { rect: { top: -50, bottom: 200 }, rola: false, nome: 'cortado em cima' },
+        { rect: { top: -100, bottom: 1200 }, rola: false, nome: 'mais alto que a janela' },
+        { rect: { top: 100, bottom: 300 }, rola: false, nome: 'inteiro na tela' },
+    ];
+    for (const c of casos) {
+        let rolou = false;
+        globalThis.window = { sessionStorage: memoria(), innerHeight: 800 };
+        globalThis.document = { querySelector: () => ({ getBoundingClientRect: () => c.rect, scrollIntoView: () => { rolou = true; } }) };
+        mostrarCartao(5);
+        assert.equal(rolou, c.rola, c.nome);
+    }
 });
