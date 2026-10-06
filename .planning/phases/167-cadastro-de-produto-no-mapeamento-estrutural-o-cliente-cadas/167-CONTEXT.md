@@ -112,6 +112,15 @@ um monte de vezes anúncio". Na planilha, a aba Produtos é onde o cliente cadas
   anúncios; os anúncios voltam para a área de espera e o item do Publicador fica solto (D27 da Fase 164). Só
   bloqueia quando a oferta é componente de combo/kit/combit.
 
+### Revisão no checkpoint do 167-17 (06/10) — substitui o FORMATO do D-12
+- **D-23:** **Nada de planilha dentro do sistema para o cadastro de produto.** O usuário reprovou a tabela tipo
+  planilha (grade com colar do Excel, Tab entre células, menu "Planilha") na conferência visual: "eu disse que não
+  queria uma planilha dentro do sistema pra esse caso". "Na tela, no sistema mesmo" (D-12) quer dizer **formulário**,
+  não grade. No computador vale o mesmo desenho do celular (167-16): **lista de produtos em cartões + ficha do
+  produto** (painel lateral) com as variações e "Salvar produto". A grade sai da tela de Produtos.
+- **D-24:** A **importação por arquivo continua** (D-13/D-14): baixar o modelo, preencher FORA do sistema e
+  importar com prévia. Dentro do sistema só aparece a prévia do que vai entrar.
+
 ### Claude's Discretion
 - **Preço usado para cotar o frete.** O frete do ML depende da faixa de preço, e o preço sai do custo + frete.
   Estimar o preço pelo custo da variação com os parâmetros da Precificação da empresa
