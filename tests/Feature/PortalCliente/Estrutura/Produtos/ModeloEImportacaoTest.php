@@ -251,6 +251,89 @@ class ModeloEImportacaoTest extends TestCase
         $this->assertNull((new LeitorPlanilhaProdutos())->ler($mil)['erro_geral']);
     }
 
+    /**
+     * Pacote válido cuja aba Produtos é o XML cru `$sheetData` (cabeçalho em inline string).
+     * Serve para montar o arquivo de ataque sem passar pelo writer do PhpSpreadsheet.
+     */
+    private function xlsxComAbaCrua(string $sheetData, string $dimensao): string
+    {
+        $caminho = $this->xlsx(['Produtos' => [['Ref']]]);
+        $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            ."<dimension ref=\"{$dimensao}\"/><sheetData>{$sheetData}</sheetData></worksheet>";
+        $zip = new \ZipArchive();
+        $zip->open($caminho);
+        $zip->addFromString('xl/worksheets/sheet1.xml', $xml);
+        $zip->close();
+
+        return $caminho;
+    }
+
+    private function celulaTexto(string $ref, string $texto): string
+    {
+        return "<c r=\"{$ref}\" t=\"inlineStr\"><is><t>{$texto}</t></is></c>";
+    }
+
+    /**
+     * BE-WR-01: uma célula VAZIA em XFD1048576 num arquivo de poucos KB fazia o `toArray()` tentar
+     * 17 bilhões de posições (estouro de memória, fatal). Agora célula vazia não conta e a leitura
+     * é esparsa: lê as 2 linhas reais com memória de sobra.
+     */
+    public function test_arquivo_de_poucos_kb_com_dimensao_enorme_e_lido_sem_estourar_memoria(): void
+    {
+        $linhas = '<row r="1">'.$this->celulaTexto('A1', 'Ref').$this->celulaTexto('D1', 'Produto').'</row>'
+            .'<row r="2">'.$this->celulaTexto('A2', 'A1').$this->celulaTexto('D2', 'Mesa').'</row>'
+            .'<row r="3" s="1" customFormat="1"><c r="A3" s="1"/><c r="XFD3" s="1"/></row>'
+            .'<row r="1048576"><c r="XFD1048576" s="1"/></row>';
+        $caminho = $this->xlsxComAbaCrua($linhas, 'A1:XFD1048576');
+        $this->assertLessThan(20 * 1024, filesize($caminho), 'o ataque cabe em poucos KB');
+
+        $antes = memory_get_usage();
+        $r = (new LeitorPlanilhaProdutos())->ler($caminho);
+        $usado = memory_get_peak_usage() - $antes;
+
+        $this->assertNull($r['erro_geral']);
+        $this->assertSame([2], array_column($r['linhas'], 'numero'));
+        $this->assertSame('A1', $r['linhas'][0]['bruta']['codigo']);
+        $this->assertLessThan(64 * 1024 * 1024, $usado, 'a leitura não monta a dimensão declarada');
+    }
+
+    /** BE-WR-01: linhas com valor demais são recusadas pela sondagem, antes de carregar a planilha. */
+    public function test_milhares_de_linhas_repetitivas_sao_recusadas_antes_de_carregar(): void
+    {
+        $cab = '<row r="1">'.$this->celulaTexto('A1', 'Ref').$this->celulaTexto('D1', 'Produto').'</row>';
+
+        $linhas = $cab;
+        for ($i = 2; $i <= 5001; $i++) {
+            $linhas .= "<row r=\"{$i}\">".$this->celulaTexto("A{$i}", "R{$i}").$this->celulaTexto("D{$i}", 'Mesa').'</row>';
+        }
+        $r = (new LeitorPlanilhaProdutos())->ler($this->xlsxComAbaCrua($linhas, 'A1:D5001'));
+        $this->assertSame('A planilha tem mais de 1.000 linhas. Divida em arquivos menores.', $r['erro_geral']);
+
+        // 300 mil linhas comprimem para pouco mais de 1 MB: o XML da aba passa do teto e nem é sondado.
+        $linhas = $cab.str_repeat('<row><c t="inlineStr"><is><t>R</t></is></c><c/><c/><c t="inlineStr"><is><t>Mesa</t></is></c></row>', 300000);
+        $caminho = $this->xlsxComAbaCrua($linhas, 'A1:D300001');
+        $this->assertLessThan(LeitorPlanilhaProdutos::MAX_BYTES, filesize($caminho));
+        $r = (new LeitorPlanilhaProdutos())->ler($caminho);
+        $this->assertSame('O arquivo é grande demais para importar. Divida a planilha em arquivos menores.', $r['erro_geral']);
+    }
+
+    /** Linhas em branco formatadas (o Google Sheets exporta até a linha 1.000) não contam no limite. */
+    public function test_linhas_em_branco_formatadas_nao_contam_no_limite(): void
+    {
+        $linhas = '<row r="1">'.$this->celulaTexto('A1', 'Ref').$this->celulaTexto('D1', 'Produto').'</row>'
+            .'<row r="2">'.$this->celulaTexto('A2', 'A1').$this->celulaTexto('D2', 'Mesa').'</row>';
+        for ($i = 3; $i <= 3000; $i++) {
+            $linhas .= "<row r=\"{$i}\" s=\"1\" customFormat=\"1\"><c r=\"A{$i}\" s=\"1\"/><c r=\"D{$i}\" s=\"1\"/></row>";
+        }
+        $linhas .= '<row r="3001">'.$this->celulaTexto('A3001', 'A2').$this->celulaTexto('D3001', 'Cadeira').'</row>';
+
+        $r = (new LeitorPlanilhaProdutos())->ler($this->xlsxComAbaCrua($linhas, 'A1:D3001'));
+
+        $this->assertNull($r['erro_geral']);
+        $this->assertSame([2, 3001], array_column($r['linhas'], 'numero'));
+    }
+
     public function test_o_teste_nao_cita_a_planilha_real_do_cliente(): void
     {
         $this->assertStringNotContainsString('3Planejamento'.'_Estrutural', (string) file_get_contents(__FILE__));
