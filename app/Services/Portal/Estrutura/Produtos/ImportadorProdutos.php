@@ -147,6 +147,18 @@ class ImportadorProdutos
 
         foreach ($lido['linhas'] as $linha) {
             $numero = $linha['numero'];
+
+            // O leitor já recusou a linha (fórmula sem valor salvo em coluna de texto).
+            if (isset($linha['erro'])) {
+                $plano['erros'][] = [
+                    'linha'  => $numero,
+                    'codigo' => is_string($linha['bruta']['codigo'] ?? null) ? $linha['bruta']['codigo'] : null,
+                    'nome'   => is_string($linha['bruta']['nome'] ?? null) ? $linha['bruta']['nome'] : null,
+                    'motivo' => $linha['erro'],
+                ];
+                continue;
+            }
+
             $bruta = $this->paraEntrada($linha['bruta']);
             $lida = NormalizadorDeLinha::normalizar($bruta);
             $campos = $lida['campos'];

@@ -5,6 +5,7 @@ namespace App\Services\Portal\Estrutura\Produtos;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use RuntimeException;
@@ -17,8 +18,9 @@ use ZipArchive;
  * Lê a aba "Produtos" de um .xlsx enviado pelo cliente, sem confiar nele (D-13).
  *
  * - Confere tamanho e assinatura zip (PK) ANTES de abrir; leitor fixo Xlsx.
- * - `setReadDataOnly(true)` e nada de calcular fórmula — "=1+1" volta como
- *   texto e cai na validação do custo.
+ * - `setReadDataOnly(true)` e nada de calcular fórmula. Em coluna de número
+ *   "=1+1" volta como texto e cai na validação do custo; em coluna de texto vale
+ *   o valor que o Excel salvou em cache, e sem cache a linha é recusada (BE-WR-02).
  * - Qualquer exceção do PhpSpreadsheet vira a mensagem fixa; o detalhe só vai
  *   para o log (o cliente nunca vê o texto da exceção).
  *
@@ -66,8 +68,14 @@ final class LeitorPlanilhaProdutos
     /** Campos cujo valor numérico da célula deve virar texto (código "1014" vem como número). */
     private const TEXTUAIS = ['codigo', 'grupo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria', 'volumes_texto'];
 
+    /** Chaves da célula com fórmula na matriz: o texto da fórmula e o valor em cache. */
+    private const FORMULA = 'f';
+    private const CACHE   = 'cache';
+
     /**
-     * @return array{erro_geral: ?string, colunas: list<string>, linhas: list<array{numero: int, bruta: array<string, mixed>}>}
+     * `erro` só vem na linha que não pode entrar (fórmula sem valor salvo em coluna de texto).
+     *
+     * @return array{erro_geral: ?string, colunas: list<string>, linhas: list<array{numero: int, bruta: array<string, mixed>, erro?: string}>}
      */
     public function ler(string $caminho): array
     {
@@ -150,10 +158,15 @@ final class LeitorPlanilhaProdutos
             $folha = $planilha->getSheetByName($nomeDaAba) ?? $planilha->getSheet(0);
 
             // ─── 4. Matriz esparsa: só as coordenadas que existem ───
+            // Célula com fórmula guarda o texto dela e o valor em cache que o Excel salvou
+            // (`getOldCalculatedValue`) — nada é calculado aqui (BE-WR-02).
             $matriz = [];
             foreach ($folha->getCellCollection()->getCoordinates() as $coordenada) {
                 [$coluna, $linha] = Coordinate::indexesFromString($coordenada);
-                $matriz[$linha][$coluna - 1] = $folha->getCell($coordenada)->getValue();
+                $celula = $folha->getCell($coordenada);
+                $matriz[$linha][$coluna - 1] = $celula->isFormula()
+                    ? [self::FORMULA => (string) $celula->getValue(), self::CACHE => $celula->getOldCalculatedValue()]
+                    : $celula->getValue();
             }
             $planilha->disconnectWorksheets();
             unset($planilha, $folha);
@@ -165,12 +178,18 @@ final class LeitorPlanilhaProdutos
 
         // ─── Cabeçalho (primeira linha da aba) ───
         $mapa = [];
+        $titulos = [];
         $cabecalho = $matriz[1] ?? [];
         ksort($cabecalho);
         foreach ($cabecalho as $i => $titulo) {
-            $campo = self::campoDoCabecalho(is_scalar($titulo) ? (string) $titulo : '');
+            if (is_array($titulo)) {
+                $titulo = $titulo[self::CACHE];
+            }
+            $titulo = is_scalar($titulo) ? trim((string) $titulo) : '';
+            $campo = self::campoDoCabecalho($titulo);
             if ($campo !== null && ! in_array($campo, $mapa, true)) {
                 $mapa[$i] = $campo;
+                $titulos[$i] = $titulo;
             }
         }
 
@@ -188,19 +207,25 @@ final class LeitorPlanilhaProdutos
 
             $bruta = [];
             $temAlgo = false;
+            $erro = null;
             foreach ($mapa as $i => $campo) {
-                $valor = self::valor($celulas[$i] ?? null, $campo);
+                $crua = $celulas[$i] ?? null;
+                if (is_array($crua)) {
+                    [$crua, $erroDaFormula] = self::daFormula($crua, $campo, $titulos[$i]);
+                    $erro ??= $erroDaFormula;
+                }
+                $valor = self::valor($crua, $campo);
                 if ($valor !== null && $valor !== '') {
                     $temAlgo = true;
                 }
                 $bruta[$campo] = $valor;
             }
 
-            if (! $temAlgo) {
+            if (! $temAlgo && $erro === null) {
                 continue;
             }
 
-            $linhas[] = ['numero' => $numero, 'bruta' => $bruta];
+            $linhas[] = ['numero' => $numero, 'bruta' => $bruta] + ($erro !== null ? ['erro' => $erro] : []);
 
             if (count($linhas) > self::MAX_LINHAS) {
                 return $vazio(self::MSG_MUITAS, array_values($mapa));
@@ -373,6 +398,30 @@ final class LeitorPlanilhaProdutos
             str_starts_with($t, 'custo') => 'custo',
             default => null,
         };
+    }
+
+    /**
+     * Célula com fórmula (BE-WR-02). Em coluna de TEXTO (Ref, grupo, nome…) vale o
+     * valor em cache que o Excel salvou — "=B2&\"-\"&C2" vira "1014-1", não o código
+     * literal "=B2&…". Sem cache (o arquivo foi gerado sem calcular) ou com erro de
+     * fórmula (#REF!…), a linha não entra e a pessoa é avisada. Em coluna de NÚMERO
+     * a fórmula volta como texto e cai na validação, como sempre foi.
+     *
+     * @param  array{f: string, cache: mixed}  $formula
+     * @return array{0: mixed, 1: ?string} [valor, erro da linha]
+     */
+    private static function daFormula(array $formula, string $campo, string $titulo): array
+    {
+        if (! in_array($campo, self::TEXTUAIS, true)) {
+            return [$formula[self::FORMULA], null];
+        }
+
+        $cache = $formula[self::CACHE];
+        if ($cache === null || (is_string($cache) && array_key_exists($cache, DataType::getErrorCodes()))) {
+            return [null, "{$titulo} com fórmula — cole como valor."];
+        }
+
+        return [$cache, null];
     }
 
     private static function valor(mixed $v, string $campo): mixed

@@ -230,6 +230,54 @@ class ModeloEImportacaoTest extends TestCase
         $this->assertSame('=1+1', $r['linhas'][0]['bruta']['custo']);
     }
 
+    /**
+     * BE-WR-02: fórmula em coluna de texto usa o valor que o Excel salvou em cache (nada é
+     * calculado); sem cache, ou com erro de fórmula, a linha não entra e diz por quê.
+     */
+    public function test_formula_em_coluna_de_texto_usa_o_valor_salvo_ou_recusa_a_linha(): void
+    {
+        // Com cache (o writer calcula ao salvar, como o Excel): a Ref vira o resultado.
+        $comCache = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['=B2&"-"&C2', '1014', '1', 'Cristaleira'],
+            ['M-1', null, null, '=1/0'],
+        ]]);
+        $r = (new LeitorPlanilhaProdutos())->ler($comCache);
+        $this->assertNull($r['erro_geral']);
+        $this->assertSame('1014-1', $r['linhas'][0]['bruta']['codigo']);
+        $this->assertArrayNotHasKey('erro', $r['linhas'][0]);
+        $this->assertSame('Produto com fórmula — cole como valor.', $r['linhas'][1]['erro'], 'erro de fórmula (#DIV/0!) não vira nome');
+
+        // Sem cache (arquivo gerado sem calcular): a linha é recusada, nunca grava "=B2&…".
+        $planilha = new Spreadsheet();
+        $folha = $planilha->getActiveSheet();
+        $folha->setTitle('Produtos');
+        $folha->fromArray($this->cabecalho(), null, 'A1');
+        $folha->setCellValueExplicit('A2', '=B2&"-"&C2', DataType::TYPE_FORMULA);
+        $folha->setCellValueExplicit('B2', '1014', DataType::TYPE_STRING);
+        $folha->setCellValueExplicit('D2', 'Cristaleira', DataType::TYPE_STRING);
+        $folha->setCellValueExplicit('A3', 'OK-1', DataType::TYPE_STRING);
+        $folha->setCellValueExplicit('D3', 'Mesa', DataType::TYPE_STRING);
+        $semCache = tempnam(sys_get_temp_dir(), 'prod167').'.xlsx';
+        $this->temporarios[] = $semCache;
+        $escritor = IOFactory::createWriter($planilha, 'Xlsx');
+        $escritor->setPreCalculateFormulas(false);
+        $escritor->save($semCache);
+
+        $r = (new LeitorPlanilhaProdutos())->ler($semCache);
+        $this->assertSame('Ref com fórmula — cole como valor.', $r['linhas'][0]['erro']);
+
+        $empresa = $this->empresaDoGabarito();
+        $previa = $this->importador()->previa($empresa, $semCache);
+        $this->assertSame(['novos' => 1, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1], $previa['totais']);
+        $this->assertSame(2, $previa['grupos']['erros'][0]['linha']);
+        $this->assertSame('Ref com fórmula — cole como valor.', $previa['grupos']['erros'][0]['motivo']);
+
+        $aplicado = $this->importador()->aplicar($empresa, $semCache, $this->ator($empresa));
+        $this->assertSame(1, $aplicado['novos']);
+        $this->assertSame(0, EstruturaProdutoVariacao::where('codigo', 'like', '=%')->count());
+    }
+
     public function test_arquivo_que_nao_e_zip_e_arquivo_com_mais_de_mil_linhas_dao_erro_geral(): void
     {
         $falso = tempnam(sys_get_temp_dir(), 'prod167').'.xlsx';
