@@ -4,7 +4,8 @@
     registrado no AppServiceProvider).
 
     Aparece depois do login, quando um conector (claude.ai, MCP Inspector,
-    Claude Code) pede acesso de leitura ao Admin em nome do usuário.
+    Claude Code) pede acesso ao Admin em nome do usuário — ler as telas e,
+    desde 06/10/2026, preencher e alterar pelos formulários delas.
 
     Autocontida de propósito: a versão do pacote laravel/mcp carrega
     `resources/css/app.css` pelo @vite, que não é entrada do nosso Vite (só
@@ -65,7 +66,7 @@
 <main class="cartao">
     <div class="marca">ECF Admin</div>
     <h1>Autorizar {{ $client->name }}?</h1>
-    <p>Este aplicativo quer consultar o ECF Admin em seu nome.</p>
+    <p>Este aplicativo quer consultar e preencher o ECF Admin em seu nome.</p>
 
     <div class="caixa">
         <div class="rotulo">Conectado como</div>
@@ -75,8 +76,8 @@
     <div class="caixa">
         <div class="rotulo">O que ele vai poder fazer</div>
         <ul>
-            <li>Ler empresas, sugadores, demandas, onboarding, PPAs e alertas, com o mesmo recorte do seu perfil.</li>
-            <li>Nada de alterar, salvar, excluir ou marcar como visto: o acesso é só de leitura.</li>
+            <li>Ler as telas do Admin, com o mesmo recorte do seu perfil.</li>
+            <li>Preencher e alterar em seu nome (abrir ticket, cadastrar, mudar status, excluir), só o que o seu perfil já pode fazer na tela. Fica registrado no histórico com o seu nome.</li>
         </ul>
     </div>
 

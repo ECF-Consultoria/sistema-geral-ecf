@@ -3,7 +3,6 @@
 namespace App\Mcp\Telas;
 
 use App\Models\User;
-use App\Services\ModuleRegistry;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Collection;
@@ -107,7 +106,7 @@ final class CatalogoDeTelas
     public function paraUsuario(User $usuario): Collection
     {
         return $this->todas()
-            ->filter(fn (array $t) => $this->previaPermite($usuario, $t['middleware']))
+            ->filter(fn (array $t) => PreviaDePerfil::permite($usuario, $t['middleware']))
             ->values();
     }
 
@@ -155,40 +154,6 @@ final class CatalogoDeTelas
 
         // Só o que está atrás do login do sistema interno (guard web). O
         // portal do cliente tem guard próprio e fica fora pelo padrão acima.
-        $middleware = $r->gatherMiddleware();
-
-        return collect($middleware)->contains(fn ($m) => is_string($m)
-            && ($m === 'auth' || $m === 'auth:web' || str_ends_with($m, '\\Authenticate')));
-    }
-
-    /**
-     * Prévia das travas declaradas na rota. As travas DENTRO do controller
-     * (abort 403) ficam para a hora em que a tela é aberta.
-     *
-     * @param  array<int, mixed>  $middleware
-     */
-    private function previaPermite(User $usuario, array $middleware): bool
-    {
-        foreach ($middleware as $m) {
-            if (! is_string($m) || ! str_contains($m, ':')) {
-                continue;
-            }
-
-            [$nome, $args] = explode(':', $m, 2);
-            $lista = explode(',', $args);
-
-            $ok = match ($nome) {
-                'role'       => in_array($usuario->role, $lista, true),
-                'permission' => collect($lista)->contains(fn ($p) => $usuario->hasPermission($p)),
-                'modulo'     => app(ModuleRegistry::class)->liberadoPara($usuario, $lista[0]),
-                default      => true,
-            };
-
-            if (! $ok) {
-                return false;
-            }
-        }
-
-        return true;
+        return PreviaDePerfil::exigeLogin($r->gatherMiddleware());
     }
 }

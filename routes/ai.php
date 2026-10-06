@@ -6,12 +6,13 @@ use Laravel\Mcp\Facades\Mcp;
 
 /*
 |--------------------------------------------------------------------------
-| MCP do ECF Admin — servidor remoto, SÓ LEITURA
+| MCP do ECF Admin — servidor remoto
 |--------------------------------------------------------------------------
 |
-| O Claude (claude.ai, celular, tarefas agendadas) consulta o sistema por
-| aqui sem passar pelo navegador. Cada ferramenta lê o mesmo dado da tela de
-| origem, com o recorte do perfil de quem conectou.
+| O Claude (claude.ai, celular, tarefas agendadas) consulta e preenche o
+| sistema por aqui sem passar pelo navegador. Cada ferramenta lê o mesmo dado
+| da tela de origem ou grava pelo mesmo formulário dela, com o recorte e as
+| permissões do perfil de quem conectou.
 |
 | Login: OAuth 2.1 pelo Passport. `oauthRoutes()` publica a descoberta
 | (`/.well-known/oauth-*`) e o registro automático de cliente

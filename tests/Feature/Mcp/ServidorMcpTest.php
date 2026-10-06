@@ -14,7 +14,8 @@ use Tests\TestCase;
 /**
  * O servidor MCP do ECF Admin (`/mcp`) como um todo: autenticação, descoberta
  * OAuth, registro de cliente, chave liga/desliga, log de acesso e a garantia
- * de que nada ali escreve.
+ * de que só as ferramentas de gravação declaradas gravam (decisão de
+ * 06/10/2026; antes disso o MCP era só leitura).
  */
 class ServidorMcpTest extends TestCase
 {
@@ -98,20 +99,37 @@ class ServidorMcpTest extends TestCase
             ->assertOk()
             ->assertSee('Autorizar Claude?')
             ->assertSee($admin->email)
-            ->assertSee('só de leitura');
+            // Desde 06/10/2026 o conector também grava: a tela tem de dizer.
+            ->assertSee('Preencher e alterar em seu nome')
+            ->assertDontSee('só de leitura');
     }
 
-    public function test_admin_ve_as_nove_ferramentas(): void
+    /** As que gravam (06/10/2026). `listar_acoes` só lê, mas existe para a gravação. */
+    private const FERRAMENTAS_DE_ESCRITA = [
+        'abrir_ticket',
+        'atuar_no_ticket',
+        'enviar_formulario',
+        'registrar_atualizacao_demanda',
+        'salvar_demanda',
+    ];
+
+    public function test_admin_ve_as_quinze_ferramentas(): void
     {
         $this->assertSame([
+            'abrir_ticket',
             'alertas_estrategicos',
+            'atuar_no_ticket',
             'demandas_dev',
+            'enviar_formulario',
             'ler_tela',
+            'listar_acoes',
             'listar_empresas',
             'listar_telas',
             'onboarding_polos',
             'painel_executivo',
             'ppa',
+            'registrar_atualizacao_demanda',
+            'salvar_demanda',
             'sugadores',
         ], $this->ferramentasVisiveis($this->admin()));
     }
@@ -119,11 +137,16 @@ class ServidorMcpTest extends TestCase
     public function test_usuario_sem_perfil_nao_ve_ferramenta_de_fora_do_perfil(): void
     {
         // Consultor sem nenhuma permissão de setor: o PPA (a tela /ppa só
-        // exige login), os alertas (rota role:admin,consultor,mentor) e as
-        // genéricas — que abrem só as telas que o perfil dele abre.
+        // exige login), os alertas (rota role:admin,consultor,mentor), os
+        // tickets (qualquer logado, com o módulo liberado) e as genéricas —
+        // que abrem e enviam só o que o perfil dele abre e envia. Demanda dev
+        // não: cadastrar é de admin e o diário é de quem tem demanda.
         $consultor = User::factory()->create(['role' => 'consultor', 'active' => true]);
 
-        $this->assertSame(['alertas_estrategicos', 'ler_tela', 'listar_telas', 'ppa'], $this->ferramentasVisiveis($consultor));
+        $this->assertSame(
+            ['abrir_ticket', 'alertas_estrategicos', 'atuar_no_ticket', 'enviar_formulario', 'ler_tela', 'listar_acoes', 'listar_telas', 'ppa'],
+            $this->ferramentasVisiveis($consultor)
+        );
 
         // E chamar à força uma ferramenta de fora do perfil não devolve dado:
         // para o servidor ela nem existe para este usuário.
@@ -132,17 +155,19 @@ class ServidorMcpTest extends TestCase
             ->assertJsonMissingPath('result');
     }
 
-    public function test_toda_ferramenta_e_somente_leitura(): void
+    public function test_so_as_ferramentas_de_gravacao_declaram_que_gravam(): void
     {
         $ferramentas = $this->rpc($this->admin(), 'tools/list')->assertOk()->json('result.tools');
 
-        $this->assertCount(9, $ferramentas);
+        $this->assertCount(15, $ferramentas);
         foreach ($ferramentas as $f) {
-            $this->assertTrue($f['annotations']['readOnlyHint'] ?? false, "{$f['name']} não se declara só leitura");
-            $this->assertFalse($f['annotations']['destructiveHint'] ?? true, "{$f['name']} se declara destrutiva");
+            $grava = in_array($f['name'], self::FERRAMENTAS_DE_ESCRITA, true);
+            $this->assertSame(! $grava, $f['annotations']['readOnlyHint'] ?? null, "{$f['name']}: readOnlyHint errado");
+            // Só a genérica pode excluir (DELETE); o cliente a trata como destrutiva.
+            $this->assertSame($f['name'] === 'enviar_formulario', $f['annotations']['destructiveHint'] ?? null, "{$f['name']}: destructiveHint errado");
         }
 
-        // Nenhuma ferramenta de escrita existe — nem com nome de ação da tela.
+        // Fora das declaradas, nenhuma ferramenta de escrita existe — nem com nome de ação da tela.
         foreach (['marcar_visto', 'ack_alerta', 'atualizar_status', 'resolver_sugador'] as $acao) {
             $resposta = $this->rpc($this->admin(), 'tools/call', ['name' => $acao, 'arguments' => (object) []]);
             $this->assertNotNull($resposta->json('error'), "A ação {$acao} existe no MCP");
