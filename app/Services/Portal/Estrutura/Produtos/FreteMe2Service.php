@@ -7,7 +7,10 @@ use App\Models\EstruturaPrecificacaoParametros;
 use App\Services\MercadoLivreService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\PrecificacaoEstrutura;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -19,7 +22,11 @@ use Illuminate\Support\Facades\Log;
  * muda o preço efetivo que o Publicador herda. Só GET na conta do cliente.
  *
  * Por que não o `ClienteMlPublicador` em laço: ele dorme (até 16 s por tentativa)
- * dentro da requisição web; aqui o `getMany` roda em paralelo, em lote e com cache.
+ * dentro da requisição web. Nem o `MercadoLivreService::getMany`: ele refaz em SÉRIE
+ * cada pedido que falhou no pool, com retry de 429 (`sleep` de até 8 s, 3 vezes) e
+ * timeout de 30 s — com o ML degradado, um POST /fretes passava de 10 minutos
+ * (BE-WR-06). Aqui o pool é próprio, com timeout curto e sem segunda tentativa: o
+ * que falha cai na tabela da ECF marcado `falhou`, e a pessoa consulta de novo.
  *
  * Ressalva A2 da pesquisa: em algumas categorias o ML pode ignorar as dimensões
  * enviadas, por isso o rótulo é sempre "estimado" na tela.
@@ -32,6 +39,12 @@ use Illuminate\Support\Facades\Log;
  */
 class FreteMe2Service
 {
+    private const API_BASE = 'https://api.mercadolibre.com';
+
+    /** Segundos: resposta e conexão de cada cotação (BE-WR-06). */
+    private const TIMEOUT          = 8;
+    private const TIMEOUT_CONEXAO  = 3;
+
     public function __construct(private MercadoLivreService $ml) {}
 
     /** Dimensões no formato do ML: AxLxC,peso em gramas (ordem A×L×C, não C×L×A). */
@@ -162,7 +175,7 @@ class FreteMe2Service
                     ]];
                 }
 
-                $respostas = $pedidos === [] ? [] : $this->ml->getMany($empresa, $pedidos, (int) $cfg['max_por_requisicao']);
+                $respostas = $pedidos === [] ? [] : $this->cotarEmParalelo($empresa, $pedidos);
 
                 foreach ($respostas as $chave => $resp) {
                     if (is_array($resp)) {
@@ -237,6 +250,47 @@ class FreteMe2Service
     }
 
     // ═══ Internos ═══
+
+    /**
+     * Os GETs de uma rodada em paralelo, com timeout curto e SEM refazer o que falhou
+     * (nem em série, nem com `sleep`): 429, 5xx, timeout e rede voltam como a exceção
+     * daquele pedido, e `cotar()` usa a tabela da ECF com `falhou`.
+     *
+     * @param  array<string, array{0: string, 1: array}>  $pedidos  chave → [endpoint, query]
+     * @return array<string, array|\Throwable>  chave → corpo da resposta, ou a falha daquele pedido
+     *
+     * @throws \RuntimeException sem token válido
+     */
+    private function cotarEmParalelo(Company $empresa, array $pedidos): array
+    {
+        $token = $this->ml->ensureValidToken($empresa);
+        if (! $token) {
+            throw new \RuntimeException("empresa {$empresa->id} sem token válido do Mercado Livre");
+        }
+
+        $respostas = Http::pool(function (Pool $pool) use ($pedidos, $token) {
+            foreach ($pedidos as $chave => $pedido) {
+                $pool->as((string) $chave)
+                    ->withToken($token->access_token)
+                    ->timeout(self::TIMEOUT)
+                    ->connectTimeout(self::TIMEOUT_CONEXAO)
+                    ->get(self::API_BASE.$pedido[0], $pedido[1] ?? []);
+            }
+        });
+
+        $saida = [];
+        foreach ($pedidos as $chave => $_) {
+            $r = $respostas[(string) $chave] ?? null;
+            $saida[$chave] = match (true) {
+                $r instanceof Response && $r->successful() => $r->json() ?? [],
+                $r instanceof \Throwable                   => $r,
+                $r instanceof Response                     => new \RuntimeException("cotação respondeu HTTP {$r->status()}"),
+                default                                    => new \RuntimeException('cotação sem resposta'),
+            };
+        }
+
+        return $saida;
+    }
 
     private function ehMe2(array $item): bool
     {

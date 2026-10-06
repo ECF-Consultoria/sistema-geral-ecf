@@ -249,6 +249,53 @@ class FreteDoProdutoTest extends TestCase
         $this->assertTrue($r['falhou']);
     }
 
+    /**
+     * BE-WR-06: com o ML devolvendo 429, cada cotação é UMA tentativa com timeout curto — sem o
+     * refazer em série do getMany (retry de 429 com sleep de até 8 s) — e cai na tabela da ECF.
+     */
+    public function test_429_nao_e_refeito_em_serie_nem_dorme_e_a_cotacao_tem_timeout_curto(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        $opcoes = [];
+        Http::fake(function (Request $req, array $options) use (&$opcoes) {
+            $opcoes[] = $options;
+
+            return Http::response(['message' => 'too_many_requests'], 429, ['Retry-After' => '8']);
+        });
+
+        $inicio = microtime(true);
+        $r = $this->svc()->cotar($empresa, [
+            'v1' => $this->item(93, 55, 6, 9.5, 100),
+            'v2' => $this->item(91, 59, 20, 9.5, 100),
+        ]);
+
+        $this->assertLessThan(3.0, microtime(true) - $inicio, 'nada de sleep dentro da requisição web');
+        $this->assertCount(2, Http::recorded(), 'uma tentativa por cotação, sem refazer em série');
+        $this->assertSame(8, $opcoes[0]['timeout']);
+        $this->assertSame(3, $opcoes[0]['connect_timeout']);
+        $this->assertTrue($r['falhou']);
+        foreach (['v1', 'v2'] as $id) {
+            $this->assertSame('tabela_ecf', $r['fretes'][$id]['origem']);
+            $this->assertTrue($r['fretes'][$id]['falhou']);
+        }
+    }
+
+    /** BE-WR-06: queda de conexão (timeout/rede) também vira a tabela da ECF, sem nova tentativa. */
+    public function test_queda_de_conexao_cai_na_tabela_sem_nova_tentativa(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $this->conectar($empresa);
+        Http::fake(fn () => Http::failedConnection('cURL error 28: Operation timed out'));
+
+        $r = $this->svc()->cotar($empresa, ['v1' => $this->item(93, 55, 6, 9.5, 100)]);
+
+        $this->assertTrue($r['falhou']);
+        $this->assertSame('tabela_ecf', $r['fretes']['v1']['origem']);
+        $this->assertTrue($r['fretes']['v1']['falhou']);
+        $this->assertLessThanOrEqual(1, count(Http::recorded()));
+    }
+
     public function test_cotar_so_le_nao_grava_e_nao_vaza_o_token(): void
     {
         $empresa = $this->empresaDoGabarito();
