@@ -141,6 +141,9 @@ um monte de vezes anúncio". Na planilha, a aba Produtos é onde o cliente cadas
 - **D-30:** Fica de fora o que não tem dado real: "Ver no Mercado Livre", sino e avatar (o Portal já tem barra
   própria). Bolinha de cor da variação só quando o eixo é Cor e o valor é uma cor conhecida; senão, neutra. Menu ⋮
   do cartão só com ações reais (abrir a ficha, ver a oferta na Lista SKUs).
+- **D-31 (06/10, conferência do 167-21):** **sem bolinha de cor** na variação — revoga a parte do D-30 sobre a
+  bolinha. O usuário: "não é tão certeiro e acaba poluindo". A cor era palpite pelo nome do valor ("Natural",
+  "Grafite") num mapa fixo; o cartão e a lista mostram só Ref, valor, selo de logística e frete.
 
 ### Claude's Discretion
 - **Preço usado para cotar o frete.** O frete do ML depende da faixa de preço, e o preço sai do custo + frete.

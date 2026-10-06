@@ -47,13 +47,14 @@ test('Cartões: foto, categoria curta, Falta, menu, variações e link da ficha'
     assert.ok(linha.includes('tamanho="linha"') && linha.includes('lg:grid-cols-[') && linha.includes('lg:border-l'));
 });
 
-test('Peças: bolinha só de cor conhecida, linha da variação, pílula Falta e menu só com ações reais', () => {
-    for (const e of ['BolinhaCor', 'LinhaVariacao', 'PilulaFalta', 'MenuDoProduto', 'aoClicarNoCartao']) {
+test('Peças: linha da variação sem bolinha de cor, pílula Falta e menu só com ações reais', () => {
+    for (const e of ['LinhaVariacao', 'PilulaFalta', 'MenuDoProduto', 'aoClicarNoCartao']) {
         assert.ok(pecas.includes(`export function ${e}(`), `faltou exportar ${e}`);
     }
-    assert.ok(pecas.includes('corDaVariacao('));
-    assert.ok(! /backgroundColor:\s*(v|variacao|row)\.valor/.test(pecas), 'o valor digitado nunca vira estilo');
-    for (const c of ['<BolinhaCor', '<PilulaLogistica', 'renderFrete(', "'pilha'", 'consultando:', 'title={detalheDaVariacao(']) {
+    // D-31: a bolinha de cor saiu — o palpite pelo nome errava e poluía o cartão.
+    assert.ok(! pecas.includes('BolinhaCor') && ! pecas.includes('corDaVariacao'), 'a bolinha de cor não volta (D-31)');
+    assert.ok(! /backgroundColor/.test(pecas), 'nenhuma cor vem do dado da variação');
+    for (const c of ['<PilulaLogistica', 'renderFrete(', "'pilha'", 'consultando:', 'title={detalheDaVariacao(']) {
         assert.ok(pecas.includes(c), `faltou: ${c}`);
     }
     for (const c of ['faltaDoProduto(', 'Falta: ', 'Info', '@radix-ui/react-popover']) assert.ok(pecas.includes(c), `faltou: ${c}`);
@@ -61,9 +62,9 @@ test('Peças: bolinha só de cor conhecida, linha da variação, pílula Falta e
     assert.ok(! pecas.includes('Mercado Livre'), 'o ⋮ não tem ação que não existe (D-30)');
 });
 
-test('Lib: cores conhecidas, cor só no eixo Cor, falta e detalhe da variação', () => {
-    for (const e of ['CORES_CONHECIDAS', 'corDaVariacao', 'faltaDoProduto', 'detalheDaVariacao']) assert.ok(lib.includes(`export ${e === 'CORES_CONHECIDAS' ? 'const' : 'function'} ${e}`), `faltou: ${e}`);
-    assert.match(lib, /row\?\.eixo !== 'cor'/);
+test('Lib: falta e detalhe da variação; sem mapa de cores (D-31)', () => {
+    for (const e of ['faltaDoProduto', 'detalheDaVariacao']) assert.ok(lib.includes(`export function ${e}`), `faltou: ${e}`);
+    assert.ok(! lib.includes('CORES_CONHECIDAS') && ! lib.includes('corDaVariacao'), 'o mapa de cores saiu junto com a bolinha');
 });
 
 test('Sem tabela e sem regra de negócio nem HTML cru nos cartões (D-23, T-167-79)', () => {

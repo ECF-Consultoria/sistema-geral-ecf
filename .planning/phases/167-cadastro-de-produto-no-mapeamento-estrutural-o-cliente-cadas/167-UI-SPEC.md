@@ -36,8 +36,8 @@ sistema. Esta seção **vale sobre a Revisão D-23 e sobre as seções abaixo on
   conta conectada).
 - **Dois desenhos de cartão:** foto = quadro com iniciais; "Família · Ambientes"; categoria "raiz › folha" (caminho inteiro
   na dica); pílula "Falta: …" neutra com ⓘ e o detalhe por variação; ⋮ com "Abrir a ficha" e "Ver {SKU} na Lista SKUs";
-  por variação: bolinha, Ref, valor, selo de logística e frete empilhado; medidas, peso cubado e custo na dica da variação.
-- **Bolinha:** colorida só no eixo Cor com cor conhecida; senão, neutra.
+  por variação: Ref, valor, selo de logística e frete empilhado; medidas, peso cubado e custo na dica da variação.
+- **Sem bolinha de cor** (D-31, 06/10): o palpite de cor pelo nome errava e poluía o cartão; a variação não tem cor.
 - **Ficha em página** com URL própria (`/portal/estrutura/produtos/{id}` e `/novo`): breadcrumb, bloco de dados gerais,
   blocos de variação, volumes em cartões 2 por linha, faixa de calculados só leitura ("Os calculados aparecem ao salvar." /
   "Recalcula ao salvar."), "+ Nova variação" tracejado, rodapé Cancelar / Salvar produto (único amarelo), asterisco só em
@@ -75,7 +75,7 @@ sistema. Esta seção **vale sobre a Revisão D-23 e sobre as seções abaixo on
 | Foto = quadro com iniciais, sem lápis | D-29 |
 | Asterisco só em Ref e Nome | D-28 |
 | Valor sem chevron (texto livre) | D-20 |
-| Bolinha neutra em eixo que não é Cor | D-30 |
+| Sem a bolinha de cor das referências | D-31 (pedido do usuário depois da conferência) |
 | Pílula "Falta" quebra para a linha de baixo no Visual grande quando a categoria é longa (cartão fica ≈30–55 px mais alto que na REF-1) | dado real: sem conta do Mercado Livre há "Falta: frete ME1"; só a REF-1 mostra 2 pendências em 6 |
 | Calculados com "estimativa" ao lado do valor; "cobrado" no peso cubado | dado calculado pelo servidor (estimativa x faixa de referência) |
 | Bloco de variação ≈244 (REF-2: 225) e dados gerais ≈251 (REF-2: 240) | dois cartões de volume + subtítulo "Oferta … · Ver na Lista SKUs" que a referência não tem |

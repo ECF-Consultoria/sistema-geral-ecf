@@ -2,7 +2,7 @@ import { ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { router } from '@inertiajs/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
-import { ESTILO_LOGISTICA, corDaVariacao, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
+import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 
 // ─── Peças pequenas da ficha do produto (167-19), reaproveitadas pela lista ──
@@ -88,18 +88,10 @@ export function aoClicarNoCartao(e, abrir) {
     abrir();
 }
 
-/** Bolinha da variação: colorida só com eixo Cor e valor conhecido (D-30); a cor sai do mapa, nunca do texto digitado. */
-export function BolinhaCor({ variacao, tamanho = 30 }) {
-    const cor = corDaVariacao(variacao);
-
-    return (
-        <span aria-hidden="true" title={cor ? `Cor: ${variacao.valor}` : undefined}
-            className={cn('inline-block shrink-0 rounded-full ring-1 ring-white/15', ! cor && 'bg-white/[0.08]')}
-            style={cor ? { width: tamanho, height: tamanho, backgroundColor: cor } : { width: tamanho, height: tamanho }} />
-    );
-}
-
-/** Uma variação: bolinha, Ref, valor, selo de logística e frete. Medidas, peso cubado e custo ficam na dica. */
+/**
+ * Uma variação: Ref, valor, selo de logística e frete. Medidas, peso cubado e custo ficam na dica.
+ * Sem bolinha de cor (D-31): o palpite de cor pelo nome errava e poluía o cartão.
+ */
 export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'grande' }) {
     const lista = modo === 'lista';
     const emConsulta = consultando?.has?.(variacao.id) ?? false;
@@ -107,9 +99,8 @@ export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'gran
     return (
         <li data-variacao-cartao title={detalheDaVariacao(variacao)}
             className={cn('grid items-center',
-                lista ? 'grid-cols-[26px_minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-1'
-                    : 'grid-cols-[30px_minmax(0,108px)_minmax(0,1fr)_auto_minmax(72px,auto)] gap-x-3.5 py-3.5')}>
-            <BolinhaCor variacao={variacao} tamanho={lista ? 26 : 30} />
+                lista ? 'grid-cols-[minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-1'
+                    : 'grid-cols-[minmax(0,108px)_minmax(0,1fr)_auto_minmax(72px,auto)] gap-x-3.5 py-3.5')}>
             <span className="truncate text-[14px] font-medium text-white">{variacao.codigo}</span>
             <span className="truncate text-[14px] text-white/75">{variacao.valor || '—'}</span>
             <PilulaLogistica chave={variacao.logistica ?? 'pendente'} rotulos={vocabulario?.logisticas} className="h-8 px-3" />
