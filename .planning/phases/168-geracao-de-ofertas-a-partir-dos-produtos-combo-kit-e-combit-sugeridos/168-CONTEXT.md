@@ -1,7 +1,7 @@
 # Phase 168: Geração de ofertas a partir dos produtos (Combo, Kit e Combit sugeridos) - Context
 
 **Gathered:** 2026-10-06
-**Status:** Ready for planning
+**Status:** Ready for planning (atualizado depois da pesquisa, D-12..D-20)
 
 <domain>
 ## Phase Boundary
@@ -110,6 +110,43 @@ a pessoa só decidir.
    contra as 46/44/39 da planilha, e quantas das ofertas reais o gerador acertaria. É o gabarito da fase.
 5. A fonte do tipo (D-10): quantos dos 70 produtos têm categoria do ML confirmada ou em texto, e se a categoria
    separa bem cadeira, mesa, banqueta e banco.
+
+### Decisões depois da pesquisa (06/10, aplicando o recomendado — confirmar no resumo antes de executar)
+- **D-12: Tipo de produto (fecha o D-10).**
+  - É uma lista FECHADA de tipos da ECF, inferida por palavra-chave: primeiro na categoria do ML (mesmo em
+    estado "a confirmar"), depois no nome.
+  - O override fica por produto, numa tabela à parte.
+  - Tipo ambíguo ou ausente = "sem tipo": o produto fica fora de Kit e Combit e aparece num painel "Sem tipo"
+    para a pessoa escolher.
+  - **A ficha da 167 não muda.**
+  - Medido: 79% dos produtos reais tipificados sem trabalho do cliente, e a categoria separa bem cadeira, mesa,
+    banqueta e banco.
+- **D-13: Quantidades (fecha o D-07).**
+  - A semente é exatamente o D-07: cadeira 2/4/6, banqueta 2/3/4, mesa só 1.
+  - A ECF amplia pela tela de admin (D-15), por exemplo cadeira ×8 ou banco 2/4, que a planilha usa.
+  - Combo e Combit têm quantidades separadas por tipo.
+- **D-14: Combit tem DIREÇÃO.** O par de tipos diz qual item se repete: em "mesa + cadeira", a cadeira se
+  repete. Sem isso, o Combit gera 140 a 162 sugestões contra 25 da planilha.
+- **D-15: Admin da ECF na v1.** Uma tela pequena para a ECF manter os tipos (palavras-chave, quantidades) e
+  os pares (com a direção do Combit) sem deploy.
+- **D-16: Só 2 itens por Kit e Combit na v1. Trios ficam FORA:** gerar trios proporia 124 sugestões para
+  acertar 12. Trio continua sendo montado à mão na Lista SKUs.
+- **D-17: Variações casam em paralelo, nunca em produto cartesiano.**
+  - Casam por eixo + valor quando os dois lados têm; senão, pela ordem.
+  - Produto com uma variação casa com todas as do outro.
+  - Medido: a planilha nunca cruza "1 com 2".
+- **D-18: Frete na lista.** Mostra só a estimativa pela tabela da ECF, marcada "estimado", mais um botão para
+  cotar no ML a página visível (como na 167). Nada gravado como preço.
+- **D-19: Nome e SKU sugeridos, editáveis antes de aceitar.**
+  - Combo: título "Kit {N} {plural do tipo} {resto do nome}" e SKU `{simples}-CB{N}`, que já é o padrão do
+    sistema.
+  - Kit: "{A} + {B}" e `KT-{A}-{B}`.
+  - Combit: "{fixo} + {N} {plural}" e `CT{N}-{fixo}-{repetido}`.
+  - Os SKUs de Kit e Combit são suposição da pesquisa e podem ser editados.
+  - Avisos: SKU acima de 120 caracteres e título acima de 60.
+- **D-20: Nenhum submódulo novo no menu.** A revisão entra por Produtos e pela Lista SKUs. "Planejamento" já é
+  o nome da agenda. A semente de pares (21–23 pares de tipos GENÉRICOS, sem produto, SKU nem custo) vai para o
+  resumo do usuário antes da execução.
 
 ### Claude's Discretion
 - Estrutura interna do gerador, desde que seja testável sem banco (regra pura, como o `LogisticaProduto`).
