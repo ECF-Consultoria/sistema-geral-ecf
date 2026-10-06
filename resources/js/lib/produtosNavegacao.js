@@ -86,3 +86,31 @@ export function rolarParaVolta(volta) {
         window.scrollTo(0, volta.scrollY ?? 0);
     }));
 }
+
+// ─── Modo de visualização (167-20, D-26) ────────────────────────────────────
+//
+// "Visual grande" ou "Lista": a escolha fica no navegador (localStorage, dura
+// além da aba) e volta igual depois da ficha ou de recarregar. Qualquer valor
+// estranho vira 'grande'; sem storage a tela funciona do mesmo jeito.
+
+const CHAVE_MODO = 'ecf.produtos.modo';
+const MODOS_VALIDOS = ['grande', 'lista'];
+
+export function lerModo() {
+    try {
+        const m = window.localStorage.getItem(CHAVE_MODO);
+
+        return MODOS_VALIDOS.includes(m) ? m : 'grande';
+    } catch (e) {
+        return 'grande';
+    }
+}
+
+export function gravarModo(modo) {
+    if (! MODOS_VALIDOS.includes(modo)) return;
+    try {
+        window.localStorage.setItem(CHAVE_MODO, modo);
+    } catch (e) {
+        // sem storage: perde só a conveniência
+    }
+}
