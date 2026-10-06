@@ -85,25 +85,31 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                 <div className="mt-3">
                     <span className={ROTULO}>Ambientes</span>
                     <Popover.Root open={escolhendo === 'ambientes'} onOpenChange={aoMudar('ambientes')}>
-                        <Popover.Trigger asChild>
-                            <div role="button" tabIndex={0} data-escolha="ambientes" aria-haspopup="dialog" aria-disabled={ficha.salvando || undefined}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirEscolha('ambientes'); } }}
-                                className={cn(GATILHO, 'min-h-11 cursor-pointer py-1.5 lg:min-h-10')}>
-                                <span className="flex min-w-0 flex-wrap items-center gap-2">
-                                    {ambientes.length === 0 && <span className="text-white/30">escolher</span>}
-                                    {ambientes.map((nome) => (
-                                        <span key={nome} className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.05] px-2.5 text-[14px] text-white">
-                                            {nome}
-                                            <button type="button" onClick={(e) => tirarAmbiente(e, nome)} aria-label={`Tirar ${nome}`}
-                                                className="grid h-4 w-4 place-items-center rounded text-white/60 hover:text-white">
-                                                <X size={14} />
-                                            </button>
-                                        </span>
-                                    ))}
-                                </span>
-                                <ChevronDown size={16} className="shrink-0 text-white/60" aria-hidden="true" />
-                            </div>
-                        </Popover.Trigger>
+                        {/* Gatilho e chips são irmãos (revisão FE-IN-09): o botão ocupa a caixa inteira por
+                            baixo e os chips ficam por cima sem receber clique — só o X de cada um, que é um
+                            botão de verdade fora do gatilho. Mesmas medidas: borda, px-3, e o pr-9 guarda o
+                            lugar da seta (12 + 8 de folga + 16). */}
+                        <div className="relative">
+                            <Popover.Trigger asChild>
+                                <button type="button" data-escolha="ambientes"
+                                    aria-label={ambientes.length ? `Escolher ambientes (${ambientes.join(', ')})` : 'Escolher ambientes'}
+                                    className={cn(GATILHO, 'absolute inset-0 h-full cursor-pointer justify-end')}>
+                                    <ChevronDown size={16} className="shrink-0 text-white/60" aria-hidden="true" />
+                                </button>
+                            </Popover.Trigger>
+                            <span className="pointer-events-none relative flex min-h-11 min-w-0 flex-wrap items-center gap-2 border border-transparent py-1.5 pl-3 pr-9 text-[14px] lg:min-h-10">
+                                {ambientes.length === 0 && <span className="text-white/30">escolher</span>}
+                                {ambientes.map((nome) => (
+                                    <span key={nome} className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.05] px-2.5 text-[14px] text-white">
+                                        {nome}
+                                        <button type="button" onClick={(e) => tirarAmbiente(e, nome)} aria-label={`Tirar ${nome}`}
+                                            className="pointer-events-auto grid h-4 w-4 place-items-center rounded text-white/60 hover:text-white">
+                                            <X size={14} />
+                                        </button>
+                                    </span>
+                                ))}
+                            </span>
+                        </div>
                         <Popover.Portal>
                             <Popover.Content align="start" sideOffset={6} className={CONTEUDO}>
                                 <PickerLista tipo="ambiente" multiplo opcoes={listas?.ambientes ?? []} valor={primeira.ambientes_texto}
@@ -117,26 +123,30 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                 <div className="mt-3">
                     <span className={ROTULO}>Categoria do Mercado Livre</span>
                     <Popover.Root open={escolhendo === 'categoria'} onOpenChange={aoMudar('categoria')}>
-                        <Popover.Trigger asChild>
-                            <button type="button" className={cn(GATILHO, 'h-11 lg:h-10')} data-escolha="categoria">
-                                <span className="flex min-w-0 items-center gap-3">
-                                    <Search size={16} className="shrink-0 text-white/60" aria-hidden="true" />
-                                    {temCategoria
-                                        ? <CaminhoCategoria linha={primeira} className="min-w-0 text-[14px]" />
-                                        : <span className="text-white/30">Buscar categoria</span>}
-                                </span>
-                                <span className="flex shrink-0 items-center gap-2">
-                                    {temCategoria && (
-                                        <span role="button" tabIndex={0} aria-label="Limpar categoria" onClick={limparCategoria}
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') limparCategoria(e); }}
-                                            className="grid h-6 w-6 place-items-center rounded text-white/70 hover:text-white">
-                                            <X size={16} />
-                                        </span>
-                                    )}
-                                    <ChevronDown size={16} className="text-white/60" aria-hidden="true" />
-                                </span>
-                            </button>
-                        </Popover.Trigger>
+                        {/* "Limpar categoria" é irmão do gatilho, posto sobre o lugar que o gatilho guarda para
+                            ele (borda 1 + px-3 12 + seta 16 + folga 8 = 37 px da direita) — revisão FE-IN-09. */}
+                        <div className="relative">
+                            <Popover.Trigger asChild>
+                                <button type="button" className={cn(GATILHO, 'h-11 lg:h-10')} data-escolha="categoria">
+                                    <span className="flex min-w-0 items-center gap-3">
+                                        <Search size={16} className="shrink-0 text-white/60" aria-hidden="true" />
+                                        {temCategoria
+                                            ? <CaminhoCategoria linha={primeira} className="min-w-0 text-[14px]" />
+                                            : <span className="text-white/30">Buscar categoria</span>}
+                                    </span>
+                                    <span className="flex shrink-0 items-center gap-2">
+                                        {temCategoria && <span className="h-6 w-6" aria-hidden="true" />}
+                                        <ChevronDown size={16} className="text-white/60" aria-hidden="true" />
+                                    </span>
+                                </button>
+                            </Popover.Trigger>
+                            {temCategoria && (
+                                <button type="button" aria-label="Limpar categoria" onClick={limparCategoria}
+                                    className="absolute right-[37px] top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-white/70 hover:text-white">
+                                    <X size={16} />
+                                </button>
+                            )}
+                        </div>
                         <Popover.Portal>
                             <Popover.Content align="start" sideOffset={6} className={cn(CONTEUDO, 'max-w-[720px]')}>
                                 <PickerCategoria row={primeira} onCommit={ficha.aplicarEscolha} onClose={() => setEscolhendo(null)} />

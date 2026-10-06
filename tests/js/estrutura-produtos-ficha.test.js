@@ -192,10 +192,22 @@ test('Salvando: campos, Nova variação, Excluir e pickers ficam travados durant
     const fieldsetVariacoes = pagina.slice(pagina.indexOf('data-campos-variacoes'), pagina.indexOf('</fieldset>', pagina.indexOf('data-campos-variacoes')));
     assert.ok(fieldsetVariacoes.includes('<CartaoVariacao') && fieldsetVariacoes.includes('data-acao="nova-variacao"'));
     assert.ok(pagina.includes('min-w-0 border-0 p-0'), 'o fieldset não muda o visual');
-    // O gatilho de Ambientes é uma div (o fieldset não a trava): a trava mora no componente.
+    // Os gatilhos e os X são botões dentro do fieldset; a trava no componente fica de reserva.
     assert.ok(dados.includes('if (ficha.salvando) return; fecharPicker.current = null;'));
     assert.equal(contar(dados, /if \(ficha\.salvando\) return;/g), 3, 'abrir picker, tirar ambiente e limpar categoria');
-    assert.ok(dados.includes('aria-disabled={ficha.salvando || undefined}'));
+});
+
+test('Dados gerais: nenhum controle dentro de outro (FE-IN-09)', () => {
+    assert.ok(! dados.includes('role="button"'), 'nada de div/span fazendo papel de botão');
+    // Ambientes: o gatilho é um botão por baixo; os chips por cima não recebem clique, só o X de cada um.
+    assert.match(dados, /<button type="button" data-escolha="ambientes"[\s\S]*?className=\{cn\(GATILHO, 'absolute inset-0 h-full cursor-pointer justify-end'\)\}>/);
+    assert.ok(dados.includes('pointer-events-none relative flex min-h-11 min-w-0 flex-wrap items-center gap-2 border border-transparent py-1.5 pl-3 pr-9 text-[14px] lg:min-h-10'));
+    assert.ok(dados.includes('className="pointer-events-auto grid h-4 w-4 place-items-center rounded text-white/60 hover:text-white"'));
+    // Categoria: "Limpar categoria" é irmão do gatilho, sobre o lugar que o gatilho guarda para ele.
+    const gatilhoCategoria = dados.slice(dados.indexOf('data-escolha="categoria"'), dados.indexOf('</Popover.Trigger>', dados.indexOf('data-escolha="categoria"')));
+    assert.ok(! gatilhoCategoria.includes('Limpar categoria'), 'o X não está dentro do botão');
+    assert.ok(gatilhoCategoria.includes('<span className="h-6 w-6" aria-hidden="true" />'));
+    assert.match(dados, /<button type="button" aria-label="Limpar categoria" onClick=\{limparCategoria\}\s*className="absolute right-\[37px\] top-1\/2 grid h-6 w-6 -translate-y-1\/2/);
 });
 
 test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salvar (FE-CR-02)', () => {
