@@ -17,6 +17,28 @@ const TAMANHOS_QUADRO = {
 };
 
 /** Quadro da foto (D-29): existe, mas sem upload — ícone apagado e as iniciais do produto. */
+/**
+ * D-32: contorno do cartão do produto de onde a pessoa acabou de voltar da ficha.
+ * 'forte' nos primeiros segundos, depois 'leve' até sair da página.
+ */
+export function classeDestaque(destaque) {
+    if (destaque === 'forte') return 'border-ecf-yellow ring-2 ring-ecf-yellow/50 shadow-[0_0_0_6px_rgba(255,230,0,0.10)]';
+    if (destaque === 'leve') return 'border-ecf-yellow/50';
+
+    return null;
+}
+
+/** D-32: etiqueta no topo do cartão destacado — diz em palavras qual produto acabou de ser aberto. */
+export function EtiquetaUltimoAberto({ destaque }) {
+    if (! destaque) return null;
+
+    return (
+        <span data-ultimo-aberto className="pointer-events-none absolute -top-2.5 left-4 z-10 rounded-full bg-ecf-yellow px-2 py-0.5 text-[11px] font-semibold leading-4 text-black">
+            Último aberto
+        </span>
+    );
+}
+
 export function QuadroFotoProduto({ nome, tamanho = 'grande', className }) {
     const t = TAMANHOS_QUADRO[tamanho] ?? TAMANHOS_QUADRO.grande;
 

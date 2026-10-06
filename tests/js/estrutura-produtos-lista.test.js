@@ -24,8 +24,32 @@ const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
 test('Arquivos: o componente antigo do celular saiu e a lista tem a assinatura nova', () => {
     assert.ok(! existsSync(resolve(raiz, `${dir}/CartoesProdutosMobile.jsx`)));
-    assert.match(lista, /export default function ListaProdutos\(\{ linhas, vocabulario, consultando, modo = 'grande', onAbrir \}\)/);
+    assert.match(lista, /export default function ListaProdutos\(\{ linhas, vocabulario, consultando, modo = 'grande', onAbrir, voltouDe = null, destaqueForte = false \}\)/);
     assert.match(lista, /export function agruparPorProduto/);
+});
+
+test('D-32: o cartão do produto de onde a pessoa voltou fica destacado, nos dois modos', () => {
+    const nav = lerSemComentarios('resources/js/lib/produtosNavegacao.js');
+    const ficha = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
+    const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+
+    // A ficha marca ao DESMONTAR — cobre salvar, cancelar, "← Produtos" e o voltar do navegador.
+    for (const e of ['marcarUltimoProduto', 'pegarUltimoProduto', 'mostrarCartao']) assert.match(nav, new RegExp(`export function ${e}\\(`));
+    assert.ok(nav.includes("'ecf.produtos.ultimo'") && nav.includes('ULTIMO_VALE_MS'), 'destaque só logo depois de sair da ficha');
+    assert.ok(nav.includes('apagar(CHAVE_ULTIMO)'), 'a lista consome o destaque: recarregar não repete');
+    assert.ok(ficha.includes('useEffect(() => () => marcarUltimoProduto(ultimoRef.current), [])'));
+    assert.ok(ficha.includes('if (idGravado) ultimoRef.current = idGravado'), 'produto novo destaca o id que o servidor criou');
+    assert.ok(ficha.includes('ultimoRef.current = null'), 'produto excluído não deixa destaque');
+
+    assert.ok(pagina.includes('pegarUltimoProduto()') && pagina.includes('mostrarCartao(ultimo)'));
+    assert.ok(pagina.includes('voltouDe={voltouDe} destaqueForte={destaqueForte}'));
+    assert.ok(lista.includes("destaque={produtoId === voltouDe ? (destaqueForte ? 'forte' : 'leve') : null}"));
+
+    assert.match(pecas, /export function classeDestaque\(/);
+    assert.ok(pecas.includes('Último aberto'), 'o destaque também é dito em palavras');
+    for (const cartao of [grande, linha]) {
+        assert.ok(cartao.includes('classeDestaque(destaque)') && cartao.includes('<EtiquetaUltimoAberto destaque={destaque} />'));
+    }
 });
 
 test('Lista: grande em grade de mesma altura por linha; lista em cartões empilhados', () => {

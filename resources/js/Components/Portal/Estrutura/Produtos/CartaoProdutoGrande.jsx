@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
-import { CaminhoCategoria, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { cn } from '@/lib/utils';
 
 // ─── Cartão do produto — Visual grande (REF-1, 167-20) ──────────────────────
 //
@@ -8,13 +9,15 @@ import { CaminhoCategoria, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFoto
 // URL; o nome é um link de verdade (Ctrl+clique abre em outra aba). Só exibe o
 // que o servidor mandou.
 
-export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario, consultando, onAbrir }) {
+export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null }) {
     const primeira = variacoes[0];
     const apoio = [primeira.familia, primeira.ambientes_texto].filter(Boolean).join(' · ');
 
     return (
-        <article data-cartao-produto data-produto-id={produtoId} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
-            className="relative flex cursor-pointer flex-col rounded-[14px] border border-white/[0.08] bg-ecf-card px-5 pb-2 pt-5 transition-colors hover:border-white/[0.16]">
+        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
+            className={cn('relative flex cursor-pointer flex-col rounded-[14px] border border-white/[0.08] bg-ecf-card px-5 pb-2 pt-5 transition-[border-color,box-shadow] duration-700 hover:border-white/[0.16]',
+                classeDestaque(destaque))}>
+            <EtiquetaUltimoAberto destaque={destaque} />
             <div className="flex gap-5">
                 <QuadroFotoProduto nome={primeira.nome} tamanho="cartao" />
                 <div className="min-w-0 flex-1 pr-8">

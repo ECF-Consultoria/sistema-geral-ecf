@@ -8,7 +8,7 @@ import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariaca
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
-import { urlDeVolta, voltarParaLista } from '@/lib/produtosNavegacao';
+import { marcarUltimoProduto, urlDeVolta, voltarParaLista } from '@/lib/produtosNavegacao';
 
 // ─── Ficha do produto em página inteira (REF-2, Fase 167-19) ────────────────
 //
@@ -30,6 +30,9 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const liberado = useRef(false);
     const alteradoRef = useRef(ficha.alterado);
     alteradoRef.current = ficha.alterado;
+    // D-32: o produto que esta ficha representa — a lista destaca o cartão dele na volta, saia como sair.
+    const ultimoRef = useRef(produto?.id ?? null);
+    useEffect(() => () => marcarUltimoProduto(ultimoRef.current), []);
 
     const primeira = ficha.primeira;
     const nome = primeira.nome || 'Novo produto';
@@ -74,6 +77,9 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         const novo = ficha.novoProduto;
         const r = await ficha.salvar();
         if (r.data?.listas) setListas(r.data.listas);
+        // Produto novo ganha id no 1º lote gravado, mesmo se outro lote falhar: a volta já sabe qual destacar.
+        const idGravado = (r.data?.linhas ?? []).find((l) => l.produto_id)?.produto_id;
+        if (idGravado) ultimoRef.current = idGravado;
         if (! r.ok) return;   // erros nos blocos; gravação parcial já aplicada pelo hook
 
         liberado.current = true;
@@ -96,6 +102,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         const sobraram = ficha.vars.filter((x) => x.id && x._k !== linha._k).length;
         if (resposta?.produto_excluido || sobraram === 0) {
             liberado.current = true;
+            ultimoRef.current = null;   // o produto deixou de existir: nada a destacar
             voltarParaLista({ aviso: resposta?.mensagem ?? null, replace: true });
 
             return;

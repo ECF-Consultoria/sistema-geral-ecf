@@ -12,7 +12,7 @@ import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos'
 import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
 import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
 import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
-import { gravarModo, guardarRetorno, lerModo, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
+import { gravarModo, guardarRetorno, lerModo, mostrarCartao, pegarUltimoProduto, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
 //
@@ -56,6 +56,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
+    const [voltouDe, setVoltouDe] = useState(null);        // D-32: produto de onde a pessoa acabou de voltar
+    const [destaqueForte, setDestaqueForte] = useState(true);
 
     // Listas da empresa (família e ambiente): criar um nome na ficha atualiza as duas.
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
@@ -99,12 +101,22 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             : route('portal.auth.estrutura.produtos.novo'));
     };
 
-    // Voltando da ficha: o aviso de "Produto salvo." e a rolagem de antes (ou até o produto novo).
+    // Voltando da ficha: o aviso de "Produto salvo.", a rolagem de antes (ou até o produto novo) e,
+    // saia como sair da ficha, o cartão daquele produto destacado (D-32) — forte por alguns segundos,
+    // depois um contorno leve que fica até sair da página.
     useEffect(() => {
         const volta = pegarVolta();
-        if (! volta) return;
-        if (volta.aviso) setAviso(volta.aviso);
-        rolarParaVolta(volta);
+        if (volta) {
+            if (volta.aviso) setAviso(volta.aviso);
+            rolarParaVolta(volta);
+        }
+        const ultimo = pegarUltimoProduto();
+        if (! ultimo) return undefined;
+        setVoltouDe(ultimo);
+        mostrarCartao(ultimo);
+        const t = setTimeout(() => setDestaqueForte(false), 2500);
+
+        return () => clearTimeout(t);
     }, []);
 
     /** As sugestões gravaram: troca no lugar a variação de mesmo id; variação nova entra junto do produto. */
@@ -271,7 +283,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
 
                 <div className="mt-5">
-                    <ListaProdutos linhas={linhas} vocabulario={vocabulario} consultando={consultando} modo={modo} onAbrir={abrirFicha} />
+                    <ListaProdutos linhas={linhas} vocabulario={vocabulario} consultando={consultando} modo={modo} onAbrir={abrirFicha}
+                        voltouDe={voltouDe} destaqueForte={destaqueForte} />
                 </div>
 
                 {! ml_conectado && (

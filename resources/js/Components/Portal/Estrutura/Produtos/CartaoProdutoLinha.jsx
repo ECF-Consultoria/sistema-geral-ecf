@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
-import { CaminhoCategoria, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { cn } from '@/lib/utils';
 
 // ─── Cartão do produto — Lista (REF-3, 167-20) ──────────────────────────────
 //
@@ -7,13 +8,15 @@ import { CaminhoCategoria, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFoto
 // foto e nome à esquerda; categoria e "Falta" no meio; variações empilhadas à
 // direita; ⋮ no fim. No celular empilha. Só exibe o que o servidor mandou.
 
-export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, consultando, onAbrir }) {
+export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null }) {
     const primeira = variacoes[0];
     const apoio = [primeira.familia, primeira.ambientes_texto].filter(Boolean).join(' · ');
 
     return (
-        <article data-cartao-produto data-produto-id={produtoId} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
-            className="relative grid cursor-pointer grid-cols-1 rounded-[12px] border border-white/[0.08] bg-ecf-card transition-colors hover:border-white/[0.16] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_56px] lg:items-center">
+        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
+            className={cn('relative grid cursor-pointer grid-cols-1 rounded-[12px] border border-white/[0.08] bg-ecf-card transition-[border-color,box-shadow] duration-700 hover:border-white/[0.16] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_56px] lg:items-center',
+                classeDestaque(destaque))}>
+            <EtiquetaUltimoAberto destaque={destaque} />
             <div className="flex items-center gap-7 py-0.5 pl-4 pr-6">
                 <QuadroFotoProduto nome={primeira.nome} tamanho="linha" />
                 <div className="min-w-0">

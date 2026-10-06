@@ -144,6 +144,11 @@ um monte de vezes anúncio". Na planilha, a aba Produtos é onde o cliente cadas
 - **D-31 (06/10, conferência do 167-21):** **sem bolinha de cor** na variação — revoga a parte do D-30 sobre a
   bolinha. O usuário: "não é tão certeiro e acaba poluindo". A cor era palpite pelo nome do valor ("Natural",
   "Grafite") num mapa fixo; o cartão e a lista mostram só Ref, valor, selo de logística e frete.
+- **D-32 (06/10, conferência do 167-21):** **ao voltar da ficha, a lista indica de qual produto a pessoa saiu** —
+  salvando, cancelando, por "← Produtos" ou pelo voltar do navegador. O cartão ganha contorno amarelo e a etiqueta
+  "Último aberto" (forte por ~2,5 s, depois leve até sair da página) e é trazido para a tela se estiver fora dela.
+  A ficha grava o id ao desmontar; a lista consome ao montar (recarregar não repete) e só aceita se for de até 2 min
+  atrás. Produto excluído não deixa destaque.
 
 ### Claude's Discretion
 - **Preço usado para cotar o frete.** O frete do ML depende da faixa de preço, e o preço sai do custo + frete.

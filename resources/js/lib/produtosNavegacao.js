@@ -87,6 +87,45 @@ export function rolarParaVolta(volta) {
     }));
 }
 
+// ─── Produto de onde a pessoa acabou de voltar (D-32) ───────────────────────
+//
+// Ao sair da ficha — salvando, cancelando, por "← Produtos" ou pelo voltar do
+// navegador — a lista destaca o cartão daquele produto. A ficha grava o id ao
+// desmontar; a lista lê e APAGA ao montar. Vale só logo depois de sair: quem
+// passou por outra tela e voltou bem depois não vê destaque velho.
+
+const CHAVE_ULTIMO = 'ecf.produtos.ultimo';
+const ULTIMO_VALE_MS = 2 * 60 * 1000;
+
+/** A ficha chama ao desmontar com o produto que representava (null = nada a destacar, ex.: produto excluído). */
+export function marcarUltimoProduto(produtoId) {
+    if (! produtoId) {
+        apagar(CHAVE_ULTIMO);
+
+        return;
+    }
+    gravar(CHAVE_ULTIMO, { id: Number(produtoId), em: Date.now() });
+}
+
+/** A lista chama ao montar: o id do produto de onde a pessoa voltou, ou null. */
+export function pegarUltimoProduto() {
+    const ultimo = ler(CHAVE_ULTIMO);
+    apagar(CHAVE_ULTIMO);
+    if (! Number.isInteger(ultimo?.id) || typeof ultimo.em !== 'number' || Date.now() - ultimo.em > ULTIMO_VALE_MS) return null;
+
+    return ultimo.id;
+}
+
+/** Traz o cartão para a tela só se ele estiver fora dela — depois de `rolarParaVolta` (rAF triplo). */
+export function mostrarCartao(produtoId) {
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const cartao = document.querySelector(`[data-produto-id="${produtoId}"]`);
+        if (! cartao) return;
+        const { top, bottom } = cartao.getBoundingClientRect();
+        if (top < 0 || bottom > window.innerHeight) cartao.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    })));
+}
+
 // ─── Modo de visualização (167-20, D-26) ────────────────────────────────────
 //
 // "Visual grande" ou "Lista": a escolha fica no navegador (localStorage, dura

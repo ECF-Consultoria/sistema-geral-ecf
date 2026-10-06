@@ -22,7 +22,7 @@ export function agruparPorProduto(linhas) {
     return [...grupos.entries()].map(([produtoId, variacoes]) => ({ produtoId, variacoes }));
 }
 
-export default function ListaProdutos({ linhas, vocabulario, consultando, modo = 'grande', onAbrir }) {
+export default function ListaProdutos({ linhas, vocabulario, consultando, modo = 'grande', onAbrir, voltouDe = null, destaqueForte = false }) {
     const produtos = useMemo(() => agruparPorProduto(linhas), [linhas]);
 
     if (produtos.length === 0) return null;
@@ -33,7 +33,8 @@ export default function ListaProdutos({ linhas, vocabulario, consultando, modo =
         <div data-lista-produtos data-modo={modo}
             className={modo === 'lista' ? 'space-y-3' : 'grid grid-cols-1 gap-x-4 gap-y-6 md:grid-cols-2 min-[1440px]:grid-cols-3'}>
             {produtos.map(({ produtoId, variacoes }) => (
-                <Cartao key={produtoId} produtoId={produtoId} variacoes={variacoes} vocabulario={vocabulario} consultando={consultando} onAbrir={onAbrir} />
+                <Cartao key={produtoId} produtoId={produtoId} variacoes={variacoes} vocabulario={vocabulario} consultando={consultando} onAbrir={onAbrir}
+                    destaque={produtoId === voltouDe ? (destaqueForte ? 'forte' : 'leve') : null} />
             ))}
         </div>
     );
