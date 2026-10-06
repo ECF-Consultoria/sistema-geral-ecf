@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { campoEditaveis, linhaDoServidor } from '@/lib/produtosEstrutura';
-import { gravarVariacoes } from '@/lib/produtosGravacao';
+import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
@@ -204,14 +204,25 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             tamanho: limites?.colar ?? 200,
         });
         const juntas = r.juntas;
+
+        // O que o servidor já gravou volta com os ids (e o produto_id): a próxima tentativa vai por eles,
+        // em vez de recriar e esbarrar em "o código já existe em outro produto" (FE-WR-01).
+        const aplicarGravadas = (comErro) => {
+            const porChave = new Map(juntas.linhas.filter((l) => l.chave).map((l) => [l.chave, l]));
+            if (porChave.size === 0) return;
+            setVars((atual) => atual.map((v) => {
+                const servidor = porChave.get(v._k);
+
+                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k } : v;
+            }));
+        };
+
         if (r.falha) {
-            const e = r.falha;
-            setAviso(e.response && e.response.status < 500
-                ? (e.response.data?.message ?? 'Não foi possível salvar agora. O que você digitou fica aqui.')
-                : 'Não foi possível salvar agora. O que você digitou fica aqui; tente de novo.');
+            aplicarGravadas({});
+            setAviso(mensagemDeFalha(r.falha));
             setSalvando(false);
 
-            return { ok: false, data: null };
+            return { ok: false, data: juntas };
         }
 
         const comErro = {};
@@ -230,12 +241,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             setRascunho(null);
         } else {
             // Parcial: o que gravou volta com os ids do servidor; o que falhou fica como está, com o motivo.
-            const porChave = new Map(juntas.linhas.filter((l) => l.chave).map((l) => [l.chave, l]));
-            setVars((atual) => atual.map((v) => {
-                const servidor = porChave.get(v._k);
-
-                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k } : v;
-            }));
+            aplicarGravadas(comErro);
             setErros(comErro);
         }
         setSalvando(false);

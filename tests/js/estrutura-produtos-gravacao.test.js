@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gravarVariacoes } from '../../resources/js/lib/produtosGravacao.js';
+import { gravarVariacoes, mensagemDeFalha } from '../../resources/js/lib/produtosGravacao.js';
+import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sequência REAL do "Salvar produto" da ficha (revisão da Fase 167, FE-CR-01 e FE-IN-13).
@@ -112,4 +113,30 @@ test('falha de rede no meio: devolve a falha E o que os lotes anteriores já gra
     assert.equal(r.parou, true);
     assert.equal(r.produtoId, 6, 'o produto criado na 1ª chamada não se perde');
     assert.deepEqual(r.juntas.linhas.map((l) => l.chave), ['m1']);
+});
+
+test('FE-WR-01: na falha o hook aplica o que já gravou e devolve os dados juntos (não null)', () => {
+    const hook = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/useFichaProduto.js');
+
+    assert.match(hook, /if \(r\.falha\) \{\s*aplicarGravadas\(\{\}\);\s*setAviso\(mensagemDeFalha\(r\.falha\)\);\s*setSalvando\(false\);\s*return \{ ok: false, data: juntas \};/);
+    assert.equal(contarFalhaNula(hook), 0, 'depois do POST nenhuma saída joga fora o que voltou');
+});
+
+/** `return { ok: false, data: null }` só pode aparecer antes do POST (salvando em curso ou Ref/nome faltando). */
+function contarFalhaNula(hook) {
+    const depoisDoPost = hook.slice(hook.indexOf('gravarVariacoes(vars'));
+
+    return (depoisDoPost.match(/return \{ ok: false, data: null \}/g) ?? []).length;
+}
+
+test('FE-IN-11: 419 e 429 têm texto próprio em português; 422 usa a mensagem do servidor', () => {
+    const erro = (status, message) => ({ response: { status, data: message ? { message } : {} } });
+
+    assert.match(mensagemDeFalha(erro(419, 'CSRF token mismatch.')), /^Sua sessão expirou\. Recarregue a página/);
+    assert.match(mensagemDeFalha(erro(429, 'Too Many Attempts.')), /^Muitas gravações seguidas\./);
+    assert.equal(mensagemDeFalha(erro(422, 'Envie no máximo 200 linhas por vez.')), 'Envie no máximo 200 linhas por vez.');
+    assert.equal(mensagemDeFalha(erro(403, 'This action is unauthorized.')), 'Não foi possível salvar agora. O que você digitou fica aqui.');
+    assert.match(mensagemDeFalha(erro(504)), /tente de novo\.$/);
+    assert.match(mensagemDeFalha(new Error('Network Error')), /tente de novo\.$/);
+    for (const s of [419, 429, 403, 500]) assert.ok(! /CSRF|Too Many|unauthorized/i.test(mensagemDeFalha(erro(s, 'CSRF token mismatch. Too Many Attempts.'))));
 });

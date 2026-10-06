@@ -23,6 +23,21 @@ export const juntasVazias = () => ({
     linhas: [], erros: [], avisos: [], criadas_nas_listas: { familias: [], ambientes: [] }, listas: null,
 });
 
+/**
+ * O aviso da ficha quando o POST não respondeu bem (FE-IN-11). O Laravel responde 419 e
+ * 429 em inglês ("CSRF token mismatch.", "Too Many Attempts."): esses têm texto próprio.
+ * Só a mensagem do 422 (validação, já em português) vai como veio.
+ */
+export function mensagemDeFalha(e) {
+    const status = e?.response?.status;
+    if (status === 419) return 'Sua sessão expirou. Recarregue a página; o que você digitou fica guardado para recuperar.';
+    if (status === 429) return 'Muitas gravações seguidas. Espere um minuto e tente de novo; o que você digitou fica aqui.';
+    if (status === 422 && typeof e.response.data?.message === 'string' && e.response.data.message !== '') return e.response.data.message;
+    if (status && status < 500) return 'Não foi possível salvar agora. O que você digitou fica aqui.';
+
+    return 'Não foi possível salvar agora. O que você digitou fica aqui; tente de novo.';
+}
+
 /** A ficha nunca manda `grupo`: a linha do servidor traz o código do produto nele. */
 const semGrupo = (v) => {
     const { grupo: _grupo, ...resto } = v;
