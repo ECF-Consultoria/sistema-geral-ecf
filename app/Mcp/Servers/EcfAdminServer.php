@@ -8,6 +8,7 @@ use App\Mcp\Tools\AtuarNoTicketTool;
 use App\Mcp\Tools\DemandasDevTool;
 use App\Mcp\Tools\EnviarFormularioTool;
 use App\Mcp\Tools\LerTelaTool;
+use App\Mcp\Tools\LerTicketTool;
 use App\Mcp\Tools\ListarAcoesTool;
 use App\Mcp\Tools\ListarEmpresasTool;
 use App\Mcp\Tools\ListarTelasTool;
@@ -54,6 +55,7 @@ Ferramentas e telas:
 - ppa → /ppa e /mlb/polos-ppa (planos de ação)
 - alertas_estrategicos → /alertas-estrategicos (alertas diários do ECF Drive)
 - painel_executivo → /painel-executivo (carteira inteira no ECF Drive, só admin)
+- ler_ticket → tickets do time de desenvolvimento: a lista (equipe dev: a caixa da equipe; demais: os que a pessoa abriu) e o detalhe com descrição, mensagens e os prints anexados
 - listar_telas + ler_tela → QUALQUER outra tela do Admin (NPS, contratos, onboarding, painel dos Polos, detalhe de empresa, dashboard, desempenho, metas, comercial, MLB, agenda, tickets...). Prefira as ferramentas específicas quando elas respondem a pergunta; para o resto, ache a tela com listar_telas e abra com ler_tela — primeiro sem "campo" (resumo), depois com o "campo" que interessa.
 
 Cada fonte conta empresas de um universo diferente: o Cadastro (/companies) conta só Performance sem Polos; o Painel Executivo conta todos os sellers da carteira no ECF Drive, inclusive Polos. Não compare esses totais como se fossem o mesmo número. Diga ao usuário de qual tela o número veio.
@@ -70,6 +72,13 @@ Ao gravar: use o que a pessoa disse; se faltar algo obrigatório que você não 
 MD)]
 class EcfAdminServer extends Server
 {
+    /**
+     * `tools/list` do pacote pagina de 15 em 15 por padrão. Com mais de 15
+     * ferramentas, as últimas iriam para uma 2ª página que nem todo cliente
+     * busca — a ferramenta simplesmente sumiria da conversa. Uma página só.
+     */
+    public int $defaultPaginationLength = 50;
+
     /** @var array<int, class-string<\Laravel\Mcp\Server\Tool>> */
     protected array $tools = [
         ListarEmpresasTool::class,
@@ -81,6 +90,7 @@ class EcfAdminServer extends Server
         PainelExecutivoTool::class,
         ListarTelasTool::class,
         LerTelaTool::class,
+        LerTicketTool::class,
         // Gravação
         AbrirTicketTool::class,
         AtuarNoTicketTool::class,

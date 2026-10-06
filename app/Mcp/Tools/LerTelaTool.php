@@ -38,6 +38,7 @@ Como usar:
 2. Peça o que interessa com "campo" (caminho com pontos, ex.: "companies", "stats.total_revenue", "empresas.0.contratos"). Listas vêm paginadas (limite/cursor).
 Telas com lista paginada pelo servidor (campo do tipo "lista paginada pela tela") mudam de página com filtros {"page": N}. Os filtros da URL da tela (ex.: {"mes": "2026-09"}, {"period": "30"}) vão em "filtros".
 Os números são os da tela no momento da consulta (cache de 2 minutos por tela).
+Tickets: use ler_ticket. A tela chamados.index (/tickets) mostra só os tickets que a própria pessoa ABRIU — inclusive para quem é da equipe dev; a caixa da equipe é a dev.demandas.index (campo "chamados").
 TXT)]
 class LerTelaTool extends FerramentaEcf
 {

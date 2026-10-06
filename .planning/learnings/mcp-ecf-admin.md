@@ -228,3 +228,34 @@ confirmação no servidor) e "pode editar o que quiser".
   (o Erlon usa a Admin #1) aparece como "Admin" nos dois.
 - A tela de autorização do OAuth dizia "o acesso é só de leitura" — foi
   corrigida. Quem autorizou antes leu o texto antigo.
+
+## 11. Tickets pelo MCP: o que parecia recorte errado (06/10/2026)
+
+Relato: pelo `ler_tela`, o dev via em `chamados.index` só o ticket que ele
+mesmo abriu, e o detalhe dava "redirecionou para fora do que o MCP pode
+abrir". Não era autenticação (o MCP põe o usuário no guard `web`; "ser da
+equipe" é `is_dev`/`role` na tabela, sem guard — e nenhuma tela interna decide
+papel por guard ou sessão, só o Portal do Cliente, que fica fora).
+
+- **`/tickets` é a tela de QUEM PEDIU**: lista só `solicitante_id = usuário`,
+  para todo mundo, dev inclusive, no navegador também. A caixa da equipe é a
+  aba Tickets de `/dev/demandas` (prop `chamados` de `dev.demandas.index`;
+  detalhe no prop `chamado_detalhe` com `?ticket=ID`). Quem diz "no navegador
+  eu vejo" está olhando essa aba.
+- **`/tickets/{id}` fica bloqueado no `ler_tela`** (abrir marca os avisos do
+  ticket como lidos). Por isso existe `ler_ticket`: lista (equipe = caixa da
+  equipe + os que abriu; demais = os que abriram) e detalhe pelo
+  `ChamadoService` (`podeVer` / `detalhe`), sem efeito colateral, com os
+  prints como imagem (reduzidos a 1568 px em JPEG quando grandes). Nota
+  interna e anexo de nota interna só para quem atua como equipe.
+- **Rota sem nome vira `generated::<aleatório>` com `route:cache`** — só em
+  produção; nos testes ela não tem nome. Os redirecionamentos antigos
+  `/chamados` e `/chamados/{chamado}` entraram assim no `listar_telas`. Os
+  dois catálogos agora descartam `generated::` (`CatalogoDeTelas::nomeGerado`).
+  Teste que confia em "rota sem nome não entra" não pega isso: registre a rota
+  com o nome `generated::...` explícito.
+- **`tools/list` pagina de 15 em 15** no `laravel/mcp` (`defaultPaginationLength`).
+  A 16ª ferramenta iria para uma 2ª página que nem todo cliente busca e
+  sumiria da conversa sem erro nenhum. `EcfAdminServer` usa página de 50; o
+  `ServidorMcpTest` confere que não há `nextCursor`.
+

@@ -128,6 +128,18 @@ final class CatalogoDeTelas
         return $this->ehTelaDeLeitura($rota) ? $rota->getName() : null;
     }
 
+    /**
+     * Rota SEM nome no código ganha um `generated::<aleatório>` do Laravel
+     * quando as rotas estão em cache (`route:cache`, produção) — nos testes ela
+     * simplesmente não tem nome. São redirecionamentos/closures antigos (ex.:
+     * `/chamados/{chamado}` → `/tickets/{id}`): não são tela, e o nome muda a
+     * cada cache.
+     */
+    public static function nomeGerado(string $nome): bool
+    {
+        return str_starts_with($nome, 'generated::');
+    }
+
     public static function bloqueada(string $nome): bool
     {
         foreach (self::BLOQUEADAS as $regra) {
@@ -142,7 +154,7 @@ final class CatalogoDeTelas
     private function ehTelaDeLeitura(Route $r): bool
     {
         $nome = $r->getName();
-        if (! $nome || ! in_array('GET', $r->methods(), true)) {
+        if (! $nome || self::nomeGerado($nome) || ! in_array('GET', $r->methods(), true)) {
             return false;
         }
         if (self::bloqueada($nome)) {

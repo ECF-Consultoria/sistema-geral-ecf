@@ -113,7 +113,7 @@ class ServidorMcpTest extends TestCase
         'salvar_demanda',
     ];
 
-    public function test_admin_ve_as_quinze_ferramentas(): void
+    public function test_admin_ve_as_dezesseis_ferramentas(): void
     {
         $this->assertSame([
             'abrir_ticket',
@@ -122,6 +122,7 @@ class ServidorMcpTest extends TestCase
             'demandas_dev',
             'enviar_formulario',
             'ler_tela',
+            'ler_ticket',
             'listar_acoes',
             'listar_empresas',
             'listar_telas',
@@ -144,7 +145,7 @@ class ServidorMcpTest extends TestCase
         $consultor = User::factory()->create(['role' => 'consultor', 'active' => true]);
 
         $this->assertSame(
-            ['abrir_ticket', 'alertas_estrategicos', 'atuar_no_ticket', 'enviar_formulario', 'ler_tela', 'listar_acoes', 'listar_telas', 'ppa'],
+            ['abrir_ticket', 'alertas_estrategicos', 'atuar_no_ticket', 'enviar_formulario', 'ler_tela', 'ler_ticket', 'listar_acoes', 'listar_telas', 'ppa'],
             $this->ferramentasVisiveis($consultor)
         );
 
@@ -157,9 +158,12 @@ class ServidorMcpTest extends TestCase
 
     public function test_so_as_ferramentas_de_gravacao_declaram_que_gravam(): void
     {
-        $ferramentas = $this->rpc($this->admin(), 'tools/list')->assertOk()->json('result.tools');
+        $lista       = $this->rpc($this->admin(), 'tools/list')->assertOk();
+        $ferramentas = $lista->json('result.tools');
 
-        $this->assertCount(15, $ferramentas);
+        $this->assertCount(16, $ferramentas);
+        // Tudo numa página: o pacote pagina de 15 em 15 e nem todo cliente busca a 2ª.
+        $this->assertNull($lista->json('result.nextCursor'));
         foreach ($ferramentas as $f) {
             $grava = in_array($f['name'], self::FERRAMENTAS_DE_ESCRITA, true);
             $this->assertSame(! $grava, $f['annotations']['readOnlyHint'] ?? null, "{$f['name']}: readOnlyHint errado");
