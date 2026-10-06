@@ -37,6 +37,15 @@ test('JanelaImportacao: prévia por axios, confirmação reenvia o arquivo por r
     assert.match(importacao, /novos \?\? 0\) \+ \(previa\.totais\?\.atualizados \?\? 0\)\) > 0/);
 });
 
+test('JanelaImportacao: depois de um erro o mesmo arquivo pode ser escolhido de novo (FE-IN-07)', () => {
+    assert.ok(importacao.includes("const limparEntrada = () => { if (entrada.current) entrada.current.value = ''; };"));
+    const escolher = importacao.slice(importacao.indexOf('const escolher = async'), importacao.indexOf('const voltar = '));
+    // extensão inválida, tamanho acima do limite e falha da prévia limpam o campo
+    assert.equal((escolher.match(/limparEntrada\(\);/g) ?? []).length, 3);
+    assert.match(escolher, /\.xlsx\$\/i\.test\(f\.name\)\) \{ limparEntrada\(\);/);
+    assert.match(escolher, /catch \(e\) \{\s*setArquivo\(null\);\s*limparEntrada\(\);/);
+});
+
 test('JanelaImportacao: cores dos grupos, erros abertos e sem caixa-alta', () => {
     assert.match(importacao, /text-emerald-300/);
     assert.match(importacao, /text-sky-300/);

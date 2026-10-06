@@ -102,12 +102,16 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
         if (aberta) { setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
     }, [aberta]);
 
+    // Depois de um erro, escolher o MESMO arquivo (já corrigido) tem de disparar o onChange de novo:
+    // o campo volta a ficar vazio (revisão FE-IN-07).
+    const limparEntrada = () => { if (entrada.current) entrada.current.value = ''; };
+
     const escolher = async (f) => {
         if (! f) return;
         setErro(null);
         setPrevia(null);
-        if (! /\.xlsx$/i.test(f.name)) { setErro('Envie um arquivo .xlsx. Baixe o modelo se precisar.'); return; }
-        if (f.size > mb * 1024 * 1024) { setErro(`O arquivo passa de ${mb} MB. Divida a planilha e importe em partes.`); return; }
+        if (! /\.xlsx$/i.test(f.name)) { limparEntrada(); setErro('Envie um arquivo .xlsx. Baixe o modelo se precisar.'); return; }
+        if (f.size > mb * 1024 * 1024) { limparEntrada(); setErro(`O arquivo passa de ${mb} MB. Divida a planilha e importe em partes.`); return; }
         setArquivo(f);
         setLendo(true);
         const dados = new FormData();
@@ -117,13 +121,14 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
             setPrevia(data);
         } catch (e) {
             setArquivo(null);
+            limparEntrada();
             setErro(e.response?.data?.errors?.arquivo?.[0] ?? e.response?.data?.message ?? 'Não foi possível ler a planilha agora. Tente de novo.');
         } finally {
             setLendo(false);
         }
     };
 
-    const voltar = () => { setArquivo(null); setPrevia(null); setErro(null); if (entrada.current) entrada.current.value = ''; };
+    const voltar = () => { setArquivo(null); setPrevia(null); setErro(null); limparEntrada(); };
 
     const podeConfirmar = !! previa && ! previa.erro_geral && ((previa.totais?.novos ?? 0) + (previa.totais?.atualizados ?? 0)) > 0;
 
