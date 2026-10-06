@@ -2092,7 +2092,6 @@ Quatro coisas precisam mudar em relação ao que existe hoje em `/financeiro` (`
 **Plans:** 4/9 plans executed
 
 Plans:
-
 - [x] 137-01-PLAN.md — Schema e models das faixas de faturamento (por serviço e por empresa) + seed das três tabelas medidas (D-02b)
 - [x] 137-02-PLAN.md — Schema e models do snapshot congelado por competência + auditoria de reconsolidação
 - [x] 137-03-PLAN.md — FechamentoFaixaResolver (herança serviço→empresa) e FechamentoRollupService (ML+Shopee em mês-calendário)
@@ -2121,11 +2120,9 @@ tabelas diferentes **quem manda muda de mês para mês**, silenciosamente, confo
 Decisão do usuário (2026-09-03): criar tabela de grupo cadastrável pela tela, com precedência:
 
 ```
-
 1. tabela própria do GRUPO      <- nova
 2. tabela própria da EMPRESA    <- já existe (empresa_faixas_faturamento)
 3. tabela do SERVIÇO (padrão)   <- já existe (servico_faixas_faturamento)
-
 ```
 
 **2. Aviso de mudança de faixa para os admins.** Pedido do usuário. O dado já é calculado: o
@@ -2150,7 +2147,6 @@ reescrito.
 05 e 06 em paralelo)
 
 Plans:
-
 - [x] 138-01-PLAN.md — Tabela do grupo: migration, model e precedência no `FechamentoFaixaResolver`
 - [x] 138-02-PLAN.md — Idempotência do aviso (`notificado_em`/`notificado_faixa_ordem`), categoria `faixa_alterada` e rótulo na tela de notificações
 - [x] 138-03-PLAN.md — `fechamento:consolidar-mes` classifica o grupo pela tabela do grupo, com âncora como fallback rastreável
@@ -2220,7 +2216,6 @@ haveria como paralelizar sem conflito). Backend primeiro: uma tela redesenhada e
 inexistente é o pior ponto de partida possível.
 
 Plans:
-
 - [x] 139-01-PLAN.md — Faixa anterior e ganho do upgrade nos quatro caminhos de montagem de linha (`FechamentoComparativoService`)
 - [x] 139-02-PLAN.md — Prop `totais`: total a receber, mês passado, variação, faturamento gerado e os números dos upgrades
 - [x] 139-03-PLAN.md — Cabeçalho e os três widgets do topo (Total a receber, Subiram de faixa, Serviços contratados)
@@ -2285,7 +2280,6 @@ leitura ou instalar poppler.
 depois de o usuário aprovar a rodada real do relatório (checkpoint do 140-03).
 
 Plans:
-
 - [x] 140-01-PLAN.md — wave 1 — ler o acervo do Clicksign: listar envelopes, filtrar gestão de ADS, baixar o arquivo dentro dos 299s
 - [x] 140-02-PLAN.md — wave 1 — ler o texto do contrato (PDF e ZIP) e extrair tabela, valor fixo, CNPJ e razão social
 - [ ] 140-03-PLAN.md — wave 2 — palpite de empresa com confiança honesta + comando `clicksign:extrair-tabelas` (só relatório) + **checkpoint: rodada real e decisão de continuar** — ⚠️ a rodada real completa já rodou em produção (85 contratos, 49 tabelas, 29 valor fixo, 0 casamentos com segurança) e o checkpoint foi respondido pelo usuário no prompt do 140-04, mas falta `140-03-SUMMARY.md` formal — pendência do coordenador
@@ -2346,7 +2340,6 @@ fase (o `REQUIREMENTS.md` da raiz parou na v17.0):
 **Plans:** 7 plans em 4 waves
 
 Plans:
-
 - [x] 141-01-PLAN.md — Elegibilidade de plataforma: `servicos.usa_tabela_progressiva` + rollup que só soma plataforma contratada (wave 1)
 - [x] 141-02-PLAN.md — Flag de corte `fechamento_tabela_por_empresa_ativa` + `CobrancaCalculator::mensalidade()` + estado `valor_fixo` (wave 1)
 - [x] 141-03-PLAN.md — Transição: procedência da tabela da empresa + comando `fechamento:materializar-tabelas` (wave 1)
@@ -2398,7 +2391,6 @@ convivem, se uma leva à outra, ou se viram a mesma coisa.
 **Plans:** 2/4 plans executed
 
 Plans:
-
 - [x] 142-01-PLAN.md — expõe as LINHAS da tabela própria nas props e cria a porta única de escrita (`GravarTabelaEmpresaService`), com trilha de auditoria e a trava de "tabela copiada nunca sobrescreve tabela conferida". Registra a decisão de projeto sobre conviver com a tela da Fase 140.
 - [x] 142-02-PLAN.md — rotas, controller e autorização da página exclusiva dentro do módulo de contratos, mais o botão em `/administrativo/contratos/empresa/{id}`.
 - [x] 142-03-PLAN.md — máscara de dinheiro (react-imask), grade da tabela virando componente compartilhado e a página `Admin/TabelaEmpresa.jsx` com o formulário abrindo preenchido com o que está gravado.
@@ -2694,7 +2686,6 @@ Plans:
 **Depends on:** nenhuma (o cálculo já suporta papel duplo — regra D-02 da Fase 118 — quando a resposta de NPS tem atribuição por papel; o ramo legado usa um cargo só por pessoa e é medido antes da junção, D-09)
 **Por que GSD:** altera `user_setores` (tabela com dado em produção) e a junção das contas mexe em snapshots e atribuições de NPS que alimentam bonificação.
 **Success Criteria:**
-
   1. Uma pessoa pode ter os cargos analista e estrategista no mesmo setor, marcados pela tela /users
   2. A tela da empresa grava a mesma pessoa como analista e estrategista, e salvar de novo não apaga nenhum dos papéis; o histórico registra os dois
   3. Quem tem os dois cargos aparece nos dois selects de responsável
@@ -2705,7 +2696,6 @@ Plans:
 **Plans:** 7/8 executados (código no ar em `c7a58b3b`, 2026-10-01); 159-08 adiado — decisões em `.planning/phases/159-pessoa-com-dois-cargos-e-juncao-das-contas-do-danilo/159-CONTEXT.md`
 
 Plans:
-
 - [x] 159-01-PLAN.md — baseline de testes (D-12), unique de user_setores por cargo (D-01) e /users com dois cargos no mesmo setor (D-02) · wave 1
 - [x] 159-02-PLAN.md — /administrativo/setores por cargo (D-10) e consumidores de Setor::membros sem duplicar pessoa · wave 2
 - [x] 159-03-PLAN.md — empresa com a mesma pessoa nos dois papéis (D-03), selects (D-04), NPS por função (D-07) e menu (D-08) · wave 2
@@ -2817,7 +2807,6 @@ Plans:
 **Plans:** 8 plans
 
 **Escopo combinado (só ACRESCENTA, nada do que existe muda de comportamento):**
-
 - coluna anulável `pub_rascunho_id` em `ml_anuncio_criativos` e `ml_anuncio_criativo_kits` (tabelas COM dado em produção → por isso esta fase é GSD: baseline de testes, VERIFICATION);
 - segundo caminho no `CreativeContextBuilder::paraCriativo` lendo o rascunho do Publicador; o caminho do `payload` do assistente antigo fica byte a byte igual;
 - endpoints novos em `mlb.anuncios.publicador.criativos.*` reaproveitando planejar/gerar/regenerar/aprovar do kit, com o kit endereçado pelo `id` escopado ao rascunho (nenhum token de criativo chega ao navegador — D-13);
@@ -2826,7 +2815,6 @@ Plans:
 - fora: `MlPublicacaoService`, `CreativeKitPublicacao`, gate do PUB-03, Fase 162.
 
 Plans:
-
 - [ ] 165-01-PLAN.md — checkpoint de coordenação com o outro dev, baseline de testes (commit próprio), migration aditiva (`pub_rascunho_id`, `pub_grupo`, `pub_imagem_id`) e models
 - [ ] 165-02-PLAN.md — adaptador `ContextoCriativoDoPublicador`, ramo novo no `CreativeContextBuilder` (valor da variação como fato) e trait de teste
 - [ ] 165-03-PLAN.md — serviços: imagem aprovada vira `pub_imagens` (D26, dedupe, sem truncar) e referências efêmeras das fotos do rascunho
@@ -2848,7 +2836,6 @@ Plans:
 **Plans:** 16/16 plans — código COMPLETO em 2026-10-05 (verificação `human_needed`: 20/20 requisitos, 13/13 decisões; falta só a prova real na #459, pós-deploy — `166-HUMAN-UAT.md`)
 
 **Já sabido (pesquisa de 2026-10-04, `166-PESQUISA-API.md`):**
-
 - Central de promoções e cupons: API completa (`/seller-promotions`, `app_version=v2`); cupom do vendedor só no Brasil; reputação verde, item ativo e exposição paga para criar desconto/campanha/cupom.
 - Publicidade: leitura documentada (campanhas, anúncios, ad groups, métricas, bonificações); escrita NÃO está na documentação brasileira e nunca foi provada (permissão "Advertising" do app ECF no DevCenter pendente desde 2026-06-27).
 - Atacado: só contas com a tag `business`; o formato absoluto (`/prices/standard/quantity`) é descontinuado em 2026-10-27 — usar o % B2B (`/prices/price-per-quantity`, header `x-version`).
@@ -2856,7 +2843,6 @@ Plans:
 - Escrita em conta de cliente é o objetivo da fase, mas a regra do usuário de 2026-10-01 (só a #459 recebe escrita de teste) precisa ser revista na discussão antes de qualquer POST/PUT/DELETE real.
 
 Plans:
-
 - [x] 166-01-PLAN.md — baseline de testes (commit próprio), trava própria das Alavancas (`AlavancasLiberadas` + config) e a tabela `pub_alavanca_escritas` com o desenho escrito
 - [x] 166-02-PLAN.md — cliente do Publicador com cabeçalhos (host fixo em produção), `MapeadorErroAlavanca`, contexto da conta para as duas âncoras, cache por conta e o cenário de teste
 - [x] 166-03-PLAN.md — núcleo de escrita: contrato `AcaoAlavanca`, `EscritorAlavancas` (trava, vendedor, histórico antes do envio, 423/5xx), assinatura da prévia e guarda do caminho único
@@ -2882,7 +2868,6 @@ Plans:
 **Plans:** 21/21 plans — código COMPLETO em 2026-10-06 (tela aprovada pelo usuário; revisão de código com 5 bloqueios, 16 avisos e 22 informativos, 40 corrigidos — `167-REVIEW-FIX.md`; verificação `human_needed` 30/30 — `167-VERIFICATION.md`). **DEPLOYADA em 2026-10-06** (push `553253d1..9d54db33`, migrations no lote 164, 515 ofertas antes e depois, nenhuma ligada). Falta: frete real com "pode" e `mimes:xlsx` com exportações reais
 
 **Já sabido (análise de 2026-10-05, na conversa com o usuário):**
-
 - A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
 - Regra de combinação medida na planilha (70 produtos → 199 ofertas: 70 Simples, 46 Combo, 44 Kit, 39 Combit — as 4 FASES que `EstruturaOferta` já tem): das 83 ofertas com 2+ produtos, **0 misturam família** e 82 dividem ao menos um ambiente; família + ambiente dão 105 pares possíveis e só 43 foram usados (o 3º filtro, "faz sentido", fica para a fase de geração). Por isso família e ambiente precisam nascer como dado estruturado, não texto livre.
 - Ambiente é múltiplo e a planilha já tem grafias divergentes ("Sala estar"/"Sala Estar", "Quarto/Sala estar") → lista da própria empresa (criada uma vez, depois escolhida), com marcação múltipla (D-05 do 167-CONTEXT).
@@ -2893,7 +2878,6 @@ Plans:
 - Fora desta fase (fases seguintes): geração automática das ofertas, logística e frete de kits/combos (a logística provável, o peso cubado e o frete ME2 POR VARIAÇÃO entraram nesta fase — D-15/D-16 do 167-CONTEXT), grade de MC 30/20/10/0 e tarifa por categoria pela API, cronograma por capacidade e checklist de alavancas.
 
 Plans:
-
 - [x] 167-01-PLAN.md — baseline de testes (commit próprio), desenho do schema, 6 tabelas novas + models e o ALTER `estrutura_ofertas.variacao_id` provado no MariaDB local
 - [x] 167-02-PLAN.md — regras puras: config global do ML, NumeroBr, VolumesTexto, logística provável (ME2/Full/ME1/pendente, pacote empilhado), tabela de frete ECF e pendências
 - [x] 167-03-PLAN.md — famílias e ambientes como listas da empresa; oferta ligada no EstruturaOfertaService (criar, sincronizar, proteger na Lista SKUs)
@@ -2915,6 +2899,7 @@ Plans:
 - [x] 167-19-PLAN.md — fechamento de lacuna (D-25..D-30, REF-2): ficha do produto em PÁGINA INTEIRA com URL própria (`/portal/estrutura/produtos/novo` e `/{id}`, allowlist sem curinga), regra do painel extraída para `useFichaProduto`, dados gerais, variações, volumes e calculados só leitura; fim do painel lateral
 - [x] 167-20-PLAN.md — fechamento de lacuna (D-25/D-26/D-30, REF-1 e REF-3): topo das referências (trilha em círculos, ações com busca), seletor Visual grande / Lista guardado no navegador, cartões grandes e horizontais com bolinha de cor, "Falta" com detalhe e ⋮ com ações reais; volta da ficha preservando busca, página, modo e rolagem
 - [x] 167-21-PLAN.md — passe de FIDELIDADE: capturas a 1586×992 dos 3 estados comparadas lado a lado com as referências (até 2 rodadas de ajuste), fluxo lista → ficha → lista provado no navegador, UI-SPEC "Revisão D-25..D-30" e gate final; a conferência humana volta para a Task 3 do 167-17
+
 
 ### Phase 168: Geração de ofertas a partir dos produtos — Combo, Kit e Combit sugeridos (aba Planejamento da planilha)
 
@@ -3008,7 +2993,6 @@ Plans:
   5. O módulo nasce atrás de uma chave que a equipe desliga sem deploy; a chave do Gemini nunca aparece em log, payload de log ou base64 registrado; e um duplo clique em "Gerar com IA" não dispara dois jobs para o mesmo produto (OPS-01, OPS-03, GEN-05, GEN-06)
 
 **Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável)
-
 - [ ] 160-01-PLAN.md — Upload efêmero da foto de referência: tabela `ml_anuncio_criativos`, chave liga/desliga sem deploy e painel separado na etapa 5
 - [ ] 160-02-PLAN.md — Gerar UMA imagem de verdade: contexto + Product Truth + prompt, job na fila `high` e revisão lado a lado com polling
 - [ ] 160-03-PLAN.md — Aprovar: envio ao ML por `MlImagemService::enviar()` e gravação em `payload.pictures`
@@ -3032,13 +3016,11 @@ Plans:
   5. Gerar, regenerar e aprovar exigem permissão explícita verificada no servidor — não é só o gate `role:admin` do módulo (OPS-04)
 
 **Plans**: 5 plans (fatias verticais, uma por wave — a próxima só começa quando a anterior está demonstrável, mesmo desenho da Fase 160)
-
 - [ ] 161-01-PLAN.md — Kit planejado: tabela de kit + colunas aditivas, catálogo de slots, planner híbrido com reconciliação determinística, permissão explícita e os 7 slots visíveis na tela (sem gerar imagem)
 - [ ] 161-02-PLAN.md — As 7 imagens de verdade: prompt por slot, unicidade do job por criativo, despacho em ondas com teto de custo e progresso por imagem
 - [ ] 161-03-PLAN.md — Regenerar a ruim, aprovar imagem por imagem e aprovar o kit, com a ordem dos slots e o limite de fotos da categoria
 - [ ] 161-04-PLAN.md — Guarda-corpo da publicação: kit aprovado obrigatório e re-aplicação das imagens no único chokepoint de publicação
 - [ ] 161-05-PLAN.md — Checkpoint humano: kit real de 7 com cota paga (~US$ 0,71), números lidos da tabela e estado deixado em produção
-
 **UI hint**: yes
 
 ### Phase 162: Validação automática (Gemini como juiz), regeneração automática e alerta de risco
@@ -3060,7 +3042,6 @@ Plans:
 **UI hint**: yes
 
 Plans:
-
 - [ ] 162-01-PLAN.md — juiz de visão: contrato novo de julgamento, caminho aditivo no GeminiImageProvider, prompt em pt-BR pedindo JSON, reconciliação no servidor, colunas de validação e comando `creative:validar-criativo`
 - [ ] 162-02-PLAN.md — validação automática no fluxo: `ValidarCriativoIaJob` na fila `creative`, trava de tempo (VAL-06) e gate de aprovação por slot e do kit (com confirmação de risco)
 - [ ] 162-03-PLAN.md — regeneração automática uma vez pelo motivo da rejeição, dentro do orçamento de regeneração já existente
