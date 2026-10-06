@@ -46,12 +46,18 @@ class ModeloEImportacaoTest extends TestCase
 
         Http::fake(function (Request $r) {
             if (preg_match('#/categories/(MLB\d+)$#', $r->url(), $m)) {
-                return $m[1] === 'MLB1'
-                    ? Http::response([
+                return match ($m[1]) {
+                    'MLB1' => Http::response([
                         'id' => 'MLB1', 'name' => 'Cristaleiras', 'children_categories' => [],
                         'path_from_root' => [['id' => 'MLB9', 'name' => 'Moveis'], ['id' => 'MLB1', 'name' => 'Cristaleiras']],
-                    ])
-                    : Http::response(['message' => 'erro'], 500);
+                    ]),
+                    // Categoria pai (não é folha): só falha na GRAVAÇÃO.
+                    'MLB2' => Http::response([
+                        'id' => 'MLB2', 'name' => 'Moveis', 'children_categories' => [['id' => 'MLB1', 'name' => 'Cristaleiras']],
+                        'path_from_root' => [['id' => 'MLB2', 'name' => 'Moveis']],
+                    ]),
+                    default => Http::response(['message' => 'erro'], 500),
+                };
             }
 
             return Http::response([], 404);
@@ -375,7 +381,8 @@ class ModeloEImportacaoTest extends TestCase
 
         $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
 
-        $this->assertSame(['novos' => 3, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1], $r);
+        $this->assertSame(['novos' => 3, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1,
+            'nao_entraram' => [['linha' => 5, 'codigo' => null, 'motivo' => 'Informe o código (Ref).']]], $r);
         $this->assertSame(2, EstruturaProduto::count());
         $this->assertSame(3, EstruturaProdutoVariacao::count());
         $this->assertSame(3, EstruturaOferta::whereNotNull('variacao_id')->count());
@@ -384,6 +391,38 @@ class ModeloEImportacaoTest extends TestCase
             ->first(fn ($l) => $l->getExtraProperty('evento') === 'produtos_gravados');
         $this->assertNotNull($log);
         $this->assertSame('importacao', $log->getExtraProperty('modo'));
+    }
+
+    /**
+     * BE-WR-04: a Ref repetida no arquivo vai para os erros já na prévia (a 2ª sobrescreveria a
+     * 1ª), e a linha que só falha na gravação (categoria que não é folha) volta em `nao_entraram`.
+     */
+    public function test_ref_repetida_no_arquivo_e_erro_de_gravacao_voltam_como_linhas_que_nao_entraram(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $caminho = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['OK-1', null, null, 'Certo', null, null, null, null, null, null, '10,00'],
+            ['PAI-1', null, null, 'Categoria pai', null, null, 'MLB2'],
+            ['D-1', null, null, 'Primeira', null, null, null, null, null, null, '1,00'],
+            ['d-1', null, null, 'Repetida', null, null, null, null, null, null, '2,00'],
+        ]]);
+
+        $previa = $this->importador()->previa($empresa, $caminho);
+        $this->assertSame(['novos' => 3, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1], $previa['totais']);
+        $this->assertSame(5, $previa['grupos']['erros'][0]['linha']);
+        $this->assertSame('A Ref d-1 já está na linha 4 do arquivo. Deixe uma linha só para cada Ref.', $previa['grupos']['erros'][0]['motivo']);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
+
+        $this->assertSame(2, $r['novos']);
+        $this->assertSame(2, $r['erros']);
+        $this->assertSame([
+            ['linha' => 3, 'codigo' => 'PAI-1', 'motivo' => 'Escolha uma categoria mais específica (a última do caminho).'],
+            ['linha' => 5, 'codigo' => 'd-1', 'motivo' => 'A Ref d-1 já está na linha 4 do arquivo. Deixe uma linha só para cada Ref.'],
+        ], $r['nao_entraram']);
+        $this->assertSame(1.0, (float) EstruturaProdutoVariacao::where('codigo', 'D-1')->value('custo'), 'vale a 1ª linha da Ref');
+        $this->assertSame(0, EstruturaProdutoVariacao::where('codigo', 'PAI-1')->count());
     }
 
     public function test_aplicar_refaz_o_plano_variacao_criada_entre_a_previa_e_a_confirmacao_conta_como_atualizada(): void

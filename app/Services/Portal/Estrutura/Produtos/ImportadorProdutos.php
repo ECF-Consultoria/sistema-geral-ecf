@@ -64,30 +64,51 @@ class ImportadorProdutos
      * Refaz o plano e grava. Os totais vêm do que o serviço de escrita de fato
      * fez (uma variação criada entre a prévia e a confirmação conta como atualizada).
      *
-     * @return array{erro_geral?: string, novos: int, atualizados: int, sem_mudanca: int, erros: int}
+     * `nao_entraram` junta, na ordem do arquivo, as linhas recusadas pelo plano e
+     * as que só falharam na GRAVAÇÃO (categoria que não é folha, código que bate no
+     * unique do banco): sem elas a tela dizia "concluída" e o produto não existia
+     * (BE-WR-04).
+     *
+     * @return array{erro_geral?: string, novos: int, atualizados: int, sem_mudanca: int, erros: int, nao_entraram: list<array{linha: ?int, codigo: ?string, motivo: string}>}
      */
     public function aplicar(Company $empresa, string $caminho, AtorDoPortal $ator): array
     {
         $plano = $this->plano($empresa, $caminho);
 
         if ($plano['erro_geral'] !== null) {
-            return ['erro_geral' => $plano['erro_geral'], 'novos' => 0, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0];
+            return ['erro_geral' => $plano['erro_geral'], 'novos' => 0, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0, 'nao_entraram' => []];
         }
 
         // Linhas válidas na ordem do arquivo (a 1ª linha de cada grupo define o produto).
         $linhas = array_column($plano['linhas'], 'bruta');
 
+        $naoEntraram = array_map(
+            fn (array $e) => ['linha' => $e['linha'], 'codigo' => $e['codigo'], 'motivo' => (string) $e['motivo']],
+            $plano['erros'],
+        );
+
         $totais = ['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0];
         if ($linhas !== []) {
             $res = $this->cadastro->gravarLinhas($empresa, $linhas, $ator, ProdutoCadastroService::MODO_IMPORTACAO);
             $totais = $res['totais'];
+
+            foreach ($res['erros'] as $e) {
+                $naoEntraram[] = [
+                    'linha'  => $plano['linhas'][$e['indice']]['numero'] ?? null,
+                    'codigo' => $e['codigo'],
+                    'motivo' => $e['mensagem'],
+                ];
+            }
         }
 
+        usort($naoEntraram, fn ($a, $b) => ($a['linha'] ?? PHP_INT_MAX) <=> ($b['linha'] ?? PHP_INT_MAX));
+
         return [
-            'novos'       => $totais['criadas'],
-            'atualizados' => $totais['atualizadas'],
-            'sem_mudanca' => $totais['sem_mudanca'],
-            'erros'       => count($plano['erros']) + $totais['com_erro'],
+            'novos'        => $totais['criadas'],
+            'atualizados'  => $totais['atualizadas'],
+            'sem_mudanca'  => $totais['sem_mudanca'],
+            'erros'        => count($plano['erros']) + $totais['com_erro'],
+            'nao_entraram' => $naoEntraram,
         ];
     }
 
@@ -122,6 +143,7 @@ class ImportadorProdutos
         $familias = [];
         $ambientes = [];
         $nomesPorGrupo = [];
+        $refsVistas = []; // chaveCodigo => número da 1ª linha com aquela Ref
 
         foreach ($lido['linhas'] as $linha) {
             $numero = $linha['numero'];
@@ -138,6 +160,20 @@ class ImportadorProdutos
                 ];
                 continue;
             }
+
+            // Ref repetida no arquivo: a 2ª sobrescreveria a 1ª na gravação. Vale a 1ª;
+            // a repetida vai para os erros na prévia e na aplicação (BE-WR-04).
+            $chaveRef = ProdutoCadastroService::chaveCodigo($campos['codigo']);
+            if (isset($refsVistas[$chaveRef])) {
+                $plano['erros'][] = [
+                    'linha'  => $numero,
+                    'codigo' => $campos['codigo'],
+                    'nome'   => $campos['nome'] !== '' ? $campos['nome'] : null,
+                    'motivo' => "A Ref {$campos['codigo']} já está na linha {$refsVistas[$chaveRef]} do arquivo. Deixe uma linha só para cada Ref.",
+                ];
+                continue;
+            }
+            $refsVistas[$chaveRef] = $numero;
 
             $plano['linhas'][] = ['numero' => $numero, 'bruta' => $bruta];
 

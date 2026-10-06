@@ -220,7 +220,31 @@ class PortalEstruturaProdutosController extends Controller
             return back()->withErrors(['arquivo' => $r['erro_geral']]);
         }
 
-        return back()->with('success', "Importação concluída: {$r['novos']} novos, {$r['atualizados']} atualizados.");
+        $mensagem = "Importação concluída: {$r['novos']} novos, {$r['atualizados']} atualizados.";
+        if ($r['nao_entraram'] !== []) {
+            $mensagem .= ' '.self::resumoDoQueNaoEntrou($r['nao_entraram']);
+        }
+
+        return back()->with('success', $mensagem);
+    }
+
+    /** Mostra quantas e quais linhas ficaram de fora (até 5; o resto vira "e mais N"). BE-WR-04. */
+    private static function resumoDoQueNaoEntrou(array $naoEntraram): string
+    {
+        $total = count($naoEntraram);
+        $itens = array_map(function (array $e) {
+            $onde = $e['linha'] !== null ? "linha {$e['linha']}" : 'linha';
+            $codigo = $e['codigo'] !== null && $e['codigo'] !== '' ? " ({$e['codigo']})" : '';
+
+            return "{$onde}{$codigo}: ".rtrim(trim($e['motivo']), '.');
+        }, array_slice($naoEntraram, 0, 5));
+
+        $texto = ($total === 1 ? '1 linha não entrou: ' : "{$total} linhas não entraram: ").implode('; ', $itens);
+        if ($total > 5) {
+            $texto .= '; e mais '.($total - 5);
+        }
+
+        return $texto.'.';
     }
 
     // ═══ Categoria do Mercado Livre ═════════════════════════════════════════

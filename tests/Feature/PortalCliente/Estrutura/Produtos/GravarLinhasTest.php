@@ -372,6 +372,26 @@ class GravarLinhasTest extends TestCase
         $this->assertSame(2, EstruturaProduto::where('company_id', $empresa->id)->count());
     }
 
+    /** BE-WR-04: o flash diz quantas e quais linhas ficaram de fora. */
+    public function test_aplicar_conta_no_flash_as_linhas_que_nao_entraram(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $arquivo = $this->planilha([
+            ModeloProdutosXlsx::CABECALHOS,
+            ['N1', null, null, 'Novo Um'],
+            ['X9', null, null, 'Custo ruim', null, null, null, null, null, null, 'abc'],
+            ['n1', null, null, 'Repetido'],
+        ]);
+
+        $this->entrarNoPortal($empresa)
+            ->post(route('portal.auth.estrutura.produtos.importacao'), ['arquivo' => $arquivo])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Importação concluída: 1 novos, 0 atualizados. 2 linhas não entraram: '
+                .'linha 3 (X9): Use só números. Exemplo: 27,8; linha 4 (n1): A Ref n1 já está na linha 2 do arquivo. Deixe uma linha só para cada Ref.');
+
+        $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count());
+    }
+
     public function test_aplicar_com_erro_geral_volta_com_o_erro_em_arquivo(): void
     {
         $empresa = $this->empresaDoGabarito();
