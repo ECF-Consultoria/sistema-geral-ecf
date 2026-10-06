@@ -63,6 +63,17 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
     }
 
+    /** BE-WR-08: a criação das tabelas de Produtos ficou idempotente e repõe FK só no MySQL/MariaDB. */
+    public function test_a_migration_da_criacao_dos_produtos_trata_mariadb_como_mysql(): void
+    {
+        $migration = require database_path('migrations/2026_10_06_100000_create_estrutura_produtos_tables.php');
+        $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
+
+        $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb repõe as FKs pelo information_schema');
+        $this->assertTrue($this->comDriver('mysql', $emMysql));
+        $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
+    }
+
     public function test_nenhuma_migration_da_fase_compara_o_driver_so_com_mysql(): void
     {
         foreach (self::MIGRACOES as $arquivo) {

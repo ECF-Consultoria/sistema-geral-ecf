@@ -175,6 +175,37 @@ class SchemaDosProdutosTest extends TestCase
         $this->assertSame(9, EstruturaOferta::whereNull('variacao_id')->count(), 'sem backfill');
     }
 
+    /**
+     * BE-WR-08: rodar o up() da criação de novo — o que acontece quando um passo falhou e a
+     * migration ficou `Pending` com parte das tabelas criadas — não morre em "table already
+     * exists" e repõe a tabela e o índice que faltaram (as FKs, só no MySQL/MariaDB).
+     */
+    public function test_up_da_migration_de_criacao_e_idempotente_e_repoe_o_que_faltou(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $variacao = $this->variacao($this->produto($empresa, 'P-1'), 'V-1');
+
+        $migration = require database_path('migrations/2026_10_06_100000_create_estrutura_produtos_tables.php');
+        $migration->up(); // tudo já existe: nada muda
+
+        // Execução parcial: a última tabela não chegou a ser criada e um índice ficou para trás.
+        Schema::drop('estrutura_produto_volumes');
+        Schema::table('estrutura_produtos', fn ($t) => $t->dropIndex('epr_familia_idx'));
+        $this->assertFalse(Schema::hasTable('estrutura_produto_volumes'));
+        $this->assertFalse(Schema::hasIndex('estrutura_produtos', 'epr_familia_idx'));
+
+        $migration->up();
+        $migration->up();
+
+        $this->assertTrue(Schema::hasTable('estrutura_produto_volumes'));
+        $this->assertTrue(Schema::hasIndex('estrutura_produtos', 'epr_familia_idx'));
+        $this->assertTrue(Schema::hasIndex('estrutura_produto_volumes', 'epvol_variacao_ordem_uq'));
+        $this->assertSame(1, EstruturaProdutoVariacao::count(), 'o que existia não foi tocado');
+        $this->assertSame('V-1', $variacao->fresh()->codigo);
+        EstruturaProdutoVolume::create(['variacao_id' => $variacao->id, 'ordem' => 1, 'comprimento' => 1, 'largura' => 1, 'altura' => 1, 'peso' => 1]);
+        $this->assertSame(1, EstruturaProdutoVolume::count());
+    }
+
     public function test_apagar_a_variacao_deixa_a_oferta_viva_sem_vinculo(): void
     {
         $a = $this->empresaDoGabarito();
