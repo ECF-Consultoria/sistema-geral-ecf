@@ -18,6 +18,10 @@ class NumeroBrTest extends TestCase
             'milhar us'        => ['1,234.50', NumeroBr::DINHEIRO, 1234.5],
             'reais'            => ['R$ 1.234,50', NumeroBr::DINHEIRO, 1234.5],
             'ponto milhar din' => ['1.234', NumeroBr::DINHEIRO, 1234.0],
+            // BE-IN-07: milhar não começa com 0.
+            'zero ponto din'   => ['0.500', NumeroBr::DINHEIRO, 0.5],
+            'zero ponto 3 din' => ['0.123', NumeroBr::DINHEIRO, 0.123],
+            'milhar 2 grupos'  => ['12.345.678', NumeroBr::DINHEIRO, 12345678.0],
             'ponto medida'     => ['1.234', NumeroBr::MEDIDA, 1.234],
             'int'              => [12, NumeroBr::MEDIDA, 12.0],
             'com kg'           => ['9 kg', NumeroBr::MEDIDA, 9.0],

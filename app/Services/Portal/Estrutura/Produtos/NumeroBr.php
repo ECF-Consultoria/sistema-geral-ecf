@@ -68,7 +68,8 @@ final class NumeroBr
             }
             $texto = str_replace(',', '.', $texto);
         } elseif ($pontos > 0) {
-            $ehMilhar = $tipo === self::DINHEIRO && preg_match('/^\d{1,3}(\.\d{3})+$/', $texto);
+            // Número de milhar não começa com 0: "0.500" é R$ 0,50, não R$ 500 (BE-IN-07).
+            $ehMilhar = $tipo === self::DINHEIRO && preg_match('/^[1-9]\d{0,2}(\.\d{3})+$/', $texto);
 
             if ($ehMilhar) {
                 $texto = str_replace('.', '', $texto);
