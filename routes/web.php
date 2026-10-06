@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\SetorGoalController;
 use App\Http\Controllers\Admin\SetorMembroController;
 use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AutenticadorController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
@@ -780,6 +781,20 @@ Route::post('/nps/{token}', [NpsController::class, 'submitResponse'])->name('nps
 
 // Política de Privacidade pública (HTML estático — usado p/ aprovação Chrome Web Store)
 Route::view('/privacidade/painel-ecf', 'privacidade.painel-ecf')->name('privacidade.painel-ecf');
+
+// ── Autenticadores 2FA ──────────────────────────────────────────────────────
+// Cofre interno dos códigos TOTP das contas operadas pela ECF. Acesso de TODOS
+// os colaboradores logados (decisão de produto); o controle é o log de
+// auditoria (visualização/cópia). Para restringir a admin depois, basta trocar
+// o middleware deste grupo para incluir 'role:admin'.
+Route::middleware(['auth', 'verified'])->prefix('autenticadores')->name('autenticadores.')->group(function () {
+    Route::get('/', [AutenticadorController::class, 'index'])->name('index');
+    Route::post('/', [AutenticadorController::class, 'store'])->name('store');
+    Route::get('/{autenticador}/codigo', [AutenticadorController::class, 'codigo'])->name('codigo');
+    Route::post('/{autenticador}/copiar', [AutenticadorController::class, 'copiar'])->name('copiar');
+    Route::get('/{autenticador}/historico', [AutenticadorController::class, 'historico'])->name('historico');
+    Route::delete('/{autenticador}', [AutenticadorController::class, 'destroy'])->name('destroy');
+});
 
 Route::middleware(['auth', 'verified'])->group(function () {
 
