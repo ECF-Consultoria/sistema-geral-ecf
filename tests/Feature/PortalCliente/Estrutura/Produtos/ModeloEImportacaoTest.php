@@ -432,6 +432,55 @@ class ModeloEImportacaoTest extends TestCase
         $this->assertSame(2, EstruturaOferta::whereNotNull('variacao_id')->count());
     }
 
+    /**
+     * BE-CR-02 (D-14 "nada é apagado"): depois de escolher a categoria real e digitar as medidas no
+     * sistema, reimportar a mesma planilha só para atualizar custo não volta a categoria para "a
+     * confirmar" nem apaga as medidas por causa do "SEM MEDIDAS".
+     */
+    public function test_reimportar_nao_rebaixa_a_categoria_confirmada_nem_apaga_medidas_com_sem_medidas(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->ator($empresa);
+        $planilha = fn (string $custo, string $catS) => $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['R-1', 'R', '1', 'Cristaleira', null, null, 'Cristaleiras', null, 'SEM MEDIDAS', null, $custo],
+            ['S-1', 'S', '1', 'Sapateira', null, null, $catS, null, 'Sem medidas', null, '20,00'],
+        ]]);
+
+        $this->importador()->aplicar($empresa, $planilha('10,00', 'Sapateiras'), $ator);
+        $r1 = EstruturaProdutoVariacao::where('codigo', 'R-1')->firstOrFail();
+        $this->assertSame(EstruturaProduto::CATEGORIA_A_CONFIRMAR, $r1->produto->estadoCategoria());
+
+        // No sistema: a categoria real é escolhida e as medidas, digitadas.
+        app(ProdutoCadastroService::class)->gravarLinhas($empresa, [
+            ['id' => $r1->id, 'codigo' => 'R-1', 'nome' => 'Cristaleira', 'categoria_ml_id' => 'MLB1', 'volumes' => [['c' => 93, 'l' => 55, 'a' => 6, 'kg' => 9.5]]],
+        ], $ator);
+        $this->assertSame(EstruturaProduto::CATEGORIA_CONFIRMADA, $r1->produto->fresh()->estadoCategoria());
+
+        // Reimporta para mudar só o custo da R-1 e o texto da categoria da S-1 (que não tem id).
+        $de_novo = $planilha('15,00', 'Sapateiras de Madeira');
+        $previa = $this->importador()->previa($empresa, $de_novo);
+        $this->assertSame(['novos' => 0, 'atualizados' => 2, 'sem_mudanca' => 0, 'erros' => 0], $previa['totais']);
+        $mudou = array_column($previa['grupos']['atualizados'], 'mudou', 'codigo');
+        $this->assertSame(['custo'], $mudou['R-1'], 'nome da categoria e SEM MEDIDAS não aparecem como mudança');
+        $this->assertSame(['categoria'], $mudou['S-1'], 'sem id, o texto ainda preenche');
+
+        $this->importador()->aplicar($empresa, $de_novo, $ator);
+
+        $r1->refresh();
+        $produto = $r1->produto;
+        $this->assertSame(15.0, (float) $r1->custo);
+        $this->assertSame('MLB1', $produto->categoria_ml_id);
+        $this->assertSame('Cristaleiras', $produto->categoria_ml_nome);
+        $this->assertSame('Moveis > Cristaleiras', $produto->categoria_ml_caminho);
+        $this->assertSame(EstruturaProduto::CATEGORIA_CONFIRMADA, $produto->estadoCategoria());
+        $this->assertSame([9.5], $r1->volumes()->pluck('peso')->map(fn ($p) => (float) $p)->all());
+
+        $s1 = EstruturaProdutoVariacao::where('codigo', 'S-1')->firstOrFail()->produto;
+        $this->assertSame('Sapateiras de Madeira', $s1->categoria_ml_nome);
+        $this->assertSame(EstruturaProduto::CATEGORIA_A_CONFIRMAR, $s1->estadoCategoria());
+    }
+
     public function test_celulas_da_planilha_original_viram_ordem_eixo_volumes_e_categoria(): void
     {
         $empresa = $this->empresaDoGabarito();

@@ -85,9 +85,9 @@ final class ModeloProdutosXlsx
             'Família: um nome só. Se ainda não existe, criamos na lista.',
             'Ambiente: separe vários com "/". Se ainda não existe, criamos na lista.',
             "Volumes: \"C\u{00D7}L\u{00D7}A \u{00B7} kg\", um por caixa, separados por \"|\". Exemplo: 120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5.",
-            'Escreva SEM MEDIDAS quando o produto ainda não tem medidas.',
+            'Escreva SEM MEDIDAS quando o produto ainda não tem medidas. Ao reimportar, SEM MEDIDAS não apaga as medidas já cadastradas.',
             'Custo: em reais, como 1.234,50.',
-            'Categoria ML: o nome ou o código MLB da categoria. Nome fica "a confirmar" até alguém escolher a categoria.',
+            'Categoria ML: o nome ou o código MLB da categoria. Nome fica "a confirmar" até alguém escolher a categoria. O nome não troca uma categoria já escolhida no sistema.',
             'Reimportar acrescenta e atualiza pelo Ref. Nada é apagado.',
             'Limites: arquivo .xlsx de até 2 MB e 1.000 linhas.',
         ];

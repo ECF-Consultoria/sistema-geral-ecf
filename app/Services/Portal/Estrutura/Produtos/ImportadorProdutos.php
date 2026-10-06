@@ -17,7 +17,8 @@ use InvalidArgumentException;
  * - `aplicar()` refaz o plano e grava pelo MESMO serviço da grade
  *   (`ProdutoCadastroService::gravarLinhas` em MODO_IMPORTACAO): código que já
  *   existe atualiza, só com o que a linha trouxe; célula em branco não apaga;
- *   nada é apagado nunca (não existe "substituir").
+ *   nada é apagado nunca (não existe "substituir"). "SEM MEDIDAS" é célula em
+ *   branco e o nome da categoria não rebaixa uma categoria com id (BE-CR-02).
  */
 class ImportadorProdutos
 {
@@ -279,8 +280,9 @@ class ImportadorProdutos
         if ($tem('categoria')) {
             $igual = match (true) {
                 $campos['categoria_ml_id'] !== null => strtoupper((string) $produto->categoria_ml_id) === $campos['categoria_ml_id'],
-                $campos['categoria_texto'] !== null => trim((string) $produto->categoria_ml_id) === ''
-                    && trim((string) $produto->categoria_ml_nome) === $campos['categoria_texto'],
+                // Texto não substitui categoria com id (BE-CR-02): para a prévia, não há mudança.
+                $campos['categoria_texto'] !== null => trim((string) $produto->categoria_ml_id) !== ''
+                    || trim((string) $produto->categoria_ml_nome) === $campos['categoria_texto'],
                 default => trim((string) $produto->categoria_ml_id) === '' && trim((string) $produto->categoria_ml_nome) === '',
             };
             if (! $igual) {

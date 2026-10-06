@@ -427,7 +427,7 @@ class ProdutoCadastroService
             $dadosProduto['nome'] = $campos['nome'];
 
             if (in_array('categoria', $presentes, true)) {
-                $dadosProduto += $this->resolverCategoria($campos, $produto, $categorias);
+                $dadosProduto += $this->resolverCategoria($campos, $produto, $categorias, $modo);
                 if (isset($dadosProduto['__aviso'])) {
                     $avisos[] = $dadosProduto['__aviso'];
                     unset($dadosProduto['__aviso']);
@@ -593,13 +593,20 @@ class ProdutoCadastroService
      * Campos de categoria do produto (D-06). Id novo é validado no ML (memoizado
      * no lote); só folha vira confirmada.
      *
+     * Na importação, texto só PREENCHE: produto que já tem `categoria_ml_id` fica
+     * como está (BE-CR-02, D-14 "nada é apagado"). O D-06 proíbe texto virar id,
+     * então deixar o texto valer só conseguiria rebaixar a categoria confirmada.
+     *
      * @return array<string, mixed>
      */
-    private function resolverCategoria(array $campos, ?EstruturaProduto $produto, array &$memo): array
+    private function resolverCategoria(array $campos, ?EstruturaProduto $produto, array &$memo, string $modo): array
     {
         $id = $campos['categoria_ml_id'];
 
         if ($id === null) {
+            if ($modo === self::MODO_IMPORTACAO && $produto && trim((string) $produto->categoria_ml_id) !== '') {
+                return [];
+            }
             if ($campos['categoria_texto'] !== null) {
                 return ['categoria_ml_id' => null, 'categoria_ml_nome' => $campos['categoria_texto'], 'categoria_ml_caminho' => null];
             }

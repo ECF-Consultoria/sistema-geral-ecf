@@ -23,6 +23,7 @@ use InvalidArgumentException;
  * É a base de "não mexer" (importação) e da cópia da 1ª variação (D-04). Texto
  * vazio NÃO conta como presente (célula em branco não apaga dado); `null`
  * explícito em `custo` e lista vazia em `volumes` contam (limpar de propósito).
+ * "SEM MEDIDAS" em `volumes_texto` é célula em branco, não "limpar" (BE-CR-02).
  *
  * Nomes lógicos em `presentes`: grupo, nome, eixo, valor, ordem, familia,
  * ambientes, categoria, volumes, custo.
@@ -241,7 +242,8 @@ final class NormalizadorDeLinha
                 $campos['volumes'] = $volumes;
                 $presentes[] = 'volumes';
             }
-        } elseif (self::texto($bruta['volumes_texto'] ?? null) !== '') {
+        } elseif (($volumesTexto = self::texto($bruta['volumes_texto'] ?? null)) !== '' && ! VolumesTexto::semMedidas($volumesTexto)) {
+            // "SEM MEDIDAS" é célula em branco: reimportar não apaga as medidas digitadas (BE-CR-02).
             $lido = VolumesTexto::interpretar((string) $bruta['volumes_texto']);
             if (! $lido['valido']) {
                 // Código do aviso: medidas_ilegiveis. A linha segue sem mexer nas medidas.

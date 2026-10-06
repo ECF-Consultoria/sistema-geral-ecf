@@ -118,6 +118,19 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertCount(2, $r['campos']['volumes']);
     }
 
+    /** BE-CR-02: "SEM MEDIDAS" é célula em branco; só `volumes: []` explícito limpa. */
+    public function test_sem_medidas_nao_conta_como_presente_e_lista_vazia_conta(): void
+    {
+        foreach (['SEM MEDIDAS', 'Sem medida', 'sem-medidas.'] as $t) {
+            $r = $this->ler(['volumes_texto' => $t]);
+            $this->assertNotContains('volumes', $r['presentes'], $t);
+            $this->assertSame([], $r['avisos'], $t);
+            $this->assertSame([], $r['erros'], $t);
+        }
+
+        $this->assertContains('volumes', $this->ler(['volumes' => []])['presentes']);
+    }
+
     public function test_volume_com_zero_e_erro(): void
     {
         $r = $this->ler(['volumes' => [['c' => 10, 'l' => 0, 'a' => 5, 'kg' => 2]]]);

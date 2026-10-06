@@ -26,7 +26,7 @@ final class VolumesTexto
         $falha = ['volumes' => [], 'valido' => false];
 
         $limpo = trim((string) $texto);
-        if ($limpo === '' || Str::lower(Str::ascii($limpo)) === 'sem medidas') {
+        if ($limpo === '' || self::semMedidas($limpo)) {
             return $vazio;
         }
 
@@ -61,6 +61,19 @@ final class VolumesTexto
         }
 
         return $volumes === [] ? $vazio : ['volumes' => $volumes, 'valido' => true];
+    }
+
+    /**
+     * "SEM MEDIDAS" em qualquer grafia ("Sem medidas", "sem medida", "SEM-MEDIDAS.", com ou sem
+     * acento): o marcador que o modelo ensina para produto ainda sem medidas. Na linha de entrada
+     * vale como célula em branco — não apaga as medidas já cadastradas (BE-CR-02, D-14).
+     */
+    public static function semMedidas(?string $texto): bool
+    {
+        $t = Str::lower(Str::ascii(trim((string) $texto)));
+        $t = trim((string) preg_replace('/[^a-z]+/', ' ', $t));
+
+        return $t === 'sem medidas' || $t === 'sem medida';
     }
 
     /**

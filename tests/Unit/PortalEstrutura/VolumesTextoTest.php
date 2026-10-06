@@ -36,6 +36,17 @@ class VolumesTextoTest extends TestCase
         }
     }
 
+    public function test_sem_medidas_em_qualquer_grafia(): void
+    {
+        foreach (['SEM MEDIDAS', 'Sem medidas', 'sem medida', ' Sem Medidas. ', 'SEM-MEDIDAS', 'sem  medidas'] as $t) {
+            $this->assertTrue(VolumesTexto::semMedidas($t), $t);
+            $this->assertSame(['volumes' => [], 'valido' => true], VolumesTexto::interpretar($t), $t);
+        }
+        foreach (['', 'sem', 'medidas', '10x20x30 · 2', 'sem medidas 10x10x10'] as $t) {
+            $this->assertFalse(VolumesTexto::semMedidas($t), $t);
+        }
+    }
+
     public function test_lixo_e_medida_zero_sao_invalidos(): void
     {
         foreach (['abc', "10\u{00D7}20 \u{00B7} 3", '10x20x30 · 0', '0x1x1 · 2', '10x20x30'] as $t) {
