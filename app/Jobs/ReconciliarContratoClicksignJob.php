@@ -8,6 +8,7 @@ use App\Models\ContratoLiberacao;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\ContratoSignatariosSyncService;
 use App\Services\Contratos\GateLiberacaoOperacionalService;
+use App\Services\Fechamento\TabelaDeContratoAssinadoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -95,8 +96,14 @@ class ReconciliarContratoClicksignJob implements ShouldQueue
         ClicksignClient $client,
         ContratoSignatariosSyncService $sync,
         GateLiberacaoOperacionalService $gate,
-        EmpresaOperacionalRouter $router
+        EmpresaOperacionalRouter $router,
+        // Quick 261006-gf5 — mesma forma OPCIONAL do irmão
+        // `ProcessarEventoClicksignJob::handle()`: o container resolve quando
+        // o worker roda, e o `??=` cobre chamada manual de teste.
+        ?TabelaDeContratoAssinadoService $tabelaDoContrato = null
     ): void {
+        $tabelaDoContrato ??= app(TabelaDeContratoAssinadoService::class);
+
         // 1. Guard de trabalho redundante: um webhook pode ter chegado entre
         // o dispatch (SELECT do comando) e a execução deste job — nesse caso
         // não há nada a reconsultar, e a chamada à Clicksign seria
@@ -142,6 +149,14 @@ class ReconciliarContratoClicksignJob implements ShouldQueue
             // Idempotente por construção (guard dentro de liberarEmpresa()
             // + lockDaEmpresa() herdado) — nenhum guard/lock próprio aqui.
             $router->liberarEmpresa($contrato->company, $contrato->servico, ContratoLiberacao::VIA_RECONCILIACAO, contrato: $contrato);
+
+            // Quick 261006-gf5 — MESMA chamada do fluxo automático
+            // (`ProcessarEventoClicksignJob`), pelo mesmo serviço: nenhuma
+            // regra de tabela nasce aqui. A varredura que corrige um contrato
+            // cujo webhook nunca chegou precisa carimbar o selo da tabela
+            // igual, senão o contrato reconciliado ficaria como presumido
+            // para sempre. `aplicarComSeguranca()` NUNCA lança.
+            $tabelaDoContrato->aplicarComSeguranca($contrato);
 
             // D-08 — redispara o download do PDF pendente FORA do caminho
             // crítico da liberação (já aconteceu). `try/catch` só loga em
