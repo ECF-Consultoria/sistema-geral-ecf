@@ -1192,7 +1192,7 @@ export function SpreadsheetGrid({
 
                                             return (
                                                 <td key={col.id}
-                                                    style={{ height: altura, padding: 0, position: 'relative', ...(frozen ? { left: getStickyLeft(ci), zIndex: 5 } : {}) }}
+                                                    style={{ height: altura, padding: 0, position: frozen ? 'sticky' : 'relative', ...(frozen ? { left: getStickyLeft(ci), zIndex: 5 } : {}) }}
                                                     className={cn(
                                                         isEdit && col.type === 'select' ? 'text-[12px] overflow-visible z-[100]' : 'text-[12px] overflow-hidden',
                                                         frozen && 'sticky shadow-[2px_0_4px_rgba(0,0,0,0.3)]',

@@ -131,3 +131,12 @@ test('placeholder, renderCell, separador e selecionar', () => {
     assert.match(fonte, /selecionar\?\.n/);
     assert.match(fonte, /rw\[rowKey\] === chave/);
 });
+
+// ─── 167-17: coluna congelada tem de ser sticky NO ESTILO, não só na classe ───
+
+test('a célula congelada usa position sticky no estilo inline (o relative inline vencia a classe e deslocava a coluna)', () => {
+    assert.ok(
+        /position:\s*frozen \? 'sticky' : 'relative'/.test(fonte),
+        'o td das colunas frozen precisa de position sticky inline: com relative + left a célula sai do alinhamento do cabeçalho',
+    );
+});
