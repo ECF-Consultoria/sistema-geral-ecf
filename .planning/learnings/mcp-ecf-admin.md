@@ -160,6 +160,14 @@ uma ferramenta genérica (`app/Mcp/Telas/`):
   sucesso/erro, duração, IP, cliente OAuth).
 - Limite: 60 chamadas/min por usuário (`RateLimiter::for('mcp')`).
 - Desligar sem deploy: `ECF_MCP_HABILITADO=false` no `.env` + `config:cache`.
-- Revogar alguém: `php artisan mcp:revogar <email|id>`.
+- Revogar alguém: `php artisan mcp:revogar <email|id>`. **Revoga TODOS os
+  tokens da pessoa**, inclusive o do conector do claude.ai dela — em 06/10 o
+  teste de fumaça revogou assim o próprio token de teste e, junto, a conexão
+  real do Maycon, que teve de reconectar. Para limpar só um token de teste,
+  revogue pelo `id` em `oauth_access_tokens` (e o refresh dele), não pelo
+  comando.
+- Teste de fumaça em produção (06/10/2026, admin): 147 telas no catálogo; das
+  96 sem parâmetro, 90 abriram e as 6 restantes são recusas corretas (filtro
+  obrigatório com o campo indicado, ou perfil de líder). Nenhuma passou de 8 s.
 - Validade: token de acesso 1 dia, refresh 30 dias (sem isso o Passport emite
   token de 1 ano).
