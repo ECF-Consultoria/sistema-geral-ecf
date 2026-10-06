@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 17 em 13 ondas, execução em sequência — 14 de 17 concluídos
-Status: 167-14 concluído — categoria real do ML escolhida na célula (PickerCategoria, nada aceito sozinho), sugestão em lote revisada com caixas desmarcadas, estados da coluna de frete e botão "Consultar fretes no Mercado Livre". Build real conferido; test:js só com as 2 falhas do baseline; PortalCliente (363) verde.
-Last activity: 2026-10-05 — 167-14 concluído
+Plans: 17 em 13 ondas, execução em sequência — 15 de 17 concluídos
+Status: 167-15 concluído — janela de importação da planilha (prévia sem gravar, confirmação reenvia o arquivo), menu Planilha com modelo para baixar e janela Famílias e ambientes (renomear leva os produtos, em uso não exclui). Build real conferido; test:js só com as 2 falhas do baseline; PortalCliente (363) verde.
+Last activity: 2026-10-06 — 167-15 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
