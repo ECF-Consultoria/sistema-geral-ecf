@@ -19,6 +19,14 @@ use Tests\TestCase;
  * cancelamento posterior NUNCA baixava o número já gravado. Medido em produção
  * em 06/10/2026 relendo a API: GENUINEAUTOMOTIVE 04/10 +2,5%, MPozenato 20/08
  * −1,3%. A correção vai para os dois lados, e é isso que está coberto aqui.
+ *
+ * ⚠️ Quick 261006-fac (2026-10-06): as fixtures foram reescritas para a régua
+ * nova de faturamento — `pay_time` + soma dos itens
+ * (`model_discounted_price` × `model_quantity_purchased`), sem frete e sem
+ * filtro de status. O que estes testes travam não mudou: dia zerado com linha
+ * existente baixa, dia zerado sem linha não grava, releitura não duplica e o
+ * truncamento grita. Mudou só o cálculo lá dentro — e passou a existir um caso
+ * a mais: pedido pago e cancelado depois NÃO zera o dia.
  */
 class ShopeeRelerDiasTest extends TestCase
 {
@@ -64,7 +72,14 @@ class ShopeeRelerDiasTest extends TestCase
         ]);
     }
 
-    /** Um pedido COMPLETED de R$ 100. */
+    /**
+     * Um pedido pago de R$ `$valor`.
+     *
+     * Quick 261006-fac: o valor agora vem do ITEM
+     * (`model_discounted_price` × `model_quantity_purchased`) e o pedido entra
+     * por ter `pay_time`, não por status. O `total_amount` vai divergente de
+     * propósito, para provar que ele não é mais a base.
+     */
     private function fakeUmPedido(float $valor = 100): void
     {
         Http::fake([
@@ -73,7 +88,41 @@ class ShopeeRelerDiasTest extends TestCase
             ], 200),
             '*get_order_detail*' => Http::response([
                 'response' => ['order_list' => [
-                    ['order_sn' => 'A', 'order_status' => 'COMPLETED', 'total_amount' => $valor, 'item_list' => [['model_quantity_purchased' => 1]]],
+                    [
+                        'order_sn'     => 'A',
+                        'order_status' => 'COMPLETED',
+                        'pay_time'     => 1751337600,
+                        'total_amount' => $valor + 17.90, // itens + frete — ignorado
+                        'item_list'    => [
+                            ['model_discounted_price' => $valor, 'model_quantity_purchased' => 1],
+                        ],
+                    ],
+                ]],
+            ], 200),
+        ]);
+    }
+
+    /**
+     * Um pedido PAGO e cancelado depois. Antes do quick 261006-fac isto era
+     * idêntico a "dia sem pedido"; agora conta no faturamento, como no painel.
+     */
+    private function fakeUmPedidoPagoECancelado(float $valor = 100): void
+    {
+        Http::fake([
+            '*get_order_list*' => Http::response([
+                'response' => ['order_list' => [['order_sn' => 'X']], 'more' => false, 'next_cursor' => ''],
+            ], 200),
+            '*get_order_detail*' => Http::response([
+                'response' => ['order_list' => [
+                    [
+                        'order_sn'     => 'X',
+                        'order_status' => 'CANCELLED',
+                        'pay_time'     => 1751337600,
+                        'total_amount' => $valor,
+                        'item_list'    => [
+                            ['model_discounted_price' => $valor, 'model_quantity_purchased' => 1],
+                        ],
+                    ],
                 ]],
             ], 200),
         ]);
@@ -137,6 +186,34 @@ class ShopeeRelerDiasTest extends TestCase
         $metric = app(ShopeeService::class)->syncCompanyDay($company, '2026-07-01');
 
         $this->assertSame('100.00', (string) $metric->revenue);
+        $this->assertDatabaseCount('shopee_metrics', 1);
+    }
+
+    /**
+     * Quick 261006-fac: a releitura NÃO pode zerar um dia cujo único pedido foi
+     * pago e cancelado depois — pela régua do painel ele continua faturamento.
+     * É exatamente o caso da CAMILLO MATRIZ #1 em 30/09/2026 (R$ 1.398,13 e
+     * R$ 36,81 pagos e cancelados pelo comprador em seguida).
+     */
+    public function test_releitura_nao_zera_dia_cujo_pedido_foi_pago_e_cancelado_depois(): void
+    {
+        $company = $this->companyComToken();
+
+        ShopeeMetric::create([
+            'company_id'     => $company->id,
+            'reference_date' => '2026-09-30',
+            'revenue'        => 1398.13,
+            'orders_count'   => 1,
+            'sold_quantity'  => 1,
+            'synced_at'      => now()->subDays(2),
+        ]);
+
+        $this->fakeUmPedidoPagoECancelado(1398.13);
+
+        $metric = app(ShopeeService::class)->syncCompanyDay($company, '2026-09-30');
+
+        $this->assertSame('1398.13', (string) $metric->revenue, 'cancelamento posterior não baixa o pago');
+        $this->assertSame(1, $metric->orders_count);
         $this->assertDatabaseCount('shopee_metrics', 1);
     }
 
