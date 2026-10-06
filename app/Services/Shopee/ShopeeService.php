@@ -500,12 +500,40 @@ class ShopeeService
      * painel da Shopee (Seller Center).
      *
      * get_order_list (paginação por cursor, janela ≤15 dias) → order_sn;
-     * get_order_detail (lotes de 50) → `pay_time` + `item_list`.
+     * get_order_detail (lotes de 50) → `pay_time` + `item_list`;
+     * get_escrow_detail_batch (MESMOS lotes de 50) → `voucher_from_seller`.
      *
      *     revenue = Σ (pedidos com `pay_time` não vazio)
-     *                 Σ (itens) model_discounted_price × model_quantity_purchased
+     *                 [ Σ (itens) model_discounted_price × model_quantity_purchased ]
+     *                 −  voucher_from_seller
      *
      * Sem frete, SEM filtro de status e SEM descontar item cancelado/devolvido.
+     *
+     * ─── Por que o cupom entrou (quick 261006-j44, 2026-10-06) ──────────────
+     * A régua de itens do 261006-fac deixou um resíduo pequeno e SEMPRE PARA
+     * CIMA — o usuário conferiu contra a planilha: "a diferença é pouca e
+     * sempre pra cima, sempre o valor do sistema é maior que o da planilha".
+     * A causa é o cupom que o VENDEDOR banca, que o painel desconta e nós não.
+     * Medido na API real, três lojas independentes:
+     *
+     *   | loja                    | alvo (painel)  | itens (antes)      | itens − cupom      |
+     *   |-------------------------|----------------|--------------------|--------------------|
+     *   | ITUFARMA1 #225, 30/09   | R$    603,72   |    609,13 (+0,90%) | 603,72 (0,00%) ✔   |
+     *   | CAMILLO MATRIZ #1,30/09 | R$  8.953,89   |  9.133,89 (+2,01%) | 8.983,89 (+0,34%)  |
+     *   | DROSSI #217, setembro   | R$ 392.422,00  | 403.187,26 (+2,74%)| 391.537,81 (−0,23%)|
+     *
+     * ⚠️ Os R$ 30,00 que sobram na CAMILLO são IRREDUTÍVEIS: todo pedido enviado
+     *    dela tem cupom de R$ 30, e os pedidos pagos e cancelados DEPOIS voltam
+     *    com `voucher_from_seller = 0` — a Shopee para de reportar o cupom após
+     *    o cancelamento. É resíduo conhecido e minúsculo; não tentar recuperar.
+     *
+     * ⛔ `voucher_from_shopee` NÃO é descontado. Medido: descontar os dois PASSA
+     *    do alvo (ITUFARMA −1,76%, CAMILLO −3,20%). O cupom da Shopee é bancado
+     *    pela plataforma e o painel não o tira do faturamento do vendedor.
+     *
+     * ⛔ O lote é obrigatório: `get_escrow_detail` pedido a pedido seria inviável
+     *    (a GENUINEAUTOMOTIVE faz ~980 pedidos/dia). Com chunk de 50 — o mesmo
+     *    do `get_order_detail` — o custo é UMA chamada a mais por lote de 50.
      *
      * ─── Por que mudou (quick 261006-fac, 2026-10-06) ───────────────────────
      * Decisão do usuário: "o faturamento das empresas no sistema deve ser
@@ -539,6 +567,8 @@ class ShopeeService
      * ⚠️ Ponto único da correção: os consumidores leem `shopee_metrics.revenue`,
      * então arrumar aqui propaga para fechamento, dashboard, carteira e
      * desempenho de uma vez — nenhum deles replica a conta.
+     *
+     * ⚠️ `orders_count` e `sold_quantity` NÃO mudam com o cupom — só o `revenue`.
      *
      * @param  string $dateFrom  YYYY-MM-DD (inclusive, 00:00 BRT)
      * @param  string $dateTo    YYYY-MM-DD (inclusive, 23:59 BRT)
@@ -584,7 +614,8 @@ class ShopeeService
             );
         }
 
-        // 2) Detalhe em lotes de 50 → soma os itens dos pedidos PAGOS
+        // 2) Detalhe em lotes de 50 → soma os itens dos pedidos PAGOS e
+        //    desconta o cupom do vendedor (lote de escrow do MESMO chunk).
         $revenue = 0.0;
         $soldQty = 0;
         $counted = 0;
@@ -594,6 +625,10 @@ class ShopeeService
                 'order_sn_list'            => implode(',', $chunk),
                 'response_optional_fields' => 'total_amount,order_status,item_list,pay_time',
             ]);
+
+            // Só os PAGOS deste chunk — são os únicos que entram no faturamento
+            // e, portanto, os únicos cujo cupom precisamos buscar.
+            $pagos = [];
 
             foreach ($detail['order_list'] ?? [] as $order) {
                 // O pagamento é o que define o faturamento: quem não tem
@@ -606,6 +641,10 @@ class ShopeeService
 
                 $counted++;
 
+                if (! empty($order['order_sn'])) {
+                    $pagos[] = (string) $order['order_sn'];
+                }
+
                 foreach ($order['item_list'] ?? [] as $item) {
                     $qty = (int) ($item['model_quantity_purchased'] ?? 0);
 
@@ -616,6 +655,11 @@ class ShopeeService
                     $soldQty += $qty;
                 }
             }
+
+            // Cupom do vendedor deste lote. Pedido ausente da resposta conta 0.
+            foreach ($this->vouchersDoVendedor($company, $pagos, $dateFrom, $dateTo) as $voucher) {
+                $revenue -= $voucher;
+            }
         }
 
         return [
@@ -623,6 +667,66 @@ class ShopeeService
             'orders_count'  => $counted,
             'sold_quantity' => $soldQty,
         ];
+    }
+
+    /**
+     * Cupom bancado pelo VENDEDOR dos pedidos informados, em UMA chamada de
+     * lote (`POST /api/v2/payment/get_escrow_detail_batch`, corpo
+     * `{"order_sn_list": [...]}`).
+     *
+     * A `response` v2 deste endpoint é uma LISTA de
+     * `{ escrow_detail: { order_sn, order_income: { voucher_from_seller, ... } } }`
+     * — o valor vive em `escrow_detail.order_income.voucher_from_seller`.
+     *
+     * ⚠️ Se a chamada falhar, NÃO inventa: grita em `Log::error` (mesmo espírito
+     *    da trava de truncamento do 261006-dv3) e devolve lista vazia, ou seja,
+     *    o lote segue SEM o desconto. Faturamento maior é justamente o defeito
+     *    que esta mudança corrige — sair calado o reintroduz em silêncio.
+     *
+     * @param  array<int, string> $orderSns Pedidos PAGOS de um chunk (≤50)
+     * @return array<string, float> order_sn → cupom do vendedor (só os > 0)
+     */
+    private function vouchersDoVendedor(Company $company, array $orderSns, string $dateFrom, string $dateTo): array
+    {
+        if ($orderSns === []) {
+            return [];
+        }
+
+        try {
+            $lote = $this->post($company, '/api/v2/payment/get_escrow_detail_batch', [
+                'order_sn_list' => array_values($orderSns),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error(
+                "[Shopee] Cupom do vendedor NÃO descontado empresa {$company->id} ({$company->name}) "
+                . "janela {$dateFrom}→{$dateTo}: o lote get_escrow_detail_batch de " . count($orderSns)
+                . ' pedidos falhou (' . $e->getMessage() . '). '
+                . 'O faturamento deste lote sai MAIOR que o do painel da Shopee (cupom não descontado).'
+            );
+
+            return [];
+        }
+
+        $vouchers = [];
+
+        foreach ($lote as $linha) {
+            $escrow = $linha['escrow_detail'] ?? null;
+
+            if (! is_array($escrow) || empty($escrow['order_sn'])) {
+                continue;
+            }
+
+            // ⛔ `voucher_from_shopee` fica de fora de propósito: é bancado pela
+            //    plataforma e descontá-lo passa do alvo (ver docblock do
+            //    fetchOrdersSummary).
+            $valor = (float) ($escrow['order_income']['voucher_from_seller'] ?? 0);
+
+            if ($valor > 0) {
+                $vouchers[(string) $escrow['order_sn']] = $valor;
+            }
+        }
+
+        return $vouchers;
     }
 
     // ═══ Dados: anúncios (ADS) ════════════════════════════════════════════════
