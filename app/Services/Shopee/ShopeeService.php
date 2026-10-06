@@ -395,6 +395,55 @@ class ShopeeService
         return $json['response'] ?? [];
     }
 
+    /**
+     * POST assinado a um endpoint de shop da Shopee. Irmão do `get()`: mesmas
+     * credenciais, mesma assinatura e mesmo tratamento de erro — a única
+     * diferença é que os parâmetros de NEGÓCIO vão no corpo JSON em vez da
+     * query string.
+     *
+     * ⚠️ A `ShopeeSigner` cobre partner_id + caminho + timestamp + access_token
+     *    + shop_id e **nada do corpo** — por isso `post()` e `get()` assinam
+     *    exatamente igual: o payload não participa da base string.
+     *
+     * Existe porque endpoints em lote (quick 261006-j44:
+     * `/api/v2/payment/get_escrow_detail_batch`) exigem POST — a lista de
+     * `order_sn` não cabe/não é aceita na query.
+     *
+     * Retorna o conteúdo sob a chave `response` (padrão da v2).
+     *
+     * @param  array $payload Corpo JSON (parâmetros de negócio)
+     * @throws \RuntimeException
+     */
+    public function post(Company $company, string $apiPath, array $payload = []): array
+    {
+        $token = $this->ensureValidToken($company);
+
+        if (! $token) {
+            throw new \RuntimeException("[Shopee] Empresa {$company->id} sem token válido.");
+        }
+
+        $timestamp = time();
+        $sign      = $this->signer->sign($apiPath, $timestamp, $token->access_token, (int) $token->shop_id);
+
+        // Credenciais SEMPRE na query, mesmo no POST (exigência da v2).
+        $url = $this->host . $apiPath . '?' . http_build_query([
+            'partner_id'   => $this->partnerId,
+            'timestamp'    => $timestamp,
+            'access_token' => $token->access_token,
+            'shop_id'      => (int) $token->shop_id,
+            'sign'         => $sign,
+        ]);
+
+        $response = $this->http()->asJson()->post($url, $payload);
+        $json     = $response->json() ?? [];
+
+        if (! $response->successful() || $this->isError($json)) {
+            throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
+        }
+
+        return $json['response'] ?? [];
+    }
+
     /** True quando a resposta v2 traz um `error` não-vazio. */
     private function isError(array $json): bool
     {
