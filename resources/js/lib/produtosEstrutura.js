@@ -68,28 +68,38 @@ const TIP_FAIXA = 'Neste preço o frete pode mudar de faixa.';
 /**
  * Célula "Frete ME2": só mostra o que o servidor mandou (estimativa da tabela ECF, valor
  * do ML, falha, faixa de referência, ME1 e o alerta de faixa). Nenhum limite mora aqui.
+ * `forma = 'pilha'` (ficha, 167-19) empilha valor e apoio; a 'linha' é a da lista.
  */
-export function renderFrete(row, { consultando = false } = {}) {
+export function renderFrete(row, { consultando = false } = {}, forma = 'linha') {
     if (! row?.id) return null;
-    const apoio = (t, title) => h('span', { className: 'truncate text-[12px] text-white/45', title }, t);
+    const pilha = forma === 'pilha';
+    const caixa = (...filhos) => (pilha
+        ? h('span', { className: 'inline-flex flex-col leading-tight' }, ...filhos)
+        : emLinha(...filhos));
+    const apoio = (t, title) => h('span', { className: pilha ? 'text-[13px] text-white/60' : 'truncate text-[12px] text-white/45', title }, t);
+    const valorCls = pilha ? 'text-[15px] font-semibold tabular-nums text-white' : 'tabular-nums text-white/60';
 
     if (consultando) {
-        return emLinha(h(Loader2, { size: 12, className: 'shrink-0 animate-spin text-white/45', 'aria-hidden': 'true' }), apoio('consultando'));
+        return caixa(h(Loader2, { size: 12, className: 'shrink-0 animate-spin text-white/45', 'aria-hidden': 'true' }), apoio('consultando'));
     }
     if (row.logistica === 'me1') {
-        return emLinha(h('span', { className: 'text-white/60', title: TIP_ME1 }, '—'), apoio('sem frete aqui', TIP_ME1));
+        return caixa(h('span', { className: 'text-white/60', title: TIP_ME1 }, '—'), apoio('sem frete aqui', TIP_ME1));
     }
     if (! row.logistica || row.logistica === 'pendente' || ! row.frete || row.frete.valor == null) {
-        return emLinha(h('span', { className: 'text-white/60' }, '—'));
+        return caixa(h('span', { className: 'text-white/60' }, '—'));
     }
     const t = textoFrete(row.frete);
     const tip = row.frete.falhou ? TIP_FALHOU : row.frete.preco_origem === 'referencia' ? TIP_REFERENCIA : undefined;
+    const alerta = row.frete.alerta_faixa ? h(AlertTriangle, { size: 12, className: 'shrink-0 text-amber-300', title: TIP_FAIXA, 'aria-label': TIP_FAIXA }) : null;
 
-    return emLinha(
-        h('span', { className: 'tabular-nums text-white/60' }, t.valor),
-        apoio(t.apoio, tip),
-        row.frete.alerta_faixa ? h(AlertTriangle, { size: 12, className: 'shrink-0 text-amber-300', title: TIP_FAIXA, 'aria-label': TIP_FAIXA }) : null,
-    );
+    if (pilha) {
+        return caixa(
+            h('span', { className: 'inline-flex items-center justify-center gap-1' }, h('span', { className: valorCls }, t.valor), alerta),
+            apoio(t.apoio, tip),
+        );
+    }
+
+    return caixa(h('span', { className: valorCls }, t.valor), apoio(t.apoio, tip), alerta);
 }
 
 /** Célula "Peso cubado": "cobrado" só quando o cubado é o faturado (decisão do servidor). */
@@ -99,6 +109,33 @@ export function renderPesoCubado(row) {
 
     return h('span', { className: 'inline-flex items-center gap-1 tabular-nums text-white/60', title: `Peso cobrado: ${fmtKg(row.peso_faturado, 2)}` },
         fmtKg(row.peso_cubado, 2), cobrado);
+}
+
+/** Iniciais para o quadro da foto (D-29: sem upload): 1ª letra das duas primeiras palavras. */
+export function iniciais(nome) {
+    return String(nome ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+}
+
+/** Caminho da categoria em partes ("A > B > C" → [A, B, C]) e o estado que o servidor deu. */
+export function partesDaCategoria(linha) {
+    const caminho = String(linha?.categoria_ml_caminho ?? '').trim();
+    const partes = caminho
+        ? caminho.split(' > ').map((p) => p.trim()).filter(Boolean)
+        : [linha?.categoria_ml_nome ?? linha?.categoria_ml_id].filter(Boolean);
+
+    return { partes, estado: linha?.categoria_estado ?? 'vazia' };
+}
+
+const listaEm = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0]);
+
+/** "Produto salvo." e, quando o servidor criou família/ambiente na lista da empresa, a frase de aviso. */
+export function textoProdutoSalvo(data) {
+    const criadas = data?.criadas_nas_listas ?? { familias: [], ambientes: [] };
+    const partes = [];
+    if (criadas.familias?.length) partes.push(`${criadas.familias.length > 1 ? 'as famílias' : 'a família'} ${listaEm(criadas.familias)}`);
+    if (criadas.ambientes?.length) partes.push(`${criadas.ambientes.length > 1 ? 'os ambientes' : 'o ambiente'} ${listaEm(criadas.ambientes)}`);
+
+    return `Produto salvo.${partes.length ? ` Criamos ${partes.join(' e ')}.` : ''}`;
 }
 
 /** "custo · categoria", na ordem que o servidor mandou. */

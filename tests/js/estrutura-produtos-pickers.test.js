@@ -15,7 +15,7 @@ import { lerSemComentarios } from './_fonte.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 const picker = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PickerLista.jsx');
-const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/SheetProduto.jsx');
+const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaDadosGerais.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 

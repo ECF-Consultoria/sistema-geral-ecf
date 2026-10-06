@@ -14,7 +14,7 @@ import { lerSemComentarios } from './_fonte.js';
 const picker = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PickerCategoria.jsx');
 const janela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
-const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/SheetProduto.jsx');
+const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/FichaDadosGerais.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
 test('PickerCategoria: busca com debounce de 350 ms, preenchida com o nome do produto', () => {
