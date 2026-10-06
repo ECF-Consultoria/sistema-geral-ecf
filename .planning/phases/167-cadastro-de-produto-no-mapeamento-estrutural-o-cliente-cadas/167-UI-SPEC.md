@@ -5,7 +5,7 @@ status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-10-05
-revised: 2026-10-06 (D-23)
+revised: 2026-10-06 (D-23; D-25..D-30)
 ---
 
 # Fase 167 — Contrato de Design da UI
@@ -18,6 +18,69 @@ revised: 2026-10-06 (D-23)
 **Princípio do contrato:** esta tela é a forma RÁPIDA de cadastrar ~70 produtos. Velocidade de digitação vence enfeite.
 A tabela fica calma: **sem contador de progresso, sem placar, sem checklist de completude, sem rótulo em CAIXA ALTA,
 nada vermelho antes de tentar salvar.** Pendência por linha é texto discreto, não alarme.
+
+## Revisão D-25..D-30 (06/10/2026) — referências visuais 1:1
+
+Motivo: o usuário entregou as três referências (`167-REF-1-visual-grande.jpg`, `167-REF-2-ficha-do-produto.jpg`,
+`167-REF-3-lista.jpg`, condensadas em `167-REFERENCIA-VISUAL.md`) e pediu o layout praticamente 1:1, com as cores do
+sistema. Esta seção **vale sobre a Revisão D-23 e sobre as seções abaixo onde houver conflito.** Foi conferida por captura a
+1586×992 contra as referências (167-21, 3 rodadas).
+
+### Passa a valer
+
+- **Topo amplo:** rótulo "Mapeamento Estrutural", título grande, descrição em uma linha, trilha em círculos numerados
+  ligados por linha, "Como funciona" no canto.
+- **Linha de ações:** Adicionar produto · Famílias e ambientes · Importar planilha · Baixar modelo · Sugerir categorias
+  ("Sugerir categorias" sempre visível, desabilitado sem pendência), com a busca à direita.
+- **Seletor [Visual grande][Lista]** guardado no navegador, com "Consultar fretes no Mercado Livre" à direita dele (só com
+  conta conectada).
+- **Dois desenhos de cartão:** foto = quadro com iniciais; "Família · Ambientes"; categoria "raiz › folha" (caminho inteiro
+  na dica); pílula "Falta: …" neutra com ⓘ e o detalhe por variação; ⋮ com "Abrir a ficha" e "Ver {SKU} na Lista SKUs";
+  por variação: bolinha, Ref, valor, selo de logística e frete empilhado; medidas, peso cubado e custo na dica da variação.
+- **Bolinha:** colorida só no eixo Cor com cor conhecida; senão, neutra.
+- **Ficha em página** com URL própria (`/portal/estrutura/produtos/{id}` e `/novo`): breadcrumb, bloco de dados gerais,
+  blocos de variação, volumes em cartões 2 por linha, faixa de calculados só leitura ("Os calculados aparecem ao salvar." /
+  "Recalcula ao salvar."), "+ Nova variação" tracejado, rodapé Cancelar / Salvar produto (único amarelo), asterisco só em
+  Ref e Nome, Valor texto livre, Eixo select nativo.
+- **Saída da ficha:** confirmação "Há alterações não salvas neste produto. Sair sem salvar?"; volta à lista preservando
+  busca, página, modo e rolagem (produto novo: rola até ele, quando está na página da lista) e o aviso "Produto salvo.".
+- **Ref** sem `font-mono` nos cartões e na ficha, como nas referências.
+- **Medidas de referência (1586 px):**
+
+| Estado | Elemento | Medida |
+|---|---|---|
+| Lista | título / trilha / ações / seletor | y 78 / 185 / 254 / 327; ações h48, busca 333 px; seletor h42 |
+| Visual grande | cartões | 3 colunas de ≈469; foto 106×108; linha de variação ≈67 |
+| Lista | cartão | colunas ≈405 / 440 / 534 / 60; foto 78; ≈82 com 1 variação, ≈98 com 2 |
+| Ficha | bloco principal | foto 266×198; ≈240 de altura |
+| Ficha | variação | volumes 2 por linha; faixa de 5 calculados; Cancelar 151 / Salvar 284, h36 |
+
+### Deixam de valer
+
+- Painel lateral / folha de baixo da ficha (`Sheet`, `lado`) e a "Proteção do que foi digitado" por clique fora/Esc.
+- A casca `max-w-6xl` para Produtos.
+- O aviso dispensável da lista (virou dica do "Importar planilha").
+- A linha "Falta: …" por variação e o "sem pílula, sem ícone" da Falta (agora pílula neutra com detalhe, no produto).
+- Medidas, peso cubado e custo visíveis no cartão (agora na dica).
+- O texto "Baixar modelo (.xlsx)" (agora "Baixar modelo", com a dica).
+- O grid `xl:grid-cols-3` (agora 3 colunas a partir de 1440 px, mesma altura por linha).
+
+### Diferenças aceitas em relação às referências
+
+| Diferença | Motivo |
+|---|---|
+| Cores e identidade (tokens `ecf-*`), menu lateral do Portal | D-25 |
+| Sem sino, avatar, "Ver no Mercado Livre" nem ⋮ no topo da ficha | D-30 |
+| Seletor também no Visual grande: cartões ≈58 px abaixo da REF-1 | D-26 |
+| Foto = quadro com iniciais, sem lápis | D-29 |
+| Asterisco só em Ref e Nome | D-28 |
+| Valor sem chevron (texto livre) | D-20 |
+| Bolinha neutra em eixo que não é Cor | D-30 |
+| Pílula "Falta" quebra para a linha de baixo no Visual grande quando a categoria é longa (cartão fica ≈30–55 px mais alto que na REF-1) | dado real: sem conta do Mercado Livre há "Falta: frete ME1"; só a REF-1 mostra 2 pendências em 6 |
+| Calculados com "estimativa" ao lado do valor; "cobrado" no peso cubado | dado calculado pelo servidor (estimativa x faixa de referência) |
+| Bloco de variação ≈244 (REF-2: 225) e dados gerais ≈251 (REF-2: 240) | dois cartões de volume + subtítulo "Oferta … · Ver na Lista SKUs" que a referência não tem |
+| Título da ficha 42 px (REF-2 ≈44) e página com 1037 px de altura para 2 variações | proporção medida dentro de ±10% |
+| Valores, logísticas e fretes | os do servidor para os dados; o mockup tem combinações impossíveis |
 
 ## Revisão D-23 (06/10/2026) — lista + ficha, sem planilha na tela
 
