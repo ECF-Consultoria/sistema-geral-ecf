@@ -8,7 +8,10 @@ import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariaca
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
-import { entradaAtual, marcarUltimoProduto, passosAte, urlDeVolta, voltarParaLista } from '@/lib/produtosNavegacao';
+import {
+    entradaAtual, esquecerAbertura, fichaAbertaPelaLista, marcarUltimoProduto, passosAte, podeVoltarNoHistorico, urlDeVolta,
+    voltarParaLista, voltarPeloHistorico,
+} from '@/lib/produtosNavegacao';
 
 // ─── Ficha do produto em página inteira (REF-2, Fase 167-19) ────────────────
 //
@@ -32,6 +35,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     alteradoRef.current = ficha.alterado;
     const fichaRef = useRef(ficha);
     fichaRef.current = ficha;
+    const esperaVolta = useRef(null);   // saída pelo histórico à espera do popstate (FE-WR-05)
     // D-32: o produto que esta ficha representa — a lista destaca o cartão dele na volta, saia como sair.
     const ultimoRef = useRef(produto?.id ?? null);
     useEffect(() => () => marcarUltimoProduto(ultimoRef.current), []);
@@ -78,6 +82,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const ignorarVolta = useRef(false);
     useEffect(() => {
         const aoNavegarNoHistorico = (e) => {
+            clearTimeout(esperaVolta.current);   // a saída pelo histórico chegou (FE-WR-05)
             if (ignorarVolta.current) {
                 ignorarVolta.current = false;
                 e.stopImmediatePropagation();
@@ -101,9 +106,55 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         return () => window.removeEventListener('popstate', aoNavegarNoHistorico, true);
     }, []);
 
+    // ─── Saída para a lista (D-27; revisão FE-WR-05) ────────────────────────
+    //
+    // Aberta pela lista, a ficha sai voltando no histórico: fica UMA entrada da lista, que se
+    // recarrega ao montar. Sem a lista atrás (URL direta, outra aba), visita a lista trocando a
+    // entrada da ficha. A entrada da ficha que fica à frente recebe antes os dados de agora (`entrada`),
+    // para o "avançar" do navegador não abrir a ficha velha.
+
+    const [abertaPelaLista] = useState(() => fichaAbertaPelaLista());
+    useEffect(() => { esquecerAbertura(); }, []);
+    useEffect(() => () => clearTimeout(esperaVolta.current), []);
+
+    const irParaLista = ({ aviso = null, produtoId = null, entrada = null } = {}) => {
+        if (! podeVoltarNoHistorico(abertaPelaLista)) {
+            voltarParaLista({ aviso, produtoId, replace: true });
+
+            return;
+        }
+        const voltar = () => {
+            // Se o popstate não vier (histórico diferente do esperado), a visita comum leva para a lista.
+            esperaVolta.current = setTimeout(() => voltarParaLista({ aviso, produtoId, replace: true }), 1500);
+            voltarPeloHistorico({ aviso, produtoId });
+        };
+        if (entrada) router.replace({ ...entrada, preserveState: true, preserveScroll: true, onFinish: voltar });
+        else voltar();
+    };
+
+    /** A entrada da ficha com o que o servidor acabou de devolver: URL do produto e as variações de agora. */
+    const entradaDoProduto = (id, data) => {
+        const porId = new Map();
+        (data?.linhas ?? []).filter((l) => l.produto_id === id).forEach((l) => porId.set(l.id, l));
+        const atuais = [...porId.values()];
+
+        return {
+            url: route('portal.auth.estrutura.produtos.ficha', id, false),
+            props: (props) => ({ ...props, produto: { id, nome: atuais[0]?.nome ?? props.produto?.nome ?? '' }, linhas: atuais, listas: data?.listas ?? props.listas }),
+        };
+    };
+
     // ─── Ações ──────────────────────────────────────────────────────────────
 
-    const sair = () => voltarParaLista();
+    /** Cancelar e "← Produtos": com alteração não salva, a confirmação de sempre. */
+    const sair = () => {
+        if (alteradoRef.current && ! liberado.current) {
+            if (! window.confirm(CONFIRMA_SAIR)) return;
+            liberado.current = true;
+            ficha.esquecerRascunho();
+        }
+        irParaLista();
+    };
 
     const aoClicarProdutos = (e) => {
         if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
@@ -121,11 +172,11 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         if (! r.ok) return;   // erros nos blocos; gravação parcial já aplicada pelo hook
 
         liberado.current = true;
-        voltarParaLista({
+        irParaLista({
             aviso: textoProdutoSalvo(r.data),
             // Produto novo: a lista rola até o cartão dele; editado, volta à mesma rolagem.
-            produtoId: novo ? (r.data.linhas?.[0]?.produto_id ?? null) : null,
-            replace: true,
+            produtoId: novo ? (idGravado ?? null) : null,
+            entrada: idGravado ? entradaDoProduto(idGravado, r.data) : null,
         });
     };
 
@@ -144,7 +195,11 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
             liberado.current = true;
             ultimoRef.current = null;   // o produto deixou de existir: nada a destacar
             ficha.esquecerRascunho();
-            voltarParaLista({ aviso: resposta?.mensagem ?? null, replace: true });
+            irParaLista({
+                aviso: resposta?.mensagem ?? null,
+                // A entrada à frente deixa de apontar para o produto excluído: o "avançar" abre uma ficha em branco.
+                entrada: { url: route('portal.auth.estrutura.produtos.novo', {}, false), props: (props) => ({ ...props, produto: null, linhas: [] }) },
+            });
 
             return;
         }

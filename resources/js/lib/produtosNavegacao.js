@@ -51,9 +51,15 @@ const recente = (registro, validade) => typeof registro?.em === 'number' && Date
 /** Id de produto aceito para montar seletor: inteiro positivo, nada cru. */
 const idValido = (id) => Number.isInteger(id) && id > 0;
 
-/** Chamada pela lista antes de abrir a ficha: guarda onde estava. */
-export function guardarRetorno() {
-    gravar(CHAVE_RETORNO, { url: window.location.pathname + window.location.search, scrollY: window.scrollY, em: Date.now() });
+/** Chamada pela lista antes de abrir a ficha: guarda onde estava e qual ficha está abrindo. */
+export function guardarRetorno(destino = null) {
+    let abriu = null;
+    try {
+        abriu = destino ? new URL(destino, window.location.origin).pathname : null;
+    } catch (e) {
+        abriu = null;
+    }
+    gravar(CHAVE_RETORNO, { url: window.location.pathname + window.location.search, scrollY: window.scrollY, em: Date.now(), abriu });
 }
 
 /** Para onde "← Produtos" leva: a lista com a busca/página de antes (se recente), ou a lista pura. */
@@ -83,6 +89,53 @@ export function voltarParaLista({ aviso = null, produtoId = null, replace = fals
     });
 }
 
+// ─── Sair da ficha pelo histórico (revisão FE-WR-05) ────────────────────────
+//
+// Visitar a lista ao sair da ficha deixava a pilha [lista velha, lista nova]
+// (salvar e excluir trocavam a entrada da ficha) ou [lista, ficha, lista]
+// (Cancelar e "← Produtos" empilhavam), e o voltar do navegador mostrava a
+// lista velha: produto excluído ainda na tela, clicar nele dava 404. Quando a
+// entrada anterior é a lista, a ficha sai com `history.back()`: fica UMA
+// entrada da lista, e a lista se recarrega ao montar — também quando a pessoa
+// usa o voltar do navegador. Sem como saber o que há atrás, a visita comum.
+
+const ABERTURA_VALE_MS = 60 * 1000;
+
+/** A ficha, ao montar: a lista acabou de abri-la, nesta aba? (Só lê; `esquecerAbertura` consome.) */
+export function fichaAbertaPelaLista() {
+    const retorno = ler(CHAVE_RETORNO);
+
+    return typeof retorno?.abriu === 'string' && retorno.abriu === window.location.pathname && recente(retorno, ABERTURA_VALE_MS);
+}
+
+/** Consome a marca da abertura: outra aba com o storage copiado ou uma visita depois não a herdam. */
+export function esquecerAbertura() {
+    const retorno = ler(CHAVE_RETORNO);
+    if (retorno?.abriu) gravar(CHAVE_RETORNO, { ...retorno, abriu: null });
+}
+
+/** A entrada anterior do histórico é a lista? Com a Navigation API, confere; sem ela, vale a marca da abertura. */
+export function podeVoltarNoHistorico(abertaPelaLista = false) {
+    try {
+        const nav = window.navigation;
+        if (nav?.currentEntry && typeof nav.entries === 'function') {
+            const anterior = nav.entries()[nav.currentEntry.index - 1];
+
+            return !! anterior?.url && new URL(anterior.url).pathname === caminhoDaLista();
+        }
+    } catch (e) {
+        // sem Navigation API confiável: fica a marca
+    }
+
+    return !! abertaPelaLista;
+}
+
+/** Sai da ficha voltando no histórico. A rolagem fica com o Inertia (a da própria entrada da lista). */
+export function voltarPeloHistorico({ aviso = null, produtoId = null } = {}) {
+    gravar(CHAVE_VOLTA, { aviso, produtoId, scrollY: null, historico: true, em: Date.now() });
+    window.history.back();
+}
+
 /** A lista chama ao montar: lê e APAGA o que a ficha deixou (só vale se for de agora). */
 export function pegarVolta() {
     const volta = ler(CHAVE_VOLTA);
@@ -101,7 +154,8 @@ export function rolarParaVolta(volta) {
 
             return;
         }
-        window.scrollTo(0, Number(volta.scrollY) || 0);
+        // Volta pelo histórico não traz rolagem: o Inertia restaura a da própria entrada da lista.
+        if (typeof volta.scrollY === 'number') window.scrollTo(0, volta.scrollY);
     }));
 }
 

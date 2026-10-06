@@ -1,7 +1,8 @@
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    apagarRascunho, entradaAtual, gravarRascunho, guardarRetorno, lerRascunho, mostrarCartao, passosAte, pegarVolta, rolarParaVolta, urlDeVolta,
+    apagarRascunho, entradaAtual, esquecerAbertura, fichaAbertaPelaLista, gravarRascunho, guardarRetorno, lerRascunho, mostrarCartao, passosAte,
+    pegarVolta, podeVoltarNoHistorico, rolarParaVolta, urlDeVolta, voltarPeloHistorico,
 } from '../../resources/js/lib/produtosNavegacao.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -187,4 +188,74 @@ test('mostrarCartao: rola só com o cartão inteiramente fora; cortado na borda 
         mostrarCartao(5);
         assert.equal(rolou, c.rola, c.nome);
     }
+});
+
+// ─── Sair da ficha pelo histórico (FE-WR-05) ────────────────────────────────
+
+test('abertura: a lista marca qual ficha abriu; só essa ficha, logo depois, se reconhece aberta pela lista', () => {
+    naLista('?pagina=2');
+    guardarRetorno('https://admin.test/portal/estrutura/produtos/15');
+    assert.equal(JSON.parse(window.sessionStorage.getItem('ecf.produtos.retorno')).abriu, '/portal/estrutura/produtos/15');
+
+    window.location.pathname = '/portal/estrutura/produtos/15';
+    assert.equal(fichaAbertaPelaLista(), true);
+    window.location.pathname = '/portal/estrutura/produtos/16';
+    assert.equal(fichaAbertaPelaLista(), false, 'outra ficha não herda a marca');
+
+    window.location.pathname = '/portal/estrutura/produtos/15';
+    esquecerAbertura();
+    assert.equal(fichaAbertaPelaLista(), false, 'consumida ao montar: recarregar ou outra aba não herdam');
+    assert.equal(urlDeVolta(), '/portal/estrutura/produtos?pagina=2', 'consumir a marca não apaga o retorno');
+});
+
+test('abertura: marca velha não vale', () => {
+    naLista();
+    window.location.pathname = '/portal/estrutura/produtos/15';
+    window.sessionStorage.setItem('ecf.produtos.retorno', JSON.stringify({ url: '/portal/estrutura/produtos', em: Date.now() - 5 * 60 * 1000, abriu: '/portal/estrutura/produtos/15' }));
+    assert.equal(fichaAbertaPelaLista(), false);
+});
+
+test('podeVoltarNoHistorico: com Navigation API, só quando a entrada anterior é a lista', () => {
+    naLista();
+    const entradas = [
+        { url: 'https://admin.test/portal/estrutura/lista', index: 0 },
+        { url: 'https://admin.test/portal/estrutura/produtos?q=mesa', index: 1 },
+        { url: 'https://admin.test/portal/estrutura/produtos/15', index: 2 },
+    ];
+    window.navigation = { entries: () => entradas, currentEntry: entradas[2] };
+    assert.equal(podeVoltarNoHistorico(false), true, 'a lista (com busca) está logo atrás');
+
+    window.navigation.currentEntry = entradas[1];
+    assert.equal(podeVoltarNoHistorico(true), false, 'atrás está outra tela: a marca não manda');
+
+    window.navigation.currentEntry = entradas[0];
+    assert.equal(podeVoltarNoHistorico(true), false, 'nada atrás');
+
+    delete window.navigation;
+    assert.equal(podeVoltarNoHistorico(true), true, 'sem Navigation API vale a marca da abertura');
+    assert.equal(podeVoltarNoHistorico(false), false);
+});
+
+test('voltarPeloHistorico: deixa a volta marcada como do histórico, sem rolagem, e volta uma entrada', () => {
+    naLista();
+    let voltou = 0;
+    window.history = { back: () => { voltou++; } };
+    voltarPeloHistorico({ aviso: 'Produto salvo.', produtoId: 31 });
+
+    assert.equal(voltou, 1);
+    const volta = pegarVolta();
+    assert.equal(volta.historico, true);
+    assert.equal(volta.scrollY, null);
+    assert.equal(volta.aviso, 'Produto salvo.');
+    assert.equal(volta.produtoId, 31);
+});
+
+test('rolarParaVolta: volta pelo histórico sem produto novo não mexe na rolagem (fica a do Inertia)', () => {
+    naLista();
+    globalThis.requestAnimationFrame = (f) => f();
+    globalThis.document = { querySelector: () => null };
+    let rolou = false;
+    window.scrollTo = () => { rolou = true; };
+    rolarParaVolta({ aviso: null, produtoId: null, scrollY: null, historico: true });
+    assert.equal(rolou, false);
 });

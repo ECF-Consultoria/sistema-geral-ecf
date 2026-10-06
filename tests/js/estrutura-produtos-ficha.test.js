@@ -208,6 +208,30 @@ test('Volta: sucesso volta para a lista com o aviso, trocando a entrada do hist�
     }
 });
 
+test('Saída pelo histórico: aberta pela lista, a ficha volta uma entrada em vez de empilhar a lista (FE-WR-05)', () => {
+    const lista = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+
+    assert.ok(pagina.includes('useState(() => fichaAbertaPelaLista())') && pagina.includes('esquecerAbertura();'));
+    assert.match(pagina, /if \(! podeVoltarNoHistorico\(abertaPelaLista\)\) \{\s*voltarParaLista\(\{ aviso, produtoId, replace: true \}\);/);
+    assert.ok(pagina.includes('voltarPeloHistorico({ aviso, produtoId })'));
+    assert.ok(pagina.includes('router.replace({ ...entrada, preserveState: true, preserveScroll: true, onFinish: voltar })'),
+        'a entrada da ficha que fica à frente recebe os dados de agora antes de voltar');
+    assert.ok(pagina.includes("route('portal.auth.estrutura.produtos.ficha', id, false)"));
+    assert.ok(pagina.includes("route('portal.auth.estrutura.produtos.novo', {}, false)"), 'produto excluído: a entrada à frente vira ficha em branco');
+    assert.ok(pagina.includes('clearTimeout(esperaVolta.current);'), 'o popstate desarma a visita de reserva');
+    // Salvar, excluir e cancelar passam pelo mesmo caminho; Cancelar pergunta antes, com alteração.
+    assert.equal(contar(pagina, /irParaLista\(/g), 3, 'cancelar + salvar + excluir');
+    assert.ok(! /voltarParaLista\(\{[^}]*\}\)/.test(pagina.slice(pagina.indexOf('const sair = '))), 'as ações não visitam a lista direto');
+    assert.match(pagina, /const sair = \(\) => \{\s*if \(alteradoRef\.current && ! liberado\.current\) \{\s*if \(! window\.confirm\(CONFIRMA_SAIR\)\) return;/);
+
+    // A lista que volta pelo histórico se recarrega na mesma entrada; aviso, produto novo e destaque continuam.
+    assert.ok(lista.includes("guardarRetorno(destino)"));
+    assert.ok(lista.includes('const pelaHistoria = volta ? volta.historico === true : ultimo !== null;'));
+    assert.match(lista, /router\.reload\(\{\s*only: \['produtos', 'listas'\],\s*preserveScroll: true,/);
+    assert.ok(lista.includes('if (volta?.aviso) setAviso(volta.aviso);'));
+    assert.ok(lista.includes('mostrarCartao(ultimo)') && lista.includes('rolarParaVolta(volta)'));
+});
+
 test('Navegação: ida e volta guardada em sessionStorage e sem redirecionamento aberto', () => {
     for (const e of ['guardarRetorno', 'urlDeVolta', 'voltarParaLista', 'pegarVolta', 'rolarParaVolta']) {
         assert.match(nav, new RegExp(`export function ${e}`));

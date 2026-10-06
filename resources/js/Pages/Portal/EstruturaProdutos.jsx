@@ -103,25 +103,42 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     /** Navega até a ficha (D-27): guarda onde a lista estava para a volta preservar busca, página e rolagem. */
     const abrirFicha = (produtoId = null) => {
-        guardarRetorno();
-        router.visit(produtoId
+        const destino = produtoId
             ? route('portal.auth.estrutura.produtos.ficha', produtoId)
-            : route('portal.auth.estrutura.produtos.novo'));
+            : route('portal.auth.estrutura.produtos.novo');
+        guardarRetorno(destino);
+        router.visit(destino);
     };
 
     // Voltando da ficha: o aviso de "Produto salvo.", a rolagem de antes (ou até o produto novo) e,
     // saia como sair da ficha, o cartão daquele produto destacado (D-32) — forte por alguns segundos,
     // depois um contorno leve que fica até sair da página.
+    //
+    // Voltou pelo HISTÓRICO (a ficha saiu com history.back, ou a pessoa usou o voltar do navegador):
+    // esta entrada tem os produtos de quando a pessoa saiu dela. Uma recarga parcial traz os de agora
+    // para a mesma entrada; o produto novo e o destaque esperam a recarga (revisão FE-WR-05).
     useEffect(() => {
         const volta = pegarVolta();
-        if (volta) {
-            if (volta.aviso) setAviso(volta.aviso);
-            rolarParaVolta(volta);
-        }
         const ultimo = pegarUltimoProduto();
+        if (volta?.aviso) setAviso(volta.aviso);
+        if (ultimo) setVoltouDe(ultimo);
+
+        const pelaHistoria = volta ? volta.historico === true : ultimo !== null;
+        if (pelaHistoria) {
+            router.reload({
+                only: ['produtos', 'listas'],
+                preserveScroll: true,
+                onFinish: () => {
+                    if (volta) rolarParaVolta(volta);
+                    if (ultimo) mostrarCartao(ultimo);
+                },
+            });
+        } else {
+            if (volta) rolarParaVolta(volta);
+            if (ultimo) mostrarCartao(ultimo);
+        }
+
         if (! ultimo) return undefined;
-        setVoltouDe(ultimo);
-        mostrarCartao(ultimo);
         const t = setTimeout(() => setDestaqueForte(false), 2500);
 
         return () => clearTimeout(t);
