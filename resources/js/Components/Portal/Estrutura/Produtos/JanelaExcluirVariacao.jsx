@@ -10,8 +10,12 @@ import Janela from '@/Components/Portal/Estrutura/Janela';
 // o produto vai com ela. Se a oferta é componente de kit/combo/combit, não há
 // o que confirmar: a janela explica e só oferece "Entendi". A regra é do
 // servidor (que devolve 422 se o bloqueio mudou); aqui só se mostra.
+//
+// Última variação GRAVADA com variações novas ainda não salvas na ficha: excluir
+// levaria o produto e a ficha sairia sem gravar as novas. A janela pede para
+// salvar antes e só oferece "Entendi" (revisão FE-WR-04).
 
-export default function JanelaExcluirVariacao({ linha, ultima = false, aberta, onFechar, onExcluida }) {
+export default function JanelaExcluirVariacao({ linha, ultima = false, novasNaoSalvas = false, aberta, onFechar, onExcluida }) {
     const [enviando, setEnviando] = useState(false);
     const [erro, setErro] = useState(null);
 
@@ -22,7 +26,9 @@ export default function JanelaExcluirVariacao({ linha, ultima = false, aberta, o
     if (! linha) return null;
 
     const oferta = linha.oferta;
-    const bloqueada = (oferta?.usada_em?.length ?? 0) > 0;
+    const componente = (oferta?.usada_em?.length ?? 0) > 0;
+    const esperaSalvar = ! componente && ultima && novasNaoSalvas;
+    const bloqueada = componente || esperaSalvar;
     const anuncios = oferta?.anuncios ?? 0;
 
     const excluir = async () => {
@@ -41,11 +47,17 @@ export default function JanelaExcluirVariacao({ linha, ultima = false, aberta, o
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-md"
             titulo={bloqueada ? `Não dá para excluir ${linha.codigo}` : `Excluir a variação ${linha.codigo}?`}>
             <div className="space-y-3 text-[13px] leading-relaxed text-white/70" data-janela-excluir>
-                {bloqueada ? (
+                {componente && (
                     <p>
                         Não dá para excluir {linha.codigo}: a oferta {oferta.sku} entra em {oferta.usada_em.join(', ')}. Tire-a dessas ofertas antes.
                     </p>
-                ) : (
+                )}
+                {esperaSalvar && (
+                    <p data-espera-salvar>
+                        Não dá para excluir {linha.codigo} agora: é a última variação gravada, e o produto {linha.nome} seria excluído junto com as variações novas que ainda não foram salvas. Salve o produto antes.
+                    </p>
+                )}
+                {! bloqueada && (
                     <>
                         {anuncios > 0 ? (
                             <p>

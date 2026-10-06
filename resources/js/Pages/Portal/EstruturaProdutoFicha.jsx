@@ -131,7 +131,9 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
     const excluir = (variacao) => {
         if (! variacao.id) { ficha.removerVariacao(variacao._k); return; }   // ainda não gravada: some sem confirmação
-        setExclusao({ linha: variacao, ultima: ficha.vars.filter((x) => x.id).length <= 1 });
+        const ultima = ficha.vars.filter((x) => x.id).length <= 1;
+        // Última gravada com variação nova na ficha: excluir levaria o produto e a nova junto (FE-WR-04).
+        setExclusao({ linha: variacao, ultima, novasNaoSalvas: ultima && ficha.vars.some((x) => ! x.id) });
     };
 
     const aoExcluida = (resposta) => {
@@ -227,7 +229,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 </section>
             </div>
 
-            <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima}
+            <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima} novasNaoSalvas={exclusao?.novasNaoSalvas}
                 onFechar={() => setExclusao(null)} onExcluida={aoExcluida} />
             <AvisoFlash />
         </PortalClienteLayout>

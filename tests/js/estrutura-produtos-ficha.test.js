@@ -145,6 +145,17 @@ test('Guarda: alteração não salva pede confirmação ao sair por link, botão
     }
 });
 
+test('Excluir a última gravada com variação nova na ficha pede para salvar antes (FE-WR-04)', () => {
+    const janela = lerSemComentarios(`${DIR}JanelaExcluirVariacao.jsx`);
+
+    assert.ok(pagina.includes('novasNaoSalvas: ultima && ficha.vars.some((x) => ! x.id)'));
+    assert.ok(pagina.includes('novasNaoSalvas={exclusao?.novasNaoSalvas}'));
+    assert.ok(janela.includes('const esperaSalvar = ! componente && ultima && novasNaoSalvas;'));
+    assert.ok(janela.includes('const bloqueada = componente || esperaSalvar;'), 'sem botão de excluir: só Entendi');
+    assert.ok(janela.includes('Salve o produto antes.'));
+    assert.ok(! /\bred-\d/.test(janela.slice(janela.indexOf('data-espera-salvar'), janela.indexOf('</p>', janela.indexOf('data-espera-salvar')))), 'sem vermelho novo');
+});
+
 test('Guarda: volta a valer se a visita confirmada falhar ou for cancelada (FE-WR-03)', () => {
     assert.ok(pagina.includes("const tirarFim = router.on('finish', () => { liberado.current = false; });"));
     assert.ok(pagina.includes('tirarFim();'), 'o ouvinte sai junto com a ficha');
