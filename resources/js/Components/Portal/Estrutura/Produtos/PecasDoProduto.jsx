@@ -1,5 +1,8 @@
-import { ChevronRight, Package } from 'lucide-react';
-import { ESTILO_LOGISTICA, iniciais, partesDaCategoria } from '@/lib/produtosEstrutura';
+import { ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
+import * as Popover from '@radix-ui/react-popover';
+import { router } from '@inertiajs/react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
+import { ESTILO_LOGISTICA, corDaVariacao, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 
 // ─── Peças pequenas da ficha do produto (167-19), reaproveitadas pela lista ──
@@ -69,5 +72,102 @@ export function CaminhoCategoria({ linha, curto = false, className }) {
             ))}
             {apoio && <span className="text-white/45">{apoio}</span>}
         </span>
+    );
+}
+
+// ─── Peças dos cartões da lista (167-20, D-25/D-30) ─────────────────────────
+
+/**
+ * Clique no cartão abre a ficha. Ignora o que nasceu dentro de `[data-nao-abrir]` (menu, pílula) e o
+ * clique com Ctrl/Meta/Shift/Alt ou botão do meio: aí o navegador abre o link do nome em outra aba.
+ */
+export function aoClicarNoCartao(e, abrir) {
+    if (e.target?.closest?.('[data-nao-abrir]')) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || (e.button ?? 0) !== 0) return;
+    e.preventDefault();
+    abrir();
+}
+
+/** Bolinha da variação: colorida só com eixo Cor e valor conhecido (D-30); a cor sai do mapa, nunca do texto digitado. */
+export function BolinhaCor({ variacao, tamanho = 30 }) {
+    const cor = corDaVariacao(variacao);
+
+    return (
+        <span aria-hidden="true" title={cor ? `Cor: ${variacao.valor}` : undefined}
+            className={cn('inline-block shrink-0 rounded-full ring-1 ring-white/15', ! cor && 'bg-white/[0.08]')}
+            style={cor ? { width: tamanho, height: tamanho, backgroundColor: cor } : { width: tamanho, height: tamanho }} />
+    );
+}
+
+/** Uma variação: bolinha, Ref, valor, selo de logística e frete. Medidas, peso cubado e custo ficam na dica. */
+export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'grande' }) {
+    const lista = modo === 'lista';
+    const emConsulta = consultando?.has?.(variacao.id) ?? false;
+
+    return (
+        <li data-variacao-cartao title={detalheDaVariacao(variacao)}
+            className={cn('grid items-center',
+                lista ? 'grid-cols-[26px_minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-2'
+                    : 'grid-cols-[30px_minmax(0,108px)_minmax(0,1fr)_auto_minmax(72px,auto)] gap-x-3.5 py-3.5')}>
+            <BolinhaCor variacao={variacao} tamanho={lista ? 26 : 30} />
+            <span className="truncate text-[14px] font-medium text-white">{variacao.codigo}</span>
+            <span className="truncate text-[14px] text-white/75">{variacao.valor || '—'}</span>
+            <PilulaLogistica chave={variacao.logistica ?? 'pendente'} rotulos={vocabulario?.logisticas} className="h-8 px-3" />
+            <span className={cn('min-w-0', lista ? 'text-left' : 'text-right')}>
+                {renderFrete(variacao, { consultando: emConsulta }, 'pilha')}
+            </span>
+        </li>
+    );
+}
+
+/** Pílula "Falta: …" com o detalhe por variação num popover. Cor neutra: pendência não é alarme. */
+export function PilulaFalta({ variacoes, rotulos, nome }) {
+    const falta = faltaDoProduto(variacoes, rotulos);
+    if (! falta.texto) return null;
+
+    return (
+        <Popover.Root>
+            <Popover.Trigger asChild>
+                <button type="button" data-nao-abrir aria-label={`Ver o que falta em ${nome}`}
+                    className="inline-flex h-9 max-w-[240px] shrink-0 items-center gap-2 rounded-lg bg-white/[0.06] px-3 text-[13px] text-white/80 hover:bg-white/[0.09] focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40">
+                    <span className="truncate">Falta: {falta.texto}</span>
+                    <Info size={16} className="shrink-0" aria-hidden="true" />
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content data-nao-abrir align="end" sideOffset={6}
+                    className="z-50 w-72 rounded-xl border border-white/[0.08] bg-ecf-card p-3 text-[12px] text-white/75 shadow-xl">
+                    <p className="font-semibold text-white">O que falta</p>
+                    <ul className="mt-2 space-y-1">
+                        {falta.porVariacao.map((v) => <li key={v.codigo}>{v.codigo}: {v.texto}</li>)}
+                    </ul>
+                    <p className="mt-2 text-white/50">Abra o produto para completar.</p>
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
+    );
+}
+
+/** Menu ⋮ (D-30): só ações que existem — abrir a ficha e ver a oferta de cada variação na Lista SKUs. */
+export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }) {
+    const comOferta = (variacoes ?? []).filter((v) => v.oferta?.sku);
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button type="button" data-nao-abrir aria-label={`Ações de ${nome}`}
+                    className={cn('grid h-9 w-9 place-items-center rounded-lg text-white/60 hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40', className)}>
+                    <MoreVertical size={20} aria-hidden="true" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" data-nao-abrir className="border-white/[0.08] bg-ecf-card text-white">
+                <DropdownMenuItem onSelect={() => onAbrir(produtoId)}>Abrir a ficha</DropdownMenuItem>
+                {comOferta.map((v) => (
+                    <DropdownMenuItem key={v.id} onSelect={() => router.visit(route('portal.auth.estrutura.lista', { q: v.oferta.sku }))}>
+                        Ver {v.oferta.sku} na Lista SKUs
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }

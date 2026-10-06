@@ -218,3 +218,62 @@ export function linhaParaServidor(row) {
 
     return out;
 }
+
+// ─── Cartões da lista (167-20, D-25/D-30) ───────────────────────────────────
+
+/**
+ * Cores que a bolinha sabe desenhar (D-30: só cor CONHECIDA). Chave sem acento e
+ * em minúsculo. O estilo vem SEMPRE daqui — o texto digitado pelo cliente nunca
+ * vai para `style` (T-167-78).
+ */
+export const CORES_CONHECIDAS = {
+    preto: '#1c1c1e', branco: '#f4f4f5', cinza: '#9ca3af', grafite: '#4b4f56', chumbo: '#52525b', prata: '#c0c4cc',
+    dourado: '#c9a227', cobre: '#b87333', bege: '#d9c4a3', areia: '#d6c3a5', creme: '#f1e6c8', 'off white': '#efeae0',
+    offwhite: '#efeae0', marrom: '#6b4426', caramelo: '#b5703a', cafe: '#5b3a29', natural: '#c89f73', madeira: '#a47148',
+    nogueira: '#7a5230', freijo: '#b08a5a', carvalho: '#a0784b', amendoa: '#c9a27e', mel: '#c88a3d', rosa: '#f2b8b5',
+    vermelho: '#c0392b', vinho: '#6d1f2f', bordo: '#7b1e2b', laranja: '#e67e22', terracota: '#c4673f', amarelo: '#f2c94c',
+    mostarda: '#c9a13b', verde: '#3f8f5a', oliva: '#6b7a3a', azul: '#3b6fb6', marinho: '#1f2f55', turquesa: '#2bb3a8',
+    roxo: '#6b3fa0', lilas: '#b39ddb', nude: '#e3bc9a',
+};
+
+/** Sem acento, minúsculo e espaços colapsados. */
+const normalizar = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** Cor da bolinha da variação: só quando o eixo é Cor e o valor é conhecido; senão `null` (bolinha neutra). */
+export function corDaVariacao(row) {
+    if (row?.eixo !== 'cor') return null;
+    const valor = normalizar(row.valor);
+    if (! valor) return null;
+
+    return CORES_CONHECIDAS[valor] ?? CORES_CONHECIDAS[valor.split(' ')[0]] ?? null;
+}
+
+/** O que falta no produto: junta as pendências de todas as variações, na ordem do servidor (a das chaves de `rotulos`). */
+export function faltaDoProduto(variacoes, rotulos = {}) {
+    const chaves = Object.keys(rotulos);
+    const todas = new Set();
+    (variacoes ?? []).forEach((v) => (v.pendencias ?? []).forEach((p) => todas.add(p)));
+    const ordenadas = [...todas].sort((a, b) => {
+        const ia = chaves.indexOf(a);
+        const ib = chaves.indexOf(b);
+
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    });
+    const porVariacao = (variacoes ?? [])
+        .filter((v) => (v.pendencias ?? []).length > 0)
+        .map((v) => ({ codigo: v.codigo, texto: textoFalta(v.pendencias, rotulos) }));
+
+    return { texto: ordenadas.map((p) => rotulos[p] ?? p).join(' · '), porVariacao };
+}
+
+/** Dica da variação com o que o cartão não mostra: medidas, peso cubado e custo (tudo vindo do servidor). */
+export function detalheDaVariacao(row) {
+    const partes = [resumoVolumes(row?.volumes) || 'sem medidas'];
+    if (row?.peso_cubado != null) partes.push(`Peso cubado ${fmtKg(row.peso_cubado, 2)}`);
+    if (row?.custo !== '' && row?.custo != null) {
+        const n = Number(String(row.custo).replace(',', '.'));
+        if (! Number.isNaN(n)) partes.push(`Custo ${n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+    }
+
+    return partes.join(' · ');
+}
