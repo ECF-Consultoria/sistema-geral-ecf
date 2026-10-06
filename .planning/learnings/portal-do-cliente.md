@@ -1016,10 +1016,37 @@ SKUs nasce dele. O que não se deduz do código:
   de Produtos nasceu como grade tipo planilha (o D-12 lido como "tabela
   editável") e o usuário reprovou na conferência visual: "eu disse que não
   queria uma planilha dentro do sistema pra esse caso". "Na tela, no sistema
-  mesmo" quer dizer FORMULÁRIO. Ficou lista de cartões + ficha (painel lateral
-  no computador, folha de baixo no celular) e a planilha só como ARQUIVO (baixar
+  mesmo" quer dizer FORMULÁRIO. Ficou lista de cartões + ficha (primeiro em
+  painel; desde o 167-19, página inteira com URL própria, pelas referências do
+  usuário) e a planilha só como ARQUIVO (baixar
   o modelo, preencher fora, importar com prévia). As extensões do
   `SpreadsheetGrid` (167-04) continuam no componente compartilhado, sem uso
   nesta tela. Não voltar a pôr grade no cadastro de produto sem perguntar ao
   usuário. Lição de processo: "tabela editável" e "planilha" soam iguais para
   quem vê a tela; antes de construir uma grade, mostrar o desenho.
+
+## 32. Voltar do navegador com Inertia: a guarda tem de nascer antes dele (Fase 167, 06/10/2026)
+
+- **Captura no `window` NÃO passa à frente do ouvinte do Inertia.** Para um
+  evento disparado no próprio `window` (o `popstate`), os ouvintes rodam na
+  ORDEM DE REGISTRO, com ou sem `capture: true`. Medido no Chrome 152, com
+  evento real e sintético. O Inertia registra o dele quando o app monta. Uma
+  tela que registra depois, mesmo em captura, chega tarde: o Inertia já trocou
+  a página. Na ficha de Produtos, o "ficar" do "Sair sem salvar?" recarregava a
+  ficha e perdia o digitado, e os testes de `tests/js` passavam, porque só liam
+  o texto do código.
+- **O que funciona:** `resources/js/lib/guardaDoVoltar.js` registra UM ouvinte
+  na importação do `app.jsx`, antes do `createInertiaApp`. A tela liga a guarda
+  dela com `definirGuardaDoVoltar(fn)`. Dentro da guarda,
+  `e.stopImmediatePropagation()` segura a pessoa na tela e o Inertia não vê o
+  popstate. Use o mesmo módulo em qualquer outra tela que precise de "alterações
+  não salvas" no voltar do navegador.
+- **`history.back()` só volta para a lista se ela estiver no MESMO documento.**
+  Depois de um F5 na ficha, ou com a ficha aberta pela URL, a entrada anterior
+  é de outro documento. O voltar traz a página velha do cache do navegador
+  (bfcache): o React não monta de novo, e não há recarga, aviso nem destaque.
+  Confira `navigation.entries()[i].sameDocument` antes de voltar pelo histórico.
+  Na lista, `pageshow` com `e.persisted` pede `router.reload`.
+- **Comportamento de navegação se prova no navegador, não no `tests/js`.** O
+  roteiro com puppeteer (banco SQLite isolado, dados fictícios) achou os dois
+  defeitos acima depois de a revisão e as correções estarem "verdes".
