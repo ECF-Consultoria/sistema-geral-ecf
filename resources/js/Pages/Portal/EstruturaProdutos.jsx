@@ -77,6 +77,14 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         setLinhas(produtos.linhas.map((l) => linhaDoServidor(l, vocabulario.pendencias)));
     }, [produtos.linhas]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // As listas também vêm do servidor de novo (importação que criou família/ambiente, recarga
+    // parcial): o estado local acompanha, com o `em_uso` de agora (revisão FE-IN-01).
+    const primeiraListas = useRef(true);
+    useEffect(() => {
+        if (primeiraListas.current) { primeiraListas.current = false; return; }
+        setListas(listasIniciais ?? { familias: [], ambientes: [] });
+    }, [listasIniciais]);
+
     const visitar = (params) => {
         router.get(route('portal.auth.estrutura.produtos'), params, {
             preserveState: true, preserveScroll: false, replace: true, only: ['produtos', 'filtros'],

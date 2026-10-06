@@ -88,6 +88,10 @@ test('JanelaListas: usa as rotas de família e ambiente e atualiza o mesmo estad
     assert.ok(barra.includes('Famílias e ambientes'));
 });
 
+test('Página: as listas acompanham as props novas depois da importação ou da recarga (FE-IN-01)', () => {
+    assert.match(pagina, /useEffect\(\(\) => \{\s*if \(primeiraListas\.current\) \{ primeiraListas\.current = false; return; \}\s*setListas\(listasIniciais \?\? \{ familias: \[\], ambientes: \[\] \}\);\s*\}, \[listasIniciais\]\);/);
+});
+
 test('JanelaListas: sem contagem total nem barra de progresso', () => {
     assert.ok(! /Progress|progress|itens\.length\} (famílias|ambientes)/.test(listasJanela));
 });
