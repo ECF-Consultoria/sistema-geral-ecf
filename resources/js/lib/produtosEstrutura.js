@@ -57,6 +57,9 @@ export function textoFrete(frete) {
     return { valor, apoio };
 }
 
+/** Conteúdo em linha para caber no cartão da lista. */
+const emLinha = (...filhos) => h('span', { className: 'inline-flex min-w-0 items-center gap-1 text-[13px]' }, ...filhos);
+
 const TIP_ME1 = 'Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora; ainda não calculamos aqui.';
 const TIP_FALHOU = 'Não deu para consultar o Mercado Livre agora. Tente de novo.';
 const TIP_REFERENCIA = 'Informe o custo para o frete usar o preço certo.';
@@ -67,22 +70,22 @@ const TIP_FAIXA = 'Neste preço o frete pode mudar de faixa.';
  * do ML, falha, faixa de referência, ME1 e o alerta de faixa). Nenhum limite mora aqui.
  */
 export function renderFrete(row, { consultando = false } = {}) {
-    if (! row?.id) return celula();
+    if (! row?.id) return null;
     const apoio = (t, title) => h('span', { className: 'truncate text-[12px] text-white/45', title }, t);
 
     if (consultando) {
-        return celula(h(Loader2, { size: 12, className: 'shrink-0 animate-spin text-white/45', 'aria-hidden': 'true' }), apoio('consultando'));
+        return emLinha(h(Loader2, { size: 12, className: 'shrink-0 animate-spin text-white/45', 'aria-hidden': 'true' }), apoio('consultando'));
     }
     if (row.logistica === 'me1') {
-        return celula(h('span', { className: 'text-white/60', title: TIP_ME1 }, '—'), apoio('sem frete aqui', TIP_ME1));
+        return emLinha(h('span', { className: 'text-white/60', title: TIP_ME1 }, '—'), apoio('sem frete aqui', TIP_ME1));
     }
     if (! row.logistica || row.logistica === 'pendente' || ! row.frete || row.frete.valor == null) {
-        return celula(h('span', { className: 'text-white/60' }, '—'));
+        return emLinha(h('span', { className: 'text-white/60' }, '—'));
     }
     const t = textoFrete(row.frete);
     const tip = row.frete.falhou ? TIP_FALHOU : row.frete.preco_origem === 'referencia' ? TIP_REFERENCIA : undefined;
 
-    return celula(
+    return emLinha(
         h('span', { className: 'tabular-nums text-white/60' }, t.valor),
         apoio(t.apoio, tip),
         row.frete.alerta_faixa ? h(AlertTriangle, { size: 12, className: 'shrink-0 text-amber-300', title: TIP_FAIXA, 'aria-label': TIP_FAIXA }) : null,
@@ -91,10 +94,10 @@ export function renderFrete(row, { consultando = false } = {}) {
 
 /** Célula "Peso cubado": "cobrado" só quando o cubado é o faturado (decisão do servidor). */
 export function renderPesoCubado(row) {
-    if (row?.peso_cubado == null) return celula();
+    if (row?.peso_cubado == null) return null;
     const cobrado = row.cubado_cobrado ? h('span', { className: 'text-[12px] text-white/45' }, 'cobrado') : null;
 
-    return h('div', { className: 'flex h-full w-full items-center gap-1 px-2 text-[13px] tabular-nums text-white/60', title: `Peso cobrado: ${fmtKg(row.peso_faturado, 2)}` },
+    return h('span', { className: 'inline-flex items-center gap-1 tabular-nums text-white/60', title: `Peso cobrado: ${fmtKg(row.peso_faturado, 2)}` },
         fmtKg(row.peso_cubado, 2), cobrado);
 }
 
@@ -111,7 +114,7 @@ const reais = (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', curr
 const custoParaTexto = (c) => (c === null || c === undefined || c === '' ? '' : Number(c).toFixed(2).replace('.', ','));
 
 /** Servidor → grade: acrescenta a chave estável e os textos das células de escolha. */
-export function linhaDaGrade(linha, rotulos = {}) {
+export function linhaDoServidor(linha, rotulos = {}) {
     const ambientes = linha.ambientes ?? [];
     const pronta = {
         ...linha,

@@ -53,7 +53,7 @@ export default function JanelaSugestoesCategoria({ aberta, sugestoes = [], indis
                                         <p className="line-clamp-2 text-[12px] text-white/45">{s.sugestao.caminho_texto}</p>
                                     </>
                                 ) : (
-                                    <p className="text-[12px] text-white/45">Sem sugestão — escolha na tabela</p>
+                                    <p className="text-[12px] text-white/45">Sem sugestão — escolha no produto</p>
                                 )}
                             </div>
                         </li>

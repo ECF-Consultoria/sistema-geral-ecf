@@ -56,10 +56,11 @@ test('PickerCategoria: só Enter ou clique num item chamam onCommit (nada é ace
 test('JanelaSugestoesCategoria: nasce sem nenhuma caixa marcada e tem os textos do UI-SPEC', () => {
     assert.match(janela, /useState\(\(\) => new Set\(\)\)/);
     assert.ok(! /useState\(\s*\(\)\s*=>\s*new Set\(\s*\[?\s*\.\.\./.test(janela));
-    for (const t of ['Revisar categorias sugeridas', 'Marcar todas', 'Desmarcar', 'Aceitar marcadas', 'Fechar', 'Sem sugestão — escolha na tabela']) {
+    for (const t of ['Revisar categorias sugeridas', 'Marcar todas', 'Desmarcar', 'Aceitar marcadas', 'Fechar', 'Sem sugestão — escolha no produto']) {
         assert.ok(janela.includes(t), t);
     }
     assert.match(janela, /disabled=\{marcadas\.size === 0\}/);
+    assert.ok(! janela.includes('na tabela'));
 });
 
 test('a página sugere em lotes de 10, sem contador, e só grava o que foi marcado', () => {

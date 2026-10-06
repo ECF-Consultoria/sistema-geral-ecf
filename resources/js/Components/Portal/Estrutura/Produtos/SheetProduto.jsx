@@ -5,19 +5,19 @@ import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHea
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
-import { campoEditaveis, linhaDaGrade, linhaParaServidor } from '@/lib/produtosEstrutura';
+import { campoEditaveis, linhaDoServidor, linhaParaServidor } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 
-// ─── Formulário do produto no celular (167-16) ──────────────────────────────
+// ─── Ficha do produto (167-16; D-23: também no computador, como painel lateral) ─
 //
-// Uma folha de baixo com o produto inteiro: nome, família, ambiente(s),
+// Um painel com o produto inteiro (lateral a partir de 768 px, folha de baixo no celular): nome, família, ambiente(s),
 // categoria e, por variação, Ref, eixo, valor, custo e volumes. Um único botão
-// amarelo grava tudo de uma vez pelo MESMO POST `linhas` da tabela — a regra
+// amarelo grava tudo de uma vez pelo MESMO POST `linhas` do servidor — a regra
 // (validação, empresa, log, cálculo de frete) é a do servidor; aqui só se coleta.
 //
 // Família, ambiente e categoria são "do produto": a escolha vale para todas as
 // variações do formulário (o servidor só olha a 1ª). Logística, peso cubado e
-// frete não aparecem: o servidor calcula e a tabela mostra depois de gravar.
+// frete não aparecem: o servidor calcula e a lista mostra depois de gravar.
 
 const CAMPO = 'h-11 w-full min-w-0 rounded-xl border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
 const ROTULO = 'mb-1 block text-[12px] font-semibold text-white/70';
@@ -53,29 +53,31 @@ const caixaVazia = (c) => MEDIDAS.every((m) => String(c[m.chave] ?? '').trim() =
 /** Campos que valem para o produto inteiro: a escolha vai para todas as variações do formulário. */
 const CAMPOS_DO_PRODUTO = ['familia', 'ambientes_texto', 'categoria', 'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho', '_categoriaEscolhida'];
 
-export default function SheetProduto({ aberto = true, linhas = [], listas, vocabulario, onListas, onGravado, onRemovida, onFechar }) {
+export default function SheetProduto({ aberto = true, lado = 'bottom', linhas = [], listas, vocabulario, onListas, onGravado, onRemovida, onFechar }) {
     const [vars, setVars] = useState(() => (linhas.length ? linhas.map((l) => ({ ...l })) : [linhaEmBranco()]));
     const [erros, setErros] = useState({});          // { _k: mensagem }
     const [aviso, setAviso] = useState(null);
     const [salvando, setSalvando] = useState(false);
     const [escolhendo, setEscolhendo] = useState(null);   // 'familia' | 'ambientes' | 'categoria'
     const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
+    const [alterado, setAlterado] = useState(false);     // há algo digitado ainda não salvo
+    const [avisoSair, setAvisoSair] = useState(false);
     const fecharPicker = useRef(null);
 
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
-    const alterar = (chave, campo, valor) => setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v)));
+    const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
 
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
-    const alterarNome = (valor) => setVars((atual) => atual.map((v) => ({ ...v, nome: valor })));
+    const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
 
-    const aplicarEscolha = (patch) => setVars((atual) => atual.map((v) => {
+    const aplicarEscolha = (patch) => { setAlterado(true); setVars((atual) => atual.map((v) => {
         const parte = Object.fromEntries(Object.entries(patch).filter(([c]) => CAMPOS_DO_PRODUTO.includes(c)));
 
         return { ...v, ...parte };
-    }));
+    })); };
 
     // ─── Volumes (cartões empilhados) ───────────────────────────────────────
 
@@ -86,7 +88,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
         return atuais.length ? atuais : [{ c: '', l: '', a: '', kg: '' }];
     };
 
-    const gravarCaixas = (chave, caixas) => setVars((atual) => atual.map((v) => {
+    const gravarCaixas = (chave, caixas) => { setAlterado(true); setVars((atual) => atual.map((v) => {
         if (v._k !== chave) return v;
         const preenchidas = caixas.filter((c) => ! caixaVazia(c)).map((c) => ({ c: c.c.trim(), l: c.l.trim(), a: c.a.trim(), kg: c.kg.trim() }));
 
@@ -96,7 +98,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
             volumes_digitados: preenchidas,
             volumes_texto: preenchidas.map((c) => `${c.c}×${c.l}×${c.a} · ${c.kg}`).join(' | '),
         };
-    }));
+    })); };
 
     const mudarCaixa = (v, indice, campo, valor) => {
         gravarCaixas(v._k, caixasEdit(v).map((c, i) => (i === indice ? { ...c, [campo]: valor } : c)));
@@ -122,6 +124,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
         // Com produto já gravado o servidor copia o resto da 1ª; só Ref e Valor precisam ir.
         if (nova.produto_id) nova._base = { ...campoEditaveis(nova), codigo: '', valor: '' };
         else delete nova._base;
+        setAlterado(true);
         setVars((atual) => [...atual, nova]);
     };
 
@@ -133,7 +136,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
         const faltando = {};
         vars.forEach((v) => {
             if (String(v.codigo).trim() === '' || String(v.nome).trim() === '') {
-                faltando[v._k] = 'Não salvamos esta linha: informe a Ref e o nome do produto.';
+                faltando[v._k] = 'Não salvamos esta variação: informe a Ref e o nome do produto.';
             }
         });
         if (Object.keys(faltando).length) { setErros(faltando); return; }
@@ -148,7 +151,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
             const { data } = await axios.post(route('portal.auth.estrutura.produtos.linhas'), { linhas: enviadas.map(linhaParaServidor) });
             const comErro = {};
             (data.erros ?? []).forEach((e) => {
-                if (e.chave) comErro[e.chave] = `Não salvamos esta linha: ${String(e.mensagem).replace(/\.$/, '')}.`;
+                if (e.chave) comErro[e.chave] = `Não salvamos esta variação: ${String(e.mensagem).replace(/\.$/, '')}.`;
             });
             onGravado(data);
 
@@ -159,7 +162,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
             setVars((atual) => atual.map((v) => {
                 const servidor = porChave.get(v._k);
 
-                return servidor && ! comErro[v._k] ? { ...linhaDaGrade(servidor, vocabulario?.pendencias), _k: v._k } : v;
+                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k } : v;
             }));
             setErros(comErro);
         } catch (e) {
@@ -183,13 +186,20 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
     const resumoAmbientes = String(primeira.ambientes_texto ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const rotuloEscolha = (valor) => (valor ? <span className="truncate text-white">{valor}</span> : <span className="text-white/30">escolher</span>);
 
+    /** Com algo digitado e não salvo, clique fora e Esc não fecham a ficha; o X continua fechando. */
+    const segurar = (e) => {
+        if (escolhendo || exclusao) { e.preventDefault(); return; }
+        if (alterado) { e.preventDefault(); setAvisoSair(true); }
+    };
+
     return (
         <>
             <Sheet open={aberto} onOpenChange={(v) => { if (! v && ! escolhendo && ! exclusao) onFechar(); }}>
-                <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-2xl" data-sheet-produto>
+                <SheetContent side={lado} className={cn(lado === 'bottom' ? 'max-h-[90vh] overflow-y-auto rounded-t-2xl' : 'overflow-y-auto')}
+                    onInteractOutside={segurar} onEscapeKeyDown={segurar} data-sheet-produto>
                     <SheetHeader className="px-4">
                         <SheetTitle>{novoProduto ? 'Novo produto' : (primeira.nome || 'Produto')}</SheetTitle>
-                        <SheetDescription>Preencha e toque em Salvar produto. Medidas, peso e custo deixam o frete calculado.</SheetDescription>
+                        <SheetDescription>Preencha e use Salvar produto. Com medidas, peso e custo, o sistema mostra o tipo de envio e o frete.</SheetDescription>
                     </SheetHeader>
 
                     <SheetBody className="space-y-5 px-4">
@@ -228,7 +238,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
                                 <section key={v._k} className="space-y-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4" data-variacao-form>
                                     <h3 className="text-[13px] font-semibold text-white">Variação {n + 1}</h3>
 
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                         <div>
                                             <label className={ROTULO} htmlFor={`ref-${v._k}`}>Ref</label>
                                             <input id={`ref-${v._k}`} className={cn(CAMPO, 'font-mono')} value={v.codigo} onChange={(e) => alterar(v._k, 'codigo', e.target.value)} placeholder="código" />
@@ -261,7 +271,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
                                                         <X size={14} />
                                                     </button>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                                     {MEDIDAS.map((m) => (
                                                         <div key={m.chave}>
                                                             <label className={ROTULO} htmlFor={`cx-${v._k}-${i}-${m.chave}`}>{m.rotulo}</label>
@@ -294,7 +304,8 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
                         </button>
                     </SheetBody>
 
-                    <SheetFooter className="px-4">
+                    <SheetFooter className="space-y-2 px-4">
+                        {avisoSair && alterado && <p role="status" className="text-[12px] text-white/60" data-aviso-sair>Há alterações não salvas. Use Salvar produto ou feche pelo X para descartar.</p>}
                         <button type="button" onClick={salvar} disabled={salvando} data-acao="salvar-produto"
                             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ecf-yellow px-4 text-[14px] font-semibold text-black hover:brightness-95 disabled:opacity-60">
                             {salvando ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -305,7 +316,7 @@ export default function SheetProduto({ aberto = true, linhas = [], listas, vocab
             </Sheet>
 
             <Sheet open={!! escolhendo} onOpenChange={(v) => { if (! v) fecharEscolha(); }}>
-                <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-2xl" data-sheet-escolha>
+                <SheetContent side={lado} className={cn(lado === 'bottom' ? 'max-h-[90vh] overflow-y-auto rounded-t-2xl' : 'overflow-y-auto')} data-sheet-escolha>
                     <SheetHeader className="px-4">
                         <SheetTitle>{{ familia: 'Família', ambientes: 'Ambiente', categoria: 'Categoria ML' }[escolhendo] ?? ''}</SheetTitle>
                         <SheetDescription className="sr-only">Escolha uma opção da lista.</SheetDescription>

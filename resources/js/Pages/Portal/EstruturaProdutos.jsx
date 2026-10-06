@@ -12,11 +12,11 @@ import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCatego
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
-import CartoesProdutosMobile from '@/Components/Portal/Estrutura/Produtos/CartoesProdutosMobile';
+import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
 import SheetProduto from '@/Components/Portal/Estrutura/Produtos/SheetProduto';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
-import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
+import { campoEditaveis, colunasDaGrade, linhaDoServidor, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
 //
@@ -87,7 +87,7 @@ function useTelaEstreita() {
 const lista = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0]);
 
 export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites, listas: listasIniciais }) {
-    const [rows, setRows] = useState(() => derivar(produtos.linhas.length ? produtos.linhas.map((l) => linhaDaGrade(l, vocabulario.pendencias)) : [linhaEmBranco()]));
+    const [rows, setRows] = useState(() => derivar(produtos.linhas.length ? produtos.linhas.map((l) => linhaDoServidor(l, vocabulario.pendencias)) : [linhaEmBranco()]));
     const rowsRef = useRef(rows);
     const [estado, setEstado] = useState('ocioso');       // ocioso | salvando | salvo | rede
     const [erros, setErros] = useState({});               // { _k: motivo }
@@ -160,7 +160,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             const proximas = rowsRef.current.map((r) => {
                 const servidor = porChave.get(r._k) ?? (r.id ? porId.get(r.id) : null);
                 if (! servidor) return r;
-                const nova = { ...linhaDaGrade(servidor, vocabulario.pendencias), _k: r._k };
+                const nova = { ...linhaDoServidor(servidor, vocabulario.pendencias), _k: r._k };
                 // Editou de novo durante o envio: guarda o que a pessoa digitou, só aprende os ids.
                 if (versoes.has(r._k) && sujas.current.get(r._k) !== versoes.get(r._k)) {
                     return { ...r, id: nova.id, produto_id: nova.produto_id, grupo: nova.grupo, _base: nova._base };
@@ -249,7 +249,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     useEffect(() => {
         if (primeira.current) { primeira.current = false; return; }
         sujas.current.clear();
-        aplicar(derivar(produtos.linhas.length ? produtos.linhas.map((l) => linhaDaGrade(l, vocabulario.pendencias)) : [linhaEmBranco()]));
+        aplicar(derivar(produtos.linhas.length ? produtos.linhas.map((l) => linhaDoServidor(l, vocabulario.pendencias)) : [linhaEmBranco()]));
     }, [produtos.linhas]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const visitar = (params) => {
@@ -349,7 +349,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const mesclarDoSheet = (data) => {
         let todas = rowsRef.current.filter((r) => r.id || String(r.codigo).trim() !== '' || String(r.nome).trim() !== '');
         (data.linhas ?? []).forEach((servidor) => {
-            const pronta = { ...linhaDaGrade(servidor, vocabulario.pendencias) };
+            const pronta = { ...linhaDoServidor(servidor, vocabulario.pendencias) };
             const i = todas.findIndex((r) => r.id === servidor.id);
             if (i >= 0) {
                 todas = todas.map((r, j) => (j === i ? { ...pronta, _k: r._k } : r));
@@ -545,7 +545,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
 
                 {estreita ? (
-                    <CartoesProdutosMobile linhas={rows} vocabulario={vocabulario} onAbrir={abrirSheet} />
+                    <ListaProdutos linhas={rows} vocabulario={vocabulario} consultando={consultando} onAbrir={abrirSheet} />
                 ) : (
                 <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-ecf-card" data-tabela-produtos>
                     <SpreadsheetGrid
