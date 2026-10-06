@@ -347,6 +347,50 @@ class CadastroDeProdutoTest extends TestCase
         $this->assertSame(3, EstruturaAmbiente::where('company_id', $empresa->id)->count());
     }
 
+    /**
+     * BE-IN-04: só a chave duplicada do código vira "código repetido"; outra violação de
+     * integridade (aqui o unique da oferta ligada) vira mensagem genérica e vai para o log.
+     */
+    public function test_violacao_de_integridade_so_e_codigo_repetido_quando_e_o_unique_do_codigo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+
+        // O unique do banco pega o que a checagem no PHP deixou passar (a collation do MariaDB).
+        EstruturaProdutoVariacao::creating(function (EstruturaProdutoVariacao $v) {
+            if ($v->codigo === 'COLIDE-1') {
+                \Illuminate\Support\Facades\DB::table('estrutura_produto_variacoes')->insert([
+                    'produto_id' => $v->produto_id, 'company_id' => $v->company_id, 'ordem' => 9, 'codigo' => 'COLIDE-1',
+                ]);
+            }
+        });
+        // Outra violação: a oferta da variação já existe quando o cadastro vai criá-la.
+        \App\Models\EstruturaOferta::creating(function (\App\Models\EstruturaOferta $o) {
+            if ($o->sku === 'OFERTA-1') {
+                \Illuminate\Support\Facades\DB::table('estrutura_ofertas')->insert([
+                    'company_id' => $o->company_id, 'sku' => 'OUTRA', 'fase' => 'simples', 'variacao_id' => $o->variacao_id,
+                ]);
+            }
+        });
+        \Illuminate\Support\Facades\Log::spy();
+
+        $r = $this->svc()->gravarLinhas($empresa, [
+            ['chave' => 'a', 'codigo' => 'COLIDE-1', 'nome' => 'A'],
+            ['chave' => 'b', 'codigo' => 'OFERTA-1', 'nome' => 'B'],
+            ['chave' => 'c', 'codigo' => 'BOA-1', 'nome' => 'C'],
+        ], $ator);
+
+        $this->assertSame([
+            'a' => 'O código COLIDE-1 já existe em outro produto. Use outro código.',
+            'b' => 'Não deu para gravar esta linha agora. Tente de novo; se continuar, fale com a equipe.',
+        ], array_column($r['erros'], 'mensagem', 'chave'));
+        $this->assertSame(1, $r['totais']['criadas']);
+        $this->assertSame(['BOA-1'], EstruturaProdutoVariacao::where('company_id', $empresa->id)->pluck('codigo')->all());
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($msg) => str_contains($msg, '[Estrutura Produtos] violação de integridade') && str_contains($msg, 'OFERTA-1'))
+            ->once();
+    }
+
     public function test_categoria_que_nao_e_folha_e_recusada_e_a_linha_nao_grava(): void
     {
         $empresa = $this->empresaDoGabarito();

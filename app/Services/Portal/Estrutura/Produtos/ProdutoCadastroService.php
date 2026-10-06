@@ -13,6 +13,7 @@ use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -136,8 +137,8 @@ class ProdutoCadastroService
                     if ((string) $e->getCode() !== '23000') {
                         throw $e;
                     }
-                    $msg = "O código {$campos['codigo']} já existe em outro produto. Use outro código.";
-                    $erros[] = $this->erro($indice, $campos, $msg, ['codigo' => $msg]);
+                    [$campo, $msg] = $this->mensagemDeIntegridade($e, $empresa, $campos);
+                    $erros[] = $this->erro($indice, $campos, $msg, [$campo => $msg]);
                     $totais['com_erro']++;
                     continue;
                 }
@@ -738,6 +739,36 @@ class ProdutoCadastroService
         }
 
         return $avisos;
+    }
+
+    /**
+     * SQLSTATE 23000 cobre muita coisa: unique do código da VARIAÇÃO, do código do
+     * PRODUTO, `eo_variacao_uq`, FK (1452)… Só a chave duplicada (1062 no MariaDB;
+     * "UNIQUE constraint failed" no SQLite) de um dos dois códigos vira mensagem de
+     * código; o resto é mensagem genérica e vai para o log (BE-IN-04).
+     *
+     * @return array{0: string, 1: string} [campo, mensagem]
+     */
+    private function mensagemDeIntegridade(QueryException $e, Company $empresa, array $campos): array
+    {
+        $texto = $e->getMessage();
+        $duplicada = ($e->errorInfo[1] ?? null) === 1062 || str_contains($texto, 'UNIQUE constraint failed');
+
+        if ($duplicada && (str_contains($texto, 'epv_company_cod_uq') || str_contains($texto, 'estrutura_produto_variacoes.codigo'))) {
+            return ['codigo', "O código {$campos['codigo']} já existe em outro produto. Use outro código."];
+        }
+        if ($duplicada && (str_contains($texto, 'epr_company_cod_uq') || str_contains($texto, 'estrutura_produtos.codigo'))) {
+            $codigoProduto = $campos['grupo'] ?? $campos['codigo'];
+
+            return ['codigo', "Já existe um produto com o código {$codigoProduto}. Abra a ficha dele para adicionar a variação."];
+        }
+
+        Log::warning("[Estrutura Produtos] violação de integridade ao gravar a linha {$campos['codigo']} da empresa {$empresa->id} ({$empresa->name})", [
+            'codigo_driver' => $e->errorInfo[1] ?? null,
+            'erro'          => $texto,
+        ]);
+
+        return ['linha', 'Não deu para gravar esta linha agora. Tente de novo; se continuar, fale com a equipe.'];
     }
 
     private function erro(int $indice, array $campos, string $mensagem, array $porCampo): array
