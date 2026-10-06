@@ -127,6 +127,39 @@ class OfertaLigadaAoProdutoTest extends TestCase
         $this->assertSame('Cristaleira Nova — Preto', $nomes['1014-2']);
     }
 
+    /**
+     * BE-WR-03: a linha que renomeia o produto e TAMBÉM cria uma variação levava só a oferta nova
+     * com o nome novo; as irmãs ficavam "Nome antigo — Valor" na Lista SKUs e no Publicador.
+     */
+    public function test_renomear_numa_linha_que_cria_variacao_acompanha_as_ofertas_irmas(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $r = $this->svc()->gravarLinhas($empresa, [$this->linha('1014-1', 'Natural'), $this->linha('1014-2', 'Preto')], $ator);
+        $produtoId = $r['linhas'][0]['produto_id'];
+
+        // Ficha: variação nova pelo produto_id, com o produto renomeado.
+        $this->svc()->gravarLinhas($empresa, [
+            ['produto_id' => $produtoId, 'codigo' => '1014-3', 'nome' => 'Cristaleira Nova', 'valor' => 'Branco'],
+        ], $ator);
+        $this->assertSame([
+            '1014-1' => 'Cristaleira Nova — Natural',
+            '1014-2' => 'Cristaleira Nova — Preto',
+            '1014-3' => 'Cristaleira Nova — Branco',
+        ], $this->ofertasLigadas($empresa)->pluck('nome', 'sku')->all());
+
+        // Importação: a variação nova vem ANTES das antigas, com outro nome no grupo.
+        $this->svc()->gravarLinhas($empresa, [
+            $this->linha('1014-4', 'Cinza', 'Cristaleira Clássica'),
+            $this->linha('1014-1', 'Natural', 'Cristaleira Clássica'),
+        ], $ator, ProdutoCadastroService::MODO_IMPORTACAO);
+        $nomes = $this->ofertasLigadas($empresa)->pluck('nome', 'sku')->all();
+        $this->assertSame('Cristaleira Clássica — Cinza', $nomes['1014-4']);
+        $this->assertSame('Cristaleira Clássica — Natural', $nomes['1014-1']);
+        $this->assertSame('Cristaleira Clássica — Preto', $nomes['1014-2']);
+        $this->assertSame('Cristaleira Clássica — Branco', $nomes['1014-3']);
+    }
+
     public function test_garantir_ofertas_recria_a_que_falta_e_o_unique_barra_a_segunda(): void
     {
         $empresa = $this->empresaDoGabarito();

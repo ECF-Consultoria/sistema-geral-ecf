@@ -564,13 +564,19 @@ class ProdutoCadastroService
         $absorvidos = 0;
         if ($variacaoNova) {
             $absorvidos += $this->criarOferta($empresa, $produto, $variacao, $ator);
-        } elseif ($mudouProduto || $mudouVariacao) {
-            $afetadas = $mudouProduto
-                ? EstruturaProdutoVariacao::query()->where('produto_id', $produto->id)->get()
-                : collect([$variacao]);
-            foreach ($afetadas as $v) {
+        }
+        if ($mudouProduto && ! $produtoNovo) {
+            // Produto mudou: TODAS as ofertas dele acompanham — inclusive quando a linha que o
+            // renomeou também criou uma variação (BE-WR-03); a oferta da nova já nasceu certa.
+            $irmas = EstruturaProdutoVariacao::query()
+                ->where('produto_id', $produto->id)
+                ->when($variacaoNova, fn ($q) => $q->whereKeyNot($variacao->id))
+                ->get();
+            foreach ($irmas as $v) {
                 $absorvidos += $this->sincronizarOferta($empresa, $produto, $v, $ator);
             }
+        } elseif (! $variacaoNova && $mudouVariacao) {
+            $absorvidos += $this->sincronizarOferta($empresa, $produto, $variacao, $ator);
         }
 
         $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao) ? 'atualizadas' : 'sem_mudanca');
