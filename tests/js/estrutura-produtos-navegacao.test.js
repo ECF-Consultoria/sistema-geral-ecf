@@ -225,6 +225,10 @@ test('podeVoltarNoHistorico: com Navigation API, só quando a entrada anterior �
     window.navigation = { entries: () => entradas, currentEntry: entradas[2] };
     assert.equal(podeVoltarNoHistorico(false), true, 'a lista (com busca) está logo atrás');
 
+    entradas[1].sameDocument = false;
+    assert.equal(podeVoltarNoHistorico(true), false, 'lista de outro documento (ficha recarregada): o voltar traria a página velha do cache');
+    delete entradas[1].sameDocument;
+
     window.navigation.currentEntry = entradas[1];
     assert.equal(podeVoltarNoHistorico(true), false, 'atrás está outra tela: a marca não manda');
 

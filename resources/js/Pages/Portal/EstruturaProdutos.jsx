@@ -144,6 +144,17 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         return () => clearTimeout(t);
     }, []);
 
+    // Página devolvida pelo cache do navegador (voltar depois de recarregar a ficha): o React não
+    // monta de novo, então os produtos de agora vêm por uma recarga parcial.
+    useEffect(() => {
+        const aoMostrar = (e) => {
+            if (e.persisted) router.reload({ only: ['produtos', 'listas'], preserveScroll: true });
+        };
+        window.addEventListener('pageshow', aoMostrar);
+
+        return () => window.removeEventListener('pageshow', aoMostrar);
+    }, []);
+
     /** As sugestões gravaram: troca no lugar a variação de mesmo id; variação nova entra junto do produto. */
     const mesclar = (data) => {
         const atuais = linhas.filter((r) => r.id);

@@ -121,7 +121,9 @@ export function podeVoltarNoHistorico(abertaPelaLista = false) {
         if (nav?.currentEntry && typeof nav.entries === 'function') {
             const anterior = nav.entries()[nav.currentEntry.index - 1];
 
-            return !! anterior?.url && new URL(anterior.url).pathname === caminhoDaLista();
+            // Lista de OUTRO documento (a ficha foi recarregada ou aberta pela URL): o history.back()
+            // traria a página velha do cache do navegador, sem recarga, aviso nem destaque.
+            return !! anterior?.url && anterior.sameDocument !== false && new URL(anterior.url).pathname === caminhoDaLista();
         }
     } catch (e) {
         // sem Navigation API confiável: fica a marca

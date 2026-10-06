@@ -174,9 +174,10 @@ test('Guarda: volta a valer se a visita confirmada falhar ou for cancelada (FE-W
 });
 
 test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a ficha (FE-CR-02)', () => {
-    // Em captura no window: roda antes do ouvinte do Inertia, que troca a página sem o evento `before`.
-    assert.ok(pagina.includes("window.addEventListener('popstate', aoNavegarNoHistorico, true)"));
-    assert.ok(pagina.includes("window.removeEventListener('popstate', aoNavegarNoHistorico, true)"));
+    // Pelo ouvinte registrado no app.jsx ANTES do Inertia (captura no window não passa à frente);
+    // o comportamento está em estrutura-guarda-do-voltar.test.js.
+    assert.ok(pagina.includes('return definirGuardaDoVoltar(aoNavegarNoHistorico);'));
+    assert.ok(! pagina.includes("addEventListener('popstate'"), 'ouvinte próprio da ficha roda DEPOIS do Inertia');
     assert.ok(pagina.includes('e.stopImmediatePropagation()'), 'quem fica: o Inertia não vê o popstate');
     assert.ok(pagina.includes('window.history.go(passosAte(entradaDaFicha.current))'));
     assert.ok(pagina.includes('ignorarVolta.current = true'), 'o popstate da volta à ficha é ignorado');

@@ -8,6 +8,7 @@ import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariaca
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
+import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
 import {
     entradaAtual, esquecerAbertura, fichaAbertaPelaLista, marcarUltimoProduto, passosAte, podeVoltarNoHistorico, urlDeVolta,
     voltarParaLista, voltarPeloHistorico,
@@ -75,9 +76,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     }, []);
 
     // Voltar do navegador (botão, Alt+←, gesto do celular): o Inertia troca a página sem o evento
-    // `before`. Em captura no `window`, este ouvinte roda antes do dele: com alteração não salva,
-    // pergunta; quem fica tem o histórico devolvido à entrada da ficha, e esse popstate de volta não
-    // chega ao Inertia. Navegador que roda o do Inertia primeiro ainda tem o rascunho (FE-CR-02).
+    // `before`. A guarda entra pelo ouvinte de `guardaDoVoltar`, registrado no app.jsx ANTES do Inertia
+    // (no próprio window a captura não passa à frente; vale a ordem de registro): com alteração não
+    // salva, pergunta; quem fica tem o histórico devolvido à entrada da ficha, e nenhum dos dois
+    // popstates chega ao Inertia. Se algo falhar, ainda há o rascunho (FE-CR-02).
     const entradaDaFicha = useRef(entradaAtual());
     const ignorarVolta = useRef(false);
     useEffect(() => {
@@ -101,9 +103,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
             setTimeout(() => { ignorarVolta.current = false; }, 1000);
             window.history.go(passosAte(entradaDaFicha.current));
         };
-        window.addEventListener('popstate', aoNavegarNoHistorico, true);
-
-        return () => window.removeEventListener('popstate', aoNavegarNoHistorico, true);
+        return definirGuardaDoVoltar(aoNavegarNoHistorico);
     }, []);
 
     // ─── Saída para a lista (D-27; revisão FE-WR-05) ────────────────────────
