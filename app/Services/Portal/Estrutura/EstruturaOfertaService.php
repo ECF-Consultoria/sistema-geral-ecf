@@ -38,20 +38,24 @@ class EstruturaOfertaService
     }
 
     /**
+     * `$varrerEspera = false` é só para quem cria MUITAS ofertas num lote e varre a
+     * espera uma vez no fim, com todos os SKUs (o cadastro de Produtos, BE-WR-05).
+     * O padrão — e a Lista SKUs — continua varrendo aqui, a cada oferta.
+     *
      * @param  array{sku: string, fase: string, nome?: ?string, logistica?: ?string, observacoes?: ?string, componentes?: array<int, array{id: int, quantidade: int}>}  $dados
-     * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu
+     * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu (0 sem varredura)
      */
-    public function criar(Company $empresa, array $dados, AtorDoPortal $ator): array
+    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true): array
     {
         $campos = $this->campos($dados);
         $componentes = $this->composicao($empresa, $campos['fase'], $dados['componentes'] ?? []);
         $variacaoId = $this->variacaoLigada($empresa, $dados, $campos['fase'], $componentes);
 
-        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator) {
+        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera) {
             $oferta = EstruturaOferta::create([...$campos, 'company_id' => $empresa->id, 'variacao_id' => $variacaoId]);
             $this->gravarComposicao($oferta, $componentes);
 
-            $absorvidos = $this->varrerEspera($empresa, [$oferta->sku]);
+            $absorvidos = $varrerEspera ? $this->varrerEspera($empresa, [$oferta->sku]) : 0;
 
             RegistroEstrutura::registrar($ator, $empresa, $oferta, 'oferta_criada',
                 "Oferta {$oferta->sku} criada ({$oferta->fase})", ['absorvidos_da_espera' => $absorvidos]);
@@ -254,10 +258,12 @@ class EstruturaOfertaService
      * Acompanha a variação do Produtos: atualiza SÓ sku e nome da oferta ligada
      * (D-08). Não passa por `atualizar()`, que reescreve fase e componentes.
      * Os anúncios continuam ligados — o vínculo é por `oferta_id`, não por SKU.
+     * `$varrerEspera = false`: quem chama varre a espera uma vez no fim do lote, com
+     * o SKU antigo e o novo (BE-WR-05); o padrão varre aqui, como sempre.
      *
-     * @return int quantos anúncios da espera o SKU novo absorveu
+     * @return int quantos anúncios da espera o SKU novo absorveu (0 sem varredura)
      */
-    public function sincronizarDaVariacao(EstruturaOferta $oferta, string $sku, ?string $nome, AtorDoPortal $ator): int
+    public function sincronizarDaVariacao(EstruturaOferta $oferta, string $sku, ?string $nome, AtorDoPortal $ator, bool $varrerEspera = true): int
     {
         $sku = trim($sku);
         $nome = trim((string) $nome);
@@ -269,12 +275,12 @@ class EstruturaOfertaService
 
         $empresa = $oferta->company;
 
-        return DB::transaction(function () use ($oferta, $empresa, $sku, $nome, $ator) {
+        return DB::transaction(function () use ($oferta, $empresa, $sku, $nome, $ator, $varrerEspera) {
             $skuAntigo = $oferta->sku;
 
             $oferta->update(['sku' => $sku, 'nome' => $nome]);
 
-            $absorvidos = EstruturaOferta::normalizarSku($skuAntigo) === EstruturaOferta::normalizarSku($sku)
+            $absorvidos = ! $varrerEspera || EstruturaOferta::normalizarSku($skuAntigo) === EstruturaOferta::normalizarSku($sku)
                 ? 0
                 : $this->varrerEspera($empresa, [$skuAntigo, $sku]);
 

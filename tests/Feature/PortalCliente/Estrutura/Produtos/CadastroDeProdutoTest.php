@@ -270,6 +270,47 @@ class CadastroDeProdutoTest extends TestCase
         $this->assertSame(1, $this->requisicoesDeCategoria());
     }
 
+    /**
+     * BE-WR-05: a categoria é validada no ML ANTES de a transação abrir (nenhum lock seguro durante
+     * HTTP) e numa leitura só; a espera é varrida UMA vez por lote, não uma vez por oferta criada.
+     */
+    public function test_categorias_validadas_fora_da_transacao_e_espera_varrida_uma_vez_por_lote(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $niveis = [];
+        Http::fake(function (Request $r) use (&$niveis) {
+            $niveis[] = \Illuminate\Support\Facades\DB::transactionLevel();
+
+            return Http::response([
+                'id' => 'MLB1', 'name' => 'Cristaleiras', 'children_categories' => [],
+                'path_from_root' => [['id' => 'MLB1', 'name' => 'Cristaleiras']],
+            ]);
+        });
+        \App\Models\EstruturaAnuncioEspera::create(['company_id' => $empresa->id, 'sku_colado' => 'L-7', 'motivo' => 'sem_oferta', 'tipo' => 'classico']);
+
+        $linhas = [];
+        for ($i = 1; $i <= 20; $i++) {
+            $linhas[] = ['codigo' => "L-{$i}", 'nome' => "Produto {$i}", 'categoria_ml_id' => $i % 2 ? 'MLB1' : 'MLB3'];
+        }
+
+        $base = \Illuminate\Support\Facades\DB::transactionLevel();
+        $leiturasDaEspera = 0;
+        \Illuminate\Support\Facades\DB::listen(function ($q) use (&$leiturasDaEspera) {
+            if (str_starts_with(strtolower($q->sql), 'select') && str_contains($q->sql, 'estrutura_anuncios_espera')) {
+                $leiturasDaEspera++;
+            }
+        });
+
+        $r = $this->svc()->gravarLinhas($empresa, $linhas, $this->atorCliente($empresa));
+
+        $this->assertSame(20, $r['totais']['criadas']);
+        $this->assertNotEmpty($niveis);
+        $this->assertSame([$base], array_values(array_unique($niveis)), 'nenhuma chamada ao ML com a transação aberta');
+        $this->assertSame(1, $leiturasDaEspera, 'uma leitura da espera por lote');
+        $this->assertSame(1, $r['totais']['absorvidos_da_espera'], 'a varredura no fim ainda absorve o anúncio da L-7');
+        $this->assertSame(0, \App\Models\EstruturaAnuncioEspera::count());
+    }
+
     public function test_categoria_que_nao_e_folha_e_recusada_e_a_linha_nao_grava(): void
     {
         $empresa = $this->empresaDoGabarito();

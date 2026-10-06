@@ -108,9 +108,15 @@ class ProdutoCadastroService
 
         $estado = $this->carregar($empresa);
 
-        DB::transaction(function () use ($empresa, $linhas, $ator, $modo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$estado) {
-            foreach (array_values($linhas) as $indice => $bruta) {
-                $lida = NormalizadorDeLinha::normalizar(is_array($bruta) ? $bruta : []);
+        // A leitura das linhas é pura; com ela, as categorias do lote são validadas no ML
+        // de uma vez e ANTES de abrir a transação — nenhuma chamada HTTP segura lock (BE-WR-05).
+        $lidas = array_map(fn ($bruta) => NormalizadorDeLinha::normalizar(is_array($bruta) ? $bruta : []), array_values($linhas));
+        $estado['categorias'] = $this->categoriasDoLote($lidas);
+
+        DB::transaction(function () use ($empresa, $lidas, $ator, $modo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$estado) {
+            $skusParaVarrer = [];
+
+            foreach ($lidas as $indice => $lida) {
                 $campos = $lida['campos'];
 
                 if ($lida['erros'] !== []) {
@@ -150,11 +156,17 @@ class ProdutoCadastroService
                 }
 
                 $totais[$res['resultado']]++;
-                $totais['absorvidos_da_espera'] += $res['absorvidos'];
                 $produtosTocados[$res['produto']->id] = true;
+                $skusParaVarrer = [...$skusParaVarrer, ...$res['skus']];
                 if ($campos['chave'] !== null) {
                     $chaves[$res['variacao']->id] = $campos['chave'];
                 }
+            }
+
+            // A espera é varrida UMA vez, com todos os SKUs que o lote criou ou mudou, em vez
+            // de uma leitura da espera inteira por oferta criada (BE-WR-05).
+            if ($skusParaVarrer !== []) {
+                $totais['absorvidos_da_espera'] = $this->ofertas->varrerEspera($empresa, array_values(array_unique($skusParaVarrer)));
             }
 
             $gravadas = $totais['criadas'] + $totais['atualizadas'];
@@ -196,28 +208,63 @@ class ProdutoCadastroService
         return mb_substr($nome, 0, 255);
     }
 
-    /** @return int quantos anúncios da espera a oferta nova absorveu */
-    private function criarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator): int
+    /**
+     * Com `$skusDoLote`, a espera NÃO é varrida aqui: o SKU entra na lista e o lote
+     * varre uma vez no fim (BE-WR-05). Sem ela (reconciliador avulso), varre na hora.
+     *
+     * @return int quantos anúncios da espera a oferta nova absorveu (0 quando o lote varre)
+     */
+    private function criarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null): int
     {
         [, $absorvidos] = $this->ofertas->criar($empresa, [
             'sku'         => $variacao->codigo,
             'fase'        => EstruturaOferta::FASE_SIMPLES,
             'nome'        => self::nomeDaOferta($produto->nome, $variacao->valor),
             'variacao_id' => $variacao->id,
-        ], $ator);
+        ], $ator, varrerEspera: $skusDoLote === null);
+
+        if ($skusDoLote !== null) {
+            $skusDoLote[] = $variacao->codigo;
+        }
 
         return $absorvidos;
     }
 
     /** Acompanha código/nome na oferta ligada; se ela não existe (não deveria), cria. */
-    private function sincronizarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator): int
+    private function sincronizarOferta(Company $empresa, EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, AtorDoPortal $ator, ?array &$skusDoLote = null): int
     {
         $oferta = EstruturaOferta::query()->where('variacao_id', $variacao->id)->first();
         if (! $oferta) {
-            return $this->criarOferta($empresa, $produto, $variacao, $ator);
+            return $this->criarOferta($empresa, $produto, $variacao, $ator, $skusDoLote);
         }
 
-        return $this->ofertas->sincronizarDaVariacao($oferta, $variacao->codigo, self::nomeDaOferta($produto->nome, $variacao->valor), $ator);
+        if ($skusDoLote !== null && EstruturaOferta::normalizarSku($oferta->sku) !== EstruturaOferta::normalizarSku($variacao->codigo)) {
+            // O SKU antigo pode deixar de ser repetido e o novo pode absorver da espera.
+            $skusDoLote[] = $oferta->sku;
+            $skusDoLote[] = $variacao->codigo;
+        }
+
+        return $this->ofertas->sincronizarDaVariacao($oferta, $variacao->codigo, self::nomeDaOferta($produto->nome, $variacao->valor), $ator,
+            varrerEspera: $skusDoLote === null);
+    }
+
+    /**
+     * Detalhe (folha, nome, caminho) de cada categoria do ML pedida no lote, numa
+     * leitura só e antes da transação. Linha com erro de leitura não conta.
+     *
+     * @param  list<array>  $lidas  saídas do NormalizadorDeLinha
+     * @return array<string, ?array> id MLB => detalhe | null (ML não respondeu)
+     */
+    private function categoriasDoLote(array $lidas): array
+    {
+        $ids = [];
+        foreach ($lidas as $lida) {
+            if ($lida['erros'] === [] && in_array('categoria', $lida['presentes'], true) && $lida['campos']['categoria_ml_id'] !== null) {
+                $ids[$lida['campos']['categoria_ml_id']] = true;
+            }
+        }
+
+        return $ids === [] ? [] : $this->categorias->detalhes(array_keys($ids));
     }
 
     /**
@@ -358,7 +405,7 @@ class ProdutoCadastroService
      * Grava UMA linha dentro do savepoint do chamador. Lança ValidationException
      * para a recusa da linha (nada foi gravado: o savepoint desfaz).
      *
-     * @return array{resultado: string, absorvidos: int, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
+     * @return array{resultado: string, skus: list<string>, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
      */
     private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado): array
     {
@@ -561,9 +608,10 @@ class ProdutoCadastroService
         }
 
         // ─── Oferta simples ligada (D-08): nasce com a variação e acompanha código/valor/nome ───
-        $absorvidos = 0;
+        // A espera não é varrida aqui: os SKUs tocados voltam em `skus` e o lote varre uma vez (BE-WR-05).
+        $skus = [];
         if ($variacaoNova) {
-            $absorvidos += $this->criarOferta($empresa, $produto, $variacao, $ator);
+            $this->criarOferta($empresa, $produto, $variacao, $ator, $skus);
         }
         if ($mudouProduto && ! $produtoNovo) {
             // Produto mudou: TODAS as ofertas dele acompanham — inclusive quando a linha que o
@@ -573,17 +621,17 @@ class ProdutoCadastroService
                 ->when($variacaoNova, fn ($q) => $q->whereKeyNot($variacao->id))
                 ->get();
             foreach ($irmas as $v) {
-                $absorvidos += $this->sincronizarOferta($empresa, $produto, $v, $ator);
+                $this->sincronizarOferta($empresa, $produto, $v, $ator, $skus);
             }
         } elseif (! $variacaoNova && $mudouVariacao) {
-            $absorvidos += $this->sincronizarOferta($empresa, $produto, $variacao, $ator);
+            $this->sincronizarOferta($empresa, $produto, $variacao, $ator, $skus);
         }
 
         $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao) ? 'atualizadas' : 'sem_mudanca');
 
         return [
             'resultado'          => $resultado,
-            'absorvidos'         => $absorvidos,
+            'skus'               => $skus,
             'produto'            => $produto,
             'variacao'           => $variacao,
             'avisos'             => $avisos,
@@ -628,10 +676,9 @@ class ProdutoCadastroService
             return [];
         }
 
-        if (! array_key_exists($id, $memo)) {
-            $memo[$id] = $this->categorias->detalhe($id);
-        }
-        $detalhe = $memo[$id];
+        // O lote já validou as suas categorias antes da transação (`categoriasDoLote`); aqui
+        // dentro não há chamada ao ML. Um id fora do memo (não deveria) fica "não validado".
+        $detalhe = $memo[$id] ?? null;
 
         if ($detalhe === null) {
             return [

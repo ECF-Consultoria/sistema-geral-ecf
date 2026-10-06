@@ -89,6 +89,35 @@ class CategoriaSugestaoService
         ];
     }
 
+    /**
+     * `detalhe()` de várias categorias numa leitura só (cache primeiro, o resto em
+     * paralelo). Usado pelo cadastro de Produtos do Portal para validar as categorias
+     * de um lote ANTES de abrir a transação (Fase 167, BE-WR-05). Método novo: não
+     * muda `detalhe()` nem `sugerir()`.
+     *
+     * @param  array<int, string>  $ids
+     * @return array<string, array{id: string, nome: string, caminho: array<int, array{id: string, nome: string}>, folha: bool}|null>
+     */
+    public function detalhes(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('strval', $ids), fn ($id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $saida = [];
+        foreach ($this->categoriasEmLote($ids) as $id => $cat) {
+            $saida[$id] = $cat ? [
+                'id'      => (string) ($cat['id'] ?? $id),
+                'nome'    => (string) ($cat['name'] ?? $id),
+                'caminho' => $this->caminho($cat),
+                'folha'   => empty($cat['children_categories']),
+            ] : null;
+        }
+
+        return $saida;
+    }
+
     /** @return array<int, array{id: string, nome: string}> */
     private function caminho(array $categoria): array
     {
