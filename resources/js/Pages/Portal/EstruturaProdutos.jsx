@@ -12,6 +12,7 @@ import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos'
 import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
 import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
 import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
+import { avisoDosFretes, consultarFretesEmBlocos } from '@/lib/produtosFretes';
 import { gravarModo, guardarRetorno, lerModo, mostrarCartao, pegarUltimoProduto, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
@@ -34,7 +35,6 @@ import { gravarModo, guardarRetorno, lerModo, mostrarCartao, pegarUltimoProduto,
 // design" (D-07), um cadastro por empresa, não a cor do produto.
 
 const LOTE_SUGESTOES = 10;
-const VOLTAS_FRETE = 10;
 
 const dataBr = (iso) => {
     if (! iso) return '';
@@ -229,29 +229,20 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     const linhasMe2 = linhas.filter((r) => r.id && (r.logistica === 'me2' || r.logistica === 'me2_full'));
 
+    // Em blocos do limite do servidor, repetindo enquanto houver pendência, até o teto do clique; o laço
+    // mora em produtosFretes, com teste (FE-WR-07).
     const consultarFretes = async () => {
         if (consultando.size > 0) return;
         const ids = linhas.filter((r) => r.id && (r.logistica === 'me2' || r.logistica === 'me2_full')).map((r) => r.id);
         if (ids.length === 0) return;
         setConsultando(new Set(ids));
         setAviso(null);
-        let falhou = false;
-        try {
-            for (let volta = 0; volta < VOLTAS_FRETE; volta++) {
-                const { data } = await axios.post(route('portal.auth.estrutura.produtos.fretes'), { variacao_ids: ids });
-                const fretes = data.fretes ?? {};
-                setLinhas((atuais) => atuais.map((r) => (fretes[r.id] ? { ...r, frete: fretes[r.id] } : r)));
-                if (data.falhou) falhou = true;
-                if (! data.pendentes || data.pendentes <= 0) break;
-            }
-            setAviso(falhou
-                ? 'Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.'
-                : 'Fretes atualizados.');
-        } catch (e) {
-            setAviso('Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.');
-        } finally {
-            setConsultando(new Set());
-        }
+        const fim = await consultarFretesEmBlocos(ids, {
+            enviar: async (bloco) => (await axios.post(route('portal.auth.estrutura.produtos.fretes'), { variacao_ids: bloco })).data,
+            aoReceber: (fretes) => setLinhas((atuais) => atuais.map((r) => (fretes[r.id] ? { ...r, frete: fretes[r.id] } : r))),
+        });
+        setAviso(avisoDosFretes(fim));
+        setConsultando(new Set());
     };
 
     return (

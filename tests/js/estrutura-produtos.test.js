@@ -62,7 +62,7 @@ test('modo (D-26): lido do navegador no 1º render, gravado ao trocar, e o selet
 test('fretes: o botão só aparece com conta conectada e variação ME2, na linha do seletor', () => {
     assert.ok(pagina.includes('Consultar fretes no Mercado Livre') && pagina.includes('Consultando…'));
     assert.ok(pagina.includes('ml_conectado && linhasMe2.length > 0'));
-    assert.ok(pagina.includes('VOLTAS_FRETE = 10') && pagina.includes('data.pendentes') && pagina.includes('Fretes atualizados.'));
+    assert.ok(pagina.includes('consultarFretesEmBlocos(') && pagina.includes('avisoDosFretes('));
     assert.ok(pagina.includes('consultando={consultando}'));
     assert.ok(pagina.indexOf('<SeletorVisualizacao') < pagina.lastIndexOf('consultar-fretes'));
 });

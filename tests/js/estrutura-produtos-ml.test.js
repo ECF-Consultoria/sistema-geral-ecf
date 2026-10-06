@@ -110,11 +110,17 @@ test('"Consultar fretes no Mercado Livre": só com conta conectada e linha ME2, 
     assert.ok(pagina.includes('Consultar fretes no Mercado Livre'));
     assert.ok(pagina.includes('Consultando…'));
     assert.match(pagina, /consultando=\{consultando\}/);
-    assert.match(pagina, /VOLTAS_FRETE = 10/);
-    assert.match(pagina, /volta < VOLTAS_FRETE/);
-    assert.match(pagina, /data\.pendentes/);
-    assert.ok(pagina.includes('Fretes atualizados.'));
-    assert.ok(pagina.includes('Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.'));
+    // FE-WR-07: o laço (blocos de 200, repetir enquanto houver pendência, teto por clique) mora em
+    // produtosFretes, com teste comportamental em estrutura-produtos-fretes.test.js.
+    assert.ok(pagina.includes('consultarFretesEmBlocos(ids, {'));
+    assert.match(pagina, /\{ variacao_ids: bloco \}/);
+    assert.ok(! /\{ variacao_ids: ids \}/.test(pagina), 'nunca todos os ids num POST só');
+    assert.ok(pagina.includes('setAviso(avisoDosFretes(fim))'));
+    const fretes = lerSemComentarios('resources/js/lib/produtosFretes.js');
+    for (const t of ['Fretes atualizados.', 'Não deu para consultar o Mercado Livre agora. Os valores continuam como estimativa.',
+        'Consultamos parte dos fretes; clique de novo para continuar.', 'data?.pendentes']) {
+        assert.ok(fretes.includes(t), `faltou: ${t}`);
+    }
     assert.match(pagina, /role="status"/);
 });
 
