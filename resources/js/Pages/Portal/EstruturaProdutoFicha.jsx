@@ -169,7 +169,13 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         // Produto novo ganha id no 1º lote gravado, mesmo se outro lote falhar: a volta já sabe qual destacar.
         const idGravado = (r.data?.linhas ?? []).find((l) => l.produto_id)?.produto_id;
         if (idGravado) ultimoRef.current = idGravado;
-        if (! r.ok) return;   // erros nos blocos; gravação parcial já aplicada pelo hook
+        if (! r.ok) {
+            // Erros nos blocos; a gravação parcial já foi aplicada pelo hook. Produto novo que passou a
+            // existir deixa de estar em /novo: recarregar abre o produto, com o rascunho do resto (FE-IN-10).
+            if (novo && idGravado) router.replace({ ...entradaDoProduto(idGravado, r.data), preserveState: true, preserveScroll: true });
+
+            return;
+        }
 
         liberado.current = true;
         irParaLista({

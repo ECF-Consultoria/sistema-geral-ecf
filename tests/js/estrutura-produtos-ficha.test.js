@@ -232,6 +232,10 @@ test('Saída pelo histórico: aberta pela lista, a ficha volta uma entrada em ve
     assert.ok(lista.includes('mostrarCartao(ultimo)') && lista.includes('rolarParaVolta(volta)'));
 });
 
+test('Produto novo gravado em parte sai de /novo para a URL do produto (FE-IN-10)', () => {
+    assert.match(pagina, /if \(! r\.ok\) \{[\s\S]*?if \(novo && idGravado\) router\.replace\(\{ \.\.\.entradaDoProduto\(idGravado, r\.data\), preserveState: true, preserveScroll: true \}\);\s*return;\s*\}/);
+});
+
 test('Navegação: ida e volta guardada em sessionStorage e sem redirecionamento aberto', () => {
     for (const e of ['guardarRetorno', 'urlDeVolta', 'voltarParaLista', 'pegarVolta', 'rolarParaVolta']) {
         assert.match(nav, new RegExp(`export function ${e}`));
