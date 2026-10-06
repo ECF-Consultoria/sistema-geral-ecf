@@ -1001,3 +1001,14 @@ SKUs nasce dele. O que não se deduz do código:
 - **Entrada de equipe para conferir a tela:** o ticket vale 60 segundos e é de
   uso único; para conferência demorada, emitir de novo na hora de abrir. A rota
   é `/equipe/entrar?t=...` (fora do prefixo `/portal`).
+- **`style={{ position: 'relative' }}` inline vence a classe `sticky` do Tailwind.**
+  No `SpreadsheetGrid`, o `td` de coluna congelada tinha `position: relative`
+  inline e `left` calculado: a célula saía deslocada pelo `left` e Ref/Produto
+  ficavam fora do alinhamento do cabeçalho (texto sobreposto). Ninguém via
+  porque nenhuma tela anterior usava `frozen`. Só a conferência no navegador
+  achou — nem teste de PHP nem `npm run build` pegariam. Correção: `position`
+  decidido no próprio estilo (`frozen ? 'sticky' : 'relative'`).
+- **Busca de categoria sem resultado aparece como "Não deu para buscar agora".**
+  O endpoint devolve `indisponivel: true` também quando a lista vem vazia (nome
+  fictício, sem categoria no preditor do ML). A busca em si funciona com o app
+  token (dado público) — confirmado em 06/10 com "mesa de jantar" → MLB4341.
