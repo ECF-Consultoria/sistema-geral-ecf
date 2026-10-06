@@ -61,7 +61,7 @@ class FichaDoProdutoTest extends TestCase
             ->get(route('portal.auth.estrutura.produtos.novo'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Portal/EstruturaProdutoFicha', false)
+                ->component('Portal/EstruturaProdutoFicha')
                 ->where('produto', null)
                 ->where('linhas', [])
                 ->has('listas.familias')
@@ -85,7 +85,7 @@ class FichaDoProdutoTest extends TestCase
             ->get(route('portal.auth.estrutura.produtos.ficha', $id))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Portal/EstruturaProdutoFicha', false)
+                ->component('Portal/EstruturaProdutoFicha')
                 ->where('produto.id', $id)
                 ->where('produto.nome', 'Cadeira Teste')
                 ->has('linhas', 2)

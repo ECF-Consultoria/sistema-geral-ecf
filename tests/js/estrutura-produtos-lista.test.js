@@ -5,19 +5,17 @@ import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gate da lista de cartões e da ficha do produto (Fase 167-16 + 167-18: D-23, D-12, D-04, D-22).
+// Gate da lista de cartões de Produtos (Fase 167-16 + 167-18: D-23, D-12). Desde o 167-19 a ficha é
+// uma PÁGINA (gate próprio: estrutura-produtos-ficha.test.js); aqui ficam só os cartões.
 //
 // POR QUE EXISTE: desde o D-23 a tela de Produtos NÃO é planilha: é uma lista de
-// cartões e uma ficha (painel lateral no computador, folha de baixo no celular).
-// A ficha só é segura se gravar pelo MESMO POST `linhas` (a regra é do servidor),
-// se a nova variação copiar a 1ª e se não deixar perder o que foi digitado.
-// Também barra regra de negócio (conta de frete, cubagem) nos componentes.
+// cartões e uma ficha em página.
+// A lista só mostra o que o servidor calculou e barra regra de negócio (conta de
+// frete, cubagem) nos componentes.
 // ═══════════════════════════════════════════════════════════════════════
 
 const raiz = resolve(import.meta.dirname, '../..');
 const lista = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/ListaProdutos.jsx');
-const sheet = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/SheetProduto.jsx');
-const sheetUi = lerSemComentarios('resources/js/Components/ui/sheet.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
 test('Arquivos: ListaProdutos existe e o componente antigo do celular saiu', () => {
@@ -58,74 +56,13 @@ test('Lista: só linhas já gravadas, agrupadas por produto; clicar abre a ficha
     assert.match(lista, /onAbrir\(produtoId\)/);
 });
 
-test('Ficha: lado escolhido pela página nas duas folhas, altura máxima só embaixo', () => {
-    assert.match(sheet, /lado = 'bottom'/);
-    assert.equal((sheet.match(/side=\{lado\}/g) ?? []).length, 2);
-    assert.ok(! /side="bottom"/.test(sheet));
-    assert.ok(sheet.includes('max-h-[90vh] overflow-y-auto rounded-t-2xl'));
-    assert.match(sheet, /lado === 'bottom'/);
-    assert.match(sheetUi, /side = 'right'/);
-    assert.match(sheetUi, /bottom:\s+'inset-x-0 bottom-0/);
-});
-
-test('Ficha: com alteração não salva, clique fora e Esc não fecham e o aviso diz como sair', () => {
-    assert.match(sheet, /onInteractOutside=\{segurar\}/);
-    assert.match(sheet, /onEscapeKeyDown=\{segurar\}/);
-    assert.match(sheet, /e\.preventDefault\(\)/);
-    assert.ok(sheet.includes('Há alterações não salvas. Use Salvar produto ou feche pelo X para descartar.'));
-});
-
-test('Formulário: rótulo 12px/600 acima de campo h-11 e os botões do UI-SPEC', () => {
-    assert.ok(sheet.includes('text-[12px] font-semibold'));
-    assert.ok(sheet.includes('h-11'));
-    assert.ok(sheet.includes('border-white/20 bg-black/40'));
-    for (const t of ['Adicionar volume', 'Nova variação', 'Salvar produto', 'Excluir variação']) {
-        assert.ok(sheet.includes(t), `faltou: ${t}`);
-    }
-    assert.ok(sheet.includes('text-red-300'));
-    assert.match(sheet, /grid grid-cols-2 gap-3 sm:grid-cols-4/);
-    assert.match(sheet, /inputMode="decimal"/);
-});
-
-test('Salvar: UM POST linhas com todas as variações, textos de variação (não de linha)', () => {
-    assert.equal((sheet.match(/axios\.post\(/g) ?? []).length, 1);
-    assert.match(sheet, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\), \{ linhas: enviadas\.map\(linhaParaServidor\) \}\)/);
-    assert.ok(sheet.includes('Não salvamos esta variação'));
-    assert.ok(! sheet.includes('Não salvamos esta linha'));
-    assert.ok(! sheet.includes('toque'));
-    assert.ok(sheet.includes('data.erros'));
-});
-
-test('Salvar produto é o único botão amarelo da ficha', () => {
-    assert.equal((sheet.match(/bg-ecf-yellow/g) ?? []).length, 1);
-    assert.match(sheet, /<SheetFooter[\s\S]*Salvar produto/);
-});
-
-test('Nova variação copia a 1ª e deixa o valor vazio (D-04)', () => {
-    assert.match(sheet, /const nova = \{\s*\.\.\.base,/);
-    assert.match(sheet, /valor: '',/);
-    assert.match(sheet, /codigo: `\$\{base\.grupo \?\? base\.codigo\}-\$\{quantas \+ 1\}`/);
-});
-
-test('Excluir variação passa pela mesma confirmação (D-22)', () => {
-    assert.match(sheet, /<JanelaExcluirVariacao/);
-    assert.match(sheet, /onRemovida\?\.\(linha, resposta\)/);
-});
-
-test('Família, ambiente e categoria abrem os mesmos pickers, numa folha sobreposta', () => {
-    assert.match(sheet, /<PickerLista tipo="familia"/);
-    assert.match(sheet, /<PickerLista tipo="ambiente" multiplo/);
-    assert.match(sheet, /<PickerCategoria/);
-    assert.match(sheet, /registrarFechar=/);
-});
-
 test('Lib: o servidor vira linha da tela com linhaDoServidor, sem definição de coluna', () => {
     assert.match(lib, /export function linhaDoServidor/);
     assert.ok(! lib.includes('linhaDaGrade'));
 });
 
-test('Sem regra de negócio nem HTML cru na lista e na ficha (T-167-63, T-167-69)', () => {
-    for (const fonte of [lista, sheet]) {
+test('Sem regra de negócio nem HTML cru na lista (T-167-63, T-167-69)', () => {
+    for (const fonte of [lista]) {
         assert.ok(! fonte.includes('dangerouslySetInnerHTML'));
         assert.ok(! /\bMath\.(ceil|floor|round)\b/.test(fonte));
         assert.ok(! /cubag|cubado\s*[*/]/.test(fonte));

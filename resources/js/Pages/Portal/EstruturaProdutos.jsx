@@ -9,15 +9,16 @@ import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/Jan
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
-import SheetProduto from '@/Components/Portal/Estrutura/Produtos/SheetProduto';
-import { linhaDoServidor, linhaParaServidor } from '@/lib/produtosEstrutura';
+import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
+import { guardarRetorno, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
 //
 // D-23: nada de planilha dentro do sistema. Os produtos aparecem numa lista de
 // cartões (uma variação por linha dentro do cartão, D-03) e UMA ficha do
-// produto — painel lateral no computador, folha de baixo no celular — é o único
-// lugar de editar: "Salvar produto" manda um POST com o produto inteiro.
+// produto, em PÁGINA INTEIRA com URL própria (167-19, D-27), é o único lugar de
+// editar: clicar no cartão ou em "Adicionar produto" navega até ela, e salvar
+// volta para cá com a busca, a página e a rolagem de antes.
 //
 // D-24: a planilha só existe como ARQUIVO: baixar o modelo (.xlsx), preencher
 // fora e importar com prévia. Para cadastrar muitos de uma vez, é por aí.
@@ -36,26 +37,6 @@ const dataBr = (iso) => {
     return `${d}/${m}/${a}`;
 };
 
-/** Abaixo de 768 px a ficha abre de baixo; a partir daí, como painel à direita. */
-function useTelaEstreita() {
-    const consulta = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null);
-    const [estreita, setEstreita] = useState(() => consulta()?.matches ?? false);
-
-    useEffect(() => {
-        const mq = consulta();
-        if (! mq) return undefined;
-        const aoMudar = (e) => setEstreita(e.matches);
-        setEstreita(mq.matches);
-        mq.addEventListener('change', aoMudar);
-
-        return () => mq.removeEventListener('change', aoMudar);
-    }, []);
-
-    return estreita;
-}
-
-const lista = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0]);
-
 const LINK_SECUNDARIO = 'inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white';
 
 export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites, listas: listasIniciais }) {
@@ -67,9 +48,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
-    const [ficha, setFicha] = useState(null);            // { produtoId, n } enquanto a ficha do produto está aberta
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
-    const estreita = useTelaEstreita();
 
     // Listas da empresa (família e ambiente): criar um nome na ficha atualiza as duas.
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
@@ -100,14 +79,26 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     // ─── Ficha do produto ───────────────────────────────────────────────────
 
-    const abrirFicha = (produtoId = null) => setFicha((f) => ({ produtoId, n: (f?.n ?? 0) + 1 }));
+    /** Navega até a ficha (D-27): guarda onde a lista estava para a volta preservar busca, página e rolagem. */
+    const abrirFicha = (produtoId = null) => {
+        guardarRetorno();
+        router.visit(produtoId
+            ? route('portal.auth.estrutura.produtos.ficha', produtoId)
+            : route('portal.auth.estrutura.produtos.novo'));
+    };
 
-    /** A ficha (ou as sugestões) gravou: troca no lugar a variação de mesmo id; variação nova entra junto do produto. */
+    // Voltando da ficha: o aviso de "Produto salvo." e a rolagem de antes (ou até o produto novo).
+    useEffect(() => {
+        const volta = pegarVolta();
+        if (! volta) return;
+        if (volta.aviso) setAviso(volta.aviso);
+        rolarParaVolta(volta);
+    }, []);
+
+    /** As sugestões gravaram: troca no lugar a variação de mesmo id; variação nova entra junto do produto. */
     const mesclar = (data) => {
         const atuais = linhas.filter((r) => r.id);
-        const conhecidos = new Set(atuais.map((r) => r.produto_id));
         let todas = atuais;
-        let produtoNovo = null;
         (data.linhas ?? []).forEach((servidor) => {
             const pronta = linhaDoServidor(servidor, vocabulario.pendencias);
             const i = todas.findIndex((r) => r.id === servidor.id);
@@ -116,7 +107,6 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
                 return;
             }
-            if (! conhecidos.has(servidor.produto_id)) produtoNovo = servidor.produto_id;
             let ultimo = -1;
             todas.forEach((r, j) => { if (r.produto_id && r.produto_id === servidor.produto_id) ultimo = j; });
             todas = ultimo >= 0 ? [...todas.slice(0, ultimo + 1), pronta, ...todas.slice(ultimo + 1)] : [...todas, pronta];
@@ -124,16 +114,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         setLinhas(todas);
 
         if (data.listas) setListas(data.listas);
-        const criadas = data.criadas_nas_listas ?? { familias: [], ambientes: [] };
-        const partes = [];
-        if (criadas.familias?.length) partes.push(`${criadas.familias.length > 1 ? 'as famílias' : 'a família'} ${lista(criadas.familias)}`);
-        if (criadas.ambientes?.length) partes.push(`${criadas.ambientes.length > 1 ? 'os ambientes' : 'o ambiente'} ${lista(criadas.ambientes)}`);
-        setAviso(`Produto salvo.${partes.length ? ` Criamos ${partes.join(' e ')}.` : ''}`);
-
-        // Produto novo: leva a pessoa até o cartão dele (sem animação nova).
-        if (produtoNovo) {
-            requestAnimationFrame(() => document.querySelector(`[data-produto-id="${produtoNovo}"]`)?.scrollIntoView({ block: 'center' }));
-        }
+        setAviso(textoProdutoSalvo(data));
     };
 
     // Renomear/excluir item de lista muda o que as variações mostram: recarrega do servidor.
@@ -315,17 +296,6 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                 )}
             </div>
 
-            {ficha && (
-                <SheetProduto key={ficha.n} lado={estreita ? 'bottom' : 'right'} aberto
-                    linhas={ficha.produtoId ? linhas.filter((r) => r.id && r.produto_id === ficha.produtoId) : []}
-                    listas={listas} vocabulario={vocabulario} onListas={setListas}
-                    onGravado={mesclar}
-                    onRemovida={(linha, resposta) => {
-                        setLinhas((atuais) => atuais.filter((r) => r.id !== linha.id));
-                        if (resposta?.mensagem) setAviso(resposta.mensagem);
-                    }}
-                    onFechar={() => setFicha(null)} />
-            )}
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
             <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}

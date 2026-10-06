@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -8,7 +10,7 @@ import { lerSemComentarios } from './_fonte.js';
 // POR QUE EXISTE: a ficha é o único lugar de editar produto e não pode inventar
 // regra (logística, cubagem e frete são do servidor), nem ganhar upload de foto
 // que ninguém pediu, nem voltar a ser painel lateral (o usuário reprovou). A
-// regra que era do SheetProduto mora no hook useFichaProduto.
+// regra que era do painel lateral antigo mora no hook useFichaProduto.
 //
 // Lê a fonte SEM COMENTÁRIOS (helper _fonte.js): a prosa pt-BR cita os próprios
 // identificadores e um gate cru passaria pelo comentário, não pelo código.
@@ -22,6 +24,10 @@ const variacao = lerSemComentarios(`${DIR}CartaoVariacao.jsx`);
 const volume = lerSemComentarios(`${DIR}CartaoVolume.jsx`);
 const calculados = lerSemComentarios(`${DIR}FaixaCalculados.jsx`);
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
+const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
+const nav = lerSemComentarios('resources/js/lib/produtosNavegacao.js');
+const raiz = resolve(import.meta.dirname, '../..');
+const PAINEL = 'Sheet' + 'Produto';   // o painel lateral antigo, apagado no 167-19
 
 const contar = (fonte, re) => (fonte.match(re) ?? []).length;
 
@@ -112,5 +118,48 @@ test('Sem regra de negócio, HTML cru nem herança da precificação nos arquivo
         assert.ok(! /\b79\b/.test(fonte), 'limite de frete apareceu no JS');
         assert.ok(! /\bMath\.(ceil|floor|round)\b/.test(fonte));
         assert.ok(! fonte.includes('precificacaoProdutos'));
+    }
+});
+
+test('Página: componente real no layout do portal, com a ficha, as variações e o rodapé', () => {
+    assert.match(pagina, /export default function EstruturaProdutoFicha/);
+    for (const t of ['PortalClienteLayout', 'useFichaProduto(', '<FichaDadosGerais', '<CartaoVariacao', '<JanelaExcluirVariacao', 'ArrowLeft',
+        'Produtos', 'Variações', 'Nova variação', 'Cancelar', 'Salvar produto',
+        'data-ficha-produto', 'data-acao="nova-variacao"', 'data-acao="cancelar"', 'data-acao="salvar-produto"']) {
+        assert.ok(pagina.includes(t), `faltou: ${t}`);
+    }
+    assert.equal(contar(pagina, /bg-ecf-yellow/g), 1, 'Salvar produto é o único amarelo');
+});
+
+test('Guarda: alteração não salva pede confirmação ao sair por link, botão ou aba', () => {
+    for (const t of ["router.on('before'", "addEventListener('beforeunload'", "removeEventListener('beforeunload'",
+        'window.confirm(', 'Há alterações não salvas neste produto. Sair sem salvar?']) {
+        assert.ok(pagina.includes(t), `faltou: ${t}`);
+    }
+});
+
+test('Volta: sucesso volta para a lista com o aviso, trocando a entrada do histórico (D-27)', () => {
+    assert.ok(pagina.includes('voltarParaLista('));
+    assert.match(pagina, /replace: true/);
+    assert.ok(pagina.includes('textoProdutoSalvo('));
+    for (const proibido of ['@/Components/ui/sheet', 'Ver no Mercado Livre', 'Bell', 'Avatar']) {
+        assert.ok(! pagina.includes(proibido), `a ficha não pode ter: ${proibido} (D-30)`);
+    }
+});
+
+test('Navegação: ida e volta guardada em sessionStorage e sem redirecionamento aberto', () => {
+    for (const e of ['guardarRetorno', 'urlDeVolta', 'voltarParaLista', 'pegarVolta', 'rolarParaVolta']) {
+        assert.match(nav, new RegExp(`export function ${e}`));
+    }
+    assert.ok(nav.includes('sessionStorage'));
+    assert.match(nav, /onStart: \(\) => gravar\(CHAVE_VOLTA/);
+    assert.ok(nav.includes('url === lista || url.startsWith(`${lista}?`)'), 'só o caminho da lista é aceito como volta');
+    assert.ok(! nav.includes('window.location.href ='));
+});
+
+test('O painel lateral deixou de existir (D-27)', () => {
+    assert.ok(! existsSync(resolve(raiz, 'resources/js/Components/Portal/Estrutura/Produtos/' + PAINEL + '.jsx')));
+    for (const fonte of [pagina, nav, hook, dados, variacao]) {
+        assert.ok(! fonte.includes(PAINEL));
     }
 });

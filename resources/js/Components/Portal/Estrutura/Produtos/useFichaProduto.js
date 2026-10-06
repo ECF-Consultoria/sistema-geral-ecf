@@ -4,7 +4,7 @@ import { campoEditaveis, linhaDoServidor, linhaParaServidor } from '@/lib/produt
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
-// Era do SheetProduto (painel lateral, aposentado no 167-19). Aqui mora só o que
+// Era do painel lateral antigo (aposentado no 167-19). Aqui mora só o que
 // coleta e envia: rascunho das variações, escolha de família/ambiente/categoria
 // (vale para o produto inteiro), volumes digitados, "Nova variação" que copia a
 // 1ª (D-04) e o "Salvar produto", que grava pelo POST `linhas` que já existe.

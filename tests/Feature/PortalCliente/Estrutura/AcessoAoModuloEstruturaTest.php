@@ -514,8 +514,13 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $this->assertNotContains('portal/*', $permitido);
 
         foreach ($rotas as $rota) {
+            // Id numérico sob prefixo com irmãs (167-19) entra por PERMITIDO_COM_ID: só vale com `whereNumber`.
+            $soNumericos = preg_match_all('/\{(\w+)\??\}/', $rota->uri(), $m) > 0
+                && collect($m[1])->every(fn ($param) => ($rota->wheres[$param] ?? null) === '[0-9]+');
+
             $this->assertTrue(
-                collect($permitido)->contains(fn ($p) => Str::is($p, $rota->uri())),
+                collect($permitido)->contains(fn ($p) => Str::is($p, $rota->uri()))
+                    || ($soNumericos && RestringeDominioDoPortal::liberado(preg_replace('/\{\w+\??\}/', '1', $rota->uri()))),
                 "{$rota->uri()} fora da allowlist"
             );
         }
