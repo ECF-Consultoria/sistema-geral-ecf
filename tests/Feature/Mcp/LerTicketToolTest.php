@@ -232,6 +232,36 @@ class LerTicketToolTest extends TestCase
         $this->assertSame($antes, $this->debora->unreadNotifications()->count());
     }
 
+    // ═══ Cliente com a lista de ferramentas antiga (cache do claude.ai) ═══
+
+    public function test_ler_tela_de_chamados_index_avisa_onde_esta_a_caixa_da_equipe(): void
+    {
+        $this->abrir($this->debora, $this->maycon, 'Para o Maycon');
+        $lerTela = fn (User $u) => json_decode($this->rpc($u, 'tools/call', ['name' => 'ler_tela', 'arguments' => (object) [
+            'tela' => 'chamados.index',
+        ]])->assertOk()->json('result.content.0.text'), true);
+
+        // Dev: a tela continua igual (só os que ele abriu), mas a resposta
+        // aponta a caixa da equipe — que funciona até sem o ler_ticket.
+        $tela = $lerTela($this->maycon);
+        $this->assertStringContainsString('SÓ os tickets que você ABRIU', $tela['aviso']);
+        $this->assertStringContainsString('dev.demandas.index', $tela['aviso']);
+
+        $caixa = json_decode($this->rpc($this->maycon, 'tools/call', ['name' => 'ler_tela', 'arguments' => (object) [
+            'tela' => 'dev.demandas.index', 'campo' => 'chamados',
+        ]])->assertOk()->json('result.content.0.text'), true);
+        $this->assertSame(['Para o Maycon'], collect($caixa['itens'])->pluck('titulo')->all());
+
+        // Quem não é da equipe não recebe caminho para a caixa (que não abre para ele).
+        $tela = $lerTela($this->debora);
+        $this->assertStringNotContainsString('dev.demandas.index', $tela['aviso']);
+        $this->assertStringContainsString('ler_ticket', $tela['aviso']);
+
+        // A busca por ticket no listar_telas leva a mesma dica.
+        $this->assertStringContainsString('dev.demandas.index', $this->ferramenta($this->maycon, 'listar_telas', ['busca' => 'ticket'])['dica']);
+        $this->assertArrayNotHasKey('dica', $this->ferramenta($this->maycon, 'listar_telas', ['busca' => 'nps']));
+    }
+
     // ═══ Catálogo ═══
 
     public function test_rota_sem_nome_com_nome_gerado_pelo_cache_fica_fora_das_telas_e_acoes(): void
