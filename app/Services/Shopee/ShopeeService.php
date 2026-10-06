@@ -447,9 +447,49 @@ class ShopeeService
     // ═══ Dados: pedidos (faturamento bruto) ═══════════════════════════════════
 
     /**
-     * Soma o faturamento bruto dos pedidos da janela informada.
+     * Soma o faturamento dos pedidos da janela informada, na MESMA régua do
+     * painel da Shopee (Seller Center).
+     *
      * get_order_list (paginação por cursor, janela ≤15 dias) → order_sn;
-     * get_order_detail (lotes de 50) → total_amount. Ignora UNPAID e CANCELLED.
+     * get_order_detail (lotes de 50) → `pay_time` + `item_list`.
+     *
+     *     revenue = Σ (pedidos com `pay_time` não vazio)
+     *                 Σ (itens) model_discounted_price × model_quantity_purchased
+     *
+     * Sem frete, SEM filtro de status e SEM descontar item cancelado/devolvido.
+     *
+     * ─── Por que mudou (quick 261006-fac, 2026-10-06) ───────────────────────
+     * Decisão do usuário: "o faturamento das empresas no sistema deve ser
+     * exatamente igual ao do painel da Shopee, com frete ou sem frete não
+     * importa". Antes somava `total_amount` do pedido e pulava
+     * UNPAID|CANCELLED|IN_CANCEL — as DUAS coisas estavam erradas:
+     *
+     * 1. O painel conta no PAGAMENTO. Pedido pago e cancelado DEPOIS continua
+     *    sendo faturamento, e o filtro por status jogava isso fora. Na CAMILLO
+     *    MATRIZ (#1) em 30/09/2026 eram R$ 1.434,94 em dois pedidos pagos e
+     *    cancelados pelo comprador em seguida (R$ 1.398,13 e R$ 36,81): o painel
+     *    mostrava R$ 8.953,89, nós tínhamos gravado R$ 6.953,31, e com esta
+     *    regra sai R$ 9.133,89.
+     *    ⚠️ Medido: o painel conta o pedido pago POR INTEIRO — descontar o item
+     *    cancelado (`cancelled_qty`/`returned_qty`) passa do alvo em 16,6%.
+     *    Portanto NÃO descontar.
+     * 2. O campo certo é o ITEM, não o pedido. O `total_amount` (itens + frete
+     *    pago pelo cliente − promoções) às vezes fica acima e às vezes abaixo do
+     *    preço dos itens: na ITUFARMA um pedido tinha total R$ 31,42 contra
+     *    R$ 48,46 de item — 54% de diferença.
+     *
+     * Setembro/2026 inteiro contra a planilha manual do time: EDUMAC PARTS #144
+     * e CAMILLO FILIAL RS #358 fecham ao centavo (0,00%) e o pior resto é a GRAN
+     * BELO #212, com +5,53%. O resíduo é pequeno e sempre PARA CIMA
+     * (provavelmente desconto aplicado no pedido, e não no item): é pendência
+     * conhecida, não regressão.
+     *
+     * A janela do dia continua em BRT (−03:00): dos cinco fusos testados só o
+     * BRT fecha (UTC erra +12%, GMT+8 erra −16%).
+     *
+     * ⚠️ Ponto único da correção: os consumidores leem `shopee_metrics.revenue`,
+     * então arrumar aqui propaga para fechamento, dashboard, carteira e
+     * desempenho de uma vez — nenhum deles replica a conta.
      *
      * @param  string $dateFrom  YYYY-MM-DD (inclusive, 00:00 BRT)
      * @param  string $dateTo    YYYY-MM-DD (inclusive, 23:59 BRT)
@@ -495,28 +535,36 @@ class ShopeeService
             );
         }
 
-        // 2) Detalhe em lotes de 50 → soma valores
+        // 2) Detalhe em lotes de 50 → soma os itens dos pedidos PAGOS
         $revenue = 0.0;
         $soldQty = 0;
         $counted = 0;
 
         foreach (array_chunk($orderSns, 50) as $chunk) {
             $detail = $this->get($company, '/api/v2/order/get_order_detail', [
-                'order_sn_list'           => implode(',', $chunk),
-                'response_optional_fields' => 'total_amount,order_status,item_list',
+                'order_sn_list'            => implode(',', $chunk),
+                'response_optional_fields' => 'total_amount,order_status,item_list,pay_time',
             ]);
 
             foreach ($detail['order_list'] ?? [] as $order) {
-                $status = strtoupper($order['order_status'] ?? '');
-                if (in_array($status, ['UNPAID', 'CANCELLED', 'IN_CANCEL'], true)) {
+                // O pagamento é o que define o faturamento: quem não tem
+                // `pay_time` (UNPAID) não entra, e quem tem entra mesmo que o
+                // status de hoje seja CANCELLED/IN_CANCEL — é assim que o painel
+                // da Shopee conta (ver docblock).
+                if (empty($order['pay_time'])) {
                     continue;
                 }
 
-                $revenue += (float) ($order['total_amount'] ?? 0);
                 $counted++;
 
                 foreach ($order['item_list'] ?? [] as $item) {
-                    $soldQty += (int) ($item['model_quantity_purchased'] ?? 0);
+                    $qty = (int) ($item['model_quantity_purchased'] ?? 0);
+
+                    // Preço do item JÁ com desconto (sem frete) × quantidade
+                    // comprada. `cancelled_qty`/`returned_qty` não são
+                    // descontados de propósito: descontar passa do alvo em 16,6%.
+                    $revenue += (float) ($item['model_discounted_price'] ?? 0) * $qty;
+                    $soldQty += $qty;
                 }
             }
         }
