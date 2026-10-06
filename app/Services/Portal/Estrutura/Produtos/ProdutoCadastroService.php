@@ -126,9 +126,13 @@ class ProdutoCadastroService
                     continue;
                 }
 
+                $tocados = []; // models do estado que a linha alterou (para desfazer em memória)
                 try {
-                    $res = DB::transaction(fn () => $this->gravarLinha($empresa, $campos, $lida['presentes'], $ator, $modo, $estado));
+                    $res = DB::transaction(function () use ($empresa, $campos, $lida, $ator, $modo, $estado, &$tocados) {
+                        return $this->gravarLinha($empresa, $campos, $lida['presentes'], $ator, $modo, $estado, $tocados);
+                    });
                 } catch (ValidationException $e) {
+                    $this->desfazerNoEstado($tocados);
                     $mensagens = array_map(fn ($m) => (string) $m[0], $e->errors());
                     $erros[] = $this->erro($indice, $campos, (string) reset($mensagens), $mensagens);
                     $totais['com_erro']++;
@@ -137,6 +141,7 @@ class ProdutoCadastroService
                     if ((string) $e->getCode() !== '23000') {
                         throw $e;
                     }
+                    $this->desfazerNoEstado($tocados);
                     [$campo, $msg] = $this->mensagemDeIntegridade($e, $empresa, $campos);
                     $erros[] = $this->erro($indice, $campos, $msg, [$campo => $msg]);
                     $totais['com_erro']++;
@@ -377,6 +382,24 @@ class ProdutoCadastroService
         return $estado;
     }
 
+    /**
+     * O savepoint desfez a linha no BANCO, mas os models do `$estado` são objetos
+     * compartilhados e o `save()` já tinha sincronizado o `original` deles. Sem recarregar,
+     * a próxima linha do mesmo produto faria `fill` dos mesmos dados, não veria nada sujo
+     * e não gravaria — produto com o nome antigo e oferta sem sincronizar, sem erro
+     * (BE-IN-08). Aqui eles voltam ao que o banco tem.
+     *
+     * @param  list<\Illuminate\Database\Eloquent\Model>  $tocados
+     */
+    private function desfazerNoEstado(array $tocados): void
+    {
+        foreach ($tocados as $model) {
+            if ($model->exists) {
+                $model->refresh();
+            }
+        }
+    }
+
     private function aplicarNoEstado(array &$estado, array $res): void
     {
         $produto = $res['produto'];
@@ -410,7 +433,7 @@ class ProdutoCadastroService
      *
      * @return array{resultado: string, skus: list<string>, produto: EstruturaProduto, variacao: EstruturaProdutoVariacao, avisos: list<string>, criadas_nas_listas: array, pedido: array, categorias: array}
      */
-    private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado): array
+    private function gravarLinha(Company $empresa, array $campos, array $presentes, AtorDoPortal $ator, string $modo, array $estado, array &$tocados): array
     {
         $codigo = $campos['codigo'];
         $chaveCodigo = self::chaveCodigo($codigo);
@@ -522,6 +545,7 @@ class ProdutoCadastroService
             $produto->save();
             $mudouProduto = true;
         } elseif ($primeiraDoProduto) {
+            $tocados[] = $produto;
             $produto->fill($dadosProduto);
             if ($produto->isDirty()) {
                 $produto->save();
@@ -582,6 +606,7 @@ class ProdutoCadastroService
                     $novo[$c] = $campos[$c];
                 }
             }
+            $tocados[] = $variacao;
             $variacao->fill($novo);
             if ($variacao->isDirty()) {
                 $variacao->save();

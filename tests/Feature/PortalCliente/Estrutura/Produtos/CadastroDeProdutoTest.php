@@ -391,6 +391,43 @@ class CadastroDeProdutoTest extends TestCase
             ->once();
     }
 
+    /**
+     * BE-IN-08: a linha que falha DEPOIS de salvar o produto é desfeita no banco pelo
+     * savepoint; o model em memória também tem de voltar, senão a próxima linha do mesmo
+     * produto "não vê mudança" e o rename some em silêncio.
+     */
+    public function test_linha_que_falha_depois_de_salvar_nao_deixa_o_estado_em_memoria_sujo(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $r = $this->svc()->gravarLinhas($empresa, [
+            ['grupo' => 'G', 'codigo' => 'G-1', 'nome' => 'Mesa'],
+            ['grupo' => 'G', 'codigo' => 'G-2', 'nome' => 'Mesa'],
+        ], $ator);
+        $ids = array_column($r['linhas'], 'id', 'codigo');
+
+        // A 1ª sincronização de oferta do lote falha (depois de o produto já ter sido salvo).
+        $falhas = 0;
+        \App\Models\EstruturaOferta::updating(function () use (&$falhas) {
+            if ($falhas++ === 0) {
+                throw ValidationException::withMessages(['oferta' => 'Falha simulada na oferta.']);
+            }
+        });
+
+        $r = $this->svc()->gravarLinhas($empresa, [
+            ['chave' => 'l1', 'id' => $ids['G-1'], 'codigo' => 'G-1', 'nome' => 'Mesa Nova'],
+            ['chave' => 'l2', 'id' => $ids['G-2'], 'codigo' => 'G-2', 'nome' => 'Mesa Nova'],
+        ], $ator);
+
+        $this->assertSame(['l1'], array_column($r['erros'], 'chave'));
+        $this->assertSame(1, $r['totais']['atualizadas'], 'a 2ª linha ainda vê a mudança e grava');
+        $this->assertSame('Mesa Nova', EstruturaProduto::first()->nome);
+        $this->assertSame(
+            ['G-1' => 'Mesa Nova', 'G-2' => 'Mesa Nova'],
+            \App\Models\EstruturaOferta::whereNotNull('variacao_id')->orderBy('sku')->pluck('nome', 'sku')->all(),
+        );
+    }
+
     public function test_categoria_que_nao_e_folha_e_recusada_e_a_linha_nao_grava(): void
     {
         $empresa = $this->empresaDoGabarito();
