@@ -26,6 +26,19 @@ use Tests\TestCase;
  * Na CAMILLO MATRIZ #1 em 30/09 o filtro de status descartava R$ 1.434,94 de
  * pedidos pagos e cancelados em seguida (painel R$ 8.953,89 contra os
  * R$ 6.953,31 que tínhamos gravado).
+ *
+ * ⚠️ Quick 261006-j44 (2026-10-06) — a régua ganhou o DESCONTO DO CUPOM DO
+ * VENDEDOR, que fechou o resíduo "sempre pra cima" do 261006-fac:
+ *
+ *     revenue = Σ (pagos) [ Σ (itens) preço_com_desconto × qtd ] − voucher_from_seller
+ *
+ * Estes testes continuam travando a régua de ITENS (o cupom é 0 em todos eles —
+ * `fakePedidos` faz o lote de escrow devolver vazio). O comportamento do cupom
+ * em si fica em `tests/Feature/Quick261006J44/CupomDoVendedorNoFaturamentoTest`.
+ *
+ * ⚠️ O lote `get_escrow_detail_batch` PRECISA estar fakeado em todo cenário com
+ *    pedido pago: sem isso o teste tenta rede real, o `catch` do
+ *    `vouchersDoVendedor` engole e o caso vira lento e dependente de DNS.
  */
 class ShopeeMetricsTest extends TestCase
 {
@@ -62,8 +75,12 @@ class ShopeeMetricsTest extends TestCase
     }
 
     /**
-     * Monta o par lista→detalhe. Cada item de `$pedidos` é o pedido cru como a
-     * Shopee devolve no `get_order_detail` (precisa trazer `order_sn`).
+     * Monta o trio lista→detalhe→escrow. Cada item de `$pedidos` é o pedido cru
+     * como a Shopee devolve no `get_order_detail` (precisa trazer `order_sn`).
+     *
+     * O lote de escrow devolve LISTA VAZIA de propósito: aqui o cupom do
+     * vendedor é sempre 0, para que estes casos afirmem só a régua de itens.
+     * Fakear é obrigatório — ver o aviso no docblock da classe.
      */
     private function fakePedidos(array $pedidos): void
     {
@@ -77,6 +94,9 @@ class ShopeeMetricsTest extends TestCase
             ], 200),
             '*get_order_detail*' => Http::response([
                 'response' => ['order_list' => $pedidos],
+            ], 200),
+            '*get_escrow_detail_batch*' => Http::response([
+                'response' => [], // nenhum cupom do vendedor neste cenário
             ], 200),
         ]);
     }
