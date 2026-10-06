@@ -1,17 +1,17 @@
 import { createElement as h } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Produtos do Mapeamento Estrutural: colunas da grade e formatação (Fase 167-11).
+// Produtos do Mapeamento Estrutural: formatação e contrato do POST linhas da
+// ficha (167-11; 167-18/D-23: sem grade).
 //
-// SÓ colunas e formatação. Logística, peso cubado, frete e "Falta" chegam
-// calculados do servidor (PORTAL-02) e aqui apenas se exibem: este arquivo não
-// tem regra de negócio nenhuma, e um gate (tests/js/estrutura-produtos.test.js)
+// SÓ formatação e o contrato do POST. Logística, peso cubado, frete e "Falta"
+// chegam calculados do servidor (PORTAL-02) e aqui apenas se exibem: este arquivo
+// não tem regra de negócio nenhuma, e um gate (tests/js/estrutura-produtos.test.js)
 // barra qualquer conta que apareça. Sem JSX de propósito: arquivo .js.
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Pílulas da coluna Logística (12px, sem borda; ME1 é neutro porque não é problema). */
+/** Pílulas de logística (12px, sem borda; ME1 é neutro porque não é problema). */
 export const ESTILO_LOGISTICA = {
     me2_full: 'bg-emerald-500/10 text-emerald-300',
     me2:      'bg-sky-500/10 text-sky-300',
@@ -108,12 +108,10 @@ export function textoFalta(pendencias, rotulos = {}) {
     return pendencias.map((p) => rotulos[p] ?? p).join(' · ');
 }
 
-const reais = (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
 /** Custo do servidor ("120.00") para o texto que se digita ("120,00"). */
 const custoParaTexto = (c) => (c === null || c === undefined || c === '' ? '' : Number(c).toFixed(2).replace('.', ','));
 
-/** Servidor → grade: acrescenta a chave estável e os textos das células de escolha. */
+/** Servidor → tela: acrescenta a chave estável e os textos das células de escolha. */
 export function linhaDoServidor(linha, rotulos = {}) {
     const ambientes = linha.ambientes ?? [];
     const pronta = {
@@ -141,16 +139,8 @@ export function campoEditaveis(row) {
     return Object.fromEntries(CAMPOS_EDITAVEIS.map((c) => [c, String(row[c] ?? '')]));
 }
 
-/** Houve mudança do cliente nesta linha? (compara só os campos editáveis) */
-export function mudou(antes, depois) {
-    // Categoria escolhida no picker troca o id mesmo quando o nome da folha é igual.
-    if (depois?._categoriaEscolhida && depois.categoria_ml_id !== antes?.categoria_ml_id) return true;
-
-    return CAMPOS_EDITAVEIS.some((c) => String(antes?.[c] ?? '') !== String(depois?.[c] ?? ''));
-}
-
 /**
- * Grade → contrato do POST linhas. Campos de escolha só vão quando mudaram
+ * Ficha → contrato do POST linhas. Campos de escolha só vão quando mudaram
  * (célula em branco enviada apagaria o dado); código e nome vão sempre.
  */
 export function linhaParaServidor(row) {
@@ -190,118 +180,4 @@ export function linhaParaServidor(row) {
     if (alterou('custo') && String(row.custo ?? '').trim() !== '') out.custo = row.custo;
 
     return out;
-}
-
-const celula = (...filhos) => h('div', { className: 'flex h-full w-full items-center gap-1 px-2 text-[13px]' }, ...filhos);
-const fraco = (t) => h('span', { className: 'text-white/25' }, t);
-
-/**
- * As 14 colunas do contrato de tela, na ordem. `editores` (opcional) troca
- * Família, Ambiente, Categoria e Volumes por picker quando os planos 13/14 chegarem.
- */
-export function colunasDaGrade({ eixos = {}, logisticas = {}, editores = {}, consultando = new Set() } = {}) {
-    const picker = (col, chave) => (editores[chave] ? { ...col, type: 'picker', renderEditor: editores[chave] } : col);
-    const produto = (valor, row) => (row?._primeira === false ? 'text-white/40' : null);
-
-    return [
-        { id: 'codigo', label: 'Ref', type: 'text', frozen: true, width: 120, placeholder: 'código',
-            conditionalFormat: (v, row) => cn('font-mono', row?._primeira === false && 'border-l-2 border-white/15 pl-2') },
-        { id: 'nome', label: 'Produto', type: 'text', frozen: true, width: 240, placeholder: 'nome do produto',
-            conditionalFormat: produto },
-        { id: 'eixo_rotulo', label: 'Eixo', type: 'select', width: 96, options: Object.values(eixos) },
-        { id: 'valor', label: 'Valor', type: 'text', width: 120, placeholder: 'ex.: Natural' },
-        picker({ id: 'familia', label: 'Família (linha de design)', type: 'text', width: 152, placeholder: 'escolher',
-            conditionalFormat: produto }, 'familia'),
-        picker({ id: 'ambientes_texto', label: 'Ambiente', type: 'text', width: 168, placeholder: 'escolher',
-            conditionalFormat: produto,
-            renderCell: (v, row) => {
-                const lista = String(v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-                if (lista.length === 0) return celula(fraco('escolher'));
-
-                return celula(
-                    h('span', { className: cn('truncate', row?._primeira === false ? 'text-white/40' : 'text-white/85') }, lista[0]),
-                    lista.length > 1 ? h('span', { className: 'shrink-0 text-[12px] text-white/45' }, `+${lista.length - 1}`) : null,
-                );
-            } }, 'ambientes'),
-        picker({ id: 'categoria', label: 'Categoria ML', type: 'text', width: 220, placeholder: 'escolher',
-            conditionalFormat: produto,
-            renderCell: (v, row) => {
-                if (! v) return celula(fraco('escolher'));
-                const apoio = row?.categoria_estado === 'a_confirmar' ? 'a confirmar' : row?.categoria_estado === 'nao_validada' ? 'não validada' : null;
-
-                return h('div', { className: 'flex h-full w-full items-center gap-1 px-2 text-[13px]', title: row?.categoria_ml_caminho || String(v) },
-                    h('span', { className: cn('truncate', row?._primeira === false ? 'text-white/40' : 'text-white/85') }, v),
-                    apoio ? h('span', { className: 'shrink-0 text-[12px] text-white/45' }, apoio) : null);
-            } }, 'categoria'),
-        picker({ id: 'volumes_texto', label: 'Volumes', type: 'text', width: 200, placeholder: 'adicionar medidas',
-            renderCell: (v, row) => {
-                const resumo = resumoVolumes(row?.volumes);
-                if (resumo) return h('div', { className: 'flex h-full w-full items-center px-2 font-mono text-[13px] text-white/85', title: String(v ?? '') },
-                    h('span', { className: 'truncate' }, resumo));
-                if (v) return h('div', { className: 'flex h-full w-full items-center px-2 font-mono text-[13px] text-white/85' }, h('span', { className: 'truncate' }, v));
-
-                return celula(fraco('adicionar medidas'));
-            } }, 'volumes'),
-        { id: 'peso_total', label: 'Peso total', type: 'readonly', width: 88, separador: true,
-            renderCell: (v, row) => celula(h('span', { className: 'tabular-nums text-white/60' }, fmtKg(row?.peso_total))) },
-        { id: 'custo', label: 'Custo', type: 'text', width: 104, align: 'right', placeholder: '0,00',
-            renderCell: (v) => (v === '' || v == null
-                ? celula(fraco('0,00'))
-                : h('div', { className: 'flex h-full w-full items-center justify-end px-2 text-[13px] tabular-nums text-white/85' },
-                    /^-?\d+([.,]\d+)?$/.test(String(v)) ? reais(String(v).replace(',', '.')) : String(v))) },
-        { id: 'peso_cubado', label: 'Peso cubado', type: 'readonly', width: 96, separador: true,
-            renderCell: (v, row) => renderPesoCubado(row) },
-        { id: 'logistica', label: 'Logística', type: 'readonly', width: 104,
-            renderCell: (v, row) => {
-                const chave = row?.logistica ?? 'pendente';
-                const rotulo = logisticas[chave] ?? chave;
-                if (! row?.id) return celula();
-
-                return celula(h('span', { className: cn('whitespace-nowrap rounded-full px-2 py-1 text-[12px]', ESTILO_LOGISTICA[chave] ?? ESTILO_LOGISTICA.pendente),
-                    title: chave === 'pendente' ? 'Pendente: completar cadastro' : undefined }, rotulo));
-            } },
-        { id: 'frete', label: 'Frete ME2', type: 'readonly', width: 120,
-            renderCell: (v, row) => renderFrete(row, { consultando: consultando.has(row?.id) }) },
-        { id: 'falta', label: 'Falta', type: 'readonly', width: 160,
-            renderCell: (v, row) => h('div', { className: 'flex h-full w-full items-center px-2 text-[12px] text-white/40', title: String(row?.falta ?? '') },
-                h('span', { className: 'truncate' }, row?.falta ?? '')) },
-    ];
-}
-
-const semAcento = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-const CABECALHOS = {
-    ref: 'codigo', codigo: 'codigo', sku: 'codigo', grupo: 'grupo', variacao: 'variacao',
-    produto: 'nome', nome: 'nome', eixo: 'eixo_rotulo', valor: 'valor',
-    ambiente: 'ambientes_texto', ambientes: 'ambientes_texto',
-    categoria: 'categoria', categoriaml: 'categoria', volumes: 'volumes_texto', custo: 'custo',
-};
-
-/** Nome de cabeçalho do modelo (sem caixa/acento) → campo da grade, ou null. */
-export function campoDoCabecalho(texto) {
-    const n = semAcento(texto);
-    if (n.startsWith('familia')) return 'familia';
-
-    return CABECALHOS[n] ?? null;
-}
-
-/**
- * Se a 1ª linha colada tem os cabeçalhos do modelo, devolve as linhas de dados
- * já mapeadas POR NOME de coluna (qualquer ordem); senão, null e a grade cola por posição.
- * Exige ao menos dois cabeçalhos conhecidos, um deles Ref ou Produto.
- */
-export function lerBlocoComCabecalho(matriz) {
-    if (! Array.isArray(matriz) || matriz.length < 2) return null;
-    const campos = matriz[0].map(campoDoCabecalho);
-    const conhecidos = campos.filter(Boolean);
-    if (conhecidos.length < 2 || ! (conhecidos.includes('codigo') || conhecidos.includes('nome'))) return null;
-
-    return matriz.slice(1)
-        .filter((cels) => cels.some((c) => String(c ?? '').trim() !== ''))
-        .map((cels) => {
-            const linha = {};
-            campos.forEach((campo, i) => { if (campo) linha[campo] = String(cels[i] ?? '').trim(); });
-
-            return linha;
-        });
 }

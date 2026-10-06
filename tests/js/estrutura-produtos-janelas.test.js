@@ -45,11 +45,13 @@ test('JanelaImportacao: cores dos grupos, erros abertos e sem caixa-alta', () =>
     assert.ok(! importacao.includes('dangerouslySetInnerHTML'));
 });
 
-test('Página: modelo é link de download (não axios), no menu e no estado vazio', () => {
+test('Página: modelo é link de download (não axios) e importar é botão, sem menu Planilha', () => {
     assert.match(pagina, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download/);
     assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.modelo'/.test(pagina));
     assert.ok(pagina.includes('Baixar modelo (.xlsx)'));
-    assert.ok(pagina.includes('Importar planilha…'));
+    assert.ok(pagina.includes('Importar planilha'));
+    assert.ok(pagina.includes('data-acao="importar-planilha"') && pagina.includes('data-acao="baixar-modelo"'));
+    assert.ok(! pagina.includes('menu-planilha'));
     assert.ok(pagina.includes('Baixar planilha-modelo'));
     assert.match(pagina, /<JanelaImportacao /);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gate do que conversa com o Mercado Livre na grade de Produtos (Fase 167-14: D-06, D-16, D-19).
+// Gate do que conversa com o Mercado Livre na tela de Produtos (Fase 167-14: D-06, D-16, D-19).
 //
 // POR QUE EXISTE: a categoria do ML nunca pode ser aceita sozinha (sugestão só
 // ganha destaque de teclado; aceitar é Enter/clique ou caixa marcada pela pessoa),
@@ -14,6 +14,7 @@ import { lerSemComentarios } from './_fonte.js';
 const picker = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PickerCategoria.jsx');
 const janela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria.jsx');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+const ficha = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/SheetProduto.jsx');
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
 test('PickerCategoria: busca com debounce de 350 ms, preenchida com o nome do produto', () => {
@@ -70,7 +71,8 @@ test('a página sugere em lotes de 10, sem contador, e só grava o que foi marca
     assert.ok(pagina.includes('Buscando sugestões…'));
     assert.ok(! /\d+ de \d+/.test(pagina) && ! pagina.includes('{i} de'));
     assert.ok(pagina.includes('Sugerir categorias'));
-    assert.match(pagina, /categoria:\s*\(p\) => <PickerCategoria/);
+    assert.match(ficha, /<PickerCategoria row=\{primeira\}/);
+    assert.match(pagina, /const aceitarSugestoes = async/);
     assert.match(pagina, /onAceitar=\{aceitarSugestoes\}/);
 });
 
@@ -106,6 +108,7 @@ test('"Consultar fretes no Mercado Livre": só com conta conectada e linha ME2, 
     assert.match(pagina, /r\.logistica === 'me2' \|\| r\.logistica === 'me2_full'/);
     assert.ok(pagina.includes('Consultar fretes no Mercado Livre'));
     assert.ok(pagina.includes('Consultando…'));
+    assert.match(pagina, /consultando=\{consultando\}/);
     assert.match(pagina, /VOLTAS_FRETE = 10/);
     assert.match(pagina, /volta < VOLTAS_FRETE/);
     assert.match(pagina, /data\.pendentes/);
