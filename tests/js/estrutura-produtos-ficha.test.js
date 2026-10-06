@@ -65,7 +65,7 @@ test('Hook: picker fechado sem mudança não marca a ficha como alterada (FE-IN-
 test('Hook: nova variação copia a 1ª e deixa o valor vazio (D-04)', () => {
     assert.match(hook, /const nova = \{\s*\.\.\.base,/);
     assert.match(hook, /valor: '',/);
-    assert.match(hook, /codigo: `\$\{base\.grupo \?\? base\.codigo\}-\$\{quantas \+ 1\}`/);
+    assert.match(hook, /codigo: refSugerida\(vars\),/, 'a Ref sugerida vem da lib, testada em estrutura-produtos-linha.test.js');
 });
 
 test('Peças: foto sem upload (D-29), selo de logística, obrigatório e caminho da categoria', () => {

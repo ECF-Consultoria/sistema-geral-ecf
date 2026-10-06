@@ -236,6 +236,22 @@ export function linhaParaServidor(row) {
     return out;
 }
 
+/**
+ * Ref sugerida para a "Nova variação": o grupo (ou a Ref da 1ª) com o menor número livre a partir de 2
+ * entre as Refs da ficha — depois de excluir a 1014-2 de 1014-1/2/3 a sugestão é 1014-2, não a 1014-3
+ * que já existe (revisão FE-IN-03). Sem Ref na 1ª variação não há o que sugerir.
+ */
+export function refSugerida(vars) {
+    const base = vars?.[0] ?? {};
+    const raiz = String(base.grupo || base.codigo || '').trim();
+    if (raiz === '') return '';
+    const usadas = new Set((vars ?? []).map((v) => String(v.codigo ?? '').trim().toLowerCase()));
+    let n = 2;
+    while (usadas.has(`${raiz}-${n}`.toLowerCase())) n += 1;
+
+    return `${raiz}-${n}`;
+}
+
 // ─── Cartões da lista (167-20, D-25/D-30) ───────────────────────────────────
 
 /** O que falta no produto: junta as pendências de todas as variações, na ordem do servidor (a das chaves de `rotulos`). */

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { linhaDoServidor, linhaParaServidor } from '../../resources/js/lib/produtosEstrutura.js';
+import { linhaDoServidor, linhaParaServidor, refSugerida } from '../../resources/js/lib/produtosEstrutura.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Contrato REAL do POST `linhas` da ficha (revisão da Fase 167: FE-CR-03, FE-CR-04, FE-IN-13).
@@ -117,4 +117,18 @@ test('categoria escolhida no picker vai como id; nunca o nome como texto', () =>
 
     assert.equal(out.categoria_ml_id, 'MLB9');
     assert.equal('categoria_texto' in out, false);
+});
+
+// ─── Ref sugerida da "Nova variação" (FE-IN-03) ─────────────────────────────
+
+test('refSugerida: o menor número livre entre as Refs da ficha, a partir do grupo', () => {
+    const v = (codigo, grupo = '1014') => ({ codigo, grupo });
+
+    assert.equal(refSugerida([v('1014-1'), v('1014-2')]), '1014-3');
+    assert.equal(refSugerida([v('1014-1'), v('1014-3')]), '1014-2', 'depois de excluir a 1014-2, ela volta a ser a livre');
+    assert.equal(refSugerida([v('1014-1'), v('1014-2'), v('1014-3')].filter((x) => x.codigo !== '1014-2')), '1014-2');
+    assert.equal(refSugerida([v('1014-1'), v('1014-2'), v('1014-3')]), '1014-4');
+    assert.equal(refSugerida([v('A1', null)]), 'A1-2', 'sem grupo, a Ref da 1ª');
+    assert.equal(refSugerida([v('a1', null), v('A1-2', null)]), 'a1-3', 'sem diferença de maiúscula');
+    assert.equal(refSugerida([v('', null)]), '', 'sem Ref na 1ª não sugere "-2"');
 });

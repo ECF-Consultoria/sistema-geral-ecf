@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { campoEditaveis, linhaDoServidor } from '@/lib/produtosEstrutura';
+import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 
@@ -162,14 +162,13 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     /** Devolve a chave da variação criada (a página foca o Valor dela). */
     const novaVariacao = () => {
-        const quantas = vars.length;
         const base = vars[0];
         const nova = {
             ...base,
             _k: novaChave(),
             id: undefined, oferta: null, frete: null, pendencias: [], falta: '', peso_cubado: null, peso_faturado: null,
             cubado_cobrado: false, logistica: null, oferta_id: undefined,
-            codigo: `${base.grupo ?? base.codigo}-${quantas + 1}`,
+            codigo: refSugerida(vars),
             valor: '',
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
             _caixas: undefined,
