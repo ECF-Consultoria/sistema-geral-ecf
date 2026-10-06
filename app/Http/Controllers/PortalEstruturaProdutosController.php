@@ -42,6 +42,9 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
  */
 class PortalEstruturaProdutosController extends Controller
 {
+    /** Limites mostrados na tela (o servidor valida por conta própria). */
+    private const LIMITES = ['colar' => 200, 'arquivo_mb' => 2, 'linhas_arquivo' => 1000];
+
     public function __construct(
         private PortalClienteService $portal,
         private ProdutoLinhas $linhas,
@@ -66,18 +69,30 @@ class PortalEstruturaProdutosController extends Controller
             'produtos'    => $this->linhas->pagina($empresa, $busca, (int) $request->query('pagina', 1)),
             'filtros'     => ['q' => $busca],
             'listas'      => $this->listasDaEmpresa(),
-            'vocabulario' => [
-                'eixos'      => EstruturaProdutoVariacao::EIXOS,
-                'logisticas' => ['me2_full' => 'ME2 · Full', 'me2' => 'ME2', 'me1' => 'ME1', 'pendente' => 'Pendente'],
-                'pendencias' => PendenciasDoProduto::ROTULOS,
-            ],
+            'vocabulario' => $this->vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
-            'frete_tabela' => [
-                'vigente_desde' => config('estrutura_produtos.frete.vigente_desde'),
-                'reputacao'     => config('estrutura_produtos.frete.reputacao'),
-            ],
-            'limites' => ['colar' => 200, 'arquivo_mb' => 2, 'linhas_arquivo' => 1000],
+            'frete_tabela' => $this->freteTabela(),
+            'limites' => self::LIMITES,
         ]);
+    }
+
+    /** Ficha de produto novo (D-27): página inteira, sem painel. */
+    public function novo()
+    {
+        return $this->renderFicha(null);
+    }
+
+    /**
+     * Ficha do produto (D-27). Produto de outra empresa responde 404, igual ao
+     * inexistente — dizer "proibido" confirmaria que ele existe.
+     */
+    public function ficha(int $produto)
+    {
+        $p = EstruturaProduto::query()
+            ->where('company_id', PortalContexto::empresa()->id)
+            ->findOrFail($produto);
+
+        return $this->renderFicha($p);
     }
 
     // ═══ Escritas por JSON ══════════════════════════════════════════════════
@@ -300,6 +315,41 @@ class PortalEstruturaProdutosController extends Controller
     }
 
     // ═══ Internos ═══════════════════════════════════════════════════════════
+
+    private function renderFicha(?EstruturaProduto $produto)
+    {
+        $empresa = PortalContexto::empresa();
+
+        return Inertia::render('Portal/EstruturaProdutoFicha', [
+            ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
+            'produto'      => $produto ? ['id' => (int) $produto->id, 'nome' => $produto->nome] : null,
+            'linhas'       => $produto ? $this->linhas->paraProdutos($empresa, [(int) $produto->id]) : [],
+            'listas'       => $this->listasDaEmpresa(),
+            'vocabulario'  => $this->vocabulario(),
+            'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
+            'frete_tabela' => $this->freteTabela(),
+            'limites'      => self::LIMITES,
+        ]);
+    }
+
+    /** @return array{eixos: array, logisticas: array, pendencias: array} */
+    private function vocabulario(): array
+    {
+        return [
+            'eixos'      => EstruturaProdutoVariacao::EIXOS,
+            'logisticas' => ['me2_full' => 'ME2 · Full', 'me2' => 'ME2', 'me1' => 'ME1', 'pendente' => 'Pendente'],
+            'pendencias' => PendenciasDoProduto::ROTULOS,
+        ];
+    }
+
+    /** @return array{vigente_desde: mixed, reputacao: mixed} */
+    private function freteTabela(): array
+    {
+        return [
+            'vigente_desde' => config('estrutura_produtos.frete.vigente_desde'),
+            'reputacao'     => config('estrutura_produtos.frete.reputacao'),
+        ];
+    }
 
     /** @return array{familias: list<array>, ambientes: list<array>} */
     private function listasDaEmpresa(): array

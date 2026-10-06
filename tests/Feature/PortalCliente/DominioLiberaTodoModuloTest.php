@@ -31,6 +31,10 @@ use Tests\TestCase;
  * Um request por rota provaria o mesmo, mas só para as rotas que alguém
  * lembrasse de escrever. Varrer o ROUTER pega a próxima também — que é o caso
  * que este teste existe para impedir.
+ *
+ * Rota com id numérico sob prefixo que tem irmãs (ex.: `produtos/{produto}`)
+ * entra por PERMITIDO_COM_ID (167-19), nunca por curinga: só vale se TODO
+ * parâmetro da URI tem `where` igual a `[0-9]+`.
  */
 class DominioLiberaTodoModuloTest extends TestCase
 {
@@ -57,10 +61,26 @@ class DominioLiberaTodoModuloTest extends TestCase
                 continue;
             }
 
-            $rotas[$rota->uri()] = $nome;
+            $rotas[$rota->uri()] = $rota;
         }
 
         return $rotas;
+    }
+
+    /** Id numérico sob prefixo com irmãs: só conta se todo `{param}` é `[0-9]+`. */
+    private function liberadaPorIdNumerico(\Illuminate\Routing\Route $rota): bool
+    {
+        $uri = $rota->uri();
+        if (! preg_match_all('/\{(\w+)\??\}/', $uri, $m) || $m[1] === []) {
+            return false;
+        }
+        foreach ($m[1] as $param) {
+            if (($rota->wheres[$param] ?? null) !== '[0-9]+') {
+                return false;
+            }
+        }
+
+        return RestringeDominioDoPortal::liberado(preg_replace('/\{\w+\??\}/', '1', $uri));
     }
 
     public function test_toda_rota_do_portal_autenticado_passa_pelo_dominio_do_cliente(): void
@@ -70,7 +90,8 @@ class DominioLiberaTodoModuloTest extends TestCase
 
         $this->assertNotEmpty($rotas, 'nenhuma rota do portal autenticado — o teste ficaria vazio');
 
-        foreach ($rotas as $uri => $nome) {
+        foreach ($rotas as $uri => $rota) {
+            $nome = $rota->getName();
             $liberada = false;
 
             foreach ($permitido as $padrao) {
@@ -78,6 +99,10 @@ class DominioLiberaTodoModuloTest extends TestCase
                     $liberada = true;
                     break;
                 }
+            }
+
+            if (! $liberada) {
+                $liberada = $this->liberadaPorIdNumerico($rota);
             }
 
             $this->assertTrue(
