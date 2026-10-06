@@ -45,6 +45,14 @@ const caixaVazia = (c) => MEDIDAS.every((m) => String(c[m.chave] ?? '').trim() =
 
 const aparar = (c) => ({ c: c.c.trim(), l: c.l.trim(), a: c.a.trim(), kg: c.kg.trim() });
 
+/** Para comparar escolhas: vazio, null, undefined e false contam igual; ambientes, sem ordem. */
+const comoTexto = (x, campo = null) => {
+    const t = x === null || x === undefined || x === false ? '' : String(x);
+    if (campo !== 'ambientes_texto') return t;
+
+    return t.split(',').map((s) => s.trim()).filter(Boolean).sort().join(', ');
+};
+
 /** O produto das variações (o id que o servidor deu), ou null enquanto ele é novo. */
 const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto_id ?? produto?.id ?? null;
 
@@ -111,11 +119,17 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
 
-    const aplicarEscolha = (patch) => { setAlterado(true); setVars((atual) => atual.map((v) => {
+    /**
+     * Escolha num picker (vale para o produto inteiro). Fechar o picker sem mudar nada, ou escolher a
+     * mesma família, não marca a ficha como alterada (revisão FE-IN-02).
+     */
+    const aplicarEscolha = (patch) => {
         const parte = Object.fromEntries(Object.entries(patch).filter(([c]) => CAMPOS_DO_PRODUTO.includes(c)));
-
-        return { ...v, ...parte };
-    })); };
+        const muda = varsRef.current.some((v) => Object.entries(parte).some(([c, valor]) => comoTexto(v[c], c) !== comoTexto(valor, c)));
+        if (! muda) return;
+        setAlterado(true);
+        setVars((atual) => atual.map((v) => ({ ...v, ...parte })));
+    };
 
     // ─── Volumes (cartões) ──────────────────────────────────────────────────
 

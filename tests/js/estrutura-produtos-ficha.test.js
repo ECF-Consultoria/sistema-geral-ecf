@@ -53,6 +53,15 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     assert.ok(! hook.includes('onFechar') && ! hook.includes('onGravado'), 'o hook não fecha nem avisa a página: devolve { ok, data }');
 });
 
+test('Hook: picker fechado sem mudança não marca a ficha como alterada (FE-IN-02)', () => {
+    const aplicar = hook.slice(hook.indexOf('const aplicarEscolha = (patch) => {'), hook.indexOf('// ─── Volumes'));
+
+    assert.match(aplicar, /const muda = varsRef\.current\.some\(/);
+    assert.ok(aplicar.indexOf('if (! muda) return;') < aplicar.indexOf('setAlterado(true)'), 'só marca depois de conferir que mudou');
+    assert.match(hook, /const comoTexto = \(x, campo = null\) =>/);
+    assert.ok(hook.includes("if (campo !== 'ambientes_texto') return t;"), 'ambientes comparados sem ordem');
+});
+
 test('Hook: nova variação copia a 1ª e deixa o valor vazio (D-04)', () => {
     assert.match(hook, /const nova = \{\s*\.\.\.base,/);
     assert.match(hook, /valor: '',/);
