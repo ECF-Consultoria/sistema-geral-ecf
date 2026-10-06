@@ -386,16 +386,26 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
-## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — EM EXECUÇÃO
+## Posição paralela — Fase 168 (Geração de ofertas: Combo, Kit e Combit sugeridos) — EM PLANEJAMENTO
+
+**Bloco escrito à mão de propósito** (2026-10-06): os comandos `state.*` do GSD corrompem o frontmatter.
+Mesmo worktree e branch da 167 (`C:/tmp/ecf-publicador-spec-261001`, `feat/publicador-ml-261001`).
+
+Phase: 168 (geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos) — PLANNING
+Plans: a definir
+Status: CONTEXT escrito com as decisões do usuário de 06/10 ("faça o recomendado"): pares de TIPO numa lista da ECF, quantidades por tipo editáveis por produto, sem IA, nada vira oferta sozinho. Pesquisa em andamento (mede a aba Planejamento só por contagens). Depois: UI-SPEC, planos, checagem.
+Last activity: 2026-10-06 — CONTEXT da 168
+
+## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — DEPLOYADA
 
 **Bloco escrito à mão de propósito** (2026-10-05): os comandos `state.*` do GSD corrompem o
 frontmatter deste arquivo — o `state.begin-phase` desta fase o fez de novo e foi revertido.
 Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
-`C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
+`C:/tmp/ecf-publicador-spec-261001`. Pushado e deployado em 06/10.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — DEPLOYADA (06/10, `9d54db33`)
 Plans: 21 (os 18-21 são lacunas do checkpoint) — 21 de 21 concluídos
-Status: DEPLOYADA em 06/10 (push `553253d1..9d54db33`; migrations `2026_10_06_100000`/`100100` no lote 164; `estrutura_ofertas` 515 antes e depois, 0 ligadas; `queue:restart` feito). Falta, com o usuário: frete real numa conta conectada só com "pode" (D-16) e `mimes:xlsx` com exportações do Google Sheets/LibreOffice/Excel Mac.
+Status: DEPLOYADA em 06/10 (push `553253d1..9d54db33`; migrations `2026_10_06_100000`/`100100` no lote 164; `estrutura_ofertas` 515 antes e depois, 0 ligadas; `queue:restart` feito). Frete real conferido em 06/10, com o "pode" do usuário, pela #459 e pacotes fictícios (D-16): tabela ECF a menos de 1% do ML (mesa 25 kg R$ 105,95 × R$ 106,85; cadeira cubada R$ 78,65 × R$ 79,35). Falta só o `mimes:xlsx` com exportações do Google Sheets/LibreOffice/Excel Mac.
 Last activity: 2026-10-06 — Fase 167 deployada
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
