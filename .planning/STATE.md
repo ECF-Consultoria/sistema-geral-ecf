@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 21 (os 19-21 vieram das referências visuais), execução em sequência — 19 de 21 concluídos (o 167-17 segue aberto esperando a conferência visual)
-Status: 167-20 concluído — Produtos em Visual grande (REF-1) e Lista (REF-3) com seletor persistido no navegador, topo amplo e volta da ficha preservando busca/página/modo/rolagem. Falta o 167-21 (passe de fidelidade); conferência visual do 167-17 pendente.
-Last activity: 2026-10-06 — 167-20 concluído
+Plans: 21 (os 19-21 vieram das referências visuais), execução em sequência — 20 de 21 concluídos (o 167-17 segue aberto esperando a conferência visual)
+Status: 167-21 concluído — passe de fidelidade (3 rodadas de captura contra REF-1/2/3, só apresentação), fluxos F1–F6 provados, UI-SPEC com a Revisão D-25..D-30 e gate final verde. Falta só a conferência visual do usuário (Task 3 do 167-17), com o servidor 8167 de pé.
+Last activity: 2026-10-06 — 167-21 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
