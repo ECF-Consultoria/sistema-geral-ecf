@@ -2900,6 +2900,23 @@ Plans:
 - [x] 167-20-PLAN.md — fechamento de lacuna (D-25/D-26/D-30, REF-1 e REF-3): topo das referências (trilha em círculos, ações com busca), seletor Visual grande / Lista guardado no navegador, cartões grandes e horizontais com bolinha de cor, "Falta" com detalhe e ⋮ com ações reais; volta da ficha preservando busca, página, modo e rolagem
 - [x] 167-21-PLAN.md — passe de FIDELIDADE: capturas a 1586×992 dos 3 estados comparadas lado a lado com as referências (até 2 rodadas de ajuste), fluxo lista → ficha → lista provado no navegador, UI-SPEC "Revisão D-25..D-30" e gate final; a conferência humana volta para a Task 3 do 167-17
 
+
+### Phase 168: Geração de ofertas a partir dos produtos — Combo, Kit e Combit sugeridos (aba Planejamento da planilha)
+
+**Goal:** a aba **Planejamento** da `3Planejamento_Estrutural_ECF.xlsx` ("identificação da oferta") vira sistema. A partir dos produtos da Fase 167, o Mapeamento Estrutural **sugere** as ofertas que juntam produtos — **Combo** (mesmo produto, mais unidades), **Kit** (produtos diferentes) e **Combit** (kit com mais unidades de um item) — com a logística e o frete estimado de cada conjunto. A pessoa revisa e aceita, e as aceitas viram ofertas da Lista SKUs pela mesma regra de composição, já entrando na Precificação. Na planilha, 70 produtos viraram ~199 ofertas montadas à mão.
+**Requirements**: a definir em `168-RESEARCH.md` (PR168-xx); decisões D-01..D-11 em `168-CONTEXT.md`
+**Depends on:** Phase 167 (produtos, variações, oferta simples ligada, logística e frete por volumes).
+**Plans:** 0 plans
+
+**Decidido com o usuário (06/10/2026, "faça o recomendado"):**
+- Combinações: só pares de TIPO de uma lista curta da ECF (mesa + cadeira, mesa + banco, cama + criado-mudo...). Por cima, as regras duras da planilha: nunca misturar família e exigir ambiente em comum. Sem IA.
+- Quantidades: padrão por tipo (cadeira 2/4/6, banqueta 2/3/4, mesa 1), que dá para mudar em cada produto.
+- Nada vira oferta sozinho; descartada não volta.
+- "Qual promoção dá mais lucro" fica para a fase de margem.
+
+Plans:
+- (a planejar)
+
 ---
 
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
