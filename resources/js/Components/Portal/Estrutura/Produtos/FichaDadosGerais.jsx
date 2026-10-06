@@ -47,7 +47,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
     };
 
     return (
-        <section className="rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:grid lg:grid-cols-[266px_minmax(0,1fr)] lg:gap-7 lg:p-5" data-ficha-dados>
+        <section className="rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:grid lg:grid-cols-[266px_minmax(0,1fr)] lg:gap-7 lg:p-5 lg:pb-4" data-ficha-dados>
             <QuadroFotoProduto nome={primeira.nome} tamanho="grande" />
 
             <div className="mt-4 min-w-0 lg:mt-0">

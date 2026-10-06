@@ -14,7 +14,7 @@ export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, 
     return (
         <article data-cartao-produto data-produto-id={produtoId} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
             className="relative grid cursor-pointer grid-cols-1 rounded-[12px] border border-white/[0.08] bg-ecf-card transition-colors hover:border-white/[0.16] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_56px] lg:items-center">
-            <div className="flex items-center gap-7 py-2 pl-4 pr-6">
+            <div className="flex items-center gap-7 py-0.5 pl-4 pr-6">
                 <QuadroFotoProduto nome={primeira.nome} tamanho="linha" />
                 <div className="min-w-0">
                     <a href={route('portal.auth.estrutura.produtos.ficha', produtoId)}
@@ -31,7 +31,7 @@ export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, 
                 <PilulaFalta variacoes={variacoes} rotulos={vocabulario?.pendencias} nome={primeira.nome} />
             </div>
 
-            <div className="px-4 lg:self-stretch lg:border-l lg:border-white/[0.06] lg:px-5">
+            <div className="px-4 lg:self-stretch lg:border-l lg:border-white/[0.06] lg:px-5 lg:py-0.5">
                 <ul className="divide-y divide-white/[0.06]">
                     {variacoes.map((v) => (
                         <LinhaVariacao key={v.id} variacao={v} vocabulario={vocabulario} consultando={consultando} modo="lista" />

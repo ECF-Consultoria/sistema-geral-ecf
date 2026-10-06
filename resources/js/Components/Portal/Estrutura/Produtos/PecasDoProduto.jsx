@@ -107,7 +107,7 @@ export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'gran
     return (
         <li data-variacao-cartao title={detalheDaVariacao(variacao)}
             className={cn('grid items-center',
-                lista ? 'grid-cols-[26px_minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-2'
+                lista ? 'grid-cols-[26px_minmax(0,120px)_minmax(0,64px)_auto_minmax(0,1fr)] gap-x-4 py-1'
                     : 'grid-cols-[30px_minmax(0,108px)_minmax(0,1fr)_auto_minmax(72px,auto)] gap-x-3.5 py-3.5')}>
             <BolinhaCor variacao={variacao} tamanho={lista ? 26 : 30} />
             <span className="truncate text-[14px] font-medium text-white">{variacao.codigo}</span>

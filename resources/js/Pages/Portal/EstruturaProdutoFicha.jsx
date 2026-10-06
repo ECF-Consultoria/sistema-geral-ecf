@@ -121,19 +121,19 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         <ChevronRight size={14} aria-hidden="true" className="text-white/40" />
                         <span className="truncate text-white">{nome}</span>
                     </nav>
-                    <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:text-[40px]">{nome}</h1>
-                    <p className="mt-2 text-[15px] text-white/70 lg:text-[17px]">Preencha o produto uma vez. Cada variação vira uma oferta na Lista SKUs.</p>
+                    <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:mt-2.5 lg:text-[42px]">{nome}</h1>
+                    <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. Cada variação vira uma oferta na Lista SKUs.</p>
                 </div>
 
                 {ficha.aviso && (
                     <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
                 )}
 
-                <div className="mt-4">
+                <div className="mt-4 lg:mt-2">
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
                 </div>
 
-                <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:p-5">
+                <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-2 lg:pt-2">
                     <div className="flex items-center justify-between gap-3">
                         <h2 className="text-[20px] font-bold text-white">Variações</h2>
                         <p className="flex items-center gap-2 text-[14px] text-white/70">

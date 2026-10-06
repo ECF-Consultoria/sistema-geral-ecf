@@ -347,7 +347,7 @@ export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunci
                     <div className="min-w-0">
                         <p className="text-[13px] font-medium uppercase tracking-[0.2em] text-white/55">Mapeamento Estrutural</p>
                         <h1 className="mt-3 font-display text-[36px] font-bold leading-none tracking-tight text-white sm:text-[52px]" data-etapa={etapa}>{atual?.rotulo ?? 'Mapeamento Estrutural'}</h1>
-                        {descricao && <p className="mt-4 max-w-4xl text-[16px] leading-relaxed text-white/70 sm:text-[18px]">{descricao}</p>}
+                        {descricao && <p className="mt-1 max-w-[1100px] text-[16px] leading-relaxed text-white/70 sm:text-[18px]">{descricao}</p>}
                     </div>
                     {onComoFunciona && (
                         <Botao variante="fantasma" onClick={onComoFunciona} data-acao="como-funciona">
@@ -355,7 +355,7 @@ export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunci
                         </Botao>
                     )}
                 </div>
-                <nav className="mt-7 hidden w-full max-w-[1340px] items-center sm:flex" aria-label="Etapas do Mapeamento Estrutural" data-trilha>
+                <nav className="mt-6 hidden w-full max-w-[1340px] items-center sm:flex" aria-label="Etapas do Mapeamento Estrutural" data-trilha>
                     {subs.map((s, i) => {
                         const circulo = (
                             <span className={cn('grid h-[38px] w-[38px] place-items-center rounded-full border text-[15px] tabular-nums',

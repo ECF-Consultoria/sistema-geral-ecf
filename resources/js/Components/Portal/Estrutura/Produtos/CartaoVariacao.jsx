@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 // calculados (só leitura). Só a Ref e o nome do produto são obrigatórios; o
 // Eixo é lista fechada e o Valor é texto livre (D-20).
 
-const CAMPO = 'h-11 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-8';
+const CAMPO = 'h-11 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 py-0 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-8';
 const ROTULO = 'mb-1 block text-[13px] font-medium text-white/80';
 
 export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExcluir, onExcluir }) {
@@ -21,7 +21,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
     const oferta = variacao.oferta;
 
     return (
-        <section id={`variacao-${k}`} className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-4" data-variacao-form>
+        <section id={`variacao-${k}`} className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-4 lg:px-4 lg:pb-3 lg:pt-3" data-variacao-form>
             <div className="lg:flex lg:items-start lg:gap-5">
                 <div className="flex items-center gap-4 lg:w-[410px]">
                     <QuadroFotoProduto nome={variacao.nome} tamanho="mini" />
@@ -44,7 +44,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                 <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-0 lg:max-w-[775px] lg:flex-1 lg:grid-cols-[203fr_168fr_185fr_158fr] lg:gap-5">
                     <div>
                         <label className={ROTULO} htmlFor={`ref-${k}`}>Ref <Obrigatorio /></label>
-                        <input id={`ref-${k}`} className={cn(CAMPO, 'font-mono')} value={variacao.codigo} onChange={(e) => ficha.alterar(k, 'codigo', e.target.value)} placeholder="código" />
+                        <input id={`ref-${k}`} className={CAMPO} value={variacao.codigo} onChange={(e) => ficha.alterar(k, 'codigo', e.target.value)} placeholder="código" />
                     </div>
                     <div>
                         <label className={ROTULO} htmlFor={`eixo-${k}`}>Eixo</label>
@@ -71,8 +71,8 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                 )}
             </div>
 
-            <div className="mt-3 lg:grid lg:grid-cols-[84px_minmax(0,1fr)]">
-                <span className="mb-2 block text-[15px] font-semibold text-white lg:mb-0 lg:pt-3">Volumes</span>
+            <div className="mt-3 lg:mt-1 lg:grid lg:grid-cols-[84px_minmax(0,1fr)]">
+                <span className="mb-2 block text-[15px] font-semibold text-white lg:mb-0 lg:pt-2.5">Volumes</span>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {caixas.map((caixa, i) => (
                         <CartaoVolume key={i} variacao={variacao} indice={i} caixa={caixa} ficha={ficha} />
@@ -80,7 +80,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                 </div>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-3 lg:mt-2">
                 <FaixaCalculados variacao={variacao} ficha={ficha} vocabulario={vocabulario} />
             </div>
 

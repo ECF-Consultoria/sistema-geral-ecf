@@ -32,13 +32,13 @@ export default function FaixaCalculados({ variacao, ficha, vocabulario }) {
         <div data-faixa-calculados>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-[164px_repeat(5,minmax(0,1fr))] lg:items-center lg:gap-0">
                 <button type="button" onClick={() => ficha.adicionarVolume(variacao)} data-acao="adicionar-volume"
-                    className="col-span-2 inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[14px] text-white hover:bg-white/[0.07] lg:col-span-1 lg:h-9">
+                    className="col-span-2 inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[14px] text-white hover:bg-white/[0.07] lg:col-span-1 lg:h-9">
                     <Plus size={14} /> Adicionar volume
                 </button>
                 {celulas.map(([chave, rotulo, conteudo]) => (
                     <div key={chave} className={cn(CELULA)} data-calculado={chave}>
                         <span className={ROTULO}>{rotulo}{chave === 'frete' ? ' (estimativa)' : ''}</span>
-                        <span className={VALOR}>{conteudo ?? traco}</span>
+                        <span className={cn(VALOR, chave === 'frete' && '[&>span]:flex-row [&>span]:items-baseline [&>span]:gap-1.5')}>{conteudo ?? traco}</span>
                     </div>
                 ))}
             </div>
