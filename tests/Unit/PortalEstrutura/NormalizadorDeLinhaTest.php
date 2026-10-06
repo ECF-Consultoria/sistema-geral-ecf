@@ -141,6 +141,29 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertSame(9.5, $r['campos']['volumes'][0]['kg']);
     }
 
+    /** FE-CR-03/BE-IN-05: `null` explícito limpa eixo, valor e família; texto vazio e chave ausente não mexem. */
+    public function test_nulo_explicito_limpa_eixo_valor_e_familia_e_texto_vazio_nao(): void
+    {
+        $r = $this->ler(['eixo' => null, 'valor' => null, 'familia' => null]);
+        foreach (['eixo', 'valor', 'familia'] as $c) {
+            $this->assertContains($c, $r['presentes'], $c);
+            $this->assertNull($r['campos'][$c], $c);
+        }
+        $this->assertSame([], $r['erros']);
+
+        foreach ([['eixo' => '', 'valor' => '', 'familia' => ''], ['eixo' => '  ', 'valor' => ' ', 'familia' => ' '], []] as $extra) {
+            $r = $this->ler($extra);
+            foreach (['eixo', 'valor', 'familia'] as $c) {
+                $this->assertNotContains($c, $r['presentes'], $c);
+            }
+        }
+
+        // Explícito vence a coluna "Variação" (o que a pessoa limpou não volta pela coluna).
+        $r = $this->ler(['variacao' => 'Cor: Natural', 'eixo' => null, 'valor' => null]);
+        $this->assertNull($r['campos']['eixo']);
+        $this->assertNull($r['campos']['valor']);
+    }
+
     public function test_presentes_lista_so_o_que_veio_na_linha(): void
     {
         $r = $this->ler();

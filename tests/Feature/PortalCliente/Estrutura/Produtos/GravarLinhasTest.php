@@ -136,6 +136,48 @@ class GravarLinhasTest extends TestCase
         $this->assertSame(1, count(array_unique(array_column($r->json('linhas'), 'produto_id'))));
     }
 
+    /**
+     * Contrato da ficha (FE-CR-03, BE-IN-05): `null` explícito em eixo, valor, família e custo
+     * LIMPA o campo; texto vazio e chave ausente não mexem — também pelo HTTP, onde o middleware
+     * global transformaria `''` em `null`.
+     */
+    public function test_nulo_explicito_limpa_eixo_valor_familia_e_custo_e_texto_vazio_nao_mexe(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+        $this->gravar($sessao, [[
+            'chave' => 'k', 'codigo' => 'LMP-1', 'nome' => 'Mesa', 'eixo' => 'cor', 'valor' => 'Natural',
+            'familia' => 'Farmhouse', 'custo' => '100,00', 'volumes' => $this->vol(),
+        ]])->assertOk();
+        $v = EstruturaProdutoVariacao::where('company_id', $empresa->id)->firstOrFail();
+        $oferta = fn () => EstruturaOferta::where('variacao_id', $v->id)->firstOrFail();
+        $this->assertSame('Mesa — Natural', $oferta()->nome);
+
+        // Texto vazio = não mexeu (nada muda, nem pelo ConvertEmptyStringsToNull).
+        $r = $this->gravar($sessao, [['id' => $v->id, 'codigo' => 'LMP-1', 'nome' => 'Mesa', 'eixo' => '', 'valor' => '', 'familia' => '', 'custo' => '']])->assertOk();
+        $this->assertSame(1, $r->json('totais.sem_mudanca'));
+        $v->refresh();
+        $this->assertSame('cor', $v->eixo);
+        $this->assertSame('Natural', $v->valor);
+        $this->assertSame(100.0, $v->custo);
+        $this->assertSame('Farmhouse', $v->produto->familia?->nome);
+
+        // null explícito = limpar.
+        $r = $this->gravar($sessao, [['id' => $v->id, 'codigo' => 'LMP-1', 'nome' => 'Mesa', 'eixo' => null, 'valor' => null, 'familia' => null, 'custo' => null]])->assertOk();
+        $this->assertSame([], $r->json('erros'));
+        $this->assertSame(1, $r->json('totais.atualizadas'));
+        $v->refresh();
+        $this->assertNull($v->eixo);
+        $this->assertNull($v->valor);
+        $this->assertNull($v->custo);
+        $this->assertNull($v->produto->fresh()->familia_id);
+        $this->assertSame(1, EstruturaFamilia::where('company_id', $empresa->id)->count(), 'a família continua na lista da empresa');
+        $this->assertSame('Mesa', $oferta()->nome, 'sem valor, a oferta se chama só pelo produto');
+        $this->assertNull($r->json('linhas.0.valor'));
+        $this->assertNull($r->json('linhas.0.eixo'));
+        $this->assertNull($r->json('linhas.0.familia'));
+    }
+
     public function test_201_linhas_ou_nenhuma_dao_422(): void
     {
         $sessao = $this->entrarNoPortal($this->empresaDoGabarito());

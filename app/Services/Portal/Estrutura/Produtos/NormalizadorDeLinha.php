@@ -22,7 +22,9 @@ use InvalidArgumentException;
  * ### `presentes`
  * É a base de "não mexer" (importação) e da cópia da 1ª variação (D-04). Texto
  * vazio NÃO conta como presente (célula em branco não apaga dado); `null`
- * explícito em `custo` e lista vazia em `volumes` contam (limpar de propósito).
+ * explícito em `custo`, `eixo`, `valor` e `familia` e lista vazia em `volumes`
+ * contam (limpar de propósito — a ficha manda `null` quando a pessoa esvazia o
+ * campo, FE-CR-03/BE-IN-05). Chave ausente = não mexer.
  * "SEM MEDIDAS" em `volumes_texto` é célula em branco, não "limpar" (BE-CR-02).
  *
  * Nomes lógicos em `presentes`: grupo, nome, eixo, valor, ordem, familia,
@@ -138,7 +140,11 @@ final class NormalizadorDeLinha
 
         // ─── Eixo ───
         $eixoBruto = self::texto($bruta['eixo'] ?? null);
-        if ($eixoBruto !== '') {
+        if (self::nuloExplicito($bruta, 'eixo')) {
+            // null explícito = tirar o eixo de propósito (a ficha escolheu "—"); vence a coluna Variação.
+            $campos['eixo'] = null;
+            $presentes[] = 'eixo';
+        } elseif ($eixoBruto !== '') {
             $eixo = self::eixo($eixoBruto);
             if ($eixo === null) {
                 $erros['eixo'] = 'Escolha o eixo: '.implode(', ', array_values(EstruturaProdutoVariacao::EIXOS)).'.';
@@ -153,10 +159,14 @@ final class NormalizadorDeLinha
 
         // ─── Valor ───
         $valor = self::texto($bruta['valor'] ?? null);
-        if ($valor === '' && $valorDaColuna !== null) {
+        if ($valor === '' && $valorDaColuna !== null && ! self::nuloExplicito($bruta, 'valor')) {
             $valor = $valorDaColuna;
         }
-        if ($valor !== '') {
+        if (self::nuloExplicito($bruta, 'valor')) {
+            // null explícito = apagar o valor; a oferta ligada passa a se chamar só pelo produto.
+            $campos['valor'] = null;
+            $presentes[] = 'valor';
+        } elseif ($valor !== '') {
             if (mb_strlen($valor) > self::MAX_VALOR) {
                 $erros['valor'] = 'O valor pode ter no máximo '.self::MAX_VALOR.' caracteres.';
             }
@@ -166,7 +176,11 @@ final class NormalizadorDeLinha
 
         // ─── Família ───
         $familia = ListasDaEmpresaService::limpar(self::texto($bruta['familia'] ?? null));
-        if ($familia !== '') {
+        if (self::nuloExplicito($bruta, 'familia')) {
+            // null explícito = produto sem família (BE-IN-05); a família continua na lista da empresa.
+            $campos['familia'] = null;
+            $presentes[] = 'familia';
+        } elseif ($familia !== '') {
             if (preg_match('/[\/,|]/u', $familia)) {
                 $erros['familia'] = self::MSG_SEPARADOR;
             } elseif (mb_strlen($familia) > 80) {
@@ -276,6 +290,12 @@ final class NormalizadorDeLinha
         }
 
         return trim((string) preg_replace('/\s+/u', ' ', (string) $v));
+    }
+
+    /** A chave veio na linha com `null` — "limpar de propósito", diferente de ausente ou texto vazio. */
+    private static function nuloExplicito(array $bruta, string $campo): bool
+    {
+        return array_key_exists($campo, $bruta) && $bruta[$campo] === null;
     }
 
     private static function inteiro(mixed $v): ?int

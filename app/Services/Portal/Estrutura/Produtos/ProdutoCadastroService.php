@@ -444,7 +444,10 @@ class ProdutoCadastroService
         $mudouProduto = false;
 
         if ($primeiraDoProduto) {
-            if ($mudarFamilia) {
+            if ($mudarFamilia && $campos['familia'] === null) {
+                // `familia: null` explícito: o produto fica sem família (BE-IN-05).
+                $dadosProduto['familia_id'] = null;
+            } elseif ($mudarFamilia) {
                 $r = $this->listas->resolverNomes($empresa, ListasDaEmpresaService::FAMILIA, [$campos['familia']], $ator);
                 $familiaId = $r['ids'][0] ?? null;
                 $criadas['familias'] = $r['novos'];
