@@ -17,9 +17,9 @@ use Laravel\Mcp\Server\Tool;
 use Throwable;
 
 /**
- * Base das ferramentas do MCP do ECF Admin — TODAS só de leitura.
+ * Base das ferramentas do MCP do ECF Admin.
  *
- * Cada ferramenta espelha uma tela. Duas regras valem para todas:
+ * Cada ferramenta espelha uma tela. Duas regras valem para as de leitura:
  *
  *  1. **Mesmo recorte da tela.** `podeUsar()` repete a régua da ROTA da tela
  *     de origem (role, permission, gate) e `consultar()` aplica o mesmo filtro
@@ -31,6 +31,9 @@ use Throwable;
  *     `mcp_acessos`. A exceção aceita (decisão de 05/10/2026) é a do
  *     `ler_tela`: abrir uma tela pelo MCP equivale a abri-la no navegador,
  *     inclusive o aquecimento de cache que algumas telas disparam.
+ *
+ * As que GRAVAM (decisão de 06/10/2026) estendem {@see FerramentaDeEscrita} e
+ * gravam só pelo formulário da própria tela.
  *
  * O `handle()` é fixo: confere o perfil, roda `consultar()`, transforma erro
  * em mensagem legível e grava o log de acesso — com ou sem erro.

@@ -29,6 +29,11 @@ return [
     // config:cache). Desligado, a rota responde 404 e nada mais muda.
     'ecf_habilitado' => (bool) env('ECF_MCP_HABILITADO', true),
 
+    // Liga/desliga só a GRAVAÇÃO pelo MCP (abrir/atuar em ticket, demandas e o
+    // enviar_formulario), deixando a leitura no ar. Desligada, as ferramentas
+    // de gravação somem da lista. ECF_MCP_ESCRITA_HABILITADA=false + config:cache.
+    'ecf_escrita_habilitada' => (bool) env('ECF_MCP_ESCRITA_HABILITADA', true),
+
     /*
     |--------------------------------------------------------------------------
     | Allowed Custom Schemes

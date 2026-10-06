@@ -5,34 +5,23 @@ namespace App\Mcp\Telas;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Mcp\ErroDaFerramenta;
 use App\Models\User;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Facade;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Abre uma tela do Admin "como o usuário" e devolve o que a tela recebe.
  *
- * É uma navegação INTERNA: monta um GET com os cabeçalhos do Inertia (o mesmo
- * que o navegador manda ao trocar de página) e passa pelo kernel HTTP do
- * próprio Laravel — mesmos middlewares, mesmo controller, mesmas travas de
- * perfil. Por isso o número é o da tela por construção: é a tela respondendo.
- *
- * Três cuidados que não são óbvios:
- *  - **Sessão em memória.** O GET interno passa pelo StartSession do grupo
- *    `web`; com o driver padrão (`database`) cada consulta criaria uma linha em
- *    `sessions`. Durante a navegação o driver é trocado por `array`.
- *  - **Usuário no guard `web`.** A requisição do MCP entra pelo guard `api`
- *    (token); as telas leem `$request->user()` / `user('web')`. O usuário do
- *    token é posto no guard `web` só durante a navegação.
- *  - **Estado restaurado.** O kernel troca o `request` do container; no fim
- *    tudo volta ao request do MCP — senão o log de acesso gravaria o IP e a
- *    rota da tela, não os da chamada.
+ * É uma navegação INTERNA ({@see NavegacaoInterna}): um GET com os cabeçalhos
+ * do Inertia (o mesmo que o navegador manda ao trocar de página) passando pelo
+ * kernel HTTP do próprio Laravel — mesmos middlewares, mesmo controller,
+ * mesmas travas de perfil. Por isso o número é o da tela por construção: é a
+ * tela respondendo.
  *
  * O resultado fica 2 minutos em cache por usuário + endereço: paginar uma
  * lista grande não re-renderiza a tela (nem re-dispara o aquecimento de cache
- * que algumas telas fazem) a cada página.
+ * que algumas telas fazem) a cada página. Quando o usuário GRAVA algo pelo
+ * MCP, {@see esquecerCacheDe()} troca a versão do cache dele — a tela lida em
+ * seguida já mostra o que ele acabou de gravar.
  */
 final class NavegadorDeTelas
 {
@@ -40,7 +29,19 @@ final class NavegadorDeTelas
 
     private const MAX_REDIRECIONAMENTOS = 3;
 
-    public function __construct(private CatalogoDeTelas $catalogo) {}
+    public function __construct(private CatalogoDeTelas $catalogo, private NavegacaoInterna $navegacao) {}
+
+    /**
+     * Descarta as telas em cache deste usuário (depois de uma gravação pelo
+     * MCP). As chaves são hash, então em vez de apagar uma a uma o número de
+     * versão entra na chave e é trocado aqui. Telas em cache de OUTROS
+     * usuários seguem até 2 minutos.
+     */
+    public function esquecerCacheDe(User $usuario): void
+    {
+        $chave = 'mcp.tela.versao.'.$usuario->id;
+        Cache::put($chave, (int) Cache::get($chave, 0) + 1, now()->addDay());
+    }
 
     /**
      * Recarregamento parcial (`$componente` + `$somente`): é como o navegador
@@ -52,7 +53,8 @@ final class NavegadorDeTelas
      */
     public function abrir(User $usuario, string $tela, string $caminho, array $consulta = [], ?string $componente = null, ?string $somente = null): array
     {
-        $chave = 'mcp.tela.'.sha1(implode('|', [$usuario->id, $caminho, http_build_query($consulta), (string) $componente, (string) $somente]));
+        $versao = (int) Cache::get('mcp.tela.versao.'.$usuario->id, 0);
+        $chave  = 'mcp.tela.'.sha1(implode('|', [$usuario->id, $versao, $caminho, http_build_query($consulta), (string) $componente, (string) $somente]));
 
         return Cache::remember($chave, self::CACHE_SEGUNDOS, function () use ($usuario, $tela, $caminho, $consulta, $componente, $somente) {
             for ($salto = 0; $salto <= self::MAX_REDIRECIONAMENTOS; $salto++) {
@@ -103,38 +105,18 @@ final class NavegadorDeTelas
 
     private function requisitar(User $usuario, string $caminho, array $consulta, ?string $componente, ?string $somente, bool $comoJson = false): Response
     {
-        $app      = app();
-        $original = $app->make('request');
-        $guard    = auth()->getDefaultDriver();
-        $sessao   = config('session.driver');
-
-        try {
-            config(['session.driver' => 'array']);
-            auth()->shouldUse('web');
-            auth()->guard('web')->setUser($usuario);
-
-            $interna = Request::create($caminho, 'GET', $consulta, [], [], [
-                'REMOTE_ADDR' => $original->ip(),
-                'HTTP_HOST'   => $original->getHttpHost(),
-                'HTTPS'       => $original->isSecure() ? 'on' : 'off',
-            ]);
-            $interna->headers->set('X-Inertia', 'true');
-            $interna->headers->set('X-Requested-With', 'XMLHttpRequest');
-            $interna->headers->set('Accept', $comoJson ? 'application/json' : 'text/html, application/xhtml+xml, application/json');
-            $interna->headers->set('X-Inertia-Version', (string) app(HandleInertiaRequests::class)->version($interna));
-            if ($componente && $somente) {
-                $interna->headers->set('X-Inertia-Partial-Component', $componente);
-                $interna->headers->set('X-Inertia-Partial-Data', $somente);
-            }
-
-            return $app->make(HttpKernel::class)->handle($interna);
-        } finally {
-            $app->instance('request', $original);
-            Facade::clearResolvedInstance('request');
-            app('url')->setRequest($original);
-            config(['session.driver' => $sessao]);
-            auth()->shouldUse($guard);
+        $cabecalhos = [
+            'X-Inertia'         => 'true',
+            'X-Requested-With'  => 'XMLHttpRequest',
+            'Accept'            => $comoJson ? 'application/json' : 'text/html, application/xhtml+xml, application/json',
+            'X-Inertia-Version' => (string) app(HandleInertiaRequests::class)->version(request()),
+        ];
+        if ($componente && $somente) {
+            $cabecalhos['X-Inertia-Partial-Component'] = $componente;
+            $cabecalhos['X-Inertia-Partial-Data']      = $somente;
         }
+
+        return $this->navegacao->despachar($usuario, 'GET', $caminho, $consulta, $cabecalhos)[0];
     }
 
     /** @return array{tela:string, endereco:string, tipo:string, componente:?string, dados:mixed} */
