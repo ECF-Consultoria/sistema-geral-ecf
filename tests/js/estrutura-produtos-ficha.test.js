@@ -145,6 +145,32 @@ test('Guarda: alteração não salva pede confirmação ao sair por link, botão
     }
 });
 
+test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a ficha (FE-CR-02)', () => {
+    // Em captura no window: roda antes do ouvinte do Inertia, que troca a página sem o evento `before`.
+    assert.ok(pagina.includes("window.addEventListener('popstate', aoNavegarNoHistorico, true)"));
+    assert.ok(pagina.includes("window.removeEventListener('popstate', aoNavegarNoHistorico, true)"));
+    assert.ok(pagina.includes('e.stopImmediatePropagation()'), 'quem fica: o Inertia não vê o popstate');
+    assert.ok(pagina.includes('window.history.go(passosAte(entradaDaFicha.current))'));
+    assert.ok(pagina.includes('ignorarVolta.current = true'), 'o popstate da volta à ficha é ignorado');
+    // Sair confirmado (link, botão ou voltar) apaga o rascunho; excluir o produto também.
+    assert.ok(contar(pagina, /esquecerRascunho\(\)/g) >= 3);
+    // D-32 continua: a ficha marca o último produto ao desmontar, saia como sair.
+    assert.ok(pagina.includes('useEffect(() => () => marcarUltimoProduto(ultimoRef.current), [])'));
+});
+
+test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salvar (FE-CR-02)', () => {
+    for (const t of ['gravarRascunho(', 'lerRascunho(', 'apagarRascunho(', 'recuperarRascunho', 'descartarRascunho', 'esquecerRascunho']) {
+        assert.ok(hook.includes(t), `faltou no hook: ${t}`);
+    }
+    assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId\)/, 'salvo por inteiro apaga o rascunho');
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars\)/, 'grava só com alteração');
+    for (const t of ['Você tinha alterações não salvas neste produto.', 'Recuperar', 'Descartar', 'data-rascunho',
+        'onClick={ficha.recuperarRascunho}', 'onClick={ficha.descartarRascunho}']) {
+        assert.ok(pagina.includes(t), `faltou na página: ${t}`);
+    }
+    assert.ok(nav.includes("'ecf.produtos.rascunho.'") && nav.includes('RASCUNHO_VALE_MS'));
+});
+
 test('Volta: sucesso volta para a lista com o aviso, trocando a entrada do histórico (D-27)', () => {
     assert.ok(pagina.includes('voltarParaLista('));
     assert.match(pagina, /replace: true/);

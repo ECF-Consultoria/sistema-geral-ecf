@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { campoEditaveis, linhaDoServidor } from '@/lib/produtosEstrutura';
 import { gravarVariacoes } from '@/lib/produtosGravacao';
+import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -44,14 +45,62 @@ const caixaVazia = (c) => MEDIDAS.every((m) => String(c[m.chave] ?? '').trim() =
 
 const aparar = (c) => ({ c: c.c.trim(), l: c.l.trim(), a: c.a.trim(), kg: c.kg.trim() });
 
+/** O produto das variações (o id que o servidor deu), ou null enquanto ele é novo. */
+const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto_id ?? produto?.id ?? null;
+
+/** O que a pessoa vê e pode mudar, para comparar o rascunho com o que a ficha abriu. */
+const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id ?? null, ...campoEditaveis(v), volumes: v.volumes_digitados ?? null })));
+
 export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites }) {
-    const [vars, setVars] = useState(() => (linhas.length
-        ? linhas.map((l) => linhaDoServidor(l, vocabulario?.pendencias))
-        : [linhaEmBranco(produto)]));
+    // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
+    const [inicio] = useState(() => {
+        const iniciais = linhas.length
+            ? linhas.map((l) => linhaDoServidor(l, vocabulario?.pendencias))
+            : [linhaEmBranco(produto)];
+        const guardado = lerRascunho(produto?.id ?? null);
+        const oferecer = guardado && conteudo(guardado.vars) !== conteudo(iniciais) ? guardado : null;
+        if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null);
+
+        return { iniciais, oferecer };
+    });
+    const [vars, setVars] = useState(inicio.iniciais);
     const [erros, setErros] = useState({});          // { _k: mensagem }
     const [aviso, setAviso] = useState(null);
     const [salvando, setSalvando] = useState(false);
     const [alterado, setAlterado] = useState(false);   // há algo digitado ainda não salvo
+    const [rascunho, setRascunho] = useState(inicio.oferecer);   // { em, vars } à espera de Recuperar/Descartar
+    const varsRef = useRef(vars);
+    varsRef.current = vars;
+
+    // A cada alteração o rascunho é regravado. Produto novo que ganhou id (gravação parcial) muda de
+    // chave: o rascunho "novo" sai e passa a valer o do produto.
+    const chaveGravada = useRef(undefined);
+    useEffect(() => {
+        if (! alterado) return;
+        const id = idDoProduto(vars, produto);
+        if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current);
+        gravarRascunho(id, vars);
+        chaveGravada.current = id;
+    }, [vars, alterado]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** Volta o que estava no rascunho. Variação nunca gravada ganha chave nova (o contador recomeça ao recarregar). */
+    const recuperarRascunho = () => {
+        if (! rascunho) return;
+        setVars(rascunho.vars.map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
+        setErros({});
+        setAlterado(true);
+        setRascunho(null);
+    };
+
+    const descartarRascunho = () => {
+        apagarRascunho(produto?.id ?? null);
+        setRascunho(null);
+        // O que já foi digitado nesta visita continua protegido.
+        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current);
+    };
+
+    /** Sair confirmado, produto excluído ou salvo: o rascunho deixa de valer. */
+    const esquecerRascunho = () => apagarRascunho(idDoProduto(varsRef.current, produto));
 
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
@@ -175,6 +224,10 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
         if (ok) {
             setAlterado(false);
+            // Salvo por inteiro: o rascunho (do produto e, se ele nasceu agora, o "novo") deixa de valer.
+            apagarRascunho(r.produtoId);
+            if (! produto?.id) apagarRascunho(null);
+            setRascunho(null);
         } else {
             // Parcial: o que gravou volta com os ids do servidor; o que falhou fica como está, com o motivo.
             const porChave = new Map(juntas.linhas.filter((l) => l.chave).map((l) => [l.chave, l]));
@@ -194,5 +247,6 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterar, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
+        rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
     };
 }

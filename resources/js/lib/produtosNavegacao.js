@@ -126,6 +126,79 @@ export function mostrarCartao(produtoId) {
     })));
 }
 
+// ─── Rascunho da ficha (revisão FE-CR-02) ──────────────────────────────────
+//
+// O voltar do navegador (botão, Alt+←, gesto do celular) troca a página sem
+// passar pela guarda do Inertia, e a ficha desmonta. Para o que foi digitado
+// não sumir, a ficha grava um rascunho a cada alteração — um por produto, ou
+// "novo" — e, ao abrir de novo, oferece recuperar. Some ao salvar com sucesso,
+// ao excluir o produto e ao sair confirmando "Sair sem salvar?". Vale por
+// algumas horas: rascunho de ontem não reaparece por cima do produto.
+
+const PREFIXO_RASCUNHO = 'ecf.produtos.rascunho.';
+const RASCUNHO_VALE_MS = 6 * 60 * 60 * 1000;
+
+const chaveRascunho = (produtoId) => {
+    const id = Number(produtoId);
+
+    return PREFIXO_RASCUNHO + (produtoId && Number.isInteger(id) && id > 0 ? id : 'novo');
+};
+
+/** Grava o rascunho das variações da ficha (produtoId null = produto novo). */
+export function gravarRascunho(produtoId, vars) {
+    gravar(chaveRascunho(produtoId), { em: Date.now(), vars });
+}
+
+/** O rascunho guardado e ainda válido ({ em, vars }), ou null. Vencido ou estranho é apagado. */
+export function lerRascunho(produtoId) {
+    const chave = chaveRascunho(produtoId);
+    const r = ler(chave);
+    if (! r) return null;
+    if (typeof r.em !== 'number' || Date.now() - r.em > RASCUNHO_VALE_MS || ! Array.isArray(r.vars) || r.vars.length === 0) {
+        apagar(chave);
+
+        return null;
+    }
+
+    return r;
+}
+
+export function apagarRascunho(produtoId) {
+    apagar(chaveRascunho(produtoId));
+}
+
+// ─── Voltar do navegador com a ficha alterada (revisão FE-CR-02) ────────────
+//
+// Quem fica na ficha depois do "Sair sem salvar?" precisa que o histórico volte
+// para a entrada dela. Com a Navigation API dá para saber quantos passos são
+// (a pessoa pode ter ido para trás ou para a frente); sem ela, o caso comum é o
+// voltar, e o caminho de volta é 1 passo para a frente.
+
+/** Chave da entrada do histórico em que a página está, ou null sem Navigation API. */
+export function entradaAtual() {
+    try {
+        return window.navigation?.currentEntry?.key ?? null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/** Passos de `history.go` para voltar à entrada `chave` (1 quando não dá para saber). */
+export function passosAte(chave) {
+    try {
+        const nav = window.navigation;
+        if (chave && nav?.currentEntry && typeof nav.entries === 'function') {
+            const alvo = nav.entries().findIndex((e) => e.key === chave);
+            const passos = alvo - nav.currentEntry.index;
+            if (alvo >= 0 && passos !== 0) return passos;
+        }
+    } catch (e) {
+        // sem Navigation API: cai no caso comum
+    }
+
+    return 1;
+}
+
 // ─── Modo de visualização (167-20, D-26) ────────────────────────────────────
 //
 // "Visual grande" ou "Lista": a escolha fica no navegador (localStorage, dura

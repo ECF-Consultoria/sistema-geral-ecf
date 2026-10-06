@@ -8,7 +8,7 @@ import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariaca
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
-import { marcarUltimoProduto, urlDeVolta, voltarParaLista } from '@/lib/produtosNavegacao';
+import { entradaAtual, marcarUltimoProduto, passosAte, urlDeVolta, voltarParaLista } from '@/lib/produtosNavegacao';
 
 // ─── Ficha do produto em página inteira (REF-2, Fase 167-19) ────────────────
 //
@@ -30,6 +30,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const liberado = useRef(false);
     const alteradoRef = useRef(ficha.alterado);
     alteradoRef.current = ficha.alterado;
+    const fichaRef = useRef(ficha);
+    fichaRef.current = ficha;
     // D-32: o produto que esta ficha representa — a lista destaca o cartão dele na volta, saia como sair.
     const ultimoRef = useRef(produto?.id ?? null);
     useEffect(() => () => marcarUltimoProduto(ultimoRef.current), []);
@@ -52,7 +54,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
             const visita = event.detail.visit;
             if (liberado.current || visita.prefetch || visita.only?.length || visita.except?.length) return true;
             if (! alteradoRef.current) return true;
-            if (window.confirm(CONFIRMA_SAIR)) { liberado.current = true; return true; }
+            if (window.confirm(CONFIRMA_SAIR)) { liberado.current = true; fichaRef.current.esquecerRascunho(); return true; }
 
             return false;
         });
@@ -61,6 +63,37 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
             window.removeEventListener('beforeunload', aoFecharAba);
             tirarGuarda();
         };
+    }, []);
+
+    // Voltar do navegador (botão, Alt+←, gesto do celular): o Inertia troca a página sem o evento
+    // `before`. Em captura no `window`, este ouvinte roda antes do dele: com alteração não salva,
+    // pergunta; quem fica tem o histórico devolvido à entrada da ficha, e esse popstate de volta não
+    // chega ao Inertia. Navegador que roda o do Inertia primeiro ainda tem o rascunho (FE-CR-02).
+    const entradaDaFicha = useRef(entradaAtual());
+    const ignorarVolta = useRef(false);
+    useEffect(() => {
+        const aoNavegarNoHistorico = (e) => {
+            if (ignorarVolta.current) {
+                ignorarVolta.current = false;
+                e.stopImmediatePropagation();
+
+                return;
+            }
+            if (liberado.current || ! alteradoRef.current) return;
+            if (window.confirm(CONFIRMA_SAIR)) {
+                liberado.current = true;
+                fichaRef.current.esquecerRascunho();
+
+                return;
+            }
+            e.stopImmediatePropagation();
+            ignorarVolta.current = true;
+            setTimeout(() => { ignorarVolta.current = false; }, 1000);
+            window.history.go(passosAte(entradaDaFicha.current));
+        };
+        window.addEventListener('popstate', aoNavegarNoHistorico, true);
+
+        return () => window.removeEventListener('popstate', aoNavegarNoHistorico, true);
     }, []);
 
     // ─── Ações ──────────────────────────────────────────────────────────────
@@ -103,6 +136,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         if (resposta?.produto_excluido || sobraram === 0) {
             liberado.current = true;
             ultimoRef.current = null;   // o produto deixou de existir: nada a destacar
+            ficha.esquecerRascunho();
             voltarParaLista({ aviso: resposta?.mensagem ?? null, replace: true });
 
             return;
@@ -131,6 +165,16 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:mt-2.5 lg:text-[42px]">{nome}</h1>
                     <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. Cada variação vira uma oferta na Lista SKUs.</p>
                 </div>
+
+                {ficha.rascunho && (
+                    <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-rascunho>
+                        <span>Você tinha alterações não salvas neste produto.</span>
+                        <span className="flex items-center gap-3">
+                            <button type="button" onClick={ficha.recuperarRascunho} data-acao="recuperar-rascunho" className="font-medium text-white/85 hover:text-white hover:underline">Recuperar</button>
+                            <button type="button" onClick={ficha.descartarRascunho} data-acao="descartar-rascunho" className="text-white/50 hover:text-white">Descartar</button>
+                        </span>
+                    </div>
+                )}
 
                 {ficha.aviso && (
                     <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
