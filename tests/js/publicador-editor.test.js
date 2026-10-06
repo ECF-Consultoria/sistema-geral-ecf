@@ -493,6 +493,36 @@ test('useIaDoPublicador: rotas, polling, limite e sessionStorage', () => {
     assert.match(f, /aoConcluir\.current\?\.\(/);
 });
 
+test('useCriativosDoPublicador: rotas por produto com kit_id, polling com limpeza, teto de espera, retomada, instância e contexto', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/useCriativosDoPublicador.js');
+    assert.match(f, /criarRota\('mlb\.anuncios\.publicador', 'produto'\)/);
+    assert.match(f, /criativos\.atual/);
+    assert.match(f, /criativos\.kit\.planejar/);
+    assert.match(f, /criativos\.kit\.status/);
+    assert.match(f, /criativos\.kit\.gerar/);
+    assert.match(f, /criativos\.slot\.regenerar/);
+    assert.match(f, /criativos\.slot\.aprovar/);
+    assert.match(f, /criativos\.kit\.aprovar/);
+    assert.match(f, /kit: kit\.kit_id/);
+    assert.match(f, /INTERVALO = 5000/);
+    assert.match(f, /LIMITE = 27 \* 60 \* 1000/);
+    assert.match(f, /clearInterval\(t\)/);
+    assert.match(f, /publicador\.criativos\.\$\{produtoId\}/);
+    assert.match(f, /export const CriativosDoPublicador = createContext\(null\)/);
+    assert.match(f, /aoAprovar\.current\?\.\(/);
+    assert.match(f, /new FormData/);
+    assert.match(f, /reivindicar/);
+    assert.doesNotMatch(f, /kit_token|\btoken\b/);
+});
+
+test('Editor — cria o hook dos criativos e envolve a página com o contexto', () => {
+    const f = lerSemComentarios(PAGINA_EDITOR);
+    assert.match(f, /useCriativosDoPublicador\(\{/);
+    assert.match(f, /criativos_ia === true/);
+    assert.match(f, /onAprovou: \(\) => pub\.recarregar\(\)/);
+    assert.match(f, /<CriativosDoPublicador\.Provider value=\{criativos\}>/);
+});
+
 // ═══════════════════════════════════════════════════════════════════════
 // Casca do editor (Conceito E, 03/10/2026): barra com a trilha, seletor de
 // produto (ex-faixa de produtos), "Anunciar por IA" e as ações de publicação.

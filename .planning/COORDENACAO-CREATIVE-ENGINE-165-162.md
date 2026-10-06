@@ -9,6 +9,28 @@ seu roadmap: *"Execução espera o ok do outro dev sobre a ordem com a Fase 162"
 
 ---
 
+## ⚠️ ATUALIZAÇÃO 2026-10-05, FIM DO DIA — ASSUMIMOS A EXECUÇÃO DA FASE 165
+
+**NÃO comece a 165 — ela está sendo executada por nós, agora, seguindo os SEUS 8 planos.**
+
+Motivo: o usuário pediu o gerador dentro do card de Fotos do editor três vezes ao longo do dia, e
+a 165 seguia com zero planos executados enquanto a 166 (Alavancas) foi para produção. Ele decidiu
+que nós assumimos para destravar o uso dele. Não é crítica ao seu trabalho — é fila.
+
+Estamos executando o seu desenho, não um nosso: migration aditiva `pub_rascunho_id`/`pub_grupo`/
+`pub_imagem_id`, `ContextoCriativoDoPublicador`, ramo novo no `CreativeContextBuilder`, imagem
+aprovada virando `pub_imagens`, endpoints `publicador.criativos.*`, o hook
+`useCriativosDoPublicador` e o painel `Mesa/PainelCriativos.jsx`, com o "Gerar com IA" no
+`BlocoDeFotos`. Seus planos 165-01 a 165-08 são o roteiro.
+
+Isso significa que **nós entramos no seu território** (`Publicador/`, `PubProduto*`, os JSX do
+Publicador) — exatamente o que a regra anterior proibia. Se você tiver trabalho local não
+publicado nesses arquivos, avise AGORA para não haver atropelo.
+
+A Fase 162 (validador) já está em produção e não tocou em nada do seu lado.
+
+---
+
 ## ATUALIZAÇÃO 2026-10-05 (depois da nossa conversa por fora)
 
 Você autorizou verbalmente a execução em paralelo e disse que já está numa etapa avançada da 165.

@@ -61,7 +61,11 @@ class ShopeeSync extends Command
                         $rev += (float) $m->revenue;
                     }
                 } catch (\Throwable $e) {
-                    Log::warning("[Shopee] Sync empresa {$company->id} dia {$date}: {$e->getMessage()}");
+                    // Log::error (não warning): produção roda LOG_LEVEL=error, então
+                    // como warning o dia que falhou ficava INVISÍVEL — e dia sem linha
+                    // é lido pelo ShopeeMetricDiffService como "venda zero real"
+                    // (quick 261006-dv3).
+                    Log::error("[Shopee] Sync empresa {$company->id} ({$company->name}) dia {$date} FALHOU — dia fica sem linha: {$e->getMessage()}");
                 }
                 usleep(300000); // ~0,3s entre chamadas — respeita rate limit
             }

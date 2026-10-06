@@ -50,6 +50,14 @@ return [
             'driver'   => 'session',
             'provider' => 'portal_usuarios',
         ],
+
+        // MCP do ECF Admin (`/mcp`). Token OAuth emitido pelo Passport depois
+        // do login normal do usuário — o mesmo usuário e o mesmo perfil do
+        // guard 'web', só que sem cookie de sessão.
+        'api' => [
+            'driver'   => 'passport',
+            'provider' => 'users',
+        ],
     ],
 
     /*

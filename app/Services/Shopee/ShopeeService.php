@@ -26,6 +26,24 @@ class ShopeeService
 {
     private const STATE_TTL = 604800; // 7 dias para o cliente autorizar
 
+    /**
+     * Trava de segurança da paginação de pedidos de UMA janela. Quick
+     * 261006-dv3: era 2000 e o loop parava calado ao atingir — agora o
+     * `fetchOrdersSummary` loga `Log::error` quando trunca (ver lá).
+     */
+    private const MAX_ORDERS_POR_JANELA = 10000;
+
+    /**
+     * TTL da trava que serializa o refresh por empresa. PRECISA ser maior que
+     * o `Http::timeout(30)` de dentro da trava: com os 15s de antes, uma
+     * resposta lenta da Shopee fazia a trava expirar COM A REQUEST EM VOO, um
+     * segundo processo entrava e usava o mesmo `refresh_token` — que é rotativo
+     * e single-use. Um dos dois recebia refresh inválido e o token era
+     * REVOGADO, que é exatamente a "desconexão sozinha" relatada pelo setor
+     * Shopee (quick 261006-dv3).
+     */
+    private const REFRESH_LOCK_TTL = 60;
+
     // Caminhos de auth (assinatura PÚBLICA — só partner_id+path+timestamp)
     private const PATH_AUTH        = '/api/v2/shop/auth_partner';
     private const PATH_TOKEN_GET   = '/api/v2/auth/token/get';
@@ -211,7 +229,7 @@ class ShopeeService
         $companyId = $token->company_id;
 
         try {
-            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $force) {
+            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", self::REFRESH_LOCK_TTL)->block(10, function () use ($token, $force) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
@@ -377,6 +395,55 @@ class ShopeeService
         return $json['response'] ?? [];
     }
 
+    /**
+     * POST assinado a um endpoint de shop da Shopee. Irmão do `get()`: mesmas
+     * credenciais, mesma assinatura e mesmo tratamento de erro — a única
+     * diferença é que os parâmetros de NEGÓCIO vão no corpo JSON em vez da
+     * query string.
+     *
+     * ⚠️ A `ShopeeSigner` cobre partner_id + caminho + timestamp + access_token
+     *    + shop_id e **nada do corpo** — por isso `post()` e `get()` assinam
+     *    exatamente igual: o payload não participa da base string.
+     *
+     * Existe porque endpoints em lote (quick 261006-j44:
+     * `/api/v2/payment/get_escrow_detail_batch`) exigem POST — a lista de
+     * `order_sn` não cabe/não é aceita na query.
+     *
+     * Retorna o conteúdo sob a chave `response` (padrão da v2).
+     *
+     * @param  array $payload Corpo JSON (parâmetros de negócio)
+     * @throws \RuntimeException
+     */
+    public function post(Company $company, string $apiPath, array $payload = []): array
+    {
+        $token = $this->ensureValidToken($company);
+
+        if (! $token) {
+            throw new \RuntimeException("[Shopee] Empresa {$company->id} sem token válido.");
+        }
+
+        $timestamp = time();
+        $sign      = $this->signer->sign($apiPath, $timestamp, $token->access_token, (int) $token->shop_id);
+
+        // Credenciais SEMPRE na query, mesmo no POST (exigência da v2).
+        $url = $this->host . $apiPath . '?' . http_build_query([
+            'partner_id'   => $this->partnerId,
+            'timestamp'    => $timestamp,
+            'access_token' => $token->access_token,
+            'shop_id'      => (int) $token->shop_id,
+            'sign'         => $sign,
+        ]);
+
+        $response = $this->http()->asJson()->post($url, $payload);
+        $json     = $response->json() ?? [];
+
+        if (! $response->successful() || $this->isError($json)) {
+            throw new \RuntimeException("[Shopee] Erro em {$apiPath} empresa {$company->id}: {$response->body()}");
+        }
+
+        return $json['response'] ?? [];
+    }
+
     /** True quando a resposta v2 traz um `error` não-vazio. */
     private function isError(array $json): bool
     {
@@ -429,9 +496,79 @@ class ShopeeService
     // ═══ Dados: pedidos (faturamento bruto) ═══════════════════════════════════
 
     /**
-     * Soma o faturamento bruto dos pedidos da janela informada.
+     * Soma o faturamento dos pedidos da janela informada, na MESMA régua do
+     * painel da Shopee (Seller Center).
+     *
      * get_order_list (paginação por cursor, janela ≤15 dias) → order_sn;
-     * get_order_detail (lotes de 50) → total_amount. Ignora UNPAID e CANCELLED.
+     * get_order_detail (lotes de 50) → `pay_time` + `item_list`;
+     * get_escrow_detail_batch (MESMOS lotes de 50) → `voucher_from_seller`.
+     *
+     *     revenue = Σ (pedidos com `pay_time` não vazio)
+     *                 [ Σ (itens) model_discounted_price × model_quantity_purchased ]
+     *                 −  voucher_from_seller
+     *
+     * Sem frete, SEM filtro de status e SEM descontar item cancelado/devolvido.
+     *
+     * ─── Por que o cupom entrou (quick 261006-j44, 2026-10-06) ──────────────
+     * A régua de itens do 261006-fac deixou um resíduo pequeno e SEMPRE PARA
+     * CIMA — o usuário conferiu contra a planilha: "a diferença é pouca e
+     * sempre pra cima, sempre o valor do sistema é maior que o da planilha".
+     * A causa é o cupom que o VENDEDOR banca, que o painel desconta e nós não.
+     * Medido na API real, três lojas independentes:
+     *
+     *   | loja                    | alvo (painel)  | itens (antes)      | itens − cupom      |
+     *   |-------------------------|----------------|--------------------|--------------------|
+     *   | ITUFARMA1 #225, 30/09   | R$    603,72   |    609,13 (+0,90%) | 603,72 (0,00%) ✔   |
+     *   | CAMILLO MATRIZ #1,30/09 | R$  8.953,89   |  9.133,89 (+2,01%) | 8.983,89 (+0,34%)  |
+     *   | DROSSI #217, setembro   | R$ 392.422,00  | 403.187,26 (+2,74%)| 391.537,81 (−0,23%)|
+     *
+     * ⚠️ Os R$ 30,00 que sobram na CAMILLO são IRREDUTÍVEIS: todo pedido enviado
+     *    dela tem cupom de R$ 30, e os pedidos pagos e cancelados DEPOIS voltam
+     *    com `voucher_from_seller = 0` — a Shopee para de reportar o cupom após
+     *    o cancelamento. É resíduo conhecido e minúsculo; não tentar recuperar.
+     *
+     * ⛔ `voucher_from_shopee` NÃO é descontado. Medido: descontar os dois PASSA
+     *    do alvo (ITUFARMA −1,76%, CAMILLO −3,20%). O cupom da Shopee é bancado
+     *    pela plataforma e o painel não o tira do faturamento do vendedor.
+     *
+     * ⛔ O lote é obrigatório: `get_escrow_detail` pedido a pedido seria inviável
+     *    (a GENUINEAUTOMOTIVE faz ~980 pedidos/dia). Com chunk de 50 — o mesmo
+     *    do `get_order_detail` — o custo é UMA chamada a mais por lote de 50.
+     *
+     * ─── Por que mudou (quick 261006-fac, 2026-10-06) ───────────────────────
+     * Decisão do usuário: "o faturamento das empresas no sistema deve ser
+     * exatamente igual ao do painel da Shopee, com frete ou sem frete não
+     * importa". Antes somava `total_amount` do pedido e pulava
+     * UNPAID|CANCELLED|IN_CANCEL — as DUAS coisas estavam erradas:
+     *
+     * 1. O painel conta no PAGAMENTO. Pedido pago e cancelado DEPOIS continua
+     *    sendo faturamento, e o filtro por status jogava isso fora. Na CAMILLO
+     *    MATRIZ (#1) em 30/09/2026 eram R$ 1.434,94 em dois pedidos pagos e
+     *    cancelados pelo comprador em seguida (R$ 1.398,13 e R$ 36,81): o painel
+     *    mostrava R$ 8.953,89, nós tínhamos gravado R$ 6.953,31, e com esta
+     *    regra sai R$ 9.133,89.
+     *    ⚠️ Medido: o painel conta o pedido pago POR INTEIRO — descontar o item
+     *    cancelado (`cancelled_qty`/`returned_qty`) passa do alvo em 16,6%.
+     *    Portanto NÃO descontar.
+     * 2. O campo certo é o ITEM, não o pedido. O `total_amount` (itens + frete
+     *    pago pelo cliente − promoções) às vezes fica acima e às vezes abaixo do
+     *    preço dos itens: na ITUFARMA um pedido tinha total R$ 31,42 contra
+     *    R$ 48,46 de item — 54% de diferença.
+     *
+     * Setembro/2026 inteiro contra a planilha manual do time: EDUMAC PARTS #144
+     * e CAMILLO FILIAL RS #358 fecham ao centavo (0,00%) e o pior resto é a GRAN
+     * BELO #212, com +5,53%. O resíduo é pequeno e sempre PARA CIMA
+     * (provavelmente desconto aplicado no pedido, e não no item): é pendência
+     * conhecida, não regressão.
+     *
+     * A janela do dia continua em BRT (−03:00): dos cinco fusos testados só o
+     * BRT fecha (UTC erra +12%, GMT+8 erra −16%).
+     *
+     * ⚠️ Ponto único da correção: os consumidores leem `shopee_metrics.revenue`,
+     * então arrumar aqui propaga para fechamento, dashboard, carteira e
+     * desempenho de uma vez — nenhum deles replica a conta.
+     *
+     * ⚠️ `orders_count` e `sold_quantity` NÃO mudam com o cupom — só o `revenue`.
      *
      * @param  string $dateFrom  YYYY-MM-DD (inclusive, 00:00 BRT)
      * @param  string $dateTo    YYYY-MM-DD (inclusive, 23:59 BRT)
@@ -463,31 +600,65 @@ class ShopeeService
 
             $cursor = $data['next_cursor'] ?? '';
             $more   = (bool) ($data['more'] ?? false);
-        } while ($more && $cursor !== '' && count($orderSns) < 2000);
+        } while ($more && $cursor !== '' && count($orderSns) < self::MAX_ORDERS_POR_JANELA);
 
-        // 2) Detalhe em lotes de 50 → soma valores
+        // Quick 261006-dv3: o corte existe como trava de segurança, mas parar
+        // calado faz o faturamento do dia sair truncado sem ninguém saber —
+        // a GENUINEAUTOMOTIVE já faz ~980 pedidos num dia normal, e um dia de
+        // promoção passa fácil do limite antigo (2000). Se truncar, grita.
+        if ($more && count($orderSns) >= self::MAX_ORDERS_POR_JANELA) {
+            Log::error(
+                "[Shopee] Faturamento TRUNCADO empresa {$company->id} ({$company->name}) janela {$dateFrom}→{$dateTo}: "
+                . 'parou em ' . count($orderSns) . ' pedidos e a Shopee ainda tinha mais. '
+                . 'O valor deste dia está INCOMPLETO — reduza a janela ou suba MAX_ORDERS_POR_JANELA.'
+            );
+        }
+
+        // 2) Detalhe em lotes de 50 → soma os itens dos pedidos PAGOS e
+        //    desconta o cupom do vendedor (lote de escrow do MESMO chunk).
         $revenue = 0.0;
         $soldQty = 0;
         $counted = 0;
 
         foreach (array_chunk($orderSns, 50) as $chunk) {
             $detail = $this->get($company, '/api/v2/order/get_order_detail', [
-                'order_sn_list'           => implode(',', $chunk),
-                'response_optional_fields' => 'total_amount,order_status,item_list',
+                'order_sn_list'            => implode(',', $chunk),
+                'response_optional_fields' => 'total_amount,order_status,item_list,pay_time',
             ]);
 
+            // Só os PAGOS deste chunk — são os únicos que entram no faturamento
+            // e, portanto, os únicos cujo cupom precisamos buscar.
+            $pagos = [];
+
             foreach ($detail['order_list'] ?? [] as $order) {
-                $status = strtoupper($order['order_status'] ?? '');
-                if (in_array($status, ['UNPAID', 'CANCELLED', 'IN_CANCEL'], true)) {
+                // O pagamento é o que define o faturamento: quem não tem
+                // `pay_time` (UNPAID) não entra, e quem tem entra mesmo que o
+                // status de hoje seja CANCELLED/IN_CANCEL — é assim que o painel
+                // da Shopee conta (ver docblock).
+                if (empty($order['pay_time'])) {
                     continue;
                 }
 
-                $revenue += (float) ($order['total_amount'] ?? 0);
                 $counted++;
 
-                foreach ($order['item_list'] ?? [] as $item) {
-                    $soldQty += (int) ($item['model_quantity_purchased'] ?? 0);
+                if (! empty($order['order_sn'])) {
+                    $pagos[] = (string) $order['order_sn'];
                 }
+
+                foreach ($order['item_list'] ?? [] as $item) {
+                    $qty = (int) ($item['model_quantity_purchased'] ?? 0);
+
+                    // Preço do item JÁ com desconto (sem frete) × quantidade
+                    // comprada. `cancelled_qty`/`returned_qty` não são
+                    // descontados de propósito: descontar passa do alvo em 16,6%.
+                    $revenue += (float) ($item['model_discounted_price'] ?? 0) * $qty;
+                    $soldQty += $qty;
+                }
+            }
+
+            // Cupom do vendedor deste lote. Pedido ausente da resposta conta 0.
+            foreach ($this->vouchersDoVendedor($company, $pagos, $dateFrom, $dateTo) as $voucher) {
+                $revenue -= $voucher;
             }
         }
 
@@ -496,6 +667,66 @@ class ShopeeService
             'orders_count'  => $counted,
             'sold_quantity' => $soldQty,
         ];
+    }
+
+    /**
+     * Cupom bancado pelo VENDEDOR dos pedidos informados, em UMA chamada de
+     * lote (`POST /api/v2/payment/get_escrow_detail_batch`, corpo
+     * `{"order_sn_list": [...]}`).
+     *
+     * A `response` v2 deste endpoint é uma LISTA de
+     * `{ escrow_detail: { order_sn, order_income: { voucher_from_seller, ... } } }`
+     * — o valor vive em `escrow_detail.order_income.voucher_from_seller`.
+     *
+     * ⚠️ Se a chamada falhar, NÃO inventa: grita em `Log::error` (mesmo espírito
+     *    da trava de truncamento do 261006-dv3) e devolve lista vazia, ou seja,
+     *    o lote segue SEM o desconto. Faturamento maior é justamente o defeito
+     *    que esta mudança corrige — sair calado o reintroduz em silêncio.
+     *
+     * @param  array<int, string> $orderSns Pedidos PAGOS de um chunk (≤50)
+     * @return array<string, float> order_sn → cupom do vendedor (só os > 0)
+     */
+    private function vouchersDoVendedor(Company $company, array $orderSns, string $dateFrom, string $dateTo): array
+    {
+        if ($orderSns === []) {
+            return [];
+        }
+
+        try {
+            $lote = $this->post($company, '/api/v2/payment/get_escrow_detail_batch', [
+                'order_sn_list' => array_values($orderSns),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error(
+                "[Shopee] Cupom do vendedor NÃO descontado empresa {$company->id} ({$company->name}) "
+                . "janela {$dateFrom}→{$dateTo}: o lote get_escrow_detail_batch de " . count($orderSns)
+                . ' pedidos falhou (' . $e->getMessage() . '). '
+                . 'O faturamento deste lote sai MAIOR que o do painel da Shopee (cupom não descontado).'
+            );
+
+            return [];
+        }
+
+        $vouchers = [];
+
+        foreach ($lote as $linha) {
+            $escrow = $linha['escrow_detail'] ?? null;
+
+            if (! is_array($escrow) || empty($escrow['order_sn'])) {
+                continue;
+            }
+
+            // ⛔ `voucher_from_shopee` fica de fora de propósito: é bancado pela
+            //    plataforma e descontá-lo passa do alvo (ver docblock do
+            //    fetchOrdersSummary).
+            $valor = (float) ($escrow['order_income']['voucher_from_seller'] ?? 0);
+
+            if ($valor > 0) {
+                $vouchers[(string) $escrow['order_sn']] = $valor;
+            }
+        }
+
+        return $vouchers;
     }
 
     // ═══ Dados: anúncios (ADS) ════════════════════════════════════════════════
@@ -581,36 +812,104 @@ class ShopeeService
 
     /**
      * Sincroniza o faturamento de UM dia da empresa para shopee_metrics.
-     * Dias sem pedidos não geram linha (mantém a tabela enxuta). Retorna a
-     * métrica gravada ou null (dia vazio / sem token).
+     *
+     * Dia sem pedido válido:
+     * - se NÃO existe linha → não grava (mantém a tabela enxuta, como sempre);
+     * - se JÁ existe linha → grava o ZERO. Quick 261006-dv3: antes devolvia
+     *   `null` e deixava o valor velho no banco, então pedido cancelado depois
+     *   da coleta nunca baixava o número — a releitura só sabia subir. Também é
+     *   o que preenche as linhas que o `syncAdsDay` criou sozinho (`revenue = 0`
+     *   por default da coluna, `synced_at` NULL): 15 delas em 4 empresas em
+     *   06/10/2026, indistinguíveis de dia sem venda.
+     *
+     * Retorna a métrica gravada ou null (dia vazio e sem linha prévia).
      */
     public function syncCompanyDay(Company $company, string $date): ?ShopeeMetric
     {
         $summary = $this->fetchOrdersSummary($company, $date, $date);
 
         if (($summary['orders_count'] ?? 0) === 0) {
-            return null;
+            // Dia sem pedido e SEM linha prévia: não inventa linha.
+            if (! $this->linhaDoDia($company, $date)) {
+                return null;
+            }
+
+            // Linha existe e o dia não tem mais pedido válido — zera de verdade.
+            return $this->upsertDia($company, $date, [
+                'revenue'       => 0,
+                'orders_count'  => 0,
+                'sold_quantity' => 0,
+                'synced_at'     => now(),
+            ]);
         }
 
-        return ShopeeMetric::updateOrCreate(
-            ['company_id' => $company->id, 'reference_date' => $date],
-            [
-                'revenue'       => $summary['revenue'],
-                'orders_count'  => $summary['orders_count'],
-                'sold_quantity' => $summary['sold_quantity'],
-                'synced_at'     => now(),
-            ]
-        );
+        return $this->upsertDia($company, $date, [
+            'revenue'       => $summary['revenue'],
+            'orders_count'  => $summary['orders_count'],
+            'sold_quantity' => $summary['sold_quantity'],
+            'synced_at'     => now(),
+        ]);
+    }
+
+    /**
+     * A linha de `shopee_metrics` daquele dia, ou null.
+     *
+     * Usa `whereDate` (não igualdade crua) pelo mesmo motivo documentado em
+     * `ShopeeMetricDiffService::naJanela()`: `reference_date` tem cast `date`, e
+     * em SQLite o valor é serializado como `Y-m-d 00:00:00`, que não casa com a
+     * string `Y-m-d` numa comparação direta.
+     */
+    private function linhaDoDia(Company $company, string $date): ?ShopeeMetric
+    {
+        return ShopeeMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', $date)
+            ->first();
+    }
+
+    /**
+     * Grava os campos informados no dia da empresa, criando a linha se não
+     * existir. Preserva as colunas que não vieram em `$dados` — é o que permite
+     * ao app 'ads' fazer merge na mesma linha do faturamento.
+     *
+     * ⚠️ POR QUE NÃO `updateOrCreate(['company_id','reference_date'])`, que era
+     * o que estava aqui: o match por igualdade crua de `reference_date` só
+     * funciona no MySQL/MariaDB (coluna DATE, comparação tolerante). No SQLite
+     * dos testes o valor gravado é `Y-m-d 00:00:00` e o `where` por `Y-m-d` não
+     * casa — o `updateOrCreate` tentava INSERT e estourava a unique
+     * `(company_id, reference_date)`. Ninguém tinha visto porque nenhum teste
+     * regravava um dia que já existia; a releitura diária faz exatamente isso
+     * (quick 261006-dv3).
+     */
+    private function upsertDia(Company $company, string $date, array $dados): ShopeeMetric
+    {
+        $linha = $this->linhaDoDia($company, $date);
+
+        if ($linha) {
+            $linha->update($dados);
+
+            return $linha->fresh();
+        }
+
+        return ShopeeMetric::create(array_merge($dados, [
+            'company_id'     => $company->id,
+            'reference_date' => $date,
+        ]));
     }
 
     /**
      * Sincroniza os Ads de UM dia da empresa para shopee_metrics (colunas ad_*).
      * Só faz sentido no app 'ads' — instancie com new ShopeeService('ads').
      *
-     * Faz merge na MESMA linha do faturamento: updateOrCreate por
-     * (company_id, reference_date) grava SÓ as colunas ad_*, sem tocar em
-     * revenue/orders (que vêm do app 'erp'). Dia sem gasto E sem impressão não
-     * grava linha (mantém a tabela enxuta). Retorna a métrica ou null (dia vazio).
+     * Faz merge na MESMA linha do faturamento (via `upsertDia`): grava SÓ as
+     * colunas ad_*, sem tocar em revenue/orders (que vêm do app 'erp'). Dia sem
+     * gasto E sem impressão não grava linha (mantém a tabela enxuta). Retorna a
+     * métrica ou null (dia vazio).
+     *
+     * ⚠️ Quando a linha do dia ainda NÃO existe, este método a cria com
+     * `revenue = 0` (default da coluna) e `synced_at` NULL — um buraco do sync
+     * de faturamento fica indistinguível de dia sem venda (15 linhas em 4
+     * empresas em 06/10/2026). Quem conserta é o `shopee:reler-dias`, que relê
+     * o faturamento daquele dia e grava o valor certo em cima.
      *
      * ⚠️ Não chamar com datas > 6 meses atrás — a Shopee devolve
      *    ads.performance.error_date_too_old (o comando shopee:sync-ads faz o clamp).
@@ -624,17 +923,14 @@ class ShopeeService
             return null;
         }
 
-        return ShopeeMetric::updateOrCreate(
-            ['company_id' => $company->id, 'reference_date' => $date],
-            [
-                'ad_expense'           => $ads['expense'],
-                'ad_impressions'       => $ads['impressions'],
-                'ad_clicks'            => $ads['clicks'],
-                'ad_broad_gmv'         => $ads['broad_gmv'],
-                'ad_broad_orders'      => $ads['broad_orders'],
-                'ad_broad_conversions' => $ads['broad_conversions'],
-                'ad_synced_at'         => now(),
-            ]
-        );
+        return $this->upsertDia($company, $date, [
+            'ad_expense'           => $ads['expense'],
+            'ad_impressions'       => $ads['impressions'],
+            'ad_clicks'            => $ads['clicks'],
+            'ad_broad_gmv'         => $ads['broad_gmv'],
+            'ad_broad_orders'      => $ads['broad_orders'],
+            'ad_broad_conversions' => $ads['broad_conversions'],
+            'ad_synced_at'         => now(),
+        ]);
     }
 }

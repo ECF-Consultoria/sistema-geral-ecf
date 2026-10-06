@@ -246,6 +246,37 @@ class EditorRascunhoService
         $this->repo->tocar($r);
     }
 
+    /**
+     * Põe UMA foto no FIM do grupo pedido — upload manual (`foto()`) e aprovação
+     * de criativo gerado por IA (165-03) usam o MESMO caminho, por isso ele vive
+     * aqui e não num private do controller.
+     *
+     * Fase 165 (T-165-09, WR-B02, learnings publicador-ml.md §9): sem a trava de
+     * linha, duas aprovações seguidas, ou uma aprovação e um arrasto de foto no
+     * editor, liam o snapshot ao mesmo tempo e regravavam a lista INTEIRA de
+     * atribuições — a última escrita vencia e apagava a outra (RESEARCH
+     * Armadilha 4). Por isso: travar PRIMEIRO, ler o snapshot DEPOIS, na MESMA
+     * transação (molde de `salvar()`/`salvarEixos()` desta classe).
+     *
+     * O envio ao Mercado Livre (`ImagemAssetService::receber`/`enviarAoMl`, que
+     * pode fazer HTTP) fica de propósito FORA desta transação — quem chama
+     * decide a ordem (D-04: aqui só se atribui a foto já guardada).
+     */
+    public function colocarFotoNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo): void
+    {
+        DB::transaction(function () use ($r, $imagem, $grupo) {
+            $this->repo->travar($r);
+            $atuais = $this->repo->snapshot($r)->imagens;
+            $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
+            if (in_array((string) $imagem->id, array_map('strval', array_column($doGrupo, 'imagem')), true)) {
+                // Já está no grupo: nada a gravar, revisão não sobe (mesmo comportamento do private antigo).
+                return;
+            }
+            $this->repo->gravarAtribuicoes($r, [...$atuais, ['imagem' => $imagem->id, 'grupo' => $grupo, 'posicao' => count($doGrupo)]]);
+            $this->repo->tocar($r);
+        });
+    }
+
     // ═══ Simulador "Você recebe" (E10, H-14) ════════════════════════════════
 
     /** @return array<string, array> listing_type_id → simulação do preço da 1ª variante ativa */

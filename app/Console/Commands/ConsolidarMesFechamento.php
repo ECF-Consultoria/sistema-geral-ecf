@@ -131,6 +131,13 @@ use Illuminate\Support\Facades\Log;
  * quantas empresas entraram e saíram, para a supressão nunca ser silenciosa.
  * Composição igual → comportamento idêntico ao de sempre.
  *
+ * Quick 261005-sm1 — o resumo lista as empresas cuja conta da Adman e conta
+ * do Mercado Livre são DIFERENTES. É o aviso que substituiu a trava
+ * `ids-iguais` (a empresa agora lê o faturamento da Adman de qualquer
+ * jeito): uma das duas contas provavelmente está errada, e foi exatamente
+ * isso que houve com a LAURA LAR. Não muda valor nenhum nem o exit code —
+ * existe para alguém conferir o cadastro.
+ *
 
  * O exit code reflete a falha real — qualquer empresa que estoure exceção
  * individual conta como falha e o comando termina com 1, mesmo tendo
@@ -854,6 +861,35 @@ class ConsolidarMesFechamento extends Command
             $this->fonteFaturamento->ativa() ? '1' : '0',
             $mesFechado ? 'fechada' : 'em curso — API nunca é usada',
         ));
+
+        // ── Quick 261005-sm1 — empresas com as duas contas diferentes ─────
+        // Este aviso é o que SUBSTITUIU a trava `ids-iguais`: até 2026-10-05
+        // a empresa com `adman_account_id` diferente de `ml_store_id` era
+        // recusada pela API e ficava na soma diária. A trava nasceu da LAURA
+        // LAR, cujo defeito era o TOKEN do Mercado Livre (apontando para a
+        // conta da GRAN BELO), não a API — e cobrava o número errado de 17
+        // empresas. Agora o número vem da Adman e quem confere o cadastro é
+        // uma pessoa, com esta lista na mão.
+        //
+        // ⚠️ Só sai quando a API esteve em jogo: com a chave desligada o
+        // número não veio da Adman, e dizer "o faturamento está vindo da
+        // Adman" seria mentira. Nada aqui muda valor nenhum nem o exit code.
+        if ($faturamentoDaApi) {
+            $contasDivergentes = $companies->filter(
+                fn (Company $c) => $this->rollupService->contasDivergem($c)
+            );
+
+            if ($contasDivergentes->isNotEmpty()) {
+                $this->warn(sprintf(
+                    '[Fechamento] A conta da Adman e a conta do Mercado Livre são diferentes em %d empresa(s). '
+                    .'O faturamento está vindo da Adman; confira se as duas contas estão certas: %s.',
+                    $contasDivergentes->count(),
+                    $contasDivergentes
+                        ->map(fn (Company $c) => "{$c->name} (#{$c->id}, Adman {$c->adman_account_id}, Mercado Livre {$c->ml_store_id})")
+                        ->implode('; '),
+                ));
+            }
+        }
 
         // O exit code precisa refletir a falha real: qualquer empresa que
         // estourou exceção individual conta como falha, mesmo tendo

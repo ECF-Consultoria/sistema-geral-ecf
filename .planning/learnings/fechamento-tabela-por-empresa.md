@@ -300,6 +300,44 @@ Medição das 60 `ml_driven` com conta Adman:
 > ≈ R$ 9,94 mi, faixa R$ 14.000, sem a duplicata). Para conferir depois da reconexão, o `/users/me` do
 > token não pode mais devolver "GRAN BELO".
 
+> ⚠️ **Reversão de 2026-10-05 (quick 261005-sm1) — o recorte `ids-iguais` CAIU.** Os dois blocos
+> acima ficam como estão: eles contam o raciocínio de 11/09 e a correção de 15/09, e os dois
+> aconteceram. O que mudou é a conclusão operacional. Depois de 15/09 ficou claro que o defeito da
+> LAURA LAR era de **cadastro** (token ML da GRAN BELO) — e a empresa foi desativada em 16/09. Um
+> recorte de fonte de faturamento construído para se proteger de um defeito de cadastro cobra caro:
+> medição em produção em 2026-10-05, nas 187 empresas ativas — 108 já usavam a Adman, 62 não têm
+> `cust_id` nenhum e **17 tinham conta e eram recusadas**. Das 17, **16 não têm `adman_account_id`**,
+> só `ml_store_id` — e é exatamente por ele que o `cust_id` consulta a Adman, que responde normal
+> (OUZOR TIME devolveu R$ 654.533,87 numa chamada real). Só a **MAXIGOLD SUPLEMENTOS** tem as duas
+> contas, diferentes. O custo em setembro/2026, contra o que estava gravado:
+>
+> | empresa | gravado (nossa soma) | Adman |
+> |---|---|---|
+> | MAXIGOLD SUPLEMENTOS | 3.324,98 | **119.411,57** |
+> | OUZOR TIME | 583.611,24 | **654.533,87** |
+>
+> **Regra de hoje:** `cust_id` preenchido → a Adman é a fonte; `cust_id` nulo → soma diária. Fim.
+> Contas divergentes viraram **aviso visível** (`FechamentoRollupService::contasDivergem()`) no resumo
+> de `fechamento:consolidar-mes` e numa lista discreta da tela do fechamento — nunca trava, nunca
+> troca silenciosa por um número pior. O aviso não muda valor nenhum: existe para alguém conferir o
+> cadastro, que é onde o defeito sempre esteve.
+>
+> **A lição que fica, e que corrige a de 11/09 sem apagá-la:** medir a população inteira (feito em
+> 11/09) é necessário mas não suficiente. Antes de virar recorte, é preciso saber **qual é a causa**
+> da anomalia. "Ids diferentes" era *sintoma* de cadastro errado, e a resposta certa para sintoma de
+> cadastro é mostrar para um humano, não desligar a fonte boa. Enquanto a causa é desconhecida, o
+> aviso custa zero e a trava custa dinheiro.
+>
+> ⚠️ Consequência aceita no aviso: o critério é "as duas contas preenchidas e diferentes", **sem olhar
+> o token ML** — amarrar o aviso ao token recriaria a segunda régua que acabou de ser removida. Por
+> isso empresas cuja divergência já é conhecida e intencional (ADHARAPRINTSHOP e AVF_2K, ver
+> `Company::getCustIdAttribute()`) podem aparecer na lista. É um aviso discreto que não bloqueia nada.
+>
+> ⚠️ **Isto muda dinheiro.** 17 empresas trocam de fonte e várias devem mudar de faixa. O código já
+> está entregue e **continua atrás da chave `fechamento_faturamento_da_api_ativo`** — ligar em
+> produção é decisão humana, depois da conferência empresa por empresa, e a competência já congelada
+> não muda sozinha (só é refeita com `--motivo=`).
+
 ### O que a correção custou em dinheiro
 
 +R$ 1.016.802,46 de faturamento em agosto e **2 empresas mudando de faixa** — CAMILLO PARTS MATRIZ e
@@ -317,7 +355,13 @@ subcobranças reais, de R$ 1.500/mês cada.
 - **Chave atrás de `configuracoes`, não de opção de CLI.** O botão "Refazer fechamento" da tela chama
   o mesmo comando — com opção de linha de comando, um "Refazer" reescreveria o mês com o número
   **antigo**, em silêncio.
-- **Mês corrente nunca usa a API** (janela incompleta dá resposta diferente a cada hora).
+- **Mês corrente nunca chama a API ao vivo** (janela incompleta dá resposta diferente a cada hora).
+  ⚠️ Atualizado em 2026-09-30 (quick 260930-njd): o mês corrente passou a usar o total da Adman, mas
+  **só do cache** aquecido off-request por `adman:warm-fechamento`, pedindo o intervalo do dia 1º até
+  **ontem** (a Adman é D-1). Cache frio cai para a soma diária com fonte `soma_diaria_fallback`.
+  Dentro de um request a regra não mudou: **zero chamada HTTP** — foi assim que o `cache:clear` de
+  2026-07-30 derrubou a produção. Se a janela do aquecimento divergir em um dia da que o rollup pede,
+  a chave de cache não casa e a tela fica no fallback para sempre.
 - **Rode fora da janela do sync das ~11h.** O sync diário já leva 429 da Adman; se metade cair em
   fallback o comando recusa gravar (e está certo em recusar).
 

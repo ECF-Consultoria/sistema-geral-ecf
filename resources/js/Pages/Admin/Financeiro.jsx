@@ -2209,6 +2209,48 @@ function SemDataInicioAviso({ empresas }) {
     );
 }
 
+// Quick 261005-sm1 — empresas com a conta da Adman diferente da conta do
+// Mercado Livre. Substituiu uma TRAVA: antes o faturamento dessas empresas
+// deixava de vir da Adman, e isso cobrava o número errado de 17 empresas. O
+// aviso não muda número nenhum — existe para alguém conferir o cadastro.
+// Lista da página (não é atributo de linha); o link leva à ficha da empresa,
+// onde as duas contas se corrigem.
+function ContasDivergentesAviso({ empresas }) {
+    if (!empresas || empresas.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 flex flex-col gap-2.5">
+            <div className="flex flex-col gap-0.5">
+                <p className="text-white/70 text-[14px] font-medium">
+                    {empresas.length === 1
+                        ? 'Uma empresa com duas contas diferentes'
+                        : `${empresas.length} empresas com duas contas diferentes`}
+                </p>
+                <p className="text-white/45 text-[13px]">
+                    A conta da Adman e a conta do Mercado Livre não são a mesma. O faturamento está vindo da
+                    Adman; confira se as duas contas estão certas.
+                </p>
+            </div>
+            <ul className="flex flex-col gap-1.5">
+                {empresas.map(empresa => (
+                    <li key={empresa.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+                        <span className="text-white/75">{empresa.name}</span>
+                        <span className="text-white/40">
+                            Adman {empresa.conta_adman} · Mercado Livre {empresa.conta_mercado_livre}
+                        </span>
+                        <a
+                            href={empresa.url}
+                            className="text-white/60 hover:text-white underline underline-offset-2 decoration-white/20 hover:decoration-white/50 transition-colors"
+                        >
+                            ver na ficha da empresa
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLimpar, total, filtrado, servicosNomes }) {
     const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 focus:outline-none focus:border-ecf-yellow/40';
     const ativo = filtroChip !== 'todos' || filtros.busca !== '' || filtros.servico_nome !== '';
@@ -2269,7 +2311,7 @@ function FiltroBarra({ filtros, onChangeFiltros, filtroChip, onChangeChip, onLim
     );
 }
 
-export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [], nao_participam_do_fechamento = [], dado_mudou_depois_do_fechamento = null }) {
+export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [], faixas_por_servico = [], faixas_por_grupo = [], competencia_fechada = false, competencia_fechada_em = null, periodo = null, totais, regra_nova_ativa = false, empresas_sem_data_inicio = [], nao_participam_do_fechamento = [], dado_mudou_depois_do_fechamento = null, contas_divergentes = [] }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Atalho do widget "Subiram de faixa este mês" (Fase 139): liga o chip
@@ -2495,6 +2537,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     <SemDataInicioAviso empresas={empresas_sem_data_inicio} />
                     <NaoParticipamAviso itens={nao_participam_do_fechamento} mesFechado={competencia_fechada} />
                     <DadoMudouDepoisAviso info={dado_mudou_depois_do_fechamento} />
+                    <ContasDivergentesAviso empresas={contas_divergentes} />
                     <div className="flex flex-col gap-4">
                         <FiltroBarra
                             filtros={filtros}

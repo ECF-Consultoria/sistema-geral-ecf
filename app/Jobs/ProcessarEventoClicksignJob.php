@@ -9,6 +9,7 @@ use App\Models\ContratoLiberacao;
 use App\Services\Clicksign\ClicksignClient;
 use App\Services\Clicksign\ContratoSignatariosSyncService;
 use App\Services\Contratos\GateLiberacaoOperacionalService;
+use App\Services\Fechamento\TabelaDeContratoAssinadoService;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -125,8 +126,16 @@ class ProcessarEventoClicksignJob implements ShouldQueue
         ClicksignClient $client,
         ContratoSignatariosSyncService $sync,
         GateLiberacaoOperacionalService $gate,
-        EmpresaOperacionalRouter $router
+        EmpresaOperacionalRouter $router,
+        // Quick 261006-gf5 — OPCIONAL de propósito: a suíte da Fase 129 chama
+        // `handle()` à mão com os quatro serviços históricos, e um parâmetro
+        // obrigatório novo derrubaria ~10 testes por ArgumentCountError sem
+        // nenhum ganho. O container resolve normalmente quando o worker roda;
+        // o `??=` abaixo cobre a chamada manual.
+        ?TabelaDeContratoAssinadoService $tabelaDoContrato = null
     ): void {
+        $tabelaDoContrato ??= app(TabelaDeContratoAssinadoService::class);
+
         // 1. Guard de reentrega (D-11/gate #11): a fila pode reentregar o
         // mesmo job (worker derrubado) — at-least-once é o pior caso
         // assumido pelo desenho.
@@ -266,6 +275,20 @@ class ProcessarEventoClicksignJob implements ShouldQueue
             // replicar guard próprio aqui (duplicar guard em dois lugares
             // cria dois lugares para errar).
             $router->liberarEmpresa($contrato->company, $contrato->servico, ContratoLiberacao::VIA_WEBHOOK, contrato: $contrato);
+
+            // Quick 261006-gf5 — a tabela progressiva da empresa passa a ser
+            // CONFIRMADA POR CONTRATO. O documento foi gerado por este próprio
+            // sistema, então ele já sabe qual tabela foi impressa (a do
+            // serviço); o que faltava era carimbar o selo em vez de deixar a
+            // empresa como "presumida" para sempre — 3 das 5 empresas com
+            // contrato assinado estavam assim em 2026-10-06, a MADERATTO
+            // MÓVEIS entre elas.
+            //
+            // `aplicarComSeguranca()` NUNCA lança: a assinatura e a liberação
+            // já foram gravadas e não podem ser desfeitas porque a gravação de
+            // uma tabela de cobrança falhou — mesma disciplina do try/catch do
+            // download do PDF abaixo (D-14 da Fase 129).
+            $tabelaDoContrato->aplicarComSeguranca($contrato);
 
             // Plano 129-06 (CLICK-11, D-14) — dispara o download do PDF
             // assinado FORA do caminho crítico, depois da liberação já ter

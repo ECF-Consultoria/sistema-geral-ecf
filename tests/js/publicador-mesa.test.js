@@ -31,6 +31,7 @@ const CARDS = [
     `${BASE}/Mesa/CampoPreco.jsx`,
     `${BASE}/Mesa/AcoesDePublicacao.jsx`,
     `${BASE}/Mesa/TermosMaisBuscados.jsx`,
+    `${BASE}/Mesa/PainelCriativos.jsx`,
 ];
 // "Revisar e publicar" reenvia a descrição por rota própria: mesmas regras, menos a de rota.
 const COM_ROTA = [`${BASE}/Mesa/Publicar.jsx`];
@@ -229,6 +230,28 @@ test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira not
     assert.doesNotMatch(fonte, /border-amber-400\/50|\(obrigatório\)/);
 });
 
+test('BlocoDeFotos — "Gerar com IA" pelo contexto (LINK, sem amarelo), painel logo abaixo do bloco pedido, por instância e montado durante a releitura, sugestões só com arquivo; o cartão da variação e "Fotos para todas" continuam usando o bloco', () => {
+    const f = lerSemComentarios(`${BASE}/FotosPorGrupo.jsx`);
+    assert.match(f, /useContext\(CriativosDoPublicador\)/);
+    assert.match(f, /useId\(\)/);
+    assert.match(f, /data-gerar-com-ia=\{grupo\}/);
+    assert.match(f, /Gerar com IA/);
+    assert.match(f, /className=\{LINK\}/);
+    assert.match(f, /criativos\.alvo\.instancia === instancia/);
+    assert.match(f, /criativos\.reivindicar\(grupo, instancia\)/);
+    assert.match(f, /\{aberto && \(?\s*<PainelCriativos c=\{criativos\}/);
+    assert.match(f, /disabled=\{disabled\}/);
+    assert.match(f, /tem_arquivo/);
+    assert.match(f, /criativos\.abrir\(grupo, titulo, instancia\)/);
+    assert.doesNotMatch(f, /route\(|bg-ecf-yellow|uppercase/);
+    assert.doesNotMatch(f, /const aberto = [^;]*disabled/);
+
+    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\}/);
+    const todas = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(todas, /<BlocoDeFotos grupo=\{GERAL\}/);
+});
+
 test('CartaoVariante — fotos, estoque/SKU/código de GradeVariantes na caixa grande, extras da variação; sem preço nem título (moram em outras etapas)', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
     assert.match(f, /from '\.\.\/GradeVariantes'/);
@@ -291,6 +314,27 @@ test('CampoPreco — MOSTRA o da Precificação do Portal (docx §4) sem gravá-
     assert.match(fonte, /onMudar\(null\)/);
     assert.match(fonte, /A Precificação do Portal não tem preço para esta oferta/);
     assert.match(fonte, /invalido && INVALIDO/);
+});
+
+test('PainelCriativos — confirmação de custo antes de gerar, \'Agora não\', motivo ≤ 300, gerar de novo só com kit aberto e referência viva, usar/pôr de novo/usar o kit, aviso de limite, texto da publicação e nada do assistente antigo', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/PainelCriativos.jsx`);
+    assert.match(f, /CUSTO_POR_IMAGEM_USD = 0\.101/);
+    assert.match(f, /US\$/);
+    assert.match(f, /Agora não/);
+    assert.match(f, /data-confirmar-custo/);
+    assert.match(f, /c\.gerar/);
+    assert.match(f, /c\.recusarConfirmacao/);
+    assert.match(f, /maxLength=\{300\}/);
+    assert.match(f, /kit\.status !== 'aprovado'/);
+    assert.match(f, /kit\.referencias/);
+    assert.match(f, /c\.regenerar\(s\.indice\)/);
+    assert.match(f, /c\.aprovar\(s\.indice\)/);
+    assert.match(f, /Pôr de novo no anúncio/);
+    assert.match(f, /c\.aprovarKit/);
+    assert.match(f, /data-aviso-capacidade/);
+    assert.match(f, /fotosNoGrupo \+ kit\.prontas > maxFotos/);
+    assert.match(f, /entram no anúncio do Mercado Livre só na publicação/);
+    assert.doesNotMatch(f, /PainelCriativosIa|KitCriativosGrade|axios|primario|kit_token|só na conferência/);
 });
 
 test('Publicar — situação, o que falta por etapa com "Corrigir em…", Conferir/Publicar (um só amarelo) e a prévia só com dados reais', () => {

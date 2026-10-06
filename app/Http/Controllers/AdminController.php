@@ -349,6 +349,10 @@ class AdminController extends Controller
             // faturamento de agora (o estado normal: nenhum aviso). Prop da
             // PÁGINA, nunca chave nova nos cinco literais de linha.
             'dado_mudou_depois_do_fechamento' => $dadoMudouDepois,
+            // Quick 261005-sm1 — empresas com a conta da Adman diferente da
+            // conta do Mercado Livre. Lista vazia = nenhum aviso na tela.
+            // Prop da PÁGINA, nunca chave nova nos cinco literais de linha.
+            'contas_divergentes' => $this->fechamentoContasDivergentes($rawCompanies),
         ]);
     }
 
@@ -400,6 +404,50 @@ class AdminController extends Controller
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * Quick 261005-sm1 — empresas com a conta da Adman DIFERENTE da conta do
+     * Mercado Livre, para a lista discreta da tela.
+     *
+     * É o aviso que substituiu a trava `ids-iguais`: até 2026-10-05 essas
+     * empresas eram recusadas pela API e ficavam na soma diária. A trava
+     * nasceu da LAURA LAR, cujo defeito era o TOKEN do Mercado Livre
+     * (apontando para a conta da GRAN BELO) e não a API — e cobrava o número
+     * errado de 17 empresas. Hoje o faturamento vem da Adman e quem confere o
+     * cadastro é uma pessoa, com esta lista.
+     *
+     * ⛔ ZERO consulta nova: `$companies` já está carregado e a divergência é
+     * de colunas da própria empresa. ⛔ Zero HTTP — nenhuma pergunta à Adman
+     * dentro do request (2026-07-30).
+     *
+     * ⚠️ Só sai com a chave `fechamento_faturamento_da_api_ativo` ligada: com
+     * ela desligada o faturamento não vem da Adman, e a copy ("o faturamento
+     * está vindo da Adman") seria mentira. Nenhum número muda por causa
+     * disto, em nenhum dos dois casos.
+     *
+     * @param  Collection<int, Company>  $companies
+     * @return array<int, array{id: int, name: string, conta_adman: string, conta_mercado_livre: string, url: string}>
+     */
+    private function fechamentoContasDivergentes(Collection $companies): array
+    {
+        if (! $this->fonteFaturamento->ativa()) {
+            return [];
+        }
+
+        return $companies
+            ->filter(fn (Company $c) => $this->rollupService->contasDivergem($c))
+            ->sortBy('name')
+            ->map(fn (Company $c) => [
+                'id'                  => (int) $c->id,
+                'name'                => (string) $c->name,
+                'conta_adman'         => (string) $c->adman_account_id,
+                'conta_mercado_livre' => (string) $c->ml_store_id,
+                // A ficha da empresa é onde as duas contas se corrigem.
+                'url'                 => '/companies/'.$c->id,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

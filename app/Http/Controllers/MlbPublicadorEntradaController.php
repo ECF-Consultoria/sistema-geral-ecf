@@ -185,7 +185,7 @@ class MlbPublicadorEntradaController extends Controller
     }
 
     /** Casca do editor: produto, empresa, faixa de produtos e se a publicação está liberada. */
-    public function editor(int $produto)
+    public function editor(int $produto, Request $request, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao)
     {
         $p = PubProduto::findOrFail($produto);
         $alvo = $this->programas->empresaDoProduto($p);
@@ -205,6 +205,10 @@ class MlbPublicadorEntradaController extends Controller
                 'id' => $i['id'], 'sku' => $i['sku'], 'nome' => $i['nome'], 'status' => $i['status'],
             ], $lista),
             'liberada' => ContasLiberadas::libera($p->contaOuNula()),
+            // Fase 165 (D-06): o "Gerar com IA" dos blocos de fotos — mesma chave e mesma permissão
+            // do Creative Engine; NÃO exige Company (a loja vem da conta do produto). Só esconde o
+            // botão: toda ação é conferida de novo no servidor.
+            'criativos_ia' => $creativeAtivo->ativa() && $creativePermissao->podeGerar($request->user()),
         ]);
     }
 }
