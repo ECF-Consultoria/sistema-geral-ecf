@@ -164,6 +164,25 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertNull($r['campos']['valor']);
     }
 
+    /** BE-IN-02: a coluna é SMALLINT UNSIGNED; fora de 1..65535 é erro da linha, não 22003 no lote. */
+    public function test_ordem_fora_de_1_a_65535_e_erro_da_linha(): void
+    {
+        foreach ([70000, '70000', 0, '0', -1, 'abc', '123456789012345678'] as $ordem) {
+            $r = $this->ler(['ordem' => $ordem]);
+            $this->assertSame('A ordem deve ser um número de 1 a 65.535.', $r['erros']['ordem'] ?? null, var_export($ordem, true));
+        }
+
+        foreach ([1, '2', 65535] as $ordem) {
+            $r = $this->ler(['ordem' => $ordem]);
+            $this->assertSame([], $r['erros']);
+            $this->assertSame((int) $ordem, $r['campos']['ordem']);
+        }
+
+        // Ausente ou vazio: segue o ordinal da coluna Variação.
+        $this->assertSame(2, $this->ler(['ordem' => '', 'variacao' => '2'])['campos']['ordem']);
+        $this->assertSame(2, $this->ler(['ordem' => null, 'variacao' => '2'])['campos']['ordem']);
+    }
+
     public function test_presentes_lista_so_o_que_veio_na_linha(): void
     {
         $r = $this->ler();

@@ -40,6 +40,7 @@ final class NormalizadorDeLinha
     private const MAX_MEDIDA    = 999.99;
     private const MAX_PESO      = 9999.999;
     private const MAX_CUSTO     = 9999999999;
+    public const MAX_ORDEM      = 65535; // SMALLINT UNSIGNED
     private const MSG_SEPARADOR = 'Não use / , | no nome. Escolha um nome simples.';
 
     /**
@@ -128,10 +129,16 @@ final class NormalizadorDeLinha
             }
         }
 
-        // Ordem explícita vence o ordinal da coluna.
-        $ordemExplicita = self::inteiro($bruta['ordem'] ?? null);
-        if ($ordemExplicita !== null && $ordemExplicita > 0) {
-            $ordem = $ordemExplicita;
+        // Ordem explícita vence o ordinal da coluna. A coluna é SMALLINT UNSIGNED: fora de
+        // 1..65535 o MariaDB estrito dá 22003 e derrubava o lote inteiro (BE-IN-02).
+        $ordemBruta = $bruta['ordem'] ?? null;
+        if ($ordemBruta !== null && self::texto($ordemBruta) !== '') {
+            $ordemExplicita = self::inteiro($ordemBruta);
+            if ($ordemExplicita === null || $ordemExplicita < 1 || $ordemExplicita > self::MAX_ORDEM) {
+                $erros['ordem'] = 'A ordem deve ser um número de 1 a 65.535.';
+            } else {
+                $ordem = $ordemExplicita;
+            }
         }
         if ($ordem !== null) {
             $campos['ordem'] = $ordem;

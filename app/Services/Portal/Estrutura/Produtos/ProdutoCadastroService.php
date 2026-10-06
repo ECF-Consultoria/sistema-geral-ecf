@@ -552,7 +552,7 @@ class ProdutoCadastroService
 
             $eixo = in_array('eixo', $presentes, true) ? $campos['eixo'] : $copiar?->eixo;
             $custo = in_array('custo', $presentes, true) ? $campos['custo'] : $copiar?->custo;
-            $ordem = $campos['ordem'] ?? ((int) $produto->variacoes()->max('ordem') + 1);
+            $ordem = $campos['ordem'] ?? min(NormalizadorDeLinha::MAX_ORDEM, (int) $produto->variacoes()->max('ordem') + 1);
 
             $variacao = new EstruturaProdutoVariacao([
                 'produto_id' => $produto->id,
