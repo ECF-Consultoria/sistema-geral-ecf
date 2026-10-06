@@ -154,6 +154,26 @@ class CadastroDeProdutoTest extends TestCase
         $this->assertSame(1, EstruturaProdutoVolume::count());
     }
 
+    /** BE-CR-01: só a grade deixou de casar pelo grupo; reimportar acrescenta variação ao produto existente (D-14). */
+    public function test_importacao_continua_juntando_pelo_grupo_ao_produto_que_ja_existia(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+
+        $this->svc()->gravarLinhas($empresa, [['grupo' => 'G1', 'codigo' => 'G1-1', 'nome' => 'Mesa']], $ator, ProdutoCadastroService::MODO_IMPORTACAO);
+        $r = $this->svc()->gravarLinhas($empresa, [['grupo' => 'G1', 'codigo' => 'G1-2', 'nome' => 'Mesa']], $ator, ProdutoCadastroService::MODO_IMPORTACAO);
+
+        $this->assertSame([], $r['erros']);
+        $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count());
+        $this->assertSame(2, EstruturaProdutoVariacao::where('company_id', $empresa->id)->count());
+
+        // Na grade o mesmo grupo é recusado e nada é criado.
+        $g = $this->svc()->gravarLinhas($empresa, [['grupo' => 'G1', 'codigo' => 'G1-3', 'nome' => 'Outra']], $ator);
+        $this->assertSame(['Já existe um produto com o código G1. Abra a ficha dele para adicionar a variação.'], array_column($g['erros'], 'mensagem'));
+        $this->assertSame('Mesa', EstruturaProduto::first()->nome);
+        $this->assertSame(2, EstruturaProdutoVariacao::where('company_id', $empresa->id)->count());
+    }
+
     public function test_variacao_nova_de_produto_existente_copia_da_primeira_e_o_enviado_vale(): void
     {
         $empresa = $this->empresaDoGabarito();

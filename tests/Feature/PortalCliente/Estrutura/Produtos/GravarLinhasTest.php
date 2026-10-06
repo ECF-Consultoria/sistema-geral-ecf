@@ -85,6 +85,57 @@ class GravarLinhasTest extends TestCase
         $this->assertSame(2, EstruturaProdutoVariacao::where('company_id', $empresa->id)->count());
     }
 
+    /**
+     * BE-CR-01: o `codigo` do produto fica "órfão" quando a Ref da 1ª variação muda. Um "Novo
+     * produto" da ficha com aquela Ref (e grupo = Ref, como a ficha manda) caía dentro do produto
+     * antigo: renomeava, apagava a categoria e pendurava a variação nele.
+     */
+    public function test_produto_novo_com_grupo_igual_ao_codigo_orfao_de_outro_produto_nao_mexe_nele(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+
+        // 1. O produto antigo nasce pela ficha com a Ref A1 (o código dele vira A1).
+        $this->gravar($sessao, [['chave' => 'a', 'grupo' => 'A1', 'codigo' => 'A1', 'nome' => 'Mesa Antiga', 'familia' => 'Farmhouse', 'volumes' => $this->vol()]])->assertOk();
+        $antigo = EstruturaProduto::where('company_id', $empresa->id)->firstOrFail();
+        $antigo->update(['categoria_ml_id' => 'MLB1', 'categoria_ml_nome' => 'Cristaleiras', 'categoria_ml_caminho' => 'Casa > Cristaleiras']);
+        $variacao = EstruturaProdutoVariacao::where('produto_id', $antigo->id)->firstOrFail();
+
+        // 2. A Ref muda para B1: o código do produto continua A1.
+        $this->gravar($sessao, [['id' => $variacao->id, 'codigo' => 'B1', 'nome' => 'Mesa Antiga']])->assertOk();
+        $this->assertSame('A1', $antigo->fresh()->codigo);
+
+        // 3. "Novo produto" com a Ref A1: a ficha manda grupo = Ref e categoria_texto vazio.
+        $r = $this->gravar($sessao, [
+            ['chave' => 'n1', 'grupo' => 'A1', 'codigo' => 'A1', 'nome' => 'Mesa Nova', 'categoria_texto' => '', 'valor' => 'Preto'],
+        ])->assertOk();
+
+        $this->assertSame(0, $r->json('totais.criadas'));
+        $this->assertSame(1, $r->json('totais.com_erro'));
+        $this->assertSame('n1', $r->json('erros.0.chave'));
+        $this->assertSame('Já existe um produto com o código A1. Abra a ficha dele para adicionar a variação.', $r->json('erros.0.mensagem'));
+
+        // O produto antigo está intacto: nome, categoria, família e variações.
+        $antigo->refresh();
+        $this->assertSame('Mesa Antiga', $antigo->nome);
+        $this->assertSame('MLB1', $antigo->categoria_ml_id);
+        $this->assertSame('Cristaleiras', $antigo->categoria_ml_nome);
+        $this->assertSame('Casa > Cristaleiras', $antigo->categoria_ml_caminho);
+        $this->assertSame('Farmhouse', $antigo->familia?->nome);
+        $this->assertSame(['B1'], EstruturaProdutoVariacao::where('produto_id', $antigo->id)->pluck('codigo')->all());
+        $this->assertSame(1, EstruturaProduto::where('company_id', $empresa->id)->count());
+        $this->assertSame(['Mesa Antiga'], EstruturaOferta::where('company_id', $empresa->id)->whereNotNull('variacao_id')->pluck('nome')->all());
+
+        // As linhas do MESMO lote continuam se juntando pelo grupo (produto novo, código livre).
+        $r = $this->gravar($sessao, [
+            ['chave' => 'p1', 'grupo' => 'P1', 'codigo' => 'P1', 'nome' => 'Poltrona', 'valor' => 'Azul'],
+            ['chave' => 'p2', 'grupo' => 'P1', 'codigo' => 'P2', 'nome' => 'Poltrona', 'valor' => 'Verde'],
+        ])->assertOk();
+        $this->assertSame(2, $r->json('totais.criadas'));
+        $this->assertSame(2, EstruturaProduto::where('company_id', $empresa->id)->count());
+        $this->assertSame(1, count(array_unique(array_column($r->json('linhas'), 'produto_id'))));
+    }
+
     public function test_201_linhas_ou_nenhuma_dao_422(): void
     {
         $sessao = $this->entrarNoPortal($this->empresaDoGabarito());

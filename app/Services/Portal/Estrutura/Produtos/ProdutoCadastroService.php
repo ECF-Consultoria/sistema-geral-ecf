@@ -42,6 +42,12 @@ use Illuminate\Validation\ValidationException;
  * campos que a linha trouxe (`presentes`) mudam. Em MODO_GRADE o mesmo código
  * é recusado (a grade devolve o `id` para editar).
  *
+ * ### Grupo (BE-CR-01)
+ * Em MODO_GRADE o `grupo` só junta linhas de produto criado no MESMO lote; grupo
+ * que bate no código de um produto que já existia é erro da linha (o produto
+ * existente se edita pelo `produto_id`). Em MODO_IMPORTACAO o grupo casa com o
+ * produto existente — reimportar acrescenta variações a ele.
+ *
  * ### Oferta ligada (D-08, D-09)
  * Cada variação gravada tem UMA oferta simples na Lista SKUs (`variacao_id`), com
  * SKU = código da variação e nome "Produto — Valor". Não há casamento por SKU com
@@ -385,6 +391,17 @@ class ProdutoCadastroService
 
         if ($produto === null && $campos['grupo'] !== null) {
             $idDoGrupo = $estado['produtos_codigo'][self::chaveCodigo($campos['grupo'])] ?? null;
+
+            // BE-CR-01: na ficha (MODO_GRADE) o grupo só junta as linhas DESTE lote. Produto que já
+            // existia antes do lote se edita pelo `produto_id`; casar pelo código renomeava o produto
+            // de outra pessoa e apagava a categoria dele (o `codigo` do produto fica "órfão" quando a
+            // Ref da 1ª variação muda). A importação continua casando pelo grupo de propósito (D-14).
+            if ($idDoGrupo !== null && $modo === self::MODO_GRADE && isset($estado['existiam'][$idDoGrupo])) {
+                throw ValidationException::withMessages([
+                    'codigo' => "Já existe um produto com o código {$campos['grupo']}. Abra a ficha dele para adicionar a variação.",
+                ]);
+            }
+
             $produto = $idDoGrupo !== null ? $estado['produtos'][$idDoGrupo] : null;
         }
 
