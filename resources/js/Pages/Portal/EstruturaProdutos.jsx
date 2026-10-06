@@ -10,6 +10,7 @@ import EditorVolumes from '@/Components/Portal/Estrutura/Produtos/EditorVolumes'
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
+import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
@@ -77,6 +78,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
     const [sugerindo, setSugerindo] = useState(false);
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
+    const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
 
@@ -394,8 +396,16 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     const estadoTexto = { salvando: 'Salvando…', salvo: 'Salvo', rede: 'Não foi possível salvar agora. Suas alterações ficam na tela; vamos tentar de novo.' }[estado];
 
+    // Renomear/excluir item de lista muda o que as linhas mostram: grava o que está pendente e recarrega do servidor.
+    const recarregarProdutos = () => {
+        clearTimeout(temporizador.current);
+        enviar();
+        router.reload({ only: ['produtos', 'listas'], preserveScroll: true });
+    };
+
     const acoes = (
         <>
+            <Botao variante="secundario" onClick={() => setGerindoListas(true)} data-acao="familias-ambientes">Famílias e ambientes</Botao>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <button type="button" data-acao="menu-planilha"
@@ -543,6 +553,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     setExclusao(null);
                     if (resposta?.mensagem) setAviso(resposta.mensagem);
                 }} />
+            <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
             <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />

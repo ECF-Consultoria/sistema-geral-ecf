@@ -53,3 +53,38 @@ test('Página: modelo é link de download (não axios), no menu e no estado vazi
     assert.ok(pagina.includes('Baixar planilha-modelo'));
     assert.match(pagina, /<JanelaImportacao /);
 });
+
+// ─── Famílias e ambientes (D-05) ───────────────────────────────────────
+
+const listasJanela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaListas.jsx');
+
+test('JanelaListas: abas, campo de novo item, usada em, renomear e lixeira', () => {
+    for (const t of ['Famílias', 'Ambientes', 'Nova família', 'Novo ambiente', 'usada em', 'Excluir família', 'Excluir ambiente', 'Manter']) {
+        assert.ok(listasJanela.includes(t), `faltou: ${t}`);
+    }
+    assert.match(listasJanela, /Pencil/);
+    assert.match(listasJanela, /Trash2/);
+    assert.match(listasJanela, /e\.key === 'Enter'/);
+});
+
+test('JanelaListas: item em uso não exclui e explica; sem uso confirma inline', () => {
+    assert.ok(listasJanela.includes('Troque nos produtos para poder excluir.'));
+    assert.match(listasJanela, /em_uso \?\? 0\) > 0/);
+    assert.match(listasJanela, /disabled=\{emUso\}/);
+    assert.ok(listasJanela.includes('Excluir “{item.nome}”?'));
+});
+
+test('JanelaListas: usa as rotas de família e ambiente e atualiza o mesmo estado da página', () => {
+    assert.match(listasJanela, /portal\.auth\.estrutura\.produtos\.\$\{t\.rota\}\.\$\{acao\}/);
+    assert.match(listasJanela, /rota: 'familias'/);
+    assert.match(listasJanela, /rota: 'ambientes'/);
+    for (const v of ["'criar'", "'renomear'", "'excluir'"]) assert.ok(listasJanela.includes(v));
+    assert.match(listasJanela, /onListas\(data\.listas\)/);
+    assert.match(pagina, /<JanelaListas [\s\S]*?onListas=\{setListas\}/);
+    assert.match(pagina, /only: \['produtos', 'listas'\]/);
+    assert.ok(pagina.includes('Famílias e ambientes'));
+});
+
+test('JanelaListas: sem contagem total nem barra de progresso', () => {
+    assert.ok(! /Progress|progress|itens\.length\} (famílias|ambientes)/.test(listasJanela));
+});
