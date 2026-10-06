@@ -148,6 +148,13 @@ class ImportadorProdutos
         foreach ($lido['linhas'] as $linha) {
             $numero = $linha['numero'];
 
+            // A linha de exemplo do modelo, que o cliente não apagou: não vira produto,
+            // oferta, família "Linha Exemplo" nem ambientes (BE-IN-06).
+            if (self::ehLinhaDeExemplo($linha['bruta'])) {
+                $plano['avisos'][] = "linha {$numero}: é a linha de exemplo do modelo e foi ignorada.";
+                continue;
+            }
+
             // O leitor já recusou a linha (fórmula sem valor salvo em coluna de texto).
             if (isset($linha['erro'])) {
                 $plano['erros'][] = [
@@ -238,6 +245,20 @@ class ImportadorProdutos
         ];
 
         return $plano;
+    }
+
+    /** Idêntica, coluna a coluna (sem diferença de espaços), à linha de exemplo do modelo. */
+    private static function ehLinhaDeExemplo(array $bruta): bool
+    {
+        $comparavel = fn (mixed $v) => trim((string) preg_replace('/\s+/u', ' ', is_scalar($v) ? (string) $v : ''));
+
+        foreach (ModeloProdutosXlsx::CAMPOS as $i => $campo) {
+            if ($comparavel($bruta[$campo] ?? null) !== $comparavel(ModeloProdutosXlsx::EXEMPLO[$i])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Linha lida da planilha -> contrato da linha de entrada (a categoria crua vira id ou texto). */

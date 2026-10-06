@@ -34,7 +34,13 @@ final class ModeloProdutosXlsx
         'Custo (R$)',
     ];
 
-    private const EXEMPLO = [
+    /**
+     * Campo lógico de cada coluna, na ordem de CABECALHOS (o mesmo que o leitor deduz pelo nome).
+     */
+    public const CAMPOS = ['codigo', 'grupo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria', 'n_volumes', 'volumes_texto', 'peso_total', 'custo'];
+
+    /** A linha 2 do modelo: a importação ignora (com aviso) a linha idêntica a ela (BE-IN-06). */
+    public const EXEMPLO = [
         'EXEMPLO-1',
         'EXEMPLO',
         'Cor: Natural',

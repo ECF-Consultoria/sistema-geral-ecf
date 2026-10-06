@@ -556,6 +556,34 @@ class ModeloEImportacaoTest extends TestCase
         $this->assertSame(0, EstruturaProdutoVariacao::where('codigo', 'PAI-1')->count());
     }
 
+    /** BE-IN-06: o modelo preenchido sem apagar a linha 2 não cria "Mesa de exemplo", família nem ambientes. */
+    public function test_linha_de_exemplo_do_modelo_e_ignorada_com_aviso(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $planilha = ModeloProdutosXlsx::gerar();
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('A3', 'REAL-1', DataType::TYPE_STRING);
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('D3', 'Produto real', DataType::TYPE_STRING);
+        $caminho = $this->gravar($planilha);
+
+        $this->assertSame(ModeloProdutosXlsx::CAMPOS, (new LeitorPlanilhaProdutos())->ler($caminho)['colunas'], 'CAMPOS é o que o leitor deduz dos cabeçalhos');
+
+        $previa = $this->importador()->previa($empresa, $caminho);
+        $this->assertSame(['novos' => 1, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0], $previa['totais']);
+        $this->assertContains('linha 2: é a linha de exemplo do modelo e foi ignorada.', $previa['avisos']);
+        $this->assertSame(['familias' => [], 'ambientes' => []], $previa['criar_listas']);
+
+        $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
+        $this->assertSame(1, $r['novos']);
+        $this->assertSame(['REAL-1'], EstruturaProdutoVariacao::pluck('codigo')->all());
+        $this->assertSame(0, EstruturaFamilia::count());
+        $this->assertSame(0, EstruturaAmbiente::count());
+
+        // Mexeu na linha de exemplo (virou produto de verdade): entra.
+        $planilha = ModeloProdutosXlsx::gerar();
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('D2', 'Mesa de verdade', DataType::TYPE_STRING);
+        $this->assertSame(1, $this->importador()->previa($empresa, $this->gravar($planilha))['totais']['novos']);
+    }
+
     public function test_aplicar_refaz_o_plano_variacao_criada_entre_a_previa_e_a_confirmacao_conta_como_atualizada(): void
     {
         $empresa = $this->empresaDoGabarito();
