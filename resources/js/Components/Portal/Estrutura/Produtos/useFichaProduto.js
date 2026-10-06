@@ -111,7 +111,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
             _caixas: undefined,
         };
-        // Com produto já gravado o servidor copia o resto da 1ª; só Ref e Valor precisam ir.
+        // Com produto já gravado, família, ambientes e categoria são do produto e não voltam no POST
+        // (o retrato os marca como "não mexidos"); eixo, custo e volumes vão sempre explícitos, com o
+        // que a tela mostra — `linhaParaServidor` cuida disso (FE-CR-04).
         if (nova.produto_id) nova._base = { ...campoEditaveis(nova), codigo: '', valor: '' };
         else delete nova._base;
         setAlterado(true);

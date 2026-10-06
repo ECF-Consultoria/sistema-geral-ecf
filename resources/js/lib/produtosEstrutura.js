@@ -177,14 +177,22 @@ export function campoEditaveis(row) {
 }
 
 /**
- * Ficha → contrato do POST linhas. Campos de escolha só vão quando mudaram
- * (célula em branco enviada apagaria o dado); código e nome vão sempre.
+ * Ficha → contrato do POST linhas. Campos só vão quando mudaram; código e nome
+ * vão sempre. String vazia é "não mexeu" para o servidor; para LIMPAR um campo
+ * que o servidor tinha preenchido vai `null` explícito (FE-CR-03).
  */
 export function linhaParaServidor(row) {
     const base = row._base ?? {};
     const novo = ! row.id;
+    const temRetrato = !! row._base;
     // Sem retrato (linha digitada do zero) tudo conta como novo; com retrato, só o que mudou.
-    const alterou = (c) => ! row._base || String(row[c] ?? '') !== String(base[c] ?? '');
+    const alterou = (c) => ! temRetrato || String(row[c] ?? '') !== String(base[c] ?? '');
+    const vazio = (c) => String(row[c] ?? '').trim() === '';
+    // Mexeu e esvaziou um campo que tinha valor no servidor: limpar de propósito.
+    const limpou = (c) => temRetrato && alterou(c) && vazio(c) && String(base[c] ?? '').trim() !== '';
+    // Variação NOVA de produto já gravado: sem eixo/custo/volumes no POST o servidor copiaria os da
+    // 1ª variação do BANCO (já atualizada neste mesmo lote). Vai exatamente o que a tela mostra (FE-CR-04).
+    const novaDeProdutoGravado = novo && !! row.produto_id;
     const out = {
         chave: row._k,
         codigo: String(row.codigo ?? '').trim(),
@@ -196,8 +204,13 @@ export function linhaParaServidor(row) {
     if (novo && ! row.produto_id && row.grupo) out.grupo = row.grupo;
     if (novo && row.variacao) out.variacao = row.variacao;
 
-    if (alterou('eixo_rotulo') && row.eixo_rotulo) out.eixo = row.eixo_rotulo;
-    if (alterou('valor') && String(row.valor ?? '') !== '') out.valor = row.valor;
+    if (novaDeProdutoGravado) out.eixo = vazio('eixo_rotulo') ? null : row.eixo_rotulo;
+    else if (alterou('eixo_rotulo') && ! vazio('eixo_rotulo')) out.eixo = row.eixo_rotulo;
+    else if (limpou('eixo_rotulo')) out.eixo = null;
+
+    if (alterou('valor') && ! vazio('valor')) out.valor = row.valor;
+    else if (limpou('valor')) out.valor = null;
+
     if (alterou('familia') && String(row.familia ?? '') !== '') out.familia = row.familia;
 
     if (alterou('ambientes_texto') && (row.ambientes_texto || row.id)) {
@@ -213,8 +226,12 @@ export function linhaParaServidor(row) {
     }
     // Caixas digitadas no editor vão como lista (vazia = limpar); o servidor interpreta os números.
     if (Array.isArray(row.volumes_digitados)) out.volumes = row.volumes_digitados;
-    else if (alterou('volumes_texto') && String(row.volumes_texto ?? '').trim() !== '') out.volumes_texto = row.volumes_texto;
-    if (alterou('custo') && String(row.custo ?? '').trim() !== '') out.custo = row.custo;
+    else if (alterou('volumes_texto') && ! vazio('volumes_texto')) out.volumes_texto = row.volumes_texto;
+    else if (novaDeProdutoGravado) out.volumes = Array.isArray(row.volumes) ? row.volumes : [];
+
+    if (novaDeProdutoGravado) out.custo = vazio('custo') ? null : row.custo;
+    else if (alterou('custo') && ! vazio('custo')) out.custo = row.custo;
+    else if (limpou('custo')) out.custo = null;
 
     return out;
 }
