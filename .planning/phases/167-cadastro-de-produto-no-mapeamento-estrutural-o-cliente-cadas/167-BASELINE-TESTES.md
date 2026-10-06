@@ -8,14 +8,18 @@
 
 | # | Grupo (comando) | Testes | Asserções | Falhas | Erros | Pulados | Exit | Tempo | Depois (167-17) |
 |---|---|---|---|---|---|---|---|---|---|
-| G1 | `tests/Feature/PortalCliente/Estrutura` | 83 | 724 | 0 | 0 | 0 | 0 | 47 s | 215 testes, 1457 asserções, exit 0, 43 s (83 + 132 da fase) |
-| G2 | `DadosEfetivosTest` + `SincronizaPortalTest` + `MigracaoAnunciarAntigoTest` + `Alavancas/CustoDoAnuncioTest` | 22 | 118 | 0 | 0 | 0 | 0 | 7 s | 22 testes, 118 asserções, exit 0, 7 s |
-| G3 | `PortalCliente/DominioLiberaTodoModuloTest` + `PortalSemAnunciarTest` | 7 | 155 | 0 | 0 | 0 | 0 | 7 s | 7 testes, 178 asserções, exit 0, 8 s |
-| G4 | `tests/Feature/PortalCliente` (inteiro, inclui G1 e G3) | 231 | 1872 | 0 | 0 | 0 | 0 | 57 s | 363 testes, 2628 asserções, exit 0, 80 s (231 + 132 da fase) |
-| G5 | `OfertaExcluidaNoPortalTest` + `ExclusaoDaEmpresaPreservaHistoricoTest` + `MigracoesDaFaseDetectamMariaDbTest` | 15 | 84 | 0 | 0 | 0 | 0 | 6 s | 16 testes, 89 asserções, exit 0, 5 s |
-| G6 | `npm run test:js` (node --test) | 958 | n/d | 2 | 0 | 0 | 1 | 2 s | 1032 testes, 1030 passam, 2 falham (as mesmas 2 de antes), exit 1, ~12 s |
+| G1 | `tests/Feature/PortalCliente/Estrutura` | 83 | 724 | 0 | 0 | 0 | 0 | 47 s | 215 testes, 1457 asserções, exit 0, 43 s (83 + 132 da fase) · **final (06/10, depois do 167-21): 224 / 1543, exit 0** |
+| G2 | `DadosEfetivosTest` + `SincronizaPortalTest` + `MigracaoAnunciarAntigoTest` + `Alavancas/CustoDoAnuncioTest` | 22 | 118 | 0 | 0 | 0 | 0 | 7 s | 22 testes, 118 asserções, exit 0, 7 s · **final: 22 / 118, exit 0** |
+| G3 | `PortalCliente/DominioLiberaTodoModuloTest` + `PortalSemAnunciarTest` | 7 | 155 | 0 | 0 | 0 | 0 | 7 s | 7 testes, 178 asserções, exit 0, 8 s · **final: 7 / 180, exit 0** |
+| G4 | `tests/Feature/PortalCliente` (inteiro, inclui G1 e G3) | 231 | 1872 | 0 | 0 | 0 | 0 | 57 s | 363 testes, 2628 asserções, exit 0, 80 s (231 + 132 da fase) · **final: 372 / 2716, exit 0** |
+| G5 | `OfertaExcluidaNoPortalTest` + `ExclusaoDaEmpresaPreservaHistoricoTest` + `MigracoesDaFaseDetectamMariaDbTest` | 15 | 84 | 0 | 0 | 0 | 0 | 6 s | 16 testes, 89 asserções, exit 0, 5 s · **final: 16 / 89, exit 0** |
+| G6 | `npm run test:js` (node --test) | 958 | n/d | 2 | 0 | 0 | 1 | 2 s | 1032 testes, 1030 passam, 2 falham (as mesmas 2 de antes), exit 1, ~12 s · **final: 1049, 1047 passam, as mesmas 2 falham** |
 
 Os números de G1, G2 e G3 batem com o esperado do RESEARCH (83/724, 22/118, 7/155).
+
+**Rodada final (06/10/2026, depois dos planos de lacuna 167-18..21 e dos ajustes D-31/D-32):** os mesmos
+comandos, nenhuma falha nova; o que cresceu é teste novo da fase (ficha em página, rotas `/novo` e `/{id}`, allowlist
+com id numérico, Visual grande/Lista, destaque da volta).
 
 ## Falhas PRÉ-EXISTENTES (não corrigidas aqui)
 
