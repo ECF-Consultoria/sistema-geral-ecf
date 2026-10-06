@@ -90,7 +90,11 @@ export function renderFrete(row, { consultando = false } = {}, forma = 'linha') 
     }
     const t = textoFrete(row.frete);
     const tip = row.frete.falhou ? TIP_FALHOU : row.frete.preco_origem === 'referencia' ? TIP_REFERENCIA : undefined;
-    const alerta = row.frete.alerta_faixa ? h(AlertTriangle, { size: 12, className: 'shrink-0 text-amber-300', title: TIP_FAIXA, 'aria-label': TIP_FAIXA }) : null;
+    // A dica fica no span: `title` no <svg> do lucide não aparece no navegador (revisão FE-IN-05).
+    const alerta = row.frete.alerta_faixa
+        ? h('span', { className: 'inline-flex shrink-0', title: TIP_FAIXA, role: 'img', 'aria-label': TIP_FAIXA },
+            h(AlertTriangle, { size: 12, className: 'text-amber-300', 'aria-hidden': 'true' }))
+        : null;
 
     if (pilha) {
         return caixa(

@@ -103,7 +103,9 @@ test('coluna Frete ME2: todos os estados do UI-SPEC', () => {
     }
     assert.match(lib, /row\.logistica === 'me1'/);
     assert.match(lib, /'pendente'/);
-    assert.match(lib, /frete\.alerta_faixa \? h\(AlertTriangle/);
+    // FE-IN-05: a dica mora no span que envolve o ícone (title no <svg> não aparece no navegador).
+    assert.match(lib, /frete\.alerta_faixa\s*\? h\('span', \{ className: 'inline-flex shrink-0', title: TIP_FAIXA, role: 'img', 'aria-label': TIP_FAIXA \},\s*h\(AlertTriangle, \{ size: 12, className: 'text-amber-300', 'aria-hidden': 'true' \}\)\)/);
+    assert.ok(! /h\(AlertTriangle, \{[^}]*title/.test(lib), 'nada de title no próprio ícone');
     assert.match(lib, /text-amber-300/);
     assert.match(lib, /h\(Loader2/);
     // apoios vêm de textoFrete: estimativa, ML, não consultado, faixa de referência

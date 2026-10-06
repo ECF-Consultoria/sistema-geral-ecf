@@ -145,6 +145,9 @@ test('Página: componente real no layout do portal, com a ficha, as variações 
         assert.ok(pagina.includes(t), `faltou: ${t}`);
     }
     assert.equal(contar(pagina, /bg-ecf-yellow/g), 1, 'Salvar produto é o único amarelo');
+    // FE-IN-05: dica do ⓘ no span (title no <svg> do lucide não aparece).
+    assert.ok(pagina.includes('<span className="inline-flex" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente.">'));
+    assert.ok(! /<Info [^>]*title=/.test(pagina));
 });
 
 test('Guarda: alteração não salva pede confirmação ao sair por link, botão ou aba', () => {

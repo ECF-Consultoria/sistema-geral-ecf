@@ -132,3 +132,14 @@ test('refSugerida: o menor número livre entre as Refs da ficha, a partir do gru
     assert.equal(refSugerida([v('a1', null), v('A1-2', null)]), 'a1-3', 'sem diferença de maiúscula');
     assert.equal(refSugerida([v('', null)]), '', 'sem Ref na 1ª não sugere "-2"');
 });
+
+// ─── Dica do alerta de faixa do frete (FE-IN-05) ────────────────────────────
+
+test('renderFrete: a dica "Neste preço o frete pode mudar de faixa." fica no span, não no <svg>', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { renderFrete } = await import('../../resources/js/lib/produtosEstrutura.js');
+    const html = renderToStaticMarkup(renderFrete({ id: 1, logistica: 'me2', frete: { valor: 20, origem: 'api', alerta_faixa: true } }));
+
+    assert.match(html, /<span class="inline-flex shrink-0" title="Neste preço o frete pode mudar de faixa\." role="img"/);
+    assert.ok(! /<svg[^>]*title=/.test(html), 'title no <svg> não aparece no navegador');
+});

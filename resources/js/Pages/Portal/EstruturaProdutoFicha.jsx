@@ -258,7 +258,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         <h2 className="text-[20px] font-bold text-white">Variações</h2>
                         <p className="flex items-center gap-2 text-[14px] text-white/70">
                             <span className="hidden sm:inline">Cada variação vira uma oferta na Lista SKUs.</span>
-                            <Info size={16} aria-hidden="true" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente." />
+                            {/* No <svg> o `title` não vira dica: ela mora no span (FE-IN-05). */}
+                            <span className="inline-flex" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente.">
+                                <Info size={16} aria-hidden="true" />
+                            </span>
                         </p>
                     </div>
 
