@@ -131,6 +131,20 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertContains('volumes', $this->ler(['volumes' => []])['presentes']);
     }
 
+    /** BE-IN-03: abaixo da precisão da coluna (0,01 cm; 0,001 kg) virava zero gravado. */
+    public function test_medida_e_peso_abaixo_do_minimo_representavel_sao_erro(): void
+    {
+        $r = $this->ler(['volumes' => [['c' => '0,001', 'l' => 10, 'a' => 10, 'kg' => 1]]]);
+        $this->assertSame('Cada medida precisa ter pelo menos 0,01 cm.', $r['erros']['volumes'] ?? null);
+
+        $r = $this->ler(['volumes' => [['c' => 10, 'l' => 10, 'a' => 10, 'kg' => '0,0004']]]);
+        $this->assertSame('O peso precisa ter pelo menos 0,001 kg.', $r['erros']['volumes'] ?? null);
+
+        $r = $this->ler(['volumes' => [['c' => '0,01', 'l' => '0,01', 'a' => '0,01', 'kg' => '0,001']]]);
+        $this->assertSame([], $r['erros']);
+        $this->assertSame(0.001, $r['campos']['volumes'][0]['kg']);
+    }
+
     public function test_volume_com_zero_e_erro(): void
     {
         $r = $this->ler(['volumes' => [['c' => 10, 'l' => 0, 'a' => 5, 'kg' => 2]]]);

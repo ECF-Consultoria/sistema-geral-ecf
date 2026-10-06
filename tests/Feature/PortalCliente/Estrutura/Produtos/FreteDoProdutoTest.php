@@ -119,6 +119,14 @@ class FreteDoProdutoTest extends TestCase
         $this->assertTrue($f['alerta_faixa']);
     }
 
+    /** BE-IN-03: lado abaixo de 0,5 cm não vai ao ML como 0 (que responde 400); vai como 1. */
+    public function test_dimensoes_do_ml_nunca_tem_lado_zero(): void
+    {
+        $this->assertSame('1x1x93,9500', FreteMe2Service::dimensions(['a' => 0.3, 'l' => 0.01, 'c' => 93, 'peso_real' => 9.5]));
+        $this->assertSame('6x55x93,1', FreteMe2Service::dimensions(['a' => 6, 'l' => 55, 'c' => 93, 'peso_real' => 0.0004]));
+        $this->assertSame('6x55x93,9500', FreteMe2Service::dimensions(['a' => 6, 'l' => 55, 'c' => 93, 'peso_real' => 9.5]));
+    }
+
     /** BE-WR-07: com o cache no banco, a estimativa de 30 variações lê o cache numa consulta só. */
     public function test_estimar_le_o_cache_numa_consulta_so(): void
     {

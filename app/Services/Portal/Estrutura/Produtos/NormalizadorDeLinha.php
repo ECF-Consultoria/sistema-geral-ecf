@@ -39,6 +39,8 @@ final class NormalizadorDeLinha
     private const MAX_VOLUMES   = 20;
     private const MAX_MEDIDA    = 999.99;
     private const MAX_PESO      = 9999.999;
+    private const MIN_MEDIDA    = 0.01;  // decimal(7,2)
+    private const MIN_PESO      = 0.001; // decimal(8,3)
     private const MAX_CUSTO     = 9999999999;
     public const MAX_ORDEM      = 65535; // SMALLINT UNSIGNED
     private const MSG_SEPARADOR = 'Não use / , | no nome. Escolha um nome simples.';
@@ -375,6 +377,13 @@ final class NormalizadorDeLinha
 
             if (! $c || ! $l || ! $a || ! $kg) {
                 return [[], 'Informe comprimento, largura, altura e peso maiores que zero.'];
+            }
+            // Abaixo da precisão da coluna (decimal 7,2 e 8,3) gravava ZERO e a tela dizia "salvo" (BE-IN-03).
+            if ($c < self::MIN_MEDIDA || $l < self::MIN_MEDIDA || $a < self::MIN_MEDIDA) {
+                return [[], 'Cada medida precisa ter pelo menos 0,01 cm.'];
+            }
+            if ($kg < self::MIN_PESO) {
+                return [[], 'O peso precisa ter pelo menos 0,001 kg.'];
             }
             if ($c > self::MAX_MEDIDA || $l > self::MAX_MEDIDA || $a > self::MAX_MEDIDA) {
                 return [[], 'Cada medida pode ter no máximo 999,99 cm.'];

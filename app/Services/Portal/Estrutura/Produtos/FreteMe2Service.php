@@ -47,10 +47,15 @@ class FreteMe2Service
 
     public function __construct(private MercadoLivreService $ml) {}
 
-    /** Dimensões no formato do ML: AxLxC,peso em gramas (ordem A×L×C, não C×L×A). */
+    /**
+     * Dimensões no formato do ML: AxLxC,peso em gramas (ordem A×L×C, não C×L×A). O ML só
+     * aceita inteiros e recusa lado 0 com 400: lado abaixo de 0,5 cm vai como 1 (BE-IN-03).
+     */
     public static function dimensions(array $pacote): string
     {
-        return sprintf('%dx%dx%d,%d', round($pacote['a']), round($pacote['l']), round($pacote['c']), round($pacote['peso_real'] * 1000));
+        $inteiro = fn (float|int $n) => max(1, (int) round($n));
+
+        return sprintf('%dx%dx%d,%d', $inteiro($pacote['a']), $inteiro($pacote['l']), $inteiro($pacote['c']), $inteiro($pacote['peso_real'] * 1000));
     }
 
     /**
