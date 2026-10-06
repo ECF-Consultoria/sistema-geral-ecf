@@ -12,6 +12,8 @@ import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCatego
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
+import CartoesProdutosMobile from '@/Components/Portal/Estrutura/Produtos/CartoesProdutosMobile';
+import SheetProduto from '@/Components/Portal/Estrutura/Produtos/SheetProduto';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
@@ -64,6 +66,24 @@ const dataBr = (iso) => {
     return `${d}/${m}/${a}`;
 };
 
+/** Abaixo de 768 px a tabela dá lugar aos cartões (a grade em célula não serve com o dedo). */
+function useTelaEstreita() {
+    const consulta = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null);
+    const [estreita, setEstreita] = useState(() => consulta()?.matches ?? false);
+
+    useEffect(() => {
+        const mq = consulta();
+        if (! mq) return undefined;
+        const aoMudar = (e) => setEstreita(e.matches);
+        setEstreita(mq.matches);
+        mq.addEventListener('change', aoMudar);
+
+        return () => mq.removeEventListener('change', aoMudar);
+    }, []);
+
+    return estreita;
+}
+
 const lista = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0]);
 
 export default function EstruturaProdutos({ empresa, modulos = [], produtos, filtros, vocabulario, ml_conectado = false, frete_tabela, limites, listas: listasIniciais }) {
@@ -80,6 +100,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
+    const [sheet, setSheet] = useState(null);            // { produtoId, n } enquanto o formulário do celular está aberto
+    const estreita = useTelaEstreita();
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
 
     const sujas = useRef(new Map());                      // _k → versão da última edição
@@ -321,7 +343,34 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
     const focar = (chave, coluna) => setSelecionar((s) => ({ chave, coluna, n: (s?.n ?? 0) + 1 }));
 
+    const abrirSheet = (produtoId = null) => setSheet((s) => ({ produtoId, n: (s?.n ?? 0) + 1 }));
+
+    /** O formulário do celular gravou: mescla as linhas devolvidas (troca no lugar, insere variação nova junto do produto). */
+    const mesclarDoSheet = (data) => {
+        let todas = rowsRef.current.filter((r) => r.id || String(r.codigo).trim() !== '' || String(r.nome).trim() !== '');
+        (data.linhas ?? []).forEach((servidor) => {
+            const pronta = { ...linhaDaGrade(servidor, vocabulario.pendencias) };
+            const i = todas.findIndex((r) => r.id === servidor.id);
+            if (i >= 0) {
+                todas = todas.map((r, j) => (j === i ? { ...pronta, _k: r._k } : r));
+                return;
+            }
+            let ultimo = -1;
+            todas.forEach((r, j) => { if (r.produto_id && r.produto_id === servidor.produto_id) ultimo = j; });
+            todas = ultimo >= 0 ? [...todas.slice(0, ultimo + 1), pronta, ...todas.slice(ultimo + 1)] : [...todas, pronta];
+        });
+        aplicar(derivar(todas.length ? todas : [linhaEmBranco()]));
+
+        if (data.listas) setListas(data.listas);
+        const criadas = data.criadas_nas_listas ?? { familias: [], ambientes: [] };
+        const partes = [];
+        if (criadas.familias?.length) partes.push(`${criadas.familias.length > 1 ? 'as famílias' : 'a família'} ${lista(criadas.familias)}`);
+        if (criadas.ambientes?.length) partes.push(`${criadas.ambientes.length > 1 ? 'os ambientes' : 'o ambiente'} ${lista(criadas.ambientes)}`);
+        if (partes.length) setAviso(`Criamos ${partes.join(' e ')}.`);
+    };
+
     const adicionarProduto = () => {
+        if (estreita) { abrirSheet(null); return; }
         const nova = linhaEmBranco();
         aplicar(derivar([...rowsRef.current, nova]));
         focar(nova._k, 'codigo');
@@ -479,7 +528,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                             Aqui ficam os produtos que você vende, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs. Digite na tabela abaixo ou cole as linhas do Excel.
                         </p>
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                            <Botao variante="primario" onClick={() => focar(rows[0]._k, 'codigo')} data-acao="primeiro-produto">
+                            <Botao variante="primario" onClick={() => (estreita ? abrirSheet(null) : focar(rows[0]._k, 'codigo'))} data-acao="primeiro-produto">
                                 <Plus size={14} /> Cadastrar o primeiro produto
                             </Botao>
                             <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-planilha-modelo"
@@ -495,6 +544,9 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     <p className="py-10 text-center text-[13px] text-white/45">Nenhum produto com essa busca.</p>
                 )}
 
+                {estreita ? (
+                    <CartoesProdutosMobile linhas={rows} vocabulario={vocabulario} onAbrir={abrirSheet} />
+                ) : (
                 <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-ecf-card" data-tabela-produtos>
                     <SpreadsheetGrid
                         columns={colunas}
@@ -533,6 +585,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                         )}
                     />
                 </div>
+                )}
 
                 {! ml_conectado && (
                     <p className="text-[12px] text-white/45" data-nota-frete>
@@ -553,6 +606,13 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     setExclusao(null);
                     if (resposta?.mensagem) setAviso(resposta.mensagem);
                 }} />
+            {sheet && (
+                <SheetProduto key={sheet.n} aberto linhas={sheet.produtoId ? rows.filter((r) => r.id && r.produto_id === sheet.produtoId) : []}
+                    listas={listas} vocabulario={vocabulario} onListas={setListas}
+                    onGravado={mesclarDoSheet}
+                    onRemovida={(linha, resposta) => { removerLocal(linha._k); if (resposta?.mensagem) setAviso(resposta.mensagem); }}
+                    onFechar={() => setSheet(null)} />
+            )}
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
             <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
