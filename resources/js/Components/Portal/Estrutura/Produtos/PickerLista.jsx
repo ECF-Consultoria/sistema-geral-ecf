@@ -79,6 +79,11 @@ export default function PickerLista({ tipo, multiplo = false, opcoes = [], valor
     if (texto !== '' && ! invalido && ! exata) {
         lista.push(parecida ? { tipo: 'usar', nome: parecida.nome } : { tipo: 'criar', nome: texto });
     }
+    // Família é opcional (D-28): escolhida por engano, dá para tirar. Fica no fim, para o Enter
+    // da 1ª opção nunca apagar a família sem querer (revisão FE-IN-12).
+    if (! multiplo && texto === '' && String(valor ?? '') !== '') {
+        lista.push({ tipo: 'nenhuma', nome: `Sem ${rotulo}` });
+    }
 
     const escolher = (nome) => {
         if (multiplo) {
@@ -114,6 +119,7 @@ export default function PickerLista({ tipo, multiplo = false, opcoes = [], valor
 
     const acionar = (i) => {
         if (! i) return;
+        if (i.tipo === 'nenhuma') { onCommit({ familia: '' }); onClose(); return; }
         if (i.tipo === 'criar') criar(i.nome);
         else escolher(i.nome);
     };
@@ -146,7 +152,7 @@ export default function PickerLista({ tipo, multiplo = false, opcoes = [], valor
                         onMouseEnter={() => setAtivo(n)}
                         onClick={() => acionar(i)}
                         className={cn('flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] text-white/85',
-                            n === ativo && 'bg-white/[0.06]')}>
+                            i.tipo === 'nenhuma' && 'text-white/60', n === ativo && 'bg-white/[0.06]')}>
                         {i.tipo === 'item' && multiplo && <Checkbox checked={marcado(i.nome)} tabIndex={-1} aria-hidden="true" className="pointer-events-none" />}
                         {i.tipo === 'criar' && <Plus className="h-3.5 w-3.5 text-ecf-yellow" aria-hidden="true" />}
                         <span className="truncate">

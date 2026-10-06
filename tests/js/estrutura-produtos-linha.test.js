@@ -143,3 +143,16 @@ test('renderFrete: a dica "Neste preço o frete pode mudar de faixa." fica no sp
     assert.match(html, /<span class="inline-flex shrink-0" title="Neste preço o frete pode mudar de faixa\." role="img"/);
     assert.ok(! /<svg[^>]*title=/.test(html), 'title no <svg> não aparece no navegador');
 });
+
+// ─── "Sem família" (FE-IN-12) ───────────────────────────────────────────────
+
+test('FE-IN-12: família tirada no picker manda familia: null; produto sem família e sem retrato não manda nada', () => {
+    const out = linhaParaServidor({ ...doServidor(), familia: '' });
+    assert.ok('familia' in out);
+    assert.equal(out.familia, null);
+
+    const semRetrato = linhaParaServidor({ _k: 'm1', codigo: 'X', nome: 'Y', familia: '' });
+    assert.equal('familia' in semRetrato, false);
+
+    assert.equal(linhaParaServidor({ ...doServidor(), familia: 'Palhinha' }).familia, 'Palhinha');
+});

@@ -215,7 +215,9 @@ export function linhaParaServidor(row) {
     if (alterou('valor') && ! vazio('valor')) out.valor = row.valor;
     else if (limpou('valor')) out.valor = null;
 
-    if (alterou('familia') && String(row.familia ?? '') !== '') out.familia = row.familia;
+    // "Sem família" no picker esvazia o campo: com retrato do servidor, vai null (limpar; FE-IN-12).
+    if (alterou('familia') && ! vazio('familia')) out.familia = row.familia;
+    else if (limpou('familia')) out.familia = null;
 
     if (alterou('ambientes_texto') && (row.ambientes_texto || row.id)) {
         out.ambientes = String(row.ambientes_texto ?? '').split(/[,;|]/).map((s) => s.trim()).filter(Boolean);

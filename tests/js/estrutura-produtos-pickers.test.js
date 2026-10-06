@@ -71,3 +71,12 @@ test('o POST das linhas manda as caixas digitadas como array de volumes', () => 
     assert.match(lib, /volumes_digitados/);
     assert.match(lib, /out\.volumes = /);
 });
+
+test('PickerLista: família escolhida pode ser tirada com "Sem família" (FE-IN-12)', () => {
+    assert.ok(picker.includes("lista.push({ tipo: 'nenhuma', nome: `Sem ${rotulo}` });"));
+    assert.match(picker, /if \(! multiplo && texto === '' && String\(valor \?\? ''\) !== ''\) \{/, 'só para família já escolhida, sem busca');
+    assert.ok(picker.includes("if (i.tipo === 'nenhuma') { onCommit({ familia: '' }); onClose(); return; }"));
+    // no fim da lista: o Enter da 1ª opção nunca apaga a família
+    assert.ok(picker.indexOf("tipo: 'nenhuma'") > picker.indexOf("tipo: 'criar'"));
+    assert.match(lib, /else if \(limpou\('familia'\)\) out\.familia = null;/);
+});
