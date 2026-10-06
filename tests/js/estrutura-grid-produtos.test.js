@@ -11,6 +11,10 @@ import { lerSemComentarios } from './_fonte.js';
 // porque o excedente era descartado sem aviso. Este gate trava as extensões e,
 // sobretudo, o default intacto do Onboarding.
 //
+// Desde o 167-18 (D-23) a tela de Produtos NÃO usa mais a grade: virou lista de
+// cartões + ficha. As extensões ficam por serem props opcionais do componente
+// compartilhado; este gate protege o default do Onboarding.
+//
 // Lê a fonte SEM COMENTÁRIOS (helper _fonte.js): a prosa pt-BR cita os próprios
 // identificadores e um gate cru passaria pelo comentário, não pelo código.
 // ═══════════════════════════════════════════════════════════════════════

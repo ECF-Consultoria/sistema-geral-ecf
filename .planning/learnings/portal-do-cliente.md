@@ -1012,3 +1012,14 @@ SKUs nasce dele. O que não se deduz do código:
   O endpoint devolve `indisponivel: true` também quando a lista vem vazia (nome
   fictício, sem categoria no preditor do ML). A busca em si funciona com o app
   token (dado público) — confirmado em 06/10 com "mesa de jantar" → MLB4341.
+- **Sem planilha dentro do sistema no cadastro de produto (D-23, 06/10).** A tela
+  de Produtos nasceu como grade tipo planilha (o D-12 lido como "tabela
+  editável") e o usuário reprovou na conferência visual: "eu disse que não
+  queria uma planilha dentro do sistema pra esse caso". "Na tela, no sistema
+  mesmo" quer dizer FORMULÁRIO. Ficou lista de cartões + ficha (painel lateral
+  no computador, folha de baixo no celular) e a planilha só como ARQUIVO (baixar
+  o modelo, preencher fora, importar com prévia). As extensões do
+  `SpreadsheetGrid` (167-04) continuam no componente compartilhado, sem uso
+  nesta tela. Não voltar a pôr grade no cadastro de produto sem perguntar ao
+  usuário. Lição de processo: "tabela editável" e "planilha" soam iguais para
+  quem vê a tela; antes de construir uma grade, mostrar o desenho.

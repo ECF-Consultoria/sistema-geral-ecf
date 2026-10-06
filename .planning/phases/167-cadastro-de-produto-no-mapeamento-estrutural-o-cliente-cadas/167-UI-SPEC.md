@@ -5,6 +5,7 @@ status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-10-05
+revised: 2026-10-06 (D-23)
 ---
 
 # Fase 167 — Contrato de Design da UI
@@ -17,6 +18,50 @@ created: 2026-10-05
 **Princípio do contrato:** esta tela é a forma RÁPIDA de cadastrar ~70 produtos. Velocidade de digitação vence enfeite.
 A tabela fica calma: **sem contador de progresso, sem placar, sem checklist de completude, sem rótulo em CAIXA ALTA,
 nada vermelho antes de tentar salvar.** Pendência por linha é texto discreto, não alarme.
+
+## Revisão D-23 (06/10/2026) — lista + ficha, sem planilha na tela
+
+Motivo: o checkpoint visual do 167-17 foi REPROVADO. A tela nasceu como grade de células (o D-12 lido como "tabela
+editável") e o usuário disse: "eu disse que não queria uma planilha dentro do sistema pra esse caso". "Na tela, no sistema
+mesmo" quer dizer FORMULÁRIO. As decisões D-23 e D-24 do 167-CONTEXT.md substituem o formato do D-12, e esta seção VALE
+SOBRE as seções abaixo onde houver conflito.
+
+**Passa a valer**
+
+- Cabeçalho: `Famílias e ambientes` · `Importar planilha` · `Baixar modelo (.xlsx)` · **`Adicionar produto`** (abre a ficha em
+  branco) · `Como funciona`. A barra tem só a busca e os botões contextuais (Sugerir categorias, Consultar fretes), sem
+  "Salvando… / Salvo".
+- Lista de cartões no lugar da tabela, em qualquer largura: `grid-cols-1 md:grid-cols-2 xl:grid-cols-3`; cartão
+  `rounded-2xl border border-white/[0.08] bg-ecf-card p-4`. O cartão mostra nome, "Família · Ambiente(s)" e categoria (com
+  "a confirmar" / "não validada"); cada variação mostra Ref, Valor, pílula de logística, frete, medidas, peso total (só com
+  2+ volumes), peso cubado, custo e, se houver, "Falta: …" em texto apagado, sem cor, sem ícone e sem contador.
+- Ficha do produto: o formulário da seção "Mobile e telas estreitas" vale para todos os tamanhos. `Sheet` com `side='right'`
+  a partir de 768 px e `side='bottom'` abaixo; campos em 4 colunas a partir de 640 px; família, ambiente e categoria são
+  escolhidos numa folha sobreposta (mesmos pickers, outro contêiner); "Salvar produto" é o único amarelo da ficha e a única
+  forma de gravar (um POST `linhas` com todas as variações).
+- Proteção do que foi digitado: com alteração não salva, clique fora e Esc não fecham a ficha e ela diz "Há alterações não
+  salvas. Use Salvar produto ou feche pelo X para descartar." O X fecha (ação explícita).
+- Erro de variação: "Não salvamos esta variação: {motivo}."
+- Estado vazio sem tabela por baixo, com o corpo "Aqui ficam os produtos que você vende, com medidas, peso e custo. Cada
+  variação vira uma oferta na Lista SKUs. Cadastre um produto por vez aqui ou importe a planilha-modelo preenchida."
+- Aviso dispensável da lista: "Para cadastrar muitos produtos de uma vez, preencha o modelo e use Importar planilha."
+- Acento: "Adicionar produto" / "Cadastrar o primeiro produto" (página), "Salvar produto" (ficha), "Confirmar importação"
+  (janela).
+- "Sem sugestão — escolha no produto" na janela de sugestões em lote.
+
+**Deixam de valer**
+
+- A linha "Grade" do Design System e a frase da casca sobre a tabela que rola; a altura de linha/cabeçalho de 40 px.
+- "A tabela — colunas e ordem" (o que as colunas 9 a 14 mostravam passou para a variação no cartão), "Aparência de campo",
+  "Agrupamento visual" e "Ações da linha".
+- "Teclado, colar e fluxo de entrada rápida" inteira, inclusive "Volumes — edição dentro da grade". "Nova variação (D-04)"
+  continua, dentro da ficha.
+- A coluna "Falta" e o "menu de colunas" (viram a linha "Falta:" do cartão).
+- Em Mobile: os itens de 1024 px e de 768 a 1023 px, "Colar do Excel e navegação por Tab são só desktop" e o aviso antigo.
+- Em Acessibilidade: `role="grid"` / `columnheader`.
+- "Extensões exigidas do SpreadsheetGrid": continuam no componente compartilhado, sem uso nesta tela.
+- No Copywriting: o corpo antigo do estado vazio, "Salvando / salvo" da barra e o "Erro de linha" (vira "variação").
+
 
 ---
 
