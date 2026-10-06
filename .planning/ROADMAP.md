@@ -2865,7 +2865,7 @@ Plans:
 **Goal:** a aba **Produtos** da planilha `3Planejamento_Estrutural_ECF.xlsx` (a que o Emerson apresentou na reunião da Incubadora de 2026-10-05) vira sistema, como submódulo novo **Produtos** no Mapeamento Estrutural do Portal do Cliente: o cliente (e a equipe, pelo acesso de equipe ao portal) cadastra cada produto com código, grupo/variação, nome, família (linha de design), ambiente(s), categoria do ML, volumes (C×L×A e peso de cada), peso total e custo — por tela ou importando a planilha — e cada produto se liga às ofertas simples da Lista SKUs. É a base da geração automática das ofertas (fase seguinte): "cadastrar o produto uma vez" em vez de cadastrar cada anúncio.
 **Requirements**: PR167-01, PR167-02, PR167-03, PR167-04, PR167-05, PR167-06, PR167-07, PR167-08, PR167-09, PR167-10, PR167-11, PR167-12, PR167-13, PR167-14 (definidos em `167-RESEARCH.md`; decisões D-01..D-22 em `167-CONTEXT.md`; contrato de tela em `167-UI-SPEC.md`)
 **Depends on:** Mapeamento Estrutural do Portal (`estrutura_*`, ADR PORTAL-01/02) e Phase 164 (Publicador lê as ofertas do Mapeamento pelo "Sincronizar do Portal").
-**Plans:** 16/17 plans executed
+**Plans:** 16/18 plans executed
 
 **Já sabido (análise de 2026-10-05, na conversa com o usuário):**
 - A planilha tem 6 abas: Produtos (o cliente preenche) → Planejamento ("identificação da oferta": 1 linha por oferta, com composição, logística e preço) → Cronograma (data por capacidade, feito + link, checklist de 13 alavancas) → Parâmetros → Frete ML Verde → Resumo. Esta fase cobre SÓ a aba Produtos e a ligação produto → oferta simples.
@@ -2895,6 +2895,7 @@ Plans:
 - [x] 167-15-PLAN.md — janelas de importação com prévia e de famílias e ambientes; menu Planilha
 - [x] 167-16-PLAN.md — celular: cartões por produto e formulário em Sheet
 - [ ] 167-17-PLAN.md — gate final contra o baseline, prova final no MariaDB, gabarito da planilha real, conferência visual (checkpoint) e learnings §31
+- [ ] 167-18-PLAN.md — fechamento de lacuna do checkpoint do 167-17 (D-23/D-24): sem planilha na tela — lista de cartões + ficha do produto (painel lateral no computador, folha de baixo no celular); importação por arquivo mantida
 
 ---
 
