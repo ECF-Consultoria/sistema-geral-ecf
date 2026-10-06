@@ -24,7 +24,9 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
     const [escolhendo, setEscolhendo] = useState(null);   // 'familia' | 'ambientes' | 'categoria' | null
     const fecharPicker = useRef(null);
 
-    const abrirEscolha = (qual) => { fecharPicker.current = null; setEscolhendo(qual); };
+    // Durante o "Salvando…" o fieldset da página desabilita os botões; o gatilho de Ambientes é uma
+    // div e o X dos chips fica dentro dela, por isso a trava também mora aqui (FE-WR-02).
+    const abrirEscolha = (qual) => { if (ficha.salvando) return; fecharPicker.current = null; setEscolhendo(qual); };
     const fecharEscolha = () => {
         // Ambiente grava as caixas marcadas ao fechar (o picker registra a função).
         if (fecharPicker.current) { const f = fecharPicker.current; fecharPicker.current = null; f(); return; }
@@ -37,11 +39,13 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
 
     const tirarAmbiente = (e, nome) => {
         e.stopPropagation();
+        if (ficha.salvando) return;
         ficha.aplicarEscolha({ ambientes_texto: ambientes.filter((a) => a !== nome).join(', ') });
     };
 
     const limparCategoria = (e) => {
         e.stopPropagation();
+        if (ficha.salvando) return;
         // A lib já manda `categoria_texto: ''`, que o servidor entende como limpar.
         ficha.aplicarEscolha({ categoria: '', categoria_ml_id: null, categoria_ml_nome: null, categoria_ml_caminho: null, _categoriaEscolhida: false });
     };
@@ -82,7 +86,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                     <span className={ROTULO}>Ambientes</span>
                     <Popover.Root open={escolhendo === 'ambientes'} onOpenChange={aoMudar('ambientes')}>
                         <Popover.Trigger asChild>
-                            <div role="button" tabIndex={0} data-escolha="ambientes" aria-haspopup="dialog"
+                            <div role="button" tabIndex={0} data-escolha="ambientes" aria-haspopup="dialog" aria-disabled={ficha.salvando || undefined}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirEscolha('ambientes'); } }}
                                 className={cn(GATILHO, 'min-h-11 cursor-pointer py-1.5 lg:min-h-10')}>
                                 <span className="flex min-w-0 flex-wrap items-center gap-2">

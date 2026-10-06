@@ -170,8 +170,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] text-white/60" data-rascunho>
                         <span>Você tinha alterações não salvas neste produto.</span>
                         <span className="flex items-center gap-3">
-                            <button type="button" onClick={ficha.recuperarRascunho} data-acao="recuperar-rascunho" className="font-medium text-white/85 hover:text-white hover:underline">Recuperar</button>
-                            <button type="button" onClick={ficha.descartarRascunho} data-acao="descartar-rascunho" className="text-white/50 hover:text-white">Descartar</button>
+                            <button type="button" onClick={ficha.recuperarRascunho} disabled={ficha.salvando} data-acao="recuperar-rascunho" className="font-medium text-white/85 hover:text-white hover:underline">Recuperar</button>
+                            <button type="button" onClick={ficha.descartarRascunho} disabled={ficha.salvando} data-acao="descartar-rascunho" className="text-white/50 hover:text-white">Descartar</button>
                         </span>
                     </div>
                 )}
@@ -180,9 +180,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     <p role="alert" className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">{ficha.aviso}</p>
                 )}
 
-                <div className="mt-4 lg:mt-2">
+                {/* Durante o "Salvando…" nada se edita: o envio usa a foto do clique e o que se digitasse se perderia (FE-WR-02). */}
+                <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
-                </div>
+                </fieldset>
 
                 <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-2 lg:pt-2">
                     <div className="flex items-center justify-between gap-3">
@@ -193,17 +194,19 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         </p>
                     </div>
 
-                    <div className="mt-4 space-y-2.5">
-                        {ficha.vars.map((v) => (
-                            <CartaoVariacao key={v._k} variacao={v} ficha={ficha} vocabulario={vocabulario}
-                                podeExcluir={!! v.id || ficha.vars.length > 1} onExcluir={excluir} />
-                        ))}
-                    </div>
+                    <fieldset disabled={ficha.salvando} className="min-w-0 border-0 p-0" data-campos-variacoes>
+                        <div className="mt-4 space-y-2.5">
+                            {ficha.vars.map((v) => (
+                                <CartaoVariacao key={v._k} variacao={v} ficha={ficha} vocabulario={vocabulario}
+                                    podeExcluir={!! v.id || ficha.vars.length > 1} onExcluir={excluir} />
+                            ))}
+                        </div>
 
-                    <button type="button" onClick={novaVariacao} data-acao="nova-variacao"
-                        className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] text-[14px] text-white/80 hover:bg-white/[0.03] lg:h-8">
-                        <Plus size={14} /> Nova variação
-                    </button>
+                        <button type="button" onClick={novaVariacao} data-acao="nova-variacao"
+                            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.14] text-[14px] text-white/80 hover:bg-white/[0.03] lg:h-8">
+                            <Plus size={14} /> Nova variação
+                        </button>
+                    </fieldset>
 
                     <div className="mt-2 flex justify-end gap-3 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:border-t max-lg:border-white/[0.08] max-lg:bg-ecf-bg/95 max-lg:px-4 max-lg:py-3">
                         <button type="button" onClick={sair} data-acao="cancelar"

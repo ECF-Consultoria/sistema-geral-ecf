@@ -158,6 +158,18 @@ test('Guarda: o voltar do navegador também pergunta, e quem fica volta para a f
     assert.ok(pagina.includes('useEffect(() => () => marcarUltimoProduto(ultimoRef.current), [])'));
 });
 
+test('Salvando: campos, Nova variação, Excluir e pickers ficam travados durante o POST (FE-WR-02)', () => {
+    assert.equal(contar(pagina, /<fieldset disabled=\{ficha\.salvando\}/g), 2, 'dados gerais e variações');
+    // Nova variação e os cartões (com Excluir e volumes) estão dentro do fieldset das variações.
+    const fieldsetVariacoes = pagina.slice(pagina.indexOf('data-campos-variacoes'), pagina.indexOf('</fieldset>', pagina.indexOf('data-campos-variacoes')));
+    assert.ok(fieldsetVariacoes.includes('<CartaoVariacao') && fieldsetVariacoes.includes('data-acao="nova-variacao"'));
+    assert.ok(pagina.includes('min-w-0 border-0 p-0'), 'o fieldset não muda o visual');
+    // O gatilho de Ambientes é uma div (o fieldset não a trava): a trava mora no componente.
+    assert.ok(dados.includes('if (ficha.salvando) return; fecharPicker.current = null;'));
+    assert.equal(contar(dados, /if \(ficha\.salvando\) return;/g), 3, 'abrir picker, tirar ambiente e limpar categoria');
+    assert.ok(dados.includes('aria-disabled={ficha.salvando || undefined}'));
+});
+
 test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salvar (FE-CR-02)', () => {
     for (const t of ['gravarRascunho(', 'lerRascunho(', 'apagarRascunho(', 'recuperarRascunho', 'descartarRascunho', 'esquecerRascunho']) {
         assert.ok(hook.includes(t), `faltou no hook: ${t}`);
