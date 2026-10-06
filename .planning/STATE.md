@@ -393,10 +393,10 @@ frontmatter deste arquivo — o `state.begin-phase` desta fase o fez de novo e f
 Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
-Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — CÓDIGO COMPLETO (verificação human_needed)
+Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — DEPLOYADA (06/10, `9d54db33`)
 Plans: 21 (os 18-21 são lacunas do checkpoint) — 21 de 21 concluídos
-Status: tela APROVADA (06/10); revisão de código feita e corrigida (40 achados, `167-REVIEW-FIX.md`, roteiro de navegador 26/26); verificação 30/30 `human_needed` (`167-VERIFICATION.md`). Próximo: push/deploy SÓ com autorização (antes: contar `estrutura_ofertas` em prod; as 2 migrations `2026_10_06_100000`/`100100`); depois, frete real só com "pode" e `mimes:xlsx` com exportações reais.
-Last activity: 2026-10-06 — revisão de código + correções + verificação da Fase 167
+Status: DEPLOYADA em 06/10 (push `553253d1..9d54db33`; migrations `2026_10_06_100000`/`100100` no lote 164; `estrutura_ofertas` 515 antes e depois, 0 ligadas; `queue:restart` feito). Falta, com o usuário: frete real numa conta conectada só com "pode" (D-16) e `mimes:xlsx` com exportações do Google Sheets/LibreOffice/Excel Mac.
+Last activity: 2026-10-06 — Fase 167 deployada
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
