@@ -118,8 +118,14 @@ class LerTicketTool extends FerramentaEcf
         // Equipe: a caixa de /dev/demandas + os que a pessoa abriu (um dev que
         // pediu algo a outro dev não atua nele, mas é dele). Demais: só os que
         // abriram, como /tickets.
+        // As duas condições AGRUPADAS: para admin o daEquipe() não tem filtro
+        // nenhum, e um `->orWhere()` encadeado nele vira o ÚNICO filtro (o
+        // Laravel descarta o "or" da primeira condição) — o admin via só os
+        // que abriu (06/10/2026, em produção).
         $visiveis = $equipe
-            ? $servico->daEquipe($usuario)->orWhere('solicitante_id', $usuario->id)
+            ? Chamado::query()->where(fn ($q) => $q
+                ->whereIn('id', $servico->daEquipe($usuario)->select('id'))
+                ->orWhere('solicitante_id', $usuario->id))
             : Chamado::query()->where('solicitante_id', $usuario->id);
 
         // Visibilidade num subselect: o OR acima não pode engolir os filtros.
