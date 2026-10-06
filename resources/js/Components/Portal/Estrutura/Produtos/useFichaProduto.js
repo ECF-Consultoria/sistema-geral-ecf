@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { campoEditaveis, linhaDoServidor, linhaParaServidor } from '@/lib/produtosEstrutura';
+import { campoEditaveis, linhaDoServidor } from '@/lib/produtosEstrutura';
+import { gravarVariacoes } from '@/lib/produtosGravacao';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -143,32 +144,17 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         });
         if (Object.keys(faltando).length) { setErros(faltando); return { ok: false, data: null }; }
 
-        // Produto novo: as variações se juntam pelo código da 1ª, que vira o grupo; nos lotes seguintes
-        // elas entram pelo produto_id que o 1º lote devolveu.
-        let produtoId = vars.find((v) => v.produto_id)?.produto_id ?? null;
-        const grupo = produtoId ? null : String(vars[0].codigo).trim();
-        const tamanho = limites?.colar ?? 200;
-
+        // Produto novo: a 1ª variação grava sozinha e SEM grupo; as demais vão com o produto_id que
+        // voltou para ela (FE-CR-01 — a sequência mora em produtosGravacao, testada de verdade).
         setSalvando(true);
         setErros({});
-        const juntas = { linhas: [], erros: [], avisos: [], criadas_nas_listas: { familias: [], ambientes: [] }, listas: null };
-        try {
-            for (let i = 0; i < vars.length; i += tamanho) {
-                const lote = vars.slice(i, i + tamanho).map((v) => {
-                    if (v.produto_id) return v;
-
-                    return produtoId ? { ...v, produto_id: produtoId } : { ...v, grupo };
-                });
-                const { data } = await axios.post(route('portal.auth.estrutura.produtos.linhas'), { linhas: lote.map(linhaParaServidor) });
-                juntas.linhas.push(...(data.linhas ?? []));
-                juntas.erros.push(...(data.erros ?? []));
-                juntas.avisos.push(...(data.avisos ?? []));
-                juntas.criadas_nas_listas.familias.push(...(data.criadas_nas_listas?.familias ?? []));
-                juntas.criadas_nas_listas.ambientes.push(...(data.criadas_nas_listas?.ambientes ?? []));
-                if (data.listas) juntas.listas = data.listas;
-                if (! produtoId) produtoId = (data.linhas ?? []).find((l) => l.produto_id)?.produto_id ?? null;
-            }
-        } catch (e) {
+        const r = await gravarVariacoes(vars, {
+            enviar: async (linhas) => (await axios.post(route('portal.auth.estrutura.produtos.linhas'), { linhas })).data,
+            tamanho: limites?.colar ?? 200,
+        });
+        const juntas = r.juntas;
+        if (r.falha) {
+            const e = r.falha;
             setAviso(e.response && e.response.status < 500
                 ? (e.response.data?.message ?? 'Não foi possível salvar agora. O que você digitou fica aqui.')
                 : 'Não foi possível salvar agora. O que você digitou fica aqui; tente de novo.');
@@ -181,7 +167,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         juntas.erros.forEach((e) => {
             if (e.chave) comErro[e.chave] = `Não salvamos esta variação: ${String(e.mensagem).replace(/\.$/, '')}.`;
         });
-        const ok = juntas.erros.length === 0;
+        // A 1ª variação de um produto novo não gravou e o servidor não disse por quê: a sequência parou nela.
+        if (r.parou && ! comErro[vars[0]._k]) comErro[vars[0]._k] = 'Não salvamos esta variação. Tente de novo.';
+        const ok = ! r.parou && juntas.erros.length === 0;
 
         if (ok) {
             setAlterado(false);

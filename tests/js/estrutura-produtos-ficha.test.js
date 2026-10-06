@@ -24,6 +24,7 @@ const variacao = lerSemComentarios(`${DIR}CartaoVariacao.jsx`);
 const volume = lerSemComentarios(`${DIR}CartaoVolume.jsx`);
 const calculados = lerSemComentarios(`${DIR}FaixaCalculados.jsx`);
 const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
+const gravacao = lerSemComentarios('resources/js/lib/produtosGravacao.js');
 const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutoFicha.jsx');
 const nav = lerSemComentarios('resources/js/lib/produtosNavegacao.js');
 const raiz = resolve(import.meta.dirname, '../..');
@@ -36,7 +37,13 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     assert.match(hook, /export const MEDIDAS/);
     assert.ok(hook.includes('linhaDoServidor('), 'as linhas cruas do servidor precisam do retrato _base');
     assert.equal(contar(hook, /axios\.post\(/g), 1);
-    assert.match(hook, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\), \{ linhas: lote\.map\(linhaParaServidor\) \}\)/);
+    // A sequência (1ª variação sozinha, lotes com o produto_id) mora em produtosGravacao, com teste
+    // comportamental próprio (estrutura-produtos-gravacao.test.js); o hook só injeta o POST.
+    assert.match(hook, /gravarVariacoes\(vars, \{/);
+    assert.match(hook, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\), \{ linhas \}\)/);
+    assert.match(gravacao, /lote\.map\(linhaParaServidor\)/);
+    assert.ok(! /grupo\s*[:=]/.test(hook.replace(/base\.grupo/g, '')), 'a ficha não monta grupo para produto novo (FE-CR-01)');
+    assert.ok(! /\{ \.\.\.v, grupo \}/.test(gravacao), 'nenhum lote leva grupo');
     assert.ok(hook.includes('limites?.colar'));
     assert.ok(hook.includes('Não salvamos esta variação: informe a Ref e o nome do produto.'));
     assert.ok(hook.includes('Não salvamos esta variação: ${'));
@@ -112,7 +119,7 @@ test('Lib: iniciais, caminho da categoria, frase de sucesso e frete empilhado', 
 });
 
 test('Sem regra de negócio, HTML cru nem herança da precificação nos arquivos da ficha', () => {
-    for (const fonte of [hook, pecas, dados, variacao, volume, calculados]) {
+    for (const fonte of [hook, pecas, dados, variacao, volume, calculados, gravacao]) {
         assert.ok(! fonte.includes('dangerouslySetInnerHTML'));
         assert.ok(! /6000|cubag|soma_lados|me2\.peso/.test(fonte), 'regra de logística apareceu no JS');
         assert.ok(! /\b79\b/.test(fonte), 'limite de frete apareceu no JS');
