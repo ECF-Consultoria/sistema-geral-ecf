@@ -394,9 +394,9 @@ Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
 Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
-Plans: 18 em 14 ondas, execução em sequência — 17 de 18 concluídos (o 167-17 segue aberto esperando a conferência visual)
-Status: 167-18 concluído — a grade saiu da tela de Produtos; lista de cartões + ficha (lateral no computador, de baixo no celular). Conferência visual do 167-17 pendente.
-Last activity: 2026-10-06 — 167-18 concluído
+Plans: 21 (os 19-21 vieram das referências visuais), execução em sequência — 18 de 21 concluídos (o 167-17 segue aberto esperando a conferência visual)
+Status: 167-19 concluído — ficha do produto em página inteira (REF-2) com URL própria; SheetProduto apagado. Faltam 167-20 (Visual grande/Lista) e 167-21 (fidelidade); conferência visual do 167-17 pendente.
+Last activity: 2026-10-06 — 167-19 concluído
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
