@@ -21,6 +21,10 @@ Os números de G1, G2 e G3 batem com o esperado do RESEARCH (83/724, 22/118, 7/1
 comandos, nenhuma falha nova; o que cresceu é teste novo da fase (ficha em página, rotas `/novo` e `/{id}`, allowlist
 com id numérico, Visual grande/Lista, destaque da volta).
 
+**Depois da revisão de código e das correções (06/10/2026, HEAD `98cfc3c7`):** G4 394 / 2877 (inclui G1 e G3),
+G2 22 / 118, G5 17 / 92, `tests/Unit/PortalEstrutura` 62 / 256 — todos exit 0; G6 `test:js` 1114, 1112 passam (as mesmas 2
+falhas antigas). Nenhuma falha nova; o que cresceu é teste das correções.
+
 ## Falhas PRÉ-EXISTENTES (não corrigidas aqui)
 
 G6 (`test:js`): 956 passam e 2 falham, as mesmas duas já registradas nas Fases 164 e 166, sem relação com esta fase:

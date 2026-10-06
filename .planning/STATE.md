@@ -393,10 +393,10 @@ frontmatter deste arquivo — o `state.begin-phase` desta fase o fez de novo e f
 Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
 `C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
 
-Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — EXECUTING
+Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — CÓDIGO COMPLETO (verificação human_needed)
 Plans: 21 (os 18-21 são lacunas do checkpoint) — 21 de 21 concluídos
-Status: tela de Produtos APROVADA pelo usuário em 06/10 (lista Visual grande/Lista + ficha em página, sem planilha; D-23..D-32). Gate final verde contra o baseline, migration provada no MariaDB local, gabarito real 55/8/6/1. Ambiente de conferência desmontado. Próximo: revisão de código e verificação da fase; push/deploy só com autorização (antes: contar `estrutura_ofertas` em prod e migrar com `--path`).
-Last activity: 2026-10-06 — 167-17 concluído (checkpoint aprovado)
+Status: tela APROVADA (06/10); revisão de código feita e corrigida (40 achados, `167-REVIEW-FIX.md`, roteiro de navegador 26/26); verificação 30/30 `human_needed` (`167-VERIFICATION.md`). Próximo: push/deploy SÓ com autorização (antes: contar `estrutura_ofertas` em prod; as 2 migrations `2026_10_06_100000`/`100100`); depois, frete real só com "pode" e `mimes:xlsx` com exportações reais.
+Last activity: 2026-10-06 — revisão de código + correções + verificação da Fase 167
 
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
