@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
-import { CheckCircle2, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
@@ -10,6 +10,8 @@ import EditorVolumes from '@/Components/Portal/Estrutura/Produtos/EditorVolumes'
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
+import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import { SpreadsheetGrid } from '@/Components/SpreadsheetGrid';
 import { campoEditaveis, colunasDaGrade, linhaDaGrade, linhaParaServidor, lerBlocoComCabecalho, mudou } from '@/lib/produtosEstrutura';
 
@@ -75,6 +77,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [exclusao, setExclusao] = useState(null);       // { linha, ultima }
     const [sugerindo, setSugerindo] = useState(false);
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
+    const [importando, setImportando] = useState(false);   // janela de importação da planilha
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
 
     const sujas = useRef(new Map());                      // _k → versão da última edição
@@ -392,9 +395,25 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const estadoTexto = { salvando: 'Salvando…', salvo: 'Salvo', rede: 'Não foi possível salvar agora. Suas alterações ficam na tela; vamos tentar de novo.' }[estado];
 
     const acoes = (
-        <Botao variante={temProdutos ? 'primario' : 'secundario'} onClick={adicionarProduto} data-acao="adicionar-produto">
-            <Plus size={14} /> Adicionar produto
-        </Botao>
+        <>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button type="button" data-acao="menu-planilha"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white">
+                        Planilha <ChevronDown size={14} />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="border-white/[0.08] bg-ecf-card text-white">
+                    <DropdownMenuItem asChild>
+                        <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-modelo">Baixar modelo (.xlsx)</a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setImportando(true)} data-acao="importar-planilha">Importar planilha…</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            <Botao variante={temProdutos ? 'primario' : 'secundario'} onClick={adicionarProduto} data-acao="adicionar-produto">
+                <Plus size={14} /> Adicionar produto
+            </Botao>
+        </>
     );
 
     return (
@@ -449,10 +468,15 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                         <p className="mx-auto mt-2 max-w-lg text-[13px] text-white/50">
                             Aqui ficam os produtos que você vende, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs. Digite na tabela abaixo ou cole as linhas do Excel.
                         </p>
-                        <div className="mt-4 flex justify-center">
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                             <Botao variante="primario" onClick={() => focar(rows[0]._k, 'codigo')} data-acao="primeiro-produto">
                                 <Plus size={14} /> Cadastrar o primeiro produto
                             </Botao>
+                            <a href={route('portal.auth.estrutura.produtos.modelo')} download data-acao="baixar-planilha-modelo"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white">
+                                Baixar planilha-modelo
+                            </a>
+                            <Botao variante="secundario" onClick={() => setImportando(true)} data-acao="importar-planilha-vazio">Importar planilha</Botao>
                         </div>
                     </section>
                 )}
@@ -519,6 +543,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     setExclusao(null);
                     if (resposta?.mensagem) setAviso(resposta.mensagem);
                 }} />
+            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[
