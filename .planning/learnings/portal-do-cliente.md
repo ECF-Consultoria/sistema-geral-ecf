@@ -1122,3 +1122,36 @@ SKUs nasce dele. O que não se deduz do código:
 - **Controle com largura fixa estoura a 1280 px.** A barra de filtros da
   referência (larguras fixas) media 1314 px de `scrollWidth` a 1280; a saída foi
   `flex-wrap` a partir de `xl`, e a barra quebra em 2 linhas nessa largura.
+
+## 34. Ficha rica do produto: campos da categoria do ML + imagens por variação, SOB SIGILO (07/10/2026)
+
+Trabalho direto (sem GSD) em cima da ficha da Fase 167 (`/portal/estrutura/produtos/novo`), branch
+`feat/publicador-ml-261001`. A ficha virou um cadastro rico tipo Bling.
+
+- **REGRA DE SIGILO (negócio, do usuário):** o cliente NÃO pode perceber que o que ele preenche é para o
+  Mercado Livre. O bloco se chama "Ficha técnica"; os rótulos são os `name` genéricos do atributo. NADA de
+  "Mercado Livre"/"anúncio"/"publicar"/"MLB" em texto, placeholder, title, aria-label, id exibido ou comentário
+  visível do bloco novo e da galeria. Há gates de teste (PHP e JS) que barram esses termos no JSON ao cliente e
+  no JSX. **Alcance (decisão do usuário):** o sigilo vale só nos CAMPOS NOVOS; a copy da 167 ("Categoria do
+  Mercado Livre", frete do ML, conectar conta) fica, porque o cliente já conecta a conta dele para o frete.
+  Mexer na copy aprovada da 167 pede nova decisão dele.
+- **Campos vêm do ML por app token** (`MlCatalogoMetaService::atributos`, `GET /categories/{id}/attributes`,
+  dado público, sem conta de cliente, cache 7 dias). O serviço `FichaTecnicaDaCategoria::daAtributos()` é a função
+  pura que vira os grupos/campos: descarta `hidden`/`read_only`/`fixed`/variação, SKU, GRID, PACKAGE_*; mapeia
+  `value_type` → texto/número/número+unidade/sim-não/lista; agrupa por `attribute_group_name`. **Cuidado:** o
+  filtro de sigilo descarta um atributo INTEIRO se o `name` dele casar "mercado/anúncio/publicar/mlb/ml"; um
+  obrigatório assim deixa de ser exigido (raro, mas vigiar). O cache vazio do ML é esquecido para não grudar 7 dias.
+- **Tabelas novas (aditivas, provadas no MariaDB com `--path`):** `estrutura_produto_atributos` (EAV da ficha:
+  company_id, produto_id, atributo_id, atributo_nome, valor, valor_id, unidade) e `estrutura_produto_variacao_imagens`
+  (company_id, produto_id, variacao_id, caminho, nome_original, mime, tamanho, largura, altura, ordem).
+- **Imagens:** disco PRIVADO (`local`), servidas por rota autenticada do portal (isolamento por empresa, nunca URL
+  pública). Upload/exclusão gravam NA HORA (não dependem do "Salvar produto"). Teto 12/variação é tudo-ou-nada.
+  `post_max_size` → 422 com mensagem clara (um `render` no `bootstrap/app.php` cobre o 413 antes do controller).
+  **A ORDEM/posição não importa nesta tela (decisão do usuário):** sem capa, setas nem arrastar; a rota e a lógica
+  de ordem existem no servidor/lib, sem uso na tela, para o "tratamento" depois.
+  **Órfãos:** apagar produto/empresa por cascata do banco NÃO apaga os arquivos (o evento do model não dispara);
+  falta um comando de limpeza se isso ocorrer em prod.
+- **Produto novo:** os campos da ficha técnica se preenchem antes do `produto_id`; o PUT da ficha espera o id (logo
+  após o 1º salvar). A galeria só envia quando a variação tem id (mostra "Salve o produto…" antes).
+- **O tratamento/envio ao Publicador fica para outra fase** ("outro dia", palavras do usuário). Ver
+  [[project-ficha-rica-produto-atributos-ml-261007]].
