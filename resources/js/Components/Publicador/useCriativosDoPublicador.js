@@ -30,6 +30,16 @@ const LIMITE = 27 * 60 * 1000;
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 const chaveDo = (produtoId) => `publicador.criativos.${produtoId}`;
 
+// Fase 169 (TXT-01/04) — resposta dos três endpoints de fatos (idêntica nos três):
+// `{ confirmados: [{id, tipo, texto}], pode_ter_texto, faltam: [string] }`. Convertida aqui para o
+// mesmo padrão camelCase do resto do estado do hook; defensiva contra formato ausente/parcial —
+// quem desenha a tela (`FatosDoProduto`) ainda confere cada campo de texto com `textoSeguro`.
+const paraFatos = (data) => ({
+    confirmados: Array.isArray(data?.confirmados) ? data.confirmados : [],
+    podeTerTexto: !! data?.pode_ter_texto,
+    faltam: Array.isArray(data?.faltam) ? data.faltam : [],
+});
+
 const guardado = (produtoId) => {
     try {
         const bruto = window.sessionStorage.getItem(chaveDo(produtoId));
@@ -68,10 +78,25 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
     const [processando, setProcessando] = useState(null);
     const [confirmacaoRecusada, setConfirmacaoRecusada] = useState(false);
     const [motivos, setMotivos] = useState({});
+    const [fatos, setFatos] = useState(null);
 
     const aoAprovar = useRef(onAprovou);
     aoAprovar.current = onAprovou;
     const desde = useRef(null);
+
+    /**
+     * Fase 169 (TXT-01/04) — o fato confirmado (ponto forte/medida) do produto. Complementar:
+     * nunca usa `setErro()` numa falha de rede, porque o bloco de fatos não pode impedir o resto
+     * do painel (escolher fotos, planejar, gerar) de funcionar.
+     */
+    const carregarFatos = async () => {
+        try {
+            const { data } = await axios.get(rota('criativos.fatos', produtoId));
+            setFatos(paraFatos(data));
+        } catch {
+            // Silencioso de propósito — ver docblock acima.
+        }
+    };
 
     /** Abre o painel para `grupo`: retoma o kit ativo (ou o último aprovado), ou vai para 'escolhendo'. */
     const abrir = async (grupo, titulo, instancia = null) => {
@@ -83,6 +108,7 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
         setErro(null);
         setConfirmacaoRecusada(false);
         setMotivos({});
+        carregarFatos(); // fire-and-forget — não bloqueia a retomada do kit.
 
         try {
             const { data } = await axios.get(rota('criativos.atual', produtoId), { params: { grupo } });
@@ -185,6 +211,36 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
             await relerKit();
         } catch (e) {
             setErro(e?.response?.data?.erros?.[0]?.mensagem ?? mensagemDe(e));
+        } finally {
+            setProcessando(null);
+        }
+    };
+
+    /** Confirma UM fato (ponto forte ou medida) do produto. Erro aqui É ação explícita do operador. */
+    const salvarFato = async (tipo, texto) => {
+        setProcessando('salvar-fato');
+        setErro(null);
+
+        try {
+            const { data } = await axios.post(rota('criativos.fatos', produtoId), { tipo, texto });
+            setFatos(paraFatos(data));
+        } catch (e) {
+            setErro(mensagemDe(e));
+        } finally {
+            setProcessando(null);
+        }
+    };
+
+    /** Remove UM fato já confirmado. */
+    const removerFato = async (fatoId) => {
+        setProcessando(`remover-fato-${fatoId}`);
+        setErro(null);
+
+        try {
+            const { data } = await axios.delete(rota('criativos.fatos.remover', produtoId, { fato: fatoId }));
+            setFatos(paraFatos(data));
+        } catch (e) {
+            setErro(mensagemDe(e));
         } finally {
             setProcessando(null);
         }
@@ -294,8 +350,9 @@ export default function useCriativosDoPublicador({ produtoId, disponivel = false
     }, [produtoId, disponivel]);
 
     return {
-        disponivel, alvo, kit, fase, erro, processando, confirmacaoRecusada, motivos,
+        disponivel, alvo, kit, fase, erro, processando, confirmacaoRecusada, motivos, fatos,
         abrir, reivindicar, fechar, planejar, gerar, recusarConfirmacao, mostrarConfirmacao,
         mudarMotivo, regenerar, aprovar, aprovarKit, novoKit, limparErro,
+        carregarFatos, salvarFato, removerFato,
     };
 }
