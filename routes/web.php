@@ -59,6 +59,7 @@ use App\Http\Controllers\PpaColunaController;
 use App\Http\Controllers\PortalCalculadoraController;
 use App\Http\Controllers\PortalEstruturaController;
 use App\Http\Controllers\PortalEstruturaProdutosController;
+use App\Http\Controllers\PortalEstruturaSugestoesController;
 use App\Http\Controllers\PortalPpaController;
 use App\Http\Controllers\PortalEquipeController;
 use App\Http\Controllers\PortalUsuarioController;
@@ -237,6 +238,20 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:30,1,estrutura.produtos.categorias.sugerir')->name('portal.auth.estrutura.produtos.categorias.sugerir');
     Route::post('/estrutura/produtos/fretes', [PortalEstruturaProdutosController::class, 'cotarFretes'])
         ->middleware('throttle:20,1,estrutura.produtos.fretes')->name('portal.auth.estrutura.produtos.fretes');
+    // Fase 168 — Sugestões de ofertas (D-02, D-20: sem submódulo novo; entra por Produtos e pela
+    // Lista SKUs). Uma linha por rota na allowlist do RestringeDominioDoPortal.
+    Route::get('/estrutura/sugestoes', [PortalEstruturaSugestoesController::class, 'index'])
+        ->middleware('throttle:60,1,estrutura.sugestoes')->name('portal.auth.estrutura.sugestoes');
+    Route::post('/estrutura/sugestoes/aceitar', [PortalEstruturaSugestoesController::class, 'aceitar'])
+        ->middleware('throttle:30,1,estrutura.sugestoes.aceitar')->name('portal.auth.estrutura.sugestoes.aceitar');
+    Route::post('/estrutura/sugestoes/descartar', [PortalEstruturaSugestoesController::class, 'descartar'])
+        ->middleware('throttle:60,1,estrutura.sugestoes.descartar')->name('portal.auth.estrutura.sugestoes.descartar');
+    Route::post('/estrutura/sugestoes/restaurar', [PortalEstruturaSugestoesController::class, 'restaurar'])
+        ->middleware('throttle:60,1,estrutura.sugestoes.restaurar')->name('portal.auth.estrutura.sugestoes.restaurar');
+    Route::put('/estrutura/sugestoes/produtos/{produto}/geracao', [PortalEstruturaSugestoesController::class, 'definirGeracao'])
+        ->whereNumber('produto')->middleware('throttle:60,1,estrutura.sugestoes.geracao')->name('portal.auth.estrutura.sugestoes.geracao');
+    Route::post('/estrutura/sugestoes/frete', [PortalEstruturaSugestoesController::class, 'cotarFrete'])
+        ->middleware('throttle:10,1,estrutura.sugestoes.frete')->name('portal.auth.estrutura.sugestoes.frete');
     Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
     Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
     Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])

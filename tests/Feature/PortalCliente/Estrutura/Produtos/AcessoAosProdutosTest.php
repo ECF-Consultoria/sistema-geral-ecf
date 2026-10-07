@@ -174,7 +174,7 @@ class AcessoAosProdutosTest extends TestCase
         $this->assertCount(14, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
         // 167-19: o id numérico da ficha entra por uma lista própria, nunca por curinga.
         $this->assertSame(
-            ['portal/estrutura/produtos/{id}'],
+            ['portal/estrutura/produtos/{id}', 'portal/estrutura/sugestoes/produtos/{id}/geracao'],
             (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID'),
         );
     }

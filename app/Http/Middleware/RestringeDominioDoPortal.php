@@ -138,6 +138,14 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/categorias',
         'portal/estrutura/produtos/categorias/sugerir',
         'portal/estrutura/produtos/fretes',
+        // Fase 168 (07/10/2026) — Sugestões de ofertas. Uma linha por rota. NUNCA
+        // 'portal/estrutura/sugestoes/*': o `*` do Str::is atravessa '/'. A rota com
+        // id no meio (…/produtos/{id}/geracao) vai por PERMITIDO_COM_ID.
+        'portal/estrutura/sugestoes',
+        'portal/estrutura/sugestoes/aceitar',
+        'portal/estrutura/sugestoes/descartar',
+        'portal/estrutura/sugestoes/restaurar',
+        'portal/estrutura/sugestoes/frete',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',
@@ -178,6 +186,8 @@ class RestringeDominioDoPortal
      */
     private const PERMITIDO_COM_ID = [
         'portal/estrutura/produtos/{id}',
+        // Fase 168: o id do produto no meio, só dígitos (a página de sugestões define tipo e quantidades).
+        'portal/estrutura/sugestoes/produtos/{id}/geracao',
     ];
 
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */
