@@ -20,6 +20,9 @@ export default function BarraDeFiltros({ sugestoes, filtros, aba = 'sugestoes', 
     const idDica = 'dica-aba-sugestoes';
     const porStatus = sugestoes.por_status ?? {};
     const opcoesFamilia = Object.fromEntries((sugestoes.familias ?? []).map((f) => [f.valor, `${f.nome} (${f.total})`]));
+    // A família escolhida em outra aba pode não ter nada nesta (ex.: nenhum produto sem tipo dela). O seletor mostra a
+    // escolha em vez de "Todas", para o filtro ativo não ficar escondido.
+    if (filtros.familia && ! (filtros.familia in opcoesFamilia)) opcoesFamilia[filtros.familia] = 'Família escolhida (0)';
     const opcoesTipo = Object.fromEntries((sugestoes.tipos ?? []).map((t) => [t.slug, t.nome]));
     const opcoesStatus = Object.fromEntries(Object.entries(ROTULO_STATUS).map(([chave, rotulo]) => [chave, `${rotulo} (${porStatus[chave] ?? 0})`]));
     const descreve = (ok) => (ok ? undefined : idDica);

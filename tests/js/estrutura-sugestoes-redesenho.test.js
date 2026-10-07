@@ -195,3 +195,9 @@ test('a página declara `comFiltro` antes de usar (tela branca no navegador, 168
     assert.ok(pagina.indexOf('const comFiltro') < pagina.indexOf('qualEstadoVazio({'), 'declarado antes do estado vazio');
     assert.ok(pagina.indexOf('const comFiltro') < pagina.indexOf('filtroAtivo={comFiltro}'), 'declarado antes de ir às abas');
 });
+
+test('BarraDeFiltros: a família escolhida em outra aba continua visível no seletor (168-20)', () => {
+    const t = fonte('BarraDeFiltros.jsx');
+    contem(t, ['filtros.familia in opcoesFamilia', 'Família escolhida (0)'], 'BarraDeFiltros');
+    assert.ok(t.indexOf('Família escolhida (0)') < t.indexOf('<Seletor id="filtro-familia"'), 'a opção entra antes do seletor');
+});
