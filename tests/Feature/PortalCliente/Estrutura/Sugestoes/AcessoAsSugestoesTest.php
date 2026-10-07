@@ -96,6 +96,10 @@ class AcessoAsSugestoesTest extends TestCase
                 ->component('Portal/EstruturaSugestoes', false)
                 ->has('sugestoes.contagens')
                 ->has('sugestoes.limites')
+                ->has('sugestoes.resumo')
+                ->has('sugestoes.por_status')
+                ->has('sugestoes.familia_ambientes')
+                ->has('sugestoes.gerado_em')
                 ->where('filtros.aba', 'sugestoes')
                 ->where('ml_conectado', false)
                 ->has('frete_tabela')
@@ -110,19 +114,24 @@ class AcessoAsSugestoesTest extends TestCase
         [$empresa] = $this->cenario();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'q' => 'x']))
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
-                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'q' => 'x']));
+                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']));
 
-        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'lixo', 'fase' => 'zzz', 'tipo' => 'Inválido!']))
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'lixo', 'fase' => 'zzz', 'tipo' => 'Inválido!', 'status' => 'lixo']))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
                 ->where('filtros.aba', 'sugestoes')
                 ->where('filtros.fase', null)
-                ->where('filtros.tipo', null));
+                ->where('filtros.tipo', null)
+                ->where('filtros.status', null));
+
+        $sessao->get(route('portal.auth.estrutura.sugestoes'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('filtros.status', null));
     }
 
     public function test_a_equipe_abre_a_pagina_e_aceita_com_origem_interno(): void

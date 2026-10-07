@@ -158,7 +158,7 @@ class PortalEstruturaSugestoesController extends Controller
      * Filtros da URL contra listas fechadas: valor desconhecido vira "sem filtro"
      * (a aba, que sempre existe, volta para 'sugestoes').
      *
-     * @return array{aba: string, fase: ?string, familia: ?string, tipo: ?string, q: string}
+     * @return array{aba: string, fase: ?string, familia: ?string, tipo: ?string, status: ?string, q: string}
      */
     private function filtros(Request $request): array
     {
@@ -166,12 +166,14 @@ class PortalEstruturaSugestoesController extends Controller
         $fase = (string) $request->query('fase', '');
         $familia = trim((string) $request->query('familia', ''));
         $tipo = (string) $request->query('tipo', '');
+        $status = (string) $request->query('status', '');
 
         return [
             'aba'     => in_array($aba, self::ABAS, true) ? $aba : 'sugestoes',
             'fase'    => in_array($fase, self::FASES, true) ? $fase : null,
             'familia' => $familia !== '' && mb_strlen($familia) <= 20 ? $familia : null,
             'tipo'    => preg_match('/^[a-z0-9-]{2,40}$/D', $tipo) === 1 ? $tipo : null,
+            'status'  => in_array($status, ListaDeSugestoes::STATUS, true) ? $status : null,
             'q'       => mb_substr(trim((string) $request->query('q', '')), 0, 100),
         ];
     }
