@@ -148,6 +148,49 @@ a pessoa só decidir.
   o nome da agenda. A semente de pares (21–23 pares de tipos GENÉRICOS, sem produto, SKU nem custo) vai para o
   resumo do usuário antes da execução.
 
+### Checkpoint do 168-02 (07/10) — lista-semente APROVADA pelo usuário (substitui o D-13)
+- **D-21: 18 pares de tipo.** São os pares que a planilha usa em conjuntos de 2. Ficam FORA os 5 que só
+  aparecem em kits de 3 (banco+cadeira, buffet+cadeira, cabeceira+cômoda, cama+cômoda, guarda-roupa+prateleira).
+
+  | Par | Combit repete |
+  |---|---|
+  | aparador + mesa | só Kit |
+  | aparador + mesa de centro | só Kit |
+  | aparador + mesa lateral | mesa lateral |
+  | aparador + rack | só Kit |
+  | armário + prateleira | só Kit |
+  | banco + mesa | banco |
+  | banqueta + mesa | banqueta |
+  | buffet + cristaleira | só Kit |
+  | buffet + mesa | só Kit |
+  | cabeceira + cama | cabeceira |
+  | cabeceira + criado-mudo | criado-mudo |
+  | cadeira + mesa | cadeira |
+  | cama + cama | só Kit |
+  | cama + criado-mudo | criado-mudo |
+  | cômoda + criado-mudo | só Kit |
+  | cômoda + guarda-roupa | só Kit |
+  | cômoda + prateleira | prateleira |
+  | mesa de centro + mesa lateral | mesa lateral |
+
+- **D-22: quantidades COMO A PLANILHA USA.** Substitui o D-13 e a semente literal do D-07.
+
+  | Tipo | Combo | Item repetido do Combit |
+  |---|---|---|
+  | cadeira | 2/4/6/8 | 2/4/6 |
+  | banqueta | 2/3/4 | 2 |
+  | banco | 2 | 2 |
+  | prateleira | 2/3 | 2 |
+  | cabeceira | 2 | 2 |
+  | criado-mudo | 2 | 2 |
+  | mesa lateral | 2 | 2 |
+  | cama | 2 | — |
+  | mesa e os demais tipos | sem Combo | — |
+
+  A ECF amplia ou reduz pelo admin. Medido: cerca de 106 acertos de 129, contra cerca de 71 com o 2/4/6.
+- **D-23: tipos.** "bicama" passa a ser palavra do tipo cama. Entra o tipo novo **beliche** (beliche, treliche).
+  Assim os 56 produtos da planilha ficam com tipo.
+
 ### Claude's Discretion
 - Estrutura interna do gerador, desde que seja testável sem banco (regra pura, como o `LogisticaProduto`).
 - Como guardar as sugestões: calculadas na hora ou persistidas. Só o descarte precisa persistir (D-01).
