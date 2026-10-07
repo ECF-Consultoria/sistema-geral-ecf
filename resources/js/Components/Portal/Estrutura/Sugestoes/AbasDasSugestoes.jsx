@@ -79,7 +79,7 @@ export default function AbasDasSugestoes({
                         {aba === 'sugestoes' && (
                             <button type="button" data-acao="aceitar-selecionadas" onClick={onAceitar} disabled={selecionadas === 0 || ocupada}
                                 aria-label={rotuloAceitarSelecionadas(selecionadas)}
-                                className={cn('inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-6 text-[14px] font-semibold text-black hover:bg-ecf-yellow/90 disabled:pointer-events-none disabled:opacity-40', FOCO)}>
+                                className={cn('inline-flex h-[38px] items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-5 text-[13.5px] font-semibold text-black hover:bg-ecf-yellow/90 disabled:pointer-events-none disabled:opacity-40', FOCO)}>
                                 {ocupada ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Check size={16} strokeWidth={3} aria-hidden="true" />}
                                 {ocupada ? 'Aceitando…' : 'Aceitar selecionadas'}
                             </button>

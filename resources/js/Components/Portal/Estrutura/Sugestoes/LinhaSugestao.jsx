@@ -13,7 +13,7 @@ import { CaixaDeSelecao, CampoEmLinha, LogisticaEFrete, QuadrosDaSugestao, SeloF
 
 const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40';
 const DIVISORIA = 'xl:border-l xl:border-white/[0.06] xl:pl-4';
-const ROTULO = 'text-[11px] text-white/50 xl:text-[12px]';
+const ROTULO = 'text-[11px] leading-[13px] text-white/50 xl:text-[12px] xl:leading-[14px]';
 const BOTAO = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-lg text-[13px] transition-colors disabled:pointer-events-none disabled:opacity-40 xl:h-9 xl:w-[96px]';
 
 const Aviso = ({ children }) => (
@@ -41,7 +41,7 @@ export default function LinhaSugestao({
     return (
         <article aria-labelledby={`nome-${chave}`} data-sugestao data-chave={chave}
             className={cn('min-w-0 rounded-[10px] border bg-ecf-card p-3.5',
-                'flex flex-col gap-3 xl:grid xl:min-h-[84px] xl:grid-cols-[24px_172px_104px_minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,1.3fr)_208px] xl:items-center xl:gap-x-4 xl:gap-y-0 xl:px-3.5 xl:py-2.5',
+                'flex flex-col gap-3 xl:grid xl:min-h-[84px] xl:grid-cols-[24px_172px_80px_minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,1.3fr)_208px] xl:items-center xl:gap-x-4 xl:gap-y-0 xl:px-3.5 xl:py-2',
                 marcada ? 'border-ecf-yellow/60' : 'border-white/[0.07]')}>
             <div className="flex items-center gap-3 xl:contents">
                 <div data-col="selecao" className="grid h-11 w-11 shrink-0 place-items-center xl:h-6 xl:w-6" title={aceitavel ? undefined : razao}>
@@ -60,7 +60,7 @@ export default function LinhaSugestao({
                 </div>
             </div>
 
-            <div data-col="nome" className={cn('min-w-0 space-y-1', DIVISORIA)}>
+            <div data-col="nome" className={cn('min-w-0 space-y-0.5', DIVISORIA)}>
                 <CampoEmLinha id={`nome-${chave}`} campo="nome" rotulo="Nome sugerido" rotuloAcessivel="nome da oferta" valor={nome} editado={editadoNome} caixa
                     onMudar={(v) => onEditar(chave, 'nome', v, sugestao.nome)}>
                     {avisos.tituloLongo !== null && <Aviso>{textoTituloLongo(avisos.tituloLongo, limites.max_titulo)}</Aviso>}

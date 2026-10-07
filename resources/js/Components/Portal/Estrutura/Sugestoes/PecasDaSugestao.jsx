@@ -33,7 +33,7 @@ export function CaixaDeSelecao({ className, ...props }) {
     return (
         <span className="relative grid place-items-center">
             <input type="checkbox" {...props}
-                className={cn('peer h-5 w-5 appearance-none rounded border border-white/35 bg-transparent checked:border-ecf-yellow checked:bg-none checked:bg-ecf-yellow disabled:opacity-40', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40', className)} />
+                className={cn('peer h-5 w-5 appearance-none rounded border border-white/35 bg-transparent checked:border-ecf-yellow checked:bg-none checked:bg-ecf-yellow checked:focus:border-ecf-yellow checked:focus:bg-ecf-yellow focus:ring-ecf-yellow/40 focus:ring-offset-0 disabled:opacity-40', 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40', className)} />
             <Check strokeWidth={3} aria-hidden="true" className="pointer-events-none absolute hidden h-3.5 w-3.5 text-ecf-bg peer-checked:block" />
         </span>
     );
@@ -67,7 +67,7 @@ export function CampoEmLinha({ id, campo, rotulo, rotuloAcessivel, valor, editad
 
     return (
         <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] text-white/50 xl:text-[12px]">
+            <div className="flex items-center gap-2 text-[11px] leading-[13px] text-white/50 xl:text-[12px] xl:leading-[14px]">
                 <span>{rotulo}</span>
                 {editado && <span data-editado>· editado</span>}
             </div>
@@ -89,7 +89,7 @@ export function CampoEmLinha({ id, campo, rotulo, rotuloAcessivel, valor, editad
             ) : (
                 <button type="button" data-editar={campo} onClick={abrir} aria-label={`Editar ${rotuloAcessivel}: ${valor ?? ''}`}
                     className={cn('flex min-h-[44px] max-w-full items-center gap-1.5 text-left text-[13px] text-white xl:min-h-0', FOCO,
-                        caixa ? 'h-7 w-full justify-between rounded-md border border-white/[0.08] bg-white/[0.02] px-2 xl:min-h-0' : 'xl:h-6',
+                        caixa ? 'h-7 w-full justify-between rounded-md border border-white/[0.08] bg-white/[0.02] px-2 xl:h-6 xl:min-h-0' : 'xl:h-5',
                         mono && 'font-mono')}>
                     <span id={id} data-valor={campo} title={valor ?? ''} className="min-w-0 truncate">{valor}</span>
                     <Pencil size={13} aria-hidden="true" className="shrink-0 text-white/50" />
