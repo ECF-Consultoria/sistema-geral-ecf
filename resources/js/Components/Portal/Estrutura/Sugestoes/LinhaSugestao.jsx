@@ -9,7 +9,7 @@ import { CaixaDeSelecao, CampoEmLinha, LogisticaEFrete, QuadrosDaSugestao, SeloF
 //
 // Sete áreas, na ordem da referência: seleção | imagens | tipo | nome/SKU | composição |
 // motivo + logística + frete | ações. Abaixo de 1280 px as mesmas áreas empilham.
-// Mesmas props e mesmas regras do `CartaoSugestao`: nada é calculado aqui.
+// Mesmas props e mesmas regras do cartão antigo (removido no 168-19): nada é calculado aqui.
 
 const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40';
 const DIVISORIA = 'xl:border-l xl:border-white/[0.06] xl:pl-4';

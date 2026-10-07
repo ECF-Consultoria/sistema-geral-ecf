@@ -16,8 +16,6 @@ export const msgMarcamosPrimeiras = (limite) => `Marcamos as primeiras ${limite}
 export const msgSkuLongo = (max) => `O código passa de ${max} caracteres. Encurte para poder aceitar.`;
 export const textoTituloLongo = (n, max) => `O título passa de ${max} caracteres (${n}). O Mercado Livre pode cortar.`;
 
-export const textoMarcadas = (n) => `${n} ${n === 1 ? 'marcada' : 'marcadas'}`;
-export const rotuloAceitarMarcadas = (n) => `Aceitar ${textoMarcadas(n)}`;
 
 /** Resultado do aceite: criadas, já existiam e erros, cada parte só quando há. */
 export function textoResultadoAceite(resultado) {

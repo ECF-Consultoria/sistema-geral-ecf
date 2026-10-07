@@ -99,6 +99,11 @@ test('ListaDescartadas: introdução, data, Restaurar com Undo2, estado vazio e 
         assert.ok(descartadas.includes(t), `faltou: ${t}`);
     }
     assert.ok(! descartadas.includes('SpreadsheetGrid') && ! descartadas.includes('bg-ecf-yellow'));
+    assert.ok(descartadas.includes('SeloFase') && descartadas.includes('<CaixaDeSelecao'), 'linha com o selo e a caixa da referência (168-19)');
+});
+
+test('PainelSemTipo: linha única a partir de xl, dentro de um container (168-19)', () => {
+    assert.ok(semTipo.includes('xl:grid-cols-['));
 });
 
 test('página: monta ListaDescartadas, barra variante descartadas e restaura por POST com chaves', () => {

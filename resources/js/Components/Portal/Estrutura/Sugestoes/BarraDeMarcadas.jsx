@@ -1,9 +1,10 @@
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { rotuloAceitarMarcadas, textoMarcadas } from '@/lib/sugestoesEstrutura';
+import { rotuloAceitarSelecionadas, textoSelecionadas } from '@/lib/sugestoesEstrutura';
 
-// ─── Barra fixa das marcadas (UI-SPEC "Seleção múltipla e barra") ───────────
+// ─── Barra fixa das marcadas, SÓ NO CELULAR (UI-SPEC; 168-19, D-31) ─────────
 //
+// No computador as ações vivem na linha das abas (AbasDasSugestoes) e esta barra some (`lg:hidden`).
 // `variante` 'sugestoes' (Descartar N + Aceitar N marcadas, amarelo) ou 'descartadas'
 // (Restaurar N, SEM amarelo; reaproveitada pelo 168-15). Só visível com 1 ou mais marcadas.
 // A página injeta as ações; aqui só se desenha.
@@ -16,13 +17,13 @@ export default function BarraDeMarcadas({ total, variante = 'sugestoes', ocupada
 
     return (
         <div role="region" aria-label="Ações para as sugestões marcadas" data-barra-marcadas
-            className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.10] bg-ecf-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.10] bg-ecf-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
             <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:pl-10 lg:pr-8">
                 <div className="flex items-center justify-between gap-3 lg:justify-start">
-                    <span aria-live="polite" className="text-[14px] font-semibold text-white">{textoMarcadas(total)}</span>
+                    <span aria-live="polite" className="text-[14px] font-semibold text-white">{textoSelecionadas(total)}</span>
                     <button type="button" onClick={onLimpar} disabled={ocupada}
                         className="min-h-[44px] px-1 text-[12px] text-white/60 underline-offset-2 hover:text-white hover:underline disabled:opacity-40 lg:min-h-0">
-                        Limpar marcação
+                        Limpar seleção
                     </button>
                 </div>
                 <div className="flex gap-2 lg:ml-auto">
@@ -40,7 +41,7 @@ export default function BarraDeMarcadas({ total, variante = 'sugestoes', ocupada
                                 className={cn(BOTAO, 'bg-ecf-yellow font-semibold text-black hover:bg-ecf-yellow/90')}>
                                 {ocupada && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
                                 <span className="sm:hidden">Aceitar {total}</span>
-                                <span className="hidden sm:inline">{rotuloAceitarMarcadas(total)}</span>
+                                <span className="hidden sm:inline">{rotuloAceitarSelecionadas(total)}</span>
                             </button>
                         </>
                     )}

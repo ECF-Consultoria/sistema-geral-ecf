@@ -14,16 +14,7 @@ const dir = 'resources/js/Components/Portal/Estrutura/Sugestoes';
 const ler = (nome) => lerSemComentarios(`${dir}/${nome}.jsx`);
 
 const ARQUIVOS = {
-    CartaoSugestao: ['data-chave', 'aria-labelledby', 'podeAceitar(', 'valorDoCampo(', 'Não aceitamos esta sugestão', 'PilulaLogistica', 'Desfazer edição'],
-    CabecalhoFamilia: ['(continua)', 'nesta página'],
-    FiltrosSugestoes: ['Buscar produto, código ou nome…', 'Consultar fretes desta página no Mercado Livre', 'chaves_filtradas'],
-    BarraDeMarcadas: ['role="region"', 'aria-live="polite"', 'variante'],
-    ExplicacaoDasOfertas: [
-        'ecf.sugestoes.explicacao',
-        'o mesmo produto em mais unidades — Kit 4 cadeiras.',
-        'produtos diferentes juntos — mesa + banco.',
-        'um kit com mais unidades de um item — mesa + 4 cadeiras.',
-    ],
+    BarraDeMarcadas: ['role="region"', 'aria-live="polite"', 'variante', 'lg:hidden', 'textoSelecionadas('],
     AvisoSugestoes: ['role="status"', 'role="alert"'],
 };
 

@@ -225,11 +225,13 @@ test('deveSegurarVisita: só quem SAI da tela com edição pendente', () => {
 const T = await import('../../resources/js/lib/sugestoesEstrutura.js');
 const lista = (n) => Array.from({ length: n }, (_, i) => ({ chave: `k${i}` }));
 
-test('textos: marcadas e rótulo do botão, singular e plural', () => {
-    assert.equal(T.textoMarcadas(1), '1 marcada');
-    assert.equal(T.textoMarcadas(3), '3 marcadas');
-    assert.equal(T.rotuloAceitarMarcadas(1), 'Aceitar 1 marcada');
-    assert.equal(T.rotuloAceitarMarcadas(4), 'Aceitar 4 marcadas');
+test('textos: selecionadas e rótulo do botão, singular e plural', () => {
+    assert.equal(T.textoSelecionadas(1), '1 selecionada');
+    assert.equal(T.textoSelecionadas(3), '3 selecionadas');
+    assert.equal(T.rotuloAceitarSelecionadas(1), 'Aceitar 1 selecionada');
+    assert.equal(T.rotuloAceitarSelecionadas(4), 'Aceitar 4 selecionadas');
+    assert.equal(T.textoMarcadas, undefined, 'textoMarcadas saiu (168-19)');
+    assert.equal(T.rotuloAceitarMarcadas, undefined, 'rotuloAceitarMarcadas saiu (168-19)');
 });
 
 test('textos: resultado do aceite só com criadas', () => {
