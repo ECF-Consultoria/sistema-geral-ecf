@@ -47,8 +47,30 @@ class CreativeSlotCatalog
     /**
      * id de atributo casando dimensão (largura/altura/comprimento/profundidade),
      * por sufixo OU nome exato — nunca substring livre.
+     *
+     * ⚠️ Casa TAMBÉM `SELLER_PACKAGE_WIDTH`/`PACKAGE_HEIGHT` etc. (medida da
+     * CAIXA) — por isso nunca usar este padrão isolado para `dimensions`; ver
+     * `PADRAO_ID_EMBALAGEM` e `temAtributoDeDimensaoDoProduto()`.
      */
     private const PADRAO_ID_DIMENSAO = '/_(WIDTH|HEIGHT|LENGTH|DEPTH)$|^(WIDTH|HEIGHT|LENGTH|DEPTH)$/';
+
+    /**
+     * id de atributo de embalagem/frete — mede a CAIXA, nunca o PRODUTO.
+     * Prefixo fechado, nunca substring livre. Os dois prefixos usados de fato
+     * neste projeto (conferidos em `ClassificadorAtributos`,
+     * `AnuncioSaudeService::ATRIBUTOS_DIMENSAO` e fixtures de categoria):
+     *   - `SELLER_PACKAGE_*` — a medida que o VENDEDOR informa (peso/altura/
+     *     largura/comprimento da caixa declarada).
+     *   - `PACKAGE_*` — o atributo de SISTEMA do Mercado Livre para a mesma
+     *     medida de pacote (ex. `PACKAGE_WEIGHT`, `PACKAGE_HEIGHT`).
+     * `SHIPPING_*` existe no projeto só como `SHIPPING_ORIGIN` (fixture de
+     * sale_terms, sem relação com medida) — por isso fica de fora da lista.
+     *
+     * Achado em produção (quick 261007-ifa, rascunho 8, categoria MLB31578):
+     * produto só com `SELLER_PACKAGE_*` (todos 12 cm) tornava `dimensions`
+     * elegível com a medida da caixa, não da mesa anunciada.
+     */
+    private const PADRAO_ID_EMBALAGEM = '/^(SELLER_PACKAGE_|PACKAGE_)/';
 
     /** id de atributo de conteúdo de kit/acessórios — prefixo fechado. */
     private const PADRAO_ID_CONTEUDO_KIT = '/^(KIT_|INCLUDED_|ACCESSORIES)/';
@@ -202,7 +224,7 @@ class CreativeSlotCatalog
     private function satisfaz(string $tipo, ProductTruth $truth): bool
     {
         return match ($tipo) {
-            'dimensions'        => $this->temAtributoCasando($truth, self::PADRAO_ID_DIMENSAO) || $truth->medidasConfirmadas !== [],
+            'dimensions'        => $this->temAtributoDeDimensaoDoProduto($truth) || $truth->medidasConfirmadas !== [],
             'package_content'   => $this->temContagemDeKit($truth) || $this->temAtributoCasando($truth, self::PADRAO_ID_CONTEUDO_KIT),
             'specifications'    => count($truth->fatosVerificados) >= 2,
             'benefits'          => count($truth->fatosVerificados) + count($truth->beneficiosVerificados) >= 3,
@@ -249,6 +271,30 @@ class CreativeSlotCatalog
     {
         foreach (array_keys($truth->atributosIds) as $id) {
             if (preg_match($padrao, (string) $id) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Igual a `temAtributoCasando($truth, PADRAO_ID_DIMENSAO)`, mas descarta
+     * primeiro qualquer id de embalagem/frete (`PADRAO_ID_EMBALAGEM`) — medida
+     * da CAIXA nunca satisfaz `dimensions` (achado 261007-ifa). Produto com
+     * medida própria (`WIDTH`/`HEIGHT`/`DEPTH`/`LENGTH` ou `*_WIDTH` que não
+     * seja de embalagem) continua elegível exatamente como antes.
+     */
+    private function temAtributoDeDimensaoDoProduto(ProductTruth $truth): bool
+    {
+        foreach (array_keys($truth->atributosIds) as $id) {
+            $id = (string) $id;
+
+            if (preg_match(self::PADRAO_ID_EMBALAGEM, $id) === 1) {
+                continue;
+            }
+
+            if (preg_match(self::PADRAO_ID_DIMENSAO, $id) === 1) {
                 return true;
             }
         }
