@@ -1,8 +1,9 @@
+import DevCard from '@/Components/Dev/DevCard';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { format } from 'date-fns';
-import { Activity, AlertTriangle, Check, ChevronDown, Code2, Copy, ExternalLink, FileText, Puzzle, RefreshCw, TrendingUp } from 'lucide-react';
+import { Activity, AlertTriangle, Check, ChevronDown, Code2, Copy, ExternalLink, FileText, Link2, Puzzle, RefreshCw, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 
 // Formata ISO → 'dd/MM HH:mm' (null-safe)
@@ -24,23 +25,6 @@ function CopyBtn({ text }) {
             {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
             {copied ? 'Copiado' : 'Copiar'}
         </button>
-    );
-}
-
-function DevCard({ icon: Icon, title, subtitle, children }) {
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-5">
-            <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-ecf-yellow/[0.12] border border-ecf-yellow/20 flex items-center justify-center shrink-0">
-                    <Icon size={18} className="text-ecf-yellow" />
-                </div>
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold text-[15px] leading-tight">{title}</h3>
-                    {subtitle && <p className="text-white/40 text-[12px] mt-0.5">{subtitle}</p>}
-                </div>
-            </div>
-            {children}
-        </div>
     );
 }
 
@@ -260,6 +244,21 @@ export default function Desenvolvimento({ diagnostico, syncVendasLogs = [] }) {
                         label="Política de Privacidade (pública)"
                         url="/privacidade/painel-ecf"
                     />
+                </DevCard>
+
+                {/* ─── Ferramentas internas ───────────────────────────────── */}
+                <DevCard
+                    icon={Link2}
+                    title="Sugestões de ofertas"
+                    subtitle="Regras que valem para todas as empresas"
+                >
+                    <Link
+                        href={route('dev.estrutura_geracao.index')}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-black/30 border border-white/[0.04] hover:bg-white/[0.05] px-3 py-2.5 text-white/80 text-[13px] transition-colors"
+                    >
+                        Tipos e pares das sugestões de ofertas
+                        <ExternalLink size={12} className="text-white/40" />
+                    </Link>
                 </DevCard>
 
                 {/* ─── Diagnóstico Adman ──────────────────────────────────── */}
