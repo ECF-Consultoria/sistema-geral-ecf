@@ -7,21 +7,15 @@ use App\Jobs\PlanejarKitCriativosJob;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
-use App\Models\PubProdutoFatoCriativo;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
 use App\Services\Creative\CreativePermissao;
-use App\Services\Creative\CreativeSlotCatalog;
-use App\Services\Creative\Dto\CreativeContext;
-use App\Services\Creative\ProductTruthBuilder;
-use App\Services\Publicador\Criativos\ContextoCriativoDoPublicador;
 use App\Services\Publicador\Criativos\PublicadorCriativoAprovacaoService;
 use App\Services\Publicador\Criativos\PublicadorCriativoKitPresenter;
 use App\Services\Publicador\Criativos\PublicadorCriativoReferenciaService;
 use App\Services\Publicador\ProgramasPublicadorService;
-use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -76,7 +70,6 @@ class MlbPublicadorCriativoController extends Controller
         private PublicadorCriativoAprovacaoService $aprovacao,
         private PublicadorCriativoKitPresenter $presenter,
         private CreativeKitDespachante $despachante,
-        private CreativeSlotCatalog $catalogo,
     ) {}
 
     /**
@@ -506,110 +499,6 @@ class MlbPublicadorCriativoController extends Controller
             'mensagem' => $res['mensagem'],
             'kit' => $this->presenter->paraTela($kit->fresh(), $r),
         ]);
-    }
-
-    /**
-     * Fase 169 (TXT-01/04) — o fato confirmado pelo operador para ESTE
-     * produto: lista de confirmados + se algum slot de texto já é elegível
-     * (`pode_ter_texto`) + o que falta quando não é (`faltam`). Leitura —
-     * mesma disciplina de `atual()`/`status()`: SEM `permissao->exigir()`.
-     */
-    public function fatos(int $produto): JsonResponse
-    {
-        $r = $this->rascunhoAutorizado($produto);
-
-        return response()->json($this->statusDosFatos($r));
-    }
-
-    /**
-     * Grava UM fato confirmado (ponto forte ou medida) para o produto —
-     * escrita, mesma disciplina de permissão de `planejar()`.
-     */
-    public function salvarFato(Request $request, int $produto): JsonResponse
-    {
-        $r = $this->rascunhoAutorizado($produto);
-
-        $this->permissao->exigir($request->user(), 'planejar');
-
-        $dados = $request->validate([
-            'tipo' => ['required', 'string', 'in:' . PubProdutoFatoCriativo::TIPO_BENEFICIO . ',' . PubProdutoFatoCriativo::TIPO_MEDIDA],
-            'texto' => ['required', 'string', 'max:300'],
-        ]);
-
-        PubProdutoFatoCriativo::create([
-            'pub_produto_id' => $r->produto_id,
-            'tipo' => $dados['tipo'],
-            'texto' => trim($dados['texto']),
-            'confirmado_por_id' => $request->user()->id,
-        ]);
-
-        return response()->json($this->statusDosFatos($r));
-    }
-
-    /**
-     * Remove UM fato confirmado — escopado por `pub_produto_id` do rascunho
-     * autorizado. Fato de outro produto dá 404 (T-169-05), nunca 403 — nunca
-     * distinguir "existe mas não é seu" de "não existe" (T-165-16/17).
-     */
-    public function removerFato(Request $request, int $produto, int $fato): JsonResponse
-    {
-        $r = $this->rascunhoAutorizado($produto);
-
-        $this->permissao->exigir($request->user(), 'planejar');
-
-        $registro = PubProdutoFatoCriativo::where('id', $fato)->where('pub_produto_id', $r->produto_id)->first();
-        abort_if($registro === null, 404, 'Fato não encontrado.');
-
-        $registro->delete();
-
-        return response()->json($this->statusDosFatos($r));
-    }
-
-    /**
-     * Fase 169 — a resposta dos três endpoints de fatos: monta um
-     * `CreativeContext` MANUAL (sem nenhum `MlAnuncioCriativo` persistido,
-     * `rascunhoId: 0`) a partir de `ContextoCriativoDoPublicador::montar()`
-     * (mesma leitura que `CreativeContextBuilder::paraPublicador()` faz para
-     * gerar de verdade), monta o `ProductTruth` e devolve
-     * confirmados/pode_ter_texto/faltam. Nenhum id de kit/slot/portador nem
-     * token de 32 caracteres sai daqui (T-169-08, D-13).
-     *
-     * @return array{confirmados: array<int, array{id: int, tipo: string, texto: string}>, pode_ter_texto: bool, faltam: array<int, string>}
-     */
-    private function statusDosFatos(PubRascunho $r): array
-    {
-        $dados = app(ContextoCriativoDoPublicador::class)->montar($r, ResolvedorGruposImagem::GERAL);
-
-        $contexto = new CreativeContext(
-            rascunhoId: 0,
-            produto: $dados['produto'],
-            marca: $dados['atributos']['BRAND'] ?? null,
-            modelo: $dados['atributos']['MODEL'] ?? null,
-            categoriaId: $dados['categoria_id'],
-            descricao: $dados['descricao'],
-            atributos: $dados['atributos'],
-            variacoes: $dados['variacoes'],
-            loja: $dados['loja'],
-            imagensReferencia: [],
-            referenciasMeta: [],
-            fatosHumanosBeneficios: $dados['fatos_humanos']['beneficios'],
-            fatosHumanosMedidas: $dados['fatos_humanos']['medidas'],
-        );
-
-        $truth = app(ProductTruthBuilder::class)->paraContexto($contexto);
-
-        $confirmados = PubProdutoFatoCriativo::where('pub_produto_id', $r->produto_id)
-            ->orderBy('id')
-            ->get()
-            ->map(fn (PubProdutoFatoCriativo $f) => ['id' => $f->id, 'tipo' => $f->tipo, 'texto' => $f->texto])
-            ->values()
-            ->all();
-
-        return [
-            'confirmados' => $confirmados,
-            'pode_ter_texto' => $this->catalogo->algumAceitaTexto($truth),
-            'faltam' => $this->catalogo->faltamParaTexto($truth),
-        ];
     }
 
     /** A referência viva do portador — mesma disciplina de `criativoReferenciaVer()` antigo. */

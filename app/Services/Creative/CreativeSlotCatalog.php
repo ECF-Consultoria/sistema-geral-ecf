@@ -210,24 +210,14 @@ class CreativeSlotCatalog
         return array_merge(['hero'], $comFatoElegiveis, $semFatoSemHero);
     }
 
-    /**
-     * O requisito de cada tipo COM_FATO (PLAN-03) — nunca busca em texto
-     * livre.
-     *
-     * Fase 169 (TXT-03): `dimensions`/`benefits` ganham um SEGUNDO caminho —
-     * o fato confirmado pelo OPERADOR (`medidasConfirmadas`/
-     * `beneficiosVerificados`), sempre OU com o caminho de cadastro que já
-     * existia, nunca substituindo. `specifications`/`feature_highlight`/
-     * `how_to_use`/`package_content` ficam byte a byte como antes — fora do
-     * escopo literal de TXT-01 ("pontos fortes e medidas").
-     */
+    /** O requisito de cada tipo COM_FATO (PLAN-03) — nunca busca em texto livre. */
     private function satisfaz(string $tipo, ProductTruth $truth): bool
     {
         return match ($tipo) {
-            'dimensions'        => $this->temAtributoDeDimensaoDoProduto($truth) || $truth->medidasConfirmadas !== [],
+            'dimensions'        => $this->temAtributoDeDimensaoDoProduto($truth),
             'package_content'   => $this->temContagemDeKit($truth) || $this->temAtributoCasando($truth, self::PADRAO_ID_CONTEUDO_KIT),
             'specifications'    => count($truth->fatosVerificados) >= 2,
-            'benefits'          => count($truth->fatosVerificados) + count($truth->beneficiosVerificados) >= 3,
+            'benefits'          => count($truth->fatosVerificados) >= 3,
             'feature_highlight' => count($truth->fatosVerificados) >= 1,
             'how_to_use'        => $this->temAtributoCasando($truth, self::PADRAO_ID_INSTALACAO),
             default             => false,
@@ -237,7 +227,11 @@ class CreativeSlotCatalog
     /**
      * `true` quando algum tipo que aceita texto (`ACEITAM_TEXTO`, igual a
      * `PRIORIDADE_COM_FATO` hoje) é elegível para este Truth — reaproveita
-     * `elegiveis()`, não duplica a lógica de prioridade (TXT-03/TXT-04).
+     * `elegiveis()`, não duplica a lógica de prioridade.
+     *
+     * Usado por `CreativePlanner::planejar()` para gravar, junto do plano do
+     * kit, se nenhuma imagem vai poder ter texto — a tela avisa o operador a
+     * partir dessa informação (`PublicadorCriativoKitPresenter::paraTela()`).
      */
     public function algumAceitaTexto(ProductTruth $truth): bool
     {
@@ -247,8 +241,8 @@ class CreativeSlotCatalog
     /**
      * O que falta para habilitar texto em algum slot, em pt-BR — vazio
      * quando `algumAceitaTexto()` já é `true`. Nunca sugere afrouxar
-     * TRUTH-02/03 (TXT-05): só aponta os dois caminhos que já existem
-     * (cadastro ou confirmação do operador).
+     * TRUTH-02/03: só aponta o caminho que já existe (completar o cadastro
+     * no Mercado Livre), nunca "inventar"/"afrouxar" a régua de fato.
      *
      * @return array<int, string>
      */
@@ -258,12 +252,11 @@ class CreativeSlotCatalog
             return [];
         }
 
-        $confirmados = count($truth->fatosVerificados) + count($truth->beneficiosVerificados);
-        $faltamBeneficios = max(1, 3 - $confirmados);
+        $faltamBeneficios = max(1, 3 - count($truth->fatosVerificados));
 
         return [
-            "Confirme mais {$faltamBeneficios} ponto(s) forte(s) do produto (no cadastro do Mercado Livre ou aqui mesmo, como fato confirmado) para habilitar texto no slot de benefícios.",
-            'Confirme uma medida do produto (no cadastro do Mercado Livre ou aqui mesmo, como fato confirmado) para habilitar texto no slot de dimensões.',
+            "Confirme mais {$faltamBeneficios} ponto(s) forte(s) do produto no cadastro do Mercado Livre para habilitar texto no slot de benefícios.",
+            'Confirme uma medida do produto no cadastro do Mercado Livre para habilitar texto no slot de dimensões.',
         ];
     }
 

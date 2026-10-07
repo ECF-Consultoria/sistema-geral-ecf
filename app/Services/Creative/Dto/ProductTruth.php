@@ -12,13 +12,6 @@ namespace App\Services\Creative\Dto;
  * entrada venha do cadastro (`origem: 'cadastro'`) ou de leitura conferida —
  * NUNCA de inferência sobre título/descrição. Ver o docblock de
  * `ProductTruthBuilder::contagens()` para a lista fechada de ids aceitos.
- *
- * `beneficiosVerificados` e `medidasConfirmadas` são a "leitura conferida"
- * que este docblock já previa desde a Fase 160/161 — Fase 169 (TXT-01/TXT-02)
- * finalmente os popula, a partir de `CreativeContext::fatosHumanosBeneficios`/
- * `fatosHumanosMedidas` (confirmação EXPLÍCITA do operador, nunca promovida a
- * partir de texto livre). Continuam fora de `fatosVerificados`/`contagens`
- * (TRUTH-01/02 intactas) — campos separados, nunca misturados no mesmo array.
  */
 final readonly class ProductTruth
 {
@@ -32,7 +25,6 @@ final readonly class ProductTruth
      *         `CreativeSlotCatalog::elegiveis()`) — id de atributo NÃO é material de prompt,
      *         por isso fica FORA de `paraPrompt()`/`paraAuditoria()`. Último parâmetro, com
      *         default, para não mudar a forma serializada já consumida pela Fase 160.
-     * @param  array<int, string>  $medidasConfirmadas  medidas confirmadas pelo operador (Fase 169)
      */
     public function __construct(
         public ?string $marca,
@@ -43,7 +35,6 @@ final readonly class ProductTruth
         public array $claimsProibidas,
         public array $referenciasMeta,
         public array $atributosIds = [],
-        public array $medidasConfirmadas = [],
     ) {}
 
     /**
@@ -60,7 +51,6 @@ final readonly class ProductTruth
             'fatos_verificados'       => $this->fatosVerificados,
             'contagens'               => $this->contagens,
             'beneficios_verificados'  => $this->beneficiosVerificados,
-            'medidas_confirmadas'     => $this->medidasConfirmadas,
             'claims_proibidas'        => $this->claimsProibidas,
         ];
     }

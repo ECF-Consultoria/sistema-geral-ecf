@@ -7,7 +7,6 @@ use App\Models\Company;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlAnuncioRascunho;
-use App\Models\PubProdutoFatoCriativo;
 use App\Models\User;
 use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\ProductTruthBuilder;
@@ -65,52 +64,6 @@ class CreativeContextBuilderPublicadorTest extends TestCase
 
         $this->assertSame($this->r->id, $ctx->pubRascunhoId);
         $this->assertSame('Cadeira Escritório Executiva ECF Giratória', $ctx->produto);
-    }
-
-    // ═══ Fatos confirmados pelo operador chegam ao contexto (Fase 169, TXT-01/TXT-02) ═══
-
-    public function test_com_fatos_humanos_o_contexto_carrega_os_dois_arrays(): void
-    {
-        $this->montarCenarioCriativo('mlb_empresa');
-
-        PubProdutoFatoCriativo::create([
-            'pub_produto_id' => $this->produto->id,
-            'tipo'           => PubProdutoFatoCriativo::TIPO_BENEFICIO,
-            'texto'          => 'Estrutura reforçada',
-        ]);
-        PubProdutoFatoCriativo::create([
-            'pub_produto_id' => $this->produto->id,
-            'tipo'           => PubProdutoFatoCriativo::TIPO_MEDIDA,
-            'texto'          => 'Largura 80cm, altura 45cm',
-        ]);
-
-        $portador = $this->portadorDoPublicador(R::GERAL);
-
-        $ctx = app(CreativeContextBuilder::class)->paraCriativo($portador);
-
-        $this->assertSame(['Estrutura reforçada'], $ctx->fatosHumanosBeneficios);
-        $this->assertSame(['Largura 80cm, altura 45cm'], $ctx->fatosHumanosMedidas);
-    }
-
-    /**
-     * Sem nenhuma linha em `pub_produto_fatos_criativo`, o `CreativeContext`
-     * fica EXATAMENTE como antes deste plano (regressão zero) — e
-     * `paraAuditoria()` continua com a mesma contagem de chaves de sempre
-     * (os dois campos novos não são material de auditoria, T-165-04).
-     */
-    public function test_sem_fatos_humanos_o_contexto_fica_como_antes(): void
-    {
-        $this->montarCenarioCriativo('mlb_empresa');
-        $portador = $this->portadorDoPublicador(R::GERAL);
-
-        $ctx = app(CreativeContextBuilder::class)->paraCriativo($portador);
-
-        $this->assertSame([], $ctx->fatosHumanosBeneficios);
-        $this->assertSame([], $ctx->fatosHumanosMedidas);
-        $this->assertSame([
-            'rascunho_id', 'produto', 'marca', 'modelo', 'categoria_id', 'descricao',
-            'atributos', 'variacoes', 'loja', 'referencias_meta', 'pub_rascunho_id',
-        ], array_keys($ctx->paraAuditoria()));
     }
 
     // ═══ Contexto da variação (D-14) ═══

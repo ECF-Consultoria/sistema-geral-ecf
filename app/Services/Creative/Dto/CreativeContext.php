@@ -17,14 +17,6 @@ namespace App\Services\Creative\Dto;
  * nesse ramo `rascunhoId` vale `0` porque o campo é `int` não nulo e o
  * rascunho de origem é o do Publicador (`pub_rascunhos`), não o do
  * assistente antigo.
- *
- * Fase 169 (TXT-01/TXT-02): `fatosHumanosBeneficios`/`fatosHumanosMedidas`
- * existem só para o ramo do Publicador — vêm de
- * `ContextoCriativoDoPublicador::fatosHumanos()`, nunca de inferência sobre
- * `descricao`/`produto`. Não são material de auditoria do rascunho antigo
- * nem do Publicador por si só (ficam FORA de `paraAuditoria()`); quem
- * precisa deles é o `ProductTruth` (via `ProductTruthBuilder`), não o log do
- * contexto.
  */
 final readonly class CreativeContext
 {
@@ -33,8 +25,6 @@ final readonly class CreativeContext
      * @param  array{quantidade: int, combinacoes: array<int, array<int, string>>}  $variacoes
      * @param  array<int, array{mime: string, bytes: string}>  $imagensReferencia  bytes crus — nunca path (CTX-03)
      * @param  array<int, array{indice: int|null, mime: string|null, bytes: int|null, nome: string|null}>  $referenciasMeta
-     * @param  array<int, string>  $fatosHumanosBeneficios  pontos fortes confirmados pelo operador (Fase 169)
-     * @param  array<int, string>  $fatosHumanosMedidas  medidas confirmadas pelo operador (Fase 169)
      */
     public function __construct(
         public int $rascunhoId,
@@ -49,8 +39,6 @@ final readonly class CreativeContext
         public array $imagensReferencia,
         public array $referenciasMeta,
         public ?int $pubRascunhoId = null,
-        public array $fatosHumanosBeneficios = [],
-        public array $fatosHumanosMedidas = [],
     ) {}
 
     /**

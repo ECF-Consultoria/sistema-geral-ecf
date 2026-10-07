@@ -21,7 +21,7 @@ class CreativeSlotCatalogEmbalagemTest extends TestCase
         return new CreativeSlotCatalog;
     }
 
-    private function truth(array $atributosIds = [], array $medidasConfirmadas = []): ProductTruth
+    private function truth(array $atributosIds = []): ProductTruth
     {
         return new ProductTruth(
             marca: null,
@@ -32,7 +32,6 @@ class CreativeSlotCatalogEmbalagemTest extends TestCase
             claimsProibidas: ['claim fixa'],
             referenciasMeta: [],
             atributosIds: $atributosIds,
-            medidasConfirmadas: $medidasConfirmadas,
         );
     }
 
@@ -84,21 +83,12 @@ class CreativeSlotCatalogEmbalagemTest extends TestCase
         $this->assertTrue(in_array('dimensions', $this->catalogo()->elegiveis($truth), true));
     }
 
-    public function test_dimensions_elegivel_quando_ha_medida_confirmada_pelo_operador_mesmo_com_so_embalagem_no_cadastro(): void
+    public function test_dimensions_nao_elegivel_sem_atributo_nenhum(): void
     {
-        // medidasConfirmadas (fato humano, Fase 169) continua valendo
-        // exatamente como antes, independente do que exista em atributosIds.
-        $truth = $this->truth(
-            atributosIds: ['SELLER_PACKAGE_WIDTH' => '12 cm'],
-            medidasConfirmadas: ['Largura: 45 cm'],
-        );
-
-        $this->assertTrue(in_array('dimensions', $this->catalogo()->elegiveis($truth), true));
-    }
-
-    public function test_dimensions_nao_elegivel_sem_atributo_nenhum_e_sem_medida_humana(): void
-    {
-        // Regressão do piso já coberto pela Fase 169 — continua igual.
+        // Regressão do piso: zero atributo de qualquer tipo também não torna
+        // dimensions elegível (quick 261007-rmv removeu o segundo caminho de
+        // medida confirmada pelo operador que existia na Fase 169 — o único
+        // caminho agora é o cadastro do Mercado Livre).
         $truth = $this->truth();
 
         $this->assertFalse(in_array('dimensions', $this->catalogo()->elegiveis($truth), true));

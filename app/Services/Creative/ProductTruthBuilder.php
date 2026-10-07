@@ -26,14 +26,6 @@ use App\Services\Creative\Dto\ProductTruth;
  *      recebe este DTO, nunca o `CreativeContext` nem o corpo salvo do
  *      rascunho — o que não está aqui simplesmente não tem por onde entrar
  *      no prompt.
- *   5. (Fase 169, TXT-01/TXT-02) `beneficiosVerificados`/`medidasConfirmadas`
- *      são o SEGUNDO caminho de fato que este docblock já previa desde a
- *      Fase 160/161 ("de leitura conferida") — confirmação EXPLÍCITA do
- *      operador (`CreativeContext::fatosHumanosBeneficios`/
- *      `fatosHumanosMedidas`, vindos de `pub_produto_fatos_criativo`), NUNCA
- *      promovida a partir de texto livre. `fatosVerificados()`/`contagens()`
- *      abaixo seguem lendo SÓ `$contexto->atributos` — zero mudança nos dois
- *      métodos; os campos humanos nunca entram no mesmo array.
  */
 class ProductTruthBuilder
 {
@@ -87,19 +79,13 @@ class ProductTruthBuilder
             modelo: $contexto->modelo,
             fatosVerificados: $fatosVerificados,
             contagens: $contagens,
-            // Fase 169 (TXT-01/TXT-02): "leitura conferida" que este docblock já
-            // previa desde a Fase 160/161 — vem de `CreativeContext`, nunca de
-            // `$contexto->atributos`/texto livre do rascunho (TRUTH-01/02
-            // intactas, distinção por FIELD, nunca por string de origem
-            // misturada no mesmo array que fatosVerificados/contagens).
-            beneficiosVerificados: $contexto->fatosHumanosBeneficios,
+            beneficiosVerificados: [],
             claimsProibidas: $this->claimsProibidas($contexto, $contagens),
             referenciasMeta: $contexto->referenciasMeta,
             // Fase 161 — CreativeSlotCatalog::elegiveis() decide por id de
             // atributo (nunca por rótulo traduzido). Fica FORA de
             // paraPrompt()/paraAuditoria() (não é material de prompt).
             atributosIds: $contexto->atributos,
-            medidasConfirmadas: $contexto->fatosHumanosMedidas,
         );
     }
 
