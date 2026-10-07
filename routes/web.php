@@ -28,6 +28,7 @@ use App\Http\Controllers\DesempenhoMetricasManuaisController;
 use App\Http\Controllers\FechamentoController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
+use App\Http\Controllers\DevEstruturaGeracaoController;
 use App\Http\Controllers\DevModulosController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\GrupoCobrancaHierarquiaController;
@@ -1149,6 +1150,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Dev — area interna de projetos em desenvolvimento
         Route::get('/dev/desenvolvimento', [DevController::class, 'index'])
             ->name('dev.desenvolvimento');
+
+        // Fase 168 (D-15): tipos e pares das sugestões de ofertas — lista global da
+        // ECF; fora do Portal, sem allowlist.
+        Route::get('/dev/estrutura-geracao', [DevEstruturaGeracaoController::class, 'index'])
+            ->name('dev.estrutura_geracao.index');
+        Route::post('/dev/estrutura-geracao/tipos', [DevEstruturaGeracaoController::class, 'criarTipo'])
+            ->name('dev.estrutura_geracao.tipos.criar');
+        Route::put('/dev/estrutura-geracao/tipos/{tipo}', [DevEstruturaGeracaoController::class, 'atualizarTipo'])
+            ->whereNumber('tipo')->name('dev.estrutura_geracao.tipos.atualizar');
+        Route::delete('/dev/estrutura-geracao/tipos/{tipo}', [DevEstruturaGeracaoController::class, 'excluirTipo'])
+            ->whereNumber('tipo')->name('dev.estrutura_geracao.tipos.excluir');
+        Route::post('/dev/estrutura-geracao/pares', [DevEstruturaGeracaoController::class, 'criarPar'])
+            ->name('dev.estrutura_geracao.pares.criar');
+        Route::put('/dev/estrutura-geracao/pares/{par}', [DevEstruturaGeracaoController::class, 'atualizarPar'])
+            ->whereNumber('par')->name('dev.estrutura_geracao.pares.atualizar');
+        Route::delete('/dev/estrutura-geracao/pares/{par}', [DevEstruturaGeracaoController::class, 'excluirPar'])
+            ->whereNumber('par')->name('dev.estrutura_geracao.pares.excluir');
 
         // Tela de controle de visibilidade dos módulos no menu.
         // Gate real isAdminDev() dentro do controller (admin comum não acessa).
