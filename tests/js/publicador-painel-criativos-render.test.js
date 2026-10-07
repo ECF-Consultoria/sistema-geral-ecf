@@ -55,14 +55,19 @@ async function montarPainelCriativos() {
     }
 }
 
-/** `c` mínimo (valor de `useCriativosDoPublicador`) para a fase 'kit' — ações nunca chamadas aqui. */
-const c = (kit) => ({
+/**
+ * `c` mínimo (valor de `useCriativosDoPublicador`) para a fase 'kit' — ações nunca chamadas aqui.
+ * `fatos` (169-03, TXT-01/04) por padrão `null` (equivalente a "ainda carregando" — `FatosDoProduto`
+ * não renderiza nada); o segundo parâmetro permite fornecer um `fatos` customizado nos casos novos.
+ */
+const c = (kit, fatos = null) => ({
     fase: 'kit',
     kit,
     erro: null,
     processando: null,
     confirmacaoRecusada: false,
     motivos: {},
+    fatos,
     alvo: { grupo: 'GERAL' },
     fechar: () => {},
     limparErro: () => {},
@@ -74,6 +79,9 @@ const c = (kit) => ({
     aprovarKit: () => {},
     novoKit: () => {},
     mudarMotivo: () => {},
+    carregarFatos: () => {},
+    salvarFato: () => {},
+    removerFato: () => {},
 });
 
 /** Kit no formato REAL do presenter (campos de `PublicadorCriativoKitPresenter::paraTela()`). */
@@ -206,5 +214,53 @@ test('PainelCriativos — render real (esbuild + react-dom/server), não só est
         assert.doesNotThrow(() => {
             renderToStaticMarkup(React.createElement(PainelCriativos, { c: c(kit), titulo: 'Grupo teste' }));
         });
+    });
+
+    // ─── Fase 169-03 (TXT-01/04) — FatosDoProduto, dentro do mesmo painel ───
+
+    await contexto.test('fatos.podeTerTexto=false com 2 mensagens em faltam — as 2 aparecem, nenhum erro', () => {
+        const kit = kitBase({ status: 'planejando' });
+        const fatos = {
+            confirmados: [],
+            podeTerTexto: false,
+            faltam: [
+                'Confirme mais 2 ponto(s) forte(s) do produto (no cadastro do Mercado Livre ou aqui mesmo, como fato confirmado) para habilitar texto no slot de benefícios.',
+                'Confirme uma medida do produto (no cadastro do Mercado Livre ou aqui mesmo, como fato confirmado) para habilitar texto no slot de dimensões.',
+            ],
+        };
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(PainelCriativos, { c: c(kit, fatos), titulo: 'Grupo teste' }));
+        });
+        assert.match(html, /Confirme mais 2 ponto\(s\) forte\(s\)/);
+        assert.match(html, /Confirme uma medida do produto/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('fatos.confirmados com texto em formato inesperado (número, array, objeto) — nunca lança, nunca mostra valor cru', () => {
+        const kit = kitBase({ status: 'planejando' });
+        for (const textoInvalido of [42, ['a', 'b'], { nota: 'x' }]) {
+            const fatos = {
+                confirmados: [{ id: 1, tipo: 'medida', texto: textoInvalido }],
+                podeTerTexto: true,
+                faltam: [],
+            };
+            assert.doesNotThrow(() => {
+                const html = renderToStaticMarkup(React.createElement(PainelCriativos, { c: c(kit, fatos), titulo: 'Grupo teste' }));
+                assert.doesNotMatch(html, /\[object Object\]/);
+                assert.match(html, /Medida/);
+            });
+        }
+    });
+
+    await contexto.test('fatos.faltam em formato inesperado (string única em vez de array, ou null) — nunca lança', () => {
+        const kit = kitBase({ status: 'planejando' });
+        for (const faltamInvalido of ['Falta só uma coisa.', null]) {
+            const fatos = { confirmados: [], podeTerTexto: false, faltam: faltamInvalido };
+            assert.doesNotThrow(() => {
+                const html = renderToStaticMarkup(React.createElement(PainelCriativos, { c: c(kit, fatos), titulo: 'Grupo teste' }));
+                assert.doesNotMatch(html, /\[object Object\]/);
+            });
+        }
     });
 });

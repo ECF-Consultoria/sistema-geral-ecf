@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Check, Loader2, RefreshCw, Sparkles, Upload, X } from 'lucide-react';
 import { BotaoAcao } from './botoes';
-import { AREA, LINK } from './comum';
+import { AREA, CAMPO, LINK, SELECT } from './comum';
 
 // ─── Painel do kit de criativos por IA (Fase 165, D-08) ─────────────────────
 //
@@ -170,6 +170,97 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
 }
 
 /**
+ * Fase 169 (TXT-01/04) — o operador confirma um ponto forte ou uma medida do produto para a IA
+ * poder escrever esse texto de verdade numa das imagens, e vê a lista do que já confirmou. Sem
+ * fato nenhum (nem confirmado aqui, nem cadastro suficiente no Mercado Livre), nenhuma imagem sai
+ * com texto — o aviso abaixo (texto pronto do servidor, `CreativeSlotCatalog::faltamParaTexto()`)
+ * já diz o que fazer, não só o que falta. Não renderiza nada enquanto `c.fatos` ainda não chegou
+ * (carregando) ou falhou em silêncio — o bloco é complementar, nunca trava o resto do painel.
+ *
+ * REND-01/02: `item.texto` e cada linha de `faltam` passam por `textoSeguro` antes de virar filho
+ * do React — o mesmo cuidado de `Estrategia`/`CartaoSlot` acima, pela mesma fronteira (presenter
+ * PHP → React) que derrubou a tela em 261007.
+ */
+function FatosDoProduto({ c }) {
+    const idBase = useId();
+    const [tipo, setTipo] = useState('beneficio');
+    const [texto, setTexto] = useState('');
+
+    if (! c.fatos) return null;
+
+    const confirmados = Array.isArray(c.fatos.confirmados) ? c.fatos.confirmados : [];
+    const faltam = Array.isArray(c.fatos.faltam) ? c.fatos.faltam : [];
+    const ocupado = !! c.processando;
+    const naoPodeConfirmar = ocupado || texto.trim() === '';
+
+    const confirmar = () => {
+        const valor = texto.trim();
+        if (! valor) return;
+        c.salvarFato(tipo, valor);
+        setTexto('');
+    };
+
+    return (
+        <div data-fatos-do-produto className="space-y-2 rounded-lg border border-white/20 bg-black/20 p-3">
+            <p className="text-[13px] font-bold text-white/90">Pontos fortes e medidas do produto</p>
+            <p className="text-[11px] font-normal text-white/50">O que você confirmar aqui pode aparecer escrito numa das imagens geradas.</p>
+
+            {! c.fatos.podeTerTexto && faltam.length > 0 && (
+                <div className="space-y-1 rounded border border-amber-400/30 bg-amber-500/10 p-1.5">
+                    <p className="text-[11px] font-normal text-amber-300">Ainda não é possível colocar texto em nenhuma imagem:</p>
+                    {faltam.map((item, i) => {
+                        const linha = textoSeguro(item);
+
+                        return linha ? <p key={i} className="text-[11px] font-normal text-white/70">{linha}</p> : null;
+                    })}
+                </div>
+            )}
+
+            {confirmados.length > 0 && (
+                <ul className="space-y-1">
+                    {confirmados.map((item, i) => {
+                        const idFato = typeof item?.id === 'number' ? item.id : null;
+                        const rotulo = item?.tipo === 'medida' ? 'Medida' : 'Ponto forte';
+                        const valor = textoSeguro(item?.texto);
+
+                        return (
+                            <li key={idFato ?? i} className="flex flex-wrap items-center justify-between gap-2 text-[13px] font-normal text-white/70">
+                                <span><span className="font-bold text-white/90">{rotulo}:</span> {valor ?? '—'}</span>
+                                <button type="button" onClick={() => idFato !== null && c.removerFato(idFato)} disabled={ocupado || idFato === null} className={LINK}>
+                                    remover
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+
+            <div className="space-y-1.5">
+                <label className="text-[11px] font-normal text-white/50" htmlFor={`${idBase}-tipo`}>O que você quer confirmar?</label>
+                <select id={`${idBase}-tipo`} value={tipo} onChange={(e) => setTipo(e.target.value)} disabled={ocupado} className={SELECT}>
+                    <option value="beneficio">Ponto forte</option>
+                    <option value="medida">Medida</option>
+                </select>
+                <input
+                    id={`${idBase}-texto`}
+                    type="text"
+                    value={texto}
+                    onChange={(e) => setTexto(e.target.value)}
+                    maxLength={300}
+                    disabled={ocupado}
+                    placeholder="ex.: motor silencioso"
+                    aria-label="Texto do ponto forte ou da medida"
+                    className={CAMPO}
+                />
+                <button type="button" onClick={confirmar} disabled={naoPodeConfirmar} className={LINK}>
+                    {c.processando === 'salvar-fato' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Confirmar
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/**
  * `c` é o valor de `useCriativosDoPublicador`. `sugeridas` são as fotos do anúncio com arquivo
  * guardado (`{ id, url }`), calculadas pelo bloco que montou o painel. `disabled` só desabilita
  * as ações — o painel não se desmonta (a releitura do rascunho depois de "Usar no anúncio" deixa
@@ -234,6 +325,8 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
             )}
 
             <div aria-live="polite" className="space-y-3">
+                {(c.fase === 'escolhendo' || c.fase === 'kit') && <FatosDoProduto c={c} />}
+
                 {c.fase === 'carregando' && (
                     <p className="flex items-center gap-2 text-[13px] font-normal text-white/70"><Loader2 size={14} className="animate-spin" /> Abrindo…</p>
                 )}
