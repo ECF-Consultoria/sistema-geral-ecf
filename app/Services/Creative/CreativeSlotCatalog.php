@@ -62,6 +62,40 @@ class CreativeSlotCatalog
     ];
 
     /**
+     * Layout da imagem de MEDIDAS (quick 261007-amb), inspirado num print
+     * real de anúncio do Mercado Livre mandado pelo usuário — só o tipo
+     * `dimensions` usa este layout. É FORMA, nunca conteúdo: os valores
+     * que entram na imagem continuam vindo exclusivamente do
+     * `ProductTruth` via `CreativePromptBuilder`/`validarTexto()` — este
+     * texto não contém nenhum número, nenhuma medida.
+     *
+     * `CreativePlanner::montarSlotAceito()` FORÇA este texto como `cena`
+     * sempre que o tipo é `dimensions`, mesmo que o LLM proponha outra
+     * cena — o layout é pedido do usuário, não espaço de criatividade do
+     * modelo (mesmo motivo de PLAN-02 forçar `hero`/`lifestyle` na
+     * posição 1).
+     */
+    private const LAYOUT_MEDIDAS = 'Fundo claro e liso. Cabeçalho curto em caixa alta com ícone simples '
+        .'de régua (ex.: "TAMANHO DO PRODUTO"). Ao lado do cabeçalho, a lista das medidas com marcadores '
+        .'quadrados. Produto centralizado, em ângulo que mostre bem suas dimensões, com linhas de cota '
+        .'finas sobre ele — seta nas duas pontas de cada linha, valor da medida rotulado ao lado. '
+        .'Miniatura do produto em outro ângulo no canto superior. Tipografia sans-serif, texto escuro '
+        .'sobre fundo claro.';
+
+    /**
+     * Layout da imagem de TÓPICOS (quick 261007-amb), inspirado noutro
+     * print real de anúncio — usado pelos demais tipos COM_FATO que
+     * aceitam texto (`package_content`, `specifications`, `benefits`,
+     * `feature_highlight`, `how_to_use`). Mesma disciplina de
+     * `LAYOUT_MEDIDAS`: é FORMA, nunca conteúdo, e é FORÇADO como `cena`
+     * pelo `CreativePlanner`, nunca a critério do LLM.
+     */
+    private const LAYOUT_TOPICOS = 'Fundo branco. Um ou dois recortes circulares com close-up de uma '
+        .'parte do produto. De cada círculo, uma linha fina horizontal até um rótulo curto em negrito, '
+        .'com uma linha de apoio menor abaixo. Barra vertical fina de cor escura na borda esquerda da '
+        .'imagem.';
+
+    /**
      * id de atributo casando dimensão (largura/altura/comprimento/profundidade),
      * por sufixo OU nome exato — nunca substring livre.
      *
@@ -150,37 +184,37 @@ class CreativeSlotCatalog
             'dimensions' => [
                 'rotulo'          => 'Dimensões',
                 'objetivo_padrao' => 'Mostrar as medidas reais do produto, só com os valores confirmados no cadastro.',
-                'cena_padrao'     => 'Produto com guia de medidas sobreposta indicando largura, altura e profundidade.',
+                'cena_padrao'     => self::LAYOUT_MEDIDAS,
                 'aceita_texto'    => true,
             ],
             'package_content' => [
                 'rotulo'          => 'Conteúdo da embalagem',
                 'objetivo_padrao' => 'Mostrar as peças que vêm na caixa, exatamente a contagem confirmada no cadastro.',
-                'cena_padrao'     => 'Peças do kit organizadas lado a lado, na contagem confirmada no cadastro.',
+                'cena_padrao'     => self::LAYOUT_TOPICOS,
                 'aceita_texto'    => true,
             ],
             'specifications' => [
                 'rotulo'          => 'Especificações',
                 'objetivo_padrao' => 'Resumir as especificações técnicas confirmadas no cadastro.',
-                'cena_padrao'     => 'Produto com lista de especificações ao lado, só os valores confirmados.',
+                'cena_padrao'     => self::LAYOUT_TOPICOS,
                 'aceita_texto'    => true,
             ],
             'benefits' => [
                 'rotulo'          => 'Benefícios',
                 'objetivo_padrao' => 'Destacar os benefícios que o cadastro sustenta, sem inventar.',
-                'cena_padrao'     => 'Produto com destaques dos benefícios confirmados no cadastro.',
+                'cena_padrao'     => self::LAYOUT_TOPICOS,
                 'aceita_texto'    => true,
             ],
             'feature_highlight' => [
                 'rotulo'          => 'Destaque de funcionalidade',
                 'objetivo_padrao' => 'Dar zoom numa funcionalidade específica confirmada no cadastro.',
-                'cena_padrao'     => 'Close-up na funcionalidade destacada, com legenda do fato confirmado.',
+                'cena_padrao'     => self::LAYOUT_TOPICOS,
                 'aceita_texto'    => true,
             ],
             'how_to_use' => [
                 'rotulo'          => 'Como instalar/montar',
                 'objetivo_padrao' => 'Mostrar o passo de instalação/montagem confirmado no cadastro.',
-                'cena_padrao'     => 'Sequência simples mostrando a instalação/montagem do produto.',
+                'cena_padrao'     => self::LAYOUT_TOPICOS,
                 'aceita_texto'    => true,
             ],
         ];

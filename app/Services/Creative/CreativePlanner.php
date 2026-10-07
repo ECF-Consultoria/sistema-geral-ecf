@@ -258,7 +258,19 @@ class CreativePlanner
         return array_slice($aceitos, 0, max($quantidade, 1));
     }
 
-    /** Um slot aceito da proposta do LLM — objetivo/cena sanitizados, texto validado contra o Truth. */
+    /**
+     * Um slot aceito da proposta do LLM — objetivo sanitizado, texto
+     * validado contra o Truth.
+     *
+     * Quick 261007-amb: para os tipos que ACEITAM TEXTO (`dimensions` e
+     * os demais COM_FATO com texto), a `cena` é SEMPRE a do catálogo
+     * (`LAYOUT_MEDIDAS`/`LAYOUT_TOPICOS`), mesmo que o LLM proponha outra
+     * — o layout de medidas/tópicos é pedido explícito do usuário
+     * (baseado em prints reais de referência), não espaço de
+     * criatividade do modelo. Para os demais tipos (visuais, sem texto),
+     * a cena continua vindo do LLM quando proposta, com fallback ao
+     * padrão — nenhuma mudança de comportamento aí.
+     */
     private function montarSlotAceito(string $tipo, array $proposta, ProductTruth $truth): CreativeSlotPlan
     {
         $padrao      = $this->catalogo->padraoDe($tipo) ?? [];
@@ -275,7 +287,9 @@ class CreativePlanner
             indice: 0, // renumerado em reconciliar()
             tipo: $tipo,
             objetivo: $objetivo !== '' ? $objetivo : (string) ($padrao['objetivo_padrao'] ?? ''),
-            cena: $cena !== '' ? $cena : (string) ($padrao['cena_padrao'] ?? ''),
+            cena: $aceitaTexto
+                ? (string) ($padrao['cena_padrao'] ?? '')
+                : ($cena !== '' ? $cena : (string) ($padrao['cena_padrao'] ?? '')),
             headline: $headline,
             badges: $badges,
             fatosUsados: $fatosUsados,
