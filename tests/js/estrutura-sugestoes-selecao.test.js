@@ -219,3 +219,61 @@ test('deveSegurarVisita: só quem SAI da tela com edição pendente', () => {
     assert.equal(deveSegurarVisita({ ...base, liberado: true }), false);
     assert.equal(deveSegurarVisita({ ...base, haEdicao: false }), false);
 });
+
+// ═══ Textos do contrato de copy (sugestoesEstrutura.js) ═══
+
+const T = await import('../../resources/js/lib/sugestoesEstrutura.js');
+const lista = (n) => Array.from({ length: n }, (_, i) => ({ chave: `k${i}` }));
+
+test('textos: marcadas e rótulo do botão, singular e plural', () => {
+    assert.equal(T.textoMarcadas(1), '1 marcada');
+    assert.equal(T.textoMarcadas(3), '3 marcadas');
+    assert.equal(T.rotuloAceitarMarcadas(1), 'Aceitar 1 marcada');
+    assert.equal(T.rotuloAceitarMarcadas(4), 'Aceitar 4 marcadas');
+});
+
+test('textos: resultado do aceite só com criadas', () => {
+    assert.equal(T.textoResultadoAceite({ criadas: lista(3), ja_existiam: [], erros: [] }), '3 ofertas criadas. Elas já estão na Lista SKUs.');
+    assert.equal(T.textoResultadoAceite({ criadas: lista(1), ja_existiam: [], erros: [] }), '1 oferta criada. Ela já está na Lista SKUs.');
+});
+
+test('textos: resultado do aceite misto', () => {
+    assert.equal(
+        T.textoResultadoAceite({ criadas: lista(2), ja_existiam: ['a'], erros: lista(2) }),
+        '2 ofertas criadas. Elas já estão na Lista SKUs. 1 já existia e saiu da lista. 2 não puderam ser criadas. Veja os cartões que continuam marcados.',
+    );
+});
+
+test('textos: só já existiam e erro único', () => {
+    assert.equal(T.textoResultadoAceite({ criadas: [], ja_existiam: ['a', 'b'], erros: [] }), '2 já existiam e saíram da lista.');
+    assert.equal(T.textoResultadoAceite({ criadas: [], ja_existiam: [], erros: lista(1) }), '1 não pôde ser criada. Veja o cartão que continua marcado.');
+});
+
+test('textos: descarte', () => {
+    assert.equal(T.textoDescarte(1), 'Sugestão descartada.');
+    assert.equal(T.textoDescarte(3), '3 sugestões descartadas.');
+});
+
+test('textos: restauração', () => {
+    assert.equal(T.textoRestauracao(1, 0), '1 sugestão restaurada.');
+    assert.equal(T.textoRestauracao(2, 1), '2 sugestões restauradas. 1 não voltou: já existe uma oferta com esta composição.');
+    assert.equal(T.textoRestauracao(0, 1), 'Já existe uma oferta com esta composição.');
+});
+
+test('textos: composição em linha', () => {
+    assert.equal(T.composicaoEmLinha([{ quantidade: 1, produto_nome: 'Mesa' }, { quantidade: 4, produto_nome: 'Cadeira' }]), '1 × Mesa + 4 × Cadeira');
+});
+
+test('textos: avisos com limite vindo do servidor', () => {
+    assert.equal(T.textoTituloLongo(61, 60), 'O título passa de 60 caracteres (61). O Mercado Livre pode cortar.');
+    assert.equal(T.msgSkuLongo(120), 'O código passa de 120 caracteres. Encurte para poder aceitar.');
+    assert.equal(T.msgLimiteDoLote(100), 'Você pode aceitar até 100 de uma vez. Aceite estas e marque as próximas.');
+    assert.equal(T.msgMarcamosPrimeiras(100), 'Marcamos as primeiras 100. Aceite e marque as próximas.');
+});
+
+test('textos: constantes fixas e rótulos de fase', () => {
+    assert.equal(T.MSG_GUARDA, 'Há nomes ou códigos editados que ainda não foram aceitos. Sair sem aceitar?');
+    assert.equal(T.MSG_FALHA_REDE, 'Não foi possível salvar agora. Suas edições continuam na tela. Tente de novo.');
+    assert.equal(T.MSG_SKU_REPETIDO, 'Já existe uma oferta com este código na Lista SKUs. Você pode aceitar assim mesmo.');
+    assert.deepEqual(T.ROTULO_FASE, { combo: 'Combo', kit: 'Kit', combit: 'Combit' });
+});
