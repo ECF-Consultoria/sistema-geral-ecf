@@ -83,6 +83,18 @@ class ConjuntoLogisticoTest extends TestCase
         $this->assertSame([['id' => 7, 'nome' => 'Cadeira Polo']], $r['sem_medida']);
     }
 
+    public function test_sem_medida_e_a_mesma_fonte_do_avaliar(): void
+    {
+        $itens = [
+            $this->item(1, 'Mesa Polo', 1, [$this->vol(160, 90, 15, 40)]),
+            $this->item(7, 'Cadeira Polo', 4, []),
+        ];
+
+        $this->assertSame([['id' => 7, 'nome' => 'Cadeira Polo']], ConjuntoLogistico::semMedida($itens));
+        $this->assertSame(ConjuntoLogistico::semMedida($itens), ConjuntoLogistico::avaliar($itens)['sem_medida']);
+        $this->assertSame([], ConjuntoLogistico::semMedida([$itens[0]]));
+    }
+
     public function test_custo_do_conjunto(): void
     {
         $this->assertSame(622.0, ConjuntoLogistico::custo([

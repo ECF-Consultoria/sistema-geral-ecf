@@ -42,6 +42,24 @@ final class ConjuntoLogistico
      */
     public static function avaliar(array $itens): array
     {
+        $semMedida = self::semMedida($itens);
+
+        $base = $semMedida === []
+            ? LogisticaProduto::daVolumes(self::volumes($itens))
+            : LogisticaProduto::avaliar(null);
+
+        return $base + ['sem_medida' => $semMedida];
+    }
+
+    /**
+     * Componentes sem nenhuma medida. Fonte ÚNICA do "sem medida": a logística da
+     * página e o filtro Status (D-28) usam esta função.
+     *
+     * @param  list<array{produto_id: int, produto_nome: string, volumes: list<array>}>  $itens
+     * @return list<array{id: int, nome: string}>
+     */
+    public static function semMedida(array $itens): array
+    {
         $semMedida = [];
 
         foreach ($itens as $item) {
@@ -50,11 +68,7 @@ final class ConjuntoLogistico
             }
         }
 
-        $base = $semMedida === []
-            ? LogisticaProduto::daVolumes(self::volumes($itens))
-            : LogisticaProduto::avaliar(null);
-
-        return $base + ['sem_medida' => $semMedida];
+        return $semMedida;
     }
 
     /** Σ quantidade × custo (2 casas); null se algum custo faltar. */

@@ -17,11 +17,19 @@ use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
  * - Frete na lista é só ESTIMATIVA pela tabela da ECF (nenhuma requisição ao ML);
  *   a cotação real existe só em {@see self::cotarPagina}, por ação explícita (D-18).
  * - Nada é gravado: frete é exibição (D-19 da 167).
+ * - Status (D-28): "prontas" = sem nenhum aviso; "com_aviso" = título/SKU acima do
+ *   limite, SKU já usado por oferta da empresa ou componente sem medida. O veredito
+ *   usa as MESMAS fontes da página (NomesSugeridos::avisos, SKUs da empresa e
+ *   ConjuntoLogistico::semMedida); nenhuma regra nova.
+ * - Resumo (D-31) e ambientes do grupo (D-30) saem do conjunto, nunca da página.
  */
 class ListaDeSugestoes
 {
     private const ABAS  = ['sugestoes', 'sem_tipo', 'descartadas'];
     private const FASES = ['combo', 'kit', 'combit'];
+
+    /** Valores aceitos do filtro Status (D-28); qualquer outro vira "sem filtro". */
+    public const STATUS = ['prontas', 'com_aviso'];
 
     public function __construct(
         private SugestoesService $sugestoes,
@@ -29,8 +37,9 @@ class ListaDeSugestoes
     ) {}
 
     /**
-     * @param  array<string,mixed>  $filtros  aba, fase, familia, tipo, q (valores desconhecidos = sem filtro)
-     * @return array<string,mixed>
+     * @param  array<string,mixed>  $filtros  aba, fase, familia, tipo, status, q (valores desconhecidos = sem filtro)
+     * @return array<string,mixed>  além do painel e da página, traz `por_status` (D-28), `resumo` do conjunto
+     *                              inteiro (D-31), `familia_ambientes` (D-30) e `gerado_em` (D-31)
      */
     public function listar(Company $empresa, array $filtros, int $pagina): array
     {
@@ -61,20 +70,43 @@ class ListaDeSugestoes
         };
         $ehSugestao = $f['aba'] !== 'sem_tipo';
 
+        // Uma consulta só: SKUs das ofertas da empresa, para marcar o SKU sugerido que já existe.
+        $skus = $f['aba'] === 'sem_tipo' ? [] : array_flip(array_filter(
+            EstruturaOferta::query()->where('company_id', $empresa->id)->pluck('sku')
+                ->map(fn ($x) => EstruturaOferta::normalizarSku($x))->all()
+        ));
+
+        // Veredito de aviso (D-28) sobre as pendentes: só a aba Pendentes tem status.
+        $comAviso = [];
+        if ($f['aba'] === 'sugestoes') {
+            foreach ($vigentes as $s) {
+                $comAviso[$s['chave']] = $this->temAviso($s, $detalhes, $skus);
+            }
+        }
+
         // Opções de família: aba com fase/tipo/busca, sem a família.
         $paraFamilias = $ehSugestao
-            ? $this->filtrar($baseAba, $f, ['familia'])
+            ? $this->filtrar($baseAba, $f, ['familia'], $comAviso)
             : $this->filtrarSemTipo($baseAba, $f, ['familia']);
         $familias = $this->opcoesDeFamilia($paraFamilias, $ehSugestao);
 
         // Contagem por fase: aba com família/tipo/busca, sem a fase.
-        $semFase = $ehSugestao ? $this->filtrar($baseAba, $f, ['fase']) : [];
+        $semFase = $ehSugestao ? $this->filtrar($baseAba, $f, ['fase'], $comAviso) : [];
         $porFase = ['todas' => count($semFase), 'combo' => 0, 'kit' => 0, 'combit' => 0];
         foreach ($semFase as $s) {
             $porFase[$s['fase']]++;
         }
 
-        $filtrado = $ehSugestao ? $this->filtrar($baseAba, $f) : $this->filtrarSemTipo($baseAba, $f);
+        // Contagem por status: aba com família/fase/tipo/busca, sem o status.
+        $porStatus = ['todas' => 0, 'prontas' => 0, 'com_aviso' => 0];
+        if ($f['aba'] === 'sugestoes') {
+            foreach ($this->filtrar($baseAba, $f, ['status'], $comAviso) as $s) {
+                $porStatus['todas']++;
+                $porStatus[$comAviso[$s['chave']] ? 'com_aviso' : 'prontas']++;
+            }
+        }
+
+        $filtrado = $ehSugestao ? $this->filtrar($baseAba, $f, [], $comAviso) : $this->filtrarSemTipo($baseAba, $f);
 
         $excedeu = count($filtrado) > $teto;
         if ($excedeu) {
@@ -85,6 +117,15 @@ class ListaDeSugestoes
         foreach ($filtrado as $linha) {
             $v = $this->valorFamilia($linha['familia_id'] ?? null);
             $familiaTotais[$v] = ($familiaTotais[$v] ?? 0) + 1;
+        }
+
+        // Ambientes de cada grupo de família (D-30): união sem repetir, em ordem alfabética.
+        $familiaAmbientes = $this->ambientesPorFamilia($filtrado);
+
+        // Resumo dos cartões (D-31): conjunto inteiro da aba Pendentes, sem filtro.
+        $resumo = ['total' => count($vigentes), 'combo' => 0, 'kit' => 0, 'combit' => 0];
+        foreach ($vigentes as $s) {
+            $resumo[$s['fase']]++;
         }
 
         // ─── Página ───
@@ -102,12 +143,6 @@ class ListaDeSugestoes
                 $familiaContinua = $primeira;
             }
         }
-
-        // Uma consulta só: SKUs das ofertas da empresa, para marcar o SKU sugerido que já existe.
-        $skus = $f['aba'] === 'sem_tipo' ? [] : array_flip(array_filter(
-            EstruturaOferta::query()->where('company_id', $empresa->id)->pluck('sku')
-                ->map(fn ($x) => EstruturaOferta::normalizarSku($x))->all()
-        ));
 
         $itens = [];
         $produtosSemTipo = [];
@@ -133,7 +168,7 @@ class ListaDeSugestoes
 
         // ─── Lote do "aceitar os filtrados" ───
         $chavesFiltradas = [];
-        $comFiltro = $f['fase'] !== null || $f['familia'] !== null || $f['tipo'] !== null || $f['q'] !== '';
+        $comFiltro = $f['fase'] !== null || $f['familia'] !== null || $f['tipo'] !== null || $f['status'] !== null || $f['q'] !== '';
         if ($f['aba'] === 'sugestoes' && $comFiltro) {
             foreach ($filtrado as $s) {
                 if (count($chavesFiltradas) >= $lote) {
@@ -150,6 +185,10 @@ class ListaDeSugestoes
             'tem_produtos'      => (bool) $detalhes['tem_produtos'],
             'contagens'         => $contagens,
             'por_fase'          => $porFase,
+            'por_status'        => $porStatus,
+            'resumo'            => $resumo,
+            'familia_ambientes' => $familiaAmbientes,
+            'gerado_em'         => now()->toIso8601String(),
             'familias'          => $familias,
             'tipos'             => $this->tiposParaPagina($detalhes),
             'itens'             => $itens,
@@ -214,7 +253,7 @@ class ListaDeSugestoes
     /**
      * Valores contra listas fechadas (T-168-27): desconhecido vira "sem filtro".
      *
-     * @return array{aba: string, fase: ?string, familia: ?string, tipo: ?string, q: string}
+     * @return array{aba: string, fase: ?string, familia: ?string, tipo: ?string, status: ?string, q: string}
      */
     private function normalizar(array $filtros, array $todas, array $semTipo, array $detalhes): array
     {
@@ -237,21 +276,29 @@ class ListaDeSugestoes
         $familia = $filtros['familia'] ?? null;
         $familia = (is_string($familia) || is_int($familia)) && isset($validas[(string) $familia]) ? (string) $familia : null;
 
+        $status = $filtros['status'] ?? null;
+        $status = is_string($status) && in_array($status, self::STATUS, true) ? $status : null;
+
         $q = TipoDoProduto::normalizar(is_string($filtros['q'] ?? null) ? mb_substr($filtros['q'], 0, 120) : '');
 
-        return ['aba' => $aba, 'fase' => $fase, 'familia' => $familia, 'tipo' => $tipo, 'q' => $q];
+        return ['aba' => $aba, 'fase' => $fase, 'familia' => $familia, 'tipo' => $tipo, 'status' => $status, 'q' => $q];
     }
 
     /**
      * @param  list<array<string,mixed>>  $lista
      * @param  list<string>  $ignorar  filtros que não entram (para as contagens das facetas)
+     * @param  array<string,bool>  $comAviso  chave → tem aviso (só preenchido na aba sugestoes)
      * @return list<array<string,mixed>>
      */
-    private function filtrar(array $lista, array $f, array $ignorar = []): array
+    private function filtrar(array $lista, array $f, array $ignorar = [], array $comAviso = []): array
     {
         $saida = [];
 
         foreach ($lista as $s) {
+            if ($f['aba'] === 'sugestoes' && ! in_array('status', $ignorar, true) && $f['status'] !== null
+                && ($comAviso[$s['chave']] ?? false) !== ($f['status'] === 'com_aviso')) {
+                continue;
+            }
             if (! in_array('familia', $ignorar, true) && $f['familia'] !== null
                 && $this->valorFamilia($s['familia_id'] ?? null) !== $f['familia']) {
                 continue;
@@ -299,6 +346,32 @@ class ListaDeSugestoes
         }
 
         return TipoDoProduto::normalizar(implode(' ', array_map('strval', $partes)));
+    }
+
+    /**
+     * Ambientes de cada valor de família, sem repetir pela forma normalizada e em
+     * ordem alfabética (guarda o texto da primeira ocorrência).
+     *
+     * @param  list<array<string,mixed>>  $lista
+     * @return array<string, list<string>>
+     */
+    private function ambientesPorFamilia(array $lista): array
+    {
+        $porFamilia = [];
+        foreach ($lista as $linha) {
+            $v = $this->valorFamilia($linha['familia_id'] ?? null);
+            $porFamilia[$v] ??= [];
+            foreach ($linha['ambientes'] ?? [] as $a) {
+                $porFamilia[$v][TipoDoProduto::normalizar((string) $a)] ??= (string) $a;
+            }
+        }
+
+        foreach ($porFamilia as $v => $ambientes) {
+            ksort($ambientes);
+            $porFamilia[$v] = array_values($ambientes);
+        }
+
+        return $porFamilia;
     }
 
     private function valorFamilia(?int $id): string
@@ -458,12 +531,31 @@ class ListaDeSugestoes
             'sku'           => $s['sku'],
             'porque'        => $s['porque'],
             'avisos'        => $s['avisos'],
-            'sku_repetido'  => EstruturaOferta::normalizarSku($s['sku']) !== null && isset($skus[EstruturaOferta::normalizarSku($s['sku'])]),
+            'sku_repetido'  => $this->skuRepetido($s['sku'], $skus),
             'logistica'     => null,
             'frete'         => null,
             'custo'         => null,
             'descartada_em' => ($s['descartada'] ?? false) ? ($s['descartada_em'] ?: null) : null,
         ];
+    }
+
+    private function skuRepetido(?string $sku, array $skus): bool
+    {
+        $normal = EstruturaOferta::normalizarSku($sku);
+
+        return $normal !== null && isset($skus[$normal]);
+    }
+
+    /**
+     * Mesmo veredito da página (D-28): aviso do gerador, SKU já usado ou componente sem medida.
+     *
+     * @param  array<string,mixed>  $s  sugestão do gerador
+     */
+    private function temAviso(array $s, array $detalhes, array $skus): bool
+    {
+        return $s['avisos'] !== []
+            || $this->skuRepetido($s['sku'], $skus)
+            || ConjuntoLogistico::semMedida($this->conjunto($s, $detalhes)) !== [];
     }
 
     /**
@@ -508,6 +600,21 @@ class ListaDeSugestoes
      */
     private function avaliar(array $s, array $detalhes): array
     {
+        $conjunto = $this->conjunto($s, $detalhes);
+
+        return [
+            'logistica' => ConjuntoLogistico::avaliar($conjunto),
+            'custo'     => ConjuntoLogistico::custo($conjunto),
+        ];
+    }
+
+    /**
+     * Componentes da sugestão com volumes e custo por variação.
+     *
+     * @return list<array{produto_id: int, produto_nome: string, quantidade: int, volumes: list<array>, custo: ?float}>
+     */
+    private function conjunto(array $s, array $detalhes): array
+    {
         $conjunto = [];
         foreach ($s['itens'] as $i) {
             $v = $detalhes['variacoes'][$i['variacao_id']] ?? ['volumes' => [], 'custo' => null];
@@ -520,10 +627,7 @@ class ListaDeSugestoes
             ];
         }
 
-        return [
-            'logistica' => ConjuntoLogistico::avaliar($conjunto),
-            'custo'     => ConjuntoLogistico::custo($conjunto),
-        ];
+        return $conjunto;
     }
 
     /** @return array{pacote: ?array, peso_faturado: ?float, logistica: string, custo: ?float} */

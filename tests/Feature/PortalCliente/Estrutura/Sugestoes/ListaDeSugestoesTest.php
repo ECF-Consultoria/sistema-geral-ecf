@@ -359,6 +359,22 @@ class ListaDeSugestoesTest extends TestCase
         }
     }
 
+    public function test_contrato_das_chaves_do_topo(): void
+    {
+        [$empresa] = $this->cenario();
+
+        $esperado = ['aba', 'chaves_filtradas', 'contagens', 'excedeu_teto', 'familia_ambientes', 'familia_continua', 'familia_totais',
+            'familias', 'gerado_em', 'itens', 'limites', 'paginacao', 'por_fase', 'por_status', 'produtos', 'produtos_sem_tipo',
+            'resumo', 'tem_produtos', 'teto', 'tipos'];
+
+        foreach (['sugestoes', 'sem_tipo', 'descartadas'] as $aba) {
+            $r = $this->listar($empresa, ['aba' => $aba]);
+            $this->assertSame($esperado, $this->chavesOrdenadas($r), "Aba {$aba}");
+            $this->assertSame(['combit', 'combo', 'kit', 'total'], $this->chavesOrdenadas($r['resumo']));
+            $this->assertSame(['com_aviso', 'prontas', 'todas'], $this->chavesOrdenadas($r['por_status']));
+        }
+    }
+
     /** @return array<string,int> variações por código */
     private function ids(Company $empresa): array
     {
