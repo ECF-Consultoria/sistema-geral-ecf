@@ -10,9 +10,10 @@
 | pela tela admin, sem deploy.
 |
 | - D-06: pares de TIPO da ECF (global, vale para todas as empresas).
-| - D-07 / D-13: quantidades LITERAIS por tipo (cadeira 2/4/6, banqueta 2/3/4,
-|   mesa nenhuma). A ECF amplia pelo admin; a semente não chuta além disso.
-| - D-20: a lista-semente completa só entra depois do ok do usuário.
+| - D-22 (substitui o D-13): quantidades COMO A PLANILHA USA, aprovadas pelo usuário
+|   (cadeira, banqueta, banco, prateleira, cabeceira, criado-mudo, mesa-lateral, cama;
+|   mesa e os demais: nenhuma). A ECF amplia pelo admin.
+| - D-20/D-21/D-23: só a lista aprovada pelo usuário entra (18 pares; bicama em cama; tipo beliche).
 |
 | Vocabulário GENÉRICO de móveis: nunca nome de produto, marca ou família de
 | cliente.
@@ -44,15 +45,19 @@ return [
         ],
         'mesa-lateral' => [
             'nome' => 'Mesa lateral', 'plural' => 'Mesas laterais', 'palavras' => ['mesa lateral', 'mesa de apoio'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 14,
+            'qtd_combo' => '2', 'qtd_combit' => '2', 'ordem' => 14,
         ],
         'cama' => [
-            'nome' => 'Cama', 'plural' => 'Camas', 'palavras' => ['cama'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 20,
+            'nome' => 'Cama', 'plural' => 'Camas', 'palavras' => ['cama', 'bicama'],
+            'qtd_combo' => '2', 'qtd_combit' => null, 'ordem' => 20,
+        ],
+        'beliche' => [
+            'nome' => 'Beliche', 'plural' => 'Beliches', 'palavras' => ['beliche', 'treliche'],
+            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 21,
         ],
         'cabeceira' => [
             'nome' => 'Cabeceira', 'plural' => 'Cabeceiras', 'palavras' => ['cabeceira'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 22,
+            'qtd_combo' => '2', 'qtd_combit' => '2', 'ordem' => 22,
         ],
         'sofa' => [
             'nome' => 'Sofá', 'plural' => 'Sofás', 'palavras' => ['sofa'],
@@ -112,16 +117,16 @@ return [
         ],
         'prateleira' => [
             'nome' => 'Prateleira', 'plural' => 'Prateleiras', 'palavras' => ['prateleira'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 56,
+            'qtd_combo' => '2, 3', 'qtd_combit' => '2', 'ordem' => 56,
         ],
         'criado-mudo' => [
             'nome' => 'Criado-mudo', 'plural' => 'Criados-mudos',
             'palavras' => ['criado mudo', 'mesa de cabeceira', 'mesinha de cabeceira'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 60,
+            'qtd_combo' => '2', 'qtd_combit' => '2', 'ordem' => 60,
         ],
         'cadeira' => [
             'nome' => 'Cadeira', 'plural' => 'Cadeiras', 'palavras' => ['cadeira'],
-            'qtd_combo' => '2, 4, 6', 'qtd_combit' => '2, 4, 6', 'ordem' => 70,
+            'qtd_combo' => '2, 4, 6, 8', 'qtd_combit' => '2, 4, 6', 'ordem' => 70,
         ],
         'poltrona' => [
             'nome' => 'Poltrona', 'plural' => 'Poltronas', 'palavras' => ['poltrona'],
@@ -129,11 +134,11 @@ return [
         ],
         'banqueta' => [
             'nome' => 'Banqueta', 'plural' => 'Banquetas', 'palavras' => ['banqueta'],
-            'qtd_combo' => '2, 3, 4', 'qtd_combit' => '2, 3, 4', 'ordem' => 74,
+            'qtd_combo' => '2, 3, 4', 'qtd_combit' => '2', 'ordem' => 74,
         ],
         'banco' => [
             'nome' => 'Banco', 'plural' => 'Bancos', 'palavras' => ['banco'],
-            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 76,
+            'qtd_combo' => '2', 'qtd_combit' => '2', 'ordem' => 76,
         ],
         'puff' => [
             'nome' => 'Puff', 'plural' => 'Puffs', 'palavras' => ['puff', 'puf'],
@@ -142,12 +147,26 @@ return [
     ],
 
     // Pares de tipo: `repete` = null (só Kit), o slug do lado que se repete no Combit, ou 'ambos'.
-    // A lista-semente completa entra pelo 168-06 depois do ok do usuário (D-20);
-    // até lá, só os 3 pares seguros.
+    // Lista-semente aprovada pelo usuário em 2026-10-07 (168-02, D-21); a ECF amplia pela tela admin.
     'pares' => [
-        ['tipos' => ['mesa', 'cadeira'], 'repete' => 'cadeira'],
-        ['tipos' => ['mesa', 'banco'], 'repete' => 'banco'],
+        ['tipos' => ['aparador', 'mesa'], 'repete' => null],
+        ['tipos' => ['aparador', 'mesa-centro'], 'repete' => null],
+        ['tipos' => ['aparador', 'mesa-lateral'], 'repete' => 'mesa-lateral'],
+        ['tipos' => ['aparador', 'rack'], 'repete' => null],
+        ['tipos' => ['armario', 'prateleira'], 'repete' => null],
+        ['tipos' => ['banco', 'mesa'], 'repete' => 'banco'],
+        ['tipos' => ['banqueta', 'mesa'], 'repete' => 'banqueta'],
+        ['tipos' => ['buffet', 'cristaleira'], 'repete' => null],
+        ['tipos' => ['buffet', 'mesa'], 'repete' => null],
+        ['tipos' => ['cabeceira', 'cama'], 'repete' => 'cabeceira'],
+        ['tipos' => ['cabeceira', 'criado-mudo'], 'repete' => 'criado-mudo'],
+        ['tipos' => ['cadeira', 'mesa'], 'repete' => 'cadeira'],
+        ['tipos' => ['cama', 'cama'], 'repete' => null],
         ['tipos' => ['cama', 'criado-mudo'], 'repete' => 'criado-mudo'],
+        ['tipos' => ['comoda', 'criado-mudo'], 'repete' => null],
+        ['tipos' => ['comoda', 'guarda-roupa'], 'repete' => null],
+        ['tipos' => ['comoda', 'prateleira'], 'repete' => 'prateleira'],
+        ['tipos' => ['mesa-centro', 'mesa-lateral'], 'repete' => 'mesa-lateral'],
     ],
 
 ];
