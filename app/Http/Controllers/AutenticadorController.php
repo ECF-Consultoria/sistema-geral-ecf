@@ -60,6 +60,15 @@ class AutenticadorController extends Controller
         ]);
     }
 
+    public function show(Autenticador $autenticador)
+    {
+        // O código em si é buscado pela tela via GET /codigo (que audita a
+        // visualização). Aqui só vão os dados públicos da conta, sem o secret.
+        return Inertia::render('Autenticadores/Show', [
+            'autenticador' => $this->publico($autenticador),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -147,7 +156,8 @@ class AutenticadorController extends Controller
     {
         $autenticador->delete();
 
-        return back()->with('success', 'Autenticador removido.');
+        // Removido a partir da página da conta — volta para a lista.
+        return redirect()->route('autenticadores.index')->with('success', 'Autenticador removido.');
     }
 
     // ─── Helpers ───
