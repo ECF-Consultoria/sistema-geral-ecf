@@ -6,10 +6,13 @@ import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
 import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
 import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
 import { AREA, Campo, INVALIDO, LINK, Secao, Subtitulo, useErroDoCampo } from './comum';
-import FotosEVariacoes from './FotosEVariacoes';
 import { cn } from '@/lib/utils';
 
-// ─── Etapa 2 — Detalhes: fotos e variações, ficha técnica e descrição ───────
+// ─── Etapa 2 — Detalhes: ficha técnica e descrição ──────────────────────────
+//
+// "Fotos e variações" morou aqui até 07/10/2026; saiu para a etapa própria
+// Imagens (D1, Fase 169, ver `EtapaImagens.jsx`) — o operador preenche o fato
+// do produto ANTES de gerar a imagem.
 //
 // A ficha técnica abre inteira, como campos normais (docx §6): primeiro as
 // características que o Mercado Livre pede, depois as que ajudam a aparecer
@@ -170,7 +173,6 @@ function Descricao({ m }) {
 export default function EtapaDetalhes({ m }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="detalhes">
-            <FotosEVariacoes m={m} />
             <FichaTecnica m={m} />
             <Descricao m={m} />
         </div>

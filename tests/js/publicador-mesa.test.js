@@ -6,9 +6,10 @@ import {
 } from '../../resources/js/Components/Publicador/apoio.js';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Gates de fonte do editor do Publicador interno em 3 etapas (04/10/2026):
-// Produto, Detalhes e Condições de venda, como no Mercado Livre. Lê a fonte
-// SEM comentários (ver _fonte.js).
+// Gates de fonte do editor do Publicador interno, como no Mercado Livre
+// (04/10/2026; 4ª etapa Imagens em 07/10/2026, D1/Fase 169): Produto,
+// Detalhes, Imagens e Condições de venda. Lê a fonte SEM comentários (ver
+// _fonte.js).
 //
 // A lista abaixo é o ponto de extensão: arquivo novo do editor entra aqui, e
 // os gates de vocabulário passam a valer para ele também.
@@ -22,6 +23,7 @@ const CARDS = [
     `${BASE}/Mesa/Etapas.jsx`,
     `${BASE}/Mesa/EtapaProduto.jsx`,
     `${BASE}/Mesa/EtapaDetalhes.jsx`,
+    `${BASE}/Mesa/EtapaImagens.jsx`,
     `${BASE}/Mesa/FotosEVariacoes.jsx`,
     `${BASE}/Mesa/CartaoVariante.jsx`,
     `${BASE}/Mesa/NovaVariacao.jsx`,
@@ -92,7 +94,7 @@ test('Sem contador de estrutura em lugar nenhum: nada de "Faltam N", "Completo",
     }
 });
 
-// ─── apoio.js: as verificações do servidor e as 3 etapas ───
+// ─── apoio.js: as verificações do servidor e as 4 etapas ───
 
 test('apoio.js — SECOES (8 chaves, em ordem) e secaoDoProblema seguem a fonte única do hook', () => {
     assert.deepEqual(SECOES.map((s) => s.chave), ['categoria', 'caracteristicas', 'variacoes', 'fotos', 'variantes', 'tipos', 'envio', 'descricao']);
@@ -102,15 +104,17 @@ test('apoio.js — SECOES (8 chaves, em ordem) e secaoDoProblema seguem a fonte 
     assert.equal(estadoDasSecoes([], null).categoria.completo, true);
 });
 
-test('apoio.js — as 3 etapas, em ordem, e a navegação entre elas', () => {
-    assert.deepEqual(ETAPAS.map((e) => `${e.chave}:${e.titulo}`), ['produto:Produto', 'detalhes:Detalhes', 'condicoes:Condições de venda']);
+test('apoio.js — as 4 etapas, em ordem, e a navegação entre elas', () => {
+    assert.deepEqual(ETAPAS.map((e) => `${e.chave}:${e.titulo}`), ['produto:Produto', 'detalhes:Detalhes', 'imagens:Imagens', 'condicoes:Condições de venda']);
     assert.equal(etapaValida('detalhes'), 'detalhes');
     assert.equal(etapaValida('ficha'), null);
     assert.equal(etapaValida(null), null);
     assert.equal(proximaEtapa('produto'), 'detalhes');
+    assert.equal(proximaEtapa('detalhes'), 'imagens');
     assert.equal(proximaEtapa('condicoes'), null);
     assert.equal(etapaAnterior('produto'), null);
-    assert.equal(etapaAnterior('condicoes'), 'detalhes');
+    assert.equal(etapaAnterior('imagens'), 'detalhes');
+    assert.equal(etapaAnterior('condicoes'), 'imagens');
 });
 
 test('etapaDoProblema — cada pendência do servidor cai na etapa onde se resolve', () => {
@@ -122,8 +126,10 @@ test('etapaDoProblema — cada pendência do servidor cai na etapa onde se resol
     assert.equal(e({ etapa: 'E8', atributo: 'MODEL' }), 'detalhes');
     assert.equal(e({ etapa: 'E4', atributo: 'COLOR' }), 'detalhes');
     assert.equal(e({ etapa: 'E5', variante: 'COLOR=id:1', campo: 'sku' }), 'detalhes');
-    assert.equal(e({ grupo: 'COLOR=id:1' }), 'detalhes');
-    assert.equal(e({ etapa: 'E6', imagem: '7' }), 'detalhes');
+    // Fotos (grupo/imagem/E6) caem SEMPRE em Imagens, nunca mais em Detalhes.
+    assert.equal(e({ grupo: 'COLOR=id:1' }), 'imagens');
+    assert.equal(e({ etapa: 'E6', imagem: '7' }), 'imagens');
+    assert.equal(e({ etapa: 'E6' }), 'imagens');
     assert.equal(e({ etapa: 'E9', campo: 'descricao' }), 'detalhes');
     assert.equal(e({ etapa: 'E10', alvo: 'gold_special', variante: 'x', campo: 'preco' }), 'condicoes');
     assert.equal(e({ etapa: 'E10', campo: 'garantia' }), 'condicoes');
@@ -172,7 +178,7 @@ test('CampoAtributo — variante "campo": a caixa do formulário, vermelha quand
     assert.match(f, /revisar/);
 });
 
-test('Etapas — só os 3 nomes (sem contador nem check), etapa atual com aria-current="step", navegação livre', () => {
+test('Etapas — só os nomes (sem contador nem check), etapa atual com aria-current="step", navegação livre', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/Etapas.jsx`);
     assert.match(f, /ETAPAS\.map/);
     assert.match(f, /aria-current=\{ativa \? 'step' : undefined\}/);
@@ -276,18 +282,27 @@ test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin; "gerar outr
     assert.match(fonte, /const caixa = \(grande, invalido\) => \(grande \? cn\(CAMPO, invalido && INVALIDO\) : pequeno\)/);
 });
 
-test('EtapaDetalhes — ficha inteira aberta: "Características principais" e "Mais características", sem "opcional"; descrição em texto simples', () => {
+test('EtapaDetalhes — ficha inteira aberta: "Características principais" e "Mais características", sem "opcional"; descrição em texto simples; fotos moram em Imagens', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
     assert.match(f, /Características principais/);
     assert.match(f, /Mais características/);
     assert.doesNotMatch(f, /opcion|aria-expanded|<details/i);
     assert.match(f, /a\.obrigatoriedade === 'REQUIRED' && valorVazio\(valor\)/);
-    assert.match(f, /<FotosEVariacoes m=\{m\} \/>/);
+    assert.doesNotMatch(f, /<FotosEVariacoes/);
     assert.match(f, /<textarea id="campo-descricao"/);
     assert.doesNotMatch(f, /markdown|regenerar/i);
 });
 
-// ─── Etapa 3 — Condições de venda ───
+// ─── Etapa 3 — Imagens (D1, Fase 169, 07/10/2026) ───
+
+test('EtapaImagens — renderiza FotosEVariacoes, sem duplicação, mesmo componente de antes', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaImagens.jsx`);
+    assert.match(f, /import FotosEVariacoes from '\.\/FotosEVariacoes'/);
+    assert.match(f, /<FotosEVariacoes m=\{m\} \/>/);
+    assert.match(f, /data-etapa-conteudo="imagens"/);
+});
+
+// ─── Etapa 4 — Condições de venda ───
 
 test('EtapaCondicoes — tipo de anúncio e preço juntos; preço por CampoPreco (do Portal só mostrado); efeitos do envio num hook', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/EtapaCondicoes.jsx`);

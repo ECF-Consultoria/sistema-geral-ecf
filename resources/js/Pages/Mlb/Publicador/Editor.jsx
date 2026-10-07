@@ -10,6 +10,7 @@ import BarraDoEditor from '@/Components/Publicador/Mesa/BarraDoEditor';
 import Etapas from '@/Components/Publicador/Mesa/Etapas';
 import EtapaProduto from '@/Components/Publicador/Mesa/EtapaProduto';
 import EtapaDetalhes from '@/Components/Publicador/Mesa/EtapaDetalhes';
+import EtapaImagens from '@/Components/Publicador/Mesa/EtapaImagens';
 import EtapaCondicoes, { useEfeitosDoEnvio } from '@/Components/Publicador/Mesa/EtapaCondicoes';
 import { useEfeitosDasVariacoes } from '@/Components/Publicador/Mesa/FotosEVariacoes';
 import Publicar from '@/Components/Publicador/Mesa/Publicar';
@@ -19,16 +20,26 @@ import { conclusaoDaIa } from '@/Components/Publicador/derivados';
 import { ETAPA_INICIAL, bloqueiosDaEtapa, etapaAnterior, etapaValida, proximaEtapa, tituloDaEtapa } from '@/Components/Publicador/apoio';
 import { cn } from '@/lib/utils';
 
-// ─── Editor interno do Publicador: 3 etapas, como no Mercado Livre ──────────
+// ─── Editor interno do Publicador: 4 etapas, como no Mercado Livre ──────────
 //
 // 04/10/2026 — o cliente: "no Mercado Livre são 3 fases; aqui parecem muitas",
 // "os campos nem parecem que são para preencher" e nada de "Estrutura 8/8".
-// Então: no topo só os nomes das 3 etapas (Produto, Detalhes, Condições de
-// venda); embaixo, uma coluna com as seções da etapa, campos de verdade e
-// "Voltar"/"Continuar". O "Continuar" salva o pendente, pergunta ao servidor o
-// que falta NESTA etapa e só avança sem bloqueio; senão marca os campos em
-// vermelho e leva ao primeiro. Antes disso nenhum campo fica vermelho.
-// Na última etapa a ação é Conferir/Publicar (o único amarelo dali).
+// Então: no topo só os nomes das etapas; embaixo, uma coluna com as seções da
+// etapa, campos de verdade e "Voltar"/"Continuar". O "Continuar" salva o
+// pendente, pergunta ao servidor o que falta NESTA etapa e só avança sem
+// bloqueio; senão marca os campos em vermelho e leva ao primeiro. Antes disso
+// nenhum campo fica vermelho. Na última etapa a ação é Conferir/Publicar (o
+// único amarelo dali).
+//
+// 07/10/2026 (D1, Fase 169) — quarta etapa Imagens, DE PROPÓSITO, não um
+// esquecimento da decisão de 04/10 acima: causa raiz medida em `EtapaDetalhes`
+// (`FotosEVariacoes` renderizava ANTES da ficha técnica/descrição) — o
+// operador gerava imagens sem ter preenchido nenhum fato do produto. O
+// usuário foi avisado de que isto reabre parcialmente a tensão das "muitas
+// fases" e recebeu a alternativa mais barata (só inverter a ordem dentro de
+// Detalhes); escolheu a quarta etapa mesmo assim — ela também ganha
+// identidade visual (Fase 170) e acervo (Fase 171). Produto → Detalhes →
+// Imagens → Condições de venda.
 //
 // Toda a lógica mora em `usePublicador` e `useIaDoPublicador`; aqui há só
 // composição e o estado de tela. Os efeitos que valem para o anúncio inteiro
@@ -303,6 +314,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                                     {mostrar && <ResumoDosErros bloqueios={bloqueios} />}
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
                                     {etapa === 'detalhes' && <EtapaDetalhes m={m} />}
+                                    {etapa === 'imagens' && <EtapaImagens m={m} />}
                                     {etapa === 'condicoes' && (
                                         <EtapaCondicoes m={m}>
                                             <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave) => irPara(chave, { marcar: true })} />
