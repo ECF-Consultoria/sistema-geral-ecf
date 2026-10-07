@@ -83,6 +83,7 @@ export const contarBloqueios = (problemas) => (problemas ?? []).filter((p) => p.
 export const ETAPAS = [
     { chave: 'produto', titulo: 'Produto' },
     { chave: 'detalhes', titulo: 'Detalhes' },
+    { chave: 'imagens', titulo: 'Imagens' },
     { chave: 'condicoes', titulo: 'Condições de venda' },
 ];
 export const ETAPA_INICIAL = ETAPAS[0].chave;
@@ -95,15 +96,16 @@ export const tituloDaEtapa = (chave) => ETAPAS.find((e) => e.chave === chave)?.t
 /**
  * Em que etapa o problema se resolve:
  * - Produto: categoria (E2), condição (E3 campo `condicao`) e títulos (E7);
- * - Detalhes: fotos (`alvo.grupo`/`alvo.imagem`, E6), variações (E4, E5), ficha técnica (E3, E8) e descrição (E9);
+ * - Detalhes: variações (E4, E5), ficha técnica (E3, E8) e descrição (E9);
+ * - Imagens: fotos (`alvo.grupo`/`alvo.imagem`, E6) — todo problema de foto, com ou sem grupo/imagem;
  * - Condições de venda: preço, envio, garantia e embalagem (E10) e o que é da conta ou da conferência (E0, E11, E13, sem etapa).
  */
 export const etapaDoProblema = (p) => {
     const alvo = p.alvo ?? {};
     const e = alvo.etapa;
-    if (alvo.grupo || alvo.imagem) return 'detalhes';
+    if (alvo.grupo || alvo.imagem || e === 'E6') return 'imagens';
     if (e === 'E2' || e === 'E7' || (e === 'E3' && alvo.campo === 'condicao')) return 'produto';
-    if (['E3', 'E4', 'E5', 'E6', 'E8', 'E9'].includes(e)) return 'detalhes';
+    if (['E3', 'E4', 'E5', 'E8', 'E9'].includes(e)) return 'detalhes';
 
     return 'condicoes';
 };
