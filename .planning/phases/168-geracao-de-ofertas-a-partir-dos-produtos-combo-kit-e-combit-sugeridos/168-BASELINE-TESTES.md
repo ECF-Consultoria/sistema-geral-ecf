@@ -37,7 +37,23 @@ O G8 não tem referência: cresce com os testes da fase. O 168-16 preenche a col
 
 ### 168-06
 
-(a preencher)
+Data: 2026-10-07. Conexão conferida: `mysql` / banco `ecf_admin` (MariaDB 10.4 local, compartilhado). Só `migrate --path=` e `migrate:rollback --path=` das 2 migrations da fase; nenhum `migrate` puro, `--step`, `--batch` nem escrita em `migrations`. Antes e depois de cada comando, `migrate:status --path=<arquivo>` (lotes 131 e 132; saída conferida: `Pending` -> `Ran` no migrate, `Ran` -> `Pending` no rollback).
+
+Sequência executada:
+1. `migrate --path=2026_10_07_100000_create_estrutura_geracao_tables.php` -> DONE (lote 131).
+2. `migrate --path=2026_10_07_100100_semear_estrutura_tipos_e_pares.php` -> DONE (lote 132). Contagens: 27 tipos / 18 pares.
+3. Idempotência: `migrate:rollback --path=` da semente (down vazio, `Pending`) e `migrate --path=` de novo -> 27 tipos / 18 pares (contagens iguais na re-execução).
+4. Ciclo completo: rollback da semente, rollback da criação, `migrate` da criação, `migrate` da semente -> sem erro 1059/1553/1830; as duas terminam `Ran`; 27 tipos / 18 pares.
+
+`estrutura_ofertas`: ANTES = 13, DEPOIS = 13 (igual). Nenhuma tabela da 167 foi alterada.
+
+DDL conferido (`SHOW CREATE TABLE`, só estrutura):
+- `estrutura_tipos_produto`: `UNIQUE KEY etp_slug_uq (slug)`, `slug varchar(40)`.
+- `estrutura_tipo_pares`: `UNIQUE KEY etpar_uq (tipo_a_id,tipo_b_id)`, `KEY etpar_b_idx (tipo_b_id)`, `etpar_a_fk` e `etpar_b_fk` ... `ON DELETE CASCADE`.
+- `estrutura_produto_geracao`: `tipo_id bigint(20) unsigned DEFAULT NULL`, `PRIMARY KEY (produto_id)`, `epg_produto_fk ... ON DELETE CASCADE`, `epg_company_fk ... ON DELETE CASCADE`, `epg_tipo_fk ... ON DELETE SET NULL`, `epg_company_idx`, `epg_tipo_idx`.
+- `estrutura_sugestoes_descartadas`: `UNIQUE KEY esd_company_chave_uq (company_id,chave)`, `esd_company_fk ... ON DELETE CASCADE`.
+
+As 4 tabelas ficam aplicadas no banco local.
 
 ### 168-16
 
