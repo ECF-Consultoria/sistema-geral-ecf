@@ -507,6 +507,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     // ─── Tela ───────────────────────────────────────────────────────────────
 
+    // Há filtro aplicado (fase, família, tipo, busca ou status)? Decide o estado vazio e o "Marcar todas do filtro".
+    const comFiltro = filtroAtivo(filtros);
     const naPagina = itens.filter((i) => podeAceitar(i, estado, limites));
     const todasDaPaginaMarcadas = naPagina.length > 0 && naPagina.every((i) => marcadas.includes(i.chave));
     const todasDescPaginaMarcadas = itens.length > 0 && itens.every((i) => marcadasDesc.includes(i.chave));

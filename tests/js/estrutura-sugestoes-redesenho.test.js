@@ -186,3 +186,12 @@ test('AbasDasSugestoes: abas, seleção à direita e Restaurar sem amarelo', () 
     semProibidos(t, 'AbasDasSugestoes');
     assert.equal(ocorrencias(t, 'uppercase'), 0);
 });
+
+test('a página declara `comFiltro` antes de usar (tela branca no navegador, 168-20)', () => {
+    // O 168-19 trocou a constante local pela função `filtroAtivo` da lib e esqueceu de declarar `comFiltro`:
+    // o React caía com ReferenceError e a tela inteira ficava preta. Só o navegador pegou.
+    const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaSugestoes.jsx');
+    assert.ok(/const comFiltro = filtroAtivo\(filtros\);/.test(pagina), 'comFiltro vem de filtroAtivo(filtros)');
+    assert.ok(pagina.indexOf('const comFiltro') < pagina.indexOf('qualEstadoVazio({'), 'declarado antes do estado vazio');
+    assert.ok(pagina.indexOf('const comFiltro') < pagina.indexOf('filtroAtivo={comFiltro}'), 'declarado antes de ir às abas');
+});
