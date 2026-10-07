@@ -13,6 +13,17 @@
 
 let guarda = null;
 
+// Quando foi o último popstate (voltar/avançar do navegador). O Inertia restaura a página do
+// histórico com as props do dia em que ela foi visitada, sem pedir nada ao servidor: uma tela
+// cujos dados mudam por dentro (sugestões aceitas e descartadas) precisa saber que chegou assim
+// para recarregar o que é dela (Fase 168-16).
+let ultimoPopstateEm = 0;
+
+/** Verdadeiro se um voltar/avançar do navegador aconteceu há menos de `ms` (a tela que monta agora veio dele). */
+export function chegouPeloHistorico(ms = 3000) {
+    return Date.now() - ultimoPopstateEm < ms;
+}
+
 /** Liga a guarda da tela; devolve a função que a desliga (só desliga se ainda for a mesma). */
 export function definirGuardaDoVoltar(fn) {
     guarda = fn;
@@ -24,6 +35,7 @@ export function definirGuardaDoVoltar(fn) {
 
 /** O ouvinte único, exportado para teste. */
 export function aoVoltarNoHistorico(e) {
+    ultimoPopstateEm = Date.now();
     if (guarda) guarda(e);
 }
 

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import { aplicarImagens, manterImagensAtuais } from '@/lib/imagensVariacao';
 import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
+import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -59,7 +61,7 @@ const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto
 /** O que a pessoa vê e pode mudar, para comparar o rascunho com o que a ficha abriu. */
 const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id ?? null, ...campoEditaveis(v), volumes: v.volumes_digitados ?? null })));
 
-export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites }) {
+export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null }) {
     // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
     const [inicio] = useState(() => {
         const iniciais = linhas.length
@@ -94,7 +96,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Volta o que estava no rascunho. Variação nunca gravada ganha chave nova (o contador recomeça ao recarregar). */
     const recuperarRascunho = () => {
         if (! rascunho) return;
-        setVars(rascunho.vars.map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
+        // As imagens valem as de agora (o servidor as grava na hora), não as do dia em que o rascunho foi guardado.
+        setVars(manterImagensAtuais(rascunho.vars, varsRef.current).map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
         setErros({});
         setAlterado(true);
         setRascunho(null);
@@ -112,9 +115,17 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
+    // Ficha técnica: os campos da categoria escolhida; mexer em um deles protege a saída sem salvar.
+    const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id, aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
+
+    /**
+     * Imagens de uma variação (o servidor grava envio, ordem e exclusão na hora). Só troca a lista na
+     * tela: NÃO marca a ficha como alterada, não há nada a salvar nem a perder.
+     */
+    const definirImagens = (chave, imagens) => setVars((atual) => aplicarImagens(atual, chave, imagens));
 
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
@@ -168,6 +179,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             _k: novaChave(),
             id: undefined, oferta: null, frete: null, pendencias: [], falta: '', peso_cubado: null, peso_faturado: null,
             cubado_cobrado: false, logistica: null, oferta_id: undefined,
+            imagens: [],   // as fotos são de cada variação: a nova nasce sem as da 1ª
             codigo: refSugerida(vars),
             valor: '',
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
@@ -200,6 +212,11 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const salvar = async () => {
         if (salvando) return { ok: false, data: null };
         setAviso(null);
+        if (tecnica.carregando) {
+            setAviso('Os campos da ficha técnica ainda estão carregando. Espere um instante e salve de novo.');
+
+            return { ok: false, data: null };
+        }
         const faltando = {};
         vars.forEach((v) => {
             if (String(v.codigo).trim() === '' || String(v.nome).trim() === '') {
@@ -226,7 +243,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             setVars((atual) => atual.map((v) => {
                 const servidor = porChave.get(v._k);
 
-                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k } : v;
+                // O POST `linhas` não devolve as imagens: as da tela seguem como estão.
+                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k, imagens: v.imagens ?? [] } : v;
             }));
         };
 
@@ -244,7 +262,20 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         });
         // A 1ª variação de um produto novo não gravou e o servidor não disse por quê: a sequência parou nela.
         if (r.parou && ! comErro[vars[0]._k]) comErro[vars[0]._k] = 'Não salvamos esta variação. Tente de novo.';
-        const ok = ! r.parou && juntas.erros.length === 0;
+        let ok = ! r.parou && juntas.erros.length === 0;
+        let salvosDaFicha = null;
+
+        // Produto gravado por inteiro: agora que existe o id, grava a ficha técnica. Se ela não passar, as
+        // variações já estão salvas (voltam com os ids) e os motivos aparecem nos campos.
+        if (ok) {
+            const t = await tecnica.gravar(r.produtoId);
+            if (t.ok) {
+                salvosDaFicha = t.pulou ? null : t.salvos;
+            } else {
+                ok = false;
+                setAviso('O produto foi salvo, mas a ficha técnica precisa de ajustes. Confira os campos marcados e salve de novo.');
+            }
+        }
 
         if (ok) {
             setAlterado(false);
@@ -259,13 +290,14 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         }
         setSalvando(false);
 
-        return { ok, data: juntas };
+        return { ok, data: juntas, fichaTecnica: salvosDaFicha };
     };
 
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
-        alterarNome, alterar, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
+        alterarNome, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
+        tecnica,
     };
 }

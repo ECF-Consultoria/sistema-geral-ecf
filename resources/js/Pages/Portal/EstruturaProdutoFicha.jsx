@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Info, Loader2, Plus, Save } from 'lucide-react
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash } from '@/Components/Portal/Estrutura/comum';
 import FichaDadosGerais from '@/Components/Portal/Estrutura/Produtos/FichaDadosGerais';
+import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
@@ -27,8 +28,8 @@ import {
 
 const CONFIRMA_SAIR = 'Há alterações não salvas neste produto. Sair sem salvar?';
 
-export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites }) {
-    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites });
+export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica }) {
+    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica });
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
     const liberado = useRef(false);
@@ -133,14 +134,16 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     };
 
     /** A entrada da ficha com o que o servidor acabou de devolver: URL do produto e as variações de agora. */
-    const entradaDoProduto = (id, data) => {
+    const entradaDoProduto = (id, data, salvosDaFicha = null) => {
         const porId = new Map();
         (data?.linhas ?? []).filter((l) => l.produto_id === id).forEach((l) => porId.set(l.id, l));
         const atuais = [...porId.values()];
 
         return {
             url: route('portal.auth.estrutura.produtos.ficha', id, false),
-            props: (props) => ({ ...props, produto: { id, nome: atuais[0]?.nome ?? props.produto?.nome ?? '' }, linhas: atuais, listas: data?.listas ?? props.listas }),
+            props: (props) => ({ ...props, produto: { id, nome: atuais[0]?.nome ?? props.produto?.nome ?? '' }, linhas: atuais, listas: data?.listas ?? props.listas,
+                ...(salvosDaFicha ? { ficha_tecnica: { salvos: salvosDaFicha } } : {}),
+            }),
         };
     };
 
@@ -182,7 +185,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
             aviso: textoProdutoSalvo(r.data),
             // Produto novo: a lista rola até o cartão dele; editado, volta à mesma rolagem.
             produtoId: novo ? (idGravado ?? null) : null,
-            entrada: idGravado ? entradaDoProduto(idGravado, r.data) : null,
+            entrada: idGravado ? entradaDoProduto(idGravado, r.data, r.fichaTecnica) : null,
         });
     };
 
@@ -252,6 +255,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
                 </fieldset>
+
+                <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
 
                 <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-2 lg:pt-2">
                     <div className="flex items-center justify-between gap-3">

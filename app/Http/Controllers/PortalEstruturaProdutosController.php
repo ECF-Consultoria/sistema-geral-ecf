@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
@@ -14,11 +17,14 @@ use App\Services\Portal\Estrutura\Produtos\ModeloProdutosXlsx;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
+use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -53,6 +59,9 @@ class PortalEstruturaProdutosController extends Controller
         private ImportadorProdutos $importador,
         private CategoriaSugestaoService $categorias,
         private FreteMe2Service $frete,
+        private FichaTecnicaDaCategoria $camposDaCategoria,
+        private FichaTecnicaDoProduto $fichaTecnica,
+        private VariacaoImagensService $imagens,
     ) {
     }
 
@@ -320,6 +329,150 @@ class PortalEstruturaProdutosController extends Controller
         ]);
     }
 
+    // ═══ Ficha técnica ══════════════════════════════════════════════════════
+
+    /**
+     * Os campos da ficha técnica de uma categoria, em grupos (a tela monta o formulário
+     * ao escolher a categoria). Dado público: só o app token sai da nossa casa.
+     * Nada é gravado. `indisponivel` quando o catálogo não respondeu ou a categoria
+     * não tem campos — a tela segue sem a ficha, nunca com erro. O sigilo da origem
+     * dos campos está em {@see FichaTecnicaDaCategoria}.
+     */
+    public function camposDaCategoria(Request $request)
+    {
+        $dados = $request->validate(
+            ['categoria' => ['required', 'string', 'regex:/^MLB\d{1,15}$/']],
+            ['categoria.required' => 'Escolha a categoria.', 'categoria.regex' => 'Categoria inválida.'],
+        );
+
+        try {
+            $grupos = $this->camposDaCategoria->definicao($dados['categoria']);
+        } catch (\Throwable $e) {
+            Log::warning('[Estrutura Produtos] campos da categoria falharam', ['erro' => $e->getMessage()]);
+            $grupos = [];
+        }
+
+        return response()->json(['grupos' => $grupos, 'indisponivel' => $grupos === []]);
+    }
+
+    /**
+     * Grava a ficha técnica do produto (substitui o que havia). A empresa vem da
+     * sessão; produto de outra empresa responde 404, igual ao inexistente. O 404
+     * vem ANTES da validação: assim "não é seu" nunca vira "campo faltando".
+     */
+    public function gravarFichaTecnica(Request $request, int $produto)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $request->validate([
+            'atributos'           => 'present|array|max:300',
+            'atributos.*'         => 'array',
+            'atributos.*.id'      => 'required|string|max:80',
+            'atributos.*.unidade' => 'nullable|string|max:20',
+            'atributos.*.valor'   => ['nullable', function (string $campo, mixed $valor, \Closure $falhou) {
+                if (! is_scalar($valor)) {
+                    $falhou('Valor inválido.');
+                }
+            }],
+        ]);
+
+        $salvos = $this->fichaTecnica->gravar($empresa, $p, (array) $request->input('atributos'), PortalContexto::ator());
+
+        return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
+    }
+
+    // ═══ Imagens da variação ════════════════════════════════════════════════
+
+    /**
+     * Guarda uma ou mais imagens (`imagens[]`) no fim da galeria da variação. A empresa vem
+     * da sessão; variação de outra empresa responde 404 ANTES de qualquer validação.
+     * Devolve a galeria atualizada. Tudo ou nada: se não couberem todas, nenhuma é guardada.
+     */
+    public function enviarImagens(Request $request, int $variacao)
+    {
+        $empresa = PortalContexto::empresa();
+        $v = $this->variacaoDaEmpresa($empresa->id, $variacao);
+
+        $this->recusarEnvioQueNaoChegou($request);
+
+        $max = VariacaoImagensService::maxPorVariacao();
+        $kb = (int) config('estrutura_produtos.imagens.max_kb', 10240);
+        $extensoes = implode(',', (array) config('estrutura_produtos.imagens.extensoes', ['jpg', 'jpeg', 'png', 'webp']));
+        $mb = rtrim(rtrim(number_format($kb / 1024, 1, ',', ''), '0'), ',');
+
+        $request->validate([
+            'imagens'   => ['required', 'array', 'min:1', "max:{$max}"],
+            'imagens.*' => ['file', "mimes:{$extensoes}", "max:{$kb}"],
+        ], [
+            'imagens.required' => 'Escolha ao menos uma imagem.',
+            'imagens.array'    => 'Escolha ao menos uma imagem.',
+            'imagens.min'      => 'Escolha ao menos uma imagem.',
+            'imagens.max'      => "Cada variação aceita até {$max} imagens. Envie menos de uma vez.",
+            'imagens.*.file'   => 'Não foi possível receber a imagem :position. Tente de novo.',
+            'imagens.*.mimes'  => 'A imagem :position não está num formato aceito. Envie JPG, PNG ou WebP.',
+            'imagens.*.max'    => "A imagem :position passa de {$mb} MB; tente uma menor.",
+        ]);
+
+        $arquivos = array_values((array) $request->file('imagens'));
+        $galeria = $this->imagens->enviar($empresa, $v, $arquivos, PortalContexto::ator());
+
+        return response()->json(['imagens' => $galeria, 'mensagem' => count($arquivos) === 1 ? 'Imagem enviada.' : 'Imagens enviadas.']);
+    }
+
+    /**
+     * Entrega o arquivo da imagem (o `<img src>` da tela aponta para cá; o cookie de sessão
+     * autentica). Só se a variação E a imagem forem da empresa da sessão; senão, 404 uniforme.
+     * Cache só do navegador (`private`): a imagem de uma empresa nunca fica em cache compartilhado.
+     */
+    public function verImagem(int $variacao, int $imagem)
+    {
+        $img = $this->imagemDaEmpresa(PortalContexto::empresa()->id, $variacao, $imagem);
+        abort_unless($this->imagens->existe($img), 404);
+
+        return Storage::disk(VariacaoImagensService::DISCO)->response($img->caminho, null, [
+            'Content-Type'           => $img->mime,
+            'Cache-Control'          => 'private, max-age=3600',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /** Remove a imagem (linha e arquivo); as outras sobem de posição e a próxima vira capa se preciso. */
+    public function excluirImagem(int $variacao, int $imagem)
+    {
+        $empresa = PortalContexto::empresa();
+        $v = $this->variacaoDaEmpresa($empresa->id, $variacao);
+        $img = $this->imagemDaEmpresa($empresa->id, $variacao, $imagem);
+
+        return response()->json([
+            'imagens'  => $this->imagens->excluir($empresa, $v, $img, PortalContexto::ator()),
+            'mensagem' => 'Imagem excluída.',
+        ]);
+    }
+
+    /**
+     * Regrava a ordem da galeria: `{ordem: [id, id, ...]}`, a 1ª é a capa. Ids que não são da
+     * variação são ignorados; as imagens não citadas ficam no fim, como estavam.
+     */
+    public function ordenarImagens(Request $request, int $variacao)
+    {
+        $empresa = PortalContexto::empresa();
+        $v = $this->variacaoDaEmpresa($empresa->id, $variacao);
+
+        $dados = $request->validate([
+            'ordem'   => 'required|array|min:1|max:100',
+            'ordem.*' => 'integer',
+        ], [
+            'ordem.required'  => 'Informe a ordem das imagens.',
+            'ordem.*.integer' => 'Ordem inválida.',
+        ]);
+
+        return response()->json([
+            'imagens'  => $this->imagens->reordenar($empresa, $v, $dados['ordem'], PortalContexto::ator()),
+            'mensagem' => 'Ordem das imagens salva.',
+        ]);
+    }
+
     // ═══ Frete ══════════════════════════════════════════════════════════════
 
     /**
@@ -368,13 +521,98 @@ class PortalEstruturaProdutosController extends Controller
         return Inertia::render('Portal/EstruturaProdutoFicha', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
             'produto'      => $produto ? ['id' => (int) $produto->id, 'nome' => $produto->nome] : null,
-            'linhas'       => $produto ? $this->linhas->paraProdutos($empresa, [(int) $produto->id]) : [],
+            // Ficha técnica já salva (a definição dos campos vem do endpoint por categoria).
+            'ficha_tecnica' => ['salvos' => $produto ? $this->fichaTecnica->salvos($produto) : []],
+            'linhas'       => $this->linhasComImagens($empresa, $produto),
             'listas'       => $this->listasDaEmpresa(),
             'vocabulario'  => $this->vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => $this->freteTabela(),
             'limites'      => self::LIMITES,
         ]);
+    }
+
+    /** As linhas (uma por variação) do produto, cada uma com a sua galeria em `imagens`. */
+    private function linhasComImagens(\App\Models\Company $empresa, ?EstruturaProduto $produto): array
+    {
+        if (! $produto) {
+            return [];
+        }
+
+        $linhas = $this->linhas->paraProdutos($empresa, [(int) $produto->id]);
+        $galerias = $this->imagens->listarDasVariacoes($empresa, array_column($linhas, 'id'));
+
+        return array_map(fn (array $l) => $l + ['imagens' => $galerias[$l['id']] ?? []], $linhas);
+    }
+
+    /** A variação da empresa da sessão; de outra empresa ou inexistente, 404 igual. */
+    private function variacaoDaEmpresa(int $empresaId, int $variacao): EstruturaProdutoVariacao
+    {
+        return EstruturaProdutoVariacao::query()->where('company_id', $empresaId)->whereKey($variacao)->firstOrFail();
+    }
+
+    /** A imagem, só se ela e a variação forem da empresa da sessão (404 uniforme). */
+    private function imagemDaEmpresa(int $empresaId, int $variacao, int $imagem): EstruturaProdutoVariacaoImagem
+    {
+        $v = $this->variacaoDaEmpresa($empresaId, $variacao);
+
+        return EstruturaProdutoVariacaoImagem::query()
+            ->where('company_id', $empresaId)->where('variacao_id', $v->id)->whereKey($imagem)->firstOrFail();
+    }
+
+    /**
+     * O envio que estourou o limite do PHP chega SEM arquivo e sem erro: quando o corpo passa
+     * de `post_max_size` o PHP descarta tudo (`$_POST` e `$_FILES` vazios), e quando um só arquivo
+     * passa de `upload_max_filesize` ele vem marcado inválido. Sem esta checagem a tela só veria
+     * "Escolha ao menos uma imagem" (ou nada). Aqui vira a mensagem certa.
+     *
+     * O caso do corpo acima de `post_max_size` NÃO chega até aqui: o `ValidatePostSize` do Laravel
+     * o barra antes, com 413 sem texto. Quem o transforma na mesma mensagem é o `withExceptions`
+     * de `bootstrap/app.php`. Chega aqui o resto: arquivo marcado inválido, ou corpo grande sem arquivo
+     * quando o `post_max_size` do servidor é maior que o limite que o Laravel enxerga.
+     */
+    private function recusarEnvioQueNaoChegou(Request $request): void
+    {
+        $grande = VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
+
+        $recebidos = $request->file('imagens');
+        $recebidos = is_array($recebidos) ? $recebidos : ($recebidos ? [$recebidos] : []);
+
+        foreach ($recebidos as $arquivo) {
+            if ($arquivo instanceof UploadedFile && ! $arquivo->isValid()) {
+                $tamanho = in_array($arquivo->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true);
+
+                throw ValidationException::withMessages(['imagens' => $tamanho ? $grande : 'Não foi possível receber a imagem. Tente de novo.']);
+            }
+        }
+
+        if ($recebidos === []) {
+            $corpo = (int) $request->server('CONTENT_LENGTH', 0);
+            $limitePhp = self::bytesDoIni((string) ini_get('post_max_size'));
+
+            // Corpo de mais de 1 MB sem arquivo algum, ou acima do `post_max_size`, é o PHP que descartou.
+            if ($corpo > 1048576 || ($limitePhp > 0 && $corpo > $limitePhp)) {
+                throw ValidationException::withMessages(['imagens' => $grande]);
+            }
+        }
+    }
+
+    /** "8M" / "512K" / "1G" / "1048576" do php.ini em bytes (0 = sem limite). */
+    private static function bytesDoIni(string $valor): int
+    {
+        $valor = trim($valor);
+        if ($valor === '' || $valor === '0' || $valor === '-1') {
+            return 0;
+        }
+
+        $numero = (int) $valor;
+
+        return match (strtolower(substr($valor, -1))) {
+            'g'     => $numero * 1073741824,
+            'm'     => $numero * 1048576,
+            'k'     => $numero * 1024,
+            default => $numero,
+        };
     }
 
     /** @return array{eixos: array, logisticas: array, pendencias: array} */

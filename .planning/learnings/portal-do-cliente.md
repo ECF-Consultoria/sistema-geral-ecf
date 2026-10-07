@@ -1050,3 +1050,108 @@ SKUs nasce dele. O que não se deduz do código:
 - **Comportamento de navegação se prova no navegador, não no `tests/js`.** O
   roteiro com puppeteer (banco SQLite isolado, dados fictícios) achou os dois
   defeitos acima depois de a revisão e as correções estarem "verdes".
+
+## 33. Sugestões de ofertas: Combo, Kit e Combit (Fase 168, 07/10/2026)
+
+- **A planilha NÃO tem tipo de produto.** A coluna "Tipo" da aba Planejamento é o
+  tipo da OFERTA (Simples, Combo, Kit, Combit). "Mesa", "cadeira", "cama" têm de
+  ser inferidos por palavra-chave (categoria primeiro, nome depois; ambíguo na
+  categoria não cai para o nome). Com o vocabulário genérico do config, os 56
+  produtos da planilha real saíram com tipo (0 ambíguo, 0 sem tipo).
+- **O par de tipos precisa de direção no Combit.** Sem dizer quem se repete
+  ("mesa + 4 cadeiras", nunca "4 mesas + cadeira"), o mesmo par gera o item
+  repetido nos dois lados e o Combit vai de ~28 para 140-162 contra 25 reais. A
+  lista de pares é GLOBAL e CURTA de propósito: os 44 pares de produto da
+  planilha viram ~21-23 pares de tipo (18 na lista aprovada), e uma lista curta é
+  previsível ("sugeri porque mesa + cadeira está na lista"). A ECF amplia pela
+  tela admin, sem deploy.
+- **Trios ficam fora da v1.** 21 das 129 composições da planilha têm 3 itens;
+  propor trios geraria 124 para acertar 12 (precisão ~10%). A pessoa monta o trio
+  à mão na Lista SKUs. É a causa de 21 dos 23 acertos a menos do gabarito.
+- **Gabarito da planilha real (lista aprovada, 18 pares): 106 de 129.** Combo
+  46/46, Kit 36/44, Combit 24/39; 167 geradas (59/62/46). Os 23 que faltam: 21
+  trios, 1 sem ambiente em comum, 1 quantidade/direção do Combit. É um TETO de
+  reprodutibilidade (a lista nasceu da mesma planilha), não precisão em outro
+  cliente: essa só se mede pelos descartes em uso.
+- **Variações casam em PARALELO, e o `valor` é a armadilha.** A planilha só tem o
+  ordinal (1, 2, única). Se o roteiro passa o ordinal como `valor` das duas
+  pontas, `VariacoesEmParalelo` entende "valores diferentes nunca casam" e o Kit
+  cai de 36 para 20 acertos. Variação sem eixo/valor casa por posição.
+- **A chave da composição é por VARIAÇÃO (`v12*1+v30*4`), não por oferta.** Assim
+  sobrevive a uma oferta recriada e permite não ressugerir o que foi descartado.
+- **A sugestão é calculada na hora; só o DESCARTE persiste.** Persistir a
+  sugestão envelheceria a cada edição de produto, família, ambiente ou tipo. O
+  aceite REGERA dentro do lock e confere a chave: o que o navegador manda não vale
+  por si.
+- **Quantidades: o D-07 literal contra a planilha.** A reunião falava em 2/4/6;
+  a planilha usa cadeira ×8, banco ×2/×4 e vários tipos ×2. A semente comitada
+  (D-22) traz as quantidades COMO A PLANILHA USA e a ECF amplia pelo admin.
+- **`'0'` e vazio são coisas diferentes** por causa do middleware
+  `ConvertEmptyStringsToNull`: o campo vazio chega como `null` e significa "herda o
+  padrão do tipo"; "nenhuma quantidade" é gravada como `'0'`.
+- **Teste de Inertia exige o arquivo da página.** `assertInertia` confere o
+  componente no disco: antes de a página existir, `component('...', false)`.
+- **O `AvisoFlash` não carrega ação** ("Desfazer", "Ver na Lista SKUs"): por isso
+  a tela tem o `AvisoSugestoes`, irmão dele com ação opcional.
+- **O que a prova no navegador achou (puppeteer, SQLite isolado, 14 casos):**
+  - O Inertia restaura a página do histórico com as props da DATA DA VISITA, sem
+    pedir nada ao servidor. Aceitar/descartar por axios, ir à Lista SKUs e voltar
+    mostrava cartões já aceitos. `pageshow` com `persisted` não pega isso (não é
+    bfcache). A correção é saber que a tela chegou por um voltar:
+    `chegouPeloHistorico()` em `guardaDoVoltar.js`, que registra o último
+    `popstate`, e a tela faz `router.reload({ only: ['sugestoes'] })` ao montar.
+  - A entrada de equipe no Portal chama `session()->invalidate()`: a sessão do
+    admin (para `/dev/estrutura-geracao`) tem de ficar em OUTRO contexto do
+    navegador, senão o login some.
+  - No Kit, o custo na Precificação aparece como `placeholder` do campo de custo,
+    com a nota "soma dos componentes", e não como valor digitado. A Lista SKUs
+    deixa os cartões recolhidos: o nome da oferta nova só aparece com `?q=`.
+  - A resposta 422 do teste de "1" em Combo aparece no console do navegador e é
+    esperada: não é erro da tela.
+  - Armadilhas do puppeteer no Chrome headless: triplo clique não seleciona o
+    texto do campo (use Ctrl+A e Backspace); o site tem rolagem suave, então
+    `scrollIntoView` medido logo depois posiciona o clique no lugar errado (use
+    `behavior: 'instant'` antes de clicar).
+- **Redesenho (168-17..21): variável sem declarar derruba a tela inteira e passa
+  em `npm run test:js` e no build.** O 168-19 trocou a constante local `comFiltro`
+  pela função `filtroAtivo` e deixou um uso para trás: `ReferenceError` em runtime,
+  tela PRETA, e o esbuild e os testes de contrato (que leem o código como texto)
+  ficaram verdes. Só o roteiro no navegador achou (T1..T12 falharam juntos). O
+  teste de contrato do redesenho ganhou um gate para esse caso, mas a regra
+  continua: refatoração de nome em tela grande exige abrir a tela.
+- **Controle com largura fixa estoura a 1280 px.** A barra de filtros da
+  referência (larguras fixas) media 1314 px de `scrollWidth` a 1280; a saída foi
+  `flex-wrap` a partir de `xl`, e a barra quebra em 2 linhas nessa largura.
+
+## 34. Ficha rica do produto: campos da categoria do ML + imagens por variação, SOB SIGILO (07/10/2026)
+
+Trabalho direto (sem GSD) em cima da ficha da Fase 167 (`/portal/estrutura/produtos/novo`), branch
+`feat/publicador-ml-261001`. A ficha virou um cadastro rico tipo Bling.
+
+- **REGRA DE SIGILO (negócio, do usuário):** o cliente NÃO pode perceber que o que ele preenche é para o
+  Mercado Livre. O bloco se chama "Ficha técnica"; os rótulos são os `name` genéricos do atributo. NADA de
+  "Mercado Livre"/"anúncio"/"publicar"/"MLB" em texto, placeholder, title, aria-label, id exibido ou comentário
+  visível do bloco novo e da galeria. Há gates de teste (PHP e JS) que barram esses termos no JSON ao cliente e
+  no JSX. **Alcance (decisão do usuário):** o sigilo vale só nos CAMPOS NOVOS; a copy da 167 ("Categoria do
+  Mercado Livre", frete do ML, conectar conta) fica, porque o cliente já conecta a conta dele para o frete.
+  Mexer na copy aprovada da 167 pede nova decisão dele.
+- **Campos vêm do ML por app token** (`MlCatalogoMetaService::atributos`, `GET /categories/{id}/attributes`,
+  dado público, sem conta de cliente, cache 7 dias). O serviço `FichaTecnicaDaCategoria::daAtributos()` é a função
+  pura que vira os grupos/campos: descarta `hidden`/`read_only`/`fixed`/variação, SKU, GRID, PACKAGE_*; mapeia
+  `value_type` → texto/número/número+unidade/sim-não/lista; agrupa por `attribute_group_name`. **Cuidado:** o
+  filtro de sigilo descarta um atributo INTEIRO se o `name` dele casar "mercado/anúncio/publicar/mlb/ml"; um
+  obrigatório assim deixa de ser exigido (raro, mas vigiar). O cache vazio do ML é esquecido para não grudar 7 dias.
+- **Tabelas novas (aditivas, provadas no MariaDB com `--path`):** `estrutura_produto_atributos` (EAV da ficha:
+  company_id, produto_id, atributo_id, atributo_nome, valor, valor_id, unidade) e `estrutura_produto_variacao_imagens`
+  (company_id, produto_id, variacao_id, caminho, nome_original, mime, tamanho, largura, altura, ordem).
+- **Imagens:** disco PRIVADO (`local`), servidas por rota autenticada do portal (isolamento por empresa, nunca URL
+  pública). Upload/exclusão gravam NA HORA (não dependem do "Salvar produto"). Teto 12/variação é tudo-ou-nada.
+  `post_max_size` → 422 com mensagem clara (um `render` no `bootstrap/app.php` cobre o 413 antes do controller).
+  **A ORDEM/posição não importa nesta tela (decisão do usuário):** sem capa, setas nem arrastar; a rota e a lógica
+  de ordem existem no servidor/lib, sem uso na tela, para o "tratamento" depois.
+  **Órfãos:** apagar produto/empresa por cascata do banco NÃO apaga os arquivos (o evento do model não dispara);
+  falta um comando de limpeza se isso ocorrer em prod.
+- **Produto novo:** os campos da ficha técnica se preenchem antes do `produto_id`; o PUT da ficha espera o id (logo
+  após o 1º salvar). A galeria só envia quando a variação tem id (mostra "Salve o produto…" antes).
+- **O tratamento/envio ao Publicador fica para outra fase** ("outro dia", palavras do usuário). Ver
+  [[project-ficha-rica-produto-atributos-ml-261007]].

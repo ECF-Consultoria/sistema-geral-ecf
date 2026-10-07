@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { router } from '@inertiajs/react';
-import { AlertTriangle, ChevronRight, DownloadCloud, Layers, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Link, router } from '@inertiajs/react';
+import { AlertTriangle, ChevronRight, DownloadCloud, Layers, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CabecalhoEstrutura, FotoProduto, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
@@ -24,6 +24,9 @@ import { cn } from '@/lib/utils';
 // A lista vem da mesma `paginaOfertas` das outras visões: paginada no
 // servidor, na ordem da aula (cada produto seguido dos combos, depois kits e
 // combits).
+
+// Mesmo desenho do link secundário da tela de Produtos (Fase 168-15, D-02: entrada para as sugestões).
+const LINK_SECUNDARIO = 'inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white';
 
 const unidades = (n) => `${n} ${n === 1 ? 'unidade' : 'unidades'}`;
 
@@ -293,6 +296,9 @@ export default function EstruturaLista({ empresa, modulos = [], estrutura, filtr
                     descricao="Todo produto que você tem vira oferta. Liste os produtos e, para cada um, as variações: combo, kit, combit."
                     acoes={painel.ofertas > 0 && (
                         <>
+                            <Link href={route('portal.auth.estrutura.sugestoes')} className={LINK_SECUNDARIO} data-acao="sugestoes-de-ofertas">
+                                <Sparkles size={14} /> Sugestões de ofertas
+                            </Link>
                             {ml_conectado && (
                                 <Botao onClick={() => setImportar(true)} data-acao="importar-ml"><DownloadCloud size={14} /> Importar do Mercado Livre</Botao>
                             )}

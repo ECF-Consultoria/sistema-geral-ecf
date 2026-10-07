@@ -1,0 +1,242 @@
+<?php
+
+namespace App\Services\Portal\Estrutura\Geracao;
+
+use App\Models\Company;
+use App\Models\EstruturaOferta;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoGeracao;
+use App\Models\EstruturaSugestaoDescartada;
+use App\Models\EstruturaTipoPar;
+use App\Models\EstruturaTipoProduto;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Retrato do catálogo de UMA empresa para o gerador de sugestões (Fase 168).
+ *
+ * I/O: monta o retrato; a regra mora no {@see GeradorDeSugestoes}. Número FIXO de
+ * consultas (não cresce com os produtos) e toda consulta de dado de empresa filtra
+ * `company_id` da empresa recebida; tipos e pares são globais da ECF. Só lê: nada
+ * existente é tocado (D-04).
+ *
+ * Devolve o retrato do gerador (`produtos`, `tipos`, `pares`, `existentes`,
+ * `descartadas`, `limites`) MAIS `detalhes`, o que a tela precisa e o gerador não
+ * (volumes, custo, categoria, origem do tipo, texto das quantidades).
+ */
+class RetratoDoCatalogo
+{
+    /**
+     * @return array<string,mixed>
+     */
+    public function daEmpresa(Company $empresa): array
+    {
+        $empresaId = $empresa->id;
+
+        // ─── Vocabulário global ───
+        $tiposDb = EstruturaTipoProduto::query()->orderBy('ordem')->orderBy('id')->get();
+
+        $tipos         = [];
+        $paraInferir   = [];
+        $detalhesTipos = [];
+        $slugPorId     = [];
+
+        foreach ($tiposDb as $t) {
+            $slugPorId[$t->id] = $t->slug;
+
+            $tipos[$t->slug] = [
+                'nome'       => $t->nome,
+                'plural'     => $t->plural,
+                'qtd_combo'  => $this->doTipo($t->qtd_combo),
+                'qtd_combit' => $this->doTipo($t->qtd_combit),
+                'ordem'      => (int) $t->ordem,
+            ];
+            $paraInferir[$t->slug] = ['palavras' => TipoDoProduto::palavras((string) $t->palavras), 'ordem' => (int) $t->ordem];
+            $detalhesTipos[$t->slug] = [
+                'id'               => $t->id,
+                'nome'             => $t->nome,
+                'plural'           => $t->plural,
+                'qtd_combo_texto'  => $t->qtd_combo,
+                'qtd_combit_texto' => $t->qtd_combit,
+            ];
+        }
+
+        $pares = [];
+        foreach (EstruturaTipoPar::query()->orderBy('id')->get() as $par) {
+            if (! isset($slugPorId[$par->tipo_a_id], $slugPorId[$par->tipo_b_id])) {
+                continue;
+            }
+
+            $pares[] = [
+                'a'      => $slugPorId[$par->tipo_a_id],
+                'b'      => $slugPorId[$par->tipo_b_id],
+                'repete' => $par->combit_repete ?: null,
+            ];
+        }
+
+        // ─── Catálogo da empresa ───
+        $produtosDb = EstruturaProduto::query()
+            ->where('company_id', $empresaId)
+            ->with(['familia', 'ambientes', 'variacoes.volumes'])
+            ->orderBy('id')
+            ->get();
+
+        // Só a oferta simples ligada à variação conta (D-09).
+        $ofertas = EstruturaOferta::query()
+            ->where('company_id', $empresaId)
+            ->where('fase', EstruturaOferta::FASE_SIMPLES)
+            ->whereNotNull('variacao_id')
+            ->orderBy('id')
+            ->get(['id', 'variacao_id', 'sku'])
+            ->unique('variacao_id')
+            ->keyBy('variacao_id');
+
+        $ajustes = EstruturaProdutoGeracao::query()
+            ->where('company_id', $empresaId)
+            ->get()
+            ->keyBy('produto_id');
+
+        $produtos         = [];
+        $detalhesVariacao = [];
+        $detalhesProduto  = [];
+
+        foreach ($produtosDb as $p) {
+            $ajuste    = $ajustes->get($p->id);
+            $escolhido = $ajuste && $ajuste->tipo_id !== null ? ($slugPorId[$ajuste->tipo_id] ?? null) : null;
+            $efetivo   = TipoDoProduto::efetivo(
+                $escolhido,
+                TipoDoProduto::inferir($p->categoria_ml_nome, $p->nome, $paraInferir),
+                $tipos
+            );
+
+            $ambientes = $p->ambientes->pluck('nome', 'id')->all();
+
+            $variacoes = [];
+            foreach ($p->variacoes as $v) {
+                $oferta = $ofertas->get($v->id);
+
+                $variacoes[] = [
+                    'id'        => $v->id,
+                    'ordem'     => (int) $v->ordem,
+                    'eixo'      => $v->eixo,
+                    'valor'     => $v->valor,
+                    'sku'       => $oferta?->sku ?? $v->codigo,
+                    'oferta_id' => $oferta?->id,
+                ];
+
+                $detalhesVariacao[$v->id] = [
+                    'volumes' => $v->volumes
+                        ->map(fn ($vol) => ['c' => (float) $vol->comprimento, 'l' => (float) $vol->largura, 'a' => (float) $vol->altura, 'kg' => (float) $vol->peso])
+                        ->values()
+                        ->all(),
+                    'custo' => $v->custo,
+                ];
+            }
+
+            $produtos[] = [
+                'id'         => $p->id,
+                'nome'       => $p->nome,
+                'familia_id' => $p->familia_id,
+                'familia'    => $p->familia?->nome,
+                'ambientes'  => $ambientes,
+                'tipo'       => $efetivo['slug'],
+                'qtd_combo'  => $this->doProduto($ajuste?->qtd_combo),
+                'qtd_combit' => $this->doProduto($ajuste?->qtd_combit),
+                'variacoes'  => $variacoes,
+            ];
+
+            $detalhesProduto[$p->id] = [
+                'nome'           => $p->nome,
+                'categoria'      => $p->categoria_ml_nome,
+                'familia'        => $p->familia?->nome,
+                'ambientes'      => array_values($ambientes),
+                'tipo'           => $efetivo['slug'],
+                'tipo_origem'    => $efetivo['origem'],
+                'candidatos'     => $efetivo['candidatos'],
+                'tipo_escolhido' => $escolhido,
+                'qtd_combo'      => $ajuste?->qtd_combo,
+                'qtd_combit'     => $ajuste?->qtd_combit,
+            ];
+        }
+
+        // ─── Composições que já existem (D-03) ───
+        $existentes = [];
+        foreach ($this->composicoesExistentes($empresaId) as $itens) {
+            $existentes[ChaveDeComposicao::de($itens)] = true;
+        }
+
+        // ─── Descartadas ───
+        $descartadas = [];
+        foreach (EstruturaSugestaoDescartada::query()->where('company_id', $empresaId)->get(['chave', 'created_at']) as $d) {
+            $descartadas[$d->chave] = $d->created_at?->format('Y-m-d') ?? '';
+        }
+
+        return [
+            'produtos'    => $produtos,
+            'tipos'       => $tipos,
+            'pares'       => $pares,
+            'existentes'  => $existentes,
+            'descartadas' => $descartadas,
+            'limites'     => [
+                'max_titulo' => (int) config('estrutura_geracao.max_titulo', 60),
+                'max_sku'    => (int) config('estrutura_geracao.max_sku', 120),
+            ],
+            'detalhes' => [
+                'variacoes'    => $detalhesVariacao,
+                'produtos'     => $detalhesProduto,
+                'tipos'        => $detalhesTipos,
+                'tem_produtos' => $produtosDb->isNotEmpty(),
+            ],
+        ];
+    }
+
+    /**
+     * Combo/Kit/Combit da empresa, como variacao_id => quantidade. Composição com
+     * algum componente sem variação (oferta antiga, sem produto) não é comparável
+     * e fica de fora. Uma consulta só, com a empresa nas DUAS pontas do join.
+     *
+     * @return array<int, array<int,int>>
+     */
+    private function composicoesExistentes(int $empresaId): array
+    {
+        $linhas = DB::table('estrutura_oferta_componentes as c')
+            ->join('estrutura_ofertas as o', 'o.id', '=', 'c.oferta_id')
+            ->join('estrutura_ofertas as k', 'k.id', '=', 'c.componente_id')
+            ->where('o.company_id', $empresaId)
+            ->where('k.company_id', $empresaId)
+            ->whereIn('o.fase', [EstruturaOferta::FASE_COMBO, EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT])
+            ->get(['c.oferta_id', 'k.variacao_id', 'c.quantidade']);
+
+        $porOferta = [];
+        $invalidas = [];
+        foreach ($linhas as $l) {
+            if ($l->variacao_id === null) {
+                $invalidas[$l->oferta_id] = true;
+                continue;
+            }
+            $porOferta[$l->oferta_id][(int) $l->variacao_id] = ($porOferta[$l->oferta_id][(int) $l->variacao_id] ?? 0) + (int) $l->quantidade;
+        }
+
+        return array_diff_key($porOferta, $invalidas);
+    }
+
+    /** Quantidades do tipo; texto inválido no banco vale "nenhuma", nunca derruba a tela. */
+    private function doTipo(?string $texto): array
+    {
+        try {
+            return Quantidades::doTipo($texto);
+        } catch (ValidationException) {
+            return [];
+        }
+    }
+
+    /** Quantidades do produto; null = herda do tipo (também para texto inválido). */
+    private function doProduto(?string $texto): ?array
+    {
+        try {
+            return Quantidades::ler($texto);
+        } catch (ValidationException) {
+            return null;
+        }
+    }
+}

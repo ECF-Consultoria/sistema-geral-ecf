@@ -24,9 +24,9 @@ test('cabeçalho: variante amplo opcional; o ramo padrão fica como era', () => 
     assert.ok(comum.includes('rounded-2xl border border-white/[0.08] bg-ecf-card p-1.5'), 'o ramo padrão mudou');
 });
 
-test('barra de ações: cinco ações na ordem, modelo é link de download e a busca vai à direita', () => {
+test('barra de ações: seis ações na ordem, a sexta só com produtos, modelo é link de download e a busca vai à direita', () => {
     assert.ok(barra.includes('data-barra-acoes'));
-    const ordem = ['adicionar-produto', 'familias-ambientes', 'importar-planilha', 'baixar-modelo', 'sugerir-categorias']
+    const ordem = ['adicionar-produto', 'familias-ambientes', 'importar-planilha', 'baixar-modelo', 'sugerir-categorias', 'sugestoes-de-ofertas']
         .map((a) => barra.indexOf(`data-acao="${a}"`));
     ordem.forEach((i, k) => assert.ok(i >= 0 && (k === 0 || i > ordem[k - 1]), 'ordem das ações'));
     assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download data-acao="baixar-modelo"/);
@@ -34,6 +34,8 @@ test('barra de ações: cinco ações na ordem, modelo é link de download e a b
     assert.ok(barra.includes('Sugerir categorias') && barra.includes('Buscando sugestões…'));
     assert.ok(barra.includes('data-busca') && barra.includes('Buscar código ou nome…') && barra.includes('lg:ml-auto'));
     assert.match(barra, /temProdutos \? 'bg-ecf-yellow/);
+    // Fase 168-15: a sexta ação é link para as sugestões, secundária e só com produtos (o amarelo segue só no "Adicionar produto").
+    assert.match(barra, /\{temProdutos && \(\s*<Link href=\{route\('portal\.auth\.estrutura\.sugestoes'\)\} data-acao="sugestoes-de-ofertas" className=\{cn\(ACAO, SECUNDARIA\)\}/);
 });
 
 test('seletor: grupo de rádio com os dois modos', () => {

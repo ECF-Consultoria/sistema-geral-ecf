@@ -2900,6 +2900,82 @@ Plans:
 - [x] 167-20-PLAN.md — fechamento de lacuna (D-25/D-26/D-30, REF-1 e REF-3): topo das referências (trilha em círculos, ações com busca), seletor Visual grande / Lista guardado no navegador, cartões grandes e horizontais com bolinha de cor, "Falta" com detalhe e ⋮ com ações reais; volta da ficha preservando busca, página, modo e rolagem
 - [x] 167-21-PLAN.md — passe de FIDELIDADE: capturas a 1586×992 dos 3 estados comparadas lado a lado com as referências (até 2 rodadas de ajuste), fluxo lista → ficha → lista provado no navegador, UI-SPEC "Revisão D-25..D-30" e gate final; a conferência humana volta para a Task 3 do 167-17
 
+
+### Phase 168: Geração de ofertas a partir dos produtos — Combo, Kit e Combit sugeridos (aba Planejamento da planilha)
+
+**Goal:** a aba **Planejamento** da `3Planejamento_Estrutural_ECF.xlsx` ("identificação da oferta") vira sistema. A partir dos produtos da Fase 167, o Mapeamento Estrutural **sugere** as ofertas que juntam produtos — **Combo** (mesmo produto, mais unidades), **Kit** (produtos diferentes) e **Combit** (kit com mais unidades de um item) — com a logística e o frete estimado de cada conjunto. A pessoa revisa e aceita, e as aceitas viram ofertas da Lista SKUs pela mesma regra de composição, já entrando na Precificação. Na planilha, 70 produtos viraram ~199 ofertas montadas à mão.
+**Requirements**: PR168-01, PR168-02, PR168-03, PR168-04, PR168-05, PR168-06, PR168-07, PR168-08, PR168-09, PR168-10, PR168-11, PR168-12, PR168-13, PR168-14, PR168-15 (definidos em `168-RESEARCH.md`); decisões D-01..D-31 em `168-CONTEXT.md` (D-24..D-31: redesenho da tela de sugestões pela referência do usuário, 07/10)
+**Depends on:** Phase 167 (produtos, variações, oferta simples ligada, logística e frete por volumes).
+**Plans:** 19/21 plans executed
+
+**Decidido com o usuário (06/10/2026, "faça o recomendado"):**
+
+- Combinações: só pares de TIPO de uma lista curta da ECF (mesa + cadeira, mesa + banco, cama + criado-mudo...). Por cima, as regras duras da planilha: nunca misturar família e exigir ambiente em comum. Sem IA.
+- Quantidades: padrão por tipo (cadeira 2/4/6, banqueta 2/3/4, mesa 1), que dá para mudar em cada produto.
+- Nada vira oferta sozinho; descartada não volta.
+- "Qual promoção dá mais lucro" fica para a fase de margem.
+
+Plans:
+**Wave 1**
+
+- [x] 168-01-PLAN.md — baseline de testes G1..G8 antes de qualquer código (Onda 0)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 168-02-PLAN.md — vocabulário de tipos da ECF, inferência do tipo e lista-semente de pares medida na planilha real (checkpoint D-20)
+- [x] 168-03-PLAN.md — peças puras: chave da composição, quantidades e variações em paralelo
+- [x] 168-04-PLAN.md — peças puras: nome/SKU/avisos/porquê sugeridos e logística/custo do conjunto
+- [x] 168-05-PLAN.md — lógica de navegador (marcação, edição, aceite com enviar injetado, guarda de saída) com testes comportamentais
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 168-06-PLAN.md — 4 tabelas novas só aditivas, semente aprovada, models e prova no MariaDB 10.4
+- [x] 168-07-PLAN.md — gerador puro (regras duras, Combit dirigido, só 2 itens) e gabarito sintético 15/5/8
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 168-08-PLAN.md — retrato do catálogo da empresa (consultas fixas, escopo) e SugestoesService::gerar
+- [x] 168-09-PLAN.md — backend do admin da ECF para tipos e pares (role:admin)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 168-10-PLAN.md — lista: abas, painel sobre o conjunto, filtros/página no servidor, logística e frete da página, cotação sob demanda
+- [x] 168-11-PLAN.md — aceitar (regera, lock, criar da Lista SKUs), descartar, restaurar e tipo do produto
+- [x] 168-12-PLAN.md — tela admin Tipos e pares e extração do DevCard
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 168-13-PLAN.md — controller, rotas no portal.auth com throttle próprio e allowlist sem curinga
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 168-14-PLAN.md — página Sugestões de ofertas: aba Sugestões em cartões, barra de marcadas e guarda de saída
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [x] 168-15-PLAN.md — abas Sem tipo e Descartadas, janela de tipo e entradas por Produtos e Lista SKUs
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 168-16-PLAN.md — gate final, MariaDB, gabarito real, prova no navegador (puppeteer) e conferência visual (checkpoint)
+
+**Wave 10** *(lacuna do checkpoint do 168-16: redesenho pela referência `168-REF-1`)*
+
+- [x] 168-17-PLAN.md — backend mínimo do redesenho: filtro Status por avisos com contagens, resumo dos cartões, ambientes do grupo e hora da carga
+- [x] 168-18-PLAN.md — peças do redesenho: linha compacta da sugestão, edição em linha, cartões de resumo, barra de filtros, grupo e abas
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [x] 168-19-PLAN.md — página no desenho da referência, Sem tipo e Descartadas no container novo, saída do desenho antigo e build
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [x] 168-20-PLAN.md — prova no navegador (T1..T21) e passe de fidelidade com capturas comparadas à referência
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 168-21-PLAN.md — gate G1..G8, contrato de tela final e volta ao checkpoint humano (retomada da Task 3 do 168-16)
+
 ---
 
 ## Milestone v24.0 — Creative Engine (Fases 160-163)

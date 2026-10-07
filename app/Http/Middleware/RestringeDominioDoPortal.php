@@ -138,6 +138,16 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/categorias',
         'portal/estrutura/produtos/categorias/sugerir',
         'portal/estrutura/produtos/fretes',
+        // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
+        'portal/estrutura/produtos/campos-categoria',
+        // Fase 168 (07/10/2026) — Sugestões de ofertas. Uma linha por rota. NUNCA
+        // 'portal/estrutura/sugestoes/*': o `*` do Str::is atravessa '/'. A rota com
+        // id no meio (…/produtos/{id}/geracao) vai por PERMITIDO_COM_ID.
+        'portal/estrutura/sugestoes',
+        'portal/estrutura/sugestoes/aceitar',
+        'portal/estrutura/sugestoes/descartar',
+        'portal/estrutura/sugestoes/restaurar',
+        'portal/estrutura/sugestoes/frete',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',
@@ -178,6 +188,15 @@ class RestringeDominioDoPortal
      */
     private const PERMITIDO_COM_ID = [
         'portal/estrutura/produtos/{id}',
+        // Ficha técnica do produto: só o id numérico no meio, e só o PUT existe nessa URL.
+        'portal/estrutura/produtos/{id}/ficha-tecnica',
+        // Fase 168: o id do produto no meio, só dígitos (a página de sugestões define tipo e quantidades).
+        'portal/estrutura/sugestoes/produtos/{id}/geracao',
+        // Imagens por variação: cada `{id}` casa SÓ dígitos (o 1º é a variação, o 2º a imagem) e o
+        // caminho inteiro. `…/imagem/x`, `…/imagem/3/outra` e `%2F` no id continuam barrados.
+        'portal/estrutura/produtos/variacao/{id}/imagens',
+        'portal/estrutura/produtos/variacao/{id}/imagens/ordem',
+        'portal/estrutura/produtos/variacao/{id}/imagem/{id}',
     ];
 
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */

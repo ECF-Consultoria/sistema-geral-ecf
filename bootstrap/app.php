@@ -68,5 +68,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Envio de imagens da variação que estoura o `post_max_size` do PHP: o `ValidatePostSize`
+        // responde 413 sem texto e a tela ficaria muda. Só nesta rota vira 422 com a mensagem
+        // clara no mesmo formato de erro de validação (`errors.imagens`) que a tela já lê.
+        $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, \Illuminate\Http\Request $request) {
+            if ($request->isMethod('POST') && preg_match('#^portal/estrutura/produtos/variacao/[0-9]+/imagens$#', $request->decodedPath()) === 1) {
+                $mensagem = \App\Services\Portal\Estrutura\Produtos\VariacaoImagensService::MENSAGEM_GRANDE_DEMAIS;
+
+                return response()->json(['message' => $mensagem, 'errors' => ['imagens' => [$mensagem]]], 422);
+            }
+        });
     })->create();

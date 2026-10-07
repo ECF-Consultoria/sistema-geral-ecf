@@ -401,6 +401,23 @@ não se deduz do código:
   `percentage`), A3 (estimativa de cofinanciada contra o Seller Center), A9 (convite "aberto") e a Questão 1 (forma de
   `benefits` nos candidatos). A permissão "Promoções" do app no DevCenter também só se prova em produção (Questão 5).
 
+**Prova real na #459, parte só leitura (06/10/2026, depois do deploy da 167 — sondagem pela VPS):**
+- **Promoções:** `GET /seller-promotions/users/{id}` respondeu 200, então o app JÁ tem a permissão de
+  Promoções (Questão 5 fechada). Convites: 0, então o A9 continua sem amostra. Exclusão do vendedor: `not_excluded`.
+- **A1 em parte:** `GET /items/{id}/prices` devolve `prices` e `version` JUNTOS na mesma resposta. Mas nenhum
+  anúncio tinha faixa de atacado, então a forma do PxQ em `prices[]` só aparece depois de gravar uma faixa.
+- **Anúncio usado não entra em promoção:** `GET /seller-promotions/items/{id}` responde **400 "The item condition must be
+  new"** para anúncio com condição usado (2 de 5 da #459). O código das Alavancas não trata essa mensagem; a
+  tela mostra erro genérico. Ainda sem correção.
+- **Publicidade:** `advertisers` e `ad_groups/search` respondem 200 (25 grupos) mesmo sem a permissão
+  "Advertising"; `campaigns/search` responde 404 (`advertiser_campaigns_not_found`); bonificações vazias.
+- **A #459 (MGSTOREL) tem 31 anúncios PAUSADOS e 0 ativos.** O desconto (PRICE_DISCOUNT) exige anúncio ativo,
+  então as escritas do roteiro ficam bloqueadas até reativar um anúncio de teste com condição NOVO. Reativar é
+  escrita em loja real (o anúncio volta a vender): só com decisão explícita do usuário.
+- **Como ler a conta pela VPS sem sujar a árvore:** `--saida=/tmp/...` na sondagem. No `php -r`,
+  `ensureValidToken()` devolve o MODEL `MlToken`; o texto está em `->access_token`. Passar o model para
+  `withToken` dá 403 enganoso.
+
 ## 13. Creative Engine no Publicador (Fase 165, 05/10/2026)
 
 Nota de numeração: o `165-08-PLAN.md` (escrito em 04/10) pedia esta seção como "## 11." — mas duas outras seções

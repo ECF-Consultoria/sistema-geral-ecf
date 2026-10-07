@@ -61,3 +61,13 @@ com a conta real depende do código em produção, e o deploy é decisão do usu
 Registrar o que a prova mostrou na seção 12 de `.planning/learnings/publicador-ml.md` e commitar com
 `git commit -m "docs(166): resultado da prova real das Alavancas na #459" -- .planning/learnings/publicador-ml.md`;
 mover este arquivo para `.planning/todos/completed/`.
+
+## Andamento (06/10/2026)
+
+- Deploy da 166 feito em 05/10 e da 167 em 06/10. A trava em produção é `companies=[459]` e `mlb_empresas=[]`.
+- **Parte só leitura FEITA** (sondagem pela VPS), com o resultado no learnings `publicador-ml.md` §12, "Prova real
+  na #459, parte só leitura".
+- **Parte de escrita BLOQUEADA:** a #459 tem 31 anúncios pausados e 0 ativos. Para seguir, o usuário precisa
+  decidir reativar UM anúncio de teste com condição NOVO (candidatos: MLB4970430284, MLB4974180286,
+  MLB5025408802; drop_off). Depois disso, os passos 2 e 3 do roteiro, feitos por ele na tela, confirmando cada
+  escrita, e pausar o anúncio de novo ao fim.

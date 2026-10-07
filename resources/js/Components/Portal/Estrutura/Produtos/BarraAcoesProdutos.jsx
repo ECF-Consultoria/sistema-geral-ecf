@@ -1,9 +1,10 @@
-import { Download, Folder, Lightbulb, Loader2, Plus, Search, Upload, X } from 'lucide-react';
+import { Link } from '@inertiajs/react';
+import { Download, Folder, Lightbulb, Loader2, Plus, Search, Sparkles, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos: linha de ações + busca (167-20, D-25) ────────────────────────
 //
-// A linha da REF-1/REF-3: cinco ações com o nome do que fazem (D-24: a planilha
+// A linha da REF-1/REF-3: seis ações com o nome do que fazem (D-24: a planilha
 // só existe como arquivo — baixar o modelo e importar) e a busca à direita.
 // "Adicionar produto" só é amarelo quando já há produtos: sem produtos o
 // amarelo é o "Cadastrar o primeiro produto" do estado vazio (um amarelo por
@@ -36,6 +37,12 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                     {sugerindo ? <Loader2 size={18} className="animate-spin" /> : <Lightbulb size={18} />}
                     {sugerindo ? 'Buscando sugestões…' : 'Sugerir categorias'}
                 </button>
+                {temProdutos && (
+                    <Link href={route('portal.auth.estrutura.sugestoes')} data-acao="sugestoes-de-ofertas" className={cn(ACAO, SECUNDARIA)}
+                        title="Veja combos, kits e combits sugeridos a partir dos seus produtos.">
+                        <Sparkles size={18} /> Sugestões de ofertas
+                    </Link>
+                )}
             </div>
 
             <div className="relative w-full lg:ml-auto lg:w-[336px]">
