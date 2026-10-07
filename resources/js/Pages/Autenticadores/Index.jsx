@@ -106,7 +106,7 @@ function RingCountdown({ seconds, fraction }) {
 
 // ─── Página ─────────────────────────────────────────────────────────────────
 
-export default function Index({ autenticadores = [], filtros = {}, servicos = [], responsaveis = [], ultimosAcessos = [] }) {
+export default function Index({ autenticadores = [], filtros = {}, servicos = [] }) {
     const { csrf_token } = usePage().props;
 
     // Busca/filtros — client-side (a lista inteira vem nas props; é um cofre interno,
@@ -114,21 +114,19 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
     // número no domínio e serviço.
     const [q, setQ] = useState(filtros.q || '');
     const [fServico, setFServico] = useState(filtros.servico || '');
-    const [fResp, setFResp] = useState(filtros.responsavel || '');
     const [fStatus, setFStatus] = useState(filtros.status || '');
 
     const lista = useMemo(() => {
         const termo = q.trim().toLowerCase();
         return autenticadores.filter((a) => {
             if (fServico && a.servico !== fServico) return false;
-            if (fResp && String(a.responsavel_id || '') !== String(fResp)) return false;
             if (fStatus && a.status !== fStatus) return false;
             if (!termo) return true;
             return [a.cliente, a.conta, a.servico, a.issuer, antesDoArroba(a.conta)]
                 .filter(Boolean)
                 .some((v) => String(v).toLowerCase().includes(termo));
         });
-    }, [autenticadores, q, fServico, fResp, fStatus]);
+    }, [autenticadores, q, fServico, fStatus]);
 
     const [selId, setSelId] = useState(autenticadores[0]?.id ?? null);
     useEffect(() => {
@@ -171,12 +169,11 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
                         />
                     </div>
                     <FiltroSelect value={fServico} onChange={setFServico} placeholder="Serviço" options={servicos.map((s) => ({ value: s, label: s }))} />
-                    <FiltroSelect value={fResp} onChange={setFResp} placeholder="Responsável" options={responsaveis.map((r) => ({ value: String(r.id), label: r.name }))} />
                     <FiltroSelect value={fStatus} onChange={setFStatus} placeholder="Status" options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
                 </div>
 
                 {addAberto && (
-                    <NovoAutenticador csrf={csrf_token} responsaveis={responsaveis} onClose={() => setAddAberto(false)} />
+                    <NovoAutenticador csrf={csrf_token} onClose={() => setAddAberto(false)} />
                 )}
 
                 {/* Lista + Detalhe */}
@@ -191,9 +188,6 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
 
                     <Detalhe autenticador={selecionado} csrf={csrf_token} />
                 </div>
-
-                {/* Últimos acessos */}
-                <UltimosAcessos acessos={ultimosAcessos} />
             </div>
         </AppLayout>
     );
@@ -213,7 +207,6 @@ function ListaTabela({ lista, selId, onSelect }) {
                         <th className="text-left font-medium px-5 py-3">Cliente</th>
                         <th className="text-left font-medium px-3 py-3">Conta</th>
                         <th className="text-left font-medium px-3 py-3">Serviço</th>
-                        <th className="text-left font-medium px-3 py-3">Responsável</th>
                         <th className="text-left font-medium px-3 py-3">Status</th>
                     </tr>
                 </thead>
@@ -239,7 +232,6 @@ function ListaTabela({ lista, selId, onSelect }) {
                                     <ServicoIcone servico={a.servico} /> {a.servico}
                                 </span>
                             </td>
-                            <td className="px-3 py-3 text-white/60">{a.responsavel || '—'}</td>
                             <td className="px-3 py-3"><StatusBadge status={a.status} /></td>
                         </tr>
                     ))}
@@ -344,7 +336,6 @@ function Detalhe({ autenticador, csrf }) {
 
             <div className="grid grid-cols-2 gap-3 text-[13px]">
                 <Info rotulo="Serviço"><span className="inline-flex items-center gap-1.5"><ServicoIcone servico={autenticador.servico} /> {autenticador.servico}</span></Info>
-                <Info rotulo="Responsável">{autenticador.responsavel || '—'}</Info>
                 <Info rotulo="Criado em">{autenticador.criado_em || '—'}</Info>
                 <Info rotulo="Atualização">{autenticador.atualizado_em || '—'}</Info>
             </div>
@@ -421,44 +412,14 @@ function Historico({ id }) {
     );
 }
 
-// ─── Últimos acessos (global) ───────────────────────────────────────────────
-
-function UltimosAcessos({ acessos }) {
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-5">
-            <h2 className="text-white font-semibold mb-4">Últimos acessos</h2>
-            {acessos.length === 0
-                ? <p className="text-white/40 text-sm">Nenhum acesso registrado ainda.</p>
-                : (
-                    <div className="space-y-3">
-                        {acessos.map((a, i) => (
-                            <div key={i} className="flex items-center gap-3 text-sm">
-                                <span className="w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center shrink-0">
-                                    {a.acao === 'copiou' ? <Copy size={14} className="text-white/50" /> : <History size={14} className="text-white/50" />}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-white/80 truncate">
-                                        <span className="font-medium">{a.usuario}</span> {a.descricao?.toLowerCase()}
-                                        {a.cliente && <span className="text-white/50"> · {a.cliente}</span>}
-                                    </p>
-                                </div>
-                                <span className="text-white/35 text-[12px] shrink-0">{a.created_at}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-        </div>
-    );
-}
-
 // ─── Novo autenticador ──────────────────────────────────────────────────────
 
-function NovoAutenticador({ csrf, responsaveis, onClose }) {
+function NovoAutenticador({ csrf, onClose }) {
     const [modo, setModo] = useState('uri'); // 'uri' | 'qr'
     const [qrMsg, setQrMsg] = useState(null);
     const dropRef = useRef(null);
 
-    const form = useForm({ uri: '', cliente: '', conta: '', servico: '', responsavel_id: '', secret: '' });
+    const form = useForm({ uri: '', cliente: '', conta: '', servico: '', secret: '' });
 
     const temUri = form.data.uri.trim() !== '';
 
@@ -569,26 +530,12 @@ function NovoAutenticador({ csrf, responsaveis, onClose }) {
                     </div>
                 </div>
 
-                {/* Responsável + submit (linha inteira) */}
-                <div className="md:col-span-2 flex flex-wrap items-end gap-3 pt-1 border-t border-white/[0.06]">
-                    <div className="min-w-[200px]">
-                        <label className="text-white/50 text-[12px] font-medium">Responsável</label>
-                        <div className="relative mt-1">
-                            <select
-                                value={form.data.responsavel_id}
-                                onChange={(e) => form.setData('responsavel_id', e.target.value)}
-                                className="w-full appearance-none px-3 py-2 pr-8 rounded-lg bg-white/[0.03] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40"
-                            >
-                                <option value="" className="bg-ecf-card">Sem responsável</option>
-                                {responsaveis.map((r) => <option key={r.id} value={r.id} className="bg-ecf-card">{r.name}</option>)}
-                            </select>
-                            <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                        </div>
-                    </div>
+                {/* Submit */}
+                <div className="md:col-span-2 flex justify-end pt-1 border-t border-white/[0.06]">
                     <button
                         type="submit"
                         disabled={form.processing}
-                        className="ml-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-50"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-50"
                     >
                         {form.processing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Adicionar autenticador
                     </button>

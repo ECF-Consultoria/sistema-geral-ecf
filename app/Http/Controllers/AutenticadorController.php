@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Autenticador;
-use App\Models\User;
 use App\Services\Autenticadores\AutenticadorService;
 use App\Services\Autenticadores\TotpService;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +31,6 @@ class AutenticadorController extends Controller
         $busca = trim((string) $request->query('q', ''));
 
         $query = Autenticador::query()
-            ->with('responsavel:id,name')
             ->when($busca !== '', function ($q) use ($busca) {
                 // Cobre os jeitos que o time busca: nome da loja/empresa, parte
                 // antes do @, número no domínio e serviço — tudo via LIKE em
@@ -46,7 +44,6 @@ class AutenticadorController extends Controller
                 });
             })
             ->when($request->filled('servico'), fn ($q) => $q->where('servico', $request->query('servico')))
-            ->when($request->filled('responsavel'), fn ($q) => $q->where('responsavel_id', $request->query('responsavel')))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
             ->orderBy('cliente');
 
@@ -57,12 +54,9 @@ class AutenticadorController extends Controller
             'filtros'        => [
                 'q'           => $busca,
                 'servico'     => $request->query('servico', ''),
-                'responsavel' => $request->query('responsavel', ''),
                 'status'      => $request->query('status', ''),
             ],
             'servicos'       => Autenticador::query()->distinct()->orderBy('servico')->pluck('servico'),
-            'responsaveis'   => User::query()->orderBy('name')->get(['id', 'name']),
-            'ultimosAcessos' => $this->ultimosAcessos(),
         ]);
     }
 
@@ -74,7 +68,6 @@ class AutenticadorController extends Controller
             'cliente'        => ['nullable', 'string', 'max:150'],
             'conta'          => ['nullable', 'string', 'max:150'],
             'servico'        => ['nullable', 'string', 'max:100'],
-            'responsavel_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         try {
@@ -171,8 +164,6 @@ class AutenticadorController extends Controller
             'algoritmo'       => $a->algoritmo,
             'digitos'         => $a->digitos,
             'periodo'         => $a->periodo,
-            'responsavel'     => $a->responsavel?->name,
-            'responsavel_id'  => $a->responsavel_id,
             'criado_em'       => $a->created_at?->format('d/m/Y H:i'),
             'atualizado_em'   => $a->updated_at?->format('d/m/Y H:i'),
         ];
@@ -189,21 +180,5 @@ class AutenticadorController extends Controller
                 'servico' => $a->servico,
             ])
             ->log($descricao);
-    }
-
-    private function ultimosAcessos()
-    {
-        return Activity::where('log_name', self::LOG)
-            ->with('causer:id,name')
-            ->latest()
-            ->take(8)
-            ->get()
-            ->map(fn (Activity $a) => [
-                'descricao'  => $a->description,
-                'usuario'    => $a->causer?->name ?? 'Sistema',
-                'cliente'    => $a->properties['cliente'] ?? null,
-                'acao'       => $a->properties['acao'] ?? null,
-                'created_at' => $a->created_at?->format('d/m/Y H:i'),
-            ]);
     }
 }

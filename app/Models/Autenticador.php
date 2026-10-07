@@ -33,7 +33,6 @@ class Autenticador extends Model
         'digitos',
         'periodo',
         'status',
-        'responsavel_id',
         'criado_por',
     ];
 
@@ -53,7 +52,7 @@ class Autenticador extends Model
     {
         // IMPORTANTE: 'secret'/'secret_hash' NUNCA entram no log.
         return LogOptions::defaults()
-            ->logOnly(['cliente', 'conta', 'servico', 'status', 'responsavel_id'])
+            ->logOnly(['cliente', 'conta', 'servico', 'status'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn (string $event) => match ($event) {
@@ -62,11 +61,6 @@ class Autenticador extends Model
                 'deleted' => 'Autenticador removido',
                 default   => $event,
             });
-    }
-
-    public function responsavel(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'responsavel_id');
     }
 
     public function criadoPor(): BelongsTo
