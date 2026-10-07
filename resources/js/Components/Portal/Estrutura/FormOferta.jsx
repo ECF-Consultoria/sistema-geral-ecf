@@ -111,6 +111,9 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const simples = useMemo(() => (opcoes ?? []).filter((o) => o.fase === 'simples'), [opcoes]);
     const porId = useMemo(() => Object.fromEntries((opcoes ?? []).map((o) => [o.id, o])), [opcoes]);
 
+    // D-08/D-22: oferta que veio do Produtos — SKU, nome e fase moram lá (o
+    // servidor ignora a troca desde o 167-03); aqui só logística e observações.
+    const ligada = editando && !! base?.variacao_id;
     const ehKit = modo === 'kit' || (editando && (base.fase === 'kit' || base.fase === 'combit'));
     // "+ Produto" com a conta do ML conectada: escolhe-se no que já está no ar.
     const comMl = modo === 'produto' && ! editando && mlConectado;
@@ -322,7 +325,19 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
                 </p>
             )}
 
-            {! emLote && (<>
+            {ligada ? (
+                <div className="space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3" data-oferta-ligada>
+                    <dl className="grid gap-2 sm:grid-cols-3">
+                        <div><dt className="text-[12px] text-white/45">SKU</dt><dd className="font-mono text-[13px] text-white/90">{base.sku}</dd></div>
+                        <div><dt className="text-[12px] text-white/45">Nome do produto</dt><dd className="text-[13px] text-white/90">{base.nome}</dd></div>
+                        <div><dt className="text-[12px] text-white/45">Fase</dt><dd className="text-[13px] text-white/90">{vocabulario.fases[base.fase]}</dd></div>
+                    </dl>
+                    <p className="text-[12px] text-white/45">
+                        Vem do Produtos.{' '}
+                        <a href={route('portal.auth.estrutura.produtos', { q: base.sku })} className="text-ecf-yellow hover:underline" data-acao="editar-no-produtos">Editar no Produtos</a>
+                    </p>
+                </div>
+            ) : ! emLote && (<>
             <Campo rotulo="SKU" erro={erros.sku} dica="O padrão é livre — só mantenha consistente e confira o limite do seu ERP.">
                 <input value={sku} onChange={(e) => { setSku(e.target.value); setSkuMexido(true); }}
                     className={cn(CLASSE_INPUT, 'font-mono')} data-campo="sku" />

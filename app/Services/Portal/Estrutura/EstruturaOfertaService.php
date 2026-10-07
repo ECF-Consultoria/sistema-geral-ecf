@@ -5,6 +5,7 @@ namespace App\Services\Portal\Estrutura;
 use App\Models\Company;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaProdutoVariacao;
 use App\Services\Publicador\SoltarProdutoDaOfertaService;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
@@ -37,19 +38,24 @@ class EstruturaOfertaService
     }
 
     /**
+     * `$varrerEspera = false` é só para quem cria MUITAS ofertas num lote e varre a
+     * espera uma vez no fim, com todos os SKUs (o cadastro de Produtos, BE-WR-05).
+     * O padrão — e a Lista SKUs — continua varrendo aqui, a cada oferta.
+     *
      * @param  array{sku: string, fase: string, nome?: ?string, logistica?: ?string, observacoes?: ?string, componentes?: array<int, array{id: int, quantidade: int}>}  $dados
-     * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu
+     * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu (0 sem varredura)
      */
-    public function criar(Company $empresa, array $dados, AtorDoPortal $ator): array
+    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true): array
     {
         $campos = $this->campos($dados);
         $componentes = $this->composicao($empresa, $campos['fase'], $dados['componentes'] ?? []);
+        $variacaoId = $this->variacaoLigada($empresa, $dados, $campos['fase'], $componentes);
 
-        return DB::transaction(function () use ($empresa, $campos, $componentes, $ator) {
-            $oferta = EstruturaOferta::create([...$campos, 'company_id' => $empresa->id]);
+        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera) {
+            $oferta = EstruturaOferta::create([...$campos, 'company_id' => $empresa->id, 'variacao_id' => $variacaoId]);
             $this->gravarComposicao($oferta, $componentes);
 
-            $absorvidos = $this->varrerEspera($empresa, [$oferta->sku]);
+            $absorvidos = $varrerEspera ? $this->varrerEspera($empresa, [$oferta->sku]) : 0;
 
             RegistroEstrutura::registrar($ator, $empresa, $oferta, 'oferta_criada',
                 "Oferta {$oferta->sku} criada ({$oferta->fase})", ['absorvidos_da_espera' => $absorvidos]);
@@ -150,6 +156,16 @@ class EstruturaOfertaService
     public function atualizar(EstruturaOferta $oferta, array $dados, AtorDoPortal $ator): array
     {
         $empresa = $oferta->company;
+
+        // D-08: sku, nome e fase vêm do Produtos; editar aqui criaria duas verdades.
+        // Logística e observações continuam editáveis.
+        if ($oferta->ligadaAProduto()) {
+            $dados['sku'] = $oferta->sku;
+            $dados['nome'] = $oferta->nome;
+            $dados['fase'] = $oferta->fase;
+            $dados['componentes'] = [];
+        }
+
         $campos = $this->campos($dados);
         $componentes = $this->composicao($empresa, $campos['fase'], $dados['componentes'] ?? [], $oferta->id);
 
@@ -190,9 +206,17 @@ class EstruturaOfertaService
      * Oferta que é componente de alguma variação não sai: o FK é `restrict`, e
      * a mensagem diz quais variações a usam.
      */
-    public function excluir(EstruturaOferta $oferta, AtorDoPortal $ator): void
+    public function excluir(EstruturaOferta $oferta, AtorDoPortal $ator, bool $viaProduto = false): void
     {
         $empresa = $oferta->company;
+
+        // D-22: a oferta ligada só sai pela exclusão da variação no Produtos, que chama
+        // este método com `viaProduto: true` e reaproveita o resto do fluxo (D27, espera).
+        if ($oferta->ligadaAProduto() && ! $viaProduto) {
+            throw ValidationException::withMessages([
+                'oferta' => 'Esta oferta vem do Produtos. Exclua a variação lá.',
+            ]);
+        }
 
         $usos = $oferta->usadaEm()->with('oferta:id,sku')->get();
         if ($usos->isNotEmpty()) {
@@ -228,6 +252,68 @@ class EstruturaOfertaService
 
             $this->varrerEspera($empresa, [$sku]);
         });
+    }
+
+    /**
+     * Acompanha a variação do Produtos: atualiza SÓ sku e nome da oferta ligada
+     * (D-08). Não passa por `atualizar()`, que reescreve fase e componentes.
+     * Os anúncios continuam ligados — o vínculo é por `oferta_id`, não por SKU.
+     * `$varrerEspera = false`: quem chama varre a espera uma vez no fim do lote, com
+     * o SKU antigo e o novo (BE-WR-05); o padrão varre aqui, como sempre.
+     *
+     * @return int quantos anúncios da espera o SKU novo absorveu (0 sem varredura)
+     */
+    public function sincronizarDaVariacao(EstruturaOferta $oferta, string $sku, ?string $nome, AtorDoPortal $ator, bool $varrerEspera = true): int
+    {
+        $sku = trim($sku);
+        $nome = trim((string) $nome);
+        $nome = $nome === '' ? null : mb_substr($nome, 0, 255);
+
+        if ($sku === $oferta->sku && $nome === $oferta->nome) {
+            return 0;
+        }
+
+        $empresa = $oferta->company;
+
+        return DB::transaction(function () use ($oferta, $empresa, $sku, $nome, $ator, $varrerEspera) {
+            $skuAntigo = $oferta->sku;
+
+            $oferta->update(['sku' => $sku, 'nome' => $nome]);
+
+            $absorvidos = ! $varrerEspera || EstruturaOferta::normalizarSku($skuAntigo) === EstruturaOferta::normalizarSku($sku)
+                ? 0
+                : $this->varrerEspera($empresa, [$skuAntigo, $sku]);
+
+            RegistroEstrutura::registrar($ator, $empresa, $oferta, 'oferta_editada',
+                "Oferta {$oferta->sku} acompanhou a variação", [
+                    'via' => 'produtos', 'sku_antigo' => $skuAntigo, 'absorvidos_da_espera' => $absorvidos,
+                ]);
+
+            return $absorvidos;
+        });
+    }
+
+    /**
+     * Valida a ligação com a variação (D-08): da MESMA empresa — id de outra
+     * empresa cai na mesma mensagem de inexistente — e sempre oferta simples.
+     */
+    private function variacaoLigada(Company $empresa, array $dados, string $fase, array $componentes): ?int
+    {
+        $id = (int) ($dados['variacao_id'] ?? 0);
+        if ($id <= 0) {
+            return null;
+        }
+
+        $existe = EstruturaProdutoVariacao::where('company_id', $empresa->id)->whereKey($id)->exists();
+        if (! $existe) {
+            throw ValidationException::withMessages(['variacao_id' => 'Variação inválida.']);
+        }
+
+        if ($fase !== EstruturaOferta::FASE_SIMPLES || $componentes) {
+            throw ValidationException::withMessages(['fase' => 'Oferta ligada a produto é sempre Simples.']);
+        }
+
+        return $id;
     }
 
     /**

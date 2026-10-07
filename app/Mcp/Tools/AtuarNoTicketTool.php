@@ -29,7 +29,7 @@ Age sobre um ticket já aberto (TKT-xxxx), pelos mesmos botões da tela. "acao":
 - resolver: encerra contando o que foi feito ("texto" obrigatório; quem abriu é avisado). Só equipe dev.
 - cancelar: cancela ("texto" = motivo opcional). Quem abriu ou a equipe dev.
 - reabrir: reabre um ticket resolvido/cancelado ("texto" = motivo opcional).
-Grava direto. Para ver a lista de tickets, use ler_tela com a tela "chamados.index".
+Grava direto. Para ler a lista ou um ticket (descrição, mensagens, prints), use ler_ticket.
 TXT)]
 class AtuarNoTicketTool extends FerramentaDeEscrita
 {

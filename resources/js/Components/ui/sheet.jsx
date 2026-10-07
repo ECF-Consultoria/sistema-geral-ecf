@@ -24,14 +24,21 @@ const SheetOverlay = React.forwardRef(({ className, ...props }, ref) => (
 ));
 SheetOverlay.displayName = 'SheetOverlay';
 
-const SheetContent = React.forwardRef(({ className, children, ...props }, ref) => (
+// `side`: 'right' (padrão, drawer lateral) ou 'bottom' (folha de baixo, usada no celular).
+const LADOS = {
+    right: 'inset-y-0 right-0 h-full w-full max-w-xl border-l data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
+    bottom: 'inset-x-0 bottom-0 max-h-[90vh] w-full rounded-t-2xl border-t data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
+};
+
+const SheetContent = React.forwardRef(({ className, children, side = 'right', ...props }, ref) => (
     <DialogPrimitive.Portal>
         <SheetOverlay />
         <DialogPrimitive.Content
             ref={ref}
             className={cn(
-                'fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-xl flex-col border-l border-white/[0.08] bg-ecf-card shadow-2xl',
-                'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right data-[state=open]:duration-300 data-[state=closed]:duration-200',
+                'fixed z-50 flex flex-col border-white/[0.08] bg-ecf-card shadow-2xl',
+                LADOS[side] ?? LADOS.right,
+                'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:duration-300 data-[state=closed]:duration-200',
                 className,
             )}
             {...props}

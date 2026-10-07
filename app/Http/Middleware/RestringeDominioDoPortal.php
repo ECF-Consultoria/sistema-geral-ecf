@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -119,6 +120,24 @@ class RestringeDominioDoPortal
         // `portal/ppa/tarefas/*`. Nada fora do módulo mora sob `portal/estrutura`.
         'portal/estrutura',
         'portal/estrutura/lista',
+        // Fase 167 (05/10/2026) — Produtos. Uma linha por rota; o `*` só ocupa o
+        // id numérico (`whereNumber`). NUNCA `portal/estrutura/produtos/*`: o `*`
+        // do Str::is atravessa `/` e abriria rota que não existe aqui.
+        'portal/estrutura/produtos',
+        'portal/estrutura/produtos/modelo',
+        // 167-19 (D-27): a ficha de produto novo. O id numérico (`/{id}`) NÃO entra aqui: vai por PERMITIDO_COM_ID.
+        'portal/estrutura/produtos/novo',
+        'portal/estrutura/produtos/linhas',
+        'portal/estrutura/produtos/variacoes/*',
+        'portal/estrutura/produtos/importacao',
+        'portal/estrutura/produtos/importacao/previa',
+        'portal/estrutura/produtos/familias',
+        'portal/estrutura/produtos/familias/*',
+        'portal/estrutura/produtos/ambientes',
+        'portal/estrutura/produtos/ambientes/*',
+        'portal/estrutura/produtos/categorias',
+        'portal/estrutura/produtos/categorias/sugerir',
+        'portal/estrutura/produtos/fretes',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',
@@ -149,6 +168,38 @@ class RestringeDominioDoPortal
         'portal/empresa',
     ];
 
+    /**
+     * Rotas com UM id numérico direto sob um prefixo que tem irmãs
+     * (`/produtos/modelo`, `/produtos/novo`), onde um `*` abriria o que não deve.
+     *
+     * `{id}` casa SÓ dígitos e o caminho inteiro (âncoras de início e fim):
+     * `/produtos/12/qualquer` e `/produtos/abc` continuam barrados. Cada linha
+     * daqui tem o mesmo peso de decisão que uma linha de PERMITIDO.
+     */
+    private const PERMITIDO_COM_ID = [
+        'portal/estrutura/produtos/{id}',
+    ];
+
+    /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */
+    public static function liberado(string $caminho): bool
+    {
+        // Mesma semântica de `Request::is()`: Str::is sobre o caminho decodificado.
+        foreach (self::PERMITIDO as $padrao) {
+            if (Str::is($padrao, $caminho)) {
+                return true;
+            }
+        }
+
+        foreach (self::PERMITIDO_COM_ID as $padrao) {
+            $regex = '#\A'.str_replace(preg_quote('{id}', '#'), '[0-9]+', preg_quote($padrao, '#')).'\z#';
+            if (preg_match($regex, $caminho) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function handle(Request $request, Closure $next): Response
     {
         $dominio = config('portal.dominio_cliente');
@@ -168,10 +219,8 @@ class RestringeDominioDoPortal
         // Ajustar depois não teria efeito nenhum.
         config(['session.lifetime' => config('portal.sessao_minutos', 43200)]);
 
-        foreach (self::PERMITIDO as $padrao) {
-            if ($request->is($padrao)) {
-                return $next($request);
-            }
+        if (self::liberado($request->decodedPath())) {
+            return $next($request);
         }
 
         // 404, não 403: no domínio do cliente essas rotas não existem, e dizer

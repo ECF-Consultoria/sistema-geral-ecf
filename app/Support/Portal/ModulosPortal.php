@@ -92,10 +92,11 @@ class ModulosPortal
     ];
 
     /**
-     * Os submódulos, na ordem do caminho de quem começa do zero (29/09): listar
-     * os produtos → precificar → montar os anúncios → agendar → acompanhar o
-     * que foi publicado. É também a ordem das abas da planilha (Lista SKUs,
-     * Anúncios, Planejamento, Mapeamento), com a Precificação entre elas.
+     * Os submódulos, na ordem do caminho de quem começa do zero (29/09; Fase 167
+     * em 05/10): cadastrar os produtos → listar as ofertas → precificar →
+     * montar os anúncios → agendar → acompanhar o que foi publicado. É também a
+     * ordem das abas da planilha (Produtos, Lista SKUs, Anúncios, Planejamento,
+     * Mapeamento), com a Precificação entre elas.
      *
      * `rota_auth` nulo = "Em breve": o item aparece apagado, sem link. Assim o
      * cliente vê para onde o módulo vai sem clicar numa página vazia.
@@ -105,6 +106,7 @@ class ModulosPortal
      */
     private const SUBMODULOS = [
         self::ESTRUTURA => [
+            'produtos'     => ['rotulo' => 'Produtos',     'rota_auth' => 'portal.auth.estrutura.produtos'],
             'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
             'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => 'portal.auth.estrutura.precificacao'],
             'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],

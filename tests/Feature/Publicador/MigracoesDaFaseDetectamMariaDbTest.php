@@ -23,6 +23,9 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_02_200000_pub_produtos_ancoras_sem_cascata.php',
         // Fase 166: não consulta o driver; a varredura garante que continue assim.
         '2026_10_05_100000_create_pub_alavanca_escritas_table.php',
+        // Fase 167
+        '2026_10_06_100000_create_estrutura_produtos_tables.php',
+        '2026_10_06_100100_add_variacao_id_to_estrutura_ofertas.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */
@@ -46,6 +49,27 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
 
         $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb usa information_schema');
+        $this->assertTrue($this->comDriver('mysql', $emMysql));
+        $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
+    }
+
+    public function test_a_migration_da_variacao_trata_mariadb_como_mysql(): void
+    {
+        $migration = require database_path('migrations/2026_10_06_100100_add_variacao_id_to_estrutura_ofertas.php');
+        $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
+
+        $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb usa information_schema');
+        $this->assertTrue($this->comDriver('mysql', $emMysql));
+        $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
+    }
+
+    /** BE-WR-08: a criação das tabelas de Produtos ficou idempotente e repõe FK só no MySQL/MariaDB. */
+    public function test_a_migration_da_criacao_dos_produtos_trata_mariadb_como_mysql(): void
+    {
+        $migration = require database_path('migrations/2026_10_06_100000_create_estrutura_produtos_tables.php');
+        $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
+
+        $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb repõe as FKs pelo information_schema');
         $this->assertTrue($this->comDriver('mysql', $emMysql));
         $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
     }

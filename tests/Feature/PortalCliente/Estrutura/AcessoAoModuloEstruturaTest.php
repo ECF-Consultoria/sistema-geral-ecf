@@ -37,14 +37,18 @@ class AcessoAoModuloEstruturaTest extends TestCase
 
     /**
      * Os submódulos (29/09), na ordem de quem começa do zero. A entrada do
-     * módulo abre a Lista SKUs; os links antigos (`?abrir=` da agenda e da
+     * módulo abre Produtos (D-21, Fase 167: empresa sem ofertas ou que já tem
+     * produto) ou a Lista SKUs (só ofertas); os links antigos (`?abrir=` da agenda e da
      * Jardinagem) vão para o Mapeamento, com a query intacta.
      */
-    public function test_a_entrada_abre_a_lista_e_os_links_antigos_vao_para_o_mapeamento(): void
+    public function test_a_entrada_abre_produtos_ou_a_lista_e_os_links_antigos_vao_para_o_mapeamento(): void
     {
         $empresa = $this->empresaDoGabarito();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
+        // Empresa vazia vai para Produtos (D-21); com a lista do gabarito (só ofertas), para a Lista SKUs.
+        $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
+        $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
         $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
         $sessao->get(route('portal.auth.estrutura', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]))
             ->assertRedirect(route('portal.auth.estrutura.mapeamento', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]));
@@ -57,9 +61,9 @@ class AcessoAoModuloEstruturaTest extends TestCase
                     $estrutura = collect($modulos)->firstWhere('chave', 'estrutura');
 
                     return $estrutura['ativo']
-                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento']
+                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento']
                         && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
-                        // 02/10 (D18): o Anunciar saiu do Portal — são 5 submódulos, todos abertos.
+                        // 02/10 (D18): o Anunciar saiu do Portal — são 6 submódulos (Produtos primeiro), todos abertos.
                         && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null);
                 })
             );
@@ -510,8 +514,13 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $this->assertNotContains('portal/*', $permitido);
 
         foreach ($rotas as $rota) {
+            // Id numérico sob prefixo com irmãs (167-19) entra por PERMITIDO_COM_ID: só vale com `whereNumber`.
+            $soNumericos = preg_match_all('/\{(\w+)\??\}/', $rota->uri(), $m) > 0
+                && collect($m[1])->every(fn ($param) => ($rota->wheres[$param] ?? null) === '[0-9]+');
+
             $this->assertTrue(
-                collect($permitido)->contains(fn ($p) => Str::is($p, $rota->uri())),
+                collect($permitido)->contains(fn ($p) => Str::is($p, $rota->uri()))
+                    || ($soNumericos && RestringeDominioDoPortal::liberado(preg_replace('/\{\w+\??\}/', '1', $rota->uri()))),
                 "{$rota->uri()} fora da allowlist"
             );
         }

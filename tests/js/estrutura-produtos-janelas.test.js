@@ -1,0 +1,106 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { lerSemComentarios } from './_fonte.js';
+
+// ═══════════════════════════════════════════════════════════════════════
+// Gate das janelas de Produtos (Fase 167-15: D-05, D-13, D-14).
+//
+// POR QUE EXISTE: a importação só é segura se a confirmação reenviar o ARQUIVO
+// (o servidor refaz o plano) e se a prévia nunca virar a fonte da gravação;
+// e as listas da empresa só têm um lugar de correção, com a proteção de "em uso".
+// ═══════════════════════════════════════════════════════════════════════
+
+const importacao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaImportacao.jsx');
+const pagina = lerSemComentarios('resources/js/Pages/Portal/EstruturaProdutos.jsx');
+const barra = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos.jsx');
+
+test('JanelaImportacao: textos do UI-SPEC', () => {
+    for (const t of [
+        'Importar planilha',
+        'Arraste o arquivo ou clique para escolher',
+        'Aceita .xlsx, até',
+        'Prévia — nada foi gravado ainda',
+        'Serão criadas nas listas',
+        'Reimportar atualiza pelo código da variação. Nada é apagado.',
+        'Voltar',
+        'Confirmar importação',
+        'Importando…',
+    ]) assert.ok(importacao.includes(t), `faltou: ${t}`);
+});
+
+test('JanelaImportacao: prévia por axios, confirmação reenvia o arquivo por router.post', () => {
+    assert.match(importacao, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.importacao\.previa'\), dados\)/);
+    assert.match(importacao, /new FormData\(\)/);
+    assert.match(importacao, /router\.post\(route\('portal\.auth\.estrutura\.produtos\.importacao'\), \{ arquivo \}/);
+    assert.match(importacao, /forceFormData: true/);
+    assert.match(importacao, /disabled=\{! podeConfirmar \|\| importando\}/);
+    assert.match(importacao, /novos \?\? 0\) \+ \(previa\.totais\?\.atualizados \?\? 0\)\) > 0/);
+});
+
+test('JanelaImportacao: depois de um erro o mesmo arquivo pode ser escolhido de novo (FE-IN-07)', () => {
+    assert.ok(importacao.includes("const limparEntrada = () => { if (entrada.current) entrada.current.value = ''; };"));
+    const escolher = importacao.slice(importacao.indexOf('const escolher = async'), importacao.indexOf('const voltar = '));
+    // extensão inválida, tamanho acima do limite e falha da prévia limpam o campo
+    assert.equal((escolher.match(/limparEntrada\(\);/g) ?? []).length, 3);
+    assert.match(escolher, /\.xlsx\$\/i\.test\(f\.name\)\) \{ limparEntrada\(\);/);
+    assert.match(escolher, /catch \(e\) \{\s*setArquivo\(null\);\s*limparEntrada\(\);/);
+});
+
+test('JanelaImportacao: cores dos grupos, erros abertos e sem caixa-alta', () => {
+    assert.match(importacao, /text-emerald-300/);
+    assert.match(importacao, /text-sky-300/);
+    assert.match(importacao, /text-white\/45/);
+    assert.match(importacao, /text-red-300',\s+aberto: true/);
+    assert.ok(! importacao.includes('uppercase'));
+    assert.ok(! importacao.includes('dangerouslySetInnerHTML'));
+});
+
+test('Página: modelo é link de download (não axios) e importar é botão, sem menu Planilha', () => {
+    assert.match(barra, /<a href=\{route\('portal\.auth\.estrutura\.produtos\.modelo'\)\} download/);
+    assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.modelo'/.test(pagina));
+    assert.ok(barra.includes('Baixar modelo') && ! barra.includes('Baixar modelo (.xlsx)'));
+    assert.ok(barra.includes('Importar planilha'));
+    assert.ok(barra.includes('data-acao="importar-planilha"') && barra.includes('data-acao="baixar-modelo"'));
+    assert.ok(! pagina.includes('menu-planilha'));
+    assert.ok(pagina.includes('Baixar planilha-modelo'));
+    assert.match(pagina, /<JanelaImportacao /);
+});
+
+// ─── Famílias e ambientes (D-05) ───────────────────────────────────────
+
+const listasJanela = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/JanelaListas.jsx');
+
+test('JanelaListas: abas, campo de novo item, usada em, renomear e lixeira', () => {
+    for (const t of ['Famílias', 'Ambientes', 'Nova família', 'Novo ambiente', 'usada em', 'Excluir família', 'Excluir ambiente', 'Manter']) {
+        assert.ok(listasJanela.includes(t), `faltou: ${t}`);
+    }
+    assert.match(listasJanela, /Pencil/);
+    assert.match(listasJanela, /Trash2/);
+    assert.match(listasJanela, /e\.key === 'Enter'/);
+});
+
+test('JanelaListas: item em uso não exclui e explica; sem uso confirma inline', () => {
+    assert.ok(listasJanela.includes('Troque nos produtos para poder excluir.'));
+    assert.match(listasJanela, /em_uso \?\? 0\) > 0/);
+    assert.match(listasJanela, /disabled=\{emUso\}/);
+    assert.ok(listasJanela.includes('Excluir “{item.nome}”?'));
+});
+
+test('JanelaListas: usa as rotas de família e ambiente e atualiza o mesmo estado da página', () => {
+    assert.match(listasJanela, /portal\.auth\.estrutura\.produtos\.\$\{t\.rota\}\.\$\{acao\}/);
+    assert.match(listasJanela, /rota: 'familias'/);
+    assert.match(listasJanela, /rota: 'ambientes'/);
+    for (const v of ["'criar'", "'renomear'", "'excluir'"]) assert.ok(listasJanela.includes(v));
+    assert.match(listasJanela, /onListas\(data\.listas\)/);
+    assert.match(pagina, /<JanelaListas [\s\S]*?onListas=\{setListas\}/);
+    assert.match(pagina, /only: \['produtos', 'listas'\]/);
+    assert.ok(barra.includes('Famílias e ambientes'));
+});
+
+test('Página: as listas acompanham as props novas depois da importação ou da recarga (FE-IN-01)', () => {
+    assert.match(pagina, /useEffect\(\(\) => \{\s*if \(primeiraListas\.current\) \{ primeiraListas\.current = false; return; \}\s*setListas\(listasIniciais \?\? \{ familias: \[\], ambientes: \[\] \}\);\s*\}, \[listasIniciais\]\);/);
+});
+
+test('JanelaListas: sem contagem total nem barra de progresso', () => {
+    assert.ok(! /Progress|progress|itens\.length\} (famílias|ambientes)/.test(listasJanela));
+});

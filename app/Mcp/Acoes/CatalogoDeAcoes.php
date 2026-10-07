@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Acoes;
 
+use App\Mcp\Telas\CatalogoDeTelas;
 use App\Mcp\Telas\PreviaDePerfil;
 use App\Models\User;
 use Illuminate\Routing\Route;
@@ -109,7 +110,7 @@ final class CatalogoDeAcoes
     private function ehAcao(Route $r): bool
     {
         $nome = $r->getName();
-        if (! $nome || $this->metodo($r) === null) {
+        if (! $nome || CatalogoDeTelas::nomeGerado($nome) || $this->metodo($r) === null) {
             return false;
         }
         if (self::bloqueada($nome) || preg_match(self::PADRAO_FORA, $nome.' /'.$r->uri())) {

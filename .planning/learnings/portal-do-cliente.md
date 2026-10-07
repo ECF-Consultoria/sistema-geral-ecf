@@ -949,3 +949,104 @@ usa o frete do outro (ADR PORTAL-02, revisão de 30/09). Ao receber "a conta
 está errada" aqui, olhar primeiro o DADO gravado (`estrutura_precificacoes`)
 antes da fórmula — foi o que achou a causa em minutos.
 
+
+## 31. Produtos no Mapeamento Estrutural (Fase 167, 06/10/2026)
+
+O cliente cadastra o produto (uma linha por VARIAÇÃO) e a oferta simples da Lista
+SKUs nasce dele. O que não se deduz do código:
+
+- **A aba Produtos real, medida (70 variações):** a coluna "Variação" é um
+  ORDINAL (`1`, `2`, `única`), não "Cor: Natural" — o normalizador aceita os
+  dois formatos; há 11 grafias diferentes de ambiente para os mesmos poucos
+  ambientes (por isso o ambiente vira lista da empresa, com "Usar “Sala Estar”"
+  quando só muda caixa/acento); 55 de 70 são ME1, 8 ME2, 6 ME2·Full, 1 sem
+  medida. Conclusão de produto: a cotação de frete pela API só atinge ~20% das
+  linhas (as ME2); as ME1 (55 de 70) ficam fora dessa cotação. Conferir com
+  `LeitorPlanilhaProdutos` + `LogisticaProduto::daVolumes`
+  — saída só em contagens, a planilha tem custo real do cliente.
+- **`nullOnDelete` × `restrict` no `variacao_id` da oferta.** `restrict` daria
+  1451 na cascata de `Company` (apagar a empresa apaga ofertas e variações na
+  mesma transação; a ordem não é garantida). Com `nullOnDelete` a coluna
+  nullable e SEM backfill dispensa o 1830 e a oferta sobrevive à variação. A
+  proteção "não exclua variação que entra num combo" é então de SERVIÇO
+  (`excluirVariacao` recusa), não de banco — o banco só impede o órfão.
+- **ME2/Full usam o peso REAL; o cubado só entra no frete.** Regra de elegibilidade
+  (peso ≤ 30 kg, soma ≤ 200 cm, maior lado ≤ 100 cm; Full: ≤ 20 kg e ≤ 80 cm) olha
+  o peso real. O faturado só usa o cubado quando ele passa do mínimo do config
+  (5 kg) e do real. A tabela de frete da ECF casa por faixa com
+  `MATCH(peso − 0,0001)` como a planilha: peso exatamente 0,3 fica em "até 0,3".
+  Tirar o −0,0001 move todo peso redondo uma faixa para cima.
+- **`SpreadsheetGrid` descartava a colagem além das linhas exibidas** (colar 70
+  linhas gravava 10). Foi estendido só com props OPCIONAIS (`growOnPaste`,
+  `tabWrap`, `makeRow`, `rowKey`, `onRowsCommit`, `variant`, `rowActions`,
+  `rowNote`, coluna `picker`); sem elas, o comportamento é o de antes — o
+  Onboarding não muda. O colar usa o evento DOM `paste` lendo tudo de um ref
+  (listener de montagem única).
+- **"Família" aqui é linha de design** (Farmhouse, Nordic), não o grupo de
+  variações (esse é o "Grupo/produto"). É lista da empresa; não confundir com a
+  "família" da Precificação.
+- **Custo da oferta ligada vem da VARIAÇÃO.** A Precificação mostra "vem do
+  produto" e `salvarOferta` RECUSA custo em oferta ligada.
+  Oferta antiga (sem produto) continua editável.
+- **Categoria tem três estados:** texto livre ("a confirmar", sem id), id NÃO
+  validado (o ML estava fora do ar: guarda o id, avisa "não validada agora") e
+  confirmada (folha validada no ML, com caminho). Texto colado no campo do id
+  nunca vira id. Categoria já confirmada e igual à do produto não é revalidada
+  (a grade devolve a categoria em toda linha).
+- **Pendências de verificação manual (não dá para provar sem conta conectada):**
+  (1) a leitura real de `shipping_options/free` numa conta de cliente — A2 do
+  RESEARCH: o ML pode IGNORAR as dimensões enviadas e devolver o mesmo frete
+  para tudo; até medir, o frete é rotulado "estimado"; (2) contar
+  `estrutura_ofertas` em produção antes de rodar a migration do vínculo.
+- **Entrada de equipe para conferir a tela:** o ticket vale 60 segundos e é de
+  uso único; para conferência demorada, emitir de novo na hora de abrir. A rota
+  é `/equipe/entrar?t=...` (fora do prefixo `/portal`).
+- **`style={{ position: 'relative' }}` inline vence a classe `sticky` do Tailwind.**
+  No `SpreadsheetGrid`, o `td` de coluna congelada tinha `position: relative`
+  inline e `left` calculado: a célula saía deslocada pelo `left` e Ref/Produto
+  ficavam fora do alinhamento do cabeçalho (texto sobreposto). Ninguém via
+  porque nenhuma tela anterior usava `frozen`. Só a conferência no navegador
+  achou — nem teste de PHP nem `npm run build` pegariam. Correção: `position`
+  decidido no próprio estilo (`frozen ? 'sticky' : 'relative'`).
+- **Busca de categoria sem resultado aparece como "Não deu para buscar agora".**
+  O endpoint devolve `indisponivel: true` também quando a lista vem vazia (nome
+  fictício, sem categoria no preditor do ML). A busca em si funciona com o app
+  token (dado público) — confirmado em 06/10 com "mesa de jantar" → MLB4341.
+- **Sem planilha dentro do sistema no cadastro de produto (D-23, 06/10).** A tela
+  de Produtos nasceu como grade tipo planilha (o D-12 lido como "tabela
+  editável") e o usuário reprovou na conferência visual: "eu disse que não
+  queria uma planilha dentro do sistema pra esse caso". "Na tela, no sistema
+  mesmo" quer dizer FORMULÁRIO. Ficou lista de cartões + ficha (primeiro em
+  painel; desde o 167-19, página inteira com URL própria, pelas referências do
+  usuário) e a planilha só como ARQUIVO (baixar
+  o modelo, preencher fora, importar com prévia). As extensões do
+  `SpreadsheetGrid` (167-04) continuam no componente compartilhado, sem uso
+  nesta tela. Não voltar a pôr grade no cadastro de produto sem perguntar ao
+  usuário. Lição de processo: "tabela editável" e "planilha" soam iguais para
+  quem vê a tela; antes de construir uma grade, mostrar o desenho.
+
+## 32. Voltar do navegador com Inertia: a guarda tem de nascer antes dele (Fase 167, 06/10/2026)
+
+- **Captura no `window` NÃO passa à frente do ouvinte do Inertia.** Para um
+  evento disparado no próprio `window` (o `popstate`), os ouvintes rodam na
+  ORDEM DE REGISTRO, com ou sem `capture: true`. Medido no Chrome 152, com
+  evento real e sintético. O Inertia registra o dele quando o app monta. Uma
+  tela que registra depois, mesmo em captura, chega tarde: o Inertia já trocou
+  a página. Na ficha de Produtos, o "ficar" do "Sair sem salvar?" recarregava a
+  ficha e perdia o digitado, e os testes de `tests/js` passavam, porque só liam
+  o texto do código.
+- **O que funciona:** `resources/js/lib/guardaDoVoltar.js` registra UM ouvinte
+  na importação do `app.jsx`, antes do `createInertiaApp`. A tela liga a guarda
+  dela com `definirGuardaDoVoltar(fn)`. Dentro da guarda,
+  `e.stopImmediatePropagation()` segura a pessoa na tela e o Inertia não vê o
+  popstate. Use o mesmo módulo em qualquer outra tela que precise de "alterações
+  não salvas" no voltar do navegador.
+- **`history.back()` só volta para a lista se ela estiver no MESMO documento.**
+  Depois de um F5 na ficha, ou com a ficha aberta pela URL, a entrada anterior
+  é de outro documento. O voltar traz a página velha do cache do navegador
+  (bfcache): o React não monta de novo, e não há recarga, aviso nem destaque.
+  Confira `navigation.entries()[i].sameDocument` antes de voltar pelo histórico.
+  Na lista, `pageshow` com `e.persisted` pede `router.reload`.
+- **Comportamento de navegação se prova no navegador, não no `tests/js`.** O
+  roteiro com puppeteer (banco SQLite isolado, dados fictícios) achou os dois
+  defeitos acima depois de a revisão e as correções estarem "verdes".

@@ -1,6 +1,8 @@
 import '../css/app.css';
 import '../css/light.css'; // tema claro opcional (ativado pela classe .light no <html>)
 import './bootstrap';
+// Antes do Inertia: o ouvinte de popstate da guarda de "alterações não salvas" tem de rodar primeiro.
+import './lib/guardaDoVoltar';
 
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';

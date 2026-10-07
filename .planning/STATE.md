@@ -386,6 +386,18 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
+## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — EM EXECUÇÃO
+
+**Bloco escrito à mão de propósito** (2026-10-05): os comandos `state.*` do GSD corrompem o
+frontmatter deste arquivo — o `state.begin-phase` desta fase o fez de novo e foi revertido.
+Atualizar SÓ este bloco, à mão. Branch `feat/publicador-ml-261001`, worktree
+`C:/tmp/ecf-publicador-spec-261001`. Nada pushado, nada deployado.
+
+Phase: 167 (cadastro-de-produto-no-mapeamento-estrutural-o-cliente-cadas) — DEPLOYADA (06/10, `9d54db33`)
+Plans: 21 (os 18-21 são lacunas do checkpoint) — 21 de 21 concluídos
+Status: DEPLOYADA em 06/10 (push `553253d1..9d54db33`; migrations `2026_10_06_100000`/`100100` no lote 164; `estrutura_ofertas` 515 antes e depois, 0 ligadas; `queue:restart` feito). Falta, com o usuário: frete real numa conta conectada só com "pode" (D-16) e `mimes:xlsx` com exportações do Google Sheets/LibreOffice/Excel Mac.
+Last activity: 2026-10-06 — Fase 167 deployada
+
 ## Posição paralela — Fase 164 (Publicador no sistema interno, /mlb/anuncios) — DEPLOYADA EM 03/10 (`01da6664`), aguarda UAT
 
 **Bloco escrito à mão de propósito** (2026-10-02): os comandos `state.*` do GSD corrompem o
@@ -2075,6 +2087,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 
 - 2026-10-04 — **Phase 166 — contexto coletado (`166-CONTEXT.md`, D-01..D-13).** Barra Publicar | Alavancas na página da empresa; panorama + abas Promoções | Cupons | Publicidade | Atacado; trava PRÓPRIA das Alavancas por âncora, fail-closed, começando pela #459 (separada da trava de publicação); confirmação com resumo antes de cada escrita; histórico de escritas em tabela nova com tela; promoções com as quatro escritas (convites, desconto individual, campanha do vendedor/VOLUME, lista de exclusão); cupons com criar/alterar/excluir; publicidade só leitura (escrita depois da permissão Advertising e da prova na #459); atacado % B2B ver e editar; análise = preço, desconto e "quanto recebe" (margem só com custo da Precificação) + alertas simples; visual no padrão do Publicador. Próximo: `/gsd-plan-phase 166`.
 
+- 2026-10-05 — **Phase 167 added: Cadastro de Produto no Mapeamento Estrutural — o cliente cadastra seus produtos (aba Produtos da planilha de Planejamento Estrutural).** Fase avulsa (fora da milestone v24.0, que é do outro dev), depois da 166. Origem: reunião da Incubadora de 05/10 ("cadastrar o produto uma vez, o sistema cadastra os anúncios") e a planilha `3Planejamento_Estrutural_ECF.xlsx` do Emerson — o usuário definiu: aba Produtos = o cliente cadastra; Planejamento = identificação da oferta (fase seguinte). Casa = submódulo novo no Mapeamento do Portal. GSD porque ligar oferta → produto altera `estrutura_ofertas` (dado em produção). **05/10: contexto colhido** (`167-CONTEXT.md`, D-01..D-18: Company obrigatória, cliente e equipe editam, oferta simples automática por variação, ofertas antigas intocadas, custo no produto, família/ambiente como listas da empresa, categoria real do ML, tabela editável + planilha-modelo, logística/peso cubado/frete ME2 por variação). Pesquisa (`167-RESEARCH.md`, PR167-01..14), D-19..D-22 depois dela e **UI-SPEC aprovado** (`167-UI-SPEC.md`, 6/6). **PLANEJADA em 05/10:** 17 planos / 13 ondas (execução em sequência no worktree), checker aprovado na 2ª rodada (0 bloqueios), cobertura 22/22 decisões e 14/14 requisitos. Próximo: `/gsd-execute-phase 167`.
 - 2026-10-04 — **Phase 166 added: Alavancas no Publicador — promoções, cupons, publicidade e atacado da conta do cliente.** Fase avulsa (fora da milestone v24.0, que é do outro dev), depois da 165. Pedido do usuário: no Publicador, depois de escolher a empresa, duas opções — "Publicar" (fluxo da 164) e "Alavancas" (ver, analisar e, quando a API do ML permite, criar/alterar). Pesquisa de API do mesmo dia em `166-PESQUISA-API.md` (documentação oficial lida por curl; o WebFetch toma 403 do Cloudflare). Afiliados fora (sem API para vendedor). Próximo: `/gsd-discuss-phase 166`.
 
 - 2026-10-04 — **Phase 165 PLANEJADA (8 planos, 7 ondas; CE165-01..12).** Layout de referência passou a ser o editor em 3 etapas (`cab40d48`, que substituiu as 3 colunas): "Gerar com IA" mora no `BlocoDeFotos` (cartão de cada variação e "Fotos para todas as variações"), como LINK, com painel nativo `Mesa/PainelCriativos.jsx`. Verificador: rodada 1 = 1 blocker (D-13 — o token do kit saía para o navegador e as rotas antigas chegavam a kit de outro produto) + 8 warnings; rodada 2 = 0 blocker, 2 warnings (PRAGMA `defer_foreign_keys` no lugar de `foreign_keys = OFF`; semente do kit em erro) corrigidos pelo orquestrador nos planos. Kit do Publicador endereçado por `id` escopado; a guarda `abort_if` nas rotas antigas vai como proposta no checkpoint do 165-01. **Execução espera o ok do outro dev** (o 165-01 começa pelo checkpoint de coordenação). Limpeza do `AVISO-COORDENACAO-164` (CLAUDE.md, `.claude/settings.json`, `.claude/hooks/aviso-coordenacao.mjs`) é do usuário, à mão. Próximo: `/gsd-execute-phase 165` depois do ok.

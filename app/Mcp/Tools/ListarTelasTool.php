@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Mcp\Telas\AvisosDeTela;
 use App\Mcp\Telas\CatalogoDeTelas;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -18,7 +19,7 @@ use Laravel\Mcp\Server\Attributes\Title;
 #[Name('listar_telas')]
 #[Title('Listar telas do ECF Admin')]
 #[Description(<<<'TXT'
-Lista as telas do ECF Admin que você pode abrir com ler_tela: o nome da tela (use em ler_tela), o endereço, o módulo e os parâmetros obrigatórios (ex.: "company" = id da empresa). Use quando nenhuma ferramenta específica (listar_empresas, sugadores, demandas_dev, onboarding_polos, ppa, alertas_estrategicos, painel_executivo) responder a pergunta.
+Lista as telas do ECF Admin que você pode abrir com ler_tela: o nome da tela (use em ler_tela), o endereço, o módulo e os parâmetros obrigatórios (ex.: "company" = id da empresa). Use quando nenhuma ferramenta específica (listar_empresas, sugadores, demandas_dev, ler_ticket, onboarding_polos, ppa, alertas_estrategicos, painel_executivo) responder a pergunta.
 Filtre por `busca` (parte do nome ou do endereço, ex.: "nps", "contrato", "polos") ou por `modulo` (primeiro trecho do endereço, ex.: "mlb", "nps", "administrativo").
 TXT)]
 class ListarTelasTool extends FerramentaEcf
@@ -54,7 +55,9 @@ class ListarTelasTool extends FerramentaEcf
                 'parametros' => $t['parametros'],
             ]);
 
-        return [
+        $dica = AvisosDeTela::paraBusca($busca, $modulo, $usuario);
+
+        return ($dica ? ['dica' => $dica] : []) + [
             ...$this->paginar($telas, $request),
             'modulos' => app(CatalogoDeTelas::class)->paraUsuario($usuario)->pluck('modulo')->unique()->sort()->values()->all(),
             'como_usar' => 'Abra com ler_tela {"tela": "<nome>", "parametros": {...}}. Sem "campo", vem o resumo da tela; depois peça o campo que interessa.',

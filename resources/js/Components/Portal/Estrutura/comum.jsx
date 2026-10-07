@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import { ArrowRight, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Layers, Package, Target, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -332,10 +332,57 @@ export function AvisoFlash() {
  * das props da página — não há segunda lista aqui para divergir. No celular
  * ela some: o layout já desenha os submódulos numa linha abaixo do menu.
  */
-export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunciona }) {
+export function CabecalhoEstrutura({ etapa, descricao, acoes = null, onComoFunciona, amplo = false }) {
     const { modulos = [] } = usePage().props;
     const subs = modulos.find((m) => m.chave === 'estrutura')?.submodulos ?? [];
     const atual = subs.find((s) => s.chave === etapa);
+
+    // Variante ampla (167-20, D-25): o topo da REF-1/REF-3 — rótulo, título grande, trilha em círculos
+    // ligados por linha. Só Produtos passa `amplo`; as outras páginas seguem no ramo padrão abaixo.
+    // Com `amplo`, `acoes` não é desenhado aqui: a página desenha a barra de ações logo abaixo.
+    if (amplo) {
+        return (
+            <header data-cabecalho-amplo>
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="text-[13px] font-medium uppercase tracking-[0.2em] text-white/55">Mapeamento Estrutural</p>
+                        <h1 className="mt-3 font-display text-[36px] font-bold leading-none tracking-tight text-white sm:text-[52px]" data-etapa={etapa}>{atual?.rotulo ?? 'Mapeamento Estrutural'}</h1>
+                        {descricao && <p className="mt-1 max-w-[1100px] text-[16px] leading-relaxed text-white/70 sm:text-[18px]">{descricao}</p>}
+                    </div>
+                    {onComoFunciona && (
+                        <Botao variante="fantasma" onClick={onComoFunciona} data-acao="como-funciona">
+                            <BookOpen size={14} /> Como funciona
+                        </Botao>
+                    )}
+                </div>
+                <nav className="mt-6 hidden w-full max-w-[1340px] items-center sm:flex" aria-label="Etapas do Mapeamento Estrutural" data-trilha>
+                    {subs.map((s, i) => {
+                        const circulo = (
+                            <span className={cn('grid h-[38px] w-[38px] place-items-center rounded-full border text-[15px] tabular-nums',
+                                s.ativo ? 'border-ecf-yellow bg-ecf-yellow font-semibold text-black' : 'border-white/30 text-white/80')}>{i + 1}</span>
+                        );
+
+                        return (
+                            <Fragment key={s.chave}>
+                                {i > 0 && <span className="mx-5 h-px min-w-6 flex-1 bg-white/15" aria-hidden="true" />}
+                                {s.em_breve ? (
+                                    <span className="inline-flex shrink-0 cursor-default items-center gap-4 text-[16px] text-white/25" data-trilha-etapa={s.chave} data-em-breve>
+                                        {circulo}{s.rotulo}<span className="text-[10px] uppercase tracking-wide">em breve</span>
+                                    </span>
+                                ) : (
+                                    <Link href={s.url} aria-current={s.ativo ? 'step' : undefined} data-trilha-etapa={s.chave}
+                                        className={cn('inline-flex shrink-0 items-center gap-4 text-[16px] transition-colors',
+                                            s.ativo ? 'font-semibold text-ecf-yellow' : 'text-white/75 hover:text-white')}>
+                                        {circulo}{s.rotulo}
+                                    </Link>
+                                )}
+                            </Fragment>
+                        );
+                    })}
+                </nav>
+            </header>
+        );
+    }
 
     return (
         <header className="space-y-3">

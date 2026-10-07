@@ -180,10 +180,11 @@ Pedido do usuário: "para quem tiver conectado poder alterar e preencher coisas
 refaça sem perguntar): **tudo** que a tela grava, **grava direto** (sem passo de
 confirmação no servidor) e "pode editar o que quiser".
 
-- **Ninguém precisa reconectar.** O token OAuth tem um escopo só (`mcp:use`),
-  sem separar leitura de escrita; as ferramentas novas aparecem na próxima
-  conversa. Criar um escopo de escrita separado OBRIGARIA todo mundo a
-  reconectar — por isso não foi feito.
+- **O token não precisa ser refeito.** O OAuth tem um escopo só (`mcp:use`),
+  sem separar leitura de escrita; criar um escopo de escrita separado
+  invalidaria todos os tokens — por isso não foi feito. MAS a ferramenta nova
+  não aparece "na próxima conversa": o claude.ai guarda a lista de
+  ferramentas em cache — ver §11.
 - **Toda gravação passa pelo formulário da tela**, pela mesma navegação
   interna do `ler_tela` (`app/Mcp/Telas/NavegacaoInterna.php`), agora com
   POST/PUT/PATCH/DELETE: validação, permissão, aviso, log de atividade e
@@ -228,3 +229,51 @@ confirmação no servidor) e "pode editar o que quiser".
   (o Erlon usa a Admin #1) aparece como "Admin" nos dois.
 - A tela de autorização do OAuth dizia "o acesso é só de leitura" — foi
   corrigida. Quem autorizou antes leu o texto antigo.
+
+## 11. Tickets pelo MCP: o que parecia recorte errado (06/10/2026)
+
+Relato: pelo `ler_tela`, o dev via em `chamados.index` só o ticket que ele
+mesmo abriu, e o detalhe dava "redirecionou para fora do que o MCP pode
+abrir". Não era autenticação (o MCP põe o usuário no guard `web`; "ser da
+equipe" é `is_dev`/`role` na tabela, sem guard — e nenhuma tela interna decide
+papel por guard ou sessão, só o Portal do Cliente, que fica fora).
+
+- **`/tickets` é a tela de QUEM PEDIU**: lista só `solicitante_id = usuário`,
+  para todo mundo, dev inclusive, no navegador também. A caixa da equipe é a
+  aba Tickets de `/dev/demandas` (prop `chamados` de `dev.demandas.index`;
+  detalhe no prop `chamado_detalhe` com `?ticket=ID`). Quem diz "no navegador
+  eu vejo" está olhando essa aba.
+- **`/tickets/{id}` fica bloqueado no `ler_tela`** (abrir marca os avisos do
+  ticket como lidos). Por isso existe `ler_ticket`: lista (equipe = caixa da
+  equipe + os que abriu; demais = os que abriram) e detalhe pelo
+  `ChamadoService` (`podeVer` / `detalhe`), sem efeito colateral, com os
+  prints como imagem (reduzidos a 1568 px em JPEG quando grandes). Nota
+  interna e anexo de nota interna só para quem atua como equipe.
+- **Rota sem nome vira `generated::<aleatório>` com `route:cache`** — só em
+  produção; nos testes ela não tem nome. Os redirecionamentos antigos
+  `/chamados` e `/chamados/{chamado}` entraram assim no `listar_telas`. Os
+  dois catálogos agora descartam `generated::` (`CatalogoDeTelas::nomeGerado`).
+  Teste que confia em "rota sem nome não entra" não pega isso: registre a rota
+  com o nome `generated::...` explícito.
+- **`tools/list` pagina de 15 em 15** no `laravel/mcp` (`defaultPaginationLength`).
+  A 16ª ferramenta iria para uma 2ª página que nem todo cliente busca e
+  sumiria da conversa sem erro nenhum. `EcfAdminServer` usa página de 50; o
+  `ServidorMcpTest` confere que não há `nextCursor`.
+- **O claude.ai guarda a lista de ferramentas em cache.** Medido no nginx
+  (06/10/2026): `tools/list` (resposta de ~28 KB) às 11:47, 11:55 e 14:40 de
+  Brasília; o deploy do `ler_ticket` foi ~15:00; a conversa das 15:20 só fez
+  `initialize` (~3,3 KB) + `tools/call` e usou a lista das 14:40, sem o
+  `ler_ticket` — o modelo leu `chamados.index` e disse "só 1 ticket". Não dá
+  para saber o prazo do cache. Para ver ferramenta nova na hora: desconectar e
+  reconectar o conector no claude.ai. Defesa do servidor que não depende disso:
+  `AvisosDeTela` põe um "aviso" na RESPOSTA do `ler_tela`/`listar_telas`
+  quando a tela engana pelo nome (hoje: `chamados.index`) — a resposta chega
+  ao modelo mesmo com a lista velha. Medir pelo nginx: `grep '"POST /mcp'` e
+  olhar o tamanho da resposta (`tools/list` é a grande).
+- **`->orWhere()` encadeado num query builder SEM filtro vira o único filtro.**
+  `ChamadoService::daEquipe()` não filtra nada para admin; o `ler_ticket`
+  fazia `daEquipe($u)->orWhere('solicitante_id', $u->id)` e, para admin (o
+  Maycon é admin + dev em produção), a lista caía para "só os que ele abriu".
+  Os testes usavam dev com papel de consultor, que tem filtro, e passavam.
+  Sempre agrupe: `where(fn ($q) => $q->whereIn(...)->orWhere(...))`, e teste o
+  perfil admin quando a regra tiver ramo "admin vê tudo".
