@@ -164,6 +164,11 @@ class CreativeContextBuilder
                 ->values()
                 ->all(),
             pubRascunhoId: $rascunho->id,
+            // Fase 169 (TXT-01/TXT-02): fato confirmado pelo operador, separado
+            // do cadastro automático acima. O ramo antigo (payload) nunca passa
+            // estes dois argumentos — ficam no default [].
+            fatosHumanosBeneficios: $dados['fatos_humanos']['beneficios'] ?? [],
+            fatosHumanosMedidas: $dados['fatos_humanos']['medidas'] ?? [],
         );
     }
 }

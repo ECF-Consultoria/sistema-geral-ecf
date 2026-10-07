@@ -29,8 +29,12 @@ class ProductTruthBuilderTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function contexto(array $atributos = [], string $produto = 'Produto de teste'): CreativeContext
-    {
+    private function contexto(
+        array $atributos = [],
+        string $produto = 'Produto de teste',
+        array $fatosHumanosBeneficios = [],
+        array $fatosHumanosMedidas = [],
+    ): CreativeContext {
         return new CreativeContext(
             rascunhoId: 1,
             produto: $produto,
@@ -43,6 +47,8 @@ class ProductTruthBuilderTest extends TestCase
             loja: 'Loja Teste',
             imagensReferencia: [],
             referenciasMeta: [['indice' => 0, 'mime' => 'image/jpeg', 'bytes' => 12345, 'nome' => 'foto.jpg']],
+            fatosHumanosBeneficios: $fatosHumanosBeneficios,
+            fatosHumanosMedidas: $fatosHumanosMedidas,
         );
     }
 
@@ -136,6 +142,45 @@ class ProductTruthBuilderTest extends TestCase
 
         // Só a lista fixa — nem derivada de cor nem de contagem.
         $this->assertCount(8, $truth->claimsProibidas);
+    }
+
+    // ═══ Fase 169 (TXT-01/TXT-02): fatos confirmados pelo operador ═══════
+
+    public function test_fatos_humanos_do_contexto_chegam_ao_product_truth(): void
+    {
+        $contexto = $this->contexto(
+            atributos: ['MATERIAL' => 'MDF'],
+            fatosHumanosBeneficios: ['Estrutura reforçada', 'Fácil de montar'],
+            fatosHumanosMedidas: ['Largura 80cm, altura 45cm'],
+        );
+
+        $truth = (new ProductTruthBuilder)->paraContexto($contexto);
+
+        $this->assertSame(['Estrutura reforçada', 'Fácil de montar'], $truth->beneficiosVerificados);
+        $this->assertSame(['Largura 80cm, altura 45cm'], $truth->medidasConfirmadas);
+        $this->assertSame($truth->beneficiosVerificados, $truth->paraPrompt()['beneficios_verificados']);
+        $this->assertSame($truth->medidasConfirmadas, $truth->paraPrompt()['medidas_confirmadas']);
+    }
+
+    /**
+     * Regressão zero (TRUTH-01/02 intactas): sem fato humano nenhum, os dois
+     * campos ficam vazios — exatamente como antes deste plano — e
+     * `fatosVerificados`/`contagens` continuam lendo SÓ `$contexto->atributos`,
+     * nunca os campos humanos.
+     */
+    public function test_sem_fatos_humanos_os_dois_campos_ficam_vazios_como_antes(): void
+    {
+        $contexto = $this->contexto(['MATERIAL' => 'MDF', 'DOOR_QUANTITY' => '2']);
+
+        $truth = (new ProductTruthBuilder)->paraContexto($contexto);
+
+        $this->assertSame([], $truth->beneficiosVerificados);
+        $this->assertSame([], $truth->medidasConfirmadas);
+        // fatosVerificados/contagens seguem vindo só de $contexto->atributos.
+        $this->assertSame(['Material' => 'MDF', 'Quantidade de portas' => '2'], $truth->fatosVerificados);
+        $this->assertSame([
+            ['peca' => 'portas', 'quantidade' => '2', 'origem' => 'cadastro'],
+        ], $truth->contagens);
     }
 
     // ═══ paraAuditoria() nunca tem bytes/base64 ═════════════════════════
