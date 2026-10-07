@@ -182,7 +182,7 @@ class CreativePlanner
         $aceitos = $this->garantirHeroPrimeiro($aceitos, $truth, $quantidade);
 
         return array_values(array_map(
-            fn (CreativeSlotPlan $slot, int $i) => new CreativeSlotPlan(
+            fn (CreativeSlotPlan $slot, int $i) => $this->comTextoHumanoReforcado(new CreativeSlotPlan(
                 indice: $i + 1,
                 tipo: $slot->tipo,
                 objetivo: $slot->objetivo,
@@ -191,10 +191,47 @@ class CreativePlanner
                 badges: $slot->badges,
                 fatosUsados: $slot->fatosUsados,
                 proibicoes: $slot->proibicoes,
-            ),
+            ), $truth),
             $aceitos,
             array_keys($aceitos),
         ));
+    }
+
+    /**
+     * Fase 169 (TXT-03) — preenchimento DETERMINÍSTICO do texto do slot a
+     * partir do fato confirmado pelo OPERADOR, nunca pelo modelo de texto
+     * (que nunca viu `beneficiosVerificados`/`medidasConfirmadas` —
+     * `montarPrompt()` não é tocado por este método). Só age quando o slot
+     * aceita texto e a reconciliação normal (`validarTexto()`, via fato de
+     * CADASTRO) não preencheu nada — nunca sobrescreve headline/badge que já
+     * sobreviveu por aquele caminho.
+     */
+    private function comTextoHumanoReforcado(CreativeSlotPlan $slot, ProductTruth $truth): CreativeSlotPlan
+    {
+        if (! $this->catalogo->aceitaTexto($slot->tipo) || $slot->headline !== null || $slot->badges !== []) {
+            return $slot;
+        }
+
+        $badges = match ($slot->tipo) {
+            'benefits'   => array_slice($truth->beneficiosVerificados, 0, 3),
+            'dimensions' => array_slice($truth->medidasConfirmadas, 0, 3),
+            default      => [],
+        };
+
+        if ($badges === []) {
+            return $slot;
+        }
+
+        return new CreativeSlotPlan(
+            indice: $slot->indice,
+            tipo: $slot->tipo,
+            objetivo: $slot->objetivo,
+            cena: $slot->cena,
+            headline: $slot->headline,
+            badges: $badges,
+            fatosUsados: $slot->fatosUsados,
+            proibicoes: $slot->proibicoes,
+        );
     }
 
     /** @param  array<int, CreativeSlotPlan>  $aceitos */
