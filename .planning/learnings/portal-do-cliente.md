@@ -1050,3 +1050,65 @@ SKUs nasce dele. O que não se deduz do código:
 - **Comportamento de navegação se prova no navegador, não no `tests/js`.** O
   roteiro com puppeteer (banco SQLite isolado, dados fictícios) achou os dois
   defeitos acima depois de a revisão e as correções estarem "verdes".
+
+## 33. Sugestões de ofertas: Combo, Kit e Combit (Fase 168, 07/10/2026)
+
+- **A planilha NÃO tem tipo de produto.** A coluna "Tipo" da aba Planejamento é o
+  tipo da OFERTA (Simples, Combo, Kit, Combit). "Mesa", "cadeira", "cama" têm de
+  ser inferidos por palavra-chave (categoria primeiro, nome depois; ambíguo na
+  categoria não cai para o nome). Com o vocabulário genérico do config, os 56
+  produtos da planilha real saíram com tipo (0 ambíguo, 0 sem tipo).
+- **O par de tipos precisa de direção no Combit.** Sem dizer quem se repete
+  ("mesa + 4 cadeiras", nunca "4 mesas + cadeira"), o mesmo par gera o item
+  repetido nos dois lados e o Combit vai de ~28 para 140-162 contra 25 reais. A
+  lista de pares é GLOBAL e CURTA de propósito: os 44 pares de produto da
+  planilha viram ~21-23 pares de tipo (18 na lista aprovada), e uma lista curta é
+  previsível ("sugeri porque mesa + cadeira está na lista"). A ECF amplia pela
+  tela admin, sem deploy.
+- **Trios ficam fora da v1.** 21 das 129 composições da planilha têm 3 itens;
+  propor trios geraria 124 para acertar 12 (precisão ~10%). A pessoa monta o trio
+  à mão na Lista SKUs. É a causa de 21 dos 23 acertos a menos do gabarito.
+- **Gabarito da planilha real (lista aprovada, 18 pares): 106 de 129.** Combo
+  46/46, Kit 36/44, Combit 24/39; 167 geradas (59/62/46). Os 23 que faltam: 21
+  trios, 1 sem ambiente em comum, 1 quantidade/direção do Combit. É um TETO de
+  reprodutibilidade (a lista nasceu da mesma planilha), não precisão em outro
+  cliente: essa só se mede pelos descartes em uso.
+- **Variações casam em PARALELO, e o `valor` é a armadilha.** A planilha só tem o
+  ordinal (1, 2, única). Se o roteiro passa o ordinal como `valor` das duas
+  pontas, `VariacoesEmParalelo` entende "valores diferentes nunca casam" e o Kit
+  cai de 36 para 20 acertos. Variação sem eixo/valor casa por posição.
+- **A chave da composição é por VARIAÇÃO (`v12*1+v30*4`), não por oferta.** Assim
+  sobrevive a uma oferta recriada e permite não ressugerir o que foi descartado.
+- **A sugestão é calculada na hora; só o DESCARTE persiste.** Persistir a
+  sugestão envelheceria a cada edição de produto, família, ambiente ou tipo. O
+  aceite REGERA dentro do lock e confere a chave: o que o navegador manda não vale
+  por si.
+- **Quantidades: o D-07 literal contra a planilha.** A reunião falava em 2/4/6;
+  a planilha usa cadeira ×8, banco ×2/×4 e vários tipos ×2. A semente comitada
+  (D-22) traz as quantidades COMO A PLANILHA USA e a ECF amplia pelo admin.
+- **`'0'` e vazio são coisas diferentes** por causa do middleware
+  `ConvertEmptyStringsToNull`: o campo vazio chega como `null` e significa "herda o
+  padrão do tipo"; "nenhuma quantidade" é gravada como `'0'`.
+- **Teste de Inertia exige o arquivo da página.** `assertInertia` confere o
+  componente no disco: antes de a página existir, `component('...', false)`.
+- **O `AvisoFlash` não carrega ação** ("Desfazer", "Ver na Lista SKUs"): por isso
+  a tela tem o `AvisoSugestoes`, irmão dele com ação opcional.
+- **O que a prova no navegador achou (puppeteer, SQLite isolado, 14 casos):**
+  - O Inertia restaura a página do histórico com as props da DATA DA VISITA, sem
+    pedir nada ao servidor. Aceitar/descartar por axios, ir à Lista SKUs e voltar
+    mostrava cartões já aceitos. `pageshow` com `persisted` não pega isso (não é
+    bfcache). A correção é saber que a tela chegou por um voltar:
+    `chegouPeloHistorico()` em `guardaDoVoltar.js`, que registra o último
+    `popstate`, e a tela faz `router.reload({ only: ['sugestoes'] })` ao montar.
+  - A entrada de equipe no Portal chama `session()->invalidate()`: a sessão do
+    admin (para `/dev/estrutura-geracao`) tem de ficar em OUTRO contexto do
+    navegador, senão o login some.
+  - No Kit, o custo na Precificação aparece como `placeholder` do campo de custo,
+    com a nota "soma dos componentes", e não como valor digitado. A Lista SKUs
+    deixa os cartões recolhidos: o nome da oferta nova só aparece com `?q=`.
+  - A resposta 422 do teste de "1" em Combo aparece no console do navegador e é
+    esperada: não é erro da tela.
+  - Armadilhas do puppeteer no Chrome headless: triplo clique não seleciona o
+    texto do campo (use Ctrl+A e Backspace); o site tem rolagem suave, então
+    `scrollIntoView` medido logo depois posiciona o clique no lugar errado (use
+    `behavior: 'instant'` antes de clicar).
