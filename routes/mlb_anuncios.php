@@ -179,6 +179,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 Route::post('/kit/{kit}/aprovar', [MlbPublicadorCriativoController::class, 'aprovarKit'])
                     ->whereNumber('kit')
                     ->middleware('throttle:30,1,publicador.criativos.aprovar')->name('kit.aprovar');
+
+                // Fase 169 (TXT-01/04) — fato confirmado pelo operador (ponto forte/medida), por
+                // produto. Leitura com o mesmo throttle das outras leituras de status; escrita com
+                // throttle próprio nomeado, mesmo teto das demais escritas do controller.
+                Route::get('/fatos', [MlbPublicadorCriativoController::class, 'fatos'])
+                    ->middleware('throttle:240,1,publicador.criativos.status')->name('fatos');
+                Route::post('/fatos', [MlbPublicadorCriativoController::class, 'salvarFato'])
+                    ->middleware('throttle:30,1,publicador.criativos.fatos')->name('fatos.salvar');
+                Route::delete('/fatos/{fato}', [MlbPublicadorCriativoController::class, 'removerFato'])
+                    ->whereNumber('fato')
+                    ->middleware('throttle:30,1,publicador.criativos.fatos')->name('fatos.remover');
             });
         });
 
