@@ -43,6 +43,12 @@ class EstruturaProduto extends Model
         return $this->belongsToMany(EstruturaAmbiente::class, 'estrutura_produto_ambiente', 'produto_id', 'ambiente_id');
     }
 
+    /** Ficha técnica: os campos da categoria que o cliente preencheu. */
+    public function atributos(): HasMany
+    {
+        return $this->hasMany(EstruturaProdutoAtributo::class, 'produto_id')->orderBy('id');
+    }
+
     public function variacoes(): HasMany
     {
         return $this->hasMany(EstruturaProdutoVariacao::class, 'produto_id')->orderBy('ordem')->orderBy('id');
