@@ -238,6 +238,11 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:30,1,estrutura.produtos.categorias.sugerir')->name('portal.auth.estrutura.produtos.categorias.sugerir');
     Route::post('/estrutura/produtos/fretes', [PortalEstruturaProdutosController::class, 'cotarFretes'])
         ->middleware('throttle:20,1,estrutura.produtos.fretes')->name('portal.auth.estrutura.produtos.fretes');
+    // Ficha técnica do produto: campos da categoria (categoria na query) e gravação por produto.
+    Route::get('/estrutura/produtos/campos-categoria', [PortalEstruturaProdutosController::class, 'camposDaCategoria'])
+        ->middleware('throttle:60,1,estrutura.produtos.campos')->name('portal.auth.estrutura.produtos.campos_categoria');
+    Route::put('/estrutura/produtos/{produto}/ficha-tecnica', [PortalEstruturaProdutosController::class, 'gravarFichaTecnica'])
+        ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.ficha_tecnica')->name('portal.auth.estrutura.produtos.ficha_tecnica');
     // Fase 168 — Sugestões de ofertas (D-02, D-20: sem submódulo novo; entra por Produtos e pela
     // Lista SKUs). Uma linha por rota na allowlist do RestringeDominioDoPortal.
     Route::get('/estrutura/sugestoes', [PortalEstruturaSugestoesController::class, 'index'])

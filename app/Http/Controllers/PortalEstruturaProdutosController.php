@@ -6,6 +6,8 @@ use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
@@ -53,6 +55,8 @@ class PortalEstruturaProdutosController extends Controller
         private ImportadorProdutos $importador,
         private CategoriaSugestaoService $categorias,
         private FreteMe2Service $frete,
+        private FichaTecnicaDaCategoria $camposDaCategoria,
+        private FichaTecnicaDoProduto $fichaTecnica,
     ) {
     }
 
@@ -320,6 +324,59 @@ class PortalEstruturaProdutosController extends Controller
         ]);
     }
 
+    // ═══ Ficha técnica ══════════════════════════════════════════════════════
+
+    /**
+     * Os campos da ficha técnica de uma categoria, em grupos (a tela monta o formulário
+     * ao escolher a categoria). Dado público: só o app token sai da nossa casa.
+     * Nada é gravado. `indisponivel` quando o catálogo não respondeu ou a categoria
+     * não tem campos — a tela segue sem a ficha, nunca com erro. O sigilo da origem
+     * dos campos está em {@see FichaTecnicaDaCategoria}.
+     */
+    public function camposDaCategoria(Request $request)
+    {
+        $dados = $request->validate(
+            ['categoria' => ['required', 'string', 'regex:/^MLB\d{1,15}$/']],
+            ['categoria.required' => 'Escolha a categoria.', 'categoria.regex' => 'Categoria inválida.'],
+        );
+
+        try {
+            $grupos = $this->camposDaCategoria->definicao($dados['categoria']);
+        } catch (\Throwable $e) {
+            Log::warning('[Estrutura Produtos] campos da categoria falharam', ['erro' => $e->getMessage()]);
+            $grupos = [];
+        }
+
+        return response()->json(['grupos' => $grupos, 'indisponivel' => $grupos === []]);
+    }
+
+    /**
+     * Grava a ficha técnica do produto (substitui o que havia). A empresa vem da
+     * sessão; produto de outra empresa responde 404, igual ao inexistente. O 404
+     * vem ANTES da validação: assim "não é seu" nunca vira "campo faltando".
+     */
+    public function gravarFichaTecnica(Request $request, int $produto)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $request->validate([
+            'atributos'           => 'present|array|max:300',
+            'atributos.*'         => 'array',
+            'atributos.*.id'      => 'required|string|max:80',
+            'atributos.*.unidade' => 'nullable|string|max:20',
+            'atributos.*.valor'   => ['nullable', function (string $campo, mixed $valor, \Closure $falhou) {
+                if (! is_scalar($valor)) {
+                    $falhou('Valor inválido.');
+                }
+            }],
+        ]);
+
+        $salvos = $this->fichaTecnica->gravar($empresa, $p, (array) $request->input('atributos'), PortalContexto::ator());
+
+        return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
+    }
+
     // ═══ Frete ══════════════════════════════════════════════════════════════
 
     /**
@@ -368,6 +425,8 @@ class PortalEstruturaProdutosController extends Controller
         return Inertia::render('Portal/EstruturaProdutoFicha', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
             'produto'      => $produto ? ['id' => (int) $produto->id, 'nome' => $produto->nome] : null,
+            // Ficha técnica já salva (a definição dos campos vem do endpoint por categoria).
+            'ficha_tecnica' => ['salvos' => $produto ? $this->fichaTecnica->salvos($produto) : []],
             'linhas'       => $produto ? $this->linhas->paraProdutos($empresa, [(int) $produto->id]) : [],
             'listas'       => $this->listasDaEmpresa(),
             'vocabulario'  => $this->vocabulario(),

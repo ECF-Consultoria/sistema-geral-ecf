@@ -164,17 +164,17 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(16, $achadas);
+        $this->assertSame(18, $achadas);
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
     {
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
-        $this->assertCount(14, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        $this->assertCount(15, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
         // 167-19: o id numérico da ficha entra por uma lista própria, nunca por curinga.
         $this->assertSame(
-            ['portal/estrutura/produtos/{id}', 'portal/estrutura/sugestoes/produtos/{id}/geracao'],
+            ['portal/estrutura/produtos/{id}', 'portal/estrutura/produtos/{id}/ficha-tecnica', 'portal/estrutura/sugestoes/produtos/{id}/geracao'],
             (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID'),
         );
     }
