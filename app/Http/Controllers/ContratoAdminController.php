@@ -28,6 +28,7 @@ use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Operacional\EmpresaOperacionalRouter;
 use App\Support\Cnpj;
 use App\Support\Permissions;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -1284,34 +1285,72 @@ class ContratoAdminController extends Controller
             $paresContratoParaAtualizar[] = [$contratoAssinatura, $item];
         }
 
-        // Mass assignment sobre os $fillable já existentes de Company — nunca
-        // $guarded = [].
-        $company->fill(collect($data)->only([
-            'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
-            // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
-            'endereco', 'bairro', 'cidade', 'estado', 'cep',
-        ])->all());
-        $company->save();
+        // Quick 261007-m0t — rede de segurança em volta da GRAVAÇÃO.
+        //
+        // Incidente de 07/10/2026: `companies.cnpj` tinha índice único e o
+        // `$company->save()` abaixo estourava `QueryException`
+        // (`SQLSTATE[23000] ... 1062 Duplicate entry`) direto na cara do
+        // Administrativo — 500 em cima do formulário, três vezes seguidas, sem
+        // mensagem nenhuma e perdendo tudo que estava digitado. A causa daquele
+        // caso foi removida na raiz (o unique saiu do banco, migration
+        // `2026_10_07_120000_remove_unique_do_cnpj_em_companies`), mas o
+        // try/catch FICA: este formulário é a tela em que o Administrativo
+        // completa o cadastro da empresa, e qualquer restrição de banco que
+        // apareça aqui no futuro — unique, check, FK, coluna curta demais —
+        // tem de virar aviso na tela, nunca 500.
+        //
+        // ⚠️ Pega só `QueryException` (erro do BANCO), de propósito. Nada de
+        // `\Throwable`: os dois `abort(422)` de pertencimento (IDOR) acima já
+        // rodaram antes deste bloco e não são erro de banco; e engolir
+        // Throwable transformaria bug de código em "tente de novo", que é
+        // justamente o que esconde o problema do próximo incidente.
+        //
+        // ⚠️ Sem transação, também de propósito: salvar a empresa dispara o
+        // `CompanyGatilhoObserver` (Fase 128) de forma SÍNCRONA, e abrir
+        // transação aqui mudaria quando esse efeito acontece — fora do escopo
+        // deste quick. A consequência é que uma falha no meio pode deixar a
+        // empresa gravada e um dos serviços não; o aviso pede para conferir e
+        // tentar de novo, e a repetição é inofensiva (tudo aqui é idempotente).
+        try {
+            // Mass assignment sobre os $fillable já existentes de Company — nunca
+            // $guarded = [].
+            $company->fill(collect($data)->only([
+                'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
+                // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
+                'endereco', 'bairro', 'cidade', 'estado', 'cep',
+            ])->all());
+            $company->save();
 
-        foreach ($paresParaAtualizar as [$contratoServico, $item]) {
-            $contratoServico->update([
-                'data_contratacao'       => $item['data_contratacao'] ?? null,
-                'data_vencimento'        => $item['data_vencimento'] ?? null,
-                // Quick 260819-guy.
-                'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
-                'dia_vencimento'         => $item['dia_vencimento'] ?? null,
+            foreach ($paresParaAtualizar as [$contratoServico, $item]) {
+                $contratoServico->update([
+                    'data_contratacao'       => $item['data_contratacao'] ?? null,
+                    'data_vencimento'        => $item['data_vencimento'] ?? null,
+                    // Quick 260819-guy.
+                    'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
+                    'dia_vencimento'         => $item['dia_vencimento'] ?? null,
+                ]);
+            }
+
+            foreach ($paresContratoParaAtualizar as [$contratoAssinatura, $item]) {
+                // Quick 260824-bte — string vazia grava `null` (volta a usar o
+                // texto composto pelas fases do snapshot); nunca guarda string
+                // vazia como se fosse um override de propósito.
+                $textoOverride = trim((string) ($item['plano_parcelas_texto'] ?? ''));
+
+                $contratoAssinatura->update([
+                    'plano_parcelas_texto' => $textoOverride !== '' ? $textoOverride : null,
+                ]);
+            }
+        } catch (QueryException $e) {
+            // O texto do erro do banco vai para o LOG, nunca para a tela: ele
+            // carrega o SQL e os valores gravados (dado de cliente).
+            Log::error('[Administrativo] falha de banco ao salvar o cadastro da empresa', [
+                'company_id' => $company->id,
+                'user_id'    => $request->user()?->id,
+                'erro'       => $e->getMessage(),
             ]);
-        }
 
-        foreach ($paresContratoParaAtualizar as [$contratoAssinatura, $item]) {
-            // Quick 260824-bte — string vazia grava `null` (volta a usar o
-            // texto composto pelas fases do snapshot); nunca guarda string
-            // vazia como se fosse um override de propósito.
-            $textoOverride = trim((string) ($item['plano_parcelas_texto'] ?? ''));
-
-            $contratoAssinatura->update([
-                'plano_parcelas_texto' => $textoOverride !== '' ? $textoOverride : null,
-            ]);
+            return back()->with('error', 'Não foi possível salvar o cadastro agora. Nada do que você digitou se perdeu: confira os campos e tente de novo. Se continuar, avise o time técnico — o erro ficou registrado.');
         }
 
         return back()->with('success', 'Cadastro atualizado.');
