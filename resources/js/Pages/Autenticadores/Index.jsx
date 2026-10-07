@@ -1,147 +1,44 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-    Search, Plus, Copy, Check, Trash2, ShieldCheck, QrCode, Link2,
-    History, X, Loader2, KeyRound, ChevronDown,
+    Search, Plus, QrCode, Link2, X, Loader2, Camera, ChevronDown, ChevronRight, ShieldCheck,
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import { cn } from '@/lib/utils';
+import { StatusBadge, ServicoIcone, Avatar, STATUS_LABELS, antesDoArroba } from '@/Components/Autenticadores/common';
 
-// ─── Constantes de UI ───────────────────────────────────────────────────────
-const STATUS_LABELS = { ativo: 'Ativo', expirando: 'Expirando', inativo: 'Inativo' };
-const STATUS_BADGE = {
-    ativo:     'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    expirando: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    inativo:   'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
-};
+// ─── Página: busca + lista ──────────────────────────────────────────────────
+// O código de cada conta fica na própria página dela (Show). Aqui o pessoal
+// pesquisa e abre a que precisa.
 
-// Ícone do serviço: usa os SVGs que o projeto já serve em /images quando houver,
-// senão a inicial do serviço num quadradinho.
-const SERVICO_ICON = {
-    'mercado livre': '/images/mercado-livre-87.svg',
-    shopee:          '/images/shopee-icon.svg',
-    amazon:          '/images/icons8-amazon.svg',
-};
-
-const iniciais = (texto) => (texto || '?').trim().slice(0, 2).toUpperCase();
-const antesDoArroba = (conta) => (conta || '').split('@')[0];
-
-// ─── Helper de clipboard (mesmo padrão de Sugadores/Index) ──────────────────
-const copyToClipboard = async (text) => {
-    try {
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-            return true;
-        }
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return ok;
-    } catch {
-        return false;
-    }
-};
-
-const fmtCodigo = (c) => (c ? `${c.slice(0, Math.floor(c.length / 2))} ${c.slice(Math.floor(c.length / 2))}` : '•••  •••');
-
-// ─── Componentes locais ─────────────────────────────────────────────────────
-
-function StatusBadge({ status }) {
-    return (
-        <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border', STATUS_BADGE[status] || STATUS_BADGE.inativo)}>
-            <span className="w-1.5 h-1.5 rounded-full bg-current" />
-            {STATUS_LABELS[status] || status}
-        </span>
-    );
-}
-
-function ServicoIcone({ servico }) {
-    const src = SERVICO_ICON[(servico || '').toLowerCase()];
-    if (src) {
-        return <img src={src} alt="" className="w-5 h-5 object-contain" />;
-    }
-    return (
-        <span className="w-5 h-5 rounded bg-white/10 text-[10px] font-bold text-white/70 flex items-center justify-center">
-            {iniciais(servico)}
-        </span>
-    );
-}
-
-function Avatar({ texto }) {
-    return (
-        <span className="w-9 h-9 rounded-lg bg-ecf-yellow/[0.12] border border-ecf-yellow/20 text-ecf-yellow text-[13px] font-bold flex items-center justify-center shrink-0">
-            {iniciais(texto)}
-        </span>
-    );
-}
-
-// Anel de contagem regressiva (SVG). `fraction` 1→0.
-function RingCountdown({ seconds, fraction }) {
-    const r = 26;
-    const c = 2 * Math.PI * r;
-    const low = seconds <= 5;
-    return (
-        <div className="relative w-16 h-16 shrink-0">
-            <svg viewBox="0 0 64 64" className="w-16 h-16 -rotate-90">
-                <circle cx="32" cy="32" r={r} fill="none" stroke="currentColor" strokeWidth="5" className="text-white/10" />
-                <circle
-                    cx="32" cy="32" r={r} fill="none" strokeWidth="5" strokeLinecap="round"
-                    stroke="currentColor"
-                    className={cn('transition-[stroke-dashoffset] duration-500 ease-linear', low ? 'text-amber-400' : 'text-ecf-yellow')}
-                    strokeDasharray={c}
-                    strokeDashoffset={c * (1 - Math.max(fraction, 0))}
-                />
-            </svg>
-            <span className={cn('absolute inset-0 flex items-center justify-center text-[13px] font-semibold tabular-nums', low ? 'text-amber-400' : 'text-white')}>
-                {seconds}s
-            </span>
-        </div>
-    );
-}
-
-// ─── Página ─────────────────────────────────────────────────────────────────
-
-export default function Index({ autenticadores = [], filtros = {}, servicos = [], responsaveis = [], ultimosAcessos = [] }) {
+export default function Index({ autenticadores = [], filtros = {}, servicos = [] }) {
     const { csrf_token } = usePage().props;
 
-    // Busca/filtros — client-side (a lista inteira vem nas props; é um cofre interno,
-    // não paginação pesada). Mantém os jeitos de buscar: cliente, parte antes do @,
-    // número no domínio e serviço.
     const [q, setQ] = useState(filtros.q || '');
     const [fServico, setFServico] = useState(filtros.servico || '');
-    const [fResp, setFResp] = useState(filtros.responsavel || '');
     const [fStatus, setFStatus] = useState(filtros.status || '');
 
+    // Busca client-side: cliente, parte antes do @, número no domínio e serviço.
     const lista = useMemo(() => {
         const termo = q.trim().toLowerCase();
         return autenticadores.filter((a) => {
             if (fServico && a.servico !== fServico) return false;
-            if (fResp && String(a.responsavel_id || '') !== String(fResp)) return false;
             if (fStatus && a.status !== fStatus) return false;
             if (!termo) return true;
             return [a.cliente, a.conta, a.servico, a.issuer, antesDoArroba(a.conta)]
                 .filter(Boolean)
                 .some((v) => String(v).toLowerCase().includes(termo));
         });
-    }, [autenticadores, q, fServico, fResp, fStatus]);
-
-    const [selId, setSelId] = useState(autenticadores[0]?.id ?? null);
-    useEffect(() => {
-        // Se o selecionado saiu da lista filtrada, seleciona o primeiro visível.
-        if (!lista.some((a) => a.id === selId)) setSelId(lista[0]?.id ?? null);
-    }, [lista, selId]);
-    const selecionado = useMemo(() => autenticadores.find((a) => a.id === selId) || null, [autenticadores, selId]);
+    }, [autenticadores, q, fServico, fStatus]);
 
     const [addAberto, setAddAberto] = useState(false);
 
+    const abrir = (id) => router.visit(route('autenticadores.show', id));
+
     return (
         <AppLayout title="Autenticadores 2FA">
-            <div className="max-w-7xl mx-auto space-y-6">
+            <div className="max-w-5xl mx-auto space-y-6">
                 {/* Cabeçalho */}
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
@@ -149,7 +46,7 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
                             <ShieldCheck size={24} className="text-ecf-yellow" />
                             Autenticadores 2FA
                         </h1>
-                        <p className="text-white/40 text-sm mt-1">Gerencie os códigos de autenticação das contas com segurança.</p>
+                        <p className="text-white/40 text-sm mt-1">Pesquise a conta e abra para ver o código.</p>
                     </div>
                     <button
                         onClick={() => setAddAberto((v) => !v)}
@@ -166,299 +63,166 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
                         <input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
+                            autoFocus
                             placeholder="Pesquisar cliente, e-mail, domínio ou serviço…"
                             className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-ecf-card border border-white/[0.08] text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-ecf-yellow/40"
                         />
                     </div>
                     <FiltroSelect value={fServico} onChange={setFServico} placeholder="Serviço" options={servicos.map((s) => ({ value: s, label: s }))} />
-                    <FiltroSelect value={fResp} onChange={setFResp} placeholder="Responsável" options={responsaveis.map((r) => ({ value: String(r.id), label: r.name }))} />
                     <FiltroSelect value={fStatus} onChange={setFStatus} placeholder="Status" options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
                 </div>
 
                 {addAberto && (
-                    <NovoAutenticador csrf={csrf_token} responsaveis={responsaveis} onClose={() => setAddAberto(false)} />
+                    <NovoAutenticador csrf={csrf_token} onClose={() => setAddAberto(false)} />
                 )}
 
-                {/* Lista + Detalhe */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 rounded-xl border border-white/[0.08] bg-ecf-card overflow-hidden">
-                        <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
-                            <h2 className="text-white font-semibold">Lista de autenticadores</h2>
-                            <span className="text-[11px] text-white/40 bg-white/5 rounded-full px-2 py-0.5">{lista.length} registros</span>
-                        </div>
-                        <ListaTabela lista={lista} selId={selId} onSelect={setSelId} />
+                {/* Lista */}
+                <div className="rounded-xl border border-white/[0.08] bg-ecf-card overflow-hidden">
+                    <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
+                        <h2 className="text-white font-semibold">Contas</h2>
+                        <span className="text-[11px] text-white/40 bg-white/5 rounded-full px-2 py-0.5">{lista.length}</span>
                     </div>
 
-                    <Detalhe autenticador={selecionado} csrf={csrf_token} />
+                    {lista.length === 0 ? (
+                        <div className="px-5 py-12 text-center text-white/40 text-sm">
+                            {autenticadores.length === 0 ? 'Nenhuma conta cadastrada ainda.' : 'Nenhuma conta encontrada para a busca.'}
+                        </div>
+                    ) : (
+                        <ul>
+                            {lista.map((a) => (
+                                <li key={a.id}>
+                                    <button
+                                        type="button"
+                                        onClick={() => abrir(a.id)}
+                                        className="w-full flex items-center gap-4 px-5 py-3 text-left border-t border-white/[0.05] hover:bg-white/[0.03] transition group"
+                                    >
+                                        <Avatar texto={a.cliente} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-white font-medium truncate">{a.cliente}</p>
+                                            <p className="text-white/50 text-[13px] truncate">{a.conta}</p>
+                                        </div>
+                                        <span className="hidden sm:inline-flex items-center gap-2 text-white/70 text-sm w-40 shrink-0">
+                                            <ServicoIcone servico={a.servico} /> <span className="truncate">{a.servico}</span>
+                                        </span>
+                                        <span className="hidden md:block shrink-0"><StatusBadge status={a.status} /></span>
+                                        <ChevronRight size={18} className="text-white/25 group-hover:text-ecf-yellow shrink-0 transition" />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
-
-                {/* Últimos acessos */}
-                <UltimosAcessos acessos={ultimosAcessos} />
             </div>
         </AppLayout>
     );
 }
 
-// ─── Lista (tabela) ─────────────────────────────────────────────────────────
-
-function ListaTabela({ lista, selId, onSelect }) {
-    if (lista.length === 0) {
-        return <div className="px-5 py-12 text-center text-white/40 text-sm">Nenhum autenticador encontrado.</div>;
-    }
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="text-white/40 text-[12px] uppercase tracking-wide">
-                        <th className="text-left font-medium px-5 py-3">Cliente</th>
-                        <th className="text-left font-medium px-3 py-3">Conta</th>
-                        <th className="text-left font-medium px-3 py-3">Serviço</th>
-                        <th className="text-left font-medium px-3 py-3">Responsável</th>
-                        <th className="text-left font-medium px-3 py-3">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {lista.map((a) => (
-                        <tr
-                            key={a.id}
-                            onClick={() => onSelect(a.id)}
-                            className={cn(
-                                'border-t border-white/[0.05] cursor-pointer transition',
-                                a.id === selId ? 'bg-ecf-yellow/[0.06]' : 'hover:bg-white/[0.02]',
-                            )}
-                        >
-                            <td className="px-5 py-3">
-                                <div className="flex items-center gap-3">
-                                    <Avatar texto={a.cliente} />
-                                    <span className="text-white font-medium">{a.cliente}</span>
-                                </div>
-                            </td>
-                            <td className="px-3 py-3 text-white/60">{a.conta}</td>
-                            <td className="px-3 py-3">
-                                <span className="inline-flex items-center gap-2 text-white/80">
-                                    <ServicoIcone servico={a.servico} /> {a.servico}
-                                </span>
-                            </td>
-                            <td className="px-3 py-3 text-white/60">{a.responsavel || '—'}</td>
-                            <td className="px-3 py-3"><StatusBadge status={a.status} /></td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-// ─── Detalhe (código ao vivo) ───────────────────────────────────────────────
-
-function Detalhe({ autenticador, csrf }) {
-    const [codigo, setCodigo] = useState(null);
-    const [deadline, setDeadline] = useState(0);
-    const [periodo, setPeriodo] = useState(30);
-    const [agora, setAgora] = useState(Date.now());
-    const [copiado, setCopiado] = useState(false);
-    const [erro, setErro] = useState(null);
-    const [histAberto, setHistAberto] = useState(false);
-    const refreshRef = useRef(null);
-    const tickRef = useRef(null);
-    const seqRef = useRef(0);
-
-    const buscarCodigo = useCallback(async (id) => {
-        const seq = ++seqRef.current;
-        const sentAt = performance.now();
-        try {
-            const { data } = await window.axios.get(route('autenticadores.codigo', id));
-            if (seq !== seqRef.current) return;
-            const recv = performance.now();
-            setCodigo(data.code);
-            setPeriodo(data.period);
-            setDeadline(performance.now() - (recv - sentAt) / 2 + data.remaining_ms);
-            setErro(null);
-            const wait = Math.max(data.remaining_ms - (recv - sentAt) / 2, 0) + 200;
-            clearTimeout(refreshRef.current);
-            refreshRef.current = setTimeout(() => buscarCodigo(id), wait);
-        } catch (e) {
-            if (seq !== seqRef.current) return;
-            setCodigo(null);
-            setErro('Falha ao obter o código.');
-        }
-    }, []);
-
-    useEffect(() => {
-        clearTimeout(refreshRef.current);
-        seqRef.current++;
-        setCodigo(null);
-        setErro(null);
-        setHistAberto(false);
-        if (autenticador) buscarCodigo(autenticador.id);
-        return () => clearTimeout(refreshRef.current);
-    }, [autenticador, buscarCodigo]);
-
-    useEffect(() => {
-        tickRef.current = setInterval(() => setAgora(Date.now()), 250);
-        return () => clearInterval(tickRef.current);
-    }, []);
-
-    const remainingMs = Math.max(deadline - performance.now(), 0);
-    const seconds = codigo ? Math.ceil(remainingMs / 1000) : 0;
-    const fraction = codigo ? remainingMs / (periodo * 1000) : 0;
-
-    const copiar = async () => {
-        if (!codigo) return;
-        const ok = await copyToClipboard(codigo);
-        if (ok) {
-            setCopiado(true);
-            setTimeout(() => setCopiado(false), 1500);
-            window.axios.post(route('autenticadores.copiar', autenticador.id), {}, { headers: { 'X-CSRF-TOKEN': csrf } }).catch(() => {});
-        }
-    };
-
-    if (!autenticador) {
-        return (
-            <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-6 flex items-center justify-center text-white/30 text-sm min-h-[320px]">
-                Selecione um autenticador.
-            </div>
-        );
-    }
-
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-5 space-y-5">
-            <div className="flex items-center justify-between">
-                <h2 className="text-white font-semibold">Detalhes do autenticador</h2>
-                <button
-                    onClick={() => { if (confirm(`Remover "${autenticador.cliente}"? O secret será apagado.`)) router.delete(route('autenticadores.destroy', autenticador.id), { preserveScroll: true }); }}
-                    className="inline-flex items-center gap-1.5 text-[12px] text-white/50 hover:text-red-300 transition"
-                >
-                    <Trash2 size={14} /> Remover
-                </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-                <Avatar texto={autenticador.cliente} />
-                <div className="min-w-0">
-                    <p className="text-white font-semibold leading-tight">{autenticador.cliente}</p>
-                    <p className="text-white/50 text-[13px] truncate">{autenticador.conta}</p>
-                </div>
-                <div className="ml-auto"><StatusBadge status={autenticador.status} /></div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-[13px]">
-                <Info rotulo="Serviço"><span className="inline-flex items-center gap-1.5"><ServicoIcone servico={autenticador.servico} /> {autenticador.servico}</span></Info>
-                <Info rotulo="Responsável">{autenticador.responsavel || '—'}</Info>
-                <Info rotulo="Criado em">{autenticador.criado_em || '—'}</Info>
-                <Info rotulo="Atualização">{autenticador.atualizado_em || '—'}</Info>
-            </div>
-
-            {/* Código ao vivo */}
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-4">
-                <div className="flex items-center gap-2 text-[12px] text-white/50 mb-2">
-                    <KeyRound size={14} className="text-ecf-yellow" /> Código de autenticação (TOTP)
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                    <div className="font-mono text-[34px] leading-none font-semibold text-white tabular-nums tracking-wider">
-                        {erro ? '—' : fmtCodigo(codigo)}
-                    </div>
-                    <RingCountdown seconds={seconds} fraction={fraction} />
-                </div>
-                {erro
-                    ? <p className="text-red-300/80 text-[12px] mt-2">{erro}</p>
-                    : <p className="text-white/40 text-[12px] mt-2">Expira em <span className="text-white/70 font-medium">{seconds}s</span></p>}
-            </div>
-
-            <div className="flex gap-2">
-                <button
-                    onClick={copiar}
-                    disabled={!codigo}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-40"
-                >
-                    {copiado ? <><Check size={16} /> Copiado</> : <><Copy size={16} /> Copiar código</>}
-                </button>
-                <button
-                    onClick={() => setHistAberto((v) => !v)}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-white/[0.1] text-white/80 font-medium text-sm hover:bg-white/[0.03] transition"
-                >
-                    <History size={16} /> Histórico
-                </button>
-            </div>
-
-            <p className="text-[11px] text-white/30 flex items-center gap-1.5"><ShieldCheck size={12} /> O secret nunca é exibido.</p>
-
-            {histAberto && <Historico id={autenticador.id} />}
-        </div>
-    );
-}
-
-function Info({ rotulo, children }) {
-    return (
-        <div>
-            <p className="text-white/35 text-[11px] uppercase tracking-wide">{rotulo}</p>
-            <p className="text-white/85 mt-0.5">{children}</p>
-        </div>
-    );
-}
-
-function Historico({ id }) {
-    const [acessos, setAcessos] = useState(null);
-    useEffect(() => {
-        let vivo = true;
-        window.axios.get(route('autenticadores.historico', id))
-            .then(({ data }) => { if (vivo) setAcessos(data.acessos); })
-            .catch(() => { if (vivo) setAcessos([]); });
-        return () => { vivo = false; };
-    }, [id]);
-
-    if (acessos === null) return <p className="text-white/40 text-[12px]">Carregando histórico…</p>;
-    if (acessos.length === 0) return <p className="text-white/40 text-[12px]">Sem acessos registrados.</p>;
-    return (
-        <div className="border-t border-white/[0.06] pt-3 space-y-2 max-h-48 overflow-y-auto">
-            {acessos.map((a, i) => (
-                <div key={i} className="flex items-center justify-between text-[12px]">
-                    <span className="text-white/70">{a.usuario} · {a.descricao}</span>
-                    <span className="text-white/35">{a.created_at}</span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-// ─── Últimos acessos (global) ───────────────────────────────────────────────
-
-function UltimosAcessos({ acessos }) {
-    return (
-        <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-5">
-            <h2 className="text-white font-semibold mb-4">Últimos acessos</h2>
-            {acessos.length === 0
-                ? <p className="text-white/40 text-sm">Nenhum acesso registrado ainda.</p>
-                : (
-                    <div className="space-y-3">
-                        {acessos.map((a, i) => (
-                            <div key={i} className="flex items-center gap-3 text-sm">
-                                <span className="w-8 h-8 rounded-full bg-white/[0.04] flex items-center justify-center shrink-0">
-                                    {a.acao === 'copiou' ? <Copy size={14} className="text-white/50" /> : <History size={14} className="text-white/50" />}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-white/80 truncate">
-                                        <span className="font-medium">{a.usuario}</span> {a.descricao?.toLowerCase()}
-                                        {a.cliente && <span className="text-white/50"> · {a.cliente}</span>}
-                                    </p>
-                                </div>
-                                <span className="text-white/35 text-[12px] shrink-0">{a.created_at}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-        </div>
-    );
-}
-
 // ─── Novo autenticador ──────────────────────────────────────────────────────
 
-function NovoAutenticador({ csrf, responsaveis, onClose }) {
+// Lê um QR Code de um arquivo de imagem (jsQR). Devolve o texto ou null.
+async function decodeQrDaImagem(file) {
+    const url = URL.createObjectURL(file);
+    try {
+        const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = reject;
+            el.src = url;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        return jsQR(data.data, canvas.width, canvas.height)?.data ?? null;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+// Câmera ao vivo lendo QR Code (jsQR sobre os frames do vídeo). Exige HTTPS —
+// produção é https, então funciona no celular e no desktop.
+function ScannerQr({ onDetectar, onFechar }) {
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const rafRef = useRef(null);
+    const cbRef = useRef(onDetectar);
+    const [erro, setErro] = useState('');
+
+    useEffect(() => { cbRef.current = onDetectar; });
+
+    useEffect(() => {
+        let cancelado = false;
+        const canvas = document.createElement('canvas');
+
+        const tick = () => {
+            const video = videoRef.current;
+            if (!video) return;
+            if (video.readyState >= 2 && video.videoWidth) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(img.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+                if (code?.data && /^otpauth(-migration)?:/i.test(code.data)) {
+                    cbRef.current(code.data);
+                    return; // achou — para o loop
+                }
+            }
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false,
+                });
+                if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
+                streamRef.current = stream;
+                const video = videoRef.current;
+                video.srcObject = stream;
+                video.muted = true;
+                video.playsInline = true;
+                await video.play();
+                rafRef.current = requestAnimationFrame(tick);
+            } catch (e) {
+                if (cancelado) return;
+                setErro(e?.name === 'NotAllowedError'
+                    ? 'Permissão de câmera negada — libere a câmera no navegador e tente de novo.'
+                    : 'Não foi possível abrir a câmera. Use "Escolher imagem" ou cole a URI.');
+            }
+        })();
+
+        return () => {
+            cancelado = true;
+            cancelAnimationFrame(rafRef.current);
+            if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+        };
+    }, []);
+
+    return (
+        <div className="space-y-2">
+            <div className="relative rounded-lg overflow-hidden border border-white/[0.12] bg-black" style={{ aspectRatio: '4 / 3' }}>
+                <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+                {!erro && <div className="absolute inset-6 border-2 border-ecf-yellow/50 rounded-lg pointer-events-none" />}
+            </div>
+            {erro
+                ? <p className="text-red-300 text-[12px]">{erro}</p>
+                : <p className="text-white/40 text-[12px]">Aponte a câmera para o QR Code do autenticador.</p>}
+            <button type="button" onClick={onFechar} className="text-white/60 text-[13px] hover:text-white/90">Fechar câmera</button>
+        </div>
+    );
+}
+
+function NovoAutenticador({ csrf, onClose }) {
     const [modo, setModo] = useState('uri'); // 'uri' | 'qr'
     const [qrMsg, setQrMsg] = useState(null);
-    const dropRef = useRef(null);
+    const [cameraAberta, setCameraAberta] = useState(false);
 
-    const form = useForm({ uri: '', cliente: '', conta: '', servico: '', responsavel_id: '', secret: '' });
+    const form = useForm({ uri: '', cliente: '', conta: '', servico: '', secret: '' });
 
     const temUri = form.data.uri.trim() !== '';
 
@@ -470,26 +234,24 @@ function NovoAutenticador({ csrf, responsaveis, onClose }) {
         });
     };
 
-    // Decodifica QR de uma imagem com a BarcodeDetector nativa (Chrome/Edge).
-    const lerQr = async (file) => {
-        setQrMsg(null);
-        if (!('BarcodeDetector' in window)) {
-            setQrMsg('Leitura de QR não suportada neste navegador — use "Colar URI".');
-            setModo('uri');
+    // Aplica o conteúdo de um QR lido (câmera ou imagem). Só aceita otpauth://.
+    const aplicarQr = (data) => {
+        if (!/^otpauth(-migration)?:/i.test(data || '')) {
+            setQrMsg('QR lido, mas não é um autenticador (otpauth://).');
             return;
         }
+        setCameraAberta(false);
+        form.setData('uri', data);
+        setModo('uri');
+        setQrMsg('QR lido. Confira e clique em Adicionar.');
+    };
+
+    const lerImagem = async (file) => {
+        setQrMsg('Lendo imagem…');
         try {
-            const bitmap = await createImageBitmap(file);
-            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-            const codes = await detector.detect(bitmap);
-            const raw = codes.find((c) => /^otpauth/i.test(c.rawValue || ''))?.rawValue;
-            if (!raw) {
-                setQrMsg('Nenhum QR otpauth:// encontrado na imagem.');
-                return;
-            }
-            form.setData('uri', raw);
-            setModo('uri');
-            setQrMsg('QR lido. Confira e clique em Adicionar.');
+            const data = await decodeQrDaImagem(file);
+            if (!data) { setQrMsg('Nenhum QR Code encontrado na imagem.'); return; }
+            aplicarQr(data);
         } catch {
             setQrMsg('Não foi possível ler a imagem.');
         }
@@ -498,7 +260,7 @@ function NovoAutenticador({ csrf, responsaveis, onClose }) {
     const onDrop = (e) => {
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
-        if (file) lerQr(file);
+        if (file) lerImagem(file);
     };
 
     return (
@@ -520,19 +282,31 @@ function NovoAutenticador({ csrf, responsaveis, onClose }) {
                     </div>
 
                     {modo === 'qr' ? (
-                        <div
-                            ref={dropRef}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={onDrop}
-                            className="rounded-lg border-2 border-dashed border-white/[0.12] p-6 text-center"
-                        >
-                            <QrCode size={36} className="mx-auto text-white/25 mb-2" />
-                            <label className="text-ecf-yellow text-sm font-medium cursor-pointer hover:underline">
-                                Escolher imagem do QR Code
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && lerQr(e.target.files[0])} />
-                            </label>
-                            <p className="text-white/30 text-[12px] mt-1">ou arraste uma imagem aqui (JPG, PNG, WEBP)</p>
-                            {qrMsg && <p className="text-white/60 text-[12px] mt-2">{qrMsg}</p>}
+                        <div className="space-y-3">
+                            {cameraAberta ? (
+                                <ScannerQr onDetectar={aplicarQr} onFechar={() => setCameraAberta(false)} />
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => { setQrMsg(null); setCameraAberta(true); }}
+                                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-ecf-yellow/[0.12] border border-ecf-yellow/25 text-ecf-yellow font-medium text-sm hover:bg-ecf-yellow/[0.18] transition"
+                                >
+                                    <Camera size={18} /> Escanear com a câmera
+                                </button>
+                            )}
+                            <div
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={onDrop}
+                                className="rounded-lg border-2 border-dashed border-white/[0.12] p-5 text-center"
+                            >
+                                <QrCode size={28} className="mx-auto text-white/25 mb-1.5" />
+                                <label className="text-ecf-yellow text-sm font-medium cursor-pointer hover:underline">
+                                    Escolher imagem do QR Code
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && lerImagem(e.target.files[0])} />
+                                </label>
+                                <p className="text-white/30 text-[12px] mt-1">ou arraste uma imagem aqui (JPG, PNG, WEBP)</p>
+                            </div>
+                            {qrMsg && <p className="text-white/60 text-[12px]">{qrMsg}</p>}
                         </div>
                     ) : (
                         <>
@@ -569,26 +343,12 @@ function NovoAutenticador({ csrf, responsaveis, onClose }) {
                     </div>
                 </div>
 
-                {/* Responsável + submit (linha inteira) */}
-                <div className="md:col-span-2 flex flex-wrap items-end gap-3 pt-1 border-t border-white/[0.06]">
-                    <div className="min-w-[200px]">
-                        <label className="text-white/50 text-[12px] font-medium">Responsável</label>
-                        <div className="relative mt-1">
-                            <select
-                                value={form.data.responsavel_id}
-                                onChange={(e) => form.setData('responsavel_id', e.target.value)}
-                                className="w-full appearance-none px-3 py-2 pr-8 rounded-lg bg-white/[0.03] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40"
-                            >
-                                <option value="" className="bg-ecf-card">Sem responsável</option>
-                                {responsaveis.map((r) => <option key={r.id} value={r.id} className="bg-ecf-card">{r.name}</option>)}
-                            </select>
-                            <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                        </div>
-                    </div>
+                {/* Submit */}
+                <div className="md:col-span-2 flex justify-end pt-1 border-t border-white/[0.06]">
                     <button
                         type="submit"
                         disabled={form.processing}
-                        className="ml-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-50"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-50"
                     >
                         {form.processing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Adicionar autenticador
                     </button>

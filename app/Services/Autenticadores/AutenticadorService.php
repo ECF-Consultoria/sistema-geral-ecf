@@ -82,7 +82,6 @@ class AutenticadorService
                     'digitos'        => $c['digits'],
                     'periodo'        => $c['period'],
                     'status'         => 'ativo',
-                    'responsavel_id' => $unica ? ($input['responsavel_id'] ?? null) : null,
                     'criado_por'     => $user->id,
                 ]);
             }
