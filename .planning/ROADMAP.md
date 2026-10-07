@@ -2906,7 +2906,7 @@ Plans:
 **Goal:** a aba **Planejamento** da `3Planejamento_Estrutural_ECF.xlsx` ("identificação da oferta") vira sistema. A partir dos produtos da Fase 167, o Mapeamento Estrutural **sugere** as ofertas que juntam produtos — **Combo** (mesmo produto, mais unidades), **Kit** (produtos diferentes) e **Combit** (kit com mais unidades de um item) — com a logística e o frete estimado de cada conjunto. A pessoa revisa e aceita, e as aceitas viram ofertas da Lista SKUs pela mesma regra de composição, já entrando na Precificação. Na planilha, 70 produtos viraram ~199 ofertas montadas à mão.
 **Requirements**: PR168-01, PR168-02, PR168-03, PR168-04, PR168-05, PR168-06, PR168-07, PR168-08, PR168-09, PR168-10, PR168-11, PR168-12, PR168-13, PR168-14, PR168-15 (definidos em `168-RESEARCH.md`); decisões D-01..D-31 em `168-CONTEXT.md` (D-24..D-31: redesenho da tela de sugestões pela referência do usuário, 07/10)
 **Depends on:** Phase 167 (produtos, variações, oferta simples ligada, logística e frete por volumes).
-**Plans:** 15/21 plans executed
+**Plans:** 17/21 plans executed
 
 **Decidido com o usuário (06/10/2026, "faça o recomendado"):**
 
@@ -2961,8 +2961,8 @@ Plans:
 
 **Wave 10** *(lacuna do checkpoint do 168-16: redesenho pela referência `168-REF-1`)*
 
-- [ ] 168-17-PLAN.md — backend mínimo do redesenho: filtro Status por avisos com contagens, resumo dos cartões, ambientes do grupo e hora da carga
-- [ ] 168-18-PLAN.md — peças do redesenho: linha compacta da sugestão, edição em linha, cartões de resumo, barra de filtros, grupo e abas
+- [x] 168-17-PLAN.md — backend mínimo do redesenho: filtro Status por avisos com contagens, resumo dos cartões, ambientes do grupo e hora da carga
+- [x] 168-18-PLAN.md — peças do redesenho: linha compacta da sugestão, edição em linha, cartões de resumo, barra de filtros, grupo e abas
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
