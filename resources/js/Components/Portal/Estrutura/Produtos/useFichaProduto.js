@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import { aplicarImagens, manterImagensAtuais } from '@/lib/imagensVariacao';
 import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
@@ -95,7 +96,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     /** Volta o que estava no rascunho. Variação nunca gravada ganha chave nova (o contador recomeça ao recarregar). */
     const recuperarRascunho = () => {
         if (! rascunho) return;
-        setVars(rascunho.vars.map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
+        // As imagens valem as de agora (o servidor as grava na hora), não as do dia em que o rascunho foi guardado.
+        setVars(manterImagensAtuais(rascunho.vars, varsRef.current).map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
         setErros({});
         setAlterado(true);
         setRascunho(null);
@@ -118,6 +120,12 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
+
+    /**
+     * Imagens de uma variação (o servidor grava envio, ordem e exclusão na hora). Só troca a lista na
+     * tela: NÃO marca a ficha como alterada, não há nada a salvar nem a perder.
+     */
+    const definirImagens = (chave, imagens) => setVars((atual) => aplicarImagens(atual, chave, imagens));
 
     /** Nome vale para todas as variações; os demais campos do produto vêm do picker. */
     const alterarNome = (valor) => { setAlterado(true); setVars((atual) => atual.map((v) => ({ ...v, nome: valor }))); };
@@ -171,6 +179,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             _k: novaChave(),
             id: undefined, oferta: null, frete: null, pendencias: [], falta: '', peso_cubado: null, peso_faturado: null,
             cubado_cobrado: false, logistica: null, oferta_id: undefined,
+            imagens: [],   // as fotos são de cada variação: a nova nasce sem as da 1ª
             codigo: refSugerida(vars),
             valor: '',
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
@@ -234,7 +243,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             setVars((atual) => atual.map((v) => {
                 const servidor = porChave.get(v._k);
 
-                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k } : v;
+                // O POST `linhas` não devolve as imagens: as da tela seguem como estão.
+                return servidor && ! comErro[v._k] ? { ...linhaDoServidor(servidor, vocabulario?.pendencias), _k: v._k, imagens: v.imagens ?? [] } : v;
             }));
         };
 
@@ -285,7 +295,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
 
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
-        alterarNome, alterar, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
+        alterarNome, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
         tecnica,

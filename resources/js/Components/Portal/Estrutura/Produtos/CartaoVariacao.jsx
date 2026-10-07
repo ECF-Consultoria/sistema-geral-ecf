@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import CartaoVolume from '@/Components/Portal/Estrutura/Produtos/CartaoVolume';
 import FaixaCalculados from '@/Components/Portal/Estrutura/Produtos/FaixaCalculados';
+import GaleriaVariacao from '@/Components/Portal/Estrutura/Produtos/GaleriaVariacao';
 import { Obrigatorio, PilulaLogistica, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { cn } from '@/lib/utils';
 
@@ -79,6 +80,8 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                     ))}
                 </div>
             </div>
+
+            <GaleriaVariacao variacao={variacao} aoMudar={(imagens) => ficha.definirImagens(k, imagens)} />
 
             <div className="mt-3 lg:mt-2">
                 <FaixaCalculados variacao={variacao} ficha={ficha} vocabulario={vocabulario} />
