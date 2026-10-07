@@ -143,3 +143,46 @@ test('PecasDoProduto: as 4 entradas antigas não mudam e as 3 novas existem', ()
     ], 'PecasDoProduto');
     for (const novo of ['sugestao:', 'miniatura:', 'icone:']) assert.ok(t.includes(novo), `falta tamanho ${novo}`);
 });
+
+test('ResumoSugestoes: 4 cartões com o texto e as funções do redesenho', () => {
+    const t = fonte('ResumoSugestoes.jsx');
+    contem(t, ['data-cartao-resumo', 'percentualDoTotal(', 'rotuloDaFase(', 'Total de combinações encontradas'], 'ResumoSugestoes');
+    semProibidos(t, 'ResumoSugestoes');
+    assert.equal(ocorrencias(t, 'uppercase'), 0);
+});
+
+test('BarraDeFiltros: Tipo de produto no lugar do Ambiente e Atualizar só com contorno', () => {
+    const t = fonte('BarraDeFiltros.jsx');
+    contem(t, [
+        'data-filtros-sugestoes', 'data-filtro="familia"', 'data-filtro="tipo"', 'data-filtro="status"',
+        'aria-label="Tipo de sugestão"', 'data-fase', 'data-contagem',
+        'data-acao="atualizar-sugestoes"', 'Atualizar sugestões', 'controlesDaAba(', 'dicaDaAba(', 'ROTULO_STATUS', 'Tipo de produto',
+    ], 'BarraDeFiltros');
+    assert.ok(! t.includes('Ambiente'), 'D-27: sem filtro de ambiente');
+    assert.ok(! /bg-ecf-yellow(?!\/)/.test(t), 'Atualizar é contorno, não preenchido');
+    semProibidos(t, 'BarraDeFiltros');
+    assert.equal(ocorrencias(t, 'uppercase'), 0);
+});
+
+test('GrupoFamilia: container, recolher e frase do grupo sem família', () => {
+    const t = fonte('GrupoFamilia.jsx');
+    contem(t, [
+        '<CaixaDeSelecao', 'data-grupo-familia', 'aria-expanded', 'aria-controls', 'Selecionar todas', 'data-acao="recolher-grupo"',
+        'textoSugestoes(', '(continua)', 'Sem família só entra em Combo. Escolha a família na ficha do produto.',
+    ], 'GrupoFamilia');
+    semProibidos(t, 'GrupoFamilia');
+    assert.equal(ocorrencias(t, 'uppercase'), 0);
+});
+
+test('AbasDasSugestoes: abas, seleção à direita e Restaurar sem amarelo', () => {
+    const t = fonte('AbasDasSugestoes.jsx');
+    contem(t, [
+        '<CaixaDeSelecao', 'aria-label="Seções"', 'Pendentes', 'data-aba', 'data-contagem',
+        'data-acao="aceitar-selecionadas"', 'data-acao="marcar-pagina"', 'data-acao="restaurar-selecionadas"', 'textoSelecionadas(', 'lg:hidden',
+    ], 'AbasDasSugestoes');
+    const inicio = t.indexOf('restaurar-selecionadas');
+    const trecho = t.slice(inicio, t.indexOf('</button>', inicio));
+    assert.ok(! trecho.includes('bg-ecf-yellow'), 'Restaurar não cria nada: sem amarelo');
+    semProibidos(t, 'AbasDasSugestoes');
+    assert.equal(ocorrencias(t, 'uppercase'), 0);
+});
