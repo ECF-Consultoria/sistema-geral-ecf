@@ -3,8 +3,9 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     Search, Plus, Copy, Check, Trash2, ShieldCheck, QrCode, Link2,
-    History, X, Loader2, KeyRound, ChevronDown,
+    History, X, Loader2, KeyRound, ChevronDown, Camera,
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import { cn } from '@/lib/utils';
 
 // ─── Constantes de UI ───────────────────────────────────────────────────────
@@ -414,10 +415,108 @@ function Historico({ id }) {
 
 // ─── Novo autenticador ──────────────────────────────────────────────────────
 
+// Lê um QR Code de um arquivo de imagem (jsQR). Devolve o texto ou null.
+async function decodeQrDaImagem(file) {
+    const url = URL.createObjectURL(file);
+    try {
+        const img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = reject;
+            el.src = url;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        return jsQR(data.data, canvas.width, canvas.height)?.data ?? null;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+// Câmera ao vivo lendo QR Code (jsQR sobre os frames do vídeo). Exige HTTPS —
+// produção é https, então funciona no celular e no desktop.
+function ScannerQr({ onDetectar, onFechar }) {
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const rafRef = useRef(null);
+    const cbRef = useRef(onDetectar);
+    const [erro, setErro] = useState('');
+
+    useEffect(() => { cbRef.current = onDetectar; });
+
+    useEffect(() => {
+        let cancelado = false;
+        const canvas = document.createElement('canvas');
+
+        const tick = () => {
+            const video = videoRef.current;
+            if (!video) return;
+            if (video.readyState >= 2 && video.videoWidth) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(img.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+                if (code?.data && /^otpauth(-migration)?:/i.test(code.data)) {
+                    cbRef.current(code.data);
+                    return; // achou — para o loop
+                }
+            }
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        (async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: 'environment' } },
+                    audio: false,
+                });
+                if (cancelado) { stream.getTracks().forEach((t) => t.stop()); return; }
+                streamRef.current = stream;
+                const video = videoRef.current;
+                video.srcObject = stream;
+                video.muted = true;
+                video.playsInline = true;
+                await video.play();
+                rafRef.current = requestAnimationFrame(tick);
+            } catch (e) {
+                if (cancelado) return;
+                setErro(e?.name === 'NotAllowedError'
+                    ? 'Permissão de câmera negada — libere a câmera no navegador e tente de novo.'
+                    : 'Não foi possível abrir a câmera. Use "Escolher imagem" ou cole a URI.');
+            }
+        })();
+
+        return () => {
+            cancelado = true;
+            cancelAnimationFrame(rafRef.current);
+            if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+        };
+    }, []);
+
+    return (
+        <div className="space-y-2">
+            <div className="relative rounded-lg overflow-hidden border border-white/[0.12] bg-black" style={{ aspectRatio: '4 / 3' }}>
+                <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+                {!erro && <div className="absolute inset-6 border-2 border-ecf-yellow/50 rounded-lg pointer-events-none" />}
+            </div>
+            {erro
+                ? <p className="text-red-300 text-[12px]">{erro}</p>
+                : <p className="text-white/40 text-[12px]">Aponte a câmera para o QR Code do autenticador.</p>}
+            <button type="button" onClick={onFechar} className="text-white/60 text-[13px] hover:text-white/90">Fechar câmera</button>
+        </div>
+    );
+}
+
 function NovoAutenticador({ csrf, onClose }) {
     const [modo, setModo] = useState('uri'); // 'uri' | 'qr'
     const [qrMsg, setQrMsg] = useState(null);
-    const dropRef = useRef(null);
+    const [cameraAberta, setCameraAberta] = useState(false);
 
     const form = useForm({ uri: '', cliente: '', conta: '', servico: '', secret: '' });
 
@@ -431,26 +530,24 @@ function NovoAutenticador({ csrf, onClose }) {
         });
     };
 
-    // Decodifica QR de uma imagem com a BarcodeDetector nativa (Chrome/Edge).
-    const lerQr = async (file) => {
-        setQrMsg(null);
-        if (!('BarcodeDetector' in window)) {
-            setQrMsg('Leitura de QR não suportada neste navegador — use "Colar URI".');
-            setModo('uri');
+    // Aplica o conteúdo de um QR lido (câmera ou imagem). Só aceita otpauth://.
+    const aplicarQr = (data) => {
+        if (!/^otpauth(-migration)?:/i.test(data || '')) {
+            setQrMsg('QR lido, mas não é um autenticador (otpauth://).');
             return;
         }
+        setCameraAberta(false);
+        form.setData('uri', data);
+        setModo('uri');
+        setQrMsg('QR lido. Confira e clique em Adicionar.');
+    };
+
+    const lerImagem = async (file) => {
+        setQrMsg('Lendo imagem…');
         try {
-            const bitmap = await createImageBitmap(file);
-            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-            const codes = await detector.detect(bitmap);
-            const raw = codes.find((c) => /^otpauth/i.test(c.rawValue || ''))?.rawValue;
-            if (!raw) {
-                setQrMsg('Nenhum QR otpauth:// encontrado na imagem.');
-                return;
-            }
-            form.setData('uri', raw);
-            setModo('uri');
-            setQrMsg('QR lido. Confira e clique em Adicionar.');
+            const data = await decodeQrDaImagem(file);
+            if (!data) { setQrMsg('Nenhum QR Code encontrado na imagem.'); return; }
+            aplicarQr(data);
         } catch {
             setQrMsg('Não foi possível ler a imagem.');
         }
@@ -459,7 +556,7 @@ function NovoAutenticador({ csrf, onClose }) {
     const onDrop = (e) => {
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
-        if (file) lerQr(file);
+        if (file) lerImagem(file);
     };
 
     return (
@@ -481,19 +578,31 @@ function NovoAutenticador({ csrf, onClose }) {
                     </div>
 
                     {modo === 'qr' ? (
-                        <div
-                            ref={dropRef}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={onDrop}
-                            className="rounded-lg border-2 border-dashed border-white/[0.12] p-6 text-center"
-                        >
-                            <QrCode size={36} className="mx-auto text-white/25 mb-2" />
-                            <label className="text-ecf-yellow text-sm font-medium cursor-pointer hover:underline">
-                                Escolher imagem do QR Code
-                                <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && lerQr(e.target.files[0])} />
-                            </label>
-                            <p className="text-white/30 text-[12px] mt-1">ou arraste uma imagem aqui (JPG, PNG, WEBP)</p>
-                            {qrMsg && <p className="text-white/60 text-[12px] mt-2">{qrMsg}</p>}
+                        <div className="space-y-3">
+                            {cameraAberta ? (
+                                <ScannerQr onDetectar={aplicarQr} onFechar={() => setCameraAberta(false)} />
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => { setQrMsg(null); setCameraAberta(true); }}
+                                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-ecf-yellow/[0.12] border border-ecf-yellow/25 text-ecf-yellow font-medium text-sm hover:bg-ecf-yellow/[0.18] transition"
+                                >
+                                    <Camera size={18} /> Escanear com a câmera
+                                </button>
+                            )}
+                            <div
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={onDrop}
+                                className="rounded-lg border-2 border-dashed border-white/[0.12] p-5 text-center"
+                            >
+                                <QrCode size={28} className="mx-auto text-white/25 mb-1.5" />
+                                <label className="text-ecf-yellow text-sm font-medium cursor-pointer hover:underline">
+                                    Escolher imagem do QR Code
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && lerImagem(e.target.files[0])} />
+                                </label>
+                                <p className="text-white/30 text-[12px] mt-1">ou arraste uma imagem aqui (JPG, PNG, WEBP)</p>
+                            </div>
+                            {qrMsg && <p className="text-white/60 text-[12px]">{qrMsg}</p>}
                         </div>
                     ) : (
                         <>
