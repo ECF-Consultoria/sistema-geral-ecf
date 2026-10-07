@@ -38,6 +38,17 @@ class CreativePromptBuilder
      * Slots AMBIENTADOS (D5/AMB-01..04, Fase 168 Plano 02) — só estes 3
      * recebem o bloco AMBIENTE. `hero`/`white_background` NUNCA entram
      * aqui, por serem regidos pela moderação do Mercado Livre (AMB-03).
+     *
+     * Quick 261007-amb (2026-10-07): categoria de móvel usa `lifestyle`
+     * na POSIÇÃO 1 do kit (em vez de `hero`) — conferido que isso
+     * continua coerente com AMB-03 por construção, sem precisar de
+     * exceção aqui: este método decide pelo TIPO do slot (`$tipo`),
+     * nunca pela posição/índice. `lifestyle` na posição 1 continua
+     * sendo o tipo `lifestyle`, então o bloco AMBIENTE se aplica
+     * normalmente — é o `hero`/`white_background` que ficam de fora,
+     * porque são regidos pela moderação de capa "produto isolado, sem
+     * cenário", nunca o `lifestyle` em si (que já é, por definição, uma
+     * cena ambientada, esteja na posição 1 ou em qualquer outra).
      */
     private const AMBIENTADOS = ['lifestyle', 'lifestyle_uso', 'composicao'];
 

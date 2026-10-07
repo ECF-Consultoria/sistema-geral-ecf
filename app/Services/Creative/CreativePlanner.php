@@ -33,9 +33,18 @@ class CreativePlanner
         private CreativeSlotCatalog $catalogo,
     ) {}
 
-    public function planejar(CreativeContext $contexto, ProductTruth $truth, int $quantidade = 7): CreativePlan
+    /**
+     * `$categoriaMoveis` (quick 261007-amb): quem chama já decidiu, fora
+     * daqui, se a categoria do anúncio é de móvel (`CreativeCategoriaMobiliarioService`,
+     * que lê `path_from_root` da categoria) — o Planner só repassa a
+     * decisão para `CreativeSlotCatalog::elegiveis()`, nunca consulta a
+     * API ele mesmo (nunca chama rede nesta classe, mantém os testes de
+     * unidade sem HTTP).
+     */
+    public function planejar(CreativeContext $contexto, ProductTruth $truth, int $quantidade = 7, bool $categoriaMoveis = false): CreativePlan
     {
-        $elegiveis = $this->catalogo->elegiveis($truth);
+        $elegiveis = $this->catalogo->elegiveis($truth, $categoriaMoveis);
+        $primeiro  = $categoriaMoveis ? 'lifestyle' : 'hero';
 
         $origem = 'deterministico';
         $modelo = null;
@@ -44,7 +53,7 @@ class CreativePlanner
         $slotsPropostos = [];
 
         try {
-            $prompt = $this->montarPrompt($contexto, $truth, $elegiveis, $quantidade);
+            $prompt = $this->montarPrompt($contexto, $truth, $elegiveis, $quantidade, $primeiro);
 
             $t0 = microtime(true);
             $resposta = $this->provider->gerarTexto($prompt);
@@ -69,7 +78,7 @@ class CreativePlanner
 
         return new CreativePlan(
             estrategia: $this->estrategiaFinal($estrategiaProposta, $contexto),
-            slots: $this->reconciliar($slotsPropostos, $elegiveis, $truth, $quantidade),
+            slots: $this->reconciliar($slotsPropostos, $elegiveis, $truth, $quantidade, $primeiro),
             origem: $origem,
             modelo: $modelo,
             latenciaMs: $latenciaMs,
@@ -90,7 +99,7 @@ class CreativePlanner
      * — a reconciliação (camada 3) não confia nisso, mas reduz o quanto ela
      * precisa descartar.
      */
-    private function montarPrompt(CreativeContext $contexto, ProductTruth $truth, array $elegiveis, int $quantidade): string
+    private function montarPrompt(CreativeContext $contexto, ProductTruth $truth, array $elegiveis, int $quantidade, string $primeiro = 'hero'): string
     {
         $truthPrompt = $truth->paraPrompt();
 
@@ -134,7 +143,7 @@ class CreativePlanner
         {$tiposTexto}
 
         REGRAS OBRIGATÓRIAS:
-        1. O slot de índice 1 é sempre do tipo "hero".
+        1. O slot de índice 1 é sempre do tipo "{$primeiro}".
         2. Proibido propor tipo fora da lista acima.
         3. Proibido repetir o mesmo tipo duas vezes.
         4. Proibido inventar número, medida ou capacidade que não esteja nos FATOS
@@ -153,7 +162,7 @@ class CreativePlanner
      * @param  array<int, string>  $elegiveis
      * @return array<int, CreativeSlotPlan>
      */
-    private function reconciliar(array $propostos, array $elegiveis, ProductTruth $truth, int $quantidade): array
+    private function reconciliar(array $propostos, array $elegiveis, ProductTruth $truth, int $quantidade, string $primeiro = 'hero'): array
     {
         $aceitos = [];
 
@@ -184,7 +193,7 @@ class CreativePlanner
             $aceitos[] = $this->montarSlotPadrao($tipo, $truth);
         }
 
-        $aceitos = $this->garantirHeroPrimeiro($aceitos, $truth, $quantidade);
+        $aceitos = $this->garantirPrimeiroSlot($aceitos, $truth, $quantidade, $primeiro);
 
         return array_values(array_map(
             fn (CreativeSlotPlan $slot, int $i) => new CreativeSlotPlan(
@@ -215,20 +224,22 @@ class CreativePlanner
     }
 
     /**
-     * Força o slot 1 = `hero` (PLAN-02), mesmo que o LLM não o tenha
-     * proposto ou o tenha proposto fora da primeira posição. Se precisar
-     * inserir um hero padrão e isso ultrapassar `$quantidade`, corta o
-     * último — nunca devolve mais slots do que o pedido.
+     * Força o slot 1 = `$tipoPrimeiro` (PLAN-02; quick 261007-amb
+     * generalizou de "sempre hero" para "hero OU lifestyle, conforme
+     * categoria"), mesmo que o LLM não o tenha proposto ou o tenha
+     * proposto fora da primeira posição. Se precisar inserir um slot
+     * padrão e isso ultrapassar `$quantidade`, corta o último — nunca
+     * devolve mais slots do que o pedido.
      *
      * @param  array<int, CreativeSlotPlan>  $aceitos
      * @return array<int, CreativeSlotPlan>
      */
-    private function garantirHeroPrimeiro(array $aceitos, ProductTruth $truth, int $quantidade): array
+    private function garantirPrimeiroSlot(array $aceitos, ProductTruth $truth, int $quantidade, string $tipoPrimeiro = 'hero'): array
     {
         $aceitos = array_values($aceitos);
 
         foreach ($aceitos as $i => $slot) {
-            if ($slot->tipo !== 'hero') {
+            if ($slot->tipo !== $tipoPrimeiro) {
                 continue;
             }
 
@@ -242,7 +253,7 @@ class CreativePlanner
             return array_values($aceitos);
         }
 
-        array_unshift($aceitos, $this->montarSlotPadrao('hero', $truth));
+        array_unshift($aceitos, $this->montarSlotPadrao($tipoPrimeiro, $truth));
 
         return array_slice($aceitos, 0, max($quantidade, 1));
     }
@@ -272,7 +283,7 @@ class CreativePlanner
         );
     }
 
-    /** Um slot 100% padrão do catálogo — usado para completar o plano e para o hero forçado. */
+    /** Um slot 100% padrão do catálogo — usado para completar o plano e para o primeiro slot forçado (hero/lifestyle). */
     private function montarSlotPadrao(string $tipo, ProductTruth $truth): CreativeSlotPlan
     {
         $padrao      = $this->catalogo->padraoDe($tipo) ?? [];

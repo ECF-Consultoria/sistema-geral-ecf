@@ -6,12 +6,13 @@ namespace App\Services\Creative\Dto;
  * Um dos N slots do plano do kit (Fase 161, PLAN-01/02/03) — já RECONCILIADO
  * pelo `CreativePlanner` (nunca o que o LLM propôs cru): tipo garantidamente
  * elegível, badge/headline garantidamente repetindo um fato do
- * `ProductTruth`, slot 1 garantidamente `hero`.
+ * `ProductTruth`, slot 1 garantidamente `hero` (ou `lifestyle` para
+ * categoria de móvel — quick 261007-amb, ver `CreativeSlotCatalog`).
  */
 final readonly class CreativeSlotPlan
 {
     /**
-     * @param  int  $indice  posição no plano, 1..N (1 é sempre `hero`)
+     * @param  int  $indice  posição no plano, 1..N (1 é sempre `hero`, ou `lifestyle` quando a categoria é de móvel)
      * @param  string  $tipo  um dos tipos de `CreativeSlotCatalog` (snake_case)
      * @param  array<int, string>  $badges  textos que repetem literalmente um valor do Truth
      * @param  array<int, string>  $fatosUsados  rótulos (chaves de `ProductTruth::$fatosVerificados`) usados neste slot

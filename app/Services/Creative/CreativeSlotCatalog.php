@@ -31,6 +31,15 @@ use App\Services\Creative\Dto\ProductTruth;
  * Ordem de `elegiveis()`: hero primeiro (slot 1, PLAN-02), depois os
  * COM_FATO elegíveis (são os melhores — entram substituindo os genéricos
  * quando o fato existe, Decisão 3), depois o resto dos SEM_FATO.
+ *
+ * Quick 261007-amb (2026-10-07): categoria de MÓVEIS troca QUEM ocupa a
+ * posição 1 — `lifestyle` (Ambientação) em vez de `hero` (fundo branco),
+ * a pedido do usuário. `elegiveis(bool $categoriaMoveis)` só decide ISSO:
+ * troca o item na frente da lista, sem tocar em mais nada — os COM_FATO
+ * elegíveis continuam entrando na mesma posição (2ª, 3ª…) de sempre, e o
+ * `hero` (quando não é o primeiro) volta a disputar como qualquer outro
+ * SEM_FATO. Ver `CreativeCategoriaMobiliarioService` para a detecção por
+ * `path_from_root` (a API não expõe nenhuma flag "é móvel").
  */
 class CreativeSlotCatalog
 {
@@ -200,22 +209,31 @@ class CreativeSlotCatalog
     }
 
     /**
-     * Tipos elegíveis para ESTE Truth, em ordem de prioridade: hero primeiro,
-     * depois os COM_FATO cujo requisito o Truth sustenta, depois o resto dos
-     * SEM_FATO. Nunca inclui um tipo COM_FATO cujo requisito falte (PLAN-03).
+     * Tipos elegíveis para ESTE Truth, em ordem de prioridade: o primeiro
+     * slot ganha, depois os COM_FATO cujo requisito o Truth sustenta,
+     * depois o resto dos SEM_FATO. Nunca inclui um tipo COM_FATO cujo
+     * requisito falte (PLAN-03).
+     *
+     * `$categoriaMoveis` (quick 261007-amb) decide QUEM é o primeiro slot:
+     * `lifestyle` (Ambientação) para categoria de móvel, `hero` (fundo
+     * branco) para qualquer outra — default `false` preserva o
+     * comportamento de sempre (PLAN-02) para todo chamador que ainda não
+     * sabe sobre móveis.
      *
      * @return array<int, string>
      */
-    public function elegiveis(ProductTruth $truth): array
+    public function elegiveis(ProductTruth $truth, bool $categoriaMoveis = false): array
     {
+        $primeiro = $categoriaMoveis ? 'lifestyle' : 'hero';
+
         $comFatoElegiveis = array_values(array_filter(
             self::PRIORIDADE_COM_FATO,
             fn (string $tipo) => $this->satisfaz($tipo, $truth)
         ));
 
-        $semFatoSemHero = array_values(array_diff(self::PRIORIDADE_SEM_FATO, ['hero']));
+        $semFatoSemPrimeiro = array_values(array_diff(self::PRIORIDADE_SEM_FATO, [$primeiro]));
 
-        return array_merge(['hero'], $comFatoElegiveis, $semFatoSemHero);
+        return array_merge([$primeiro], $comFatoElegiveis, $semFatoSemPrimeiro);
     }
 
     /** O requisito de cada tipo COM_FATO (PLAN-03) — nunca busca em texto livre. */
