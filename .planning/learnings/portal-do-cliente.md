@@ -1112,3 +1112,13 @@ SKUs nasce dele. O que não se deduz do código:
     texto do campo (use Ctrl+A e Backspace); o site tem rolagem suave, então
     `scrollIntoView` medido logo depois posiciona o clique no lugar errado (use
     `behavior: 'instant'` antes de clicar).
+- **Redesenho (168-17..21): variável sem declarar derruba a tela inteira e passa
+  em `npm run test:js` e no build.** O 168-19 trocou a constante local `comFiltro`
+  pela função `filtroAtivo` e deixou um uso para trás: `ReferenceError` em runtime,
+  tela PRETA, e o esbuild e os testes de contrato (que leem o código como texto)
+  ficaram verdes. Só o roteiro no navegador achou (T1..T12 falharam juntos). O
+  teste de contrato do redesenho ganhou um gate para esse caso, mas a regra
+  continua: refatoração de nome em tela grande exige abrir a tela.
+- **Controle com largura fixa estoura a 1280 px.** A barra de filtros da
+  referência (larguras fixas) media 1314 px de `scrollWidth` a 1280; a saída foi
+  `flex-wrap` a partir de `xl`, e a barra quebra em 2 linhas nessa largura.

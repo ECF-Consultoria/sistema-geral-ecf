@@ -95,3 +95,26 @@ Os 23 acertos a menos fecham a conta (106 + 23 = 129) com causas conhecidas:
 - Cenário B: 21 trios; 1 sem ambiente em comum; 1 direção oposta (a quantidade passa a estar na lista, mas o par repete o outro lado).
 
 A e B coincidem porque a semente comitada já traz as quantidades da planilha (D-22 substituiu o D-13 literal); o que a ampliação em memória muda é só a causa do último acerto a menos. Critério do plano (B >= 100 de 129): atendido, 106. Bate com a pesquisa (106 de 129, 82%), que media o teto do gerador de 2 itens. Nenhum nome, SKU, código de anúncio ou custo foi impresso; script e saídas apagados do scratchpad; `git status` sem `.xlsx`.
+
+## Gate do redesenho (168-21)
+
+- Data: 2026-10-07
+- `git rev-parse HEAD`: `8c1ca802` (código do redesenho: 168-17 a 168-20)
+- Autoloader conferido: `C:\tmp\ecf-publicador-spec-261001\app\Models\EstruturaOferta.php`
+- Mesmos comandos do 168-01/168-16, um grupo por vez, saída em arquivo (sem pipe), `exit` conferido logo depois.
+
+| # | Grupo | Testes | Asserções | Falhas | Exit | Tempo | Depois (168-16) |
+|---|---|---|---|---|---|---|---|
+| G1 | `tests/Feature/PortalCliente/Estrutura` | 376 | 2624 | 0 | 0 | 55 s | 362 / 2489 |
+| G2 | `DadosEfetivosTest` + `SincronizaPortalTest` + `MigracaoAnunciarAntigoTest` + `Alavancas/CustoDoAnuncioTest` | 22 | 118 | 0 | 0 | 5 s | 22 / 118 |
+| G3 | `DominioLiberaTodoModuloTest` + `PortalSemAnunciarTest` | 7 | 186 | 0 | 0 | 7 s | 7 / 186 |
+| G4 | `tests/Feature/PortalCliente` | 524 | 3803 | 0 | 0 | 93 s | 510 / 3668 |
+| G5 | `OfertaExcluidaNoPortalTest` + `ExclusaoDaEmpresaPreservaHistoricoTest` + `MigracoesDaFaseDetectamMariaDbTest` | 18 | 97 | 0 | 0 | 6 s | 18 / 97 |
+| G6 | `npm run test:js` | 1208 | n/d | 2 (as 2 antigas) | 1 | 3 s | 1193 testes, 1191 passam |
+| G7 | `tests/Unit/PortalEstrutura` | 188 | 1254 | 0 | 0 | 10 s | 187 / 1251 |
+| G8 | `Estrutura/Sugestoes` + `Unit/PortalEstrutura/Geracao` | 256 | 1912 | 0 | 0 | 30 s | 241 / 1774 |
+
+Todos os grupos com contagem maior ou igual à do 168-16 e 0 falha nova. G6: 1206 passam; as 2 que falham são as mesmas antigas
+("Características secundárias nasce recolhido" e "FASES_TERMINAIS cobre as três fases de saída"). Sem migration no redesenho; a
+prova no MariaDB do 168-16 continua valendo. Conferido desde o commit da referência (`c11cc1e7`): nada em `database/`, nada na
+ficha da 167 nem no `SpreadsheetGrid`, nenhuma imagem, SQLite ou planilha commitados.

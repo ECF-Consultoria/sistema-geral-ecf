@@ -3,6 +3,7 @@ phase: 168
 slug: geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos
 status: approved
 reviewed_at: 2026-10-06
+revised: 2026-10-07 (D-24..D-31)
 shadcn_initialized: false
 preset: none
 created: 2026-10-06
@@ -483,3 +484,49 @@ D-24..D-31 do CONTEXT:
 - A tela admin.
 - Os textos de erro e de confirmação.
 - No celular, 390 px sem rolagem horizontal: a linha da sugestão empilha as áreas.
+
+### Como ficou (168-17..20)
+
+- **Ordem vertical:** trilha e título com "Atualizado agora" → 4 cartões de resumo → barra de filtros (um container) → abas
+  Pendentes · Sem tipo · Descartadas, com a seleção à direita → grupos por família → "Como funciona" e a linha de frete/ML.
+- **Linha da sugestão em 7 áreas** a partir de 1280 px (seleção | quadros | selo de fase | nome e SKU | composição | motivo, logística
+  e frete | ações); abaixo disso as áreas empilham.
+- **Nome e SKU em edição em linha:** lápis, Enter confirma, Esc desfaz, sair do campo confirma; aparece "editado" e os avisos
+  (título acima de 60, SKU acima de 120) continuam.
+- **Status** com Todos / Prontas para aceitar / Com aviso no servidor; os cartões de resumo não mudam com ele.
+- **Tipo de produto** no lugar de Ambiente (D-27).
+- **"↻ Atualizar sugestões"** recarrega só a lista e mostra "Atualizado agora" pela hora da carga; edição e marcação ficam.
+- **"Aceitar selecionadas" e "Descartar N"** na linha das abas no computador; a barra fixa de baixo só no celular.
+- **Os grupos recolhem** (chevron), com "Família · ambientes", "N sugestões" e "Selecionar todas".
+- **Selo de fase colorido** (COMBO roxo, KIT verde, COMBIT dourado) e **Aceitar da linha amarelo**.
+- **Os filtros seguem para a outra aba** (família, busca); o que não vale lá (status, tipo de sugestão, fases) fica desabilitado, com a
+  dica.
+- **Celular (390 px):** sem rolagem lateral, resumo 2x2, linha empilhada com Aceitar e Descartar.
+
+**Deixam de valer, das seções anteriores:**
+- o cartão em 2 colunas;
+- "Os grupos não recolhem";
+- a pílula de fase neutra;
+- o "Aceitar" secundário do cartão e o "um amarelo por vista" na linha;
+- o "sem rótulo em CAIXA ALTA" para o selo de fase;
+- o bloco "Os três tipos" (a explicação ficou em "Como funciona");
+- "Aceitar {N} marcadas" (agora "selecionadas");
+- a descrição "Combinamos os seus produtos…" (agora a frase da referência).
+
+### Diferenças aceitas em relação à referência
+
+| Elemento | Referência | Sistema | Motivo |
+|---|---|---|---|
+| Menu lateral e barra do topo | presentes | trilho do Portal; trilha acima do título | D-29 |
+| Cores navy e fotos | navy, fotos de móveis | tokens `ecf-*`; quadro com iniciais | D-29, D-25 |
+| Nomes, SKUs, números, fretes | os da imagem | os do servidor | a imagem não define dados (D-26) |
+| Filtro Ambiente | presente | Tipo de produto | D-27 |
+| Chevron à esquerda do grupo | duplicado | só o da direita | duplicava o da direita |
+| Contador nos botões de tipo de sugestão | sem | com contagem | faceta que já existia; busca ~65 px mais estreita |
+| Exemplo da busca | "família, produto, SKU" | "produto, nome ou SKU" | a busca não procura família |
+| Altura da linha | 84-86 px | 97-110 (motivo em 2 linhas), ~92 com 1 | motivo do servidor é mais longo; não se corta o texto |
+| Início do nome/SKU, tamanho do CTA | x 347; 188×37 | x 355; 200×38 | dentro de ±8 px e ±10% |
+| Seleção à direita das abas | "N selecionadas" + CTA | mais "Descartar N" e "Limpar" com marcadas | função preservada |
+| "Como funciona" e linha de frete/ML | ausentes | presentes | função preservada |
+| Filtros a 1280 px | n/d | barra em 2 linhas | larguras fixas somam mais que 1160 px |
+| Faixa amarela de sessão de equipe | ausente | presente | ambiente de conferência (ticket de equipe) |
