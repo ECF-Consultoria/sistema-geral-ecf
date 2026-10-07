@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { lerSemComentarios } from './_fonte.js';
 import {
     textoAtualizado, percentualDoTotal, textoSugestoes, textoSelecionadas, rotuloAceitarSelecionadas,
     rotuloDaFase, textoDoComponente, ROTULO_STATUS, filtroAtivo, filtrosDaAba, controlesDaAba, dicaDaAba,
@@ -90,4 +91,55 @@ test('controlesDaAba e dicaDaAba', () => {
     assert.equal(dicaDaAba('sem_tipo'), 'Na aba Sem tipo valem só a busca e a família.');
     assert.equal(dicaDaAba('descartadas'), 'Na aba Descartadas o status não se aplica.');
     assert.equal(dicaDaAba('sugestoes'), null);
+});
+
+// ─── Gates das peças (lidos sem comentários) ────────────────────────────────
+
+const PASTA = 'resources/js/Components/Portal/Estrutura/Sugestoes';
+const fonte = (arquivo) => lerSemComentarios(`${PASTA}/${arquivo}`);
+const contem = (texto, trechos, nome) => {
+    for (const t of trechos) assert.ok(texto.includes(t), `${nome} deveria conter: ${t}`);
+};
+const PROIBIDOS = ['SpreadsheetGrid', '<table', 'fator_cubagem', 'daVolumes', 'dangerouslySetInnerHTML'];
+const semProibidos = (texto, nome) => {
+    for (const p of PROIBIDOS) assert.ok(! texto.includes(p), `${nome} não pode conter: ${p}`);
+    assert.ok(! /\/v\d\+\\*\//.test(texto), `${nome} não pode ter regex de chave`);
+};
+const ocorrencias = (texto, trecho) => texto.split(trecho).length - 1;
+
+test('LinhaSugestao: contrato, comportamento do cartão e visual da referência', () => {
+    const t = fonte('LinhaSugestao.jsx');
+    contem(t, [
+        '<CaixaDeSelecao', 'data-sugestao', 'data-chave', 'aria-labelledby', 'podeAceitar(', 'valorDoCampo(', 'avisosDoCartao(',
+        'Não aceitamos esta sugestão', 'Desfazer edição', 'data-acao="aceitar"', 'data-acao="descartar"', 'Motivo da sugestão',
+        'Composição', 'sugestao.porque', 'bg-ecf-yellow', 'xl:grid-cols-[',
+    ], 'LinhaSugestao');
+    for (const col of ['selecao', 'imagens', 'tipo', 'nome', 'composicao', 'motivo', 'acoes']) {
+        assert.ok(t.includes(`data-col="${col}"`), `falta data-col ${col}`);
+    }
+    semProibidos(t, 'LinhaSugestao');
+    assert.equal(ocorrencias(t, 'uppercase'), 0);
+});
+
+test('PecasDaSugestao: peças, edição em linha e caixa única', () => {
+    const t = fonte('PecasDaSugestao.jsx');
+    contem(t, [
+        'export function SeloFase', 'export function CaixaDeSelecao', 'checked:bg-none', 'peer-checked:block', 'type="checkbox"',
+        'export function CampoEmLinha', 'export function QuadrosDaSugestao', 'export function LogisticaEFrete', 'export function TiposDaSugestao',
+        'QuadroFotoProduto', 'PilulaLogistica', "'Escape'", "'Enter'", 'onBlur', 'data-editar', 'data-campo', 'data-valor',
+        'Faltam medidas em', 'Frete pela sua transportadora',
+    ], 'PecasDaSugestao');
+    semProibidos(t, 'PecasDaSugestao');
+    assert.equal(ocorrencias(t, 'uppercase'), 1);
+});
+
+test('PecasDoProduto: as 4 entradas antigas não mudam e as 3 novas existem', () => {
+    const t = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PecasDoProduto.jsx');
+    contem(t, [
+        "grande: { caixa: 'h-[198px] w-full lg:w-[266px]', iniciais: 'text-[40px]', icone: 64 },",
+        "cartao: { caixa: 'h-[108px] w-[106px]', iniciais: 'text-[28px]', icone: 44 },",
+        "linha:  { caixa: 'h-[78px] w-[78px]', iniciais: 'text-[22px]', icone: 34 },",
+        "mini:   { caixa: 'h-[62px] w-[62px]', iniciais: 'text-[16px]', icone: 28 },",
+    ], 'PecasDoProduto');
+    for (const novo of ['sugestao:', 'miniatura:', 'icone:']) assert.ok(t.includes(novo), `falta tamanho ${novo}`);
 });

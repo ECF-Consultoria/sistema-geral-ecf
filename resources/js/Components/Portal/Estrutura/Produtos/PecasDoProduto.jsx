@@ -14,6 +14,10 @@ const TAMANHOS_QUADRO = {
     cartao: { caixa: 'h-[108px] w-[106px]', iniciais: 'text-[28px]', icone: 44 },
     linha:  { caixa: 'h-[78px] w-[78px]', iniciais: 'text-[22px]', icone: 34 },
     mini:   { caixa: 'h-[62px] w-[62px]', iniciais: 'text-[16px]', icone: 28 },
+    // Tamanhos da linha compacta das sugestões (168-18): só acréscimo, a ficha usa os de cima.
+    sugestao:  { caixa: 'h-[64px] w-[100px]', iniciais: 'text-[18px]', icone: 30 },
+    miniatura: { caixa: 'h-[30px] w-[34px]', iniciais: 'text-[11px]', icone: 16 },
+    icone:     { caixa: 'h-[20px] w-[20px] rounded-[5px]', iniciais: 'text-[9px]', icone: 12 },
 };
 
 /** Quadro da foto (D-29): existe, mas sem upload — ícone apagado e as iniciais do produto. */
