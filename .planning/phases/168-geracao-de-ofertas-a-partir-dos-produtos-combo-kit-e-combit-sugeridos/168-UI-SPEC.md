@@ -456,3 +456,30 @@ Nenhuma dependência nova de npm.
 - [ ] Dimension 6 Registry Safety: PASS
 
 **Approval:** pending
+
+---
+
+## Revisão D-24..D-31 (07/10, checkpoint do 168-16) — redesenho pela referência do usuário
+
+**A tela "Sugestões de ofertas" passa a seguir `168-REF-1-sugestoes-de-ofertas.png`, descrita em
+`168-REFERENCIA-VISUAL.md`.** Onde esta UI-SPEC e a referência divergem, vale a referência, adaptada pelas decisões
+D-24..D-31 do CONTEXT:
+
+**O que muda:**
+- **Sugestão em LINHA horizontal compacta**, no lugar do cartão alto em 2 colunas, dentro do container da família.
+- **"Aceitar" da linha em amarelo**. A regra "um amarelo por vista" vale só fora das linhas.
+- **"Aceitar selecionadas"** na linha das abas, no computador; no celular, a barra fixa continua.
+- **Quatro cartões de resumo** no topo, com contagens reais e % do total.
+- **"Tipo de sugestão"** vira controle segmentado (borda e texto amarelos no selecionado).
+- **"Status"** (D-28) e **"↻ Atualizar sugestões"** (secundário, contorno amarelo) entram na barra de filtros.
+- **Nome e SKU com edição em linha:** aparecem como texto com lápis e viram input ao clicar. Os avisos (título
+  acima de 60, SKU acima de 120) continuam.
+- **Selos de fase com cor:** COMBO roxo, KIT verde, COMBIT amarelo/dourado.
+
+**O que NÃO muda:**
+- O layout do Portal e os tokens `ecf-*`.
+- As abas Sem tipo e Descartadas, com o mesmo conteúdo, adaptadas ao novo container.
+- A janela de tipo, a guarda de saída, a seleção persistente e o teto de 100.
+- A tela admin.
+- Os textos de erro e de confirmação.
+- No celular, 390 px sem rolagem horizontal: a linha da sugestão empilha as áreas.

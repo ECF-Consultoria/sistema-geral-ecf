@@ -191,6 +191,41 @@ a pessoa só decidir.
 - **D-23: tipos.** "bicama" passa a ser palavra do tipo cama. Entra o tipo novo **beliche** (beliche, treliche).
   Assim os 56 produtos da planilha ficam com tipo.
 
+### Checkpoint do 168-16 (07/10) — REDESENHO pela referência do usuário (`168-REFERENCIA-VISUAL.md` + `168-REF-1-*.png`)
+- **D-24: a tela de sugestões copia o LAYOUT da referência.**
+  - Inclui cabeçalho compacto com "● Atualizado agora", 4 cartões de resumo, barra de filtros num container só,
+    abas com o CTA "Aceitar selecionadas" à direita e grupos em container próprio.
+  - **Cada sugestão vira UMA LINHA horizontal compacta:** seleção | imagens | tipo | nome/SKU | composição | motivo +
+    logística + frete | ações.
+  - É trabalho de front: nenhuma regra de geração, aceite, descarte ou cálculo muda.
+  - Toda funcionalidade de hoje continua: abas, seleção persistente entre páginas, edição de nome e SKU, guarda
+    de saída, voltar do navegador e o recarregar ao voltar pelo histórico (168-16).
+- **D-25: imagens = o quadro com iniciais da 167 (`QuadroFotoProduto`).** O produto não tem foto (D-29 da 167,
+  sem upload). Fica um quadro principal maior mais miniaturas por componente, nos lugares da referência.
+- **D-26: motivo = o texto REAL de `NomesSugeridos::porque`.** Nenhum motivo inventado ("aumenta o ticket médio" e
+  similares são só exemplo da imagem).
+- **D-27: SEM filtro de Ambiente (decisão do usuário, 07/10).** No lugar dele na barra fica o filtro de **tipo de
+  produto**, que já existe, para não perder função.
+- **D-28: filtro "Status" pelos AVISOS que o sistema já calcula (decisão do usuário, 07/10).**
+  - Opções: Todos, "Prontas para aceitar" (sem nenhum aviso) e "Com aviso" (SKU repetido, título acima de 60 ou
+    componente sem medida, como `avisos`/`sku_repetido`/`logistica.sem_medida` no item).
+  - O filtro é feito no SERVIDOR, sobre o conjunto, como os outros filtros, e as contagens acompanham.
+  - Não cria regra nova: só filtra por dados que já existem.
+- **D-29: o layout continua o do Portal (`PortalClienteLayout`) e as cores são os tokens `ecf-*`**, da mesma
+  família da tela de Produtos aprovada.
+  - O menu lateral da imagem (Catálogo, Estoque, Pedidos...) não existe no Portal e NÃO é criado.
+  - Os HEX navy da imagem são aproximação; o próprio usuário pediu para preferir os tokens.
+- **D-30: o agrupamento continua por FAMÍLIA.** O cabeçalho mostra "Família · ambientes", com os ambientes das
+  sugestões do grupo, porque uma família pode ter mais de um.
+- **D-31: ações.**
+  - **"Aceitar" de cada linha em AMARELO preenchido** (pedido explícito do usuário). Isso substitui a regra da
+    UI-SPEC de "um amarelo por vista" para o botão da linha.
+  - **"Descartar" secundário, com a mesma altura.**
+  - **"Aceitar selecionadas" fica na linha das abas, à direita**, no computador. No celular continua a barra fixa
+    de rodapé, para seguir alcançável.
+  - **"Atualizar sugestões"** recarrega a lista; as sugestões são calculadas a cada carga.
+  - **"Atualizado agora"** reflete a hora da última carga.
+
 ### Claude's Discretion
 - Estrutura interna do gerador, desde que seja testável sem banco (regra pura, como o `LogisticaProduto`).
 - Como guardar as sugestões: calculadas na hora ou persistidas. Só o descarte precisa persistir (D-01).
