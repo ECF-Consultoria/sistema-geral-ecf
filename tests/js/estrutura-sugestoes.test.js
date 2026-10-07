@@ -93,6 +93,11 @@ test('A página liga a guarda de saída nas três portas', () => {
     assert.ok(! pagina.includes("addEventListener('popstate'"), 'nada de popstate próprio (learnings §32)');
 });
 
+test('Quem chega pelo histórico recarrega as sugestões (o Inertia devolve as props da data da visita)', () => {
+    assert.ok(pagina.includes('chegouPeloHistorico('), 'a tela pergunta se veio do voltar do navegador');
+    assert.match(pagina, /if \(chegouPeloHistorico\(\)\) router\.reload\(\{ only: \['sugestoes'\]/);
+});
+
 test('O frete da página vai pela rota .frete e os estados vazios usam qualEstadoVazio', () => {
     assert.match(pagina, /route\('portal\.auth\.estrutura\.sugestoes\.frete'\)/);
     assert.ok(pagina.includes('qualEstadoVazio('));

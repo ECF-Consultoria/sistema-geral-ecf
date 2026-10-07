@@ -23,7 +23,7 @@ import {
     MSG_FALHA_REDE, MSG_GUARDA, msgLimiteDoLote, msgMarcamosPrimeiras, qualEstadoVazio, textoDescarte, textoRestauracao, textoResultadoAceite,
     corpoDaGeracao, textoTipoDefinido,
 } from '@/lib/sugestoesEstrutura';
-import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
+import { chegouPeloHistorico, definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
 import { avisoDosFretes } from '@/lib/produtosFretes';
 import { entradaAtual, passosAte } from '@/lib/produtosNavegacao';
 import { cn } from '@/lib/utils';
@@ -417,6 +417,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
         window.history.go(passosAte(entradaDaTela.current));
         setSaida({ voltar: true });
     }), []);
+
+    // Voltar do navegador até aqui: o Inertia devolve as props da data da visita (sugestão já aceita ou
+    // descartada continuaria na tela). Quem chegou pelo histórico pede as sugestões de agora.
+    useEffect(() => {
+        if (chegouPeloHistorico()) router.reload({ only: ['sugestoes'], preserveScroll: true });
+    }, []);
 
     // Página devolvida pelo cache do navegador: o React não monta de novo, então as sugestões de agora vêm por recarga parcial.
     useEffect(() => {

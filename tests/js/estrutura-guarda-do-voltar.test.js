@@ -13,7 +13,7 @@ import { lerSemComentarios } from './_fonte.js';
 // ═══════════════════════════════════════════════════════════════════════
 
 globalThis.window = new EventTarget();
-const { definirGuardaDoVoltar } = await import('../../resources/js/lib/guardaDoVoltar.js');
+const { chegouPeloHistorico, definirGuardaDoVoltar } = await import('../../resources/js/lib/guardaDoVoltar.js');
 
 const inertia = [];
 window.addEventListener('popstate', () => inertia.push('trocou a página'));
@@ -54,6 +54,36 @@ test('desligar uma guarda velha não desliga a da tela nova', () => {
     desligarVelha();
     voltar();
     assert.deepEqual(inertia, [], 'a guarda nova continua ligada');
+});
+
+test('chegouPeloHistorico: só depois de um voltar/avançar e só por alguns segundos', () => {
+    // O módulo é carregado uma vez; o relógio é do teste.
+    const agora = Date.now;
+    try {
+        Date.now = () => 1_000_000;
+        voltar();
+        assert.equal(chegouPeloHistorico(), true, 'logo depois do voltar');
+        Date.now = () => 1_000_000 + 2_999;
+        assert.equal(chegouPeloHistorico(), true, 'ainda dentro da janela');
+        Date.now = () => 1_000_000 + 3_000;
+        assert.equal(chegouPeloHistorico(), false, 'visita comum, passada a janela');
+        assert.equal(chegouPeloHistorico(10_000), true, 'a janela é parâmetro');
+    } finally {
+        Date.now = agora;
+    }
+});
+
+test('chegouPeloHistorico vale também quando a guarda segura o voltar', () => {
+    const agora = Date.now;
+    try {
+        Date.now = () => 5_000_000;
+        const desligar = definirGuardaDoVoltar((e) => e.stopImmediatePropagation());
+        voltar();
+        desligar();
+        assert.equal(chegouPeloHistorico(), true);
+    } finally {
+        Date.now = agora;
+    }
 });
 
 test('app.jsx importa a guarda antes do Inertia', () => {
