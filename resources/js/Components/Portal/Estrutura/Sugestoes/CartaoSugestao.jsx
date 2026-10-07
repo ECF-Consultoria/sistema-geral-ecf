@@ -138,7 +138,7 @@ export default function CartaoSugestao({
                     {(logistica.chave === 'me2' || logistica.chave === 'me2_full') && valorFrete !== null && (
                         <span>
                             Frete <span className="text-[14px] font-semibold tabular-nums text-white">{fmtReais(valorFrete)}</span>{' '}
-                            {freteCotado && ! freteCotado.falhou ? 'Mercado Livre' : 'estimado'}
+                            {freteCotado?.origem === 'api' && ! freteCotado.falhou ? 'Mercado Livre' : 'estimado'}
                         </span>
                     )}
                 </div>

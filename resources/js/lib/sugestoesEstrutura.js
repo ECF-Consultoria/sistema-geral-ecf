@@ -69,3 +69,21 @@ export function textoRestauracao(n, jaExistem) {
 
 /** "1 × Mesa + 4 × Cadeira" */
 export const composicaoEmLinha = (itens) => (itens ?? []).map((i) => `${i.quantidade} × ${i.produto_nome}`).join(' + ');
+
+/**
+ * Qual estado vazio a tela desenha (UI-SPEC "Estados da tela"). `null` = há sugestões na página.
+ * Só escolhe o texto: as contagens vêm do servidor.
+ *
+ * @returns {'sem_produtos'|'filtro_vazio'|'tudo_revisado'|'sem_sugestoes'|null}
+ */
+export function qualEstadoVazio({ temProdutos, contagens, filtroAtivo, aceitouNaSessao = false, qtdItens = 0 }) {
+    if (qtdItens > 0) return null;
+    if (! temProdutos) return 'sem_produtos';
+
+    const vigentes = contagens?.sugestoes ?? 0;
+    if (filtroAtivo && vigentes > 0) return 'filtro_vazio';
+    if (vigentes > 0) return null;
+    if ((contagens?.descartadas ?? 0) > 0 || aceitouNaSessao) return 'tudo_revisado';
+
+    return 'sem_sugestoes';
+}

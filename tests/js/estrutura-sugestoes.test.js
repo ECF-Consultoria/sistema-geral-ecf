@@ -52,3 +52,51 @@ test('Os textos literais da UI-SPEC estão em uso', () => {
         assert.ok(! pagina.toLowerCase().includes(proibida.toLowerCase()), `não escrever "${proibida.trim()}" na tela`);
     }
 });
+
+// ─── Estados vazios (comportamento real da função) ──────────────────────
+
+import { qualEstadoVazio } from '../../resources/js/lib/sugestoesEstrutura.js';
+
+test('qualEstadoVazio: sem produtos', () => {
+    assert.equal(qualEstadoVazio({ temProdutos: false, contagens: { sugestoes: 0, sem_tipo: 0, descartadas: 0 }, filtroAtivo: false }), 'sem_produtos');
+});
+
+test('qualEstadoVazio: filtro sem resultado quando ainda há sugestões fora do filtro', () => {
+    assert.equal(qualEstadoVazio({ temProdutos: true, contagens: { sugestoes: 12, descartadas: 0 }, filtroAtivo: true }), 'filtro_vazio');
+});
+
+test('qualEstadoVazio: tudo revisado com descartadas ou depois de aceitar nesta sessão', () => {
+    assert.equal(qualEstadoVazio({ temProdutos: true, contagens: { sugestoes: 0, descartadas: 3 }, filtroAtivo: false }), 'tudo_revisado');
+    assert.equal(qualEstadoVazio({ temProdutos: true, contagens: { sugestoes: 0, descartadas: 0 }, filtroAtivo: false, aceitouNaSessao: true }), 'tudo_revisado');
+});
+
+test('qualEstadoVazio: sem sugestões novas quando nunca houve nada para revisar', () => {
+    assert.equal(qualEstadoVazio({ temProdutos: true, contagens: { sugestoes: 0, descartadas: 0 }, filtroAtivo: false }), 'sem_sugestoes');
+});
+
+test('qualEstadoVazio: nada de vazio quando a página tem itens', () => {
+    assert.equal(qualEstadoVazio({ temProdutos: true, contagens: { sugestoes: 5 }, filtroAtivo: false, qtdItens: 5 }), null);
+});
+
+// ─── Guarda de saída, frete da página e estados vazios (Task 3) ─────────
+
+test('A página liga a guarda de saída nas três portas', () => {
+    assert.ok(pagina.includes('definirGuardaDoVoltar('), 'voltar do navegador pelo guardaDoVoltar');
+    assert.match(pagina, /from '@\/lib\/guardaDoVoltar'/);
+    assert.ok(pagina.includes('deveSegurarVisita('), 'link e abas pela lib testada');
+    assert.ok(pagina.includes("router.on('before'"));
+    assert.ok(pagina.includes("router.on('finish'"));
+    assert.ok(pagina.includes("'beforeunload'"));
+    assert.ok(pagina.includes('persisted'));
+    assert.ok(pagina.includes('MSG_GUARDA'));
+    assert.ok(pagina.includes('Continuar editando') && pagina.includes('Sair sem aceitar'));
+    assert.ok(! pagina.includes("addEventListener('popstate'"), 'nada de popstate próprio (learnings §32)');
+});
+
+test('O frete da página vai pela rota .frete e os estados vazios usam qualEstadoVazio', () => {
+    assert.match(pagina, /route\('portal\.auth\.estrutura\.sugestoes\.frete'\)/);
+    assert.ok(pagina.includes('qualEstadoVazio('));
+    for (const texto of ['Cadastre seus produtos primeiro', 'Ainda não há sugestões novas', 'Você revisou todas as sugestões', 'Ir para Produtos']) {
+        assert.ok(pagina.includes(texto), `estado vazio: ${texto}`);
+    }
+});
