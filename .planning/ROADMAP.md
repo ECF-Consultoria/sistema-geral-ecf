@@ -2906,7 +2906,7 @@ Plans:
 **Goal:** a aba **Planejamento** da `3Planejamento_Estrutural_ECF.xlsx` ("identificação da oferta") vira sistema. A partir dos produtos da Fase 167, o Mapeamento Estrutural **sugere** as ofertas que juntam produtos — **Combo** (mesmo produto, mais unidades), **Kit** (produtos diferentes) e **Combit** (kit com mais unidades de um item) — com a logística e o frete estimado de cada conjunto. A pessoa revisa e aceita, e as aceitas viram ofertas da Lista SKUs pela mesma regra de composição, já entrando na Precificação. Na planilha, 70 produtos viraram ~199 ofertas montadas à mão.
 **Requirements**: PR168-01, PR168-02, PR168-03, PR168-04, PR168-05, PR168-06, PR168-07, PR168-08, PR168-09, PR168-10, PR168-11, PR168-12, PR168-13, PR168-14, PR168-15 (definidos em `168-RESEARCH.md`); decisões D-01..D-20 em `168-CONTEXT.md`
 **Depends on:** Phase 167 (produtos, variações, oferta simples ligada, logística e frete por volumes).
-**Plans:** 14/16 plans executed
+**Plans:** 15/16 plans executed
 
 **Decidido com o usuário (06/10/2026, "faça o recomendado"):**
 
@@ -2953,7 +2953,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 168-15-PLAN.md — abas Sem tipo e Descartadas, janela de tipo e entradas por Produtos e Lista SKUs
+- [x] 168-15-PLAN.md — abas Sem tipo e Descartadas, janela de tipo e entradas por Produtos e Lista SKUs
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
