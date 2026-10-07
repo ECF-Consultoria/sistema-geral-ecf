@@ -386,15 +386,15 @@ Last activity (137, restaurado): 2026-09-02 -- Phase 150 Plan 11 concluído, G3/
 > Prova de que nada quebrou: **344 testes / 1285 assertions verdes** e `npm run build`
 > verde com as 2 páginas no manifest, DEPOIS da renumeração.
 
-## Posição paralela — Fase 168 (Geração de ofertas: Combo, Kit e Combit sugeridos) — EM EXECUÇÃO
+## Posição paralela — Fase 168 (Geração de ofertas: Combo, Kit e Combit sugeridos) — DEPLOYADA
 
 **Bloco escrito à mão de propósito** (2026-10-06): os comandos `state.*` do GSD corrompem o frontmatter.
 Mesmo worktree e branch da 167 (`C:/tmp/ecf-publicador-spec-261001`, `feat/publicador-ml-261001`).
 
-Phase: 168 (geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos) — EXECUTING
+Phase: 168 (geracao-de-ofertas-a-partir-dos-produtos-combo-kit-e-combit-sugeridos) — DEPLOYADA (07/10, `0f0828ed`)
 Plans: 16 em 9 ondas — 0 de 16 concluídos (checkpoints humanos: 168-02 lista-semente de pares; 168-16 conferência visual)
-Status: execução autorizada pelo usuário em 07/10 ("pode começar"). Planos em sequência no worktree (use_worktrees=false); checkpoints no 168-02 (pares) e no 168-16 (tela).
-Last activity: 2026-10-07 — início da execução da 168
+Status: DEPLOYADA em 07/10 junto com a FICHA RICA do produto (ficha técnica dinâmica + imagens por variação, trabalho direto sem GSD). Push `9652bf86..0f0828ed` (merge com o trabalho do outro dev); `deploy.sh` ok; 4 migrations novas aplicadas (2 da 168 + 2 da ficha rica); 516 ofertas intactas; queue:restart feito. A tela de sugestões e a ficha rica estão no ar.
+Last activity: 2026-10-07 — Fase 168 + ficha rica DEPLOYADAS
 
 ## Posição paralela — Fase 167 (Cadastro de Produto no Mapeamento Estrutural) — DEPLOYADA
 
