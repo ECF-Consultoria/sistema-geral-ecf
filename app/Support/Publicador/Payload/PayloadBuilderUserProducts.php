@@ -47,9 +47,9 @@ final class PayloadBuilderUserProducts
         $condicao = self::condicao($r, $schema);
 
         $itens = [];
-        foreach ($r->alvosAtivos() as $alvo) {
+        foreach ($r->alvosAtivos() as $indiceAlvo => $alvo) {
             foreach ($r->variantesAtivas() as $v) {
-                $daVariante = $fotos[$v->chave] ?? [];
+                $daVariante = OrdemCapaPorAlvo::aplicar($fotos[$v->chave] ?? [], $indiceAlvo);
                 $pendentes = array_values(array_filter($daVariante, fn ($id) => ! isset($fotosMl[$id])));
 
                 $payload = array_filter([

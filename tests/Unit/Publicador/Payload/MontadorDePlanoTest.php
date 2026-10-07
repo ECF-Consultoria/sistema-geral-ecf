@@ -324,4 +324,44 @@ class MontadorDePlanoTest extends TestCase
         $outro = self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO.' Preta'), new Alvo('gold_pro', self::TITULO_PREMIUM)]);
         $this->assertNotSame($this->montar($r)->hash(), $this->montar($outro)->hash());
     }
+
+    /** D6/CAPA-01: com 2 alvos ativos e 2+ fotos aprovadas, a capa do Premium nunca repete a do Clássico. */
+    public function test_capa01_premium_nunca_repete_a_capa_do_classico_com_duas_fotos_aprovadas(): void
+    {
+        $plano = $this->montar(self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)]));
+
+        [$classico, $premium] = array_map(fn ($i) => $i->payload, $plano->itens);
+        $this->assertSame(['id' => 'ML-A1'], $classico['pictures'][0], 'Clássico mantém a capa de hoje');
+        $this->assertSame(['id' => 'ML-A2'], $premium['pictures'][0], 'Premium rotaciona para a 2ª foto como capa');
+        $this->assertNotSame($classico['pictures'][0], $premium['pictures'][0]);
+    }
+
+    /** D6/CAPA-02: mesma lista de fotos aprovadas nos dois alvos — nunca duplica, nunca descarta. */
+    public function test_capa02_mesma_lista_de_fotos_sem_duplicar_nem_descartar(): void
+    {
+        $plano = $this->montar(self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)]));
+
+        [$classico, $premium] = array_map(fn ($i) => $i->payload, $plano->itens);
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($classico['pictures'])->pluck('id')->all());
+        $this->assertEqualsCanonicalizing(['ML-A1', 'ML-A2'], collect($premium['pictures'])->pluck('id')->all());
+    }
+
+    /** D6/CAPA-03: alvo único mantém a capa de hoje — snapshot existente não muda. */
+    public function test_capa03_alvo_unico_mantem_a_capa_de_hoje(): void
+    {
+        $plano = $this->montar(self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO)]));
+
+        $this->assertSnapshotJson('up_cadeira_simples_classico', $plano->itens[0]->payload);
+    }
+
+    /** D6/CAPA-04: o mesmo rascunho produz sempre a mesma ordem de capa por alvo. */
+    public function test_capa04_mesmo_rascunho_mesma_ordem_de_capa_sempre(): void
+    {
+        $r = self::rascunhoSimples([new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)]);
+
+        $pictures1 = array_map(fn ($i) => $i->payload['pictures'], $this->montar($r)->itens);
+        $pictures2 = array_map(fn ($i) => $i->payload['pictures'], $this->montar($r)->itens);
+
+        $this->assertSame($pictures1, $pictures2);
+    }
 }
