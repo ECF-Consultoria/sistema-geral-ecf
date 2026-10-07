@@ -64,3 +64,12 @@ test('gate: Desenvolvimento usa o DevCard compartilhado e o markup original foi 
     assert.ok(card.includes('rounded-xl border border-white/[0.08] bg-white/[0.02] p-5'));
     assert.ok(card.includes('bg-ecf-yellow/[0.12]'));
 });
+
+test('gate: a página admin é componente real, usa as rotas e não é planilha', () => {
+    const pag = lerSemComentarios('resources/js/Pages/Dev/EstruturaGeracao.jsx');
+    assert.ok(pag.includes('export default function EstruturaGeracao'));
+    assert.ok(pag.includes('dev.estrutura_geracao.tipos.criar'));
+    assert.ok(pag.includes('dev.estrutura_geracao.pares.criar'));
+    assert.ok(pag.includes('opcoesDoCombit('));
+    assert.ok(!pag.includes('SpreadsheetGrid'));
+});
