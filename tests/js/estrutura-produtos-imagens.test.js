@@ -217,12 +217,13 @@ test('Gate: o cartão da variação monta a galeria e liga as imagens ao hook', 
     assert.match(cartao, /<GaleriaVariacao variacao=\{variacao\} aoMudar=\{\(imagens\) => ficha\.definirImagens\(k, imagens\)\} \/>/);
 });
 
-test('Gate: as três rotas do servidor, com o id da variação, e nada de upload fora da galeria', () => {
+test('Gate: as rotas do servidor usadas nesta tela (enviar e excluir), e nada de upload fora da galeria', () => {
     assert.ok(galeriaFonte.includes("route('portal.auth.estrutura.produtos.imagens.enviar', variacao.id)"));
-    assert.ok(galeriaFonte.includes("route('portal.auth.estrutura.produtos.imagens.ordem', variacao.id)"));
     assert.ok(galeriaFonte.includes("route('portal.auth.estrutura.produtos.imagens.excluir', [variacao.id, imagem.id])"));
+    // A rota de ordem existe no servidor mas não é usada aqui (a posição não importa nesta tela).
+    assert.ok(! galeriaFonte.includes("imagens.ordem"), 'a galeria não chama a rota de ordem');
     assert.match(galeriaFonte, /axios\.post\(/);
-    assert.match(galeriaFonte, /axios\.put\(/);
+    assert.ok(! /axios\.put\(/.test(galeriaFonte), 'sem PUT de ordem');
     assert.match(galeriaFonte, /axios\.delete\(/);
     assert.ok(galeriaFonte.includes('type="file"') && galeriaFonte.includes('multiple') && galeriaFonte.includes('accept={ACEITA_NO_INPUT}'));
     assert.ok(! cartao.includes('type="file"'), 'o input de arquivo mora só na galeria');
@@ -237,21 +238,22 @@ test('Gate: envio bloqueado sem id, texto "Enviando…" e contador N/12', () => 
     assert.ok(galeriaFonte.includes('data-dica-salvar'));
 });
 
-test('Gate: capa com selo, arrastar e setas (teclado), exclusão com confirmação inline', () => {
-    assert.ok(galeriaFonte.includes('data-selo-capa') && galeriaFonte.includes('>Capa<'));
-    assert.ok(galeriaFonte.includes('draggable={') && galeriaFonte.includes('onDrop='));
-    assert.ok(galeriaFonte.includes('data-acao="mover-para-frente"') && galeriaFonte.includes('data-acao="mover-para-tras"'));
+test('Gate: nesta tela a ordem não importa — sem capa, sem setas, sem arrastar', () => {
+    // Decisão do usuário (07/10): a posição da imagem é indiferente aqui; o tratamento resolve depois.
+    assert.ok(! galeriaFonte.includes('data-selo-capa') && ! galeriaFonte.includes('>Capa<'), 'sem selo de capa');
+    assert.ok(! galeriaFonte.includes('onDragStart') && ! galeriaFonte.includes('onDrop=') && ! galeriaFonte.includes('onDragOver'), 'sem arrastar (draggable={false} na img é só para não fantasmar)');
+    assert.ok(! galeriaFonte.includes('data-acao="mover-para-frente"') && ! galeriaFonte.includes('data-acao="mover-para-tras"'), 'sem setas de ordem');
+    assert.ok(! galeriaFonte.includes('const ordenar') && ! /reorden/i.test(galeriaFonte), 'sem a função nem a dica de reordenar');
+    assert.ok(! galeriaFonte.includes('a capa'), 'o texto de ajuda não fala em capa');
+});
+
+test('Gate: o que fica — adicionar, contador e exclusão com confirmação inline', () => {
+    assert.ok(galeriaFonte.includes('data-acao="adicionar-imagens"') && galeriaFonte.includes('data-contador-imagens'));
     assert.ok(galeriaFonte.includes('data-acao="excluir-imagem"') && galeriaFonte.includes('data-acao="confirmar-excluir-imagem"'));
     assert.ok(galeriaFonte.includes('data-confirmar-exclusao'));
     // A exclusão só dispara no "Sim": o X apenas abre a confirmação.
     assert.ok(galeriaFonte.includes('onClick={() => setConfirmando(img.id)}'));
     assert.ok(galeriaFonte.includes('onClick={() => excluir(img)}'));
-});
-
-test('Gate: ordem errada volta como estava (otimista com reversão)', () => {
-    const ordenar = galeriaFonte.slice(galeriaFonte.indexOf('const ordenar = async'), galeriaFonte.indexOf('const excluir = async'));
-    assert.ok(ordenar.indexOf('aoMudar(nova)') < ordenar.indexOf('axios.put('), 'mostra a ordem nova antes da resposta');
-    assert.ok(ordenar.includes('aoMudar(antes)'), 'se o servidor recusar, volta a anterior');
 });
 
 test('Gate: imagens são gravadas na hora e NÃO marcam a ficha como alterada', () => {
