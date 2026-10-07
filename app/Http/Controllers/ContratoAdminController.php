@@ -26,6 +26,7 @@ use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Operacional\EmpresaOperacionalRouter;
+use App\Support\Cnpj;
 use App\Support\Permissions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -664,6 +665,16 @@ class ContratoAdminController extends Controller
         ];
 
         return Inertia::render('Admin/ContratoDetalhe', [
+            // Quick 261007-m0t — as OUTRAS empresas que têm o mesmo CNPJ desta.
+            // Substituiu uma TRAVA: `companies.cnpj` era único e o salvar do
+            // cadastro devolvia 500 quando o CNPJ digitado já existia em outra
+            // empresa. CNPJ repetido é legítimo aqui (uma empresa jurídica com
+            // várias lojas de marketplace, cada loja um registro), então o
+            // unique saiu e no lugar dele entra este aviso.
+            //
+            // Lista vazia → a tela não mostra aviso nenhum. Aviso que aparece
+            // quando não há nada a conferir ensina a ignorar o aviso.
+            'empresas_mesmo_cnpj' => $this->empresasComMesmoCnpj($company),
             'pode_ver_contrato' => $podeVerContrato,
             // Link para a ficha de Entrada, que é onde o checklist mora desde
             // 11/09. Só para quem alcança a rota.
@@ -812,6 +823,61 @@ class ContratoAdminController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * Quick 261007-m0t — as OUTRAS empresas cadastradas com o mesmo CNPJ desta.
+     * Alimenta o aviso da ficha que substituiu o índice único de
+     * `companies.cnpj` (ver docblock da migration
+     * `2026_10_07_120000_remove_unique_do_cnpj_em_companies`).
+     *
+     * ### A comparação é por DÍGITOS, e é isso que muda o resultado
+     * Nos 12 pares medidos em produção (07/10/2026) um registro guarda só
+     * dígitos (`38196897000143`) e o outro guarda pontuado
+     * (`38.196.897/0001-43`). Comparar as strings cruas — que era o que o
+     * índice único fazia — não enxerga NENHUM desses pares. Por isso o
+     * `REPLACE` encadeado no SQL (`.`, `/`, `-` e espaço são a pontuação que
+     * máscara de CNPJ produz) e, por cima dele, a conferência final com
+     * `Cnpj::digitos()`: o helper é a autoridade sobre o que conta como mesmo
+     * CNPJ, e o SQL é só o filtro barato que evita trazer a tabela inteira.
+     *
+     * ⚠️ A comparação aplica função sobre a coluna, então não usa o índice
+     * `companies_cnpj_idx` — ele existe para as buscas por CNPJ já gravado em
+     * formato conhecido. Aqui a varredura é aceitável: `companies` tem algumas
+     * centenas de linhas e o payload devolvido é id/nome/ativo.
+     *
+     * Empresa sem CNPJ → lista vazia (nunca "todas as outras empresas sem
+     * CNPJ"): CNPJ em branco não é coincidência que mereça aviso.
+     *
+     * @return array<int, array{id: int, name: string, active: bool}>
+     */
+    private function empresasComMesmoCnpj(Company $company): array
+    {
+        $digitos = Cnpj::digitos($company->cnpj);
+
+        if ($digitos === '') {
+            return [];
+        }
+
+        return Company::query()
+            ->whereKeyNot($company->getKey())
+            ->whereNotNull('cnpj')
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', ''), ' ', '') = ?",
+                [$digitos]
+            )
+            ->orderBy('name')
+            ->get(['id', 'name', 'active', 'cnpj'])
+            // `Cnpj::digitos()` dá a palavra final — o REPLACE do SQL cobre a
+            // pontuação de máscara, não qualquer sujeira que alguém colou.
+            ->filter(fn (Company $outra) => Cnpj::digitos($outra->cnpj) === $digitos)
+            ->map(fn (Company $outra) => [
+                'id'     => (int) $outra->id,
+                'name'   => (string) $outra->name,
+                'active' => (bool) $outra->active,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
