@@ -64,12 +64,14 @@ export default function CartaoSugestao({
                         className={cn('h-5 w-5 rounded border-white/30 bg-transparent text-ecf-yellow', FOCO)} />
                 </label>
                 <span className="inline-flex h-7 items-center rounded-lg bg-white/[0.06] px-2.5 text-[13px] font-semibold text-white/80">{ROTULO_FASE[sugestao.fase] ?? sugestao.fase}</span>
-                {tipos.map((t) => (
-                    <button key={t.tipo} type="button" onClick={() => onTipo?.(t.produtoId)} title="Mudar o tipo deste produto"
+                {tipos.map((t) => (onTipo ? (
+                    <button key={t.tipo} type="button" onClick={() => onTipo(t.produtoId)} title="Mudar o tipo deste produto"
                         className={cn('inline-flex h-7 items-center gap-1 rounded-lg border border-white/[0.10] px-2.5 text-[13px] text-white/70 hover:bg-white/[0.06] hover:text-white', FOCO)}>
                         {t.nome} <Pencil size={11} aria-hidden="true" />
                     </button>
-                ))}
+                ) : (
+                    <span key={t.tipo} className="inline-flex h-7 items-center rounded-lg border border-white/[0.10] px-2.5 text-[13px] text-white/70">{t.nome}</span>
+                )))}
                 {valorUnico && <span className="ml-auto text-[12px] text-white/60">{valorUnico}</span>}
             </div>
 
