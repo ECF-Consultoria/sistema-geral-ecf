@@ -270,3 +270,10 @@ papel por guard ou sessão, só o Portal do Cliente, que fica fora).
   quando a tela engana pelo nome (hoje: `chamados.index`) — a resposta chega
   ao modelo mesmo com a lista velha. Medir pelo nginx: `grep '"POST /mcp'` e
   olhar o tamanho da resposta (`tools/list` é a grande).
+- **`->orWhere()` encadeado num query builder SEM filtro vira o único filtro.**
+  `ChamadoService::daEquipe()` não filtra nada para admin; o `ler_ticket`
+  fazia `daEquipe($u)->orWhere('solicitante_id', $u->id)` e, para admin (o
+  Maycon é admin + dev em produção), a lista caía para "só os que ele abriu".
+  Os testes usavam dev com papel de consultor, que tem filtro, e passavam.
+  Sempre agrupe: `where(fn ($q) => $q->whereIn(...)->orWhere(...))`, e teste o
+  perfil admin quando a regra tiver ramo "admin vê tudo".

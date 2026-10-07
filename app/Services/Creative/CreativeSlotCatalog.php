@@ -47,8 +47,30 @@ class CreativeSlotCatalog
     /**
      * id de atributo casando dimensão (largura/altura/comprimento/profundidade),
      * por sufixo OU nome exato — nunca substring livre.
+     *
+     * ⚠️ Casa TAMBÉM `SELLER_PACKAGE_WIDTH`/`PACKAGE_HEIGHT` etc. (medida da
+     * CAIXA) — por isso nunca usar este padrão isolado para `dimensions`; ver
+     * `PADRAO_ID_EMBALAGEM` e `temAtributoDeDimensaoDoProduto()`.
      */
     private const PADRAO_ID_DIMENSAO = '/_(WIDTH|HEIGHT|LENGTH|DEPTH)$|^(WIDTH|HEIGHT|LENGTH|DEPTH)$/';
+
+    /**
+     * id de atributo de embalagem/frete — mede a CAIXA, nunca o PRODUTO.
+     * Prefixo fechado, nunca substring livre. Os dois prefixos usados de fato
+     * neste projeto (conferidos em `ClassificadorAtributos`,
+     * `AnuncioSaudeService::ATRIBUTOS_DIMENSAO` e fixtures de categoria):
+     *   - `SELLER_PACKAGE_*` — a medida que o VENDEDOR informa (peso/altura/
+     *     largura/comprimento da caixa declarada).
+     *   - `PACKAGE_*` — o atributo de SISTEMA do Mercado Livre para a mesma
+     *     medida de pacote (ex. `PACKAGE_WEIGHT`, `PACKAGE_HEIGHT`).
+     * `SHIPPING_*` existe no projeto só como `SHIPPING_ORIGIN` (fixture de
+     * sale_terms, sem relação com medida) — por isso fica de fora da lista.
+     *
+     * Achado em produção (quick 261007-ifa, rascunho 8, categoria MLB31578):
+     * produto só com `SELLER_PACKAGE_*` (todos 12 cm) tornava `dimensions`
+     * elegível com a medida da caixa, não da mesa anunciada.
+     */
+    private const PADRAO_ID_EMBALAGEM = '/^(SELLER_PACKAGE_|PACKAGE_)/';
 
     /** id de atributo de conteúdo de kit/acessórios — prefixo fechado. */
     private const PADRAO_ID_CONTEUDO_KIT = '/^(KIT_|INCLUDED_|ACCESSORIES)/';
@@ -192,7 +214,7 @@ class CreativeSlotCatalog
     private function satisfaz(string $tipo, ProductTruth $truth): bool
     {
         return match ($tipo) {
-            'dimensions'        => $this->temAtributoCasando($truth, self::PADRAO_ID_DIMENSAO),
+            'dimensions'        => $this->temAtributoDeDimensaoDoProduto($truth),
             'package_content'   => $this->temContagemDeKit($truth) || $this->temAtributoCasando($truth, self::PADRAO_ID_CONTEUDO_KIT),
             'specifications'    => count($truth->fatosVerificados) >= 2,
             'benefits'          => count($truth->fatosVerificados) >= 3,
@@ -202,10 +224,70 @@ class CreativeSlotCatalog
         };
     }
 
+    /**
+     * `true` quando algum tipo que aceita texto (`ACEITAM_TEXTO`, igual a
+     * `PRIORIDADE_COM_FATO` hoje) é elegível para este Truth — reaproveita
+     * `elegiveis()`, não duplica a lógica de prioridade.
+     *
+     * Usado por `CreativePlanner::planejar()` para gravar, junto do plano do
+     * kit, se nenhuma imagem vai poder ter texto — a tela avisa o operador a
+     * partir dessa informação (`PublicadorCriativoKitPresenter::paraTela()`).
+     */
+    public function algumAceitaTexto(ProductTruth $truth): bool
+    {
+        return array_intersect($this->elegiveis($truth), self::ACEITAM_TEXTO) !== [];
+    }
+
+    /**
+     * O que falta para habilitar texto em algum slot, em pt-BR — vazio
+     * quando `algumAceitaTexto()` já é `true`. Nunca sugere afrouxar
+     * TRUTH-02/03: só aponta o caminho que já existe (completar o cadastro
+     * no Mercado Livre), nunca "inventar"/"afrouxar" a régua de fato.
+     *
+     * @return array<int, string>
+     */
+    public function faltamParaTexto(ProductTruth $truth): array
+    {
+        if ($this->algumAceitaTexto($truth)) {
+            return [];
+        }
+
+        $faltamBeneficios = max(1, 3 - count($truth->fatosVerificados));
+
+        return [
+            "Confirme mais {$faltamBeneficios} ponto(s) forte(s) do produto no cadastro do Mercado Livre para habilitar texto no slot de benefícios.",
+            'Confirme uma medida do produto no cadastro do Mercado Livre para habilitar texto no slot de dimensões.',
+        ];
+    }
+
     private function temAtributoCasando(ProductTruth $truth, string $padrao): bool
     {
         foreach (array_keys($truth->atributosIds) as $id) {
             if (preg_match($padrao, (string) $id) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Igual a `temAtributoCasando($truth, PADRAO_ID_DIMENSAO)`, mas descarta
+     * primeiro qualquer id de embalagem/frete (`PADRAO_ID_EMBALAGEM`) — medida
+     * da CAIXA nunca satisfaz `dimensions` (achado 261007-ifa). Produto com
+     * medida própria (`WIDTH`/`HEIGHT`/`DEPTH`/`LENGTH` ou `*_WIDTH` que não
+     * seja de embalagem) continua elegível exatamente como antes.
+     */
+    private function temAtributoDeDimensaoDoProduto(ProductTruth $truth): bool
+    {
+        foreach (array_keys($truth->atributosIds) as $id) {
+            $id = (string) $id;
+
+            if (preg_match(self::PADRAO_ID_EMBALAGEM, $id) === 1) {
+                continue;
+            }
+
+            if (preg_match(self::PADRAO_ID_DIMENSAO, $id) === 1) {
                 return true;
             }
         }

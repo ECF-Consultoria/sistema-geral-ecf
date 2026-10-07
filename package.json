@@ -49,6 +49,7 @@
         "date-fns": "^4.1.0",
         "echarts": "^6.1.0",
         "echarts-for-react": "^3.0.6",
+        "jsqr": "^1.4.0",
         "lodash": "^4.18.1",
         "lucide-react": "^1.11.0",
         "marked": "^4.3.0",

@@ -27,6 +27,13 @@ use Illuminate\Support\Collection;
  * `fidelidade`/`tipo`/`override`/`motivo_curto` por item), porque o gate de
  * validação do controller (165-04 Task 3) depende desses campos para nunca
  * deixar o Publicador aprovar em silêncio uma imagem reprovada pelo juiz.
+ *
+ * Quick 261007-rmv: `pode_ter_texto`/`faltam` vêm de
+ * `$kit->plano` (gravados por `CreativePlanner::planejar()` no momento do
+ * planejamento, via `CreativePlan::paraAuditoria()`) — nunca recalculados
+ * aqui. É o que sobra do bloco "pontos fortes e medidas" (169-02/03,
+ * removido): a tela avisa quando nenhuma imagem do kit pôde ter texto,
+ * sempre apontando o cadastro do Mercado Livre como único caminho.
  */
 class PublicadorCriativoKitPresenter
 {
@@ -121,6 +128,8 @@ class PublicadorCriativoKitPresenter
             'em_andamento' => in_array($status, [MlAnuncioCriativoKit::STATUS_PLANEJANDO, MlAnuncioCriativoKit::STATUS_GERANDO], true),
             'erro' => $this->semToken($kit->erro_mensagem),
             'estrategia' => $kit->plano['estrategia'] ?? null,
+            'pode_ter_texto' => $kit->plano['pode_ter_texto'] ?? null,
+            'faltam' => $kit->plano['faltam'] ?? [],
             'minimo_aprovadas' => $kit->minimo_aprovadas,
             'prontas' => $kit->prontas(),
             'aprovadas' => $kit->aprovadas(),

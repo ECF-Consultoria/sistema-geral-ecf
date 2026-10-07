@@ -127,6 +127,24 @@ class LerTicketToolTest extends TestCase
         }
     }
 
+    public function test_admin_dev_ve_todos_os_tickets_inclusive_os_de_outro_dev(): void
+    {
+        // Em produção o Maycon é admin E dev. Para admin o daEquipe() não tem
+        // filtro — e era aí que a lista caía para "só os que ele abriu".
+        $this->maycon->forceFill(['role' => 'admin'])->save();
+        $paraMaycon  = $this->abrir($this->debora, $this->maycon, 'Para o Maycon');
+        $paraBarreto = $this->abrir($this->debora, $this->barreto, 'Para o Barreto');
+        $fila        = $this->abrir($this->debora, null, 'Sem responsável');
+        $doMaycon    = $this->abrir($this->maycon, $this->maycon, 'Teste do MCP');
+
+        $todos = collect([$paraMaycon, $paraBarreto, $fila, $doMaycon])->pluck('codigo')->sort()->values()->all();
+        $this->assertSame($todos, $this->codigos($this->lerTicket($this->maycon)[0]));
+        $this->assertSame($todos, $this->codigos($this->lerTicket($this->maycon, ['status' => 'abertos'])[0]));
+
+        // Admin que não é dev também: é a caixa inteira, como em /dev/demandas.
+        $this->assertSame($todos, $this->codigos($this->lerTicket($this->admin())[0]));
+    }
+
     public function test_nao_dev_ve_so_os_proprios_tickets(): void
     {
         $daDebora = $this->abrir($this->debora, $this->maycon, 'Da Débora');

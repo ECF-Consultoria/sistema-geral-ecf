@@ -139,7 +139,10 @@ class CreativePlannerTest extends TestCase
 
     public function test_dimensions_aparece_quando_ha_atributo_de_dimensao_e_o_llm_propoe(): void
     {
-        $atributos = ['SELLER_PACKAGE_WIDTH' => '45 cm'];
+        // Medida do PRODUTO, não da embalagem (quick 261007-ifa corrigiu
+        // SELLER_PACKAGE_* para nunca satisfazer `dimensions` — usar aqui o
+        // atributo de embalagem voltaria a encobrir o bug).
+        $atributos = ['WIDTH' => '45 cm'];
         $json = json_encode([
             'estrategia' => ['publico' => 'a', 'proposta_de_valor' => 'b', 'direcao_visual' => 'c'],
             'slots' => [

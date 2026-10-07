@@ -3109,3 +3109,238 @@ Plans:
 *Roadmap atualizado: 2026-10-02 — **Milestone v24.0 (Creative Engine)** anexada: 4 fases (160-163) cobrindo os 42 REQ-IDs (FOTO/CTX/TRUTH/PLAN/GEN/VAL/APROV/PUB/OPS) do REQUIREMENTS-v24.md, derivadas do plano canônico `plano-incubadora-v1` §§7-20 e corrigidas pelas medições reais do spike V0.1 (`261001-nkx-NOTAS-PUBLICADOR.md`, seções 1-20) — pesquisa de arquitetura dispensada porque a investigação já foi feita no spike. Estrutura deliberadamente NÃO em camadas (fundação→contexto→planner→geração→validação→UI): por decisão explícita do usuário (D-05), a Fase 160 entrega uma fatia fina ponta a ponta — upload, contexto, Product Truth, UMA imagem gerada, aprovação humana e entrada no rascunho, tudo atrás de chave desligada — e cada fase seguinte enriquece sem nunca ficar isolada numa camada técnica: a Fase 161 escala de 1 para 7 imagens com planejamento dinâmico, geração paralela, regeneração manual e aprovação de kit (entregues juntos de propósito, porque um kit de 7 sem conseguir corrigir a imagem ruim não é usável), a Fase 162 soma o validador Gemini-como-juiz e a regeneração automática por cima do kit que já funciona manualmente, e a Fase 163 fecha o "→ V1" do nome da milestone com custo visível por projeto e a medição real do POC contra anúncios já produzidos à mão. Apenas 4 fases em vez da faixa sugerida de 5-7: os 42 requisitos se agrupam naturalmente em 3 blocos de risco decrescente mais o fechamento do POC — forçar uma 5ª fase exigiria separar partes que a própria regra anti-camada deste roadmap proíbe separar (ex.: aprovar o kit sem poder regenerar a imagem ruim do mesmo kit). Numeração contínua a partir de 160 (última fase existente: 159, da pessoa com dois cargos, fora de milestone). `phases.clear` NÃO foi executado — Fases 1-159 preservadas integralmente, incluindo a milestone v22.0 em 71% e a Fase 159-08 adiada pelo usuário em 2026-10-01 (ver `.planning/todos/pending/159-juncao-danilo-segundo-passe.md`); nenhuma fase, decisão ou numeração anterior foi tocada.*
 
 *Roadmap atualizado: 2026-10-04 - **Fase 165 (Creative Engine no Publicador novo)** anexada como fase avulsa, fora da milestone v24.0 (que é do outro dev). Origem: o usuário pediu o gerador de imagens dentro do Publicador novo e escolheu a integração de verdade (não a ponte por rascunho espelho). GSD porque altera `ml_anuncio_criativos` e `ml_anuncio_criativo_kits`, que têm dado em produção. Execução espera o ok do outro dev sobre a ordem com a Fase 162. Fases 1-164 preservadas.*
+
+## Milestone v25.0 — Creative Engine V2 (Fases 168-171)
+
+**Plano canônico:** seis melhorias do usuário em 2026-10-07, depois de usar o Creative Engine (Fase
+165) em produção · **Requirements:** `.planning/REQUIREMENTS-v25.md` · **Base:** v24.0 (Creative
+Engine, Fases 160-163, em produção) e Fase 165 (Creative Engine dentro do Publicador, em produção).
+
+**Goal:** o Creative Engine deixa de entregar um kit de imagens genérico e passa a entregar um
+resultado que uma empresa especialista em anúncios de marketplace assinaria: capa certa por tipo de
+anúncio, ambiente brasileiro sutil nos slots ambientados, uma etapa própria no editor onde o fato do
+produto vira texto real na imagem, identidade visual e logo opcional por conta, e um acervo navegável
+que reaproveita o que já foi pago em vez de regerar. **Não é correção de defeito** — tudo que existe
+hoje funciona; é evolução de resultado.
+
+**Decisões travadas (usuário, 2026-10-07 — D1 a D6 do REQUIREMENTS-v25.md, NÃO reabrir):** D1 quarta
+etapa "Imagens" entre Detalhes e Condições de venda no editor do Publicador — reversão parcial e
+deliberada de uma decisão do próprio usuário de 04/10 ("no Mercado Livre são 3 fases"), porque a
+nova etapa também recebe identidade visual (D2) e acervo (D4) · D2 identidade visual cadastrada por
+CONTA de marketplace (âncora dual `Company`/`MlbEmpresa`), nunca por empresa cliente nem por produto
+· D3 logo é arquivo real sobreposto pelo sistema, nunca desenhado pela IA, e opcional · D4 as imagens
+geradas já são guardadas para sempre (comportamento atual, não uma escolha desta milestone) — o
+trabalho é tornar esse acervo navegável e reutilizável · D5 ambiente brasileiro subentendido (nunca
+explícito) só nos slots `lifestyle`/`lifestyle_uso`/`composicao`, nunca em `hero`/`white_background`
+· D6 capa diferente entre Clássico e Premium do mesmo produto — troca de ORDEM de envio por
+`listing_type_id`, não geração de imagens diferentes.
+
+**O achado que molda a Fase 169:** o usuário relatou imagens sem texto nenhum, apesar de pedir
+pontos fortes e medidas. Medido: a trava que exige fato verificado antes de aceitar um slot de texto
+(`CreativeSlotCatalog`) **funcionou como projetada** — um produto real em produção tinha só um
+atributo de SEO e descrição vazia, então nenhum dos 7 slots escolhidos aceitava texto. A causa raiz
+não é a trava; é a ordem do editor, que deixa a pessoa gerar ANTES de preencher qualquer fato do
+produto (Fotos é a primeira seção de Detalhes, acima da Ficha técnica). D1 existe para corrigir essa
+ordem; TXT (Fase 169) garante que, mesmo com D1, o operador tenha como confirmar fato à mão quando o
+cadastro automático não bastar, e que a tela explique quando não há fato suficiente — nunca afrouxar
+TRUTH-02/03 da v24.0 para aceitar número por suposição.
+
+**Ordem de construção escolhida — avalia e confirma a sugestão original, com um ajuste de
+agrupamento:** a sugestão (5+6 primeiro, depois 1+2, depois 3, depois 4) está certa na essência e foi
+adotada quase literalmente, com uma mudança: as frentes 5 (capa) e 6 (ambiente) viram UMA fase, não
+duas.
+
+1. **Fase 168 — Capa alternada + ambiente brasileiro (D6 + D5).** Primeiro porque são as duas únicas
+   frentes sem nenhuma dependência de UI nem de coordenação externa: tocam só
+   `CreativeSlotCatalog`/ordem de publicação e `CreativePromptBuilder` — mudança de prompt e de
+   ordem de envio, sem migration, sem tela nova. Todo kit gerado a partir do deploy desta fase já sai
+   melhor, mesmo antes de qualquer trabalho na etapa nova. Juntar as duas numa fase só (em vez de duas
+   fases de ~1-2 planos cada) evita o anti-padrão de fase-tarefa-única deste roadmap: a entrega
+   observável de ambas é a mesma — "o próximo kit gerado já sai melhor, sem mudar nenhuma tela" — e
+   forçar uma 5ª fase para separá-las violaria a regra de calibrar granularidade pelo trabalho real,
+   não por um número-alvo.
+2. **Fase 169 — Etapa de Imagens + texto real no kit (D1 + o achado de texto, frentes 1+2).** Em
+   seguida porque é a frente que o usuário mais sentiu falta e a única que dá sentido a tocar no
+   coração do Publicador. As duas frentes nascem juntas de propósito: entregar SÓ a etapa reordenada
+   (sem a confirmação de fato e o aviso da tela) seria uma fase de infraestrutura que não resolve o
+   que o usuário pediu — o cadastro já preenchido continua não tendo fato suficiente até alguém
+   confirmar à mão; entregar SÓ a confirmação de fato sem a etapa nova deixaria a UI de Fotos ainda
+   antes dos campos de detalhamento, contradizendo a própria causa raiz medida. Depende de
+   negociação explícita com o ECF Dev (dono do Publicador) ANTES de tocar em `Editor.jsx`/`apoio.js`
+   — gate humano, não detalhe de rodapé; registrado também em
+   `.planning/COORDENACAO-CREATIVE-ENGINE-165-162.md`.
+3. **Fase 170 — Identidade visual por conta + logo opcional (D2 + D3, frente 3).** Depois da etapa
+   nova existir, porque o próprio usuário definiu a etapa Imagens como o lugar que recebe a
+   identidade visual — cadastrar identidade antes de ter onde ela aparece no fluxo do operador
+   adiantaria trabalho sem lugar para pousar. D2 e D3 ficam juntos porque são uma única capacidade
+   observável: "toda imagem desta conta sai com a mesma cara de marca, e opcionalmente com o logo de
+   verdade em cima" — não dois produtos diferentes.
+4. **Fase 171 — Acervo navegável e reuso (D4, frente 4).** Por último, de propósito: é a frente de
+   menor urgência medida (as imagens já não se perdem hoje; só não são navegáveis) e a que mais se
+   apoia nas anteriores — vive na mesma etapa Imagens (D1) e fica mais útil depois que identidade e
+   capa já deixam o acervo com imagens melhores para reaproveitar.
+
+### Phase 168: Capa alternada entre Clássico e Premium + ambiente brasileiro subentendido
+
+**Goal**: todo kit gerado a partir desta fase já sai melhor sem o operador fazer nada diferente — a
+capa de um anúncio Clássico nunca repete a capa do Premium do mesmo produto, e as imagens dos slots
+ambientados (`lifestyle`, `lifestyle_uso`, `composicao`) sugerem um ambiente brasileiro sem citar o
+país, enquanto `hero` e `white_background` continuam exatamente como hoje.
+**Depends on**: Nada como fase — reusa `CreativeSlotCatalog` e `CreativePromptBuilder` (v24.0) e a
+publicação por `listing_type_id` do Publicador (Fase 164), já em produção.
+**Requirements**: CAPA-01, CAPA-02, CAPA-03, CAPA-04, AMB-01, AMB-02, AMB-03, AMB-04
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Publicando o mesmo produto como Clássico e como Premium, a primeira foto enviada ao Mercado
+     Livre é diferente entre os dois anúncios — nunca a mesma imagem na posição de capa dos dois
+     (CAPA-01, CAPA-02)
+  2. Publicando o produto só como Clássico OU só como Premium, a capa continua sendo a primeira foto
+     aprovada, como hoje — a troca de ordem só existe quando os dois tipos coexistem no mesmo produto
+     (CAPA-03, CAPA-04)
+  3. Uma imagem gerada no slot `lifestyle`, `lifestyle_uso` ou `composicao` mostra um ambiente com
+     sinais sutis de Brasil (luz, acabamentos, plantas, paleta) sem nenhum símbolo nacional, bandeira,
+     verde-amarelo ou referência a futebol (AMB-01, AMB-02)
+  4. Uma imagem gerada no slot `hero` ou `white_background` não muda em nada — mesmo prompt de hoje,
+     sem ambientação (AMB-03)
+
+**Plans**: TBD
+
+### Phase 169: Etapa de Imagens no editor + texto real no kit, a partir dos fatos de Detalhes
+
+**Goal**: o editor do Publicador ganha uma quarta etapa — Produto → Detalhes → Imagens → Condições de
+venda —, de modo que o operador preenche os fatos do produto antes de gerar; nessa etapa, ele também
+confirma ou complementa pontos fortes e medidas quando o cadastro automático não basta, e pelo menos
+um slot do kit sai com texto real (benefícios ou medidas) sempre que o Product Truth sustentar —
+nunca por suposição, e a tela diz claramente quando não há fato suficiente para isso.
+**Depends on**: Fase 165 (painel nativo de geração por IA dentro do editor, já em produção) e **gate
+humano explícito: negociação e aprovação da mudança de etapas com o ECF Dev (dono do Publicador)
+ANTES de tocar em `Editor.jsx`, `apoio.js` (`ETAPAS`) ou `usePublicador`** — registrado em
+`.planning/COORDENACAO-CREATIVE-ENGINE-165-162.md`.
+**Requirements**: EDIMG-01, EDIMG-02, EDIMG-03, EDIMG-04, TXT-01, TXT-02, TXT-03, TXT-04, TXT-05,
+REND-01, REND-02
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O editor do Publicador mostra 4 etapas na ordem Produto → Detalhes → Imagens → Condições de
+     venda; a navegação, a URL (`?etapa=`) e o `sessionStorage` por produto continuam funcionando como
+     nas 3 etapas atuais (EDIMG-01)
+  2. A seção "Fotos e variações" sai de Detalhes e aparece em Imagens, com o painel "Gerar com IA" da
+     Fase 165 funcionando sem duplicação de código; uma pendência de foto do servidor leva à etapa
+     Imagens, não mais a Detalhes (EDIMG-02, EDIMG-03, EDIMG-04)
+  3. Na etapa Imagens, o operador confirma ou digita um ponto forte ou uma medida que falta no
+     cadastro, e essa confirmação conta como fato verificado (de origem humana, distinta do cadastro)
+     no Product Truth daquele produto (TXT-01, TXT-02)
+  4. Com fato suficiente (do cadastro e/ou confirmado à mão), o kit de 7 inclui pelo menos um slot com
+     texto real — benefícios ou medidas — em vez de só slots sem fato; sem fato suficiente, a tela diz
+     isso em pt-BR e indica o que falta (TXT-03, TXT-04)
+  5. Todo campo novo que uma tela desta fase exibe é coberto por um teste que renderiza o componente
+     de verdade com o JSON real do presenter — nenhum campo chega como objeto a um lugar que espera
+     texto (REND-01, REND-02)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 170: Identidade visual por conta de marketplace + logo opcional sobreposto
+
+**Goal**: cada conta de marketplace (não cada empresa cliente, não cada produto) tem uma identidade
+visual cadastrada uma vez — cores, fontes, forma, filtros, estilo — que entra automaticamente no
+prompt de toda geração daquela conta, e pode, opcionalmente, ter um arquivo de logo real sobreposto
+pelo sistema depois da imagem gerada, nunca desenhado pela IA.
+**Depends on**: Fase 169 (a etapa Imagens é o lugar de onde o cadastro de identidade é acessado,
+decisão do próprio usuário) e Fase 162/v24.0 (validador Gemini-juiz, para decidir a ordem com LOGO-05).
+**Requirements**: IDENT-01, IDENT-02, IDENT-03, IDENT-04, IDENT-05, LOGO-01, LOGO-02, LOGO-03,
+LOGO-04, LOGO-05
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. É possível cadastrar, uma vez por conta de marketplace, uma identidade visual (cores, fontes,
+     forma, filtros, estilo), acessível a partir da etapa Imagens do Publicador, só para `role:admin`
+     (IDENT-01, IDENT-04)
+  2. Toda imagem gerada para qualquer produto dessa conta reflete a identidade cadastrada no prompt,
+     sem o operador repetir nada; conta sem identidade cadastrada gera exatamente como hoje (IDENT-02,
+     IDENT-03)
+  3. Alterar a identidade de uma conta não reprocessa imagens já geradas — só vale para gerações
+     futuras (IDENT-05)
+  4. É possível cadastrar, opcionalmente, um arquivo de logo real para a conta; a imagem final com
+     logo sobreposto não tem o logo desenhado pela IA, não está deformado, e continua passando pela
+     validação de tamanho mínimo (500px) antes de virar foto do rascunho (LOGO-01, LOGO-02, LOGO-03,
+     LOGO-04)
+  5. Uma imagem com logo nunca é aprovada sem ter passado primeiro pela validação de fidelidade ao
+     produto (Fase 162) — a ordem entre as duas está decidida e implementada, não ambígua (LOGO-05)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 171: Acervo navegável e reuso das imagens já geradas
+
+**Goal**: o operador encontra, por conta, por empresa e por produto, as imagens que o Creative Engine
+já gerou — e que o sistema já guarda hoje, sem apagar — e consegue reaproveitar uma delas num anúncio
+novo ou numa nova tentativa, sem pagar por uma geração que já existe.
+**Depends on**: Fase 169 (a etapa Imagens é o lugar de onde o acervo é acessado, decisão do próprio
+usuário) e Fase 170 (identidade/logo deixam o acervo com imagens melhores para reaproveitar, ainda
+que sem dependência funcional estrita).
+**Requirements**: ACERVO-01, ACERVO-02, ACERVO-03, ACERVO-04, ACERVO-05
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O operador navega as imagens já geradas filtrando por conta, por empresa e por produto, sem
+     precisar gerar nada novo para ver o que já existe (ACERVO-01)
+  2. O operador escolhe uma imagem do acervo e a usa num anúncio novo ou numa nova tentativa do mesmo
+     produto, sem disparar nova geração nem novo custo (ACERVO-02)
+  3. A navegação e o reuso endereçam cada imagem por id numérico escopado — nenhum token de criativo
+     aparece no navegador (ACERVO-03)
+  4. Reaproveitar uma imagem de uma empresa/conta não a disponibiliza para outra empresa/conta
+     (ACERVO-05); nenhuma rotina passa a apagar imagem gerada — o comportamento de retenção de 48h
+     continua restrito só às fotos de referência (ACERVO-04)
+
+**Plans**: TBD
+**UI hint**: yes
+
+**Fora de escopo desta milestone** (REQUIREMENTS-v25.md, não mapear em nenhuma fase): reabrir a
+decisão da quarta etapa de outra forma · integração programática com o Google Drive do cliente ·
+afrouxar TRUTH-02/03 da v24.0 · reconstruir o validador Gemini-juiz ou o motor de geração · edição
+manual de imagem pelo operador (recorte, desenho, texto arrastável) · comparação com outros
+provedores, variantes A/B, geração em lote · refazer qualquer parte do Publicador fora do
+estritamente necessário para D1.
+
+#### Coverage Map — Milestone v25.0
+
+| Requirement | Phase | Status |
+|---|---|---|
+| CAPA-01, CAPA-02, CAPA-03, CAPA-04 | Phase 168 | Pending |
+| AMB-01, AMB-02, AMB-03, AMB-04 | Phase 168 | Pending |
+| EDIMG-01, EDIMG-02, EDIMG-03, EDIMG-04 | Phase 169 | Pending |
+| TXT-01, TXT-02, TXT-03, TXT-04, TXT-05 | Phase 169 | Pending |
+| REND-01, REND-02 | Phase 169 | Pending |
+| IDENT-01, IDENT-02, IDENT-03, IDENT-04, IDENT-05 | Phase 170 | Pending |
+| LOGO-01, LOGO-02, LOGO-03, LOGO-04, LOGO-05 | Phase 170 | Pending |
+| ACERVO-01, ACERVO-02, ACERVO-03, ACERVO-04, ACERVO-05 | Phase 171 | Pending |
+
+**Cobertura:** 34/34 REQ-IDs do REQUIREMENTS-v25.md mapeados — CAPA(4) AMB(4) EDIMG(4) TXT(5)
+REND(2) IDENT(5) LOGO(5) ACERVO(5). Nenhum órfão, nenhuma duplicata.
+
+---
+
+*Roadmap atualizado: 2026-10-07 — **Milestone v25.0 (Creative Engine V2)** anexada: 4 fases (168-171)
+cobrindo os 34 REQ-IDs (CAPA/AMB/EDIMG/TXT/REND/IDENT/LOGO/ACERVO) do REQUIREMENTS-v25.md, derivadas
+de seis melhorias pedidas pelo usuário em 2026-10-07 depois de usar o Creative Engine (Fase 165) em
+produção — não é correção de defeito, é evolução de resultado. Estrutura deliberadamente NÃO em
+camadas: a Fase 168 (capa alternada Clássico×Premium + ambiente brasileiro subentendido) junta as
+duas frentes mais baratas e sem dependência de UI numa fase só, para melhorar todo kit novo antes de
+qualquer trabalho na etapa do editor; a Fase 169 junta a quarta etapa "Imagens" do editor com o texto
+real no kit de propósito — nenhuma das duas resolve o problema relatado pelo usuário sozinha, e
+depende de gate humano explícito de coordenação com o ECF Dev (dono do Publicador) antes de tocar em
+`Editor.jsx`/`apoio.js`, registrado em `.planning/COORDENACAO-CREATIVE-ENGINE-165-162.md`; a Fase 170
+(identidade visual por conta + logo opcional) e a Fase 171 (acervo navegável e reuso) vêm depois
+porque o próprio usuário definiu a etapa Imagens da Fase 169 como o lugar que as recebe. Ordem
+escolhida quase idêntica à sugestão original do usuário ("5+6, depois 1+2, depois 3, depois 4"), com
+um ajuste: as frentes 5 e 6 (capa e ambiente) foram fundidas numa fase só, por entregarem a mesma
+capacidade observável ("o próximo kit já sai melhor, sem mudar tela nenhuma") sem precisar de uma 5ª
+fase para separá-las. Achado que molda a Fase 169: a trava de texto do `CreativeSlotCatalog` (v24.0)
+funcionou como projetada — um produto real em produção não tinha fato suficiente para nenhum slot de
+texto; a causa raiz é a ordem do editor (Fotos antes dos campos de detalhamento), não a trava, que
+segue intacta (TRUTH-02/03 da v24.0 não são reabertas). Numeração contínua a partir de 168 (última
+fase existente: 167, Cadastro de Produto no Mapeamento Estrutural). `phases.clear` NÃO foi executado
+— Fases 1-167 preservadas integralmente, incluindo a milestone v22.0 em 71%, a Fase 159-08 adiada e a
+v24.0 (Fases 160-163) em produção; nenhuma fase, decisão ou numeração anterior foi tocada.*

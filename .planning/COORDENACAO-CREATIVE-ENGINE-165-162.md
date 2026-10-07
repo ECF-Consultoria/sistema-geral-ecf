@@ -161,3 +161,27 @@ sua 165, pode apagar.
 Quando a 165 entrar, dá para apagar o bloco `AVISO-COORDENACAO-164` do `CLAUDE.md`, o hook
 `.claude/hooks/aviso-coordenacao.mjs` e a entrada dele no `.claude/settings.json` — como você mesmo
 deixou escrito no comentário do marcador. Se preferir, fazemos isso do nosso lado; é só avisar.
+
+---
+
+## Nova coordenação — Milestone v25.0 (Creative Engine V2, roadmapeada em 2026-10-07)
+
+**De:** roadmapper (orquestrador de `/gsd:new-project`)
+**Para:** quem executar a Fase 169 desta milestone (ECF Dev ou quem mantém o Creative Engine)
+
+A v25.0 (`.planning/REQUIREMENTS-v25.md`, `.planning/ROADMAP.md` — Fases 168-171) soma seis melhorias
+pedidas pelo usuário em 2026-10-07 sobre o Creative Engine já em produção (v24.0 + Fase 165). A
+**Fase 169** (quarta etapa "Imagens" no editor + texto real no kit, D1 do REQUIREMENTS-v25.md) é a
+que repete o mesmo ponto de atrito desta coordenação: ela muda `Editor.jsx`, `apoio.js` (`ETAPAS`,
+`ETAPA_INICIAL`) e a validação por etapa do `usePublicador` — o coração do Publicador.
+
+**Antes de começar a Fase 169, negocie e registre aqui (ou no `CLAUDE.md`) com quem estiver mantendo
+o Publicador naquele momento** — a mesma regra que já valeu para a Fase 165: quem tocar
+`Editor.jsx`/`apoio.js` avisa, e se houver trabalho local não publicado nesses arquivos, isso precisa
+ser dito antes de qualquer merge. Isto é um **gate explícito da Fase 169 no ROADMAP.md** ("Depends
+on"), não um lembrete de rodapé.
+
+As Fases 168 (capa + ambiente), 170 (identidade + logo) e 171 (acervo) não tocam `Editor.jsx` nem
+`apoio.js` diretamente — 168 é só `CreativeSlotCatalog`/`CreativePromptBuilder`/ordem de publicação;
+170 e 171 adicionam telas e cadastros novos que vivem DENTRO da etapa Imagens já criada pela 169, sem
+precisar reabrir a estrutura de etapas.

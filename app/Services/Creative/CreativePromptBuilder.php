@@ -2,6 +2,7 @@
 
 namespace App\Services\Creative;
 
+use App\Models\Configuracao;
 use App\Services\Creative\Dto\CreativeContext;
 use App\Services\Creative\Dto\ProductTruth;
 
@@ -32,6 +33,33 @@ class CreativePromptBuilder
      * EXATA do literal — nunca por busca aproximada.
      */
     private const CLAIM_SEM_TEXTO = 'Não escreva texto na imagem.';
+
+    /**
+     * Slots AMBIENTADOS (D5/AMB-01..04, Fase 168 Plano 02) — só estes 3
+     * recebem o bloco AMBIENTE. `hero`/`white_background` NUNCA entram
+     * aqui, por serem regidos pela moderação do Mercado Livre (AMB-03).
+     */
+    private const AMBIENTADOS = ['lifestyle', 'lifestyle_uso', 'composicao'];
+
+    /** Chave em `configuracoes` para recalibrar o texto sem deploy (D5). */
+    private const CHAVE_CONFIG_AMBIENTE = 'creative_ambiente_brasileiro_prompt';
+
+    /**
+     * Texto padrão aprovado pelo usuário (D5 do `REQUIREMENTS-v25.md`):
+     * descreve o que torna o ambiente reconhecível como brasileiro SEM
+     * citar o país nem usar símbolo explícito — nunca afirma fato sobre o
+     * PRODUTO (TRUTH-02/03), só descreve a CENA ao redor dele.
+     */
+    private const AMBIENTE_BRASILEIRO_PADRAO = <<<'TEXTO'
+    Ambiente residencial contemporâneo, sem citar o nome de nenhum país: luz
+    quente e abundante de clima tropical entrando pela janela; pé-direito e
+    esquadrias de apartamento brasileiro; acabamentos e plantas comuns por
+    aqui, como costela-de-adão e jiboia, ao fundo, sem serem o foco da cena;
+    paleta de madeira clara com branco nos móveis e paredes.
+    TEXTO;
+
+    /** Memoização na instância — evita reconsultar `Configuracao` nos 7 slots do mesmo kit. */
+    private ?string $ambienteCache = null;
 
     public function __construct(private CreativeSlotCatalog $catalogo) {}
 
@@ -73,9 +101,11 @@ class CreativePromptBuilder
      * `headline`, `badges`, `fatosUsados`, `proibicoes`.
      *
      * Estrutura, em pt-BR e nesta ordem: (1) MASTER, idêntico ao de
-     * `paraSlotHero()`; (2) SLOT, com o rótulo/objetivo/cena do plano; (2b)
-     * VARIAÇÃO OBRIGATÓRIA + AJUSTE PEDIDO PELO OPERADOR (Quick 261003-l8o,
-     * só quando `$regeneracao >= 1` — ver `linhasVariacao()`); (3) TEXTO,
+     * `paraSlotHero()`; (2) SLOT, com o rótulo/objetivo/cena do plano; (2a)
+     * AMBIENTE, só quando o tipo é `lifestyle`/`lifestyle_uso`/`composicao`
+     * (D5, AMB-01..04 — ver `linhasAmbiente()`); (2b) VARIAÇÃO OBRIGATÓRIA +
+     * AJUSTE PEDIDO PELO OPERADOR (Quick 261003-l8o, só quando
+     * `$regeneracao >= 1` — ver `linhasVariacao()`); (3) TEXTO,
      * que se bifurca por `CreativeSlotCatalog::aceitaTexto()`; (4) FATOS
      * PERMITIDOS; (5) CONTAGENS; (6) CLAIMS PROIBIDAS — as do Truth mais as
      * `proibicoes` do slot, menos o claim de "não escrever texto" quando o
@@ -99,6 +129,12 @@ class CreativePromptBuilder
         $linhas[] = $this->sanitizar((string) ($slotPlano['objetivo'] ?? ($padrao['objetivo_padrao'] ?? '')));
         $linhas[] = 'CENA: '.$this->sanitizar((string) ($slotPlano['cena'] ?? ($padrao['cena_padrao'] ?? '')));
         $linhas[] = '';
+
+        $blocoAmbiente = $this->linhasAmbiente($tipo);
+        array_push($linhas, ...$blocoAmbiente);
+        if ($blocoAmbiente !== []) {
+            $linhas[] = '';
+        }
 
         $blocoVariacao = $this->linhasVariacao($regeneracao, $ajusteOperador);
         array_push($linhas, ...$blocoVariacao);
@@ -196,6 +232,51 @@ class CreativePromptBuilder
         }
 
         return $linhas;
+    }
+
+    /**
+     * Texto do bloco AMBIENTE, memoizado em `$this->ambienteCache` (mesmo
+     * padrão de `FechamentoRegraTabela::$memoria`) — lê `Configuracao` no
+     * máximo uma vez por instância, não uma vez por slot do kit (D5).
+     *
+     * `Configuracao::get()` sobrescreve o padrão aprovado quando alguém
+     * calibrar via `artisan tinker`, sem precisar de outro deploy; string
+     * vazia é o off-switch explícito (apaga o bloco inteiro em `linhasAmbiente()`).
+     */
+    private function textoAmbiente(): string
+    {
+        if ($this->ambienteCache === null) {
+            $this->ambienteCache = (string) Configuracao::get(self::CHAVE_CONFIG_AMBIENTE, self::AMBIENTE_BRASILEIRO_PADRAO);
+        }
+
+        return $this->ambienteCache;
+    }
+
+    /**
+     * Bloco AMBIENTE (D5, AMB-01..04) — só para os slots `AMBIENTADOS`;
+     * `[]` para qualquer outro tipo (inclusive `hero`/`white_background`,
+     * AMB-03) e também `[]` quando o texto calibrado está vazio (off-switch).
+     *
+     * O texto descreve só a CENA ao redor do produto, nunca o PRODUTO —
+     * TRUTH-02/03 seguem intactas: nenhuma contagem, medida ou material do
+     * produto entra por este bloco, só o cenário em volta dele.
+     */
+    private function linhasAmbiente(string $tipo): array
+    {
+        if (! in_array($tipo, self::AMBIENTADOS, true)) {
+            return [];
+        }
+
+        $texto = trim($this->textoAmbiente());
+        if ($texto === '') {
+            return [];
+        }
+
+        return [
+            'AMBIENTE: '.$this->sanitizar($texto),
+            'PROIBIDO: qualquer bandeira, verde-amarelo, símbolo nacional ou referência a futebol',
+            'na cena — o ambiente deve ser reconhecível sem citar ou simbolizar o país explicitamente.',
+        ];
     }
 
     /**

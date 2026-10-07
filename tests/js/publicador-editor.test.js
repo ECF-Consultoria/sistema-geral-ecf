@@ -605,7 +605,8 @@ test('BotaoAnunciarPorIa — confirma só com rascunho preenchido, descarrega an
 });
 
 // ═══════════════════════════════════════════════════════════════════════
-// Página: 3 etapas como no Mercado Livre (pedido do cliente, 04/10/2026).
+// Página: etapas como no Mercado Livre (pedido do cliente, 04/10/2026; 4ª
+// etapa Imagens em 07/10/2026, D1/Fase 169).
 // ═══════════════════════════════════════════════════════════════════════
 
 const PAGINA = 'resources/js/Pages/Mlb/Publicador/Editor.jsx';
@@ -620,13 +621,14 @@ test(`${PAGINA} — tipografia 24/15/13/11px, pesos 400/700, sem sombra, sem HTM
     assert.doesNotMatch(fonte, /from-\[#FFE600\]/);
 });
 
-test('Editor.jsx — 3 etapas: só os nomes no topo, uma coluna com as seções da etapa, Voltar/Continuar; etapa sobrevive ao F5', () => {
+test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções da etapa, Voltar/Continuar; etapa sobrevive ao F5', () => {
     const f = lerSemComentarios(PAGINA);
     assert.match(f, /usePublicador\(\{\s*produtoId: produto\.id/);
     assert.match(f, /useIaDoPublicador\(/);
     assert.match(f, /<Etapas atual=\{etapa\}/);
     assert.match(f, /<EtapaProduto m=\{m\} \/>/);
     assert.match(f, /<EtapaDetalhes m=\{m\} \/>/);
+    assert.match(f, /<EtapaImagens m=\{m\} \/>/);
     assert.match(f, /<EtapaCondicoes m=\{m\}>/);
     assert.match(f, /<Publicar pub=\{pub\}/);
     // Os desenhos recusados não voltam: árvore, inspetor, contador de estrutura, trilho, lateral.

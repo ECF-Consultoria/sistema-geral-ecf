@@ -29,6 +29,52 @@ const CUSTO_POR_IMAGEM_USD = 0.101;
 const dolares = (v) => v.toFixed(2).replace('.', ',');
 
 /**
+ * 261007 — tela preta em produção (kit id 2): `kit.estrategia` é um OBJETO (3 campos de texto do
+ * plano da IA — `publico`/`direcao_visual`/`proposta_de_valor`), e o painel renderizava
+ * `{kit.estrategia}` cru. React recusa objeto como filho ("Objects are not valid as a React
+ * child") e derruba a árvore inteira — não um erro de rede, a PÁGINA morre.
+ *
+ * `textoSeguro` é a única porta de entrada para qualquer campo de texto do presenter que venha de
+ * texto livre da IA (estratégia, objetivo do slot, mensagem de validação, explicação de um
+ * problema): string e número passam, qualquer outra coisa (objeto, array) nunca chega como filho
+ * do React — vira `null` (o chamador decide o texto de reserva). Nenhum campo assim tem garantia
+ * de formato em tempo de execução só porque o PHP documenta um shape num docblock.
+ */
+const textoSeguro = (v) => (typeof v === 'string' || typeof v === 'number' ? v : null);
+
+/**
+ * `kit.estrategia` hoje SEMPRE chega como objeto (`CreativePlanner`/`CreativePlan::$estrategia`,
+ * sempre os 3 campos abaixo) — mas a tela aceita também string (caminho antigo ou futuro) e
+ * qualquer outro formato sem quebrar (vira nada, nunca o objeto cru).
+ */
+function Estrategia({ estrategia }) {
+    const texto = textoSeguro(estrategia);
+    if (texto) return <p className="text-[13px] font-normal text-white/70">{texto}</p>;
+    if (typeof estrategia !== 'object' || estrategia === null) return null;
+
+    const campos = [
+        ['publico', 'Para quem é'],
+        ['proposta_de_valor', 'O que destaca'],
+        ['direcao_visual', 'Como vai parecer'],
+    ];
+    const linhas = campos
+        .map(([chave, rotulo]) => [rotulo, textoSeguro(estrategia[chave])])
+        .filter(([, valor]) => !! valor);
+
+    if (linhas.length === 0) return null;
+
+    return (
+        <div className="space-y-1">
+            {linhas.map(([rotulo, valor]) => (
+                <p key={rotulo} className="text-[13px] font-normal text-white/70">
+                    <span className="font-bold text-white/90">{rotulo}:</span> {valor}
+                </p>
+            ))}
+        </div>
+    );
+}
+
+/**
  * Um cartão da grade — 165-04-SUMMARY.md: o presenter manda `validacao_status`/`pode_aprovar`/
  * `exige_confirmacao_risco` por slot (gate da Fase 162, que o `165-06-PLAN.md` não previa porque
  * é anterior a ela). Uma imagem reprovada pelo juiz Gemini NUNCA pode parecer aprovável sem
@@ -45,25 +91,27 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
 
     return (
         <div data-slot-criativo={s.indice} className="space-y-1.5 rounded-lg border border-white/20 bg-black/20 p-2.5">
-            <p className="text-[13px] font-bold text-white/90">{s.indice}. {s.rotulo}</p>
-            <p className="text-[11px] font-normal text-white/50">{s.objetivo}</p>
+            <p className="text-[13px] font-bold text-white/90">{s.indice}. {textoSeguro(s.rotulo)}</p>
+            <p className="text-[11px] font-normal text-white/50">{textoSeguro(s.objetivo)}</p>
 
             {s.imagem_url ? (
-                <img src={s.imagem_url} alt={s.rotulo} loading="lazy" className="w-full rounded object-cover" />
+                <img src={s.imagem_url} alt={textoSeguro(s.rotulo) ?? ''} loading="lazy" className="w-full rounded object-cover" />
             ) : (
                 <p className="text-[11px] font-normal text-white/50">
                     {s.status === 'pendente' && 'Na fila'}
                     {s.status === 'rodando' && `${ETAPA_LABEL[s.etapa] ?? 'gerando'}…`}
-                    {s.status === 'erro' && s.erro}
+                    {s.status === 'erro' && textoSeguro(s.erro)}
                 </p>
             )}
 
             {reprovada && (
                 <div className="space-y-1 rounded border border-red-400/40 bg-red-500/10 p-1.5">
-                    <p className="text-[11px] font-normal text-red-300">{s.validacao_mensagem ?? 'Risco apontado pela validação automática.'}</p>
+                    <p className="text-[11px] font-normal text-red-300">{textoSeguro(s.validacao_mensagem) ?? 'Risco apontado pela validação automática.'}</p>
                     {s.validacao_problemas?.length > 0 && (
                         <ul className="space-y-0.5">
-                            {s.validacao_problemas.map((p, i) => <li key={i} className="text-[11px] font-normal text-white/50">{p.explicacao}</li>)}
+                            {s.validacao_problemas.map((p, i) => (
+                                <li key={i} className="text-[11px] font-normal text-white/50">{textoSeguro(p.explicacao) ?? 'Risco apontado automaticamente.'}</li>
+                            ))}
                         </ul>
                     )}
                 </div>
@@ -117,6 +165,37 @@ function CartaoSlot({ s, c, disabled, podeRegenerarKit }) {
                     <p className="text-[11px] font-normal text-white/35">pode gerar de novo mais {s.regeneracoes_restantes} vez(es)</p>
                 </div>
             )}
+        </div>
+    );
+}
+
+/**
+ * Quick 261007-rmv — reversão do bloco "pontos fortes e medidas digitados à mão" (Fase 169):
+ * decisão do usuário, depois de ver a limitação na prática (texto só sobrevive se for idêntico a
+ * um VALOR já cadastrado no Mercado Livre). Fica só o aviso — o único caminho agora é completar o
+ * cadastro do produto no Mercado Livre, nunca digitar aqui.
+ *
+ * `kit.pode_ter_texto`/`kit.faltam` vêm do PRÓPRIO kit (gravados no momento do planejamento por
+ * `CreativePlanner`, via `PublicadorCriativoKitPresenter::paraTela()`) — sem chamada de rede nova.
+ *
+ * REND-01/02: cada linha de `faltam` passa por `textoSeguro` antes de virar filho do React — o
+ * mesmo cuidado de `Estrategia`/`CartaoSlot` acima, pela mesma fronteira (presenter PHP → React)
+ * que derrubou a tela em 261007.
+ */
+function AvisoTextoIndisponivel({ kit }) {
+    if (kit?.pode_ter_texto !== false) return null;
+
+    const faltam = Array.isArray(kit.faltam) ? kit.faltam : [];
+    if (faltam.length === 0) return null;
+
+    return (
+        <div className="space-y-1 rounded border border-amber-400/30 bg-amber-500/10 p-1.5">
+            <p className="text-[11px] font-normal text-amber-300">Ainda não é possível colocar texto em nenhuma imagem:</p>
+            {faltam.map((item, i) => {
+                const linha = textoSeguro(item);
+
+                return linha ? <p key={i} className="text-[11px] font-normal text-white/70">{linha}</p> : null;
+            })}
         </div>
     );
 }
@@ -251,6 +330,8 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
 
                 {c.fase === 'kit' && kit && (
                     <div className="space-y-3">
+                        <AvisoTextoIndisponivel kit={kit} />
+
                         {kit.status === 'planejando' && (
                             <p className="flex items-center gap-2 text-[13px] font-normal text-white/70">
                                 <Loader2 size={14} className="animate-spin" />
@@ -261,7 +342,7 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                         {kit.status === 'planejado' && (
                             ! c.confirmacaoRecusada ? (
                                 <div data-confirmar-custo className="space-y-2 rounded-lg border border-white/20 bg-black/20 p-3">
-                                    {kit.estrategia && <p className="text-[13px] font-normal text-white/70">{kit.estrategia}</p>}
+                                    {kit.estrategia && <Estrategia estrategia={kit.estrategia} />}
                                     <p className="text-[13px] font-normal text-white/90">
                                         Gerar {kit.slots.length} imagens custa cerca de US$ {dolares(kit.slots.length * CUSTO_POR_IMAGEM_USD)}. Confirma?
                                     </p>
@@ -290,7 +371,7 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                         )}
 
                         {kit.status === 'erro' && ! temSlots && kit.erro && (
-                            <p className="text-[13px] font-normal text-red-300">{kit.erro}</p>
+                            <p className="text-[13px] font-normal text-red-300">{textoSeguro(kit.erro)}</p>
                         )}
 
                         {temSlots && (
@@ -300,7 +381,7 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                                         <p className="text-[13px] font-normal text-white/50">Fotos de referência</p>
                                         <div className="flex flex-wrap gap-2">
                                             {kit.referencias.map((r) => (
-                                                <img key={r.indice} src={r.url} alt={r.nome} className="h-12 w-12 rounded object-cover" />
+                                                <img key={r.indice} src={r.url} alt={textoSeguro(r.nome) ?? ''} className="h-12 w-12 rounded object-cover" />
                                             ))}
                                         </div>
                                     </div>
@@ -341,7 +422,7 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                         {(kit.status === 'aprovado' || kit.status === 'erro') && (
                             <div className="border-t border-white/[0.08] pt-3">
                                 <button type="button" onClick={c.novoKit} className={LINK}><Sparkles size={14} /> Gerar outro kit</button>
-                                {kit.status === 'erro' && temSlots && kit.erro && <p className="mt-1.5 text-[13px] font-normal text-red-300">{kit.erro}</p>}
+                                {kit.status === 'erro' && temSlots && kit.erro && <p className="mt-1.5 text-[13px] font-normal text-red-300">{textoSeguro(kit.erro)}</p>}
                             </div>
                         )}
                     </div>

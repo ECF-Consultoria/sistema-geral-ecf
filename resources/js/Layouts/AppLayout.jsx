@@ -174,6 +174,10 @@ const NAV_TREE = [
     // movido para dentro do grupo Comercial abaixo.
     // Phase 56 v13.0: Dashboard, Carteira, Empresas, Reunioes, Metas, PPA,
     // Sugadores, Desempenho movidos pra dentro do grupo Mercado Livre.
+    // Autenticadores 2FA — cofre dos códigos TOTP das contas operadas pela ECF.
+    // Sem `permission`/`excludeRoles`: visível a TODOS os colaboradores logados
+    // (decisão de produto); o controle é o log de auditoria (visualização/cópia).
+    { label: 'Autenticadores 2FA',  routeName: 'autenticadores.index',    page: 'Autenticadores/Index', icon: ShieldCheck },
     { label: 'Usuários',            routeName: 'users.index',             page: 'Users',            icon: Users,        permission: 'core.usuarios' },
     { label: 'Setores',             routeName: 'admin.setores.index',     page: 'Admin/Setores',    icon: Shield,       permission: 'sistema.setores' },
     // Feedback UAT 2026-07-03: Reunioes eh transversal (nao especifica de ML),

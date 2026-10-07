@@ -7,6 +7,8 @@ commits:
   - 6726135f
   - 950bfd63
   - 62b274a7
+  - 5fd18940
+  - 61353dbd
 ---
 
 # Resumo
@@ -141,3 +143,119 @@ suite completa de Publicador/Phase165 nao regredindo.
 - Commit 6726135f -- FOUND em git log --oneline
 - Commit 950bfd63 -- FOUND em git log --oneline
 - Commit 62b274a7 -- FOUND em git log --oneline
+
+## Addendum 261007 -- segundo defeito, achado em producao (tela preta)
+
+Depois do SUMMARY acima, o coordenador reportou um segundo defeito no MESMO
+painel, com causa ja medida em producao: kit.estrategia e um OBJETO (3
+campos de texto da IA -- publico/direcao_visual/proposta_de_valor,
+CreativePlan::$estrategia no backend) e Mesa/PainelCriativos.jsx renderizava
+{kit.estrategia} cru dentro de um <p>. React recusa objeto como filho
+("Objects are not valid as a React child") e derruba a arvore inteira --
+nao foi um erro de rede, a PAGINA morreu. Aconteceu bem onde a Task 1 deste
+mesmo quick tinha corrigido o loop de render (kit.status === 'planejado',
+a tela de confirmacao de custo).
+
+### Por que passou pelos 158 testes anteriores
+
+Todos os testes de tests/js/publicador-mesa.test.js (e os outros deste
+diretorio) leem a FONTE como texto e conferem padroes com regex
+(lerSemComentarios + assert.match) -- nenhum deles IMPORTA nem MONTA o
+componente. Um objeto virando filho cru do React so quebra em tempo de
+RENDER; nenhuma leitura de texto pega isso. O contrato entre o presenter PHP
+(PublicadorCriativoKitPresenter::paraTela()) e o painel React nunca foi
+exercitado de verdade por nenhum teste -- essa fenda exata foi por onde um
+objeto virou tela preta em producao. Essa e a licao: gate de estrutura
+prova que o VOCABULARIO da tela esta certo, nunca que ela RENDERIZA.
+
+### Correcao
+
+Mesa/PainelCriativos.jsx ganhou:
+
+- textoSeguro(v): string/numero passam, qualquer outra coisa (objeto,
+  array) vira null -- a UNICA porta de entrada para texto vindo do
+  presenter que carregue texto livre da IA.
+- Estrategia({estrategia}): aceita objeto (formato real de hoje, vira 3
+  linhas rotuladas em pt-BR -- "Para quem e" / "O que destaca" / "Como vai
+  parecer"), string (fallback) ou qualquer outro formato (nao renderiza
+  nada, nunca o objeto cru).
+
+### Varredura do item 3 (achou mais 6 pontos, nenhum novo bug confirmado em producao)
+
+Varri Mesa/PainelCriativos.jsx inteiro contra as chaves reais do presenter
+(kit: kit_id, grupo, status, etapa, em_andamento, erro, estrategia,
+minimo_aprovadas, prontas, aprovadas, prontas_sem_risco, reprovadas,
+referencias, slots; slot: indice, tipo, rotulo, objetivo, status, etapa,
+erro, imagem_url, modelo, latencia_ms, regeneracoes, regeneracoes_restantes,
+validacao_status, validacao_mensagem, validacao_problemas, pode_aprovar,
+exige_confirmacao_risco, no_anuncio, imagem_id). KitCriativosGrade.jsx (fora
+dos limites, D-08) nao foi tocado nem lido.
+
+Pontos sem tipagem de runtime que agora passam por textoSeguro() por
+precaucao (nenhum confirmado como objeto em producao, diferente de
+estrategia -- mas tambem nenhum TEM garantia de formato em tempo de
+execucao so porque o PHP documenta um shape num docblock):
+
+1. kit.erro (dois pontos de render) -- semToken(?string) tipa o PARAMETRO
+   no PHP, entao um array ali já quebraria o BACKEND com TypeError antes de
+   chegar ao front; textoSeguro aqui e so uma segunda trava.
+2. slot.rotulo -- `$padrao['rotulo'] ?? $slot->slot`: catalogo estatico do
+   PHP (CreativeSlotCatalog), string por construcao; sem risco real hoje.
+3. slot.objetivo -- `$slot->slot_plano['objetivo'] ?? ...`: protegido a
+   montante pelo DTO CreativeSlotPlan (public string $objetivo, tipagem
+   escalar do construtor PHP), MAS so protegido enquanto slot_plano for
+   sempre escrito atraves desse DTO -- nao confirmei que nenhum outro
+   caminho grava a coluna direto.
+4. slot.erro -- mesma garantia do kit.erro (semToken(?string)).
+5. slot.validacao_mensagem -- mesma garantia (semToken(?string) +
+   validacaoMensagem(): ?string no model).
+6. slot.validacao_problemas[].explicacao -- NAO protegido por nenhum tipo
+   escalar na linha do presenter (`$problema['explicacao'] ?? null`, acesso
+   de array cru); o shape `array{explicacao: string}` do DTO
+   CreativeValidacao e so docblock, nao e imposto em runtime. Este e o
+   candidato mais parecido com estrategia -- se o juiz (Gemini) um dia
+   devolver uma explicacao estruturada em vez de texto, quebraria do mesmo
+   jeito. Protegido agora.
+7. referencias[].nome -- atributo (alt=), nao filho; nao dispara "Objects
+   are not valid as a React child" por si so, mas protegido por consistencia
+   (evita "[object Object]" como texto do atributo).
+
+### Teste de regressao real (nao estrutural)
+
+tests/js/publicador-painel-criativos-render.test.js -- compila
+PainelCriativos.jsx DE VERDADE com esbuild (mesmo motor do Vite, resolvendo
+o alias @ e os imports reais ./botoes e ./comum) e renderiza com
+react-dom/server, usando o JSON real do presenter (inclusive o dump literal
+de producao do kit id 2). 5 casos: estrategia objeto real (3 linhas
+rotuladas, sem "[object Object]"), estrategia string, estrategia em formato
+inesperado (array/numero/booleano, nunca lanca), kit.erro + slot.rotulo +
+slot.objetivo + validacao_mensagem + explicacao em formato inesperado
+simultaneamente (nunca lanca, fallbacks aparecem, campos validos do
+segundo slot continuam de pe), estrategia ausente.
+
+Confirmado que o teste PEGA a regressao: extrai a versao de
+Mesa/PainelCriativos.jsx de HEAD (antes desta correcao, ainda com
+{kit.estrategia} cru) para um arquivo irmao temporario dentro de Mesa/ (para
+os imports relativos ./botoes/./comum resolverem), roda o MESMO harness de
+build+render, e ele lanca exatamente "Objects are not valid as a React
+child (found: object with keys {publico, direcao_visual,
+proposta_de_valor})." -- a mesma mensagem da producao. Arquivos temporarios
+apagados depois (git status limpo).
+
+### Testes e build (medidos no addendum)
+
+| Suite | Comando | Resultado |
+|---|---|---|
+| tests/js/publicador-mesa.test.js + publicador-editor.test.js | node --test | 158/158, 0 falhas |
+| tests/js/publicador-painel-criativos-render.test.js (novo) | node --test | 6/6 (1 pai + 5 casos) |
+| Suite JS inteira | npm run test:js | 973 testes, 971 passam, 2 falhas pre-existentes (as mesmas de sempre -- estrutura-grade-glide.test.js e polosEntrantes.test.js; 973 = 967 do baseline + 6 do teste novo) |
+| Build de producao | npm run build | built in 47.32s, sem erros; Editor-D6JbV_LC.js contem "Para quem e" |
+
+Nenhum arquivo PHP foi tocado neste addendum (confirmado por git status
+antes do build) -- os 803 testes de Publicador e os 152 de Phase165 medidos
+no SUMMARY original continuam validos sem necessidade de nova rodada.
+
+### Commits do addendum
+
+- 61353dbd -- fix(261005-si3): painel de criativos nao renderiza mais
+  objeto cru (tela preta) + novo teste de render real

@@ -73,6 +73,11 @@ class CreativePlanner
             origem: $origem,
             modelo: $modelo,
             latenciaMs: $latenciaMs,
+            // Quick 261007-rmv: calculado com o MESMO Truth que decidiu os
+            // slots acima — a tela lê isto do kit já planejado, sem
+            // reconstruir Truth a cada leitura (ver docblock do CreativePlan).
+            podeTerTexto: $this->catalogo->algumAceitaTexto($truth),
+            faltam: $this->catalogo->faltamParaTexto($truth),
         );
     }
 
