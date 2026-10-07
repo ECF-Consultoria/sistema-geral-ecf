@@ -31,6 +31,8 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_07_100100_semear_estrutura_tipos_e_pares.php',
         // Ficha técnica do produto
         '2026_10_07_100200_create_estrutura_produto_atributos_table.php',
+        // Imagens por variação do produto
+        '2026_10_07_100300_create_estrutura_produto_variacao_imagens_table.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */
@@ -94,6 +96,17 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
     public function test_a_migration_da_ficha_tecnica_trata_mariadb_como_mysql(): void
     {
         $migration = require database_path('migrations/2026_10_07_100200_create_estrutura_produto_atributos_table.php');
+        $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
+
+        $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb repõe as FKs pelo information_schema');
+        $this->assertTrue($this->comDriver('mysql', $emMysql));
+        $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
+    }
+
+    /** Imagens por variação: a criação da tabela repõe FK só no MySQL/MariaDB. */
+    public function test_a_migration_das_imagens_da_variacao_trata_mariadb_como_mysql(): void
+    {
+        $migration = require database_path('migrations/2026_10_07_100300_create_estrutura_produto_variacao_imagens_table.php');
         $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
 
         $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb repõe as FKs pelo information_schema');
