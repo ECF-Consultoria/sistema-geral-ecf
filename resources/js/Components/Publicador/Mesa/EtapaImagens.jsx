@@ -1,6 +1,6 @@
 import FotosEVariacoes from './FotosEVariacoes';
 
-// ─── Etapa 3 — Imagens (D1, Fase 169, 07/10/2026) ───────────────────────────
+// ─── Etapa 3 — Imagens, SÓ imagens (D1, Fase 169, 07/10/2026) ───────────────
 //
 // "Fotos e variações" saiu de Detalhes e ganhou etapa própria: a causa raiz
 // medida era `EtapaDetalhes` renderizar `FotosEVariacoes` ANTES da ficha
@@ -10,10 +10,14 @@ import FotosEVariacoes from './FotosEVariacoes';
 // Produto → Detalhes → Imagens → Condições de venda: o fato primeiro, a
 // imagem depois.
 //
-// `FotosEVariacoes` é o MESMO componente de antes, só mudou de etapa — nenhum
-// comportamento dele muda aqui (grupos de fotos, variações, EAN automático,
+// Correção (D1, mesma data): ao sair de Detalhes, `FotosEVariacoes` tinha
+// levado junto estoque/SKU/código/AGID/MPN (o cartão da variação era misto,
+// fotos + dados) — regressão relatada pelo usuário em produção. Desde então
+// `FotosEVariacoes` é fotos-apenas (fotos gerais e de cada variação via
+// `CartaoFotosVariante`); os dados da variação voltaram para Detalhes, como
+// primeira seção (`DadosDasVariacoes.jsx`). Grupos de fotos, EAN automático,
 // painel de criativos por IA e o bloco de pontos fortes/medidas da 169-03
-// continuam exatamente como eram em Detalhes).
+// continuam funcionando aqui — nada disso mudou, só o que é "campo" saiu.
 
 export default function EtapaImagens({ m }) {
     return (

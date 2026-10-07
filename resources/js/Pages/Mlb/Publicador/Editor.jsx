@@ -41,6 +41,15 @@ import { cn } from '@/lib/utils';
 // identidade visual (Fase 170) e acervo (Fase 171). Produto → Detalhes →
 // Imagens → Condições de venda.
 //
+// 07/10/2026 (correção, mesma data) — ao sair de Detalhes, o cartão de
+// variação levou junto estoque/SKU/código/AGID/MPN (o cartão era misto,
+// fotos + dados); regressão relatada pelo usuário em produção. Imagens
+// voltou a ser SÓ fotos (`CartaoFotosVariante`); os dados da variação
+// voltaram para Detalhes, como primeira seção (`DadosDasVariacoes.jsx`,
+// antes da ficha técnica). `etapaDoProblema` (apoio.js) já roteava E5
+// (estoque/SKU/GTIN/atributo) para 'detalhes' e E6/grupo/imagem para
+// 'imagens' — o bug era só de apresentação, não de roteamento.
+//
 // Toda a lógica mora em `usePublicador` e `useIaDoPublicador`; aqui há só
 // composição e o estado de tela. Os efeitos que valem para o anúncio inteiro
 // (EAN automático, "fotos por variação", regra do frete) rodam em hooks

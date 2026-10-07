@@ -25,6 +25,8 @@ const CARDS = [
     `${BASE}/Mesa/EtapaDetalhes.jsx`,
     `${BASE}/Mesa/EtapaImagens.jsx`,
     `${BASE}/Mesa/FotosEVariacoes.jsx`,
+    `${BASE}/Mesa/CartaoFotosVariante.jsx`,
+    `${BASE}/Mesa/DadosDasVariacoes.jsx`,
     `${BASE}/Mesa/CartaoVariante.jsx`,
     `${BASE}/Mesa/NovaVariacao.jsx`,
     `${BASE}/Mesa/EtapaCondicoes.jsx`,
@@ -213,7 +215,7 @@ test('EtapaProduto — título por tipo LIGADO: máximo de schema.limites (fallb
 
 // ─── Etapa 2 — Detalhes ───
 
-test('FotosEVariacoes — regra da foto lê schema.limites (nada fixo), grupos do servidor, galeria geral opcional e os efeitos num hook', () => {
+test('FotosEVariacoes — SÓ fotos (D1, 07/10): regra da foto lê schema.limites (nada fixo), grupos do servidor, galeria geral opcional e os efeitos num hook', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
     assert.doesNotMatch(f, /1200/);
     assert.match(f, /min_picture_width/);
@@ -222,10 +224,31 @@ test('FotosEVariacoes — regra da foto lê schema.limites (nada fixo), grupos d
     assert.match(f, /data-opcao="incluir-geral"/);
     assert.match(f, /AvisosDasFotos/);
     assert.match(f, /export function useEfeitosDasVariacoes\(m\)/);
+    assert.match(f, /<CartaoFotosVariante key=\{v\.chave\}/);
+    // Regressão corrigida 07/10: Imagens NUNCA mais desenha estoque/SKU/código/gestão de variação.
+    assert.doesNotMatch(f, /acaoDeTirar|<NovaVariacao|<CartaoVariante\b|<EditorDeEixos|CampoEstoque|CampoSku|CampoGtin|m\.salvarEixos/);
+});
+
+test('CartaoFotosVariante — só fotos; cabeçalho comum sem "Vender esta variação" nem "Tirar" (controles de gestão ficam em Detalhes)', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/CartaoFotosVariante.jsx`);
+    assert.match(f, /from '\.\.\/FotosPorGrupo'/);
+    assert.match(f, /<BlocoDeFotos grupo=\{grupo\}/);
+    assert.match(f, /import \{ CabecalhoVariante, corDaVariante \} from '\.\/CartaoVariante'/);
+    assert.match(f, /<CabecalhoVariante v=\{v\} cor=\{cor\} nome=\{nome\} travada=\{travada\} semVariacao=\{semVariacao\} \/>/);
+    // Regressão corrigida 07/10: nenhum dado de variação aqui.
+    assert.doesNotMatch(f, /CampoEstoque|CampoSku|CampoGtin|atributosExtrasDaVariante|onToggleAtiva|onTirar/);
+});
+
+test('DadosDasVariacoes — PRIMEIRA seção de Detalhes: gestão da variação (criar/tirar/trazer de volta/eixos avançado) e o cartão de dados; sem fotos', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/DadosDasVariacoes.jsx`);
     assert.match(f, /export const acaoDeTirar/);
     assert.match(f, /<CartaoVariante key=\{v\.chave\}/);
     assert.match(f, /<NovaVariacao m=\{m\}/);
     assert.match(f, /m\.salvarEixos/);
+    assert.match(f, /<EditorDeEixos /);
+    assert.match(f, /<details className="text-\[13px\] text-white\/55" data-orfas=\{orfas\.length\}>/);
+    // Regressão corrigida 07/10: a gestão da variação não desenha fotos.
+    assert.doesNotMatch(f, /BlocoDeFotos|CartaoFotosVariante|fotosDoGrupo/);
 });
 
 test('FotosPorGrupo — envioAoMl: foto pendente em conta não liberada vira nota neutra (D26); vazio só fica vermelho com `erro`', () => {
@@ -252,13 +275,14 @@ test('BlocoDeFotos — "Gerar com IA" pelo contexto (LINK, sem amarelo), painel 
     assert.doesNotMatch(f, /route\(|bg-ecf-yellow|uppercase/);
     assert.doesNotMatch(f, /const aberto = [^;]*disabled/);
 
-    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
-    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\}/);
+    // Fotos da variação: CartaoFotosVariante (Imagens); "Fotos para todas": FotosEVariacoes (Imagens também).
+    const cartaoFotos = lerSemComentarios(`${BASE}/Mesa/CartaoFotosVariante.jsx`);
+    assert.match(cartaoFotos, /<BlocoDeFotos grupo=\{grupo\}/);
     const todas = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
     assert.match(todas, /<BlocoDeFotos grupo=\{GERAL\}/);
 });
 
-test('CartaoVariante — fotos, estoque/SKU/código de GradeVariantes na caixa grande, extras da variação; sem preço nem título (moram em outras etapas)', () => {
+test('CartaoVariante — DADOS da variação (Detalhes): estoque/SKU/código de GradeVariantes na caixa grande, extras; sem fotos, sem preço nem título (moram em outras etapas)', () => {
     const f = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
     assert.match(f, /from '\.\.\/GradeVariantes'/);
     assert.match(f, /<CampoEstoque grande /);
@@ -266,11 +290,12 @@ test('CartaoVariante — fotos, estoque/SKU/código de GradeVariantes na caixa g
     assert.match(f, /<CampoGtin grande comRotulo /);
     assert.match(f, /existentes=\{gtinsEmUso\(m\.variantes\)\}/);
     assert.doesNotMatch(f, /estoque_depositos/);
-    assert.match(f, /<BlocoDeFotos grupo=\{grupo\}/);
     assert.match(f, /x\.campo === 'estoque'/);
     assert.match(f, /x\.campo === 'sku'/);
     assert.match(f, /eanValido\(gtin\)/);
-    assert.doesNotMatch(f, /CampoPreco|data-titulo|titulo:/);
+    assert.match(f, /export function CabecalhoVariante\(/);
+    // Regressão corrigida 07/10: o cartão de dados não desenha fotos (isso é CartaoFotosVariante, em Imagens).
+    assert.doesNotMatch(f, /BlocoDeFotos|fotosDoGrupo|CampoPreco|data-titulo|titulo:/);
 });
 
 test('GradeVariantes — exporta CampoEstoque, CampoSku e CampoGtin; "gerar outro" com rótulo; `grande` usa a caixa do formulário', () => {
@@ -288,9 +313,18 @@ test('EtapaDetalhes — ficha inteira aberta: "Características principais" e "M
     assert.match(f, /Mais características/);
     assert.doesNotMatch(f, /opcion|aria-expanded|<details/i);
     assert.match(f, /a\.obrigatoriedade === 'REQUIRED' && valorVazio\(valor\)/);
-    assert.doesNotMatch(f, /<FotosEVariacoes/);
+    assert.doesNotMatch(f, /<FotosEVariacoes|<CartaoFotosVariante/);
     assert.match(f, /<textarea id="campo-descricao"/);
     assert.doesNotMatch(f, /markdown|regenerar/i);
+});
+
+test('EtapaDetalhes — regressão 07/10: DadosDasVariacoes (estoque/SKU/código da variação) é a PRIMEIRA seção, antes da ficha técnica', () => {
+    const f = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
+    assert.match(f, /import DadosDasVariacoes from '\.\/DadosDasVariacoes'/);
+    assert.match(f, /<DadosDasVariacoes m=\{m\} \/>/);
+    const iDados = f.indexOf('<DadosDasVariacoes');
+    const iFicha = f.indexOf('<FichaTecnica');
+    assert.ok(iDados >= 0 && iFicha >= 0 && iDados < iFicha, 'DadosDasVariacoes precisa vir ANTES de FichaTecnica em EtapaDetalhes');
 });
 
 // ─── Etapa 3 — Imagens (D1, Fase 169, 07/10/2026) ───

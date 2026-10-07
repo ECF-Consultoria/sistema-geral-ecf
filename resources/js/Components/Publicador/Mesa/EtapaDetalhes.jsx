@@ -4,15 +4,20 @@ import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { valorVazio } from '../apoio';
 import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
 import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
+import DadosDasVariacoes from './DadosDasVariacoes';
 import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
 import { AREA, Campo, INVALIDO, LINK, Secao, Subtitulo, useErroDoCampo } from './comum';
 import { cn } from '@/lib/utils';
 
-// ─── Etapa 2 — Detalhes: ficha técnica e descrição ──────────────────────────
+// ─── Etapa 2 — Detalhes: variações, ficha técnica e descrição ──────────────
 //
-// "Fotos e variações" morou aqui até 07/10/2026; saiu para a etapa própria
-// Imagens (D1, Fase 169, ver `EtapaImagens.jsx`) — o operador preenche o fato
-// do produto ANTES de gerar a imagem.
+// "Fotos e variações" morou aqui até 07/10/2026 (fotos JUNTO com estoque/SKU/
+// código/atributos extras); a Fase 169 (169-04) moveu a seção inteira para a
+// etapa própria Imagens — levando por engano os campos de DADOS da variação
+// (regressão relatada pelo usuário em produção, 07/10). Fix: as FOTOS ficam
+// em Imagens (`EtapaImagens.jsx`); os DADOS da variação voltam para aqui,
+// como PRIMEIRA seção (`DadosDasVariacoes.jsx`) — antes da ficha técnica,
+// porque é aqui que nasce a variação que a ficha e as fotos vão usar.
 //
 // A ficha técnica abre inteira, como campos normais (docx §6): primeiro as
 // características que o Mercado Livre pede, depois as que ajudam a aparecer
@@ -173,6 +178,7 @@ function Descricao({ m }) {
 export default function EtapaDetalhes({ m }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="detalhes">
+            <DadosDasVariacoes m={m} />
             <FichaTecnica m={m} />
             <Descricao m={m} />
         </div>

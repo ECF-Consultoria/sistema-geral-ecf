@@ -26,7 +26,9 @@ use App\Services\Contratos\GatilhoContratoAdministrativoService;
 use App\Services\ContratoPdfService;
 use App\Services\Fechamento\FechamentoFaixaResolver;
 use App\Services\Operacional\EmpresaOperacionalRouter;
+use App\Support\Cnpj;
 use App\Support\Permissions;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -664,6 +666,16 @@ class ContratoAdminController extends Controller
         ];
 
         return Inertia::render('Admin/ContratoDetalhe', [
+            // Quick 261007-m0t — as OUTRAS empresas que têm o mesmo CNPJ desta.
+            // Substituiu uma TRAVA: `companies.cnpj` era único e o salvar do
+            // cadastro devolvia 500 quando o CNPJ digitado já existia em outra
+            // empresa. CNPJ repetido é legítimo aqui (uma empresa jurídica com
+            // várias lojas de marketplace, cada loja um registro), então o
+            // unique saiu e no lugar dele entra este aviso.
+            //
+            // Lista vazia → a tela não mostra aviso nenhum. Aviso que aparece
+            // quando não há nada a conferir ensina a ignorar o aviso.
+            'empresas_mesmo_cnpj' => $this->empresasComMesmoCnpj($company),
             'pode_ver_contrato' => $podeVerContrato,
             // Link para a ficha de Entrada, que é onde o checklist mora desde
             // 11/09. Só para quem alcança a rota.
@@ -812,6 +824,61 @@ class ContratoAdminController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * Quick 261007-m0t — as OUTRAS empresas cadastradas com o mesmo CNPJ desta.
+     * Alimenta o aviso da ficha que substituiu o índice único de
+     * `companies.cnpj` (ver docblock da migration
+     * `2026_10_07_120000_remove_unique_do_cnpj_em_companies`).
+     *
+     * ### A comparação é por DÍGITOS, e é isso que muda o resultado
+     * Nos 12 pares medidos em produção (07/10/2026) um registro guarda só
+     * dígitos (`38196897000143`) e o outro guarda pontuado
+     * (`38.196.897/0001-43`). Comparar as strings cruas — que era o que o
+     * índice único fazia — não enxerga NENHUM desses pares. Por isso o
+     * `REPLACE` encadeado no SQL (`.`, `/`, `-` e espaço são a pontuação que
+     * máscara de CNPJ produz) e, por cima dele, a conferência final com
+     * `Cnpj::digitos()`: o helper é a autoridade sobre o que conta como mesmo
+     * CNPJ, e o SQL é só o filtro barato que evita trazer a tabela inteira.
+     *
+     * ⚠️ A comparação aplica função sobre a coluna, então não usa o índice
+     * `companies_cnpj_idx` — ele existe para as buscas por CNPJ já gravado em
+     * formato conhecido. Aqui a varredura é aceitável: `companies` tem algumas
+     * centenas de linhas e o payload devolvido é id/nome/ativo.
+     *
+     * Empresa sem CNPJ → lista vazia (nunca "todas as outras empresas sem
+     * CNPJ"): CNPJ em branco não é coincidência que mereça aviso.
+     *
+     * @return array<int, array{id: int, name: string, active: bool}>
+     */
+    private function empresasComMesmoCnpj(Company $company): array
+    {
+        $digitos = Cnpj::digitos($company->cnpj);
+
+        if ($digitos === '') {
+            return [];
+        }
+
+        return Company::query()
+            ->whereKeyNot($company->getKey())
+            ->whereNotNull('cnpj')
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', ''), ' ', '') = ?",
+                [$digitos]
+            )
+            ->orderBy('name')
+            ->get(['id', 'name', 'active', 'cnpj'])
+            // `Cnpj::digitos()` dá a palavra final — o REPLACE do SQL cobre a
+            // pontuação de máscara, não qualquer sujeira que alguém colou.
+            ->filter(fn (Company $outra) => Cnpj::digitos($outra->cnpj) === $digitos)
+            ->map(fn (Company $outra) => [
+                'id'     => (int) $outra->id,
+                'name'   => (string) $outra->name,
+                'active' => (bool) $outra->active,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -1218,34 +1285,72 @@ class ContratoAdminController extends Controller
             $paresContratoParaAtualizar[] = [$contratoAssinatura, $item];
         }
 
-        // Mass assignment sobre os $fillable já existentes de Company — nunca
-        // $guarded = [].
-        $company->fill(collect($data)->only([
-            'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
-            // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
-            'endereco', 'bairro', 'cidade', 'estado', 'cep',
-        ])->all());
-        $company->save();
+        // Quick 261007-m0t — rede de segurança em volta da GRAVAÇÃO.
+        //
+        // Incidente de 07/10/2026: `companies.cnpj` tinha índice único e o
+        // `$company->save()` abaixo estourava `QueryException`
+        // (`SQLSTATE[23000] ... 1062 Duplicate entry`) direto na cara do
+        // Administrativo — 500 em cima do formulário, três vezes seguidas, sem
+        // mensagem nenhuma e perdendo tudo que estava digitado. A causa daquele
+        // caso foi removida na raiz (o unique saiu do banco, migration
+        // `2026_10_07_120000_remove_unique_do_cnpj_em_companies`), mas o
+        // try/catch FICA: este formulário é a tela em que o Administrativo
+        // completa o cadastro da empresa, e qualquer restrição de banco que
+        // apareça aqui no futuro — unique, check, FK, coluna curta demais —
+        // tem de virar aviso na tela, nunca 500.
+        //
+        // ⚠️ Pega só `QueryException` (erro do BANCO), de propósito. Nada de
+        // `\Throwable`: os dois `abort(422)` de pertencimento (IDOR) acima já
+        // rodaram antes deste bloco e não são erro de banco; e engolir
+        // Throwable transformaria bug de código em "tente de novo", que é
+        // justamente o que esconde o problema do próximo incidente.
+        //
+        // ⚠️ Sem transação, também de propósito: salvar a empresa dispara o
+        // `CompanyGatilhoObserver` (Fase 128) de forma SÍNCRONA, e abrir
+        // transação aqui mudaria quando esse efeito acontece — fora do escopo
+        // deste quick. A consequência é que uma falha no meio pode deixar a
+        // empresa gravada e um dos serviços não; o aviso pede para conferir e
+        // tentar de novo, e a repetição é inofensiva (tudo aqui é idempotente).
+        try {
+            // Mass assignment sobre os $fillable já existentes de Company — nunca
+            // $guarded = [].
+            $company->fill(collect($data)->only([
+                'cnpj', 'email_cliente', 'nome_contato', 'razao_social',
+                // Quick 260821-cq0 — endereço volta a ser 5 campos separados.
+                'endereco', 'bairro', 'cidade', 'estado', 'cep',
+            ])->all());
+            $company->save();
 
-        foreach ($paresParaAtualizar as [$contratoServico, $item]) {
-            $contratoServico->update([
-                'data_contratacao'       => $item['data_contratacao'] ?? null,
-                'data_vencimento'        => $item['data_vencimento'] ?? null,
-                // Quick 260819-guy.
-                'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
-                'dia_vencimento'         => $item['dia_vencimento'] ?? null,
+            foreach ($paresParaAtualizar as [$contratoServico, $item]) {
+                $contratoServico->update([
+                    'data_contratacao'       => $item['data_contratacao'] ?? null,
+                    'data_vencimento'        => $item['data_vencimento'] ?? null,
+                    // Quick 260819-guy.
+                    'data_primeira_parcela'  => $item['data_primeira_parcela'] ?? null,
+                    'dia_vencimento'         => $item['dia_vencimento'] ?? null,
+                ]);
+            }
+
+            foreach ($paresContratoParaAtualizar as [$contratoAssinatura, $item]) {
+                // Quick 260824-bte — string vazia grava `null` (volta a usar o
+                // texto composto pelas fases do snapshot); nunca guarda string
+                // vazia como se fosse um override de propósito.
+                $textoOverride = trim((string) ($item['plano_parcelas_texto'] ?? ''));
+
+                $contratoAssinatura->update([
+                    'plano_parcelas_texto' => $textoOverride !== '' ? $textoOverride : null,
+                ]);
+            }
+        } catch (QueryException $e) {
+            // O texto do erro do banco vai para o LOG, nunca para a tela: ele
+            // carrega o SQL e os valores gravados (dado de cliente).
+            Log::error('[Administrativo] falha de banco ao salvar o cadastro da empresa', [
+                'company_id' => $company->id,
+                'user_id'    => $request->user()?->id,
+                'erro'       => $e->getMessage(),
             ]);
-        }
 
-        foreach ($paresContratoParaAtualizar as [$contratoAssinatura, $item]) {
-            // Quick 260824-bte — string vazia grava `null` (volta a usar o
-            // texto composto pelas fases do snapshot); nunca guarda string
-            // vazia como se fosse um override de propósito.
-            $textoOverride = trim((string) ($item['plano_parcelas_texto'] ?? ''));
-
-            $contratoAssinatura->update([
-                'plano_parcelas_texto' => $textoOverride !== '' ? $textoOverride : null,
-            ]);
+            return back()->with('error', 'Não foi possível salvar o cadastro agora. Nada do que você digitou se perdeu: confira os campos e tente de novo. Se continuar, avise o time técnico — o erro ficou registrado.');
         }
 
         return back()->with('success', 'Cadastro atualizado.');

@@ -125,12 +125,15 @@ test('§3 — título: painel de termos com filtro de coerência e a IA por tipo
     assert.match(painel, /Ver também os que não citam o produto/);
 });
 
-test('§4 — Variações: "Adicionar variação" à vista e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {
-    const card = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+test('§4 — Variações: "Adicionar variação" à vista (Detalhes) e EAN-13 automático uma vez por variação (num hook que a página chama sempre)', () => {
+    // "Adicionar variação" é gestão da variação — mora em Detalhes (DadosDasVariacoes.jsx) desde 07/10.
+    const card = lerSemComentarios(`${BASE}/Mesa/DadosDasVariacoes.jsx`);
     assert.match(card, /Adicionar variação/);
     assert.match(card, /data-acao="adicionar-variacao"/);
-    assert.match(card, /variantesSemGtin\(m\.variantes, schema\)/);
-    assert.match(card, /gerados\.current\.add\(v\.chave\)/);
+    // O EAN automático é efeito do anúncio inteiro — continua em FotosEVariacoes.jsx (Imagens).
+    const efeitos = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(efeitos, /variantesSemGtin\(m\.variantes, schema\)/);
+    assert.match(efeitos, /gerados\.current\.add\(v\.chave\)/);
     assert.match(lerSemComentarios(`${BASE}/GradeVariantes.jsx`), /gerarEan13\(existentes\)/);
     assert.match(lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx'), /useEfeitosDasVariacoes\(m\)/);
 });
@@ -191,23 +194,29 @@ test('varianteDoPedido / pedidoCompleto — acha pela combinação de valores, s
     assert.equal(pedidoCompleto([], {}), false);
 });
 
-test('Fotos dentro de cada variação: o bloco da variação traz as fotos dela; tirar = tirar o valor (um eixo) ou desativar (mais eixos); "trazer de volta"', () => {
-    const cartao = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+test('Fotos (Imagens) e dados (Detalhes) de cada variação: cada cartão no seu lugar; tirar = tirar o valor (um eixo) ou desativar (mais eixos); "trazer de volta"', () => {
+    // Fotos da variação: CartaoFotosVariante.jsx, etapa Imagens.
+    const cartaoFotos = lerSemComentarios(`${BASE}/Mesa/CartaoFotosVariante.jsx`);
     // O título pode ser uma expressão: por isso `.+?` e não `[^}]+`.
-    assert.match(cartao, /<BlocoDeFotos grupo=\{grupo\} titulo=\{.+?\} erro=\{erroFotos\}/);
-    assert.match(cartao, /onArquivos=\{m\.enviarFotos\}/);
-    assert.match(cartao, /data-acao="alternar-variacao"/);
-    assert.match(cartao, /data-acao="excluir-variacao"/);
-    const card = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
-    // Sem eixo que defina a foto, cada variação ganha as próprias fotos.
-    assert.match(card, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
+    assert.match(cartaoFotos, /<BlocoDeFotos grupo=\{grupo\} titulo=\{.+?\} erro=\{erroFotos\}/);
+    assert.match(cartaoFotos, /onArquivos=\{m\.enviarFotos\}/);
+    // "Vender esta variação" e "Tirar": controles de gestão, só no cartão de dados (Detalhes).
+    const cartaoDados = lerSemComentarios(`${BASE}/Mesa/CartaoVariante.jsx`);
+    assert.match(cartaoDados, /data-acao="alternar-variacao"/);
+    assert.match(cartaoDados, /data-acao="excluir-variacao"/);
+    assert.doesNotMatch(cartaoFotos, /data-acao="alternar-variacao"|data-acao="excluir-variacao"/);
+    // Sem eixo que defina a foto, cada variação ganha as próprias fotos (efeito do anúncio inteiro, Imagens).
+    const efeitos = lerSemComentarios(`${BASE}/Mesa/FotosEVariacoes.jsx`);
+    assert.match(efeitos, /m\.mudarRasc\(\{ fotos_por_variante: true \}\)/);
+    // Gestão da variação (criar/tirar/trazer de volta): DadosDasVariacoes.jsx, etapa Detalhes.
+    const dados = lerSemComentarios(`${BASE}/Mesa/DadosDasVariacoes.jsx`);
     // Tirar com um eixo = remover o valor (órfã com os dados); com mais = desativar.
-    assert.match(card, /eixosSemValor\(eixos, eixo\.chave/);
-    assert.match(card, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
-    assert.match(card, /trazer de volta/);
-    assert.match(card, /<NovaVariacao /);
-    assert.match(card, /acaoDeTirar\(m, v, eixos\)/);
-    // Problema de foto com `alvo.grupo` cai na etapa Detalhes (onde mora o bloco da variação).
+    assert.match(dados, /eixosSemValor\(eixos, eixo\.chave/);
+    assert.match(dados, /m\.mudarVar\(v\.chave, \{ ativa: false \}\)/);
+    assert.match(dados, /trazer de volta/);
+    assert.match(dados, /<NovaVariacao /);
+    assert.match(dados, /acaoDeTirar\(m, v, eixos\)/);
+    // Problema de foto com `alvo.grupo` cai na etapa Imagens (onde moram as fotos da variação).
     assert.match(lerSemComentarios(`${BASE}/apoio.js`), /alvo\.grupo/);
 });
 

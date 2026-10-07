@@ -27,6 +27,49 @@ const CAUSA_DESTAQUE_TEXTO = {
     erro_tecnico:            'Houve um ERRO TÉCNICO na integração com a Clicksign — ninguém recusou nada. Você ainda pode liberar a empresa, mas a liberação fica registrada com o seu nome e o motivo.',
 };
 
+// Quick 261007-m0t — outras empresas cadastradas com o MESMO CNPJ desta.
+//
+// Substituiu uma TRAVA: `companies.cnpj` era único no banco e o botão "Salvar
+// cadastro" devolvia 500 quando o CNPJ digitado já existia em outra empresa
+// (incidente de 07/10/2026). CNPJ repetido é legítimo aqui — uma empresa
+// jurídica opera várias lojas de marketplace e cada loja é um registro — então
+// o unique saiu e este aviso entrou no lugar.
+//
+// ⛔ Não bloqueia nada e não desabilita o botão: é informação para alguém
+// conferir, não impedimento. O backend só manda a lista quando ela tem alguém
+// dentro; lista vazia → nenhum aviso (aviso que aparece sempre ensina a
+// ignorar o aviso).
+function CnpjRepetidoAviso({ empresas }) {
+    if (!empresas || empresas.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 flex flex-col gap-1.5">
+            <p className="text-white/70 text-[13px] font-medium">
+                {empresas.length === 1
+                    ? 'Este CNPJ também está cadastrado em outra empresa'
+                    : `Este CNPJ também está cadastrado em outras ${empresas.length} empresas`}
+            </p>
+            <p className="text-white/45 text-[12.5px]">
+                Isso é normal quando a mesma empresa tem mais de uma loja, cada uma com o seu cadastro.
+                Confira se é esse o caso — o cadastro pode ser salvo do mesmo jeito.
+            </p>
+            <ul className="flex flex-wrap gap-x-3 gap-y-1 mt-0.5">
+                {empresas.map((empresa) => (
+                    <li key={empresa.id} className="text-[12.5px] flex items-baseline gap-1.5">
+                        <Link
+                            href={route('admin.contratos.show', empresa.id)}
+                            className="text-white/70 hover:text-white underline underline-offset-2 decoration-white/20 hover:decoration-white/50 transition-colors"
+                        >
+                            {empresa.name}
+                        </Link>
+                        {!empresa.active && <span className="text-white/35">(inativa)</span>}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
 /**
  * Admin/ContratoDetalhe.jsx — Fase 131 Planos 04 (D-01/D-03/D-11, ADM-01/02,
  * UI-02), 05 (CLICK-07/CLICK-09/CLICK-10, D-05/D-13/D-14, UI-04/UI-06) e 06
@@ -75,6 +118,9 @@ export default function ContratoDetalhe({
     // Quick 260916-onn — "não participa do fechamento". `null` para quem não
     // tem permissão de marcar (o bloco some).
     fora_do_fechamento = null,
+    // Quick 261007-m0t — outras empresas com o mesmo CNPJ desta. Vazio é o
+    // estado normal e não desenha nada.
+    empresas_mesmo_cnpj = [],
 }) {
     const { flash } = usePage().props;
 
@@ -548,6 +594,12 @@ export default function ContratoDetalhe({
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Quick 261007-m0t — logo abaixo da linha do CNPJ, em
+                                    largura cheia (a coluna de metade da grade acima
+                                    deixaria a lista de nomes apertada). Fala do campo que
+                                    acabou de ser lido, antes de o formulário continuar. */}
+                                <CnpjRepetidoAviso empresas={empresas_mesmo_cnpj} />
 
                                 <div className="space-y-1.5">
                                     <Label>Nome de quem assina pela empresa</Label>
