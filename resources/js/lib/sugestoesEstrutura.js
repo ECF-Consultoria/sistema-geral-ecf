@@ -139,3 +139,81 @@ export function corpoDaGeracao({ tipo, qtdCombo, qtdCombit }, tipos) {
 
     return { tipo_id: achado ? achado.id : null, qtd_combo: texto(qtdCombo), qtd_combit: texto(qtdCombit) };
 }
+
+// ─── Redesenho pela referência (168-18, D-24..D-31) ─────────────────────────
+
+export const ROTULO_STATUS = { prontas: 'Prontas para aceitar', com_aviso: 'Com aviso' };
+
+/** "Atualizado agora" / "há N min" / "às HH:MM" (hora local). `iso` inválido ou vazio: null. */
+export function textoAtualizado(iso, agoraMs = Date.now()) {
+    if (! iso) return null;
+    const ms = Date.parse(iso);
+    if (Number.isNaN(ms)) return null;
+
+    const segundos = Math.floor((agoraMs - ms) / 1000);
+    if (segundos < 60) return 'Atualizado agora';
+    if (segundos < 3600) return `Atualizado há ${Math.floor(segundos / 60)} min`;
+
+    const d = new Date(ms);
+
+    return `Atualizado às ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** "25% do total" (arredonda; total zero vira 0%). */
+export function percentualDoTotal(n, total) {
+    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+
+    return `${pct}% do total`;
+}
+
+export const textoSugestoes = (n) => `${n} ${n === 1 ? 'sugestão' : 'sugestões'}`;
+export const textoSelecionadas = (n) => `${n} ${n === 1 ? 'selecionada' : 'selecionadas'}`;
+export const rotuloAceitarSelecionadas = (n) => `Aceitar ${textoSelecionadas(n)}`;
+
+/** "Combo" / "Combos" conforme a quantidade. */
+export function rotuloDaFase(fase, n) {
+    const base = ROTULO_FASE[fase] ?? fase;
+
+    return n === 1 ? base : `${base}s`;
+}
+
+/** "4x Cadeira Polo — Natural (V201)": quantidade primeiro, valor e SKU só quando existem. */
+export function textoDoComponente(item) {
+    const valor = item.valor ? ` — ${item.valor}` : '';
+    const sku = item.sku ? ` (${item.sku})` : '';
+
+    return `${item.quantidade}x ${item.produto_nome}${valor}${sku}`;
+}
+
+/** Há algum filtro aplicado (fase, família, tipo, busca ou status)? */
+export const filtroAtivo = (filtros) => Boolean(filtros?.fase || filtros?.familia || filtros?.tipo || filtros?.q || filtros?.status);
+
+/** Filtros que acompanham a pessoa ao trocar de aba: sem chaves vazias e sem `pagina`. */
+export function filtrosDaAba(filtros, aba) {
+    const saida = {};
+    if (aba !== 'sugestoes') saida.aba = aba;
+    for (const campo of ['fase', 'familia', 'tipo', 'q', 'status']) {
+        if (filtros?.[campo]) saida[campo] = filtros[campo];
+    }
+
+    return saida;
+}
+
+/** Quais controles da barra valem em cada aba (reflete o que o servidor já aplica). */
+export function controlesDaAba(aba) {
+    return {
+        busca: true,
+        familia: true,
+        fase: aba !== 'sem_tipo',
+        tipo: aba !== 'sem_tipo',
+        status: aba === 'sugestoes',
+    };
+}
+
+/** Dica que explica por que algum controle fica desabilitado. */
+export function dicaDaAba(aba) {
+    if (aba === 'sem_tipo') return 'Na aba Sem tipo valem só a busca e a família.';
+    if (aba === 'descartadas') return 'Na aba Descartadas o status não se aplica.';
+
+    return null;
+}
