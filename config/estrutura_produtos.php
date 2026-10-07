@@ -90,4 +90,13 @@ return [
             [8.75, 12.75, 14.35, 166.15, 192.45, 217.55, 242.55, 261.95],
         ],
     ],
+
+    // Imagens por variação (galeria da cor). O arquivo vai CRU para o disco privado; o
+    // servidor só confere formato e tamanho. Mudar o teto de tamanho exige conferir também
+    // `upload_max_filesize` e `post_max_size` do PHP-FPM: acima deles o pedido chega vazio.
+    'imagens' => [
+        'max_por_variacao' => 12,
+        'max_kb'           => 10240, // 10 MB por imagem
+        'extensoes'        => ['jpg', 'jpeg', 'png', 'webp'],
+    ],
 ];

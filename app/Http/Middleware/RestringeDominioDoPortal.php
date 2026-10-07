@@ -192,6 +192,11 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/{id}/ficha-tecnica',
         // Fase 168: o id do produto no meio, só dígitos (a página de sugestões define tipo e quantidades).
         'portal/estrutura/sugestoes/produtos/{id}/geracao',
+        // Imagens por variação: cada `{id}` casa SÓ dígitos (o 1º é a variação, o 2º a imagem) e o
+        // caminho inteiro. `…/imagem/x`, `…/imagem/3/outra` e `%2F` no id continuam barrados.
+        'portal/estrutura/produtos/variacao/{id}/imagens',
+        'portal/estrutura/produtos/variacao/{id}/imagens/ordem',
+        'portal/estrutura/produtos/variacao/{id}/imagem/{id}',
     ];
 
     /** O caminho (sem barra inicial, já decodificado) existe no domínio do cliente? */

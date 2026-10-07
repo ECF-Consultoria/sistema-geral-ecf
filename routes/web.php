@@ -243,6 +243,16 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.campos')->name('portal.auth.estrutura.produtos.campos_categoria');
     Route::put('/estrutura/produtos/{produto}/ficha-tecnica', [PortalEstruturaProdutosController::class, 'gravarFichaTecnica'])
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.ficha_tecnica')->name('portal.auth.estrutura.produtos.ficha_tecnica');
+    // Imagens por variação (a galeria da cor). Disco privado; a empresa vem sempre da sessão.
+    // O GET é o `<img src>` da tela (várias por página), por isso o throttle é folgado.
+    Route::post('/estrutura/produtos/variacao/{variacao}/imagens', [PortalEstruturaProdutosController::class, 'enviarImagens'])
+        ->whereNumber('variacao')->middleware('throttle:30,1,estrutura.produtos.imagens.enviar')->name('portal.auth.estrutura.produtos.imagens.enviar');
+    Route::put('/estrutura/produtos/variacao/{variacao}/imagens/ordem', [PortalEstruturaProdutosController::class, 'ordenarImagens'])
+        ->whereNumber('variacao')->middleware('throttle:60,1,estrutura.produtos.imagens.ordem')->name('portal.auth.estrutura.produtos.imagens.ordem');
+    Route::get('/estrutura/produtos/variacao/{variacao}/imagem/{imagem}', [PortalEstruturaProdutosController::class, 'verImagem'])
+        ->whereNumber(['variacao', 'imagem'])->middleware('throttle:600,1,estrutura.produtos.imagens.ver')->name('portal.auth.estrutura.produtos.imagens.ver');
+    Route::delete('/estrutura/produtos/variacao/{variacao}/imagem/{imagem}', [PortalEstruturaProdutosController::class, 'excluirImagem'])
+        ->whereNumber(['variacao', 'imagem'])->middleware('throttle:60,1,estrutura.produtos.imagens.excluir')->name('portal.auth.estrutura.produtos.imagens.excluir');
     // Fase 168 — Sugestões de ofertas (D-02, D-20: sem submódulo novo; entra por Produtos e pela
     // Lista SKUs). Uma linha por rota na allowlist do RestringeDominioDoPortal.
     Route::get('/estrutura/sugestoes', [PortalEstruturaSugestoesController::class, 'index'])

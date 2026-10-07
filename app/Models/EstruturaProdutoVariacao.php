@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Variação de um produto do Mapeamento Estrutural (ADR PORTAL-01, Fase 167): é ela
@@ -38,9 +40,28 @@ class EstruturaProdutoVariacao extends Model
         return $this->belongsTo(EstruturaProduto::class, 'produto_id');
     }
 
+    protected static function booted(): void
+    {
+        // As linhas das imagens saem por cascata no banco; os ARQUIVOS, só aqui. Depois do commit:
+        // se a exclusão for desfeita (restrict de componente), as imagens continuam no disco.
+        static::deleting(function (self $variacao) {
+            $empresa = (int) $variacao->company_id;
+            $produto = (int) $variacao->produto_id;
+            $id = (int) $variacao->getKey();
+
+            DB::afterCommit(fn () => VariacaoImagensService::apagarPasta($empresa, $produto, $id));
+        });
+    }
+
     public function volumes(): HasMany
     {
         return $this->hasMany(EstruturaProdutoVolume::class, 'variacao_id')->orderBy('ordem');
+    }
+
+    /** A galeria da variação, na ordem escolhida (a 1ª, `ordem` 0, é a capa). */
+    public function imagens(): HasMany
+    {
+        return $this->hasMany(EstruturaProdutoVariacaoImagem::class, 'variacao_id')->orderBy('ordem')->orderBy('id');
     }
 
     public function oferta(): HasOne
