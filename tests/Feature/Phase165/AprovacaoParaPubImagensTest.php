@@ -338,7 +338,10 @@ class AprovacaoParaPubImagensTest extends TestCase
         $this->assertSame($slotsPorIndice, array_column($doGrupo, 'imagem'));
     }
 
-    public function test_aprovar_kit_com_dois_prontos_e_minimo_tres_recusa(): void
+    // Quick 261007-kit2 (2026-10-07): minimo_aprovadas DEIXOU DE BLOQUEAR —
+    // mesmo com o valor congelado em 3 (como um kit antigo, da época do kit
+    // de 7), 2 prontas bastam para aprovar o kit inteiro.
+    public function test_aprovar_kit_com_dois_prontos_e_minimo_tres_congelado_nao_bloqueia_mais(): void
     {
         $this->cenario();
         $kit = $this->kitProntoDoPublicador(R::GERAL, 2);
@@ -346,9 +349,14 @@ class AprovacaoParaPubImagensTest extends TestCase
 
         $res = $this->servico()->aprovarKit($this->r->fresh(), $kit->fresh(), $this->admin());
 
-        $this->assertFalse($res['ok']);
-        $this->assertSame('Faltam 1 imagem(ns) pronta(s) para atingir o mínimo de 3 aprovadas.', $res['mensagem']);
-        $this->assertSame(0, PubImagem::count());
+        $this->assertTrue($res['ok']);
+        $this->assertSame(2, $res['aprovadas']);
+        $this->assertSame([], $res['falharam']);
+        $this->assertTrue($res['kit_aprovado']);
+        $this->assertSame(2, PubImagem::count());
+
+        $kit->refresh();
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->status);
     }
 
     public function test_aprovar_kit_ja_aprovado_recusa(): void

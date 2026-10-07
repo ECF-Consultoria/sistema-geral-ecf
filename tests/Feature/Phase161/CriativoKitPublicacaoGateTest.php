@@ -208,18 +208,28 @@ class CriativoKitPublicacaoGateTest extends TestCase
         }
     }
 
-    public function test_kit_aprovado_abaixo_do_minimo_conferir_lanca_com_mensagem_do_minimo(): void
+    // Quick 261007-kit2 (2026-10-07): minimo_aprovadas DEIXOU DE BLOQUEAR a
+    // publicação — kit já `aprovado` (decisão do operador) publica com as
+    // aprovadas que tiver, mesmo abaixo do valor congelado na coluna
+    // (`minimoAprovadas: 3`, resíduo da época do kit de 7).
+    public function test_kit_aprovado_abaixo_do_minimo_congelado_conferir_nao_lanca_mais(): void
     {
-        [$rascunho] = $this->rascunhoComKit(MlAnuncioCriativoKit::STATUS_APROVADO, aprovados: 2, minimoAprovadas: 3);
+        [$rascunho, $kit] = $this->rascunhoComKit(MlAnuncioCriativoKit::STATUS_APROVADO, aprovados: 2, minimoAprovadas: 3);
 
-        try {
-            $this->servico()->conferir($rascunho);
-            $this->fail('Deveria ter lançado RuntimeException.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('2', $e->getMessage());
-            $this->assertStringContainsString('3', $e->getMessage());
-            $this->assertStringContainsString('faltam 1', $e->getMessage());
-        }
+        $servico = $this->servico();
+        $servico->conferir($rascunho); // não lança
+
+        $qtd = $servico->aplicarPictures($rascunho);
+        $this->assertSame(2, $qtd);
+
+        $rascunho->refresh();
+        $slot1 = $kit->slots()->where('slot_indice', 1)->first();
+        $slot2 = $kit->slots()->where('slot_indice', 2)->first();
+
+        $this->assertSame([
+            ['source' => $slot1->ml_picture_url],
+            ['source' => $slot2->ml_picture_url],
+        ], $rascunho->payload['pictures']);
     }
 
     public function test_kit_em_erro_e_ignorado_conferir_nao_lanca(): void

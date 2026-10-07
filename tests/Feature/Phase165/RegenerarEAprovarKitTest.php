@@ -404,7 +404,10 @@ class RegenerarEAprovarKitTest extends TestCase
         $atual->assertJsonPath('kit.status', MlAnuncioCriativoKit::STATUS_APROVADO);
     }
 
-    public function test_aprovar_kit_abaixo_do_minimo_devolve_422(): void
+    // Quick 261007-kit2 (2026-10-07): minimo_aprovadas DEIXOU DE BLOQUEAR —
+    // mesmo com 1 dos 3 slots em erro (só 2 pronto) e o valor congelado em 3
+    // (kit da época do kit de 7), o kit aprova normalmente com as 2 prontas.
+    public function test_aprovar_kit_com_um_slot_em_erro_e_minimo_congelado_nao_bloqueia_mais(): void
     {
         $kit = $this->kitProntoDoPublicador('GENERAL', 3);
         $kit->slots()->where('slot_indice', 3)->first()->update(['status' => MlAnuncioCriativo::STATUS_ERRO]);
@@ -412,8 +415,14 @@ class RegenerarEAprovarKitTest extends TestCase
 
         $resp = $this->actingAs($admin)->postJson($this->rotaAprovarKit($kit->id));
 
-        $resp->assertStatus(422);
-        $resp->assertJsonPath('erros.0.mensagem', 'Faltam 1 imagem(ns) pronta(s) para atingir o mínimo de 3 aprovadas.');
+        $resp->assertOk();
+        $resp->assertJsonPath('ok', true);
+        $resp->assertJsonPath('aprovadas', 2);
+        $resp->assertJsonPath('falharam', []);
+        $resp->assertJsonPath('kit_aprovado', true);
+
+        $kit->refresh();
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_APROVADO, $kit->status);
     }
 
     public function test_aprovar_kit_ja_aprovado_devolve_422(): void

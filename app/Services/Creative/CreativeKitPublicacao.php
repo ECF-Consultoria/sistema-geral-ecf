@@ -68,7 +68,16 @@ class CreativeKitPublicacao
      * banco. Lança `\RuntimeException` com mensagem em pt-BR (sem id interno,
      * sem status técnico) quando a publicação não pode seguir.
      *
-     * @throws \RuntimeException quando há kit e ele não está pronto para publicar
+     * Quick 261007-kit2 (decisão de reunião, 2026-10-07): a publicação só
+     * exige que o OPERADOR tenha decidido sobre o kit (aprovado ou não) —
+     * `minimo_aprovadas` DEIXOU DE SER CONDIÇÃO aqui. As imagens por IA são
+     * complemento às fotos reais, nunca trava: "serão duas imagens geradas
+     * por IA e o restante serão imagens reais, então terá mais de duas
+     * imagens no anúncio" (palavras do usuário). Isto vale inclusive para
+     * kits antigos com `minimo_aprovadas` congelado em 3 — o valor nunca é
+     * lido aqui para bloquear.
+     *
+     * @throws \RuntimeException quando há kit e ele ainda não foi aprovado pelo operador
      */
     public function conferir(MlAnuncioRascunho $rascunho): void
     {
@@ -91,15 +100,6 @@ class CreativeKitPublicacao
 
             throw new \RuntimeException(
                 "Este anúncio tem um kit de criativos por IA ainda não aprovado ({$aprovadas} de {$total} imagens aprovadas). Aprove o kit antes de publicar."
-            );
-        }
-
-        $aprovadas = $kit->aprovadas();
-        if ($aprovadas < $kit->minimo_aprovadas) {
-            $faltam = $kit->minimo_aprovadas - $aprovadas;
-
-            throw new \RuntimeException(
-                "Este anúncio tem um kit de criativos por IA aprovado, mas com apenas {$aprovadas} de {$kit->minimo_aprovadas} imagens mínimas aprovadas (faltam {$faltam}). Aprove mais imagens antes de publicar."
             );
         }
     }

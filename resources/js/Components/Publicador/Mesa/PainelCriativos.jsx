@@ -248,7 +248,11 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
     const kit = c.kit;
     const temSlots = kit !== null && (kit?.slots?.length ?? 0) > 0;
     const podeRegenerarKit = kit !== null && kit.status !== 'aprovado' && (kit.referencias?.length ?? 0) > 0;
-    const podeUsarKit = kit !== null && kit.prontas > 0 && kit.prontas + kit.aprovadas >= kit.minimo_aprovadas;
+    // Quick 261007-kit2 (2026-10-07): minimo_aprovadas deixou de ser condição
+    // para usar o kit — o backend só exige pelo menos 1 imagem pronta (mesma
+    // régua de PublicadorCriativoAprovacaoService::aprovarKit()). O botão já
+    // só aparece quando `kit.prontas > 0` (ver abaixo), então não há mais
+    // nenhum caso em que ele precise ficar desabilitado por aqui.
 
     return (
         <section data-painel-criativos={c.alvo?.grupo} aria-label={`Gerar fotos com IA — ${titulo}`} className="mt-3 rounded-lg border border-white/20 bg-black/40 p-4">
@@ -398,15 +402,10 @@ export default function PainelCriativos({ c, titulo, sugeridas = [], fotosNoGrup
                         {(kit.status === 'pronto' || kit.status === 'parcial') && (
                             <div className="space-y-2 border-t border-white/[0.08] pt-3">
                                 {kit.prontas > 0 && (
-                                    <BotaoAcao data-acao="aprovar-kit" disabled={disabled || !! c.processando || ! podeUsarKit} onClick={c.aprovarKit}>
+                                    <BotaoAcao data-acao="aprovar-kit" disabled={disabled || !! c.processando} onClick={c.aprovarKit}>
                                         {c.processando === 'aprovar-kit' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                                         Usar todas as prontas no anúncio
                                     </BotaoAcao>
-                                )}
-                                {! podeUsarKit && (
-                                    <p className="text-[13px] font-normal text-white/50">
-                                        Para usar o kit inteiro são precisas ao menos {kit.minimo_aprovadas} imagens prontas — gere de novo as que deram erro ou use uma por uma.
-                                    </p>
                                 )}
                                 {fotosNoGrupo + kit.prontas > maxFotos && (
                                     <p data-aviso-capacidade className="text-[13px] font-normal text-amber-300">
