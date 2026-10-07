@@ -125,9 +125,12 @@ class CriativoKitPlanejamentoTest extends TestCase
         $this->assertSame($criativo->id, $kit->criativo_referencia_id);
     }
 
-    // ═══ O job cria 1 kit + 7 criativos; o portador vira 'referencia' ═══
+    // ═══ O job cria 1 kit + N criativos; o portador vira 'referencia' ═══
+    // Quick 261007-kit2 (2026-10-07): N caiu de 7 para 2 (SLOTS_PADRAO) —
+    // o dublê de `gerarTexto()` do `setUp()` já propõe só 2 slots (hero +
+    // white_background), então a reconciliação aceita exatamente os 2.
 
-    public function test_job_cria_kit_com_7_slots_e_portador_vira_referencia(): void
+    public function test_job_cria_kit_com_2_slots_e_portador_vira_referencia(): void
     {
         $criativo = $this->criativo(['MATERIAL' => 'MDF']);
 
@@ -141,8 +144,8 @@ class CriativoKitPlanejamentoTest extends TestCase
         $criativo->refresh();
 
         $this->assertSame(MlAnuncioCriativoKit::STATUS_PLANEJADO, $kit->status);
-        $this->assertSame(7, $kit->total_slots);
-        $this->assertSame(3, $kit->minimo_aprovadas);
+        $this->assertSame(2, $kit->total_slots);
+        $this->assertSame(1, $kit->minimo_aprovadas);
         $this->assertNotEmpty($kit->plano);
         $this->assertContains($kit->plano_origem, ['llm', 'deterministico']);
 
@@ -151,14 +154,14 @@ class CriativoKitPlanejamentoTest extends TestCase
             ->orderBy('slot_indice')
             ->get();
 
-        $this->assertCount(7, $slots);
-        $this->assertSame(range(1, 7), $slots->pluck('slot_indice')->all());
+        $this->assertCount(2, $slots);
+        $this->assertSame(range(1, 2), $slots->pluck('slot_indice')->all());
         $this->assertSame('hero', $slots->first()->slot);
         $this->assertTrue($slots->every(fn ($s) => $s->status === MlAnuncioCriativo::STATUS_PENDENTE));
         $this->assertTrue($slots->every(fn ($s) => $s->slot_plano !== null));
 
         // O portador (o próprio $criativo do upload) NUNCA é reciclado como
-        // um dos 7 slots (Decisão 1b) — ganha kit_id, slot='referencia',
+        // um dos slots (Decisão 1b) — ganha kit_id, slot='referencia',
         // slot_indice continua nulo.
         $this->assertSame($kit->id, $criativo->kit_id);
         $this->assertSame('referencia', $criativo->slot);

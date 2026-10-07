@@ -7,17 +7,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Kit de 7 criativos de imagem por IA do publicador ML (Fase 161).
+ * Kit de criativos de imagem por IA do publicador ML (Fase 161).
  *
  * Molde literal de `MlAnuncioCriativo` (estados, trava anti-loop por tempo,
  * relações) — ver docblock da migration `2026_10_03_090000_...` para a
  * decisão de nomenclatura e cardinalidade.
  *
+ * Quick 261007-kit2 (decisão de reunião, 2026-10-07): o tamanho do kit
+ * passou de 7 para 2 — a imagem principal (`hero`) e, quando o Product
+ * Truth sustenta algum ponto forte ou medida, uma segunda com texto; sem
+ * fato que sustente texto, a segunda sai puramente visual. Continua sendo
+ * `N` slots (`SLOTS_PADRAO`, configurável), nunca um número fixo no código
+ * além da constante.
+ *
  * O PORTADOR da referência (o criativo do upload, 160-01) nunca é um slot:
  * ele é apontado por `criativo_referencia_id` e, depois do planejamento,
  * ganha `kit_id` + `slot = 'referencia'` + `slot_indice = NULL` — a
  * agregação por slot (`slots()`) filtra `whereNotNull('slot_indice')` e
- * nunca o confunde com um dos 7 (Decisão 1b do 161-01-PLAN.md).
+ * nunca o confunde com um dos N slots (Decisão 1b do 161-01-PLAN.md).
  */
 class MlAnuncioCriativoKit extends Model
 {
@@ -54,37 +61,59 @@ class MlAnuncioCriativoKit extends Model
      * pior caso de UM asset até esgotar tentativas
      * (`MlAnuncioCriativo::LIMITE_MINUTOS = 12` com 2 tentativas, ~24 min no
      * pior caso absoluto de fila lenta) cabem com folga dentro de 25 min
-     * para o caminho comum (as 7 gerações rodam em paralelo, não em série);
+     * para o caminho comum (as gerações do kit rodam em paralelo, não em
+     * série — folga maior ainda com `SLOTS_PADRAO` reduzido a 2);
      * acima disso o kit não vai terminar — travou por definição.
      */
     public const LIMITE_MINUTOS = 25;
 
-    /** PLAN-01: nunca menos que 7 slots no plano. */
-    public const SLOTS_PADRAO = 7;
+    /**
+     * Quantidade padrão de slots planejados — override por
+     * `config('services.creative.kit.slots')`. Quick 261007-kit2 (decisão
+     * de reunião, 2026-10-07): a principal (`hero`) +, quando o Product
+     * Truth sustenta algum ponto forte ou medida, uma segunda com texto;
+     * sem fato que sustente texto, a segunda sai visual — nunca menos de 2,
+     * nunca "gerar só uma" nem "bloquear até ter o fato" (ambos recusados
+     * explicitamente pelo usuário). Era 7 até esta decisão (PLAN-01 original
+     * da Fase 161, substituído aqui).
+     */
+    public const SLOTS_PADRAO = 2;
 
     /**
      * Teto de imagens geradas por kit — override por
-     * `config('services.creative.kit.max_imagens')`. 7 imagens custam cerca
-     * de US$ 0,71 (US$ 0,101 por imagem, medição do spike); 14 é o que
-     * impede um kit de custar mais que o dobro do previsto mesmo somando
-     * regenerações.
+     * `config('services.creative.kit.max_imagens')`. Medição do spike
+     * (US$ 0,101 por imagem): 2 imagens custam ~US$ 0,20; o dobro (4) é o
+     * que impede um kit de custar mais que o previsto mesmo somando
+     * regenerações — mesma proporção de antes (quick 261007-kit2 reduziu a
+     * base de 7 para 2; o teto acompanha).
      */
-    public const MAX_IMAGENS = 14;
+    public const MAX_IMAGENS = 4;
 
-    /** Regenerações permitidas por ASSET (um dos 7 slots) — override por config. */
+    /** Regenerações permitidas por ASSET (um dos slots do kit) — override por config. */
     public const MAX_REGENERACOES_ASSET = 3;
 
-    /** Regenerações permitidas somadas no KIT inteiro — override por config. */
-    public const MAX_REGENERACOES_KIT = 7;
+    /**
+     * Regenerações permitidas somadas no KIT inteiro — override por config.
+     * Quick 261007-kit2: acompanha a redução de `SLOTS_PADRAO` (7→2) na
+     * mesma proporção de ~1 regeneração por slot da base (era 7, agora 2) —
+     * somado à base de `SLOTS_PADRAO`, fecha o `MAX_IMAGENS` acima (2+2=4).
+     */
+    public const MAX_REGENERACOES_KIT = 2;
 
     /**
-     * Mínimo de aprovadas recomendado — sai de `FOTOS_RECOMENDADAS_MIN` do
-     * próprio projeto (`resources/js/lib/mlAnuncioRegras.js`), não de número
-     * inventado. Override por config; o valor REALMENTE em vigor para um
-     * kit já criado é o congelado na coluna `minimo_aprovadas` (não lido do
-     * config de novo depois do planejamento).
+     * Mínimo de aprovadas RECOMENDADO — nunca mais uma condição para
+     * publicar nem para aprovar o kit (quick 261007-kit2, decisão de
+     * reunião 2026-10-07: "serão duas imagens geradas por IA e o restante
+     * serão imagens reais" — a IA é complemento, nunca trava). Os gates que
+     * liam este valor para BLOQUEAR (`CreativeKitPublicacao::conferir()`,
+     * `PublicadorCriativoAprovacaoService::aprovarKit()`) foram corrigidos
+     * para nunca mais comparar contra ele — inclusive para kits antigos com
+     * o valor congelado em 3 (coluna `minimo_aprovadas`, nunca reescrita).
+     * O número sobrevive só como informação de tela ("mínimo recomendado").
+     * Override por config; valor congelado por kit na coluna
+     * `minimo_aprovadas` (não lido do config de novo depois do planejamento).
      */
-    public const MINIMO_APROVADAS = 3;
+    public const MINIMO_APROVADAS = 1;
 
     protected $fillable = [
         'token', 'company_id', 'mlb_empresa_id', 'rascunho_id', 'user_id',
@@ -152,7 +181,7 @@ class MlAnuncioCriativoKit extends Model
     }
 
     /**
-     * Só os 7 slots de verdade — o portador (`slot_indice` NULL) nunca
+     * Só os slots de verdade do kit — o portador (`slot_indice` NULL) nunca
      * entra aqui (Decisão 1b).
      */
     public function slots(): HasMany
@@ -215,7 +244,7 @@ class MlAnuncioCriativoKit extends Model
     }
 
     /**
-     * Recalcula e PERSISTE o status do kit a partir do estado dos 7 slots.
+     * Recalcula e PERSISTE o status do kit a partir do estado dos slots.
      * `aprovado` é terminal: nunca é recalculado para baixo, mesmo que os
      * slots mudem de estado depois.
      */
@@ -317,7 +346,7 @@ class MlAnuncioCriativoKit extends Model
         return (int) config('services.creative.kit.max_regeneracoes_kit', self::MAX_REGENERACOES_KIT);
     }
 
-    /** Teto efetivo de regenerações por ASSET (um dos 7 slots) — override por config. */
+    /** Teto efetivo de regenerações por ASSET (um dos slots do kit) — override por config. */
     public function maxRegeneracoesAsset(): int
     {
         return (int) config('services.creative.kit.max_regeneracoes_asset', self::MAX_REGENERACOES_ASSET);

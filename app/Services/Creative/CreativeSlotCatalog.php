@@ -5,15 +5,23 @@ namespace App\Services\Creative;
 use App\Services\Creative\Dto\ProductTruth;
 
 /**
- * Biblioteca de tipos de criativo do kit de 7 (Fase 161, §8.4) — cada tipo
+ * Biblioteca de tipos de criativo do kit (Fase 161, §8.4) — cada tipo
  * com o requisito de fato que o Product Truth precisa sustentar para ele
  * ser elegível, e a prioridade de preenchimento quando falta slot.
+ *
+ * Quick 261007-kit2 (2026-10-07): o tamanho do kit passou de 7 para 2 (a
+ * quantidade é `$quantidade` do chamador, via `config('services.creative.
+ * kit.slots')`) — a ordem abaixo (hero → COM_FATO elegíveis → resto dos
+ * SEM_FATO) é o que faz emergir, sozinho, o comportamento pedido: com fato,
+ * principal + a melhor com texto; sem fato, principal + um visual.
  *
  * DUAS listas (Decisão 2/3 do 161-01-PLAN.md):
  *   - SEM_FATO: puramente visuais, SEMPRE elegíveis — nenhum afirma nada
  *     sobre o produto além do que as fotos de referência já mostram. São 8
- *     — o piso que garante PLAN-01 (mínimo 7) para QUALQUER produto, mesmo
- *     sem atributo nenhum cadastrado.
+ *     — o piso que garante slots suficientes para QUALQUER produto, mesmo
+ *     sem atributo nenhum cadastrado (o piso original era dimensionado
+ *     para PLAN-01/mínimo 7 da Fase 161; a quantidade pedida hoje é bem
+ *     menor, mas o piso de 8 tipos visuais continua cobrindo-a com folga).
  *   - COM_FATO: só elegíveis quando o Product Truth sustenta o requisito —
  *     cada requisito é um padrão FECHADO de id de atributo ou contagem
  *     mínima de fatos (mesma disciplina de

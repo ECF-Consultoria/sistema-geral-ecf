@@ -93,7 +93,8 @@ class FatiaFinaPontaAPontaTest extends TestCase
         $status = $this->actingAs($admin)->getJson($this->rotaStatus($kitId));
         $status->assertOk();
         $slots = $status->json('slots');
-        $this->assertCount(7, $slots);
+        // Quick 261007-kit2 (2026-10-07): SLOTS_PADRAO caiu de 7 para 2.
+        $this->assertCount(2, $slots);
         foreach ($slots as $slot) {
             $this->assertSame(MlAnuncioCriativo::STATUS_PRONTO, $slot['status']);
             $this->assertNotNull($slot['imagem_url']);
