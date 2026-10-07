@@ -139,3 +139,25 @@ até o unique sair do banco.
 Os 2 arquivos novos existem em disco, os 5 commits existem no histórico, e `git status --porcelain`
 nos caminhos deste quick (`app/`, `tests/Feature/Quick261007/`, `database/`, `resources/js/Pages/Admin/`,
 `.planning/quick/261007-m0t-*/`) volta vazio. O WIP das outras sessões segue intocado.
+
+## ⚠️ Incidente de árvore compartilhada — o commit T4 foi absorvido por outra sessão
+
+Entre o commit do T4 e o commit deste SUMMARY, **outra sessão reescreveu a ponta da `main`** e o
+commit `6dc731ac` (`test(261007-m0t): trava os sete casos de CNPJ repetido`) deixou de ser ancestral
+do HEAD. O arquivo de teste não se perdeu: ele foi absorvido pelo commit `964c050b`, cuja mensagem é
+`test(261007-etp): gates de fonte seguem a divisão fotos/dados da variação` — mensagem da OUTRA
+sessão, conteúdo 100% deste quick (os 366 linhas de
+`tests/Feature/Quick261007/CnpjRepetidoNaoBloqueiaCadastroTest.php`, e só isso).
+
+**Nada foi perdido.** Conferido por diff contra os commits originais: a migration, o
+`ContratoAdminController.php`, o `ContratoDetalhe.jsx` e o arquivo de teste estão **byte-idênticos**
+no HEAD ao que foi commitado aqui. Os 9 testes foram rodados de novo depois da reescrita e seguem
+passando (48 asserções).
+
+**Não corrigi a história, de propósito.** Reescrever a ponta da `main` para recuperar a atribuição do
+commit arrancaria os três commits que a outra sessão fez em cima — exatamente o risco descrito em
+`project_sessoes_paralelas_working_tree.md`. O estado do código está certo; só a etiqueta de um
+commit está errada, e isso não vale uma reescrita de história compartilhada.
+
+Consequência prática: no histórico, o T4 deste quick aparece sob mensagem de outro quick. Quem for
+procurar o teste depois acha pelo caminho (`tests/Feature/Quick261007/`), não pela mensagem do commit.
