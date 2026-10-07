@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link, router } from '@inertiajs/react';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ChevronRight, Loader2, Tag, Truck } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import Janela from '@/Components/Portal/Estrutura/Janela';
-import CartaoSugestao from '@/Components/Portal/Estrutura/Sugestoes/CartaoSugestao';
-import CabecalhoFamilia from '@/Components/Portal/Estrutura/Sugestoes/CabecalhoFamilia';
-import FiltrosSugestoes from '@/Components/Portal/Estrutura/Sugestoes/FiltrosSugestoes';
+import LinhaSugestao from '@/Components/Portal/Estrutura/Sugestoes/LinhaSugestao';
+import ResumoSugestoes from '@/Components/Portal/Estrutura/Sugestoes/ResumoSugestoes';
+import BarraDeFiltros from '@/Components/Portal/Estrutura/Sugestoes/BarraDeFiltros';
+import GrupoFamilia from '@/Components/Portal/Estrutura/Sugestoes/GrupoFamilia';
+import AbasDasSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AbasDasSugestoes';
 import BarraDeMarcadas from '@/Components/Portal/Estrutura/Sugestoes/BarraDeMarcadas';
 import PainelSemTipo from '@/Components/Portal/Estrutura/Sugestoes/PainelSemTipo';
 import JanelaTipo from '@/Components/Portal/Estrutura/Sugestoes/JanelaTipo';
 import ListaDescartadas from '@/Components/Portal/Estrutura/Sugestoes/ListaDescartadas';
-import ExplicacaoDasOfertas from '@/Components/Portal/Estrutura/Sugestoes/ExplicacaoDasOfertas';
 import AvisoSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AvisoSugestoes';
 import {
     aceitarMarcadas, alternarMarca, desfazerEdicao, descartarChaves, desmarcarVarias, editarCampo,
@@ -21,7 +22,7 @@ import {
 } from '@/lib/sugestoesSelecao';
 import {
     MSG_FALHA_REDE, MSG_GUARDA, msgLimiteDoLote, msgMarcamosPrimeiras, qualEstadoVazio, textoDescarte, textoRestauracao, textoResultadoAceite,
-    corpoDaGeracao, textoTipoDefinido,
+    corpoDaGeracao, textoTipoDefinido, textoAtualizado, filtroAtivo, filtrosDaAba,
 } from '@/lib/sugestoesEstrutura';
 import { chegouPeloHistorico, definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
 import { avisoDosFretes } from '@/lib/produtosFretes';
@@ -47,8 +48,13 @@ import { cn } from '@/lib/utils';
 // próprio aqui). Trocar filtro, aba ou página (mesmo caminho) não pergunta. Só marcar não
 // conta como edição.
 //
+// Redesenho pela referência (168-19, D-24..D-31): trilha, título e "Atualizado agora"; quatro cartões
+// de resumo; barra de filtros num container; abas Pendentes · Sem tipo · Descartadas com a seleção e
+// "Aceitar selecionadas" à direita (a barra fixa só existe no celular); famílias em container, com
+// cada sugestão em UMA linha. Só a apresentação mudou: a lógica e a guarda de saída são as mesmas.
+//
 // Fase 168-15: a aba "Sem tipo" (PainelSemTipo, D-12) grava o tipo por botão; a pílula de
-// tipo do cartão e o "Ajustar quantidades" abrem a mesma JanelaTipo (D-07). A aba
+// tipo da linha e o "Ajustar quantidades" abrem a mesma JanelaTipo (D-07). A aba
 // "Descartadas" tem marcação PRÓPRIA (outra instância de estadoInicial) e a barra sem
 // amarelo: restaurar não cria nada, só devolve à lista (D-01).
 
@@ -65,12 +71,6 @@ function EstadoVazio({ titulo, corpo, children }) {
 
 const LINK_SECUNDARIO = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white';
 const LINK_PRIMARIO = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-ecf-yellow px-4 text-[13px] font-semibold text-black transition-colors hover:bg-ecf-yellow/90';
-
-const ABAS = [
-    ['sugestoes', 'Sugestões'],
-    ['sem_tipo', 'Sem tipo'],
-    ['descartadas', 'Descartadas'],
-];
 
 const chaveDaFamilia = (item) => String(item.familia?.id ?? 'sem');
 
@@ -107,6 +107,9 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     const [gravandoTipo, setGravandoTipo] = useState(() => new Set());
     const [restaurando, setRestaurando] = useState(() => new Set());
     const [restaurandoLote, setRestaurandoLote] = useState(false);
+    const [agora, setAgora] = useState(() => Date.now());             // relógio do "Atualizado há N min"
+    const [atualizando, setAtualizando] = useState(false);
+    const [recolhidos, setRecolhidos] = useState(() => new Set());       // famílias recolhidas (só em memória)
     const estadoRef = useRef(estado);
     estadoRef.current = estado;
     const liberado = useRef(false);                                 // "Sair sem aceitar" já confirmado
@@ -126,14 +129,22 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     // Os filtros "de agora": atualizados na hora do clique, para duas mudanças seguidas
     // (limpar filtros e a busca esvaziando) não pisarem uma na outra com as props antigas.
-    const filtrosRef = useRef({ fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, q: filtros.q || undefined });
+    const filtrosRef = useRef({ fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined });
     useEffect(() => {
-        filtrosRef.current = { fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, q: filtros.q || undefined };
-    }, [filtros.fase, filtros.familia, filtros.tipo, filtros.q]);
+        filtrosRef.current = { fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined };
+    }, [filtros.fase, filtros.familia, filtros.tipo, filtros.status, filtros.q]);
+
+    // "Atualizado há N min" anda sozinho, sem recarregar (D-31); recomeça quando a carga muda.
+    useEffect(() => {
+        setAgora(Date.now());
+        const t = setInterval(() => setAgora(Date.now()), 30000);
+
+        return () => clearInterval(t);
+    }, [sugestoes.gerado_em]);
 
     const visitar = (mudancas = {}) => {
         const proximo = { ...filtrosRef.current, ...mudancas };
-        filtrosRef.current = { fase: proximo.fase, familia: proximo.familia, tipo: proximo.tipo, q: proximo.q };
+        filtrosRef.current = { fase: proximo.fase, familia: proximo.familia, tipo: proximo.tipo, status: proximo.status, q: proximo.q };
         const params = { ...(sugestoes.aba !== 'sugestoes' ? { aba: sugestoes.aba } : {}) };
         for (const [k, v] of Object.entries({ ...proximo, pagina: mudancas.pagina })) {
             if (v !== undefined && v !== null && v !== '') params[k] = v;
@@ -155,10 +166,11 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     const limparFiltros = () => {
         setBusca('');
-        visitar({ fase: undefined, familia: undefined, tipo: undefined, q: undefined });
+        visitar({ fase: undefined, familia: undefined, tipo: undefined, status: undefined, q: undefined });
     };
 
-    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', aba === 'sugestoes' ? {} : { aba });
+    // Os filtros seguem junto na troca de aba; a página volta para 1 (mesmo caminho: a guarda não pergunta).
+    const hrefAba = (aba) => route('portal.auth.estrutura.sugestoes', filtrosDaAba(filtros, aba));
 
     // ─── Marcação e edição (libs do 168-05) ─────────────────────────────────
 
@@ -194,6 +206,19 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     // ─── Escritas: aceitar e descartar ──────────────────────────────────────
 
     const recarregar = () => router.reload({ only: ['sugestoes'], preserveScroll: true });
+
+    /** "Atualizar sugestões": recarrega só as sugestões; a seleção e as edições ficam (mesma instância). */
+    const atualizar = () => router.reload({
+        only: ['sugestoes'], preserveScroll: true,
+        onStart: () => setAtualizando(true), onFinish: () => setAtualizando(false),
+    });
+
+    const alternarRecolhido = (chave) => setRecolhidos((s) => {
+        const n = new Set(s);
+        if (n.has(chave)) n.delete(chave); else n.add(chave);
+
+        return n;
+    });
 
     const enviarAceite = async (pedidos) => (await axios.post(route('portal.auth.estrutura.sugestoes.aceitar'), { sugestoes: pedidos })).data;
     const enviarDescarte = async (chaves) => (await axios.post(route('portal.auth.estrutura.sugestoes.descartar'), { chaves })).data;
@@ -357,6 +382,20 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
         }
     };
 
+    /** Marca (ou desmarca, se já estão todas) as descartadas desta página, com o mesmo teto. */
+    const alternarPaginaDescartadas = () => {
+        const chaves = itens.map((i) => i.chave);
+        if (chaves.length === 0) return;
+        if (chaves.every((c) => marcadasDesc.includes(c))) {
+            setEstadoDesc(desmarcarVarias(estadoDesc, chaves));
+
+            return;
+        }
+        const r = marcarVarias(estadoDesc, chaves, limites.lote);
+        setEstadoDesc(r.estado);
+        if (r.recusadas.length > 0) setAviso({ texto: msgMarcamosPrimeiras(limites.lote) });
+    };
+
     const restaurarMarcadas = async () => {
         setRestaurandoLote(true);
         try {
@@ -470,46 +509,45 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     const naPagina = itens.filter((i) => podeAceitar(i, estado, limites));
     const todasDaPaginaMarcadas = naPagina.length > 0 && naPagina.every((i) => marcadas.includes(i.chave));
-    const filtroAtivo = Boolean(filtros.fase || filtros.familia || filtros.tipo || filtros.q);
+    const todasDescPaginaMarcadas = itens.length > 0 && itens.every((i) => marcadasDesc.includes(i.chave));
     const vazio = ehAbaSugestoes
-        ? qualEstadoVazio({ temProdutos: sugestoes.tem_produtos, contagens: sugestoes.contagens, filtroAtivo, aceitouNaSessao, qtdItens: itens.length })
+        ? qualEstadoVazio({ temProdutos: sugestoes.tem_produtos, contagens: sugestoes.contagens, filtroAtivo: comFiltro, aceitouNaSessao, qtdItens: itens.length })
         : null;
+    const textoDeAtualizacao = textoAtualizado(sugestoes.gerado_em, agora);
+    const horaExata = sugestoes.gerado_em ? new Date(sugestoes.gerado_em).toLocaleString('pt-BR') : undefined;
 
     return (
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Sugestões de ofertas">
-            <div className={cn('mx-auto w-full max-w-[1600px] px-4 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11', barraVisivel ? 'pb-28' : 'pb-10')} data-sugestoes-pagina>
-                <header className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                        <p className="text-[13px] font-medium tracking-[0.2em] text-white/55">Mapeamento Estrutural</p>
-                        <nav aria-label="Caminho" className="mt-3 flex items-center gap-2 text-[14px] text-white/70">
-                            <ArrowLeft size={18} aria-hidden="true" />
-                            <Link href={route('portal.auth.estrutura.produtos')} className="hover:text-white">Produtos</Link>
-                            <ChevronRight size={14} aria-hidden="true" className="text-white/40" />
-                            <span className="truncate text-white">Sugestões de ofertas</span>
-                        </nav>
-                        <h1 className="mt-3 font-display text-[24px] font-bold leading-tight text-white">Sugestões de ofertas</h1>
-                        <p className="mt-1 max-w-[900px] text-[15px] leading-relaxed text-white/70">
-                            Combinamos os seus produtos em Combo, Kit e Combit. Você escolhe o que vira oferta. Nada é criado sozinho.
-                        </p>
+            <div className={cn('mx-auto w-full max-w-[1600px] px-4 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11', barraVisivel ? 'pb-28 lg:pb-10' : 'pb-10')} data-sugestoes-pagina>
+                <header data-cabecalho-sugestoes>
+                    <nav aria-label="Caminho" data-trilha className="flex items-center gap-2 text-[13px] text-white/65">
+                        <Link href={route('portal.auth.estrutura.produtos')} data-acao="voltar-produtos" className="hover:text-white">Produtos</Link>
+                        <ChevronRight size={13} aria-hidden="true" className="text-white/40" />
+                        <span className="truncate text-white">Sugestões de ofertas</span>
+                    </nav>
+                    <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                            <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[10px] bg-white/[0.04] text-ecf-yellow">
+                                <Tag size={20} aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0">
+                                <h1 className="font-display text-[26px] font-bold leading-tight text-white">Sugestões de ofertas</h1>
+                                <p className="mt-0.5 max-w-[900px] text-[14px] leading-relaxed text-white/65">
+                                    O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-4">
+                            <Botao variante="fantasma" onClick={() => setAula(true)} data-acao="como-funciona" className="h-9">Como funciona</Botao>
+                            {textoDeAtualizacao && (
+                                <span data-atualizado title={horaExata} className="inline-flex items-center gap-2 text-[13px] text-white/70">
+                                    <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-400" />
+                                    {textoDeAtualizacao}
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    <Botao variante="fantasma" onClick={() => setAula(true)} data-acao="como-funciona" className="h-11 shrink-0">Como funciona</Botao>
                 </header>
-
-                <ExplicacaoDasOfertas />
-
-                <nav aria-label="Seções" className="mt-5 grid grid-cols-3 gap-1 sm:flex">
-                    {ABAS.map(([aba, rotulo]) => {
-                        const ativa = sugestoes.aba === aba;
-
-                        return (
-                            <Link key={aba} href={hrefAba(aba)} preserveState preserveScroll replace aria-current={ativa ? 'page' : undefined}
-                                className={cn('inline-flex h-11 items-center justify-center rounded-[10px] px-4 text-[12px] font-semibold transition-colors sm:text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40',
-                                    ativa ? 'bg-white/[0.08] text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white')}>
-                                {rotulo} ({sugestoes.contagens?.[aba] ?? 0})
-                            </Link>
-                        );
-                    })}
-                </nav>
 
                 {vazio === 'sem_produtos' && (
                     <EstadoVazio titulo="Cadastre seus produtos primeiro"
@@ -517,6 +555,34 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         <Link href={route('portal.auth.estrutura.produtos')} className={LINK_PRIMARIO} data-acao="ir-para-produtos">Ir para Produtos</Link>
                     </EstadoVazio>
                 )}
+
+                {sugestoes.tem_produtos && (
+                    <>
+                        <div className="mt-4">
+                            <ResumoSugestoes resumo={sugestoes.resumo} />
+                        </div>
+                        <div className="mt-4">
+                            <BarraDeFiltros sugestoes={sugestoes} filtros={filtros} aba={sugestoes.aba} busca={busca} onBusca={setBusca}
+                                onFiltro={(m) => visitar(m)} onLimpar={limparFiltros} atualizando={atualizando} onAtualizar={atualizar} />
+                        </div>
+                    </>
+                )}
+
+                <div className="mt-4">
+                    {ehAbaDescartadas ? (
+                        <AbasDasSugestoes aba={sugestoes.aba} contagens={sugestoes.contagens} hrefAba={hrefAba}
+                            selecionadas={marcadasDesc.length} naPagina={itens.length} todasDaPagina={todasDescPaginaMarcadas}
+                            onMarcarPagina={alternarPaginaDescartadas} onLimpar={() => setEstadoDesc(limparMarcacao(estadoDesc))}
+                            ocupada={restaurandoLote} onRestaurar={restaurarMarcadas} />
+                    ) : (
+                        <AbasDasSugestoes aba={sugestoes.aba} contagens={sugestoes.contagens} hrefAba={hrefAba}
+                            selecionadas={marcadas.length} naPagina={naPagina.length} todasDaPagina={todasDaPaginaMarcadas}
+                            onMarcarPagina={() => alternarVarias(itens.map((i) => i.chave))} onLimpar={() => setEstado(limparMarcacao(estado))}
+                            ocupada={emLote} onAceitar={aceitarMarcadasEmLote} onDescartar={descartarMarcadas}
+                            filtroAtivo={comFiltro} totalDoFiltro={(sugestoes.chaves_filtradas ?? []).length}
+                            limiteDoLote={limites.lote} onMarcarFiltro={marcarDoFiltro} />
+                    )}
+                </div>
 
                 {ehAbaSugestoes && sugestoes.tem_produtos && (
                     <>
@@ -526,34 +592,44 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                             </p>
                         )}
 
-                        <FiltrosSugestoes sugestoes={sugestoes} filtros={filtros} busca={busca} onBusca={setBusca}
-                            onFiltro={(m) => visitar(m)} onLimpar={limparFiltros}
-                            naPagina={naPagina.length} todasMarcadas={todasDaPaginaMarcadas}
-                            onMarcarPagina={() => alternarVarias(itens.map((i) => i.chave))}
-                            limiteDoLote={limites.lote} onMarcarFiltro={marcarDoFiltro}
-                            mlConectado={ml_conectado} temMe2={chavesMe2.length > 0} consultando={consultando} onConsultar={consultarFretes} />
+                        <div className={cn('mt-4 space-y-[13px]', visitando && 'opacity-60')} aria-busy={visitando} data-lista-sugestoes>
+                            {grupos.map((g, indice) => {
+                                const aceitaveis = g.itens.filter((i) => podeAceitar(i, estado, limites));
 
-                        <div className={cn('mt-4', visitando && 'opacity-60')} aria-busy={visitando} data-lista-sugestoes>
-                            {grupos.map((g, indice) => (
-                                <section key={`${g.chave}-${indice}`} aria-label={g.chave === 'sem' ? 'Sem família' : g.nome} data-grupo-familia={g.chave}>
-                                    <CabecalhoFamilia nome={g.nome} semFamilia={g.chave === 'sem'} primeiro={indice === 0}
-                                        naPagina={g.itens.length} total={sugestoes.familia_totais?.[g.chave] ?? g.itens.length}
+                                return (
+                                    <GrupoFamilia key={`${g.chave}-${indice}`} chave={g.chave} nome={g.nome} semFamilia={g.chave === 'sem'}
+                                        ambientes={sugestoes.familia_ambientes?.[g.chave] ?? []}
+                                        total={sugestoes.familia_totais?.[g.chave] ?? g.itens.length} naPagina={g.itens.length}
                                         continua={indice === 0 && sugestoes.familia_continua !== null && sugestoes.familia_continua !== undefined && String(sugestoes.familia_continua) === g.chave}
-                                        todasMarcadas={g.itens.filter((i) => podeAceitar(i, estado, limites)).every((i) => marcadas.includes(i.chave)) && g.itens.some((i) => podeAceitar(i, estado, limites))}
-                                        onMarcarTodas={() => alternarVarias(g.itens.map((i) => i.chave))} />
-                                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                                        todasMarcadas={aceitaveis.length > 0 && aceitaveis.every((i) => marcadas.includes(i.chave))}
+                                        podeMarcar={aceitaveis.length > 0}
+                                        recolhido={recolhidos.has(g.chave)} onAlternar={() => alternarRecolhido(g.chave)}
+                                        onMarcarTodas={() => alternarVarias(g.itens.map((i) => i.chave))}>
                                         {g.itens.map((item) => (
-                                            <CartaoSugestao key={item.chave} sugestao={item} estado={estado} limites={limites} vocabulario={vocabulario}
+                                            <LinhaSugestao key={item.chave} sugestao={item} estado={estado} limites={limites} vocabulario={vocabulario}
                                                 marcada={marcadas.includes(item.chave)} aceitando={aceitando.has(item.chave)} bloqueado={emLote}
                                                 erro={errosPorChave[item.chave] ?? null} freteCotado={fretesCotados[item.chave] ?? null}
                                                 onMarcar={marcar} onEditar={editar} onDesfazer={desfazer}
                                                 onAceitar={aceitarUma} onDescartar={descartarUma}
                                                 onTipo={(id) => setTipoAberto(produtoDaPagina(id))} />
                                         ))}
-                                    </div>
-                                </section>
-                            ))}
+                                    </GrupoFamilia>
+                                );
+                            })}
                         </div>
+
+                        {itens.length > 0 && (
+                            <div data-rodape-frete className="mt-3 flex items-center text-[12px]">
+                                {ml_conectado && chavesMe2.length > 0 && (
+                                    <button type="button" onClick={consultarFretes} disabled={consultando} data-acao="consultar-fretes"
+                                        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-3 text-[12px] font-medium text-white/60 transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40 disabled:pointer-events-none disabled:opacity-40 lg:min-h-9">
+                                        {consultando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Truck size={14} aria-hidden="true" />}
+                                        {consultando ? 'Consultando…' : 'Consultar fretes desta página no Mercado Livre'}
+                                    </button>
+                                )}
+                                {! ml_conectado && <p className="text-white/55" data-nota-frete>Conecte sua conta do Mercado Livre para ver o frete real.</p>}
+                            </div>
+                        )}
 
                         {vazio === 'filtro_vazio' && (
                             <EstadoVazio titulo="Nada com esses filtros.">

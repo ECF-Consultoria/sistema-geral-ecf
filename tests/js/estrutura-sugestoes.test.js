@@ -46,7 +46,7 @@ test('Sem planilha e sem regra de negócio no navegador', () => {
 
 test('Os textos literais da UI-SPEC estão em uso', () => {
     assert.ok(pagina.includes('Sugestões de ofertas'));
-    assert.ok(pagina.includes('Combinamos os seus produtos em Combo, Kit e Combit. Você escolhe o que vira oferta. Nada é criado sozinho.'));
+    assert.ok(pagina.includes('O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.'));
     assert.ok(pagina.includes('Elas saem da lista e não voltam sozinhas. Você pode restaurá-las na aba Descartadas.'));
     for (const proibida of ['algoritmo', 'gerador', ' IA ']) {
         assert.ok(! pagina.toLowerCase().includes(proibida.toLowerCase()), `não escrever "${proibida.trim()}" na tela`);
@@ -104,4 +104,24 @@ test('O frete da página vai pela rota .frete e os estados vazios usam qualEstad
     for (const texto of ['Cadastre seus produtos primeiro', 'Ainda não há sugestões novas', 'Você revisou todas as sugestões', 'Ir para Produtos']) {
         assert.ok(pagina.includes(texto), `estado vazio: ${texto}`);
     }
+});
+
+// ─── Redesenho pela referência (168-19, D-24..D-31) ─────────────────────
+
+test('A página monta o desenho da referência', () => {
+    for (const trecho of [
+        '<ResumoSugestoes', '<BarraDeFiltros', '<AbasDasSugestoes', '<GrupoFamilia', '<LinhaSugestao',
+        'textoAtualizado(', 'filtrosDaAba(', 'data-atualizado', 'data-trilha', 'data-acao="voltar-produtos"', 'clearInterval(',
+        'onAtualizar=', 'familia_ambientes', 'sugestoes.resumo',
+    ]) {
+        assert.ok(pagina.includes(trecho), `a página deve conter ${trecho}`);
+    }
+    for (const antigo of ['CartaoSugestao', 'FiltrosSugestoes', 'CabecalhoFamilia', 'ExplicacaoDasOfertas']) {
+        assert.ok(! pagina.includes(antigo), `${antigo} saiu do desenho`);
+    }
+});
+
+test('O Atualizar recarrega só as sugestões', () => {
+    assert.match(pagina, /const atualizar = \(\) => router\.reload\(\{\s*only: \['sugestoes'\]/);
+    assert.match(pagina, /onAtualizar=\{atualizar\}/);
 });
