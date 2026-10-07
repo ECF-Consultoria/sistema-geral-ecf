@@ -87,3 +87,55 @@ export function qualEstadoVazio({ temProdutos, contagens, filtroAtivo, aceitouNa
 
     return 'sem_sugestoes';
 }
+
+// ─── Aba Sem tipo e janela de tipo (Fase 168-15) ────────────────────────────
+
+export const textoTipoDefinido = (nome) => `Tipo definido: ${nome}. As sugestões de Kit e Combit foram atualizadas.`;
+
+/** "Pode ser Banco ou Banqueta." (3 ou mais: "Pode ser A, B ou C."). Sem candidatos: null. */
+export function textoPodeSer(candidatos) {
+    const nomes = (candidatos ?? []).map((c) => c.nome).filter(Boolean);
+    if (nomes.length === 0) return null;
+    if (nomes.length === 1) return `Pode ser ${nomes[0]}.`;
+
+    return `Pode ser ${nomes.slice(0, -1).join(', ')} ou ${nomes[nomes.length - 1]}.`;
+}
+
+/**
+ * Opções do select de tipo: os candidatos da inferência primeiro (na ordem recebida),
+ * depois os demais tipos na ordem de `tipos`, sem repetir. Candidato que não é tipo da empresa some.
+ *
+ * @returns {{valor: string, rotulo: string}[]}
+ */
+export function opcoesDeTipo(tipos, candidatos) {
+    const porSlug = new Map((tipos ?? []).map((t) => [t.slug, t]));
+    const vistos = new Set();
+    const saida = [];
+    const incluir = (t) => {
+        if (! t || vistos.has(t.slug)) return;
+        vistos.add(t.slug);
+        saida.push({ valor: t.slug, rotulo: t.nome });
+    };
+
+    for (const c of candidatos ?? []) incluir(porSlug.get(c.slug));
+    for (const t of tipos ?? []) incluir(t);
+
+    return saida;
+}
+
+/**
+ * Corpo do PUT de tipo e quantidades. Texto vazio vira null (herda o padrão do tipo);
+ * '0' passa como '0' (não gera): nunca confundir os dois (T-168-49).
+ *
+ * @returns {{tipo_id: number|null, qtd_combo: string|null, qtd_combit: string|null}}
+ */
+export function corpoDaGeracao({ tipo, qtdCombo, qtdCombit }, tipos) {
+    const achado = (tipos ?? []).find((t) => t.slug === tipo);
+    const texto = (v) => {
+        const limpo = String(v ?? '').trim();
+
+        return limpo === '' ? null : limpo;
+    };
+
+    return { tipo_id: achado ? achado.id : null, qtd_combo: texto(qtdCombo), qtd_combit: texto(qtdCombit) };
+}
