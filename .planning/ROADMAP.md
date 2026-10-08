@@ -3365,3 +3365,20 @@ v24.0 (Fases 160-163) em produção; nenhuma fase, decisão ou numeração anter
 2. **Programa inicial só lembra o último escolhido** (sessão → Polos). O ramo "setor do usuário → programa" da spec foi cortado: não existe no código e seria feature nova. ⚠️ Consequência assumida: o critério de aceite *"Usuário do setor Incubadora entra em /mlb/anuncios já no programa Incubadora"* **não é entregue** nesta fase.
 
 *Roadmap atualizado: 2026-10-08 — Fase 172 anexada como fase avulsa, fora de milestone, seguindo a convenção deste roadmap de anexar sem tocar no que existe. Origem: o pacote `design_handoff_publicador/` (Etapas 1 e 2 especificadas; 3 e 4 só desenhadas). A conferência código×spec foi feita antes do planejamento e achou três divergências: o `route_prefix` do módulo (acima), a ausência completa de "programa inicial por setor" no código, e testes JS de gate por regex que a spec não menciona e que o critério de aceite "npm run test:js verde" obrigaria a tratar (`publicador-alavancas.test.js` e `publicador-entrada.test.js` leem `Produtos.jsx` por literal). Fases 1-171 preservadas.*
+
+### Phase 173: Publicador Etapa 2 — Visão geral e Configurações da conta
+
+**Goal:** duas abas novas na barra da conta — uma **Visão geral** que vira o destino ao abrir uma empresa (indicadores, "O que fazer agora", situação dos produtos, últimas publicações, integrações, identidade e quem publicou) e uma tela de **Configurações da conta** com a identidade visual em lugar próprio. **Nenhuma migration; nenhuma chamada ao Mercado Livre durante o carregamento.**
+
+**Depends on:** Fase 172 (Etapa 1), em produção desde 08/10.
+
+**Plans**: 7 planos em 4 waves — `173-01` (contagem por situação, busca de empresas, identidade por conta), `173-02` (extrai triagem e defasagem de `meus()`), `173-03` (abas novas + seletor de empresa com busca) na wave 1; `173-04` (o cálculo de risco: dedup entre as duas fontes de publicação) na wave 2; `173-05` (resto do painel + rotas) na wave 3; `173-06` (página Visão geral) e `173-07` (página Configurações) na wave 4.
+
+**Três respostas que o handoff exigia antes do plano, já investigadas:**
+1. O editor novo grava a publicação em `pub_publicacoes`: data em `iniciada_em`/`concluida_em`, autor no JSON `ator` (`{equipe, id, nome}`, gravado por `PublicacaoService::atorParaGravar()`). ⚠️ `ator.id` **nem sempre é usuário do sistema** (quando `equipe` é falso, é cliente pelo portal), e as linhas migradas do assistente antigo não têm `id` nenhum.
+2. `creative_identidades_conta` guarda **data mas não autor** — "Salvo por" é impossível sem coluna nova, que a spec proíbe. Só "Salvo em".
+3. A extrair: a contagem por situação de `MlbPublicadorEntradaController::produtos()` e os blocos de triagem/defasagem de `MlbAnuncioController::meus()`, mantendo `motivosTriagemDef()` como fonte única dos motivos.
+
+**Decisão do usuário (08/10):** no bloco "Quem publicou", o ranking mostra **só a equipe**; publicações feitas pelo cliente no portal viram uma linha à parte e as migradas aparecem como "origem antiga" — ninguém some da conta e o ranking não mistura equipe com cliente.
+
+*Roadmap atualizado: 2026-10-08 — Fase 173 anexada, segunda etapa do pacote `design_handoff_publicador/`. O planejamento encontrou duas divergências entre a spec e o código que valem registro: (a) `MlbAnuncioController::historico()` lê **só** a fonte legada, então a "Visão geral" — que a spec manda somar as duas fontes — pode exibir um número que a aba Histórico de destino não reproduz, contrariando o critério "todo número bate com a aba"; (b) `Produtos.jsx` ignora a querystring hoje (filtro é estado local), então os links de "O que fazer agora" exigem um ajuste de leitura da URL que o handoff não previa. Fases 1-172 preservadas.*
