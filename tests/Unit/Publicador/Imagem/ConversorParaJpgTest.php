@@ -80,4 +80,31 @@ class ConversorParaJpgTest extends TestCase
         $this->assertGreaterThan(240, ($rgb >> 8) & 0xFF);
         $this->assertGreaterThan(240, $rgb & 0xFF);
     }
+
+    /** Cabeçalho WebP (VP8X) que anuncia uma tela enorme em poucos bytes — a "bomba" do review 172 WR-05. */
+    private static function webpGigante(int $lado = 16383): string
+    {
+        $tres = fn (int $n) => substr(pack('V', $n), 0, 3);
+        $chunk = 'VP8X'.pack('V', 10).pack('V', 0).$tres($lado - 1).$tres($lado - 1);
+
+        return 'RIFF'.pack('V', 4 + strlen($chunk)).'WEBP'.$chunk;
+    }
+
+    public function test_foto_acima_de_40_megapixels_e_recusada_sem_decodificar(): void
+    {
+        $bomba = self::webpGigante();
+        $this->assertSame([16383, 16383], array_slice(getimagesizefromstring($bomba), 0, 2), 'o cabeçalho anuncia 268 MP');
+
+        $r = ConversorParaJpg::converter($bomba);
+
+        $this->assertNull($r['conteudo']);
+        $this->assertSame('dimensao_grande', $r['motivo'], 'recusada pelo cabeçalho, antes do GD (senão seria "formato")');
+        $this->assertStringContainsString('40 megapixels', $r['erro']);
+    }
+
+    public function test_motivo_formato_para_o_que_nao_e_imagem_e_nulo_para_a_foto_normal(): void
+    {
+        $this->assertSame('formato', ConversorParaJpg::converter('isto nao e uma foto')['motivo']);
+        $this->assertNull(ConversorParaJpg::converter(self::webp())['motivo']);
+    }
 }

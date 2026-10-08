@@ -27,6 +27,10 @@ test('motivosNaoTrazidas — frases por motivo, código quando desconhecido', ()
     const l = motivosNaoTrazidas({ pequena: 2, formato: 1 });
     assert.deepEqual(l, ['2 fotos pequenas demais (mínimo 500 px)', '1 foto em formato não aceito']);
     assert.deepEqual(motivosNaoTrazidas({ estranho: 3 }), ['3 fotos (estranho)']);
+    assert.deepEqual(motivosNaoTrazidas({ dimensao_grande: 1, arquivo_grande: 2 }), [
+        '1 foto com resolução grande demais (acima de 40 megapixels)',
+        '2 fotos com arquivo grande demais',
+    ]);
     assert.deepEqual(motivosNaoTrazidas({ pequena: 0 }), []);
     assert.deepEqual(motivosNaoTrazidas(undefined), []);
 });

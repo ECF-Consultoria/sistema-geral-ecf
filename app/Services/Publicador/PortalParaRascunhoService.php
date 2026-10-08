@@ -556,7 +556,7 @@ class PortalParaRascunhoService
         }
         $convertida = ConversorParaJpg::converter($conteudo);
         if ($convertida['conteudo'] === null) {
-            return 'formato';
+            return $convertida['motivo'] ?? 'formato';
         }
 
         $res = $this->imagens->receber($r, $convertida['conteudo'], (string) ($foto['nome_original'] ?? 'foto'), enviar: false);

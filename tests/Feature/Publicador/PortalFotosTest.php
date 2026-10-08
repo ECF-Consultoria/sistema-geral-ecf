@@ -350,4 +350,17 @@ class PortalFotosTest extends TestCase
         $this->assertSame(0, DB::table('pub_imagem_atribuicoes')->count(), 'nada é atribuído a um rascunho em publicação');
         $this->assertSame(0, $resumo['fotos_trazidas']);
     }
+
+    public function test_foto_com_resolucao_gigante_nao_e_decodificada_e_entra_no_resumo(): void
+    {
+        [, $pub, [$azul]] = $this->produto(['Azul']);
+        $tres = fn (int $n) => substr(pack('V', $n), 0, 3);
+        $chunk = 'VP8X'.pack('V', 10).pack('V', 0).$tres(16382).$tres(16382);
+        $this->foto($azul, 0, 'RIFF'.pack('V', 4 + strlen($chunk)).'WEBP'.$chunk, 'image/webp');
+
+        $resumo = $this->servico->preencher($pub);
+
+        $this->assertSame(['dimensao_grande' => 1], $resumo['fotos_nao_trazidas']);
+        $this->assertSame(0, DB::table('pub_imagens')->count());
+    }
 }

@@ -29,6 +29,8 @@ const MOTIVOS = {
     formato: (n) => `${n} ${n === 1 ? 'foto em formato não aceito' : 'fotos em formato não aceito'}`,
     arquivo_sumido: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} cujo arquivo não foi encontrado`,
     acima_do_limite: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} além do limite de fotos do anúncio`,
+    arquivo_grande: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} com arquivo grande demais`,
+    dimensao_grande: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} com resolução grande demais (acima de 40 megapixels)`,
 };
 
 /** Lista de frases, uma por motivo; motivo desconhecido aparece com o código. */
