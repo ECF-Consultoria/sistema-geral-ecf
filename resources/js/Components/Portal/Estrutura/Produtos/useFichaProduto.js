@@ -4,6 +4,7 @@ import { aplicarImagens, enviarPendentes, manterImagensAtuais, montarEnvio } fro
 import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
+import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
@@ -61,7 +62,7 @@ const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto
 /** O que a pessoa vê e pode mudar, para comparar o rascunho com o que a ficha abriu. */
 const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id ?? null, ...campoEditaveis(v), volumes: v.volumes_digitados ?? null })));
 
-export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null }) {
+export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null }) {
     // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
     const [inicio] = useState(() => {
         const iniciais = linhas.length
@@ -117,6 +118,8 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const novoProduto = ! primeira.produto_id;
     // Ficha técnica: os campos da categoria escolhida; mexer em um deles protege a saída sem salvar.
     const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id, aoAlterar: () => setAlterado(true) });
+    // Descrição do produto: texto livre, gravado no mesmo Salvar (depois da ficha técnica).
+    const descricao = useDescricaoProduto({ inicial: descricaoInicial ?? '', aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
@@ -278,6 +281,15 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             }
         }
 
+        // Descrição: também só depois de o produto existir. Se não passar, o produto já está salvo.
+        if (ok) {
+            const d = await descricao.gravar(r.produtoId);
+            if (! d.ok) {
+                ok = false;
+                setAviso('O produto foi salvo, mas a descrição precisa de ajustes.');
+            }
+        }
+
         // As fotos escolhidas antes de a variação existir sobem agora, com o id que o servidor deu.
         // Vão mesmo se a ficha técnica reprovou: as variações já existem e o arquivo só vive nesta aba.
         const idPorChave = new Map(juntas.linhas.filter((l) => l.chave && l.id).map((l) => [l.chave, l.id]));
@@ -318,6 +330,6 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         alterarNome, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
-        tecnica,
+        tecnica, descricao,
     };
 }
