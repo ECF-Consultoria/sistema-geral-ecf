@@ -14,17 +14,25 @@ import AvisoContaTravada from './AvisoContaTravada';
  * `empresa` é o shape de `ProgramasPublicadorService::empresaParaTela()` —
  * chega como prop de página Inertia e nunca deve ser assumido como forma
  * certa (T-172-BARRA-01): todo campo de texto do servidor passa por
- * `String(... ?? '—')` antes do JSX, pra nunca repetir "Objects are not
- * valid as a React child" (lição da tela preta de 07/10).
+ * `textoSeguro()` antes do JSX, pra nunca repetir "Objects are not valid as
+ * a React child" (lição da tela preta de 07/10). `String(valor ?? '—')` NÃO
+ * basta — só cobre `null`/`undefined`; um objeto vindo no lugar do texto
+ * ainda vira `"[object Object]"` na tela.
  *
  * `acoes` é só um slot — quem usa decide o conteúdo (Sincronizar + "+
  * Produto" em Produtos; "Atualizar agora" em Publicações; nada em
  * Alavancas). A ação em si NUNCA mora aqui dentro.
  */
+
+/** Só aceita string/number do servidor; qualquer outra forma (objeto, array, etc.) cai no fallback. */
+function textoSeguro(valor, fallback = '—') {
+    return (typeof valor === 'string' || typeof valor === 'number') ? String(valor) : fallback;
+}
+
 export default function BarraDaConta({ empresa, liberada = true, acoes = null }) {
-    const nome = String(empresa?.nome ?? '—');
-    const chave = String(empresa?.chave ?? '—');
-    const programaRotulo = String(empresa?.programa_rotulo ?? '');
+    const nome = textoSeguro(empresa?.nome);
+    const chave = textoSeguro(empresa?.chave);
+    const programaRotulo = textoSeguro(empresa?.programa_rotulo, '');
     const programa = empresa?.programa;
 
     return (
