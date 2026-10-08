@@ -56,8 +56,10 @@ export function QuadroFotoProduto({ nome, foto = null, tamanho = 'grande', class
 
     if (foto) {
         return (
-            <div className={caixa} data-quadro-foto="com-foto">
-                <img src={foto} alt={`Foto de ${nome || 'produto novo'}`} loading="lazy" draggable={false} className="h-full w-full object-cover" />
+            // Fundo branco + `object-contain`: a foto de produto (quase sempre fundo branco) aparece
+            // inteira em qualquer formato de quadro — `object-cover` cortava o topo e o pé do produto.
+            <div className={cn(caixa, 'bg-white')} data-quadro-foto="com-foto">
+                <img src={foto} alt={`Foto de ${nome || 'produto novo'}`} loading="lazy" draggable={false} className="h-full w-full object-contain" />
             </div>
         );
     }

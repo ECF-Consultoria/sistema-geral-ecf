@@ -1,9 +1,10 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { Rocket, Search, Plus, Loader2, Check, AlertTriangle, Copy, Trash2 } from 'lucide-react';
-import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
+import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import GradeAnuncioGlide from '@/Pages/Mlb/GradeAnuncioGlide';
 // Helpers puros da grade (validação/coerção) — moram fora daqui para a grade em
 // canvas poder importá-los sem criar ciclo de import página↔grade.
@@ -47,7 +48,7 @@ const iniciais = (nome) =>
 // ─── Aba temporária "Sem categoria" (rascunhos ainda sem category_id) ───
 const SEM_CATEGORIA = '__sem_categoria__';
 
-export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos = [] }) {
+export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos = [], conta = {} }) {
     // Cada aba: { key, category_id, caminho:[], obrigatorios:[], max_title_length, catalog_required, linhas:[], carregando }
     const [abas, setAbas] = useState([]);
     const [abaAtiva, setAbaAtiva] = useState(0);
@@ -628,35 +629,18 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
         <AppLayout title="Anunciar em massa">
             <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 pb-28">
 
-                {/* ─── Cabeçalho + chip da empresa fixada ─── */}
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                        <Rocket className="mt-0.5 h-6 w-6 text-ecf-yellow" />
-                        <div>
-                            <h1 className="text-xl font-semibold text-white">Anunciar em massa</h1>
-                            <p className="text-sm text-white/40">
-                                Preencha várias linhas, valide e publique tudo de uma vez. Cada linha vira um anúncio.
-                            </p>
-                        </div>
-                    </div>
+                {/* ─── Cabeçalho único da conta (BarraDaConta) — nav/172-05 ─── */}
+                <BarraDaConta empresa={conta} />
 
-                    {/* Chip da empresa (não editável — âncora da conta ML) */}
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-ecf-card px-3 py-1.5 pl-1.5">
-                        <span className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-indigo-800 to-red-500 text-[11px] font-bold text-white">
-                            {iniciais(empresa.nome)}
-                        </span>
-                        <div className="pr-1 text-sm leading-tight text-white">
-                            {empresa.nome ?? '—'}
-                            <div className="text-[11px] text-white/40">
-                                conta ML{empresa.tem_token ? '' : ' · sem token'}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Alternância entre modo Individual e Em massa (esta grade) */}
+                {/* Abas da conta — Em massa deixou de ser aba própria, acende Produtos */}
                 <div className="mb-4">
-                    <ModoAnuncioTabs empresaId={empresa.id} modo="massa" />
+                    <AbasDaConta aba="produtos" conta={conta.chave} companyId={empresa.id} />
+                    <Link
+                        href={route('mlb.anuncios.publicador.produtos', { conta: conta.chave })}
+                        className="mt-2 inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
+                    >
+                        ‹ Voltar aos produtos
+                    </Link>
                 </div>
 
                 {/* ─── Cápsulas de aba por categoria ─── */}

@@ -244,7 +244,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     const mostrar = Boolean(tentou[etapa]);
 
     return (
-        <AppLayout title="Publicador MLB">
+        <AppLayout title="Publicador">
             <Head title={`Publicador — ${produto.nome}`} />
 
             <CriativosDoPublicador.Provider value={criativos}>

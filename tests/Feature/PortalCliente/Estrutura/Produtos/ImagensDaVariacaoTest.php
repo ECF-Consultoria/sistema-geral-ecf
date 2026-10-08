@@ -218,7 +218,7 @@ class ImagensDaVariacaoTest extends TestCase
             'svg'          => $this->arquivoReal('x.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'),
             'script no .jpg' => $this->arquivoReal('foto.jpg', '<?php echo 1; ?>'),
             'html no .png' => $this->arquivoReal('foto.png', '<html><script>alert(1)</script></html>'),
-            'executavel no .webp' => $this->arquivoReal('foto.webp', "MZ�       ��"),
+            'executavel no .webp' => $this->arquivoReal('foto.webp', "MZ�       ��"),
             'gif com nome .jpg' => $this->arquivoReal('foto.jpg', base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')),
         ];
 
@@ -613,6 +613,26 @@ class ImagensDaVariacaoTest extends TestCase
             ->assertInertia(fn ($page) => $page->where('linhas', []));
         $sessao->get(route('portal.auth.estrutura.produtos'))->assertOk()
             ->assertInertia(fn ($page) => $page->missing('produtos.linhas.0.imagens'));
+    }
+
+    public function test_a_lista_de_produtos_traz_so_a_capa_de_cada_variacao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        [, $comFoto] = $this->variacao($empresa, 'CAD-1');
+        [, $semFoto] = $this->variacao($empresa, 'CAD-2');
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $sessao->postJson($this->urlEnviar($comFoto->id), ['imagens' => [$this->jpg('capa.jpg'), $this->jpg('detalhe.jpg')]])->assertOk();
+        $idCapa = EstruturaProdutoVariacaoImagem::where('variacao_id', $comFoto->id)->where('ordem', 0)->value('id');
+
+        $sessao->get(route('portal.auth.estrutura.produtos'))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('produtos.linhas.0.id', $comFoto->id)
+                ->where('produtos.linhas.0.capa', "/portal/estrutura/produtos/variacao/{$comFoto->id}/imagem/{$idCapa}")
+                ->missing('produtos.linhas.0.imagens')
+                ->where('produtos.linhas.1.id', $semFoto->id)
+                ->where('produtos.linhas.1.capa', null)
+            );
     }
 
     // ─── Limpeza do disco ────────────────────────────────────────────────────

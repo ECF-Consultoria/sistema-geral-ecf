@@ -4,8 +4,7 @@ import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, Packag
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
-import { router } from '@inertiajs/react';
-import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import { Link, router } from '@inertiajs/react';
 import PainelAnunciarIa from '@/Pages/Mlb/components/PainelAnunciarIa';
 import PainelCriativosIa from '@/Pages/Mlb/components/PainelCriativosIa';
 import {
@@ -1037,7 +1036,7 @@ function CompatibilidadeEditor({ veiculos, setVeiculos }) {
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null, creativeAtivo = false }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null, creativeAtivo = false, conta = null }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // ─── Navegação do wizard (WIZ-01) ───
@@ -2010,10 +2009,26 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                         )}
                     </div>
 
-                    {/* Alternância entre modo Individual (este wizard) e Em massa */}
-                    <div className="mt-3">
-                        <ModoAnuncioTabs empresaId={empresa.id} modo="individual" />
-                    </div>
+                    {/* Trilha "Publicador / Empresa / Rascunho antigo" (172-05) — este
+                        wizard NÃO adota BarraDaConta/AbasDaConta, só a trilha troca. */}
+                    <nav aria-label="Trilha" className="mt-3 text-[13px] font-normal text-white/55">
+                        <Link href={route('mlb.anuncios.index')} className="hover:text-ecf-yellow">Publicador</Link>
+                        <span aria-hidden="true"> › </span>
+                        <span className="text-white/70">{empresa?.nome ?? '—'}</span>
+                        <span aria-hidden="true"> › </span>
+                        <span className="text-white/70">Rascunho antigo</span>
+                        {conta && (
+                            <>
+                                <span aria-hidden="true"> · </span>
+                                <Link
+                                    href={route('mlb.anuncios.publicador.produtos', { conta: conta.chave })}
+                                    className="hover:text-ecf-yellow"
+                                >
+                                    ‹ Voltar aos produtos
+                                </Link>
+                            </>
+                        )}
+                    </nav>
                 </header>
 
                 {flash && (

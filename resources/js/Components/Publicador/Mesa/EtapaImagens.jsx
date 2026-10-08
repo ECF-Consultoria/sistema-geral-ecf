@@ -1,3 +1,4 @@
+import AcervoDaConta from './AcervoDaConta';
 import FotosEVariacoes from './FotosEVariacoes';
 import IdentidadeDaConta from './IdentidadeDaConta';
 
@@ -24,12 +25,18 @@ import IdentidadeDaConta from './IdentidadeDaConta';
 // acima de "Fotos e variações" — é da CONTA do produto (não deste produto
 // só), por isso fica fora de `FotosEVariacoes`/`PainelCriativos` (que
 // remontam por grupo/variação e duplicariam o campo na tela).
+//
+// Fase 171 (D4, ACERVO-01..05, 08/10/2026): `AcervoDaConta` entra DEPOIS de
+// "Fotos e variações" — "aqui estão as suas fotos de hoje; aqui está o que
+// você já gerou antes e pode reaproveitar". Também montado UMA VEZ, pelo
+// mesmo motivo de `IdentidadeDaConta`.
 
 export default function EtapaImagens({ m, produtoId }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="imagens">
             <IdentidadeDaConta produtoId={produtoId} />
             <FotosEVariacoes m={m} />
+            <AcervoDaConta m={m} produtoId={produtoId} />
         </div>
     );
 }

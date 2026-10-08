@@ -2,8 +2,9 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useState } from 'react';
 import { router, Link } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
-import { Rocket, Search, Store, CopyPlus, ExternalLink, ImageOff, Loader2, ChevronRight, Layers } from 'lucide-react';
-import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import { Search, CopyPlus, ExternalLink, ImageOff, Loader2, ChevronRight, Layers } from 'lucide-react';
+import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
+import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import { linkAnuncioMl, rotuloTier, precoBRL, dataPublicacao } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -23,11 +24,6 @@ import { linkAnuncioMl, rotuloTier, precoBRL, dataPublicacao } from '@/Pages/Mlb
 // os ids do ML → rascunho novo, aberto no wizard para o publicador ajustar só o
 // que muda. Mesma ideia do "Anunciar semelhante" do próprio Mercado Livre.
 // ═══════════════════════════════════════════════════════════════════════
-
-// ─── Iniciais da empresa para o "dot" do chip (mesmo padrão das outras telas) ───
-const iniciais = (nome) =>
-    (nome ?? '?').split(/\s+/).filter(Boolean).slice(0, 2)
-        .map((p) => p[0]?.toUpperCase() ?? '').join('') || '?';
 
 // ─── Card de um anúncio publicado (usado solto e dentro de um lote expandido) ───
 function CardAnuncio({ a, clonando, onSemelhante }) {
@@ -180,7 +176,7 @@ function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante, clonandoLo
     );
 }
 
-export default function AnunciosHistorico({ empresa = {}, grupos = {}, resumo = {}, filtros = {} }) {
+export default function AnunciosHistorico({ empresa = {}, conta = {}, grupos = {}, resumo = {}, filtros = {} }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [clonando, setClonando] = useState(null);         // id do anúncio sendo clonado (individual)
     const [clonandoLote, setClonandoLote] = useState(null); // chave do lote sendo clonado (em massa)
@@ -242,34 +238,23 @@ export default function AnunciosHistorico({ empresa = {}, grupos = {}, resumo = 
         <AppLayout title="Histórico de anúncios">
             <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
 
-                {/* Cabeçalho + chip da empresa (espelha o wizard e a grade) */}
-                <header className="mb-4">
-                    <div className="mb-2 flex items-center gap-3">
-                        <Rocket className="h-6 w-6 text-ecf-yellow" />
-                        <div>
-                            <h1 className="text-xl font-semibold text-white">Histórico de anúncios</h1>
-                            <p className="text-sm text-white/40">
-                                Anúncios já publicados — os que você publicou em massa vêm agrupados por lote.
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-ecf-card px-2.5 py-1 text-[12px] text-white/60">
-                            <span className="flex h-4 w-4 items-center justify-center rounded bg-ecf-yellow/15 text-[9px] font-bold text-ecf-yellow">
-                                {iniciais(empresa.nome)}
-                            </span>
-                            <Store className="h-3 w-3 text-white/30" />
-                            {empresa.nome}
-                        </span>
-                    </div>
-
-                    <div className="mt-3">
-                        <ModoAnuncioTabs empresaId={empresa.id} modo="historico" />
-                    </div>
-                </header>
+                {/* Cabeçalho único da conta (BarraDaConta) + abas da conta (AbasDaConta) —
+                    unifica com Produtos/Alavancas/Meus Anúncios (Fase 172, plano 172-04).
+                    O ícone, o h1 "Histórico de anúncios" e o parágrafo descritivo somem
+                    daqui de propósito: BarraDaConta não tem slot de subtítulo, só os
+                    elementos FUNCIONAIS (nome, chave, status do ML). Esta página não tem
+                    nenhuma ação de cabeçalho equivalente ao "Atualizar agora" -- acoes
+                    fica no valor padrão (null). */}
+                <BarraDaConta empresa={conta} />
+                <AbasDaConta
+                    aba="publicacoes"
+                    conta={conta?.chave}
+                    companyId={empresa.id}
+                    subPublicacoes="historico"
+                />
 
                 {/* Busca por título ou SKU */}
-                <form onSubmit={buscar} className="mb-4 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-ecf-bg px-3 py-2">
+                <form onSubmit={buscar} className="mb-4 mt-4 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-ecf-bg px-3 py-2">
                     <Search className="h-4 w-4 text-white/30" />
                     <input
                         value={busca}

@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaProdutoVariacaoImagem;
 use Illuminate\Support\Str;
 
 /**
@@ -89,6 +90,8 @@ class ProdutoLinhas
             ->get()
             ->keyBy('variacao_id');
 
+        $capas = $this->capas($empresa, $variacaoIds);
+
         // Passo 1: o que depende só dos volumes; Passo 2: UMA estimativa de frete para todas.
         $base  = [];
         $itens = [];
@@ -119,7 +122,7 @@ class ProdutoLinhas
             foreach ($produto->variacoes as $indice => $variacao) {
                 [$volumes, $log] = $base[$variacao->id];
 
-                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id));
+                $linhas[] = $this->linha($produto, $variacao, $indice === 0, $volumes, $log, $fretes[$variacao->id] ?? null, $ofertas->get($variacao->id), $capas[$variacao->id] ?? null);
             }
         }
 
@@ -128,7 +131,33 @@ class ProdutoLinhas
 
     // ═══ Internos ═══════════════════════════════════════════════════════════
 
-    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta): array
+    /**
+     * A capa (primeira imagem da galeria) de cada variação, numa consulta só — é a
+     * foto do cartão na lista. A galeria inteira só vai para a ficha.
+     *
+     * @param  array<int, int>  $variacaoIds
+     * @return array<int, string> variacao_id => URL (variação sem imagem não aparece)
+     */
+    private function capas(Company $empresa, array $variacaoIds): array
+    {
+        if ($variacaoIds === []) {
+            return [];
+        }
+
+        $capas = [];
+        EstruturaProdutoVariacaoImagem::query()
+            ->where('company_id', $empresa->id)
+            ->whereIn('variacao_id', $variacaoIds)
+            ->orderBy('variacao_id')->orderBy('ordem')->orderBy('id')
+            ->get(['id', 'variacao_id'])
+            ->each(function (EstruturaProdutoVariacaoImagem $i) use (&$capas) {
+                $capas[(int) $i->variacao_id] ??= VariacaoImagensService::url((int) $i->variacao_id, (int) $i->id);
+            });
+
+        return $capas;
+    }
+
+    private function linha(EstruturaProduto $produto, EstruturaProdutoVariacao $variacao, bool $primeira, array $volumes, array $log, ?array $frete, ?EstruturaOferta $oferta, ?string $capa = null): array
     {
         $familia   = $produto->familia?->nome;
         $ambientes = $produto->ambientes->pluck('nome')->sort(SORT_NATURAL | SORT_FLAG_CASE)->values()->all();
@@ -173,6 +202,7 @@ class ProdutoLinhas
             'logistica'            => $log['logistica'],
             'frete'                => $frete,
             'pendencias'           => $pendencias,
+            'capa'                 => $capa,
             'oferta'               => $oferta ? [
                 'id'       => (int) $oferta->id,
                 'sku'      => $oferta->sku,

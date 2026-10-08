@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound, Ticket,
+    MessageSquareText, UsersRound, Ticket, Megaphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
@@ -134,6 +134,34 @@ const NAV_TREE = [
             // Antes era excludeRoles admin-only; migrado p/ liberar o setor Polos ver o financeiro.
             { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   permission: 'mlb.faturamento_polos' },
         ],
+    },
+
+    // ── Item de topo: Publicador (Fase 172 v24.0 — Publicador, Etapa 1) ─────
+    // Módulo transversal (Publicação/Polos/Incubadora entram pelo mesmo
+    // lugar, o programa é o filtro) — fica FORA do grupo "Mercado Livre" e
+    // fora do grupo de setor "Publicação", que continua existindo com seu
+    // próprio nome (decisão 1 do DECISOES.md). Gate por `permission`, não
+    // `excludeRoles` (bug conhecido, ver itemOcultoPorPapel/comentário na
+    // itemVisivel abaixo — esconderia o item de admin com cargo de
+    // publicação). Decisão explícita do usuário nesta fase: o item nasce
+    // visível direto para quem tem `mlb.anunciar` (hoje só admin, via
+    // effectivePermissions()), SEM depender do toggle "ocultar módulo" do
+    // Controle Dev — a spec original (ETAPA-1-navegacao.md §2) pedia
+    // escondê-lo até a liberação, mas isso foi sobreposto aqui. `page` como
+    // array cobre as seis telas do módulo (tela A, Produtos/Editor/
+    // Alavancas do Publicador novo, Meus Anúncios, Em massa, Histórico e o
+    // assistente antigo) — nenhuma colide por prefixo com o grupo
+    // "Publicação" abaixo ('Mlb/Publicacoes', 'Mlb/Empresas', 'Mlb/
+    // Historico', 'Mlb/Metas' etc. começam com letra diferente logo após
+    // o prefixo comum 'Mlb/Publica'/'Mlb/'; a barra final de
+    // 'Mlb/Publicador/' é o que evita colisão com páginas futuras daquele
+    // mesmo namespace, não com 'Mlb/Publicacoes').
+    {
+        label: 'Publicador',
+        routeName: 'mlb.anuncios.index',
+        page: ['Mlb/AnunciosEmpresas', 'Mlb/Publicador/', 'Mlb/MeusAnuncios', 'Mlb/AnunciarMassa', 'Mlb/AnunciosHistorico', 'Mlb/AnunciarML'],
+        icon: Megaphone,
+        permission: 'mlb.anunciar',
     },
 
     // ── Stubs marketplaces em desenvolvimento (Phase 58 v13.0) ──────────────

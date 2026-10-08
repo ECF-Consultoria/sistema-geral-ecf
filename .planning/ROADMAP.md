@@ -3342,7 +3342,7 @@ que sem dependência funcional estrita).
      (ACERVO-05); nenhuma rotina passa a apagar imagem gerada — o comportamento de retenção de 48h
      continua restrito só às fotos de referência (ACERVO-04)
 
-**Plans**: TBD
+**Plans**: 2 planos — `171-01` (acervo no servidor: serviço, 3 rotas e reaproveitar) e `171-02` (a lista na etapa Imagens, com teste de render real)
 **UI hint**: yes
 
 **Fora de escopo desta milestone** (REQUIREMENTS-v25.md, não mapear em nenhuma fase): reabrir a
@@ -3392,3 +3392,21 @@ segue intacta (TRUTH-02/03 da v24.0 não são reabertas). Numeração contínua 
 fase existente: 167, Cadastro de Produto no Mapeamento Estrutural). `phases.clear` NÃO foi executado
 — Fases 1-167 preservadas integralmente, incluindo a milestone v22.0 em 71%, a Fase 159-08 adiada e a
 v24.0 (Fases 160-163) em produção; nenhuma fase, decisão ou numeração anterior foi tocada.*
+
+## Fase avulsa — Publicador, reorganização do módulo (handoff de design, fora de milestone)
+
+### Phase 172: Publicador Etapa 1 — Navegação
+
+**Goal:** mudar só a forma de chegar e de se localizar em `/mlb/anuncios` — item próprio no menu, uma barra da conta única em todas as telas da empresa, um só nível de abas no lugar de `AreaTabs` + `ModoAnuncioTabs`, o nome "Publicador" nas trilhas, o programa inicial lembrado da sessão, e `/incubadora/publicador` descontinuado com redirect. **Nenhuma regra de negócio, nenhuma migration, toda URL de `/mlb/anuncios` continua funcionando.**
+
+**Depends on:** nada (é a primeira etapa do handoff `design_handoff_publicador/`).
+
+**Plans**: 7 planos em 3 waves — `172-01` (componentes `BarraDaConta`/`AbasDaConta`), `172-02` (prop `conta` nos controllers + programa inicial por sessão), `172-06` (redirect da Incubadora + item de menu) na wave 1; `172-03` (Produtos + Alavancas), `172-04` (Meus Anúncios + Histórico), `172-05` (Em massa + assistente antigo + rótulos) na wave 2; `172-07` (gates + checkpoint humano da lista "Sem regressão") na wave 3.
+
+**Requirements**: NAV-01..NAV-06, derivados da seção 1 de `design_handoff_publicador/ETAPA-1-navegacao.md`.
+
+**Duas decisões do usuário em 2026-10-08 que SOBREPÕEM a spec:**
+1. **O módulo NÃO nasce oculto** — a spec mandava escondê-lo no Controle Dev até a liberação; ele decidiu liberar direto. Isso contornou um defeito confirmado no código: `app/Support/Modules.php:191` registra `route_prefix => 'mlb.anunciar'` (sem ponto final) enquanto as rotas reais são `mlb.anuncios.*`, e `rotaOculta()` só casa por prefixo quando a string termina em ponto — logo marcar esse módulo como oculto não esconde nada. **O defeito continua lá**, registrado em `deferred-items.md`.
+2. **Programa inicial só lembra o último escolhido** (sessão → Polos). O ramo "setor do usuário → programa" da spec foi cortado: não existe no código e seria feature nova. ⚠️ Consequência assumida: o critério de aceite *"Usuário do setor Incubadora entra em /mlb/anuncios já no programa Incubadora"* **não é entregue** nesta fase.
+
+*Roadmap atualizado: 2026-10-08 — Fase 172 anexada como fase avulsa, fora de milestone, seguindo a convenção deste roadmap de anexar sem tocar no que existe. Origem: o pacote `design_handoff_publicador/` (Etapas 1 e 2 especificadas; 3 e 4 só desenhadas). A conferência código×spec foi feita antes do planejamento e achou três divergências: o `route_prefix` do módulo (acima), a ausência completa de "programa inicial por setor" no código, e testes JS de gate por regex que a spec não menciona e que o critério de aceite "npm run test:js verde" obrigaria a tratar (`publicador-alavancas.test.js` e `publicador-entrada.test.js` leem `Produtos.jsx` por literal). Fases 1-171 preservadas.*

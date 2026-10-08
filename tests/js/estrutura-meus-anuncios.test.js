@@ -58,12 +58,14 @@ travaVocabularioVisual('resources/js/Pages/Mlb/MeusAnuncios.jsx');
 travaVocabularioVisual('resources/js/Pages/Mlb/components/RascunhosPainel.jsx');
 travaVocabularioVisual('resources/js/Pages/Mlb/components/ModalDetalheAnuncio.jsx');
 
-// text-xl (Display) só existe no H1 do cabeçalho de MeusAnuncios.jsx — não
-// faz parte do contrato por arquivo do helper (RascunhosPainel.jsx não tem
-// H1 próprio), fica como asserção isolada sobre a página.
-test('tipografia: text-xl (Display) está em uso em MeusAnuncios.jsx', () => {
-    assert.match(fonte, /text-xl\b/, 'Display');
-});
+// Plano 172-04 (Fase 172): o H1 "Meus Anúncios" (text-xl, Display) saiu
+// desta página — o nome em destaque agora é o da CONTA, renderizado pelo
+// componente compartilhado BarraDaConta.jsx (font-display text-[24px]), não
+// mais um título de página aqui dentro. A asserção isolada de text-xl que
+// existia nesta linha testava exatamente aquele H1, removido de propósito
+// (ver 172-04-PLAN.md); por isso foi retirada, não sendo mais verdade sobre
+// este arquivo. BarraDaConta.jsx tem seu próprio teste de render
+// (tests/js/publicador-barra-abas-render.test.js).
 
 // ─── 4. D-11 — tela só de leitura ───
 
