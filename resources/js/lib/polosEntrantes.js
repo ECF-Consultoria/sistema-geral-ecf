@@ -133,8 +133,12 @@ export function diasCorridosNaCompetencia(ym, hoje = new Date()) {
  * planilha. Vive aqui, e não em cada tela, porque cada cópia da régua já custou uma
  * divergência entre abas: a "Visão geral" contava churn na meta de entrantes enquanto
  * a aba "Entrantes (M0)" e o Modo TV não contavam.
+ *
+ * 'Acompanhamento' (TKT-0005) não é saída, mas entra aqui pelo mesmo motivo: são 30 dias
+ * de acompanhamento gratuito de empresa com problema, e o pedido é que ela não conte em
+ * meta nenhuma — esta lista é o recorte de meta da aba "Visão geral" (`semTerminais`).
  */
-export const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+export const FASES_TERMINAIS = ['Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 
 /** true quando a empresa está numa fase terminal (churn/encerrado). */
 export function ehFaseTerminal(empresa) {

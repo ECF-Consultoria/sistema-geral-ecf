@@ -100,9 +100,13 @@ class MlbImplementacao extends Model
      * retenção aberto — a empresa ainda está no polo, mas em processo de saída.
      * "Desistência" = saída por decisão do próprio cliente (planilha V2 já usava a palavra;
      * até 2026-09-09 o sync a fundia em Churn e a distinção se perdia).
+     * "Acompanhamento" = empresa com algum problema que o time acompanha por 30 dias, de graça
+     * (TKT-0005, 2026-10-08). NÃO conta em nenhuma meta: a meta de faturamento só lê M2–M4 +
+     * Fechamento, e a de entrantes descarta a fase pela lista de `polosEntrantes.js`. A volta
+     * para a fase anterior é manual, como toda troca de fase.
      */
     public const ONB_FASE_OPCOES = [
-        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn',
+        'Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */

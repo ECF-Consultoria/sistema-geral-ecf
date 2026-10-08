@@ -184,8 +184,14 @@ test('os icones novos (Target, CalendarClock) estao importados do lucide', () =>
 // a divergir entre as abas.
 // ═══════════════════════════════════════════════════════════════════════
 
-test('FASES_TERMINAIS cobre as três fases de saída, com as strings exatas da planilha', () => {
-    assert.deepEqual(FASES_TERMINAIS, ['Encerrado', 'Protocolo Churn', 'Churn']);
+test('FASES_TERMINAIS cobre as fases fora da meta, com as strings exatas da planilha', () => {
+    assert.deepEqual(FASES_TERMINAIS, ['Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn']);
+});
+
+test('Acompanhamento (30 dias gratuitos de empresa com problema) não conta na meta de entrantes', () => {
+    assert.equal(ehFaseTerminal({ fase: 'Acompanhamento' }), true);
+    const lista = [{ id: 1, fase: 'M0' }, { id: 2, fase: 'Acompanhamento' }, { id: 3, fase: 'M2' }];
+    assert.deepEqual(semTerminais(lista).map((e) => e.id), [1, 3]);
 });
 
 test('ehFaseTerminal reconhece churn, protocolo churn e encerrado', () => {

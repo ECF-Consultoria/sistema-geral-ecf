@@ -463,6 +463,17 @@ adicionar uma, conferir `mb_strtoupper` da grafia da planilha — com e sem acen
 Fase terminal (`FASES_TERMINAIS`) também muda comportamento: entra no `confirm` da edição
 em massa e sai do escopo M1–M4 do AutoFiltro. "Desistência" é terminal, como Churn.
 
+**"Acompanhamento" (TKT-0005, 08/10/2026)** — 30 dias de acompanhamento gratuito de empresa
+com problema; o pedido era "não conta na meta". Fora da meta de faturamento ela fica **de
+graça**, porque todo roster de meta é lista branca (`M2–M4 + Fechamento` no `PolosController`
+e em `PoloRosterSnapshot::FASES_ATIVAS`). Para a meta de entrantes ela entrou em
+`FASES_TERMINAIS` de `lib/polosEntrantes.js`, que é o recorte de meta da "Visão geral" —
+o nome da constante diz "terminal", mas o papel dela é "fora da meta". Efeitos colaterais
+aceitos de propósito, iguais aos de Encerrado: **sem faturamento** enquanto está na fase
+(o `polos:warm` só aquece M1–M4), fora do card de faturamento M1–M4 e **fora de
+`FASE_PARA_PROJETO`** (só pesa para empresa sem `projeto` gravado). A volta para a fase
+anterior é manual — não existe vencimento automático dos 30 dias.
+
 ## 9. O "% da meta" de /polos/empresas está travado em 100 de propósito (2026-09-09)
 
 A meta por empresa é **limiar de entrada** (D-13: M2=1.000, M3=4.000, M4=8.000), não alvo

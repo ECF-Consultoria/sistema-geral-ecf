@@ -46,6 +46,9 @@ class SyncPolosPlanilha extends Command
         // separada é sempre reversão silenciosa de dado.
         'PROTOCOLO CHURN' => 'Protocolo Churn',
         'DESISTÊNCIA' => 'Desistência', 'DESISTENCIA' => 'Desistência', 'ENCERRADO' => 'Encerrado',
+        // "Acompanhamento" (TKT-0005): fase própria, 1:1. Sem a entrada a célula viraria
+        // "fase desconhecida" e a planilha nunca conseguiria gravá-la.
+        'ACOMPANHAMENTO' => 'Acompanhamento',
     ];
 
     /**
