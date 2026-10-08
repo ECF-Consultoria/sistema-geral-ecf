@@ -62,12 +62,16 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'list', 'tags' => ['required' => true],
                 'attribute_group_id' => 'MAIN', 'attribute_group_name' => 'Principais',
                 'values' => [['id' => '101', 'name' => 'Madeira'], ['id' => '102', 'name' => 'Metal']]],
-            ['id' => 'WIDTH', 'name' => 'Largura', 'value_type' => 'number_unit', 'tags' => [],
+            ['id' => 'SEAT_HEIGHT', 'name' => 'Altura do assento', 'value_type' => 'number_unit', 'tags' => [],
                 'attribute_group_id' => 'DIM', 'attribute_group_name' => 'Dimensões',
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
             ['id' => 'CAPACITY', 'name' => 'Capacidade', 'value_type' => 'number', 'tags' => [],
                 'attribute_group_id' => 'DIM', 'attribute_group_name' => 'Dimensões'],
             ['id' => 'WITH_DRAWER', 'name' => 'Com gaveta', 'value_type' => 'boolean', 'tags' => []],
+            // Lista que aceita mais de uma opção (os chips). Vem como `string` com `values`,
+            // que é como o catálogo entrega a maior parte das opções.
+            ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
+                'values' => [['id' => '1', 'name' => 'Algodão'], ['id' => '2', 'name' => 'Couro'], ['id' => '3', 'name' => 'Microfibra']]],
             // Descartados:
             ['id' => 'ITEM_CONDITION', 'name' => 'Condição', 'value_type' => 'list', 'tags' => ['hidden' => true]],
             ['id' => 'INTERNO', 'name' => 'Interno', 'value_type' => 'string', 'tags' => ['read_only' => true]],
@@ -162,7 +166,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
         $this->entrarNoPortal($empresa)
             ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id), array_merge($this->ficha([
-                ['id' => 'WIDTH', 'valor' => '12,5', 'unidade' => 'mm'],
+                ['id' => 'SEAT_HEIGHT', 'valor' => '12,5', 'unidade' => 'mm'],
                 ['id' => 'CAPACITY', 'valor' => 30],
                 ['id' => 'WITH_DRAWER', 'valor' => true],
             ]), ['company_id' => $outra->id]))
@@ -178,8 +182,8 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $this->assertSame('Marca', $linhas['BRAND']->atributo_nome);
         $this->assertSame('Madeira', $linhas['MATERIAL']->valor);
         $this->assertSame('101', $linhas['MATERIAL']->valor_id);
-        $this->assertSame('12.5', $linhas['WIDTH']->valor);
-        $this->assertSame('mm', $linhas['WIDTH']->unidade);
+        $this->assertSame('12.5', $linhas['SEAT_HEIGHT']->valor);
+        $this->assertSame('mm', $linhas['SEAT_HEIGHT']->unidade);
         $this->assertSame('30', $linhas['CAPACITY']->valor);
         $this->assertSame('Sim', $linhas['WITH_DRAWER']->valor);
     }
@@ -191,11 +195,11 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $sessao = $this->entrarNoPortal($empresa);
         $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
 
-        $sessao->putJson($url, $this->ficha([['id' => 'WIDTH', 'valor' => '10'], ['id' => 'CAPACITY', 'valor' => '5']]))->assertOk();
-        $this->assertSame('cm', EstruturaProdutoAtributo::where('atributo_id', 'WIDTH')->value('unidade'), 'sem unidade: vale a padrão');
+        $sessao->putJson($url, $this->ficha([['id' => 'SEAT_HEIGHT', 'valor' => '10'], ['id' => 'CAPACITY', 'valor' => '5']]))->assertOk();
+        $this->assertSame('cm', EstruturaProdutoAtributo::where('atributo_id', 'SEAT_HEIGHT')->value('unidade'), 'sem unidade: vale a padrão');
 
-        // Largura com valor null (esvaziada) não grava; e a capacidade, ausente, sai.
-        $sessao->putJson($url, $this->ficha([['id' => 'WIDTH', 'valor' => null]]))->assertOk()->assertJsonCount(2, 'salvos');
+        // Altura do assento com valor null (esvaziada) não grava; e a capacidade, ausente, sai.
+        $sessao->putJson($url, $this->ficha([['id' => 'SEAT_HEIGHT', 'valor' => null]]))->assertOk()->assertJsonCount(2, 'salvos');
         // Troca a marca e a opção do material.
         $sessao->putJson($url, ['atributos' => [['id' => 'BRAND', 'valor' => 'Outra Marca'], ['id' => 'MATERIAL', 'valor' => '102']]])
             ->assertOk()
@@ -261,14 +265,14 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
         $sessao->putJson($url, $this->ficha([['id' => 'CAPACITY', 'valor' => 'muito']]))
             ->assertStatus(422)->assertJsonValidationErrors(['atributos.CAPACITY']);
-        $sessao->putJson($url, $this->ficha([['id' => 'WIDTH', 'valor' => '10', 'unidade' => 'km']]))
-            ->assertStatus(422)->assertJsonValidationErrors(['atributos.WIDTH']);
+        $sessao->putJson($url, $this->ficha([['id' => 'SEAT_HEIGHT', 'valor' => '10', 'unidade' => 'km']]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.SEAT_HEIGHT']);
         $sessao->putJson($url, ['atributos' => [['id' => 'BRAND', 'valor' => str_repeat('a', 21)], ['id' => 'MATERIAL', 'valor' => '101']]])
             ->assertStatus(422)->assertJsonValidationErrors(['atributos.BRAND']);
         $sessao->putJson($url, $this->ficha([['id' => 'WITH_DRAWER', 'valor' => 'talvez']]))
             ->assertStatus(422)->assertJsonValidationErrors(['atributos.WITH_DRAWER']);
         $sessao->putJson($url, $this->ficha([['id' => 'CAPACITY', 'valor' => ['a']]]))
-            ->assertStatus(422)->assertJsonValidationErrors(['atributos.2.valor']);
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.CAPACITY']);
 
         $this->assertSame(0, EstruturaProdutoAtributo::count());
     }
@@ -463,5 +467,64 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 $this->assertArrayHasKey('ficha_tecnica', $props);
                 $this->assertSemOrigem(json_encode($props['ficha_tecnica'], JSON_UNESCAPED_UNICODE), 'props da ficha');
             });
+    }
+
+    // ─── Lista que aceita mais de uma opção (os chips) ──────────────────────
+
+    public function test_multivalor_grava_as_opcoes_escolhidas_numa_linha_so_e_volta_para_a_tela(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
+
+        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['1', '3']]]))
+            ->assertOk()
+            ->assertJsonPath('salvos', fn ($salvos) => collect($salvos)->firstWhere('id', 'MATERIALS')['valor'] === 'Algodão | Microfibra');
+
+        $linha = EstruturaProdutoAtributo::where('produto_id', $produto->id)->where('atributo_id', 'MATERIALS')->firstOrFail();
+        $this->assertSame('Algodão | Microfibra', $linha->valor, 'uma linha só, nomes na ordem escolhida');
+        $this->assertNull($linha->valor_id, 'multivalor não cabe no valor_id (varchar 40): o nome é a verdade');
+        $this->assertSame(1, EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->count());
+    }
+
+    public function test_multivalor_descarta_repetido_e_recusa_opcao_que_nao_existe(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
+
+        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['2', '2', '1']]]))->assertOk();
+        $this->assertSame('Couro | Algodão', EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->value('valor'));
+
+        // Valor que não é opção da categoria é recusado, igual à lista de uma escolha só.
+        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['1', '999']]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIALS']);
+
+        // Lista vazia é campo não preenchido: a linha sai (é o "limpar" dos chips).
+        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => []]]))->assertOk();
+        $this->assertSame(0, EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->count());
+    }
+
+    public function test_campo_string_com_opcoes_vira_lista_e_recusa_valor_fora_dela(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+
+        // MATERIALS chega do catálogo como `string`; mesmo assim o endpoint entrega como lista.
+        $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB1']))
+            ->assertOk()
+            ->assertJsonPath('grupos', function ($grupos) {
+                $campos = collect($grupos)->flatMap(fn ($g) => $g['campos'])->keyBy('id');
+
+                return $campos['MATERIALS']['tipo'] === 'lista' && $campos['MATERIALS']['multivalor'] === true;
+            });
+
+        // E o servidor recusa texto livre nele — era por aqui que entrava valor que a plataforma rejeita.
+        $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
+            $this->ficha([['id' => 'MATERIALS', 'valor' => 'Algodao escrito a mao']]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIALS']);
     }
 }

@@ -51,6 +51,12 @@ class PortalEstruturaProdutosController extends Controller
     /** Limites mostrados na tela (o servidor valida por conta própria). */
     private const LIMITES = ['colar' => 200, 'arquivo_mb' => 2, 'linhas_arquivo' => 1000];
 
+    /**
+     * Teto de opções num campo multivalor (os chips). Não é regra de negócio: é só para um
+     * corpo absurdo não chegar ao serviço. A lista de opções de uma categoria não passa disso.
+     */
+    private const MAX_OPCOES_MULTIVALOR = 60;
+
     public function __construct(
         private PortalClienteService $portal,
         private ProdutoLinhas $linhas,
@@ -370,10 +376,17 @@ class PortalEstruturaProdutosController extends Controller
             'atributos.*'         => 'array',
             'atributos.*.id'      => 'required|string|max:80',
             'atributos.*.unidade' => 'nullable|string|max:20',
+            // Escalar, ou a LISTA de opções de um campo multivalor (os chips). Quem confere se
+            // o campo aceita lista, e se cada opção existe, é o serviço — contra a definição
+            // da categoria. Aqui só se barra o que não é nenhum dos dois (objeto, lista aninhada).
             'atributos.*.valor'   => ['nullable', function (string $campo, mixed $valor, \Closure $falhou) {
-                if (! is_scalar($valor)) {
-                    $falhou('Valor inválido.');
+                if (is_scalar($valor)) {
+                    return;
                 }
+                if (is_array($valor) && count($valor) <= self::MAX_OPCOES_MULTIVALOR && ! array_filter($valor, fn ($v) => ! is_scalar($v))) {
+                    return;
+                }
+                $falhou('Valor inválido.');
             }],
         ]);
 

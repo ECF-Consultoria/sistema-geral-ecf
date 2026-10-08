@@ -1,5 +1,6 @@
+import { X } from 'lucide-react';
 import { Obrigatorio } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { idDoElemento, numeroParaTela } from '@/lib/fichaTecnica';
+import { ehMultivalor, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
 import { cn } from '@/lib/utils';
 
 // ─── Um campo da ficha técnica ──────────────────────────────────────────────
@@ -11,6 +12,51 @@ import { cn } from '@/lib/utils';
 const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
 const ROTULO = 'mb-1 block text-[13px] font-medium text-white/80';
 const BOTAO_OPCAO = 'h-11 min-w-[64px] flex-1 px-3 text-[14px] lg:h-9 lg:flex-none';
+
+/**
+ * Lista que aceita mais de uma opção: cada escolha vira um chip com X, e o que ainda
+ * não foi escolhido continua à mão para somar. Mesmo visual dos chips de Ambientes.
+ *
+ * Escolher é por lista fechada de propósito: as opções são as da categoria, e valor
+ * digitado fora delas é justamente o que a plataforma recusa.
+ */
+function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido }) {
+    const opcoes = Array.isArray(campo.valores) ? campo.valores : [];
+    const nomePorId = new Map(opcoes.map((o) => [String(o.id), o.nome]));
+    const restantes = opcoes.filter((o) => ! escolhidos.includes(String(o.id)));
+
+    const somar = (valor) => { if (valor) onChange([...escolhidos, valor]); };
+    const tirar = (valor) => onChange(escolhidos.filter((x) => x !== valor));
+
+    return (
+        <div data-multivalor className={cn('min-w-0 rounded-lg border bg-black/40 p-1.5', invalido ? 'border-red-400/50' : 'border-white/20')}>
+            {escolhidos.length > 0 && (
+                <ul className="mb-1.5 flex flex-wrap gap-1.5">
+                    {escolhidos.map((v) => (
+                        <li key={v} data-chip={v}
+                            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.06] pl-2.5 pr-1 text-[14px] text-white">
+                            <span className="truncate">{nomePorId.get(v) ?? v}</span>
+                            <button type="button" onClick={() => tirar(v)} aria-label={`Tirar ${nomePorId.get(v) ?? v} de ${campo.nome}`}
+                                className="grid h-5 w-5 shrink-0 place-items-center rounded text-white/60 hover:bg-white/10 hover:text-white">
+                                <X size={13} />
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {/* `value` fixo em "": o select é só o gesto de somar, quem guarda a escolha são os chips. */}
+            <select id={id} value="" disabled={restantes.length === 0}
+                aria-invalid={invalido || undefined} aria-describedby={descricao}
+                onChange={(e) => somar(e.target.value)}
+                className="h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-1.5 text-[14px] text-white focus:outline-none focus:ring-0 disabled:text-white/30 lg:h-7">
+                <option value="">
+                    {restantes.length === 0 ? 'Todas as opções já escolhidas' : (escolhidos.length ? 'Adicionar outra…' : 'Selecione')}
+                </option>
+                {restantes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+            </select>
+        </div>
+    );
+}
 
 /** "—", "Sim" e "Não": um par de opções, com a terceira para "não informado". */
 function SimNao({ id, valor, onChange, descricao, invalido }) {
@@ -67,7 +113,10 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar }) {
             controle = <SimNao id={id} valor={valor} descricao={rotuloId} invalido={invalido} onChange={(v) => onMudar(campo.id, { valor: v })} />;
             break;
         case 'lista':
-            controle = (
+            controle = ehMultivalor(campo) ? (
+                <ListaMultipla id={id} campo={campo} escolhidos={idsMultivalor(campo, valor)} descricao={descricao} invalido={invalido}
+                    onChange={(ids) => onMudar(campo.id, { valor: ids })} />
+            ) : (
                 <select id={id} className={classe} value={valor} aria-invalid={invalido || undefined} aria-describedby={descricao}
                     onChange={(e) => onMudar(campo.id, { valor: e.target.value })}>
                     <option value="">Selecione</option>

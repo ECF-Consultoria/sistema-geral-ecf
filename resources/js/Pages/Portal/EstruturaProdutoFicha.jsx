@@ -256,8 +256,9 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
                 </fieldset>
 
-                <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
-
+                {/* Variações ANTES da Ficha técnica: é o miolo do cadastro (Ref, custo, volumes,
+                    imagens) e precede a lista longa de características da categoria. Dados gerais
+                    continua no topo porque a Ficha técnica só existe depois da categoria escolhida. */}
                 <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-2 lg:pt-2">
                     <div className="flex items-center justify-between gap-3">
                         <h2 className="text-[20px] font-bold text-white">Variações</h2>
@@ -283,19 +284,24 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                             <Plus size={14} /> Nova variação
                         </button>
                     </fieldset>
-
-                    <div className="mt-2 flex justify-end gap-3 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:border-t max-lg:border-white/[0.08] max-lg:bg-ecf-bg/95 max-lg:px-4 max-lg:py-3">
-                        <button type="button" onClick={sair} data-acao="cancelar"
-                            className="h-11 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[14px] text-white hover:bg-white/[0.07] lg:h-9 lg:w-[151px]">
-                            Cancelar
-                        </button>
-                        <button type="button" onClick={salvarProduto} disabled={ficha.salvando} data-acao="salvar-produto"
-                            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-4 text-[14px] font-semibold text-black hover:brightness-95 disabled:opacity-60 lg:h-9 lg:w-[284px] lg:flex-none">
-                            {ficha.salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            {ficha.salvando ? 'Salvando…' : 'Salvar produto'}
-                        </button>
-                    </div>
                 </section>
+
+                <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
+
+                {/* Cancelar/Salvar saíram de dentro de Variações: com a Ficha técnica depois dela,
+                    ali os botões ficariam no meio da página. As margens negativas acompanham o
+                    padding da página (px-4 / sm:px-6) para a barra encostada do celular. */}
+                <div className="mt-2.5 flex justify-end gap-3 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:border-t max-lg:border-white/[0.08] max-lg:bg-ecf-bg/95 max-lg:px-4 max-lg:py-3 max-sm:-mx-4 sm:max-lg:-mx-6 sm:max-lg:px-6">
+                    <button type="button" onClick={sair} data-acao="cancelar"
+                        className="h-11 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[14px] text-white hover:bg-white/[0.07] lg:h-9 lg:w-[151px]">
+                        Cancelar
+                    </button>
+                    <button type="button" onClick={salvarProduto} disabled={ficha.salvando} data-acao="salvar-produto"
+                        className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-ecf-yellow px-4 text-[14px] font-semibold text-black hover:brightness-95 disabled:opacity-60 lg:h-9 lg:w-[284px] lg:flex-none">
+                        {ficha.salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        {ficha.salvando ? 'Salvando…' : 'Salvar produto'}
+                    </button>
+                </div>
             </div>
 
             <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima} novasNaoSalvas={exclusao?.novasNaoSalvas}
