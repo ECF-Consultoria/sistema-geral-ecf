@@ -8,7 +8,7 @@ import { BASE_BOTAO, SECUNDARIO } from './botoes';
 
 // ─── Barra superior do editor (UI-SPEC §8.1; Conceito E, 03/10/2026) ────────
 //
-// 56px, nunca lista pendências nem conta progresso. É a trilha "Publicador MLB /
+// 56px, nunca lista pendências nem conta progresso. É a trilha "Publicador /
 // empresa / produto": o produto é o seletor (troca de produto e "+ Produto"),
 // depois o indicador real do salvamento e "Anunciar por IA". Conferir e
 // Publicar moram no fim da etapa "Condições de venda", então a barra não tem
@@ -60,7 +60,7 @@ export default function BarraDoEditor({ pub, empresa, produto, produtos = [], on
         <div className="sticky -top-6 z-20 flex h-14 items-center gap-2 border-b max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-2 max-sm:py-2 max-sm:px-4 border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
             <nav aria-label="Trilha" className="flex max-lg:hidden min-w-0 shrink-0 items-center gap-2 text-[13px] font-normal text-white/55">
                 <Link href={route('mlb.anuncios.index', { programa: empresa.programa })} onClick={voltar} className="shrink-0 rounded hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
-                    Publicador MLB
+                    Publicador
                 </Link>
                 <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/70">{rotuloPrograma}</span>
                 <span aria-hidden="true">/</span>
