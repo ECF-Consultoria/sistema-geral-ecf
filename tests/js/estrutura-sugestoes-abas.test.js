@@ -127,3 +127,9 @@ test('Lista SKUs: link secundário "Planejamento" no cabeçalho (antes "Sugestõ
     assert.ok(lista.includes('<Sparkles size={14} /> Planejamento') && lista.includes('data-acao="sugestoes-de-ofertas"'));
     assert.ok(! lista.includes('Sugestões de ofertas'));
 });
+
+test('08/10: a agenda do portal se chama "Cronograma" (o nome "Planejamento" ficou para as sugestões)', () => {
+    const agenda = lerSemComentarios('resources/js/Pages/Portal/EstruturaAgenda.jsx');
+    assert.ok(agenda.includes('titulo="Mapeamento Estrutural · Cronograma"'));
+    assert.ok(! agenda.includes('Planejamento'));
+});

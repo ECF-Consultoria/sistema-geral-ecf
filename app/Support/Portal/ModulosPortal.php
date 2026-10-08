@@ -110,7 +110,7 @@ class ModulosPortal
             'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
             'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => 'portal.auth.estrutura.precificacao'],
             'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
-            'planejamento' => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.agenda'],
+            'planejamento' => ['rotulo' => 'Cronograma',   'rota_auth' => 'portal.auth.estrutura.agenda'], // 08/10: rótulo "Cronograma"; "Planejamento" é a tela de sugestões. Chave e rota não mudam.
             'mapeamento'   => ['rotulo' => 'Mapeamento',   'rota_auth' => 'portal.auth.estrutura.mapeamento'],
         ],
     ];
