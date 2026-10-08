@@ -96,15 +96,7 @@ class MlbPublicadorEntradaController extends Controller
         $empresa = $this->programas->empresaParaTela($alvo);
         $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
 
-        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0];
-        foreach ($produtos as $p) {
-            match ($p['status']['chave']) {
-                'pronto' => $contagens['conferidos']++,
-                'publicado', 'parcial' => $contagens['publicados']++,
-                'erro' => $contagens['com_problema']++,
-                default => $contagens['rascunho']++,
-            };
-        }
+        $contagens = $this->programas->contagemProdutos($produtos);
 
         // D22: o assistente antigo fica acessível só por este rodapé, sem aba nem card.
         $companyId = $alvo['company']?->id;
