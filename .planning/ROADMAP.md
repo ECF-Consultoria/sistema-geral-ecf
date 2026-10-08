@@ -3297,7 +3297,7 @@ que sem dependência funcional estrita).
      (ACERVO-05); nenhuma rotina passa a apagar imagem gerada — o comportamento de retenção de 48h
      continua restrito só às fotos de referência (ACERVO-04)
 
-**Plans**: TBD
+**Plans**: 2 planos — `171-01` (acervo no servidor: serviço, 3 rotas e reaproveitar) e `171-02` (a lista na etapa Imagens, com teste de render real)
 **UI hint**: yes
 
 **Fora de escopo desta milestone** (REQUIREMENTS-v25.md, não mapear em nenhuma fase): reabrir a
