@@ -129,6 +129,12 @@ class PublicadorSincronizaPortalService
                     $cores = $publicados->map(fn (PubProduto $l) => "\"{$corDaOferta($l)}\" (produto #{$l->id})")->implode(', ');
                     $avisos[] = "{$produto->nome}: a(s) cor(es) {$cores} já foram publicadas como anúncio avulso; seguem separadas e não entram no grupo.";
                 }
+                // Os não publicados ficam como produtos separados E dentro do grupo: a equipe precisa saber.
+                $soltos = $legados->reject(fn (PubProduto $l) => $publicados->contains('id', $l->id));
+                if ($soltos->isNotEmpty() && $grupo !== null) {
+                    $cores = $soltos->map(fn (PubProduto $l) => "\"{$corDaOferta($l)}\" (produto #{$l->id})")->implode(', ');
+                    $avisos[] = "{$produto->nome}: a(s) cor(es) {$cores} também existem como produtos avulsos; publique essas cores só pelo grupo (produto #{$grupo->id}).";
+                }
             }
         }
 

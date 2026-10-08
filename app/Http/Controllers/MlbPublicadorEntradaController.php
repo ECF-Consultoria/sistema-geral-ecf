@@ -169,6 +169,7 @@ class MlbPublicadorEntradaController extends Controller
             'pedido' => $pedido,
             'preenchendo' => $preenchendo,
             'avisos' => $r['avisos'],
+            'duplicados' => $r['duplicados'],
             'portal' => $this->programas->situacaoPortal($company),
         ]);
     }

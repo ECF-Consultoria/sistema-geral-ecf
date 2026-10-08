@@ -166,6 +166,12 @@ class SincronizaPortalAgrupamentoTest extends TestCase
         $this->assertSame([$l1->id], $r['adotados']);
         $this->assertSame([$l2->id, $l3->id], $r['duplicados'][0]['pub_produto_ids']);
         $this->assertSame(3, PubProduto::count());
+        // WR-07: a equipe fica sabendo, cor por cor, de onde estão os avulsos.
+        $aviso = collect($r['avisos'])->first(fn ($a) => str_contains($a, 'também existem como produtos avulsos'));
+        $this->assertNotNull($aviso);
+        $this->assertStringContainsString('"Cor 2" (produto #'.$l2->id.')', $aviso);
+        $this->assertStringContainsString('"Cor 3" (produto #'.$l3->id.')', $aviso);
+        $this->assertStringContainsString('produto #'.$l1->id, $aviso, 'o grupo é nomeado');
     }
 
     public function test_combo_kit_combit_e_simples_sem_variacao_seguem_um_produto_por_oferta(): void

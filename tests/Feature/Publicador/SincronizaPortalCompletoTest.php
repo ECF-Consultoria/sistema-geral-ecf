@@ -366,4 +366,21 @@ class SincronizaPortalCompletoTest extends TestCase
         $this->assertSame($repo->outro, $r->id);
         $this->assertSame(1, PubRascunho::where('produto_id', $pub->id)->count());
     }
+
+    public function test_resposta_do_clique_leva_os_duplicados_e_o_aviso_das_cores_avulsas(): void
+    {
+        [$c, $e, $p] = $this->empresaComPortal();
+        Queue::fake();
+        $ofertas = EstruturaOferta::where('company_id', $c->id)->orderBy('id')->get();
+        // A 1ª cor é adotada como o grupo; a 2ª fica avulsa.
+        PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[0]->id, 'sku' => $ofertas[0]->sku, 'nome' => 'Mesa Azul',
+            'origem' => PubProduto::ORIGEM_PORTAL]);
+        $avulso = PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[1]->id, 'sku' => $ofertas[1]->sku, 'nome' => 'Mesa Preto',
+            'origem' => PubProduto::ORIGEM_PORTAL]);
+
+        $r = $this->sincronizar($e)->assertOk();
+
+        $this->assertSame([['produto_id' => $p->id, 'pub_produto_ids' => [$avulso->id]]], $r->json('duplicados'));
+        $this->assertTrue(collect($r->json('avisos'))->contains(fn ($a) => str_contains($a, '"Preto" (produto #'.$avulso->id.')')));
+    }
 }
