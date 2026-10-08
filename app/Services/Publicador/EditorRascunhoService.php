@@ -57,6 +57,7 @@ class EditorRascunhoService
         private MigracaoAnunciarAntigo $migracao,
         private PublicacaoService $publicacoes,
         private PortalProdutoLeitor $leitor,
+        private ExplicacaoDeAtributos $explicacoes,
     ) {}
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
@@ -498,7 +499,7 @@ class EditorRascunhoService
             ])->all(),
             'atribuicoes' => $snapshot->imagens,
             'grupos_imagem' => $grupos,
-            'schema' => $schema ? self::schemaParaTela($schema) : null,
+            'schema' => $schema ? self::schemaParaTela($schema, $this->explicacoes) : null,
             'erro_schema' => $erroSchema,
             'conta' => $conta ? [
                 'modelo' => $conta['modelo'] ?? null,
@@ -594,18 +595,33 @@ class EditorRascunhoService
         }
     }
 
-    public static function schemaParaTela(SchemaClassificado $s): array
+    /**
+     * O schema como a tela usa. Cada atributo leva `explicacao` (o texto do ícone de informação ao
+     * lado do rótulo, 08/10/2026): glossário > guardado > ML > texto montado — e o que faltar vai
+     * para a IA, uma vez por atributo (`ExplicacaoDeAtributos`). Atributo oculto recebe texto, mas
+     * não gasta IA. `explicacoes_campos` = os campos fixos que não são atributo (estoque).
+     */
+    public static function schemaParaTela(SchemaClassificado $s, ?ExplicacaoDeAtributos $explicacoes = null): array
     {
+        $explicacoes ??= app(ExplicacaoDeAtributos::class);
+        $textos = $explicacoes->paraAtributos(array_values(array_map(fn (AtributoClassificado $a) => [
+            'id' => $a->id, 'nome' => $a->nome, 'tooltip' => $a->tooltip, 'hint' => $a->dica, 'tipo' => $a->valueType,
+            'unidades' => $a->unidades, 'unidade_padrao' => $a->unidadePadrao, 'valores' => $a->valores,
+            'oculto' => $a->secao === AtributoClassificado::SECAO_OCULTO,
+        ], $s->atributos)), $s->caminho !== [] ? implode(' > ', $s->caminho) : $s->dominio);
+
         return [
             'categoria_id' => $s->categoriaId, 'dominio' => $s->dominio, 'caminho' => $s->caminho, 'hash' => $s->schemaHash,
             'limites' => $s->limites, 'flags' => $s->flags, 'bloqueios_fase2' => $s->bloqueiosFase2, 'garantia' => $s->garantia,
             'grupos' => $s->grupos,
+            'explicacoes_campos' => $explicacoes->camposFixos(),
             'atributos' => array_map(fn (AtributoClassificado $a) => [
                 'id' => $a->id, 'nome' => $a->nome, 'papel' => $a->papel, 'obrigatoriedade' => $a->obrigatoriedade, 'secao' => $a->secao,
                 'grupo' => $a->grupo, 'tipo' => $a->valueType, 'valores' => $a->valores, 'unidades' => $a->unidades, 'unidade_padrao' => $a->unidadePadrao,
                 'texto_livre' => $a->aceitaTextoLivre, 'nao_se_aplica' => $a->aceitaNaoSeAplica, 'pode_ser_eixo' => $a->podeSerEixo,
                 'define_foto' => $a->definePicture, 'multivalor' => $a->multivalor, 'max' => $a->maxLength,
                 'dica' => $a->dica, 'exemplo' => $a->exemplo, 'tooltip' => $a->tooltip,
+                'explicacao' => $textos[$a->id] ?? ExplicacaoDeAtributos::provisorio(['nome' => $a->nome, 'tipo' => $a->valueType, 'unidades' => $a->unidades]),
             ], $s->atributos),
         ];
     }

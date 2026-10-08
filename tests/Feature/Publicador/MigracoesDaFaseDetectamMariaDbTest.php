@@ -39,6 +39,8 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_08_150000_add_estoque_to_estrutura_produto_variacoes.php',
         '2026_10_08_150100_add_descricao_to_estrutura_produtos.php',
         '2026_10_08_150200_add_estrutura_produto_id_to_pub_produtos.php',
+        // Explicação dos campos (08/10): tabela nova, global
+        '2026_10_08_160000_create_atributo_explicacoes_table.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */

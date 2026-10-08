@@ -147,6 +147,30 @@ class AnaliseAnuncioService
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
 
+    // ═══ Explicação dos campos (Publicador, 08/10/2026) ══════════════════════
+    //
+    // NÃO é MAG T8: o texto curto do ícone de informação ao lado de cada campo
+    // da ficha ("o que é AGID?"). Uma chamada para até ~40 atributos; quem
+    // confere tamanho, HTML e citação de plataforma é o `ExplicacaoDeAtributos`
+    // (o modelo nem sempre obedece). O texto vai também para o Portal, por isso
+    // o prompt pede texto NEUTRO.
+
+    /**
+     * @param  list<array{id: string, nome: string, tipo?: string, unidades?: list<string>, valores?: list<string>}>  $atributos
+     * @return array{dados: array<string, mixed>, meta: array}
+     */
+    public function explicacoesDeAtributos(array $atributos, string $contexto = ''): array
+    {
+        $r = $this->chamar($this->promptExplicacoes($atributos, $contexto), 6000);
+        $dados = $r['json'];
+        // O modelo às vezes embrulha: {"explicacoes": {...}}.
+        if (isset($dados['explicacoes']) && is_array($dados['explicacoes'])) {
+            $dados = $dados['explicacoes'];
+        }
+
+        return ['dados' => $dados, 'meta' => $r['meta']];
+    }
+
     // ═══ Chamada ao provedor ══════════════════════════════════════════════════
 
     /**
@@ -485,6 +509,42 @@ class AnaliseAnuncioService
         Responda APENAS com JSON válido, sem crases, usando os IDs como chaves:
         {"atributos":{"ID":"valor"},"variacoes":[{"ID":"valor"}],"pacote":{"peso_g":0,"comprimento_cm":0,"largura_cm":0,"altura_cm":0},"garantia":null}
         TXT;
+    }
+
+    /** Prompt da explicação dos campos: texto neutro, curto, um por id. */
+    private function promptExplicacoes(array $atributos, string $contexto): string
+    {
+        $linhas = collect($atributos)->map(function (array $a) {
+            $partes = [(string) ($a['id'] ?? ''), (string) ($a['nome'] ?? '')];
+            if (! empty($a['tipo'])) {
+                $partes[] = 'tipo: '.$a['tipo'];
+            }
+            if (! empty($a['unidades'])) {
+                $partes[] = 'unidades: '.implode(', ', array_slice((array) $a['unidades'], 0, 6));
+            }
+            if (! empty($a['valores'])) {
+                $partes[] = 'exemplos de valores: '.implode(', ', array_slice((array) $a['valores'], 0, 6));
+            }
+
+            return '- '.implode(' | ', $partes);
+        })->implode("\n");
+        $ctx = trim($contexto) !== '' ? "\nCategoria do produto (só para entender o sentido dos campos; NÃO cite): {$contexto}\n" : '';
+
+        return <<<PROMPT
+        Você escreve a explicação curta que aparece ao passar o mouse sobre um campo do cadastro de um produto, para quem está preenchendo a ficha técnica.
+        {$ctx}
+        Campos (ID | nome | tipo | unidades | exemplos de valores):
+        {$linhas}
+
+        REGRAS para cada explicação:
+        1. Português do Brasil, linguagem simples, 1 ou 2 frases, NO MÁXIMO 200 caracteres.
+        2. Diga o que o campo é. Se for comum o produto não ter essa informação, diga que pode ficar vazio.
+        3. Texto NEUTRO: não cite plataforma, marketplace, loja, site, anúncio, vendedor nem onde o produto será vendido.
+        4. Sem HTML, sem markdown, sem aspas em volta do texto.
+        5. Explique o campo; não invente o valor do produto.
+
+        Responda SOMENTE com um JSON no formato {"ID_DO_CAMPO": "explicação"}, com exatamente os IDs da lista acima.
+        PROMPT;
     }
 
     // ═══ Saída ════════════════════════════════════════════════════════════════
