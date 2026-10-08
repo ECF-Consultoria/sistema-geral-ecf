@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { criarRota, mensagemDe } from './apoio.js';
-import { deveDispararAuto, podeAplicarDescricao } from './descricaoIa.js';
+import { decidirLeitura, deveDispararAuto } from './descricaoIa.js';
 
 // Descrição por IA (Fase 172, D-11): o servidor roda o MAG T8 na fila; aqui a página pede
 // (sozinha uma vez, no rascunho vazio com descrição do cliente; ou pelo botão), acompanha só o
@@ -20,6 +20,12 @@ export default function useDescricaoIa({ m, produtoId }) {
     const mRef = useRef(m);
     mRef.current = m;
     const disparou = useRef(false);
+    const vivo = useRef(true);
+    const emVoo = useRef(false);
+    useEffect(() => {
+        vivo.current = true;
+        return () => { vivo.current = false; };
+    }, []);
 
     const mudar = (patch) => {
         ref.current = { ...ref.current, ...patch };
@@ -61,29 +67,35 @@ export default function useDescricaoIa({ m, produtoId }) {
     useEffect(() => {
         if (! rodando) return undefined;
         const t = setInterval(async () => {
-            const atual = ref.current;
-            if (atual.status !== 'rodando' || ! atual.pedido) return;
-            if (Date.now() - atual.desde > LIMITE) {
+            // Uma leitura por vez: com a rede lenta, leituras sobrepostas aplicavam duas vezes.
+            if (emVoo.current) return;
+            const antes = ref.current;
+            if (antes.status !== 'rodando' || ! antes.pedido) return;
+            if (Date.now() - antes.desde > LIMITE) {
                 mudar({ status: 'erro', erro: 'A IA demorou demais. Tente de novo.' });
 
                 return;
             }
+            emVoo.current = true;
             try {
                 const { data } = await axios.get(rota('descricao-ia.status', produtoId));
-                if (data.pedido !== atual.pedido) return;
-                if (data.status === 'pronto') {
-                    const pode = podeAplicarDescricao({ automatico: atual.automatico, textoNoPedido: atual.textoNoPedido, textoAgora: mRef.current.rasc?.descricao ?? '' });
-                    if (pode) {
-                        mRef.current.mudarRasc({ descricao: data.valor });
-                        mudar({ status: 'parado', valor: null });
-                    } else {
-                        mudar({ status: 'pronto', valor: data.valor });
-                    }
-                } else if (data.status === 'erro') {
+                // Decide com o estado de DEPOIS da leitura (WR-01).
+                const acao = decidirLeitura({
+                    vivo: vivo.current, atual: ref.current, data,
+                    disabled: !! mRef.current.disabled, textoAgora: mRef.current.rasc?.descricao ?? '',
+                });
+                if (acao === 'aplicar') {
+                    mRef.current.mudarRasc({ descricao: data.valor });
+                    mudar({ status: 'parado', valor: null });
+                } else if (acao === 'guardar') {
+                    mudar({ status: 'pronto', valor: data.valor });
+                } else if (acao === 'erro') {
                     mudar({ status: 'erro', erro: data.erro ?? 'A IA não conseguiu agora. Tente de novo.' });
                 }
             } catch {
                 // Leitura que falha não para o acompanhamento: tenta na próxima volta.
+            } finally {
+                emVoo.current = false;
             }
         }, INTERVALO);
 
