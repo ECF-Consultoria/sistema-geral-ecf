@@ -285,7 +285,7 @@ class ConferenciaService
     {
         $e = $this->efetivos->daProduto($r->produto);
 
-        return ['snapshot' => $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']), 'mlbs' => $e['mlbs']];
+        return ['snapshot' => $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []), 'mlbs' => $e['mlbs']];
     }
 
     private function classificar(CategorySchema $categoria, RascunhoSnapshot $s, array $condicionais): SchemaClassificado

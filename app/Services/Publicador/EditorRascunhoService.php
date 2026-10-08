@@ -286,7 +286,7 @@ class EditorRascunhoService
             return [];
         }
         $e = $this->efetivos->daProduto($r->produto);
-        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
         $primeira = $s->variantesAtivas()[0] ?? null;
         $conta = (array) ($r->step_state['conta'] ?? []);
         $pacote = $this->dimensoes($s->atributos);
@@ -339,7 +339,7 @@ class EditorRascunhoService
             return $saida;
         }
         $e = $this->efetivos->daProduto($r->produto);
-        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
         // Fora do Mercado Envios não há frete grátis obrigatório.
         if (($s->envio['modo'] ?? 'me2') !== 'me2') {
             return ['conhecido' => true] + $saida;
@@ -410,7 +410,7 @@ class EditorRascunhoService
         $r = $r->fresh(['produto.oferta']);
         $e = $this->efetivos->daProduto($r->produto);
         $digitado = $this->repo->snapshot($r);
-        $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos']);
+        $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
 
         [$schema, $erroSchema] = $this->schemaDe($r, $snapshot);
         $conta = (array) ($r->step_state['conta'] ?? []);
