@@ -29,3 +29,12 @@ test('hook — aplica por mudarRasc, sem PUT, e só aceita o próprio pedido', (
     assert.match(src, /data\.pedido !== atual\.pedido/);
     assert.match(src, /descricao-ia/);
 });
+
+test('editor — chama o hook na página e a seção mostra painel, botão e usar', () => {
+    const ed = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Editor.jsx');
+    assert.equal((ed.match(/useDescricaoIa\(/g) ?? []).length, 1);
+    assert.match(ed, /<EtapaDetalhes m=\{m\} descricaoIa=\{descricaoIa\}/);
+    const et = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
+    for (const k of ['data-descricao-cliente', 'gerar-descricao-ia', 'usar-descricao-ia']) assert.ok(et.includes(k), k);
+    assert.equal(et.includes('dangerouslySetInnerHTML'), false);
+});

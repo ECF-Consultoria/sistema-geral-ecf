@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Info, Loader2, Sparkles, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
+import useDescricaoIa from '@/Components/Publicador/useDescricaoIa';
 import useIaDoPublicador from '@/Components/Publicador/useIaDoPublicador';
 import useCriativosDoPublicador, { CriativosDoPublicador } from '@/Components/Publicador/useCriativosDoPublicador';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
@@ -174,6 +175,8 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     // Efeitos do anúncio inteiro (valem em qualquer etapa).
     useEfeitosDasVariacoes(m);
     useEfeitosDoEnvio(m);
+    // Fase 172 (D-11): descrição por IA a partir da descrição do cliente — pede, acompanha e aplica por m.mudarRasc.
+    const descricaoIa = useDescricaoIa({ m, produtoId: produto.id });
 
     const [etapa, setEtapa] = useState(() => etapaLembrada(produto.id));
     // Etapas em que já houve "Continuar" (ou "Corrigir em…"): só nelas os campos ficam vermelhos.
@@ -322,7 +325,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                                 <div id="conteudo-etapa" className="space-y-6" data-etapa-aberta={etapa}>
                                     {mostrar && <ResumoDosErros bloqueios={bloqueios} />}
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
-                                    {etapa === 'detalhes' && <EtapaDetalhes m={m} />}
+                                    {etapa === 'detalhes' && <EtapaDetalhes m={m} descricaoIa={descricaoIa} />}
                                     {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} />}
                                     {etapa === 'condicoes' && (
                                         <EtapaCondicoes m={m}>

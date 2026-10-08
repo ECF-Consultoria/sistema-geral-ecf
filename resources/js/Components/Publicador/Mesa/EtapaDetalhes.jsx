@@ -166,13 +166,36 @@ function FichaTecnica({ m }) {
     );
 }
 
-function Descricao({ m }) {
+function Descricao({ m, descricaoIa }) {
     const texto = m.rasc.descricao ?? '';
+    const doCliente = m.estado?.portal?.descricao_cliente ?? null;
+    const rodando = descricaoIa?.status === 'rodando';
     const maximo = m.schema?.limites?.max_description_length ?? null;
     const erro = useErroDoCampo((x) => x.campo === 'descricao', { preenchido: texto.trim() !== '' });
 
     return (
         <Secao id="descricao" titulo="Descrição" descricao="Texto simples, sem formatação. Conte o que o produto é e para quem serve, material, medidas, o que vem na caixa e a garantia.">
+            {doCliente && (
+                <details className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <summary className="cursor-pointer text-[13px] text-white/80">Descrição do cliente</summary>
+                    <p className="mt-2 text-[11px] text-white/45">O que o cliente escreveu no portal. A IA usa este texto como base; ele não vai direto para o anúncio.</p>
+                    <div className="mt-2 whitespace-pre-line text-[13px] text-white/70" data-descricao-cliente>{doCliente}</div>
+                </details>
+            )}
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => descricaoIa?.pedir({ automatico: false })} disabled={m.disabled || rodando || ! descricaoIa}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[13px] text-white/85 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                    data-acao="gerar-descricao-ia">
+                    {rodando ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Sparkles className="h-3.5 w-3.5" aria-hidden />}
+                    {rodando ? 'Gerando…' : 'Gerar descrição com IA'}
+                </button>
+                {descricaoIa?.status === 'pronto' && descricaoIa.valor != null && (
+                    <button type="button" onClick={descricaoIa.aplicar} disabled={m.disabled} className={LINK} data-acao="usar-descricao-ia">
+                        Usar a descrição gerada
+                    </button>
+                )}
+                {descricaoIa?.status === 'erro' && <span className="text-[13px] text-red-300">{descricaoIa.erro}</span>}
+            </div>
             <Campo rotulo="Descrição do anúncio" htmlFor="campo-descricao" erro={erro}
                 dica="O Mercado Livre recusa telefone, e-mail, link, redes sociais e preço no texto."
                 extra={<span className={cn('font-mono text-[13px] tabular-nums', maximo && texto.length > maximo ? 'text-red-300' : 'text-white/45')} data-contador-descricao>{texto.length}{maximo ? `/${maximo}` : ''}</span>}>
@@ -184,12 +207,12 @@ function Descricao({ m }) {
     );
 }
 
-export default function EtapaDetalhes({ m }) {
+export default function EtapaDetalhes({ m, descricaoIa }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="detalhes">
             <DadosDasVariacoes m={m} />
             <FichaTecnica m={m} />
-            <Descricao m={m} />
+            <Descricao m={m} descricaoIa={descricaoIa} />
         </div>
     );
 }
