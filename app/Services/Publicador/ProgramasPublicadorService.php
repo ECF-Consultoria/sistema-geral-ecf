@@ -328,10 +328,20 @@ class ProgramasPublicadorService
         }
 
         $total = (int) DB::table('estrutura_ofertas')->where('company_id', $company->id)->count();
-        $comProduto = (int) DB::table('pub_produtos')
-            ->join('estrutura_ofertas', 'estrutura_ofertas.id', '=', 'pub_produtos.oferta_id')
-            ->where('estrutura_ofertas.company_id', $company->id)
-            ->distinct()->count('pub_produtos.oferta_id');
+        // Coberta = tem pub_produto pela própria oferta OU pelo grupo do produto do Portal (Fase 172, D-06):
+        // a cor nova de um produto já agrupado entra no rascunho pelo preenchimento, não como produto novo.
+        $comProduto = (int) DB::table('estrutura_ofertas as eo')
+            ->where('eo.company_id', $company->id)
+            ->where(function ($q) use ($company) {
+                $q->whereExists(function ($s) {
+                    $s->select(DB::raw(1))->from('pub_produtos as pp')->whereColumn('pp.oferta_id', 'eo.id');
+                })->orWhereExists(function ($s) use ($company) {
+                    $s->select(DB::raw(1))->from('estrutura_produto_variacoes as epv')
+                        ->join('pub_produtos as pg', 'pg.estrutura_produto_id', '=', 'epv.produto_id')
+                        ->whereColumn('epv.id', 'eo.variacao_id')
+                        ->where('pg.company_id', $company->id);
+                });
+            })->count();
 
         if ($total === 0) {
             $situacao = 'sem_portal';

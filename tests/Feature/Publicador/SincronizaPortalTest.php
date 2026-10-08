@@ -196,4 +196,62 @@ class SincronizaPortalTest extends TestCase
         $this->assertNotNull(Cache::get('publicador.portal_sincronizado_em.company-'.$c->id));
         $this->assertNotNull($r->json('portal.sincronizado_em'));
     }
+
+    // ── Fase 172-03: o grupo do produto do Portal conta como cobertura ──
+
+    private function produtoAgrupado(Company $c, int $cores = 3): \App\Models\EstruturaProduto
+    {
+        $p = \App\Models\EstruturaProduto::create(['company_id' => $c->id, 'codigo' => 'P', 'nome' => 'Produto P']);
+        for ($i = 1; $i <= $cores; $i++) {
+            $v = \App\Models\EstruturaProdutoVariacao::create(['produto_id' => $p->id, 'company_id' => $c->id, 'ordem' => $i, 'codigo' => 'P-'.$i, 'eixo' => 'cor', 'valor' => 'C'.$i]);
+            EstruturaOferta::create(['company_id' => $c->id, 'variacao_id' => $v->id, 'sku' => 'P-'.$i, 'fase' => 'simples', 'nome' => 'P '.$i]);
+        }
+
+        return $p;
+    }
+
+    public function test_situacao_tres_simples_e_um_grupo_e_sincronizado(): void
+    {
+        $c = Company::factory()->create();
+        $e = $this->empresa($c);
+        $this->produtoAgrupado($c);
+        app(PublicadorSincronizaPortalService::class)->sincronizar($e, $c);
+
+        $s = app(\App\Services\Publicador\ProgramasPublicadorService::class)->situacaoPortal($c);
+        $this->assertSame('sincronizado', $s['situacao']);
+        $this->assertSame(0, $s['novas']);
+    }
+
+    public function test_quarta_cor_nova_com_grupo_existente_nao_vira_nova(): void
+    {
+        $c = Company::factory()->create();
+        $e = $this->empresa($c);
+        $p = $this->produtoAgrupado($c);
+        app(PublicadorSincronizaPortalService::class)->sincronizar($e, $c);
+
+        $v = \App\Models\EstruturaProdutoVariacao::create(['produto_id' => $p->id, 'company_id' => $c->id, 'ordem' => 4, 'codigo' => 'P-4', 'eixo' => 'cor', 'valor' => 'C4']);
+        EstruturaOferta::create(['company_id' => $c->id, 'variacao_id' => $v->id, 'sku' => 'P-4', 'fase' => 'simples', 'nome' => 'P 4']);
+
+        $s = app(\App\Services\Publicador\ProgramasPublicadorService::class)->situacaoPortal($c);
+        $this->assertSame('sincronizado', $s['situacao']);
+        $this->assertSame(0, $s['novas']);
+    }
+
+    public function test_oferta_composta_sem_produto_conta_como_nova_e_outra_company_nao_entra(): void
+    {
+        $c = Company::factory()->create();
+        $e = $this->empresa($c);
+        $this->produtoAgrupado($c);
+        app(PublicadorSincronizaPortalService::class)->sincronizar($e, $c);
+        EstruturaOferta::create(['company_id' => $c->id, 'sku' => 'KIT', 'fase' => 'kit', 'nome' => 'Kit']);
+
+        // Outra Company com produto agrupado não cobre nada da primeira.
+        $b = Company::factory()->create();
+        $this->produtoAgrupado($b);
+        app(PublicadorSincronizaPortalService::class)->sincronizar($this->empresa($b), $b);
+
+        $s = app(\App\Services\Publicador\ProgramasPublicadorService::class)->situacaoPortal($c);
+        $this->assertSame('novas', $s['situacao']);
+        $this->assertSame(1, $s['novas']);
+    }
 }
