@@ -455,4 +455,37 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertCount(3, $this->snap($pub)->eixos[0]->valores, 'D-05: o Sincronizar nunca remove');
         $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, '"Preto"') && str_contains($a, 'desative-a')));
     }
+
+    public function test_sem_categoria_nao_cria_eixo_customizado_e_a_proxima_execucao_varia_pela_cor_da_categoria(): void
+    {
+        [$p, $pub] = $this->produto([['Azul', 1], ['Preto', 2]]);
+        $p->update(['categoria_ml_id' => null]);
+
+        $resumo = $this->servico->preencher($pub);
+
+        $this->assertSame([], $this->snap($pub)->eixos, 'sem schema nenhum eixo nasce (nem customizado)');
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, 'próximo Sincronizar')));
+
+        $p->update(['categoria_ml_id' => self::CADEIRA]);
+        $this->servico->preencher($pub);
+
+        $s = $this->snap($pub);
+        $this->assertCount(1, $s->eixos);
+        $this->assertNotSame(ChaveCanonica::EIXO_CUSTOM, $s->eixos[0]->chave, 'com a categoria, o eixo é o atributo de cor dela');
+        $this->assertCount(2, $this->porCor($s));
+    }
+
+    public function test_rascunho_antigo_com_eixo_customizado_avisa_em_vez_de_seguir_em_silencio(): void
+    {
+        [, $pub] = $this->produto([['Azul', 1], ['Preto', 2]]);
+        $r = $this->editor->rascunhoDoProduto($pub, false);
+        $this->editor->trocarCategoria($r, self::CADEIRA);
+        $this->editor->salvarEixos($r, [['chave' => ChaveCanonica::EIXO_CUSTOM, 'nome' => 'Cor', 'defines_picture' => false,
+            'valores' => [['id' => null, 'nome' => 'Azul'], ['id' => null, 'nome' => 'Preto']]]]);
+
+        $resumo = $this->servico->preencher($pub);
+
+        $this->assertSame(ChaveCanonica::EIXO_CUSTOM, $this->snap($pub)->eixos[0]->chave, 'o Portal não troca o eixo da equipe');
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, 'eixo próprio')));
+    }
 }

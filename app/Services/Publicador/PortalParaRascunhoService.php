@@ -101,6 +101,13 @@ class PortalParaRascunhoService
             return $this->parou($resumo);
         }
         [$r, $schema] = $base;
+        if ($schema === null) {
+            // Sem schema não se sabe se a cor é um atributo de variação da categoria: criar o eixo agora
+            // o deixaria customizado para sempre. Variações, SKU, estoque e fotos esperam o próximo Sincronizar.
+            $avisos[] = 'Sem a categoria lida, as cores, o SKU, o estoque e as fotos ficam para o próximo Sincronizar.';
+
+            return $this->concluir($resumo, $produto, $r);
+        }
 
         $plano = $this->planoDoEixo($grupo['variacoes'], $schema, $avisos);
 
@@ -346,7 +353,7 @@ class PortalParaRascunhoService
         $r = $r->fresh();
         $schema = $this->schemaDoRascunho($r);
         if ($r->categoria_id && $schema === null) {
-            $avisos[] = 'Não foi possível ler a categoria no Mercado Livre agora; ficha, pacote e variações ficaram para depois.';
+            $avisos[] = 'Não foi possível ler a categoria no Mercado Livre agora; ficha, pacote, variações e fotos ficaram para o próximo Sincronizar.';
         }
 
         return [$r, $schema];
@@ -754,6 +761,10 @@ class PortalParaRascunhoService
             $chaveReal = $chaveEixo;
         } elseif ($existente !== null && count($snap->eixos) === 1) {
             $chaveReal = $existente->chave;
+            if ($existente->chave === ChaveCanonica::EIXO_CUSTOM && $chaveEixo !== ChaveCanonica::EIXO_CUSTOM) {
+                // Rascunho que nasceu com eixo próprio (antes da categoria): o Portal não troca o eixo da equipe.
+                $avisos[] = "O rascunho varia por um eixo próprio (\"{$existente->nome}\"); troque para \"{$plano['nome']}\" no editor para usar a lista da categoria.";
+            }
             $falta = [];
             foreach ($plano['cores'] as $cor) {
                 $achou = collect($existente->valores)->contains(fn ($x) => ChaveCanonica::texto($x->valueName) === ChaveCanonica::texto($cor['nome'])
