@@ -164,6 +164,23 @@ class GeradorDeSugestoesTest extends TestCase
         $this->assertSame(['mesa', 'cadeira'], $kit['tipos']);
     }
 
+    /** 08/10 (teste do usuário): cores que não se repetem entre mesa e cadeira davam zero Kit. */
+    public function test_mesa_e_cadeira_com_cores_diferentes_geram_kit_e_combit(): void
+    {
+        $r = $this->retrato([
+            $this->produto(1, 'Mesa Polo', 'mesa', [$this->variacao(101, null, 'Freijó'), $this->variacao(102, null, 'Off White', 1)]),
+            $this->produto(2, 'Cadeira Polo', 'cadeira', [$this->variacao(201, null, 'Linho Bege'), $this->variacao(202, null, 'Linho Cinza', 1)]),
+        ]);
+
+        $por = array_column(GeradorDeSugestoes::gerar($r), null, 'chave');
+
+        $this->assertSame('kit', $por['v101*1+v201*1']['fase']);
+        $this->assertSame('kit', $por['v102*1+v202*1']['fase']);
+        $this->assertSame('Mesa Polo + Cadeira Polo — Freijó / Linho Bege', $por['v101*1+v201*1']['nome']);
+        $this->assertSame('combit', $por['v101*1+v201*4']['fase']);
+        $this->assertArrayNotHasKey('v101*1+v202*1', $por, 'sem cartesiano');
+    }
+
     public function test_existente_nao_sai_e_descartada_volta_marcada(): void
     {
         $r = $this->basico();

@@ -57,10 +57,22 @@ class VariacoesEmParaleloTest extends TestCase
                 [$v(3, 1, 'Cor', 'Preto'), $v(4, 2, 'Cor', 'cafe')],
                 [[1, 4], [2, 3]],
             ],
-            'eixos diferentes não casam pelo valor' => [
+            // 08/10: eixos diferentes não casam pelo valor; como nada casou, vai por posição.
+            'eixos diferentes: nada casa pelo valor, vai por posição' => [
                 [$v(1, 1, 'Cor', 'Natural'), $v(2, 2, 'Cor', 'Preto')],
                 [$v(3, 1, 'Material', 'Natural'), $v(4, 2, 'Material', 'Preto')],
-                [],
+                [[1, 3], [2, 4]],
+            ],
+            // 08/10 (teste do usuário): mesa e cadeira com cores que nunca se repetem davam zero Kit.
+            'mesa 2 cores x cadeira 2 cores diferentes: por posição' => [
+                [$v(1, 1, 'Cor', 'Freijó'), $v(2, 2, 'Cor', 'Off White')],
+                [$v(3, 1, 'Cor', 'Linho Bege'), $v(4, 2, 'Cor', 'Linho Cinza')],
+                [[1, 3], [2, 4]],
+            ],
+            'nada casa, 3 x 2: min(n, m), sobra ignorada' => [
+                [$v(1, 1, 'Cor', 'A'), $v(2, 2, 'Cor', 'B'), $v(5, 3, 'Cor', 'C')],
+                [$v(3, 1, 'Cor', 'X'), $v(4, 2, 'Cor', 'Y')],
+                [[1, 3], [2, 4]],
             ],
             'lista vazia em a' => [[], [$v(1, 1)], []],
             'lista vazia em b' => [[$v(1, 1)], [], []],
