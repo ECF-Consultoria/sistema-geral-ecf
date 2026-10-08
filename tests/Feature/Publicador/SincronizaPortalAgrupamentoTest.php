@@ -261,4 +261,21 @@ class SincronizaPortalAgrupamentoTest extends TestCase
         $this->assertSame('sincronizado', $s['situacao']);
         $this->assertSame(0, $s['novas']);
     }
+
+    public function test_lista_de_empresas_conta_a_cobertura_do_grupo_igual_a_situacao_da_empresa(): void
+    {
+        $c = Company::factory()->create();
+        $e = $this->empresa($c);
+        $this->produtoComCores($c);
+        \App\Models\MlToken::create(['mlb_empresa_id' => $e->id, 'ml_user_id' => '777', 'access_token' => 'APP_USR-x', 'refresh_token' => 'TG-x',
+            'expires_at' => now()->addHours(5), 'status' => 'active']);
+        $this->sinc($e, $c);
+
+        $servico = app(ProgramasPublicadorService::class);
+        $linha = $servico->empresas('polos')->firstWhere('id', $e->id);
+        $this->assertNotNull($linha);
+        $this->assertSame('sincronizado', $linha['portal']['situacao'], 'as 3 cores agrupadas estão cobertas na lista também');
+        $this->assertSame(0, $linha['portal']['novas']);
+        $this->assertSame($servico->situacaoPortal($c)['situacao'], $linha['portal']['situacao']);
+    }
 }

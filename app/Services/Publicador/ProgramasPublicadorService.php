@@ -170,12 +170,7 @@ class ProgramasPublicadorService
         $ofertasPor = $companyIds === [] ? collect() : DB::table('estrutura_ofertas')
             ->whereIn('company_id', $companyIds)->selectRaw('company_id, COUNT(*) as total')->groupBy('company_id')
             ->pluck('total', 'company_id');
-        $comProdutoPor = $companyIds === [] ? collect() : DB::table('pub_produtos')
-            ->join('estrutura_ofertas', 'estrutura_ofertas.id', '=', 'pub_produtos.oferta_id')
-            ->whereIn('estrutura_ofertas.company_id', $companyIds)
-            ->selectRaw('estrutura_ofertas.company_id as company_id, COUNT(DISTINCT pub_produtos.oferta_id) as total')
-            ->groupBy('estrutura_ofertas.company_id')
-            ->pluck('total', 'company_id');
+        $comProdutoPor = $this->ofertasCobertas($companyIds);
 
         $cacheChaves = collect($companyIds)->mapWithKeys(fn ($id) => [$id => 'publicador.portal_sincronizado_em.company-'.$id]);
         $emCache = $cacheChaves->isEmpty() ? [] : Cache::many($cacheChaves->values()->all());
@@ -316,6 +311,39 @@ class ProgramasPublicadorService
     }
 
     /**
+     * Ofertas do Portal já cobertas por um produto do Publicador, por Company. Coberta = tem pub_produto
+     * pela própria oferta OU pelo grupo do produto do Portal (Fase 172, D-06): a cor de um produto já
+     * agrupado entra no rascunho pelo preenchimento, não como produto novo. Uma regra só para a lista de
+     * empresas e para a situação da empresa (review 172 WR-08), senão as duas telas se contradizem.
+     *
+     * @param  list<int>  $companyIds
+     * @return Collection<int, int> company_id → ofertas cobertas
+     */
+    private function ofertasCobertas(array $companyIds): Collection
+    {
+        if ($companyIds === []) {
+            return collect();
+        }
+
+        return DB::table('estrutura_ofertas as eo')
+            ->whereIn('eo.company_id', $companyIds)
+            ->where(function ($q) {
+                $q->whereExists(function ($s) {
+                    $s->select(DB::raw(1))->from('pub_produtos as pp')->whereColumn('pp.oferta_id', 'eo.id');
+                })->orWhereExists(function ($s) {
+                    $s->select(DB::raw(1))->from('estrutura_produto_variacoes as epv')
+                        ->join('pub_produtos as pg', 'pg.estrutura_produto_id', '=', 'epv.produto_id')
+                        ->whereColumn('epv.id', 'eo.variacao_id')
+                        ->whereColumn('pg.company_id', 'eo.company_id');
+                });
+            })
+            ->selectRaw('eo.company_id as company_id, COUNT(*) as total')
+            ->groupBy('eo.company_id')
+            ->pluck('total', 'company_id')
+            ->map(fn ($n) => (int) $n);
+    }
+
+    /**
      * Situação do Portal de UMA Company (mesma regra das linhas da tela A):
      * sem_portal | nunca | novas | sincronizado.
      *
@@ -328,20 +356,7 @@ class ProgramasPublicadorService
         }
 
         $total = (int) DB::table('estrutura_ofertas')->where('company_id', $company->id)->count();
-        // Coberta = tem pub_produto pela própria oferta OU pelo grupo do produto do Portal (Fase 172, D-06):
-        // a cor nova de um produto já agrupado entra no rascunho pelo preenchimento, não como produto novo.
-        $comProduto = (int) DB::table('estrutura_ofertas as eo')
-            ->where('eo.company_id', $company->id)
-            ->where(function ($q) use ($company) {
-                $q->whereExists(function ($s) {
-                    $s->select(DB::raw(1))->from('pub_produtos as pp')->whereColumn('pp.oferta_id', 'eo.id');
-                })->orWhereExists(function ($s) use ($company) {
-                    $s->select(DB::raw(1))->from('estrutura_produto_variacoes as epv')
-                        ->join('pub_produtos as pg', 'pg.estrutura_produto_id', '=', 'epv.produto_id')
-                        ->whereColumn('epv.id', 'eo.variacao_id')
-                        ->where('pg.company_id', $company->id);
-                });
-            })->count();
+        $comProduto = (int) ($this->ofertasCobertas([(int) $company->id])[$company->id] ?? 0);
 
         if ($total === 0) {
             $situacao = 'sem_portal';
