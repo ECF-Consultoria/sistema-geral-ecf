@@ -8,6 +8,7 @@ use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\MlbEmpresa;
 use App\Models\PubProduto;
+use App\Support\Publicador\Portal\CoresDoGrupo;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -67,6 +68,29 @@ class PublicadorSincronizaPortalService
             $avulsas[] = $oferta;
         }
 
+        // WR-09: a variação que não pode virar cor do grupo (sem valor, outro tipo, repetida) vira produto
+        // separado — a mesma regra do preenchimento (`CoresDoGrupo`), senão ela some "coberta" pelo grupo.
+        foreach ($agrupaveis as $produtoId => $lista) {
+            $separacao = CoresDoGrupo::separar(array_map(fn (EstruturaOferta $o) => [
+                'id' => (int) $o->variacao_id, 'eixo' => $variacoes[$o->variacao_id]->eixo, 'valor' => $variacoes[$o->variacao_id]->valor,
+                'codigo' => $variacoes[$o->variacao_id]->codigo,
+            ], $this->naOrdem($lista, $variacoes)));
+            if ($separacao['fora'] === []) {
+                continue;
+            }
+            $nomeProduto = (string) $produtos->get($produtoId)?->nome;
+            foreach ($lista as $oferta) {
+                if (isset($separacao['fora'][$oferta->variacao_id])) {
+                    $avulsas[] = $oferta;
+                    $avisos[] = "{$nomeProduto}: {$separacao['fora'][$oferta->variacao_id]}; ela vira um produto separado (SKU {$oferta->sku}).";
+                }
+            }
+            $agrupaveis[$produtoId] = array_values(array_filter($lista, fn (EstruturaOferta $o) => ! isset($separacao['fora'][$o->variacao_id])));
+            if ($agrupaveis[$produtoId] === []) {
+                unset($agrupaveis[$produtoId]);
+            }
+        }
+
         // ── Ofertas sem agrupamento: um produto por oferta, como sempre foi ──
         $jaTem = $ofertas->isEmpty() ? collect() : PubProduto::query()
             ->whereIn('oferta_id', $ofertas->pluck('id'))->pluck('oferta_id')->flip();
@@ -84,7 +108,7 @@ class PublicadorSincronizaPortalService
         // ── Produtos do Portal: um grupo por produto ──
         foreach ($agrupaveis as $produtoId => $lista) {
             $produto = $produtos->get($produtoId);
-            usort($lista, fn ($a, $b) => [$variacoes[$a->variacao_id]->ordem, $a->id] <=> [$variacoes[$b->variacao_id]->ordem, $b->id]);
+            $lista = $this->naOrdem($lista, $variacoes);
             $ofertaIds = array_map(fn ($o) => $o->id, $lista);
 
             $grupo = PubProduto::query()->where('company_id', $company->id)
@@ -167,7 +191,15 @@ class PublicadorSincronizaPortalService
         }
 
         return EstruturaProdutoVariacao::query()->where('company_id', $company->id)
-            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem', 'valor'])->keyBy('id');
+            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem', 'eixo', 'valor', 'codigo'])->keyBy('id');
+    }
+
+    /** As ofertas na ordem das variações do Portal (empate: a oferta mais antiga). @return list<EstruturaOferta> */
+    private function naOrdem(array $lista, Collection $variacoes): array
+    {
+        usort($lista, fn ($a, $b) => [$variacoes[$a->variacao_id]->ordem, $a->id] <=> [$variacoes[$b->variacao_id]->ordem, $b->id]);
+
+        return $lista;
     }
 
     /** O nome da cor (valor da variação) de uma oferta do grupo; sem valor, o SKU da oferta. */

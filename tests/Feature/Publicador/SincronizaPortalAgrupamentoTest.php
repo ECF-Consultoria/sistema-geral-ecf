@@ -278,4 +278,24 @@ class SincronizaPortalAgrupamentoTest extends TestCase
         $this->assertSame(0, $linha['portal']['novas']);
         $this->assertSame($servico->situacaoPortal($c)['situacao'], $linha['portal']['situacao']);
     }
+
+    public function test_variacao_que_nao_pode_ser_cor_vira_produto_separado_e_nao_some_na_cobertura(): void
+    {
+        $c = Company::factory()->create();
+        $e = $this->empresa($c);
+        [$p, $ofertas] = $this->produtoComCores($c);
+        // A 3ª variação perdeu o valor no Portal: não pode ser cor do grupo.
+        EstruturaProdutoVariacao::whereKey($ofertas[2]->variacao_id)->update(['valor' => '']);
+
+        $r = $this->sinc($e, $c);
+
+        $this->assertSame(2, $r['criados'], 'o grupo e o produto separado');
+        $this->assertNotNull(PubProduto::where('oferta_id', $ofertas[2]->id)->whereNull('estrutura_produto_id')->first());
+        $this->assertTrue(collect($r['avisos'])->contains(fn ($a) => str_contains($a, 'sem valor') && str_contains($a, 'CAD-3')));
+        $s = app(ProgramasPublicadorService::class)->situacaoPortal($c);
+        $this->assertSame('sincronizado', $s['situacao']);
+
+        $r2 = $this->sinc($e, $c);
+        $this->assertSame(0, $r2['criados'], 'reexecutar não duplica');
+    }
 }

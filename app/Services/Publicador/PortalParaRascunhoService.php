@@ -10,6 +10,7 @@ use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
+use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
@@ -91,6 +92,13 @@ class PortalParaRascunhoService
         }
 
         $avisos = &$resumo['avisos'];
+
+        // ─── Só as variações que podem ser cor do grupo (a mesma regra do Sincronizar: as outras são produtos separados) ───
+        $separacao = CoresDoGrupo::separar($grupo['variacoes']);
+        foreach ($separacao['fora'] as $motivo) {
+            $avisos[] = "{$motivo}; ela ficou fora do grupo e é um produto separado no Publicador.";
+        }
+        $grupo['variacoes'] = array_values(array_filter($grupo['variacoes'], fn (array $v) => in_array((int) $v['id'], $separacao['agrupaveis'], true)));
 
         // ─── Cor já publicada em outro produto fica FORA do grupo (D-06: nunca o mesmo SKU duas vezes) ───
         $grupo['variacoes'] = $this->semCoresPublicadas($produto, $r, $grupo['variacoes'], $avisos);

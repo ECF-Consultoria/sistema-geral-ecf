@@ -377,7 +377,7 @@ class PortalParaRascunhoTest extends TestCase
         $resumo = $this->servico->preencher($pub);
 
         $this->assertCount(2, $this->snap($pub)->eixos[0]->valores);
-        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, 'sem valor')));
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, 'sem valor') && str_contains($a, 'produto separado')));
     }
 
     public function test_rascunho_publicado_nunca_e_tocado(): void
