@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
 import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
 // ─── Cartão do produto — Visual grande (REF-1, 167-20) ──────────────────────
@@ -19,7 +20,7 @@ export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario,
                 classeDestaque(destaque))}>
             <EtiquetaUltimoAberto destaque={destaque} />
             <div className="flex gap-5">
-                <QuadroFotoProduto nome={primeira.nome} tamanho="cartao" />
+                <QuadroFotoProduto nome={primeira.nome} foto={capaDoProduto(variacoes)} tamanho="cartao" />
                 <div className="min-w-0 flex-1 pr-8">
                     <a href={route('portal.auth.estrutura.produtos.ficha', produtoId)}
                         className="block truncate text-[20px] font-semibold leading-7 text-white hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40">
