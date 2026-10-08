@@ -9,6 +9,7 @@ import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
+import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar.jsx';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
@@ -87,6 +88,8 @@ export default function Produtos({
     const [status, setStatus] = useState(null); // { tipo: 'ok' | 'erro', texto }
     const [novos, setNovos] = useState(new Set());
     const [erroAbrir, setErroAbrir] = useState(false);
+    const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
+    const resumoPronto = useRef(false);
     const esperaStatus = useRef(null);
     const esperaRealce = useRef(null);
 
@@ -124,7 +127,18 @@ export default function Produtos({
         });
     }
 
+    // Cada leitura do resumo; ao ficar pronto, recarrega a lista (variantes e status mudaram).
+    function aoLerResumo(r) {
+        setResumo(r);
+        if (r?.status === 'pronto' && !resumoPronto.current) {
+            resumoPronto.current = true;
+            router.reload({ only: ['produtos', 'contagens'] });
+        }
+    }
+
     function aoConcluirSync(json) {
+        resumoPronto.current = false;
+        setResumo(null);
         const texto = json?.criados > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
         setStatus({ tipo: 'ok', texto });
         setNovos(new Set(json?.ids ?? []));
@@ -167,6 +181,7 @@ export default function Produtos({
                             <BotaoSincronizarPortal
                                 conta={empresa.chave}
                                 onConcluido={aoConcluirSync}
+                                onResumo={aoLerResumo}
                                 onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                             />
                         )}
@@ -186,6 +201,8 @@ export default function Produtos({
                 </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
+
+                <ResumoDoSincronizar resumo={resumo} onFechar={() => setResumo(null)} />
 
                 <section className="rounded-xl bg-ecf-card">
                     <div className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -261,6 +278,7 @@ export default function Produtos({
                                     <BotaoSincronizarPortal
                                         conta={empresa.chave}
                                         onConcluido={aoConcluirSync}
+                                        onResumo={aoLerResumo}
                                         onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                                     />
                                 )}
