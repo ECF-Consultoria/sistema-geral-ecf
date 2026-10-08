@@ -316,13 +316,12 @@ export default function PolosEmpresas({
                                                         </div>
                                                     )}
                                                       </div>
-                                                      {/* Comentários de performance da empresa NESTE mês. */}
+                                                      {/* Comentários da empresa, de todos os meses (TKT-0007). */}
                                                       <div className="w-full shrink-0 xl:w-[340px]">
                                                         <Comentarios
                                                             cust={e.cust_id}
                                                             empresa={e.nome}
                                                             mes={mesSelecionado}
-                                                            mesLabel={mesRefLabel}
                                                             lista={coms}
                                                         />
                                                       </div>
@@ -344,17 +343,20 @@ export default function PolosEmpresas({
 }
 
 /**
- * Comentários de performance de UMA empresa num MÊS — exclusivos desta tela.
+ * Comentários de performance de UMA empresa — exclusivos desta tela.
  *
  * Por que existe aqui e não no Painel Polos: o número do mês (faturamento, meta, ADS)
- * mora nesta página, e a explicação dele só faz sentido colada nele. O escopo é por
- * competência: a anotação de agosto não polui a leitura de setembro.
+ * mora nesta página, e a explicação dele só faz sentido colada nele.
+ *
+ * Permanentes (TKT-0007): a lista traz as anotações de TODOS os meses, a mais recente
+ * primeiro, cada uma com o mês em que foi escrita. Antes era por competência, e o time
+ * reescrevia todo mês a mesma anotação. `mes` só serve para gravar essa referência.
  *
  * Tudo passa por Inertia com `preserveState` para a linha não fechar nem perder o
  * semanal já carregado da Adman a cada escrita — as props voltam atualizadas do mesmo
  * jeito, então não há estado espelhado no cliente para desincronizar.
  */
-function Comentarios({ cust, empresa, mes, mesLabel, lista = [] }) {
+function Comentarios({ cust, empresa, mes, lista = [] }) {
     const [novo, setNovo]         = useState('');
     const [editando, setEditando] = useState(null);   // id em edição
     const [rascunho, setRascunho] = useState('');
@@ -393,17 +395,21 @@ function Comentarios({ cust, empresa, mes, mesLabel, lista = [] }) {
     return (
         <div onClick={conter} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
             <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">
-                Comentários{mesLabel ? <span className="normal-case tracking-normal text-white/25"> · {mesLabel}</span> : null}
+                Comentários<span className="normal-case tracking-normal text-white/25"> · todos os meses</span>
             </p>
 
             <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                 {lista.length === 0 && (
-                    <p className="text-white/25 text-[11px] italic">Sem comentários para {empresa} neste mês.</p>
+                    <p className="text-white/25 text-[11px] italic">Sem comentários para {empresa}.</p>
                 )}
                 {lista.map((c) => (
                     <div key={c.id} className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5">
                         <div className="flex items-start justify-between gap-2">
                             <p className="text-[11px] text-white/50">
+                                {c.mes_label && (
+                                    <span className="mr-1.5 inline-block rounded bg-white/[0.06] px-1.5 py-px text-[10px] text-white/45"
+                                          title="Mês em que o comentário foi feito">{c.mes_label}</span>
+                                )}
                                 <span className="font-semibold text-white/75">{c.autor}</span> · {c.criado_em}
                                 {c.editado_em && (
                                     <span className="text-white/30" title={`Editado em ${c.editado_em}`}> · editado {c.editado_em}</span>

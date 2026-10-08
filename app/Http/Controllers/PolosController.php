@@ -1329,10 +1329,11 @@ class PolosController extends Controller
                 ],
                 'adsLimites'     => $d['adsLimites'],
                 'metricaFaturamento' => $d['metricaFaturamento'],
-                // Comentarios de performance do mes, agrupados por cust_id. Vem junto com a
-                // pagina (volume pequeno) em vez de um fetch por linha aberta: sem isso, abrir
-                // 20 empresas seriam 20 idas ao servidor para mostrar 3 frases.
-                'comentarios'    => $this->comentariosDoMes($d['mesSel'], $request->user()),
+                // Comentarios das empresas da lista, de TODOS os meses (TKT-0007), agrupados
+                // por cust_id. Vem junto com a pagina (volume pequeno) em vez de um fetch por
+                // linha aberta: sem isso, abrir 20 empresas seriam 20 idas ao servidor para
+                // mostrar 3 frases.
+                'comentarios'    => $this->comentariosDasEmpresas(array_column($empresas, 'cust_id'), $request->user()),
                 'statusInicial'  => $statusInicial,
                 'erro'           => null,
             ]);
@@ -1348,29 +1349,40 @@ class PolosController extends Controller
     // Ver o docblock da migration polos_comentarios para as decisões de schema.
 
     /**
-     * Comentários do mês agrupados por cust_id, no shape que a tela consome.
+     * Comentários das empresas informadas, de TODOS os meses, agrupados por cust_id, no
+     * shape que a tela consome — o mais recente primeiro.
+     *
+     * Permanentes desde o TKT-0007: até então só apareciam no mês em que foram escritos, e
+     * o time reescrevia todo mês a mesma anotação ("foi para outra consultoria", "seller
+     * cuida das campanhas"). A coluna `mes` continua sendo gravada e vira só a referência
+     * (`mes_label`) de quando a anotação foi feita — nada muda no schema.
      *
      * `pode_editar` é resolvido AQUI e não no front: a regra (autor ou admin) é a mesma
      * que os endpoints aplicam, e derivar isso no JSX abriria caminho para a tela mostrar
      * um lápis que o servidor recusa.
      *
+     * @param  array<int, string|null> $custIds  cust_id normalizado das linhas da tela
      * @return array<string, array<int, array<string,mixed>>>
      */
-    private function comentariosDoMes(?string $mes, ?User $user): array
+    private function comentariosDasEmpresas(array $custIds, ?User $user): array
     {
-        if ($mes === null || $mes === '') {
+        $custIds = array_values(array_unique(array_filter(array_map('strval', $custIds), fn ($c) => $c !== '')));
+        if ($custIds === []) {
             return [];
         }
 
         return PolosComentario::with('autor:id,name')
-            ->where('mes', $mes)
-            ->orderBy('created_at')
+            ->whereIn('cust_id', $custIds)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get()
             ->groupBy('cust_id')
             ->map(fn ($grupo) => $grupo->map(fn (PolosComentario $c) => [
                 'id'          => $c->id,
                 'texto'       => $c->texto,
                 'autor'       => $c->autorNome(),
+                'mes'         => $c->mes,
+                'mes_label'   => $this->mesLabel((string) $c->mes),
                 'criado_em'   => $c->created_at?->format('d/m/Y H:i'),
                 'editado_em'  => $c->editado_em?->format('d/m/Y H:i'),
                 'pode_editar' => $this->podeMexerNoComentario($user, $c),

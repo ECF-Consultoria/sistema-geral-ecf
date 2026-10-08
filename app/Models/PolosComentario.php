@@ -6,10 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Comentário de performance de uma empresa num mês — só aparece em /polos/empresas.
+ * Comentário de performance de uma empresa — só aparece em /polos/empresas.
  *
- * Chaveado por cust_id normalizado + mes ('YYYYMM'); ver o docblock da migration
+ * Chaveado por cust_id normalizado; ver o docblock da migration
  * 2026_09_09_140000_create_polos_comentarios_table para o porquê de cada decisão.
+ *
+ * Desde o TKT-0007 o comentário é PERMANENTE: aparece em todos os meses da empresa.
+ * `mes` ('YYYYMM') segue gravado, mas só como referência do mês em que foi escrito —
+ * a tela não filtra mais por ele (a migration ainda descreve a regra antiga).
  */
 class PolosComentario extends Model
 {

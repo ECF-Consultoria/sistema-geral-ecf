@@ -490,6 +490,16 @@ Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot*
 coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
 futuro marcaria o comentário como editado sem ninguém ter editado nada.
 
+**Desde 08/10/2026 (TKT-0007) o comentário é permanente.** A tela lista os comentários da
+empresa de **todos os meses**, o mais recente primeiro, cada um com o mês em que foi escrito
+(`mes_label`). O pedido veio da operação, e os dados confirmavam: o time reescrevia todo mês
+a mesma anotação ("foi pra consultoria" em setembro e de novo em outubro) e seguia comentando
+em setembro já em outubro. **Sem mudança de schema**: `mes` continua obrigatório e gravado
+com o mês selecionado, mas virou só referência — a leitura (`comentariosDasEmpresas`) não
+filtra mais por ele, só pelos `cust_id` da lista. O docblock da migration ainda descreve a
+regra antiga ("comentário de agosto não polui setembro"); vale este parágrafo. Se um dia
+pedirem de volta "só deste mês", é filtro no front pelo `mes`, não tabela nova.
+
 ## 13. A gaveta da linha é uma célula `colSpan` — ela tem a largura da TABELA, não da tela (2026-09-29)
 
 A gaveta que abre na seta da linha é um `<td colSpan={40}>`. Na Geral a tabela passa de
