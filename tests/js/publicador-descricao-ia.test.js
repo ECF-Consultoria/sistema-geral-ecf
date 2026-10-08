@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
-import { decidirLeitura, deveDispararAuto, podeAplicarDescricao } from '../../resources/js/Components/Publicador/descricaoIa.js';
+import { decidirLeitura, deveDispararAuto, pedidoParaAdotar, podeAplicarDescricao } from '../../resources/js/Components/Publicador/descricaoIa.js';
 
 const BASE = 'resources/js/Components/Publicador';
 
@@ -56,4 +56,15 @@ test('decidirLeitura — só o próprio pedido, ainda rodando, com a página viv
     assert.equal(decidirLeitura({ ...base, textoAgora: 'digitei' }), 'guardar', 'a pessoa digitou no meio');
     assert.equal(decidirLeitura({ ...base, data: { pedido: 'p1', status: 'rodando' } }), 'continuar');
     assert.equal(decidirLeitura({ ...base, data: { pedido: 'p1', status: 'erro' } }), 'erro');
+});
+
+test('pedidoParaAdotar — ja_pedido adota o pedido rodando ou pronto; o resto para (review 172 WR-02)', () => {
+    assert.equal(pedidoParaAdotar({ pedido: 'p1', status: 'rodando' }), 'p1');
+    assert.equal(pedidoParaAdotar({ pedido: 'p1', status: 'pronto', valor: 'x' }), 'p1');
+    assert.equal(pedidoParaAdotar({ pedido: 'p1', status: 'erro' }), null);
+    assert.equal(pedidoParaAdotar({ status: 'nenhum' }), null);
+    assert.equal(pedidoParaAdotar(null), null);
+
+    const src = lerSemComentarios(`${BASE}/useDescricaoIa.js`);
+    assert.match(src, /data\.status === 'ja_pedido'\) \{[\s\S]*?descricao-ia\.status[\s\S]*?pedidoParaAdotar\(estado\)/);
 });

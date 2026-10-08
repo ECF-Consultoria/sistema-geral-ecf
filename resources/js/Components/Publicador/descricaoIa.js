@@ -34,3 +34,14 @@ export function decidirLeitura({ vivo, atual, data, disabled, textoAgora }) {
 
     return podeAplicarDescricao({ automatico: atual.automatico, textoNoPedido: atual.textoNoPedido, textoAgora }) ? 'aplicar' : 'guardar';
 }
+
+/**
+ * `ja_pedido` (review 172 WR-02): o automático deste rascunho já foi pedido antes — numa aba anterior,
+ * antes de recarregar. Se aquele pedido ainda está rodando ou pronto no servidor, a tela o ADOTA (a
+ * descrição paga não fica órfã no cache); senão, para. Devolve o pedido a acompanhar, ou null.
+ */
+export function pedidoParaAdotar(estado) {
+    if (! estado?.pedido) return null;
+
+    return estado.status === 'rodando' || estado.status === 'pronto' ? estado.pedido : null;
+}

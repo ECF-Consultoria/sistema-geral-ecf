@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { criarRota, mensagemDe } from './apoio.js';
-import { decidirLeitura, deveDispararAuto } from './descricaoIa.js';
+import { decidirLeitura, deveDispararAuto, pedidoParaAdotar } from './descricaoIa.js';
 
 // Descrição por IA (Fase 172, D-11): o servidor roda o MAG T8 na fila; aqui a página pede
 // (sozinha uma vez, no rascunho vazio com descrição do cliente; ou pelo botão), acompanha só o
@@ -36,7 +36,15 @@ export default function useDescricaoIa({ m, produtoId }) {
         mudar({ status: 'rodando', erro: null, pedido: null, valor: null, automatico, textoNoPedido: mRef.current.rasc?.descricao ?? '', desde: Date.now() });
         try {
             const { data } = await axios.post(rota('descricao-ia', produtoId), { automatico });
-            if (data.status === 'ja_pedido' || data.status === 'nao_se_aplica') {
+            if (data.status === 'ja_pedido') {
+                // A única chance automática já foi gasta: adota o pedido que ainda está no servidor (WR-02).
+                const { data: estado } = await axios.get(rota('descricao-ia.status', produtoId));
+                const adotar = vivo.current ? pedidoParaAdotar(estado) : null;
+                mudar(adotar ? { pedido: adotar, status: 'rodando', automatico: true } : { status: 'parado' });
+
+                return;
+            }
+            if (data.status === 'nao_se_aplica') {
                 mudar({ status: 'parado' });
 
                 return;
