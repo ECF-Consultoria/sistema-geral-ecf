@@ -3,18 +3,14 @@ import { cn } from '@/lib/utils';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link2, PencilLine, Plus, Search } from 'lucide-react';
-import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
-import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
-import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
-import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
+import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
+import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
-
-const ROTULO_PROGRAMA = { polos: 'Polos', incubadora: 'Incubadora', gestao: 'Gestão' };
 
 const FILTROS = [
     { chave: 'todos', rotulo: 'Todos' },
@@ -90,7 +86,6 @@ export default function Produtos({
     const esperaStatus = useRef(null);
     const esperaRealce = useRef(null);
 
-    const rotuloPrograma = ROTULO_PROGRAMA[empresa.programa] ?? empresa.programa_rotulo ?? 'Polos';
     const temPortal = empresa.portal?.situacao !== 'sem_portal';
     const podeSincronizar = Boolean(empresa.company_id) && temPortal;
 
@@ -146,43 +141,29 @@ export default function Produtos({
         <AppLayout title={`Publicador — ${empresa.nome}`}>
             <div className="mx-auto max-w-[1240px] px-8 py-8">
 
-                {/* Cabeçalho */}
-                <nav aria-label="Trilha" className="mb-2 text-[13px] font-normal text-white/55">
-                    <Link href={route('mlb.anuncios.index')} className="hover:text-ecf-yellow">Anunciar</Link>
-                    <span aria-hidden="true"> › </span>
-                    <Link href={route('mlb.anuncios.index', { programa: empresa.programa })} className="hover:text-ecf-yellow">{rotuloPrograma}</Link>
-                    <span aria-hidden="true"> › </span>
-                    <span className="text-white/70">{empresa.nome}</span>
-                </nav>
-
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <h1 className="font-display text-[24px] font-bold leading-tight text-white">{empresa.nome}</h1>
-                        <SeloConta token={empresa.token} />
-                        <SeloPortal portal={empresa.portal} />
-                        {!liberada && <AvisoContaTravada variante="selo" />}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        {podeSincronizar && (
-                            <BotaoSincronizarPortal
-                                conta={empresa.chave}
-                                onConcluido={aoConcluirSync}
-                                onErro={(texto) => setStatus({ tipo: 'erro', texto })}
-                            />
-                        )}
-                        <button type="button" onClick={() => setModal(true)} className={BOTAO_SECUNDARIO}>
-                            <Plus className="h-4 w-4" aria-hidden="true" />
-                            Produto
-                        </button>
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    <AreaTabs area="publicar" conta={empresa.chave} />
-                </div>
+                {/* Cabeçalho único da conta (trilha, nome+selos, Trocar empresa) + abas unificadas (172-01/172-03) */}
+                <BarraDaConta
+                    empresa={empresa}
+                    liberada={liberada}
+                    acoes={(
+                        <>
+                            {podeSincronizar && (
+                                <BotaoSincronizarPortal
+                                    conta={empresa.chave}
+                                    onConcluido={aoConcluirSync}
+                                    onErro={(texto) => setStatus({ tipo: 'erro', texto })}
+                                />
+                            )}
+                            <button type="button" onClick={() => setModal(true)} className={BOTAO_SECUNDARIO}>
+                                <Plus className="h-4 w-4" aria-hidden="true" />
+                                Produto
+                            </button>
+                        </>
+                    )}
+                />
 
                 <div className="mb-6">
-                    <ModoAnuncioTabs empresaId={abas.company_id} modo="individual" contaPublicador={empresa.chave} />
+                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas.company_id} contagemProdutos={contagens.todos ?? null} />
                 </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
@@ -211,6 +192,15 @@ export default function Produtos({
                                 );
                             })}
                         </div>
+                        <button
+                            type="button"
+                            disabled={!abas.company_id}
+                            title={!abas.company_id ? 'Disponível só para empresas cadastradas no sistema' : undefined}
+                            onClick={() => { if (abas.company_id) router.get(route('mlb.anuncios.massa', { company: abas.company_id })); }}
+                            className={cn(BOTAO_SECUNDARIO, !abas.company_id && 'opacity-40 cursor-not-allowed')}
+                        >
+                            Editar em grade
+                        </button>
                         <label className="relative block w-[280px]">
                             <span className="sr-only">Buscar por SKU ou nome</span>
                             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-white/40" aria-hidden="true" />

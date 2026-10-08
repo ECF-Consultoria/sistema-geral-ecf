@@ -162,8 +162,8 @@ test('Tela B — navega ao editor por clique e Enter, e monta as abas com a cont
     assert.match(fonte, /mlb\.anuncios\.publicador\.editor/);
     assert.match(fonte, /tabIndex={0}/);
     assert.match(fonte, /'Enter'/);
-    assert.match(fonte, /contaPublicador={/);
-    assert.match(fonte, /empresaId={abas\.company_id}/);
+    assert.match(fonte, /conta={empresa\.chave}/);
+    assert.match(fonte, /companyId={abas\.company_id}/);
     assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard/);
 });
 
