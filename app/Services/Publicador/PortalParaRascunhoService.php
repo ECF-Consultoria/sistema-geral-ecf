@@ -11,6 +11,7 @@ use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
+use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
@@ -759,19 +760,29 @@ class PortalParaRascunhoService
                 return false;
             }
             $chaveReal = $chaveEixo;
+            $this->lembrarCores($r, array_map(fn ($c) => $c['nome'], $plano['cores']));
         } elseif ($existente !== null && count($snap->eixos) === 1) {
             $chaveReal = $existente->chave;
             if ($existente->chave === ChaveCanonica::EIXO_CUSTOM && $chaveEixo !== ChaveCanonica::EIXO_CUSTOM) {
                 // Rascunho que nasceu com eixo próprio (antes da categoria): o Portal não troca o eixo da equipe.
                 $avisos[] = "O rascunho varia por um eixo próprio (\"{$existente->nome}\"); troque para \"{$plano['nome']}\" no editor para usar a lista da categoria.";
             }
+            // D-05: só entra a cor que NUNCA esteve no rascunho. A que a equipe tirou (órfã, ou lembrada
+            // de um Sincronizar anterior) fica fora; a equipe é quem a devolve, no editor.
+            $removidas = $this->coresRemovidas($r, $snap, $existente->chave);
             $falta = [];
             foreach ($plano['cores'] as $cor) {
                 $achou = collect($existente->valores)->contains(fn ($x) => ChaveCanonica::texto($x->valueName) === ChaveCanonica::texto($cor['nome'])
                     || ($cor['id'] !== null && $x->valueId === $cor['id']));
-                if (! $achou) {
-                    $falta[] = ['id' => $cor['id'], 'nome' => $cor['nome']];
+                if ($achou) {
+                    continue;
                 }
+                if (isset($removidas[ChaveCanonica::texto($cor['nome'])])) {
+                    $avisos[] = "A cor \"{$cor['nome']}\" foi removida no Publicador; o Portal a manteve fora.";
+
+                    continue;
+                }
+                $falta[] = ['id' => $cor['id'], 'nome' => $cor['nome']];
             }
             if ($falta !== []) {
                 $atuais = array_map(fn ($x) => ['id' => $x->valueId, 'nome' => $x->valueName], $existente->valores);
@@ -786,6 +797,7 @@ class PortalParaRascunhoService
                     return false;
                 }
             }
+            $this->lembrarCores($r, [...array_map(fn ($x) => (string) $x->valueName, $existente->valores), ...array_column($falta, 'nome')]);
         } else {
             $avisos[] = 'O rascunho já tem variações próprias (outro tipo de variação); o Portal não acrescentou cores.';
 
@@ -820,6 +832,45 @@ class PortalParaRascunhoService
         }
 
         return $this->gravarVariantes($r, $porChave);
+    }
+
+    /** Chave de `step_state` com as cores (texto canônico) que já estiveram no eixo do rascunho. */
+    private const MEMORIA_CORES = 'portal_cores';
+
+    /**
+     * As cores que já estiveram no eixo e não estão mais: as das variantes órfãs e as lembradas de
+     * Sincronizar anteriores (a órfã some quando a equipe a descarta; a memória fica).
+     *
+     * @return array<string, true>
+     */
+    private function coresRemovidas(PubRascunho $r, RascunhoSnapshot $snap, string $chaveEixo): array
+    {
+        $removidas = array_fill_keys((array) (((array) $r->step_state)[self::MEMORIA_CORES] ?? []), true);
+        foreach ($snap->variantes as $v) {
+            if ($v->orfa && ($valor = $v->valores[$chaveEixo] ?? null) !== null) {
+                $removidas[ChaveCanonica::texto((string) $valor->valueName)] = true;
+            }
+        }
+
+        return $removidas;
+    }
+
+    /**
+     * Guarda as cores que o eixo tem agora. Lido e gravado direto na linha (já travada pelo
+     * `sobTrava`), como o resumo da conferência: sem `tocar()`, a revisão não muda.
+     *
+     * @param  list<string>  $nomes
+     */
+    private function lembrarCores(PubRascunho $r, array $nomes): void
+    {
+        $estado = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+        $antes = array_values((array) ($estado[self::MEMORIA_CORES] ?? []));
+        $depois = array_values(array_unique([...$antes, ...array_map(fn ($n) => ChaveCanonica::texto((string) $n), $nomes)]));
+        if ($depois === $antes) {
+            return;
+        }
+        $estado[self::MEMORIA_CORES] = $depois;
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado, JSON_UNESCAPED_UNICODE)]);
     }
 
     /** @param array<string, array> $porChave */

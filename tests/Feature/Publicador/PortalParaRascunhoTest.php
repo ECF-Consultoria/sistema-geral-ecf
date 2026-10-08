@@ -488,4 +488,28 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertSame(ChaveCanonica::EIXO_CUSTOM, $this->snap($pub)->eixos[0]->chave, 'o Portal não troca o eixo da equipe');
         $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, 'eixo próprio')));
     }
+
+    public function test_cor_removida_pela_equipe_nao_volta_no_proximo_sincronizar(): void
+    {
+        [, $pub] = $this->produto();
+        $this->servico->preencher($pub);
+        $r = $this->rascunho($pub);
+        $eixo = $this->snap($pub)->eixos[0];
+        $semBranco = array_values(array_filter($eixo->valores, fn ($v) => $v->valueName !== 'Branco'));
+        $this->editor->salvarEixos($r, [['chave' => $eixo->chave, 'nome' => $eixo->nome, 'defines_picture' => $eixo->definesPicture,
+            'valores' => array_map(fn ($v) => ['id' => $v->valueId, 'nome' => $v->valueName], $semBranco)]]);
+        $this->assertCount(2, $this->snap($pub)->eixos[0]->valores);
+
+        $resumo = $this->servico->preencher($pub);
+
+        $nomes = array_map(fn ($v) => $v->valueName, $this->snap($pub)->eixos[0]->valores);
+        $this->assertNotContains('Branco', $nomes, 'D-05: a edição da equipe não é desfeita');
+        $this->assertCount(2, array_filter($this->snap($pub)->variantes, fn ($v) => ! $v->orfa && $v->ativa));
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, '"Branco"') && str_contains($a, 'removida')));
+
+        // Mesmo depois de a equipe descartar a órfã, a cor continua fora (memória do Sincronizar).
+        $r->variantes()->where('orfa', true)->get()->each(fn ($v) => $v->delete());
+        $this->servico->preencher($pub);
+        $this->assertNotContains('Branco', array_map(fn ($v) => $v->valueName, $this->snap($pub)->eixos[0]->valores));
+    }
 }
