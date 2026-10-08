@@ -606,3 +606,36 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
 3. `sudo -u www-data php artisan queue:restart`: os Jobs novos rodam na fila `high`; worker velho não os conhece.
 4. Conferir GD com suporte a WebP no PHP de produção (`php -r "var_dump(function_exists('imagecreatefromwebp'));"`).
 5. "Sincronizar do Portal" na #459 e abrir o rascunho, sem publicar (conta de cliente: só a #459 recebe publicação).
+
+## 15. Explicação de todo campo ao passar o mouse (08/10/2026)
+
+Pedido do usuário ("AGID? MPN? … isso para tudo, não apenas para siglas"). O que não se deduz do código:
+
+- **Prioridade decidida pelo usuário: glossário > guardado > ML > texto montado + IA.** Glossário em
+  `config/publicador_glossario.php` (NEUTRO, ≤ 220: o teste `ExplicacaoDeAtributosRegrasTest` reprova texto que cite
+  plataforma/anúncio). O `tooltip`/`hint` do ML é guardado com origem `ml` na 1ª vez e **não é atualizado** se o ML
+  mudar o texto depois (a linha guardada vence o ML). Para reescrever, apague a linha em `atributo_explicacoes`.
+- **Cobertura medida nas 4 fixtures da sondagem** (atributos únicos não ocultos): 43 pelo glossário, 11 pelo texto do
+  ML, 89 ficam com texto montado até a IA escrever. O ML traz pouco (MLB193945: tooltip em 20 de 91, hint em 2), e boa
+  parte dos tooltips é de atributo oculto. A IA roda ~1 vez por atributo, para sempre: 89 atributos ≈ 3 chamadas.
+- **AGID não tem tooltip nem documentação nas fixtures** (`hierarchy: PRODUCT_IDENTIFIER`, oculto, por variação). O
+  texto do glossário é genérico de propósito ("outro código de identificação… pode deixar vazio"); não "corrija" para
+  um significado inventado.
+- **Fila `sync` NÃO enfileira** (`ExplicacaoDeAtributos::enfileirar`): no `sync` o Job rodaria dentro de `estado()` e a
+  tela esperaria a IA. Por isso testes que queiram ver o enfileiramento precisam de `Queue::fake()` (aí a conexão não é
+  `SyncQueue`). Máquina local com `QUEUE_CONNECTION=database` enfileira, mas só gera com worker rodando.
+- **Trava por atributo: `Cache::add('publicador:explicacao:{ID}')` por 6 h**, nunca liberada na falha — IA fora ou
+  texto reprovado (longo, HTML, cita plataforma/loja) só tenta de novo quando a trava vence. Atributo oculto
+  (`secao = OCULTO`) recebe texto mas nunca gasta IA.
+- **Sem a tabela a tela não quebra** (`salvos` captura a exceção): glossário e ML aparecem, nada é guardado nem
+  enfileirado. É o estado de produção entre o deploy do código e o `migrate`.
+- **Portal (`paraPortal`)**: o texto do ML costuma citar "anúncio"; o filtro de sigilo troca pelo texto montado e, se
+  nem esse passar (nome de atributo com "Marketplace"), usa "Característica do produto.". A sigla "ML" só é pega em
+  caixa-alta (`\bML\b` no texto original): "500 ml" é unidade. `\bmercado\b` poupa "mercadoria".
+- **Front**: o ícone mora no `Campo` (`explicacao`/`nome`), FORA do `<label>` (botão dentro do rótulo focaria o campo a
+  cada clique). Balão próprio em CSS, abre no hover e no foco; o `title` nativo saiu do `RotuloAtributo` para não
+  somar dois balões. A chave do campo fixo é `estoque_por_deposito` porque um gate antigo proíbe a string
+  `estoque_depositos` no `CartaoVariante`.
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_08_160000`): up → rollback → up, DONE ×3, `Ran` no lote 139;
+  `UNIQUE KEY atributo_explicacoes_atributo_uq`; `INSERT IGNORE` do mesmo id não duplica (linha de prova apagada; 0
+  linhas). Tabela fica criada no local. Deploy: `migrate --force` + `queue:restart` (Job novo na fila `default`).
