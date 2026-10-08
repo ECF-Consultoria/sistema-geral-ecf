@@ -16,7 +16,9 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PubImagem;
 use App\Models\PubProduto;
+use App\Models\PubPublicacaoItem;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
@@ -259,14 +261,20 @@ class MlbAnuncioController extends Controller
     /**
      * HIST-86-1/HIST-86-3 — Histórico: os anúncios já PUBLICADOS da empresa.
      *
-     * Por que precisa de consulta própria: `massa()` e `index()` filtram
-     * `whereIn([rascunho, validado, erro, publicando])` — 'publicado' fica de fora
-     * de propósito (a grade edita o que ainda não foi), então o anúncio some da
-     * tela justamente quando dá certo. Esta é a consulta que o traz de volta, e é
-     * a base do "Anunciar semelhante".
+     * Fase 173-05: fonte trocada de `ml_anuncio_rascunhos` (assistente antigo)
+     * para `pub_publicacoes`/`pub_publicacao_itens` (editor novo, Fase 134/164).
+     * Medido em produção: o assistente antigo tem ZERO publicações em toda conta
+     * de teste — esta aba ficava vazia enquanto as publicações reais (editor
+     * novo) não apareciam em lugar nenhum. Decisão do usuário: "Histórico agora,
+     * descontinuar depois" (a descontinuação do resto do assistente antigo — Em
+     * massa, wizard, Meus Anúncios — é etapa própria e futura).
      *
-     * Retorna item enxuto (sem `payload`): a listagem só precisa mostrar; quem
-     * clona é o `duplicarComoTemplate`, que lê o payload direto do banco.
+     * `pode_duplicar=false` em todo item desta fonte: não existe hoje nenhuma
+     * rotina de clonar um `PubRascunho` (só existe para `MlAnuncioRascunho`, via
+     * `duplicarComoTemplate`/`duplicarLoteComoTemplate`, abaixo). Construir o
+     * equivalente para o editor novo é recurso novo, não troca de fonte — por
+     * isso a tela desabilita (nunca esconde) "Anunciar semelhante"/"duplicar
+     * lote" para estes itens.
      */
     public function historico(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
@@ -281,57 +289,116 @@ class MlbAnuncioController extends Controller
 
         $busca = trim((string) $request->query('busca', ''));
 
+        // Mesma dupla-âncora usada no resto do módulo (`$alvo`/`$conta` acima resolvem
+        // pelo Publicador; aqui a query filtra direto em `pub_produtos`, que é quem
+        // guarda as duas âncoras — MlbEmpresa antes de Company, D15).
+        $mlbEmpresaId = MlbEmpresa::where('company_id', $company->id)->value('id');
+
+        $query = PubPublicacaoItem::query()
+            ->join('pub_publicacoes', 'pub_publicacoes.id', '=', 'pub_publicacao_itens.publicacao_id')
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_publicacoes.rascunho_id')
+            ->join('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            // Só o que de fato nasceu no ML (CREATED) — SENT/PENDING/FAILED/UNKNOWN
+            // não são "publicado" (equivalente ao antigo STATUS_PUBLICADO).
+            ->where('pub_publicacao_itens.status', PubPublicacaoItem::CREATED)
+            ->where(function ($q) use ($company, $mlbEmpresaId) {
+                $q->where('pub_produtos.company_id', $company->id);
+                if ($mlbEmpresaId !== null) {
+                    $q->orWhere('pub_produtos.mlb_empresa_id', $mlbEmpresaId);
+                }
+            });
+
+        if ($busca !== '') {
+            // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e anula
+            // o escopo por empresa/status — vazaria anúncio de outra empresa na busca.
+            $query->where(function ($s) use ($busca) {
+                $s->where('pub_publicacao_itens.payload->family_name', 'like', "%{$busca}%")
+                  ->orWhere('pub_produtos.sku', 'like', "%{$busca}%");
+            });
+        }
+
         // Todos os publicados da empresa. O agrupamento por lote precisa do conjunto
-        // inteiro: a publicação em massa cria N rascunhos SOLTOS (sem coluna de lote no
-        // banco — ver publicarLote), então o lote é reconstruído aqui pelos dados que
-        // sobraram (category_id + dia de published_at).
-        $publicados = MlAnuncioRascunho::where('company_id', $company->id)
-            ->where('status', MlAnuncioRascunho::STATUS_PUBLICADO)
-            ->when($busca !== '', function ($q) use ($busca) {
-                // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e
-                // anula o escopo por company_id/status — vazaria anúncio de outra
-                // empresa na busca.
-                $q->where(function ($s) use ($busca) {
-                    $s->where('payload->title', 'like', "%{$busca}%")
-                      ->orWhere('sku_origem', 'like', "%{$busca}%");
-                });
-            })
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
+        // inteiro: a publicação em massa cria N itens SEM coluna de lote no banco,
+        // então o lote é reconstruído aqui (categoria do rascunho + dia de conclusão).
+        $publicados = $query
+            ->select([
+                'pub_publicacao_itens.id',
+                'pub_publicacao_itens.payload',
+                'pub_publicacao_itens.listing_type_id',
+                'pub_publicacao_itens.ml_item_id',
+                'pub_rascunhos.id as rascunho_id',
+                'pub_rascunhos.categoria_id as category_id',
+                'pub_produtos.id as produto_id',
+                'pub_publicacoes.concluida_em as published_at',
+            ])
+            ->orderByDesc('pub_publicacoes.concluida_em')
+            ->orderByDesc('pub_publicacao_itens.id')
             ->get();
 
-        // ─── Agrupa por LOTE = categoria + dia de publicação ───
-        // O módulo já define lote como empresa + categoria (massa()/grade: 1 aba = 1
-        // category_id, comentário em massa()). O dia separa corridas de massa distintas
-        // da mesma categoria. groupBy preserva a ordem (published_at desc) → o lote mais
-        // recente vem primeiro. Anúncio avulso vira um grupo de total=1 (a tela o renderiza
-        // como card solto; só total>1 colapsa num cabeçalho de lote).
-        $chaveLote = fn ($r) => ($r->category_id ?? 'sem-cat')
-            . '|' . (optional($r->published_at)->toDateString() ?? 'sem-data');
+        // ─── SKU exibido (PubProduto::skuExibido(), não a coluna cru — mesma
+        // convenção de produtosParaTela()) e foto (o payload só guarda o
+        // ml_picture_id enviado ao ML; a URL que dá para exibir mora em
+        // pub_imagens.ml_url) — os dois em lote, para não virar N+1. ───
+        $produtoIds  = $publicados->pluck('produto_id')->unique()->filter()->values();
+        $rascunhoIds = $publicados->pluck('rascunho_id')->unique()->filter()->values();
+
+        $produtos = PubProduto::with('oferta')->whereIn('id', $produtoIds)->get()->keyBy('id');
+        $imagensPorRascunho = PubImagem::whereIn('rascunho_id', $rascunhoIds)
+            ->whereNotNull('ml_url')
+            ->get()
+            ->groupBy('rascunho_id');
+
+        $fotoDoItem = function ($item) use ($imagensPorRascunho) {
+            $picId   = data_get($item->payload, 'pictures.0.id');
+            $imagens = $imagensPorRascunho->get($item->rascunho_id, collect());
+            if ($picId !== null && ($match = $imagens->firstWhere('ml_picture_id', $picId)) !== null) {
+                return $match->ml_url;
+            }
+
+            // Fallback: a primeira foto enviada do rascunho, quando o id do payload
+            // não bate com nenhuma (dado legado/migração) — nunca inventa URL.
+            return $imagens->sortBy('id')->first()?->ml_url;
+        };
+
+        // ─── Agrupa por LOTE = categoria + dia de conclusão (MESMA chave de hoje) ───
+        $chaveLote = fn ($i) => ($i->category_id ?? 'sem-cat')
+            . '|' . (optional($i->published_at ? \Illuminate\Support\Carbon::parse($i->published_at) : null)->toDateString() ?? 'sem-data');
 
         $grupos = $publicados
             ->groupBy($chaveLote)
-            ->map(function ($itens) use ($chaveLote) {
-                $primeiro = $itens->first();
+            ->map(function ($itens) use ($chaveLote, $produtos, $fotoDoItem) {
+                $primeiro    = $itens->first();
+                $publicadoEm = $primeiro->published_at ? \Illuminate\Support\Carbon::parse($primeiro->published_at) : null;
 
                 return [
                     'chave'        => $chaveLote($primeiro),
                     'category_id'  => $primeiro->category_id,
                     'categoria'    => $this->nomeCategoria($primeiro->category_id),
-                    'data'         => optional($primeiro->published_at)->toDateString(),
-                    'published_at' => optional($primeiro->published_at)->toIso8601String(),
+                    'data'         => optional($publicadoEm)->toDateString(),
+                    'published_at' => optional($publicadoEm)->toIso8601String(),
                     'total'        => $itens->count(),
-                    'itens'        => $itens->map(fn ($r) => [
-                        'id'           => $r->id,
-                        'titulo'       => (string) data_get($r->payload, 'title', ''),
-                        'preco'        => data_get($r->payload, 'price'),
-                        'foto'         => data_get($r->payload, 'pictures.0.source'),
-                        'sku_origem'   => $r->sku_origem,
-                        'listing_tier' => $r->listing_tier,
-                        'category_id'  => $r->category_id,
-                        'published_at' => $r->published_at,
-                        'ml_item_id'   => $r->ml_item_id,
-                    ])->values(),
+                    'itens'        => $itens->map(function ($i) use ($produtos, $fotoDoItem) {
+                        $produto = $produtos->get($i->produto_id);
+
+                        return [
+                            'id'           => $i->id,
+                            'titulo'       => (string) data_get($i->payload, 'family_name', ''),
+                            'preco'        => data_get($i->payload, 'price'),
+                            'foto'         => $fotoDoItem($i),
+                            'sku_origem'   => $produto?->skuExibido(),
+                            // Raw do ML ('gold_special'/'gold_pro') — MESMO literal que
+                            // `listing_tier` já guardava no modelo antigo; rotuloTier()
+                            // no front (anuncioHistoricoUtils.js) é indexado por esse
+                            // valor, não pelo rótulo interno 'classico'/'premium'.
+                            'listing_tier' => $i->listing_type_id,
+                            'category_id'  => $i->category_id,
+                            'published_at' => $i->published_at,
+                            'ml_item_id'   => $i->ml_item_id,
+                            // Não existe hoje rotina de clonar um PubRascunho (ver
+                            // docblock do método) — desabilitado no front, nunca escondido.
+                            'pode_duplicar' => false,
+                        ];
+                    })->values(),
                 ];
             })
             ->values();
