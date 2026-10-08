@@ -50,12 +50,26 @@ class ProductTruthBuilder
         'Não escreva texto na imagem.',
     ];
 
-    /** Rótulos legíveis em pt-BR para ids de atributo conhecidos. Fallback: humaniza o id. */
+    /**
+     * Rótulos legíveis em pt-BR para ids de atributo conhecidos. Fallback:
+     * humaniza o id (`rotulo()`) — que funciona por acaso para ids que já
+     * são a mesma palavra em português (`MATERIAL`) mas produz inglês crú
+     * para os que não são (`WIDTH`, `HEIGHT`...). `WIDTH`/`HEIGHT`/
+     * `LENGTH`/`DEPTH` (achado em produção, criativo 40/rascunho 7, quick
+     * 261008-txt) e `MAIN_MATERIAL` entram aqui por isso — nenhum deles
+     * sobrevive ao fallback em pt-BR. É SÓ rótulo de exibição: o VALOR
+     * nunca muda, continua vindo exclusivamente do cadastro.
+     */
     private const ROTULOS_CONHECIDOS = [
         'BRAND'          => 'Marca',
         'MODEL'          => 'Modelo',
         'COLOR'          => 'Cor',
         'MATERIAL'       => 'Material',
+        'MAIN_MATERIAL'  => 'Material principal',
+        'WIDTH'          => 'Largura',
+        'HEIGHT'         => 'Altura',
+        'LENGTH'         => 'Comprimento',
+        'DEPTH'          => 'Profundidade',
         'DOOR_QUANTITY'  => 'Quantidade de portas',
         'DRAWERS_NUMBER' => 'Quantidade de gavetas',
         'PIECES_NUMBER'  => 'Quantidade de peças do kit',

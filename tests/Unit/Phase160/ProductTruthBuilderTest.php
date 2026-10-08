@@ -58,6 +58,35 @@ class ProductTruthBuilderTest extends TestCase
     }
 
     /**
+     * Quick 261008-txt: achado em produção (criativo 40, rascunho "mesa
+     * escritório") — os ids de dimensão/material chegam do cadastro em
+     * inglês e o fallback de `rotulo()` (humaniza o id) só funciona por
+     * coincidência para `MATERIAL` (mesma palavra nas duas línguas); para
+     * `WIDTH`/`HEIGHT`/`LENGTH`/`DEPTH`/`MAIN_MATERIAL` ele produzia rótulo
+     * em inglês cru. Isso importa porque a Correção 2 da mesma quick passou
+     * a exibir este rótulo DENTRO da imagem (ex.: "Largura: 120 cm").
+     */
+    public function test_ids_de_dimensao_e_material_principal_traduzem_para_pt_br(): void
+    {
+        $contexto = $this->contexto([
+            'WIDTH'         => '120 cm',
+            'HEIGHT'        => '75 cm',
+            'LENGTH'        => '200 cm',
+            'DEPTH'         => '50 cm',
+            'MAIN_MATERIAL' => 'MDF',
+        ]);
+        $truth = (new ProductTruthBuilder)->paraContexto($contexto);
+
+        $this->assertSame([
+            'Largura'           => '120 cm',
+            'Altura'            => '75 cm',
+            'Comprimento'       => '200 cm',
+            'Profundidade'      => '50 cm',
+            'Material principal' => 'MDF',
+        ], $truth->fatosVerificados);
+    }
+
+    /**
      * Prova de que a filtragem de atributo vazio acontece ANTES deste DTO
      * chegar ao `ProductTruthBuilder` — ela é feita pelo `CreativeContextBuilder`
      * (CTX-02), que é o único lugar que lê o payload do rascunho.
