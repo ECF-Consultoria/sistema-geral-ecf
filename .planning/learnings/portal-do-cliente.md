@@ -1225,3 +1225,17 @@ Consequências que o código não conta:
 - O quadro da foto (`QuadroFotoProduto`) passou a **exibir** a 1ª imagem (a pendente inclusive). Isso **não
   fere a D-29**, que proíbe *upload* no quadro, não exibição. A **lista** de produtos continua com as iniciais:
   `ProdutoLinhas::pagina()` não traz `imagens` — levar a foto para lá é trabalho de servidor, não de tela.
+
+### Campo que VIRA lista precisa casar por NOME (regressão do próprio §35)
+
+Pega 40 minutos depois, na conferência em produção — e é o motivo de a conferência existir.
+Transformar um campo de texto em lista **quebra o que já estava gravado nele**: a linha antiga tem
+o NOME em `valor` e `valor_id` nulo, e o `<select>` casa por id. Resultado: campo correto aparecendo
+"Selecione", e **salvar assim APAGA o valor** (vazio = remover a linha). No produto 2, `FABRIC_DESIGN`
+tinha "Liso" — opção válida — e sumiu da tela. `MATERIALS` escapou só porque os chips já casavam por nome.
+
+`idDeLista(campo, bruto)` resolve id OU nome (tolerando a caixa) e `idsMultivalor` reusa a mesma função.
+Valor que não bate em opção nenhuma continua vazio **de propósito** (`SHAPE = "REDONDO"` onde a opção é
+"Redonda"): é dado que não publica, e o obrigatório volta como "Preencha …" em vez de 422 travando a
+ficha inteira. **Regra geral: ao promover texto → lista, casar por nome não é refinamento, é migração
+de dado feita em leitura.**
