@@ -253,24 +253,59 @@ class PainelVisaoGeralServiceTest extends TestCase
             ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente', 'count' => 1, 'cor' => 'amber'],
         ]];
         $situacaoPortal = ['situacao' => 'novas', 'novas' => 5, 'sincronizado_em' => null];
+        // Dois rascunhos 'conferir' com pendência (linha 6) — o de menor 'faltam' tem que ser citado.
+        $produtos = [
+            ['nome' => 'Mais pendente', 'status' => ['chave' => 'conferir', 'faltam' => 8]],
+            ['nome' => 'Quase pronto', 'status' => ['chave' => 'conferir', 'faltam' => 2]],
+            ['nome' => 'A preencher (faltam=0, não entra)', 'status' => ['chave' => 'rascunho', 'faltam' => 0]],
+        ];
 
-        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagemProdutos, $chips, [], $situacaoPortal);
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagemProdutos, $chips, [], $situacaoPortal, $produtos);
 
         $this->assertSame([
             'Anúncios pausados ou sem estoque',
             'Produtos com problema na publicação',
             'Prontos para a Fase 2',
             'Conferidos, prontos para publicar',
+            'Rascunhos com pendências',
             'Ofertas novas no Portal',
             'Ficha incompleta',
             'Foto insuficiente',
-        ], array_column($linhas, 'texto'), 'ordem fixa da seção 3; perdendo_catalogo (count=0) não entra');
+        ], array_column($linhas, 'texto'), 'ordem fixa da seção 3 — linha 6 entra entre "conferidos" (5) e "Portal" (7); perdendo_catalogo (count=0) não entra');
 
         $this->assertSame(3, $linhas[0]['numero'], 'pausados(2) + sem_estoque(1)');
         $this->assertSame(1, $linhas[0]['legado'], 'conta quantos dos pausados/sem estoque são legado');
         $porTexto = collect($linhas)->keyBy('texto');
         $this->assertSame(5, $porTexto['Ofertas novas no Portal']['numero']);
         $this->assertSame(['acao' => 'sincronizar'], $porTexto['Ofertas novas no Portal']['destino']);
+
+        $this->assertSame(2, $porTexto['Rascunhos com pendências']['numero'], 'só os status=conferir com faltam>0 contam');
+        $this->assertSame('Quase pronto', $porTexto['Rascunhos com pendências']['exemplo']['nome'], 'cita o de MENOR faltam');
+        $this->assertSame(2, $porTexto['Rascunhos com pendências']['exemplo']['faltam']);
+        $this->assertSame(
+            ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $company->chaveContaMl(), 'filtro' => 'rascunho']],
+            $porTexto['Rascunhos com pendências']['destino']
+        );
+    }
+
+    /** @test */
+    public function test_o_que_fazer_agora_linha_6_fica_fora_sem_pendencia_ou_sem_produtos(): void
+    {
+        $alvo = ['mlb_empresa' => null, 'company' => null, 'programa' => 'polos', 'chave' => 'empresa-1'];
+        $empresaParaTela = ['token' => 'ativo', 'link_reconexao' => null, 'company_id' => null, 'portal' => []];
+        $contagens = ['com_problema' => 0, 'publicados' => 0, 'conferidos' => 0];
+
+        // Sem $produtos (chamada antiga, parâmetro omitido) — linha 6 não aparece, nada quebra.
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagens, ['chips' => []], [], ['situacao' => 'sincronizado', 'novas' => 0]);
+        $this->assertSame([], $linhas);
+
+        // Com produtos, mas nenhum 'conferir' com faltam>0 — também não aparece.
+        $produtos = [
+            ['nome' => 'Pronto', 'status' => ['chave' => 'pronto', 'faltam' => 0]],
+            ['nome' => 'Em preenchimento sem pendência', 'status' => ['chave' => 'conferir', 'faltam' => 0]],
+        ];
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagens, ['chips' => []], [], ['situacao' => 'sincronizado', 'novas' => 0], $produtos);
+        $this->assertSame([], $linhas);
     }
 
     // ═══ situacaoProdutos() ══════════════════════════════════════════════

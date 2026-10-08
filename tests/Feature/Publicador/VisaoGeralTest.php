@@ -140,6 +140,28 @@ class VisaoGeralTest extends TestCase
         $this->assertSame($p['quemPublicou']['equipe'][0]['quantidade'] + $p['quemPublicou']['cliente']['quantidade'] + $p['quemPublicou']['origem_antiga']['quantidade'], $p['indicadores']['publicados_30d'], 'o total do bloco "quem publicou" bate com o indicador de 30 dias');
     }
 
+    /** Fase 173, Plano 04b — lacuna 1: linha 6 ("Rascunhos com pendências") ponta a ponta. */
+    public function test_visao_geral_mostra_rascunhos_com_pendencias_citando_o_de_menor_faltam(): void
+    {
+        $c = Company::factory()->create();
+        MlToken::create(['company_id' => $c->id, 'ml_user_id' => '9', 'access_token' => 'x', 'refresh_token' => 'y',
+            'expires_at' => now()->addHours(5), 'status' => 'active']);
+
+        $p1 = PubProduto::create(['company_id' => $c->id, 'sku' => 'P1', 'nome' => 'Mais pendente', 'origem' => 'publicador']);
+        PubRascunho::create(['produto_id' => $p1->id, 'status' => PubRascunho::DRAFT, 'step_state' => ['resumo' => ['bloqueios' => 6]]]);
+
+        $p2 = PubProduto::create(['company_id' => $c->id, 'sku' => 'P2', 'nome' => 'Quase pronto', 'origem' => 'publicador']);
+        PubRascunho::create(['produto_id' => $p2->id, 'status' => PubRascunho::DRAFT, 'step_state' => ['resumo' => ['bloqueios' => 1]]]);
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        $porTexto = collect($p['oQueFazerAgora'])->keyBy('texto');
+        $this->assertTrue($porTexto->has('Rascunhos com pendências'));
+        $this->assertSame(2, $porTexto['Rascunhos com pendências']['numero']);
+        $this->assertSame('Quase pronto', $porTexto['Rascunhos com pendências']['exemplo']['nome'], 'cita o de MENOR faltam');
+        $this->assertSame(1, $porTexto['Rascunhos com pendências']['exemplo']['faltam']);
+    }
+
     public function test_nao_admin_recebe_403(): void
     {
         $e = $this->empresa();

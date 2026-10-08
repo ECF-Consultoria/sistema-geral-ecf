@@ -232,13 +232,11 @@ class PainelVisaoGeralService
      * Ordem fixa da seção 3 do handoff. Token fora de 'ativo' encerra a
      * lista com UMA linha só — sem conta ativa, nada mais funciona.
      *
-     * ⚠️ Lacuna documentada (ver 173-04-SUMMARY.md): a linha 6 do handoff
-     * ("Rascunhos com pendências") pede para citar o rascunho de MENOR
-     * `faltam` — `EditorRascunhoService::prontidao()` devolve esse campo,
-     * mas a assinatura deste método (definida pelo plano) só recebe
-     * agregados, nunca a lista de produtos/rascunhos. Sem a lista não há
-     * como apontar QUAL rascunho tem a menor pendência — a linha fica de
-     * fora até um plano futuro passar `$produtos` aqui.
+     * `$produtos` (shape de `ProgramasPublicadorService::produtosParaTela()`)
+     * fecha a linha 6 ("Rascunhos com pendências") — Fase 173, Plano 04b.
+     * Parâmetro opcional (default `[]`) para não quebrar chamadas antigas
+     * que só tinham os agregados; sem produtos, a linha simplesmente não
+     * aparece (mesma regra de "número > 0" das demais).
      */
     public function oQueFazerAgora(
         array $alvo,
@@ -247,6 +245,7 @@ class PainelVisaoGeralService
         array $triagemAcionaveis,
         array $defasagem,
         array $situacaoPortal,
+        array $produtos = [],
     ): array {
         if (($empresaParaTela['token'] ?? null) !== 'ativo') {
             return [[
@@ -286,7 +285,24 @@ class PainelVisaoGeralService
             $linhas[] = $this->linhaDeProdutos('Conferidos, prontos para publicar', (int) $contagemProdutos['conferidos'], $alvo['chave'], 'conferidos');
         }
 
-        // Linha 6 do handoff ("Rascunhos com pendências") — ver lacuna no docblock acima.
+        // Linha 6 — "Rascunhos com pendências" (handoff seção 3): status `conferir`
+        // com `faltam > 0`; cita o de menor `faltam` (o mais perto de pronto). Não dá
+        // pra sair de `contagemProdutos['rascunho']` — esse bucket mistura chave
+        // 'rascunho' (a preencher, faltam sempre 0) com 'conferir' (em preenchimento);
+        // aqui filtramos $produtos direto pra pegar só quem tem pendência de verdade.
+        $comPendencia = array_values(array_filter(
+            $produtos,
+            fn (array $p) => ($p['status']['chave'] ?? null) === 'conferir' && (int) ($p['status']['faltam'] ?? 0) > 0
+        ));
+        if (count($comPendencia) > 0) {
+            $maisProximo = collect($comPendencia)->sortBy(fn (array $p) => (int) $p['status']['faltam'])->first();
+            $linhas[] = [
+                'texto' => 'Rascunhos com pendências',
+                'numero' => count($comPendencia),
+                'exemplo' => ['nome' => $maisProximo['nome'], 'faltam' => (int) $maisProximo['status']['faltam']],
+                'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $alvo['chave'], 'filtro' => 'rascunho']],
+            ];
+        }
 
         if (($situacaoPortal['situacao'] ?? null) === 'novas') {
             $linhas[] = [

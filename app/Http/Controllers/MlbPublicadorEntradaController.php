@@ -289,7 +289,7 @@ class MlbPublicadorEntradaController extends Controller
             'empresa' => $empresa,
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $company)),
             'indicadores' => $painel->indicadores($alvo, $contagemProdutos),
-            'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal),
+            'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos),
             'situacaoProdutos' => $painel->situacaoProdutos($contagemProdutos),
             'ultimasPublicacoes' => $painel->ultimasPublicacoes($alvo),
             'integracoes' => $painel->integracoes($alvo, $empresa),
