@@ -1270,7 +1270,7 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   tela de sugestões (rota `.sugestoes`). Chave e rotas não mudaram: código que procura a chave
   `planejamento` está falando da AGENDA.
 
-## 37. Estoque por variação e descrição do produto (Fase 172, 08/10/2026)
+## 37. Estoque por variação e descrição do produto (Fase 176 — era 172, 08/10/2026)
 
 - **Estoque por variação: `0` é diferente de vazio e NÃO herda da 1ª variação.** Vazio (`null`) = "não informado"; `0` =
   "sem estoque". No POST, campo ausente ou `''` não mexe; `null` explícito limpa. Teto 99.999.999.

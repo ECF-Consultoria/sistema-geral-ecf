@@ -563,9 +563,9 @@ próximo disponível (13), não o que o plano previa.
   projeto porque a árvore é compartilhada entre sessões e a regra é nunca usar `git add -A`/`git add .` — então
   todo arquivo NOVO (não só modificado) precisa do `add` explícito, um por um, antes do `commit -- `.
 
-## 14. Sincronizar completo do Portal (Fase 172, 08/10/2026)
+## 14. Sincronizar completo do Portal (Fase 176 — era 172, 08/10/2026)
 
-O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da fase 172):
+O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da fase 176):
 
 - **Um `pub_produtos` por produto do Portal, não por oferta.** O vínculo é `pub_produtos.estrutura_produto_id`
   (unique, FK `SET NULL`). Legado de uma cor com rascunho ainda sem publicação é ADOTADO (só o vínculo muda); legado
@@ -581,7 +581,7 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
 - **`ImagemAssetService::receber(..., enviar: false)`** guarda a foto sem subir ao ML; o Sincronizar nunca chama
   `/items` nem sobe foto, mesmo com a conta liberada e com token (teste com `Http::preventStrayRequests`).
   WebP do Portal é convertida a JPG com GD; **confira GD com WebP no PHP de produção** antes de confiar.
-- **`values_multi` (D-13) vai no snapshot e sobrevive à gravação sem a chave** (review 172 WR-03): `gravarAtributos`/
+- **`values_multi` (D-13) vai no snapshot e sobrevive à gravação sem a chave** (review 176 WR-03): `gravarAtributos`/
   `mesclarAtributos` sem `values_multi` mantêm a lista guardada enquanto o `value_id` (1ª opção) não muda; trocou a
   opção, a lista velha sai. O payload do ML não usa a coluna (`ValorAtributo::paraPayload` monta as chaves à mão).
 - **Job por produto (`PreencherRascunhoDoPortalJob`), fila `high`, `timeout` 300 s < `retry_after`, `tries` 1.**
@@ -592,7 +592,7 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
 - **Sincronizar NÃO tem gate de piloto (D-10).** `ContasLiberadas` só governa o selo da página; o caminho do
   Sincronizar não deve citá-lo (há teste "fora do piloto também é enriquecida").
 - **Vite no Windows: `ResumoDoSincronizar.jsx` x `resumoDoSincronizar.js` colidiam** (FS sem caixa; o módulo puro virou
-  `regrasDoResumoDoSincronizar.js` no review 172 WR-05, e um teste recusa par só pela caixa na pasta): o build falhava com
+  `regrasDoResumoDoSincronizar.js` no review 176 WR-05, e um teste recusa par só pela caixa na pasta): o build falhava com
   "default is not exported". Import com extensão explícita resolve; melhor ainda, nunca nomear dois arquivos só pela caixa.
 - **`assertSemOrigem` (sigilo do Portal) não pegava acento:** o JSON do Laravel escapa "ú" como sequência unicode,
   então varrer por "anúncio" passava batido. O helper agora decodifica antes de varrer; teste de sigilo novo deve usá-lo.
