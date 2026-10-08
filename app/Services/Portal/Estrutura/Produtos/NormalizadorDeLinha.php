@@ -42,6 +42,7 @@ final class NormalizadorDeLinha
     private const MIN_MEDIDA    = 0.01;  // decimal(7,2)
     private const MIN_PESO      = 0.001; // decimal(8,3)
     private const MAX_CUSTO     = 9999999999;
+    private const MAX_ESTOQUE   = 99999999;
     public const MAX_ORDEM      = 65535; // SMALLINT UNSIGNED
     private const MSG_SEPARADOR = 'Não use / , | no nome. Escolha um nome simples.';
 
@@ -66,6 +67,7 @@ final class NormalizadorDeLinha
             'categoria_texto' => null,
             'volumes'         => [],
             'custo'           => null,
+            'estoque'         => null,
         ];
         $presentes = [];
         $erros     = [];
@@ -252,6 +254,31 @@ final class NormalizadorDeLinha
                     }
                 } catch (InvalidArgumentException) {
                     $erros['custo'] = NumeroBr::MENSAGEM;
+                }
+            }
+        }
+
+        // ─── Estoque (unidades inteiras >= 0; null explícito = limpar; ausente/'' = não mexi) ───
+        if (array_key_exists('estoque', $bruta)) {
+            $estoqueBruto = $bruta['estoque'];
+            if ($estoqueBruto === null) {
+                $presentes[] = 'estoque';
+            } else {
+                $estoqueTexto = is_string($estoqueBruto) ? trim($estoqueBruto) : $estoqueBruto;
+                if ($estoqueTexto === '') {
+                    // vazio = não mexi
+                } elseif (is_int($estoqueTexto) || (is_string($estoqueTexto) && preg_match('/^\d{1,12}$/', $estoqueTexto))) {
+                    $estoque = (int) $estoqueTexto;
+                    if ($estoque < 0) {
+                        $erros['estoque'] = 'Informe o estoque em unidades inteiras (0 ou mais).';
+                    } elseif ($estoque > self::MAX_ESTOQUE) {
+                        $erros['estoque'] = 'O estoque é alto demais. Confira o valor.';
+                    } else {
+                        $campos['estoque'] = $estoque;
+                        $presentes[] = 'estoque';
+                    }
+                } else {
+                    $erros['estoque'] = 'Informe o estoque em unidades inteiras (0 ou mais).';
                 }
             }
         }

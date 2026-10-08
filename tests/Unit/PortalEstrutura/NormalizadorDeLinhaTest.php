@@ -95,6 +95,33 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertNotContains('categoria', $this->ler()['presentes']);
     }
 
+    public function test_estoque_inteiro_zero_nulo_e_invalidos(): void
+    {
+        $r = $this->ler(['estoque' => '12']);
+        $this->assertSame(12, $r['campos']['estoque']);
+        $this->assertContains('estoque', $r['presentes']);
+
+        foreach ([0, '0'] as $zero) {
+            $r = $this->ler(['estoque' => $zero]);
+            $this->assertSame(0, $r['campos']['estoque']);
+            $this->assertContains('estoque', $r['presentes']);
+        }
+
+        // null explícito = limpar; ausente ou vazio = não mexi.
+        $r = $this->ler(['estoque' => null]);
+        $this->assertNull($r['campos']['estoque']);
+        $this->assertContains('estoque', $r['presentes']);
+        $this->assertNotContains('estoque', $this->ler()['presentes']);
+        $this->assertNotContains('estoque', $this->ler(['estoque' => ''])['presentes']);
+
+        foreach (['-1', '1,5', '1.5', 'abc', 100000000] as $ruim) {
+            $r = $this->ler(['estoque' => $ruim]);
+            $this->assertArrayHasKey('estoque', $r['erros'], (string) $ruim);
+            $this->assertNotContains('estoque', $r['presentes']);
+            $this->assertDoesNotMatchRegularExpression('/mercado|an[uú]ncio|publicar|mlb/i', $r['erros']['estoque']);
+        }
+    }
+
     public function test_custo_brasileiro_e_invalido(): void
     {
         $this->assertSame(1234.5, $this->ler(['custo' => '1.234,50'])['campos']['custo']);

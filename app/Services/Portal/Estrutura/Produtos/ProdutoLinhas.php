@@ -165,6 +165,7 @@ class ProdutoLinhas
             'n_volumes'            => count($volumes),
             'peso_total'           => $volumes === [] ? null : $pesoTotal,
             'custo'                => $variacao->custo,
+            'estoque'              => $variacao->estoque,
             'pacote'               => $log['pacote'],
             'peso_cubado'          => $log['peso_cubado'],
             'peso_faturado'        => $log['peso_faturado'],
