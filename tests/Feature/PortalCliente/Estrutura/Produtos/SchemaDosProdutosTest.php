@@ -221,6 +221,26 @@ class SchemaDosProdutosTest extends TestCase
         $this->assertFalse($oferta->ligadaAProduto());
     }
 
+    /** Fase 172 (D-01/D-02): estoque e descrição são anuláveis; 0 e NULL são coisas diferentes. */
+    public function test_estoque_e_descricao_sao_anulaveis_e_zero_nao_vira_nulo(): void
+    {
+        $this->assertTrue(Schema::hasColumns('estrutura_produto_variacoes', ['estoque']));
+        $this->assertTrue(Schema::hasColumns('estrutura_produtos', ['descricao']));
+
+        $a = $this->empresaDoGabarito();
+        $produto = $this->produto($a, 'P-EST');
+        $this->assertNull($produto->fresh()->descricao, 'linha sem descrição nasce NULL');
+
+        $v0 = EstruturaProdutoVariacao::create(['produto_id' => $produto->id, 'company_id' => $a->id, 'ordem' => 1, 'codigo' => 'E0', 'estoque' => 0]);
+        $vn = $this->variacao($produto, 'EN');
+
+        $this->assertSame(0, $v0->fresh()->estoque);
+        $this->assertNull($vn->fresh()->estoque, 'estoque não informado nasce NULL, não 0');
+
+        $produto->update(['descricao' => 'Cadeira de madeira']);
+        $this->assertSame('Cadeira de madeira', $produto->fresh()->descricao);
+    }
+
     public function test_estado_da_categoria(): void
     {
         $this->assertSame('confirmada', (new EstruturaProduto(['categoria_ml_id' => 'MLB1', 'categoria_ml_nome' => 'X']))->estadoCategoria());

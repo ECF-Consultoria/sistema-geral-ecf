@@ -35,6 +35,10 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_07_100300_create_estrutura_produto_variacao_imagens_table.php',
         // Planejamento (08/10): semente aditiva dos tipos de banheiro
         '2026_10_08_140000_semear_tipos_e_pares_de_banheiro.php',
+        // Fase 172: ficha completa até o Publicador (3 colunas aditivas)
+        '2026_10_08_150000_add_estoque_to_estrutura_produto_variacoes.php',
+        '2026_10_08_150100_add_descricao_to_estrutura_produtos.php',
+        '2026_10_08_150200_add_estrutura_produto_id_to_pub_produtos.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */

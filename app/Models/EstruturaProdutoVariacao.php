@@ -28,11 +28,12 @@ class EstruturaProdutoVariacao extends Model
 
     protected $table = 'estrutura_produto_variacoes';
 
-    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'custo'];
+    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'custo', 'estoque'];
 
     protected $casts = [
         'custo' => 'float',
         'ordem' => 'integer',
+        'estoque' => 'integer',
     ];
 
     public function produto(): BelongsTo
