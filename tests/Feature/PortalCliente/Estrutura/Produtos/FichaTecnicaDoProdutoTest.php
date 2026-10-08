@@ -431,6 +431,8 @@ class FichaTecnicaDoProdutoTest extends TestCase
     /** O que NUNCA pode aparecer no que o cliente recebe. */
     private function assertSemOrigem(string $json, string $onde): void
     {
+        // O JSON do Laravel escapa acento; sem decodificar, “anúncio” passaria batido.
+        $json = preg_replace_callback('/\\\\u([0-9a-f]{4})/i', fn ($m) => mb_chr(hexdec($m[1]), 'UTF-8'), $json);
         foreach (['mercado', 'mercadolib', 'anúncio', 'anuncio', 'publicar', 'mlb'] as $termo) {
             $this->assertStringNotContainsStringIgnoringCase($termo, $json, "“{$termo}” vazou em {$onde}");
         }
@@ -467,6 +469,42 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 $this->assertArrayHasKey('ficha_tecnica', $props);
                 $this->assertSemOrigem(json_encode($props['ficha_tecnica'], JSON_UNESCAPED_UNICODE), 'props da ficha');
             });
+    }
+
+    /** Fase 172-05: descrição e estoque (campos novos) também não revelam a origem. */
+    public function test_campos_novos_nao_revelam_origem(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa, ['descricao' => 'Mesa de jantar em madeira maciça, acompanha manual.']);
+        \App\Models\EstruturaProdutoVariacao::create([
+            'company_id' => $empresa->id, 'produto_id' => $produto->id, 'codigo' => 'EST-N1', 'nome' => 'Cadeira Teste', 'estoque' => 5,
+        ]);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        // 1. Props da ficha: só as chaves novas (`ml_conectado` é anterior à fase e fica fora).
+        $sessao->get(route('portal.auth.estrutura.produtos.ficha', $produto->id))
+            ->assertOk()
+            ->assertInertia(function ($page) {
+                $props = $page->toArray();
+                $props = $props['props'] ?? $props;
+                $this->assertSame('Mesa de jantar em madeira maciça, acompanha manual.', $props['descricao']);
+                $this->assertSemOrigem(json_encode($props['descricao'], JSON_UNESCAPED_UNICODE), 'descricao');
+                $estoques = array_map(fn ($l) => ['estoque' => $l['estoque'] ?? null], (array) $props['linhas']);
+                $this->assertNotEmpty($estoques);
+                $this->assertSemOrigem(json_encode($estoques), 'estoque das linhas');
+            });
+
+        // 2. PUT da descrição: 200 e 422.
+        $url = route('portal.auth.estrutura.produtos.descricao', $produto->id);
+        $this->assertSemOrigem($sessao->putJson($url, ['descricao' => 'Texto neutro.'])->assertOk()->getContent(), 'PUT descrição 200');
+        $this->assertSemOrigem($sessao->putJson($url, ['descricao' => str_repeat('a', 5001)])->assertStatus(422)->getContent(), 'PUT descrição 422');
+
+        // 3. Estoque inválido no POST de linhas: a recusa não cita a origem.
+        $resp = $sessao->postJson(route('portal.auth.estrutura.produtos.linhas'), ['linhas' => [[
+            'chave' => 'k', 'codigo' => 'EST-N2', 'nome' => 'Mesa', 'estoque' => '-1',
+        ]]]);
+        $this->assertNotEmpty($resp->json('erros'), 'estoque -1 deve ser recusado');
+        $this->assertSemOrigem($resp->getContent(), 'estoque inválido');
     }
 
     // ─── Lista que aceita mais de uma opção (os chips) ──────────────────────
