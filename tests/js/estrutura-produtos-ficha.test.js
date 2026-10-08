@@ -36,7 +36,11 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     assert.match(hook, /export default function useFichaProduto/);
     assert.match(hook, /export const MEDIDAS/);
     assert.ok(hook.includes('linhaDoServidor('), 'as linhas cruas do servidor precisam do retrato _base');
-    assert.equal(contar(hook, /axios\.post\(/g), 1);
+    // Um POST de LINHAS e nada mais nesse caminho; o segundo POST do hook é o das imagens
+    // que ficaram guardadas enquanto a variação não tinha id (sobem no Salvar).
+    assert.equal(contar(hook, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\)/g), 1);
+    assert.equal(contar(hook, /axios\.post\(/g), 2);
+    assert.ok(hook.includes('enviarPendentes('), 'o Salvar sobe as imagens guardadas');
     // A sequência (1ª variação sozinha, lotes com o produto_id) mora em produtosGravacao, com teste
     // comportamental próprio (estrutura-produtos-gravacao.test.js); o hook só injeta o POST.
     assert.match(hook, /gravarVariacoes\(vars, \{/);

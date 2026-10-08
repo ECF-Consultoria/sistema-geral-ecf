@@ -2,19 +2,23 @@ import { useRef, useState } from 'react';
 import axios from 'axios';
 import { ImagePlus, X } from 'lucide-react';
 import {
-    ACEITA_NO_INPUT, LIMITE_IMAGENS, avisosDoErro, decidirEnvio, imagensDaResposta, montarEnvio, prepararRemessa,
+    ACEITA_NO_INPUT, LIMITE_IMAGENS, avisosDoErro, decidirEnvio, imagemPendente, imagensDaResposta, montarEnvio,
+    prepararRemessa, revogar,
 } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
 // ─── Imagens de uma variação ────────────────────────────────────────────────
 //
-// As fotos da cor/versão. Envio e exclusão são gravados NA HORA pelo próprio
-// servidor (não dependem do "Salvar produto"), por isso mexer aqui não marca a
-// ficha como alterada: `aoMudar` só troca a lista na tela. A ORDEM não importa
-// nesta tela: nada de capa, setas ou arrastar — o tratamento resolve isso
-// depois. Variação ainda não gravada (sem id) não envia: aparece a dica para
-// salvar antes. As contas (o que cabe, o que o servidor respondeu) ficam em
-// `@/lib/imagensVariacao`, com teste próprio.
+// As fotos da cor/versão. Em variação JÁ GRAVADA o envio e a exclusão são
+// gravados NA HORA pelo próprio servidor (não dependem do "Salvar produto"), por
+// isso mexer aqui não marca a ficha como alterada: `aoMudar` só troca a lista na
+// tela. A ORDEM não importa nesta tela: nada de capa, setas ou arrastar — o
+// tratamento resolve isso depois.
+//
+// Variação AINDA SEM ID (produto novo, ou "Nova variação") também aceita foto: o
+// arquivo fica guardado na aba, com prévia, e sobe sozinho no "Salvar produto"
+// (`enviarPendentes`). As contas (o que cabe, o que guardar, o que o servidor
+// respondeu) ficam em `@/lib/imagensVariacao`, com teste próprio.
 
 export default function GaleriaVariacao({ variacao, aoMudar }) {
     const imagens = Array.isArray(variacao.imagens) ? variacao.imagens : [];
@@ -28,6 +32,7 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
     const envio = decidirEnvio({ variacaoId: variacao.id, total: imagens.length, enviando, ocupado });
     const gravada = !! variacao.id;
     const livre = ! enviando && ! ocupado;
+    const pendentes = imagens.filter((i) => i.pendente).length;
 
     const limpar = () => { setAvisos([]); setSucesso(null); };
 
@@ -44,6 +49,15 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
         const remessa = prepararRemessa(escolhidos, imagens.length);
         if (remessa.arquivos.length === 0) { setAvisos(remessa.avisos); return; }
 
+        // Variação ainda sem id: as fotos ficam guardadas aqui e sobem no "Salvar produto".
+        if (envio.guardar) {
+            aoMudar([...imagens, ...remessa.arquivos.map((a) => imagemPendente(a))]);
+            setAvisos(remessa.avisos);
+            setSucesso(remessa.arquivos.length === 1 ? 'Imagem adicionada.' : 'Imagens adicionadas.');
+
+            return;
+        }
+
         setEnviando(true);
         try {
             const { data } = await axios.post(route('portal.auth.estrutura.produtos.imagens.enviar', variacao.id), montarEnvio(remessa.arquivos), { headers: { Accept: 'application/json' } });
@@ -58,9 +72,19 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
     };
 
     const excluir = async (imagem) => {
-        if (! gravada || ocupado || enviando) return;
+        if (ocupado || enviando) return;
         limpar();
         setConfirmando(null);
+
+        // Pendente nunca chegou ao servidor: sai da lista e a URL local volta para o navegador.
+        if (imagem.pendente) {
+            revogar([imagem]);
+            aoMudar(imagens.filter((i) => i.id !== imagem.id));
+
+            return;
+        }
+
+        if (! gravada) return;
         setOcupado(true);
         try {
             const { data } = await axios.delete(route('portal.auth.estrutura.produtos.imagens.excluir', [variacao.id, imagem.id]));
@@ -87,8 +111,9 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
                     <span className="text-[12px] text-white/40">JPG, PNG ou WebP.</span>
                 </div>
 
-                {! gravada && <p className="mt-2 text-[12px] text-white/50" data-dica-salvar>{envio.motivo}</p>}
-                {gravada && ! envio.pode && envio.motivo && <p className="mt-2 text-[12px] text-white/50">{envio.motivo}</p>}
+                {/* A dica só vale quando há foto guardada: sem nenhuma, não há o que subir no Salvar. */}
+                {pendentes > 0 && envio.motivo && <p className="mt-2 text-[12px] text-white/50" data-dica-salvar>{envio.motivo}</p>}
+                {! envio.pode && envio.motivo && <p className="mt-2 text-[12px] text-white/50">{envio.motivo}</p>}
 
                 {avisos.length > 0 && (
                     <ul role="alert" className="mt-2 space-y-0.5 text-[12px] text-red-300" data-avisos-imagens>
@@ -97,16 +122,22 @@ export default function GaleriaVariacao({ variacao, aoMudar }) {
                 )}
                 {sucesso && avisos.length === 0 && <p role="status" className="mt-2 text-[12px] text-emerald-300/90">{sucesso}</p>}
 
-                {gravada && imagens.length === 0 && ! enviando && <p className="mt-2 text-[12px] text-white/45">Nenhuma imagem ainda.</p>}
+                {imagens.length === 0 && ! enviando && <p className="mt-2 text-[12px] text-white/45">Nenhuma imagem ainda.</p>}
 
                 {imagens.length > 0 && (
                     <ul className="mt-3 flex flex-wrap gap-3" data-lista-imagens>
                         {imagens.map((img, i) => (
-                            <li key={img.id} className="w-[92px]" data-imagem={img.id}>
-                                <div className="relative h-[92px] w-[92px] overflow-hidden rounded-lg border border-white/15 bg-black/40">
+                            <li key={img.id} className="w-[92px]" data-imagem={img.id} data-pendente={img.pendente ? 'sim' : undefined}>
+                                <div className={cn('relative h-[92px] w-[92px] overflow-hidden rounded-lg border bg-black/40', img.pendente ? 'border-dashed border-ecf-yellow/45' : 'border-white/15')}>
                                     <img src={img.url} alt={`Imagem ${i + 1} da variação ${variacao.codigo || 'nova'}`} loading="lazy" draggable={false} className="h-full w-full object-cover" />
+                                    {/* Borda tracejada e selo: esta ainda não está no servidor. */}
+                                    {img.pendente && (
+                                        <span className="absolute bottom-0 inset-x-0 bg-black/75 py-0.5 text-center text-[10px] font-medium leading-3 text-ecf-yellow">
+                                            a enviar
+                                        </span>
+                                    )}
                                     <button type="button" onClick={() => setConfirmando(img.id)} disabled={! livre} data-acao="excluir-imagem"
-                                        aria-label={`Excluir a imagem ${i + 1}`}
+                                        aria-label={`${img.pendente ? 'Tirar' : 'Excluir'} a imagem ${i + 1}`}
                                         className={cn('absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-600 disabled:opacity-40')}>
                                         <X size={14} />
                                     </button>

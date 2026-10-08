@@ -21,6 +21,13 @@ use Illuminate\Support\Facades\Cache;
  * Entram os atributos que o cliente sabe responder (material, marca, largura...).
  * Ficam de fora os de sistema e os de variação — a variação já é tratada por
  * eixo/valor na ficha — e os que a ficha já cobre em outro lugar (SKU, volumes).
+ * Medida do produto só entra quando a categoria a exige ({@see self::IDS_MEDIDA_DO_PRODUTO}).
+ *
+ * ### Qual controle cada campo vira
+ * Ter opção é o que faz o campo ser uma LISTA — não o `value_type`. O catálogo
+ * entrega boa parte das opções em atributo `string` que traz `values` junto; lê-las
+ * só no `list` jogava esses campos em texto livre e deixava o cliente digitar valor
+ * que não existe na lista. Lista marcada `multivalued` aceita mais de uma opção.
  *
  * A montagem ({@see self::daAtributos()}) é uma função PURA: sem HTTP, sem cache.
  */
@@ -41,6 +48,20 @@ class FichaTecnicaDaCategoria
     private const IDS_FORA = [
         'SELLER_SKU', 'CATALOG_PRODUCT_ID', 'SIZE_GRID_ID',
         'PACKAGE_WEIGHT', 'PACKAGE_LENGTH', 'PACKAGE_WIDTH', 'PACKAGE_HEIGHT',
+    ];
+
+    /**
+     * Medidas DO PRODUTO. A ficha já pede medida em Volumes, que é a do produto EMBALADO —
+     * a que vale para peso cubado, logística e frete. Ter os dois conjuntos na mesma tela
+     * faz a pessoa digitar duas vezes (e foi o que aconteceu: produto 2 com 12/12/12 nos dois).
+     *
+     * Por isso estes só aparecem quando a categoria os EXIGE: onde o catálogo marca `required`,
+     * esconder deixaria o cadastro incompleto. Onde não marca, somem e fica só Volumes.
+     *
+     * `MAX_WEIGHT_SUPPORTED` não entra aqui de propósito: é quanto o móvel aguenta, não medida dele.
+     */
+    private const IDS_MEDIDA_DO_PRODUTO = [
+        'LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT',
     ];
 
     private const VALUE_TYPE_PARA_TIPO = [
@@ -179,21 +200,33 @@ class FichaTecnicaDaCategoria
             return null;
         }
 
-        $valores = [];
-        if ($tipo === self::TIPO_LISTA) {
-            foreach ((array) ($atributo['values'] ?? []) as $v) {
-                $vid = trim((string) ($v['id'] ?? ''));
-                $vnome = trim((string) ($v['name'] ?? ''));
-                if ($vid !== '' && $vnome !== '' && self::seguro($vid) && self::seguro($vnome)) {
-                    $valores[] = ['id' => $vid, 'nome' => $vnome];
-                }
-            }
+        $obrigatorio = self::temTag($tags, 'required');
 
+        // Medida do produto sem exigência da categoria sai da ficha: Volumes já pede a do embalado.
+        if (! $obrigatorio && in_array($id, self::IDS_MEDIDA_DO_PRODUTO, true)) {
+            return null;
+        }
+
+        // QUEM TEM OPÇÃO VIRA LISTA, qualquer que seja o `value_type`. O catálogo entrega a maior
+        // parte das opções em atributo `string` COM `values` (Forma, Desenho do tecido, Materiais,
+        // Tipo de pufe...). Ler só no `list` jogava tudo isso em texto livre, e o cliente digitava
+        // valor que não existe na lista ("REDONDO" onde a opção é "Redonda") — que a plataforma recusa.
+        $valores = self::opcoes($atributo);
+
+        if ($valores === []) {
             // Lista sem nenhuma opção não dá para preencher: cai para texto livre.
-            if ($valores === []) {
+            if ($tipo === self::TIPO_LISTA) {
                 $tipo = self::TIPO_TEXTO;
             }
+        } elseif ($tipo === self::TIPO_TEXTO) {
+            $tipo = self::TIPO_LISTA;
+        } else {
+            // Número e Sim/Não continuam com o controle deles; a lista de opções não serve ali.
+            $valores = $tipo === self::TIPO_LISTA ? $valores : [];
         }
+
+        // Só lista escolhe mais de um. O catálogo marca com a tag `multivalued` (ex.: Materiais).
+        $multivalor = $tipo === self::TIPO_LISTA && self::temTag($tags, 'multivalued');
 
         $unidades = [];
         $unidadePadrao = null;
@@ -217,13 +250,37 @@ class FichaTecnicaDaCategoria
         return [
             'id'            => $id,
             'nome'          => $nome,
-            'obrigatorio'   => self::temTag($tags, 'required'),
+            'obrigatorio'   => $obrigatorio,
             'tipo'          => $tipo,
+            'multivalor'    => $multivalor,
             'valores'       => $valores,
             'unidades'      => $unidades,
             'unidade_padrao' => $unidadePadrao,
             'max'           => $max > 0 ? $max : null,
         ];
+    }
+
+    /**
+     * As opções do atributo, já passadas pelo filtro de sigilo. Vale para qualquer
+     * `value_type`: o que define se o campo é uma lista é TER opção, não o tipo declarado.
+     *
+     * @return array<int, array{id: string, nome: string}>
+     */
+    private static function opcoes(array $atributo): array
+    {
+        $valores = [];
+        foreach ((array) ($atributo['values'] ?? []) as $v) {
+            if (! is_array($v)) {
+                continue;
+            }
+            $vid = trim((string) ($v['id'] ?? ''));
+            $vnome = trim((string) ($v['name'] ?? ''));
+            if ($vid !== '' && $vnome !== '' && self::seguro($vid) && self::seguro($vnome)) {
+                $valores[] = ['id' => $vid, 'nome' => $vnome];
+            }
+        }
+
+        return $valores;
     }
 
     /** `tags` chega como objeto ({"required": true}) ou como lista (["required"]) — lê os dois. */

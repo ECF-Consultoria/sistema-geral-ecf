@@ -1152,6 +1152,76 @@ Trabalho direto (sem GSD) em cima da ficha da Fase 167 (`/portal/estrutura/produ
   **Órfãos:** apagar produto/empresa por cascata do banco NÃO apaga os arquivos (o evento do model não dispara);
   falta um comando de limpeza se isso ocorrer em prod.
 - **Produto novo:** os campos da ficha técnica se preenchem antes do `produto_id`; o PUT da ficha espera o id (logo
-  após o 1º salvar). A galeria só envia quando a variação tem id (mostra "Salve o produto…" antes).
+  após o 1º salvar). ~~A galeria só envia quando a variação tem id (mostra "Salve o produto…" antes).~~
+  **Superado em 08/10/2026** — a galeria passou a aceitar foto antes do id, guardando o arquivo na aba; ver §35.
 - **O tratamento/envio ao Publicador fica para outra fase** ("outro dia", palavras do usuário). Ver
   [[project-ficha-rica-produto-atributos-ml-261007]].
+
+## 35. Ficha técnica: ter opção é o que faz o campo ser lista — não o `value_type` (08/10/2026)
+
+Sete ajustes pedidos pelo usuário na ficha do produto (`/portal/estrutura/produtos/{id}`). Três deles
+("Desenho do tecido devia ter as opções do ML", "revise os campos que já têm opção lá", "materiais devia
+aceitar mais de um, em cardzinho com X") tinham **uma causa só**, e ela não é dedutível lendo o código:
+
+- **O catálogo entrega a MAIOR PARTE das opções em atributo `value_type: "string"` que traz `values` junto.**
+  `FichaTecnicaDaCategoria` lia `values` só quando `value_type === 'list'`; todo o resto caía no `default` e
+  virava texto livre. Medido em Pufes (MLB31039): dos 17 campos da ficha, **4 eram lista disfarçada de texto** —
+  `SHAPE` (Quadrada/Redonda/Retangular/Pera), `FABRIC_DESIGN` (Liso/Listras/Florido), `MATERIALS`
+  (Algodão/Couro/Couro sintético/Microfibra) e `POUF_TYPE` (Baú/Pé palito). Só `MATERIAL`(singular) e `STYLE`
+  chegavam como `list`.
+- **O prejuízo já estava gravado em produção:** o produto 2 tinha `Forma = "REDONDO"` (a opção é "Redonda") e
+  `Tipo de pufe = "Redondo"` (não é opção — as opções são Baú e Pé palito). Valor fora da lista é o que o ML
+  recusa na publicação. Texto livre onde havia lista não é só feio: **grava dado que não publica.**
+- **A regra agora é: ter opção faz o campo ser lista, qualquer que seja o `value_type`.** Número e Sim/Não
+  mantêm o controle deles e descartam a lista de opções.
+- **`multivalued` é a tag que libera os chips.** Em Pufes só `MATERIALS` (`FILTRABLE_COLOR` também é, mas sai
+  da ficha por ser atributo de variação). O padrão visual de chips **já existia** no projeto: é o campo
+  *Ambientes* em `FichaDadosGerais.jsx`. E `multivalued` já era lido em
+  `ClassificadorAtributos::classificarUm()` (`multivalor:`) — o Publicador fazia certo; a ficha do Portal é
+  uma segunda implementação, mais pobre, que ignorava. **Antes de mexer em atributo de categoria, olhe o que
+  o `ClassificadorAtributos` já resolveu.**
+
+### Como o multivalor é gravado (decisão de schema, sem migration)
+
+`estrutura_produto_atributos` tem unique `(company_id, produto_id, atributo_id)` e `valor_id` é **varchar(40)**:
+não cabe uma linha por opção nem os ids emendados. Como `valor` é `text`, grava-se **uma linha com os NOMES
+separados por `" | "`** (`FichaTecnicaDoProduto::SEPARADOR`) e **`valor_id` nulo**. Os nomes vêm da definição da
+categoria, nunca do que o cliente digitou, então quem publicar reencontra o id pelo nome na mesma definição.
+Dar coluna própria aos ids é ALTERAR tabela com dado em produção — **fase GSD, não trabalho direto**; vale a
+pena quando o publicador precisar dos ids.
+
+### Duas armadilhas vizinhas, achadas no caminho
+
+- **O filtro de sigilo derruba opção legítima.** `TERMOS_PROIBIDOS` tem `\bml\b`: uma opção `"500 ml"` ou uma
+  unidade de id `ml` é descartada em silêncio — e **se TODAS as opções caírem, o campo degrada para texto
+  livre**, que é exatamente a falha acima. Em Pufes não morde; em bebida, cosmético ou tinta, morde.
+  (Já havia o aviso irmão na §34: `name` que casa o filtro derruba o atributo inteiro.)
+- **Os grupos da ficha não existem.** Os 17 campos vêm todos em "Outros". É esperado, não bug:
+  `GET /categories/{id}/attributes` devolve tudo com `attribute_group_id = OTHERS` — o próprio projeto
+  documenta (N-04, no docblock do `ClassificadorAtributos`). Os grupos de verdade e o `allow_custom_value`
+  (lista que também aceita texto livre) só existem em `technical_specs`, que a ficha do Portal **não
+  consulta**. Decisão do usuário em 08/10: ficou de fora desta leva.
+
+### Medida do produto × medida do embalado
+
+A ficha mostrava DOIS conjuntos e a pessoa digitava os dois (produto 2: 12/12/12 em ambos). Só **Volumes** é o
+embalado, e é o único que alimenta peso cubado, logística e frete. Agora `LENGTH/WIDTH/HEIGHT/DEPTH/DIAMETER/
+WEIGHT` **só aparecem na ficha quando a categoria os marca `required`** — onde o ML exige, esconder deixaria o
+cadastro incompleto. `MAX_WEIGHT_SUPPORTED` fica de fora dessa regra de propósito: é quanto o móvel aguenta,
+não medida dele. **O Publicador resolveu o MESMO problema de outro jeito** (§11 de [[publicador-ml]]: renomeia
+para "… do produto" e põe ao lado do pacote). A divergência é intencional — lá o vendedor publica, aqui o
+cliente cadastra.
+
+### Imagem antes de o produto existir
+
+`POST /variacao/{variacao}/imagens` exige o id, que só nasce no Salvar. Em vez de bloquear, o arquivo agora
+fica **na aba** (`imagemPendente`, entra na mesma lista `imagens` marcada `pendente`, com `URL.createObjectURL`
+para a prévia) e sobe sozinho no Salvar (`enviarPendentes`, com os ids que o POST `linhas` devolveu).
+Consequências que o código não conta:
+- **Fechar a aba antes do Salvar perde as pendentes** — o rascunho guarda texto, não arquivo. Por isso a
+  galeria diz, em palavras, que elas sobem junto com o Salvar, e a miniatura tem borda tracejada e selo.
+- **Falha no envio das fotos segura a ficha na tela** (`ok = false`): sair ali perderia os arquivos.
+- As fotos sobem **mesmo se a ficha técnica reprovar** — as variações já existem e o arquivo só vive na aba.
+- O quadro da foto (`QuadroFotoProduto`) passou a **exibir** a 1ª imagem (a pendente inclusive). Isso **não
+  fere a D-29**, que proíbe *upload* no quadro, não exibição. A **lista** de produtos continua com as iniciais:
+  `ProdutoLinhas::pagina()` não traz `imagens` — levar a foto para lá é trabalho de servidor, não de tela.

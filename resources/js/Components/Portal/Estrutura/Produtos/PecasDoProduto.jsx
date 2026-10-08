@@ -43,12 +43,27 @@ export function EtiquetaUltimoAberto({ destaque }) {
     );
 }
 
-export function QuadroFotoProduto({ nome, tamanho = 'grande', className }) {
+/**
+ * O quadro da foto. Com `foto`, mostra a imagem; sem ela, as iniciais sobre o ícone.
+ *
+ * Continua SEM upload (D-29) — quem envia é a galeria da variação. Aqui a foto só
+ * aparece: assim que a primeira imagem entra, o quadro deixa de ser um retângulo vazio.
+ */
+export function QuadroFotoProduto({ nome, foto = null, tamanho = 'grande', className }) {
     const t = TAMANHOS_QUADRO[tamanho] ?? TAMANHOS_QUADRO.grande;
+    const caixa = cn('relative grid shrink-0 place-items-center overflow-hidden rounded-[10px] border border-white/[0.06] bg-white/[0.04]', t.caixa, className);
+
+    if (foto) {
+        return (
+            <div className={caixa} data-quadro-foto="com-foto">
+                <img src={foto} alt={`Foto de ${nome || 'produto novo'}`} loading="lazy" draggable={false} className="h-full w-full object-cover" />
+            </div>
+        );
+    }
 
     return (
-        <div role="img" aria-label={`Sem foto de ${nome || 'produto novo'}`}
-            className={cn('relative grid shrink-0 place-items-center overflow-hidden rounded-[10px] border border-white/[0.06] bg-white/[0.04]', t.caixa, className)}>
+        <div role="img" aria-label={`Sem foto de ${nome || 'produto novo'}`} data-quadro-foto="sem-foto"
+            className={caixa}>
             <Package size={t.icone} strokeWidth={1.25} className="text-white/15" aria-hidden="true" />
             <span className={cn('absolute font-display font-semibold text-white/45', t.iniciais)}>{iniciais(nome)}</span>
         </div>

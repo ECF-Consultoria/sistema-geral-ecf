@@ -38,17 +38,61 @@ export function valoresIniciais(salvos) {
 /** Texto de um campo numérico na tela: o servidor guarda com ponto, quem digita usa vírgula. */
 export const numeroParaTela = (v) => String(v ?? '').replace('.', ',');
 
+/** Como o servidor emenda os nomes de uma lista multivalor numa linha só. */
+export const SEPARADOR_MULTIVALOR = ' | ';
+
+/**
+ * Os ids das opções escolhidas num campo multivalor, na ordem, sem repetição.
+ *
+ * O que está guardado em memória vem de dois lugares e esta função aceita os dois:
+ * uma LISTA de ids (o que os chips produzem ao editar) ou o TEXTO que o servidor
+ * devolveu em `salvos` — os nomes emendados, porque a linha gravada não tem os ids
+ * (ver `FichaTecnicaDoProduto::multivalor`). Nome é reencontrado na definição da
+ * categoria; o que não bate em nenhuma opção é descartado.
+ */
+export function idsMultivalor(campo, bruto) {
+    const opcoes = Array.isArray(campo?.valores) ? campo.valores : [];
+    const porId = new Map(opcoes.map((o) => [String(o.id), String(o.id)]));
+    const porNome = new Map(opcoes.map((o) => [String(o.nome), String(o.id)]));
+
+    const pedacos = Array.isArray(bruto)
+        ? bruto
+        : String(bruto ?? '').split(SEPARADOR_MULTIVALOR);
+
+    const out = [];
+    pedacos.forEach((p) => {
+        const t = String(p ?? '').trim();
+        if (t === '') return;
+        const id = porId.get(t) ?? porNome.get(t);
+        if (id !== undefined && ! out.includes(id)) out.push(id);
+    });
+
+    return out;
+}
+
+/** O campo aceita mais de uma opção? (só lista, e só quando o servidor marcou). */
+export const ehMultivalor = (campo) => campo?.tipo === 'lista' && !! campo?.multivalor;
+
 /**
  * Corpo do PUT: um item para cada campo DA DEFINIÇÃO que a pessoa preencheu.
  * Campo vazio fica de fora (o servidor entende como "sem valor"); valor de um campo que a
  * categoria atual não tem também fica de fora. Número com unidade leva a unidade escolhida
- * ou, sem escolha, a padrão. Os demais tipos vão sem unidade.
+ * ou, sem escolha, a padrão. Os demais tipos vão sem unidade. Campo multivalor manda a
+ * LISTA de ids escolhidos — nenhum escolhido fica de fora, como qualquer campo vazio.
  */
 export function montarAtributos(grupos, valores) {
     const out = [];
     camposDaDefinicao(grupos).forEach((campo) => {
         const atual = valores?.[campo.id];
         const bruto = atual?.valor;
+
+        if (ehMultivalor(campo)) {
+            const ids = idsMultivalor(campo, bruto);
+            if (ids.length) out.push({ id: campo.id, valor: ids });
+
+            return;
+        }
+
         const valor = bruto === null || bruto === undefined ? '' : String(bruto).trim();
         if (valor === '') return;
         const item = { id: campo.id, valor };
