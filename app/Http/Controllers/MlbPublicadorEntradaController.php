@@ -25,9 +25,22 @@ class MlbPublicadorEntradaController extends Controller
 
     public function index(Request $request)
     {
-        $programa = (string) $request->query('programa', 'polos');
-        if (! in_array($programa, ProgramasPublicadorService::PROGRAMAS, true)) {
-            $programa = 'polos';
+        // Fase 172-02: programa inicial por sessão (decisão do usuário — fica só
+        // sessão → Polos, SEM o ramo "setor do usuário" que a spec original previa).
+        // `?programa=` na URL continua mandando e grava o novo valor na sessão;
+        // sem o parâmetro, lê o último programa escolhido nesta sessão, caindo em
+        // 'polos' se a sessão estiver vazia ou com valor fora da whitelist.
+        $programaQuery = $request->query('programa');
+        if ($programaQuery !== null) {
+            $programa = in_array($programaQuery, ProgramasPublicadorService::PROGRAMAS, true)
+                ? $programaQuery
+                : 'polos';
+            session(['publicador.ultimo_programa' => $programa]);
+        } else {
+            $programa = (string) session('publicador.ultimo_programa', 'polos');
+            if (! in_array($programa, ProgramasPublicadorService::PROGRAMAS, true)) {
+                $programa = 'polos';
+            }
         }
 
         $busca = mb_substr(trim((string) $request->query('busca', '')), 0, 120);
