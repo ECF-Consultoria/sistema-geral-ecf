@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-    SEPARADOR_MULTIVALOR, camposDaDefinicao, categoriaParaConsulta, deveGravar, ehMultivalor, errosDaResposta,
+    SEPARADOR_MULTIVALOR, camposDaDefinicao, categoriaParaConsulta, deveGravar, ehMultivalor, errosDaResposta, idDeLista,
     idDoElemento, idsMultivalor, montarAtributos, numeroParaTela, valoresIniciais,
 } from '../../resources/js/lib/fichaTecnica.js';
 import { lerSemComentarios } from './_fonte.js';
@@ -250,6 +250,39 @@ test('ehMultivalor: só lista marcada pelo servidor; lista comum e os outros tip
     assert.equal(ehMultivalor({ tipo: 'lista' }), false, 'sem a marca, lista comum');
     assert.equal(ehMultivalor({ tipo: 'texto', multivalor: true }), false, 'multivalor só faz sentido em lista');
     assert.equal(ehMultivalor(null), false);
+});
+
+test('idDeLista: campo que virou lista mantém o valor antigo gravado por NOME', () => {
+    // Regressão achada em produção em 08/10/2026: FABRIC_DESIGN tinha "Liso" gravado como
+    // texto livre (de quando o campo não era lista), sem `valor_id`. Casando só por id, o
+    // select vinha "Selecione" num campo correto — e salvar assim apagaria o valor.
+    const campo = { tipo: 'lista', valores: [{ id: '10', nome: 'Liso' }, { id: '11', nome: 'Listras' }] };
+    assert.equal(idDeLista(campo, 'Liso'), '10', 'o nome gravado resolve para o id da opção');
+    assert.equal(idDeLista(campo, '10'), '10', 'o id continua resolvendo');
+    assert.equal(idDeLista(campo, 'liso'), '10', 'caixa diferente também');
+    assert.equal(idDeLista(campo, '  Listras  '), '11');
+
+    // Valor que não é opção nenhuma fica vazio DE PROPÓSITO: e dado que a plataforma recusa.
+    const forma = { tipo: 'lista', valores: [{ id: '1', nome: 'Quadrada' }, { id: '2', nome: 'Redonda' }] };
+    assert.equal(idDeLista(forma, 'REDONDO'), '', 'a opção é "Redonda"; "REDONDO" não existe');
+    assert.equal(idDeLista(campo, ''), '');
+    assert.equal(idDeLista(campo, null), '');
+    assert.equal(idDeLista({ valores: null }, 'Liso'), '');
+});
+
+test('montarAtributos: lista manda o id resolvido pelo nome; valor que não é opção fica de fora', () => {
+    const def = [{ grupo: 'G', campos: [
+        { id: 'FABRIC_DESIGN', nome: 'Desenho do tecido', tipo: 'lista', valores: [{ id: '10', nome: 'Liso' }] },
+        { id: 'SHAPE', nome: 'Forma', tipo: 'lista', valores: [{ id: '2', nome: 'Redonda' }] },
+    ] }];
+    // Exatamente o estado do produto 2 em produção antes da correção.
+    const estado = valoresIniciais([
+        { id: 'FABRIC_DESIGN', nome: 'Desenho do tecido', valor: 'Liso', valor_id: null, unidade: null },
+        { id: 'SHAPE', nome: 'Forma', valor: 'REDONDO', valor_id: null, unidade: null },
+    ]);
+
+    assert.deepEqual(montarAtributos(def, estado), [{ id: 'FABRIC_DESIGN', valor: '10' }],
+        '"Liso" sobrevive virando id; "REDONDO" sai, e o obrigatório volta como "Preencha …"');
 });
 
 test('idsMultivalor: entende tanto a lista de ids (editando) quanto os nomes emendados (do servidor)', () => {
