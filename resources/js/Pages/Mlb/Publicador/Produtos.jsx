@@ -2,6 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import { Link2, PencilLine, Plus, Search } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
@@ -10,6 +11,7 @@ import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
 import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar.jsx';
+import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
@@ -90,6 +92,20 @@ export default function Produtos({
     const [erroAbrir, setErroAbrir] = useState(false);
     const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
     const resumoPronto = useRef(false);
+    const [avisosDoClique, setAvisosDoClique] = useState([]); // avisos do próprio Sincronizar (cores avulsas etc.)
+    const aoLerRef = useRef(null);
+    // O acompanhamento mora na PÁGINA (review 172 CR-01): o botão do estado vazio desmonta quando a
+    // lista recarrega, e com ele morria o polling — o resumo nunca aparecia e a lista não recarregava.
+    const contaRef = useRef(empresa.chave);
+    contaRef.current = empresa.chave;
+    const acompanhamento = useRef(null);
+    if (acompanhamento.current === null) {
+        acompanhamento.current = criarAcompanhamento({
+            ler: async (pedido) => (await axios.get(route('mlb.anuncios.publicador.sincronizar.resumo', { conta: contaRef.current, pedido }))).data,
+            aoLer: (r) => aoLerRef.current?.(r),
+        });
+    }
+    useEffect(() => () => acompanhamento.current.cancelar(), []);
     const esperaStatus = useRef(null);
     const esperaRealce = useRef(null);
 
@@ -128,6 +144,7 @@ export default function Produtos({
     }
 
     // Cada leitura do resumo; ao ficar pronto, recarrega a lista (variantes e status mudaram).
+    aoLerRef.current = aoLerResumo;
     function aoLerResumo(r) {
         setResumo(r);
         if (r?.status === 'pronto' && !resumoPronto.current) {
@@ -138,7 +155,16 @@ export default function Produtos({
 
     function aoConcluirSync(json) {
         resumoPronto.current = false;
-        setResumo(null);
+        const avisos = json?.avisos ?? [];
+        setAvisosDoClique(avisos);
+        if (json?.pedido) {
+            setResumo({ status: 'preenchendo', total: json.preenchendo ?? 0, concluidos: 0 });
+            acompanhamento.current.acompanhar(json.pedido);
+        } else {
+            acompanhamento.current.cancelar();
+            // Sem nada a preencher, os avisos do clique ainda precisam aparecer.
+            setResumo(avisos.length > 0 ? { status: 'pronto', so_avisos: true } : null);
+        }
         const texto = json?.criados > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
         setStatus({ tipo: 'ok', texto });
         setNovos(new Set(json?.ids ?? []));
@@ -181,7 +207,6 @@ export default function Produtos({
                             <BotaoSincronizarPortal
                                 conta={empresa.chave}
                                 onConcluido={aoConcluirSync}
-                                onResumo={aoLerResumo}
                                 onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                             />
                         )}
@@ -202,7 +227,7 @@ export default function Produtos({
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
-                <ResumoDoSincronizar resumo={resumo} onFechar={() => setResumo(null)} />
+                <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} onFechar={() => setResumo(null)} />
 
                 <section className="rounded-xl bg-ecf-card">
                     <div className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -278,7 +303,6 @@ export default function Produtos({
                                     <BotaoSincronizarPortal
                                         conta={empresa.chave}
                                         onConcluido={aoConcluirSync}
-                                        onResumo={aoLerResumo}
                                         onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                                     />
                                 )}

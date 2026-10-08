@@ -6,11 +6,12 @@ import { motivosNaoTrazidas, textoDoResumo } from './resumoDoSincronizar.js';
  * Painel do que o "Sincronizar do Portal" preencheu nos rascunhos: enquanto roda mostra o andamento;
  * pronto, a frase do resumo, as fotos que não vieram (com o motivo) e os avisos. Fechável.
  */
-export default function ResumoDoSincronizar({ resumo, onFechar, className }) {
+export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFechar, className }) {
     if (!resumo) return null;
     const pronto = resumo.status === 'pronto';
     const motivos = motivosNaoTrazidas(resumo.fotos_nao_trazidas);
-    const avisos = resumo.avisos ?? [];
+    // Os avisos do clique (cores avulsas, variações que viraram produto) e os do preenchimento, sem repetir.
+    const avisos = [...new Set([...(avisosDoClique ?? []), ...(resumo.avisos ?? [])])];
 
     return (
         <section
@@ -18,7 +19,9 @@ export default function ResumoDoSincronizar({ resumo, onFechar, className }) {
             className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4', className)}
         >
             <div className="flex items-start justify-between gap-4">
-                {pronto ? (
+                {pronto && resumo.so_avisos ? (
+                    <p className="text-[15px] font-bold text-white">Sincronizar do Portal</p>
+                ) : pronto ? (
                     <div>
                         <p className="text-[15px] font-bold text-white">Rascunhos preenchidos com o que está no Portal</p>
                         <p className="mt-1 text-[13px] font-normal text-white/70">{textoDoResumo(resumo)}</p>

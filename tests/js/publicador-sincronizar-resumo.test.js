@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import { motivosNaoTrazidas, textoDoResumo } from '../../resources/js/Components/Mlb/Publicador/resumoDoSincronizar.js';
+import { criarAcompanhamento } from '../../resources/js/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 
 // Fase 172-12 — resumo do "Sincronizar do Portal": textos puros e gates de fonte do acompanhamento.
 
@@ -35,18 +36,102 @@ test('motivosNaoTrazidas — frases por motivo, código quando desconhecido', ()
     assert.deepEqual(motivosNaoTrazidas(undefined), []);
 });
 
-test('BotaoSincronizarPortal — acompanha a rota do resumo só com onResumo, a cada 2500 ms, por 5 min', () => {
-    const fonte = lerSemComentarios(DIR + 'BotaoSincronizarPortal.jsx');
-    assert.match(fonte, /mlb\.anuncios\.publicador\.sincronizar\.resumo/);
-    assert.match(fonte, /INTERVALO_MS = 2500/);
-    assert.match(fonte, /5 \* 60 \* 1000/);
-    assert.match(fonte, /data\?\.pedido && onResumo/);
-    assert.match(fonte, /'pronto'/);
+// ─── Acompanhamento (review 172 CR-01): mora na página, um pedido por vez ───
+
+function relogio() {
+    let t = 0;
+    let fila = [];
+    let id = 0;
+    return {
+        agora: () => t,
+        agendar: (fn, ms) => { id += 1; fila.push({ id, quando: t + ms, fn }); return id; },
+        desagendar: (i) => { fila = fila.filter((x) => x.id !== i); },
+        async passar(ms) {
+            const fim = t + ms;
+            for (;;) {
+                fila.sort((a, b) => a.quando - b.quando);
+                const prox = fila[0];
+                if (!prox || prox.quando > fim) break;
+                fila.shift();
+                t = prox.quando;
+                await prox.fn();
+            }
+            t = fim;
+        },
+        pendentes: () => fila.length,
+    };
+}
+
+test('criarAcompanhamento — lê na hora, a cada intervalo, e para no pronto', async () => {
+    const r = relogio();
+    const lidos = [];
+    let n = 0;
+    const a = criarAcompanhamento({
+        ler: async () => ({ status: ++n >= 3 ? 'pronto' : 'preenchendo', n }),
+        aoLer: (d) => lidos.push(d.n), intervalo: 2500, limite: 60000, ...r,
+    });
+    a.acompanhar('p1');
+    await r.passar(0);
+    assert.deepEqual(lidos, [1]);
+    await r.passar(10000);
+    assert.deepEqual(lidos, [1, 2, 3]);
+    assert.equal(a.ativo(), false);
+    assert.equal(r.pendentes(), 0);
 });
 
-test('Produtos.jsx — passa onResumo aos dois botões, mostra o painel e recarrega ao ficar pronto', () => {
+test('criarAcompanhamento — um pedido novo cancela o anterior: o resumo velho nunca volta', async () => {
+    const r = relogio();
+    const lidos = [];
+    const a = criarAcompanhamento({ ler: async (p) => ({ status: 'preenchendo', p }), aoLer: (d) => lidos.push(d.p), intervalo: 2500, ...r });
+    a.acompanhar('velho');
+    await r.passar(0);
+    a.acompanhar('novo');
+    await r.passar(6000);
+    assert.deepEqual(lidos, ['velho', 'novo', 'novo', 'novo']);
+});
+
+test('criarAcompanhamento — cancelar para tudo, inclusive a leitura que já voava', async () => {
+    const r = relogio();
+    const lidos = [];
+    let soltar;
+    const a = criarAcompanhamento({ ler: () => new Promise((ok) => { soltar = ok; }), aoLer: (d) => lidos.push(d), ...r });
+    a.acompanhar('p1');
+    const voo = r.passar(0);
+    a.cancelar();
+    soltar({ status: 'pronto' });
+    await voo;
+    assert.deepEqual(lidos, []);
+    assert.equal(r.pendentes(), 0);
+});
+
+test('criarAcompanhamento — no limite para e avisa (sem spinner eterno)', async () => {
+    const r = relogio();
+    let expirou = 0;
+    const estados = [];
+    const a = criarAcompanhamento({
+        ler: async () => ({ status: 'preenchendo' }), aoLer: () => {}, aoExpirar: () => { expirou += 1; },
+        aoMudar: (v) => estados.push(v), intervalo: 1000, limite: 3000, ...r,
+    });
+    a.acompanhar('p1');
+    await r.passar(10000);
+    assert.equal(expirou, 1);
+    assert.equal(a.ativo(), false);
+    assert.deepEqual(estados, [true, false]);
+});
+
+test('BotaoSincronizarPortal — só faz o POST; quem acompanha é a página', () => {
+    const fonte = lerSemComentarios(DIR + 'BotaoSincronizarPortal.jsx');
+    assert.match(fonte, /mlb\.anuncios\.publicador\.sincronizar'/);
+    assert.doesNotMatch(fonte, /sincronizar\.resumo/);
+    assert.doesNotMatch(fonte, /setTimeout/);
+});
+
+test('Produtos.jsx — a página acompanha o pedido, mostra o painel e recarrega ao ficar pronto', () => {
     const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
-    assert.equal((fonte.match(/onResumo=\{aoLerResumo\}/g) ?? []).length, 2);
+    assert.match(fonte, /criarAcompanhamento\(/);
+    assert.match(fonte, /mlb\.anuncios\.publicador\.sincronizar\.resumo/);
+    assert.match(fonte, /acompanhamento\.current\.acompanhar\(json\.pedido\)/);
+    assert.doesNotMatch(fonte, /onResumo=/);
     assert.match(fonte, /<ResumoDoSincronizar /);
     assert.match(fonte, /router\.reload\(\{ only: \['produtos', 'contagens'\] \}\)/);
 });
