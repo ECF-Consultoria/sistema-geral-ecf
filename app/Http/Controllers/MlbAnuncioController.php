@@ -98,12 +98,18 @@ class MlbAnuncioController extends Controller
      * Double-check de pertencimento: admin passa sempre; publicador só acessa
      * se a empresa foi atribuída a ele (abort 403 caso contrário — T-75-05).
      */
-    public function wizard(Request $request, Company $company)
+    public function wizard(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
         // Só empresas com conta ML conectada podem publicar
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
         // (escopo por publicador deferido — gate role:admin garante que é admin)
+
+        // Fase 172-02: resolve a conta pela mesma chave do Publicador (company-N) —
+        // prop NOVA, irmã de `empresa`, para o BarraDaConta/AbasDaConta da Wave 2.
+        // Não substitui nem lê `empresa` em nenhum outro ponto desta action.
+        $alvo  = $programas->resolver('company-'.$company->id);
+        $conta = $alvo !== null ? $programas->empresaParaTela($alvo) : null;
 
         // mlb_empresa ligada (se houver) → dados do cliente para pré-preenchimento (Phase 76)
         $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)
@@ -140,6 +146,9 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
+            // Fase 172-02: prop nova — shape completo de empresaParaTela() (chave,
+            // programa, programa_rotulo, token, portal, etc.), para a Wave 2.
+            'conta' => $conta,
             // Sobrevive ao F5. A análise leva minutos e mora no banco; sem
             // isto, recarregar a página no meio da geração dava a impressão
             // de que o trabalho tinha sido perdido — ele seguia rodando,
@@ -190,12 +199,16 @@ class MlbAnuncioController extends Controller
      *                 category_id (o "lote" de uma aba = category_id + empresa).
      *   - produtos  : lista do cliente p/ pré-preenchimento por linha (SHEET-04).
      */
-    public function massa(Request $request, Company $company)
+    public function massa(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
         // Só empresas com conta ML conectada podem publicar (mesma trava do wizard)
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
         // (escopo por publicador deferido — gate role:admin garante que é admin)
+
+        // Fase 172-02: prop `conta` nova — ver comentário equivalente em wizard().
+        $alvo  = $programas->resolver('company-'.$company->id);
+        $conta = $alvo !== null ? $programas->empresaParaTela($alvo) : null;
 
         // mlb_empresa ligada (se houver) → dados do cliente para pré-preenchimento (Phase 76)
         $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)
@@ -209,6 +222,8 @@ class MlbAnuncioController extends Controller
                 'company_id' => $company->id,
                 'tem_token'  => true,
             ],
+            // Fase 172-02: prop nova — ver comentário em wizard().
+            'conta' => $conta,
             // Rascunhos abertos da empresa (por company_id) para a grade reconstruir
             // as linhas agrupadas por category_id. Inclui 'publicando' — a grade
             // mostra o estado assíncrono (BULK-04) por linha ao reabrir a página.
@@ -252,12 +267,16 @@ class MlbAnuncioController extends Controller
      * Retorna item enxuto (sem `payload`): a listagem só precisa mostrar; quem
      * clona é o `duplicarComoTemplate`, que lê o payload direto do banco.
      */
-    public function historico(Request $request, Company $company)
+    public function historico(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
         // Só empresas com conta ML conectada (mesma trava do wizard e da grade)
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
         // (escopo por publicador deferido — gate role:admin garante que é admin)
+
+        // Fase 172-02: prop `conta` nova — ver comentário equivalente em wizard().
+        $alvo  = $programas->resolver('company-'.$company->id);
+        $conta = $alvo !== null ? $programas->empresaParaTela($alvo) : null;
 
         $busca = trim((string) $request->query('busca', ''));
 
@@ -332,6 +351,8 @@ class MlbAnuncioController extends Controller
                 'id'   => $company->id,
                 'nome' => $company->name,
             ],
+            // Fase 172-02: prop nova — ver comentário em wizard().
+            'conta'    => $conta,
             'grupos'   => $gruposPagina,
             'resumo'   => [
                 'total_anuncios' => $publicados->count(),
@@ -352,11 +373,15 @@ class MlbAnuncioController extends Controller
      * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
      * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
      */
-    public function meus(Request $request, Company $company)
+    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
         // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+
+        // Fase 172-02: prop `conta` nova — ver comentário equivalente em wizard().
+        $alvo  = $programas->resolver('company-'.$company->id);
+        $conta = $alvo !== null ? $programas->empresaParaTela($alvo) : null;
 
         $busca = trim((string) $request->query('busca', ''));
 
@@ -518,6 +543,8 @@ class MlbAnuncioController extends Controller
 
         return Inertia::render('Mlb/MeusAnuncios', [
             'empresa'   => ['id' => $company->id, 'nome' => $company->name],
+            // Fase 172-02: prop nova — ver comentário em wizard().
+            'conta'     => $conta,
             'sub'       => $sub,
             'subTotais' => [
                 'publicados' => MlAcervoItem::where('company_id', $company->id)->count(),
