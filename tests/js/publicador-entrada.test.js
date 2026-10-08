@@ -245,3 +245,17 @@ test('Tela B — nenhuma linha avermelhada', () => {
     assert.ok(abertura, 'linha h-14 não encontrada');
     assert.doesNotMatch(abertura[0], /bg-red|border-red/);
 });
+
+// Fase 173, plano 06: link ?filtro=X vindo da Visão geral precisa pré-selecionar
+// o filtro — mesmo padrão `ABA_INICIAL()` já usado por Alavancas.jsx (leitura
+// ÚNICA na montagem, validada contra a whitelist, nunca sincronizada de volta
+// pra URL ao trocar à mão).
+test('Tela B — filtroInicial() lê ?filtro= da querystring, validado contra CHAVES_DO_FILTRO', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /function filtroInicial\(\)/);
+    assert.match(fonte, /new URLSearchParams\(window\.location\.search\)\.get\('filtro'\)/);
+    assert.match(fonte, /Object\.prototype\.hasOwnProperty\.call\(CHAVES_DO_FILTRO, pedido\)/);
+    assert.match(fonte, /useState\(filtroInicial\)/);
+    // Nunca sincroniza de volta pra URL ao trocar o filtro à mão.
+    assert.doesNotMatch(fonte, /history\.(push|replace)State|window\.location\.search\s*=/);
+});
