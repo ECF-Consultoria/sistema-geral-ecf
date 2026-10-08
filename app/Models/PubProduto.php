@@ -42,6 +42,15 @@ class PubProduto extends Model
         return $this->belongsTo(EstruturaOferta::class, 'oferta_id');
     }
 
+    /**
+     * O produto do Portal que este produto representa quando agrupa as cores (Fase 172, D-06);
+     * null nos produtos de uma oferta só e nos cadastrados no Publicador.
+     */
+    public function estruturaProduto(): BelongsTo
+    {
+        return $this->belongsTo(EstruturaProduto::class, 'estrutura_produto_id');
+    }
+
     public function rascunho(): HasOne
     {
         return $this->hasOne(PubRascunho::class, 'produto_id');
@@ -95,14 +104,32 @@ class PubProduto extends Model
         }
     }
 
+    /**
+     * Produto agrupado (D-06) mostra o produto do Portal — só se for da MESMA empresa
+     * (defesa contra vínculo cruzado). Sem grupo, valem a oferta ao vivo e depois os campos próprios.
+     */
+    private function produtoDoGrupo(): ?EstruturaProduto
+    {
+        if ($this->estrutura_produto_id === null) {
+            return null;
+        }
+        $produto = $this->estruturaProduto;
+
+        return $produto !== null && (int) $produto->company_id === (int) $this->company_id ? $produto : null;
+    }
+
     /** Produto do Portal segue a oferta ao vivo; sem oferta (D27), os campos do próprio produto. */
     public function skuExibido(): string
     {
-        return $this->oferta?->sku ?? $this->sku;
+        $codigo = trim((string) $this->produtoDoGrupo()?->codigo);
+
+        return $codigo !== '' ? $codigo : ($this->oferta?->sku ?? $this->sku);
     }
 
     public function nomeExibido(): string
     {
-        return $this->oferta?->nome ?: ($this->oferta?->sku ?? $this->nome);
+        $nome = trim((string) $this->produtoDoGrupo()?->nome);
+
+        return $nome !== '' ? $nome : ($this->oferta?->nome ?: ($this->oferta?->sku ?? $this->nome));
     }
 }
