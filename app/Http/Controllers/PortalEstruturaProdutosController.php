@@ -8,6 +8,7 @@ use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
+use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
@@ -67,6 +68,7 @@ class PortalEstruturaProdutosController extends Controller
         private FreteMe2Service $frete,
         private FichaTecnicaDaCategoria $camposDaCategoria,
         private FichaTecnicaDoProduto $fichaTecnica,
+        private DescricaoDoProduto $descricao,
         private VariacaoImagensService $imagens,
     ) {
     }
@@ -395,6 +397,25 @@ class PortalEstruturaProdutosController extends Controller
         return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
     }
 
+    /**
+     * Grava a descrição do produto (vazio limpa). Produto de outra empresa responde 404,
+     * igual ao inexistente, e o 404 vem ANTES da validação.
+     */
+    public function gravarDescricao(Request $request, int $produto)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $dados = $request->validate(
+            ['descricao' => 'nullable|string|max:5000'],
+            ['descricao.max' => 'A descrição pode ter até 5.000 caracteres.', 'descricao.string' => 'Descrição inválida.'],
+        );
+
+        $salvo = $this->descricao->gravar($empresa, $p, $dados['descricao'] ?? null, PortalContexto::ator());
+
+        return response()->json(['descricao' => $salvo, 'mensagem' => 'Descrição salva.']);
+    }
+
     // ═══ Imagens da variação ════════════════════════════════════════════════
 
     /**
@@ -534,6 +555,7 @@ class PortalEstruturaProdutosController extends Controller
         return Inertia::render('Portal/EstruturaProdutoFicha', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
             'produto'      => $produto ? ['id' => (int) $produto->id, 'nome' => $produto->nome] : null,
+            'descricao'    => $produto?->descricao,
             // Ficha técnica já salva (a definição dos campos vem do endpoint por categoria).
             'ficha_tecnica' => ['salvos' => $produto ? $this->fichaTecnica->salvos($produto) : []],
             'linhas'       => $this->linhasComImagens($empresa, $produto),

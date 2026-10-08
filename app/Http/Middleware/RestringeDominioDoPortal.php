@@ -190,6 +190,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/{id}',
         // Ficha técnica do produto: só o id numérico no meio, e só o PUT existe nessa URL.
         'portal/estrutura/produtos/{id}/ficha-tecnica',
+        // Descrição do produto (Fase 172): id numérico no meio, só o PUT existe nessa URL.
+        'portal/estrutura/produtos/{id}/descricao',
         // Fase 168: o id do produto no meio, só dígitos (a página de sugestões define tipo e quantidades).
         'portal/estrutura/sugestoes/produtos/{id}/geracao',
         // Imagens por variação: cada `{id}` casa SÓ dígitos (o 1º é a variação, o 2º a imagem) e o
