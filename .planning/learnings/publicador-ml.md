@@ -581,8 +581,9 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
 - **`ImagemAssetService::receber(..., enviar: false)`** guarda a foto sem subir ao ML; o Sincronizar nunca chama
   `/items` nem sobe foto, mesmo com a conta liberada e com token (teste com `Http::preventStrayRequests`).
   WebP do Portal é convertida a JPG com GD; **confira GD com WebP no PHP de produção** antes de confiar.
-- **`values_multi` é zerado se `gravarAtributos` regrava o atributo sem enviá-lo** (o snapshot da tela não expõe a
-  coluna). Efeito aceito, mas é o primeiro suspeito se uma ficha "perder" as opções marcadas depois de editar.
+- **`values_multi` (D-13) vai no snapshot e sobrevive à gravação sem a chave** (review 172 WR-03): `gravarAtributos`/
+  `mesclarAtributos` sem `values_multi` mantêm a lista guardada enquanto o `value_id` (1ª opção) não muda; trocou a
+  opção, a lista velha sai. O payload do ML não usa a coluna (`ValorAtributo::paraPayload` monta as chaves à mão).
 - **Job por produto (`PreencherRascunhoDoPortalJob`), fila `high`, `timeout` 300 s < `retry_after`, `tries` 1.**
   Resumo agregado por `pedido` (uuid, cache 1 h) escopado por `company_id`. Com `QUEUE_CONNECTION=sync` a exceção
   sobe ao request, então `failed()` só se prova chamando-o direto.

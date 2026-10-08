@@ -233,6 +233,17 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertNotNull($linha);
         $this->assertCount(2, $linha->values_multi);
         $this->assertTrue($linha->revisar);
+
+        // WR-03: o snapshot leva as opções à tela, e uma gravação da tela sem a chave não as apaga.
+        $this->assertSame($linha->values_multi, $this->snap($pub)->atributos[$multi->id]['values_multi']);
+        $daTela = array_map(fn ($a) => array_diff_key($a, ['values_multi' => true]), $this->snap($pub)->atributos);
+        $this->editor->salvar($this->rascunho($pub), ['atributos' => $daTela]);
+        $this->assertCount(2, $linha->fresh()->values_multi, 'salvar no editor mantém as opções guardadas');
+
+        // Trocou a 1ª opção: a lista velha não vale mais.
+        $daTela[$multi->id] = ['value_id' => (string) $multi->valores[1]['id'], 'origem' => 'user'];
+        $this->editor->salvar($this->rascunho($pub), ['atributos' => $daTela]);
+        $this->assertNull($linha->fresh()->values_multi);
     }
 
     public function test_segunda_execucao_nao_muda_nada(): void
