@@ -1251,17 +1251,21 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
 - **Cores que nunca se repetem davam zero Kit** (D-17 pulava par posicional com valor nos dois
   lados). Quando NADA casa por valor, casa por posição: min(n, m), sem cartesiano.
 - **O Combo vinha primeiro na família** e as cadeiras ×2/×4/×6/×8 por cor enchiam a página de 20.
-  A ordem dentro da família virou Kit (3 antes de 2) → Combit → Combo. Continua FRÁGIL entre
-  famílias: no gabarito do usuário o banheiro entra nas posições 17–20; com a mesa em 3 cores ele
-  vai para a página 2. Corrigir de vez é ordenar por fase ANTES da família (a família aparece em
-  dois grupos na tela): decisão de produto, não feita.
+  A ordem dentro da família virou Kit (3 antes de 2) → Combit → Combo, e os Combos de cada
+  família viraram UMA linha da paginação ("Ver N combos"), aberta por `?combos=<família>`
+  na mesma página. Sem isso, entre famílias o problema voltava: com a mesa em 3 cores o
+  banheiro ia para a página 2. A paginação anda sobre LINHAS (`paginacao.linhas`); os totais
+  (`total`, `blocos`, resumo, "aceitar os filtrados") continuam contando sugestões.
 - **O Kit de 3 exige os TRÊS pares na lista**, e a lista D-21 tirou de propósito os 5 pares que a
   planilha só usava em trios (banco+cadeira, buffet+cadeira, cabeceira+cômoda, cama+cômoda,
   guarda-roupa+prateleira). Logo os trios reais da planilha (mesa+cadeira+banco...) NÃO saem só
   com esta regra. Pôr esses pares de volta pelo admin libera os trios, mas também o Kit de 2
-  deles (banco + cadeira sozinhos), que a 168 evitou.
+  deles (banco + cadeira sozinhos), que a 168 evitou. Decisão do usuário (08/10): não recolocar;
+  a ECF põe pelo admin se quiser.
 - **Semente nova de tipos: nunca reler o config inteiro.** A semente da 168 já rodou em produção e
   a ECF edita/exclui tipos pelo admin; a migration de 08/10 só insere os slugs e pares dela
   (`insertOrIgnore`), senão ressuscitaria o que a ECF apagou.
-- **"Planejamento" já era o nome do submódulo da agenda** (`ModulosPortal`, rota
-  `portal.auth.estrutura.agenda`). A tela renomeada (rota `.sugestoes`) ficou com o mesmo nome.
+- **"Planejamento" era o nome do submódulo da agenda** (`ModulosPortal`, chave `planejamento`, rota
+  `portal.auth.estrutura.agenda`). Desde 08/10 o rótulo dele é "Cronograma" e "Planejamento" é a
+  tela de sugestões (rota `.sugestoes`). Chave e rotas não mudaram: código que procura a chave
+  `planejamento` está falando da AGENDA.
