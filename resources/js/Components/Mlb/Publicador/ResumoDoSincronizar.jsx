@@ -1,6 +1,6 @@
 import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motivosNaoTrazidas, textoDoResumo } from './resumoDoSincronizar.js';
+import { motivosNaoTrazidas, textoDoResumo } from './regrasDoResumoDoSincronizar';
 
 /**
  * Painel do que o "Sincronizar do Portal" preencheu nos rascunhos: enquanto roda mostra o andamento;

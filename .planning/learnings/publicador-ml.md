@@ -591,7 +591,8 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   descrição E texto do cliente existente (senão gasta a única chance sem material). Nunca grava no rascunho.
 - **Sincronizar NÃO tem gate de piloto (D-10).** `ContasLiberadas` só governa o selo da página; o caminho do
   Sincronizar não deve citá-lo (há teste "fora do piloto também é enriquecida").
-- **Vite no Windows: `ResumoDoSincronizar.jsx` x `resumoDoSincronizar.js` colidem** (FS sem caixa): o build falha com
+- **Vite no Windows: `ResumoDoSincronizar.jsx` x `resumoDoSincronizar.js` colidiam** (FS sem caixa; o módulo puro virou
+  `regrasDoResumoDoSincronizar.js` no review 172 WR-05, e um teste recusa par só pela caixa na pasta): o build falhava com
   "default is not exported". Import com extensão explícita resolve; melhor ainda, nunca nomear dois arquivos só pela caixa.
 - **`assertSemOrigem` (sigilo do Portal) não pegava acento:** o JSON do Laravel escapa "ú" como sequência unicode,
   então varrer por "anúncio" passava batido. O helper agora decodifica antes de varrer; teste de sigilo novo deve usá-lo.

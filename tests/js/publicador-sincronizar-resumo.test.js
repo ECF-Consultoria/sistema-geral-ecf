@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
-import { motivosNaoTrazidas, textoDoResumo } from '../../resources/js/Components/Mlb/Publicador/resumoDoSincronizar.js';
+import { motivosNaoTrazidas, textoDoResumo } from '../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js';
 import { criarAcompanhamento } from '../../resources/js/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 
 // Fase 172-12 — resumo do "Sincronizar do Portal": textos puros e gates de fonte do acompanhamento.
@@ -152,4 +152,11 @@ test('ResumoDoSincronizar.jsx — vocabulário visual da página: 24/15/13/11px,
     assert.doesNotMatch(fonte, /font-(thin|extralight|light|medium|semibold|extrabold|black)\b/);
     assert.doesNotMatch(fonte, /\bbg-ecf-yellow(?!\/)/);
     assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+});
+
+test('nenhum par de arquivos do Publicador difere só pela caixa (review 172 WR-05: Windows x VPS Linux)', async () => {
+    const fs = await import('node:fs');
+    const nomes = fs.readdirSync(DIR).map((n) => n.replace(/\.(jsx?|tsx?)$/, '').toLowerCase());
+    const repetidos = nomes.filter((n, i) => nomes.indexOf(n) !== i);
+    assert.deepEqual(repetidos, []);
 });
