@@ -119,8 +119,17 @@ class PublicadorCriativoAprovacaoService
      * Aprova o KIT INTEIRO: cada slot `pronto`, na ordem de `slot_indice`,
      * pelo MESMO `aprovarSlot()` — cada um com a sua transação (o ML não
      * fica preso atrás da trava de um upload lento). Só fecha o kit
-     * (`status = aprovado`) quando NENHUM falhou e o mínimo congelado foi
-     * atingido; falha parcial nunca muda o status do kit.
+     * (`status = aprovado`) quando NENHUM falhou e pelo menos uma imagem
+     * ficou aprovada; falha parcial nunca muda o status do kit.
+     *
+     * Quick 261007-kit2 (decisão de reunião, 2026-10-07): `minimo_aprovadas`
+     * DEIXOU DE SER CONDIÇÃO aqui — as imagens por IA são complemento às
+     * fotos reais, nunca trava ("serão duas imagens geradas por IA e o
+     * restante serão imagens reais", palavras do usuário). Isto também
+     * corrige um bug garantido: com kit de 2 slots e `minimo_aprovadas`
+     * congelado em 3 (valor antigo), o mínimo NUNCA seria atingido e
+     * travaria toda aprovação de kit — vale também para kits antigos com o
+     * valor congelado, que nunca é lido aqui para bloquear.
      *
      * @return array{ok: bool, mensagem: string, aprovadas: int, falharam: list<int>, kit_aprovado: bool}
      */
@@ -135,10 +144,8 @@ class PublicadorCriativoAprovacaoService
         }
 
         $disponiveis = $kit->prontas() + $kit->aprovadas();
-        if ($disponiveis < $kit->minimo_aprovadas) {
-            $faltam = $kit->minimo_aprovadas - $disponiveis;
-
-            return ['ok' => false, 'mensagem' => "Faltam {$faltam} imagem(ns) pronta(s) para atingir o mínimo de {$kit->minimo_aprovadas} aprovadas.", 'aprovadas' => 0, 'falharam' => [], 'kit_aprovado' => false];
+        if ($disponiveis < 1) {
+            return ['ok' => false, 'mensagem' => 'Não há nenhuma imagem pronta para aprovar.', 'aprovadas' => 0, 'falharam' => [], 'kit_aprovado' => false];
         }
 
         $aprovadas = 0;
@@ -153,7 +160,7 @@ class PublicadorCriativoAprovacaoService
         }
 
         $kitAprovado = false;
-        if ($falharam === [] && $kit->aprovadas() >= $kit->minimo_aprovadas) {
+        if ($falharam === [] && $kit->aprovadas() >= 1) {
             $kit->update(['status' => MlAnuncioCriativoKit::STATUS_APROVADO, 'aprovado_por' => $u->id, 'aprovado_em' => now()]);
             $kitAprovado = true;
 

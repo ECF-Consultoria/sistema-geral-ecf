@@ -14,6 +14,7 @@ use App\Services\Creative\Contracts\ImageGenerationProvider;
 use App\Services\Creative\Contracts\ImageJudgementProvider;
 use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\CreativeJuiz;
+use App\Services\Creative\CreativeIdentidadeService;
 use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\Dto\CreativeJudgementRequest;
 use App\Services\Creative\Dto\CreativeJudgementResult;
@@ -212,6 +213,7 @@ class RegeneracaoAutomaticaTest extends TestCase
             app(CreativeContextBuilder::class),
             app(ProductTruthBuilder::class),
             app(CreativePromptBuilder::class),
+            app(CreativeIdentidadeService::class),
         );
     }
 

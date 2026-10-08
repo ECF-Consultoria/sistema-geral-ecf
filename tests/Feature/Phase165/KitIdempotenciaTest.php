@@ -53,7 +53,7 @@ class KitIdempotenciaTest extends TestCase
         return route('mlb.anuncios.publicador.criativos.kit.gerar', ['produto' => $this->produto->id, 'kit' => $kit]);
     }
 
-    /** Um kit `planejado`, com 7 slots `pendente` — planeja de verdade (sem passar pelo teste de `gerar()` isolado). */
+    /** Um kit `planejado`, com N slots `pendente` (N = `SLOTS_PADRAO`, 2 desde o quick 261007-kit2) — planeja de verdade (sem passar pelo teste de `gerar()` isolado). */
     private function kitDePlanejadoPendente(): MlAnuncioCriativoKit
     {
         $foto = $this->fotoComArquivo('GENERAL');
@@ -62,9 +62,10 @@ class KitIdempotenciaTest extends TestCase
         return MlAnuncioCriativoKit::find($resp->json('kit_id'));
     }
 
-    // ═══ PLAN-01/02/03/04 — planejar cria o portador + o kit com 7 slots ═══
+    // ═══ PLAN-01/02/03/04 — planejar cria o portador + o kit com N slots ═══
+    // Quick 261007-kit2 (2026-10-07): N caiu de 7 para 2 (SLOTS_PADRAO).
 
-    public function test_planejar_devolve_202_e_fica_planejado_com_7_slots(): void
+    public function test_planejar_devolve_202_e_fica_planejado_com_2_slots(): void
     {
         $foto = $this->fotoComArquivo('GENERAL');
         $admin = $this->admin();
@@ -81,7 +82,7 @@ class KitIdempotenciaTest extends TestCase
         $kit = MlAnuncioCriativoKit::find($resp->json('kit_id'));
         $this->assertNotNull($kit);
         $this->assertSame(MlAnuncioCriativoKit::STATUS_PLANEJADO, $kit->status);
-        $this->assertSame(7, $kit->totalSlots());
+        $this->assertSame(2, $kit->totalSlots());
         $this->assertSame($this->r->id, $kit->pub_rascunho_id);
         $this->assertSame('GENERAL', $kit->pub_grupo);
 

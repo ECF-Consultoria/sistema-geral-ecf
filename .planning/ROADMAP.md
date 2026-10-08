@@ -3241,7 +3241,7 @@ REND-01, REND-02
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 170: Identidade visual por conta de marketplace + logo opcional sobreposto
+### Phase 170: Identidade visual por conta de marketplace
 
 **Goal**: cada conta de marketplace (não cada empresa cliente, não cada produto) tem uma identidade
 visual cadastrada uma vez — cores, fontes, forma, filtros, estilo — que entra automaticamente no
@@ -3249,8 +3249,14 @@ prompt de toda geração daquela conta, e pode, opcionalmente, ter um arquivo de
 pelo sistema depois da imagem gerada, nunca desenhado pela IA.
 **Depends on**: Fase 169 (a etapa Imagens é o lugar de onde o cadastro de identidade é acessado,
 decisão do próprio usuário) e Fase 162/v24.0 (validador Gemini-juiz, para decidir a ordem com LOGO-05).
-**Requirements**: IDENT-01, IDENT-02, IDENT-03, IDENT-04, IDENT-05, LOGO-01, LOGO-02, LOGO-03,
-LOGO-04, LOGO-05
+**Requirements**: IDENT-01, IDENT-02, IDENT-03, IDENT-04, IDENT-05
+
+⚠️ **LOGO-01..05 saíram desta fase em 2026-10-07, por decisão do usuário** — palavras dele:
+*"Elimine o logo do planejamento, vamos seguir sem ele, a identidade visual por empresa é mais
+importante"*. Não foi esquecimento: ficam adiados, sem fase atribuída. Na mesma conversa ele pediu
+que a identidade fosse **texto livre simples** ("pode ser apenas um texto mesmo onde o usuário
+escreve as cores da empresa de preferência hexadecimal, fonte que a empresa usa"), não formulário
+estruturado.
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -3262,12 +3268,9 @@ LOGO-04, LOGO-05
      IDENT-03)
   3. Alterar a identidade de uma conta não reprocessa imagens já geradas — só vale para gerações
      futuras (IDENT-05)
-  4. É possível cadastrar, opcionalmente, um arquivo de logo real para a conta; a imagem final com
-     logo sobreposto não tem o logo desenhado pela IA, não está deformado, e continua passando pela
-     validação de tamanho mínimo (500px) antes de virar foto do rascunho (LOGO-01, LOGO-02, LOGO-03,
-     LOGO-04)
-  5. Uma imagem com logo nunca é aprovada sem ter passado primeiro pela validação de fidelidade ao
-     produto (Fase 162) — a ordem entre as duas está decidida e implementada, não ambígua (LOGO-05)
+  4. O texto de identidade nunca autoriza afirmar fato novo sobre o produto (TRUTH-02/03): ele é
+     forma — cor, fonte, filtro, estilo —, e em capa isolada (`hero`/`white_background`) não
+     introduz cenário, objeto, texto nem marca d'água, para não ferir a moderação do Mercado Livre
 
 **Plans**: TBD
 **UI hint**: yes
@@ -3314,7 +3317,7 @@ estritamente necessário para D1.
 | TXT-01, TXT-02, TXT-03, TXT-04, TXT-05 | Phase 169 | Pending |
 | REND-01, REND-02 | Phase 169 | Pending |
 | IDENT-01, IDENT-02, IDENT-03, IDENT-04, IDENT-05 | Phase 170 | Pending |
-| LOGO-01, LOGO-02, LOGO-03, LOGO-04, LOGO-05 | Phase 170 | Pending |
+| LOGO-01, LOGO-02, LOGO-03, LOGO-04, LOGO-05 | — (adiados em 07/10) | Deferred |
 | ACERVO-01, ACERVO-02, ACERVO-03, ACERVO-04, ACERVO-05 | Phase 171 | Pending |
 
 **Cobertura:** 34/34 REQ-IDs do REQUIREMENTS-v25.md mapeados — CAPA(4) AMB(4) EDIMG(4) TXT(5)

@@ -229,7 +229,8 @@ class CreativeContextBuilderPublicadorTest extends TestCase
 
         $kit->refresh();
         $this->assertSame(MlAnuncioCriativoKit::STATUS_PLANEJADO, $kit->status);
-        $this->assertSame(7, $kit->slots()->count());
+        // Quick 261007-kit2 (2026-10-07): SLOTS_PADRAO caiu de 7 para 2.
+        $this->assertSame(2, $kit->slots()->count());
 
         $slot = $kit->slots()->first();
         $this->assertSame($this->r->id, $slot->pubRascunhoIdEfetivo());

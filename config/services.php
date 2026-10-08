@@ -467,26 +467,43 @@ return [
             'connect_timeout' => (int) env('GEMINI_CONNECT_TIMEOUT', 15),
         ],
 
-        // Fase 161 — kit de 7 criativos. Cada default documentado com a
+        // Fase 161 — kit de criativos. Cada default documentado com a
         // medição que o justifica (spike 261001-nkx): US$ 0,101 e ~12,5s por
         // imagem, medidos em produção na 160-05.
+        //
+        // Quick 261007-kit2 (decisão de reunião, 2026-10-07): o tamanho
+        // padrão caiu de 7 para 2 — a principal (`hero`) e, quando o
+        // Product Truth sustenta algum ponto forte ou medida, uma segunda
+        // com texto; sem fato, a segunda sai visual (nunca "gerar só uma",
+        // nunca "bloquear até ter o fato" — os dois recusados pelo
+        // usuário). `minimo_aprovadas` DEIXOU DE SER CONDIÇÃO para publicar
+        // ou para aprovar o kit (a IA é complemento às fotos reais, nunca
+        // trava) — sobrevive só como número de tela ("mínimo recomendado");
+        // ver `MlAnuncioCriativoKit::MINIMO_APROVADAS` e os gates corrigidos
+        // em `CreativeKitPublicacao`/`PublicadorCriativoAprovacaoService`.
         'kit' => [
-            // PLAN-01: nunca menos que 7 slots planejados.
-            'slots' => (int) env('CREATIVE_KIT_SLOTS', 7),
+            // Era "nunca menos que 7" (PLAN-01 original) — substituído pela
+            // decisão acima.
+            'slots' => (int) env('CREATIVE_KIT_SLOTS', 2),
             // Quantas gerações da onda do 161-02 rodam ao mesmo tempo.
             'paralelo' => (int) env('CREATIVE_KIT_PARALELO', 3),
             // Intervalo entre ondas de despacho (161-02) — 15s cobre a
             // latência medida de ~12,5s por imagem com folga.
             'intervalo_s' => (int) env('CREATIVE_KIT_INTERVALO_S', 15),
-            // Teto de imagens por kit — 7 custam ~US$ 0,71 (7 × US$ 0,101);
-            // 14 impede um kit de custar mais que o dobro do previsto mesmo
-            // somando regenerações.
-            'max_imagens' => (int) env('CREATIVE_KIT_MAX_IMAGENS', 14),
+            // Teto de imagens por kit — 2 custam ~US$ 0,20 (2 × US$ 0,101);
+            // 4 impede um kit de custar mais que o dobro do previsto mesmo
+            // somando regenerações (mesma proporção de antes: era 14 para
+            // uma base de 7).
+            'max_imagens' => (int) env('CREATIVE_KIT_MAX_IMAGENS', 4),
             'max_regeneracoes_asset' => (int) env('CREATIVE_KIT_MAX_REGEN_ASSET', 3),
-            'max_regeneracoes_kit'   => (int) env('CREATIVE_KIT_MAX_REGEN_KIT', 7),
-            // Sai de FOTOS_RECOMENDADAS_MIN (resources/js/lib/mlAnuncioRegras.js),
-            // não de número inventado.
-            'minimo_aprovadas' => (int) env('CREATIVE_KIT_MINIMO_APROVADAS', 3),
+            // Acompanha a base de 2 na mesma proporção de ~1 regeneração
+            // por slot que o kit de 7 tinha (era 7).
+            'max_regeneracoes_kit'   => (int) env('CREATIVE_KIT_MAX_REGEN_KIT', 2),
+            // Não bloqueia mais nada (ver nota acima) — só informação de
+            // tela. Era derivado de FOTOS_RECOMENDADAS_MIN
+            // (resources/js/lib/mlAnuncioRegras.js); 1 é o mínimo coerente
+            // com um kit de 2 que não é mais régua de aprovação.
+            'minimo_aprovadas' => (int) env('CREATIVE_KIT_MINIMO_APROVADAS', 1),
         ],
 
         // Fase 162 (D-06, VAL-01..06) — validação automática pelo juiz

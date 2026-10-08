@@ -50,12 +50,26 @@ class ProductTruthBuilder
         'Não escreva texto na imagem.',
     ];
 
-    /** Rótulos legíveis em pt-BR para ids de atributo conhecidos. Fallback: humaniza o id. */
+    /**
+     * Rótulos legíveis em pt-BR para ids de atributo conhecidos. Fallback:
+     * humaniza o id (`rotulo()`) — que funciona por acaso para ids que já
+     * são a mesma palavra em português (`MATERIAL`) mas produz inglês crú
+     * para os que não são (`WIDTH`, `HEIGHT`...). `WIDTH`/`HEIGHT`/
+     * `LENGTH`/`DEPTH` (achado em produção, criativo 40/rascunho 7, quick
+     * 261008-txt) e `MAIN_MATERIAL` entram aqui por isso — nenhum deles
+     * sobrevive ao fallback em pt-BR. É SÓ rótulo de exibição: o VALOR
+     * nunca muda, continua vindo exclusivamente do cadastro.
+     */
     private const ROTULOS_CONHECIDOS = [
         'BRAND'          => 'Marca',
         'MODEL'          => 'Modelo',
         'COLOR'          => 'Cor',
         'MATERIAL'       => 'Material',
+        'MAIN_MATERIAL'  => 'Material principal',
+        'WIDTH'          => 'Largura',
+        'HEIGHT'         => 'Altura',
+        'LENGTH'         => 'Comprimento',
+        'DEPTH'          => 'Profundidade',
         'DOOR_QUANTITY'  => 'Quantidade de portas',
         'DRAWERS_NUMBER' => 'Quantidade de gavetas',
         'PIECES_NUMBER'  => 'Quantidade de peças do kit',
@@ -159,8 +173,17 @@ class ProductTruthBuilder
         return $claims;
     }
 
-    /** Rótulo legível pt-BR do id do atributo. Fallback: humaniza o id (snake → título). */
-    private function rotulo(string $id): string
+    /**
+     * Rótulo legível pt-BR do id do atributo. Fallback: humaniza o id (snake
+     * → título). `public static` (quick 261008-bdg): `CreativeSlotCatalog`
+     * passou a montar badges do SISTEMA direto do `ProductTruth` quando o
+     * modelo não propõe texto aproveitável — chama este método para não
+     * duplicar `ROTULOS_CONHECIDOS` noutra classe (fonte única do rótulo
+     * pt-BR). `static` evita injetar `ProductTruthBuilder` no construtor de
+     * `CreativeSlotCatalog`, que é instanciado sem argumento em ~30 testes
+     * das Fases 161/162/168/170 e quicks anteriores.
+     */
+    public static function rotulo(string $id): string
     {
         if (isset(self::ROTULOS_CONHECIDOS[$id])) {
             return self::ROTULOS_CONHECIDOS[$id];

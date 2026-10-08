@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
+use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\CreativePlanner;
 use App\Services\Creative\ProductTruthBuilder;
@@ -76,6 +77,7 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
         CreativeContextBuilder $ctxBuilder,
         ProductTruthBuilder $truthBuilder,
         CreativePlanner $planner,
+        CreativeCategoriaMobiliarioService $categoriaMobiliario,
     ): void {
         $kit      = MlAnuncioCriativoKit::find($this->kitId);
         $portador = MlAnuncioCriativo::find($this->criativoReferenciaId);
@@ -115,7 +117,13 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
 
         $kit->update(['etapa' => 'plano']);
         $quantidade = (int) config('services.creative.kit.slots', MlAnuncioCriativoKit::SLOTS_PADRAO);
-        $plano = $planner->planejar($contexto, $truth, $quantidade);
+        // Quick 261007-amb: categoria de móvel troca o 1º slot do kit para
+        // AMBIENTAÇÃO em vez do hero de fundo branco — detecção por
+        // `path_from_root` (nunca uma chamada nova à API: reaproveita o
+        // cache de `MlCatalogoMetaService::categoria()`, já aquecido pelo
+        // wizard). Degrada para `false` (hero) em qualquer falha.
+        $categoriaMoveis = $categoriaMobiliario->ehMoveis($contexto->categoriaId);
+        $plano = $planner->planejar($contexto, $truth, $quantidade, $categoriaMoveis);
 
         $t0 = microtime(true);
 
