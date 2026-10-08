@@ -42,6 +42,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('publicador/empresas/{conta}/sincronizar', [MlbPublicadorEntradaController::class, 'sincronizar'])
             ->where('conta', '(empresa|company)-[0-9]+')
             ->middleware('throttle:20,1,publicador.sincronizar')->name('publicador.sincronizar');
+        Route::get('publicador/empresas/{conta}/sincronizar/{pedido}', [MlbPublicadorEntradaController::class, 'resumoDoSincronizar'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereUuid('pedido')
+            ->middleware('throttle:240,1,publicador.sincronizar.resumo')->name('publicador.sincronizar.resumo');
         Route::post('publicador/empresas/{conta}/produtos', [MlbPublicadorEntradaController::class, 'criarProduto'])
             ->where('conta', '(empresa|company)-[0-9]+')
             ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
