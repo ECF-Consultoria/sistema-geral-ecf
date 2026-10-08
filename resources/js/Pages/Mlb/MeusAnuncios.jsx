@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { router, Link } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import {
-    Gauge, Store, Search, Clock, RefreshCw, Loader2, AlertTriangle, CheckCircle2,
+    Search, Clock, RefreshCw, Loader2, AlertTriangle, CheckCircle2,
     ImageOff, ExternalLink, Pencil, Info, CircleDashed,
 } from 'lucide-react';
-import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
+import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
 import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 import { rotuloTier } from '@/Pages/Mlb/anuncioHistoricoUtils';
@@ -26,11 +27,6 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 // (router.get com preserveState+replace) — nunca filtragem no cliente, que
 // mentiria sobre as outras dezenas de milhares de linhas do acervo.
 // ═══════════════════════════════════════════════════════════════════════
-
-// ─── Iniciais da empresa para o chip (mesmo padrão de AnunciosHistorico) ───
-const iniciais = (nome) =>
-    (nome ?? '?').split(/\s+/).filter(Boolean).slice(0, 2)
-        .map((p) => p[0]?.toUpperCase() ?? '').join('') || '?';
 
 const SUBABAS = [
     { chave: 'publicados', label: 'Publicados' },
@@ -197,7 +193,7 @@ function decodificarRotuloPaginacao(label) {
 }
 
 export default function MeusAnuncios({
-    empresa, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
+    empresa, conta, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
 }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [atualizando, setAtualizando] = useState(false);
@@ -258,35 +254,29 @@ export default function MeusAnuncios({
         <AppLayout title="Meus Anúncios">
             <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
 
-                {/* Cabeçalho + chip da empresa (mesmo padrão de AnunciosHistorico) */}
-                <header className="mb-4">
-                    <div className="mb-2 flex items-center gap-3">
-                        <Gauge className="h-6 w-6 text-ecf-yellow" />
-                        <div>
-                            <h1 className="text-xl font-semibold text-white">Meus Anúncios</h1>
-                            <p className="text-sm text-white/40">
-                                Saúde do acervo publicado na conta do Mercado Livre — o que precisa de você, e por quê.
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-ecf-card px-2 py-1 text-sm text-white/60">
-                            <span className="flex h-4 w-4 items-center justify-center rounded bg-ecf-yellow/15 text-[11px] font-semibold text-ecf-yellow">
-                                {iniciais(empresa.nome)}
-                            </span>
-                            <Store className="h-3 w-3 text-white/30" />
-                            {empresa.nome}
-                        </span>
-                    </div>
-
-                    <div className="mt-3">
-                        <ModoAnuncioTabs empresaId={empresa.id} modo="meus" />
-                    </div>
-                </header>
+                {/* Cabeçalho único da conta (BarraDaConta) + abas da conta (AbasDaConta) —
+                    unifica com Produtos/Alavancas (Fase 172, plano 172-04). O ícone, o h1
+                    "Meus Anúncios" e o parágrafo descritivo somem daqui de propósito:
+                    BarraDaConta não tem slot de subtítulo, só os elementos FUNCIONAIS (nome,
+                    chave, status do ML, ações). O botão "Atualizar agora" vai para o slot
+                    acoes, reusando o MESMO atualizando/cooldown/atualizarAgora das outras 3
+                    aparições — nenhum router.post novo. */}
+                <BarraDaConta
+                    empresa={conta}
+                    acoes={(
+                        <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
+                    )}
+                />
+                <AbasDaConta
+                    aba="publicacoes"
+                    conta={conta?.chave}
+                    companyId={empresa.id}
+                    subPublicacoes="meus"
+                />
 
                 {/* Sub-abas Publicados | Rascunhos (D-14) — round-trip ao servidor,
                     nunca useState local: os dois estados exigem queries diferentes. */}
-                <div className="mb-4 flex items-center gap-1 border-b border-white/[0.08]">
+                <div className="mb-4 mt-4 flex items-center gap-1 border-b border-white/[0.08]">
                     {SUBABAS.map((tab) => {
                         const ativa = sub === tab.chave;
                         const total = subTotais[tab.chave] ?? 0;
