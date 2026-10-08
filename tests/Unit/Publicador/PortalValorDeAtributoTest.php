@@ -100,11 +100,46 @@ class PortalValorDeAtributoTest extends TestCase
         $this->assertSame('cm', $r['valor']['value_unit']);
     }
 
-    public function test_numero_com_virgula_decimal_e_unidade_fora_cai_na_padrao(): void
+    public function test_numero_com_virgula_decimal_e_unidade_nao_aceita_nao_vira_a_padrao_com_o_mesmo_numero(): void
     {
+        // Review 172 WR-04: "4,5 km" não pode virar "4,5 cm" em silêncio.
         $def = $this->def('number_unit', [], ['unidades' => ['cm', 'mm'], 'unidadePadrao' => 'cm']);
         $r = PortalValorDeAtributo::resolver($def, ['valor' => '4,5', 'unidade' => 'km']);
-        $this->assertSame(4.5, $r['valor']['value_number']);
+        $this->assertNull($r['valor']);
+        $this->assertStringContainsString('não é aceita', (string) $r['aviso']);
+    }
+
+    public function test_unidade_da_mesma_grandeza_e_convertida(): void
+    {
+        $mm = $this->def('number_unit', [], ['unidades' => ['mm'], 'unidadePadrao' => 'mm']);
+        $r = PortalValorDeAtributo::resolver($mm, ['valor' => '50', 'unidade' => 'cm']);
+        $this->assertSame(500.0, $r['valor']['value_number'], '50 cm = 500 mm, nunca 50 mm');
+        $this->assertSame('mm', $r['valor']['value_unit']);
+
+        $g = $this->def('number_unit', [], ['unidades' => ['g'], 'unidadePadrao' => 'g']);
+        $r = PortalValorDeAtributo::resolver($g, ['valor' => '2,5', 'unidade' => 'kg']);
+        $this->assertSame(2500.0, $r['valor']['value_number']);
+        $this->assertSame('g', $r['valor']['value_unit']);
+
+        $m = $this->def('number_unit', [], ['unidades' => ['m', 'cm'], 'unidadePadrao' => 'm']);
+        $r = PortalValorDeAtributo::resolver($m, ['valor' => '15', 'unidade' => 'mm']);
+        $this->assertSame(0.015, $r['valor']['value_number']);
+        $this->assertSame('m', $r['valor']['value_unit']);
+    }
+
+    public function test_unidade_de_outra_grandeza_nao_e_convertida(): void
+    {
+        $def = $this->def('number_unit', [], ['unidades' => ['g', 'kg'], 'unidadePadrao' => 'g']);
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => '10', 'unidade' => 'cm']);
+        $this->assertNull($r['valor']);
+        $this->assertNotNull($r['aviso']);
+    }
+
+    public function test_numero_sem_unidade_cai_na_padrao(): void
+    {
+        $def = $this->def('number_unit', [], ['unidades' => ['cm', 'mm'], 'unidadePadrao' => 'cm']);
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => '12', 'unidade' => null]);
+        $this->assertSame(12.0, $r['valor']['value_number']);
         $this->assertSame('cm', $r['valor']['value_unit']);
     }
 

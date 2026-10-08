@@ -188,14 +188,52 @@ final class PortalValorDeAtributo
                     break;
                 }
             }
+            if ($achada === null && $unidade !== '') {
+                // Unidade informada e não aceita: converte se for da mesma grandeza (cm→mm, kg→g…);
+                // nunca reaproveita o número com outra unidade (50 cm não vira 50 mm).
+                $convertido = self::converter((float) $limpo, $unidade, $def->unidades, $def->unidadePadrao);
+                if ($convertido === null) {
+                    return self::semValor("{$nomeCampo}: unidade \"{$unidade}\" não é aceita aqui; nada foi preenchido.");
+                }
+                [$valor['value_number'], $achada] = $convertido;
+            }
             $achada ??= $def->unidadePadrao;
             if ($achada === null) {
-                return self::semValor("{$nomeCampo}: unidade \"{$unidade}\" inválida e o atributo não tem unidade padrão; nada foi preenchido.");
+                return self::semValor("{$nomeCampo}: sem unidade e o atributo não tem unidade padrão; nada foi preenchido.");
             }
             $valor['value_unit'] = $achada;
         }
 
         return ['valor' => $valor, 'aviso' => null];
+    }
+
+    /** Fator de cada unidade conhecida para a base da sua grandeza (comprimento em mm, massa em g). */
+    private const UNIDADES = [
+        'mm' => ['comprimento', 1.0], 'cm' => ['comprimento', 10.0], 'm' => ['comprimento', 1000.0],
+        'g' => ['massa', 1.0], 'kg' => ['massa', 1000.0],
+    ];
+
+    /**
+     * O número convertido para uma unidade aceita da mesma grandeza (a padrão, se servir), ou null.
+     *
+     * @param  list<string>  $aceitas
+     * @return ?array{0: float, 1: string}
+     */
+    private static function converter(float $numero, string $unidade, array $aceitas, ?string $padrao): ?array
+    {
+        $de = self::UNIDADES[mb_strtolower($unidade)] ?? null;
+        if ($de === null) {
+            return null;
+        }
+        $candidatas = $padrao !== null ? [$padrao, ...$aceitas] : $aceitas;
+        foreach ($candidatas as $u) {
+            $para = self::UNIDADES[mb_strtolower((string) $u)] ?? null;
+            if ($para !== null && $para[0] === $de[0]) {
+                return [round($numero * $de[1] / $para[1], 4), (string) $u];
+            }
+        }
+
+        return null;
     }
 
     // ─── Auxiliares ──────────────────────────────────────────────────────
