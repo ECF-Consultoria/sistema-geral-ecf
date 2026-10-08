@@ -21,6 +21,7 @@ use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
 use App\Models\PolosComentario;
+use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -1286,6 +1287,8 @@ class PolosController extends Controller
             // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
             'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'comentarios'    => (object) [],
+            // Check "reunião do mês feita" por cust_id (TKT-0004).
+            'reunioes'       => (object) [],
             'statusInicial'  => $statusInicial,
             'erro'           => null,
         ];
@@ -1336,6 +1339,8 @@ class PolosController extends Controller
                 'comentarios'    => $this->comentariosDasEmpresas(array_column($empresas, 'cust_id'), $request->user()),
                 'statusInicial'  => $statusInicial,
                 'erro'           => null,
+                // Check "reunião do mês feita" do mês selecionado, por cust_id (TKT-0004).
+                'reunioes'       => (object) $this->reunioesDoMes($d['mesSel']),
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -1450,6 +1455,74 @@ class PolosController extends Controller
         $comentario->delete();
 
         return back()->with('success', 'Comentário removido.');
+    }
+
+    // ═══ Reunião do mês (/polos/empresas — TKT-0004) ═══
+    // Check manual "a reunião do mês foi feita?", por cust_id + mês. Manual porque o
+    // sistema não registra reunião mensal das empresas dos Polos (ver o docblock da
+    // migration polos_reunioes_mes).
+
+    /**
+     * Marcações do mês, no shape que a tela consome:
+     * `[cust_id => ['feita' => bool, 'por' => nome, 'em' => 'd/m/Y H:i']]`.
+     *
+     * @return array<string, array{feita: bool, por: string, em: ?string}>
+     */
+    private function reunioesDoMes(?string $mes): array
+    {
+        if ($mes === null || $mes === '') {
+            return [];
+        }
+
+        return PolosReuniaoMes::with('marcadoPor:id,name')
+            ->where('mes', $mes)
+            ->get()
+            ->mapWithKeys(fn (PolosReuniaoMes $r) => [$r->cust_id => [
+                'feita' => (bool) $r->feita,
+                'por'   => $r->marcadoPorNome(),
+                'em'    => $r->marcado_em?->format('d/m/Y H:i'),
+            ]])
+            ->all();
+    }
+
+    public function reuniaoMarcar(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'cust_id' => ['required', 'string', 'max:50'],
+            'mes'     => ['required', 'string', 'regex:/^[0-9]{6}$/'],
+            'feita'   => ['required', 'boolean'],
+        ]);
+
+        // Normaliza na escrita: a lista da tela é montada por cust normalizado.
+        $cust = CustId::normaliza($dados['cust_id']);
+        if ($cust === '') {
+            return back()->withErrors(['cust_id' => 'Empresa sem cust_id.']);
+        }
+
+        $user  = $request->user();
+        $feita = $request->boolean('feita');
+
+        $registro = PolosReuniaoMes::firstOrNew(['cust_id' => $cust, 'mes' => $dados['mes']]);
+        $mudou    = ! $registro->exists || (bool) $registro->feita !== $feita;
+
+        if ($mudou) {
+            $registro->fill([
+                'feita'            => $feita,
+                'user_id'          => $user->id,
+                'marcado_por_nome' => $user->name,
+                'marcado_em'       => now(),
+            ])->save();
+
+            activity('polos')
+                ->causedBy($user)
+                ->performedOn($registro)
+                ->withProperties(['cust_id' => $cust, 'mes' => $dados['mes'], 'feita' => $feita])
+                ->log("[Polos] Reunião do mês {$dados['mes']} (cust {$cust}): " . ($feita ? 'feita' : 'não feita'));
+        }
+
+        return back()->with('success', $feita ? 'Reunião do mês marcada como feita.' : 'Reunião do mês marcada como não feita.');
     }
 
     // ═══ ADS ligado/desligado (/polos/empresas) ═══

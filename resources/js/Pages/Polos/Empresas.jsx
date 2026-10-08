@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown, ArrowUpDown,
-         MessageSquarePlus, Pencil, Trash2, Check, X } from 'lucide-react';
+         MessageSquarePlus, Pencil, Trash2, Check, X, CalendarCheck, CalendarX } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { corAds } from './components/adsCor';
 
@@ -47,6 +47,7 @@ export default function PolosEmpresas({
     adsLimites     = { teto: 3000, alerta1: 1000, alerta2: 2000 },
     metricaFaturamento = 'moveis',
     comentarios    = {},
+    reunioes       = {},
     statusInicial  = null,
     erro           = null,
 }) {
@@ -315,6 +316,13 @@ export default function PolosEmpresas({
                                                             })}
                                                         </div>
                                                     )}
+                                                    {/* Check da reunião do mês, logo abaixo das semanas (TKT-0004). */}
+                                                    <ReuniaoDoMes
+                                                        cust={e.cust_id}
+                                                        mes={mesSelecionado}
+                                                        mesLabel={mesRefLabel}
+                                                        reuniao={reunioes?.[e.cust_id] ?? null}
+                                                    />
                                                       </div>
                                                       {/* Comentários da empresa, de todos os meses (TKT-0007). */}
                                                       <div className="w-full shrink-0 xl:w-[340px]">
@@ -509,6 +517,55 @@ function AdsLigadoDesligado({ valor, auto, editavel, salvando, onMudar }) {
         <div className={cn('inline-flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5', salvando && 'opacity-60')}>
             {opcao(false, Megaphone, 'Ligado', 'bg-green-500/15 text-green-400')}
             {opcao(true, MegaphoneOff, 'Desligado', 'bg-red-500/15 text-red-400')}
+        </div>
+    );
+}
+
+/**
+ * "Reunião do mês feita?" de UMA empresa no mês selecionado (TKT-0004).
+ *
+ * Marcação manual: o sistema não registra a reunião mensal das empresas dos Polos em
+ * outro lugar. Sem marcação = não feita. Clicar alterna; quem marcou e quando ficam
+ * visíveis ao lado. Vai por Inertia com `preserveState`, como os comentários, para a
+ * linha não fechar nem perder o semanal já carregado.
+ */
+function ReuniaoDoMes({ cust, mes, mesLabel, reuniao }) {
+    const [salvando, setSalvando] = useState(false);
+    const feita = reuniao?.feita === true;
+
+    const alternar = (ev) => {
+        // O <tr> pai fecha a linha no clique.
+        ev.stopPropagation();
+        if (!mes || salvando) return;
+        setSalvando(true);
+        router.post(route('polos.reunioes.marcar'), { cust_id: cust, mes, feita: !feita }, {
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => setSalvando(false),
+        });
+    };
+
+    const Icone = feita ? CalendarCheck : CalendarX;
+
+    return (
+        <div onClick={(ev) => ev.stopPropagation()}
+             className="mt-3 flex max-w-3xl flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+            <p className="text-white/30 text-[10px] uppercase tracking-wider">
+                Reunião do mês{mesLabel ? <span className="normal-case tracking-normal text-white/25"> · {mesLabel}</span> : null}
+            </p>
+            <button type="button" onClick={alternar} disabled={!mes || salvando} aria-pressed={feita}
+                    title={feita ? 'Clique para marcar como não feita' : 'Clique para marcar como feita'}
+                    className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-wait disabled:opacity-60',
+                        feita ? 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
+                              : 'bg-white/[0.05] text-white/50 hover:bg-white/[0.1] hover:text-white/80')}>
+                <Icone size={13} /> {feita ? 'Feita' : 'Não feita'}
+            </button>
+            {reuniao && (
+                <span className="text-[11px] text-white/30">
+                    {feita ? 'Marcada' : 'Desmarcada'} por <span className="text-white/50">{reuniao.por}</span>
+                    {reuniao.em ? ` em ${reuniao.em}` : ''}
+                </span>
+            )}
         </div>
     );
 }
