@@ -361,6 +361,8 @@ class RascunhoRepository
             'value_name' => isset($v['value_name']) && $v['value_name'] !== '' ? (string) $v['value_name'] : null,
             'value_number' => isset($v['value_number']) && is_numeric($v['value_number']) ? (float) $v['value_number'] : null,
             'value_unit' => $v['value_unit'] ?? null,
+            // Atributo de várias opções (Fase 172): a 1ª fica em value_id, todas aqui. Sem lista, a coluna zera.
+            'values_multi' => isset($v['values_multi']) && is_array($v['values_multi']) && $v['values_multi'] !== [] ? array_values($v['values_multi']) : null,
         ];
     }
 }
