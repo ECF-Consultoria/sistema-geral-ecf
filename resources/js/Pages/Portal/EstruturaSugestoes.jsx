@@ -29,7 +29,7 @@ import { avisoDosFretes } from '@/lib/produtosFretes';
 import { entradaAtual, passosAte } from '@/lib/produtosNavegacao';
 import { cn } from '@/lib/utils';
 
-// ─── Mapeamento Estrutural — Sugestões de ofertas (Fase 168-14) ─────────────
+// ─── Mapeamento Estrutural — Planejamento (sugestões de ofertas, Fase 168-14) ─
 //
 // D-01: a pessoa aceita uma ou várias e descarta; nada é criado sozinho.
 // D-08: cada cartão mostra composição, o porquê, logística e frete estimado.
@@ -519,13 +519,13 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     const horaExata = sugestoes.gerado_em ? new Date(sugestoes.gerado_em).toLocaleString('pt-BR') : undefined;
 
     return (
-        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Sugestões de ofertas">
+        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Planejamento">
             <div className={cn('mx-auto w-full max-w-[1600px] px-4 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11', barraVisivel ? 'pb-28 lg:pb-10' : 'pb-10')} data-sugestoes-pagina>
                 <header data-cabecalho-sugestoes>
                     <nav aria-label="Caminho" data-trilha className="flex items-center gap-2 text-[13px] text-white/65">
                         <Link href={route('portal.auth.estrutura.produtos')} data-acao="voltar-produtos" className="hover:text-white">Produtos</Link>
                         <ChevronRight size={13} aria-hidden="true" className="text-white/40" />
-                        <span className="truncate text-white">Sugestões de ofertas</span>
+                        <span className="truncate text-white">Planejamento</span>
                     </nav>
                     <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
                         <div className="flex min-w-0 items-start gap-3">
@@ -533,7 +533,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                                 <Tag size={20} aria-hidden="true" />
                             </span>
                             <div className="min-w-0">
-                                <h1 className="font-display text-[26px] font-bold leading-tight text-white">Sugestões de ofertas</h1>
+                                <h1 className="font-display text-[26px] font-bold leading-tight text-white">Planejamento</h1>
                                 <p className="mt-0.5 max-w-[900px] text-[14px] leading-relaxed text-white/65">
                                     O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.
                                 </p>

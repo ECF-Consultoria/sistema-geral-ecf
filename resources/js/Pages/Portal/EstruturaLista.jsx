@@ -297,7 +297,7 @@ export default function EstruturaLista({ empresa, modulos = [], estrutura, filtr
                     acoes={painel.ofertas > 0 && (
                         <>
                             <Link href={route('portal.auth.estrutura.sugestoes')} className={LINK_SECUNDARIO} data-acao="sugestoes-de-ofertas">
-                                <Sparkles size={14} /> Sugestões de ofertas
+                                <Sparkles size={14} /> Planejamento
                             </Link>
                             {ml_conectado && (
                                 <Botao onClick={() => setImportar(true)} data-acao="importar-ml"><DownloadCloud size={14} /> Importar do Mercado Livre</Botao>

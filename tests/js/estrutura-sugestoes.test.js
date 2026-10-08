@@ -45,7 +45,10 @@ test('Sem planilha e sem regra de negócio no navegador', () => {
 });
 
 test('Os textos literais da UI-SPEC estão em uso', () => {
-    assert.ok(pagina.includes('Sugestões de ofertas'));
+    // 08/10: a tela passou a se chamar "Planejamento" (título, trilha e h1); rota e nomes internos não mudam.
+    assert.ok(pagina.includes('titulo="Planejamento"'));
+    assert.ok(pagina.includes('leading-tight text-white">Planejamento</h1>'));
+    assert.ok(! pagina.includes('Sugestões de ofertas'));
     assert.ok(pagina.includes('O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.'));
     assert.ok(pagina.includes('Elas saem da lista e não voltam sozinhas. Você pode restaurá-las na aba Descartadas.'));
     for (const proibida of ['algoritmo', 'gerador', ' IA ']) {

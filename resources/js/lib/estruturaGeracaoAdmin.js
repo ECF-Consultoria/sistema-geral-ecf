@@ -1,4 +1,4 @@
-// Formatação da tela admin "Tipos e pares das sugestões de ofertas" (sem React).
+// Formatação da tela admin "Tipos e pares do Planejamento" (sem React).
 
 /** Opções do grupo "No Combit"; os rótulos acompanham os tipos escolhidos. */
 export function opcoesDoCombit(primeiroNome, segundoNome) {

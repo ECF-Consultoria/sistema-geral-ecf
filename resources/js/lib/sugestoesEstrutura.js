@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Rótulos e textos da tela "Sugestões de ofertas" (Fase 168) — SÓ formatação.
+// Rótulos e textos da tela "Planejamento" (sugestões de ofertas, Fase 168) — SÓ formatação.
 // Os textos seguem o contrato de copy da UI-SPEC (sem exclamação). Os limites
 // (título, código, lote) vêm do servidor, por isso as mensagens que os citam são
 // funções.
