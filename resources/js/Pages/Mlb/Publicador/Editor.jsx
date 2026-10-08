@@ -323,7 +323,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
                                     {mostrar && <ResumoDosErros bloqueios={bloqueios} />}
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
                                     {etapa === 'detalhes' && <EtapaDetalhes m={m} />}
-                                    {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} />}
+                                    {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} empresa={empresa} />}
                                     {etapa === 'condicoes' && (
                                         <EtapaCondicoes m={m}>
                                             <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave) => irPara(chave, { marcar: true })} />
