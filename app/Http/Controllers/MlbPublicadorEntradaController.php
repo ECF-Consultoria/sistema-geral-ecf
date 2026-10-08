@@ -9,6 +9,7 @@ use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Support\Publicador\ContasLiberadas;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -20,6 +21,9 @@ class MlbPublicadorEntradaController extends Controller
 {
     private const POR_PAGINA = 50;
     private const FILTROS = ['todos', 'prontos', 'atencao', 'nunca'];
+    private const BUSCA_LIMITE = 20;
+
+    private const PROGRAMA_ROTULO = ['polos' => 'Polos', 'incubadora' => 'Incubadora', 'gestao' => 'Gestão'];
 
     public function __construct(private ProgramasPublicadorService $programas) {}
 
@@ -81,6 +85,41 @@ class MlbPublicadorEntradaController extends Controller
             ],
             'filtros' => ['busca' => $busca, 'filtro' => $filtro],
         ]);
+    }
+
+    /**
+     * JSON do seletor "Trocar empresa" (D-06 do handoff): busca entre TODAS as contas dos
+     * 3 programas, reusando `ProgramasPublicadorService::empresas()` já usado por `index()` —
+     * mesmo filtro por nome/identificador (`mb_stripos`), nunca uma query nova. Junta as 3
+     * coleções ANTES de filtrar (uma chamada por programa, nunca uma por letra digitada).
+     * NUNCA devolve token de acesso/refresh — só os campos que o popover precisa.
+     */
+    public function buscaEmpresas(Request $request): JsonResponse
+    {
+        $q = mb_substr(trim((string) $request->query('q', '')), 0, 120);
+        if ($q === '') {
+            return response()->json([]);
+        }
+
+        $todas = collect(ProgramasPublicadorService::PROGRAMAS)
+            ->flatMap(fn (string $programa) => $this->programas->empresas($programa)
+                ->map(fn (array $l) => $l + ['programa' => $programa, 'programa_rotulo' => self::PROGRAMA_ROTULO[$programa]]));
+
+        $achadas = $todas
+            ->filter(fn (array $l) => mb_stripos($l['nome'], $q) !== false || mb_stripos($l['identificador'], $q) !== false)
+            ->take(self::BUSCA_LIMITE)
+            ->map(fn (array $l) => [
+                'chave' => $l['chave'],
+                'nome' => $l['nome'],
+                'identificador' => $l['identificador'],
+                'company_id' => $l['company_id'],
+                'programa' => $l['programa'],
+                'programa_rotulo' => $l['programa_rotulo'],
+                'token' => $l['token'],
+            ])
+            ->values();
+
+        return response()->json($achadas);
     }
 
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */

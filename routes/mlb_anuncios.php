@@ -35,6 +35,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // (?programa=polos|incubadora|gestao), só admins (D17).
         Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
 
+        // 173-01 (D-06): busca de empresas pro seletor "Trocar empresa" — rota literal
+        // `empresas-busca`, nunca bate no regex `(empresa|company)-[0-9]+` de `{conta}`
+        // abaixo (não tem o hífen seguido de dígitos), mas fica ANTES por clareza de leitura.
+        Route::get('publicador/empresas-busca', [MlbPublicadorEntradaController::class, 'buscaEmpresas'])
+            ->middleware('throttle:60,1,publicador.empresas-busca')->name('publicador.empresas-busca');
+
         // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
         // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
         Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
