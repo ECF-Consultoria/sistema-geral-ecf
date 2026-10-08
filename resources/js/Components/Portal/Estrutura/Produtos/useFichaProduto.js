@@ -63,6 +63,9 @@ const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto
 /** O que a pessoa vê e pode mudar, para comparar o rascunho com o que a ficha abriu. */
 const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id ?? null, ...campoEditaveis(v), volumes: v.volumes_digitados ?? null })));
 
+/** Variações e descrição juntas: mudar só a descrição também conta como rascunho (review 172 WR-06). */
+const assinatura = (lista, descricao) => `${conteudo(lista)}|${String(descricao ?? '').trim()}`;
+
 export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null }) {
     // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
     const [inicio] = useState(() => {
@@ -70,7 +73,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             ? linhas.map((l) => linhaDoServidor(l, vocabulario?.pendencias))
             : [linhaEmBranco(produto)];
         const guardado = lerRascunho(produto?.id ?? null);
-        const oferecer = guardado && conteudo(guardado.vars) !== conteudo(iniciais) ? guardado : null;
+        // Rascunho antigo, sem a chave `descricao`, vale como "descrição não mexida".
+        const descricaoGuardada = typeof guardado?.descricao === 'string' ? guardado.descricao : (descricaoInicial ?? '');
+        const oferecer = guardado && assinatura(guardado.vars, descricaoGuardada) !== assinatura(iniciais, descricaoInicial) ? guardado : null;
         if (guardado && ! oferecer) apagarRascunho(produto?.id ?? null);
 
         return { iniciais, oferecer };
@@ -83,6 +88,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const [rascunho, setRascunho] = useState(inicio.oferecer);   // { em, vars } à espera de Recuperar/Descartar
     const varsRef = useRef(vars);
     varsRef.current = vars;
+    // Descrição do produto: texto livre, gravado no mesmo Salvar (depois da ficha técnica). Entra no
+    // rascunho do navegador junto com as variações.
+    const descricao = useDescricaoProduto({ inicial: descricaoInicial ?? '', aoAlterar: () => setAlterado(true) });
 
     // A cada alteração o rascunho é regravado. Produto novo que ganhou id (gravação parcial) muda de
     // chave: o rascunho "novo" sai e passa a valer o do produto.
@@ -91,15 +99,16 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         if (! alterado) return;
         const id = idDoProduto(vars, produto);
         if (chaveGravada.current !== undefined && chaveGravada.current !== id) apagarRascunho(chaveGravada.current);
-        gravarRascunho(id, vars);
+        gravarRascunho(id, vars, { descricao: descricao.texto });
         chaveGravada.current = id;
-    }, [vars, alterado]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [vars, alterado, descricao.texto]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /** Volta o que estava no rascunho. Variação nunca gravada ganha chave nova (o contador recomeça ao recarregar). */
     const recuperarRascunho = () => {
         if (! rascunho) return;
         // As imagens valem as de agora (o servidor as grava na hora), não as do dia em que o rascunho foi guardado.
         setVars(manterImagensAtuais(rascunho.vars, varsRef.current).map((v) => ({ ...v, _k: v.id ? `v${v.id}` : novaChave() })));
+        if (typeof rascunho.descricao === 'string') descricao.alterar(rascunho.descricao);
         setErros({});
         setAlterado(true);
         setRascunho(null);
@@ -109,7 +118,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         apagarRascunho(produto?.id ?? null);
         setRascunho(null);
         // O que já foi digitado nesta visita continua protegido.
-        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current);
+        if (alterado) gravarRascunho(idDoProduto(varsRef.current, produto), varsRef.current, { descricao: descricao.texto });
     };
 
     /** Sair confirmado, produto excluído ou salvo: o rascunho deixa de valer. */
@@ -121,8 +130,6 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     // O campo que é o eixo de alguma variação deste produto (ex.: Material, no que varia por material) some.
     const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id,
         eixos: eixosEmUso(vars, vocabulario?.eixos), aoAlterar: () => setAlterado(true) });
-    // Descrição do produto: texto livre, gravado no mesmo Salvar (depois da ficha técnica).
-    const descricao = useDescricaoProduto({ inicial: descricaoInicial ?? '', aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
