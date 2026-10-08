@@ -198,6 +198,11 @@ export function fotoDoProduto(variacoes) {
     return null;
 }
 
+/** A foto do cartão na lista: a `capa` (URL) da primeira variação que tiver uma — a lista não recebe a galeria. */
+export function capaDoProduto(variacoes) {
+    return (variacoes ?? []).find((v) => v?.capa)?.capa ?? null;
+}
+
 /** Devolve ao navegador as URLs locais que não serão mais usadas. Fora do navegador, não faz nada. */
 export function revogar(imagens, revogarUrl = null) {
     const soltar = revogarUrl ?? (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function' ? (u) => URL.revokeObjectURL(u) : null);

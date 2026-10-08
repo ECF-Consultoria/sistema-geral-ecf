@@ -1,5 +1,6 @@
 import { Tag } from 'lucide-react';
 import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
 // ─── Cartão do produto — Lista (REF-3, 167-20) ──────────────────────────────
@@ -18,7 +19,7 @@ export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, 
                 classeDestaque(destaque))}>
             <EtiquetaUltimoAberto destaque={destaque} />
             <div className="flex items-center gap-7 py-0.5 pl-4 pr-6">
-                <QuadroFotoProduto nome={primeira.nome} tamanho="linha" />
+                <QuadroFotoProduto nome={primeira.nome} foto={capaDoProduto(variacoes)} tamanho="linha" />
                 <div className="min-w-0">
                     <a href={route('portal.auth.estrutura.produtos.ficha', produtoId)}
                         className="block truncate text-[18px] font-semibold text-white hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40">
