@@ -32,6 +32,7 @@ use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\RegeneradorVariantes;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -87,12 +88,20 @@ class EditorRascunhoService
         }
         if (! $r) {
             $mlbs = $this->mlbsDaRegua($produto);
-            $r = $this->repo->criar($produto, array_map(
-                fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
-                array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
-            ), ['origem' => 'publicador']);
-            $atributos = $comSku ? ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]] : [];
-            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => $atributos])]);
+            try {
+                $r = $this->repo->criar($produto, array_map(
+                    fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
+                    array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
+                ), ['origem' => 'publicador']);
+                $atributos = $comSku ? ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]] : [];
+                $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => $atributos])]);
+            } catch (QueryException $e) {
+                // Corrida no `pubr_produto_uq`: outro processo criou o rascunho deste produto — usa o dele.
+                $r = (string) $e->getCode() === '23000' ? PubRascunho::where('produto_id', $produto->id)->first() : null;
+                if ($r === null) {
+                    throw $e;
+                }
+            }
         }
 
         // Migrado com categoria e sem hash: grava o hash do schema de hoje.

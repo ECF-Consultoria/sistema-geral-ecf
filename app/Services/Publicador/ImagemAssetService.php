@@ -10,6 +10,7 @@ use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\Validacao\ContextoValidacao;
 use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Validacao\ValidadorImagem;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -53,10 +54,20 @@ class ImagemAssetService
         $caminho = "publicador/{$r->id}/{$sha}.".($meta['mime'] === 'image/png' ? 'png' : 'jpg');
         Storage::disk(self::DISCO)->put($caminho, $conteudo);
 
-        $imagem = $r->imagens()->create([
-            'caminho' => $caminho, 'sha256' => $sha, 'mime' => $meta['mime'], 'bytes' => $meta['bytes'],
-            'largura' => $meta['largura'], 'altura' => $meta['altura'], 'upload_status' => PubImagem::PENDENTE,
-        ]);
+        try {
+            $imagem = $r->imagens()->create([
+                'caminho' => $caminho, 'sha256' => $sha, 'mime' => $meta['mime'], 'bytes' => $meta['bytes'],
+                'largura' => $meta['largura'], 'altura' => $meta['altura'], 'upload_status' => PubImagem::PENDENTE,
+            ]);
+        } catch (QueryException $e) {
+            // Corrida no `pubim_sha_uq`: outro processo guardou a mesma foto entre a checagem e o create.
+            $existente = (string) $e->getCode() === '23000' ? $r->imagens()->where('sha256', $sha)->first() : null;
+            if ($existente === null) {
+                throw $e;
+            }
+
+            return ['imagem' => $existente, 'problemas' => $problemas, 'nova' => false];
+        }
 
         return ['imagem' => $enviar ? $this->enviarAoMl($imagem, $conteudo) : $imagem, 'problemas' => $problemas, 'nova' => true];
     }

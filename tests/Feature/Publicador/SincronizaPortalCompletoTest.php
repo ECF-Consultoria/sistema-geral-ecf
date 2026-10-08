@@ -299,4 +299,71 @@ class SincronizaPortalCompletoTest extends TestCase
         $this->assertSame(0, $r2->json('criados'));
         $this->assertSame(0, DB::table('pub_publicacoes')->count());
     }
+
+    public function test_job_do_mesmo_produto_que_ja_esta_rodando_nao_preenche_junto_e_fecha_o_proprio_resumo(): void
+    {
+        [$c, $e] = $this->empresaComPortal();
+        Queue::fake();
+        $this->sincronizar($e)->assertOk();
+        $pub = PubProduto::where('company_id', $c->id)->whereNotNull('estrutura_produto_id')->firstOrFail();
+        $this->mock(PortalParaRascunhoService::class, fn ($m) => $m->shouldNotReceive('preencher'));
+
+        // Outro worker está com o produto (a trava é dele).
+        $outro = \Illuminate\Support\Facades\Cache::lock(PreencherRascunhoDoPortalJob::chaveDaTrava($pub->id), 60);
+        $this->assertTrue($outro->get());
+        $resumo = app(ResumoDoSincronizar::class);
+        $pedido = $resumo->abrir($c->id, [$pub->id]);
+        app()->call([new PreencherRascunhoDoPortalJob($pub->id, $pedido), 'handle']);
+
+        $res = $resumo->ler($pedido, $c->id);
+        $this->assertSame('pronto', $res['status'], 'o 2º clique não fica esperando para sempre');
+        $this->assertStringContainsString('já estava sendo preenchido', $res['avisos'][0]);
+        $outro->release();
+    }
+
+    public function test_foto_guardada_por_outro_processo_entre_a_checagem_e_o_create_nao_quebra(): void
+    {
+        [$c] = $this->empresaComPortal();
+        $pub = PubProduto::create(['company_id' => $c->id, 'sku' => 'X', 'nome' => 'X', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $r = app(\App\Services\Publicador\EditorRascunhoService::class)->rascunhoDoProduto($pub);
+        $conteudo = $this->bytes();
+        // O "outro processo" grava a mesma foto logo antes do create deste.
+        PubImagem::creating(function (PubImagem $i) {
+            if (DB::table('pub_imagens')->where('sha256', $i->sha256)->doesntExist()) {
+                DB::table('pub_imagens')->insert([...$i->getAttributes(), 'created_at' => now(), 'updated_at' => now()]);
+            }
+        });
+
+        $res = app(\App\Services\Publicador\ImagemAssetService::class)->receber($r, $conteudo, 'foto.jpg', enviar: false);
+
+        $this->assertNotNull($res['imagem']);
+        $this->assertFalse($res['nova']);
+        $this->assertSame(1, DB::table('pub_imagens')->where('sha256', hash('sha256', $conteudo))->count());
+    }
+
+    public function test_rascunho_criado_por_outro_processo_e_reaproveitado(): void
+    {
+        [$c] = $this->empresaComPortal();
+        $pub = PubProduto::create(['company_id' => $c->id, 'sku' => 'X', 'nome' => 'X', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        // O "outro processo" cria (e confirma) o rascunho logo antes do create deste.
+        $this->app->instance(\App\Services\Publicador\RascunhoRepository::class, new class extends \App\Services\Publicador\RascunhoRepository
+        {
+            public ?int $outro = null;
+
+            public function criar(PubProduto $produto, array $alvos, ?array $ator = null): PubRascunho
+            {
+                $this->outro ??= DB::table('pub_rascunhos')->insertGetId(['produto_id' => $produto->id, 'status' => PubRascunho::DRAFT,
+                    'revisao' => 1, 'created_at' => now(), 'updated_at' => now()]);
+
+                return parent::criar($produto, $alvos, $ator);
+            }
+        });
+        $repo = app(\App\Services\Publicador\RascunhoRepository::class);
+
+        $r = app(\App\Services\Publicador\EditorRascunhoService::class)->rascunhoDoProduto($pub);
+
+        $this->assertNotNull($repo->outro);
+        $this->assertSame($repo->outro, $r->id);
+        $this->assertSame(1, PubRascunho::where('produto_id', $pub->id)->count());
+    }
 }

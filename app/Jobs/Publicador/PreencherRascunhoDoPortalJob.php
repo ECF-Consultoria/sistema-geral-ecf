@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -19,6 +20,11 @@ use Illuminate\Support\Facades\Log;
  *
  * Sem nova tentativa: o serviço é idempotente, mas a tela já mostra o aviso e a pessoa sincroniza de novo.
  * `timeout` igual ao dos Jobs irmãos do Publicador (abaixo do retry_after de produção, 2000 s).
+ *
+ * Um de cada vez por produto (review 172 WR-06): dois cliques seguidos põem dois Jobs do mesmo produto na
+ * fila e, com dois workers, eles corriam juntos e quebravam nos uniques. A trava é por produto, não
+ * `ShouldBeUnique`: o Job descartado deixaria o resumo do 2º clique esperando para sempre. Quem não pega
+ * a trava registra no SEU pedido que o produto já está sendo preenchido e termina.
  */
 class PreencherRascunhoDoPortalJob implements ShouldQueue
 {
@@ -45,9 +51,26 @@ class PreencherRascunhoDoPortalJob implements ShouldQueue
             return;
         }
 
-        $r = $servico->preencher($produto);
+        $trava = Cache::lock(self::chaveDaTrava($this->produtoId), $this->timeout + 30);
+        if (! $trava->get()) {
+            $resumo->registrar($this->pedido, $this->produtoId, self::vazio($this->produtoId,
+                "{$produto->nome}: já estava sendo preenchido por outro Sincronizar; confira o rascunho em instantes."));
+
+            return;
+        }
+
+        try {
+            $r = $servico->preencher($produto);
+        } finally {
+            $trava->release();
+        }
         $resumo->registrar($this->pedido, $this->produtoId, $r);
         Log::info("[Publicador] Produto {$produto->id} ({$produto->nome}) preenchido pelo Portal: {$r['campos_preenchidos']} campo(s), {$r['fotos_trazidas']} foto(s).");
+    }
+
+    public static function chaveDaTrava(int $produtoId): string
+    {
+        return "publicador:preencher-portal:{$produtoId}";
     }
 
     public function failed(\Throwable $e): void
