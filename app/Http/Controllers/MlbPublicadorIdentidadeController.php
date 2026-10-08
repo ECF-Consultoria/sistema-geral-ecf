@@ -64,4 +64,45 @@ class MlbPublicadorIdentidadeController extends Controller
 
         return response()->json(['texto' => $dados['texto'] ?? null]);
     }
+
+    /**
+     * Fase 173, Plano 01 (VISG-05/CONF-01) — identidade visual lida/gravada pela CONTA
+     * (`empresa-N`/`company-N`), não pelo produto. Decisão deste plano: NÃO exige
+     * `CreativeEngineAtivo` — Configurações da conta é tela geral (ver objective do
+     * plano), diferente da versão por produto, que fica dentro do fluxo de criativos.
+     * A conta vem SEMPRE do resolver (nunca de input da requisição, IDOR) e os dois
+     * endpoints leem/gravam o MESMO registro (`company_id`/`mlb_empresa_id`) da versão
+     * por produto — mesma chave dupla, só a porta de entrada muda.
+     */
+    public function mostrarPorConta(string $conta): JsonResponse
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $identidade = CreativeIdentidade::paraAncora($alvo['company']?->id, $alvo['mlb_empresa']?->id);
+
+        return response()->json([
+            'texto' => $identidade?->texto,
+            'atualizado_em' => $identidade?->updated_at?->toIso8601String(),
+        ]);
+    }
+
+    /** Grava a identidade visual da CONTA resolvida — mesma validação da versão por produto. */
+    public function salvarPorConta(Request $request, string $conta): JsonResponse
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $dados = $request->validate(['texto' => ['nullable', 'string', 'max:4000']]);
+
+        $identidade = CreativeIdentidade::updateOrCreate(
+            ['company_id' => $alvo['company']?->id, 'mlb_empresa_id' => $alvo['mlb_empresa']?->id],
+            ['texto' => $dados['texto'] ?? null],
+        );
+
+        return response()->json([
+            'texto' => $identidade->texto,
+            'atualizado_em' => $identidade->updated_at?->toIso8601String(),
+        ]);
+    }
 }
