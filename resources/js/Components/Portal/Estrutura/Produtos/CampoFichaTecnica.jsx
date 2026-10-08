@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { Obrigatorio } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { ehMultivalor, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
+import { ehMultivalor, idDeLista, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
 import { cn } from '@/lib/utils';
 
 // ─── Um campo da ficha técnica ──────────────────────────────────────────────
@@ -117,7 +117,9 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar }) {
                 <ListaMultipla id={id} campo={campo} escolhidos={idsMultivalor(campo, valor)} descricao={descricao} invalido={invalido}
                     onChange={(ids) => onMudar(campo.id, { valor: ids })} />
             ) : (
-                <select id={id} className={classe} value={valor} aria-invalid={invalido || undefined} aria-describedby={descricao}
+                // `idDeLista` casa por nome também: campo que hoje é lista pode ter o nome
+                // gravado como texto livre de antes — sem isso ele apareceria vazio.
+                <select id={id} className={classe} value={idDeLista(campo, valor)} aria-invalid={invalido || undefined} aria-describedby={descricao}
                     onChange={(e) => onMudar(campo.id, { valor: e.target.value })}>
                     <option value="">Selecione</option>
                     {(campo.valores ?? []).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}

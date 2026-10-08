@@ -42,29 +42,46 @@ export const numeroParaTela = (v) => String(v ?? '').replace('.', ',');
 export const SEPARADOR_MULTIVALOR = ' | ';
 
 /**
+ * O id da opção escolhida num campo de lista, ou '' quando nada bate.
+ *
+ * Casa por id E POR NOME, e é o nome que importa: campo que HOJE tem opções pode
+ * ter sido de texto livre antes, e o que ficou gravado nele é o NOME, sem
+ * `valor_id`. Casar só por id mostraria "Selecione" num campo correto — e salvar
+ * assim APAGARIA o valor. Valor que não bate em opção nenhuma devolve '' de
+ * propósito: é dado que não serve, e a pessoa precisa reescolher.
+ */
+export function idDeLista(campo, bruto) {
+    const t = String(bruto ?? '').trim();
+    if (t === '') return '';
+    const opcoes = Array.isArray(campo?.valores) ? campo.valores : [];
+
+    const exato = opcoes.find((o) => String(o.id) === t || String(o.nome) === t);
+    if (exato) return String(exato.id);
+
+    const solto = t.toLowerCase();
+    const porCaixa = opcoes.find((o) => String(o.nome).toLowerCase() === solto);
+
+    return porCaixa ? String(porCaixa.id) : '';
+}
+
+/**
  * Os ids das opções escolhidas num campo multivalor, na ordem, sem repetição.
  *
  * O que está guardado em memória vem de dois lugares e esta função aceita os dois:
  * uma LISTA de ids (o que os chips produzem ao editar) ou o TEXTO que o servidor
  * devolveu em `salvos` — os nomes emendados, porque a linha gravada não tem os ids
- * (ver `FichaTecnicaDoProduto::multivalor`). Nome é reencontrado na definição da
- * categoria; o que não bate em nenhuma opção é descartado.
+ * (ver `FichaTecnicaDoProduto::multivalor`). Cada pedaço passa por {@link idDeLista},
+ * então vale o mesmo casamento por nome; o que não bate em opção nenhuma é descartado.
  */
 export function idsMultivalor(campo, bruto) {
-    const opcoes = Array.isArray(campo?.valores) ? campo.valores : [];
-    const porId = new Map(opcoes.map((o) => [String(o.id), String(o.id)]));
-    const porNome = new Map(opcoes.map((o) => [String(o.nome), String(o.id)]));
-
     const pedacos = Array.isArray(bruto)
         ? bruto
         : String(bruto ?? '').split(SEPARADOR_MULTIVALOR);
 
     const out = [];
     pedacos.forEach((p) => {
-        const t = String(p ?? '').trim();
-        if (t === '') return;
-        const id = porId.get(t) ?? porNome.get(t);
-        if (id !== undefined && ! out.includes(id)) out.push(id);
+        const id = idDeLista(campo, p);
+        if (id !== '' && ! out.includes(id)) out.push(id);
     });
 
     return out;
@@ -89,6 +106,17 @@ export function montarAtributos(grupos, valores) {
         if (ehMultivalor(campo)) {
             const ids = idsMultivalor(campo, bruto);
             if (ids.length) out.push({ id: campo.id, valor: ids });
+
+            return;
+        }
+
+        // Lista de escolha única manda o ID da opção. Valor que não bate em nenhuma (texto
+        // livre antigo, de quando o campo não era lista) fica de fora: é o mesmo que vazio,
+        // e a tela também o mostra vazio. Obrigatório assim volta como "Preencha …", que é
+        // o pedido certo — mandar o texto cru só daria 422 travando a ficha inteira.
+        if (campo.tipo === 'lista') {
+            const id = idDeLista(campo, bruto);
+            if (id !== '') out.push({ id: campo.id, valor: id });
 
             return;
         }
