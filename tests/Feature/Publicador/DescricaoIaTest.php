@@ -3,7 +3,9 @@
 namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\GerarDescricaoIaJob;
+use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\User;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Publicador\DescricaoIaService;
 use App\Services\Publicador\PortalProdutoLeitor;
@@ -182,6 +184,75 @@ class DescricaoIaTest extends TestCase
 
         $e = $this->servico()->estado($this->r);
         $this->assertSame(['rodando', $novo], [$e['status'], $e['pedido']]);
+    }
+
+    // ═══ Rotas e estado do editor (task 2) ══════════════════════════════════
+
+    private function admin(): static
+    {
+        return $this->withoutVite()->actingAs(User::factory()->create(['role' => 'admin']));
+    }
+
+    private function rota(string $nome, ?PubProduto $p = null): string
+    {
+        return route("mlb.anuncios.publicador.{$nome}", ['produto' => ($p ?? $this->produto)->id]);
+    }
+
+    public function test_post_manual_devolve_202_e_get_traz_o_estado(): void
+    {
+        Queue::fake();
+
+        $pedido = $this->admin()->postJson($this->rota('descricao-ia'), ['automatico' => false])
+            ->assertStatus(202)->assertJson(['status' => 'rodando'])->json('pedido');
+
+        Queue::assertPushedOn('high', GerarDescricaoIaJob::class);
+        $this->admin()->getJson($this->rota('descricao-ia.status'))->assertOk()->assertJson(['status' => 'rodando', 'pedido' => $pedido]);
+    }
+
+    public function test_get_sem_pedido_devolve_nenhum(): void
+    {
+        $this->admin()->getJson($this->rota('descricao-ia.status'))->assertOk()->assertExactJson(['status' => 'nenhum']);
+    }
+
+    public function test_post_automatico_ja_pedido_e_sem_material(): void
+    {
+        Queue::fake();
+        $this->vazio();
+
+        $this->admin()->postJson($this->rota('descricao-ia'), ['automatico' => true])->assertStatus(202);
+        $this->admin()->postJson($this->rota('descricao-ia'), ['automatico' => true])->assertOk()->assertExactJson(['status' => 'ja_pedido']);
+
+        Cache::flush();
+        $this->descricaoCliente = null;
+        $this->admin()->postJson($this->rota('descricao-ia'), ['automatico' => true])->assertOk()->assertExactJson(['status' => 'nao_se_aplica']);
+        Queue::assertPushed(GerarDescricaoIaJob::class, 1);
+    }
+
+    public function test_nao_admin_403_e_produto_sem_dono_404(): void
+    {
+        Queue::fake();
+        $consultor = $this->withoutVite()->actingAs(User::factory()->create(['role' => 'consultor']));
+        $consultor->postJson($this->rota('descricao-ia'))->assertForbidden();
+        $consultor->getJson($this->rota('descricao-ia.status'))->assertForbidden();
+
+        $semDono = PubProduto::create(['sku' => 'ORF-1', 'nome' => 'Órfão', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $this->admin()->postJson($this->rota('descricao-ia', $semDono))->assertNotFound();
+        $this->admin()->getJson($this->rota('descricao-ia.status', $semDono))->assertNotFound();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_estado_do_editor_traz_a_descricao_do_cliente_ao_vivo(): void
+    {
+        $this->fakeMl();
+
+        $this->admin()->getJson($this->rota('abrir'))->assertOk()
+            ->assertJsonPath('portal.descricao_cliente', 'Cadeira com encosto em tela, 2 anos de uso, ótima para home office.');
+
+        $this->descricaoCliente = 'Texto novo do cliente.';
+        $this->admin()->getJson($this->rota('abrir'))->assertOk()->assertJsonPath('portal.descricao_cliente', 'Texto novo do cliente.');
+
+        $this->descricaoCliente = null;
+        $this->admin()->getJson($this->rota('abrir'))->assertOk()->assertJsonPath('portal.descricao_cliente', null);
     }
 
     public function test_job_roda_pela_fila_sem_http_real(): void

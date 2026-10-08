@@ -56,6 +56,7 @@ class EditorRascunhoService
         private DadosEfetivosService $efetivos,
         private MigracaoAnunciarAntigo $migracao,
         private PublicacaoService $publicacoes,
+        private PortalProdutoLeitor $leitor,
     ) {}
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
@@ -532,6 +533,8 @@ class EditorRascunhoService
                 ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
                 ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
                 ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all(),
+            // Fase 172 (D-09): o que o cliente escreveu no Portal, lido ao vivo — insumo da IA de descrição.
+            'portal' => ['descricao_cliente' => $this->leitor->descricaoDoCliente($r->produto)],
         ];
     }
 
