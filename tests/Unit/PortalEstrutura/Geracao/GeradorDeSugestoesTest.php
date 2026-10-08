@@ -144,12 +144,15 @@ class GeradorDeSugestoesTest extends TestCase
         $familias = array_map(fn ($s) => $s['familia'], $lista);
         $this->assertSame(['Alfa', 'Zeta', null], array_values(array_unique($familias, SORT_REGULAR)));
 
-        $ordemFase = ['combo' => 0, 'kit' => 1, 'combit' => 2];
+        // 08/10: dentro da família, Kit e Combit antes do Combo.
+        $ordemFase = ['kit' => 0, 'combit' => 1, 'combo' => 2];
         $alfa = array_values(array_filter($lista, fn ($s) => $s['familia'] === 'Alfa'));
         $fases = array_map(fn ($s) => $ordemFase[$s['fase']], $alfa);
         $ordenado = $fases;
         sort($ordenado);
         $this->assertSame($ordenado, $fases);
+        $this->assertSame('kit', $alfa[0]['fase']);
+        $this->assertSame('combo', $alfa[count($alfa) - 1]['fase']);
     }
 
     public function test_kit_orienta_pela_ordem_do_tipo(): void

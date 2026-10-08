@@ -31,11 +31,15 @@ use App\Models\EstruturaOferta;
  */
 final class GeradorDeSugestoes
 {
-    /** Ordem das fases na saída. */
+    /**
+     * Ordem das fases DENTRO da família (08/10): primeiro o que a pessoa não montaria
+     * sozinha (Kit, depois Combit) e por último o Combo. Antes o Combo vinha primeiro e
+     * as cadeiras x2/x4/x6/x8 enchiam a página de 20 antes do primeiro Kit.
+     */
     private const ORDEM_FASE = [
-        EstruturaOferta::FASE_COMBO  => 0,
-        EstruturaOferta::FASE_KIT    => 1,
-        EstruturaOferta::FASE_COMBIT => 2,
+        EstruturaOferta::FASE_KIT    => 0,
+        EstruturaOferta::FASE_COMBIT => 1,
+        EstruturaOferta::FASE_COMBO  => 2,
     ];
 
     /**
@@ -422,7 +426,10 @@ final class GeradorDeSugestoes
         ];
     }
 
-    /** Família pelo nome normalizado (desempate id), nula por último; depois fase e chave. */
+    /**
+     * Família pelo nome normalizado (desempate id), nula por último; depois fase
+     * (Kit, Combit, Combo), o Kit de 3 antes do de 2, e a chave.
+     */
     private static function ordenar(array $lista): array
     {
         usort($lista, function ($a, $b) {
@@ -432,8 +439,8 @@ final class GeradorDeSugestoes
                 return $fa === null ? 1 : -1;
             }
 
-            return [TipoDoProduto::normalizar($a['familia']), (int) $fa, self::ORDEM_FASE[$a['fase']], $a['chave']]
-                <=> [TipoDoProduto::normalizar($b['familia']), (int) $fb, self::ORDEM_FASE[$b['fase']], $b['chave']];
+            return [TipoDoProduto::normalizar($a['familia']), (int) $fa, self::ORDEM_FASE[$a['fase']], -count($a['itens']), $a['chave']]
+                <=> [TipoDoProduto::normalizar($b['familia']), (int) $fb, self::ORDEM_FASE[$b['fase']], -count($b['itens']), $b['chave']];
         });
 
         return $lista;
