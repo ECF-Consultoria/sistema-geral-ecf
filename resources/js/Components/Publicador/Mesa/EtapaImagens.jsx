@@ -1,4 +1,5 @@
 import FotosEVariacoes from './FotosEVariacoes';
+import IdentidadeDaConta from './IdentidadeDaConta';
 
 // ─── Etapa 3 — Imagens, SÓ imagens (D1, Fase 169, 07/10/2026) ───────────────
 //
@@ -18,10 +19,16 @@ import FotosEVariacoes from './FotosEVariacoes';
 // primeira seção (`DadosDasVariacoes.jsx`). Grupos de fotos, EAN automático,
 // painel de criativos por IA e o bloco de pontos fortes/medidas da 169-03
 // continuam funcionando aqui — nada disso mudou, só o que é "campo" saiu.
+//
+// Fase 170 (D2, IDENT-01/04, 07/10/2026): `IdentidadeDaConta` entra UMA VEZ,
+// acima de "Fotos e variações" — é da CONTA do produto (não deste produto
+// só), por isso fica fora de `FotosEVariacoes`/`PainelCriativos` (que
+// remontam por grupo/variação e duplicariam o campo na tela).
 
-export default function EtapaImagens({ m }) {
+export default function EtapaImagens({ m, produtoId }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="imagens">
+            <IdentidadeDaConta produtoId={produtoId} />
             <FotosEVariacoes m={m} />
         </div>
     );

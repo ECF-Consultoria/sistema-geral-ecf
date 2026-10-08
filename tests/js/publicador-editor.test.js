@@ -628,7 +628,8 @@ test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções 
     assert.match(f, /<Etapas atual=\{etapa\}/);
     assert.match(f, /<EtapaProduto m=\{m\} \/>/);
     assert.match(f, /<EtapaDetalhes m=\{m\} \/>/);
-    assert.match(f, /<EtapaImagens m=\{m\} \/>/);
+    // Fase 170 (D2, IDENT-01/04): ganhou `produtoId` para a identidade visual da conta (170-02).
+    assert.match(f, /<EtapaImagens m=\{m\} produtoId=\{produto\.id\} \/>/);
     assert.match(f, /<EtapaCondicoes m=\{m\}>/);
     assert.match(f, /<Publicar pub=\{pub\}/);
     // Os desenhos recusados não voltam: árvore, inspetor, contador de estrutura, trilho, lateral.
