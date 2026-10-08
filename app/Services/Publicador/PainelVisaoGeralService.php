@@ -2,10 +2,16 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\CreativeIdentidade;
+use App\Models\EstruturaPublicacao;
 use App\Models\MlAcervoItem;
+use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\User;
+use App\Support\Publicador\AlavancasLiberadas;
+use App\Support\Publicador\ContasLiberadas;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * Painel da Visão geral do Publicador (Fase 173, Plano 04).
@@ -218,5 +224,201 @@ class PainelVisaoGeralService
             'acervo_disponivel' => true,
             'nunca_coletado' => $defasagem['nunca_coletado'],
         ];
+    }
+
+    // ═══ O que fazer agora / situação dos produtos / integrações (Task 2) ══
+
+    /**
+     * Ordem fixa da seção 3 do handoff. Token fora de 'ativo' encerra a
+     * lista com UMA linha só — sem conta ativa, nada mais funciona.
+     *
+     * ⚠️ Lacuna documentada (ver 173-04-SUMMARY.md): a linha 6 do handoff
+     * ("Rascunhos com pendências") pede para citar o rascunho de MENOR
+     * `faltam` — `EditorRascunhoService::prontidao()` devolve esse campo,
+     * mas a assinatura deste método (definida pelo plano) só recebe
+     * agregados, nunca a lista de produtos/rascunhos. Sem a lista não há
+     * como apontar QUAL rascunho tem a menor pendência — a linha fica de
+     * fora até um plano futuro passar `$produtos` aqui.
+     */
+    public function oQueFazerAgora(
+        array $alvo,
+        array $empresaParaTela,
+        array $contagemProdutos,
+        array $triagemAcionaveis,
+        array $defasagem,
+        array $situacaoPortal,
+    ): array {
+        if (($empresaParaTela['token'] ?? null) !== 'ativo') {
+            return [[
+                'texto' => 'Conta precisa de reconexão',
+                'numero' => null,
+                'destino' => ['acao' => 'reconectar', 'url' => $empresaParaTela['link_reconexao'] ?? null],
+            ]];
+        }
+
+        $company = $alvo['company'];
+        $companyId = $empresaParaTela['company_id'] ?? null;
+        $chips = collect($triagemAcionaveis['chips'] ?? [])->keyBy('chave');
+        $linhas = [];
+
+        $nPausados = (int) ($chips[MlAcervoItem::MOTIVO_PAUSADO]['count'] ?? 0)
+            + (int) ($chips[MlAcervoItem::MOTIVO_SEM_ESTOQUE]['count'] ?? 0);
+        if ($nPausados > 0) {
+            $linhas[] = [
+                'texto' => 'Anúncios pausados ou sem estoque',
+                'numero' => $nPausados,
+                'legado' => $company !== null
+                    ? $this->acervoTriagem->legadoEntre($company, [MlAcervoItem::MOTIVO_PAUSADO, MlAcervoItem::MOTIVO_SEM_ESTOQUE])
+                    : 0,
+                'destino' => ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $companyId]],
+            ];
+        }
+
+        if ((int) ($contagemProdutos['com_problema'] ?? 0) > 0) {
+            $linhas[] = $this->linhaDeProdutos('Produtos com problema na publicação', (int) $contagemProdutos['com_problema'], $alvo['chave'], 'com_problema');
+        }
+
+        if ((int) ($contagemProdutos['publicados'] ?? 0) > 0) {
+            $linhas[] = $this->linhaDeProdutos('Prontos para a Fase 2', (int) $contagemProdutos['publicados'], $alvo['chave'], 'publicados');
+        }
+
+        if ((int) ($contagemProdutos['conferidos'] ?? 0) > 0) {
+            $linhas[] = $this->linhaDeProdutos('Conferidos, prontos para publicar', (int) $contagemProdutos['conferidos'], $alvo['chave'], 'conferidos');
+        }
+
+        // Linha 6 do handoff ("Rascunhos com pendências") — ver lacuna no docblock acima.
+
+        if (($situacaoPortal['situacao'] ?? null) === 'novas') {
+            $linhas[] = [
+                'texto' => 'Ofertas novas no Portal',
+                'numero' => $situacaoPortal['novas'],
+                'destino' => ['acao' => 'sincronizar'],
+            ];
+        }
+
+        foreach (['ficha_incompleta', 'perdendo_catalogo', 'foto_insuficiente'] as $motivo) {
+            $count = (int) ($chips[$motivo]['count'] ?? 0);
+            if ($count > 0) {
+                $linhas[] = [
+                    'texto' => $chips[$motivo]['label'] ?? $motivo,
+                    'numero' => $count,
+                    'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $alvo['chave'], 'motivo' => $motivo]],
+                ];
+            }
+        }
+
+        return $linhas;
+    }
+
+    private function linhaDeProdutos(string $texto, int $numero, string $chaveConta, string $filtro): array
+    {
+        return [
+            'texto' => $texto,
+            'numero' => $numero,
+            'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $chaveConta, 'filtro' => $filtro]],
+        ];
+    }
+
+    /** Passthrough com rótulos — MESMA fonte de `contagemProdutos()` usada por Produtos.jsx. */
+    public function situacaoProdutos(array $contagemProdutos): array
+    {
+        return [
+            'rascunho' => ['numero' => (int) ($contagemProdutos['rascunho'] ?? 0), 'rotulo' => 'Rascunho'],
+            'conferidos' => ['numero' => (int) ($contagemProdutos['conferidos'] ?? 0), 'rotulo' => 'Conferidos'],
+            'publicados' => ['numero' => (int) ($contagemProdutos['publicados'] ?? 0), 'rotulo' => 'Publicados'],
+            'com_problema' => ['numero' => (int) ($contagemProdutos['com_problema'] ?? 0), 'rotulo' => 'Com problema'],
+        ];
+    }
+
+    /**
+     * Mercado Livre, publicação/Alavancas liberadas, Portal e ERP declarado
+     * — bloco "Integrações" da coluna lateral e de Configurações da conta.
+     */
+    public function integracoes(array $alvo, array $empresaParaTela): array
+    {
+        $ancora = PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company']);
+        $itemErp = $alvo['mlb_empresa']?->implementacao?->dados['itens']['erp'] ?? null;
+        $valorErp = is_array($itemErp) ? trim((string) ($itemErp['valor'] ?? '')) : '';
+
+        $rotuloErp = match (true) {
+            $valorErp === '' || $valorErp === '---' => 'Não informado',
+            $valorErp === 'Outro' => (trim((string) ($itemErp['outro'] ?? '')) !== '' ? trim((string) $itemErp['outro']) : 'Outro'),
+            default => $valorErp,
+        };
+
+        return [
+            'mercado_livre' => ['token' => $empresaParaTela['token']],
+            'publicacao_liberada' => ContasLiberadas::libera($ancora),
+            'alavancas_liberada' => AlavancasLiberadas::libera($ancora),
+            'portal' => $empresaParaTela['portal'],
+            'erp' => ['valor' => $valorErp !== '' ? $valorErp : null, 'rotulo' => $rotuloErp],
+        ];
+    }
+
+    /** 3 primeiras linhas não vazias do texto livre — sem registro/texto vazio vira `tem_identidade=false`. */
+    public function identidadeResumo(array $alvo): array
+    {
+        $identidade = CreativeIdentidade::paraAncora($alvo['company']?->id, $alvo['mlb_empresa']?->id);
+        $texto = trim((string) ($identidade?->texto ?? ''));
+        if ($texto === '') {
+            return ['tem_identidade' => false, 'texto_resumo' => null];
+        }
+
+        $linhas = array_values(array_filter(
+            array_map('trim', preg_split('/\r\n|\r|\n/', $texto)),
+            fn (string $l) => $l !== ''
+        ));
+
+        return ['tem_identidade' => true, 'texto_resumo' => array_slice($linhas, 0, 3)];
+    }
+
+    /**
+     * 5 publicações mais recentes da conta, qualquer data — fonte única, sem
+     * nenhuma referência a `MlAnuncioRascunho`. D23: sem Company não há o
+     * que mostrar (nunca lança, nunca inventa dado).
+     *
+     * @return array{disponivel:bool, itens:list<array>}
+     */
+    public function ultimasPublicacoes(array $alvo): array
+    {
+        if ($alvo['company'] === null) {
+            return ['disponivel' => false, 'itens' => []];
+        }
+
+        $tipoPorListing = array_flip(EstruturaPublicacao::LISTING_TYPES);
+
+        $linhas = $this->baseQuery($alvo, comJanela: false)
+            ->select([
+                'pub_publicacao_itens.ml_item_id',
+                'pub_publicacao_itens.listing_type_id',
+                'pub_publicacao_itens.payload',
+                'pub_publicacoes.ator',
+                'pub_publicacoes.concluida_em',
+                'pub_publicacoes.status as publicacao_status',
+            ])
+            ->orderByDesc('pub_publicacoes.concluida_em')
+            ->limit(5)
+            ->get();
+
+        $companyId = $alvo['company']->id;
+        $itens = $linhas->map(function ($linha) use ($tipoPorListing, $companyId) {
+            $payload = is_array($linha->payload) ? $linha->payload : [];
+            $resolvido = $this->resolverAtor($this->atorDecodificado($linha->ator));
+
+            return [
+                'titulo' => $payload['family_name'] ?? null,
+                'ml_item_id' => $linha->ml_item_id,
+                'tipo' => $tipoPorListing[$linha->listing_type_id] ?? null,
+                'quem' => ['tipo' => $resolvido['tipo'], 'nome' => $resolvido['nome']],
+                'quando' => $linha->concluida_em ? Carbon::parse($linha->concluida_em)->toIso8601String() : null,
+                // Escopado por company_id (Rule 2): ml_item_id sozinho NÃO é único globalmente
+                // (docblock de MlAcervoItem) — sem o escopo, duas empresas com o mesmo MLB
+                // (corrida de dados legados) vazariam venda uma da outra.
+                'vendas' => MlAcervoItem::where('company_id', $companyId)->where('ml_item_id', $linha->ml_item_id)->value('sold_quantity'),
+                'situacao' => $linha->publicacao_status,
+            ];
+        })->values()->all();
+
+        return ['disponivel' => true, 'itens' => $itens];
     }
 }

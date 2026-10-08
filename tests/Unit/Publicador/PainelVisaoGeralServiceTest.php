@@ -3,8 +3,10 @@
 namespace Tests\Unit\Publicador;
 
 use App\Models\Company;
+use App\Models\CreativeIdentidade;
 use App\Models\MlAcervoItem;
 use App\Models\MlbEmpresa;
+use App\Models\MlbImplementacao;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
@@ -189,9 +191,9 @@ class PainelVisaoGeralServiceTest extends TestCase
         $this->assertSame(0, $r['publicados_30d'], 'publicados_30d calcula normalmente, não depende de MlAcervoItem');
     }
 
-    private function criarAcervo(Company $company, string $mlItemId, string $status, int $soldQuantity): MlAcervoItem
+    private function criarAcervo(Company $company, string $mlItemId, string $status, int $soldQuantity, array $overrides = []): MlAcervoItem
     {
-        return MlAcervoItem::create([
+        return MlAcervoItem::create(array_merge([
             'company_id' => $company->id,
             'ml_item_id' => $mlItemId,
             'title' => 'Item',
@@ -203,6 +205,180 @@ class PainelVisaoGeralServiceTest extends TestCase
             'severidade' => MlAcervoItem::SEVERIDADE_SAUDAVEL,
             'origem' => MlAcervoItem::ORIGEM_LEGADO,
             'coletado_em' => now(),
+        ], $overrides));
+    }
+
+    // ═══ oQueFazerAgora() ════════════════════════════════════════════════
+
+    /** @test */
+    public function test_o_que_fazer_agora_token_expirado_devolve_so_a_linha_de_reconexao(): void
+    {
+        $alvo = ['mlb_empresa' => null, 'company' => null, 'programa' => 'polos', 'chave' => 'empresa-1'];
+        $empresaParaTela = ['token' => 'expirado', 'link_reconexao' => 'https://reconectar', 'company_id' => null, 'portal' => []];
+        $chips = ['chips' => [['chave' => MlAcervoItem::MOTIVO_PAUSADO, 'label' => 'Pausado', 'count' => 5, 'cor' => 'red']]];
+
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, ['com_problema' => 5], $chips, [], ['situacao' => 'novas', 'novas' => 10]);
+
+        $this->assertCount(1, $linhas, 'nenhuma outra linha aparece, mesmo com produtos com problema/portal com novas');
+        $this->assertSame('Conta precisa de reconexão', $linhas[0]['texto']);
+        $this->assertSame('https://reconectar', $linhas[0]['destino']['url']);
+    }
+
+    /** @test */
+    public function test_o_que_fazer_agora_vazio_quando_nada_pendente(): void
+    {
+        $alvo = ['mlb_empresa' => null, 'company' => null, 'programa' => 'polos', 'chave' => 'empresa-1'];
+        $empresaParaTela = ['token' => 'ativo', 'link_reconexao' => null, 'company_id' => null, 'portal' => []];
+        $contagens = ['com_problema' => 0, 'publicados' => 0, 'conferidos' => 0];
+
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagens, ['chips' => []], [], ['situacao' => 'sincronizado', 'novas' => 0]);
+
+        $this->assertSame([], $linhas);
+    }
+
+    /** @test */
+    public function test_o_que_fazer_agora_ordem_fixa_e_motivos_distintos(): void
+    {
+        $company = Company::factory()->create();
+        $this->criarAcervo($company, 'MLBL1', 'paused', 0, ['motivos' => [MlAcervoItem::MOTIVO_PAUSADO], 'severidade' => MlAcervoItem::SEVERIDADE_CRITICA]);
+
+        $alvo = ['mlb_empresa' => null, 'company' => $company, 'programa' => 'gestao', 'chave' => $company->chaveContaMl()];
+        $empresaParaTela = ['token' => 'ativo', 'link_reconexao' => null, 'company_id' => $company->id, 'portal' => []];
+        $contagemProdutos = ['com_problema' => 3, 'publicados' => 2, 'conferidos' => 1];
+        $chips = ['chips' => [
+            ['chave' => MlAcervoItem::MOTIVO_PAUSADO, 'label' => 'Pausado', 'count' => 2, 'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE, 'label' => 'Sem estoque', 'count' => 1, 'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA, 'label' => 'Ficha incompleta', 'count' => 2, 'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo', 'count' => 0, 'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente', 'count' => 1, 'cor' => 'amber'],
+        ]];
+        $situacaoPortal = ['situacao' => 'novas', 'novas' => 5, 'sincronizado_em' => null];
+
+        $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagemProdutos, $chips, [], $situacaoPortal);
+
+        $this->assertSame([
+            'Anúncios pausados ou sem estoque',
+            'Produtos com problema na publicação',
+            'Prontos para a Fase 2',
+            'Conferidos, prontos para publicar',
+            'Ofertas novas no Portal',
+            'Ficha incompleta',
+            'Foto insuficiente',
+        ], array_column($linhas, 'texto'), 'ordem fixa da seção 3; perdendo_catalogo (count=0) não entra');
+
+        $this->assertSame(3, $linhas[0]['numero'], 'pausados(2) + sem_estoque(1)');
+        $this->assertSame(1, $linhas[0]['legado'], 'conta quantos dos pausados/sem estoque são legado');
+        $porTexto = collect($linhas)->keyBy('texto');
+        $this->assertSame(5, $porTexto['Ofertas novas no Portal']['numero']);
+        $this->assertSame(['acao' => 'sincronizar'], $porTexto['Ofertas novas no Portal']['destino']);
+    }
+
+    // ═══ situacaoProdutos() ══════════════════════════════════════════════
+
+    /** @test */
+    public function test_situacao_produtos(): void
+    {
+        $r = $this->service->situacaoProdutos(['rascunho' => 2, 'conferidos' => 1, 'publicados' => 3, 'com_problema' => 0]);
+
+        $this->assertSame(2, $r['rascunho']['numero']);
+        $this->assertSame(1, $r['conferidos']['numero']);
+        $this->assertSame(3, $r['publicados']['numero']);
+        $this->assertSame(0, $r['com_problema']['numero']);
+    }
+
+    // ═══ integracoes() ═══════════════════════════════════════════════════
+
+    /** @test */
+    public function test_integracoes_com_erp_outro(): void
+    {
+        $empresa = MlbEmpresa::create(['nome' => 'Polo ERP', 'projeto' => 'POLOS'])->fresh();
+        MlbImplementacao::create([
+            'empresa_id' => $empresa->id,
+            'token' => (string) Str::uuid(),
+            'dados' => ['itens' => ['erp' => ['valor' => 'Outro', 'outro' => 'ERP Caseiro', 'acesso' => '', 'feito' => true]]],
         ]);
+        $alvo = $this->alvoDaEmpresa($empresa);
+        $empresaParaTela = ['token' => 'ativo', 'portal' => ['situacao' => 'sem_portal', 'novas' => 0, 'sincronizado_em' => null]];
+
+        $r = $this->service->integracoes($alvo, $empresaParaTela);
+
+        $this->assertSame('ativo', $r['mercado_livre']['token']);
+        $this->assertFalse($r['publicacao_liberada']);
+        $this->assertFalse($r['alavancas_liberada']);
+        $this->assertSame('ERP Caseiro', $r['erp']['rotulo']);
+    }
+
+    /** @test */
+    public function test_integracoes_sem_erp_informado_mostra_nao_informado(): void
+    {
+        $empresa = MlbEmpresa::create(['nome' => 'Polo Sem ERP', 'projeto' => 'POLOS'])->fresh();
+        $alvo = $this->alvoDaEmpresa($empresa);
+        $empresaParaTela = ['token' => 'sem_token', 'portal' => ['situacao' => 'sem_portal', 'novas' => 0, 'sincronizado_em' => null]];
+
+        $r = $this->service->integracoes($alvo, $empresaParaTela);
+
+        $this->assertSame('Não informado', $r['erp']['rotulo']);
+        $this->assertNull($r['erp']['valor']);
+    }
+
+    // ═══ identidadeResumo() ══════════════════════════════════════════════
+
+    /** @test */
+    public function test_identidade_resumo_devolve_so_as_3_primeiras_linhas(): void
+    {
+        $company = Company::factory()->create();
+        CreativeIdentidade::create(['company_id' => $company->id, 'texto' => "Linha 1\nLinha 2\n\nLinha 3\nLinha 4\nLinha 5"]);
+
+        $r = $this->service->identidadeResumo($this->alvoDaCompany($company));
+
+        $this->assertTrue($r['tem_identidade']);
+        $this->assertSame(['Linha 1', 'Linha 2', 'Linha 3'], $r['texto_resumo']);
+    }
+
+    /** @test */
+    public function test_identidade_resumo_sem_registro(): void
+    {
+        $company = Company::factory()->create();
+
+        $r = $this->service->identidadeResumo($this->alvoDaCompany($company));
+
+        $this->assertFalse($r['tem_identidade']);
+        $this->assertNull($r['texto_resumo']);
+    }
+
+    // ═══ ultimasPublicacoes() ════════════════════════════════════════════
+
+    /** @test */
+    public function test_ultimas_publicacoes_sem_company(): void
+    {
+        $empresa = MlbEmpresa::create(['nome' => 'Sem Company 2', 'projeto' => 'POLOS'])->fresh();
+
+        $r = $this->service->ultimasPublicacoes($this->alvoDaEmpresa($empresa));
+
+        $this->assertFalse($r['disponivel']);
+        $this->assertSame([], $r['itens']);
+    }
+
+    /** @test */
+    public function test_ultimas_publicacoes_com_company(): void
+    {
+        $company = Company::factory()->create();
+        $dev = User::factory()->create(['name' => 'Dev']);
+
+        $this->publicar(null, $company, ['equipe' => true, 'id' => $dev->id, 'nome' => $dev->name], now()->subDays(10), 'MLB900');
+        $this->publicar(null, $company, ['equipe' => false, 'id' => 1, 'nome' => 'Cliente'], now()->subDays(1), 'MLB901');
+        $this->criarAcervo($company, 'MLB901', 'active', 7);
+
+        $r = $this->service->ultimasPublicacoes($this->alvoDaCompany($company));
+
+        $this->assertTrue($r['disponivel']);
+        $this->assertCount(2, $r['itens']);
+        $this->assertSame('MLB901', $r['itens'][0]['ml_item_id'], 'mais recente primeiro, sem filtro de janela');
+        $this->assertSame('cliente', $r['itens'][0]['quem']['tipo']);
+        $this->assertSame(7, $r['itens'][0]['vendas']);
+        $this->assertSame(PubPublicacao::PUBLISHED, $r['itens'][0]['situacao']);
+        $this->assertSame('classico', $r['itens'][0]['tipo'], 'gold_special mapeia para o tipo classico da régua');
+        $this->assertSame('equipe', $r['itens'][1]['quem']['tipo']);
+        $this->assertNull($r['itens'][1]['vendas'], 'sem linha correspondente em MlAcervoItem — null, nunca zero');
     }
 }
