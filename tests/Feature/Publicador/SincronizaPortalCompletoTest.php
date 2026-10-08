@@ -210,4 +210,93 @@ class SincronizaPortalCompletoTest extends TestCase
         Queue::assertPushed(PreencherRascunhoDoPortalJob::class, 1);
         Queue::assertPushedOn('high', PreencherRascunhoDoPortalJob::class, fn ($j) => $j->pedido === $r->json('pedido'));
     }
+
+    // ═══ Task 2: garantias ponta a ponta ═════════════════════════════════════
+
+    public function test_isolamento_entre_empresas_nada_de_b_entra_no_rascunho_de_a(): void
+    {
+        [$a, $ea, $pa] = $this->empresaComPortal('AAA', ['Azul', 'Preto']);
+        [$b, $eb, $pb] = $this->empresaComPortal('BBB', ['Rosa', 'Cinza', 'Roxo']);
+
+        // Os bytes das fotos de B, para provar que nenhuma entrou na empresa A.
+        $shaDeB = [];
+        foreach (EstruturaProdutoVariacaoImagem::where('company_id', $b->id)->get() as $img) {
+            $shaDeB[] = hash('sha256', Storage::disk('local')->get($img->caminho));
+        }
+
+        // Dado hostil/corrompido: um produto de A apontando para o produto de B. Preencher não pode ler B.
+        $intruso = PubProduto::create(['company_id' => $a->id, 'estrutura_produto_id' => $pb->id, 'sku' => 'INT', 'nome' => 'Intruso', 'origem' => PubProduto::ORIGEM_PORTAL]);
+        app(PortalParaRascunhoService::class)->preencher($intruso);
+        $this->assertSame(0, DB::table('pub_variantes')->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_variantes.rascunho_id')
+            ->where('pub_rascunhos.produto_id', $intruso->id)->count(), 'o rascunho de A leu variações de B');
+        $this->assertSame(0, PubImagem::whereIn('sha256', $shaDeB)->count(), 'uma foto de B entrou no Publicador de A');
+        $intruso->delete();
+
+        // Sincronizar A: só A ganha produtos, rascunhos, variantes e fotos.
+        $this->sincronizar($ea)->assertOk();
+        $this->assertSame(0, PubProduto::where('company_id', $b->id)->count());
+        $this->assertSame(1, PubProduto::where('company_id', $a->id)->count());
+        $this->assertSame(2, DB::table('pub_variantes')->count());
+        $this->assertSame(0, PubImagem::whereIn('sha256', $shaDeB)->count());
+
+        // E o produto de A nunca cita atributo, SKU ou cor de B.
+        $this->assertSame(0, DB::table('pub_variantes')->where('sku', 'like', 'BBB%')->count());
+    }
+
+    public function test_empresa_fora_do_piloto_e_preenchida_igual_d10(): void
+    {
+        [$c, $e] = $this->empresaComPortal();
+        // Piloto = outra empresa qualquer; esta NÃO está liberada.
+        config(['publicador.contas_liberadas' => ['companies' => [999999], 'mlb_empresas' => []]]);
+
+        $r = $this->sincronizar($e)->assertOk();
+        $this->assertSame(1, $r->json('preenchendo'));
+        $pub = PubProduto::where('company_id', $c->id)->firstOrFail();
+        $this->assertSame(3, DB::table('pub_variantes')
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_variantes.rascunho_id')->where('pub_rascunhos.produto_id', $pub->id)->count());
+        $this->assertSame(3, PubImagem::count());
+    }
+
+    public function test_nada_no_ml_conta_liberada_com_token_zero_http_e_zero_publicacao(): void
+    {
+        [$c, $e] = $this->empresaComPortal();
+        // Conta DENTRO do piloto e com token: o caso mais perigoso para escrever no ML.
+        config(['publicador.contas_liberadas' => ['companies' => [$c->id], 'mlb_empresas' => []]]);
+        \App\Models\MlToken::create(['company_id' => $c->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token', 'token_type' => 'bearer', 'expires_at' => now()->addHours(5),
+            'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now()]);
+
+        $this->sincronizar($e)->assertOk();
+
+        // Nenhuma chamada: nem leitura (/users/me), nem /items, nem /pictures, nem POST/PUT.
+        $this->assertSame([], $this->chamadas, 'o Sincronizar falou com a rede: '.json_encode($this->chamadas));
+        foreach ($this->chamadas as [$metodo, $url]) {
+            $this->assertStringNotContainsString('/items', $url);
+            $this->assertStringNotContainsString('/pictures', $url);
+            $this->assertStringNotContainsString('/users/me', $url);
+            $this->assertNotContains($metodo, ['POST', 'PUT', 'PATCH', 'DELETE']);
+        }
+
+        // Nada publicado: nenhuma pub_publicacoes e nenhum rascunho em publishing/published.
+        $this->assertSame(0, DB::table('pub_publicacoes')->count());
+        $this->assertSame(0, PubRascunho::whereIn('status', ['publishing', 'published'])->count());
+        $this->assertGreaterThan(0, PubRascunho::count());
+    }
+
+    public function test_sincronizar_duas_vezes_e_idempotente(): void
+    {
+        [, $e] = $this->empresaComPortal();
+
+        $this->sincronizar($e)->assertOk();
+        $antes = $this->contagens();
+        $revisoes = PubRascunho::orderBy('id')->pluck('revisao', 'id')->all();
+        $this->assertSame(3, $antes['pub_imagens']);
+
+        $r2 = $this->sincronizar($e)->assertOk();
+
+        $this->assertSame($antes, $this->contagens(), 'o 2º clique duplicou linhas');
+        $this->assertSame($revisoes, PubRascunho::orderBy('id')->pluck('revisao', 'id')->all(), 'o 2º clique mexeu na revisão do rascunho');
+        $this->assertSame(0, $r2->json('criados'));
+        $this->assertSame(0, DB::table('pub_publicacoes')->count());
+    }
 }
