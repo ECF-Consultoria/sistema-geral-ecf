@@ -7,6 +7,7 @@ use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -25,6 +26,10 @@ class DescricaoIaService
 
     /** O pedido automático vale uma vez por rascunho: 30 dias. */
     public const TTL_AUTOMATICO = 2592000;
+
+    private const ERRO_VAZIA = 'A IA não devolveu nada aproveitável. Tente de novo.';
+
+    private const ERRO_GENERICO = 'A IA não conseguiu gerar a descrição agora. Tente de novo em instantes.';
 
     /** Teto das especificações enviadas à IA (caracteres). */
     public const LIMITE_SPECS = 8000;
@@ -88,11 +93,14 @@ class DescricaoIaService
             // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
             $texto = self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados']));
             if ($texto === '') {
-                throw new \RuntimeException('A IA não devolveu nada aproveitável. Tente de novo.');
+                throw new \RuntimeException(self::ERRO_VAZIA);
             }
             $this->concluir($r->id, $pedido, ['status' => 'pronto', 'valor' => $texto, 'erro' => null]);
         } catch (\Throwable $e) {
-            $this->concluir($r->id, $pedido, ['status' => 'erro', 'valor' => null, 'erro' => $e->getMessage()]);
+            // IN-04: a mensagem crua (URL, corpo do provedor) fica só no log; a tela recebe um texto nosso.
+            Log::error("[Publicador] IA de descrição do rascunho {$r->id} falhou: ".$e->getMessage());
+            $tela = $e->getMessage() === self::ERRO_VAZIA ? self::ERRO_VAZIA : self::ERRO_GENERICO;
+            $this->concluir($r->id, $pedido, ['status' => 'erro', 'valor' => null, 'erro' => $tela]);
 
             throw $e;
         }

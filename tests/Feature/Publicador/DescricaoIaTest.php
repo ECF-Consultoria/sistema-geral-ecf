@@ -153,15 +153,18 @@ class DescricaoIaTest extends TestCase
     public function test_excecao_da_ia_vira_erro_e_relanca(): void
     {
         $this->mock(AnaliseAnuncioService::class, function ($m) {
-            $m->shouldReceive('analise')->andThrow(new \RuntimeException('NVIDIA fora'));
+            $m->shouldReceive('analise')->andThrow(new \RuntimeException('NVIDIA fora: https://integrate.api.nvidia.com/v1 {"detail":"x"}'));
         });
 
         $this->expectException(\RuntimeException::class);
         try {
             $this->servico()->executar($this->r, 'p-1');
         } finally {
+            // IN-04: a mensagem crua do provedor não vai para a tela.
             $e = Cache::get(DescricaoIaService::chave($this->r->id));
-            $this->assertSame(['erro', 'NVIDIA fora'], [$e['status'], $e['erro']]);
+            $this->assertSame('erro', $e['status']);
+            $this->assertSame('A IA não conseguiu gerar a descrição agora. Tente de novo em instantes.', $e['erro']);
+            $this->assertStringNotContainsString('nvidia', mb_strtolower($e['erro']));
         }
     }
 
