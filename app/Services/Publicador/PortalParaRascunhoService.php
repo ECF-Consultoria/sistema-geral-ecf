@@ -6,6 +6,8 @@ use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Support\Publicador\Imagem\ConversorParaJpg;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
 use App\Support\Publicador\Portal\PortalValorDeAtributo;
 use App\Support\Publicador\RegraViolada;
@@ -13,6 +15,7 @@ use App\Support\Publicador\Schema\AtributoClassificado;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
 use App\Support\Publicador\Schema\SchemaClassificado;
+use App\Support\Publicador\Validacao\Problema;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\Variante;
@@ -35,7 +38,8 @@ use Illuminate\Support\Facades\Log;
  * D-10: vale para qualquer empresa (piloto ou não) e não escreve no ML — a única rede possível é
  * a leitura do schema da categoria (app token), a mesma que o editor já faz.
  *
- * Esta fatia cobre o produto Simples AGRUPADO (`estrutura_produto_id`).
+ * Cobre o produto Simples AGRUPADO (`estrutura_produto_id`) e as ofertas compostas (Combo/Kit/Combit),
+ * com as fotos de cada cor/componente copiadas pendentes (nada sobe ao ML).
  */
 class PortalParaRascunhoService
 {
@@ -55,6 +59,7 @@ class PortalParaRascunhoService
         private RascunhoRepository $repo,
         private CategorySchemaRepository $schemas,
         private PortalProdutoLeitor $leitor,
+        private ImagemAssetService $imagens,
     ) {}
 
     /**
@@ -68,7 +73,7 @@ class PortalParaRascunhoService
         ];
 
         if ($produto->estrutura_produto_id === null) {
-            return $resumo;
+            return $produto->oferta_id !== null ? $this->preencherComposta($produto, $resumo) : $resumo;
         }
         $grupo = $this->leitor->doGrupo($produto);
         if ($grupo === null) {
@@ -87,19 +92,171 @@ class PortalParaRascunhoService
         }
 
         $avisos = &$resumo['avisos'];
-        $preenchidos = &$resumo['campos_preenchidos'];
-        $mantidos = &$resumo['campos_mantidos'];
 
-        // ─── Categoria — o schema é lido ANTES da trava (pode ir ao ML) ───
-        $categoriaPortal = $grupo['categoria']['id'] ?? null;
-        if ($categoriaPortal === null || trim((string) $categoriaPortal) === '') {
-            $categoriaPortal = null;
+        // ─── Categoria e schema (o schema é lido ANTES da trava: pode ir ao ML) ───
+        $categoriaPortal = $this->categoriaDoPortal($grupo['categoria'] ?? null, $r, $avisos);
+        $base = $this->aplicarCategoria($r, $categoriaPortal, $resumo);
+        if ($base === null) {
+            return $this->parou($resumo);
+        }
+        [$r, $schema] = $base;
+
+        $plano = $this->planoDoEixo($grupo['variacoes'], $schema, $avisos);
+
+        // ─── Ficha técnica e pacote — uma escrita, só o vazio ───
+        $pacotes = array_map(
+            fn (array $v) => LogisticaProduto::pacote($v['volumes']),
+            array_values(array_filter($grupo['variacoes'], fn (array $v) => $v['volumes'] !== [])),
+        );
+        $doGrupo = ComposicaoDoPortal::pacoteDoGrupo($pacotes);
+        if (! $this->aplicarFicha($r, $schema, $grupo['atributos'], $doGrupo['pacote'], $doGrupo['divergem'], $plano['chave'] ?? null, $resumo)) {
+            return $this->parou($resumo);
+        }
+
+        // ─── Variações: eixo, uma variante por cor, SKU e estoque de cada uma ───
+        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($grupo, $plano, $produto, &$resumo) {
+            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $resumo['avisos'], $resumo['campos_preenchidos'], $resumo['campos_mantidos']);
+        });
+        if (! $vivo) {
+            return $this->parou($resumo);
+        }
+
+        // ─── Fotos: cada cor leva as suas para o grupo da variação, só se o grupo estiver vazio ───
+        if (! $this->trazerFotosDoGrupo($r, $produto, $schema, $grupo['variacoes'], $plano, $resumo)) {
+            return $this->parou($resumo);
+        }
+
+        return $this->concluir($resumo, $produto, $r);
+    }
+
+    /** Fecha o resumo: conta as variantes vivas, tira aviso repetido e registra no log. */
+    private function concluir(array $resumo, PubProduto $produto, PubRascunho $r): array
+    {
+        $resumo['variantes'] = count(array_filter($this->repo->snapshot($r->fresh())->variantes, fn (Variante $v) => ! $v->orfa));
+        $resumo['avisos'] = array_values(array_unique($resumo['avisos']));
+
+        Log::info("[Publicador] Portal -> rascunho: produto {$produto->id} ({$produto->nome}) rascunho {$r->id}: "
+            ."{$resumo['campos_preenchidos']} preenchidos, {$resumo['campos_mantidos']} mantidos, {$resumo['variantes']} variante(s), "
+            ."{$resumo['fotos_trazidas']} foto(s), ".count($resumo['avisos']).' aviso(s)');
+
+        return $resumo;
+    }
+
+    // ═══ Oferta composta (Combo, Kit, Combit — D-07, D-12) ═══════════════════
+
+    /**
+     * Combo/Kit/Combit: variante única que herda do PRINCIPAL a categoria e a ficha; pacote, estoque e
+     * fotos vêm de todos os componentes. Mesmas regras do grupo: só o vazio, nunca sobrescreve.
+     */
+    private function preencherComposta(PubProduto $produto, array $resumo): array
+    {
+        $composta = $this->leitor->daComposta($produto);
+        if ($composta === null) {
+            return $resumo;
+        }
+        $resumo['avisos'] = [...$resumo['avisos'], ...$composta['avisos']];
+        $itens = $composta['itens'];
+        if ($itens === []) {
+            $resumo['avisos'][] = 'A composição não tem nenhum componente do Portal utilizável; nada foi preenchido.';
+            $resumo['avisos'] = array_values(array_unique($resumo['avisos']));
+
+            return $resumo;
+        }
+
+        $r = $this->editor->rascunhoDoProduto($produto, true);
+        $resumo['rascunho_id'] = (int) $r->id;
+        if (IaParaRascunhoService::intocavel($r)) {
+            $resumo['intocavel'] = true;
+            $resumo['avisos'][] = self::AVISO_INTOCAVEL;
+
+            return $resumo;
+        }
+
+        $idxPrincipal = ComposicaoDoPortal::principal($itens, $composta['pares']);
+        $principal = $itens[$idxPrincipal]['produto'];
+
+        $categoriaPortal = $this->categoriaDoPortal($principal['categoria'] ?? null, $r, $resumo['avisos']);
+        $base = $this->aplicarCategoria($r, $categoriaPortal, $resumo);
+        if ($base === null) {
+            return $this->parou($resumo);
+        }
+        [$r, $schema] = $base;
+
+        $pacote = ComposicaoDoPortal::pacoteDoConjunto(array_map(fn (array $i) => [
+            'produto_id' => $i['produto']['produto_id'], 'produto_nome' => $i['produto']['nome'], 'quantidade' => $i['quantidade'],
+            'volumes' => $i['produto']['variacoes'][0]['volumes'] ?? [], 'custo' => $i['custo'],
+        ], $itens));
+        if (! $this->aplicarFicha($r, $schema, $principal['atributos'], $pacote, false, null, $resumo)) {
+            return $this->parou($resumo);
+        }
+
+        // ─── Variante única: SKU da oferta e estoque do conjunto ───
+        $estoque = ComposicaoDoPortal::estoque(array_map(fn (array $i) => [
+            'estoque' => $i['produto']['variacoes'][0]['estoque'] ?? null, 'quantidade' => $i['quantidade'],
+        ], $itens));
+        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($composta, $estoque, $produto, &$resumo) {
+            $snap = $this->repo->snapshot($r);
+            $unica = collect($snap->variantes)->first(fn (Variante $v) => $v->chave === ChaveCanonica::UNICA);
+            if ($snap->eixos !== [] || ! $unica) {
+                return false;
+            }
+            $dados = $this->dadosDaVariante($unica, ['estoque' => $estoque, 'codigo' => (string) $composta['sku']], false, [], $produto, $resumo['campos_preenchidos'], $resumo['campos_mantidos']);
+            if ($dados !== null) {
+                $this->editor->salvarVariantes($r->fresh(), [ChaveCanonica::UNICA => $dados]);
+            }
+
+            return true;
+        });
+        if (! $vivo) {
+            return $this->parou($resumo);
+        }
+
+        // ─── Fotos: a do principal primeiro, depois as dos outros componentes, no grupo geral ───
+        $ordem = array_merge([$principal], array_map(fn (array $i) => $i['produto'], array_filter($itens, fn (int $k) => $k !== $idxPrincipal, ARRAY_FILTER_USE_KEY)));
+        $fotos = [];
+        foreach ($ordem as $p) {
+            foreach ($p['variacoes'] as $v) {
+                $fotos = [...$fotos, ...$this->imagensOrdenadas($v)];
+            }
+        }
+        $snap = $this->repo->snapshot($r->fresh());
+        $unica = collect($snap->variantes)->first(fn (Variante $v) => $v->chave === ChaveCanonica::UNICA);
+        if ($unica && $snap->eixos === [] && ! $this->trazerFotos($r, $produto, $schema, [ResolvedorGruposImagem::GERAL => $fotos], 1, $resumo)) {
+            return $this->parou($resumo);
+        }
+
+        return $this->concluir($resumo, $produto, $r);
+    }
+
+    // ═══ Categoria e ficha (o mesmo código para grupo e composta) ════════════
+
+    /** A categoria que o Portal pede, ou null (com aviso quando a equipe também não tem uma). */
+    private function categoriaDoPortal(?array $categoria, PubRascunho $r, array &$avisos): ?string
+    {
+        $id = $categoria['id'] ?? null;
+        if ($id === null || trim((string) $id) === '') {
             if (! $r->categoria_id) {
                 $avisos[] = 'A categoria do produto no Portal ainda não foi confirmada; defina a categoria no Publicador.';
             }
-        } elseif ($r->categoria_id && $r->categoria_id !== $categoriaPortal) {
-            $avisos[] = "O rascunho já está na categoria {$r->categoria_id}; a categoria do Portal ({$categoriaPortal}) não foi aplicada.";
+
+            return null;
         }
+        if ($r->categoria_id && $r->categoria_id !== $id) {
+            $avisos[] = "O rascunho já está na categoria {$r->categoria_id}; a categoria do Portal ({$id}) não foi aplicada.";
+        }
+
+        return (string) $id;
+    }
+
+    /**
+     * Aplica a categoria (só se o rascunho não tem) e devolve o rascunho relido com o schema vigente.
+     *
+     * @return ?array{0: PubRascunho, 1: ?SchemaClassificado}  null = o rascunho ficou intocável
+     */
+    private function aplicarCategoria(PubRascunho $r, ?string $categoriaPortal, array &$resumo): ?array
+    {
+        $avisos = &$resumo['avisos'];
+        $preenchidos = &$resumo['campos_preenchidos'];
 
         $erroSchema = $this->lerSchemas([$categoriaPortal, $r->categoria_id]);
         $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($categoriaPortal, $erroSchema, &$avisos, &$preenchidos) {
@@ -123,7 +280,7 @@ class PortalParaRascunhoService
             return true;
         });
         if (! $vivo) {
-            return $this->parou($resumo);
+            return null;
         }
 
         // Fora da trava: pode ir ao ML. Dentro dela só vale se a categoria ainda for esta.
@@ -133,10 +290,22 @@ class PortalParaRascunhoService
             $avisos[] = 'Não foi possível ler a categoria no Mercado Livre agora; ficha, pacote e variações ficaram para depois.';
         }
 
-        $plano = $this->planoDoEixo($grupo['variacoes'], $schema, $avisos);
+        return [$r, $schema];
+    }
 
-        // ─── Ficha técnica e pacote — uma escrita, só o vazio ───
-        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $grupo, $plano, &$avisos, &$preenchidos, &$mantidos) {
+    /**
+     * Ficha técnica e pacote numa escrita só, só o vazio.
+     *
+     * @param  list<array>  $atributosPortal
+     * @return bool false = o rascunho ficou intocável
+     */
+    private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo): bool
+    {
+        $avisos = &$resumo['avisos'];
+        $preenchidos = &$resumo['campos_preenchidos'];
+        $mantidos = &$resumo['campos_mantidos'];
+
+        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$avisos, &$preenchidos, &$mantidos) {
             $schema = $this->schemaQueVale($schema, $r);
             if ($schema === null) {
                 return false;
@@ -144,10 +313,10 @@ class PortalParaRascunhoService
             $snap = $this->repo->snapshot($r);
 
             $novos = [];
-            foreach ($grupo['atributos'] as $salvo) {
+            foreach ($atributosPortal as $salvo) {
                 $id = (string) ($salvo['id'] ?? '');
                 $def = $schema->atributo($id);
-                if ($def === null || $def->papel !== AtributoClassificado::PRODUCT || $id === ($plano['chave'] ?? null)
+                if ($def === null || $def->papel !== AtributoClassificado::PRODUCT || $id === $chaveEixo
                     || $def->secao === AtributoClassificado::SECAO_EMBALAGEM) {
                     continue;
                 }
@@ -165,15 +334,10 @@ class PortalParaRascunhoService
                 }
             }
 
-            $pacotes = array_map(
-                fn (array $v) => LogisticaProduto::pacote($v['volumes']),
-                array_values(array_filter($grupo['variacoes'], fn (array $v) => $v['volumes'] !== [])),
-            );
-            $doGrupo = ComposicaoDoPortal::pacoteDoGrupo($pacotes);
-            if ($doGrupo['divergem']) {
+            if ($divergem) {
                 $avisos[] = 'As cores têm pacotes diferentes no Portal; foi usado o de maior peso. Confira o card de envio.';
             }
-            foreach (PortalValorDeAtributo::pacoteParaAtributos($doGrupo['pacote']) as $id => $texto) {
+            foreach (PortalValorDeAtributo::pacoteParaAtributos($pacote) as $id => $texto) {
                 $def = $schema->atributo($id);
                 if ($def === null || ! $this->aceitaUnidadeDoPacote($def, $id)) {
                     continue;
@@ -183,7 +347,7 @@ class PortalParaRascunhoService
 
                     continue;
                 }
-                $novos[$id] = ['value_name' => $texto, 'origem' => 'portal', 'revisar' => $doGrupo['divergem']];
+                $novos[$id] = ['value_name' => $texto, 'origem' => 'portal', 'revisar' => $divergem];
             }
 
             if ($novos === []) {
@@ -195,26 +359,143 @@ class PortalParaRascunhoService
 
             return true;
         });
-        if (! $vivo) {
-            return $this->parou($resumo);
+    }
+
+    // ═══ Fotos (D-08, D-15) ══════════════════════════════════════════════════
+
+    /** As fotos de uma variação do Portal na ordem dela. */
+    private function imagensOrdenadas(array $variacao): array
+    {
+        $imagens = $variacao['imagens'] ?? [];
+        usort($imagens, fn ($a, $b) => $a['ordem'] <=> $b['ordem']);
+
+        return $imagens;
+    }
+
+    /**
+     * Cada variante do rascunho recebe as fotos da cor do Portal no grupo dela. Se a categoria não
+     * define foto por cor e há 2+ variantes (e nenhuma foto ainda), liga "fotos por variante" como a tela faz.
+     */
+    private function trazerFotosDoGrupo(PubRascunho $r, PubProduto $produto, ?SchemaClassificado $schema, array $variacoes, array $plano, array &$resumo): bool
+    {
+        $snap = $this->repo->snapshot($r->fresh());
+        $vivas = array_values(array_filter($snap->variantes, fn (Variante $v) => ! $v->orfa));
+
+        if (count($vivas) >= 2 && $snap->imagens === [] && ! $snap->fotosPorVariante
+            && ! array_filter($snap->eixos, fn (Eixo $e) => $e->definesPicture)) {
+            $this->editor->salvar($r, ['fotos_por_variante' => true]);
+            $snap = $this->repo->snapshot($r->fresh());
         }
 
-        // ─── Variações: eixo, uma variante por cor, SKU e estoque de cada uma ───
-        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($grupo, $plano, $produto, &$avisos, &$preenchidos, &$mantidos) {
-            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $avisos, $preenchidos, $mantidos);
-        });
-        if (! $vivo) {
-            return $this->parou($resumo);
+        $eixos = Eixo::ordenar($snap->eixos);
+        $porGrupo = [];
+        foreach ($vivas as $v) {
+            $variacao = $this->variacaoDaVariante($v, $variacoes, $plano, $snap->eixos);
+            if ($variacao === null) {
+                continue;
+            }
+            $grupo = ResolvedorGruposImagem::chaveDoGrupo($v, $eixos, $snap->fotosPorVariante);
+            $porGrupo[$grupo] ??= $this->imagensOrdenadas($variacao); // grupo repetido entre variantes: uma vez só
         }
 
-        $resumo['variantes'] = count(array_filter($this->repo->snapshot($r->fresh())->variantes, fn (Variante $v) => ! $v->orfa));
-        $resumo['avisos'] = array_values(array_unique($resumo['avisos']));
+        return $this->trazerFotos($r, $produto, $schema, $porGrupo, count($vivas), $resumo);
+    }
 
-        Log::info("[Publicador] Portal -> rascunho: produto {$produto->id} ({$produto->nome}) rascunho {$r->id}: "
-            ."{$resumo['campos_preenchidos']} preenchidos, {$resumo['campos_mantidos']} mantidos, {$resumo['variantes']} variante(s), "
-            .count($resumo['avisos']).' aviso(s)');
+    /** A variação do Portal (cor) que dá os dados desta variante, ou null (cor da equipe, sem correspondência). */
+    private function variacaoDaVariante(Variante $v, array $variacoes, array $plano, array $eixos): ?array
+    {
+        if ($plano['chave'] === null) {
+            return count($variacoes) === 1 && $v->chave === ChaveCanonica::UNICA ? $variacoes[0] : null;
+        }
+        $eixo = collect($eixos)->first(fn (Eixo $e) => $e->chave === $plano['chave'] || ChaveCanonica::texto($e->nome) === ChaveCanonica::texto($plano['nome']));
+        $valor = $eixo !== null ? ($v->valores[$eixo->chave] ?? null) : null;
+        if ($valor === null) {
+            return null;
+        }
+        $cor = collect($plano['cores'])->first(fn ($c) => ChaveCanonica::texto($c['nome']) === ChaveCanonica::texto($valor->valueName)
+            || ($c['id'] !== null && $c['id'] === $valor->valueId));
 
-        return $resumo;
+        return $cor['variacao'] ?? null;
+    }
+
+    /**
+     * Copia as fotos do Portal para os grupos que ainda estão VAZIOS. Nada sobe ao ML (`enviar: false`):
+     * as fotos ficam pendentes. O que não entra é contado com o motivo (nunca corte silencioso).
+     *
+     * @param  array<string, list<array>>  $porGrupo  grupo → fotos do Portal na ordem
+     * @return bool false = o rascunho ficou intocável
+     */
+    private function trazerFotos(PubRascunho $r, PubProduto $produto, ?SchemaClassificado $schema, array $porGrupo, int $variantesAtivas, array &$resumo): bool
+    {
+        $limites = $schema?->limites ?? [];
+        $limite = $variantesAtivas > 1
+            ? ($limites['max_pictures_per_item_var'] ?? $limites['max_pictures_per_item'] ?? null)
+            : ($limites['max_pictures_per_item'] ?? null);
+        $limite = $limite === null ? null : (int) $limite;
+
+        foreach ($porGrupo as $grupo => $fotos) {
+            $atual = $r->fresh();
+            if ($atual === null || IaParaRascunhoService::intocavel($atual)) {
+                return false;
+            }
+            // Só grupo vazio (D-05): a equipe manda no que já tem foto.
+            $jaTem = array_filter($this->repo->snapshot($atual)->imagens, fn ($a) => $a['grupo'] === (string) $grupo);
+            if ($jaTem !== [] || $fotos === []) {
+                continue;
+            }
+
+            $colocadas = 0;
+            foreach ($fotos as $foto) {
+                if ($limite !== null && $colocadas >= $limite) {
+                    $this->naoTrouxe($resumo, 'acima_do_limite');
+
+                    continue;
+                }
+                $motivo = $this->copiarFoto($atual, $produto, $foto, (string) $grupo);
+                if ($motivo === null) {
+                    $colocadas++;
+                    $resumo['fotos_trazidas']++;
+                } else {
+                    $this->naoTrouxe($resumo, $motivo);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /** @return ?string null = a foto entrou no grupo; senão o motivo de não ter entrado */
+    private function copiarFoto(PubRascunho $r, PubProduto $produto, array $foto, string $grupo): ?string
+    {
+        // A leitura do arquivo fica FORA da trava do rascunho; `colocarFotoNoGrupo` trava sozinho.
+        $conteudo = $this->leitor->lerImagem((int) $produto->company_id, (string) $foto['caminho']);
+        if ($conteudo === null) {
+            return 'arquivo_sumido';
+        }
+        $convertida = ConversorParaJpg::converter($conteudo);
+        if ($convertida['conteudo'] === null) {
+            return 'formato';
+        }
+
+        $res = $this->imagens->receber($r, $convertida['conteudo'], (string) ($foto['nome_original'] ?? 'foto'), enviar: false);
+        if ($res['imagem'] === null) {
+            $codigos = array_map(fn (Problema $p) => $p->regra, array_filter($res['problemas'], fn (Problema $p) => $p->bloqueia()));
+
+            return match (true) {
+                in_array('V-IMG-03', $codigos, true) => 'pequena',
+                in_array('V-IMG-02', $codigos, true) => 'arquivo_grande',
+                default => 'formato',
+            };
+        }
+
+        $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo);
+
+        return null;
+    }
+
+    private function naoTrouxe(array &$resumo, string $motivo): void
+    {
+        $resumo['fotos_nao_trazidas'][$motivo] = ($resumo['fotos_nao_trazidas'][$motivo] ?? 0) + 1;
     }
 
     // ═══ Trava (mesma do IaParaRascunhoService) ══════════════════════════════
