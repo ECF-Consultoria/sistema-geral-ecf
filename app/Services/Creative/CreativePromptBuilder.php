@@ -126,10 +126,14 @@ class CreativePromptBuilder
      * isolada em hero/white_background — ver `linhasIdentidade()`; (2b)
      * VARIAÇÃO OBRIGATÓRIA + AJUSTE PEDIDO PELO OPERADOR (Quick 261003-l8o,
      * só quando `$regeneracao >= 1` — ver `linhasVariacao()`); (3) TEXTO,
-     * que se bifurca por `CreativeSlotCatalog::aceitaTexto()`; (4) FATOS
+     * que se bifurca por `CreativeSlotCatalog::aceitaTexto()` E por "tem
+     * texto confirmado" (`temTextoConfirmado()`, quick 261008-txt — um tipo
+     * que aceita texto mas sem nenhum headline/badge validado cai no mesmo
+     * ramo honesto de "sem texto", nunca no de lista vazia); (4) FATOS
      * PERMITIDOS; (5) CONTAGENS; (6) CLAIMS PROIBIDAS — as do Truth mais as
      * `proibicoes` do slot, menos o claim de "não escrever texto" quando o
-     * slot aceita texto (Decisão 7).
+     * slot TEM TEXTO CONFIRMADO (Decisão 7 + quick 261008-txt), sempre sem
+     * duplicata (`array_unique`).
      *
      * `$regeneracao`/`$ajusteOperador`/`$identidade` são OPCIONAIS no fim da
      * assinatura (Quick 261003-l8o, correção 2; Fase 170, D2) — preserva
@@ -171,7 +175,16 @@ class CreativePromptBuilder
             $linhas[] = '';
         }
 
-        array_push($linhas, ...$this->linhasTexto($aceitaTexto, $slotPlano));
+        // Correção 1 (quick 261008-txt): "aceita texto" (tipo, catálogo) é
+        // diferente de "tem texto confirmado" (esta instância do slot, após
+        // `CreativePlanner::validarTexto()`) — usar só `$aceitaTexto` aqui
+        // fazia o bloco TEXTO emitir "escreva EXATAMENTE" seguido de lista
+        // VAZIA sempre que nenhum headline/badge foi validado, contradizendo
+        // a CENA do leiaute (que promete cabeçalho/cotas de medida). Ver
+        // `temTextoConfirmado()`.
+        $temTexto = $aceitaTexto && $this->temTextoConfirmado($slotPlano);
+
+        array_push($linhas, ...$this->linhasTexto($aceitaTexto, $temTexto, $slotPlano));
         $linhas[] = '';
 
         array_push($linhas, ...$this->linhasFatosPermitidos($truth));
@@ -180,7 +193,7 @@ class CreativePromptBuilder
         array_push($linhas, ...$this->linhasContagens($truth));
         $linhas[] = '';
 
-        array_push($linhas, ...$this->linhasClaimsProibidas($this->claimsDoSlot($truth, $slotPlano, $aceitaTexto)));
+        array_push($linhas, ...$this->linhasClaimsProibidas($this->claimsDoSlot($truth, $slotPlano, $temTexto)));
 
         return implode("\n", $linhas);
     }
@@ -357,20 +370,55 @@ class CreativePromptBuilder
     }
 
     /**
-     * Bloco de TEXTO do slot (Decisão 7) — bifurcado por
-     * `aceita_texto`. Quando falso, proibição total (mesma redação do bloco
-     * SLOT do hero); quando verdadeiro, a headline e as badges do plano,
-     * uma por linha, com a instrução de escrever EXATAMENTE esses textos —
-     * nenhuma badge do slot entra quando `aceitaTexto` é falso, mesmo que o
-     * plano as traga.
+     * `true` quando o plano do slot tem ao menos um headline ou badge não
+     * vazio — "tem texto confirmado", distinto de "o tipo aceita texto"
+     * (`CreativeSlotCatalog::aceitaTexto()`). Usado por `paraSlot()` para
+     * decidir a bifurcação real de `linhasTexto()`/`claimsDoSlot()` (quick
+     * 261008-txt).
      */
-    private function linhasTexto(bool $aceitaTexto, array $slotPlano): array
+    private function temTextoConfirmado(array $slotPlano): bool
+    {
+        $headline = trim((string) ($slotPlano['headline'] ?? ''));
+        $badges   = array_filter((array) ($slotPlano['badges'] ?? []), fn ($b) => trim((string) $b) !== '');
+
+        return $headline !== '' || $badges !== [];
+    }
+
+    /**
+     * Bloco de TEXTO do slot (Decisão 7) — agora em TRÊS ramos, não dois
+     * (quick 261008-txt, Correção 1):
+     *
+     *   1. `!$aceitaTexto` — proibição total (mesma redação do bloco SLOT
+     *      do hero), regra de moderação do Mercado Livre.
+     *   2. `$aceitaTexto && !$temTexto` — o tipo aceita texto, mas NENHUM
+     *      headline/badge foi confirmado nesta instância do slot. Antes
+     *      desta correção este caso caía no ramo 3 com a lista vazia,
+     *      emitindo "escreva EXATAMENTE os textos abaixo" sem nenhum texto
+     *      abaixo — ordem que o modelo lê como "não escreva nada", e que
+     *      CONTRADIZ a CENA do leiaute (que descreve cabeçalho/cotas de
+     *      medida). Este ramo é honesto: explica a ausência e instrui a
+     *      desenhar a CENA sem os elementos de texto que ela descreve.
+     *   3. `$aceitaTexto && $temTexto` — a headline e as badges do plano,
+     *      uma por linha, com a instrução de escrever EXATAMENTE esses
+     *      textos (comportamento original).
+     */
+    private function linhasTexto(bool $aceitaTexto, bool $temTexto, array $slotPlano): array
     {
         if (! $aceitaTexto) {
             return [
                 'TEXTO: PROIBIDO.',
                 'NENHUM texto, logo aplicado, selo ou marca d\'água na imagem — é regra de moderação',
                 'do Mercado Livre, não só escolha estética.',
+            ];
+        }
+
+        if (! $temTexto) {
+            return [
+                'TEXTO: NENHUM valor foi confirmado no cadastro para este slot — não escreva',
+                'nenhuma palavra, número ou rótulo na imagem. Ignore qualquer cabeçalho, marcador',
+                'ou rótulo de medida descrito na CENA acima: desenhe só o leiaute visual dela (o',
+                'produto, os elementos gráficos), sem nenhum texto, do mesmo jeito que um slot que',
+                'não aceita texto.',
             ];
         }
 
@@ -446,24 +494,33 @@ class CreativePromptBuilder
 
     /**
      * Claims do Truth + as `proibicoes` do slot, menos o claim literal de
-     * "não escrever texto" quando o slot aceita texto (Decisão 7) —
-     * comparação por igualdade exata do literal, nunca por substring.
+     * "não escrever texto" quando o slot TEM TEXTO CONFIRMADO (Decisão 7) —
+     * comparação por igualdade exata do literal, nunca por substring. O
+     * parâmetro é `$temTexto` (não `$aceitaTexto` puro, quick 261008-txt
+     * Correção 1): um tipo que aceita texto mas sem nenhum headline/badge
+     * confirmado volta a proibir texto, igual a um tipo que nunca aceitou.
+     *
+     * Correção 3 (quick 261008-txt): `array_unique` no final — a causa raiz
+     * da duplicação (`CreativePlanner::proibicoesDoSlot()` repetindo
+     * `$truth->claimsProibidas` inteiro dentro de `$slotPlano['proibicoes']`)
+     * foi corrigida lá, mas a deduplicação aqui é defesa em profundidade:
+     * nenhuma claim aparece duas vezes no prompt, seja qual for a origem.
      */
-    private function claimsDoSlot(ProductTruth $truth, array $slotPlano, bool $aceitaTexto): array
+    private function claimsDoSlot(ProductTruth $truth, array $slotPlano, bool $temTexto): array
     {
         $claims = array_merge(
             $truth->paraPrompt()['claims_proibidas'],
             (array) ($slotPlano['proibicoes'] ?? []),
         );
 
-        if (! $aceitaTexto) {
-            return $claims;
+        if ($temTexto) {
+            $claims = array_values(array_filter(
+                $claims,
+                fn ($claim) => trim((string) $claim) !== self::CLAIM_SEM_TEXTO
+            ));
         }
 
-        return array_values(array_filter(
-            $claims,
-            fn ($claim) => trim((string) $claim) !== self::CLAIM_SEM_TEXTO
-        ));
+        return array_values(array_unique($claims));
     }
 
     /**
