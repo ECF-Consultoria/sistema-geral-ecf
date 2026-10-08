@@ -2978,6 +2978,16 @@ Plans:
 
 ---
 
+### Phase 172: Ficha do portal completa até o Publicador: estoque por variação, descrição do produto e Sincronizar que leva categoria, ficha técnica, variações, imagens, medidas e descrição preenchendo só o vazio
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 168 (Geração de ofertas)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 172 to break down)
+
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
 
 **Plano canônico:** `plano-incubadora-v1` (raiz do repo), §§7-20 · **Requirements:** `.planning/REQUIREMENTS-v24.md` · **Spike V0.1 (já entregue, não replanejar):** quick task `261001-nkx`, medições completas em `.planning/quick/261001-nkx-spike-v0-1-do-creative-engine-provider-g/261001-nkx-NOTAS-PUBLICADOR.md` (seções 1-20).
