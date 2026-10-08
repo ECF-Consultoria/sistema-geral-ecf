@@ -214,9 +214,11 @@ class CreativePlannerTest extends TestCase
         $this->assertSame('hero', $plano->slots[0]->tipo);
     }
 
-    // ═══ Badge — só sobrevive quando casa literalmente com o Truth ═════════
+    // ═══ Badge — só sobrevive quando casa com o Truth, e sai ROTULADA ═════
+    // (quick 261008-txt, Correção 2: o SISTEMA remonta "rótulo: valor",
+    // nunca aceita o literal do modelo — nem quando ele já bate certo.)
 
-    public function test_badge_que_nao_casa_e_descartada_e_a_que_casa_e_mantida_literal(): void
+    public function test_badge_que_nao_casa_e_descartada_e_a_que_casa_sai_rotulada_pelo_truth(): void
     {
         $atributos = ['MATERIAL' => 'Aço carbono'];
         $json = json_encode([
@@ -238,7 +240,72 @@ class CreativePlannerTest extends TestCase
         $slot = collect($plano->slots)->firstWhere('tipo', 'feature_highlight');
 
         $this->assertNotNull($slot, 'feature_highlight deveria ser elegível com 1 fato verificado.');
-        $this->assertSame(['Aço carbono'], $slot->badges);
+        $this->assertSame(['Material: Aço carbono'], $slot->badges);
+    }
+
+    /**
+     * A correção central da quick 261008-txt: o modelo propõe a badge JÁ
+     * com um rótulo colado (como de fato propôs em produção, criativo 40) —
+     * antes, isso era descartado por não casar byte a byte com o valor NU
+     * do cadastro. Agora casa (pela parte depois do ":") e sai remontada
+     * com o rótulo OFICIAL do Truth — que pode até ser diferente do que o
+     * modelo colou, prova de que o texto nunca é aceito como veio.
+     */
+    public function test_badge_com_rotulo_proprio_do_modelo_casa_pelo_valor_e_sai_com_o_rotulo_do_truth(): void
+    {
+        $atributos = ['WIDTH' => '120 cm'];
+        $json = json_encode([
+            'estrategia' => ['publico' => 'a', 'proposta_de_valor' => 'b', 'direcao_visual' => 'c'],
+            'slots' => [
+                ['tipo' => 'hero', 'objetivo' => 'x', 'cena' => 'y'],
+                [
+                    'tipo'     => 'dimensions',
+                    'objetivo' => 'medidas',
+                    'cena'     => 'ignorada (forçada pelo catálogo)',
+                    'badges'   => ['Tamanho: 120 cm'], // rótulo ERRADO proposto pelo modelo
+                ],
+            ],
+        ]);
+
+        $plano = $this->planner($this->providerComResposta($json))
+            ->planejar($this->contexto($atributos), $this->truth($atributos), 7);
+
+        $slot = collect($plano->slots)->firstWhere('tipo', 'dimensions');
+
+        $this->assertNotNull($slot);
+        // "Largura", não "Tamanho" — o rótulo vem do Truth, nunca do modelo.
+        $this->assertSame(['Largura: 120 cm'], $slot->badges);
+    }
+
+    /**
+     * TRUTH-02/03: o número SÓ pode vir do cadastro. Uma badge com o valor
+     * certo mas o rótulo errado ainda casa (Correção 2); uma badge com
+     * VALOR que não existe no cadastro é descartada, mesmo citando um
+     * rótulo real — nunca aceitamos o número que o modelo inventou.
+     */
+    public function test_badge_com_valor_que_nao_existe_no_cadastro_e_descartada_mesmo_citando_rotulo_real(): void
+    {
+        $atributos = ['WIDTH' => '120 cm'];
+        $json = json_encode([
+            'estrategia' => ['publico' => 'a', 'proposta_de_valor' => 'b', 'direcao_visual' => 'c'],
+            'slots' => [
+                ['tipo' => 'hero', 'objetivo' => 'x', 'cena' => 'y'],
+                [
+                    'tipo'     => 'dimensions',
+                    'objetivo' => 'medidas',
+                    'cena'     => 'ignorada (forçada pelo catálogo)',
+                    'badges'   => ['Largura: 999 cm'], // número INVENTADO, cadastro diz 120 cm
+                ],
+            ],
+        ]);
+
+        $plano = $this->planner($this->providerComResposta($json))
+            ->planejar($this->contexto($atributos), $this->truth($atributos), 7);
+
+        $slot = collect($plano->slots)->firstWhere('tipo', 'dimensions');
+
+        $this->assertNotNull($slot);
+        $this->assertSame([], $slot->badges);
     }
 
     // ═══ Slot 1 é sempre hero, nunca em outra posição ═══════════════════

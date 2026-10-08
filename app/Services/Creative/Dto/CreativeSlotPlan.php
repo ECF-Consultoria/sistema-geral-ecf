@@ -16,7 +16,10 @@ final readonly class CreativeSlotPlan
      * @param  string  $tipo  um dos tipos de `CreativeSlotCatalog` (snake_case)
      * @param  array<int, string>  $badges  textos que repetem literalmente um valor do Truth
      * @param  array<int, string>  $fatosUsados  rótulos (chaves de `ProductTruth::$fatosVerificados`) usados neste slot
-     * @param  array<int, string>  $proibicoes  claims proibidas + (quando `aceita_texto=false`) proibição de texto
+     * @param  array<int, string>  $proibicoes  proibição ESPECÍFICA deste slot (hoje, só a de
+     *         "não escrever texto" quando não há texto confirmado) — os claims fixos do
+     *         `ProductTruth` são mesclados separadamente em
+     *         `CreativePromptBuilder::claimsDoSlot()`, nunca duplicados aqui (quick 261008-txt)
      */
     public function __construct(
         public int $indice,

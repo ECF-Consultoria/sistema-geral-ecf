@@ -283,6 +283,14 @@ class CreativePlanner
             ? $this->validarTexto($proposta, $truth)
             : [null, [], []];
 
+        // Correção 1 (quick 261008-txt): "tem texto confirmado" É DIFERENTE
+        // de "o tipo aceita texto" — `dimensions`/`specifications`/etc.
+        // aceitam texto por TIPO, mas só têm texto DE FATO quando
+        // `validarTexto()` confirmou pelo menos um headline/badge. Usar
+        // `$aceitaTexto` puro aqui (como antes desta quick) gerava o bloco
+        // TEXTO vazio contradizendo a CENA do leiaute — ver PLAN.md.
+        $temTexto = $headline !== null || $badges !== [];
+
         return new CreativeSlotPlan(
             indice: 0, // renumerado em reconciliar()
             tipo: $tipo,
@@ -293,15 +301,14 @@ class CreativePlanner
             headline: $headline,
             badges: $badges,
             fatosUsados: $fatosUsados,
-            proibicoes: $this->proibicoesDoSlot($truth, $aceitaTexto),
+            proibicoes: $this->proibicoesDoSlot($temTexto),
         );
     }
 
     /** Um slot 100% padrão do catálogo — usado para completar o plano e para o primeiro slot forçado (hero/lifestyle). */
     private function montarSlotPadrao(string $tipo, ProductTruth $truth): CreativeSlotPlan
     {
-        $padrao      = $this->catalogo->padraoDe($tipo) ?? [];
-        $aceitaTexto = $this->catalogo->aceitaTexto($tipo);
+        $padrao = $this->catalogo->padraoDe($tipo) ?? [];
 
         return new CreativeSlotPlan(
             indice: 0,
@@ -311,14 +318,33 @@ class CreativePlanner
             headline: null,
             badges: [],
             fatosUsados: [],
-            proibicoes: $this->proibicoesDoSlot($truth, $aceitaTexto),
+            // Nunca há proposta do LLM aqui, logo nunca há texto confirmado
+            // (headline/badges saem sempre vazios acima) — mesmo quando o
+            // TIPO aceita texto por catálogo.
+            proibicoes: $this->proibicoesDoSlot(temTextoConfirmado: false),
         );
     }
 
     /**
-     * headline/badges só sobrevivem quando casam EXATAMENTE (trim literal)
-     * com um valor de `fatosVerificados` ou com a forma "peça: quantidade"
-     * das contagens — a prova de T-161-03/PLAN-03 para texto na imagem.
+     * headline/badges só sobrevivem quando o VALOR que carregam casa
+     * EXATAMENTE (trim literal) com um valor de `fatosVerificados` ou com a
+     * forma "peça: quantidade" das contagens — a prova de T-161-03/PLAN-03
+     * para texto na imagem.
+     *
+     * Correção 2 (quick 261008-txt, decisão do usuário): o texto ACEITO
+     * nunca é o literal que o modelo escreveu — para um fato de
+     * `fatosVerificados`, é sempre REMONTADO pelo SISTEMA como "{rótulo}:
+     * {valor}" (`rotularSeConfirmado()`), com o rótulo oficial do Truth, já
+     * em pt-BR (`ProductTruthBuilder::rotulo()`). Antes desta correção, o
+     * modelo propondo "Largura: 120 cm" para o fato `WIDTH => '120 cm'` era
+     * descartado por não casar byte a byte com o valor NU "120 cm" — achado
+     * em produção no criativo 40 (ver PLAN.md). O NÚMERO continua vindo só
+     * do cadastro: só decidimos SE o texto do modelo se refere a um valor
+     * confirmado, nunca aceitamos a frase dele como está. Contagens não
+     * mudam — já chegam rotuladas de `ProductTruthBuilder` e continuam
+     * exigindo igualdade EXATA da string inteira (nenhuma flexibilização
+     * aqui, por não ser o defeito desta quick — ver §18 do spike).
+     *
      * `fatosUsados` guarda os RÓTULOS (chaves de `fatosVerificados`), não os
      * valores.
      *
@@ -326,24 +352,16 @@ class CreativePlanner
      */
     private function validarTexto(array $proposta, ProductTruth $truth): array
     {
-        $valoresValidos = array_map(
-            fn ($v) => trim((string) $v),
-            array_merge(
-                array_values($truth->fatosVerificados),
-                array_map(fn ($c) => "{$c['peca']}: {$c['quantidade']}", $truth->contagens),
-            ),
-        );
-
         $headlineProposto = trim((string) ($proposta['headline'] ?? ''));
-        $headline = ($headlineProposto !== '' && in_array($headlineProposto, $valoresValidos, true))
-            ? $headlineProposto
-            : null;
+        $headline = $headlineProposto !== '' ? $this->rotularSeConfirmado($headlineProposto, $truth) : null;
 
         $badges = [];
         foreach ((array) ($proposta['badges'] ?? []) as $badge) {
             $badge = trim((string) $badge);
-            if ($badge !== '' && in_array($badge, $valoresValidos, true)) {
-                $badges[] = $badge;
+            $rotulado = $badge !== '' ? $this->rotularSeConfirmado($badge, $truth) : null;
+
+            if ($rotulado !== null) {
+                $badges[] = $rotulado;
             }
         }
 
@@ -359,16 +377,63 @@ class CreativePlanner
         return [$headline, $badges, $fatosUsados];
     }
 
-    /** Claims do Truth + (quando o tipo não aceita texto) a proibição total de texto na imagem. */
-    private function proibicoesDoSlot(ProductTruth $truth, bool $aceitaTexto): array
+    /**
+     * `$texto` (proposto pelo modelo) casa com um fato ou contagem
+     * confirmados — e, quando casa, devolve o texto REMONTADO pelo sistema
+     * (nunca o literal proposto, ver docblock de `validarTexto()`).
+     *
+     * Contagem exige igualdade EXATA da string "peça: quantidade" inteira
+     * (comportamento inalterado). Fato verificado tolera o modelo já ter
+     * colado um rótulo próprio antes do valor (`semRotulo()` descarta tudo
+     * até o último ":") — o VALOR depois do ":" (ou o texto inteiro, se não
+     * houver ":") precisa casar EXATAMENTE com o valor do cadastro.
+     */
+    private function rotularSeConfirmado(string $texto, ProductTruth $truth): ?string
     {
-        $proibicoes = $truth->claimsProibidas;
-
-        if (! $aceitaTexto) {
-            $proibicoes[] = 'Não escreva texto, logo, selo ou marca d\'água nesta imagem.';
+        foreach ($truth->contagens as $contagem) {
+            $textoContagem = "{$contagem['peca']}: {$contagem['quantidade']}";
+            if (trim($texto) === trim($textoContagem)) {
+                return $textoContagem;
+            }
         }
 
-        return $proibicoes;
+        $valorProposto = $this->semRotulo($texto);
+        foreach ($truth->fatosVerificados as $rotulo => $valor) {
+            if ($valorProposto === trim((string) $valor)) {
+                return "{$rotulo}: {$valor}";
+            }
+        }
+
+        return null;
+    }
+
+    /** Parte depois do último ":" de `$texto`, ou o texto inteiro quando não há ":". */
+    private function semRotulo(string $texto): string
+    {
+        $pos = strrpos($texto, ':');
+
+        return trim($pos === false ? $texto : substr($texto, $pos + 1));
+    }
+
+    /**
+     * A proibição ESPECÍFICA deste slot — hoje, só a de "não escrever
+     * texto" quando ele não tem texto confirmado (nem porque o tipo não
+     * aceita texto, nem porque aceita mas nada foi validado).
+     *
+     * Correção 3 (quick 261008-txt): este método NÃO repete
+     * `$truth->claimsProibidas` — isso já é mesclado de novo em
+     * `CreativePromptBuilder::claimsDoSlot()` a partir do Truth gravado.
+     * Gravar aqui TAMBÉM a lista fixa do Truth é a causa raiz da duplicação
+     * encontrada em produção (os mesmos 7 itens de CLAIMS PROIBIDAS duas
+     * vezes no prompt do criativo 40) — ver PLAN.md.
+     */
+    private function proibicoesDoSlot(bool $temTextoConfirmado): array
+    {
+        if ($temTextoConfirmado) {
+            return [];
+        }
+
+        return ['Não escreva texto, logo, selo ou marca d\'água nesta imagem.'];
     }
 
     /** Estratégia final — sanitizada campo a campo, com fallback padrão quando o LLM não propôs nada usável. */
