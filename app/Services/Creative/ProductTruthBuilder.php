@@ -173,8 +173,17 @@ class ProductTruthBuilder
         return $claims;
     }
 
-    /** Rótulo legível pt-BR do id do atributo. Fallback: humaniza o id (snake → título). */
-    private function rotulo(string $id): string
+    /**
+     * Rótulo legível pt-BR do id do atributo. Fallback: humaniza o id (snake
+     * → título). `public static` (quick 261008-bdg): `CreativeSlotCatalog`
+     * passou a montar badges do SISTEMA direto do `ProductTruth` quando o
+     * modelo não propõe texto aproveitável — chama este método para não
+     * duplicar `ROTULOS_CONHECIDOS` noutra classe (fonte única do rótulo
+     * pt-BR). `static` evita injetar `ProductTruthBuilder` no construtor de
+     * `CreativeSlotCatalog`, que é instanciado sem argumento em ~30 testes
+     * das Fases 161/162/168/170 e quicks anteriores.
+     */
+    public static function rotulo(string $id): string
     {
         if (isset(self::ROTULOS_CONHECIDOS[$id])) {
             return self::ROTULOS_CONHECIDOS[$id];

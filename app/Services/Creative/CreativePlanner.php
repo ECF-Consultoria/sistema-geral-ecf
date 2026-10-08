@@ -283,12 +283,29 @@ class CreativePlanner
             ? $this->validarTexto($proposta, $truth)
             : [null, [], []];
 
+        // Quick 261008-bdg: o LLM do planejamento não está propondo badge
+        // nenhuma (achado em produção — rascunho "mesa escritório", conta
+        // 459, criativos 34 e 40, `badges: []` nos dois), então
+        // `validarTexto()` nunca tem o que confirmar. Quando o tipo aceita
+        // texto e NADA sobreviveu da proposta do modelo (nem headline, nem
+        // badge), o SISTEMA monta as badges direto do `ProductTruth` — o
+        // mesmo fato que tornou o tipo elegível, nunca um número
+        // escolhido/completado pelo modelo (`CreativeSlotCatalog::
+        // fatosParaTexto()`). Quando o Truth também não sustenta nada para
+        // este tipo, `badgesDoSistema()` devolve vazio e o ramo honesto da
+        // quick 261008-txt continua valendo.
+        if ($aceitaTexto && $headline === null && $badges === []) {
+            [$badges, $fatosUsados] = $this->badgesDoSistema($tipo, $truth);
+        }
+
         // Correção 1 (quick 261008-txt): "tem texto confirmado" É DIFERENTE
         // de "o tipo aceita texto" — `dimensions`/`specifications`/etc.
         // aceitam texto por TIPO, mas só têm texto DE FATO quando
-        // `validarTexto()` confirmou pelo menos um headline/badge. Usar
-        // `$aceitaTexto` puro aqui (como antes desta quick) gerava o bloco
-        // TEXTO vazio contradizendo a CENA do leiaute — ver PLAN.md.
+        // `validarTexto()` confirmou pelo menos um headline/badge (ou,
+        // agora, quando o SISTEMA montou badge a partir do Truth — quick
+        // 261008-bdg). Usar `$aceitaTexto` puro aqui (como antes da quick
+        // 261008-txt) gerava o bloco TEXTO vazio contradizendo a CENA do
+        // leiaute — ver PLAN.md de cada quick.
         $temTexto = $headline !== null || $badges !== [];
 
         return new CreativeSlotPlan(
@@ -305,10 +322,22 @@ class CreativePlanner
         );
     }
 
-    /** Um slot 100% padrão do catálogo — usado para completar o plano e para o primeiro slot forçado (hero/lifestyle). */
+    /**
+     * Um slot 100% padrão do catálogo — usado para completar o plano e
+     * para o primeiro slot forçado (hero/lifestyle).
+     *
+     * Quick 261008-bdg: aqui NUNCA há proposta do LLM para validar (este é
+     * exatamente o caso de produção do PLAN.md — `badges: []` nos dois
+     * criativos), então — igual a `montarSlotAceito()` — quando o TIPO
+     * aceita texto, o SISTEMA tenta montar badge direto do `ProductTruth`
+     * antes de aceitar que o slot fica sem texto.
+     */
     private function montarSlotPadrao(string $tipo, ProductTruth $truth): CreativeSlotPlan
     {
-        $padrao = $this->catalogo->padraoDe($tipo) ?? [];
+        $padrao      = $this->catalogo->padraoDe($tipo) ?? [];
+        $aceitaTexto = $this->catalogo->aceitaTexto($tipo);
+
+        [$badges, $fatosUsados] = $aceitaTexto ? $this->badgesDoSistema($tipo, $truth) : [[], []];
 
         return new CreativeSlotPlan(
             indice: 0,
@@ -316,12 +345,9 @@ class CreativePlanner
             objetivo: (string) ($padrao['objetivo_padrao'] ?? ''),
             cena: (string) ($padrao['cena_padrao'] ?? ''),
             headline: null,
-            badges: [],
-            fatosUsados: [],
-            // Nunca há proposta do LLM aqui, logo nunca há texto confirmado
-            // (headline/badges saem sempre vazios acima) — mesmo quando o
-            // TIPO aceita texto por catálogo.
-            proibicoes: $this->proibicoesDoSlot(temTextoConfirmado: false),
+            badges: $badges,
+            fatosUsados: $fatosUsados,
+            proibicoes: $this->proibicoesDoSlot(temTextoConfirmado: $badges !== []),
         );
     }
 
@@ -413,6 +439,36 @@ class CreativePlanner
         $pos = strrpos($texto, ':');
 
         return trim($pos === false ? $texto : substr($texto, $pos + 1));
+    }
+
+    /**
+     * Badges do SISTEMA (quick 261008-bdg) — montadas direto do
+     * `ProductTruth` quando o modelo não propôs headline/badge aproveitável
+     * para um slot que aceita texto (`CreativeSlotCatalog::
+     * fatosParaTexto()` decide QUAL/QUANTOS fato(s), por tipo). Mesmo
+     * formato "{rótulo}: {valor}" que `rotularSeConfirmado()` já produz
+     * para a badge proposta pelo modelo — o rótulo é sempre o oficial do
+     * Truth (`ProductTruthBuilder::rotulo()`), o valor é sempre o exato do
+     * cadastro. Nunca escolhe, completa ou arredonda nada.
+     *
+     * `fatosParaTexto()` já devolve `[]` quando o Truth não sustenta nenhum
+     * fato para este tipo — aqui também devolve badges vazias nesse caso,
+     * e o chamador cai no ramo honesto da quick 261008-txt (sem texto).
+     *
+     * @return array{0: array<int, string>, 1: array<int, string>} [badges, fatosUsados]
+     */
+    private function badgesDoSistema(string $tipo, ProductTruth $truth): array
+    {
+        $fatos = $this->catalogo->fatosParaTexto($tipo, $truth);
+
+        $badges = [];
+        $fatosUsados = [];
+        foreach ($fatos as $rotulo => $valor) {
+            $badges[] = "{$rotulo}: {$valor}";
+            $fatosUsados[] = $rotulo;
+        }
+
+        return [$badges, $fatosUsados];
     }
 
     /**

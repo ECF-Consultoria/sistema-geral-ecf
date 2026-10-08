@@ -64,10 +64,14 @@ class CriativoQuarentaReproducaoTest extends TestCase
 
     /**
      * Forma exata gravada em produção no criativo 40: o slot `dimensions`
-     * foi aceito, mas SEM nenhum headline/badge — `fatos_usados: []`. Prova
-     * (a): sem fato nenhum validado, o prompt final não se contradiz mais.
+     * foi aceito, mas SEM nenhum headline/badge propostos pelo modelo —
+     * `fatos_usados: []`. A quick 261008-txt só deixou o prompt honesto
+     * (parar de mandar "escreva" seguido de nada); a causa raiz — o modelo
+     * nunca propõe, então nunca há o que rotular — fica para a quick
+     * 261008-bdg: o SISTEMA monta a badge direto do `ProductTruth` (as três
+     * medidas do produto), sem depender do modelo propor nada.
      */
-    public function test_sem_proposta_de_texto_do_modelo_o_prompt_final_nao_se_contradiz(): void
+    public function test_sem_proposta_de_texto_do_modelo_o_sistema_monta_as_badges_do_truth(): void
     {
         $json = json_encode([
             'estrategia' => ['publico' => 'a', 'proposta_de_valor' => 'b', 'direcao_visual' => 'c'],
@@ -83,17 +87,24 @@ class CriativoQuarentaReproducaoTest extends TestCase
 
         $slotDimensoes = collect($plano->slots)->firstWhere('tipo', 'dimensions');
         $this->assertNotNull($slotDimensoes);
-        $this->assertSame([], $slotDimensoes->badges);
+        // O SISTEMA monta a badge — o modelo não propôs headline/badge nenhum.
+        $this->assertSame(['Largura: 120 cm', 'Altura: 75 cm', 'Profundidade: 50 cm'], $slotDimensoes->badges);
         $this->assertNull($slotDimensoes->headline);
 
         $prompt = (new CreativePromptBuilder(new CreativeSlotCatalog()))->paraSlot($truth, $slotDimensoes->paraPrompt());
 
-        $this->assertStringNotContainsString('escreva EXATAMENTE os textos abaixo', $prompt);
-        $this->assertStringContainsString('TEXTO: NENHUM valor foi confirmado', $prompt);
+        $this->assertStringContainsString('escreva EXATAMENTE os textos abaixo', $prompt);
+        $this->assertStringContainsString('- Badge: Largura: 120 cm', $prompt);
+        $this->assertStringContainsString('- Badge: Altura: 75 cm', $prompt);
+        $this->assertStringContainsString('- Badge: Profundidade: 50 cm', $prompt);
 
         $posClaims   = strpos($prompt, 'CLAIMS PROIBIDAS:');
         $blocoClaims = substr($prompt, $posClaims);
         $this->assertSame(1, substr_count($blocoClaims, 'Não altere a cor do produto.'));
+        // Com texto confirmado (agora montado pelo sistema), a proibição
+        // "Não escreva texto na imagem." some do bloco (Decisão 7) — nunca
+        // se contradiz com o bloco TEXTO que manda escrever as badges.
+        $this->assertSame(0, substr_count($blocoClaims, 'Não escreva texto na imagem.'));
     }
 
     /**

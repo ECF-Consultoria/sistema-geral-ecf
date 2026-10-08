@@ -282,8 +282,15 @@ class CreativePlannerTest extends TestCase
      * certo mas o rótulo errado ainda casa (Correção 2); uma badge com
      * VALOR que não existe no cadastro é descartada, mesmo citando um
      * rótulo real — nunca aceitamos o número que o modelo inventou.
+     *
+     * Quick 261008-bdg: descartar a proposta do modelo não significa mais
+     * terminar sem texto — o SISTEMA monta a badge direto do Truth (o
+     * valor VERDADEIRO, 120 cm, nunca o inventado 999 cm). O número
+     * continua vindo exclusivamente do cadastro; só muda QUEM preenche o
+     * vazio deixado pelo descarte (antes: ninguém, slot ficava sem texto;
+     * agora: o sistema, com o valor correto).
      */
-    public function test_badge_com_valor_que_nao_existe_no_cadastro_e_descartada_mesmo_citando_rotulo_real(): void
+    public function test_badge_com_valor_que_nao_existe_no_cadastro_e_descartada_e_substituida_pelo_valor_real_do_sistema(): void
     {
         $atributos = ['WIDTH' => '120 cm'];
         $json = json_encode([
@@ -305,7 +312,9 @@ class CreativePlannerTest extends TestCase
         $slot = collect($plano->slots)->firstWhere('tipo', 'dimensions');
 
         $this->assertNotNull($slot);
-        $this->assertSame([], $slot->badges);
+        // O número inventado (999 cm) nunca sobrevive; o sistema substitui
+        // pelo valor real do cadastro (120 cm) — nunca fica sem nada.
+        $this->assertSame(['Largura: 120 cm'], $slot->badges);
     }
 
     // ═══ Slot 1 é sempre hero, nunca em outra posição ═══════════════════

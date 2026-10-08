@@ -129,6 +129,43 @@ class CreativeSlotCatalog
     /** id de atributo de instalação/montagem — prefixo fechado. */
     private const PADRAO_ID_INSTALACAO = '/^(INSTALLATION|ASSEMBLY|MOUNTING)/';
 
+    /**
+     * Ordem de prioridade das medidas do PRODUTO no layout de medidas (quick
+     * 261008-bdg) — a ordem do print de referência do usuário (largura,
+     * altura, comprimento, profundidade). Ids fora desta lista (ex.:
+     * sufixo `SEAT_WIDTH`) ainda entram em `medidasDoProduto()`, só depois
+     * destes, na ordem em que apareceram no cadastro.
+     */
+    private const PRIORIDADE_MEDIDAS = ['WIDTH', 'HEIGHT', 'LENGTH', 'DEPTH'];
+
+    /**
+     * Ordem de prioridade dos fatos genéricos usados como badge no layout de
+     * tópicos (quick 261008-bdg) — material e cor são os fatos mais
+     * informativos de produto físico neste domínio (mobiliário), por isso
+     * vêm antes de qualquer outro atributo cadastrado.
+     */
+    private const PRIORIDADE_FATOS_GENERICOS = ['MATERIAL', 'MAIN_MATERIAL', 'COLOR'];
+
+    /**
+     * Ids que NUNCA virem badge genérica, mesmo satisfazendo o requisito de
+     * contagem de `specifications`/`benefits`/`feature_highlight` (quick
+     * 261008-bdg):
+     *   - `MODEL`: achado em produção (rascunho "mesa escritório", conta
+     *     459) — o atributo carrega uma LISTA de palavras-chave de SEO
+     *     ("mesa escritorio gaveta, escrivaninha com gavetas, ..."), não um
+     *     fato único; "parece fato e não é".
+     *   - `BRAND`: já aparece em FATOS PERMITIDOS como "Marca" (ver
+     *     `CreativePromptBuilder::linhasFatosPermitidos()`) — não duplica
+     *     como badge.
+     */
+    private const IDS_EXCLUIDOS_DE_BADGE_GENERICA = ['MODEL', 'BRAND'];
+
+    /** Máximo de badges do layout de MEDIDAS (print de referência: três cotas). */
+    private const MAX_BADGES_MEDIDAS = 3;
+
+    /** Máximo de badges do layout de TÓPICOS ("um ou dois recortes circulares"). */
+    private const MAX_BADGES_TOPICOS = 2;
+
     /** @return array<string, array{rotulo: string, objetivo_padrao: string, cena_padrao: string, aceita_texto: bool}> */
     private function catalogo(): array
     {
@@ -367,5 +404,172 @@ class CreativeSlotCatalog
         }
 
         return false;
+    }
+
+    /**
+     * Fatos que SUSTENTAM este tipo de slot, já rotulados em pt-BR,
+     * prontos para virar badge do SISTEMA quando o modelo não propõe texto
+     * aproveitável (quick 261008-bdg — achado em produção: rascunho "mesa
+     * escritório", conta 459, criativos 34 e 40, `badges: []` nos dois).
+     *
+     * O VALOR nunca é derivado, completado ou arredondado — é o mesmo valor
+     * exato de `$truth->atributosIds`/`$truth->contagens` (TRUTH-02/03).
+     * Vazio quando o Truth não sustenta nenhum fato para este tipo — nesse
+     * caso o chamador (`CreativePlanner`) cai no ramo honesto da quick
+     * 261008-txt (sem texto), nunca inventa.
+     *
+     * Critério de QUANTAS/QUAIS badges (registrado também no SUMMARY desta
+     * quick):
+     *   - `dimensions` usa `LAYOUT_MEDIDAS`, que pede três cotas — no
+     *     máximo `MAX_BADGES_MEDIDAS` medidas do PRODUTO (nunca de
+     *     embalagem — `PADRAO_ID_EMBALAGEM`, 261007-ifa), na ordem de
+     *     `PRIORIDADE_MEDIDAS`.
+     *   - `package_content`/`how_to_use` usam o MESMO fato que os tornou
+     *     elegíveis em `satisfaz()` (a contagem de kit ou o atributo de
+     *     conteúdo/instalação) — não há ambiguidade de "qual fato" aqui.
+     *   - `specifications`/`benefits`/`feature_highlight` usam
+     *     `LAYOUT_TOPICOS`, que pede "um ou dois recortes" — no máximo
+     *     `MAX_BADGES_TOPICOS` fatos genéricos, na ordem de
+     *     `PRIORIDADE_FATOS_GENERICOS` (material/cor primeiro — os fatos
+     *     mais informativos para mobiliário), excluindo
+     *     `IDS_EXCLUIDOS_DE_BADGE_GENERICA` (MODEL é lista de SEO, não um
+     *     fato; BRAND já aparece em FATOS PERMITIDOS) e qualquer id já
+     *     coberto por um slot dedicado (medida/embalagem/kit/instalação).
+     *
+     * @return array<string, string> rótulo pt-BR => valor exato do cadastro
+     */
+    public function fatosParaTexto(string $tipo, ProductTruth $truth): array
+    {
+        return match ($tipo) {
+            'dimensions' => $this->medidasDoProduto($truth),
+            'package_content' => $this->fatosDeConteudoDoKit($truth),
+            'how_to_use' => $this->fatosDeInstalacao($truth),
+            'specifications', 'benefits', 'feature_highlight' => $this->fatosGenericosParaTopicos($truth),
+            default => [],
+        };
+    }
+
+    /**
+     * Medidas do PRODUTO (nunca da embalagem — mesmo filtro de
+     * `temAtributoDeDimensaoDoProduto()`), rotuladas e limitadas a
+     * `MAX_BADGES_MEDIDAS`, na ordem de `PRIORIDADE_MEDIDAS`.
+     *
+     * @return array<string, string>
+     */
+    private function medidasDoProduto(ProductTruth $truth): array
+    {
+        $candidatos = [];
+
+        foreach ($truth->atributosIds as $id => $valor) {
+            $id = (string) $id;
+
+            if (preg_match(self::PADRAO_ID_EMBALAGEM, $id) === 1) {
+                continue; // medida da CAIXA nunca é medida do produto (261007-ifa)
+            }
+
+            if (preg_match(self::PADRAO_ID_DIMENSAO, $id) === 1) {
+                $candidatos[$id] = $valor;
+            }
+        }
+
+        uksort($candidatos, fn (string $a, string $b) => $this->posicaoNaPrioridade($a, self::PRIORIDADE_MEDIDAS)
+            <=> $this->posicaoNaPrioridade($b, self::PRIORIDADE_MEDIDAS));
+
+        $medidas = [];
+        foreach (array_slice($candidatos, 0, self::MAX_BADGES_MEDIDAS, true) as $id => $valor) {
+            $medidas[ProductTruthBuilder::rotulo($id)] = $valor;
+        }
+
+        return $medidas;
+    }
+
+    /**
+     * O MESMO fato que tornou `package_content` elegível em `satisfaz()` —
+     * a contagem de kit (prioridade, já rotulada pelo cadastro) ou, na
+     * ausência dela, o atributo de conteúdo/acessórios.
+     *
+     * @return array<string, string>
+     */
+    private function fatosDeConteudoDoKit(ProductTruth $truth): array
+    {
+        foreach ($truth->contagens as $contagem) {
+            $peca = mb_strtolower((string) ($contagem['peca'] ?? ''));
+
+            if (str_contains($peca, 'kit') || str_contains($peca, 'peça') || str_contains($peca, 'pecas')) {
+                return [(string) $contagem['peca'] => (string) $contagem['quantidade']];
+            }
+        }
+
+        foreach ($truth->atributosIds as $id => $valor) {
+            if (preg_match(self::PADRAO_ID_CONTEUDO_KIT, (string) $id) === 1) {
+                return [ProductTruthBuilder::rotulo((string) $id) => $valor];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * O MESMO atributo que tornou `how_to_use` elegível em `satisfaz()`.
+     *
+     * @return array<string, string>
+     */
+    private function fatosDeInstalacao(ProductTruth $truth): array
+    {
+        foreach ($truth->atributosIds as $id => $valor) {
+            if (preg_match(self::PADRAO_ID_INSTALACAO, (string) $id) === 1) {
+                return [ProductTruthBuilder::rotulo((string) $id) => $valor];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Fatos genéricos para `specifications`/`benefits`/`feature_highlight`
+     * — exclui `IDS_EXCLUIDOS_DE_BADGE_GENERICA` e qualquer id já coberto
+     * por um slot dedicado (medida/embalagem/kit/instalação), ordena por
+     * `PRIORIDADE_FATOS_GENERICOS` e limita a `MAX_BADGES_TOPICOS`.
+     *
+     * @return array<string, string>
+     */
+    private function fatosGenericosParaTopicos(ProductTruth $truth): array
+    {
+        $candidatos = [];
+
+        foreach ($truth->atributosIds as $id => $valor) {
+            $id = (string) $id;
+
+            if (in_array($id, self::IDS_EXCLUIDOS_DE_BADGE_GENERICA, true)) {
+                continue;
+            }
+
+            if (preg_match(self::PADRAO_ID_EMBALAGEM, $id) === 1
+                || preg_match(self::PADRAO_ID_DIMENSAO, $id) === 1
+                || preg_match(self::PADRAO_ID_CONTEUDO_KIT, $id) === 1
+                || preg_match(self::PADRAO_ID_INSTALACAO, $id) === 1) {
+                continue; // já tem slot dedicado para este fato
+            }
+
+            $candidatos[$id] = $valor;
+        }
+
+        uksort($candidatos, fn (string $a, string $b) => $this->posicaoNaPrioridade($a, self::PRIORIDADE_FATOS_GENERICOS)
+            <=> $this->posicaoNaPrioridade($b, self::PRIORIDADE_FATOS_GENERICOS));
+
+        $fatos = [];
+        foreach (array_slice($candidatos, 0, self::MAX_BADGES_TOPICOS, true) as $id => $valor) {
+            $fatos[ProductTruthBuilder::rotulo($id)] = $valor;
+        }
+
+        return $fatos;
+    }
+
+    /** Posição de `$id` em `$prioridade`, ou o fim da lista quando ausente (mantém a ordem relativa dos demais). */
+    private function posicaoNaPrioridade(string $id, array $prioridade): int
+    {
+        $pos = array_search($id, $prioridade, true);
+
+        return $pos === false ? count($prioridade) : $pos;
     }
 }
