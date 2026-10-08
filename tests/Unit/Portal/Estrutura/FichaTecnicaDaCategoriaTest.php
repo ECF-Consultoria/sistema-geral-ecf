@@ -20,7 +20,7 @@ class FichaTecnicaDaCategoriaTest extends TestCase
             ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'list', 'tags' => ['required' => true],
                 'attribute_group_id' => 'MAIN', 'attribute_group_name' => 'Principais',
                 'values' => [['id' => '101', 'name' => 'Madeira'], ['id' => '102', 'name' => 'Metal']]],
-            ['id' => 'WIDTH', 'name' => 'Largura', 'value_type' => 'number_unit', 'tags' => [],
+            ['id' => 'SEAT_HEIGHT', 'name' => 'Altura do assento', 'value_type' => 'number_unit', 'tags' => [],
                 'attribute_group_id' => 'DIM', 'attribute_group_name' => 'Dimensões',
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm'], ['id' => 'mm', 'name' => 'mm']], 'default_unit' => 'cm'],
             ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true],
@@ -53,7 +53,7 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $grupos = F::daAtributos(self::atributos());
 
         $this->assertSame(['Principais', 'Dimensões', F::GRUPO_PADRAO], array_column($grupos, 'grupo'));
-        $this->assertSame(['WIDTH', 'WEIGHT_CAP'], array_column($grupos[1]['campos'], 'id'));
+        $this->assertSame(['SEAT_HEIGHT', 'WEIGHT_CAP'], array_column($grupos[1]['campos'], 'id'));
         $this->assertSame(['WITH_DRAWER'], array_column($grupos[2]['campos'], 'id'));
     }
 
@@ -79,7 +79,7 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $ids = array_keys(F::camposPorId(F::daAtributos(self::atributos())));
 
         sort($ids);
-        $this->assertSame(['BRAND', 'MATERIAL', 'WEIGHT_CAP', 'WIDTH', 'WITH_DRAWER'], $ids);
+        $this->assertSame(['BRAND', 'MATERIAL', 'SEAT_HEIGHT', 'WEIGHT_CAP', 'WITH_DRAWER'], $ids);
     }
 
     public function test_mapeia_value_type_para_o_tipo_da_tela(): void
@@ -88,7 +88,7 @@ class FichaTecnicaDaCategoriaTest extends TestCase
 
         $this->assertSame(F::TIPO_TEXTO, self::campo($grupos, 'BRAND')['tipo']);
         $this->assertSame(F::TIPO_NUMERO, self::campo($grupos, 'WEIGHT_CAP')['tipo']);
-        $this->assertSame(F::TIPO_NUMERO_UNIDADE, self::campo($grupos, 'WIDTH')['tipo']);
+        $this->assertSame(F::TIPO_NUMERO_UNIDADE, self::campo($grupos, 'SEAT_HEIGHT')['tipo']);
         $this->assertSame(F::TIPO_SIM_NAO, self::campo($grupos, 'WITH_DRAWER')['tipo']);
         $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'MATERIAL')['tipo']);
     }
@@ -98,12 +98,12 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $grupos = F::daAtributos(self::atributos());
 
         $this->assertSame([['id' => '101', 'nome' => 'Madeira'], ['id' => '102', 'nome' => 'Metal']], self::campo($grupos, 'MATERIAL')['valores']);
-        $this->assertSame([['id' => 'cm', 'nome' => 'cm'], ['id' => 'mm', 'nome' => 'mm']], self::campo($grupos, 'WIDTH')['unidades']);
-        $this->assertSame('cm', self::campo($grupos, 'WIDTH')['unidade_padrao']);
+        $this->assertSame([['id' => 'cm', 'nome' => 'cm'], ['id' => 'mm', 'nome' => 'mm']], self::campo($grupos, 'SEAT_HEIGHT')['unidades']);
+        $this->assertSame('cm', self::campo($grupos, 'SEAT_HEIGHT')['unidade_padrao']);
         $this->assertSame(60, self::campo($grupos, 'BRAND')['max']);
         $this->assertNull(self::campo($grupos, 'WEIGHT_CAP')['max']);
         $this->assertTrue(self::campo($grupos, 'BRAND')['obrigatorio']);
-        $this->assertFalse(self::campo($grupos, 'WIDTH')['obrigatorio']);
+        $this->assertFalse(self::campo($grupos, 'SEAT_HEIGHT')['obrigatorio']);
     }
 
     public function test_lista_sem_opcoes_vira_texto_e_unidade_padrao_desconhecida_vira_a_primeira(): void
@@ -143,5 +143,98 @@ class FichaTecnicaDaCategoriaTest extends TestCase
     {
         $this->assertSame([], F::daAtributos([]));
         $this->assertSame([], F::daAtributos(['x', null, 3, ['sem_id' => true]]));
+    }
+
+    // ═══ Quem tem opção vira lista, qualquer que seja o `value_type` ═══════════
+
+    /**
+     * O modo de falha que isto impede: o catálogo manda a maior parte das opções em
+     * atributo `string` COM `values`. Lendo `values` só no `list`, esses campos viravam
+     * texto livre e o cliente digitava valor fora da lista ("REDONDO" onde a opção é
+     * "Redonda") — que a plataforma recusa na publicação.
+     */
+    public function test_atributo_string_com_opcoes_vira_lista_e_nao_texto_livre(): void
+    {
+        $grupos = F::daAtributos([
+            ['id' => 'SHAPE', 'name' => 'Forma', 'value_type' => 'string', 'tags' => ['required' => true],
+                'values' => [['id' => '1', 'name' => 'Quadrada'], ['id' => '2', 'name' => 'Redonda']]],
+            ['id' => 'FABRIC_DESIGN', 'name' => 'Desenho do tecido', 'value_type' => 'string', 'tags' => [],
+                'values' => [['id' => '10', 'name' => 'Liso'], ['id' => '11', 'name' => 'Listras']]],
+            // Sem opção nenhuma, segue texto livre.
+            ['id' => 'MODEL', 'name' => 'Modelo', 'value_type' => 'string', 'tags' => []],
+        ]);
+
+        $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'SHAPE')['tipo']);
+        $this->assertSame([['id' => '1', 'nome' => 'Quadrada'], ['id' => '2', 'nome' => 'Redonda']], self::campo($grupos, 'SHAPE')['valores']);
+        $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'FABRIC_DESIGN')['tipo']);
+        $this->assertSame(F::TIPO_TEXTO, self::campo($grupos, 'MODEL')['tipo'], 'sem opção, texto livre');
+    }
+
+    public function test_numero_e_sim_nao_com_opcoes_mantem_o_proprio_controle(): void
+    {
+        $grupos = F::daAtributos([
+            ['id' => 'LEGS_NUMBER', 'name' => 'Quantidade de pés', 'value_type' => 'number', 'tags' => [],
+                'values' => [['id' => '1', 'name' => '3'], ['id' => '2', 'name' => '4']]],
+            ['id' => 'IS_FOLDABLE', 'name' => 'É dobrável', 'value_type' => 'boolean', 'tags' => [],
+                'values' => [['id' => 's', 'name' => 'Sim'], ['id' => 'n', 'name' => 'Não']]],
+        ]);
+
+        $this->assertSame(F::TIPO_NUMERO, self::campo($grupos, 'LEGS_NUMBER')['tipo']);
+        $this->assertSame([], self::campo($grupos, 'LEGS_NUMBER')['valores'], 'número não carrega lista de opções');
+        $this->assertSame(F::TIPO_SIM_NAO, self::campo($grupos, 'IS_FOLDABLE')['tipo']);
+        $this->assertSame([], self::campo($grupos, 'IS_FOLDABLE')['valores']);
+    }
+
+    public function test_lista_marcada_multivalued_aceita_mais_de_uma_opcao(): void
+    {
+        $grupos = F::daAtributos([
+            ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
+                'values' => [['id' => '1', 'name' => 'Algodão'], ['id' => '2', 'name' => 'Couro']]],
+            ['id' => 'STYLE', 'name' => 'Estilo', 'value_type' => 'list', 'tags' => [],
+                'values' => [['id' => '9', 'name' => 'Clássico']]],
+            // Sem opção o campo é texto livre: multivalor não se aplica.
+            ['id' => 'GTIN', 'name' => 'Código universal', 'value_type' => 'string', 'tags' => ['multivalued' => true]],
+        ]);
+
+        $this->assertTrue(self::campo($grupos, 'MATERIALS')['multivalor']);
+        $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'MATERIALS')['tipo']);
+        $this->assertFalse(self::campo($grupos, 'STYLE')['multivalor'], 'lista comum escolhe uma só');
+        $this->assertFalse(self::campo($grupos, 'GTIN')['multivalor'], 'texto livre não vira chips');
+    }
+
+    // ═══ Medida do produto × medida do embalado (Volumes) ═════════════════════
+
+    /**
+     * O modo de falha que isto impede: a ficha mostrava DOIS conjuntos de medida — o do
+     * produto (daqui) e o do embalado (Volumes) — e a pessoa digitava duas vezes. Só o
+     * embalado alimenta peso cubado, logística e frete.
+     */
+    public function test_medida_do_produto_sai_da_ficha_quando_a_categoria_nao_exige(): void
+    {
+        $crus = [];
+        foreach (['LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT'] as $id) {
+            $crus[] = ['id' => $id, 'name' => "Medida {$id}", 'value_type' => 'number_unit', 'tags' => []];
+        }
+        // Não é medida do produto: é quanto ele aguenta. Fica.
+        $crus[] = ['id' => 'MAX_WEIGHT_SUPPORTED', 'name' => 'Peso máximo suportado', 'value_type' => 'number_unit', 'tags' => []];
+
+        $campos = F::camposPorId(F::daAtributos($crus));
+
+        foreach (['LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT'] as $id) {
+            $this->assertArrayNotHasKey($id, $campos, "{$id} duplica o Volume e não deve aparecer");
+        }
+        $this->assertArrayHasKey('MAX_WEIGHT_SUPPORTED', $campos);
+    }
+
+    public function test_medida_do_produto_fica_quando_a_categoria_exige(): void
+    {
+        $campos = F::camposPorId(F::daAtributos([
+            ['id' => 'HEIGHT', 'name' => 'Altura', 'value_type' => 'number_unit', 'tags' => ['required' => true]],
+            ['id' => 'WIDTH', 'name' => 'Largura', 'value_type' => 'number_unit', 'tags' => []],
+        ]));
+
+        $this->assertArrayHasKey('HEIGHT', $campos, 'exigida pela categoria, esconder deixaria o cadastro incompleto');
+        $this->assertTrue($campos['HEIGHT']['obrigatorio']);
+        $this->assertArrayNotHasKey('WIDTH', $campos);
     }
 }

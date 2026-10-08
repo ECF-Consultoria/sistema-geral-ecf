@@ -12,7 +12,7 @@ export const LIMITE_IMAGENS = 12;
 export const EXTENSOES_ACEITAS = ['jpg', 'jpeg', 'png', 'webp'];
 export const ACEITA_NO_INPUT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
 
-export const AVISO_SEM_SALVAR = 'Salve o produto para enviar as imagens desta variação.';
+export const AVISO_AGUARDANDO_SALVAR = 'Estas sobem junto com o “Salvar produto”.';
 export const AVISO_GRANDE_DEMAIS = 'A imagem é grande demais para enviar; tente uma menor.';
 export const AVISO_FALHA_GERAL = 'Não foi possível concluir agora. Tente de novo.';
 
@@ -29,16 +29,18 @@ export function quantasCabem(total, limite = LIMITE_IMAGENS) {
 }
 
 /**
- * Pode enviar agora? Devolve { pode, motivo }: o motivo é o texto que a tela mostra quando não pode.
- * Variação sem id (produto novo ou "Nova variação" ainda não gravada) não envia: o servidor
- * só conhece a variação depois do "Salvar produto".
+ * Pode escolher imagem agora? Devolve { pode, motivo, guardar }.
+ *
+ * Variação SEM id (produto novo, ou "Nova variação" ainda não gravada) também aceita:
+ * o servidor só conhece a variação depois do "Salvar produto", então as fotos ficam
+ * guardadas na aba (`guardar: true`) e sobem sozinhas quando o Salvar criar os ids.
+ * O `motivo` aí não é impedimento — é o aviso de que elas ainda não estão no servidor.
  */
 export function decidirEnvio({ variacaoId, total = 0, enviando = false, ocupado = false, limite = LIMITE_IMAGENS }) {
-    if (! variacaoId) return { pode: false, motivo: AVISO_SEM_SALVAR };
-    if (enviando || ocupado) return { pode: false, motivo: null };
-    if (quantasCabem(total, limite) === 0) return { pode: false, motivo: `Esta variação já tem as ${limite} imagens possíveis. Exclua alguma para enviar outra.` };
+    if (enviando || ocupado) return { pode: false, motivo: null, guardar: false };
+    if (quantasCabem(total, limite) === 0) return { pode: false, motivo: `Esta variação já tem as ${limite} imagens possíveis. Exclua alguma para enviar outra.`, guardar: false };
 
-    return { pode: true, motivo: null };
+    return { pode: true, motivo: variacaoId ? null : AVISO_AGUARDANDO_SALVAR, guardar: ! variacaoId };
 }
 
 /**
@@ -157,6 +159,83 @@ export const mudouAOrdem = (antes, depois) => JSON.stringify(ordemDeIds(antes)) 
 /** Troca as imagens de UMA variação (pela chave da tela) sem tocar nas outras. Não marca nada como alterado. */
 export function aplicarImagens(variacoes, chave, imagens) {
     return (variacoes ?? []).map((v) => (v._k === chave ? { ...v, imagens } : v));
+}
+
+// ─── Imagens escolhidas antes do produto existir ─────────────────────────────
+//
+// A variação só ganha id no "Salvar produto", e o envio é POST por variação. Para
+// a pessoa poder anexar foto a qualquer momento, o arquivo fica NA ABA até lá: entra
+// na mesma lista `imagens` da variação, marcado `pendente`, com uma URL local para a
+// prévia. Quem sobe de verdade é `enviarPendentes`, chamado pelo Salvar.
+//
+// O arquivo vive só nesta aba: fechá-la antes de salvar perde as pendentes (o rascunho
+// guarda texto, não arquivo). Por isso a galeria diz, com todas as letras, que elas
+// sobem junto com o Salvar.
+
+let sequenciaLocal = 0;
+
+/** Uma imagem ainda não enviada. `criarUrl` é injetável para o teste rodar fora do navegador. */
+export function imagemPendente(arquivo, criarUrl = (a) => URL.createObjectURL(a)) {
+    return { id: `pendente-${++sequenciaLocal}`, url: criarUrl(arquivo), arquivo, pendente: true };
+}
+
+/** As que ainda não subiram. */
+export const pendentesDe = (imagens) => (imagens ?? []).filter((i) => i?.pendente);
+
+/** As que já estão no servidor. */
+export const enviadasDe = (imagens) => (imagens ?? []).filter((i) => ! i?.pendente);
+
+/** A foto que representa a variação (ou o produto): a primeira da lista, pendente ou não. */
+export const primeiraFoto = (imagens) => (imagens ?? [])[0]?.url ?? null;
+
+/** A primeira foto de um produto: a da primeira variação que tiver alguma. */
+export function fotoDoProduto(variacoes) {
+    for (const v of variacoes ?? []) {
+        const url = primeiraFoto(v?.imagens);
+        if (url) return url;
+    }
+
+    return null;
+}
+
+/** Devolve ao navegador as URLs locais que não serão mais usadas. Fora do navegador, não faz nada. */
+export function revogar(imagens, revogarUrl = null) {
+    const soltar = revogarUrl ?? (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function' ? (u) => URL.revokeObjectURL(u) : null);
+    if (! soltar) return;
+    pendentesDe(imagens).forEach((i) => { if (i.url) soltar(i.url); });
+}
+
+/**
+ * Sobe as imagens que ficaram guardadas, agora que as variações têm id.
+ *
+ * `idPorChave` mapeia a chave de tela da variação → id que o servidor acabou de dar.
+ * Variação que não gravou fica de fora: os arquivos dela continuam pendentes para a
+ * próxima tentativa. Falha de uma variação não impede as outras; os motivos voltam juntos.
+ *
+ * @returns {Promise<{porChave: Map<string, Array>, avisos: string[]}>} `porChave`: a galeria
+ *   nova de cada variação que subiu algo.
+ */
+export async function enviarPendentes(variacoes, idPorChave, { enviar }) {
+    const porChave = new Map();
+    const avisos = [];
+
+    for (const v of variacoes ?? []) {
+        const pendentes = pendentesDe(v?.imagens);
+        if (pendentes.length === 0) continue;
+
+        const id = v.id ?? idPorChave?.get?.(v._k) ?? null;
+        if (! id) continue;
+
+        try {
+            const data = await enviar(id, pendentes.map((p) => p.arquivo));
+            porChave.set(v._k, imagensDaResposta(data) ?? enviadasDe(v.imagens));
+            revogar(v.imagens);
+        } catch (erro) {
+            avisos.push(...avisosDoErro(erro));
+        }
+    }
+
+    return { porChave, avisos: [...new Set(avisos)] };
 }
 
 /** Rascunho recuperado: as imagens valem as de agora (o servidor é a verdade), não as do dia em que o rascunho foi gravado. */

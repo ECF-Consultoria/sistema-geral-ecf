@@ -3,6 +3,7 @@ import CartaoVolume from '@/Components/Portal/Estrutura/Produtos/CartaoVolume';
 import FaixaCalculados from '@/Components/Portal/Estrutura/Produtos/FaixaCalculados';
 import GaleriaVariacao from '@/Components/Portal/Estrutura/Produtos/GaleriaVariacao';
 import { Obrigatorio, PilulaLogistica, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { primeiraFoto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
 // ─── Um bloco por variação (REF-2, 167-19) ──────────────────────────────────
@@ -25,7 +26,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
         <section id={`variacao-${k}`} className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-4 lg:px-4 lg:pb-3 lg:pt-3" data-variacao-form>
             <div className="lg:flex lg:items-start lg:gap-5">
                 <div className="flex items-center gap-4 lg:w-[410px]">
-                    <QuadroFotoProduto nome={variacao.nome} tamanho="mini" />
+                    <QuadroFotoProduto nome={variacao.nome} foto={primeiraFoto(variacao.imagens)} tamanho="mini" />
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-3">
                             <span className="truncate text-[17px] font-semibold text-white">{variacao.codigo || 'Nova variação'}</span>

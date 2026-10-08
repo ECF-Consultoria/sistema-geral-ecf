@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { aplicarImagens, manterImagensAtuais } from '@/lib/imagensVariacao';
+import { aplicarImagens, enviarPendentes, manterImagensAtuais, montarEnvio } from '@/lib/imagensVariacao';
 import { campoEditaveis, linhaDoServidor, refSugerida } from '@/lib/produtosEstrutura';
 import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
@@ -275,6 +275,25 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
                 ok = false;
                 setAviso('O produto foi salvo, mas a ficha técnica precisa de ajustes. Confira os campos marcados e salve de novo.');
             }
+        }
+
+        // As fotos escolhidas antes de a variação existir sobem agora, com o id que o servidor deu.
+        // Vão mesmo se a ficha técnica reprovou: as variações já existem e o arquivo só vive nesta aba.
+        const idPorChave = new Map(juntas.linhas.filter((l) => l.chave && l.id).map((l) => [l.chave, l.id]));
+        const fotos = await enviarPendentes(varsRef.current, idPorChave, {
+            enviar: async (variacaoId, arquivos) => (await axios.post(
+                route('portal.auth.estrutura.produtos.imagens.enviar', variacaoId),
+                montarEnvio(arquivos),
+                { headers: { Accept: 'application/json' } },
+            )).data,
+        });
+        if (fotos.porChave.size) {
+            setVars((atual) => atual.map((v) => (fotos.porChave.has(v._k) ? { ...v, imagens: fotos.porChave.get(v._k) } : v)));
+        }
+        if (fotos.avisos.length) {
+            // Sair agora perderia os arquivos: a ficha fica, com o motivo, para tentar de novo.
+            ok = false;
+            setAviso((atual) => atual ?? `O produto foi salvo, mas as imagens não subiram: ${fotos.avisos.join(' ')}`);
         }
 
         if (ok) {

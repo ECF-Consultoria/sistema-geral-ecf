@@ -32,6 +32,12 @@ class FichaTecnicaDoProduto
 {
     private const MAX_PADRAO = 255;
 
+    /**
+     * Separador dos nomes numa lista multivalor. " | " não aparece em nome de opção do
+     * catálogo (que usa vírgula e hífen), então divide de volta sem ambiguidade.
+     */
+    public const SEPARADOR = ' | ';
+
     public function __construct(private FichaTecnicaDaCategoria $definicao) {}
 
     /**
@@ -149,6 +155,12 @@ class FichaTecnicaDoProduto
         $bruto = $entrada['valor'] ?? null;
         $nome = $campo['nome'];
 
+        // Lista multivalor: a tela manda uma lista de ids (os chips). Trilha própria, antes da
+        // exigência de escalar lá embaixo — e uma lista vazia conta como campo não preenchido.
+        if (($campo['multivalor'] ?? false) && is_array($bruto)) {
+            return $this->multivalor($campo, $bruto);
+        }
+
         if ($bruto === null || (is_string($bruto) && trim($bruto) === '')) {
             return null;
         }
@@ -237,6 +249,43 @@ class FichaTecnicaDoProduto
             'nao', '0', 'false', 'n' => 'Não',
             default => throw new InvalidArgumentException("Escolha Sim ou Não em “{$nome}”."),
         };
+    }
+
+    /**
+     * Lista multivalor (os chips): vários ids de opção → UMA linha, com os nomes juntos.
+     *
+     * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2). A tabela tem unique
+     * (company_id, produto_id, atributo_id) e `valor_id` é varchar(40) — nem cabe uma
+     * linha por opção, nem os ids emendados. Como `valor` é `text`, o que se grava é a
+     * lista de NOMES separada por {@see self::SEPARADOR}, na ordem em que foi escolhida,
+     * e `valor_id` fica nulo. Os nomes vêm da definição da categoria (nunca do que o
+     * cliente digitou), então quem publicar reencontra o id pelo nome na mesma definição.
+     *
+     * Dar coluna própria aos ids é ALTERAR tabela com dado em produção — fase GSD, não
+     * trabalho direto. Vale a pena quando o publicador precisar dos ids; hoje não precisa.
+     *
+     * @param  array<int, mixed>  $bruto  ids das opções escolhidas
+     * @return array{valor: string, valor_id: null, unidade: null}|null
+     */
+    private function multivalor(array $campo, array $bruto): ?array
+    {
+        $nomes = [];
+        foreach ($bruto as $item) {
+            if (! is_scalar($item) || trim((string) $item) === '') {
+                continue;
+            }
+            $nome = $this->opcao($campo, (string) $item)['nome'];
+            // Escolher a mesma opção duas vezes não duplica o chip gravado.
+            if (! in_array($nome, $nomes, true)) {
+                $nomes[] = $nome;
+            }
+        }
+
+        if ($nomes === []) {
+            return null;
+        }
+
+        return ['valor' => implode(self::SEPARADOR, $nomes), 'valor_id' => null, 'unidade' => null];
     }
 
     /** @return array{id: string, nome: string} */

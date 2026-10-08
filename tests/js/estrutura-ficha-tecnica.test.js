@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-    camposDaDefinicao, categoriaParaConsulta, deveGravar, errosDaResposta, idDoElemento, montarAtributos, numeroParaTela, valoresIniciais,
+    SEPARADOR_MULTIVALOR, camposDaDefinicao, categoriaParaConsulta, deveGravar, ehMultivalor, errosDaResposta, idDeLista,
+    idDoElemento, idsMultivalor, montarAtributos, numeroParaTela, valoresIniciais,
 } from '../../resources/js/lib/fichaTecnica.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -39,6 +40,13 @@ const DEFINICAO = [
         { id: 'IS_KIT', nome: 'É um kit', obrigatorio: false, tipo: 'sim_nao', valores: [], unidades: [], unidade_padrao: null, max: null },
     ] },
 ];
+
+/** Lista que aceita mais de uma opção (o catálogo marca `multivalued`; ex.: Materiais). */
+const MATERIAIS = {
+    id: 'MATERIALS', nome: 'Materiais', obrigatorio: false, tipo: 'lista', multivalor: true, max: null, unidades: [], unidade_padrao: null,
+    valores: [{ id: '1', nome: 'Algodão' }, { id: '2', nome: 'Couro' }, { id: '3', nome: 'Microfibra' }],
+};
+const COM_MULTIVALOR = [...DEFINICAO, { grupo: 'Materiais', campos: [MATERIAIS] }];
 
 // ─── Funções puras (rodadas de verdade) ─────────────────────────────────────
 
@@ -210,18 +218,108 @@ test('Salvar produto: a ficha técnica grava DEPOIS das variações, com o id do
     assert.ok(iGravar > 0 && iFicha > iGravar, 'a ficha técnica só depois das variações');
     assert.ok(hookFicha.slice(iFicha - 120, iFicha).includes('if (ok) {'), 'só com as variações gravadas por inteiro');
     assert.ok(hookFicha.includes('tecnica,'), 'a página recebe o estado da ficha técnica');
-    // A 167 segue de pé: um único POST de linhas e a sequência segue em produtosGravacao.
-    assert.equal((hookFicha.match(/axios\.post\(/g) ?? []).length, 1);
+    // A 167 segue de pé: um único POST de LINHAS e a sequência segue em produtosGravacao.
+    // (O outro POST do hook é o das imagens guardadas, para a rota de imagens — gate logo abaixo.)
+    assert.equal((hookFicha.match(/axios\.post\(route\('portal\.auth\.estrutura\.produtos\.linhas'\)/g) ?? []).length, 1);
+    assert.equal((hookFicha.match(/axios\.post\(/g) ?? []).length, 2, 'só os dois POSTs: linhas e imagens guardadas');
     assert.ok(hookFicha.includes('Não salvamos esta variação: informe a Ref e o nome do produto.'));
 });
 
-test('Página: o bloco entra abaixo de Dados gerais e a guarda de saída da 167 continua inteira', () => {
+test('Página: Dados gerais → Variações → Ficha técnica, e a guarda de saída da 167 continua inteira', () => {
     assert.ok(pagina.includes('<FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />'));
-    assert.ok(pagina.indexOf('<FichaDadosGerais') < pagina.indexOf('<FichaTecnica') && pagina.indexOf('<FichaTecnica') < pagina.indexOf('<h2 className="text-[20px] font-bold text-white">Variações</h2>'));
+    // A Ficha técnica é a ÚLTIMA: Variações é o miolo do cadastro e vem antes da lista longa de
+    // características da categoria. Dados gerais segue no topo (a Ficha técnica depende da categoria).
+    const iDados = pagina.indexOf('<FichaDadosGerais');
+    const iVariacoes = pagina.indexOf('<h2 className="text-[20px] font-bold text-white">Variações</h2>');
+    const iTecnica = pagina.indexOf('<FichaTecnica');
+    assert.ok(iDados > 0 && iVariacoes > iDados, 'Variações depois de Dados gerais');
+    assert.ok(iTecnica > iVariacoes, 'Ficha técnica depois de Variações');
+    // Cancelar/Salvar fecham a página, fora da seção de Variações (senão ficariam no meio dela).
+    assert.ok(pagina.indexOf("data-acao=\"salvar-produto\"") > iTecnica, 'os botões fecham a página');
     assert.ok(pagina.includes('ficha_tecnica: fichaTecnica'));
     assert.ok(pagina.includes('definirGuardaDoVoltar(aoNavegarNoHistorico)'));
     assert.ok(pagina.includes("router.on('before'") && pagina.includes("addEventListener('beforeunload'"));
     assert.equal((pagina.match(/popstate/g) ?? []).length, 0, 'nenhum popstate próprio na página');
+});
+
+// ─── Lista que aceita mais de uma opção (os chips) ──────────────────────────
+
+test('ehMultivalor: só lista marcada pelo servidor; lista comum e os outros tipos, não', () => {
+    assert.equal(ehMultivalor(MATERIAIS), true);
+    assert.equal(ehMultivalor({ tipo: 'lista', multivalor: false }), false);
+    assert.equal(ehMultivalor({ tipo: 'lista' }), false, 'sem a marca, lista comum');
+    assert.equal(ehMultivalor({ tipo: 'texto', multivalor: true }), false, 'multivalor só faz sentido em lista');
+    assert.equal(ehMultivalor(null), false);
+});
+
+test('idDeLista: campo que virou lista mantém o valor antigo gravado por NOME', () => {
+    // Regressão achada em produção em 08/10/2026: FABRIC_DESIGN tinha "Liso" gravado como
+    // texto livre (de quando o campo não era lista), sem `valor_id`. Casando só por id, o
+    // select vinha "Selecione" num campo correto — e salvar assim apagaria o valor.
+    const campo = { tipo: 'lista', valores: [{ id: '10', nome: 'Liso' }, { id: '11', nome: 'Listras' }] };
+    assert.equal(idDeLista(campo, 'Liso'), '10', 'o nome gravado resolve para o id da opção');
+    assert.equal(idDeLista(campo, '10'), '10', 'o id continua resolvendo');
+    assert.equal(idDeLista(campo, 'liso'), '10', 'caixa diferente também');
+    assert.equal(idDeLista(campo, '  Listras  '), '11');
+
+    // Valor que não é opção nenhuma fica vazio DE PROPÓSITO: e dado que a plataforma recusa.
+    const forma = { tipo: 'lista', valores: [{ id: '1', nome: 'Quadrada' }, { id: '2', nome: 'Redonda' }] };
+    assert.equal(idDeLista(forma, 'REDONDO'), '', 'a opção é "Redonda"; "REDONDO" não existe');
+    assert.equal(idDeLista(campo, ''), '');
+    assert.equal(idDeLista(campo, null), '');
+    assert.equal(idDeLista({ valores: null }, 'Liso'), '');
+});
+
+test('montarAtributos: lista manda o id resolvido pelo nome; valor que não é opção fica de fora', () => {
+    const def = [{ grupo: 'G', campos: [
+        { id: 'FABRIC_DESIGN', nome: 'Desenho do tecido', tipo: 'lista', valores: [{ id: '10', nome: 'Liso' }] },
+        { id: 'SHAPE', nome: 'Forma', tipo: 'lista', valores: [{ id: '2', nome: 'Redonda' }] },
+    ] }];
+    // Exatamente o estado do produto 2 em produção antes da correção.
+    const estado = valoresIniciais([
+        { id: 'FABRIC_DESIGN', nome: 'Desenho do tecido', valor: 'Liso', valor_id: null, unidade: null },
+        { id: 'SHAPE', nome: 'Forma', valor: 'REDONDO', valor_id: null, unidade: null },
+    ]);
+
+    assert.deepEqual(montarAtributos(def, estado), [{ id: 'FABRIC_DESIGN', valor: '10' }],
+        '"Liso" sobrevive virando id; "REDONDO" sai, e o obrigatório volta como "Preencha …"');
+});
+
+test('idsMultivalor: entende tanto a lista de ids (editando) quanto os nomes emendados (do servidor)', () => {
+    // Editando na tela: já são ids.
+    assert.deepEqual(idsMultivalor(MATERIAIS, ['1', '3']), ['1', '3']);
+    // Vindo do servidor: a linha gravada tem os NOMES emendados e `valor_id` nulo.
+    assert.deepEqual(idsMultivalor(MATERIAIS, `Algodão${SEPARADOR_MULTIVALOR}Microfibra`), ['1', '3']);
+    // Mistura, repetido e lixo: ordem preservada, sem repetir, e o que não é opção cai fora.
+    assert.deepEqual(idsMultivalor(MATERIAIS, ['2', 'Algodão', '2', 'Inexistente', '']), ['2', '1']);
+    assert.deepEqual(idsMultivalor(MATERIAIS, ''), []);
+    assert.deepEqual(idsMultivalor(MATERIAIS, null), []);
+    assert.deepEqual(idsMultivalor({ valores: null }, ['1']), [], 'campo sem opções não resolve nada');
+});
+
+test('montarAtributos: campo multivalor manda a LISTA de ids; nenhum escolhido fica de fora', () => {
+    const corpo = montarAtributos(COM_MULTIVALOR, { BRAND: { valor: 'Acme' }, MATERIALS: { valor: ['1', '2'] } });
+    assert.deepEqual(corpo, [{ id: 'BRAND', valor: 'Acme' }, { id: 'MATERIALS', valor: ['1', '2'] }]);
+
+    // Partindo do que o servidor devolveu (nomes emendados), volta como ids — sem o cliente tocar.
+    const doServidor = montarAtributos(COM_MULTIVALOR, valoresIniciais([
+        { id: 'MATERIALS', nome: 'Materiais', valor: 'Couro | Microfibra', valor_id: null, unidade: null },
+    ]));
+    assert.deepEqual(doServidor, [{ id: 'MATERIALS', valor: ['2', '3'] }]);
+
+    // Esvaziar os chips tira o campo do corpo (é o "limpar", como qualquer campo vazio).
+    assert.deepEqual(montarAtributos(COM_MULTIVALOR, { MATERIALS: { valor: [] } }), []);
+});
+
+test('CampoFichaTecnica: lista multivalor vira chips com X; lista comum segue sendo um select', () => {
+    const campo = bruto(`${DIR}CampoFichaTecnica.jsx`);
+    assert.ok(campo.includes('function ListaMultipla'), 'existe o controle de chips');
+    assert.ok(campo.includes('ehMultivalor(campo) ?'), 'o tipo lista escolhe entre chips e select');
+    assert.ok(campo.includes('idsMultivalor(campo, valor)'), 'os chips saem dos ids resolvidos');
+    assert.ok(campo.includes('data-chip='), 'cada escolha é um chip marcado na tela');
+    assert.match(campo, /aria-label=\{`Tirar \$\{/, 'cada chip tem o X com rótulo acessível');
+    // O select comum (uma escolha só) não pode ter sumido.
+    assert.ok(campo.includes('<option value="">Selecione</option>'));
 });
 
 // ─── Sigilo: nada que diga de onde vêm os campos ────────────────────────────

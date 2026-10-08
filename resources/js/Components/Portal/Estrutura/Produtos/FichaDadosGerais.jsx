@@ -4,6 +4,7 @@ import { ChevronDown, Search, X } from 'lucide-react';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import { CaminhoCategoria, Obrigatorio, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { fotoDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
 // ─── Dados gerais da ficha (REF-2, 167-19) ──────────────────────────────────
@@ -52,7 +53,9 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
 
     return (
         <section className="rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:grid lg:grid-cols-[266px_minmax(0,1fr)] lg:gap-7 lg:p-5 lg:pb-4" data-ficha-dados>
-            <QuadroFotoProduto nome={primeira.nome} tamanho="grande" />
+            {/* O quadro do produto mostra a 1ª foto que existir entre as variações — inclusive a
+                que ainda não subiu (prévia local), para a tela refletir o upload na hora. */}
+            <QuadroFotoProduto nome={primeira.nome} foto={fotoDoProduto(ficha.vars)} tamanho="grande" />
 
             <div className="mt-4 min-w-0 lg:mt-0">
                 <div className="md:grid md:grid-cols-[minmax(0,605fr)_minmax(0,496fr)] md:gap-6">

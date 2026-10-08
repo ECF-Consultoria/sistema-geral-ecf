@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-    AVISO_FALHA_GERAL, AVISO_GRANDE_DEMAIS, AVISO_SEM_SALVAR, LIMITE_IMAGENS,
-    aplicarImagens, avisosDoErro, decidirEnvio, imagensDaResposta, manterImagensAtuais, montarEnvio,
-    moverImagem, mudouAOrdem, ordemDeIds, prepararRemessa, quantasCabem, separarArquivos, soltarSobre,
+    AVISO_AGUARDANDO_SALVAR, AVISO_FALHA_GERAL, AVISO_GRANDE_DEMAIS, LIMITE_IMAGENS,
+    aplicarImagens, avisosDoErro, decidirEnvio, enviadasDe, enviarPendentes, fotoDoProduto, imagemPendente,
+    imagensDaResposta, manterImagensAtuais, montarEnvio, moverImagem, mudouAOrdem, ordemDeIds, pendentesDe,
+    prepararRemessa, primeiraFoto, quantasCabem, separarArquivos, soltarSobre,
 } from '../../resources/js/lib/imagensVariacao.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -31,23 +32,95 @@ const falha = (status, data = {}) => Object.assign(new Error('x'), { response: {
 
 // ─── Pode enviar? ───────────────────────────────────────────────────────
 
-test('Envio: variação sem id (produto novo ou "Nova variação") não envia e mostra a dica', () => {
+test('Envio: variação sem id ACEITA imagem — fica guardada para subir no "Salvar produto"', () => {
     for (const variacaoId of [undefined, null, 0, '']) {
         const r = decidirEnvio({ variacaoId, total: 0 });
-        assert.equal(r.pode, false);
-        assert.equal(r.motivo, AVISO_SEM_SALVAR);
+        assert.equal(r.pode, true, 'sem id também pode escolher foto');
+        assert.equal(r.guardar, true, 'mas ela fica guardada, não sobe agora');
+        assert.equal(r.motivo, AVISO_AGUARDANDO_SALVAR);
     }
-    assert.equal(AVISO_SEM_SALVAR, 'Salve o produto para enviar as imagens desta variação.');
+    // O aviso é informativo: nunca mais o antigo "Salve o produto para enviar as imagens".
+    assert.equal(AVISO_AGUARDANDO_SALVAR, 'Estas sobem junto com o “Salvar produto”.');
 });
 
-test('Envio: gravada com espaço pode; enviando ou ocupada, não; no teto de 12, não e explica', () => {
-    assert.deepEqual(decidirEnvio({ variacaoId: 9, total: 0 }), { pode: true, motivo: null });
-    assert.deepEqual(decidirEnvio({ variacaoId: 9, total: 11 }), { pode: true, motivo: null });
+test('Envio: gravada com espaço pode e vai direto; enviando ou ocupada, não; no teto de 12, não e explica', () => {
+    assert.deepEqual(decidirEnvio({ variacaoId: 9, total: 0 }), { pode: true, motivo: null, guardar: false });
+    assert.deepEqual(decidirEnvio({ variacaoId: 9, total: 11 }), { pode: true, motivo: null, guardar: false });
     assert.equal(decidirEnvio({ variacaoId: 9, total: 3, enviando: true }).pode, false);
     assert.equal(decidirEnvio({ variacaoId: 9, total: 3, ocupado: true }).pode, false);
+    // O teto vale igual para quem ainda não gravou: 12 é 12, guardadas inclusive.
+    const cheiaNova = decidirEnvio({ variacaoId: null, total: LIMITE_IMAGENS });
+    assert.equal(cheiaNova.pode, false);
     const cheia = decidirEnvio({ variacaoId: 9, total: LIMITE_IMAGENS });
     assert.equal(cheia.pode, false);
     assert.match(cheia.motivo, /12 imagens possíveis/);
+});
+
+// ─── Guardadas até o Salvar ─────────────────────────────────────────────
+
+test('Pendente: vira item da galeria com prévia local e sai de `enviadasDe`', () => {
+    const p = imagemPendente(arq('a.jpg'), () => 'blob:local-1');
+    assert.equal(p.pendente, true);
+    assert.equal(p.url, 'blob:local-1');
+    assert.equal(p.arquivo.name, 'a.jpg');
+
+    const lista = [img('s1', 0), p];
+    assert.deepEqual(pendentesDe(lista).map((i) => i.id), [p.id]);
+    assert.deepEqual(enviadasDe(lista).map((i) => i.id), ['s1']);
+});
+
+test('Foto do quadro: a 1ª da variação, e a do produto é a 1ª variação que tiver alguma', () => {
+    assert.equal(primeiraFoto([]), null);
+    assert.equal(primeiraFoto(undefined), null);
+    assert.equal(primeiraFoto(galeria('a', 'b')), '/x/a');
+    // Vale também para a que ainda não subiu: o quadro reflete o upload na hora.
+    assert.equal(primeiraFoto([imagemPendente(arq('x.jpg'), () => 'blob:x')]), 'blob:x');
+
+    assert.equal(fotoDoProduto([{ imagens: [] }, { imagens: galeria('z') }]), '/x/z');
+    assert.equal(fotoDoProduto([{ imagens: [] }, { }]), null);
+    assert.equal(fotoDoProduto([]), null);
+});
+
+test('enviarPendentes: sobe as guardadas com o id que o Salvar deu, e devolve a galeria do servidor', async () => {
+    const pA = imagemPendente(arq('a.jpg'), () => 'blob:a');
+    const pB = imagemPendente(arq('b.jpg'), () => 'blob:b');
+    const vars = [
+        { _k: 'm1', id: null, imagens: [pA, pB] },          // nova: ganhou id agora
+        { _k: 'm2', id: 7, imagens: galeria('ja') },        // já gravada, nada pendente
+    ];
+    const chamadas = [];
+    const r = await enviarPendentes(vars, new Map([['m1', 55]]), {
+        enviar: async (id, arquivos) => {
+            chamadas.push({ id, nomes: arquivos.map((a) => a.name) });
+
+            return { imagens: galeria('n1', 'n2') };
+        },
+    });
+
+    assert.deepEqual(chamadas, [{ id: 55, nomes: ['a.jpg', 'b.jpg'] }], 'uma chamada só, com os dois arquivos');
+    assert.deepEqual(r.avisos, []);
+    assert.deepEqual(r.porChave.get('m1').map((i) => i.id), ['n1', 'n2']);
+    assert.equal(r.porChave.has('m2'), false, 'variação sem pendente não é tocada');
+});
+
+test('enviarPendentes: variação que não gravou fica de fora; falha de uma não derruba a outra', async () => {
+    const vars = [
+        { _k: 'm1', id: null, imagens: [imagemPendente(arq('a.jpg'), () => 'blob:a')] },   // sem id: fica pendente
+        { _k: 'm2', id: null, imagens: [imagemPendente(arq('b.jpg'), () => 'blob:b')] },   // falha no envio
+        { _k: 'm3', id: null, imagens: [imagemPendente(arq('c.jpg'), () => 'blob:c')] },   // passa
+    ];
+    const r = await enviarPendentes(vars, new Map([['m2', 2], ['m3', 3]]), {
+        enviar: async (id) => {
+            if (id === 2) throw falha(413, {});
+
+            return { imagens: galeria('ok') };
+        },
+    });
+
+    assert.equal(r.porChave.has('m1'), false, 'sem id, os arquivos continuam guardados para a próxima');
+    assert.equal(r.porChave.has('m2'), false);
+    assert.deepEqual(r.porChave.get('m3').map((i) => i.id), ['ok'], 'a falha da m2 não impediu a m3');
+    assert.deepEqual(r.avisos, [AVISO_GRANDE_DEMAIS]);
 });
 
 test('Quanto cabe: nunca negativo', () => {
