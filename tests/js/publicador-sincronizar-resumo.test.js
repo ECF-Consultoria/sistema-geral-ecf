@@ -132,6 +132,11 @@ test('Produtos.jsx — a página acompanha o pedido, mostra o painel e recarrega
     assert.match(fonte, /mlb\.anuncios\.publicador\.sincronizar\.resumo/);
     assert.match(fonte, /acompanhamento\.current\.acompanhar\(json\.pedido\)/);
     assert.doesNotMatch(fonte, /onResumo=/);
+    // WR-03: fechar o painel cancela; no limite o painel diz que parou; o botão espera o acompanhamento.
+    assert.match(fonte, /function fecharResumo\(\) \{\s*acompanhamento\.current\.cancelar\(\)/);
+    assert.match(fonte, /onFechar=\{fecharResumo\}/);
+    assert.match(fonte, /status: 'expirou'/);
+    assert.equal((fonte.match(/desabilitado=\{acompanhando\}/g) ?? []).length, 2);
     assert.match(fonte, /<ResumoDoSincronizar /);
     assert.match(fonte, /router\.reload\(\{ only: \['produtos', 'contagens'\] \}\)/);
 });

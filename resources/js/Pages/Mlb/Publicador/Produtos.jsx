@@ -94,6 +94,7 @@ export default function Produtos({
     const resumoPronto = useRef(false);
     const [avisosDoClique, setAvisosDoClique] = useState([]); // avisos do próprio Sincronizar (cores avulsas etc.)
     const aoLerRef = useRef(null);
+    const [acompanhando, setAcompanhando] = useState(false);
     // O acompanhamento mora na PÁGINA (review 172 CR-01): o botão do estado vazio desmonta quando a
     // lista recarrega, e com ele morria o polling — o resumo nunca aparecia e a lista não recarregava.
     const contaRef = useRef(empresa.chave);
@@ -103,6 +104,9 @@ export default function Produtos({
         acompanhamento.current = criarAcompanhamento({
             ler: async (pedido) => (await axios.get(route('mlb.anuncios.publicador.sincronizar.resumo', { conta: contaRef.current, pedido }))).data,
             aoLer: (r) => aoLerRef.current?.(r),
+            aoMudar: setAcompanhando,
+            // Parou de acompanhar sem ficar pronto: o painel diz isso em vez de girar para sempre (WR-03).
+            aoExpirar: () => setResumo((r) => (r ? { ...r, status: 'expirou' } : r)),
         });
     }
     useEffect(() => () => acompanhamento.current.cancelar(), []);
@@ -151,6 +155,13 @@ export default function Produtos({
             resumoPronto.current = true;
             router.reload({ only: ['produtos', 'contagens'] });
         }
+    }
+
+    // Fechar o painel também para o acompanhamento: senão a próxima leitura o reabria (WR-03).
+    function fecharResumo() {
+        acompanhamento.current.cancelar();
+        setResumo(null);
+        setAvisosDoClique([]);
     }
 
     function aoConcluirSync(json) {
@@ -207,6 +218,7 @@ export default function Produtos({
                             <BotaoSincronizarPortal
                                 conta={empresa.chave}
                                 onConcluido={aoConcluirSync}
+                                desabilitado={acompanhando}
                                 onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                             />
                         )}
@@ -227,7 +239,7 @@ export default function Produtos({
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
-                <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} onFechar={() => setResumo(null)} />
+                <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} onFechar={fecharResumo} />
 
                 <section className="rounded-xl bg-ecf-card">
                     <div className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -303,6 +315,7 @@ export default function Produtos({
                                     <BotaoSincronizarPortal
                                         conta={empresa.chave}
                                         onConcluido={aoConcluirSync}
+                                        desabilitado={acompanhando}
                                         onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                                     />
                                 )}

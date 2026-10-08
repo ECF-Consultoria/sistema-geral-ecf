@@ -9,6 +9,7 @@ import { motivosNaoTrazidas, textoDoResumo } from './resumoDoSincronizar.js';
 export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFechar, className }) {
     if (!resumo) return null;
     const pronto = resumo.status === 'pronto';
+    const expirou = resumo.status === 'expirou';
     const motivos = motivosNaoTrazidas(resumo.fotos_nao_trazidas);
     // Os avisos do clique (cores avulsas, variações que viraram produto) e os do preenchimento, sem repetir.
     const avisos = [...new Set([...(avisosDoClique ?? []), ...(resumo.avisos ?? [])])];
@@ -26,6 +27,10 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFec
                         <p className="text-[15px] font-bold text-white">Rascunhos preenchidos com o que está no Portal</p>
                         <p className="mt-1 text-[13px] font-normal text-white/70">{textoDoResumo(resumo)}</p>
                     </div>
+                ) : expirou ? (
+                    <p className="text-[13px] font-normal text-white/70">
+                        Ainda preenchendo ({resumo.concluidos ?? 0}/{resumo.total ?? 0}). Recarregue a página em alguns minutos para ver o resultado.
+                    </p>
                 ) : (
                     <p className="flex items-center gap-2 text-[13px] font-normal text-white/70">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
