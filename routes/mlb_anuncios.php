@@ -6,6 +6,7 @@ use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
+use App\Http\Controllers\MlbPublicadorIdentidadeController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -179,6 +180,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 Route::post('/kit/{kit}/aprovar', [MlbPublicadorCriativoController::class, 'aprovarKit'])
                     ->whereNumber('kit')
                     ->middleware('throttle:30,1,publicador.criativos.aprovar')->name('kit.aprovar');
+            });
+
+            // Fase 170 (D2, IDENT-01/04) — identidade visual da CONTA do produto aberto (texto
+            // livre, sem logo). Irmão de 'criativos': não é por anúncio, só por conta.
+            Route::prefix('identidade')->name('identidade.')->group(function () {
+                Route::get('/', [MlbPublicadorIdentidadeController::class, 'mostrar'])
+                    ->middleware('throttle:60,1,publicador.identidade.mostrar')->name('mostrar');
+                Route::put('/', [MlbPublicadorIdentidadeController::class, 'salvar'])
+                    ->middleware('throttle:30,1,publicador.identidade.salvar')->name('salvar');
             });
         });
 
