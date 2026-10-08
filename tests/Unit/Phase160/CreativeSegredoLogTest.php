@@ -9,6 +9,7 @@ use App\Models\MlAnuncioRascunho;
 use App\Models\User;
 use App\Services\Creative\Contracts\ImageGenerationProvider;
 use App\Services\Creative\CreativeContextBuilder;
+use App\Services\Creative\CreativeIdentidadeService;
 use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\ProductTruthBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -150,6 +151,7 @@ class CreativeSegredoLogTest extends TestCase
             app(CreativeContextBuilder::class),
             app(ProductTruthBuilder::class),
             app(CreativePromptBuilder::class),
+            app(CreativeIdentidadeService::class),
         );
     }
 
@@ -220,6 +222,7 @@ class CreativeSegredoLogTest extends TestCase
                 app(CreativeContextBuilder::class),
                 app(ProductTruthBuilder::class),
                 app(CreativePromptBuilder::class),
+                app(CreativeIdentidadeService::class),
             );
             $this->fail('Deveria ter lançado RuntimeException (500 em todos os modelos).');
         } catch (\RuntimeException $e) {

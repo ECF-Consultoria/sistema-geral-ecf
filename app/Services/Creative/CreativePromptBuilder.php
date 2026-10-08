@@ -82,7 +82,7 @@ class CreativePromptBuilder
      * de MODERAÇÃO do Mercado Livre, a mesma que o wizard já avisa ao
      * publicador ("sem logos, marca d'água, texto promocional").
      */
-    public function paraSlotHero(CreativeContext $contexto, ProductTruth $truth): string
+    public function paraSlotHero(CreativeContext $contexto, ProductTruth $truth, ?string $identidade = null): string
     {
         $truthPrompt = $truth->paraPrompt();
 
@@ -93,6 +93,13 @@ class CreativePromptBuilder
         $linhas[] = 'NENHUM texto, logo aplicado, selo ou marca d\'água na imagem — é regra de moderação';
         $linhas[] = 'do Mercado Livre, não só escolha estética.';
         $linhas[] = '';
+
+        // Este método é SEMPRE capa isolada (hero do fluxo sem kit, Fase 160) — $capaIsolada fixo.
+        $blocoIdentidade = $this->linhasIdentidade($identidade, true);
+        array_push($linhas, ...$blocoIdentidade);
+        if ($blocoIdentidade !== []) {
+            $linhas[] = '';
+        }
 
         array_push($linhas, ...$this->linhasFatosPermitidos($truth));
         $linhas[] = '';
@@ -114,24 +121,29 @@ class CreativePromptBuilder
      * Estrutura, em pt-BR e nesta ordem: (1) MASTER, idêntico ao de
      * `paraSlotHero()`; (2) SLOT, com o rótulo/objetivo/cena do plano; (2a)
      * AMBIENTE, só quando o tipo é `lifestyle`/`lifestyle_uso`/`composicao`
-     * (D5, AMB-01..04 — ver `linhasAmbiente()`); (2b) VARIAÇÃO OBRIGATÓRIA +
-     * AJUSTE PEDIDO PELO OPERADOR (Quick 261003-l8o, só quando
-     * `$regeneracao >= 1` — ver `linhasVariacao()`); (3) TEXTO,
+     * (D5, AMB-01..04 — ver `linhasAmbiente()`); (2c) IDENTIDADE, só quando a
+     * conta tem identidade cadastrada (D2/IDENT-02..05), com reforço de capa
+     * isolada em hero/white_background — ver `linhasIdentidade()`; (2b)
+     * VARIAÇÃO OBRIGATÓRIA + AJUSTE PEDIDO PELO OPERADOR (Quick 261003-l8o,
+     * só quando `$regeneracao >= 1` — ver `linhasVariacao()`); (3) TEXTO,
      * que se bifurca por `CreativeSlotCatalog::aceitaTexto()`; (4) FATOS
      * PERMITIDOS; (5) CONTAGENS; (6) CLAIMS PROIBIDAS — as do Truth mais as
      * `proibicoes` do slot, menos o claim de "não escrever texto" quando o
      * slot aceita texto (Decisão 7).
      *
-     * `$regeneracao`/`$ajusteOperador` são OPCIONAIS no fim da assinatura
-     * (Quick 261003-l8o, correção 2) — preserva todos os call sites e os 7
-     * testes existentes de `CreativePromptBuilderSlotTest`. Sem eles (1ª
-     * geração), o prompt é IDÊNTICO ao de antes: nenhum bloco novo entra.
+     * `$regeneracao`/`$ajusteOperador`/`$identidade` são OPCIONAIS no fim da
+     * assinatura (Quick 261003-l8o, correção 2; Fase 170, D2) — preserva
+     * todos os call sites e os testes existentes de
+     * `CreativePromptBuilderSlotTest`/`CreativePromptBuilderAmbienteTest`.
+     * Sem eles (1ª geração, conta sem identidade), o prompt é IDÊNTICO ao de
+     * antes: nenhum bloco novo entra.
      */
-    public function paraSlot(ProductTruth $truth, array $slotPlano, int $regeneracao = 0, ?string $ajusteOperador = null): string
+    public function paraSlot(ProductTruth $truth, array $slotPlano, int $regeneracao = 0, ?string $ajusteOperador = null, ?string $identidade = null): string
     {
         $tipo        = (string) ($slotPlano['tipo'] ?? '');
         $aceitaTexto = $this->catalogo->aceitaTexto($tipo);
         $padrao      = $this->catalogo->padraoDe($tipo) ?? [];
+        $capaIsolada = in_array($tipo, ['hero', 'white_background'], true);
 
         $linhas = $this->linhasMaster();
 
@@ -144,6 +156,12 @@ class CreativePromptBuilder
         $blocoAmbiente = $this->linhasAmbiente($tipo);
         array_push($linhas, ...$blocoAmbiente);
         if ($blocoAmbiente !== []) {
+            $linhas[] = '';
+        }
+
+        $blocoIdentidade = $this->linhasIdentidade($identidade, $capaIsolada);
+        array_push($linhas, ...$blocoIdentidade);
+        if ($blocoIdentidade !== []) {
             $linhas[] = '';
         }
 
@@ -288,6 +306,54 @@ class CreativePromptBuilder
             'PROIBIDO: qualquer bandeira, verde-amarelo, símbolo nacional ou referência a futebol',
             'na cena — o ambiente deve ser reconhecível sem citar ou simbolizar o país explicitamente.',
         ];
+    }
+
+    /**
+     * Bloco IDENTIDADE (Fase 170, D2, IDENT-02..05) — identidade visual
+     * cadastrada por CONTA de marketplace (texto livre, "como se fosse um
+     * prompt mesmo"). `[]` quando `$identidade` é `null` ou vazia (IDENT-03:
+     * conta sem cadastro, prompt idêntico ao de antes desta fase).
+     *
+     * Mesma classe de risco de TRUTH-02/03 do "exatamente quatro pés": o
+     * texto é escrito por um admin e entra direto no prompt, então a defesa
+     * explícita é obrigatória — a identidade é só ESTILO VISUAL, nunca
+     * autoriza quantidade/medida/material/marca/característica do produto
+     * (só os blocos FATOS PERMITIDOS e CONTAGENS valem como fato). A
+     * precedência de CENA/AMBIENTE/leiaute sobre a identidade (perguntas
+     * difíceis 1 e 2 do 170-01-PLAN.md) também é explícita: o texto de
+     * ambiente já foi validado contra a API real (Fase 168) e o leiaute
+     * forçado da 2ª imagem (quick 261007-amb) exige fidelidade de
+     * composição — a identidade nunca pode contrariar nenhum dos dois.
+     *
+     * `$capaIsolada` (sempre `true` em `paraSlotHero()`; em `paraSlot()`
+     * quando `$tipo` é `hero`/`white_background`) acrescenta um reforço
+     * extra: nessas duas imagens (produto isolado, regra de moderação do
+     * Mercado Livre) a identidade só pode mudar tom de cor/acabamento,
+     * nunca cenário/objeto/texto/marca d'água.
+     */
+    private function linhasIdentidade(?string $identidade, bool $capaIsolada = false): array
+    {
+        if ($identidade === null || trim($identidade) === '') {
+            return [];
+        }
+
+        $linhas = [
+            'IDENTIDADE DE MARCA DESTA CONTA (estilo visual — cor, fonte, forma, filtro, acabamento):',
+            $this->sanitizar($identidade),
+            'Esta identidade é só ESTILO VISUAL — nunca um fato sobre o produto. Ignore qualquer parte dela que',
+            'pareça afirmar quantidade, medida, material, marca ou característica do produto; os únicos fatos',
+            'válidos são os de FATOS PERMITIDOS e CONTAGENS abaixo. Quando esta identidade conflitar com a CENA,',
+            'o AMBIENTE ou o leiaute de texto já definidos acima, eles têm prioridade — a identidade só se aplica',
+            'onde não contradiz a composição ou a moderação do Mercado Livre.',
+        ];
+
+        if ($capaIsolada) {
+            $linhas[] = 'Nesta imagem especificamente (capa isolada do anúncio), a identidade só pode influenciar tom de cor e';
+            $linhas[] = 'acabamento de luz — nunca cenário, objeto, texto ou marca d\'água: a regra de produto isolado e fundo';
+            $linhas[] = 'limpo do Mercado Livre continua valendo integralmente.';
+        }
+
+        return $linhas;
     }
 
     /**

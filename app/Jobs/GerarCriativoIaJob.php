@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\MlAnuncioCriativo;
 use App\Services\Creative\Contracts\ImageGenerationProvider;
 use App\Services\Creative\CreativeContextBuilder;
+use App\Services\Creative\CreativeIdentidadeService;
 use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\Dto\CreativeGenerationRequest;
 use App\Services\Creative\ProductTruthBuilder;
@@ -109,6 +110,7 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         CreativeContextBuilder $ctxBuilder,
         ProductTruthBuilder $truthBuilder,
         CreativePromptBuilder $promptBuilder,
+        CreativeIdentidadeService $identidadeService,
     ): void {
         $criativo = MlAnuncioCriativo::find($this->criativoId);
 
@@ -186,14 +188,20 @@ class GerarCriativoIaJob implements ShouldQueue, ShouldBeUnique
         // regeneração anterior (cada clique acrescenta uma entrada nova,
         // mesmo sem texto). `paraSlotHero()` não recebe nenhum dos dois:
         // o fluxo de 1 imagem (Fase 160) não regenera.
+        //
+        // Fase 170 (D2, IDENT-02..05): $identidade é resolvido DIRETO das
+        // colunas company_id/mlb_empresa_id do próprio criativo — leitura em
+        // tempo de execução, nunca gravada como referência viva (IDENT-05:
+        // alterar a identidade depois não reabre nenhum criativo já gerado).
         $criativo->update(['etapa' => 'prompt']);
         $regeneracao      = (int) $criativo->regeneracoes;
         $motivos          = $criativo->regenerar_motivos ?? [];
         $ultimoMotivo     = $motivos !== [] ? $motivos[array_key_last($motivos)] : null;
         $ajusteOperador   = $ultimoMotivo['texto'] ?? null;
+        $identidade       = $identidadeService->paraCriativo($criativo);
         $prompt = $criativo->slot_plano !== null
-            ? $promptBuilder->paraSlot($truth, $criativo->slot_plano, $regeneracao, $ajusteOperador)
-            : $promptBuilder->paraSlotHero($contexto, $truth);
+            ? $promptBuilder->paraSlot($truth, $criativo->slot_plano, $regeneracao, $ajusteOperador, $identidade)
+            : $promptBuilder->paraSlotHero($contexto, $truth, $identidade);
         $criativo->update(['prompt' => $prompt]);
 
         // ─── Etapa 4: geração ───

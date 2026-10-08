@@ -10,6 +10,7 @@ use App\Models\PubProduto;
 use App\Services\Creative\Contracts\ImageGenerationProvider;
 use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\CreativePermissao;
+use App\Services\Creative\CreativeIdentidadeService;
 use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\ProductTruthBuilder;
 use App\Services\Publicador\RascunhoRepository;
@@ -105,6 +106,7 @@ class RegenerarEAprovarKitTest extends TestCase
             app(CreativeContextBuilder::class),
             app(ProductTruthBuilder::class),
             app(CreativePromptBuilder::class),
+            app(CreativeIdentidadeService::class),
         );
     }
 
