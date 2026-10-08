@@ -118,7 +118,12 @@ class AcessoAsSugestoesTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portal/EstruturaSugestoes', false)
-                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x']));
+                ->where('filtros', ['aba' => 'descartadas', 'fase' => 'kit', 'familia' => 'sem', 'tipo' => 'cadeira', 'status' => 'com_aviso', 'q' => 'x', 'combos' => []]));
+
+        // 08/10: famílias com Combos expandidos, "12,sem"; lixo fica de fora.
+        $sessao->get(route('portal.auth.estrutura.sugestoes', ['combos' => '12,sem,../x,9999999999999']))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('filtros.combos', ['12', 'sem']));
 
         $sessao->get(route('portal.auth.estrutura.sugestoes', ['aba' => 'lixo', 'fase' => 'zzz', 'tipo' => 'Inválido!', 'status' => 'lixo']))
             ->assertOk()

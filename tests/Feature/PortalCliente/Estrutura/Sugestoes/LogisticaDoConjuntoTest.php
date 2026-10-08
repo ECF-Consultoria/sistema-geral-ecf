@@ -49,12 +49,14 @@ class LogisticaDoConjuntoTest extends TestCase
         return app(ListaDeSugestoes::class);
     }
 
-    /** Todas as sugestões vigentes (as duas páginas), por chave. */
+    /** Todas as sugestões vigentes (todas as páginas, Combos expandidos), por chave. */
     private function todas(): array
     {
+        $filtros = ['combos' => $this->combosDeTodas($this->empresa)];
         $itens = [];
-        foreach ([1, 2] as $p) {
-            foreach ($this->lista()->listar($this->empresa, [], $p)['itens'] as $i) {
+        $paginas = $this->lista()->listar($this->empresa, $filtros, 1)['paginacao']['paginas'];
+        for ($p = 1; $p <= $paginas; $p++) {
+            foreach ($this->lista()->listar($this->empresa, $filtros, $p)['itens'] as $i) {
                 $itens[$i['chave']] = $i;
             }
         }
@@ -154,9 +156,10 @@ class LogisticaDoConjuntoTest extends TestCase
         $espiao->shouldReceive('estimar')->once()->andReturnUsing(fn (...$a) => $real->estimar(...$a));
         $this->app->instance(FreteMe2Service::class, $espiao);
 
-        $r = app(ListaDeSugestoes::class)->listar($this->empresa, [], 1);
+        // Uma chamada mesmo com os Combos de todas as famílias expandidos na página (08/10).
+        $r = app(ListaDeSugestoes::class)->listar($this->empresa, ['combos' => $this->combosDeTodas($this->empresa)], 1);
 
-        $this->assertCount(20, $r['itens']);
+        $this->assertCount(29, $r['itens']);
     }
 
     public function test_cotar_pagina_sem_conta_ml_nao_faz_requisicao(): void

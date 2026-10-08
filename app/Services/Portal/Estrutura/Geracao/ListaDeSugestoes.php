@@ -22,6 +22,12 @@ use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
  *   usa as MESMAS fontes da página (NomesSugeridos::avisos, SKUs da empresa e
  *   ConjuntoLogistico::semMedida); nenhuma regra nova.
  * - Resumo (D-31) e ambientes do grupo (D-30) saem do conjunto, nunca da página.
+ * - Combos RECOLHIDOS (08/10): na aba Pendentes sem filtro de fase, os Combos de cada
+ *   família viram UMA linha da paginação ("Ver N combos") no fim da família, para os
+ *   Kits e Combits de todas as famílias caberem nas primeiras páginas. A família
+ *   expandida (`filtros.combos`) traz os Combos dela na mesma página, até
+ *   `max_combos_expandidos`. Com `fase=combo` a lista é a de sempre, um por linha.
+ *   Contagens, resumo, status e "aceitar os filtrados" continuam sobre o conjunto.
  */
 class ListaDeSugestoes
 {
@@ -37,7 +43,7 @@ class ListaDeSugestoes
     ) {}
 
     /**
-     * @param  array<string,mixed>  $filtros  aba, fase, familia, tipo, status, q (valores desconhecidos = sem filtro)
+     * @param  array<string,mixed>  $filtros  aba, fase, familia, tipo, status, q, combos (valores desconhecidos = sem filtro)
      * @return array<string,mixed>  além do painel e da página, traz `por_status` (D-28), `resumo` do conjunto
      *                              inteiro (D-31), `familia_ambientes` (D-30) e `gerado_em` (D-31)
      */
@@ -113,6 +119,10 @@ class ListaDeSugestoes
             $filtrado = array_slice($filtrado, 0, $teto);
         }
 
+        // ─── Linhas da paginação: sugestão, ou o bloco de Combos de uma família ───
+        $recolher = $f['aba'] === 'sugestoes' && $f['fase'] === null;
+        $linhas   = $recolher ? $this->comCombosRecolhidos($filtrado) : array_map(fn ($s) => ['sugestao' => $s], $filtrado);
+
         $familiaTotais = [];
         foreach ($filtrado as $linha) {
             $v = $this->valorFamilia($linha['familia_id'] ?? null);
@@ -128,20 +138,49 @@ class ListaDeSugestoes
             $resumo[$s['fase']]++;
         }
 
-        // ─── Página ───
+        // ─── Página (sobre as linhas) ───
         $total   = count($filtrado);
-        $paginas = max(1, (int) ceil($total / $porPagina));
+        $paginas = max(1, (int) ceil(count($linhas) / $porPagina));
         $pagina  = min(max(1, $pagina), $paginas);
         $inicio  = ($pagina - 1) * $porPagina;
-        $recorte = array_slice($filtrado, $inicio, $porPagina);
+        $doRecorte = array_slice($linhas, $inicio, $porPagina);
 
         $familiaContinua = null;
-        if ($inicio > 0 && $recorte !== []) {
-            $anterior = $filtrado[$inicio - 1];
-            $primeira = $this->valorFamilia($recorte[0]['familia_id'] ?? null);
-            if ($this->valorFamilia($anterior['familia_id'] ?? null) === $primeira) {
+        if ($inicio > 0 && $doRecorte !== []) {
+            $primeira = $this->familiaDaLinha($doRecorte[0]);
+            if ($this->familiaDaLinha($linhas[$inicio - 1]) === $primeira) {
                 $familiaContinua = $primeira;
             }
+        }
+
+        // Sugestões da página (as dos blocos expandidos entram junto) e os grupos, na ordem.
+        $maxExpandidos = max(1, (int) config('estrutura_geracao.max_combos_expandidos', 200));
+        $expandidas    = array_flip($f['combos']);
+        $recorte = [];
+        $grupos  = [];
+        foreach ($doRecorte as $linha) {
+            $familia = $this->familiaDaLinha($linha);
+            $ultimo  = array_key_last($grupos);
+            if ($ultimo === null || $grupos[$ultimo]['chave'] !== $familia) {
+                $grupos[] = ['chave' => $familia, 'nome' => $linha['nome'] ?? ($linha['sugestao']['familia'] ?? null), 'combos' => null];
+                $ultimo = array_key_last($grupos);
+            }
+
+            if (isset($linha['sugestao'])) {
+                $recorte[] = $linha['sugestao'];
+                continue;
+            }
+
+            $aberto = isset($expandidas[$familia]);
+            $mostra = $aberto ? array_slice($linha['combos'], 0, $maxExpandidos) : [];
+            foreach ($mostra as $c) {
+                $recorte[] = $c;
+            }
+            $grupos[$ultimo]['combos'] = [
+                'total'     => count($linha['combos']),
+                'expandido' => $aberto,
+                'mostrando' => count($mostra),
+            ];
         }
 
         $itens = [];
@@ -196,7 +235,9 @@ class ListaDeSugestoes
             'produtos'          => $produtos,
             'familia_totais'    => $familiaTotais,
             'familia_continua'  => $familiaContinua,
-            'paginacao'         => ['pagina' => $pagina, 'paginas' => $paginas, 'total' => $total, 'blocos' => $total, 'por_pagina' => $porPagina],
+            'paginacao'         => ['pagina' => $pagina, 'paginas' => $paginas, 'total' => $total, 'blocos' => $total, 'linhas' => count($linhas), 'por_pagina' => $porPagina],
+            'grupos'            => $grupos,
+            'combos_recolhidos' => $recolher,
             'chaves_filtradas'  => $chavesFiltradas,
             'excedeu_teto'      => $excedeu,
             'teto'              => $teto,
@@ -281,7 +322,15 @@ class ListaDeSugestoes
 
         $q = TipoDoProduto::normalizar(is_string($filtros['q'] ?? null) ? mb_substr($filtros['q'], 0, 120) : '');
 
-        return ['aba' => $aba, 'fase' => $fase, 'familia' => $familia, 'tipo' => $tipo, 'status' => $status, 'q' => $q];
+        // Famílias com os Combos expandidos: só valores de família que existem.
+        $combos = [];
+        foreach ((array) ($filtros['combos'] ?? []) as $v) {
+            if ((is_string($v) || is_int($v)) && isset($validas[(string) $v])) {
+                $combos[(string) $v] = true;
+            }
+        }
+
+        return ['aba' => $aba, 'fase' => $fase, 'familia' => $familia, 'tipo' => $tipo, 'status' => $status, 'q' => $q, 'combos' => array_keys($combos)];
     }
 
     /**
@@ -372,6 +421,40 @@ class ListaDeSugestoes
         }
 
         return $porFamilia;
+    }
+
+    /**
+     * Linhas da paginação com os Combos de cada família num bloco só, no fim dela. A
+     * ordem das famílias e a das sugestões dentro de cada uma são as do gerador.
+     *
+     * @param  list<array<string,mixed>>  $lista
+     * @return list<array{sugestao?: array, combos?: list<array>, familia?: string, nome?: ?string}>
+     */
+    private function comCombosRecolhidos(array $lista): array
+    {
+        $porFamilia = [];
+        foreach ($lista as $s) {
+            $v = $this->valorFamilia($s['familia_id'] ?? null);
+            $porFamilia[$v] ??= ['nome' => $s['familia'] ?? null, 'outras' => [], 'combos' => []];
+            $porFamilia[$v][$s['fase'] === EstruturaOferta::FASE_COMBO ? 'combos' : 'outras'][] = $s;
+        }
+
+        $linhas = [];
+        foreach ($porFamilia as $v => $g) {
+            foreach ($g['outras'] as $s) {
+                $linhas[] = ['sugestao' => $s];
+            }
+            if ($g['combos'] !== []) {
+                $linhas[] = ['familia' => (string) $v, 'nome' => $g['nome'], 'combos' => $g['combos']];
+            }
+        }
+
+        return $linhas;
+    }
+
+    private function familiaDaLinha(array $linha): string
+    {
+        return isset($linha['sugestao']) ? $this->valorFamilia($linha['sugestao']['familia_id'] ?? null) : $linha['familia'];
     }
 
     private function valorFamilia(?int $id): string

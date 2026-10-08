@@ -29,6 +29,10 @@ return [
     'lote_aceite'    => 100,
     'teto_sugestoes' => 5000,
 
+    // Combos recolhidos por família (08/10): no máximo estes na família expandida;
+    // o resto se vê com o filtro Combo.
+    'max_combos_expandidos' => 200,
+
     // Limites de campo: título do ML (RascunhoAnuncioIaService) e SKU (EstruturaOfertaService::campos()).
     'max_titulo'      => 60,
     'max_sku'         => 120,
