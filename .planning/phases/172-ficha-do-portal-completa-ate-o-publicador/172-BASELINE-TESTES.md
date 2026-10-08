@@ -101,3 +101,15 @@ ou o banco não for exatamente o arquivo do scratchpad):
 - `company_id` (172-12): removido `where('company_id', ...)` de `PortalProdutoLeitor::produtoDoGrupo` -> `test_isolamento_entre_empresas...` VERMELHO; restaurado.
 - Sigilo (172-05): mensagem do estoque com "anúncio" -> `test_campos_novos_nao_revelam_origem` VERMELHO (depois de corrigir `assertSemOrigem` para decodificar acento); restaurada.
 - Também: 172-10 (guarda do grupo vazio; principal forçado ao índice 0), ambas vermelhas e revertidas.
+
+## Conferência local (172-13)
+
+Cópia FICTÍCIA da #459 em SQLite de arquivo no scratchpad da sessão (`172-conferencia.sqlite`), guarda `guarda-conf.php`.
+- Recusa provada: sem as variáveis a guarda imprimiu `driver=mysql banco=ecf_admin`, `RECUSADO`, exit 1, e o `&&` seguinte não rodou.
+- Contagem de `companies` no MariaDB `ecf_admin`: 196 antes e 196 depois (só leitura). Nada de dado real; nenhum token do ML; nenhuma chamada de rede.
+- Semente: Company 459 + produto A "Cadeira Executiva Giratória" (cat. MLB193945, cores Azul/Preto/Branco, estoques 7/0/vazio, 2 JPG por cor + 1 WebP na Azul, descrição do cliente, ficha com texto, lista, número com unidade e multivalor), produto B "Furadeira de Impacto" (cat. MLB189007; faz o papel da "mesa", pois só há 4 schemas offline), Combo "4 Cadeiras" e Kit "Furadeira + 4 Cadeiras".
+- Sincronizar rodado pelo mesmo serviço e Job do botão: 4 produtos, 6 variantes (A = 1 produto com 3 variações COLOR, estoques 7/0/vazio), 17 fotos trazidas (A = 7, as 2+2+2+1 WebP já convertida para JPG), 0 não trazidas, 41 campos preenchidos, 2 mantidos, 0 avisos. Combo e Kit: estoque derivado 1 (piso de 7 ÷ 4), categoria/ficha do principal.
+- Servidor: `http://127.0.0.1:8172` (`php -S` de dentro de `public/`, `ASSET_URL` vazio; asset aponta para 127.0.0.1).
+- Portal (link de equipe, vale 1 clique de assinatura; regerar com `portal:link-equipe 459` nas mesmas variáveis se vencer): `http://127.0.0.1:8172/equipe/link/459?signature=7618d883c9e6b8aa426968da140ebb27be98d3dc148dfb5f350b4f859564a1a5`; ficha do produto A: `http://127.0.0.1:8172/portal/estrutura/produtos/1`.
+- Admin da cópia: `http://127.0.0.1:8172/login`, e-mail `conferencia172@local.test`, senha `Conf172-local!` (só desta cópia).
+- Publicador: lista `http://127.0.0.1:8172/mlb/anuncios/publicador/empresas/company-459`; editor do produto A `.../mlb/anuncios/publicador/produtos/3/editor` (Combo = 1, Kit = 2, Furadeira = 4).
