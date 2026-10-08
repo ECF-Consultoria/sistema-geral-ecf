@@ -222,7 +222,8 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $resumo = $this->servico->preencher($pub);
 
         $this->assertSame(self::CADEIRA, $this->rascunho($pub)->categoria_id);
-        $this->assertSame(4, $this->unica($pub)['estoque']);
+        $this->assertArrayNotHasKey('estoque', $this->unica($pub), 'sem o componente que ficou de fora, o estoque não é calculado');
+        $this->assertNotEmpty(array_filter($resumo['avisos'], fn ($x) => str_contains($x, 'estoque do conjunto')));
         $this->assertSame($fotos, $this->fotosGerais($pub));
         $this->assertNotEmpty(array_filter($resumo['avisos'], fn ($x) => str_contains($x, 'componente')));
     }
@@ -268,7 +269,7 @@ class PortalComposicaoNoRascunhoTest extends TestCase
         $this->assertSame(self::CADEIRA, $this->rascunho($pub)->categoria_id, 'o principal não é o de maior custo da outra empresa');
         $this->assertSame($fotosMeu, $this->fotosGerais($pub));
         $this->assertSame([], array_intersect($fotosAlheio, $this->fotosGerais($pub)));
-        $this->assertSame(8, $this->unica($pub)['estoque'], 'o estoque do alheio não entra na conta');
+        $this->assertArrayNotHasKey('estoque', $this->unica($pub), 'o alheio ficou de fora: o estoque do conjunto não é calculado');
         $this->assertNotEmpty($resumo['avisos']);
     }
 }

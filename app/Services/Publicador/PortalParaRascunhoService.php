@@ -191,9 +191,14 @@ class PortalParaRascunhoService
         }
 
         // ─── Variante única: SKU da oferta e estoque do conjunto ───
-        $estoque = ComposicaoDoPortal::estoque(array_map(fn (array $i) => [
+        // Componente que ficou de fora não entra na conta do "menor"; calcular só com os demais
+        // poderia anunciar mais conjuntos do que existem. Nesse caso o estoque fica para a equipe.
+        $estoque = $composta['avisos'] !== [] ? null : ComposicaoDoPortal::estoque(array_map(fn (array $i) => [
             'estoque' => $i['produto']['variacoes'][0]['estoque'] ?? null, 'quantidade' => $i['quantidade'],
         ], $itens));
+        if ($composta['avisos'] !== []) {
+            $resumo['avisos'][] = 'O estoque do conjunto não foi calculado porque um componente ficou de fora; preencha o estoque no Publicador.';
+        }
         $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($composta, $estoque, $produto, &$resumo) {
             $snap = $this->repo->snapshot($r);
             $unica = collect($snap->variantes)->first(fn (Variante $v) => $v->chave === ChaveCanonica::UNICA);
