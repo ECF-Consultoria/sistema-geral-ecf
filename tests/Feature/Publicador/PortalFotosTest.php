@@ -335,4 +335,19 @@ class PortalFotosTest extends TestCase
         $categoria['settings']['max_pictures_per_item_var'] = $max;
         $schema->update(['categoria' => $categoria]);
     }
+
+    public function test_publicacao_que_comeca_durante_a_copia_impede_a_atribuicao_da_foto(): void
+    {
+        [, $pub, [$azul, $preto]] = $this->produto();
+        $this->foto($azul, 0);
+        $this->foto($preto, 0);
+        // A publicação começa entre a checagem do "intocável" e a escrita (a foto já foi guardada).
+        PubImagem::created(fn (PubImagem $i) => PubRascunho::whereKey($i->rascunho_id)->update(['status' => PubRascunho::PUBLISHING]));
+
+        $resumo = $this->servico->preencher($pub);
+
+        $this->assertTrue($resumo['intocavel']);
+        $this->assertSame(0, DB::table('pub_imagem_atribuicoes')->count(), 'nada é atribuído a um rascunho em publicação');
+        $this->assertSame(0, $resumo['fotos_trazidas']);
+    }
 }

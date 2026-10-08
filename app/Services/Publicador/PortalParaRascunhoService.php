@@ -450,7 +450,16 @@ class PortalParaRascunhoService
 
         if (count($vivas) >= 2 && $snap->imagens === [] && ! $snap->fotosPorVariante
             && ! array_filter($snap->eixos, fn (Eixo $e) => $e->definesPicture)) {
-            $this->editor->salvar($r, ['fotos_por_variante' => true]);
+            // Sob a trava e com o "intocável" refeito: a publicação pode ter começado desde a última leitura.
+            $vivo = $this->sobTrava($r->id, function (PubRascunho $r) {
+                $s = $this->repo->snapshot($r);
+                if ($s->imagens === [] && ! $s->fotosPorVariante) {
+                    $this->editor->salvar($r, ['fotos_por_variante' => true]);
+                }
+            });
+            if (! $vivo) {
+                return false;
+            }
             $snap = $this->repo->snapshot($r->fresh());
         }
 
@@ -519,6 +528,9 @@ class PortalParaRascunhoService
                     continue;
                 }
                 $motivo = $this->copiarFoto($atual, $produto, $foto, (string) $grupo);
+                if ($motivo === self::PAROU) {
+                    return false;
+                }
                 if ($motivo === null) {
                     $colocadas++;
                     $resumo['fotos_trazidas']++;
@@ -531,7 +543,10 @@ class PortalParaRascunhoService
         return true;
     }
 
-    /** @return ?string null = a foto entrou no grupo; senão o motivo de não ter entrado */
+    /** `copiarFoto` devolve isto quando o rascunho ficou intocável no meio: o Portal para de escrever. */
+    private const PAROU = '__intocavel__';
+
+    /** @return ?string null = a foto entrou no grupo; `PAROU` = intocável; senão o motivo de não ter entrado */
     private function copiarFoto(PubRascunho $r, PubProduto $produto, array $foto, string $grupo): ?string
     {
         // A leitura do arquivo fica FORA da trava do rascunho; `colocarFotoNoGrupo` trava sozinho.
@@ -555,7 +570,11 @@ class PortalParaRascunhoService
             };
         }
 
-        $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo);
+        // A atribuição volta a checar o "intocável" sob a trava: a publicação pode ter começado durante a cópia.
+        $imagem = $res['imagem'];
+        if (! $this->sobTrava($r->id, fn (PubRascunho $r) => $this->editor->colocarFotoNoGrupo($r, $imagem, $grupo))) {
+            return self::PAROU;
+        }
 
         return null;
     }
