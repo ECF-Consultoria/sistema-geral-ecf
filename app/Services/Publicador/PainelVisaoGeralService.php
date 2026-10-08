@@ -312,13 +312,19 @@ class PainelVisaoGeralService
             ];
         }
 
+        // Linha 8 — "Ficha, catálogo ou foto": anúncio JÁ PUBLICADO com problema de
+        // ficha/catálogo/foto, não produto em rascunho. Destino é Publicações › No ar
+        // filtrado (mesma tela e mesmo formato da linha 2), nunca Produtos — o
+        // handoff (ETAPA-2-visao-geral.md §3) é a versão correta; o texto do
+        // PLAN.md 173-04 que mandava para Produtos `?motivo=` estava errado
+        // (Fase 173, Plano 04b).
         foreach (['ficha_incompleta', 'perdendo_catalogo', 'foto_insuficiente'] as $motivo) {
             $count = (int) ($chips[$motivo]['count'] ?? 0);
             if ($count > 0) {
                 $linhas[] = [
                     'texto' => $chips[$motivo]['label'] ?? $motivo,
                     'numero' => $count,
-                    'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $alvo['chave'], 'motivo' => $motivo]],
+                    'destino' => ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $companyId, 'motivo' => $motivo]],
                 ];
             }
         }

@@ -286,6 +286,18 @@ class PainelVisaoGeralServiceTest extends TestCase
             ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $company->chaveContaMl(), 'filtro' => 'rascunho']],
             $porTexto['Rascunhos com pendências']['destino']
         );
+
+        // Lacuna 2 (173-04b): linha 8 vai para Publicações › No ar filtrado — mesmo formato
+        // da linha 2 (mlb.anuncios.meus + company), nunca Produtos ?motivo= (handoff §3, não o
+        // texto do PLAN.md 173-04, que estava errado).
+        $this->assertSame(
+            ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $company->id, 'motivo' => 'ficha_incompleta']],
+            $porTexto['Ficha incompleta']['destino']
+        );
+        $this->assertSame(
+            ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $company->id, 'motivo' => 'foto_insuficiente']],
+            $porTexto['Foto insuficiente']['destino']
+        );
     }
 
     /** @test */
