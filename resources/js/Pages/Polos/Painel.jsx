@@ -827,6 +827,9 @@ export default function PolosPainel({
             // Texto livre — não há dicionário de rótulo curto. Filtrável pelo mesmo motivo
             // do link_whatsapp: o uso real é isolar "(Sem observação)" e ler quem escreveu.
             obs_publicacao:      { key: 'obs_publicacao', label: 'Obs. publicação', accessor: (e) => e.obs_publicacao, format: (v) => (v === VAZIO ? '(Sem observação)' : encurtaTexto(v)) },
+            // Opção "jardinagem/otimização de anúncios" marcada pelo cliente abaixo da Planilha
+            // de Produtos (TKT-0010). 'Sim' ou vazio — desmarcado não quer dizer "não quer".
+            jardinagem:          { key: 'jardinagem', label: 'Jardinagem', accessor: (e) => e.jardinagem, format: (v) => (v === VAZIO ? '(Não marcou)' : v) },
             places:              { key: 'places', label: 'Places', accessor: (e) => e.places },
             erp:                 { key: 'erp', label: 'ERP', accessor: (e) => e.erp },
         };
@@ -1776,7 +1779,7 @@ const COLS_POR_LENTE = {
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
         'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
-        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao',
+        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao', 'jardinagem',
         'contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
@@ -1784,7 +1787,8 @@ const COLS_POR_LENTE = {
     acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
     // 'obs_publicacao' fecha o bloco: é a resposta do CLIENTE sobre a publicação, ao lado
     // das colunas que a equipe preenche sobre o mesmo assunto.
-    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao'],
+    // 'jardinagem' também é resposta do cliente, marcada logo abaixo da Planilha de Produtos.
+    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao', 'jardinagem'],
     // 'produtos_perfil' vive aqui, ao lado do ME1: é a resposta do cliente que decide o ME1.
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
@@ -2078,6 +2082,8 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
         // demais respostas dele. A célula mostra o começo truncado; clicar abre o painel
         // com o texto inteiro (ver CelObs).
         obs_publicacao: <td className={td}><CelObs valor={e.obs_publicacao} empresa={e.nome} /></td>,
+        // Opção de jardinagem/otimização marcada pelo CLIENTE no link — somente leitura.
+        jardinagem: <td className={td}><CelResposta valor={e.jardinagem} /></td>,
 
         // ── Logística ──
         contextos_logistica: <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>,

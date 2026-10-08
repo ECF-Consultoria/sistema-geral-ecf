@@ -159,3 +159,24 @@ Desde 01/09 o Painel Polos tem colunas que leem respostas do JSON via
 ter mais de uma resposta precisa de um acessor próprio (`respostaCanaisVenda()`), senão
 a coluna continua mostrando o campo velho e a resposta nova não aparece para o time.
 Os call-sites ficam em `PolosController` (grade e exportação — são dois).
+
+## 9. Pergunta que NÃO conta no progresso mora como sub-chave de item existente (TKT-0010)
+
+Em 08/10/2026 entrou a opção "Caso tenha anúncios no Mercado Livre e queira
+jardinagem/otimização de anúncios", logo abaixo da Planilha de Produtos. Item novo no
+`CHECKLIST` teria dois efeitos que o pedido NÃO queria: renumeraria 11–17 (a numeração é
+`idx + 1`) e entraria no `progresso()`, tirando de 100% as 35 fichas concluídas (17/17 →
+17/18 = 94%) e mudando o "Envio" delas (§1).
+
+A saída foi gravar em `dados.itens.planilha_produtos.jardinagem` (bool). Funciona sem
+mexer em `progresso()` porque ele conta **itens** (chaves de `dados.itens`), não
+sub-chaves, e `mesclarItensPadrao()` faz `array_merge` por item — a sub-chave nova entra
+nas fichas antigas sem apagar `produtos`/`feito`. `salvarItem()` não tem lista de campos
+permitidos, então o autosave já aceitava a chave; o controller só força booleano e loga.
+Leitura para a equipe: `MlbImplementacao::querJardinagem()` (Painel, exportação, ficha).
+
+Junto veio a fila única de gravações no `onChange` de `ImplementacaoPublica.jsx`: todo
+PATCH espera o anterior. Clicar na opção e no "Marcar como feito" do mesmo item em
+sequência rápida eram dois PATCH do JSON inteiro em paralelo — o último apagava o
+outro (§6). O encadeamento manual dos chamadores continua válido; a fila só cobre os
+cliques que ninguém encadeou.

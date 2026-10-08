@@ -1051,6 +1051,14 @@ export default function OnboardingFicha({ impl, empresa, opcoes }) {
                                     <span className="text-white/30 text-[11px] ml-1">Central de Promoção</span>
                                 )}
                             </div>
+                            {/* Opção que o CLIENTE marca no link, abaixo da Planilha de Produtos
+                                (TKT-0010). Somente leitura: quem responde é o cliente. */}
+                            <div className="text-[12px] text-white/40">
+                                Jardinagem: {impl.jardinagem
+                                    ? <span className="text-ecf-yellow">quer otimização dos anúncios</span>
+                                    : <span className="text-white/20">não marcou</span>
+                                }
+                            </div>
                         </div>
                     </div>
 

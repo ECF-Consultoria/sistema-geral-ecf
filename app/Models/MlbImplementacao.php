@@ -529,7 +529,11 @@ class MlbImplementacao extends Model
                 // preservada e não renderizada); 'observacao' é o campo livre que o
                 // substituiu em 02/09/2026 e é o que o publicador lê.
                 'publicar_em_massa'    => ['valor' => '', 'observacao' => '', 'feito' => false],
-                'planilha_produtos'    => ['produtos' => [], 'feito' => false],
+                // 'jardinagem' (TKT-0010): opção "Caso tenha anúncios no Mercado Livre e
+                // queira jardinagem/otimização de anúncios", marcada logo abaixo da
+                // planilha. É sub-chave e não item do CHECKLIST DE PROPÓSITO: não renumera
+                // os itens 11–17 e não entra no progresso nem nas pendências.
+                'planilha_produtos'    => ['produtos' => [], 'jardinagem' => false, 'feito' => false],
                 'drive_imagens'        => ['feito' => false],
                 'precificacao' => [
                     'classico'  => ['comissao' => 0.115, 'imposto' => 0.19],
@@ -1039,6 +1043,19 @@ class MlbImplementacao extends Model
         $texto = trim((string) ($this->dados['itens']['publicar_em_massa']['observacao'] ?? ''));
 
         return $texto === '' ? null : $texto;
+    }
+
+    /**
+     * O cliente marcou, abaixo da Planilha de Produtos, que tem anúncios no Mercado Livre
+     * e quer jardinagem/otimização deles (TKT-0010)?
+     *
+     * Lê direto do JSON, como respostaChecklist(): ficha salva antes da opção existir não
+     * tem a chave e dá false. Não interfere em progresso() — a opção é sub-chave do item
+     * `planilha_produtos`, não um item do CHECKLIST.
+     */
+    public function querJardinagem(): bool
+    {
+        return ($this->dados['itens']['planilha_produtos']['jardinagem'] ?? false) === true;
     }
 
     public function progresso(): array
