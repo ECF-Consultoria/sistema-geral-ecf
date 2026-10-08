@@ -129,6 +129,8 @@ class SincronizaPortalAgrupamentoTest extends TestCase
         $this->assertNotSame($l1->id, $g->id);
         $this->assertNotEmpty($r['avisos']);
         $this->assertStringContainsString($p->nome, $r['avisos'][0]);
+        $this->assertStringContainsString('"Cor 1" (produto #'.$l1->id.')', $r['avisos'][0], 'o aviso diz qual cor e onde ela está');
+        $this->assertStringContainsString('não entram no grupo', $r['avisos'][0]);
     }
 
     public function test_todas_as_ofertas_com_legado_publicado_nao_criam_grupo(): void

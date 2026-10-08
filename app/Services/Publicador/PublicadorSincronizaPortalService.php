@@ -122,8 +122,12 @@ class PublicadorSincronizaPortalService
 
             if ($legados->isNotEmpty()) {
                 $duplicados[] = ['produto_id' => $produtoId, 'pub_produto_ids' => $legados->pluck('id')->all()];
-                if ($legados->contains(fn (PubProduto $l) => $l->rascunho !== null && IaParaRascunhoService::intocavel($l->rascunho))) {
-                    $avisos[] = "{$produto->nome}: há cor já publicada como anúncio avulso; ela segue separada do grupo.";
+                // A cor publicada fica fora do grupo (`PortalParaRascunhoService::semCoresPublicadas`).
+                $corDaOferta = fn (PubProduto $l) => $this->corDaOferta($lista, $variacoes, (int) $l->oferta_id);
+                $publicados = $legados->filter(fn (PubProduto $l) => $l->rascunho !== null && IaParaRascunhoService::intocavel($l->rascunho));
+                if ($publicados->isNotEmpty()) {
+                    $cores = $publicados->map(fn (PubProduto $l) => "\"{$corDaOferta($l)}\" (produto #{$l->id})")->implode(', ');
+                    $avisos[] = "{$produto->nome}: a(s) cor(es) {$cores} já foram publicadas como anúncio avulso; seguem separadas e não entram no grupo.";
                 }
             }
         }
@@ -157,7 +161,16 @@ class PublicadorSincronizaPortalService
         }
 
         return EstruturaProdutoVariacao::query()->where('company_id', $company->id)
-            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem'])->keyBy('id');
+            ->whereIn('id', $variacaoIds)->get(['id', 'produto_id', 'company_id', 'ordem', 'valor'])->keyBy('id');
+    }
+
+    /** O nome da cor (valor da variação) de uma oferta do grupo; sem valor, o SKU da oferta. */
+    private function corDaOferta(array $lista, Collection $variacoes, int $ofertaId): string
+    {
+        $oferta = collect($lista)->first(fn (EstruturaOferta $o) => (int) $o->id === $ofertaId);
+        $valor = trim((string) ($oferta !== null ? $variacoes->get($oferta->variacao_id)?->valor : ''));
+
+        return $valor !== '' ? $valor : (string) $oferta?->sku;
     }
 
     /**

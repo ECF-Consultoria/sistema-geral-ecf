@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
@@ -90,6 +91,9 @@ class PortalParaRascunhoService
 
         $avisos = &$resumo['avisos'];
 
+        // ─── Cor já publicada em outro produto fica FORA do grupo (D-06: nunca o mesmo SKU duas vezes) ───
+        $grupo['variacoes'] = $this->semCoresPublicadas($produto, $r, $grupo['variacoes'], $avisos);
+
         // ─── Categoria e schema (o schema é lido ANTES da trava: pode ir ao ML) ───
         $categoriaPortal = $this->categoriaDoPortal($grupo['categoria'] ?? null, $r, $avisos);
         $base = $this->aplicarCategoria($r, $categoriaPortal, $resumo);
@@ -124,6 +128,59 @@ class PortalParaRascunhoService
         }
 
         return $this->concluir($resumo, $produto, $r);
+    }
+
+    /**
+     * Tira do grupo as cores que já são OUTRO produto do Publicador publicado (ou em publicação):
+     * pela oferta da cor ou pelo mesmo SKU. Publicar o grupo com elas criaria um segundo anúncio do
+     * mesmo SKU. A cor fica separada, como está, e o resumo diz qual e onde. Cor que um Sincronizar
+     * antigo já pôs no rascunho não é removida (D-05): o aviso pede que a equipe a desative.
+     *
+     * @param  list<array>  $variacoes
+     * @return list<array>
+     */
+    private function semCoresPublicadas(PubProduto $produto, PubRascunho $r, array $variacoes, array &$avisos): array
+    {
+        $ofertaIds = array_values(array_filter(array_map(fn (array $v) => $v['oferta_id'], $variacoes)));
+        $skus = array_values(array_filter(array_map(fn (array $v) => EstruturaOferta::normalizarSku($v['codigo']), $variacoes)));
+        if ($ofertaIds === [] && $skus === []) {
+            return $variacoes;
+        }
+
+        $publicados = PubProduto::query()->with('rascunho')
+            ->where('company_id', $produto->company_id)->whereKeyNot($produto->id)
+            ->where(fn ($q) => $q->whereIn('oferta_id', $ofertaIds ?: [0])
+                ->orWhereIn(DB::raw('LOWER(TRIM(sku))'), $skus ?: ['']))
+            ->orderBy('id')->get()
+            ->filter(fn (PubProduto $p) => $p->rascunho !== null && IaParaRascunhoService::intocavel($p->rascunho));
+        if ($publicados->isEmpty()) {
+            return $variacoes;
+        }
+
+        $noRascunho = [];
+        foreach ($this->repo->snapshot($r)->eixos as $eixo) {
+            foreach ($eixo->valores as $valor) {
+                $noRascunho[ChaveCanonica::texto((string) $valor->valueName)] = true;
+            }
+        }
+
+        $livres = [];
+        foreach ($variacoes as $v) {
+            $sku = EstruturaOferta::normalizarSku($v['codigo']);
+            $dono = $publicados->first(fn (PubProduto $p) => ($v['oferta_id'] !== null && (int) $p->oferta_id === (int) $v['oferta_id'])
+                || ($sku !== null && EstruturaOferta::normalizarSku($p->sku) === $sku));
+            if ($dono === null) {
+                $livres[] = $v;
+
+                continue;
+            }
+            $cor = trim((string) $v['valor']) !== '' ? trim((string) $v['valor']) : (string) $v['codigo'];
+            $avisos[] = isset($noRascunho[ChaveCanonica::texto($cor)])
+                ? "A cor \"{$cor}\" já foi publicada como o produto #{$dono->id} e também está neste rascunho; desative-a aqui para não publicar o mesmo SKU duas vezes."
+                : "A cor \"{$cor}\" já foi publicada como o produto #{$dono->id}; ela segue separada e não entrou neste grupo.";
+        }
+
+        return $livres;
     }
 
     /** Fecha o resumo: conta as variantes vivas, tira aviso repetido e registra no log. */

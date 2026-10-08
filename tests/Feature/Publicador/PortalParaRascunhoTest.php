@@ -420,4 +420,39 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertNull($resumo['rascunho_id']);
         $this->assertSame(0, PubRascunho::count());
     }
+
+    public function test_cor_ja_publicada_em_outro_produto_fica_fora_do_grupo_com_aviso_verdadeiro(): void
+    {
+        [, $pub, $vars] = $this->produto();
+        // "Preto" já é um produto avulso publicado (pela oferta); "Branco" tem o SKU de outro produto publicado.
+        $ofertaPreto = EstruturaOferta::where('variacao_id', $vars[1]->id)->firstOrFail();
+        $avulso = PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $ofertaPreto->id, 'sku' => 'MESA-2', 'nome' => 'Mesa Preto', 'origem' => PubProduto::ORIGEM_PORTAL]);
+        PubRascunho::create(['produto_id' => $avulso->id, 'status' => PubRascunho::PUBLISHED]);
+        $mesmoSku = PubProduto::create(['company_id' => $this->empresa->id, 'sku' => 'mesa-3', 'nome' => 'Cadastrado à mão', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        PubRascunho::create(['produto_id' => $mesmoSku->id, 'status' => PubRascunho::PUBLISHED]);
+
+        $resumo = $this->servico->preencher($pub);
+
+        $s = $this->snap($pub);
+        $this->assertSame([], $s->eixos, 'sobrou uma cor só: nenhuma variação com as cores publicadas');
+        $skus = collect($s->variantes)->map(fn ($v) => $v->dados['atributos']['SELLER_SKU']['value_name'] ?? null)->filter()->values()->all();
+        $this->assertSame(['MESA-1'], $skus, 'nenhum SKU já publicado entra no grupo');
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, '"Preto"') && str_contains($a, "#{$avulso->id}") && str_contains($a, 'segue separada')));
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, '"Branco"') && str_contains($a, "#{$mesmoSku->id}")));
+    }
+
+    public function test_cor_publicada_que_ja_estava_no_rascunho_nao_e_removida_e_o_aviso_pede_desativar(): void
+    {
+        [, $pub, $vars] = $this->produto();
+        $this->servico->preencher($pub);
+        $this->assertCount(3, $this->snap($pub)->eixos[0]->valores);
+        $ofertaPreto = EstruturaOferta::where('variacao_id', $vars[1]->id)->firstOrFail();
+        $avulso = PubProduto::create(['company_id' => $this->empresa->id, 'oferta_id' => $ofertaPreto->id, 'sku' => 'MESA-2', 'nome' => 'Mesa Preto', 'origem' => PubProduto::ORIGEM_PORTAL]);
+        PubRascunho::create(['produto_id' => $avulso->id, 'status' => PubRascunho::PUBLISHED]);
+
+        $resumo = $this->servico->preencher($pub);
+
+        $this->assertCount(3, $this->snap($pub)->eixos[0]->valores, 'D-05: o Sincronizar nunca remove');
+        $this->assertTrue(collect($resumo['avisos'])->contains(fn ($a) => str_contains($a, '"Preto"') && str_contains($a, 'desative-a')));
+    }
 }
