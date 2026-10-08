@@ -38,6 +38,19 @@ class FichaTecnicaDoProduto
      */
     public const SEPARADOR = ' | ';
 
+    /**
+     * "Não se aplica", como fica gravado: `valor_id = '-1'`, `valor` e `unidade` nulos.
+     *
+     * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2), sem migration. É o mesmo id que o editor
+     * interno usa para o N/A (`ValorAtributo::NAO_SE_APLICA`), então o Sincronizar o leva
+     * como está. É inequívoco: opção do catálogo não tem id "-1", multivalor grava `valor_id`
+     * nulo e texto/número/Sim-Não também. Nunca se lê "-1" em `valor` — número negativo
+     * digitado continua número.
+     *
+     * A tela pede pelo marcador `nao_se_aplica: true` na entrada, não pelo valor.
+     */
+    public const NAO_SE_APLICA = '-1';
+
     public function __construct(private FichaTecnicaDaCategoria $definicao) {}
 
     /**
@@ -154,6 +167,15 @@ class FichaTecnicaDoProduto
     {
         $bruto = $entrada['valor'] ?? null;
         $nome = $campo['nome'];
+
+        // "Não se aplica" vence o valor: o controle fica travado na tela enquanto ele está marcado.
+        if (filter_var($entrada['nao_se_aplica'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            if (! ($campo['nao_se_aplica'] ?? false)) {
+                throw new InvalidArgumentException("“{$nome}” não aceita “Não se aplica”.");
+            }
+
+            return ['valor' => null, 'valor_id' => self::NAO_SE_APLICA, 'unidade' => null];
+        }
 
         // Lista multivalor: a tela manda uma lista de ids (os chips). Trilha própria, antes da
         // exigência de escalar lá embaixo — e uma lista vazia conta como campo não preenchido.

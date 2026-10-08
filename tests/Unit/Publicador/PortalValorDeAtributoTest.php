@@ -15,7 +15,7 @@ class PortalValorDeAtributoTest extends TestCase
             id: 'ATTR', nome: 'Campo', papel: AtributoClassificado::PRODUCT, obrigatoriedade: AtributoClassificado::OPTIONAL,
             secao: AtributoClassificado::SECAO_FICHA, grupo: null, valueType: $tipo, valores: $valores,
             unidades: $o['unidades'] ?? [], unidadePadrao: $o['unidadePadrao'] ?? null,
-            aceitaTextoLivre: $o['livre'] ?? false, aceitaNaoSeAplica: false, podeSerEixo: false, definePicture: false,
+            aceitaTextoLivre: $o['livre'] ?? false, aceitaNaoSeAplica: $o['na'] ?? false, podeSerEixo: false, definePicture: false,
             multivalor: $o['multi'] ?? false, maxLength: $o['max'] ?? 255, dica: null, exemplo: null, tooltip: null,
             componente: null, tags: [],
         );
@@ -145,5 +145,26 @@ class PortalValorDeAtributoTest extends TestCase
         $this->assertSame('30.5 cm', $r['SELLER_PACKAGE_HEIGHT']);
         $this->assertSame('12345 g', $r['SELLER_PACKAGE_WEIGHT']);
         $this->assertSame([], PortalValorDeAtributo::pacoteParaAtributos(null));
+    }
+
+    // ─── "Não se aplica" do Portal (08/10/2026) ─────────────────────────
+
+    public function test_nao_se_aplica_do_portal_vira_o_na_do_rascunho_quando_o_atributo_aceita(): void
+    {
+        foreach (['list' => self::MATERIAIS, 'number_unit' => [], 'string' => [], 'boolean' => [['id' => '242085', 'name' => 'Sim']]] as $tipo => $valores) {
+            $r = PortalValorDeAtributo::resolver($this->def($tipo, $valores, ['na' => true, 'unidades' => ['cm'], 'unidadePadrao' => 'cm']),
+                ['valor' => null, 'valor_id' => '-1', 'unidade' => null]);
+
+            $this->assertSame(['value_id' => '-1', 'value_name' => null, 'origem' => 'portal', 'revisar' => false], $r['valor'], $tipo);
+            $this->assertNull($r['aviso']);
+        }
+    }
+
+    public function test_nao_se_aplica_que_o_atributo_nao_aceita_vira_aviso_e_nao_grava(): void
+    {
+        $r = PortalValorDeAtributo::resolver($this->def('list', self::MATERIAIS), ['valor' => null, 'valor_id' => '-1']);
+
+        $this->assertNull($r['valor']);
+        $this->assertStringContainsString('Não se aplica', $r['aviso']);
     }
 }

@@ -10,8 +10,19 @@
 //
 // O `id` do campo é interno: nunca aparece na tela, só o `nome`.
 //
-// Valores em memória: { [id]: { valor: string, unidade: string } }
+// Valores em memória: { [id]: { valor: string, unidade: string, naoSeAplica?: boolean } }
+//
+// "Não se aplica": o campo marcado `nao_se_aplica` pelo servidor ganha a opção.
+// Marcada, o PUT manda `{ id, nao_se_aplica: true }` (nunca um valor), e o servidor
+// a grava com `valor_id = NAO_SE_APLICA`. O valor digitado antes fica guardado em
+// memória: desmarcar o devolve.
 // ═══════════════════════════════════════════════════════════════════════
+
+/** Como o servidor grava o "Não se aplica" (`valor_id`). */
+export const NAO_SE_APLICA = '-1';
+
+/** O campo oferece "Não se aplica"? (só quando o servidor marcou). */
+export const aceitaNaoSeAplica = (campo) => !! campo?.nao_se_aplica;
 
 /** Os campos da definição numa lista só, na ordem em que a tela os mostra. */
 export function camposDaDefinicao(grupos) {
@@ -27,6 +38,11 @@ export function valoresIniciais(salvos) {
     (Array.isArray(salvos) ? salvos : []).forEach((s) => {
         if (! s || s.id == null) return;
         const id = String(s.id);
+        if (String(s.valor_id ?? '') === NAO_SE_APLICA) {
+            out[id] = { valor: '', unidade: '', naoSeAplica: true };
+
+            return;
+        }
         const doIdDaOpcao = s.valor_id !== null && s.valor_id !== undefined && s.valor_id !== '';
         const bruto = doIdDaOpcao ? s.valor_id : s.valor;
         out[id] = { valor: bruto === null || bruto === undefined ? '' : String(bruto), unidade: s.unidade ? String(s.unidade) : '' };
@@ -102,6 +118,13 @@ export function montarAtributos(grupos, valores) {
     camposDaDefinicao(grupos).forEach((campo) => {
         const atual = valores?.[campo.id];
         const bruto = atual?.valor;
+
+        // "Não se aplica" vence o que estiver digitado, e só vale onde o servidor oferece.
+        if (atual?.naoSeAplica && aceitaNaoSeAplica(campo)) {
+            out.push({ id: campo.id, nao_se_aplica: true });
+
+            return;
+        }
 
         if (ehMultivalor(campo)) {
             const ids = idsMultivalor(campo, bruto);

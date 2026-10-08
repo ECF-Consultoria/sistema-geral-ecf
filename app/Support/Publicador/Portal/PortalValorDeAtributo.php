@@ -4,6 +4,7 @@ namespace App\Support\Publicador\Portal;
 
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Support\Publicador\Schema\AtributoClassificado;
+use App\Support\Publicador\Schema\ValorAtributo;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 
 /**
@@ -26,6 +27,14 @@ final class PortalValorDeAtributo
         $texto = trim((string) ($salvo['valor'] ?? ''));
         $valorId = trim((string) ($salvo['valor_id'] ?? ''));
         $nomeCampo = $def->nome !== '' ? $def->nome : $def->id;
+
+        // "Não se aplica" do Portal é o mesmo id do N/A do rascunho: vai como está, se o atributo
+        // aceitar aqui (o schema do rascunho pode ser mais novo que a ficha que o cliente viu).
+        if ($valorId === FichaTecnicaDoProduto::NAO_SE_APLICA) {
+            return $def->aceitaNaoSeAplica
+                ? ['valor' => ['value_id' => ValorAtributo::NAO_SE_APLICA, 'value_name' => null, 'origem' => 'portal', 'revisar' => false], 'aviso' => null]
+                : self::semValor("{$nomeCampo}: o Portal marcou \"Não se aplica\", que este atributo não aceita; nada foi preenchido.");
+        }
 
         if ($texto === '' && $valorId === '') {
             return self::semValor(null);

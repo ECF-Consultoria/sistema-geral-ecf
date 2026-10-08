@@ -3,7 +3,11 @@
 namespace Tests\Unit\Portal\Estrutura;
 
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria as F;
+use App\Support\Publicador\Schema\AtributoClassificado as A;
+use App\Support\Publicador\Schema\ClassificadorAtributos;
+use App\Support\Publicador\Schema\ContextoClassificacao;
 use PHPUnit\Framework\TestCase;
+use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
  * A definição da ficha técnica: função pura, atributos crus → grupos para a tela.
@@ -13,6 +17,8 @@ use PHPUnit\Framework\TestCase;
  */
 class FichaTecnicaDaCategoriaTest extends TestCase
 {
+    use CarregaSchemas;
+
     /** Um atributo de cada tipo, mais os que precisam ser descartados. */
     private static function atributos(): array
     {
@@ -236,5 +242,126 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertArrayHasKey('HEIGHT', $campos, 'exigida pela categoria, esconder deixaria o cadastro incompleto');
         $this->assertTrue($campos['HEIGHT']['obrigatorio']);
         $this->assertArrayNotHasKey('WIDTH', $campos);
+    }
+
+    // ═══ Os campos que o editor interno deixa preencher (08/10/2026) ══════════
+
+    /** Os 15 `hidden` editáveis de Cadeiras de Escritório (MLB193945), na ordem da categoria. */
+    private const HIDDEN_EDITAVEIS_DA_CADEIRA = [
+        'LUMBAR_SUPPORT_TYPE', 'STRUCTURE_FINISH', 'LEAN_BACK_MECHANISM_TYPES', 'BACKREST_TILT_RANGE',
+        'OFFICE_CHAIR_HEIGHT', 'OFFICE_CHAIR_DEPTH', 'BASE_DIAMETER', 'OFFICE_CHAIR_WEIGHT', 'SEAT_WIDTH',
+        'BACKREST_WIDTH', 'MIN_HEIGHT_FROM_FLOOR_TO_SEAT', 'MAX_HEIGHT_FROM_FLOOR_TO_SEAT', 'MIN_CHAIR_HEIGHT',
+        'IS_KIT', 'PRODUCT_DATA_SOURCE',
+    ];
+
+    private static function atributosDaCadeira(): array
+    {
+        return self::schema(self::CADEIRA)->atributos;
+    }
+
+    /**
+     * O modo de falha que isto impede: duas regras separadas para "o que o cliente preenche".
+     * A ficha descartava `hidden` e `allow_variations` inteiros; o editor interno deixa
+     * preencher os `hidden` (como "Avançado") e todo `allow_variations` que não é o eixo.
+     * Resultado: 16 campos que a equipe preenchia à mão e o cliente nunca via.
+     *
+     * A régua é o próprio classificador do editor, com o schema COMPLETO da categoria
+     * (technical_specs incluído) e a cor como eixo: as duas listas têm de ser a mesma.
+     */
+    public function test_na_cadeira_a_ficha_tem_exatamente_os_atributos_de_produto_que_o_editor_deixa_editar(): void
+    {
+        $classificado = (new ClassificadorAtributos())->classificar(self::schema(self::CADEIRA), new ContextoClassificacao('new', ['COLOR']));
+        $doEditor = array_keys(array_filter($classificado->atributos, fn (A $a) => $a->papel === A::PRODUCT
+            && in_array($a->secao, [A::SECAO_PRINCIPAIS, A::SECAO_FICHA, A::SECAO_AVANCADO], true)));
+
+        $campos = F::camposPorId(F::daAtributos(self::atributosDaCadeira()));
+        $daFicha = array_keys($campos);
+
+        sort($doEditor);
+        sort($daFicha);
+        $this->assertSame($doEditor, $daFicha);
+        $this->assertCount(44, $daFicha, '28 de antes + 15 escondidos editáveis + o estofamento');
+
+        // E o "Não se aplica" é o mesmo dos dois lados.
+        foreach ($campos as $id => $campo) {
+            $this->assertSame($classificado->atributos[$id]->aceitaNaoSeAplica, $campo['nao_se_aplica'], "N/A de {$id}");
+        }
+    }
+
+    public function test_na_cadeira_os_hidden_editaveis_vao_para_mais_detalhes_no_fim_e_o_estofamento_entra(): void
+    {
+        $grupos = F::daAtributos(self::atributosDaCadeira());
+        $ultimo = end($grupos);
+
+        $this->assertSame(F::GRUPO_MAIS_DETALHES, $ultimo['grupo']);
+        $this->assertSame(self::HIDDEN_EDITAVEIS_DA_CADEIRA, array_column($ultimo['campos'], 'id'));
+        foreach ($ultimo['campos'] as $campo) {
+            $this->assertFalse($campo['obrigatorio'], "{$campo['id']} num grupo opcional");
+        }
+
+        $campos = F::camposPorId($grupos);
+        $this->assertSame(F::TIPO_LISTA, $campos['UPHOLSTERY_MATERIAL']['tipo']);
+        $this->assertSame('Material do estofamento', $campos['UPHOLSTERY_MATERIAL']['nome']);
+        $this->assertNotSame(F::GRUPO_MAIS_DETALHES, $grupos[0]['grupo']);
+        $this->assertContains('UPHOLSTERY_MATERIAL', array_column($grupos[0]['campos'], 'id'), 'o estofamento é campo principal');
+        $this->assertSame(F::TIPO_NUMERO_UNIDADE, $campos['SEAT_WIDTH']['tipo']);
+        $this->assertContains('cm', array_column($campos['SEAT_WIDTH']['unidades'], 'id'));
+        $this->assertSame(F::TIPO_SIM_NAO, $campos['IS_KIT']['tipo']);
+        $this->assertTrue($campos['LEAN_BACK_MECHANISM_TYPES']['multivalor']);
+
+        // Nunca: sistema, dado de variante, condição, pacote, e a cor (é a variação).
+        foreach (['COLOR', 'MAIN_COLOR', 'FILTRABLE_COLOR', 'SELLER_SKU', 'GTIN', 'EMPTY_GTIN_REASON', 'MPN', 'ITEM_CONDITION',
+            'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_WEIGHT', 'PACKAGE_WEIGHT', 'LINE', 'CATALOG_TITLE', 'VERTICAL_TAGS'] as $fora) {
+            $this->assertArrayNotHasKey($fora, $campos, "{$fora} não é do cliente");
+        }
+    }
+
+    public function test_allow_variations_so_sai_quando_e_o_eixo_que_o_portal_ja_trata(): void
+    {
+        $campos = F::camposPorId(F::daAtributos([
+            // Eixos do portal com `allow_variations`: são a variação, saem.
+            ['id' => 'COLOR', 'name' => 'Cor', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            ['id' => 'SIZE', 'name' => 'Tamanho', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            // Não é eixo do portal: entra, mesmo deixando variar.
+            ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string',
+                'tags' => ['allow_variations' => true], 'values' => [['id' => '1', 'name' => 'Couro']]],
+            // Eixo do portal SEM `allow_variations` nesta categoria: é atributo comum, entra.
+            ['id' => 'VOLTAGE', 'name' => 'Voltagem', 'value_type' => 'string', 'tags' => []],
+        ]));
+
+        $this->assertSame(['UPHOLSTERY_MATERIAL', 'VOLTAGE'], array_keys($campos));
+    }
+
+    public function test_hidden_obrigatorio_fica_no_grupo_normal_e_nao_aceita_nao_se_aplica(): void
+    {
+        $grupos = F::daAtributos([
+            ['id' => 'A', 'name' => 'Escondido opcional', 'value_type' => 'string', 'tags' => ['hidden' => true]],
+            ['id' => 'B', 'name' => 'Escondido exigido', 'value_type' => 'string', 'tags' => ['hidden' => true, 'required' => true]],
+            ['id' => 'C', 'name' => 'Comum', 'value_type' => 'string', 'tags' => []],
+        ]);
+
+        $this->assertSame([F::GRUPO_PADRAO, F::GRUPO_MAIS_DETALHES], array_column($grupos, 'grupo'));
+        $this->assertSame(['B', 'C'], array_column($grupos[0]['campos'], 'id'));
+        $this->assertSame(['A'], array_column($grupos[1]['campos'], 'id'));
+
+        $campos = F::camposPorId($grupos);
+        $this->assertFalse($campos['B']['nao_se_aplica'], 'obrigatório nunca aceita "Não se aplica"');
+        $this->assertTrue($campos['A']['nao_se_aplica']);
+        $this->assertTrue($campos['C']['nao_se_aplica']);
+    }
+
+    public function test_o_grupo_novo_tambem_passa_pelo_filtro_de_sigilo(): void
+    {
+        $grupos = F::daAtributos([
+            ['id' => 'A', 'name' => 'Visível no Mercado Livre', 'value_type' => 'string', 'tags' => ['hidden' => true]],
+            ['id' => 'B', 'name' => 'Acabamento', 'value_type' => 'string', 'tags' => ['hidden' => true],
+                'values' => [['id' => '1', 'name' => 'Cromado'], ['id' => '2', 'name' => 'Igual ao anúncio']]],
+        ]);
+
+        $this->assertSame([F::GRUPO_MAIS_DETALHES], array_column($grupos, 'grupo'));
+        $this->assertSame(['B'], array_column($grupos[0]['campos'], 'id'));
+        $this->assertSame([['id' => '1', 'nome' => 'Cromado']], $grupos[0]['campos'][0]['valores']);
+        $this->assertDoesNotMatchRegularExpression('/mercado|an[uú]ncio|publicar|mlb/iu', json_encode($grupos, JSON_UNESCAPED_UNICODE));
     }
 }

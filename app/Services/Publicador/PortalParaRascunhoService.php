@@ -43,14 +43,11 @@ use Illuminate\Support\Facades\Log;
  */
 class PortalParaRascunhoService
 {
-    /** Eixo do Portal → atributo de variação do ML. Cor principal fica de fora (learnings §11). */
-    private const EIXO_PARA_ML = [
-        'cor' => 'COLOR',
-        'tamanho' => 'SIZE',
-        'voltagem' => 'VOLTAGE',
-        'material' => 'MATERIAL',
-        'sabor' => 'FLAVOR',
-    ];
+    /**
+     * Eixo do Portal → atributo de variação do ML. Cor principal fica de fora (learnings §11).
+     * É a mesma tabela que tira esses atributos da ficha técnica do Portal (uma fonte só).
+     */
+    private const EIXO_PARA_ML = EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO;
 
     private const AVISO_INTOCAVEL = 'O anúncio já estava publicado (ou em publicação); o Portal não mudou nada.';
 

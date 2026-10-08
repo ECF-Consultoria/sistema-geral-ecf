@@ -378,6 +378,8 @@ class PortalEstruturaProdutosController extends Controller
             'atributos.*'         => 'array',
             'atributos.*.id'      => 'required|string|max:80',
             'atributos.*.unidade' => 'nullable|string|max:20',
+            // "Não se aplica" vem por marcador próprio, nunca pelo valor (ver FichaTecnicaDoProduto::NAO_SE_APLICA).
+            'atributos.*.nao_se_aplica' => 'nullable|boolean',
             // Escalar, ou a LISTA de opções de um campo multivalor (os chips). Quem confere se
             // o campo aceita lista, e se cada opção existe, é o serviço — contra a definição
             // da categoria. Aqui só se barra o que não é nenhum dos dois (objeto, lista aninhada).

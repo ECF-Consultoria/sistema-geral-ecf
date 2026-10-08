@@ -1277,3 +1277,26 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
 - **Descrição do produto** (`estrutura_produtos.descricao`) segue o sigilo da 167: nenhum texto do campo fala de Mercado
   Livre, anúncio ou publicar (o Publicador a lê, o cliente não sabe).
 - **Sem coluna na planilha-modelo (D-14):** estoque e descrição só entram pela ficha na tela, não pela importação XLSX.
+
+## 38. Ficha do Portal = régua do editor do Publicador, e "Não se aplica" (08/10/2026)
+
+- **A ficha técnica agora usa o `ClassificadorAtributos` como régua** (`FichaTecnicaDaCategoria::classificar`): entra todo
+  atributo de PRODUTO nas seções PRINCIPAIS/FICHA/AVANCADO. Antes, `TAGS_FORA` descartava `hidden` e `allow_variations`
+  inteiros e o cliente nunca via 16 campos que a equipe preenchia à mão (MLB193945). Teste
+  `test_na_cadeira_a_ficha_tem_exatamente_os_atributos_de_produto_que_o_editor_deixa_editar` compara as duas listas
+  com o schema COMPLETO (com `technical_specs`); se ele quebrar, uma das duas regras mudou sozinha.
+- **O classificador recebe só id/nome/tags/value_type** (sem `technical_specs`): sem grupo `MAIN` tudo cai em FICHA, o
+  que para o Portal dá no mesmo (PRINCIPAIS e FICHA entram juntos). Opções/unidades continuam lidas pelo Portal, com o
+  filtro de sigilo.
+- **O eixo sai só se a categoria deixa variar por ele.** `EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO` (cor→COLOR,
+  tamanho→SIZE, voltagem→VOLTAGE, material→MATERIAL, sabor→FLAVOR) é a MESMA tabela do Sincronizar. MATERIAL sem
+  `allow_variations` é atributo comum e fica na ficha. A regra é por CATEGORIA, não por produto (a definição não sabe
+  o eixo do produto): onde MATERIAL deixa variar, ele sai da ficha mesmo de um produto que varia só por cor — e aí o
+  material desse produto não tem onde ser dito no Portal (era assim antes também).
+- **`hidden` editável vai para "Mais detalhes (opcional)", no fim, ABERTO** (gate JS: a ficha não recolhe nada). Um
+  `hidden` com `required` fica no grupo normal, senão o rótulo "opcional" mentiria.
+- **"Não se aplica" = `valor_id = '-1'`, `valor` e `unidade` nulos** em `estrutura_produto_atributos` (sem migration):
+  é o id do N/A do próprio editor (`ValorAtributo::NAO_SE_APLICA`). A tela pede por `{id, nao_se_aplica: true}`, NUNCA
+  pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
+  obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
+  como preenchido (re-sincronizar não mexe).
