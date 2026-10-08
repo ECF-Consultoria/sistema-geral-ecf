@@ -63,6 +63,22 @@ class EditorRascunhoService
     /** O rascunho do produto: o que já existe, o migrado do Anunciar antigo (só com oferta), ou um novo com os tipos que faltam. */
     public function abrir(PubProduto $produto): PubRascunho
     {
+        $r = $this->rascunhoDoProduto($produto);
+
+        $this->lerContaSeVencida($r);
+
+        return $r->fresh();
+    }
+
+    /**
+     * O mesmo que `abrir`, SEM a leitura da conta no ML (nenhum HTTP de conta). Quem só grava
+     * rascunho (o Sincronizar do Portal, D-10) usa este método, nunca `abrir`.
+     *
+     * @param  bool  $comSku  false = a variante única nasce sem SELLER_SKU (produto agrupado em cores:
+     *                        o regenerador copiaria o SKU do produto para todas as variantes)
+     */
+    public function rascunhoDoProduto(PubProduto $produto, bool $comSku = true): PubRascunho
+    {
         $r = PubRascunho::where('produto_id', $produto->id)->first();
         if (! $r && $produto->oferta_id !== null && ($antiga = EstruturaPublicacao::where('oferta_id', $produto->oferta_id)->first())) {
             $r = $this->migracao->aplicar($antiga);
@@ -73,7 +89,8 @@ class EditorRascunhoService
                 fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
                 array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
             ), ['origem' => 'publicador']);
-            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]]])]);
+            $atributos = $comSku ? ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]] : [];
+            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => $atributos])]);
         }
 
         // Migrado com categoria e sem hash: grava o hash do schema de hoje.
@@ -85,9 +102,7 @@ class EditorRascunhoService
             }
         }
 
-        $this->lerContaSeVencida($r);
-
-        return $r->fresh();
+        return $r;
     }
 
     // ═══ Gravar ══════════════════════════════════════════════════════════════
