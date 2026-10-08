@@ -13,8 +13,14 @@ use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
  *
  * Regra: a palavra casa por token inteiro (ou o plural regular dele), nunca por
  * prefixo solto ("mesada" não é mesa). O casamento mais longo vence: os trechos
- * contidos em outro maior são descartados. Categoria primeiro, nome depois;
- * ambíguo na categoria não cai para o nome.
+ * contidos em outro maior são descartados.
+ *
+ * Categoria primeiro, e ela só decide quando aponta UM tipo. Categoria ambígua
+ * ("Bancos e Banquetas") ou sem tipo cai para o nome (08/10). No nome vence o tipo
+ * do NÚCLEO: o que aparece primeiro; empate na posição, o trecho mais longo
+ * ("Gabinete Armário Banheiro com Nichos" é gabinete; "Espelho com Prateleira" é
+ * espelho). Se o nome também não tiver tipo, a ambiguidade da categoria fica
+ * registrada nos candidatos e o produto vai para o painel "Sem tipo".
  */
 final class TipoDoProduto
 {
@@ -51,18 +57,24 @@ final class TipoDoProduto
      */
     public static function inferir(?string $categoria, ?string $nome, array $tipos): array
     {
-        foreach (['categoria' => $categoria, 'nome' => $nome] as $fonte => $texto) {
-            $candidatos = self::candidatos(self::normalizar($texto), $tipos);
+        $daCategoria = self::achados(self::normalizar($categoria), $tipos);
+        $slugsCategoria = self::slugsOrdenados($daCategoria, $tipos);
 
-            if ($candidatos === []) {
-                continue;
-            }
+        if (count($slugsCategoria) === 1) {
+            return ['slug' => $slugsCategoria[0], 'candidatos' => $slugsCategoria, 'fonte' => 'categoria'];
+        }
 
+        $doNome = self::achados(self::normalizar($nome), $tipos);
+        if ($doNome !== []) {
             return [
-                'slug'       => count($candidatos) === 1 ? $candidatos[0] : null,
-                'candidatos' => $candidatos,
-                'fonte'      => $fonte,
+                'slug'       => self::doNucleo($doNome, $tipos),
+                'candidatos' => self::slugsOrdenados($doNome, $tipos),
+                'fonte'      => 'nome',
             ];
+        }
+
+        if ($slugsCategoria !== []) {
+            return ['slug' => null, 'candidatos' => $slugsCategoria, 'fonte' => 'categoria'];
         }
 
         return ['slug' => null, 'candidatos' => [], 'fonte' => null];
@@ -89,19 +101,19 @@ final class TipoDoProduto
     }
 
     /**
-     * Slugs dos tipos que sobram depois de descartar trechos contidos em outro maior.
+     * Trechos que sobram depois de descartar os contidos em outro maior.
      *
      * @param  array<string, array{palavras: list<string>, ordem: int}>  $tipos
-     * @return list<string>
+     * @return list<array{0:string,1:int,2:int}>  [slug, início, fim] por token
      */
-    private static function candidatos(string $texto, array $tipos): array
+    private static function achados(string $texto, array $tipos): array
     {
         if ($texto === '') {
             return [];
         }
 
         $tokens = explode(' ', $texto);
-        $achados = []; // cada um: [slug, inicio, fim]
+        $achados = [];
 
         foreach ($tipos as $slug => $tipo) {
             foreach (self::palavras($tipo['palavras'] ?? []) as $palavra) {
@@ -121,14 +133,39 @@ final class TipoDoProduto
                 }
             }
             if (! $contido) {
-                $sobram[$slug] = true;
+                $sobram[] = [$slug, $ini, $fim];
             }
         }
 
-        $slugs = array_keys($sobram);
+        return $sobram;
+    }
+
+    /**
+     * Slugs distintos dos trechos, pela ordem do tipo (desempate pelo slug).
+     *
+     * @param  list<array{0:string,1:int,2:int}>  $achados
+     * @return list<string>
+     */
+    private static function slugsOrdenados(array $achados, array $tipos): array
+    {
+        $slugs = array_values(array_unique(array_column($achados, 0)));
         usort($slugs, fn ($a, $b) => [$tipos[$a]['ordem'] ?? 0, $a] <=> [$tipos[$b]['ordem'] ?? 0, $b]);
 
         return array_map('strval', $slugs);
+    }
+
+    /**
+     * O tipo do núcleo do nome: o trecho que começa primeiro; empate, o mais longo;
+     * empate ainda, a ordem do tipo.
+     *
+     * @param  list<array{0:string,1:int,2:int}>  $achados
+     */
+    private static function doNucleo(array $achados, array $tipos): string
+    {
+        usort($achados, fn ($x, $y) => [$x[1], $y[2] - $y[1], $tipos[$x[0]]['ordem'] ?? 0, $x[0]]
+            <=> [$y[1], $x[2] - $x[1], $tipos[$y[0]]['ordem'] ?? 0, $y[0]]);
+
+        return $achados[0][0];
     }
 
     /**

@@ -28,6 +28,11 @@ class TiposEParesTest extends TestCase
 
     private const SEMENTE = '2026_10_07_100100_semear_estrutura_tipos_e_pares.php';
 
+    /** Semente aditiva de 08/10 (banheiro): só os slugs e pares dela, nunca o config inteiro. */
+    private const SEMENTE_BANHEIRO = '2026_10_08_140000_semear_tipos_e_pares_de_banheiro.php';
+
+    private const TIPOS_BANHEIRO = ['gabinete', 'espelho', 'lixeira', 'toalheiro', 'acessorio-banheiro'];
+
     private function tipo(string $slug): EstruturaTipoProduto
     {
         return EstruturaTipoProduto::where('slug', $slug)->firstOrFail();
@@ -42,7 +47,76 @@ class TiposEParesTest extends TestCase
     {
         $this->assertSame(count(config('estrutura_geracao.tipos')), EstruturaTipoProduto::count());
         $this->assertSame(count(config('estrutura_geracao.pares')), EstruturaTipoPar::count());
+        // 18 da 168 (D-21) + 5 de banheiro (08/10).
+        $this->assertSame(23, EstruturaTipoPar::count());
+    }
+
+    /** Produção já tinha a semente da 168: o estado de lá é "sem os tipos de banheiro". */
+    private function comoEmProducaoAntesDoBanheiro(): void
+    {
+        EstruturaTipoProduto::whereIn('slug', self::TIPOS_BANHEIRO)->delete(); // pares vão em cascata
+    }
+
+    private function rodarSementeDoBanheiro(): void
+    {
+        $migration = require database_path('migrations/'.self::SEMENTE_BANHEIRO);
+        $migration->up();
+    }
+
+    private function par(string $a, string $b): ?EstruturaTipoPar
+    {
+        $ia = $this->tipo($a)->id;
+        $ib = $this->tipo($b)->id;
+
+        return EstruturaTipoPar::where('tipo_a_id', min($ia, $ib))->where('tipo_b_id', max($ia, $ib))->first();
+    }
+
+    public function test_a_semente_do_banheiro_acrescenta_tipos_e_pares_so_kit(): void
+    {
+        $this->comoEmProducaoAntesDoBanheiro();
         $this->assertSame(18, EstruturaTipoPar::count());
+
+        $this->rodarSementeDoBanheiro();
+
+        $this->assertSame(count(config('estrutura_geracao.tipos')), EstruturaTipoProduto::count());
+        $this->assertSame(23, EstruturaTipoPar::count());
+        foreach ([['gabinete', 'espelho'], ['gabinete', 'lixeira'], ['espelho', 'lixeira'], ['gabinete', 'toalheiro'], ['gabinete', 'acessorio-banheiro']] as [$a, $b]) {
+            $par = $this->par($a, $b);
+            $this->assertNotNull($par, "{$a} + {$b}");
+            $this->assertNull($par->combit_repete, "{$a} + {$b} é só Kit");
+        }
+        $this->assertSame('2', $this->tipo('lixeira')->qtd_combo);
+        $this->assertNull($this->tipo('gabinete')->qtd_combo);
+
+        // Rodar de novo não muda nada.
+        $this->rodarSementeDoBanheiro();
+        $this->assertSame(23, EstruturaTipoPar::count());
+    }
+
+    public function test_a_semente_do_banheiro_nao_desfaz_o_que_a_ecf_editou_ou_excluiu(): void
+    {
+        $this->comoEmProducaoAntesDoBanheiro();
+
+        // A ECF excluiu um tipo da 168 e criou o próprio "gabinete" pela tela admin, com um par dirigido.
+        $this->tipo('nicho')->delete();
+        $gabinete = EstruturaTipoProduto::create([
+            'slug' => 'gabinete', 'nome' => 'Gabinete da ECF', 'plural' => 'Gabinetes da ECF',
+            'palavras' => 'gabinete', 'qtd_combo' => '3', 'qtd_combit' => '2', 'ordem' => 5,
+        ]);
+        $espelho = EstruturaTipoProduto::create([
+            'slug' => 'espelho', 'nome' => 'Espelho', 'plural' => 'Espelhos', 'palavras' => 'espelho', 'ordem' => 6,
+        ]);
+        EstruturaTipoPar::create([
+            'tipo_a_id' => min($gabinete->id, $espelho->id), 'tipo_b_id' => max($gabinete->id, $espelho->id), 'combit_repete' => 'ambos',
+        ]);
+
+        $this->rodarSementeDoBanheiro();
+
+        $this->assertFalse(EstruturaTipoProduto::where('slug', 'nicho')->exists(), 'o excluído não volta');
+        $gabinete->refresh();
+        $this->assertSame(['Gabinete da ECF', 'gabinete', '3', 5], [$gabinete->nome, $gabinete->palavras, $gabinete->qtd_combo, (int) $gabinete->ordem]);
+        $this->assertSame('ambos', $this->par('gabinete', 'espelho')->combit_repete, 'o par editado fica como a ECF deixou');
+        $this->assertNotNull($this->par('gabinete', 'lixeira'));
     }
 
     public function test_rodar_a_semente_de_novo_nao_muda_as_contagens(): void
@@ -157,7 +231,7 @@ class TiposEParesTest extends TestCase
 
     public function test_as_migrations_da_fase_nao_alteram_tabela_existente_e_os_nomes_cabem(): void
     {
-        foreach (['2026_10_07_100000_create_estrutura_geracao_tables.php', self::SEMENTE] as $arquivo) {
+        foreach (['2026_10_07_100000_create_estrutura_geracao_tables.php', self::SEMENTE, self::SEMENTE_BANHEIRO] as $arquivo) {
             $codigo = file_get_contents(database_path("migrations/{$arquivo}"));
 
             $this->assertStringNotContainsString('->enum(', $codigo, $arquivo);
