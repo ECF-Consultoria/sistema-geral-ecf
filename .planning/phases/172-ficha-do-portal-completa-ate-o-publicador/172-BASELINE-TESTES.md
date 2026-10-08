@@ -34,4 +34,40 @@ as falhas de `Estrutura/Sugestoes` são toleradas, e só se ainda forem da outra
 
 ## Prova no MariaDB 10.4 (172-01)
 
-(preenchida na Task 3 do 172-01)
+Data: 2026-10-08. Conexão conferida: `mysql` / banco `ecf_admin` (MariaDB 10.4 local, compartilhado). Só `migrate --path=` e
+`migrate:rollback --path=` dos 3 arquivos da fase; nenhum `migrate` puro, `--step`, `--batch` nem escrita em `migrations`.
+`migrate:status --path=` antes e depois de cada comando.
+
+| # | Comando (`--path=database/migrations/<arquivo>`) | Status antes | Status depois | Resultado |
+|---|---|---|---|---|
+| 1 | `migrate` 2026_10_08_150000_add_estoque_to_estrutura_produto_variacoes | Pending | Ran | DONE |
+| 2 | `migrate` 2026_10_08_150100_add_descricao_to_estrutura_produtos | Pending | Ran | DONE |
+| 3 | `migrate` 2026_10_08_150200_add_estrutura_produto_id_to_pub_produtos | Pending | Ran | DONE |
+| 4 | `migrate:rollback` 150200 | Ran | Pending | DONE (FK -> unique -> coluna, sem 1553) |
+| 5 | `migrate:rollback` 150100 | Ran | Pending | DONE |
+| 6 | `migrate:rollback` 150000 | Ran | Pending | DONE |
+| 7 | `migrate` 150000 | Pending | Ran | DONE |
+| 8 | `migrate` 150100 | Pending | Ran | DONE |
+| 9 | `migrate` 150200 | Pending | Ran | DONE |
+
+Sem erro 1059/1553/1830. Contagens (só leitura) ANTES = DEPOIS: `estrutura_produtos` 0 = 0, `estrutura_produto_variacoes` 0 = 0,
+`pub_produtos` 0 = 0, `pub_rascunhos` 0 = 0. ATENÇÃO: o MariaDB local está VAZIO nessas 4 tabelas; a prova de "nenhuma linha muda"
+aqui é estrutural (coluna anulável, sem default, sem backfill) e a de comportamento com linhas fica com `MigracoesDaFase172Test`
+(SQLite). A produção tem dado em `pub_produtos`: a mesma migration é aditiva e anulável.
+
+DDL conferido (`SHOW CREATE TABLE`, só estrutura):
+- `pub_produtos`: `estrutura_produto_id bigint(20) unsigned DEFAULT NULL`, `UNIQUE KEY pubprod_eprod_uq (estrutura_produto_id)`,
+  `CONSTRAINT pubprod_eprod_fk FOREIGN KEY (estrutura_produto_id) REFERENCES estrutura_produtos (id) ON DELETE SET NULL`.
+- `estrutura_produto_variacoes`: `estoque int(10) unsigned DEFAULT NULL`.
+- `estrutura_produtos`: `descricao text DEFAULT NULL`.
+
+As 3 migrations ficam aplicadas no banco local.
+
+SQLite de arquivo (scratchpad da sessão, apagado ao fim), com guarda `guarda-sqlite172.php` (exit 1 se o driver não for `sqlite`
+ou o banco não for exatamente o arquivo do scratchpad):
+- Recusa provada: SEM as variáveis a guarda imprimiu `driver=mysql banco=ecf_admin`, `RECUSADO`, exit = 1, e o comando encadeado
+  (`&& artisan migrate`) NÃO rodou.
+- COM `DB_CONNECTION=sqlite DB_DATABASE=<arquivo>`: guarda ok, `migrate --force` exit 0 (todas as migrations); `migrate:rollback --path=`
+  das 3 (ordem inversa) -> DONE x3; `migrate --path=` das 3 -> DONE x3. O `down()` e o `up()` funcionam em SQLite.
+  (O rollback por `--path` também listou "Migration not found" para migrations do mesmo lote cujo arquivo não existe nesta árvore;
+  ruído do banco descartável, sem efeito.)
