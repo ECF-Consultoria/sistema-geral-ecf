@@ -102,7 +102,7 @@ function CampoExtra({ v, a, travada, onMudar }) {
     };
 
     return (
-        <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro}>
+        <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro} explicacao={a.explicacao} nome={a.nome}>
             <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} disabled={travada} invalido={!! erro} onChange={mudar} />
         </Campo>
     );
@@ -138,14 +138,16 @@ export default function CartaoVariante({ m, v, eixos, onTirar = null }) {
                 <p className="text-[13px] text-white/45">Fora do anúncio. Marque "Vender esta variação" para preencher estoque e código.</p>
             ) : (
                 <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-                    <Campo rotulo={multi ? 'Estoque por depósito' : 'Estoque'} htmlFor={`estoque-${v.chave}`} erro={erroEstoque}>
+                    <Campo rotulo={multi ? 'Estoque por depósito' : 'Estoque'} htmlFor={`estoque-${v.chave}`} erro={erroEstoque}
+                        explicacao={schema?.explicacoes_campos?.[multi ? 'estoque_por_deposito' : 'estoque']}>
                         <CampoEstoque grande id={`estoque-${v.chave}`} invalido={!! erroEstoque} v={v} conta={estado.conta} travada={travada} onMudar={m.mudarVar} />
                     </Campo>
-                    <Campo rotulo="SKU" htmlFor={`sku-${v.chave}`} erro={erroSku} dica={erroSku ? null : 'Código seu para este item; não se repete entre variações.'}>
+                    <Campo rotulo="SKU" htmlFor={`sku-${v.chave}`} erro={erroSku} dica={erroSku ? null : 'Código seu para este item; não se repete entre variações.'}
+                        explicacao={schema?.atributos?.SELLER_SKU?.explicacao}>
                         <CampoSku grande id={`sku-${v.chave}`} invalido={!! erroSku} v={v} travada={travada} onMudar={m.mudarVar} />
                     </Campo>
                     {schema?.atributos?.GTIN && (
-                        <Campo rotulo="Código universal (EAN)" htmlFor={`gtin-${v.chave}`} erro={erroGtin}
+                        <Campo rotulo="Código universal (EAN)" htmlFor={`gtin-${v.chave}`} erro={erroGtin} explicacao={schema.atributos.GTIN.explicacao}
                             extra={gtin ? <span className={cn('text-[13px]', eanValido(gtin) ? 'text-emerald-400' : 'text-white/45')} data-ean-valido={eanValido(gtin) ? 'sim' : 'nao'}>{eanValido(gtin) ? 'válido' : `${gtin.length} dígitos`}</span> : null}>
                             <CampoGtin grande comRotulo id={`gtin-${v.chave}`} invalido={!! erroGtin} v={v} schema={schema} travada={travada} onMudar={m.mudarVar} existentes={gtinsEmUso(m.variantes)} />
                         </Campo>

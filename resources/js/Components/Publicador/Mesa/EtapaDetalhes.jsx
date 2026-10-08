@@ -69,6 +69,7 @@ function CampoDaFicha({ m, a, rotulo = null }) {
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
             <Campo rotulo={<RotuloAtributo atributo={rotulo ? { ...a, nome: rotulo } : a} valor={valor} />} htmlFor={id} erro={erro}
+                explicacao={a.explicacao} nome={rotulo ?? a.nome}
                 dica={corLivre ? 'Escolha na lista ou digite um nome próprio (ex.: Azul-petróleo), como no Mercado Livre.' : a.dica}
                 extra={modelo ? (
                     <span className="flex items-baseline gap-3">

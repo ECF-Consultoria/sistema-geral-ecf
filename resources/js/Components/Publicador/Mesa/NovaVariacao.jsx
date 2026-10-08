@@ -30,7 +30,7 @@ function CampoValor({ atributo, rotulo, valor, onChange, disabled }) {
     const corLivre = atributo?.id === 'COLOR' && ! soLista;
 
     return (
-        <Campo rotulo={rotulo} htmlFor={id} dica={corLivre ? 'Escolha na lista ou digite um nome próprio, como Azul-petróleo.' : null}>
+        <Campo rotulo={rotulo} htmlFor={id} explicacao={atributo?.explicacao} dica={corLivre ? 'Escolha na lista ou digite um nome próprio, como Azul-petróleo.' : null}>
             {soLista ? (
                 <select id={id} value={valor?.id ?? ''} disabled={disabled} data-valor-novo={atributo?.id ?? CUSTOM}
                     onChange={(e) => onChange(e.target.value === '' ? null : { id: e.target.value, nome: opcoes.find((x) => String(x.id) === e.target.value)?.name ?? '' })}

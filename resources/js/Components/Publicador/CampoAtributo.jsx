@@ -16,10 +16,13 @@ import { cn } from '@/lib/utils';
 // `variante="campo"` (formulário em 3 etapas, 04/10/2026): a caixa grande com
 // borda visível; `invalido` pinta a borda de vermelho. O rótulo é do `Campo`.
 
-/** O nome do atributo e, se o valor veio da IA ou de outra categoria, o selo "revisar". */
+/**
+ * O nome do atributo e, se o valor veio da IA ou de outra categoria, o selo "revisar". A explicação
+ * (o tooltip do ML entre elas) vai no ícone do `Campo` (`explicacao={a.explicacao}`), fora do rótulo.
+ */
 export function RotuloAtributo({ atributo, valor }) {
     return (
-        <span className="inline-flex flex-wrap items-baseline gap-2" title={atributo.tooltip ?? undefined}>
+        <span className="inline-flex flex-wrap items-baseline gap-2">
             <span>{atributo.nome}</span>
             {valor?.revisar && <span className="rounded bg-amber-500/15 px-1.5 text-[11px] font-bold text-amber-300">revisar</span>}
         </span>

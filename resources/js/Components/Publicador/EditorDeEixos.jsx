@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Botao, CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
+import Explicacao from './Explicacao';
 import { cn } from '@/lib/utils';
 
 // ─── As variações do anúncio (E4) ───────────────────────────────────────────
@@ -79,6 +80,7 @@ export default function EditorDeEixos({ eixos, schema, maxEixos = 3, disabled, o
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <span className="text-[13px] font-bold text-white">
                                 {e.nome}
+                                {atributo?.explicacao && <span className="ml-1.5 inline-flex align-middle"><Explicacao texto={atributo.explicacao} nome={e.nome} /></span>}
                                 {e.defines_picture && <span className="ml-2 rounded-full border border-ecf-yellow/30 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">tem foto própria</span>}
                                 {e.chave === CUSTOM && <span className="ml-2 text-[11px] font-normal text-white/40">(nome próprio)</span>}
                             </span>
