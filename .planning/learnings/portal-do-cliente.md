@@ -1316,7 +1316,7 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
     do Portal pega `public(ar|ação|ador)` e `\bML\b`.
   - O `title` antigo da Família (no gatilho) e o `title`/`aria-description` do `CampoFichaTecnica` saíram: com o balão
     novo seriam dois.
-- **`hidden` editável vai para "Mais detalhes (opcional)", no fim, ABERTO** (gate JS: a ficha não recolhe nada). Um
+- **`hidden` editável vai para "Mais detalhes", no fim, ABERTO** (gate JS: a ficha não recolhe nada). Um
   `hidden` com `required` fica no grupo normal, senão o rótulo "opcional" mentiria.
 - **"Não se aplica" = `valor_id = '-1'`, `valor` e `unidade` nulos** em `estrutura_produto_atributos` (sem migration):
   é o id do N/A do próprio editor (`ValorAtributo::NAO_SE_APLICA`). A tela pede por `{id, nao_se_aplica: true}`, NUNCA

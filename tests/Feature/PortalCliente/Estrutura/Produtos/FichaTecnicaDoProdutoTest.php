@@ -81,7 +81,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
             // Deixa variar, mas não é eixo do portal: entra (08/10/2026).
             ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string',
                 'tags' => ['allow_variations' => true], 'values' => [['id' => '7', 'name' => 'Couro'], ['id' => '8', 'name' => 'Tecido']]],
-            // Escondidos editáveis: grupo "Mais detalhes (opcional)", no fim. Ajuda e opção que citam a plataforma não passam.
+            // Escondidos editáveis: grupo "Mais detalhes", no fim. Ajuda e opção que citam a plataforma não passam.
             ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
                 'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm', 'hint' => 'Aparece no anúncio do Mercado Livre'],
             ['id' => 'LUMBAR_SUPPORT_TYPE', 'name' => 'Tipo de apoio lombar', 'value_type' => 'list', 'tags' => ['hidden' => true],
@@ -153,7 +153,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ->assertJsonPath('indisponivel', false);
 
         $grupos = $r->json('grupos');
-        $this->assertSame(['Principais', 'Dimensões', 'Outras características', 'Mais detalhes (opcional)'], array_column($grupos, 'grupo'));
+        $this->assertSame(['Principais', 'Dimensões', 'Outras características', 'Mais detalhes'], array_column($grupos, 'grupo'));
         $this->assertSame(['SEAT_WIDTH', 'LUMBAR_SUPPORT_TYPE'], array_column($grupos[3]['campos'], 'id'));
         $this->assertContains('UPHOLSTERY_MATERIAL', array_column($grupos[2]['campos'], 'id'));
         $this->assertSame(['BRAND', 'MATERIAL'], array_column($grupos[0]['campos'], 'id'));
@@ -499,7 +499,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
         // 1. Os campos da categoria (o catálogo traz hint/tooltip/nomes que citam a plataforma).
         $campos = $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB1']))->assertOk();
         $this->assertNotEmpty($campos->json('grupos'));
-        $this->assertContains('Mais detalhes (opcional)', array_column($campos->json('grupos'), 'grupo'), 'a varredura cobre o grupo novo');
+        $this->assertContains('Mais detalhes', array_column($campos->json('grupos'), 'grupo'), 'a varredura cobre o grupo novo');
         $this->assertSemOrigem($campos->getContent(), 'campos-categoria');
         $this->assertSemOrigem(json_encode(end($campos->json()['grupos']), JSON_UNESCAPED_UNICODE), 'grupo Mais detalhes');
 

@@ -73,7 +73,7 @@ class FichaTecnicaDaCategoria
     public const GRUPO_PADRAO = 'Outras características';
 
     /** Grupo do fim da ficha: os campos que o editor interno mostra como "Avançado". Rótulo neutro. */
-    public const GRUPO_MAIS_DETALHES = 'Mais detalhes (opcional)';
+    public const GRUPO_MAIS_DETALHES = 'Mais detalhes';
 
     public const TIPO_TEXTO = 'texto';
     public const TIPO_NUMERO = 'numero';

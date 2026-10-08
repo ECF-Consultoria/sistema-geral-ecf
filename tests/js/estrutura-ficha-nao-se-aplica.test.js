@@ -20,7 +20,7 @@ const LUZES = { id: 'WITH_LIGHTS', nome: 'Com luzes', obrigatorio: false, tipo: 
     unidade_padrao: null, max: null, nao_se_aplica: true };
 const MARCA = { id: 'BRAND', nome: 'Marca', obrigatorio: true, tipo: 'texto', valores: [], unidades: [],
     unidade_padrao: null, max: 255, nao_se_aplica: false };
-const GRUPOS = [{ grupo: 'Outras características', campos: [MARCA, LUZES] }, { grupo: 'Mais detalhes (opcional)', campos: [LARGURA] }];
+const GRUPOS = [{ grupo: 'Outras características', campos: [MARCA, LUZES] }, { grupo: 'Mais detalhes', campos: [LARGURA] }];
 
 test('o marcador é o mesmo id do servidor', () => {
     assert.equal(NAO_SE_APLICA, '-1');
