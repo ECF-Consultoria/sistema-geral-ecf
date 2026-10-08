@@ -3,6 +3,7 @@
 use App\Http\Controllers\MlbAlavancasController;
 use App\Http\Controllers\MlbAlavancasEscritaController;
 use App\Http\Controllers\MlbAnuncioController;
+use App\Http\Controllers\MlbPublicadorAcervoController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
@@ -189,6 +190,20 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                     ->middleware('throttle:60,1,publicador.identidade.mostrar')->name('mostrar');
                 Route::put('/', [MlbPublicadorIdentidadeController::class, 'salvar'])
                     ->middleware('throttle:30,1,publicador.identidade.salvar')->name('salvar');
+            });
+
+            // Fase 171 (D4, ACERVO-01..05) — acervo navegável das imagens já geradas desta CONTA.
+            // Endereçado por {produto} só para resolver a conta (igual à identidade, Fase 170) e
+            // por {criativo} numérico (nunca token, D-13) — escopado por company_id/mlb_empresa_id,
+            // nunca por pub_rascunho_id sozinho (o acervo CRUZA rascunhos da mesma conta de
+            // propósito, inclusive órfãos).
+            Route::prefix('acervo')->name('acervo.')->group(function () {
+                Route::get('/', [MlbPublicadorAcervoController::class, 'listar'])
+                    ->middleware('throttle:120,1,publicador.acervo.listar')->name('listar');
+                Route::get('/{criativo}/imagem', [MlbPublicadorAcervoController::class, 'imagem'])
+                    ->whereNumber('criativo')->middleware('throttle:240,1,publicador.acervo.arquivo')->name('imagem');
+                Route::post('/{criativo}/usar', [MlbPublicadorAcervoController::class, 'usar'])
+                    ->whereNumber('criativo')->middleware('throttle:30,1,publicador.acervo.usar')->name('usar');
             });
         });
 
