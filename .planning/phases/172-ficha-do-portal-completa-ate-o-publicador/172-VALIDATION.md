@@ -1,9 +1,9 @@
 ---
 phase: 172
 slug: ficha-do-portal-completa-ate-o-publicador
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-08
 ---
 
@@ -56,8 +56,8 @@ Ver `172-RESEARCH.md` (FP172-01..09). Ajustes pelas decisões posteriores:
 
 ## Wave 0
 
-- [ ] `172-BASELINE-TESTES.md` com as contagens dos 4 grupos PHP e do test:js
-- [ ] Prova das migrations no MariaDB local com `--path` (guarda `guarda-sqlite.php`), registrada
+- [x] `172-BASELINE-TESTES.md` com as contagens dos 4 grupos PHP e do test:js
+- [x] Prova das migrations no MariaDB local com `--path` (guarda `guarda-sqlite.php`), registrada
 
 ---
 
@@ -73,9 +73,9 @@ Ver `172-RESEARCH.md` (FP172-01..09). Ajustes pelas decisões posteriores:
 
 ## Assinatura
 
-- [ ] Toda tarefa tem `<automated>` ou dependência de Wave 0
-- [ ] Nenhuma sequência de 3 tarefas sem verificação automática
-- [ ] Sem flags de watch
-- [ ] `nyquist_compliant: true` no frontmatter
+- [x] Toda tarefa tem `<automated>` ou dependência de Wave 0
+- [x] Nenhuma sequência de 3 tarefas sem verificação automática
+- [x] Sem flags de watch
+- [x] `nyquist_compliant: true` no frontmatter
 
-**Aprovação:** pendente
+**Aprovação:** portão automático verde em 08/10/2026 (172-13); conferência visual do usuário pendente (Task 3)

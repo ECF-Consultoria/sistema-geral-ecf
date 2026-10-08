@@ -562,3 +562,47 @@ próximo disponível (13), não o que o plano previa.
   file(s) known to git`. É preciso `git add -- <caminho>` antes do commit. Isso importa especificamente neste
   projeto porque a árvore é compartilhada entre sessões e a regra é nunca usar `git add -A`/`git add .` — então
   todo arquivo NOVO (não só modificado) precisa do `add` explícito, um por um, antes do `commit -- `.
+
+## 14. Sincronizar completo do Portal (Fase 172, 08/10/2026)
+
+O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da fase 172):
+
+- **Um `pub_produtos` por produto do Portal, não por oferta.** O vínculo é `pub_produtos.estrutura_produto_id`
+  (unique, FK `SET NULL`). Legado de uma cor com rascunho ainda sem publicação é ADOTADO (só o vínculo muda); legado
+  publicado é intocável **por fato** (`IaParaRascunhoService::intocavel`, não por flag) e nunca é adotado nem apagado.
+  Duplicados das outras cores ficam listados a cada execução, não gravados.
+- **O regenerador de SKU copia o `skuExibido()` do grupo para todas as cores.** Por isso a regra "SKU igual ao de
+  outra variante = vazio" (a 1ª que o tem fica): sem ela as 3 cores nascem com o mesmo SKU e a conferência trava.
+- **Eixo em dois passos.** Sem eixo no rascunho, `salvarEixos` roda duas vezes (a cor âncora primeiro, depois todas),
+  senão a variante única não passa os dados à âncora. Só vira COLOR/SIZE/VOLTAGE/MATERIAL/FLAVOR se o schema diz
+  `podeSerEixo`; senão `~custom` com o rótulo do Portal. Nada grava MAIN_COLOR.
+- **Preço por variante pelo SKU normalizado** (`precos_por_variante` em `DadosEfetivosService`): casa por
+  `dados.atributos.SELLER_SKU`; sem casamento cai no preço da âncora. Produto não agrupado não recebe a chave.
+- **`ImagemAssetService::receber(..., enviar: false)`** guarda a foto sem subir ao ML; o Sincronizar nunca chama
+  `/items` nem sobe foto, mesmo com a conta liberada e com token (teste com `Http::preventStrayRequests`).
+  WebP do Portal é convertida a JPG com GD; **confira GD com WebP no PHP de produção** antes de confiar.
+- **`values_multi` é zerado se `gravarAtributos` regrava o atributo sem enviá-lo** (o snapshot da tela não expõe a
+  coluna). Efeito aceito, mas é o primeiro suspeito se uma ficha "perder" as opções marcadas depois de editar.
+- **Job por produto (`PreencherRascunhoDoPortalJob`), fila `high`, `timeout` 300 s < `retry_after`, `tries` 1.**
+  Resumo agregado por `pedido` (uuid, cache 1 h) escopado por `company_id`. Com `QUEUE_CONNECTION=sync` a exceção
+  sobe ao request, então `failed()` só se prova chamando-o direto.
+- **Descrição MAG T8 automática: uma vez por rascunho, via `Cache::add`**, e só depois de checar rascunho sem
+  descrição E texto do cliente existente (senão gasta a única chance sem material). Nunca grava no rascunho.
+- **Sincronizar NÃO tem gate de piloto (D-10).** `ContasLiberadas` só governa o selo da página; o caminho do
+  Sincronizar não deve citá-lo (há teste "fora do piloto também é enriquecida").
+- **Vite no Windows: `ResumoDoSincronizar.jsx` x `resumoDoSincronizar.js` colidem** (FS sem caixa): o build falha com
+  "default is not exported". Import com extensão explícita resolve; melhor ainda, nunca nomear dois arquivos só pela caixa.
+- **`assertSemOrigem` (sigilo do Portal) não pegava acento:** o JSON do Laravel escapa "ú" como sequência unicode,
+  então varrer por "anúncio" passava batido. O helper agora decodifica antes de varrer; teste de sigilo novo deve usá-lo.
+- **Gates de fonte antigos em JS** (`hook.includes('toque')`, proibição de `<details`) quebram com palavras novas
+  (`estoque` contém "toque"): restrinja o gate ao trecho, não afrouxe.
+
+### Checklist de DEPLOY (só com autorização do usuário)
+
+1. Contar em produção ANTES e DEPOIS: `estrutura_produtos`, `estrutura_produto_variacoes`, `pub_produtos`,
+   `pub_rascunhos`, `pub_variantes`, `pub_imagens` (as 3 migrations são aditivas e anuláveis; nenhuma linha deve mudar).
+2. `php artisan migrate --force` (3 migrations de 2026_10_08_15xxxx; o MariaDB local estava vazio nessas tabelas, a
+   prova com linhas só existe em SQLite).
+3. `sudo -u www-data php artisan queue:restart`: os Jobs novos rodam na fila `high`; worker velho não os conhece.
+4. Conferir GD com suporte a WebP no PHP de produção (`php -r "var_dump(function_exists('imagecreatefromwebp'));"`).
+5. "Sincronizar do Portal" na #459 e abrir o rascunho, sem publicar (conta de cliente: só a #459 recebe publicação).

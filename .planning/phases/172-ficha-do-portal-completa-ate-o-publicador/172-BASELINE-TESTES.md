@@ -10,11 +10,11 @@
 
 | # | Grupo (comando) | Testes | Asserções | Falhas | Erros | Pulados | Exit | Tempo | Depois (172-13) |
 |---|---|---|---|---|---|---|---|---|---|
-| G1 | `tests/Feature/Publicador` | 567 | 3264 | 0 | 0 | 0 | 0 | 153 s | |
-| G2 | `tests/Unit/Publicador` | 256 | 877 | 0 | 0 | 0 | 0 | 12 s | |
-| G3 | `tests/Unit/PortalEstrutura` | 217 | 1416 | 0 | 0 | 0 | 0 | 14 s | |
-| G4 | `tests/Feature/PortalCliente` (inteiro) | 592 | 4283 | 14 | 0 | 0 | 1 | 155 s | |
-| G5 | `npm run test:js` (node --test) | 1303 | n/d | 2 | 0 | 0 | 1 | 25 s | |
+| G1 | `tests/Feature/Publicador` | 567 | 3264 | 0 | 0 | 0 | 0 | 153 s | 663 testes, 0 falhas, exit 0 |
+| G2 | `tests/Unit/Publicador` | 256 | 877 | 0 | 0 | 0 | 0 | 12 s | 293 testes, 0 falhas, exit 0 |
+| G3 | `tests/Unit/PortalEstrutura` | 217 | 1416 | 0 | 0 | 0 | 0 | 14 s | 218 testes, 0 falhas, exit 0 |
+| G4 | `tests/Feature/PortalCliente` (inteiro) | 592 | 4283 | 14 | 0 | 0 | 1 | 155 s | 606 testes, 0 falhas, exit 0 |
+| G5 | `npm run test:js` (node --test) | 1303 | n/d | 2 | 0 | 0 | 1 | 25 s | 1332 testes, 2 falhas (as 2 antigas), exit 1 |
 
 ## Falhas PRÉ-EXISTENTES (não corrigidas aqui)
 
@@ -71,3 +71,33 @@ ou o banco não for exatamente o arquivo do scratchpad):
   das 3 (ordem inversa) -> DONE x3; `migrate --path=` das 3 -> DONE x3. O `down()` e o `up()` funcionam em SQLite.
   (O rollback por `--path` também listou "Migration not found" para migrations do mesmo lote cujo arquivo não existe nesta árvore;
   ruído do banco descartável, sem efeito.)
+
+## Gate final (172-13)
+
+- Data: 2026-10-08. HEAD: `39c2ae2b`. Autoloader conferido: carrega ESTE worktree. Um grupo por vez, saída em arquivo, exit capturado.
+- Árvore: só o `.gitkeep` da pasta da fase como não rastreado (nada de outras sessões no worktree).
+
+| # | Grupo | Baseline | Final (172-13) | Falhas | Exit | Tempo |
+|---|---|---|---|---|---|---|
+| G1 | `tests/Feature/Publicador` | 567 / 3264 | 663 / 3650 | 0 | 0 | 130 s |
+| G2 | `tests/Unit/Publicador` | 256 / 877 | 293 / 957 | 0 | 0 | 8 s |
+| G3 | `tests/Unit/PortalEstrutura` | 217 / 1416 | 218 / 1442 | 0 | 0 | 12 s |
+| G4 | `tests/Feature/PortalCliente` | 592 / 4283 (14 falhas) | 606 / 4563 | 0 | 0 | 168 s |
+| G5 | `npm run test:js` | 1303 (2 falhas) | 1332 (2 falhas) | 2 (as mesmas) | 1 | 3 s |
+| B | `npm run build` | n/d | exit 0 | n/d | 0 | 30 s |
+
+- G4: as 14 falhas de `Estrutura/Sugestoes/*` sumiram (a outra sessão commitou o trabalho); nada a reportar.
+- G5: as 2 falhas são exatamente as do baseline: "Características secundárias nasce recolhido..." e "FASES_TERMINAIS cobre as três fases de saída...".
+- Manifest do build contém `Pages/Portal/EstruturaProdutoFicha.jsx`, `Pages/Mlb/Publicador/Editor.jsx` e `Pages/Mlb/Publicador/Produtos.jsx`.
+
+### Re-prova MariaDB (somente leitura)
+
+`migrate:status --path=` das 3 migrations de 2026_10_08_15xxxx: todas `Ran` (lotes 136, 137, 138). Banco `ecf_admin`. Contagens:
+`estrutura_produtos` 0, `estrutura_produto_variacoes` 0, `pub_produtos` 0, `pub_rascunhos` 0 (iguais ao baseline); `companies` 196.
+
+### Mutações registradas nos SUMMARY
+
+- Só-vazio (172-08): ficha ignorando `preenchido()` e estoque sobrescrevendo o digitado -> `test_so_preenche_o_vazio_e_conta_o_que_manteve` VERMELHO nas duas; revertidas.
+- `company_id` (172-12): removido `where('company_id', ...)` de `PortalProdutoLeitor::produtoDoGrupo` -> `test_isolamento_entre_empresas...` VERMELHO; restaurado.
+- Sigilo (172-05): mensagem do estoque com "anúncio" -> `test_campos_novos_nao_revelam_origem` VERMELHO (depois de corrigir `assertSemOrigem` para decodificar acento); restaurada.
+- Também: 172-10 (guarda do grupo vazio; principal forçado ao índice 0), ambas vermelhas e revertidas.

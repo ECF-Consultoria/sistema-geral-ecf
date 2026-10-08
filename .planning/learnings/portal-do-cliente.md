@@ -1269,3 +1269,11 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   `portal.auth.estrutura.agenda`). Desde 08/10 o rótulo dele é "Cronograma" e "Planejamento" é a
   tela de sugestões (rota `.sugestoes`). Chave e rotas não mudaram: código que procura a chave
   `planejamento` está falando da AGENDA.
+
+## 37. Estoque por variação e descrição do produto (Fase 172, 08/10/2026)
+
+- **Estoque por variação: `0` é diferente de vazio e NÃO herda da 1ª variação.** Vazio (`null`) = "não informado"; `0` =
+  "sem estoque". No POST, campo ausente ou `''` não mexe; `null` explícito limpa. Teto 99.999.999.
+- **Descrição do produto** (`estrutura_produtos.descricao`) segue o sigilo da 167: nenhum texto do campo fala de Mercado
+  Livre, anúncio ou publicar (o Publicador a lê, o cliente não sabe).
+- **Sem coluna na planilha-modelo (D-14):** estoque e descrição só entram pela ficha na tela, não pela importação XLSX.
