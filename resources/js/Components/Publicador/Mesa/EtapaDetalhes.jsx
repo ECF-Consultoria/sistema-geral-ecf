@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { valorVazio } from '../apoio';
-import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
+import { MEDIDAS_DO_PRODUTO, tituloParaModelo } from '../ferramentas';
 import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
 import DadosDasVariacoes from './DadosDasVariacoes';
 import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
@@ -33,6 +33,8 @@ import { cn } from '@/lib/utils';
 // ML) fica ao lado dela quando a Cor é do produto (ver CorPrincipal.jsx).
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
+// Termo que só repete palavras do título fica de fora (o servidor filtra, 08/10):
+// sem título ainda, a IA gera sem o filtro e a tela avisa.
 
 const MODELO = 'MODEL';
 const COR = 'COLOR';
@@ -62,12 +64,18 @@ function CampoDaFicha({ m, a, rotulo = null }) {
     const ia = modelo ? (m.palavrasIa?.modelo ?? {}) : {};
     const rodando = ia.status === 'rodando';
     const tamanho = String(valor?.value_name ?? '').length;
+    const semTitulo = modelo && tituloParaModelo(m.alvos) === '';
 
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
             <Campo rotulo={<RotuloAtributo atributo={rotulo ? { ...a, nome: rotulo } : a} valor={valor} />} htmlFor={id} erro={erro}
                 dica={corLivre ? 'Escolha na lista ou digite um nome próprio (ex.: Azul-petróleo), como no Mercado Livre.' : a.dica}
-                extra={modelo ? <span className={cn('font-mono text-[13px] tabular-nums', tamanho > LIMITE_MODELO ? 'text-red-300' : 'text-white/45')} data-contador-modelo>{tamanho}/{LIMITE_MODELO}</span> : null}>
+                extra={modelo ? (
+                    <span className="flex items-baseline gap-3">
+                        <span className="text-[13px] text-white/45" data-modelo-regra-titulo>Termos que já estão no título ficam de fora</span>
+                        <span className={cn('font-mono text-[13px] tabular-nums', tamanho > LIMITE_MODELO ? 'text-red-300' : 'text-white/45')} data-contador-modelo>{tamanho}/{LIMITE_MODELO}</span>
+                    </span>
+                ) : null}>
                 <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} invalido={!! erro} disabled={m.disabled || rodando}
                     placeholder={corLivre ? 'Escolha na lista ou digite' : null}
                     onChange={(v) => m.mudarAtributo(a.id, v)} />
@@ -78,6 +86,7 @@ function CampoDaFicha({ m, a, rotulo = null }) {
                         {rodando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
                         {rodando ? 'IA montando o Modelo…' : 'Preencher com IA pelos termos mais buscados'}
                     </button>
+                    {semTitulo && <p className="mt-1.5 text-[13px] text-white/50" data-aviso-modelo-sem-titulo>Gere o título antes para o Modelo não repetir palavras.</p>}
                     {ia.status === 'erro' && <p className="mt-1.5 text-[13px] text-amber-300">{ia.erro}</p>}
                 </div>
             )}

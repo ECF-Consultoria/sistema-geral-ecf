@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
     UNIDADES_MEDIDA, UNIDADES_PESO, conferirPacote, daUnidadeMl, digitoEan13, eanValido, eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, juntarTermo,
-    medidaEmCm, nomeDaCor, numeroDoAtributo, paraUnidadeMl, pedidoCompleto, pesoEmG, termoNoTitulo, tomDaCor, unidadeInicial, varianteDoPedido, variantesSemGtin,
+    medidaEmCm, modeloLivreParaIa, nomeDaCor, numeroDoAtributo, paraUnidadeMl, pedidoCompleto, pesoEmG, termoNoTitulo, tituloParaModelo, tomDaCor, unidadeInicial,
+    varianteDoPedido, variantesSemGtin,
 } from '../../resources/js/Components/Publicador/ferramentas.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -92,6 +93,30 @@ test('juntarTermo — acrescenta só as palavras que faltam (sem acento/caixa) e
     assert.equal(termoNoTitulo('', ''), false);
 });
 
+// ── Modelo × título (08/10/2026) ──
+
+test('tituloParaModelo — só os tipos ativos, o digitado ou o herdado, sem repetir', () => {
+    assert.equal(tituloParaModelo([
+        { listing_type_id: 'gold_special', ativo: true, titulo: 'Puff Redondo Sala', titulo_efetivo: 'Velho' },
+        { listing_type_id: 'gold_pro', ativo: true, titulo: '', titulo_efetivo: 'Puff Redondo Sala' },
+    ]), 'Puff Redondo Sala');
+    assert.equal(tituloParaModelo([
+        { listing_type_id: 'gold_special', ativo: true, titulo: null, titulo_efetivo: 'Puff Herdado' },
+        { listing_type_id: 'gold_pro', ativo: true, titulo: 'Puff Premium Quarto' },
+    ]), 'Puff Herdado / Puff Premium Quarto');
+    assert.equal(tituloParaModelo([{ listing_type_id: 'gold_pro', ativo: false, titulo: 'Desligado' }]), '');
+    assert.equal(tituloParaModelo(null), '');
+    assert.ok(tituloParaModelo([{ ativo: true, titulo: 'x'.repeat(300) }]).length <= 255);
+});
+
+test('modeloLivreParaIa — a IA só (re)preenche o Modelo vazio ou ainda como ela deixou', () => {
+    assert.equal(modeloLivreParaIa(undefined), true);
+    assert.equal(modeloLivreParaIa({ value_name: '  ' }), true);
+    assert.equal(modeloLivreParaIa({ value_name: 'puff azul', origem: 'ia' }), true);
+    assert.equal(modeloLivreParaIa({ value_name: 'puff azul', origem: 'user' }), false);
+    assert.equal(modeloLivreParaIa({ value_name: 'puff azul', origem: 'migrated' }), false);
+});
+
 // ── Gates de fonte ──
 
 test('§1 — a tela ocupa a largura (sem o teto de 800px): coluna de 1200px com os campos em grade', () => {
@@ -101,15 +126,22 @@ test('§1 — a tela ocupa a largura (sem o teto de 800px): coluna de 1200px com
     assert.match(lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`), /md:grid-cols-2 xl:grid-cols-3/);
 });
 
-test('§2 — Modelo: botão da IA, contador de 120 e pedido automático ao escolher categoria com o Modelo vazio', () => {
+test('§2 — Modelo: botão da IA, contador de 120 e pedido automático só com título (na categoria ou ao aplicar o título por IA)', () => {
     const card = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
     assert.match(card, /m\.pedirPalavrasIa\('modelo'\)/);
     assert.match(card, /LIMITE_MODELO = 120/);
+    assert.match(card, /Termos que já estão no título ficam de fora/);
+    assert.match(card, /semTitulo && .*Gere o título antes para o Modelo não repetir palavras/);
     const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
     assert.match(hook, /pedirPalavrasIa\('modelo', \{ automatico: true \}\)/);
-    assert.match(hook, /valorVazio\(rascRef\.current\?\.atributos\?\.MODEL\)/);
+    // Na escolha de categoria: Modelo vazio E já com título.
+    assert.match(hook, /valorVazio\(rascRef\.current\?\.atributos\?\.MODEL\)\s*&& tituloParaModelo\(mesclarAlvos\(data\?\.alvos, rascRef\.current\?\.alvos\)\) !== ''/);
+    // O pedido do Modelo leva o título à vista.
+    assert.match(hook, /\{ alvo, titulo: tituloParaModelo\(mesclarAlvos\(estado\?\.alvos, rascRef\.current\?\.alvos\)\) \}/);
+    // Título por IA aplicado → refaz o Modelo vazio ou ainda o da IA.
+    assert.match(hook, /modeloLivreParaIa\(rascRef\.current\?\.atributos\?\.MODEL\)\) \{\s*pedirPalavrasIa\('modelo', \{ automatico: true \}\)/);
     // O pedido automático não pisa no que a pessoa escreveu enquanto a IA trabalhava.
-    assert.match(hook, /automatico && ! valorVazio\(rascRef\.current\?\.atributos\?\.MODEL\)/);
+    assert.match(hook, /automatico && ! modeloLivreParaIa\(rascRef\.current\?\.atributos\?\.MODEL\)/);
     // Só aceita a resposta do próprio pedido.
     assert.match(hook, /data\.pedido !== s\.pedido/);
 });

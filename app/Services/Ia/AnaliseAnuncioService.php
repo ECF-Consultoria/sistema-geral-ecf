@@ -120,12 +120,14 @@ class AnaliseAnuncioService
      * O campo Modelo como lista de buscas coerentes com o produto, separadas
      * por vírgula ("cadeira escritorio, cadeira home office, ..."). Quem corta
      * no limite exato é o `PalavrasChaveService` — o modelo erra contagem.
+     * Com `titulo`, o prompt proíbe repetir o que ele já tem (o serviço ainda
+     * filtra depois: a IA nem sempre obedece).
      *
      * @param  list<string>  $termos  do mais buscado para o menos
      */
-    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite): array
+    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite), 2500);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo), 2500);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -357,9 +359,18 @@ class AnaliseAnuncioService
             : implode("\n", array_map(fn ($t, $i) => ($i + 1).'. '.$t, $termos, array_keys($termos)));
     }
 
-    private function promptModelo(string $produto, string $caminho, array $termos, int $limite): string
+    private function promptModelo(string $produto, string $caminho, array $termos, int $limite, string $titulo = ''): string
     {
         $lista = $this->listaDeTermos($termos);
+        $regraTitulo = $titulo === '' ? '' : <<<TXT
+
+        6. Título do anúncio: {$titulo}
+           Não repita termo cujas palavras já estão todas no título. Cada termo precisa
+           trazer pelo menos uma palavra nova (cor, ambiente, uso, formato, público,
+           material) combinada com o nome do produto — ex.: se o título tem
+           "Puff Sala Quarto", use "puff para quarto infantil", "puff azul marinho",
+           não "puff sala".
+        TXT;
 
         return <<<TXT
         Produto: **{$produto}**
@@ -379,7 +390,7 @@ class AnaliseAnuncioService
         3. Prefira os termos da lista; complete com variações reais do nome do produto.
         4. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
         5. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
-           perto possível de {$limite} sem passar.
+           perto possível de {$limite} sem passar.{$regraTitulo}
 
         Responda APENAS com JSON válido, sem crases:
         {"modelo":"..."}

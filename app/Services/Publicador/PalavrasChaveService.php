@@ -36,6 +36,12 @@ class PalavrasChaveService
 
     private const TTL_PEDIDO = 1800;
 
+    /**
+     * Palavras de ligação: não contam como "palavra nova" no Modelo
+     * ("puff para sala" com "Sala" no título não traz nada novo).
+     */
+    private const LIGACAO = ['de', 'da', 'do', 'das', 'dos', 'para', 'pra', 'com', 'sem', 'e', 'em', 'no', 'na', 'a', 'o', 'os', 'as', 'um', 'uma', 'por'];
+
     public function __construct(
         private TermosMaisBuscadosService $trends,
         private CategorySchemaRepository $schemas,
@@ -59,13 +65,18 @@ class PalavrasChaveService
         ];
     }
 
-    /** Põe o pedido na fila e devolve o id dele. `escolhidos` só vale para título. */
-    public function pedir(PubRascunho $r, string $alvo, array $escolhidos = []): string
+    /**
+     * Põe o pedido na fila e devolve o id dele. `escolhidos` só vale para título;
+     * `titulo` (o que está na tela, talvez ainda não salvo) só para o Modelo —
+     * ele se SOMA aos títulos ativos gravados, nunca os substitui.
+     */
+    public function pedir(PubRascunho $r, string $alvo, array $escolhidos = [], ?string $titulo = null): string
     {
         $this->categoria($r);
         $pedido = (string) Str::uuid();
         Cache::put(self::chave($r->id, $alvo), ['pedido' => $pedido, 'status' => 'rodando', 'valor' => null, 'erro' => null], self::TTL_PEDIDO);
-        GerarPalavrasChaveIaJob::dispatch($r->id, $alvo, $pedido, array_values(array_slice($escolhidos, 0, 20)));
+        $titulo = $alvo === self::MODELO ? (trim((string) $titulo) ?: null) : null;
+        GerarPalavrasChaveIaJob::dispatch($r->id, $alvo, $pedido, array_values(array_slice($escolhidos, 0, 20)), $titulo);
 
         return $pedido;
     }
@@ -79,10 +90,10 @@ class PalavrasChaveService
     }
 
     /** Roda no Job: grava `pronto` ou `erro` — só se o pedido ainda for o mais recente. */
-    public function executar(PubRascunho $r, string $alvo, string $pedido, array $escolhidos, ?float $prazo = null): void
+    public function executar(PubRascunho $r, string $alvo, string $pedido, array $escolhidos, ?float $prazo = null, ?string $tituloDaTela = null): void
     {
         try {
-            $valor = $alvo === self::MODELO ? $this->modelo($r, $prazo) : $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo);
+            $valor = $alvo === self::MODELO ? $this->modelo($r, $prazo, $tituloDaTela) : $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo);
             if ($valor === '') {
                 throw new \RuntimeException('A IA não devolveu nada aproveitável. Tente de novo.');
             }
@@ -111,15 +122,25 @@ class PalavrasChaveService
      * O Modelo no formato "termo, termo, termo": minúsculas, sem acento, sem
      * repetir termo, e cortado no último termo INTEIRO que cabe no limite —
      * nunca no meio de uma palavra.
+     *
+     * Com `titulo`, sai todo termo que não traz nenhuma palavra de conteúdo
+     * nova: o Modelo existe para EXPANDIR a busca, e repetir o que o título já
+     * tem desperdiça caractere (pedido do usuário, 08/10/2026). "puff sala" com
+     * "Puff ... Sala" no título sai; "puff para quarto infantil" fica, porque
+     * "infantil" é novo. O prompt pede o mesmo, mas a IA não obedece sempre.
      */
-    public static function ajustarModelo(string $bruto, int $limite = self::LIMITE_MODELO): string
+    public static function ajustarModelo(string $bruto, int $limite = self::LIMITE_MODELO, string $titulo = ''): string
     {
         $partes = preg_split('/[,;\n|]+/', Str::lower(Str::ascii($bruto))) ?: [];
+        $doTitulo = self::palavrasDoTitulo($titulo);
         $vistos = [];
         $saida = '';
         foreach ($partes as $p) {
             $termo = trim(preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9 ]+/', ' ', $p)));
             if ($termo === '' || isset($vistos[$termo])) {
+                continue;
+            }
+            if ($doTitulo !== [] && ! self::trazPalavraNova($termo, $doTitulo)) {
                 continue;
             }
             $candidato = $saida === '' ? $termo : "{$saida}, {$termo}";
@@ -132,6 +153,59 @@ class PalavrasChaveService
         }
 
         return $saida;
+    }
+
+    /**
+     * As formas de comparar das palavras do título (ver `formas()`), como chaves.
+     *
+     * @return array<string, true>
+     */
+    public static function palavrasDoTitulo(string $titulo): array
+    {
+        $saida = [];
+        foreach (preg_split('/[^a-z0-9]+/', Str::lower(Str::ascii($titulo)), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $p) {
+            foreach (self::formas($p) as $f) {
+                $saida[$f] = true;
+            }
+        }
+
+        return $saida;
+    }
+
+    /** O termo tem ao menos uma palavra de conteúdo (fora as de ligação) que o título não tem? */
+    public static function trazPalavraNova(string $termo, array $doTitulo): bool
+    {
+        foreach (preg_split('/[^a-z0-9]+/', Str::lower(Str::ascii($termo)), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $p) {
+            if (in_array($p, self::LIGACAO, true)) {
+                continue;
+            }
+            if (array_intersect_key(array_flip(self::formas($p)), $doTitulo) === []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Singular simples para comparar: a palavra, sem o "s" e sem o "es" final.
+     * Duas palavras são a mesma quando têm uma forma em comum — "mesas" × "mesa",
+     * "cores" × "cor", "chaves" × "chave" — sem dicionário (o mesmo espírito do
+     * `relacionado` do `TermosMaisBuscadosService`, que só tira o "s").
+     *
+     * @return list<string>
+     */
+    private static function formas(string $p): array
+    {
+        $formas = [$p];
+        if (strlen($p) > 3 && str_ends_with($p, 's')) {
+            $formas[] = substr($p, 0, -1);
+        }
+        if (strlen($p) > 4 && str_ends_with($p, 'es')) {
+            $formas[] = substr($p, 0, -2);
+        }
+
+        return $formas;
     }
 
     /**
@@ -151,13 +225,33 @@ class PalavrasChaveService
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
 
-    private function modelo(PubRascunho $r, ?float $prazo): string
+    private function modelo(PubRascunho $r, ?float $prazo, ?string $tituloDaTela): string
     {
         [$categoria, $caminho] = $this->categoria($r);
         $termos = $this->termosParaIa($categoria, $r, $caminho);
+        $titulo = $this->tituloParaModelo($r, $tituloDaTela);
         $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
 
-        return self::ajustarModelo($ia->modeloPorTermos($r->produto->nomeExibido(), implode(' > ', $caminho), $termos, self::LIMITE_MODELO)['dados']);
+        $bruto = $ia->modeloPorTermos($r->produto->nomeExibido(), implode(' > ', $caminho), $termos, self::LIMITE_MODELO, $titulo)['dados'];
+        $valor = self::ajustarModelo($bruto, self::LIMITE_MODELO, $titulo);
+        if ($valor === '' && $titulo !== '' && self::ajustarModelo($bruto) !== '') {
+            throw new \RuntimeException('Todos os termos que a IA sugeriu já estão no título. Tente de novo.');
+        }
+
+        return $valor;
+    }
+
+    /**
+     * O título que o Modelo não deve repetir: os títulos ATIVOS gravados
+     * (Clássico e Premium) mais o da tela, sem repetir — lidos aqui, e não só
+     * do navegador. Vazio = ainda não há título; o Modelo sai sem o filtro.
+     */
+    private function tituloParaModelo(PubRascunho $r, ?string $tituloDaTela): string
+    {
+        $titulos = $r->alvos()->where('ativo', true)->pluck('titulo')->push($tituloDaTela)
+            ->map(fn ($t) => trim((string) $t))->filter()->unique()->values();
+
+        return $titulos->implode(' / ');
     }
 
     private function titulo(PubRascunho $r, string $listingType, array $escolhidos, ?float $prazo): string

@@ -264,6 +264,15 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   concorrente no rascunho (as travas do item 9) e o resultado de um pedido velho não
   pisa no novo (`pedido` comparado dos dois lados). O pedido automático (ao escolher
   categoria) só aplica se o Modelo continuar vazio na hora em que a IA termina.
+- **Modelo não repete palavra de conteúdo do título (08/10, pedido do usuário).** O
+  Modelo serve para EXPANDIR a busca: termo cujas palavras de conteúdo (fora de/para/
+  com…) já estão todas no título é descartado — "puff sala" sai com "Puff … Sala" no
+  título; "puff para quarto infantil" fica. O filtro é do SERVIDOR
+  (`PalavrasChaveService::ajustarModelo` com `titulo`), não só do prompt: a IA não
+  obedece sempre. O título é a união dos títulos ATIVOS gravados + o `titulo` que a
+  tela manda (pode não estar salvo). Por isso o pedido automático mudou: na escolha de
+  categoria só dispara se já houver título; senão dispara quando o título por IA é
+  aplicado e o Modelo está vazio ou ainda com `origem: 'ia'`.
 - **Preço "do Portal" é MOSTRADO, não gravado.** O campo exibe o efetivo da
   Precificação como valor (selo "do Portal"); sair do campo com o mesmo valor não grava
   nada — senão o preço congelaria (`16` §1.6). Só valor diferente vira digitado.
