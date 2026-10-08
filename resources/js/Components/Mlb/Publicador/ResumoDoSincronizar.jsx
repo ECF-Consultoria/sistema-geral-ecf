@@ -15,10 +15,12 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFec
     const avisos = [...new Set([...(avisosDoClique ?? []), ...(resumo.avisos ?? [])])];
 
     return (
-        <section
-            aria-live="polite"
-            className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4', className)}
-        >
+        <section className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4', className)}>
+            {/* Leitor de tela: só a frase final é anunciada, não o contador a cada leitura (IN-04). */}
+            <p className="sr-only" aria-live="polite">
+                {pronto && ! resumo.so_avisos ? `Rascunhos preenchidos. ${textoDoResumo(resumo)}` : ''}
+                {expirou ? 'Ainda preenchendo. Recarregue a página em alguns minutos.' : ''}
+            </p>
             <div className="flex items-start justify-between gap-4">
                 {pronto && resumo.so_avisos ? (
                     <p className="text-[15px] font-bold text-white">Sincronizar do Portal</p>
@@ -51,7 +53,7 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFec
                 <div className="mt-3">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">Fotos que não vieram</p>
                     <ul className="mt-1 list-disc pl-5 text-[13px] font-normal text-white/70">
-                        {motivos.map((m) => <li key={m}>{m}</li>)}
+                        {motivos.map((m, i) => <li key={`${i}-${m}`}>{m}</li>)}
                     </ul>
                 </div>
             )}
@@ -60,7 +62,7 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFec
                 <div className="mt-3">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">Avisos</p>
                     <ul className="mt-1 list-disc pl-5 text-[13px] font-normal text-white/70">
-                        {avisos.slice(0, 20).map((a) => <li key={a}>{a}</li>)}
+                        {avisos.slice(0, 20).map((a, i) => <li key={`${i}-${a}`}>{a}</li>)}
                     </ul>
                 </div>
             )}

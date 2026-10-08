@@ -160,3 +160,11 @@ test('nenhum par de arquivos do Publicador difere só pela caixa (review 172 WR-
     const repetidos = nomes.filter((n, i) => nomes.indexOf(n) !== i);
     assert.deepEqual(repetidos, []);
 });
+
+test('ResumoDoSincronizar.jsx — só a frase final é anunciada e as chaves não repetem (review 172 IN-04)', () => {
+    const fonte = lerSemComentarios(DIR + 'ResumoDoSincronizar.jsx');
+    assert.equal((fonte.match(/aria-live=/g) ?? []).length, 1);
+    assert.match(fonte, /<p className="sr-only" aria-live="polite">/);
+    assert.doesNotMatch(fonte, /<section[^>]*aria-live/);
+    assert.doesNotMatch(fonte, /key=\{a\}|key=\{m\}/);
+});
