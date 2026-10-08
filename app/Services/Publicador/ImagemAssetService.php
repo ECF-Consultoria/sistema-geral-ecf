@@ -31,8 +31,13 @@ class ImagemAssetService
 
     public function __construct(private ClienteMlPublicador $cliente) {}
 
-    /** @return array{imagem: ?PubImagem, problemas: list<Problema>, nova: bool} */
-    public function receber(PubRascunho $r, string $conteudo, string $nomeOriginal): array
+    /**
+     * @param  bool  $enviar  false = só guarda (pendente), sem chamar o ML: o Sincronizar do Portal
+     *                        grava rascunho e nunca escreve no ML; a foto sobe em `enviarPendentes`
+     *                        antes da conferência/publicação (D26 intacto).
+     * @return array{imagem: ?PubImagem, problemas: list<Problema>, nova: bool}
+     */
+    public function receber(PubRascunho $r, string $conteudo, string $nomeOriginal, bool $enviar = true): array
     {
         $meta = self::metadados($conteudo);
         $problemas = ValidadorImagem::problemas('nova', $meta, new ContextoValidacao());
@@ -53,7 +58,7 @@ class ImagemAssetService
             'largura' => $meta['largura'], 'altura' => $meta['altura'], 'upload_status' => PubImagem::PENDENTE,
         ]);
 
-        return ['imagem' => $this->enviarAoMl($imagem, $conteudo), 'problemas' => $problemas, 'nova' => true];
+        return ['imagem' => $enviar ? $this->enviarAoMl($imagem, $conteudo) : $imagem, 'problemas' => $problemas, 'nova' => true];
     }
 
     /**
