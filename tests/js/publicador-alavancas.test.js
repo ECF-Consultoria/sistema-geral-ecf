@@ -60,7 +60,10 @@ for (const caminho of ARQUIVOS) {
 
 test('órfão — todo .jsx da pasta é importado por outro arquivo da pasta ou pela página (o build não compila o que ninguém importa)', () => {
     const todos = ARQUIVOS.map((c) => [c, lerSemComentarios(c)]);
-    for (const [caminho] of todos.filter(([c]) => c.endsWith('.jsx') && c !== PAGINA)) {
+    // AreaTabs.jsx fica intencionalmente sem uso desde a Fase 172 (Publicador)
+    // — remover depois de uma semana em produção sem regressão, junto com
+    // ModoAnuncioTabs.jsx. Produtos.jsx e Alavancas.jsx agora usam AbasDaConta.
+    for (const [caminho] of todos.filter(([c]) => c.endsWith('.jsx') && c !== PAGINA && !c.endsWith('/AreaTabs.jsx'))) {
         const nome = caminho.split('/').pop().replace(/\.jsx$/, '');
         const importado = todos.some(([outro, fonte]) => outro !== caminho && new RegExp(`import[^;]*from '[^']*/${nome}'`).test(fonte));
         assert.ok(importado, `${caminho} não é importado por ninguém`);
@@ -75,16 +78,15 @@ test('AreaTabs — troca de rota entre as duas áreas e marca a atual', () => {
     assert.match(f, /aria-current/);
 });
 
-test('Produtos.jsx — a barra Publicar | Alavancas vem ANTES dos modos do anúncio', () => {
+test('Produtos.jsx — adota AbasDaConta com a aba produtos', () => {
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
-    assert.match(f, /import AreaTabs /);
-    assert.match(f, /<AreaTabs area="publicar"/);
-    assert.ok(f.indexOf('<AreaTabs') < f.indexOf('<ModoAnuncioTabs'));
+    assert.match(f, /import AbasDaConta /);
+    assert.match(f, /<AbasDaConta aba="produtos"/);
 });
 
 test('Alavancas.jsx — barra da área e estado sem conta', () => {
     const f = lerSemComentarios(PAGINA);
-    assert.match(f, /area="alavancas"/);
+    assert.match(f, /aba="alavancas"/);
     assert.match(f, /tem_conta/);
 });
 

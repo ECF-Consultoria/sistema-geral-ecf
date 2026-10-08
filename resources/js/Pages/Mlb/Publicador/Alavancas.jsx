@@ -1,8 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { Link } from '@inertiajs/react';
 import { useState } from 'react';
-import AreaTabs from '@/Components/Mlb/Alavancas/AreaTabs';
 import AvisoAlavancasTravadas from '@/Components/Mlb/Alavancas/AvisoAlavancasTravadas';
 import Panorama from '@/Components/Mlb/Alavancas/Panorama';
 import AbaPromocoes from '@/Components/Mlb/Alavancas/AbaPromocoes';
@@ -10,11 +8,10 @@ import AbaCupons from '@/Components/Mlb/Alavancas/AbaCupons';
 import AbaPublicidade from '@/Components/Mlb/Alavancas/AbaPublicidade';
 import AbaAtacado from '@/Components/Mlb/Alavancas/AbaAtacado';
 import Historico from '@/Components/Mlb/Alavancas/Historico';
-import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
+import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
+import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
 import { LINK } from '@/Components/Publicador/Mesa/comum';
-
-const ROTULO_PROGRAMA = { polos: 'Polos', incubadora: 'Incubadora', gestao: 'Gestão' };
 
 // Ordem final: Promoções | Cupons | Publicidade | Atacado (Cupons e Atacado entram nos planos 166-14 e 166-15).
 const ABAS = [
@@ -38,7 +35,6 @@ export default function Alavancas({ empresa, alavancas }) {
     const [aba, setAba] = useState(ABA_INICIAL);
     const [verHistorico, setVerHistorico] = useState(false);
 
-    const rotuloPrograma = ROTULO_PROGRAMA[empresa.programa] ?? empresa.programa_rotulo ?? 'Polos';
     const conta = empresa.chave;
 
     function trocarAba(chave) {
@@ -53,24 +49,10 @@ export default function Alavancas({ empresa, alavancas }) {
         <AppLayout title={`Alavancas — ${empresa.nome}`}>
             <div className="mx-auto max-w-[1240px] px-8 py-8">
 
-                <nav aria-label="Trilha" className="mb-2 text-[13px] font-normal text-white/55">
-                    <Link href={route('mlb.anuncios.index')} className="hover:text-ecf-yellow">Anunciar</Link>
-                    <span aria-hidden="true"> › </span>
-                    <Link href={route('mlb.anuncios.index', { programa: empresa.programa })} className="hover:text-ecf-yellow">{rotuloPrograma}</Link>
-                    <span aria-hidden="true"> › </span>
-                    <span className="text-white/70">{empresa.nome}</span>
-                    <span aria-hidden="true"> › </span>
-                    <span className="text-white/70">Alavancas</span>
-                </nav>
-
-                <div className="mb-6 flex flex-wrap items-center gap-3">
-                    <h1 className="font-display text-[24px] font-bold leading-tight text-white">{empresa.nome}</h1>
-                    <SeloConta token={empresa.token} />
-                    {! alavancas.liberada && <AvisoAlavancasTravadas variante="selo" />}
-                </div>
+                <BarraDaConta empresa={empresa} liberada={alavancas.liberada} />
 
                 <div className="mb-6">
-                    <AreaTabs area="alavancas" conta={conta} />
+                    <AbasDaConta aba="alavancas" conta={conta} companyId={empresa.company_id} />
                 </div>
 
                 {! alavancas.tem_conta ? (
