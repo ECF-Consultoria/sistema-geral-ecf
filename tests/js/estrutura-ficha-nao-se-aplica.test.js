@@ -75,6 +75,7 @@ test('Campo: caixa "Não se aplica" só onde o servidor oferece, e o controle tr
     assert.ok(campo.includes('const podeNa = aceitaNaoSeAplica(campo);'));
     assert.ok(campo.includes('{podeNa && ('), 'a caixa só aparece no campo que aceita');
     assert.ok(campo.includes('Não se aplica'), 'rótulo da caixa');
+    assert.ok(campo.includes('<span className="sr-only"> ({campo.nome})</span>'), 'IN-02: o leitor de tela ouve de qual campo é a caixa');
     assert.ok(campo.includes('<fieldset disabled={naoSeAplica}'), 'o controle inteiro trava');
     assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: e.target.checked })'));
 });

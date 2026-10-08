@@ -162,6 +162,8 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
                         onChange={(e) => onMudar(campo.id, { naoSeAplica: e.target.checked })}
                         className="h-4 w-4 rounded border-white/30 bg-black/40 text-ecf-yellow focus:ring-0 focus:ring-offset-0" />
                     Não se aplica
+                    {/* Leitor de tela: com dezenas de caixas, cada uma diz de qual campo é. */}
+                    <span className="sr-only"> ({campo.nome})</span>
                 </label>
             )}
             {invalido && <p id={`${id}-erro`} role="alert" className="mt-1 text-[12px] text-red-300">{erro}</p>}
