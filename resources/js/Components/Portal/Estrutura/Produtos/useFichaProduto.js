@@ -30,7 +30,7 @@ const novaChave = () => `m${++contador}`;
 
 const linhaEmBranco = (produto) => ({
     _k: novaChave(), codigo: '', nome: produto?.nome ?? '', eixo_rotulo: '', valor: '', familia: '', ambientes_texto: '',
-    categoria: '', volumes_texto: '', custo: '', volumes: [],
+    categoria: '', volumes_texto: '', custo: '', estoque: '', volumes: [],
     ...(produto?.id ? { produto_id: produto.id } : {}),
 });
 
@@ -182,6 +182,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
             imagens: [],   // as fotos são de cada variação: a nova nasce sem as da 1ª
             codigo: refSugerida(vars),
             valor: '',
+            estoque: '',   // estoque é por variação: a nova nasce vazia, não herda o da 1ª
             volumes_digitados: caixasEdit(base).filter((c) => ! caixaVazia(c)).map(aparar),
             _caixas: undefined,
         };

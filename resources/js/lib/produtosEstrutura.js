@@ -149,6 +149,9 @@ export function textoFalta(pendencias, rotulos = {}) {
     return pendencias.map((p) => rotulos[p] ?? p).join(' · ');
 }
 
+/** Estoque do servidor (int|null) para o texto do campo: 0 vira "0", nulo vira vazio. */
+const estoqueParaTexto = (e) => (e === null || e === undefined || e === '' ? '' : String(e));
+
 /** Custo do servidor ("120.00") para o texto que se digita ("120,00"). */
 const custoParaTexto = (c) => (c === null || c === undefined || c === '' ? '' : Number(c).toFixed(2).replace('.', ','));
 
@@ -165,6 +168,7 @@ export function linhaDoServidor(linha, rotulos = {}) {
         ambientes_texto: ambientes.join(', '),
         volumes_texto: linha.volumes_texto ?? '',
         custo: custoParaTexto(linha.custo),
+        estoque: estoqueParaTexto(linha.estoque),
         falta: textoFalta(linha.pendencias, rotulos),
     };
     // Retrato do que o servidor tem: só o que o cliente mexeu volta no POST.
@@ -173,7 +177,7 @@ export function linhaDoServidor(linha, rotulos = {}) {
     return pronta;
 }
 
-const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'eixo_rotulo', 'valor', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo'];
+const CAMPOS_EDITAVEIS = ['codigo', 'nome', 'eixo_rotulo', 'valor', 'familia', 'ambientes_texto', 'categoria', 'volumes_texto', 'custo', 'estoque'];
 
 /** Os campos que a pessoa pode alterar numa linha, para comparar antes/depois. */
 export function campoEditaveis(row) {
@@ -238,6 +242,11 @@ export function linhaParaServidor(row) {
     if (novaDeProdutoGravado) out.custo = vazio('custo') ? null : row.custo;
     else if (alterou('custo') && ! vazio('custo')) out.custo = row.custo;
     else if (limpou('custo')) out.custo = null;
+
+    // Estoque é por variação: o texto cru vai e o servidor valida. Variação nova de produto gravado manda explícito.
+    if (novaDeProdutoGravado) out.estoque = vazio('estoque') ? null : row.estoque;
+    else if (alterou('estoque') && ! vazio('estoque')) out.estoque = row.estoque;
+    else if (limpou('estoque')) out.estoque = null;
 
     return out;
 }

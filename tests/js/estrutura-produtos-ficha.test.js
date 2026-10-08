@@ -51,7 +51,7 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     assert.ok(hook.includes('limites?.colar'));
     assert.ok(hook.includes('Não salvamos esta variação: informe a Ref e o nome do produto.'));
     assert.ok(hook.includes('Não salvamos esta variação: ${'));
-    assert.ok(! hook.includes('Não salvamos esta linha') && ! hook.includes('toque'));
+    assert.ok(! hook.includes('Não salvamos esta linha') && ! /\btoque\b/.test(hook));
     assert.ok(hook.includes('CAMPOS_DO_PRODUTO'));
     assert.ok(hook.includes('ok:'));
     assert.ok(! hook.includes('onFechar') && ! hook.includes('onGravado'), 'o hook não fecha nem avisa a página: devolve { ok, data }');

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 // ─── Um bloco por variação (REF-2, 167-19) ──────────────────────────────────
 //
-// Miniatura, Ref + selo de logística, Ref · Eixo · Valor · Custo em linha,
+// Miniatura, Ref + selo de logística, Ref · Eixo · Valor · Custo · Estoque em linha,
 // "Excluir variação" à direita, os volumes em cartões (2 por linha) e a faixa de
 // calculados (só leitura). Só a Ref e o nome do produto são obrigatórios; o
 // Eixo é lista fechada e o Valor é texto livre (D-20).
@@ -43,7 +43,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                     </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-0 lg:max-w-[775px] lg:flex-1 lg:grid-cols-[203fr_168fr_185fr_158fr] lg:gap-5">
+                <div className="mt-3 grid grid-cols-2 gap-3 lg:mt-0 lg:max-w-[905px] lg:flex-1 lg:grid-cols-[203fr_168fr_185fr_158fr_130fr] lg:gap-5">
                     <div>
                         <label className={ROTULO} htmlFor={`ref-${k}`}>Ref <Obrigatorio /></label>
                         <input id={`ref-${k}`} className={CAMPO} value={variacao.codigo} onChange={(e) => ficha.alterar(k, 'codigo', e.target.value)} placeholder="código" />
@@ -62,6 +62,10 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                     <div>
                         <label className={ROTULO} htmlFor={`custo-${k}`}>Custo (R$)</label>
                         <input id={`custo-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="decimal" value={variacao.custo ?? ''} onChange={(e) => ficha.alterar(k, 'custo', e.target.value)} placeholder="0,00" />
+                    </div>
+                    <div>
+                        <label className={ROTULO} htmlFor={`estoque-${k}`}>Estoque (un.)</label>
+                        <input id={`estoque-${k}`} className={cn(CAMPO, 'tabular-nums')} inputMode="numeric" value={variacao.estoque ?? ''} onChange={(e) => ficha.alterar(k, 'estoque', e.target.value)} placeholder="0" />
                     </div>
                 </div>
 
