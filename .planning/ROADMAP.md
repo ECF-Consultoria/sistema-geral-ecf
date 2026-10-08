@@ -2980,13 +2980,48 @@ Plans:
 
 ### Phase 172: Ficha do portal completa até o Publicador: estoque por variação, descrição do produto e Sincronizar que leva categoria, ficha técnica, variações, imagens, medidas e descrição preenchendo só o vazio
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** tudo o que o cliente preenche na ficha do produto do portal chega ao Publicador ao clicar em "Sincronizar do Portal": a ficha ganha **estoque por variação** e **descrição do produto** (sob a regra de sigilo), e o Sincronizar passa a juntar as cores de um produto em UM rascunho (uma variação por cor, com SKU e estoque próprios) e a levar categoria, ficha técnica, medidas do pacote e fotos (WebP convertida), preenchendo só o vazio e sem nunca publicar; Combo, Kit e Combit recebem o que dá para derivar; a descrição do cliente vira matéria-prima da descrição MAG T8, gerada sozinha no rascunho vazio.
+**Requirements**: FP172-01, FP172-02, FP172-03, FP172-04, FP172-05, FP172-06, FP172-07, FP172-08, FP172-09 (locais da fase, definidos em `172-RESEARCH.md`; decisões D-01..D-16 em `172-CONTEXT.md` — D-10..D-16 prevalecem sobre a pesquisa)
 **Depends on:** Phase 168 (Geração de ofertas)
-**Plans:** 0 plans
+**Plans:** 13 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 172 to break down)
+**Wave 1**
+
+- [ ] 172-01-PLAN.md — baseline de testes (commit próprio) e as 3 colunas aditivas (estoque, descrição, `pub_produtos.estrutura_produto_id`) provadas no MariaDB local com `--path`
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 172-02-PLAN.md — estoque por variação na ficha do portal, ponta a ponta (0 ≠ vazio, não herda da 1ª variação)
+- [ ] 172-03-PLAN.md — agrupamento D-06: um produto do Publicador por produto do portal, adoção do legado sem publicação, compostas como hoje, `situacaoPortal`
+- [ ] 172-04-PLAN.md — peças puras: campo do portal -> valor do rascunho (multivalor D-13) e composição (estoque, principal D-12, pacotes, descrições)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 172-05-PLAN.md — descrição do produto na ficha do portal (endpoint, bloco, Salvar) e sigilo dos campos novos
+- [ ] 172-06-PLAN.md — preço efetivo por variante no rascunho agrupado (editor, conferência e criativos)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 172-07-PLAN.md — leitor do portal escopado por empresa, WebP -> JPG, foto guardada sem envio ao ML e rascunho criado sem ler a conta
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 172-08-PLAN.md — preenchimento do rascunho agrupado: categoria, ficha, pacote, uma variação por cor com SKU e estoque, só no vazio e idempotente
+- [ ] 172-09-PLAN.md — descrição MAG T8 a partir da ficha + descrição do cliente (Job na fila high, cache por pedido) e `estado().portal.descricao_cliente`
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 172-10-PLAN.md — fotos por grupo da variação (só grupo vazio, motivos no resumo) e Combo/Kit/Combit no rascunho
+- [ ] 172-11-PLAN.md — editor: painel "Descrição do cliente", disparo automático uma vez e botão de gerar/regerar
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 172-12-PLAN.md — botão Sincronizar dispara o preenchimento por produto, resumo na tela, provas de isolamento, D-10 e nada no ML
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 172-13-PLAN.md — portão final contra o baseline, learnings e conferência visual do usuário numa cópia local da #459 (checkpoint; sem deploy)
 
 ## Milestone v24.0 — Creative Engine (Fases 160-163)
 
