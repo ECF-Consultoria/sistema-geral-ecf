@@ -389,6 +389,50 @@ class MeusAnunciosTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * @test
+     *
+     * Fase 173-02: `?comVenda=1` filtra a LISTAGEM paginada por
+     * `sold_quantity > 0`, mas os chips de triagem (D-09) continuam mostrando
+     * o universo completo do status filtrado — senão o número do chip
+     * mudaria sozinho quando o indicador "Com venda" da Visão geral linkasse
+     * para aqui, contradizendo o próprio chip.
+     */
+    public function com_venda_filtra_a_listagem_sem_mudar_a_triagem(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id'    => 'MLB1000000001',
+            'status'        => 'paused',
+            'sold_quantity' => 5,
+            'motivos'       => [MlAcervoItem::MOTIVO_PAUSADO],
+            'severidade'    => MlAcervoItem::SEVERIDADE_CRITICA,
+        ]);
+        $this->criarItem($company, [
+            'ml_item_id'    => 'MLB1000000002',
+            'status'        => 'active',
+            'sold_quantity' => 0,
+        ]);
+
+        $props = $this->propsDaTela($admin, $company, ['comVenda' => '1']);
+
+        $ids = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+        $this->assertSame(['MLB1000000001'], $ids, 'comVenda=1 só deixa passar sold_quantity > 0 na listagem');
+        $this->assertTrue($props['filtros']['com_venda']);
+
+        // Chip "Pausado" continua contando o universo completo (os dois itens
+        // acionáveis), não só o filtrado por comVenda.
+        $chipsPorChave = collect($props['triagem']['chips'])->keyBy('chave');
+        $this->assertSame(1, $chipsPorChave[MlAcervoItem::MOTIVO_PAUSADO]['count'], 'triagem não pode ser afetada por comVenda');
+
+        // Sem o parâmetro, default continua devolvendo os dois (regressão zero).
+        $propsSemFiltro = $this->propsDaTela($admin, $company);
+        $idsSemFiltro   = collect($propsSemFiltro['anuncios']['data'])->pluck('ml_item_id')->all();
+        $this->assertEqualsCanonicalizing(['MLB1000000001', 'MLB1000000002'], $idsSemFiltro);
+        $this->assertFalse($propsSemFiltro['filtros']['com_venda']);
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────
 
     /**

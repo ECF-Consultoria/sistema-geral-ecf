@@ -24,6 +24,7 @@ use App\Services\Creative\CreativeKitPublicacao;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
+use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -373,7 +374,7 @@ class MlbAnuncioController extends Controller
      * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
      * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
      */
-    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas)
+    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas, AcervoTriagemService $acervoTriagem)
     {
         // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
         $company->loadMissing('mlToken');
@@ -402,7 +403,7 @@ class MlbAnuncioController extends Controller
 
         // Motivo é validado contra a whitelist fechada de MlAcervoItem::MOTIVO_*
         // antes de qualquer uso — nunca aceito de forma livre.
-        $motivosDef     = $this->motivosTriagemDef();
+        $motivosDef     = $acervoTriagem->motivosDef();
         $motivosValidos = array_column($motivosDef, 'chave');
         $motivo         = $request->query('motivo');
         $motivo         = in_array($motivo, $motivosValidos, true) ? $motivo : null;
@@ -414,10 +415,17 @@ class MlbAnuncioController extends Controller
             $sub = 'publicados';
         }
 
+        // Fase 173-02: filtro novo, opcional — o indicador "Com venda" da
+        // Visão geral linka para aqui. NÃO entra no escopo de triagem/defasagem
+        // abaixo: aqueles continuam mostrando o universo completo do status
+        // filtrado, senão os chips ficariam errados com comVenda=1 ativo.
+        $comVenda = $request->boolean('comVenda');
+
         // ─── Listagem — ordenação por gravidade (D-12), determinística, sem
         // nenhum dado da camada cara: 3 níveis de desempate + tie-break estável. ───
-        $anuncios = $this->escopoAcervo($company, $busca, $statusFiltro)
+        $anuncios = $acervoTriagem->escopo($company, $busca, $statusFiltro)
             ->when($motivo !== null, fn ($q) => $q->where('motivos', 'like', '%"' . $motivo . '"%'))
+            ->when($comVenda, fn ($q) => $q->where('sold_quantity', '>', 0))
             ->orderByDesc('severidade')
             ->orderByRaw('nota_ecf IS NULL ASC') // não avaliado vai para o fim, não para o topo (D-12/D-18)
             ->orderBy('nota_ecf')
@@ -462,60 +470,11 @@ class MlbAnuncioController extends Controller
             'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
         ]);
 
-        // ─── Triagem (D-09) — UMA query agregada, nunca um laço de ->count()
-        // por motivo. Reusa os MESMOS filtros de status/busca, mas SEM o
-        // filtro de motivo: os chips precisam continuar mostrando os outros
-        // motivos quando um já está filtrado. ───
-        $selects = [
-            // Total = anúncios DISTINTOS com >=1 motivo, nunca soma dos chips
-            // (severidade > 0 <=> motivos não vazio, ver AnuncioSaudeService::triagem()).
-            'SUM(CASE WHEN severidade > 0 THEN 1 ELSE 0 END) as total_com_motivo',
-            'SUM(CASE WHEN catalog_listing = 1 AND buybox_status IS NULL THEN 1 ELSE 0 END) as nao_avaliado',
-        ];
-        foreach ($motivosDef as $i => $m) {
-            // $m['chave'] vem da whitelist fechada (constantes do model), nunca da querystring.
-            $selects[] = "SUM(CASE WHEN motivos LIKE '%\"{$m['chave']}\"%' THEN 1 ELSE 0 END) as motivo_{$i}";
-        }
-
-        $linhaTriagem = $this->escopoAcervo($company, $busca, $statusFiltro)
-            ->selectRaw(implode(', ', $selects))
-            ->first();
-
-        $chips = [];
-        foreach ($motivosDef as $i => $m) {
-            $chips[] = [
-                'chave' => $m['chave'],
-                'label' => $m['label'],
-                'count' => (int) ($linhaTriagem->{"motivo_{$i}"} ?? 0),
-                'cor'   => $m['cor'],
-            ];
-        }
-
-        $triagem = [
-            'total'        => (int) ($linhaTriagem->total_com_motivo ?? 0),
-            'chips'        => $chips,
-            'nao_avaliado' => (int) ($linhaTriagem->nao_avaliado ?? 0),
-        ];
-
-        // ─── Defasagem (D-08) — nunca resposta vazia. ───
-        $temLinhas     = MlAcervoItem::where('company_id', $company->id)->exists();
-        $nuncaColetado = ! $temLinhas;
-        $coletadoEmRaw = $nuncaColetado ? null : MlAcervoItem::where('company_id', $company->id)->max('coletado_em');
-        $coletadoEm    = $coletadoEmRaw !== null ? \Illuminate\Support\Carbon::parse($coletadoEmRaw) : null;
-        $horas         = $coletadoEm !== null ? $coletadoEm->diffInHours(now()) : null;
-        $limiteHoras   = (int) config('mlb_acervo.defasagem_horas');
-        $motivoErro    = MlAcervoItem::where('company_id', $company->id)
-            ->whereNotNull('coleta_erro')
-            ->orderByDesc('updated_at')
-            ->value('coleta_erro');
-
-        $defasagem = [
-            'coletado_em'    => $coletadoEm?->toIso8601String(),
-            'horas'          => $horas,
-            'defasado'       => $horas !== null && $horas > $limiteHoras,
-            'nunca_coletado' => $nuncaColetado,
-            'motivo'         => $motivoErro,
-        ];
+        // ─── Triagem (D-09) e defasagem (D-08) — extraídas para
+        // AcervoTriagemService (Fase 173-02): fonte única também usada pela
+        // Visão geral, mesmos números de antes. ───
+        $triagem   = $acervoTriagem->triagem($company, $busca, $statusFiltro);
+        $defasagem = $acervoTriagem->defasagem($company);
 
         // Fase 134 Plano 09: sub-aba Rascunhos — a tela oficial de rascunhos, com
         // TODOS os registros da empresa (não só os 50 mais recentes do wizard).
@@ -553,7 +512,7 @@ class MlbAnuncioController extends Controller
             'anuncios'          => $anuncios,
             'rascunhos'         => $rascunhosProp,
             'triagem'           => $triagem,
-            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo],
+            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo, 'com_venda' => $comVenda],
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
@@ -734,57 +693,6 @@ class MlbAnuncioController extends Controller
             'serie'             => $serie,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
         ]);
-    }
-
-    /**
-     * Escopo base do acervo por empresa (T-134-01) — company_id é a fronteira
-     * de segurança inteira desta tela e não pode sair de nenhum caminho:
-     * busca, triagem, contagem, paginação. A busca é OBRIGATORIAMENTE
-     * agrupada dentro de where(function...): um orWhere solto sobe ao topo
-     * do WHERE e anula o escopo por empresa (mesma pegadinha travada em
-     * historico(), Fase 86).
-     */
-    private function escopoAcervo(Company $company, string $busca, string $statusFiltro)
-    {
-        // 'acionaveis' (default) cobre DOIS status — é o universo sobre o qual
-        // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
-        // filtros recortam um status só; 'todos' não filtra.
-        $statusColunas = match ($statusFiltro) {
-            'acionaveis' => ['active', 'paused'],
-            'ativos'     => ['active'],
-            'pausados'   => ['paused'],
-            'encerrados' => ['closed'],
-            default      => null, // 'todos' não filtra
-        };
-
-        return MlAcervoItem::where('company_id', $company->id)
-            ->when($busca !== '', function ($q) use ($busca) {
-                $q->where(function ($s) use ($busca) {
-                    $s->where('title', 'like', "%{$busca}%")
-                      ->orWhere('ml_item_id', 'like', "%{$busca}%");
-                });
-            })
-            ->when($statusColunas !== null, fn ($q) => $q->whereIn('status', $statusColunas));
-    }
-
-    /**
-     * Definição fechada dos 5 motivos de triagem (D-09), na mesma ordem de
-     * gravidade do D-12: pausado/sem estoque (crítica, red) antes de ficha
-     * incompleta/perdendo catálogo/foto insuficiente (atenção, amber).
-     * Fonte única para a whitelist de validação e para os chips/selects
-     * agregados — nunca duplicar esta lista.
-     *
-     * @return array<int, array{chave:string, label:string, cor:string}>
-     */
-    private function motivosTriagemDef(): array
-    {
-        return [
-            ['chave' => MlAcervoItem::MOTIVO_PAUSADO,           'label' => 'Pausado',           'cor' => 'red'],
-            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE,       'label' => 'Sem estoque',        'cor' => 'red'],
-            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA,  'label' => 'Ficha incompleta',   'cor' => 'amber'],
-            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo',  'cor' => 'amber'],
-            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente',  'cor' => 'amber'],
-        ];
     }
 
     /**
