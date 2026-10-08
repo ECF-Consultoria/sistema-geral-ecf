@@ -81,6 +81,22 @@ class MlbPublicadorEntradaTest extends TestCase
         $this->assertSame(['Polo A'], $this->nomes('?programa=xyz'));
     }
 
+    /**
+     * Fase 172-02: programa inicial por sessão (decisão do usuário — sessão →
+     * Polos, sem ramo de setor). `props()` usa `actingAs` a cada chamada, mas
+     * isso só troca o usuário autenticado — a sessão array-driver do processo
+     * de teste sobrevive entre as chamadas desta mesma função de teste.
+     */
+    public function test_sem_parametro_lembra_o_ultimo_programa_da_sessao(): void
+    {
+        $this->empresa('Inc A', ['projeto' => 'Incubadora'], []);
+        $this->empresa('Polo A', [], []);
+
+        $this->assertSame('incubadora', $this->props('?programa=incubadora')['programa']);
+        // Mesma sessão, sem ?programa: lembra o último escolhido, não cai em 'polos'.
+        $this->assertSame('incubadora', $this->props()['programa']);
+    }
+
     public function test_polos_lista_formas_de_conta_e_exclui_arquivada_sem_conta_e_incubadora(): void
     {
         $this->empresa('Token Proprio', [], []);
