@@ -121,6 +121,46 @@ class AutenticadorTest extends TestCase
         $this->assertDatabaseHas('activity_log', ['log_name' => 'autenticadores', 'description' => 'Copiou o código']);
     }
 
+    public function test_edita_rotulos_sem_tocar_no_secret_e_audita(): void
+    {
+        $a = $this->criar(['cliente' => 'Mercado Livre', 'conta' => 'apelido_ml', 'servico' => 'Mercado Livre']);
+        $hashAntes = DB::table('autenticadores')->where('id', $a->id)->value('secret_hash');
+        $cruAntes  = DB::table('autenticadores')->where('id', $a->id)->value('secret');
+
+        $this->actingAs($this->user)->patch(route('autenticadores.update', $a), [
+            'cliente' => 'Loja Prime',
+            'conta'   => 'financeiro@lojaprime.com',
+            'servico' => 'Mercado Livre',
+        ])->assertSessionHas('success');
+
+        $a->refresh();
+        $this->assertSame('Loja Prime', $a->cliente);
+        $this->assertSame('financeiro@lojaprime.com', $a->conta);
+        // Secret e hash intactos: a edição é só de rótulos.
+        $this->assertSame(self::SECRET, $a->secret);
+        $this->assertSame($hashAntes, DB::table('autenticadores')->where('id', $a->id)->value('secret_hash'));
+        $this->assertSame($cruAntes, DB::table('autenticadores')->where('id', $a->id)->value('secret'));
+
+        // A edição entra no log 'autenticadores' (aparece no "Histórico" da tela).
+        $this->assertDatabaseHas('activity_log', [
+            'log_name'    => 'autenticadores',
+            'description' => 'Editou o cadastro',
+            'causer_id'   => $this->user->id,
+            'subject_id'  => $a->id,
+        ]);
+    }
+
+    public function test_edicao_exige_cliente(): void
+    {
+        $a = $this->criar(['cliente' => 'Loja Prime']);
+
+        $this->actingAs($this->user)
+            ->patch(route('autenticadores.update', $a), ['cliente' => '', 'servico' => 'Google'])
+            ->assertSessionHasErrors('cliente');
+
+        $this->assertSame('Loja Prime', $a->fresh()->cliente);
+    }
+
     public function test_remove(): void
     {
         $a = $this->criar();

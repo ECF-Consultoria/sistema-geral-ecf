@@ -18,11 +18,12 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
     const [q, setQ] = useState(filtros.q || '');
     const [fServico, setFServico] = useState(filtros.servico || '');
     const [fStatus, setFStatus] = useState(filtros.status || '');
+    const [ordem, setOrdem] = useState('cliente'); // 'cliente' (A–Z) | 'recentes'
 
     // Busca client-side: cliente, parte antes do @, número no domínio e serviço.
     const lista = useMemo(() => {
         const termo = q.trim().toLowerCase();
-        return autenticadores.filter((a) => {
+        const filtrada = autenticadores.filter((a) => {
             if (fServico && a.servico !== fServico) return false;
             if (fStatus && a.status !== fStatus) return false;
             if (!termo) return true;
@@ -30,7 +31,14 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
                 .filter(Boolean)
                 .some((v) => String(v).toLowerCase().includes(termo));
         });
-    }, [autenticadores, q, fServico, fStatus]);
+        // "Mais recentes" usa o id (autoincremento = ordem de cadastro); assim a
+        // conta recém-adicionada fica no topo mesmo sem lembrar o nome.
+        return [...filtrada].sort((a, b) => (
+            ordem === 'recentes'
+                ? b.id - a.id
+                : String(a.cliente).localeCompare(String(b.cliente), 'pt-BR')
+        ));
+    }, [autenticadores, q, fServico, fStatus, ordem]);
 
     const [addAberto, setAddAberto] = useState(false);
 
@@ -70,6 +78,15 @@ export default function Index({ autenticadores = [], filtros = {}, servicos = []
                     </div>
                     <FiltroSelect value={fServico} onChange={setFServico} placeholder="Serviço" options={servicos.map((s) => ({ value: s, label: s }))} />
                     <FiltroSelect value={fStatus} onChange={setFStatus} placeholder="Status" options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))} />
+                    <FiltroSelect
+                        value={ordem}
+                        onChange={setOrdem}
+                        allowEmpty={false}
+                        options={[
+                            { value: 'cliente', label: 'Ordem: Cliente (A–Z)' },
+                            { value: 'recentes', label: 'Ordem: Mais recentes' },
+                        ]}
+                    />
                 </div>
 
                 {addAberto && (
@@ -384,7 +401,7 @@ function Campo({ rotulo, valor, onChange, placeholder }) {
     );
 }
 
-function FiltroSelect({ value, onChange, placeholder, options }) {
+function FiltroSelect({ value, onChange, placeholder, options, allowEmpty = true }) {
     return (
         <div className="relative">
             <select
@@ -392,7 +409,7 @@ function FiltroSelect({ value, onChange, placeholder, options }) {
                 onChange={(e) => onChange(e.target.value)}
                 className="appearance-none pl-3 pr-9 py-2.5 rounded-lg bg-ecf-card border border-white/[0.08] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 min-w-[150px]"
             >
-                <option value="" className="bg-ecf-card">{placeholder}: todos</option>
+                {allowEmpty && <option value="" className="bg-ecf-card">{placeholder}: todos</option>}
                 {options.map((o) => <option key={o.value} value={o.value} className="bg-ecf-card">{o.label}</option>)}
             </select>
             <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />

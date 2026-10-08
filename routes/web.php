@@ -821,6 +821,7 @@ Route::view('/privacidade/painel-ecf', 'privacidade.painel-ecf')->name('privacid
 Route::middleware(['auth', 'verified'])->prefix('autenticadores')->name('autenticadores.')->group(function () {
     Route::get('/', [AutenticadorController::class, 'index'])->name('index');
     Route::post('/', [AutenticadorController::class, 'store'])->name('store');
+    Route::patch('/{autenticador}', [AutenticadorController::class, 'atualizar'])->name('update');
     Route::get('/{autenticador}', [AutenticadorController::class, 'show'])->name('show');
     Route::get('/{autenticador}/codigo', [AutenticadorController::class, 'codigo'])->name('codigo');
     Route::post('/{autenticador}/copiar', [AutenticadorController::class, 'copiar'])->name('copiar');

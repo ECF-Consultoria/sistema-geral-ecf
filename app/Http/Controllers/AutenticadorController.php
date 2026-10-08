@@ -101,6 +101,32 @@ class AutenticadorController extends Controller
     }
 
     /**
+     * Edita os rótulos do autenticador (nome/cliente, conta, serviço). Útil
+     * quando a conta entrou por QR e veio com o nome do issuer do ML em vez do
+     * nome da loja — aqui o time renomeia para o que de fato procura. O secret
+     * e o hash NÃO são tocados. A edição entra no log 'autenticadores' para
+     * aparecer no "Histórico" da tela.
+     */
+    public function atualizar(Request $request, Autenticador $autenticador)
+    {
+        $data = $request->validate([
+            'cliente' => ['required', 'string', 'max:150'],
+            'conta'   => ['nullable', 'string', 'max:150'],
+            'servico' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $autenticador->update([
+            'cliente' => trim($data['cliente']),
+            'conta'   => trim((string) ($data['conta'] ?? '')),
+            'servico' => trim((string) ($data['servico'] ?? '')) ?: 'Outro',
+        ]);
+
+        $this->auditar($request, $autenticador, 'Editou o cadastro', 'editou');
+
+        return back()->with('success', 'Autenticador atualizado.');
+    }
+
+    /**
      * Código TOTP vigente de um autenticador. Audita a visualização.
      * Retorna só o código (nunca o secret).
      */

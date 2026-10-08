@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Link, router, usePage } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Copy, Check, Trash2, History, KeyRound, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Trash2, History, KeyRound, ShieldCheck, Pencil, Save, Loader2 } from 'lucide-react';
 import {
     StatusBadge, ServicoIcone, Avatar, RingCountdown, Info, fmtCodigo, copyToClipboard,
 } from '@/Components/Autenticadores/common';
@@ -18,6 +18,12 @@ export default function Show({ autenticador }) {
     const [copiado, setCopiado] = useState(false);
     const [erro, setErro] = useState(null);
     const [histAberto, setHistAberto] = useState(false);
+    const [editando, setEditando] = useState(false);
+    const editForm = useForm({
+        cliente: autenticador?.cliente || '',
+        conta:   autenticador?.conta || '',
+        servico: autenticador?.servico || '',
+    });
     const refreshRef = useRef(null);
     const seqRef = useRef(0);
 
@@ -52,6 +58,19 @@ export default function Show({ autenticador }) {
         return () => clearInterval(t);
     }, []);
 
+    // Se a página for reutilizada para outra conta, fecha a edição e recarrega
+    // os campos do form com os dados da conta atual.
+    useEffect(() => {
+        setEditando(false);
+        editForm.clearErrors();
+        editForm.setData({
+            cliente: autenticador?.cliente || '',
+            conta:   autenticador?.conta || '',
+            servico: autenticador?.servico || '',
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autenticador?.id]);
+
     const remainingMs = Math.max(deadline - performance.now(), 0);
     const seconds = codigo ? Math.ceil(remainingMs / 1000) : 0;
     const fraction = codigo ? remainingMs / (periodo * 1000) : 0;
@@ -72,6 +91,24 @@ export default function Show({ autenticador }) {
         }
     };
 
+    const salvarEdicao = (e) => {
+        e.preventDefault();
+        editForm.patch(route('autenticadores.update', autenticador.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditando(false),
+        });
+    };
+
+    const cancelarEdicao = () => {
+        setEditando(false);
+        editForm.clearErrors();
+        editForm.setData({
+            cliente: autenticador.cliente || '',
+            conta:   autenticador.conta || '',
+            servico: autenticador.servico || '',
+        });
+    };
+
     return (
         <AppLayout title={autenticador.cliente}>
             <div className="max-w-xl mx-auto space-y-5">
@@ -82,28 +119,66 @@ export default function Show({ autenticador }) {
                 <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-5 space-y-5">
                     <div className="flex items-center justify-between">
                         <h1 className="text-white font-semibold">Detalhes do autenticador</h1>
-                        <button
-                            onClick={remover}
-                            className="inline-flex items-center gap-1.5 text-[12px] text-white/50 hover:text-red-300 transition"
-                        >
-                            <Trash2 size={14} /> Remover
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        <Avatar texto={autenticador.cliente} className="w-11 h-11 text-[15px]" />
-                        <div className="min-w-0">
-                            <p className="text-white font-semibold text-lg leading-tight overflow-wrap-anywhere">{autenticador.cliente}</p>
-                            <p className="text-white/50 text-[13px] break-all">{autenticador.conta}</p>
+                        <div className="flex items-center gap-3">
+                            {!editando && (
+                                <button
+                                    onClick={() => setEditando(true)}
+                                    className="inline-flex items-center gap-1.5 text-[12px] text-white/50 hover:text-ecf-yellow transition"
+                                >
+                                    <Pencil size={14} /> Editar
+                                </button>
+                            )}
+                            <button
+                                onClick={remover}
+                                className="inline-flex items-center gap-1.5 text-[12px] text-white/50 hover:text-red-300 transition"
+                            >
+                                <Trash2 size={14} /> Remover
+                            </button>
                         </div>
-                        <div className="ml-auto"><StatusBadge status={autenticador.status} /></div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 text-[13px]">
-                        <Info rotulo="Serviço"><span className="inline-flex items-center gap-1.5"><ServicoIcone servico={autenticador.servico} /> {autenticador.servico}</span></Info>
-                        <Info rotulo="Criado em">{autenticador.criado_em || '—'}</Info>
-                        <Info rotulo="Atualização">{autenticador.atualizado_em || '—'}</Info>
-                    </div>
+                    {editando ? (
+                        <form onSubmit={salvarEdicao} className="space-y-3 rounded-lg border border-ecf-yellow/20 bg-ecf-yellow/[0.03] p-4">
+                            <p className="text-white/50 text-[12px]">Ajuste o nome que o time procura — o QR do ML costuma trazer o nome do Mercado Livre no lugar do nome da loja. O secret não é alterado.</p>
+                            <Campo rotulo="Cliente / loja" valor={editForm.data.cliente} onChange={(v) => editForm.setData('cliente', v)} placeholder="Ex.: Loja Prime" />
+                            <Campo rotulo="E-mail ou identificação" valor={editForm.data.conta} onChange={(v) => editForm.setData('conta', v)} placeholder="financeiro@loja.com" />
+                            <Campo rotulo="Serviço" valor={editForm.data.servico} onChange={(v) => editForm.setData('servico', v)} placeholder="Google, Amazon, Mercado Livre…" />
+                            {editForm.errors.cliente && <p className="text-red-300 text-[12px]">{editForm.errors.cliente}</p>}
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    type="submit"
+                                    disabled={editForm.processing}
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ecf-yellow text-black font-semibold text-sm hover:brightness-105 transition disabled:opacity-50"
+                                >
+                                    {editForm.processing ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={cancelarEdicao}
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-white/[0.1] text-white/80 font-medium text-sm hover:bg-white/[0.03] transition"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <>
+                            <div className="flex items-center gap-3">
+                                <Avatar texto={autenticador.cliente} className="w-11 h-11 text-[15px]" />
+                                <div className="min-w-0">
+                                    <p className="text-white font-semibold text-lg leading-tight overflow-wrap-anywhere">{autenticador.cliente}</p>
+                                    <p className="text-white/50 text-[13px] break-all">{autenticador.conta}</p>
+                                </div>
+                                <div className="ml-auto"><StatusBadge status={autenticador.status} /></div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-[13px]">
+                                <Info rotulo="Serviço"><span className="inline-flex items-center gap-1.5"><ServicoIcone servico={autenticador.servico} /> {autenticador.servico}</span></Info>
+                                <Info rotulo="Criado em">{autenticador.criado_em || '—'}</Info>
+                                <Info rotulo="Atualização">{autenticador.atualizado_em || '—'}</Info>
+                            </div>
+                        </>
+                    )}
 
                     {/* Código ao vivo */}
                     <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-4">
@@ -143,6 +218,20 @@ export default function Show({ autenticador }) {
                 </div>
             </div>
         </AppLayout>
+    );
+}
+
+function Campo({ rotulo, valor, onChange, placeholder }) {
+    return (
+        <div>
+            <label className="text-white/50 text-[12px] font-medium">{rotulo}</label>
+            <input
+                value={valor}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                className="w-full mt-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.1] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-ecf-yellow/40"
+            />
+        </div>
     );
 }
 
