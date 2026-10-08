@@ -77,8 +77,12 @@ test('Explicacao.jsx — Info 14px, abre no hover E no foco do teclado, só 13px
     const f = lerSemComentarios('resources/js/Components/Explicacao.jsx');
     assert.match(f, /import \{ Info \} from 'lucide-react'/);
     assert.match(f, /<Info size=\{14\} aria-hidden="true" \/>/);
-    assert.match(f, /group-hover\/explicacao:visible/);
-    assert.match(f, /group-focus-within\/explicacao:visible/);
+    assert.match(f, /group-hover\/explicacao:block group-focus-within\/explicacao:block/);
+    // Review 172 WR-04 (WCAG 1.4.13): fechado sai do layout, cabe na tela, Esc fecha, o ponteiro alcança o balão.
+    assert.match(f, /'absolute top-full z-30 hidden w-64 max-w-\[calc\(100vw-2rem\)\] pt-1\.5'/);
+    assert.doesNotMatch(f, /\binvisible\b|pointer-events-none|mt-1\.5/);
+    assert.match(f, /e\.key === 'Escape'/);
+    assert.match(f, /direita \? 'right-0' : 'left-0'/);
     assert.match(f, /focus-visible:ring-2 focus-visible:ring-ecf-yellow/);
     assert.doesNotMatch(f, /\btitle=/, 'o title nativo somaria um segundo balão');
     assert.doesNotMatch(f, /\buppercase\b|font-(medium|semibold)|text-\[(?!13px\])[0-9.]+px\]/);
@@ -103,4 +107,15 @@ test('Todo campo de atributo do editor passa a explicação (ficha, mais caracte
     assert.match(c('EditorDeEixos.jsx'), /<Explicacao texto=\{atributo\.explicacao\} nome=\{e\.nome\} \/>/);
     // O tooltip cru do ML saiu do rótulo (ele agora chega pela explicação; evita dois balões).
     assert.doesNotMatch(c('CampoAtributo.jsx'), /title=\{atributo\.tooltip/);
+});
+
+test('Explicacao — fechada não ocupa o layout e o balão continua ligado ao botão (review 172 WR-04)', async () => {
+    const { default: Explicacao } = await montar('resources/js/Components/Explicacao.jsx');
+    const html = renderToStaticMarkup(React.createElement(Explicacao, { texto: 'Texto curto.', nome: 'Ref' }));
+
+    const balao = html.match(/<span role="tooltip" id="([^"]+)"[^>]*class="([^"]+)"/);
+    assert.ok(balao, 'o balão existe no DOM');
+    assert.ok(balao[2].split(' ').includes('hidden'), 'fechado = display:none, sem rolagem horizontal');
+    assert.ok(! balao[2].split(' ').includes('block'), 'nada força o balão aberto na montagem');
+    assert.match(html, new RegExp(`aria-describedby="${balao[1]}"`));
 });
