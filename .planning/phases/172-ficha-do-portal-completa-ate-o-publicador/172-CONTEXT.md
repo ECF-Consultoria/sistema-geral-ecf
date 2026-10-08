@@ -83,6 +83,24 @@ Esta fase entrega:
   cache, a TELA aplica pelo caminho normal de edição — learnings `publicador-ml.md` §10). Prompts MAG T8
   intocados no texto; só muda a entrada.
 
+### Respostas às perguntas abertas da pesquisa (usuário, 08/10)
+- **D-10 — Alcance: TODAS as empresas.** O Sincronizar completo não é gateado por `contas_liberadas`
+  (ele só grava rascunho, nunca sobe foto ao ML nem chama `/items`). A trava de piloto continua valendo
+  para foto no ML, conferência L3 e publicação.
+- **D-11 — Descrição MAG T8 AUTOMÁTICA no rascunho vazio** (substitui a discrição do D-09): ao abrir um
+  rascunho com `descricao` vazia e com descrição do cliente disponível, o editor dispara sozinho a geração
+  (uma vez por rascunho; mesmo padrão do Modelo — job `high`, cache por pedido, a tela aplica; não aplica se
+  a pessoa digitou no meio). Botão manual também existe para regerar.
+- **D-12 — Principal do Kit/Combit = o lado que NÃO repete** no par de tipo da 168 (`estrutura_tipo_pares`;
+  mesa com 4 cadeiras → mesa). Sem par conhecido/empate → o de maior custo total.
+- **D-13 — Multivalor (decisão do orquestrador pela recomendação):** grava a 1ª opção resolvida, guarda os ids
+  em `values_multi` e marca `revisar = true` (o Publicador não envia multivalor hoje).
+- **D-14 — Planilha-modelo da 167 NÃO ganha coluna de estoque** (compatibilidade com a 3Planejamento).
+- **D-15 — Fotos WebP (ou fora do formato aceito pelo Publicador) são CONVERTIDAS para JPG** na cópia; foto
+  abaixo do lado mínimo é contada no resumo do Sincronizar como não trazida, com o motivo.
+- **D-16 — UI:** sem UI-SPEC próprio (`--skip-ui`): os campos novos seguem os componentes existentes da ficha
+  (linha de variação como o `custo`; bloco como a "Ficha técnica") e do editor do Publicador (3 etapas).
+
 ### Claude's Discretion
 - Onde guardar a descrição crua do cliente do lado do Publicador (ler ao vivo do produto, como
   `DadosEfetivosService` já faz com título/preço, é o caminho preferido — evita cópia defasada).
