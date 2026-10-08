@@ -2,6 +2,7 @@ import { ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { router } from '@inertiajs/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
+import Explicacao from '@/Components/Explicacao';
 import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
 import { cn } from '@/lib/utils';
 
@@ -90,6 +91,23 @@ export function Obrigatorio() {
             <span aria-hidden="true" className="ml-0.5 text-white/50">*</span>
             <span className="sr-only"> (obrigatório)</span>
         </>
+    );
+}
+
+/**
+ * Rótulo de campo com o "o que é isto?" ao lado (pedido do usuário, 08/10/2026: explicar todo
+ * campo ao passar o mouse). O ícone fica FORA do <label>: clicar nele não pode focar o campo.
+ * Sem texto, fica só o rótulo. `como="span"` para o rótulo de um gatilho que não é campo
+ * (Família, Ambientes, Categoria) e `className` sem margem: a margem é da linha.
+ */
+export function RotuloComExplicacao({ htmlFor, id, explicacao, nome, className, como = 'label', children }) {
+    const Rotulo = como;
+
+    return (
+        <div className="mb-1 flex min-w-0 items-center gap-1" data-rotulo>
+            <Rotulo id={id} htmlFor={como === 'label' ? htmlFor : undefined} className={className}>{children}</Rotulo>
+            <Explicacao texto={explicacao} nome={nome} />
+        </div>
     );
 }
 

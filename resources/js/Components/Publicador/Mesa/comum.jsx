@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import { AlertCircle } from 'lucide-react';
-import Explicacao from '../Explicacao';
+import Explicacao from '@/Components/Explicacao';
 import { cn } from '@/lib/utils';
 
 // ─── Base do formulário do anúncio (3 etapas, 04/10/2026) ───────────────────

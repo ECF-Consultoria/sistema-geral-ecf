@@ -79,9 +79,10 @@ test('Campo: caixa "Não se aplica" só onde o servidor oferece, e o controle tr
     assert.ok(campo.includes('onMudar(campo.id, { naoSeAplica: e.target.checked })'));
 });
 
-test('Campo: gancho opcional `explicacao` vira title e aria-description do rótulo, sem buscar nada', () => {
+test('Campo: `explicacao` vira o ícone ao lado do rótulo (sem title: seriam dois balões), sem buscar nada', () => {
     assert.ok(campo.includes('export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explicacao })'));
-    assert.ok(campo.includes('title={ajuda} aria-description={ajuda}'));
+    assert.ok(campo.includes('explicacao={ajuda} nome={campo.nome}'));
+    assert.ok(! /title=\{ajuda\}|aria-description=/.test(campo), 'o title e o aria-description antigos saíram');
     assert.ok(! /axios|route\(|fetch\(|useEffect/.test(campo), 'o campo não busca dado nenhum');
 });
 

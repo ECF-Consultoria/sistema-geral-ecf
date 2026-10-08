@@ -29,6 +29,43 @@ export function camposDaDefinicao(grupos) {
     return (Array.isArray(grupos) ? grupos : []).flatMap((g) => (Array.isArray(g?.campos) ? g.campos : []));
 }
 
+// ─── Eixo de variação por PRODUTO, não por categoria ────────────────────────
+//
+// O campo que É um eixo de variação (`eixo_do_portal`: 'cor', 'material'…) vem na
+// definição da categoria, e quem decide se ele aparece é o PRODUTO: some só quando
+// alguma variação usa aquele eixo (o valor vem da variação). A cadeira que varia por
+// cor informa o material aqui; a que varia por material, não. É a mesma regra do
+// servidor (`FichaTecnicaDaCategoria::doProduto`), que ignora o campo ao gravar.
+
+/**
+ * As chaves dos eixos usados nas variações (`eixo_rotulo`: "Cor", "Material"…), a partir do
+ * vocabulário do servidor ({ cor: 'Cor', … }). Aceita a chave direto também. Vazio não conta.
+ */
+export function eixosEmUso(variacoes, eixosDoVocabulario) {
+    const porRotulo = new Map();
+    Object.entries(eixosDoVocabulario ?? {}).forEach(([chave, rotulo]) => {
+        porRotulo.set(String(rotulo).trim().toLowerCase(), chave);
+        porRotulo.set(String(chave).trim().toLowerCase(), chave);
+    });
+    const usados = [];
+    (Array.isArray(variacoes) ? variacoes : []).forEach((v) => {
+        const texto = String(v?.eixo_rotulo ?? v?.eixo ?? '').trim().toLowerCase();
+        const chave = texto === '' ? null : porRotulo.get(texto);
+        if (chave && ! usados.includes(chave)) usados.push(chave);
+    });
+
+    return usados;
+}
+
+/** A definição como vale para o produto: sem os campos que são eixo de alguma variação dele. Grupo vazio sai. */
+export function gruposDoProduto(grupos, eixos) {
+    const usados = new Set(Array.isArray(eixos) ? eixos : []);
+
+    return (Array.isArray(grupos) ? grupos : [])
+        .map((g) => ({ ...g, campos: (Array.isArray(g?.campos) ? g.campos : []).filter((c) => ! (c?.eixo_do_portal && usados.has(c.eixo_do_portal))) }))
+        .filter((g) => g.campos.length > 0);
+}
+
 /**
  * Do que o servidor já gravou (`salvos`: [{ id, nome, valor, valor_id, unidade }]) para o estado dos campos.
  * Em campo de lista o que se guarda é o id da opção (`valor_id`); nos demais, o valor.

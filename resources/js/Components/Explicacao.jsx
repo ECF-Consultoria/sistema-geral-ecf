@@ -10,12 +10,14 @@ import { Info } from 'lucide-react';
 // pelo balão (`aria-describedby`), que existe sempre no DOM, só invisível.
 //
 // Balão próprio (CSS) em vez do `title` nativo: o nativo demora a abrir, não
-// abre no foco do teclado e somaria um segundo balão por cima deste.
+// abre no foco do teclado e somaria um segundo balão por cima deste. Por isso
+// quem usa este componente tira o `title` do rótulo.
 //
-// Fica FORA do <label> (no `Campo`): botão dentro do rótulo focaria o campo a
-// cada clique no ícone.
+// Fica FORA do <label>: botão dentro do rótulo focaria o campo a cada clique.
 //
-// O texto vem do servidor (`ExplicacaoDeAtributos`): glossário, ML ou IA.
+// Componente compartilhado (editor interno e ficha do produto do Portal do
+// Cliente). Não busca nada: o texto vem pronto do servidor. Também é lido pelo
+// gate de sigilo do Portal, então o comentário fica neutro.
 
 export default function Explicacao({ texto, nome = null }) {
     const id = useId();

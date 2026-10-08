@@ -1,13 +1,18 @@
+import Explicacao from '@/Components/Explicacao';
 import { LIMITE_DESCRICAO } from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 
 // ─── Bloco "Descrição do produto" da ficha ──────────────────────────────────
 //
-// Texto livre escrito pelo cliente; vai junto no "Salvar produto".
+// Texto livre escrito pelo cliente; vai junto no "Salvar produto". `explicacao`:
+// o "o que é isto?" ao lado do título (texto do servidor).
 
-export default function FichaDescricao({ descricao, salvando }) {
+export default function FichaDescricao({ descricao, salvando, explicacao = null }) {
     return (
         <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-5 lg:pt-3" data-ficha-descricao>
-            <h2 className="text-[20px] font-bold text-white">Descrição do produto</h2>
+            <div className="flex items-center gap-1">
+                <h2 className="text-[20px] font-bold text-white">Descrição do produto</h2>
+                <Explicacao texto={explicacao} nome="Descrição do produto" />
+            </div>
             <p className="mt-1 text-[14px] text-white/70">Conte para que serve, os diferenciais, os cuidados e o que acompanha o produto.</p>
 
             {descricao.erro && (

@@ -101,4 +101,27 @@ return [
         'estoque' => 'Quantas unidades desta variação você tem prontas para entrega agora. Com 0, ela fica indisponível até você repor.',
         'estoque_por_deposito' => 'Quantas unidades você tem em cada depósito. O total desta variação é a soma dos depósitos.',
     ],
+
+    /*
+    | Campos fixos da ficha do produto no PORTAL DO CLIENTE (Mapeamento Estrutural → Produtos).
+    | Quem lê é o cliente: mesmas regras acima, com o sigilo levado a sério — nenhum texto pode
+    | dizer para onde o cadastro vai. O Estoque NÃO está aqui: vem de `campos.estoque` (um texto só
+    | para as duas telas). `ExplicacaoDeAtributos::camposDoPortal()` descarta o que revelar o destino.
+    */
+    'portal_campos' => [
+        'nome' => 'O nome do produto como você o chama no dia a dia. Vale para todas as variações.',
+        'familia' => 'Família é a linha de design (ex.: Farmhouse), não a cor do produto. Junta produtos que combinam entre si.',
+        'ambientes' => 'Onde o produto costuma ser usado (sala, quarto, escritório…). Pode escolher mais de um.',
+        'categoria' => 'O tipo do produto. É a categoria que define quais características aparecem na ficha técnica.',
+        'ref' => 'Código que você usa para identificar esta variação no seu estoque. Cada variação precisa do seu, sem repetir.',
+        'eixo' => 'O que muda de uma variação para outra: cor, tamanho, voltagem, material ou sabor. Use Outro se não for nenhum desses.',
+        'valor' => 'Como é esta variação no eixo escolhido. Ex.: com o eixo Cor, o valor é Natural, Preto ou Branco.',
+        'custo' => 'Quanto uma unidade desta variação custa para você (compra ou produção), em reais.',
+        'volumes' => 'Cada volume é uma caixa em que o produto vai embalado. Produto que vai em mais de uma caixa tem um volume para cada.',
+        'comprimento' => 'Comprimento da caixa com o produto embalado, em centímetros.',
+        'largura' => 'Largura da caixa com o produto embalado, em centímetros.',
+        'altura' => 'Altura da caixa com o produto embalado, em centímetros.',
+        'peso' => 'Peso da caixa com o produto embalado, em quilos.',
+        'descricao' => 'Texto livre sobre o produto: para que serve, os diferenciais, os cuidados e o que acompanha.',
+    ],
 ];

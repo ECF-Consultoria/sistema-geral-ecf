@@ -1,13 +1,20 @@
 import { Trash2 } from 'lucide-react';
+import { RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { MEDIDAS } from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { cn } from '@/lib/utils';
 
 // ─── Um volume (caixa) da variação, em cartão (REF-2, 167-19) ───────────────
 // Só coleta as medidas; peso total, cubagem e frete são do servidor (D-28).
+// Cada medida leva o "o que é isto?" (`ficha.explicacoes`, textos do servidor).
+
+/** Medida → chave da explicação dela. */
+const EXPLICACAO_DA_MEDIDA = { c: 'comprimento', l: 'largura', a: 'altura', kg: 'peso' };
 
 const CAMPO = 'h-11 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 py-0 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-8';
 
 export default function CartaoVolume({ variacao, indice, caixa, ficha }) {
+    const explicacoes = ficha.explicacoes ?? {};
+
     return (
         <div className="rounded-[10px] border border-white/[0.08] bg-black/20 px-3 py-2.5 lg:py-2" data-volume-cartao>
             <div className="mb-1.5 flex items-center justify-between lg:mb-0.5">
@@ -20,7 +27,8 @@ export default function CartaoVolume({ variacao, indice, caixa, ficha }) {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {MEDIDAS.map((m) => (
                     <div key={m.chave}>
-                        <label className="mb-1 block text-[12px] leading-4 text-white/60" htmlFor={`cx-${variacao._k}-${indice}-${m.chave}`}>{m.rotulo}</label>
+                        <RotuloComExplicacao className="block text-[12px] leading-4 text-white/60" htmlFor={`cx-${variacao._k}-${indice}-${m.chave}`}
+                            explicacao={explicacoes[EXPLICACAO_DA_MEDIDA[m.chave]]} nome={m.rotulo}>{m.rotulo}</RotuloComExplicacao>
                         <input id={`cx-${variacao._k}-${indice}-${m.chave}`} className={cn(CAMPO, 'tabular-nums')} inputMode="decimal"
                             value={caixa[m.chave]} onChange={(e) => ficha.mudarCaixa(variacao, indice, m.chave, e.target.value)} />
                     </div>

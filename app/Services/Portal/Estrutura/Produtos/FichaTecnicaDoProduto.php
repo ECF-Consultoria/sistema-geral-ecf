@@ -5,6 +5,7 @@ namespace App\Services\Portal\Estrutura\Produtos;
 use App\Models\Company;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
+use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,13 @@ use InvalidArgumentException;
  * Contra a definição da categoria do produto ({@see FichaTecnicaDaCategoria}): obrigatório
  * presente, opção de lista válida, número numérico, unidade permitida. Id que a categoria
  * não conhece é IGNORADO (a tela pode estar com a definição de antes) — nunca gravado.
+ *
+ * ### Eixo do produto
+ * O campo que é o eixo de alguma variação do produto (`eixo_do_portal`, ver
+ * {@see FichaTecnicaDaCategoria::doProduto()}) não vale para este produto: o valor vem da
+ * variação. Ele é IGNORADO na entrada e, como gravar é substituir, a linha antiga dele sai
+ * (produto que passou a variar por material perde o "Material" da ficha). As variações já
+ * estão gravadas quando a ficha chega: a tela grava as linhas antes, no mesmo "Salvar produto".
  *
  * ### Sigilo
  * Nenhuma mensagem de erro cita a origem dos campos; os rótulos vêm da definição, já filtrada.
@@ -90,14 +98,16 @@ class FichaTecnicaDoProduto
             ]);
         }
 
-        $campos = FichaTecnicaDaCategoria::camposPorId($this->definicao->definicao($categoria));
-        if ($campos === []) {
+        $definicao = $this->definicao->definicao($categoria);
+        if ($definicao === []) {
             throw ValidationException::withMessages([
                 'atributos' => 'A ficha técnica desta categoria não está disponível agora. Tente novamente em instantes.',
             ]);
         }
 
-        // id => entrada (a última vence); ids que a categoria não conhece não entram.
+        $campos = FichaTecnicaDaCategoria::camposPorId(FichaTecnicaDaCategoria::doProduto($definicao, self::eixosDoProduto($produto)));
+
+        // id => entrada (a última vence); ids que a categoria não conhece (ou que são o eixo do produto) não entram.
         $porId = [];
         foreach ($recebidos as $entrada) {
             if (is_array($entrada) && isset($entrada['id']) && isset($campos[(string) $entrada['id']])) {
@@ -154,6 +164,25 @@ class FichaTecnicaDoProduto
             "Ficha técnica de “{$produto->nome}” gravada", ['produto_id' => (int) $produto->id, 'campos' => count($preenchidos)]);
 
         return $this->salvos($produto);
+    }
+
+    /**
+     * Os eixos (chaves de {@see EstruturaProdutoVariacao::EIXOS}) usados em alguma variação do produto.
+     *
+     * @return list<string>
+     */
+    public static function eixosDoProduto(EstruturaProduto $produto): array
+    {
+        return EstruturaProdutoVariacao::query()
+            ->where('company_id', $produto->company_id)
+            ->where('produto_id', $produto->id)
+            ->whereNotNull('eixo')
+            ->where('eixo', '<>', '')
+            ->distinct()
+            ->pluck('eixo')
+            ->map(fn ($e) => (string) $e)
+            ->values()
+            ->all();
     }
 
     /**

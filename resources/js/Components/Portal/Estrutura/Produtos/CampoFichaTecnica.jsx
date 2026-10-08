@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { Obrigatorio } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { Obrigatorio, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { aceitaNaoSeAplica, ehMultivalor, idDeLista, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
 import { cn } from '@/lib/utils';
 
@@ -9,15 +9,16 @@ import { cn } from '@/lib/utils';
 // campos da ficha. O rótulo é o `nome` do servidor; o `id` do campo só serve de
 // chave e de âncora interna, nunca é mostrado.
 //
-// `explicacao` (opcional, texto): a ajuda do campo, mostrada no rótulo (title) e
-// lida pelo leitor de tela (aria-description). Este componente não busca nada:
-// quem tiver o texto passa por aqui.
+// `explicacao` (opcional, texto): o "o que é isto?" do campo — o ícone de
+// informação ao lado do rótulo (componente compartilhado `Explicacao`, balão no
+// hover e no foco do teclado). Sem `title` no rótulo: seriam dois balões. Este
+// componente não busca nada: o texto vem com a definição do campo.
 //
 // "Não se aplica": no campo que o servidor marca, uma caixa abaixo do controle.
 // Marcada, o controle fica travado e o que estava digitado não vai no salvar.
 
 const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
-const ROTULO = 'mb-1 block text-[13px] font-medium text-white/80';
+const ROTULO = 'block text-[13px] font-medium text-white/80';
 const BOTAO_OPCAO = 'h-11 min-w-[64px] flex-1 px-3 text-[14px] lg:h-9 lg:flex-none';
 
 /**
@@ -147,10 +148,10 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
     return (
         <div data-campo-tecnico data-tipo={campo.tipo} data-obrigatorio={campo.obrigatorio ? 'sim' : 'nao'}
             data-nao-se-aplica={naoSeAplica ? 'sim' : undefined}>
-            <label id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
-                title={ajuda} aria-description={ajuda}>
+            <RotuloComExplicacao id={rotuloId} htmlFor={campo.tipo === 'sim_nao' ? undefined : id} className={ROTULO}
+                explicacao={ajuda} nome={campo.nome}>
                 {campo.nome}{campo.obrigatorio && <> <Obrigatorio /></>}
-            </label>
+            </RotuloComExplicacao>
             {/* Com "Não se aplica" marcado, o controle inteiro (chips, unidade, Sim/Não) fica travado. */}
             <fieldset disabled={naoSeAplica} className={cn('min-w-0 border-0 p-0', naoSeAplica && 'opacity-40')}>
                 {controle}

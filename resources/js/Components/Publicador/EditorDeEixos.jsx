@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Botao, CLASSE_INPUT } from '@/Components/Portal/Estrutura/comum';
-import Explicacao from './Explicacao';
+import Explicacao from '@/Components/Explicacao';
 import { cn } from '@/lib/utils';
 
 // ─── As variações do anúncio (E4) ───────────────────────────────────────────

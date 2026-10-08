@@ -74,7 +74,7 @@ test('Campo com rótulo que não é texto — `nome` dá o nome ao leitor de tel
 });
 
 test('Explicacao.jsx — Info 14px, abre no hover E no foco do teclado, só 13px/400, sem title nativo', () => {
-    const f = lerSemComentarios(`${BASE}/Explicacao.jsx`);
+    const f = lerSemComentarios('resources/js/Components/Explicacao.jsx');
     assert.match(f, /import \{ Info \} from 'lucide-react'/);
     assert.match(f, /<Info size=\{14\} aria-hidden="true" \/>/);
     assert.match(f, /group-hover\/explicacao:visible/);

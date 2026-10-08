@@ -47,7 +47,7 @@ const NORMALIZADOS = [
     `${BASE}/EditorDeEixos.jsx`,
     `${BASE}/GradeVariantes.jsx`,
     // O "o que é isto?" de todo campo (08/10/2026).
-    `${BASE}/Explicacao.jsx`,
+    'resources/js/Components/Explicacao.jsx',
 ];
 
 for (const caminho of [...CARDS, ...COM_ROTA, ...NORMALIZADOS]) {

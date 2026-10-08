@@ -4,11 +4,13 @@ namespace App\Services\Portal\Estrutura\Produtos;
 
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
+use App\Services\Publicador\ExplicacaoDeAtributos;
 use App\Support\Publicador\Schema\AtributoClassificado;
 use App\Support\Publicador\Schema\CategorySchema;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * A DEFINIÇÃO da ficha técnica de uma categoria: os campos que o cliente preenche
@@ -30,9 +32,7 @@ use Illuminate\Support\Facades\Cache;
  * ficha não mostrava). Ficam de fora:
  * - os de sistema (read_only/inferred/fixed), os de dado de variante
  *   (`variation_attribute`: SKU, GTIN, cor principal...), condição e pacote;
- * - o atributo que é o EIXO da variação que o portal já trata por eixo/valor
- *   ({@see EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO}: a cor é a variação,
- *   então COLOR não entra) — só quando a categoria deixa variar por ele;
+ * - o atributo que é o EIXO da variação do PRODUTO — ver "Eixo por produto" abaixo;
  * - o que a ficha já cobre em outro lugar (SKU, volumes) e a grade de medidas;
  * - medida do produto que a categoria não exige ({@see self::IDS_MEDIDA_DO_PRODUTO}).
  * `allow_variations` sozinho NÃO tira mais o campo ("Material do estofamento").
@@ -40,6 +40,20 @@ use Illuminate\Support\Facades\Cache;
  * Os `hidden` editáveis (a seção AVANCADO do editor) vão num grupo próprio no fim,
  * {@see self::GRUPO_MAIS_DETALHES}, aberto como os outros (a ficha não recolhe nada).
  * Um deles que a categoria exija fica no grupo normal: o rótulo do grupo diz "opcional".
+ *
+ * ### Eixo por produto, não por categoria
+ * O atributo que corresponde a um eixo do portal ({@see EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO})
+ * e que a categoria deixa variar (`allow_variations`) ENTRA na definição, marcado com
+ * `eixo_do_portal` (ex.: MATERIAL → 'material'). Quem o esconde é a ficha do produto, e só
+ * quando o produto usa aquele eixo em alguma variação ({@see self::doProduto()}): a cadeira
+ * que varia por cor informa o material aqui; a que varia por material, não (o valor vem da
+ * variação). A definição é da categoria e não sabe o eixo de produto nenhum — por isso a
+ * marca, em vez de tirar o campo de todos os produtos da categoria (como era até 08/10/2026).
+ * Sem `allow_variations` o eixo é atributo comum e não leva marca (o Sincronizar faz igual).
+ *
+ * ### Explicação de cada campo
+ * {@see self::definicaoComExplicacoes()} acrescenta `explicacao` (texto curto, NEUTRO) a cada
+ * campo, de {@see ExplicacaoDeAtributos::paraPortal()} — que já aplica o filtro de sigilo.
  *
  * ### "Não se aplica"
  * O campo que o editor deixa marcar "Não se aplica" (`aceitaNaoSeAplica`: atributo do
@@ -102,10 +116,22 @@ class FichaTecnicaDaCategoria
         'list'        => self::TIPO_LISTA,
     ];
 
+    /** Tipo da tela → `value_type`, só para o texto montado da explicação ("…, em centímetros."). */
+    private const TIPO_PARA_VALUE_TYPE = [
+        self::TIPO_TEXTO          => 'string',
+        self::TIPO_NUMERO         => 'number',
+        self::TIPO_NUMERO_UNIDADE => 'number_unit',
+        self::TIPO_SIM_NAO        => 'boolean',
+        self::TIPO_LISTA          => 'list',
+    ];
+
     /** Mesmos termos que o teste de sigilo procura no JSON entregue ao cliente. */
     private const TERMOS_PROIBIDOS = '/mercado|an[uú]ncio|publicar|\bmlb|\bml\b/iu';
 
-    public function __construct(private MlCatalogoMetaService $catalogo) {}
+    public function __construct(
+        private MlCatalogoMetaService $catalogo,
+        private ExplicacaoDeAtributos $explicacoes,
+    ) {}
 
     /**
      * A definição da categoria, em grupos. Lista vazia = o catálogo não respondeu (ou a
@@ -124,6 +150,95 @@ class FichaTecnicaDaCategoria
         }
 
         return self::daAtributos($atributos);
+    }
+
+    /**
+     * A definição para a TELA: a mesma de {@see self::definicao()}, com `explicacao` em cada campo
+     * (o "o que é isto?" ao passar o mouse). Se a explicação falhar, a ficha segue sem ela — nunca
+     * sem os campos.
+     *
+     * @return array<int, array{grupo: string, campos: array<int, array>}>
+     */
+    public function definicaoComExplicacoes(string $categoriaId): array
+    {
+        $grupos = $this->definicao($categoriaId);
+        if ($grupos === []) {
+            return $grupos;
+        }
+
+        $crus = [];
+        foreach ($this->catalogo->atributos($categoriaId) as $a) {
+            if (is_array($a) && trim((string) ($a['id'] ?? '')) !== '') {
+                $crus[trim((string) $a['id'])] = $a;
+            }
+        }
+
+        $pedidos = [];
+        foreach (self::camposPorId($grupos) as $id => $campo) {
+            $cru = $crus[$id] ?? [];
+            $pedidos[] = [
+                'id' => $id,
+                'nome' => $campo['nome'],
+                'tooltip' => is_string($cru['tooltip'] ?? null) ? $cru['tooltip'] : null,
+                'hint' => is_string($cru['hint'] ?? null) ? $cru['hint'] : null,
+                // O texto montado fala pelo controle que a tela mostra (lista, número…), não pelo `value_type`.
+                'tipo' => self::TIPO_PARA_VALUE_TYPE[$campo['tipo']] ?? 'string',
+                'unidades' => array_column($campo['unidades'], 'id'),
+                'unidade_padrao' => $campo['unidade_padrao'],
+                'valores' => array_map(fn ($v) => ['name' => $v['nome']], $campo['valores']),
+            ];
+        }
+
+        try {
+            $textos = $this->explicacoes->paraPortal($pedidos);
+        } catch (\Throwable $e) {
+            Log::warning('[Estrutura Produtos] explicações da ficha técnica indisponíveis', ['erro' => $e->getMessage()]);
+
+            return $grupos;
+        }
+
+        foreach ($grupos as &$grupo) {
+            foreach ($grupo['campos'] as &$campo) {
+                $campo['explicacao'] = $textos[$campo['id']] ?? null;
+            }
+            unset($campo);
+        }
+        unset($grupo);
+
+        return $grupos;
+    }
+
+    /**
+     * A definição como vale para UM produto: sem os campos que são o eixo de alguma variação dele
+     * (`eixo_do_portal` entre os eixos usados). Grupo que fica vazio sai. A tela aplica a mesma
+     * regra (`gruposDoProduto` em `@/lib/fichaTecnica`).
+     *
+     * @param  array<int, array{grupo: string, campos: array<int, array>}>  $grupos
+     * @param  iterable<string|null>  $eixosDoProduto  chaves de {@see EstruturaProdutoVariacao::EIXOS} usadas nas variações
+     * @return array<int, array{grupo: string, campos: array<int, array>}>
+     */
+    public static function doProduto(array $grupos, iterable $eixosDoProduto): array
+    {
+        $usados = [];
+        foreach ($eixosDoProduto as $eixo) {
+            $eixo = trim((string) $eixo);
+            if ($eixo !== '') {
+                $usados[$eixo] = true;
+            }
+        }
+
+        $saida = [];
+        foreach ($grupos as $grupo) {
+            $campos = array_values(array_filter(
+                $grupo['campos'],
+                fn (array $c) => ! isset($usados[(string) ($c['eixo_do_portal'] ?? '')]),
+            ));
+            if ($campos !== []) {
+                $saida[] = ['grupo' => $grupo['grupo'], 'campos' => $campos];
+            }
+        }
+
+        return $saida;
     }
 
     /**
@@ -214,9 +329,12 @@ class FichaTecnicaDaCategoria
     }
 
     /**
-     * Classifica os atributos como o editor interno faria num produto novo, com os eixos
-     * que o portal trata como variação. Só id/nome/tags/tipo entram: é o que decide papel,
-     * seção e "Não se aplica"; opções e unidades são lidas aqui mesmo, com o filtro de sigilo.
+     * Classifica os atributos como o editor interno faria num produto novo SEM eixo: a definição
+     * é da categoria e não sabe por onde cada produto varia. O atributo que pode ser eixo do
+     * portal sai daqui como atributo de produto e recebe a marca `eixo_do_portal` em
+     * {@see self::campoDe()}; quem o tira é {@see self::doProduto()}. Só id/nome/tags/tipo entram:
+     * é o que decide papel, seção e "Não se aplica"; opções e unidades são lidas aqui mesmo,
+     * com o filtro de sigilo.
      *
      * @param  list<array>  $atributos
      * @return array<string, AtributoClassificado>
@@ -224,8 +342,6 @@ class FichaTecnicaDaCategoria
     private static function classificar(array $atributos): array
     {
         $enxutos = [];
-        $eixos = [];
-        $doEixo = array_values(EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO);
 
         foreach ($atributos as $atributo) {
             $id = trim((string) ($atributo['id'] ?? ''));
@@ -235,12 +351,6 @@ class FichaTecnicaDaCategoria
             $tags = ClassificadorAtributos::tags($atributo['tags'] ?? []);
             $enxutos[] = ['id' => $id, 'name' => (string) ($atributo['name'] ?? $id), 'tags' => $tags,
                 'value_type' => (string) ($atributo['value_type'] ?? 'string')];
-
-            // Só vira eixo onde a categoria deixa variar por ele — senão é atributo comum
-            // (o Sincronizar faz igual: sem `allow_variations`, a variação vai como eixo próprio).
-            if (in_array($id, $doEixo, true) && in_array('allow_variations', $tags, true)) {
-                $eixos[] = $id;
-            }
         }
 
         if ($enxutos === []) {
@@ -249,7 +359,7 @@ class FichaTecnicaDaCategoria
 
         $schema = CategorySchema::dasFontes('', [], $enxutos, [], []);
 
-        return (new ClassificadorAtributos())->classificar($schema, new ContextoClassificacao('new', $eixos))->atributos;
+        return (new ClassificadorAtributos())->classificar($schema, new ContextoClassificacao('new', []))->atributos;
     }
 
     private static function temObrigatorio(array $grupo): bool
@@ -332,6 +442,12 @@ class FichaTecnicaDaCategoria
 
         $max = (int) ($atributo['value_max_length'] ?? 0);
 
+        // Só é eixo do portal onde a categoria deixa variar por ele — senão é atributo comum
+        // (o Sincronizar faz igual: sem `allow_variations`, a variação vai como eixo próprio).
+        $eixoDoPortal = self::temTag($tags, 'allow_variations')
+            ? (array_flip(EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO)[$id] ?? null)
+            : null;
+
         return [
             'id'            => $id,
             'nome'          => $nome,
@@ -344,6 +460,9 @@ class FichaTecnicaDaCategoria
             'max'           => $max > 0 ? $max : null,
             // Mesma regra do editor interno; obrigatório da ficha nunca aceita (lá também não).
             'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio,
+            // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela
+            // usa só para esconder o campo no produto que varia por ele; nunca é mostrada.
+            'eixo_do_portal' => $eixoDoPortal,
         ];
     }
 

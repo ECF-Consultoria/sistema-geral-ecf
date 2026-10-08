@@ -6,6 +6,7 @@ import { gravarVariacoes, mensagemDeFalha } from '@/lib/produtosGravacao';
 import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNavegacao';
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
+import { eixosEmUso } from '@/lib/fichaTecnica';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -62,7 +63,7 @@ const idDoProduto = (lista, produto) => lista.find((v) => v.produto_id)?.produto
 /** O que a pessoa vê e pode mudar, para comparar o rascunho com o que a ficha abriu. */
 const conteudo = (lista) => JSON.stringify((lista ?? []).map((v) => ({ id: v.id ?? null, ...campoEditaveis(v), volumes: v.volumes_digitados ?? null })));
 
-export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null }) {
+export default function useFichaProduto({ linhas = [], produto = null, vocabulario, limites, fichaTecnica = null, descricao: descricaoInicial = null, explicacoes = null }) {
     // Rascunho guardado no navegador (FE-CR-02): oferecido só quando difere do que a ficha abriu.
     const [inicio] = useState(() => {
         const iniciais = linhas.length
@@ -117,7 +118,9 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     const primeira = vars[0];
     const novoProduto = ! primeira.produto_id;
     // Ficha técnica: os campos da categoria escolhida; mexer em um deles protege a saída sem salvar.
-    const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id, aoAlterar: () => setAlterado(true) });
+    // O campo que é o eixo de alguma variação deste produto (ex.: Material, no que varia por material) some.
+    const tecnica = useFichaTecnica({ salvos: fichaTecnica?.salvos ?? [], categoria: primeira.categoria_ml_id,
+        eixos: eixosEmUso(vars, vocabulario?.eixos), aoAlterar: () => setAlterado(true) });
     // Descrição do produto: texto livre, gravado no mesmo Salvar (depois da ficha técnica).
     const descricao = useDescricaoProduto({ inicial: descricaoInicial ?? '', aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
@@ -331,5 +334,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
         tecnica, descricao,
+        // O "o que é isto?" dos campos fixos (nome, família, Ref, custo, volumes…), do servidor.
+        explicacoes: explicacoes ?? {},
     };
 }

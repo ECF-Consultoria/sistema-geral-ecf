@@ -5,11 +5,13 @@ import CampoFichaTecnica from '@/Components/Portal/Estrutura/Produtos/CampoFicha
 //
 // Aparece quando o produto tem categoria. Mostra TODOS os campos dela de uma
 // vez, agrupados, e quem preenche é o cliente; o que ele digita vai junto no
-// "Salvar produto". Os grupos e os rótulos vêm do servidor, como estão.
+// "Salvar produto". Os grupos e os rótulos vêm do servidor, como estão, cada
+// campo com a sua explicação (ícone ao lado do rótulo). O campo que é o eixo de
+// alguma variação do produto já chega fora de `tecnica.grupos`.
 
 export default function FichaTecnica({ tecnica, salvando }) {
     if (! tecnica.temCategoria) return null;
-    const grupos = tecnica.definicao?.grupos ?? [];
+    const grupos = tecnica.grupos ?? [];
 
     return (
         <section className="mt-2.5 rounded-[14px] border border-white/[0.08] bg-ecf-card p-4 lg:px-5 lg:pb-5 lg:pt-3" data-ficha-tecnica>
@@ -44,7 +46,7 @@ export default function FichaTecnica({ tecnica, salvando }) {
                         <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                             {(grupo.campos ?? []).map((campo) => (
                                 <CampoFichaTecnica key={campo.id} campo={campo} atual={tecnica.valores[campo.id]}
-                                    erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} />
+                                    erro={tecnica.erros[campo.id]} onMudar={tecnica.mudar} explicacao={campo.explicacao} />
                             ))}
                         </div>
                     </div>

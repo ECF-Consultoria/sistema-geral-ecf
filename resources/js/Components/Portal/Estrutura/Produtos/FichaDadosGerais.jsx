@@ -3,7 +3,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search, X } from 'lucide-react';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
-import { CaminhoCategoria, Obrigatorio, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { CaminhoCategoria, Obrigatorio, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { fotoDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
@@ -14,14 +14,16 @@ import { cn } from '@/lib/utils';
 // Família e ambiente só da lista da empresa, com criar-uma-vez (D-05/D-07); a
 // categoria é sempre escolhida, nunca aceita sozinha (D-06) — os pickers já
 // garantem. A escolha vale para o produto inteiro (o servidor olha a 1ª).
+// Cada rótulo leva o "o que é isto?" (`ficha.explicacoes`, textos do servidor).
 
 const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
-const ROTULO = 'mb-1 block text-[13px] font-medium text-white/80';
+const ROTULO = 'block text-[13px] font-medium text-white/80';
 const GATILHO = 'flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-black/40 px-3 text-left text-[14px] focus:border-ecf-yellow/40 focus:outline-none';
 const CONTEUDO = 'z-50 w-[var(--radix-popover-trigger-width)] [&>div]:w-full [&>div]:max-w-none';
 
 export default function FichaDadosGerais({ ficha, listas, onListas }) {
     const primeira = ficha.primeira;
+    const explicacoes = ficha.explicacoes ?? {};
     const [escolhendo, setEscolhendo] = useState(null);   // 'familia' | 'ambientes' | 'categoria' | null
     const fecharPicker = useRef(null);
 
@@ -60,16 +62,15 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
             <div className="mt-4 min-w-0 lg:mt-0">
                 <div className="md:grid md:grid-cols-[minmax(0,605fr)_minmax(0,496fr)] md:gap-6">
                     <div>
-                        <label className={ROTULO} htmlFor="ficha-nome">Nome do produto <Obrigatorio /></label>
+                        <RotuloComExplicacao className={ROTULO} htmlFor="ficha-nome" explicacao={explicacoes.nome} nome="Nome do produto">Nome do produto <Obrigatorio /></RotuloComExplicacao>
                         <input id="ficha-nome" className={CAMPO} value={primeira.nome} onChange={(e) => ficha.alterarNome(e.target.value)} placeholder="nome do produto" />
                     </div>
 
                     <div className="mt-3 md:mt-0">
-                        <span className={ROTULO}>Família</span>
+                        <RotuloComExplicacao como="span" className={ROTULO} explicacao={explicacoes.familia} nome="Família">Família</RotuloComExplicacao>
                         <Popover.Root open={escolhendo === 'familia'} onOpenChange={aoMudar('familia')}>
                             <Popover.Trigger asChild>
-                                <button type="button" className={cn(GATILHO, 'h-11 lg:h-9')} data-escolha="familia"
-                                    title="Família é a linha de design (ex.: Farmhouse), não a cor do produto.">
+                                <button type="button" className={cn(GATILHO, 'h-11 lg:h-9')} data-escolha="familia">
                                     {primeira.familia ? <span className="truncate text-white">{primeira.familia}</span> : <span className="text-white/30">escolher</span>}
                                     <ChevronDown size={16} className="shrink-0 text-white/60" aria-hidden="true" />
                                 </button>
@@ -86,7 +87,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                 </div>
 
                 <div className="mt-3">
-                    <span className={ROTULO}>Ambientes</span>
+                    <RotuloComExplicacao como="span" className={ROTULO} explicacao={explicacoes.ambientes} nome="Ambientes">Ambientes</RotuloComExplicacao>
                     <Popover.Root open={escolhendo === 'ambientes'} onOpenChange={aoMudar('ambientes')}>
                         {/* Gatilho e chips são irmãos (revisão FE-IN-09): o botão ocupa a caixa inteira por
                             baixo e os chips ficam por cima sem receber clique — só o X de cada um, que é um
@@ -124,7 +125,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                 </div>
 
                 <div className="mt-3">
-                    <span className={ROTULO}>Categoria do Mercado Livre</span>
+                    <RotuloComExplicacao como="span" className={ROTULO} explicacao={explicacoes.categoria} nome="Categoria">Categoria do Mercado Livre</RotuloComExplicacao>
                     <Popover.Root open={escolhendo === 'categoria'} onOpenChange={aoMudar('categoria')}>
                         {/* "Limpar categoria" é irmão do gatilho, posto sobre o lugar que o gatilho guarda para
                             ele (borda 1 + px-3 12 + seta 16 + folga 8 = 37 px da direita) — revisão FE-IN-09. */}

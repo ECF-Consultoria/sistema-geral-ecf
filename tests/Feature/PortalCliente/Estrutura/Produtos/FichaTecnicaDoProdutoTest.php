@@ -4,6 +4,8 @@ namespace Tests\Feature\PortalCliente\Estrutura\Produtos;
 
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
+use App\Models\EstruturaProdutoVariacao;
+use App\Services\Publicador\ExplicacaoDeAtributos;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -45,7 +47,11 @@ class FichaTecnicaDoProdutoTest extends TestCase
                     return Http::response(['message' => 'erro'], 500);
                 }
 
-                return Http::response($m[1] === 'MLB1' ? $this->atributosDaCategoria() : [], 200);
+                return Http::response(match ($m[1]) {
+                    'MLB1' => $this->atributosDaCategoria(),
+                    'MLB2' => $this->atributosComEixos(),
+                    default => [],
+                }, 200);
             }
 
             return Http::response([], 404);
@@ -88,6 +94,31 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ['id' => 'VOLTAGE', 'name' => 'Voltagem', 'value_type' => 'list', 'tags' => ['variation_attribute' => true]],
             ['id' => 'APARECE', 'name' => 'Aparece no Mercado Livre', 'value_type' => 'string', 'tags' => []],
         ];
+    }
+
+    /**
+     * Categoria onde Cor e Material DEIXAM variar (os dois são eixo do portal) e o Material é
+     * obrigatório: o produto que varia por cor precisa informá-lo; o que varia por material, não.
+     */
+    private function atributosComEixos(): array
+    {
+        return [
+            ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => []],
+            ['id' => 'COLOR', 'name' => 'Cor', 'value_type' => 'string', 'tags' => ['allow_variations' => true],
+                'values' => [['id' => '52049', 'name' => 'Preto'], ['id' => '52055', 'name' => 'Branco']]],
+            ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'string', 'tags' => ['allow_variations' => true, 'required' => true],
+                'values' => [['id' => '201', 'name' => 'Madeira'], ['id' => '202', 'name' => 'Metal']]],
+        ];
+    }
+
+    /** Variações do produto, uma por par [eixo, valor]. */
+    private function variacoes($empresa, EstruturaProduto $produto, array $pares): void
+    {
+        EstruturaProdutoVariacao::where('produto_id', $produto->id)->delete();
+        foreach ($pares as $i => [$eixo, $valor]) {
+            EstruturaProdutoVariacao::create(['company_id' => $empresa->id, 'produto_id' => $produto->id, 'ordem' => $i,
+                'codigo' => "EX-{$produto->id}-{$i}", 'nome' => $produto->nome, 'eixo' => $eixo, 'valor' => $valor]);
+        }
     }
 
     private function produto($empresa, array $extra = []): EstruturaProduto
@@ -136,10 +167,14 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $this->assertSame('numero', $grupos[1]['campos'][1]['tipo']);
         $this->assertSame('sim_nao', $grupos[2]['campos'][0]['tipo']);
 
-        $ids = array_column(array_merge(...array_column($grupos, 'campos')), 'id');
-        foreach (['ITEM_CONDITION', 'INTERNO', 'COLOR', 'VOLTAGE', 'APARECE', 'ESCONDIDO_ML'] as $fora) {
-            $this->assertNotContains($fora, $ids);
+        $campos = array_column(array_merge(...array_column($grupos, 'campos')), null, 'id');
+        foreach (['ITEM_CONDITION', 'INTERNO', 'VOLTAGE', 'APARECE', 'ESCONDIDO_ML'] as $fora) {
+            $this->assertArrayNotHasKey($fora, $campos);
         }
+        // A cor entra marcada como eixo do portal (quem a esconde é o produto que varia por cor).
+        $this->assertSame('cor', $campos['COLOR']['eixo_do_portal']);
+        $this->assertNull($campos['BRAND']['eixo_do_portal']);
+        $this->assertNull($campos['UPHOLSTERY_MATERIAL']['eixo_do_portal'], 'deixa variar, mas não é eixo do portal');
     }
 
     public function test_categoria_precisa_ser_um_id_valido(): void
@@ -226,10 +261,11 @@ class FichaTecnicaDoProdutoTest extends TestCase
     {
         $empresa = $this->empresaDoGabarito();
         $produto = $this->produto($empresa);
+        $this->variacoes($empresa, $produto, [['cor', 'Azul'], ['cor', 'Preto']]);
 
         $this->entrarNoPortal($empresa)
             ->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id), $this->ficha([
-                ['id' => 'COLOR', 'valor' => 'Azul'],          // variação: fora da ficha
+                ['id' => 'COLOR', 'valor' => 'Azul'],          // o produto varia por cor: fora da ficha
                 ['id' => 'ITEM_CONDITION', 'valor' => '2230284'], // sistema
                 ['id' => 'NAO_EXISTE', 'valor' => 'x'],
             ]))
@@ -451,6 +487,11 @@ class FichaTecnicaDoProdutoTest extends TestCase
 
     public function test_o_que_o_cliente_recebe_nao_revela_de_onde_vem_a_ficha(): void
     {
+        // O glossário também pode errar: um texto que cite a plataforma tem de ser neutralizado.
+        config([
+            'publicador_glossario.atributos.CAPACITY' => 'Quanto cabe, como pede o Mercado Livre no anúncio.',
+            'publicador_glossario.portal_campos.custo' => 'Custo usado para calcular o preço do anúncio.',
+        ]);
         $empresa = $this->empresaDoGabarito();
         $produto = $this->produto($empresa);
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
@@ -461,6 +502,20 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $this->assertContains('Mais detalhes (opcional)', array_column($campos->json('grupos'), 'grupo'), 'a varredura cobre o grupo novo');
         $this->assertSemOrigem($campos->getContent(), 'campos-categoria');
         $this->assertSemOrigem(json_encode(end($campos->json()['grupos']), JSON_UNESCAPED_UNICODE), 'grupo Mais detalhes');
+
+        // 1b. As explicações (o ícone ao lado de cada rótulo): todo campo tem uma, e nenhuma revela a origem.
+        $explicacoes = array_column(array_merge(...array_column($campos->json('grupos'), 'campos')), 'explicacao', 'id');
+        $this->assertSame(array_column(array_merge(...array_column($campos->json('grupos'), 'campos')), 'id'), array_keys($explicacoes));
+        foreach ($explicacoes as $id => $texto) {
+            $this->assertIsString($texto, "{$id} sem explicação");
+            $this->assertNotSame('', trim($texto), "{$id} com explicação vazia");
+        }
+        $this->assertSemOrigem(json_encode($explicacoes, JSON_UNESCAPED_UNICODE), 'explicações da ficha técnica');
+        // Glossário que citava a plataforma → texto montado; ajuda do catálogo que citava → texto montado.
+        $this->assertSame('Capacidade, em número.', $explicacoes['CAPACITY']);
+        $this->assertSame('Largura do assento, em centímetros.', $explicacoes['SEAT_WIDTH']);
+        // A marca tinha ajuda que cita a plataforma no catálogo; vale o glossário (neutro).
+        $this->assertSame(config('publicador_glossario.atributos.BRAND'), $explicacoes['BRAND']);
 
         // 2. A resposta do salvar.
         $salvou = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id), $this->ficha())->assertOk();
@@ -487,6 +542,15 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 $props = $props['props'] ?? $props;
                 $this->assertArrayHasKey('ficha_tecnica', $props);
                 $this->assertSemOrigem(json_encode($props['ficha_tecnica'], JSON_UNESCAPED_UNICODE), 'props da ficha');
+
+                // As explicações dos campos fixos: neutras; a que citava a plataforma sai (o campo fica sem ícone).
+                $fixos = $props['explicacoes_campos'];
+                $this->assertSemOrigem(json_encode($fixos, JSON_UNESCAPED_UNICODE), 'explicações dos campos fixos');
+                $this->assertArrayNotHasKey('custo', $fixos);
+                $this->assertSame(app(ExplicacaoDeAtributos::class)->camposFixos()['estoque'], $fixos['estoque'], 'o mesmo texto do editor');
+                foreach (['nome', 'familia', 'ambientes', 'categoria', 'ref', 'eixo', 'valor', 'volumes', 'comprimento', 'largura', 'altura', 'peso', 'descricao'] as $chave) {
+                    $this->assertNotEmpty($fixos[$chave] ?? null, "sem explicação para {$chave}");
+                }
             });
     }
 
@@ -654,6 +718,74 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ->assertJsonValidationErrors('atributos.MATERIAL');
 
         $this->assertSame(0, EstruturaProdutoAtributo::where('produto_id', $produto->id)->count());
+    }
+
+    // ─── Eixo de variação por PRODUTO, não por categoria (08/10/2026) ───────
+
+    public function test_produto_que_varia_por_cor_grava_o_material_e_o_que_varia_por_material_nao(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $definicao = $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB2']))->assertOk()->json('grupos');
+        $marcas = array_column(array_merge(...array_column($definicao, 'campos')), 'eixo_do_portal', 'id');
+        ksort($marcas);
+        $this->assertSame(['BRAND' => null, 'COLOR' => 'cor', 'MATERIAL' => 'material'], $marcas);
+
+        // Varia por cor: o material é do produto, obrigatório e gravado.
+        $porCor = $this->produto($empresa, ['categoria_ml_id' => 'MLB2']);
+        $this->variacoes($empresa, $porCor, [['cor', 'Preto'], ['cor', 'Branco']]);
+        $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $porCor->id), ['atributos' => [['id' => 'BRAND', 'valor' => 'X']]])
+            ->assertStatus(422)->assertJsonValidationErrors('atributos.MATERIAL');
+        $salvos = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $porCor->id), ['atributos' => [
+            ['id' => 'MATERIAL', 'valor' => '201'], ['id' => 'COLOR', 'valor' => '52049'],
+        ]])->assertOk()->json('salvos');
+        $this->assertSame(['MATERIAL' => '201'], array_column($salvos, 'valor_id', 'id'), 'a cor é a variação: ignorada');
+
+        // Varia por material: o material vem da variação — ignorado, e deixa de ser exigido.
+        $porMaterial = $this->produto($empresa, ['categoria_ml_id' => 'MLB2']);
+        $this->variacoes($empresa, $porMaterial, [['material', 'Madeira'], ['material', 'Metal']]);
+        $salvos = $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $porMaterial->id), ['atributos' => [
+            ['id' => 'MATERIAL', 'valor' => '202'], ['id' => 'COLOR', 'valor' => '52055'],
+        ]])->assertOk()->json('salvos');
+        $this->assertSame(['COLOR' => '52055'], array_column($salvos, 'valor_id', 'id'), 'sem variar por cor, a cor é do produto');
+        $this->assertFalse(EstruturaProdutoAtributo::where('produto_id', $porMaterial->id)->where('atributo_id', 'MATERIAL')->exists());
+    }
+
+    public function test_trocar_o_eixo_do_produto_tira_o_campo_e_a_linha_antiga_e_voltar_o_devolve(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+        $produto = $this->produto($empresa, ['categoria_ml_id' => 'MLB2']);
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
+        $gravado = fn () => EstruturaProdutoAtributo::where('produto_id', $produto->id)->orderBy('atributo_id')->pluck('valor_id', 'atributo_id')->all();
+
+        // Sem variação nenhuma (ou só "—"): os dois campos valem para o produto.
+        $this->variacoes($empresa, $produto, [[null, null]]);
+        $sessao->putJson($url, ['atributos' => [['id' => 'MATERIAL', 'valor' => '201'], ['id' => 'COLOR', 'valor' => '52049']]])->assertOk();
+        $this->assertSame(['COLOR' => '52049', 'MATERIAL' => '201'], $gravado());
+
+        // Passou a variar por material: o salvar seguinte limpa o material, mesmo que a tela o mande.
+        $this->variacoes($empresa, $produto, [['material', 'Madeira'], ['material', 'Metal']]);
+        $sessao->putJson($url, ['atributos' => [['id' => 'MATERIAL', 'valor' => '201'], ['id' => 'COLOR', 'valor' => '52049']]])->assertOk();
+        $this->assertSame(['COLOR' => '52049'], $gravado());
+
+        // Voltou a variar por cor: o material volta a ser do produto (e a cor sai).
+        $this->variacoes($empresa, $produto, [['cor', 'Preto'], ['cor', 'Branco']]);
+        $sessao->putJson($url, ['atributos' => [['id' => 'MATERIAL', 'valor' => '202'], ['id' => 'COLOR', 'valor' => '52049']]])->assertOk();
+        $this->assertSame(['MATERIAL' => '202'], $gravado());
+    }
+
+    public function test_os_eixos_do_produto_saem_das_variacoes_dele_e_so_dele(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa, ['categoria_ml_id' => 'MLB2']);
+        $outro = $this->produto($empresa, ['categoria_ml_id' => 'MLB2']);
+        $this->variacoes($empresa, $produto, [['cor', 'Preto'], ['cor', 'Branco'], [null, null], ['', null]]);
+        $this->variacoes($empresa, $outro, [['material', 'Metal']]);
+
+        $this->assertSame(['cor'], \App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto::eixosDoProduto($produto));
+        $this->assertSame(['material'], \App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto::eixosDoProduto($outro));
     }
 
     public function test_menos_um_digitado_num_texto_continua_texto(): void

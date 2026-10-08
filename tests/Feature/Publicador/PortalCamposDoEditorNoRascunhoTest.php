@@ -58,14 +58,31 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
         $this->empresa = Company::factory()->create();
     }
 
+    /**
+     * A cadeira com um MATERIAL que deixa variar (eixo do portal). As fixtures reais não têm
+     * MATERIAL com `allow_variations`; é o único acréscimo ao schema guardado.
+     */
+    private function comMaterialQueVaria(): void
+    {
+        $schema = self::schema(self::CADEIRA, function (array $f) {
+            $f['atributos'][] = ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'string',
+                'tags' => ['allow_variations' => true], 'attribute_group_id' => 'OTHERS', 'attribute_group_name' => 'Outros',
+                'values' => [['id' => '2748302', 'name' => 'Madeira'], ['id' => '2748303', 'name' => 'Metal']]];
+
+            return $f;
+        });
+        MlCategoriaSchema::findOrFail(self::CADEIRA)->update(['atributos' => $schema->atributos, 'schema_hash' => $schema->hash()]);
+        Cache::put('ml_meta_atributos_'.self::CADEIRA, $schema->atributos, 3600);
+    }
+
     /** @return array{0: EstruturaProduto, 1: PubProduto} */
-    private function cadeira(): array
+    private function cadeira(string $eixo = 'cor', array $valores = ['Azul', 'Preto']): array
     {
         $p = EstruturaProduto::create(['company_id' => $this->empresa->id, 'codigo' => 'CAD', 'nome' => 'Cadeira',
             'categoria_ml_id' => self::CADEIRA, 'categoria_ml_nome' => 'Cadeiras de Escritório']);
-        foreach ([['Azul', 3], ['Preto', 5]] as $i => [$cor, $estoque]) {
+        foreach ([[$valores[0], 3], [$valores[1], 5]] as $i => [$cor, $estoque]) {
             $v = EstruturaProdutoVariacao::create(['produto_id' => $p->id, 'company_id' => $this->empresa->id, 'ordem' => $i,
-                'codigo' => 'CAD-'.($i + 1), 'eixo' => 'cor', 'valor' => $cor, 'custo' => 100, 'estoque' => $estoque]);
+                'codigo' => 'CAD-'.($i + 1), 'eixo' => $eixo, 'valor' => $cor, 'custo' => 100, 'estoque' => $estoque]);
             EstruturaProdutoVolume::create(['variacao_id' => $v->id, 'ordem' => 0, 'comprimento' => 70, 'largura' => 60, 'altura' => 50, 'peso' => 12]);
             EstruturaOferta::create(['company_id' => $this->empresa->id, 'variacao_id' => $v->id, 'sku' => 'CAD-'.($i + 1), 'fase' => 'simples', 'nome' => "Cadeira {$cor}"]);
         }
@@ -157,5 +174,46 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
         $antes = PubRascunho::where('produto_id', $pub->id)->value('revisao');
         app(PortalParaRascunhoService::class)->preencher($pub);
         $this->assertSame($antes, PubRascunho::where('produto_id', $pub->id)->value('revisao'));
+    }
+
+    // ─── Eixo por produto (08/10/2026) ──────────────────────────────────────
+
+    public function test_material_do_produto_que_varia_por_cor_vai_para_a_ficha_do_rascunho(): void
+    {
+        $this->comMaterialQueVaria();
+        [$p, $pub] = $this->cadeira();
+        $this->gravarFicha($p, [['id' => 'MATERIAL', 'valor' => '2748302']]);
+        $this->assertSame('2748302', EstruturaProdutoAtributo::where('produto_id', $p->id)->where('atributo_id', 'MATERIAL')->value('valor_id'));
+
+        app(PortalParaRascunhoService::class)->preencher($pub);
+        $snap = $this->snap($pub);
+
+        $this->assertSame('2748302', $snap->atributos['MATERIAL']['value_id']);
+        $this->assertSame('Madeira', $snap->atributos['MATERIAL']['value_name']);
+        $this->assertSame('portal', $snap->atributos['MATERIAL']['origem']);
+        $this->assertSame(['COLOR'], array_map(fn ($e) => $e->attributeId(), $snap->eixos), 'a cor continua sendo o eixo');
+        $this->assertArrayNotHasKey('COLOR', $snap->atributos);
+        Http::assertNothingSent();
+    }
+
+    public function test_o_eixo_do_produto_nao_vira_atributo_do_produto_no_rascunho(): void
+    {
+        $this->comMaterialQueVaria();
+        [$p, $pub] = $this->cadeira('material', ['Madeira', 'Metal']);
+
+        // A ficha ignora o material (o valor vem da variação)…
+        $this->gravarFicha($p, [['id' => 'MATERIAL', 'valor' => '2748302']]);
+        $this->assertFalse(EstruturaProdutoAtributo::where('produto_id', $p->id)->where('atributo_id', 'MATERIAL')->exists());
+        // …e mesmo uma linha antiga (de quando o produto variava por outra coisa) não vira atributo do produto.
+        EstruturaProdutoAtributo::create(['company_id' => $this->empresa->id, 'produto_id' => $p->id, 'atributo_id' => 'MATERIAL',
+            'atributo_nome' => 'Material', 'valor' => 'Madeira', 'valor_id' => '2748302']);
+
+        app(PortalParaRascunhoService::class)->preencher($pub);
+        $snap = $this->snap($pub);
+
+        $this->assertArrayNotHasKey('MATERIAL', $snap->atributos, 'o material é o eixo, não atributo do produto');
+        $this->assertSame(['MATERIAL'], array_map(fn ($e) => $e->attributeId(), $snap->eixos));
+        $this->assertSame('ECF', $snap->atributos['BRAND']['value_name'], 'o resto da ficha chega');
+        Http::assertNothingSent();
     }
 }

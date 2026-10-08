@@ -1288,11 +1288,34 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
 - **O classificador recebe só id/nome/tags/value_type** (sem `technical_specs`): sem grupo `MAIN` tudo cai em FICHA, o
   que para o Portal dá no mesmo (PRINCIPAIS e FICHA entram juntos). Opções/unidades continuam lidas pelo Portal, com o
   filtro de sigilo.
-- **O eixo sai só se a categoria deixa variar por ele.** `EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO` (cor→COLOR,
-  tamanho→SIZE, voltagem→VOLTAGE, material→MATERIAL, sabor→FLAVOR) é a MESMA tabela do Sincronizar. MATERIAL sem
-  `allow_variations` é atributo comum e fica na ficha. A regra é por CATEGORIA, não por produto (a definição não sabe
-  o eixo do produto): onde MATERIAL deixa variar, ele sai da ficha mesmo de um produto que varia só por cor — e aí o
-  material desse produto não tem onde ser dito no Portal (era assim antes também).
+- **O eixo é decidido por PRODUTO, não por categoria (corrigido no mesmo dia).** `EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO`
+  (cor→COLOR, tamanho→SIZE, voltagem→VOLTAGE, material→MATERIAL, sabor→FLAVOR) é a MESMA tabela do Sincronizar. A
+  definição da categoria classifica SEM eixo e devolve o atributo-eixo com `eixo_do_portal` ('cor', 'material'…) só
+  quando ele tem `allow_variations`; sem a tag é atributo comum, sem marca. Quem tira é o produto: `FichaTecnicaDaCategoria::doProduto`
+  (servidor, eixos lidos de `estrutura_produto_variacoes.eixo`) e `gruposDoProduto`/`eixosEmUso` (tela, pelo
+  `eixo_rotulo` das variações AINDA NÃO SALVAS) — as duas regras têm de concordar. Na gravação o campo-eixo é ignorado
+  e, como gravar substitui, a linha antiga dele SAI. Isso só funciona porque o "Salvar produto" grava as linhas ANTES da
+  ficha (`useFichaProduto`); se essa ordem mudar, o servidor julga pelo eixo velho.
+  - **Efeito colateral aceito:** produto SEM eixo (ou só "Outro") passa a ver "Cor" na ficha; onde a categoria marca COLOR
+    `required` (camiseta MLB31447), ele vira obrigatório para esse produto. É o que o editor também exige.
+  - O teste da cadeira agora compara DOIS pares: ficha por cor × editor com eixo COLOR (44 campos) e ficha sem eixo ×
+    editor sem eixo (45: a cor volta). Nenhuma fixture real tem MATERIAL com `allow_variations`; o teste do Sincronizar
+    (`PortalCamposDoEditorNoRascunhoTest`) acrescenta um ao schema da cadeira.
+  - O Sincronizar não precisou mudar: `aplicarFicha` já pula `$id === $chaveEixo`. Mas essa chave só é o id do ML quando
+    o schema diz `podeSerEixo` — exatamente a mesma condição da marca. Se uma das duas mudar sozinha, um material
+    gravado no Portal some do rascunho (ou o eixo vira atributo).
+- **Explicação de todo campo da ficha (o "o que é isto?").** O componente é UM só, `resources/js/Components/Explicacao.jsx`
+  (saiu de `Components/Publicador/`); o Portal usa via `RotuloComExplicacao` (`PecasDoProduto.jsx`), com o ícone FORA
+  do `<label>`. A ficha técnica leva `explicacao` em cada campo do `campos-categoria` (`definicaoComExplicacoes`, que
+  chama `ExplicacaoDeAtributos::paraPortal` — pode enfileirar a IA; na fila `sync` não). A validação do PUT usa
+  `definicao()` SEM explicação, de propósito (não gasta consulta nem IA a cada salvar). Os campos fixos vêm na prop
+  `explicacoes_campos` (fora de `ficha_tecnica`, porque `entradaDoProduto` sobrescreve `ficha_tecnica` inteira no
+  histórico), do glossário `portal_campos` + o Estoque de `campos.estoque` (um texto para as duas telas).
+  `camposDoPortal()` DESCARTA (não reescreve) texto fixo que revele o destino: o campo fica sem ícone.
+  - O comentário do `Explicacao.jsx` é lido pelo gate de sigilo (fonte crua): nada de "Publicador"/"ML" nele — a regex
+    do Portal pega `public(ar|ação|ador)` e `\bML\b`.
+  - O `title` antigo da Família (no gatilho) e o `title`/`aria-description` do `CampoFichaTecnica` saíram: com o balão
+    novo seriam dois.
 - **`hidden` editável vai para "Mais detalhes (opcional)", no fim, ABERTO** (gate JS: a ficha não recolhe nada). Um
   `hidden` com `required` fica no grupo normal, senão o rótulo "opcional" mentiria.
 - **"Não se aplica" = `valor_id = '-1'`, `valor` e `unidade` nulos** em `estrutura_produto_atributos` (sem migration):

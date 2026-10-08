@@ -21,7 +21,8 @@ class ExplicacaoDeAtributosRegrasTest extends TestCase
     {
         $g = self::glossario();
         $this->assertNotEmpty($g['atributos']);
-        foreach ([...$g['atributos'], ...$g['campos']] as $id => $texto) {
+        $this->assertNotEmpty($g['portal_campos'], 'os campos fixos da ficha do Portal');
+        foreach ([...$g['atributos'], ...$g['campos'], ...$g['portal_campos']] as $id => $texto) {
             $this->assertIsString($texto, $id);
             $this->assertLessThanOrEqual(ExplicacaoDeAtributos::LIMITE, mb_strlen($texto), "{$id} passou de 220 caracteres");
             $this->assertFalse(ExplicacaoDeAtributos::revelaDestino($texto), "{$id} entrega o destino do cadastro: {$texto}");
@@ -43,6 +44,17 @@ class ExplicacaoDeAtributosRegrasTest extends TestCase
         $this->assertStringContainsString('EAN', $g['GTIN']);
         $this->assertStringContainsString('UPC', $g['GTIN']);
         $this->assertArrayHasKey('estoque', self::glossario()['campos']);
+    }
+
+    public function test_portal_campos_cobre_os_campos_fixos_da_ficha_e_o_estoque_vem_do_editor(): void
+    {
+        $portal = self::glossario()['portal_campos'];
+        foreach (['nome', 'familia', 'ambientes', 'categoria', 'ref', 'eixo', 'valor', 'custo', 'volumes',
+            'comprimento', 'largura', 'altura', 'peso', 'descricao'] as $chave) {
+            $this->assertArrayHasKey($chave, $portal, $chave);
+        }
+        // Um texto só para o Estoque nas duas telas: ele mora em `campos`, não aqui.
+        $this->assertArrayNotHasKey('estoque', $portal);
     }
 
     public function test_sigilo_pega_plataforma_com_e_sem_acento_e_poupa_palavras_neutras(): void

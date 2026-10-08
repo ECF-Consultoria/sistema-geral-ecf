@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import {
-    categoriaParaConsulta, deveGravar, errosDaResposta, idDoElemento, montarAtributos, valoresIniciais,
+    categoriaParaConsulta, deveGravar, errosDaResposta, gruposDoProduto, idDoElemento, montarAtributos, valoresIniciais,
 } from '@/lib/fichaTecnica';
 
 // ─── Estado da ficha técnica do produto ─────────────────────────────────────
@@ -11,10 +11,14 @@ import {
 // "Salvar produto" — o PUT só acontece depois que o produto existe. Quem muda
 // um campo avisa a ficha (`aoAlterar`), que então protege a saída sem salvar.
 // As contas e a montagem do corpo do PUT ficam em `@/lib/fichaTecnica`.
+//
+// `eixos`: as chaves dos eixos que as variações usam agora. O campo que é um desses
+// eixos sai da tela (`grupos`) e do PUT; o que estava digitado fica em memória e
+// volta se a variação trocar de eixo antes de salvar.
 
 const ESPERA_MS = 350;
 
-export default function useFichaTecnica({ salvos = [], categoria = null, aoAlterar = () => {} }) {
+export default function useFichaTecnica({ salvos = [], categoria = null, eixos = [], aoAlterar = () => {} }) {
     const [valores, setValores] = useState(() => valoresIniciais(salvos));
     const [definicao, setDefinicao] = useState(null);    // { grupos, categoria } | null
     const [carregando, setCarregando] = useState(false);
@@ -28,8 +32,12 @@ export default function useFichaTecnica({ salvos = [], categoria = null, aoAlter
     const definicaoRef = useRef(definicao);
     definicaoRef.current = definicao;
     const memoria = useRef(new Map());                   // categoria → grupos (sem repetir a consulta)
+    const eixosRef = useRef(eixos);
+    eixosRef.current = eixos;
 
     const idCategoria = categoriaParaConsulta(categoria);
+    // O que a tela mostra: a definição da categoria menos o eixo das variações deste produto.
+    const grupos = gruposDoProduto(definicao?.grupos, eixos);
 
     useEffect(() => {
         if (! idCategoria) {
@@ -91,7 +99,8 @@ export default function useFichaTecnica({ salvos = [], categoria = null, aoAlter
      */
     const gravar = async (produtoId) => {
         const atual = definicaoRef.current;
-        const atributos = montarAtributos(atual?.grupos, valoresRef.current);
+        // Os eixos de agora (as variações já foram gravadas no mesmo "Salvar produto").
+        const atributos = montarAtributos(gruposDoProduto(atual?.grupos, eixosRef.current), valoresRef.current);
         const jaTinhaSalvos = salvosRef.current.length > 0;
         if (! produtoId || ! deveGravar({ definicaoPronta: !! atual && atual.categoria === idCategoria, atributos, jaTinhaSalvos })) {
             return { ok: true, pulou: true, salvos: salvosRef.current };
@@ -121,7 +130,7 @@ export default function useFichaTecnica({ salvos = [], categoria = null, aoAlter
     };
 
     return {
-        valores, definicao, carregando, indisponivel, erros, erroGeral,
+        valores, definicao, grupos, carregando, indisponivel, erros, erroGeral,
         temCategoria: !! idCategoria,
         mudar, tentarDeNovo, gravar,
     };

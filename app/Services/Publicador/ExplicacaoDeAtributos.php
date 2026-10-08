@@ -156,6 +156,23 @@ class ExplicacaoDeAtributos
     }
 
     /**
+     * Os campos fixos da ficha do produto no Portal (nome, família, Ref, custo, volumes…), do
+     * glossário `portal_campos`, mais o Estoque de {@see self::camposFixos()} (o mesmo texto do
+     * editor). Passa pelo filtro de SIGILO: o que revelar o destino do cadastro é DESCARTADO —
+     * o campo fica sem ícone, nunca com um texto que conte para onde o cadastro vai.
+     *
+     * @return array<string, string>
+     */
+    public function camposDoPortal(): array
+    {
+        $fixos = $this->camposFixos();
+        $textos = array_filter((array) config('publicador_glossario.portal_campos', []), 'is_string')
+            + (isset($fixos['estoque']) ? ['estoque' => $fixos['estoque']] : []);
+
+        return array_filter($textos, fn (string $t) => trim($t) !== '' && ! self::revelaDestino($t));
+    }
+
+    /**
      * Guarda as respostas da IA que passam na regra. Só os ids pedidos; `insertOrIgnore`: o que já
      * existe (de outra execução ou do ML) não é sobrescrito.
      *
