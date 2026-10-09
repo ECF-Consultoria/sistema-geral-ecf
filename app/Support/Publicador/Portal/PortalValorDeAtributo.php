@@ -13,9 +13,9 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
  *
  * Puro: sem banco, sem HTTP. Regra de ouro: nunca devolver valor fora de uma lista
  * fechada (o ML recusa com 3510) — o que não casa vira aviso, não valor. "Fechada" é
- * `! aceitaTextoLivre`, a MESMA régua que decide se a ficha do Portal deixa digitar
- * ({@see \App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria}): onde o editor
- * aceita texto, o texto do Portal vai como `value_name`, sem `value_id`.
+ * `! aceitaTextoLivre` do editor: onde o editor aceita texto, o texto do Portal vai como
+ * `value_name`, sem `value_id`. Hoje a ficha do Portal só deixa ESCOLHER onde há opção
+ * (decisão de 09/10/2026); texto ali é o legado gravado antes de 08/10, e é ele que isto salva.
  * Os avisos são para o log do servidor (09/10/2026: a tela não os mostra mais).
  * Todo valor traz `origem => 'portal'`. Campo de várias opções guarda a 1ª opção
  * resolvida em `value_id`/`value_name`, todas em `values_multi`, e liga `revisar`.
@@ -130,7 +130,7 @@ final class PortalValorDeAtributo
         }
 
         if ($resolvidas === []) {
-            // Nada casou. Onde o editor aceita texto livre (mesma régua: `aceitaTextoLivre`), o que o
+            // Nada casou (texto antigo, de antes de 08/10). Onde o editor aceita texto livre, o que o
             // Portal tem vai como texto, sem `value_id` — é o que a equipe digitaria. Mais de um nome
             // vira um texto só, separado por vírgula, e pede revisão. Onde não aceita, fica vazio: o
             // campo aparece pendente no editor (o aviso vai só para o log).

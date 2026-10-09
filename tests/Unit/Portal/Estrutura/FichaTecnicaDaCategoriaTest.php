@@ -422,42 +422,39 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/mercado|an[uú]ncio|publicar|mlb/iu', json_encode($grupos, JSON_UNESCAPED_UNICODE));
     }
 
-    // ═══ Digitar fora das opções: a régua do editor interno (09/10/2026) ═══════
+    // ═══ Com opção, só lista — mesmo onde o editor interno aceita texto (09/10/2026) ═══
 
     /**
-     * O modo de falha que isto impede: duas regras de "texto livre". A ficha deixava (antes do
-     * dia 08/10) ou não deixava (depois) digitar sem olhar o que o editor aceita, e o Sincronizar
-     * recusava o que o cliente tinha gravado ("Madeira maciça de eucalipto" em Materiais da estrutura).
-     * Nas quatro respostas reais guardadas, com o `technical_specs` COMPLETO do lado do editor, todo
-     * campo de lista ou de texto da ficha tem `texto_livre` igual ao `aceitaTextoLivre` do editor.
+     * Decisão do usuário em 09/10 (mantém o §35 de 08/10): na ficha do cliente, campo que tem opção
+     * é SÓ lista. O editor da equipe aceita texto em `string` com opções (`allow_custom_value: true`);
+     * a ficha não abre essa porta. Nas quatro respostas reais guardadas: todo campo com opção é lista
+     * (ou número/Sim-Não com o controle deles), a definição não leva marca de "digitar", e há campos
+     * em que o editor aceitaria texto — é neles que o legado de antes de 08/10 vive, e quem o salva é
+     * o Sincronizar, não a ficha.
      */
-    public function test_texto_livre_da_ficha_e_o_mesmo_do_editor_nas_respostas_reais(): void
+    public function test_nas_respostas_reais_campo_com_opcao_e_so_lista_mesmo_onde_o_editor_aceita_texto(): void
     {
-        $conferidos = ['lista_livre' => 0, 'lista_fechada' => 0];
+        $listasQueOEditorAceitaTexto = 0;
         foreach ([self::CADEIRA, self::FURADEIRA, self::CAMISETA, self::PASTILHA] as $categoria) {
             $schema = self::schema($categoria);
             $editor = (new ClassificadorAtributos())->classificar($schema, new ContextoClassificacao('new', []))->atributos;
 
             foreach (F::camposPorId(F::daAtributos($schema->atributos)) as $id => $campo) {
-                if (! in_array($campo['tipo'], [F::TIPO_LISTA, F::TIPO_TEXTO], true)) {
-                    $this->assertFalse($campo['texto_livre'], "{$categoria} {$id}: número e Sim/Não não usam a chave");
-
-                    continue;
-                }
-                $this->assertSame($editor[$id]->aceitaTextoLivre, $campo['texto_livre'], "{$categoria} {$id} ({$campo['tipo']})");
-                if ($campo['tipo'] === F::TIPO_LISTA) {
-                    $conferidos[$campo['texto_livre'] ? 'lista_livre' : 'lista_fechada']++;
+                $this->assertArrayNotHasKey('texto_livre', $campo, "{$categoria} {$id}: a ficha não oferece digitar fora das opções");
+                if ($campo['valores'] !== []) {
+                    $this->assertSame(F::TIPO_LISTA, $campo['tipo'], "{$categoria} {$id}");
+                    if ($editor[$id]->aceitaTextoLivre) {
+                        $listasQueOEditorAceitaTexto++;
+                    }
                 }
             }
         }
 
-        // A prova só vale se cobriu os dois lados da régua.
-        $this->assertGreaterThan(5, $conferidos['lista_livre']);
-        $this->assertGreaterThan(5, $conferidos['lista_fechada']);
+        $this->assertGreaterThan(5, $listasQueOEditorAceitaTexto, 'a prova cobre campos em que o editor aceitaria texto');
     }
 
-    /** Os três campos do aviso de 09/10 (gabinete, espelho, lixeira): `string` com opções, multivalor, deixa digitar. */
-    public function test_materiais_e_salas_deixam_digitar_e_a_lista_fechada_nao(): void
+    /** Os três campos do aviso de 09/10 (gabinete, espelho, lixeira): `string` com opções, multivalor — só chips. */
+    public function test_materiais_e_salas_sao_so_lista_de_varias_opcoes(): void
     {
         $grupos = F::daAtributos([
             ['id' => 'STRUCTURE_MATERIALS', 'name' => 'Materiais da estrutura', 'value_type' => 'string', 'tags' => ['multivalued' => true],
@@ -466,18 +463,14 @@ class FichaTecnicaDaCategoriaTest extends TestCase
                 'values' => [['id' => '1', 'name' => 'MDF']]],
             ['id' => 'RECOMMENDED_INSTALLATION_ROOMS', 'name' => 'Salas de instalação recomendadas', 'value_type' => 'string',
                 'tags' => ['multivalued' => true], 'values' => [['id' => '9', 'name' => 'Banheiro']]],
-            ['id' => 'STYLE', 'name' => 'Estilo', 'value_type' => 'list', 'tags' => [], 'values' => [['id' => '7', 'name' => 'Moderno']]],
-            ['id' => 'MODEL', 'name' => 'Modelo', 'value_type' => 'string', 'tags' => []],
         ]);
         $campos = F::camposPorId($grupos);
 
         foreach (['STRUCTURE_MATERIALS', 'CABINET_MATERIALS', 'RECOMMENDED_INSTALLATION_ROOMS'] as $id) {
             $this->assertSame(F::TIPO_LISTA, $campos[$id]['tipo'], $id);
             $this->assertTrue($campos[$id]['multivalor'], $id);
-            $this->assertTrue($campos[$id]['texto_livre'], "{$id}: as opções aparecem E dá para digitar");
+            $this->assertArrayNotHasKey('texto_livre', $campos[$id], $id);
         }
-        $this->assertFalse($campos['STYLE']['texto_livre'], 'lista fechada: só as opções');
-        $this->assertTrue($campos['MODEL']['texto_livre']);
     }
 
     /** Lista FECHADA cujas opções o filtro de sigilo derruba inteiras não degrada para texto: sai da ficha. */
@@ -492,7 +485,6 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $campos = F::camposPorId($grupos);
 
         $this->assertArrayNotHasKey('VOLUME_FECHADO', $campos, 'texto livre ali gravaria valor que não publica');
-        $this->assertSame(F::TIPO_TEXTO, $campos['VOLUME_LIVRE']['tipo'], 'onde o editor aceita texto, sobra o texto');
-        $this->assertTrue($campos['VOLUME_LIVRE']['texto_livre']);
+        $this->assertSame(F::TIPO_TEXTO, $campos['VOLUME_LIVRE']['tipo'], 'sem opção segura, onde o editor aceita texto, sobra o texto');
     }
 }

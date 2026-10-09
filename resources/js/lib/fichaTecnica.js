@@ -118,32 +118,13 @@ export function idDeLista(campo, bruto) {
 }
 
 /**
- * O campo de lista deixa DIGITAR um valor fora das opções? Só quando o servidor marca `texto_livre`
- * — a mesma régua do editor interno da equipe. Lista sem a marca é fechada: só as opções.
- */
-export const aceitaTextoLivre = (campo) => campo?.tipo === 'lista' && !! campo?.texto_livre;
-
-/**
- * O que um campo de lista guarda: o id da opção que bate (por id ou nome, {@link idDeLista}); se
- * nenhuma bate e o campo aceita digitar, o próprio texto; senão ''.
- */
-export function escolhaDeLista(campo, bruto) {
-    const id = idDeLista(campo, bruto);
-    if (id !== '') return id;
-    const t = String(bruto ?? '').trim();
-
-    return t !== '' && aceitaTextoLivre(campo) ? t : '';
-}
-
-/**
  * Os ids das opções escolhidas num campo multivalor, na ordem, sem repetição.
  *
  * O que está guardado em memória vem de dois lugares e esta função aceita os dois:
  * uma LISTA de ids (o que os chips produzem ao editar) ou o TEXTO que o servidor
  * devolveu em `salvos` — os nomes emendados, porque a linha gravada não tem os ids
- * (ver `FichaTecnicaDoProduto::multivalor`). Cada pedaço passa por {@link escolhaDeLista},
- * então vale o mesmo casamento por nome; o que não bate em opção nenhuma é descartado — a não ser
- * no campo que aceita digitar, onde fica como texto (é um "chip" digitado).
+ * (ver `FichaTecnicaDoProduto::multivalor`). Cada pedaço passa por {@link idDeLista},
+ * então vale o mesmo casamento por nome; o que não bate em opção nenhuma é descartado.
  */
 export function idsMultivalor(campo, bruto) {
     const pedacos = Array.isArray(bruto)
@@ -152,7 +133,7 @@ export function idsMultivalor(campo, bruto) {
 
     const out = [];
     pedacos.forEach((p) => {
-        const id = escolhaDeLista(campo, p);
+        const id = idDeLista(campo, p);
         if (id !== '' && ! out.includes(id)) out.push(id);
     });
 
@@ -193,9 +174,8 @@ export function montarAtributos(grupos, valores) {
         // livre antigo, de quando o campo não era lista) fica de fora: é o mesmo que vazio,
         // e a tela também o mostra vazio. Obrigatório assim volta como "Preencha …", que é
         // o pedido certo — mandar o texto cru só daria 422 travando a ficha inteira.
-        // Exceção: o campo que aceita digitar (`texto_livre`) manda o texto como está.
         if (campo.tipo === 'lista') {
-            const id = escolhaDeLista(campo, bruto);
+            const id = idDeLista(campo, bruto);
             if (id !== '') out.push({ id: campo.id, valor: id });
 
             return;

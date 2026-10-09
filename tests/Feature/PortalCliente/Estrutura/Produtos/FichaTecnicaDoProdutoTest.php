@@ -78,9 +78,6 @@ class FichaTecnicaDoProdutoTest extends TestCase
             // que é como o catálogo entrega a maior parte das opções.
             ['id' => 'MATERIALS', 'name' => 'Materiais', 'value_type' => 'string', 'tags' => ['multivalued' => true],
                 'values' => [['id' => '1', 'name' => 'Algodão'], ['id' => '2', 'name' => 'Couro'], ['id' => '3', 'name' => 'Microfibra']]],
-            // Lista FECHADA de várias opções (`list`): aqui o cliente só escolhe, não digita.
-            ['id' => 'FRAME_MATERIALS', 'name' => 'Materiais da armação', 'value_type' => 'list', 'tags' => ['multivalued' => true],
-                'values' => [['id' => '41', 'name' => 'Aço'], ['id' => '42', 'name' => 'Alumínio']]],
             // Deixa variar, mas não é eixo do portal: entra (08/10/2026).
             ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string',
                 'tags' => ['allow_variations' => true], 'values' => [['id' => '7', 'name' => 'Couro'], ['id' => '8', 'name' => 'Tecido']]],
@@ -622,51 +619,34 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['2', '2', '1']]]))->assertOk();
         $this->assertSame('Couro | Algodão', EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->value('valor'));
 
-        // Na lista FECHADA, valor que não é opção da categoria é recusado, igual à lista de uma escolha só.
-        $sessao->putJson($url, $this->ficha([['id' => 'FRAME_MATERIALS', 'valor' => ['41', '999']]]))
-            ->assertStatus(422)->assertJsonValidationErrors(['atributos.FRAME_MATERIALS']);
+        // Valor que não é opção da categoria é recusado, igual à lista de uma escolha só.
+        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['1', '999']]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIALS']);
 
         // Lista vazia é campo não preenchido: a linha sai (é o "limpar" dos chips).
         $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => []]]))->assertOk();
         $this->assertSame(0, EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->count());
     }
 
-    /**
-     * 09/10/2026: digitar fora das opções segue a MESMA régua do editor interno (`aceitaTextoLivre`).
-     * `string` com opções (Materiais) mostra as opções E deixa digitar — o editor aceita e o
-     * Sincronizar leva o texto. `list` (Material, Materiais da armação) só aceita opção: o servidor
-     * recusa o texto com a mensagem neutra de sempre.
-     */
-    public function test_campo_string_com_opcoes_vira_lista_que_aceita_digitar_e_a_lista_fechada_recusa(): void
+    public function test_campo_string_com_opcoes_vira_lista_e_recusa_valor_fora_dela(): void
     {
         $empresa = $this->empresaDoGabarito();
         $produto = $this->produto($empresa);
         $sessao = $this->entrarNoPortal($empresa);
-        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
 
-        $campos = collect($sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB1']))
-            ->assertOk()->json('grupos'))->flatMap(fn ($g) => $g['campos'])->keyBy('id');
-        $this->assertSame('lista', $campos['MATERIALS']['tipo']);
-        $this->assertTrue($campos['MATERIALS']['multivalor']);
-        $this->assertTrue($campos['MATERIALS']['texto_livre']);
-        $this->assertFalse($campos['MATERIAL']['texto_livre']);
-        $this->assertFalse($campos['FRAME_MATERIALS']['texto_livre']);
-        $this->assertTrue($campos['BRAND']['texto_livre']);
+        // MATERIALS chega do catálogo como `string`; mesmo assim o endpoint entrega como lista.
+        $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB1']))
+            ->assertOk()
+            ->assertJsonPath('grupos', function ($grupos) {
+                $campos = collect($grupos)->flatMap(fn ($g) => $g['campos'])->keyBy('id');
 
-        // Chips: opção + valor digitado na mesma linha; nome digitado igual a uma opção vira a opção.
-        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['1', 'Madeira maciça de eucalipto', 'couro']]]))->assertOk();
-        $this->assertSame('Algodão | Madeira maciça de eucalipto | Couro', EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->value('valor'));
+                return $campos['MATERIALS']['tipo'] === 'lista' && $campos['MATERIALS']['multivalor'] === true;
+            });
 
-        // O separador não entra num valor digitado.
-        $sessao->putJson($url, $this->ficha([['id' => 'MATERIALS', 'valor' => ['A | B']]]))
+        // E o servidor recusa texto livre nele — era por aqui que entrava valor que a plataforma rejeita.
+        $sessao->putJson(route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id),
+            $this->ficha([['id' => 'MATERIALS', 'valor' => 'Algodao escrito a mao']]))
             ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIALS']);
-
-        // Lista fechada de uma escolha: texto é recusado, com mensagem que não cita a origem.
-        $r = $sessao->putJson($url, ['atributos' => [['id' => 'BRAND', 'valor' => 'Bela Casa'], ['id' => 'MATERIAL', 'valor' => 'Madeira de lei']]])
-            ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIAL']);
-        $this->assertSame('Escolha uma das opções de “Material”.', $r->json('errors')['atributos.MATERIAL'][0]);
-        $this->assertSemOrigem($r->getContent(), 'erro do 422');
-        $this->assertSame('Algodão | Madeira maciça de eucalipto | Couro', EstruturaProdutoAtributo::where('atributo_id', 'MATERIALS')->value('valor'), 'o 422 não gravou nada');
     }
 
     // ─── "Não se aplica" (08/10/2026) ──────────────────────────────────────

@@ -10,19 +10,22 @@ use App\Support\Publicador\Schema\ContextoClassificacao;
 use PHPUnit\Framework\TestCase;
 
 /**
- * 09/10/2026 — a MESMA regra de texto livre nas duas pontas, provada com o MESMO schema.
+ * 09/10/2026: a régua das duas pontas, provada com o MESMO schema.
+ * - Portal: campo com opções é SÓ lista. O cliente escolhe e não digita, mesmo onde o editor
+ *   aceitaria texto (decisão do usuário, que mantém o §35 de 08/10).
+ * - Publicador: o texto ANTIGO, gravado no Portal antes de 08/10 quando `string` com opções ainda
+ *   era texto, chega ao rascunho como `value_name` onde o editor aceita texto livre. Onde o editor
+ *   não aceita (`list`), nada é preenchido e o campo fica pendente.
  *
- * O que aconteceu na #459: a ficha do Portal gravou "Madeira maciça de eucalipto" em Materiais da
- * estrutura (quando ainda era texto, antes de 08/10) e o Sincronizar recusou ("nenhuma das opções
- * existe na lista"), embora o editor do Publicador aceite texto nesse atributo (`string` com opções,
- * `allow_custom_value: true`). Agora: onde o editor aceita texto, a ficha deixa digitar e o
- * Sincronizar leva o texto; onde não aceita, a ficha só oferece as opções e o Sincronizar não preenche.
+ * O caso real da #459: "Madeira maciça de eucalipto" em Materiais da estrutura. O Sincronizar
+ * recusava ("nenhuma das opções existe na lista"), embora o editor aceite texto nesse atributo
+ * (`string` com opções e `allow_custom_value: true`).
  *
- * Schema montado com os ids reais das categorias da #459 (gabinete MLB186151, espelho MLB186270,
- * lixeira MLB33375 e cadeira MLB32664, lidos de `/categories/{id}/attributes` em 09/10) mais uma
- * lista fechada de controle.
+ * O schema foi montado com os ids reais das categorias da #459, lidos de `/categories/{id}/attributes`
+ * em 09/10: gabinete MLB186151, espelho MLB186270, lixeira MLB33375 e cadeira MLB32664. Ele leva
+ * ainda duas listas fechadas de controle.
  */
-class TextoLivreMesmaReguaPortalEPublicadorTest extends TestCase
+class PortalSoOpcoesELegadoNoPublicadorTest extends TestCase
 {
     private static function atributos(): array
     {
@@ -39,7 +42,8 @@ class TextoLivreMesmaReguaPortalEPublicadorTest extends TestCase
         ];
     }
 
-    private const DIGITADO = [
+    /** O que estava gravado no Portal antes de 08/10 (texto), id do atributo → valor. */
+    private const LEGADO = [
         'STRUCTURE_MATERIALS' => 'Madeira maciça de eucalipto',
         'CABINET_MATERIALS' => 'MDF 15 mm com acabamento ripado e pintura UV',
         'RECOMMENDED_INSTALLATION_ROOMS' => 'Banheiro, lavabo e hall de entrada',
@@ -47,20 +51,26 @@ class TextoLivreMesmaReguaPortalEPublicadorTest extends TestCase
         'FRAME_MATERIALS' => 'Aço escovado',
     ];
 
-    public function test_onde_a_ficha_deixa_digitar_o_sincronizar_leva_o_texto_e_onde_nao_deixa_nao_preenche(): void
+    private const EDITOR_ACEITA_TEXTO = ['STRUCTURE_MATERIALS', 'CABINET_MATERIALS', 'RECOMMENDED_INSTALLATION_ROOMS'];
+
+    public function test_o_portal_so_oferece_as_opcoes_e_o_sincronizar_leva_o_legado_onde_o_editor_aceita_texto(): void
     {
         $campos = F::camposPorId(F::daAtributos(self::atributos()));
         $editor = (new ClassificadorAtributos())
             ->classificar(CategorySchema::dasFontes('MLB186151', [], self::atributos(), [], []), new ContextoClassificacao('new', []))
             ->atributos;
 
-        foreach (self::DIGITADO as $id => $texto) {
-            $aceita = $editor[$id]->aceitaTextoLivre;
-            $this->assertSame($aceita, $campos[$id]['texto_livre'], "{$id}: a ficha e o editor discordam");
+        foreach (self::LEGADO as $id => $texto) {
+            // Portal: lista, sem marca de digitar, qualquer que seja a regra do editor.
+            $this->assertSame(F::TIPO_LISTA, $campos[$id]['tipo'], "{$id}: com opção, só lista no Portal");
+            $this->assertArrayNotHasKey('texto_livre', $campos[$id], $id);
+
+            $aceita = in_array($id, self::EDITOR_ACEITA_TEXTO, true);
+            $this->assertSame($aceita, $editor[$id]->aceitaTextoLivre, "{$id}: régua do editor");
 
             $r = PortalValorDeAtributo::resolver($editor[$id], ['id' => $id, 'valor' => $texto, 'valor_id' => null]);
             if ($aceita) {
-                $this->assertNotNull($r['valor'], "{$id}: aceita texto, o Sincronizar leva");
+                $this->assertNotNull($r['valor'], "{$id}: o editor aceita texto, então o legado chega ao rascunho");
                 $this->assertNull($r['valor']['value_id']);
                 $this->assertSame($texto, $r['valor']['value_name']);
                 $this->assertSame('portal', $r['valor']['origem']);
@@ -68,12 +78,5 @@ class TextoLivreMesmaReguaPortalEPublicadorTest extends TestCase
                 $this->assertNull($r['valor'], "{$id}: lista fechada, o campo fica pendente no editor");
             }
         }
-
-        // Os três do aviso de 09/10 aceitam; as duas listas `list` não.
-        $this->assertTrue($campos['STRUCTURE_MATERIALS']['texto_livre']);
-        $this->assertTrue($campos['CABINET_MATERIALS']['texto_livre']);
-        $this->assertTrue($campos['RECOMMENDED_INSTALLATION_ROOMS']['texto_livre']);
-        $this->assertFalse($campos['STYLE']['texto_livre']);
-        $this->assertFalse($campos['FRAME_MATERIALS']['texto_livre']);
     }
 }
