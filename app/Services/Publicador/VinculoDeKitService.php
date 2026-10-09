@@ -38,6 +38,9 @@ use Illuminate\Support\Facades\DB;
  * `RecalculoEstoqueDoKitService` NÃO recalcula este kit quando o estoque do base
  * muda. O cartão da fase mostra "estoque próprio" com o valor calculado ao lado
  * e a ação explícita "Usar estoque calculado" — a pessoa decide, não o sistema.
+ * Essa ação é o `usarEstoqueCalculado()` desta classe (quick 261009-uec): ela
+ * grava a coluna e SÓ ENTÃO chama o recálculo, porque o recálculo pula quem
+ * ainda está em `false`. Nada aqui recalcula sozinho.
  *
  * ═══ Escopo (D-13) ══════════════════════════════════════════════════════════
  *
@@ -57,6 +60,9 @@ use Illuminate\Support\Facades\DB;
  * | VINC-04  | a família do base já tem um Kit N com essa quantidade       |
  * | VINC-05  | o produto a vincular já é base de outras fases (cadeia)     |
  * | VINC-06  | o produto a vincular já está vinculado (desfaça primeiro)   |
+ * | VINC-07  | "Usar estoque calculado" num produto que não é kit          |
+ * | VINC-08  | "Usar estoque calculado" num kit cujo base foi apagado      |
+ * | VINC-09  | "Usar estoque calculado" com o base ainda sem rascunho      |
  */
 class VinculoDeKitService
 {
@@ -118,6 +124,78 @@ class VinculoDeKitService
 
             throw $e;
         }
+    }
+
+    /**
+     * "Usar estoque calculado" (§6): a pessoa decide que ESTE kit passa a
+     * acompanhar o estoque do base — um clique, por kit.
+     *
+     * ═══ Por que a coluna é gravada ANTES do recálculo ══════════════════════
+     *
+     * O `RecalculoEstoqueDoKitService` **pula de propósito** quem tem
+     * `estoque_calculado = false` (decisão 2 de lá: combo vinculado tem estoque
+     * digitado por uma pessoa e sobrescrevê-lo seria apagar trabalho). Então
+     * chamar o recálculo antes de gravar não faria nada: o `exists()` do caminho
+     * vazio nem abriria a segunda consulta. Gravar primeiro é o que transforma
+     * a decisão da pessoa em algo que o recálculo vê.
+     *
+     * ⚠️ Esse contrato continua intacto: o recálculo automático (disparado por
+     * `EditorRascunhoService::salvarVariantes()` no base) segue pulando TODO kit
+     * que ainda está em `false` — inclusive os irmãos deste.
+     *
+     * ⚠️ Grava UMA coluna e nada mais. A trava `VINC-00` é a mesma do
+     * `vincular()` e a lista `$esperadas` NÃO é alargada: `estoque_calculado`
+     * já está nela.
+     *
+     * ⚠️ O recálculo roda FORA da transação e é resolvido por `app()` sob
+     * demanda, nunca injetado no construtor: ele abre uma transação por kit e
+     * trava a linha do rascunho (decisão 3 de lá — aninhar as travas é corrida
+     * garantida), e injetá-lo fecharia o ciclo conhecido deste módulo
+     * (`EditorRascunhoService` ↔ recálculo) na resolução do container.
+     *
+     * @throws RegraViolada VINC-00, VINC-07..VINC-09
+     */
+    public function usarEstoqueCalculado(PubProduto $kit): void
+    {
+        if ((int) $kit->quantidade_kit < 2) {
+            throw new RegraViolada('VINC-07', 'Este produto é a Fase 1, de 1 unidade: não existe um produto base de onde calcular o estoque dele.');
+        }
+        // `produto_base_id` nulo com quantidade >= 2 é o estado que o SET NULL
+        // deixa quando o base é apagado — a mesma leitura do `base_excluido` da
+        // tela do Produto.
+        if ($kit->produto_base_id === null) {
+            throw new RegraViolada('VINC-08', 'O produto base deste kit foi excluído, então não há de onde calcular o estoque. Vincule o kit a um produto base antes.');
+        }
+
+        // Já adotado: não grava de novo e não recalcula. Dois cliques no botão
+        // não podem subir a revisão do rascunho do kit nem derrubar a
+        // conferência dele por nada.
+        if ((bool) $kit->estoque_calculado) {
+            return;
+        }
+
+        $rascunhoDoBase = $kit->base?->rascunho;
+        if ($rascunhoDoBase === null) {
+            throw new RegraViolada('VINC-09', 'O produto base ainda não tem um anúncio preparado, então não há estoque de onde calcular. Abra a Fase 1 no editor antes.');
+        }
+
+        DB::transaction(function () use ($kit) {
+            $kit->estoque_calculado = true;
+
+            // Mesma guarda viva do `vincular()`: se um dia alguém acrescentar
+            // uma escrita aqui, o teste byte a byte falha e esta asserção diz
+            // por quê. A lista é a MESMA — nada de alargá-la.
+            $sujas = array_keys($kit->getDirty());
+            sort($sujas);
+            $esperadas = ['estoque_calculado', 'fase', 'produto_base_id', 'quantidade_kit'];
+            if (array_diff($sujas, $esperadas) !== []) {
+                throw new RegraViolada('VINC-00', 'Adotar o estoque calculado só pode gravar as colunas da família.');
+            }
+
+            $kit->save();
+        });
+
+        app(RecalculoEstoqueDoKitService::class)->propagar($rascunhoDoBase);
     }
 
     /**
