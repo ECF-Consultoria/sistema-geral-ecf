@@ -34,7 +34,37 @@ class ProgramasPublicadorService
 {
     public const PROGRAMAS = ['polos', 'incubadora', 'gestao'];
 
+    /** Os status de `prontidao()` que valem "tem anúncio no ar" nos buckets por fase (§7). */
+    public const STATUS_NO_AR = ['publicado', 'parcial'];
+
     private const LOTE = 1000;
+
+    /**
+     * Resolvido só quando a lista precisa (`produtosParaTela`), NUNCA pelo construtor.
+     *
+     * ⚠️ `SugestaoDeKitService::__construct` recebe ESTA classe: injetar o serviço de
+     * sugestão no construtor daqui fecha um ciclo no container e o resolve estoura em
+     * recursão infinita. O PLAN.md pedia injeção no construtor — a dependência circular
+     * é real e medida, então a resolução é preguiçosa (registrada no SUMMARY).
+     */
+    private ?SugestaoDeKitService $sugestoes = null;
+
+    private function sugestoes(): SugestaoDeKitService
+    {
+        return $this->sugestoes ??= app(SugestaoDeKitService::class);
+    }
+
+    /**
+     * O rótulo da fase na lista e nos cartões: "1 unidade" para o base, "Kit N" para o
+     * kit. Fonte ÚNICA do texto — `PainelVisaoGeralService::ultimasPublicacoes()` lê
+     * daqui também, para o mesmo produto nunca aparecer com dois rótulos na mesma tela.
+     */
+    public static function rotuloFase(?int $quantidadeKit): string
+    {
+        $n = (int) $quantidadeKit;
+
+        return $n <= 1 ? '1 unidade' : "Kit {$n}";
+    }
 
     /**
      * Linhas base (conta + token), sem agregados.
@@ -241,12 +271,44 @@ class ProgramasPublicadorService
      * `sem_oferta` é um `array_filter` adicional sobre o MESMO array recebido
      * (produtos com `oferta_id === null`) — não dispara nenhuma query nova.
      *
+     * ═══ `por_fase` (Fase 175 plano 08, §7 da ETAPA-3) ═══════════════════════
+     *
+     * Bucket NOVO e ADITIVO: os 6 buckets de cima continuam calculados do mesmo
+     * jeito, no mesmo laço, com os mesmos valores — a Etapa 1 e a Etapa 2 estão em
+     * produção e leem todos eles. `por_fase` é o bloco "Produtos por fase" da
+     * Visão geral, e por isso sai DAQUI e não de uma contagem própria: é o que faz
+     * "a Visão geral bate com a lista" ser verdadeiro por construção.
+     *
+     * Nenhum status novo foi inventado: a cadeia de decisão usa só `fase`, `eh_kit`
+     * e a `status.chave` que `EditorRascunhoService::prontidao()` já devolve. Cada
+     * produto cai em EXATAMENTE um bucket (a soma dos 5 é `todos`), nesta ordem:
+     *
+     * 1. `fase3_mais`      — qualquer membro com `fase >= 3`, em qualquer status;
+     * 2. `fase2_publicada` — kit (fase 2) com anúncio no ar;
+     * 3. `fase2_preparacao`— kit (fase 2) em rascunho/conferir/pronto/publicando;
+     * 4. `fase1_publicada` — base com anúncio no ar;
+     * 5. `sem_oferta`      — base sem nenhum anúncio no ar.
+     *
+     * ⚠️ `por_fase['sem_oferta']` NÃO é o `sem_oferta` de cima. O de cima é
+     * "produto sem oferta do Portal" (`oferta_id === null`, o que a Visão geral já
+     * mostra como indicador); o do `por_fase` é o rótulo da §7 ("Sem oferta") e
+     * significa "produto que ainda não tem anúncio nenhum no ar". Os dois nomes
+     * coincidem porque vêm de documentos diferentes; os números são diferentes de
+     * propósito e nenhum dos dois pode mudar.
+     *
+     * Lista no shape ANTIGO (sem `fase`/`eh_kit`/`anuncios`) continua funcionando:
+     * sem as chaves novas todo produto é base de fase 1 — exatamente o que ele é
+     * no banco depois da migration sem backfill.
+     *
      * @param  list<array>  $produtos  shape de `produtosParaTela()`
-     * @return array{todos: int, rascunho: int, conferidos: int, publicados: int, com_problema: int, sem_oferta: int}
+     * @return array{todos: int, rascunho: int, conferidos: int, publicados: int, com_problema: int, sem_oferta: int,
+     *     por_fase: array{sem_oferta: int, fase1_publicada: int, fase2_preparacao: int, fase2_publicada: int, fase3_mais: int}}
      */
     public function contagemProdutos(array $produtos): array
     {
         $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0];
+        $porFase = ['sem_oferta' => 0, 'fase1_publicada' => 0, 'fase2_preparacao' => 0, 'fase2_publicada' => 0, 'fase3_mais' => 0];
+
         foreach ($produtos as $p) {
             match ($p['status']['chave']) {
                 'pronto' => $contagens['conferidos']++,
@@ -257,9 +319,35 @@ class ProgramasPublicadorService
             if ($p['oferta_id'] === null) {
                 $contagens['sem_oferta']++;
             }
+
+            $porFase[$this->bucketDaFase($p)]++;
         }
 
-        return $contagens;
+        return $contagens + ['por_fase' => $porFase];
+    }
+
+    /**
+     * O bucket por fase de UM produto — if-else encadeado, exclusivo e total.
+     *
+     * @param  array  $p  shape de `produtosParaTela()` (ou o shape antigo, sem as chaves de fase)
+     */
+    private function bucketDaFase(array $p): string
+    {
+        if ((int) ($p['fase'] ?? 1) >= 3) {
+            return 'fase3_mais';
+        }
+
+        // "No ar" = o status derivado diz publicado/parcial OU existe anúncio CREATED
+        // na lista (`anuncios` é montado SÓ de itens CREATED com ml_item_id). O segundo
+        // ramo cobre o kit/base que falhou numa republicação mas tem anúncio vivo.
+        $noAr = in_array($p['status']['chave'] ?? null, self::STATUS_NO_AR, true)
+            || ($p['anuncios'] ?? []) !== [];
+
+        if (($p['eh_kit'] ?? false) === true) {
+            return $noAr ? 'fase2_publicada' : 'fase2_preparacao';
+        }
+
+        return $noAr ? 'fase1_publicada' : 'sem_oferta';
     }
 
     /** Empresas com token por programa (as abas da tela A). */
@@ -458,14 +546,56 @@ class ProgramasPublicadorService
     /**
      * Produtos da conta para a tela B e a faixa do editor, em consultas agrupadas.
      *
+     * ═══ Fases e kits na lista (Fase 175 plano 08, §7) ═══════════════════════
+     *
+     * O retorno ganhou `fase`, `quantidade_kit`, `produto_base_id`, `eh_kit`,
+     * `rotulo_fase`, `url_produto`, `sugestao_kit`, `kits` e `base`. **Nenhuma
+     * chave antiga saiu nem mudou de tipo** — `Produtos.jsx`, `Editor.jsx`,
+     * `contagemProdutos()` e `PainelVisaoGeralService` leem todas elas em
+     * produção, e `tests/Feature/Publicador/ListaPorFaseTest.php` guarda a lista
+     * contra um array literal.
+     *
+     * A FAMÍLIA sai em memória, sem nenhuma consulta nova: um kit herda as âncoras
+     * do base (`CriarFaseService`/`VinculoDeKitService`), então os dois estão
+     * sempre no MESMO escopo de conta que esta consulta já trouxe. Kit cujo base
+     * foi apagado (SET NULL) fica com `base = null` e vira linha de topo — nunca
+     * um órfão invisível.
+     *
+     * A SUGESTÃO de vínculo vem de `SugestaoDeKitService::candidatosDaConta()`,
+     * UMA passada para a conta inteira (T-175-34): o número de consultas é
+     * constante com 3 e com 12 produtos.
+     *
+     * `$chaveConta` (`empresa-N`/`company-N`) é parâmetro NOVO com default null só
+     * para montar `url_produto`; sem ela, `url_produto` é null e nenhum chamador
+     * antigo quebra.
+     *
      * @return list<array>
      */
-    public function produtosParaTela(?MlbEmpresa $e, ?Company $c): array
+    public function produtosParaTela(?MlbEmpresa $e, ?Company $c, ?string $chaveConta = null): array
     {
-        $produtos = $this->produtosQuery($e, $c)->with(['mlbEmpresa.mlToken', 'company.mlToken'])->get();
+        // `oferta` entra no eager load porque `skuExibido()`/`nomeExibido()` a leem por
+        // produto (inclusive no `base` de cada kit): sem isso seria um N+1 por linha.
+        $produtos = $this->produtosQuery($e, $c)->with(['mlbEmpresa.mlToken', 'company.mlToken', 'oferta'])->get();
         if ($produtos->isEmpty()) {
             return [];
         }
+
+        // A família, em memória (ver o docblock): quem é base de quem.
+        $porId = $produtos->keyBy('id');
+        $kitsPorBase = [];
+        foreach ($produtos as $q) {
+            if ($q->produto_base_id !== null && $porId->has($q->produto_base_id)) {
+                $kitsPorBase[(int) $q->produto_base_id][] = (int) $q->id;
+            }
+        }
+        // Mesma ordem da relação `PubProduto::kits()`: fase, depois id.
+        foreach ($kitsPorBase as $baseId => $ids) {
+            usort($ids, fn (int $a, int $b) => [(int) $porId[$a]->fase, $a] <=> [(int) $porId[$b]->fase, $b]);
+            $kitsPorBase[$baseId] = $ids;
+        }
+
+        // UMA passada de sugestão para a conta inteira — nunca uma por produto.
+        $sugestoes = $this->sugestoes()->candidatosDaConta($e, $c);
         // WR-B01: a conta que a tela mostra é a da empresa; a que publica é a do produto.
         $chaveDaEmpresa = PubProduto::ancoraComToken($e, $c)?->chaveContaMl();
 
@@ -503,7 +633,7 @@ class ProgramasPublicadorService
                 });
         }
 
-        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa) {
+        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta) {
             $r = $rascunhos[$p->id] ?? null;
             $conta = $p->contaOuNula();
             $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
@@ -516,6 +646,10 @@ class ProgramasPublicadorService
             if ($r?->updated_at && (! $atualizado || $r->updated_at->gt($atualizado))) {
                 $atualizado = $r->updated_at;
             }
+
+            // O base deste kit, quando ele existe no escopo (SET NULL deixa `base` null).
+            /** @var ?PubProduto $base */
+            $base = $p->produto_base_id !== null ? ($porId[$p->produto_base_id] ?? null) : null;
 
             return [
                 'id' => $p->id,
@@ -533,6 +667,25 @@ class ProgramasPublicadorService
                 'conta_nome' => $conta?->nomeContaMl(),
                 'conta_diferente' => $conta?->chaveContaMl() !== $chaveDaEmpresa,
                 'liberada' => ContasLiberadas::libera($conta),
+
+                // ─── §7 (plano 175-08): o que a coluna Fases precisa saber ───
+                // Escalares, sempre: um objeto inesperado aqui derrubou a página
+                // inteira em 07/10 ("Objects are not valid as a React child").
+                'fase' => (int) $p->fase,
+                'quantidade_kit' => (int) $p->quantidade_kit,
+                'produto_base_id' => $p->produto_base_id !== null ? (int) $p->produto_base_id : null,
+                'eh_kit' => $p->ehKit(),
+                'rotulo_fase' => self::rotuloFase($p->quantidade_kit),
+                'url_produto' => $chaveConta === null ? null
+                    : route('mlb.anuncios.publicador.produto', ['conta' => $chaveConta, 'produto' => $p->id]),
+                // Estruturas conhecidas (o 175-10 as lê campo por campo, nunca como texto):
+                // `kits` é lista de ids, `base` é {id, sku, nome} e `sugestao_kit` é o
+                // payload do 175-03 (ou null).
+                'kits' => $kitsPorBase[(int) $p->id] ?? [],
+                'base' => $base === null ? null : [
+                    'id' => (int) $base->id, 'sku' => $base->skuExibido(), 'nome' => $base->nomeExibido(),
+                ],
+                'sugestao_kit' => $sugestoes[(int) $p->id] ?? null,
             ];
         })->sortByDesc('atualizado_em')->values()->all();
     }

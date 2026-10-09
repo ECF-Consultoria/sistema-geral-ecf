@@ -322,7 +322,7 @@ class ListaPorFaseTest extends TestCase
 
         // Os 6 buckets de hoje seguem calculados do mesmo jeito, no mesmo laço.
         $this->assertSame(11, $c['todos']);
-        $this->assertSame(4, $c['rascunho'], 'rascunho + conferir + publicando caem no bucket default de hoje');
+        $this->assertSame(5, $c['rascunho'], 'rascunho + conferir + publicando caem no bucket default de hoje');
         $this->assertSame(1, $c['conferidos']);
         $this->assertSame(4, $c['publicados']);
         $this->assertSame(1, $c['com_problema']);

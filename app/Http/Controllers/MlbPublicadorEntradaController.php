@@ -136,7 +136,9 @@ class MlbPublicadorEntradaController extends Controller
         }
 
         $empresa = $this->programas->empresaParaTela($alvo);
-        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
+        // A chave da conta vai para `url_produto` de cada linha (§7, plano 175-08):
+        // é com ela que a coluna Fases abre a tela do Produto.
+        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company'], $alvo['chave']);
 
         $contagens = $this->programas->contagemProdutos($produtos);
 

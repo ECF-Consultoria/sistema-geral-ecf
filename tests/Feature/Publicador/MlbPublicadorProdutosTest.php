@@ -217,16 +217,23 @@ class MlbPublicadorProdutosTest extends TestCase
      * 173-01 Task 1: `ProgramasPublicadorService::contagemProdutos()` é a MESMA fonte de
      * verdade usada por `produtos()` — teste de unidade sobre o método do service, sem
      * passar pela tela, cobrindo `sem_oferta` (que Produtos.jsx não consome hoje).
+     *
+     * ⚠️ 175-08: o `assertSame` de array INTEIRO virou comparação dos 6 buckets por
+     * nome. A plan 175-08 acrescentou o bucket ADITIVO `por_fase` (§7 da ETAPA-3):
+     * nenhuma chave saiu e nenhum valor mudou, mas igualdade estrita de array inteiro
+     * recusa qualquer chave nova por construção. Os 6 buckets de hoje continuam
+     * provados um por um aqui, e as chaves novas têm gate próprio em
+     * `tests/Feature/Publicador/ListaPorFaseTest.php`.
      */
     public function test_contagem_produtos_do_service_classifica_por_status_e_sem_oferta(): void
     {
         $service = app(ProgramasPublicadorService::class);
 
-        $this->assertSame(
-            ['todos' => 0, 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0],
-            $service->contagemProdutos([]),
-            'array vazio devolve todas as chaves zeradas, nunca ausentes'
-        );
+        $vazio = $service->contagemProdutos([]);
+        foreach (['todos', 'rascunho', 'conferidos', 'publicados', 'com_problema', 'sem_oferta'] as $bucket) {
+            $this->assertArrayHasKey($bucket, $vazio, 'array vazio devolve todas as chaves zeradas, nunca ausentes');
+            $this->assertSame(0, $vazio[$bucket], "o bucket '$bucket' tem de vir zerado");
+        }
 
         $produtos = [
             ['status' => ['chave' => 'rascunho'], 'oferta_id' => null],
