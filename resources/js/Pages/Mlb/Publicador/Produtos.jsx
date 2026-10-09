@@ -3,28 +3,25 @@ import { cn } from '@/lib/utils';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Link2, PencilLine, Plus, Search } from 'lucide-react';
+import { ChevronDown, Plus, Search, X } from 'lucide-react';
 import BarraDaConta, { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
 import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
 import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar';
 import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
-import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
-import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
-import { LinkMl } from '@/Components/Portal/Estrutura/comum';
+import LinhaDeProduto from '@/Components/Mlb/Publicador/LinhaDeProduto';
+import PainelDoProdutoLateral from '@/Components/Mlb/Publicador/PainelDoProdutoLateral';
 import {
     acaoPrincipal,
-    alturaDaLinha,
     CHAVE_DA_DENSIDADE,
     colunasDaLargura,
     densidadeInicial,
-    iniciaisDoNome,
+    LARGURA_DE_CORTE,
     miniaturasVisiveis,
     ordenarTopo,
-    tamanhoDaMiniatura,
 } from '@/Components/Mlb/Publicador/layoutDaListaDeProdutos.js';
 
 // As funções puras do layout v2 moram em `layoutDaListaDeProdutos.js` para
@@ -58,12 +55,28 @@ const CHAVES_DO_FILTRO = {
     com_problema: ['erro'],
 };
 
-// Fase 175 (§7 da ETAPA-3): a coluna Fases entra entre Origem e Situação.
-// Nenhuma coluna de hoje sai.
-const COLUNAS = ['SKU', 'Produto', 'Origem', 'Fases', 'Situação', 'Anúncios', 'Atualizado'];
+// ─── Layout v2 (quick 261009-prd) ──────────────────────────────────────────
+// As colunas da GRADE. SKU e Origem saíram como colunas (viraram a 2ª linha
+// da célula Produto) e "Fases" virou "Fase": é isso que faz a lista caber sem
+// rolagem horizontal. `ordena` marca as três clicáveis do cabeçalho;
+// `soLargo` é a coluna que desaparece abaixo de 1100px de conteúdo e passa a
+// aparecer só no painel lateral.
+const COLUNAS_DA_GRADE = [
+    { chave: 'selecao', rotulo: '', ordena: null, soLargo: false },
+    { chave: 'produto', rotulo: 'Produto', ordena: 'produto', soLargo: false },
+    { chave: 'fase', rotulo: 'Fase', ordena: null, soLargo: false },
+    { chave: 'situacao', rotulo: 'Situação', ordena: 'situacao', soLargo: false },
+    { chave: 'anuncios', rotulo: 'Anúncios', ordena: null, soLargo: false },
+    { chave: 'atualizado', rotulo: 'Atualizado', ordena: 'atualizado', soLargo: true },
+    { chave: 'acoes', rotulo: '', ordena: null, soLargo: false },
+];
 
-// Filtro de fase (§7) — grupo NOVO, ao lado dos chips de situação, que
-// continuam exatamente como estavam. Os dois se combinam.
+// A miniatura de iniciais fica sempre ligada; quem a esconde é o breakpoint
+// (`miniaturasVisiveis`). A chave existe para o dia em que virar preferência.
+const MOSTRAR_MINIATURAS = true;
+
+// Filtro de fase (§7) — virou um DROPDOWN "Fase: Todas ▾" no layout v2, com
+// as mesmas três opções e o mesmo `?fase=` de antes.
 const FILTROS_FASE = [
     { chave: 'todas', rotulo: 'Todas' },
     { chave: 'so_base', rotulo: 'Só base' },
@@ -72,9 +85,14 @@ const FILTROS_FASE = [
 
 const CHAVES_DA_FASE = ['todas', 'so_base', 'so_kits'];
 
-const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+// O alternador de densidade. As chaves são as da whitelist de
+// `densidadeInicial()` — sem acento, porque vão para o `localStorage`.
+const DENSIDADES_DA_TELA = [
+    { chave: 'confortavel', rotulo: 'Confortável', titulo: 'Linhas de 64px' },
+    { chave: 'compacto', rotulo: 'Compacto', titulo: 'Linhas de 52px' },
+];
 
-const TITLE_PORTAL_APAGADO = 'Veio do Portal; a oferta foi apagada lá e o produto ficou aqui.';
+const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
 // O visual do chip de filtro, um só para os dois grupos (situação e fase) —
 // as classes são EXATAMENTE as que os chips de situação já tinham.
@@ -85,8 +103,14 @@ const classeDoChip = (ativo) => cn(
         : 'border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.06]',
 );
 
-// Chip pequeno das ações da sugestão de kit, dentro da coluna Fases.
+// Chip pequeno das ações da faixa de sugestões e do alternador de densidade.
 const BOTAO_SUGESTAO = 'inline-flex h-8 items-center rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[11px] font-bold text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+
+// O grupo SEGMENTADO de situação: os mesmos 5 filtros e as mesmas contagens
+// dos chips antigos, agora colados num só controle.
+const SEGMENTO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap border-r border-white/[0.08] px-3 text-[13px] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow';
+
+const CABECALHO_DA_COLUNA = 'whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 
 // Leitura ÚNICA na montagem (sem sincronizar de volta pra URL ao trocar à
 // mão — não muda o comportamento de voltar/avançar do navegador). Link
@@ -232,23 +256,102 @@ export function montarLinhas(produtos, opcoes) {
     return linhas;
 }
 
-// Pílula de origem. D27: decidida por oferta_id (vínculo vivo com o Portal),
-// nunca por `origem`, que é só a origem histórica do produto.
-function PilulaOrigem({ produto }) {
-    const base = 'inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/70';
-    if (produto.oferta_id) {
-        return (
-            <span className={base} title="Título e preço seguem o Portal">
-                <Link2 className="h-3 w-3" aria-hidden="true" />
-                Portal
-            </span>
-        );
+/**
+ * A densidade guardada no navegador.
+ * ⚠️ `localStorage` pode LANÇAR em janela privada (o acessor, não só o
+ * `getItem`): as duas pontas vão em `try/catch` e a tela tem de funcionar
+ * sem ele.
+ */
+function densidadeGuardada() {
+    try {
+        return densidadeInicial(window.localStorage.getItem(CHAVE_DA_DENSIDADE));
+    } catch {
+        return densidadeInicial(null);
     }
+}
+
+function guardarDensidade(valor) {
+    try {
+        window.localStorage.setItem(CHAVE_DA_DENSIDADE, valor);
+    } catch {
+        // Janela privada: a preferência simplesmente não persiste.
+    }
+}
+
+/**
+ * O dropdown "Fase: Todas ▾" (§7 do layout v2) — as MESMAS três opções e o
+ * mesmo `?fase=` dos chips antigos. Fecha com Esc e com clique fora.
+ *
+ * `defaultAberto` é padrão não controlado (como o `defaultOpen` do Radix): é
+ * o que deixa o render estático dos testes ver a lista de opções.
+ */
+export function DropdownDeFase({ valor = 'todas', aoEscolher, defaultAberto = false }) {
+    const [aberto, setAberto] = useState(defaultAberto === true);
+    const caixa = useRef(null);
+
+    useEffect(() => {
+        if (!aberto || typeof document === 'undefined') return undefined;
+
+        const aoTeclar = (ev) => {
+            if (ev.key === 'Escape') setAberto(false);
+        };
+        const aoClicarFora = (ev) => {
+            if (caixa.current && !caixa.current.contains(ev.target)) setAberto(false);
+        };
+        document.addEventListener('keydown', aoTeclar);
+        document.addEventListener('mousedown', aoClicarFora);
+
+        return () => {
+            document.removeEventListener('keydown', aoTeclar);
+            document.removeEventListener('mousedown', aoClicarFora);
+        };
+    }, [aberto]);
+
+    const escolhida = FILTROS_FASE.find((f) => f.chave === valor) ?? FILTROS_FASE[0];
+
     return (
-        <span className={base} title={produto.origem === 'portal' ? TITLE_PORTAL_APAGADO : undefined}>
-            <PencilLine className="h-3 w-3" aria-hidden="true" />
-            Publicador
-        </span>
+        <div ref={caixa} className="relative" role="group" aria-label="Filtro por fase">
+            <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={aberto}
+                onClick={() => setAberto((a) => !a)}
+                className={classeDoChip(valor !== 'todas')}
+            >
+                {`Fase: ${escolhida.rotulo}`}
+                <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            </button>
+
+            {aberto && (
+                <div
+                    role="menu"
+                    aria-label="Fase do produto"
+                    className="absolute left-0 top-11 z-20 w-40 overflow-hidden rounded-lg border border-white/[0.10] bg-ecf-card-2 py-1"
+                >
+                    {FILTROS_FASE.map((f) => {
+                        // Flag calculada DENTRO do callback (armadilha do Rollup).
+                        const marcada = valor === f.chave;
+
+                        return (
+                            <button
+                                key={f.chave}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={marcada}
+                                onClick={() => { setAberto(false); aoEscolher?.(f.chave); }}
+                                className={cn(
+                                    'flex w-full items-center justify-between whitespace-nowrap px-3 py-2 text-left text-[13px] font-normal hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow',
+                                    marcada ? 'text-ecf-yellow' : 'text-white/85',
+                                )}
+                            >
+                                {f.rotulo}
+                                {marcada && <span aria-hidden="true">✓</span>}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -284,6 +387,24 @@ export default function Produtos({
     const [erroAbrir, setErroAbrir] = useState(false);
     // A sugestão de kit em confirmação: { produto, sugestao, modo: 'vincular' | 'recusar' }.
     const [vinculo, setVinculo] = useState(null);
+
+    // ─── Layout v2 (quick 261009-prd) ───
+    // Ordenação do CLIENTE; o default é Situação, com "precisa de ação" primeiro.
+    const [ordem, setOrdem] = useState({ coluna: 'situacao', direcao: 1 });
+    const [densidade, setDensidade] = useState(densidadeGuardada);
+    // A largura do CONTEÚDO (não da janela): o card vive dentro do `<main>` e
+    // da barra lateral, então `window.innerWidth` mentiria em 250px ou mais e
+    // a grade larga voltaria a estourar o card (= a rolagem horizontal que
+    // esta tela existe para matar). Começa no 1400 que a referência usa de
+    // default e é corrigida na primeira medição.
+    const [largura, setLargura] = useState(1400);
+    const area = useRef(null);
+    // Os ids selecionados em lote.
+    const [selecao, setSelecao] = useState(() => new Set());
+    // O id do produto aberto no painel lateral (`null` = painel fechado).
+    const [detalhe, setDetalhe] = useState(null);
+    // A faixa de sugestões; o × esconde até recarregar a página.
+    const [faixaDeSugestoes, setFaixaDeSugestoes] = useState(true);
     const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
     const resumoPronto = useRef(false);
     const [avisosDoClique, setAvisosDoClique] = useState([]); // avisos do próprio Sincronizar (cores avulsas etc.)
@@ -311,8 +432,25 @@ export default function Produtos({
     const temPortal = empresa.portal?.situacao !== 'sem_portal';
     const podeSincronizar = Boolean(empresa.company_id) && temPortal;
 
+    // ⚠️ `produtos` pode chegar nulo (recarga parcial no meio do caminho, ou
+    // servidor antigo): tudo daqui para baixo usa a lista SEGURA.
+    const lista = Array.isArray(produtos) ? produtos : [];
+
+    // Mede a largura real da área da grade (ver o comentário do `largura`).
+    useEffect(() => {
+        const medir = () => {
+            const medida = area.current?.clientWidth;
+            if (typeof medida === 'number' && medida > 0) setLargura(medida);
+        };
+        medir();
+        if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return undefined;
+        window.addEventListener('resize', medir);
+
+        return () => window.removeEventListener('resize', medir);
+    }, []);
+
     // Polling de 5 s só enquanto houver produto publicando; limpo no unmount.
-    const publicando = produtos.some((p) => p.status?.chave === 'publicando');
+    const publicando = lista.some((p) => p?.status?.chave === 'publicando');
     useEffect(() => {
         if (!publicando) return undefined;
         const id = setInterval(() => router.reload({ only: ['produtos', 'contagens'] }), 5000);
@@ -325,10 +463,40 @@ export default function Produtos({
     }, []);
 
     // Filtro de situação + filtro de fase + busca, e o agrupamento em família
-    // (base com os kits recuados logo abaixo) — tudo numa função pura.
-    const linhas = useMemo(() => montarLinhas(produtos, { filtro, fase, busca }), [produtos, filtro, fase, busca]);
+    // (base com os kits recuados logo abaixo) — tudo numa função pura. Depois,
+    // a ordenação do cliente: ela reordena só as linhas de TOPO e os kits
+    // continuam logo abaixo do base deles.
+    const linhas = useMemo(() => {
+        const agrupadas = montarLinhas(lista, { filtro, fase, busca });
 
-    const skus = useMemo(() => produtos.map((p) => p.sku).filter(Boolean), [produtos]);
+        const familias = [];
+        for (const linha of agrupadas) {
+            if (linha.recuado === true && familias.length > 0) {
+                familias[familias.length - 1].kits.push(linha);
+            } else {
+                familias.push({ topo: linha, kits: [] });
+            }
+        }
+
+        const kitsPorTopo = new Map(familias.map((f) => [f.topo, f.kits]));
+        const ordenadas = ordenarTopo(familias.map((f) => f.topo), ordem.coluna, ordem.direcao);
+
+        const resultado = [];
+        for (const topo of ordenadas) {
+            resultado.push(topo);
+            for (const kit of (kitsPorTopo.get(topo) ?? [])) resultado.push(kit);
+        }
+
+        return resultado;
+    }, [lista, filtro, fase, busca, ordem]);
+
+    const skus = useMemo(() => lista.map((p) => p?.sku).filter(Boolean), [lista]);
+
+    // Os produtos com sugestão de vínculo — a faixa acima do card.
+    const comSugestao = useMemo(() => lista.filter((p) => sugestaoSegura(p) !== null), [lista]);
+
+    /** O produto aberto no painel lateral, lido da lista CRUA (filtro não o fecha). */
+    const produtoDoPainel = detalhe === null ? null : (lista.find((p) => p?.id === detalhe) ?? null);
 
     /** A tela do Produto (§3); sem `url_produto` do servidor, cai no editor, como hoje. */
     function abrir(p) {
@@ -346,6 +514,71 @@ export default function Produtos({
         router.get(route('mlb.anuncios.publicador.editor', { produto: p.id }), {}, {
             onError: () => setErroAbrir(true),
         });
+    }
+
+    /**
+     * Para onde o botão contextual leva (`acaoPrincipal().destino`).
+     * ⚠️ A ÚNICA mudança de comportamento do layout v2: o clique na linha
+     * deixou de navegar e passou a abrir o painel; a navegação é destes botões.
+     */
+    function irPara(destino, p) {
+        if (destino === 'painel') {
+            setDetalhe(p.id ?? null);
+
+            return;
+        }
+        if (destino === 'editor') {
+            abrirEditor(p);
+
+            return;
+        }
+        abrir(p);
+    }
+
+    /** O item escolhido no menu ⋯ ("Ver no Mercado Livre" é link e não passa aqui). */
+    function escolherNoMenu(chave, p) {
+        if (chave === 'editor') {
+            abrirEditor(p);
+
+            return;
+        }
+        if (chave === 'vincular') {
+            setVinculo({ produto: p, sugestao: sugestaoSegura(p), modo: 'vincular' });
+
+            return;
+        }
+        // 'fase2' leva à tela do Produto, que é onde o painel "Criar Fase N"
+        // mora (Fase 175, plano 05) — nenhuma rota nova foi criada para isto.
+        abrir(p);
+    }
+
+    /** Liga/desliga um id na seleção em lote. */
+    function alternarSelecao(id) {
+        setSelecao((atual) => {
+            const proxima = new Set(atual);
+            if (proxima.has(id)) proxima.delete(id); else proxima.add(id);
+
+            return proxima;
+        });
+    }
+
+    /** Clique por coluna do cabeçalho: mesma coluna inverte, outra começa em 1. */
+    function alternarOrdem(coluna) {
+        setOrdem((atual) => (atual.coluna === coluna
+            ? { coluna, direcao: atual.direcao > 0 ? -1 : 1 }
+            : { coluna, direcao: 1 }));
+    }
+
+    function trocarDensidade(valor) {
+        setDensidade(valor);
+        guardarDensidade(valor);
+    }
+
+    /** Zera busca e os dois filtros — o mesmo botão do estado vazio de sempre. */
+    function limparBuscaEFiltros() {
+        setFiltro('todos');
+        setFase('todas');
+        setBusca('');
     }
 
     // Cada leitura do resumo; ao ficar pronto, recarrega a lista (variantes e status mudaram).
@@ -406,8 +639,15 @@ export default function Produtos({
         esperaStatus.current = setTimeout(() => setStatus(null), 6000);
     }
 
-    const vazio = produtos.length === 0;
+    const vazio = lista.length === 0;
     const total = (chave) => contagens?.[chave] ?? 0;
+
+    // O texto da faixa de sugestões: um produto diz qual é, vários só contam.
+    const primeiraSugestao = comSugestao.length > 0 ? sugestaoSegura(comSugestao[0]) : null;
+    const faseDaPrimeira = primeiraSugestao === null ? 2 : proximaFaseDaFamilia(lista, primeiraSugestao.base_id);
+    const textoDaFaixa = comSugestao.length === 1 && primeiraSugestao !== null
+        ? `${textoSeguro(comSugestao[0].sku, 'Um produto')} parece kit de ${textoSeguro(primeiraSugestao.base_sku, 'outro produto')}. Confirme o vínculo para ele virar Fase ${faseDaPrimeira}.`
+        : `${comSugestao.length} produtos parecem kits de outros. Confirme os vínculos para eles virarem fases.`;
 
     return (
         <AppLayout title={`Publicador — ${empresa.nome}`}>
@@ -436,72 +676,214 @@ export default function Produtos({
                 />
 
                 <div className="mb-6">
-                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas.company_id} contagemProdutos={contagens.todos ?? null} />
+                    {/* `contagens?.todos`: o default `{}` só cobre `undefined`;
+                        `contagens: null` numa recarga parcial derrubava a tela
+                        inteira aqui (bug encontrado pelo teste de dado adverso). */}
+                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas?.company_id ?? null} contagemProdutos={contagens?.todos ?? null} />
                 </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
                 <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} absorvidos={absorvidosDoClique} onFechar={fecharResumo} />
 
-                <section className="rounded-xl bg-ecf-card">
-                    <div className="flex flex-wrap items-center justify-between gap-4 p-4">
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtro por situação">
-                            {FILTROS.map((f) => {
-                                const ativo = filtro === f.chave;
-                                return (
-                                    <button
-                                        key={f.chave}
-                                        type="button"
-                                        aria-pressed={ativo}
-                                        onClick={() => setFiltro(f.chave)}
-                                        className={classeDoChip(ativo)}
-                                    >
-                                        {f.rotulo}
-                                        <span className="font-mono text-[11px] tabular-nums">{total(f.chave)}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Filtro de fase (§7) — grupo NOVO; os chips de situação acima
-                            continuam iguais, e os dois filtros se combinam. */}
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtro por fase">
-                            {FILTROS_FASE.map((f) => {
-                                // Flag calculada DENTRO do callback (armadilha do Rollup).
-                                const ativoFase = fase === f.chave;
-                                return (
-                                    <button
-                                        key={f.chave}
-                                        type="button"
-                                        aria-pressed={ativoFase}
-                                        onClick={() => setFase(f.chave)}
-                                        className={classeDoChip(ativoFase)}
-                                    >
-                                        {f.rotulo}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                {/* Faixa de sugestões de kit, acima do card: o × esconde até recarregar. */}
+                {faixaDeSugestoes && comSugestao.length > 0 && (
+                    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-ecf-yellow/25 bg-ecf-yellow/[0.06] px-4 py-3">
+                        <p className="min-w-0 flex-1 text-[13px] font-normal text-white/80">{textoDaFaixa}</p>
                         <button
                             type="button"
-                            disabled={!abas.company_id}
-                            title={!abas.company_id ? 'Disponível só para empresas cadastradas no sistema' : undefined}
-                            onClick={() => { if (abas.company_id) router.get(route('mlb.anuncios.massa', { company: abas.company_id })); }}
-                            className={cn(BOTAO_SECUNDARIO, !abas.company_id && 'opacity-40 cursor-not-allowed')}
+                            onClick={() => setDetalhe(comSugestao[0]?.id ?? null)}
+                            className={BOTAO_SUGESTAO}
                         >
-                            Editar em grade
+                            Revisar
                         </button>
-                        <label className="relative block w-[280px]">
-                            <span className="sr-only">Buscar por SKU ou nome</span>
-                            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-white/40" aria-hidden="true" />
-                            <input
-                                type="search"
-                                value={busca}
-                                onChange={(ev) => setBusca(ev.target.value)}
-                                placeholder="Buscar SKU ou nome…"
-                                className="h-10 w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-10 pr-3 text-[13px] font-normal text-white placeholder:text-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
-                            />
-                        </label>
+                        <button
+                            type="button"
+                            aria-label="Esconder o aviso de sugestões"
+                            onClick={() => setFaixaDeSugestoes(false)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.10] bg-white/[0.03] text-white/70 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                        >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
+
+                {/* ⚠️ O card NÃO pode ter `overflow-hidden`: é ele que deixa o
+                    bloco de cima colar no topo ao rolar (`position: sticky`). */}
+                <section ref={area} className="rounded-xl bg-ecf-card">
+
+                    {/* ─── O BLOCO FIXO: filtros + seleção + cabeçalho das colunas ───
+                        `top-0` é o valor certo: o header do AppLayout é
+                        `h-[60px] shrink-0` e NÃO rola (quem rola é o `<main>`
+                        com `overflow-y-auto`), então descontar 60px deixaria
+                        um buraco entre o header e este bloco. */}
+                    <div className="sticky top-0 z-10 rounded-t-xl bg-ecf-card">
+                        <div className="flex flex-wrap items-center gap-3 p-4">
+                            {/* Grupo SEGMENTADO de situação: mesmos 5 filtros, mesmas
+                                contagens, mesmo `?filtro=`. */}
+                            <div
+                                className="inline-flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]"
+                                role="group"
+                                aria-label="Filtro por situação"
+                            >
+                                {FILTROS.map((f) => {
+                                    // Flag calculada DENTRO do callback (armadilha do Rollup).
+                                    const ativo = filtro === f.chave;
+
+                                    return (
+                                        <button
+                                            key={f.chave}
+                                            type="button"
+                                            aria-pressed={ativo}
+                                            onClick={() => { setFiltro(f.chave); setSelecao(new Set()); }}
+                                            className={cn(
+                                                SEGMENTO,
+                                                ativo ? 'bg-ecf-yellow/10 font-bold text-ecf-yellow' : 'font-normal text-white/70 hover:bg-white/[0.06]',
+                                            )}
+                                        >
+                                            {f.rotulo}
+                                            <span className="font-mono text-[11px] tabular-nums">{total(f.chave)}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Filtro de fase: o mesmo `?fase=`, agora num dropdown. */}
+                            <DropdownDeFase valor={fase} aoEscolher={(chave) => { setFase(chave); setSelecao(new Set()); }} />
+
+                            <label className="relative block w-[240px]">
+                                <span className="sr-only">Buscar por SKU ou nome</span>
+                                <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-white/40" aria-hidden="true" />
+                                <input
+                                    type="search"
+                                    value={busca}
+                                    onChange={(ev) => setBusca(ev.target.value)}
+                                    placeholder="Buscar SKU ou nome…"
+                                    className="h-10 w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-10 pr-3 text-[13px] font-normal text-white placeholder:text-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                                />
+                            </label>
+
+                            <div className="ml-auto flex flex-wrap items-center gap-3">
+                                {/* Densidade, guardada no navegador. */}
+                                <div
+                                    className="inline-flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]"
+                                    role="group"
+                                    aria-label="Densidade da lista"
+                                >
+                                    {DENSIDADES_DA_TELA.map((d) => {
+                                        // Flag calculada DENTRO do callback (armadilha do Rollup).
+                                        const marcada = densidade === d.chave;
+
+                                        return (
+                                            <button
+                                                key={d.chave}
+                                                type="button"
+                                                aria-pressed={marcada}
+                                                title={d.titulo}
+                                                onClick={() => trocarDensidade(d.chave)}
+                                                className={cn(
+                                                    'inline-flex h-10 items-center whitespace-nowrap border-r border-white/[0.08] px-3 text-[11px] last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow',
+                                                    marcada ? 'bg-ecf-yellow/10 font-bold text-ecf-yellow' : 'font-normal text-white/70 hover:bg-white/[0.06]',
+                                                )}
+                                            >
+                                                {d.rotulo}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={!abas?.company_id}
+                                    title={!abas?.company_id ? 'Disponível só para empresas cadastradas no sistema' : undefined}
+                                    onClick={() => { if (abas?.company_id) router.get(route('mlb.anuncios.massa', { company: abas?.company_id })); }}
+                                    className={cn(BOTAO_SECUNDARIO, !abas?.company_id && 'opacity-40 cursor-not-allowed')}
+                                >
+                                    Editar em grade
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Barra de seleção em lote.
+                            ⚠️ Só "Limpar seleção" aparece: nem "Preencher com IA"
+                            nem "Abrir na grade" têm hoje um endpoint que receba
+                            uma SELEÇÃO de produtos do Publicador (o Anunciar em
+                            massa lê `ml_anuncio_rascunhos` por empresa, não os
+                            `pub_rascunhos` escolhidos). Pela regra do plano, o
+                            que não tem backend fica ESCONDIDO, não desabilitado. */}
+                        {selecao.size > 0 && (
+                            <div className="flex flex-wrap items-center gap-3 border-t border-ecf-yellow/20 bg-ecf-yellow/[0.06] px-4 py-2">
+                                <p className="text-[13px] font-bold text-ecf-yellow">
+                                    {selecao.size === 1 ? '1 selecionado' : `${selecao.size} selecionados`}
+                                </p>
+                                <button type="button" onClick={() => setSelecao(new Set())} className={BOTAO_SUGESTAO}>
+                                    Limpar seleção
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Cabeçalho das colunas, com a ordenação do cliente. */}
+                        {!recarregando && !vazio && linhas.length > 0 && (
+                            <div
+                                role="row"
+                                style={{ gridTemplateColumns: colunasDaLargura(largura) }}
+                                className="grid items-center gap-2 border-y border-white/[0.06] px-2 py-2"
+                            >
+                                {COLUNAS_DA_GRADE.map((coluna) => {
+                                    // ⚠️ Todas as flags calculadas DENTRO do callback
+                                    // (armadilha do Rollup).
+                                    if (coluna.soLargo === true && largura < LARGURA_DE_CORTE) return null;
+
+                                    if (coluna.chave === 'selecao') {
+                                        const visiveis = linhas.map((l) => l.produto?.id).filter((id) => id !== undefined);
+                                        const todosMarcados = visiveis.length > 0 && visiveis.every((id) => selecao.has(id));
+
+                                        return (
+                                            <div key={coluna.chave} className="flex items-center justify-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={todosMarcados}
+                                                    onChange={() => setSelecao(todosMarcados ? new Set() : new Set(visiveis))}
+                                                    aria-label="Selecionar todos os produtos visíveis"
+                                                    className="h-4 w-4 rounded border-white/[0.20] bg-white/[0.04] accent-ecf-yellow"
+                                                />
+                                            </div>
+                                        );
+                                    }
+
+                                    if (coluna.ordena === null) {
+                                        return (
+                                            <div key={coluna.chave} className={CABECALHO_DA_COLUNA}>
+                                                {coluna.rotulo === '' ? <span className="sr-only">Ações</span> : coluna.rotulo}
+                                            </div>
+                                        );
+                                    }
+
+                                    const ativa = ordem.coluna === coluna.ordena;
+                                    const seta = ativa ? (ordem.direcao > 0 ? '↑' : '↓') : '';
+                                    const sentido = ordem.direcao > 0 ? 'crescente' : 'decrescente';
+
+                                    return (
+                                        <button
+                                            key={coluna.chave}
+                                            type="button"
+                                            onClick={() => alternarOrdem(coluna.ordena)}
+                                            aria-label={ativa
+                                                ? `Ordenar por ${coluna.rotulo} (${sentido}; clique para inverter)`
+                                                : `Ordenar por ${coluna.rotulo}`}
+                                            className={cn(
+                                                CABECALHO_DA_COLUNA,
+                                                'inline-flex items-center gap-1 text-left hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                                                ativa && 'text-white/70',
+                                            )}
+                                        >
+                                            {coluna.rotulo}
+                                            <span aria-hidden="true">{seta}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <div aria-live="polite" className="px-4">
@@ -556,125 +938,47 @@ export default function Produtos({
                             <p className="text-[15px] font-bold text-white">Nenhum produto neste filtro.</p>
                             <button
                                 type="button"
-                                onClick={() => { setFiltro('todos'); setFase('todas'); setBusca(''); }}
+                                onClick={limparBuscaEFiltros}
                                 className={cn(BOTAO_SECUNDARIO, 'mt-4')}
                             >
-                                Limpar busca
+                                Limpar busca e filtros
                             </button>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="border-y border-white/[0.06]">
-                                        {COLUNAS.map((c) => (
-                                            <th key={c} scope="col" className="px-4 py-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
-                                                {c}
-                                            </th>
-                                        ))}
-                                        <th scope="col" className="px-4 py-2"><span className="sr-only">Ações</span></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {linhas.map((linha) => {
-                                        // ⚠️ Tudo o que a linha precisa é calculado DENTRO do
-                                        // callback: variável de escopo do componente lida dentro
-                                        // de um `.map()` já foi eliminada pelo Rollup no bundle de
-                                        // produção deste projeto (feedback_rollup_map_scope_bug.md).
-                                        const p = linha.produto;
-                                        const recuado = linha.recuado === true;
-                                        const sugestao = sugestaoSegura(p);
-                                        const temRascunho = Boolean(p.rascunho_id);
+                        <div role="rowgroup" aria-label="Produtos">
+                            {linhas.map((linha) => {
+                                // ⚠️ Tudo o que a linha precisa é calculado DENTRO do
+                                // callback: variável de escopo do componente lida dentro
+                                // de um `.map()` já foi eliminada pelo Rollup no bundle de
+                                // produção deste projeto (feedback_rollup_map_scope_bug.md).
+                                const p = linha.produto;
+                                const recuado = linha.recuado === true;
+                                const sugestao = sugestaoSegura(p);
+                                const acao = acaoPrincipal(p?.status);
+                                const largoNaLinha = largura >= LARGURA_DE_CORTE;
+                                const miniaturasNaLinha = miniaturasVisiveis(MOSTRAR_MINIATURAS, largura);
+                                const selecionada = selecao.has(p?.id);
+                                const nova = novos.has(p?.id);
 
-                                        return (
-                                        <tr
-                                            key={p.id}
-                                            tabIndex={0}
-                                            onClick={() => abrir(p)}
-                                            onKeyDown={(ev) => {
-                                                if (ev.key === 'Enter' && ev.target === ev.currentTarget) abrir(p);
-                                            }}
-                                            className={cn(
-                                                'h-14 cursor-pointer border-b border-white/[0.06] transition-colors duration-[2000ms] hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow',
-                                                novos.has(p.id) && 'bg-sky-500/[0.06]',
-                                            )}
-                                        >
-                                            {/* Kit recuado sob o base: recuo VISUAL, nunca sublista
-                                                HTML — a tabela continua com um <tbody> só. */}
-                                            <td className={cn('px-4 py-2 font-mono text-[13px] font-normal text-white/70', recuado && 'pl-8')}>
-                                                {recuado && <span aria-hidden="true" className="mr-2 text-white/25">└</span>}
-                                                {p.sku}
-                                            </td>
-                                            <td className="max-w-[320px] px-4 py-2">
-                                                <p className="truncate text-[13px] font-normal text-white" title={p.nome}>{p.nome}</p>
-                                            </td>
-                                            <td className="px-4 py-2"><PilulaOrigem produto={p} /></td>
-                                            <td className="px-4 py-2">
-                                                <span className="text-[13px] font-normal text-white/70">{textoSeguro(p.rotulo_fase, '—')}</span>
-                                                {sugestao !== null && (
-                                                    <span className="mt-1 flex flex-wrap items-center gap-2">
-                                                        <span className="text-[11px] font-normal text-white/55">
-                                                            {`Kit de ${textoSeguro(sugestao.base_sku, 'outro produto')}?`}
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(ev) => { ev.stopPropagation(); setVinculo({ produto: p, sugestao, modo: 'vincular' }); }}
-                                                            className={BOTAO_SUGESTAO}
-                                                        >
-                                                            Vincular
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(ev) => { ev.stopPropagation(); setVinculo({ produto: p, sugestao, modo: 'recusar' }); }}
-                                                            className={BOTAO_SUGESTAO}
-                                                        >
-                                                            Não é kit
-                                                        </button>
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-2"><SeloStatusProduto status={p.status} /></td>
-                                            <td className="px-4 py-2 text-[13px] font-normal text-white/70">
-                                                {p.parcial ? (
-                                                    <span className="tabular-nums">{p.parcial.publicados} de {p.parcial.total}</span>
-                                                ) : p.anuncios?.length > 0 ? (
-                                                    <span className="flex flex-col gap-1">
-                                                        {p.anuncios.map((a) => <LinkMl key={a.ml_item_id} mlb={a.ml_item_id} className="text-[11px]" />)}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                            <td className="px-4 py-2 font-mono text-[11px] tabular-nums text-white/40">
-                                                {haQuanto(p.atualizado_em) ?? '—'}
-                                            </td>
-                                            <td className="px-4 py-2">
-                                                <div className="flex justify-end gap-2">
-                                                    {/* Com rascunho: "Abrir produto" leva à tela do Produto
-                                                        (§3) e "Continuar" segue direto ao editor. Sem
-                                                        rascunho, "Começar rascunho" abre o editor num
-                                                        clique, exatamente como antes da Fase 175. */}
-                                                    {temRascunho && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(ev) => { ev.stopPropagation(); abrir(p); }}
-                                                            className={BOTAO_SECUNDARIO}
-                                                        >
-                                                            Abrir produto
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={(ev) => { ev.stopPropagation(); abrirEditor(p); }}
-                                                        className={BOTAO_SECUNDARIO}
-                                                    >
-                                                        {temRascunho ? 'Continuar' : 'Começar rascunho'}
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                return (
+                                    <LinhaDeProduto
+                                        key={p?.id}
+                                        produto={p}
+                                        recuado={recuado}
+                                        sugestao={sugestao}
+                                        acao={acao}
+                                        largo={largoNaLinha}
+                                        densidade={densidade}
+                                        miniaturas={miniaturasNaLinha}
+                                        selecionada={selecionada}
+                                        nova={nova}
+                                        aoSelecionar={() => alternarSelecao(p?.id)}
+                                        aoAbrirPainel={() => setDetalhe(p?.id ?? null)}
+                                        aoAcao={() => irPara(acao.destino, p)}
+                                        aoEscolherNoMenu={(chave) => escolherNoMenu(chave, p)}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
                 </section>
@@ -708,6 +1012,29 @@ export default function Produtos({
                 skusExistentes={skus}
             />
 
+            {/* O painel lateral do layout v2: o clique na linha abre ELE, sem
+                sair da lista. Recebe a linha PRONTA — nenhuma busca nova. */}
+            <PainelDoProdutoLateral
+                produto={produtoDoPainel}
+                sugestao={sugestaoSegura(produtoDoPainel)}
+                proximaFase={proximaFaseDaFamilia(lista, sugestaoSegura(produtoDoPainel)?.base_id ?? null)}
+                acao={acaoPrincipal(produtoDoPainel?.status)}
+                onFechar={() => setDetalhe(null)}
+                onAbrirProduto={() => { if (produtoDoPainel) abrir(produtoDoPainel); }}
+                onAcao={() => {
+                    if (!produtoDoPainel) return;
+                    const destino = acaoPrincipal(produtoDoPainel.status).destino;
+                    // O painel JÁ é o destino 'painel': ali a ação é só não fazer nada.
+                    if (destino !== 'painel') irPara(destino, produtoDoPainel);
+                }}
+                onVincular={() => {
+                    if (produtoDoPainel) setVinculo({ produto: produtoDoPainel, sugestao: sugestaoSegura(produtoDoPainel), modo: 'vincular' });
+                }}
+                onRecusar={() => {
+                    if (produtoDoPainel) setVinculo({ produto: produtoDoPainel, sugestao: sugestaoSegura(produtoDoPainel), modo: 'recusar' });
+                }}
+            />
+
             {/* §6: a sugestão de kit e o "Não é kit" — os dois pelo mesmo diálogo,
                 em modos diferentes (nada de confirmação nativa do navegador). */}
             <DialogoVincularKit
@@ -716,7 +1043,7 @@ export default function Produtos({
                 conta={empresa.chave}
                 produto={vinculo?.produto ?? null}
                 sugestao={vinculo?.sugestao ?? null}
-                proximaFase={proximaFaseDaFamilia(produtos, vinculo?.sugestao?.base_id ?? null)}
+                proximaFase={proximaFaseDaFamilia(lista, vinculo?.sugestao?.base_id ?? null)}
                 modo={vinculo?.modo ?? 'vincular'}
                 onConcluido={aoConcluirVinculo}
             />

@@ -1012,6 +1012,236 @@ test('PainelDoProdutoLateral — gate de fonte: recebe a linha pronta e NÃO bus
     assert.match(fonte, /\.focus\(\)/);
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 5 — A página montada: bloco fixo, densidade, seleção e dados adversos
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de sugestões', async (contexto) => {
+    const { default: Produtos } = await montar(PAGINA, 'produtos-pagina-render');
+
+    const propsBase = (overrides = {}) => ({
+        empresa: {
+            chave: 'company-459', nome: 'Dev 02 Testes API', programa: 'polos',
+            programa_rotulo: 'Polos', company_id: 459, token: 'ativo',
+            portal: { situacao: 'sincronizado', novas: 0 },
+        },
+        liberada: true,
+        produtos: [produtoBase()],
+        contagens: { todos: 1, rascunho: 0, conferidos: 0, publicados: 1, com_problema: 0 },
+        rascunhos_antigos: { total: 0, url: null },
+        criativos_ia: { url: null },
+        abas: { company_id: 459 },
+        ...overrides,
+    });
+
+    const render = (overrides = {}, busca = '') => {
+        global.window.location.search = busca;
+
+        return renderToStaticMarkup(React.createElement(Produtos, propsBase(overrides)));
+    };
+
+    await contexto.test('UM bloco sticky top-0 com filtros + cabeçalho das colunas, sem overflow-x', () => {
+        let html;
+        assert.doesNotThrow(() => { html = render(); });
+        assert.match(html, /sticky top-0 z-10 rounded-t-xl bg-ecf-card/);
+        assert.doesNotMatch(html, /overflow-x-auto/);
+        assert.doesNotMatch(html, /<table|<tbody|<thead/);
+        // A grade entra com as colunas do breakpoint largo (default da referência).
+        assert.match(html, /grid-template-columns:44px minmax\(240px,1fr\) 132px 172px 120px 92px 152px/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('os cabeçalhos Produto, Situação e Atualizado ordenam; o default é Situação ↑', () => {
+        const html = render();
+        for (const coluna of ['Produto', 'Situação', 'Atualizado']) {
+            assert.ok(html.includes(`Ordenar por ${coluna}`), `cabeçalho não ordenável: ${coluna}`);
+        }
+        // A coluna ativa (Situação) traz a seta e diz o sentido.
+        assert.match(html, /Ordenar por Situação \(crescente; clique para inverter\)/);
+        assert.match(html, /↑/);
+        // Fase e Anúncios NÃO são ordenáveis (não estão na ORDEM do handoff).
+        assert.doesNotMatch(html, /Ordenar por Fase/);
+        assert.doesNotMatch(html, /Ordenar por Anúncios/);
+    });
+
+    await contexto.test('a ordenação do cliente reordena o TOPO e mantém o kit sob o base', () => {
+        const base = produtoBase({ id: 1, sku: 'ZZZ-01', nome: 'Zebra Base', status: { chave: 'publicado', faltam: 0 } });
+        const kit = produtoBase({
+            id: 102, sku: 'ZZZ-01-KIT2', nome: 'Kit 2 Zebra', fase: 2, quantidade_kit: 2,
+            eh_kit: true, produto_base_id: 1, base: { id: 1, sku: 'ZZZ-01', nome: 'Zebra Base' },
+            rotulo_fase: 'Kit 2', status: { chave: 'publicado', faltam: 0 },
+        });
+        const outro = produtoBase({ id: 9, sku: 'AAA-09', nome: 'Armário Alfa', status: { chave: 'erro', faltam: 0 } });
+
+        const html = render({ produtos: [base, kit, outro], contagens: { todos: 3 } });
+        // Default = situação: 'erro' (−1) vem antes de 'publicado' (5).
+        assert.ok(html.indexOf('AAA-09') < html.indexOf('ZZZ-01'), 'erro tem de vir primeiro');
+        // E o kit continua logo abaixo do base dele.
+        assert.ok(html.indexOf('>ZZZ-01<') < html.indexOf('ZZZ-01-KIT2'), 'kit tem de ficar sob o base');
+    });
+
+    await contexto.test('alternador de densidade com as duas opções; confortável é o default', () => {
+        const html = render();
+        assert.match(html, /aria-label="Densidade da lista"/);
+        assert.ok(html.includes('Confortável'));
+        assert.ok(html.includes('Compacto'));
+        // 64px (confortável) na altura das linhas.
+        assert.match(html, /height:64px/);
+    });
+
+    await contexto.test('⚠️ localStorage que LANÇA (janela privada) não derruba a tela', () => {
+        const original = Object.getOwnPropertyDescriptor(global.window, 'localStorage');
+        Object.defineProperty(global.window, 'localStorage', {
+            configurable: true,
+            get() { throw new Error('SecurityError: acesso negado'); },
+        });
+        try {
+            let html;
+            assert.doesNotThrow(() => { html = render(); });
+            // Caiu no default, e a lista renderizou normalmente.
+            assert.match(html, /height:64px/);
+            assert.match(html, /CAD-01/);
+        } finally {
+            if (original) Object.defineProperty(global.window, 'localStorage', original);
+            else delete global.window.localStorage;
+        }
+    });
+
+    await contexto.test('seleção em lote: "selecionar todos os visíveis" no cabeçalho + checkbox por linha', () => {
+        const html = render({ produtos: [produtoBase(), produtoBase({ id: 2, sku: 'MES-02' })], contagens: { todos: 2 } });
+        assert.match(html, /aria-label="Selecionar todos os produtos visíveis"/);
+        assert.match(html, /aria-label="Selecionar CAD-01"/);
+        assert.match(html, /aria-label="Selecionar MES-02"/);
+        // Sem seleção, a barra amarela não existe (nada de "0 selecionados").
+        assert.doesNotMatch(html, /selecionados/);
+        // ⚠️ "Preencher com IA" e "Abrir na grade com a seleção" ficam
+        // ESCONDIDOS (não desabilitados): não há endpoint que receba uma
+        // seleção de produtos do Publicador. "Editar em grade" (sem seleção)
+        // continua na barra, como sempre.
+        assert.doesNotMatch(html, /Preencher com IA/);
+        assert.match(html, /Editar em grade/);
+    });
+
+    await contexto.test('faixa de sugestões acima do card, com Revisar e o × de esconder', () => {
+        const html = render({
+            produtos: [produtoBase({
+                id: 40, sku: 'CAD-CB2',
+                sugestao_kit: { base_id: 1, base_sku: 'CAD-01', base_nome: 'Cadeira', quantidade: 2, origem: 'sku', conflito_heuristica: false },
+            })],
+            contagens: { todos: 1 },
+        });
+        assert.match(html, /CAD-CB2 parece kit de CAD-01\. Confirme o vínculo para ele virar Fase 2\./);
+        assert.match(html, />Revisar</);
+        assert.match(html, /aria-label="Esconder o aviso de sugestões"/);
+
+        // Vários: só conta.
+        const varios = render({
+            produtos: [
+                produtoBase({ id: 40, sku: 'A-CB2', sugestao_kit: { base_id: 1, base_sku: 'A' } }),
+                produtoBase({ id: 41, sku: 'B-CB2', sugestao_kit: { base_id: 2, base_sku: 'B' } }),
+            ],
+            contagens: { todos: 2 },
+        });
+        assert.match(varios, /2 produtos parecem kits de outros/);
+
+        // Sem sugestão nenhuma, nenhuma faixa.
+        assert.doesNotMatch(render(), /parece kit de|parecem kits/);
+    });
+
+    await contexto.test('nada regrediu: os 3 estados de vazio, "Limpar busca", avisos e rodapés', () => {
+        const semProduto = render({ produtos: [], contagens: { todos: 0 } });
+        assert.match(semProduto, /Esta empresa ainda não tem produtos\./);
+
+        const semPortal = render({
+            produtos: [], contagens: { todos: 0 },
+            empresa: { ...propsBase().empresa, portal: { situacao: 'sem_portal', novas: 0 } },
+        });
+        assert.match(semPortal, /Nenhum produto cadastrado\./);
+
+        const semFiltro = render({}, '?filtro=com_problema');
+        assert.match(semFiltro, /Nenhum produto neste filtro\./);
+        assert.match(semFiltro, /Limpar busca/);
+
+        const completo = render({
+            liberada: false,
+            criativos_ia: { url: '/mlb/anuncios/wizard/459' },
+            rascunhos_antigos: { total: 3, url: '/mlb/anuncios/meus/459' },
+        });
+        assert.match(completo, /Buscar SKU ou nome/);
+        assert.match(completo, /Gerar criativos no assistente antigo/);
+        assert.match(completo, /Abrir no assistente antigo/);
+        assert.match(completo, /A validação e a publicação no Mercado Livre são liberadas conta a conta/);
+    });
+
+    await contexto.test('⚠️ produtos NULO e TODAS as props ausentes não derrubam a tela', () => {
+        let html;
+        assert.doesNotThrow(() => { html = render({ produtos: null, contagens: null }); });
+        assert.match(html, /Esta empresa ainda não tem produtos\.|Nenhum produto cadastrado\./);
+        assert.doesNotMatch(html, /\[object Object\]/);
+
+        // A página sempre recebe `empresa` do controller; o caso aqui é cada
+        // uma das OUTRAS props faltando.
+        for (const faltando of ['liberada', 'produtos', 'contagens', 'rascunhos_antigos', 'criativos_ia', 'abas']) {
+            const props = propsBase();
+            delete props[faltando];
+            assert.doesNotThrow(
+                () => renderToStaticMarkup(React.createElement(Produtos, props)),
+                `prop ausente derrubou a tela: ${faltando}`,
+            );
+        }
+    });
+
+    await contexto.test('CADA campo do produto como objeto/array/nulo/ausente na tela montada', () => {
+        const campos = ['sku', 'nome', 'origem', 'rotulo_fase', 'status', 'anuncios', 'parcial', 'atualizado_em', 'oferta_id', 'fase', 'quantidade_kit', 'eh_kit', 'url_produto', 'base', 'kits', 'sugestao_kit'];
+        for (const campo of campos) {
+            for (const valor of [{ foo: 'bar' }, ['foo'], null, undefined]) {
+                let html;
+                assert.doesNotThrow(
+                    () => { html = render({ produtos: [produtoBase({ [campo]: valor })], contagens: { todos: 1 } }); },
+                    `${campo} = ${JSON.stringify(valor)}`,
+                );
+                assert.doesNotMatch(html, /\[object Object\]/, `${campo} = ${JSON.stringify(valor)}`);
+                assert.doesNotMatch(html, /foo/, `${campo} = ${JSON.stringify(valor)}`);
+            }
+        }
+    });
+});
+
+test('Tela B (página) — gates de fonte do layout v2', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
+
+    // O clique na linha abre o PAINEL, e a navegação foi para os botões.
+    assert.match(fonte, /aoAbrirPainel={\(\) => setDetalhe\(/);
+    assert.match(fonte, /<PainelDoProdutoLateral/);
+    assert.match(fonte, /aoAcao={\(\) => irPara\(acao\.destino, p\)}/);
+
+    // A densidade persiste na chave combinada, com as DUAS pontas em try/catch.
+    assert.match(fonte, /publicador\.produtos\.densidade|CHAVE_DA_DENSIDADE/);
+    assert.equal((fonte.match(/try \{/g) ?? []).length, 2, 'leitura e escrita do localStorage em try/catch');
+    assert.match(fonte, /localStorage\.getItem/);
+    assert.match(fonte, /localStorage\.setItem/);
+
+    // ⚠️ MANTIDO: o polling de 5 s e a recarga enxuta.
+    assert.match(fonte, /5000/);
+    assert.match(fonte, /clearInterval/);
+    assert.ok((fonte.match(/only: \['produtos', 'contagens'\]/g) ?? []).length >= 2);
+
+    // ⚠️ MANTIDO: realce das linhas novas e o painel do Sincronizar.
+    assert.match(fonte, /nova={nova}/);
+    assert.match(fonte, /<ResumoDoSincronizar /);
+    assert.match(fonte, /criarAcompanhamento\(/);
+
+    // A whitelist da querystring continua a mesma, e nada é escrito na URL.
+    assert.match(fonte, /function filtroInicial\(\)/);
+    assert.match(fonte, /function faseInicial\(\)/);
+    assert.doesNotMatch(fonte, /history\.(push|replace)State/);
+
+    // Nenhuma asserção de botão desabilitado pode usar /disabled/ sem o "=":
+    // as classes contêm `disabled:opacity-40` e casariam sempre.
+    const esteArquivo = lerSemComentarios('tests/js/publicador-produtos-layout.test.js');
+    assert.doesNotMatch(esteArquivo, /assert\.match\([^)]*\/disabled\//);
+});
+
 test('layout — Produtos.jsx reexporta as funções novas AO LADO das quatro antigas', async () => {
     const mod = await montar(PAGINA, 'produtos-layout-exports');
 

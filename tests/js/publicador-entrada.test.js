@@ -23,6 +23,11 @@ const ARQUIVOS = [
     DIR + 'PainelComoFunciona.jsx',
     DIR + 'SeloStatusProduto.jsx',
     DIR + 'ModalNovoProduto.jsx',
+    // Layout v2 da lista de Produtos (quick 261009-prd) — entram no mesmo
+    // vocabulário visual da tela que os hospeda.
+    DIR + 'LinhaDeProduto.jsx',
+    DIR + 'MenuDeAcoesDoProduto.jsx',
+    DIR + 'PainelDoProdutoLateral.jsx',
     'resources/js/Pages/Mlb/AnunciosEmpresas.jsx',
     'resources/js/Pages/Mlb/Publicador/Produtos.jsx',
 ];
@@ -198,19 +203,33 @@ test('SeloStatusProduto — rótulos das sete situações', () => {
 
 const PAGINA_B = 'resources/js/Pages/Mlb/Publicador/Produtos.jsx';
 
-test('Tela B — navega ao editor por clique e Enter, e monta as abas com a conta do Publicador', () => {
-    const fonte = lerSemComentarios(PAGINA_B);
-    assert.match(fonte, /mlb\.anuncios\.publicador\.editor/);
-    assert.match(fonte, /tabIndex={0}/);
-    assert.match(fonte, /'Enter'/);
-    assert.match(fonte, /conta={empresa\.chave}/);
-    assert.match(fonte, /companyId={abas\.company_id}/);
-    assert.doesNotMatch(fonte, /mlb\.anuncios\.wizard/);
+// ⚠️ Layout v2 (quick 261009-prd): a LINHA da lista virou um componente
+// próprio (`LinhaDeProduto.jsx`) — era a única forma de garantir que nenhuma
+// variável de escopo do componente fosse lida dentro do `.map()` (armadilha
+// do Rollup neste projeto). Por isso `tabIndex`, o `Enter`, a pílula de
+// origem e a classe da linha passaram a ser conferidos LÁ, e não na página.
+const LINHA_B = 'resources/js/Components/Mlb/Publicador/LinhaDeProduto.jsx';
+
+test('Tela B — a linha é focável, abre com Enter, e as abas montam com a conta do Publicador', () => {
+    const pagina = lerSemComentarios(PAGINA_B);
+    const linha = lerSemComentarios(LINHA_B);
+
+    assert.match(pagina, /mlb\.anuncios\.publicador\.editor/);
+    assert.match(linha, /tabIndex={0}/);
+    assert.match(linha, /'Enter'/);
+    // ⚠️ A ÚNICA mudança de comportamento do layout v2: o Enter/clique na
+    // linha abre o PAINEL lateral; a navegação passou para os botões.
+    assert.match(linha, /aoAbrirPainel\?\.\(\)/);
+    assert.match(pagina, /conta={empresa\.chave}/);
+    // `abas?.company_id`: o default `{ company_id: null }` só cobre
+    // `undefined`, e `abas: null` numa recarga parcial derrubava a tela.
+    assert.match(pagina, /companyId={abas\??\.company_id( \?\? null)?}/);
+    assert.doesNotMatch(pagina, /mlb\.anuncios\.wizard/);
 });
 
 test('Tela B — D27: a pílula de origem decide por oferta_id', () => {
-    const fonte = lerSemComentarios(PAGINA_B);
-    assert.match(fonte, /produto.oferta_id/);
+    const fonte = lerSemComentarios(LINHA_B);
+    assert.match(fonte, /produto\)\.oferta_id|produto\.oferta_id/);
     assert.match(fonte, /Veio do Portal; a oferta foi apagada lá e o produto ficou aqui./);
 });
 
@@ -240,10 +259,17 @@ test('Tela B — ponte dos criativos por IA só com a URL que o servidor decide 
 });
 
 test('Tela B — nenhuma linha avermelhada', () => {
-    const fonte = lerSemComentarios(PAGINA_B);
-    const abertura = fonte.match(/'h-14[^']*'/);
-    assert.ok(abertura, 'linha h-14 não encontrada');
-    assert.doesNotMatch(abertura[0], /bg-red|border-red/);
+    // ⚠️ A altura da linha deixou de ser a classe `h-14` e passou a ser
+    // `style={{height}}` com 64/52px (`alturaDaLinha`), porque o layout v2
+    // exige altura FIXA por densidade. A classe base da linha ficou exportada
+    // justamente para este gate continuar existindo.
+    const fonte = lerSemComentarios(LINHA_B);
+    const abertura = fonte.match(/CLASSE_DA_LINHA = '([^']*)'/);
+    assert.ok(abertura, 'CLASSE_DA_LINHA não encontrada');
+    assert.doesNotMatch(abertura[1], /bg-red|border-red/);
+    // E a altura fixa continua vindo do `alturaDaLinha`, não de uma classe.
+    assert.match(fonte, /alturaDaLinha\(densidade\)/);
+    assert.doesNotMatch(fonte, /\bh-14\b/);
 });
 
 // Fase 173, plano 06: link ?filtro=X vindo da Visão geral precisa pré-selecionar
