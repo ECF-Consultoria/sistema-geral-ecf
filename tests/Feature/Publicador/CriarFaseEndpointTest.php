@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Publicador;
 
+use App\Jobs\Publicador\GerarSugestaoKitIaJob;
 use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlCategoriaSchema;
@@ -9,8 +10,10 @@ use App\Models\MlToken;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\User;
+use App\Services\Publicador\SugestaoKitIaService;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
@@ -606,5 +609,131 @@ class CriarFaseEndpointTest extends TestCase
         $novo = PubProduto::where('quantidade_kit', 3)->firstOrFail();
         $this->assertSame($base->id, $novo->produto_base_id, 'nunca há cadeia de kits: o novo aponta para o BASE');
         $this->assertSame(3, $novo->fase);
+    }
+
+    // ═══ "Sugerir com IA" — plano 175-06 ═════════════════════════════════════
+
+    private function urlIa(MlbEmpresa $e, PubProduto $p): string
+    {
+        return self::BASE."/empresas/empresa-{$e->id}/produtos/{$p->id}/fases/ia";
+    }
+
+    public function test_as_rotas_de_ia_vivem_no_grupo_admin_com_throttle_nomeado(): void
+    {
+        $pedir = Route::getRoutes()->getByName('mlb.anuncios.publicador.fases.ia');
+        $status = Route::getRoutes()->getByName('mlb.anuncios.publicador.fases.ia.status');
+
+        $this->assertNotNull($pedir);
+        $this->assertNotNull($status);
+        $this->assertContains('role:admin', $pedir->gatherMiddleware());
+        $this->assertContains('role:admin', $status->gatherMiddleware());
+        // Mesmos tetos do `publicador.palavras-ia`: gastar IA é caro, perguntar não é.
+        $this->assertContains('throttle:20,1,publicador.fases.ia', $pedir->gatherMiddleware());
+        $this->assertContains('throttle:240,1,publicador.fases.ia.status', $status->gatherMiddleware());
+
+        foreach ([$pedir, $status] as $rota) {
+            $this->assertSame('(empresa|company)-[0-9]+', $rota->wheres['conta'] ?? null);
+            $this->assertSame('[0-9]+', $rota->wheres['produto'] ?? null);
+        }
+        $this->assertSame('titulo|descricao', $status->wheres['alvo'] ?? null, 'o alvo morre na própria rota');
+        $this->assertSame(['POST'], $pedir->methods());
+        $this->assertSame(['GET', 'HEAD'], $status->methods());
+    }
+
+    public function test_pedir_ia_responde_202_e_enfileira_o_job_sem_gravar_nada(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $r = $this->rascunhoPublicado($base);
+
+        $resposta = $this->actingAs($this->admin())
+            ->postJson($this->urlIa($e, $base), ['alvo' => 'titulo', 'quantidade' => 2])
+            ->assertStatus(202)
+            ->assertJsonPath('status', 'rodando');
+
+        $pedido = $resposta->json('pedido');
+        $this->assertNotEmpty($pedido);
+        Queue::assertPushed(GerarSugestaoKitIaJob::class, fn ($job) => $job->rascunhoBaseId === $r->id && $job->quantidade === 2);
+        // O pedido é escopado ao rascunho do BASE: nenhum produto novo nasce aqui.
+        $this->assertSame(1, PubProduto::count());
+        $this->assertSame('Cadeira Escritório Executiva', (string) $r->alvos()->orderBy('posicao')->first()->titulo);
+        $this->semChamadaAoMl();
+    }
+
+    public function test_ia_recusa_alvo_fora_da_lista_e_quantidade_invalida(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $this->rascunhoPublicado($base);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->postJson($this->urlIa($e, $base), ['alvo' => 'modelo', 'quantidade' => 2])
+            ->assertStatus(422)->assertJsonValidationErrors('alvo');
+        $this->actingAs($admin)->postJson($this->urlIa($e, $base), ['alvo' => 'titulo', 'quantidade' => 1])
+            ->assertStatus(422)->assertJsonValidationErrors('quantidade');
+        Queue::assertNotPushed(GerarSugestaoKitIaJob::class);
+    }
+
+    public function test_status_de_alvo_nunca_pedido_responde_nenhum_nunca_404(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $this->rascunhoPublicado($base);
+
+        $this->actingAs($this->admin())
+            ->getJson($this->urlIa($e, $base).'/descricao?quantidade=2')
+            ->assertOk()->assertJsonPath('status', 'nenhum');
+    }
+
+    public function test_status_devolve_o_pedido_da_quantidade_certa(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $r = $this->rascunhoPublicado($base);
+        Cache::put(SugestaoKitIaService::chave($r->id, 'titulo', 4), ['pedido' => 'p4', 'status' => 'pronto', 'valor' => 'Kit 4 Cadeira', 'erro' => null], 60);
+
+        $this->actingAs($this->admin())->getJson($this->urlIa($e, $base).'/titulo?quantidade=4')
+            ->assertOk()->assertJsonPath('valor', 'Kit 4 Cadeira');
+        // O painel de outra quantidade não enxerga este resultado.
+        $this->actingAs($this->admin())->getJson($this->urlIa($e, $base).'/titulo?quantidade=2')
+            ->assertOk()->assertJsonPath('status', 'nenhum');
+    }
+
+    public function test_ia_de_produto_de_outra_conta_e_404_nunca_403(): void
+    {
+        [$e] = $this->conta();
+        [$outra] = $this->conta();
+        $deOutra = $this->base($outra, null, 'ALHEIO');
+        $this->rascunhoPublicado($deOutra);
+
+        $this->actingAs($this->admin())
+            ->postJson($this->urlIa($e, $deOutra), ['alvo' => 'titulo', 'quantidade' => 2])
+            ->assertNotFound();
+        $this->actingAs($this->admin())
+            ->getJson($this->urlIa($e, $deOutra).'/titulo?quantidade=2')
+            ->assertNotFound();
+        Queue::assertNotPushed(GerarSugestaoKitIaJob::class);
+    }
+
+    public function test_ia_sem_rascunho_no_base_recusa_com_o_conselho_do_kit_01(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+
+        $this->actingAs($this->admin())
+            ->postJson($this->urlIa($e, $base), ['alvo' => 'titulo', 'quantidade' => 2])
+            ->assertStatus(422)->assertJsonPath('regra', 'KIT-01');
+        Queue::assertNotPushed(GerarSugestaoKitIaJob::class);
+    }
+
+    public function test_ia_exige_admin(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $this->rascunhoPublicado($base);
+        $consultor = User::factory()->create(['role' => 'consultor']);
+
+        $this->actingAs($consultor)->postJson($this->urlIa($e, $base), ['alvo' => 'titulo', 'quantidade' => 2])->assertForbidden();
+        $this->actingAs($consultor)->getJson($this->urlIa($e, $base).'/titulo?quantidade=2')->assertForbidden();
     }
 }

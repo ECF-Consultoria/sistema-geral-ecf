@@ -8,11 +8,13 @@ use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PreviaDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\SugestaoKitIaService;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 /**
@@ -20,9 +22,11 @@ use Inertia\Inertia;
  *
  * - A TELA do Produto — `mostrar()`, plano 175-04.
  * - A PRÉVIA e a CRIAÇÃO da fase — `previa()` e `criar()`, plano 175-05.
+ * - "SUGERIR COM IA" — `pedirIa()` e `iaStatus()`, plano 175-06 (só título e
+ *   descrição; assíncrono, com o resultado no cache do pedido).
  *
- * Os endpoints de "Sugerir com IA" e o vínculo de combos chegam nas plans
- * 175-06 a 175-10 e moram aqui, neste mesmo controller.
+ * O vínculo de combos chega nas plans 175-07 a 175-10 e mora aqui, neste mesmo
+ * controller.
  *
  * ═══ Escopo (D-13) ══════════════════════════════════════════════════════════
  *
@@ -63,6 +67,7 @@ class MlbPublicadorFaseController extends Controller
         private FamiliaDeFasesService $familia,
         private PreviaDaFaseService $previas,
         private CriarFaseService $clone,
+        private SugestaoKitIaService $sugestoes,
     ) {}
 
     /**
@@ -204,6 +209,67 @@ class MlbPublicadorFaseController extends Controller
             // Registrada, não disparada: o job da capa é do 175-07.
             'capa_pedida' => (bool) ($dados['capa'] ?? false),
         ], 201);
+    }
+
+    // ═══ §4 — "Sugerir com IA" (plano 175-06) ════════════════════════════════
+
+    /**
+     * `POST …/produtos/{produto}/fases/ia` — põe na fila o pedido de título OU
+     * descrição do kit por IA e responde **202** na hora: a IA leva de segundos
+     * a minutos e nunca roda dentro da requisição.
+     *
+     * ⚠️ O pedido é escopado ao rascunho do **BASE**: no momento do painel o
+     * rascunho do kit ainda não existe. E a IA mexe SÓ em título e descrição —
+     * SKU, SELLER_SKU e estoque seguem sendo da `PreviaDaFaseService`.
+     *
+     * Nada é gravado no rascunho: o resultado fica no cache do pedido e quem o
+     * aplica é a tela, pelo caminho normal de edição (T-175-27).
+     */
+    public function pedirIa(Request $request, string $conta, int $produto): JsonResponse
+    {
+        $base = $this->baseDaConta($conta, $produto);
+
+        $dados = $request->validate([
+            'alvo' => ['required', 'string', Rule::in(SugestaoKitIaService::ALVOS)],
+            'quantidade' => ['required', 'integer', 'min:2', 'max:'.PreviaDaFaseService::MAX_QUANTIDADE],
+        ]);
+
+        $rascunhoDoBase = $base->rascunho;
+        if ($rascunhoDoBase === null) {
+            // Mesma recusa (e mesmo conselho) do KIT-01: sem a Fase 1 preparada não
+            // há título nem descrição de onde partir.
+            return $this->recusa(new RegraViolada('KIT-01', 'Abra a Fase 1 no editor antes de pedir sugestões para o kit.'));
+        }
+
+        $pedido = $this->sugestoes->pedir($rascunhoDoBase, $dados['alvo'], (int) $dados['quantidade']);
+
+        return response()->json(['pedido' => $pedido, 'status' => 'rodando'], 202);
+    }
+
+    /**
+     * `GET …/produtos/{produto}/fases/ia/{alvo}?quantidade=N` — o polling do
+     * pedido. Alvo nunca pedido responde `{status: 'nenhum'}`, nunca 404: "não
+     * pedi nada ainda" é estado normal da tela, não erro.
+     *
+     * A quantidade é obrigatória porque ela faz parte da chave do pedido —
+     * o resultado de "Kit 2" não responde ao painel de "Kit 4".
+     */
+    public function iaStatus(Request $request, string $conta, int $produto, string $alvo): JsonResponse
+    {
+        $base = $this->baseDaConta($conta, $produto);
+
+        $dados = $request->validate([
+            'quantidade' => ['required', 'integer', 'min:2', 'max:'.PreviaDaFaseService::MAX_QUANTIDADE],
+        ]);
+
+        $rascunhoDoBase = $base->rascunho;
+        if ($rascunhoDoBase === null) {
+            return response()->json(['status' => 'nenhum']);
+        }
+
+        return response()->json(
+            $this->sugestoes->estado($rascunhoDoBase, $alvo, (int) $dados['quantidade']) ?? ['status' => 'nenhum']
+        );
     }
 
     // ═══ Apoio dos endpoints ═════════════════════════════════════════════════

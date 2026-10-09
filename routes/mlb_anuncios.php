@@ -258,6 +258,19 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
             ->middleware('throttle:60,1,publicador.fases.criar')->name('publicador.fases.criar');
 
+        // ─── Fase 175, Plano 06 (§4) — "Sugerir com IA" do painel "Criar Fase N" ───
+        // Só TÍTULO e DESCRIÇÃO (`SugestaoKitIaService::ALVOS`), assíncrono: o POST
+        // enfileira e responde 202, o GET é o polling. Mesmos tetos do
+        // `publicador.palavras-ia` (20/min para gastar IA, 240/min para perguntar o
+        // estado) — a IA custa dinheiro, o polling não. O `{alvo}` morre na própria
+        // rota e `{conta}` vem SEMPRE do resolver, nunca do corpo (D-13).
+        Route::post('publicador/empresas/{conta}/produtos/{produto}/fases/ia', [MlbPublicadorFaseController::class, 'pedirIa'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:20,1,publicador.fases.ia')->name('publicador.fases.ia');
+        Route::get('publicador/empresas/{conta}/produtos/{produto}/fases/ia/{alvo}', [MlbPublicadorFaseController::class, 'iaStatus'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')->where('alvo', 'titulo|descricao')
+            ->middleware('throttle:240,1,publicador.fases.ia.status')->name('publicador.fases.ia.status');
+
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
         // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
