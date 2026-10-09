@@ -217,3 +217,28 @@ foto com arquivo.
 escreve em `pub_imagens`; além disso o ramo novo do job só é alcançado por quem passa
 `tiposFixos`, e o único chamador é o `CapaDoKitService` da Fase 175. Mexer em fixture de outra
 fase para calar uma falha intermitente seria invadir escopo alheio.
+
+_(resolvido em `640bc60f`, pela quick `261009-nxp`.)_
+
+**A causa era mais simples do que a investigação acima supunha, e as duas hipóteses daqui
+estavam erradas.** Não era vazamento de estado entre suítes, nem `Storage::disk('local')` real,
+nem cache de snapshot do `RascunhoRepository` — nada disso participa. Era
+`ColocarFotoNoGrupoSobTravaTest::fotoSemGrupo()`, que gerava o lado da imagem com
+`jpeg(1200 + random_int(1, 200))` para ter sha único: **sorteio pode repetir**, e
+`test_foto_entra_no_fim_do_grupo_sem_mexer_nas_que_ja_estavam_la` tira TRÊS fotos no MESMO
+rascunho ⇒ `1 − (199/200)(198/200) ≈ 1,5%` de falha por rodada. Daí o padrão que mais confundiu:
+`Phase165` isolado parecia estável (3 rodadas limpas é o esperado a 1,5%), e o filtro combinado
+parecia culpado só porque tem mais rodadas acumuladas. **O `:memory:` e o `RefreshDatabase`
+estavam certos o tempo todo; a colisão era intra-teste.**
+
+Mecanismo **provado, não deduzido**: estreitando a faixa para `random_int(1, 1)`, só aquele teste
+falhou — com o erro literal — e os três testes de UM sorteio passaram. Se fosse choque com o
+cenário ou vazamento, eles teriam caído também. Fix: contador de instância em faixa própria
+(`1400 + k`), e o docblock passou a registrar a faixa de cada fixture que minta bytes.
+
+⚠️ **Fica de pé um risco parente, deliberadamente não tocado:** `fotoComArquivo()` do
+`CenarioCriativoDoPublicador` e o provider falso do mesmo cenário dividem a faixa `1200 + k` — é
+por isso que `RegenerarEAprovarKitTest` tem um desvio documentado. Essa sobreposição é
+**determinística**, então ou colide sempre ou nunca, e hoje não colide (as suítes passam em toda
+rodada). Separá-la exigiria mexer no cenário de que todo o `Phase165` depende, para resolver um
+problema que não se manifesta — e um dos testes se apoia na coincidência de propósito.
