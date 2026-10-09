@@ -208,11 +208,21 @@ test('PainelDoProduto — render real (esbuild + react-dom/server), não só est
         assert.match(html, /disabled/);
     });
 
-    await contexto.test('proxima_fase.habilitado=true ainda fica desabilitado nesta plan, com "Em breve nesta tela"', () => {
+    // Desde o 175-07 o botão ABRE o painel "Criar Fase N" (§4) — antes dele
+    // ficava travado com "Em breve nesta tela".
+    await contexto.test('proxima_fase.habilitado=true deixa o botão CLICÁVEL, sem "Em breve nesta tela"', () => {
         const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase()));
         assert.match(html, /Criar Fase 2/);
-        assert.match(html, /Em breve nesta tela/);
-        assert.match(html, /disabled/);
+        assert.doesNotMatch(html, /Em breve nesta tela/);
+        const abre = html.lastIndexOf('<button', html.lastIndexOf('Criar Fase 2'));
+        assert.doesNotMatch(html.slice(abre, html.indexOf('>', abre) + 1), /disabled=/);
+    });
+
+    await contexto.test('habilitado=true mas sem a conta na tela: travado COM explicação, nunca clicável à toa', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({ empresa: {} })));
+        assert.match(html, /Criar Fase 2/);
+        assert.match(html, /n[ãa]o recebeu a conta do produto/i);
+        assert.match(html, /disabled=/);
     });
 
     // ─── Bloco 3: ofertas ───

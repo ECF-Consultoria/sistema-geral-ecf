@@ -705,6 +705,102 @@ test('PainelCriarFase — as regras da §4 que são cálculo puro', async (conte
     });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 3 — A montagem na tela do Produto
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Props da tela do Produto, no formato de `FamiliaDeFasesService::paraTela()`. */
+const produtoProps = (o = {}) => ({
+    empresa: { chave: 'empresa-7', nome: 'Polo das Fases', company_id: 459 },
+    liberada: true,
+    produto: {
+        id: 10, sku: 'CAD-01', nome: 'Cadeira Executiva ECF', origem: 'publicador',
+        categoria: 'Casa, Móveis e Decoração › Cadeiras de Escritório', estoque_total: 7,
+        foto_url: null, editor_url: '/editor/10', base_excluido: false,
+    },
+    fase_destacada: null,
+    fases: [{
+        produto_id: 10, fase: 1, rotulo: '1 unidade', sku: 'CAD-01', quantidade_kit: 1,
+        estado: { chave: 'publicado', rotulo: 'publicado', faltam: 0 }, estado_fase: 'publicada',
+        ofertas_no_ar: 2, estoque_proprio: true, estoque_calculado_valor: null, rascunho_id: 55,
+        editor_url: '/editor/10',
+    }],
+    proxima_fase: { numero: 2, quantidade_sugerida: 2, habilitado: true, motivo: null },
+    ofertas: [],
+    historico: [],
+    criativos: [],
+    mapeamento: { vazio: true, medidas: {}, peso: null, material: null, ean: null },
+    abas: { company_id: 459 },
+    criativos_ia: true,
+    ...o,
+});
+
+test('PainelDoProduto — o botão "Criar Fase N" passa a abrir o painel', async (contexto) => {
+    const { default: PainelDoProduto } = await montar(PRODUTO, 'criar-fase-produto');
+    const tela = (o = {}) => renderToStaticMarkup(React.createElement(PainelDoProduto, produtoProps(o)));
+
+    await contexto.test('habilitado=true deixa o botão CLICÁVEL e tira o "Em breve nesta tela"', () => {
+        const html = tela();
+        assert.match(html, /Criar Fase 2/);
+        assert.doesNotMatch(html, /Em breve nesta tela/);
+        const abre = html.lastIndexOf('<button', html.lastIndexOf('Criar Fase 2'));
+        assert.ok(abre > 0, 'o "Criar Fase 2" do cartão de ação é um <button>');
+        assert.doesNotMatch(html.slice(abre, html.indexOf('>', abre) + 1), /disabled=/);
+    });
+
+    await contexto.test('habilitado=false segue desabilitado COM o motivo do servidor visível (D23)', () => {
+        const html = tela({ proxima_fase: { numero: 2, quantidade_sugerida: 2, habilitado: false, motivo: 'Publique a Fase 1 primeiro' } });
+        assert.match(html, /Criar Fase 2/);
+        assert.match(html, /Publique a Fase 1 primeiro/);
+        assert.match(html, /disabled=/);
+    });
+
+    await contexto.test('nada do que já existia na tela desapareceu (os 6 blocos da §3)', () => {
+        const html = tela();
+        assert.match(html, /Cadeira Executiva ECF/);
+        assert.match(html, /Fases/);
+        assert.match(html, /An[úu]ncios no ar/);
+        assert.match(html, /Hist[óo]rico/);
+        assert.match(html, /Criativos/);
+        assert.match(html, /Mapeamento/);
+        assert.match(html, /Editar Fase 1/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('o painel começa FECHADO: nenhum dialog na tela antes do clique', () => {
+        const html = tela();
+        assert.doesNotMatch(html, /role="dialog"/);
+        assert.doesNotMatch(html, /Unidades no kit/);
+    });
+
+    await contexto.test('a tela do Produto sem a conta (empresa={}) trava o botão com explicação', () => {
+        const html = tela({ empresa: {} });
+        assert.match(html, /n[ãa]o recebeu a conta do produto/i);
+        assert.match(html, /disabled=/);
+    });
+
+    await contexto.test('empresa/criativos_ia em formato adverso não derrubam a tela', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(PainelDoProduto, produtoProps({
+                empresa: 'nao-e-objeto', criativos_ia: 'sim',
+            })));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+});
+
+test('PainelDoProduto — gate de fonte: a montagem do 175-07 substituiu o marcador', () => {
+    const f = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelDoProduto.jsx');
+
+    assert.match(f, /import PainelCriarFase from '\.\/PainelCriarFase'/);
+    assert.match(f, /<PainelCriarFase/);
+    assert.match(f, /router\.get\(url\)/, 'o 201 leva ao editor do kit');
+    assert.match(f, /setCriarFaseAberto\(true\)/, 'o botão abre o painel');
+    assert.doesNotMatch(f, /Em breve nesta tela/, 'o marcador do 175-04 saiu');
+    assert.doesNotMatch(f, /175-07: <PainelCriarFase \/> entra aqui/, 'o comentário de ponto de montagem saiu');
+});
+
 test('PainelCriarFase — gates de fonte: 620px, nada de preço, debounce e o corpo mínimo do POST', () => {
     const f = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelCriarFase.jsx');
 

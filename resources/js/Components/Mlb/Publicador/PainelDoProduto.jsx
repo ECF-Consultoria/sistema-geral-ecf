@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { textoSeguro } from './BarraDaConta';
+import PainelCriarFase from './PainelCriarFase';
 import SeloStatusProduto from './SeloStatusProduto';
 import { haQuanto } from './tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
@@ -106,8 +107,14 @@ export default function PainelDoProduto({
     criativos = [],
     mapeamento = null,
     abas = null,
+    empresa = null,
+    // Capacidade do servidor (chave do Creative Engine + `CreativePermissao`),
+    // não escolha de ninguém: falso faz a caixa da capa do kit NÃO existir no
+    // painel "Criar Fase N" — não uma caixa desabilitada.
+    criativos_ia: criativosIa = false,
 }) {
     const [mlbAberto, setMlbAberto] = useState(null);
+    const [criarFaseAberto, setCriarFaseAberto] = useState(false);
 
     const p = objetoSeguro(produto ?? base);
     const nome = textoSeguro(p.nome, 'Produto');
@@ -128,6 +135,16 @@ export default function PainelDoProduto({
     const proximaQuantidade = numeroSeguro(proxima.quantidade_sugerida);
     const proximaHabilitada = proxima.habilitado === true;
     const proximoMotivo = textoSeguro(proxima.motivo, '');
+
+    // A conta e o id do produto que o painel "Criar Fase N" precisa para pedir a
+    // prévia. Sem um dos dois não há a quem perguntar: o botão fica travado com
+    // explicação, nunca escondido (D23).
+    const contaDaTela = textoSeguro(objetoSeguro(empresa).chave, '') || null;
+    const produtoId = numeroSeguro(p.id);
+    const podeCriarFase = proximaHabilitada && contaDaTela !== null && produtoId !== null;
+    const motivoDeNaoCriar = proximaHabilitada
+        ? 'Esta tela não recebeu a conta do produto. Recarregue a página.'
+        : (proximoMotivo || 'Publique a Fase 1 primeiro.');
 
     const mapa = objetoSeguro(mapeamento);
     const medidas = objetoSeguro(mapa.medidas);
@@ -249,12 +266,14 @@ export default function PainelDoProduto({
                         })}
 
                         {/* Cartão de ação "Criar Fase N".
-                            ⚠️ Nesta plan (175-04) o botão fica SEMPRE desabilitado: o painel
-                            "Criar Fase 2" é o 175-05..07, e um botão que abre nada é pior
-                            que um botão que explica. A regra de habilitação já chega pronta
-                            do servidor (`proxima_fase.habilitado`) e o motivo aparece
-                            visível quando ela é falsa — desabilitado COM explicação, nunca
-                            escondido (D23). */}
+                            A regra de habilitação chega pronta do servidor
+                            (`proxima_fase.habilitado`) e o motivo aparece visível quando ela
+                            é falsa — desabilitado COM explicação, nunca escondido (D23).
+                            Desde o 175-07 o botão ABRE o painel "Criar Fase N" (§4); antes
+                            dele ficava travado com "Em breve nesta tela", porque um botão
+                            que abre nada é pior que um botão que explica. Sem a conta ou sem
+                            o id do produto o painel não teria a quem perguntar a prévia, e
+                            aí o botão continua travado — também com explicação. */}
                         <div className="rounded-lg border border-dashed border-white/[0.10] bg-white/[0.02] p-3">
                             <p className="text-[13px] font-bold text-white/70">
                                 Criar Fase {proximoNumero}
@@ -262,21 +281,40 @@ export default function PainelDoProduto({
                                     <span className="ml-2 font-normal text-white/40">Kit {proximaQuantidade}</span>
                                 )}
                             </p>
-                            <button
-                                type="button"
-                                disabled
-                                aria-disabled="true"
-                                title={proximaHabilitada ? 'Em breve nesta tela' : (proximoMotivo || 'Em breve nesta tela')}
-                                className={cn(BOTAO_TRAVADO, 'mt-2')}
-                            >
-                                Criar Fase {proximoNumero}
-                            </button>
-                            <p className="mt-2 text-[11px] font-normal text-white/40">
-                                {proximaHabilitada
-                                    ? 'Em breve nesta tela'
-                                    : (proximoMotivo || 'Em breve nesta tela')}
-                            </p>
-                            {/* 175-07: <PainelCriarFase /> entra aqui */}
+                            {podeCriarFase ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setCriarFaseAberto(true)}
+                                    className={cn(BOTAO_SECUNDARIO, 'mt-2')}
+                                >
+                                    Criar Fase {proximoNumero}
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        aria-disabled="true"
+                                        title={motivoDeNaoCriar}
+                                        className={cn(BOTAO_TRAVADO, 'mt-2')}
+                                    >
+                                        Criar Fase {proximoNumero}
+                                    </button>
+                                    <p className="mt-2 text-[11px] font-normal text-white/40">{motivoDeNaoCriar}</p>
+                                </>
+                            )}
+                            <PainelCriarFase
+                                aberto={criarFaseAberto}
+                                onFechar={() => setCriarFaseAberto(false)}
+                                conta={contaDaTela}
+                                produtoBase={{ id: produtoId, nome }}
+                                proximaFase={proxima}
+                                criativosIa={criativosIa === true}
+                                onCriado={(url) => {
+                                    setCriarFaseAberto(false);
+                                    if (typeof url === 'string' && url !== '') router.get(url);
+                                }}
+                            />
                         </div>
                     </div>
                 </section>
