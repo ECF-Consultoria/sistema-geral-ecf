@@ -32,3 +32,47 @@ o caminho de publicação — não é escopo de uma plan de estoque de kit.
 
 **Correção provável:** `catch (\Throwable $e)` com `Log::warning` e `$schema = null`,
 no mesmo molde do `PreviaDaFaseService::maxTitulo()`.
+
+---
+
+## 2. A capa do kit não PEDE "N unidades lado a lado" — só informa a contagem (descoberto no 175-06)
+
+**Onde:** `app/Services/Creative/CreativePromptBuilder.php` (`linhasMaster()` e o
+bloco CLAIMS), em diálogo com `CreativeSlotCatalog` (as `cena_padrao` de
+`lifestyle` e `hero`).
+
+**O que é:** o 175-06 fez o N chegar ao prompt como FATO — o bloco "CONTAGENS
+CONFIRMADAS NO CADASTRO (respeite exatamente): unidades idênticas do mesmo
+produto: 4". Isso cumpre TRUTH-02/03 e é o que o plano pedia. Mas duas coisas
+continuam como estavam, e as duas são do prompt builder, que o 175-06 tinha
+instrução explícita de **não** tocar:
+
+1. **Nenhuma linha do prompt PEDE a composição** "mostrar as N unidades lado a
+   lado, nada além do produto". A `cena` dos slots `lifestyle`/`hero` é a do
+   catálogo (ou a que o LLM do planejamento propôs), e nenhuma das duas sabe
+   que este anúncio é um kit. O modelo tem o número, mas a instrução de
+   composição depende de ele inferir sozinho a partir da contagem.
+2. **O bloco MASTER e as CLAIMS FIXAS dizem** "nunca mude a quantidade ou o
+   conteúdo da embalagem" / "Não mude a quantidade ou o conteúdo da embalagem".
+   Lido ao pé da letra isso é sobre EMBALAGEM, não sobre quantas unidades
+   aparecem na cena — mas, num prompt em que a foto de referência mostra UMA
+   unidade e a contagem diz 4, é ambíguo o suficiente para o modelo preferir
+   reproduzir a foto.
+
+**Por que não foi corrigido aqui:** o plano (e o briefing da execução) são
+explícitos — "você NÃO precisa tocar no `CreativePromptBuilder`" — e esse arquivo
+monta o prompt de TODOS os criativos em produção, inclusive os 3 kits de 7 slots.
+Mexer nele por causa da capa de kit é mudança de comportamento para todo mundo.
+
+**Correção provável (uma das duas, nunca as duas de uma vez):**
+- (a) um bloco KIT no `CreativePromptBuilder`, emitido **só** quando
+  `ProductTruth::contagens` tem a entrada `unidades idênticas do mesmo produto`,
+  com a composição pedida e sem tocar em MASTER/CLAIMS; ou
+- (b) `cena` própria para os dois slots da capa, montada pelo
+  `CapaDoKitService`/`CreativeSlotCatalog` — mais contido, porque não mexe em
+  nenhum prompt existente.
+
+**Como conferir que o problema é real antes de corrigir:** gerar uma capa na
+conta #459 depois do 175-07 e olhar se a imagem saiu com N unidades ou com uma.
+É barato (duas imagens, ~R$ 1,10) e é a única prova honesta — o resto é
+suposição sobre o que o modelo faz.
