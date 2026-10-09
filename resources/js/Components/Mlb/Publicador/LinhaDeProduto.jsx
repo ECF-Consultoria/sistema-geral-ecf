@@ -74,7 +74,10 @@ function dataCompleta(iso) {
 
 // Pílula de origem. D27: decidida por `oferta_id` (vínculo vivo com o Portal),
 // nunca por `origem`, que é só a origem histórica do produto.
-function PilulaOrigem({ produto }) {
+// Exportada porque o `PainelDoProdutoLateral` mostra a MESMA pílula — a linha
+// é a casa canônica dela, e duplicar o `title` do Portal apagado era garantia
+// de as duas discordarem na primeira mudança de texto.
+export function PilulaOrigem({ produto }) {
     const base = 'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold text-white/70';
     if (objetoSeguro(produto).oferta_id) {
         return (

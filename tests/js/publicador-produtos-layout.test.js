@@ -451,7 +451,19 @@ test('layout — resumoDosAnuncios: quadradinhos C/P, "2 no ar" e "1 de 2"', asy
         // Tipo fora do par Clássico/Premium ainda mostra o MLB, com letra neutra.
         const r = resumoDosAnuncios(produtoBase({ anuncios: [{ ml_item_id: 'MLB9', listing_type_id: 'free' }] }));
         assert.equal(r.tipos[0].letra, '·');
+        assert.equal(r.tipos[0].nome, '');
         assert.equal(r.tipos[0].titulo, 'MLB9');
+    });
+
+    await contexto.test('o rótulo longo (o que o painel mostra) vem junto do MLB', () => {
+        const r = resumoDosAnuncios(produtoBase({
+            anuncios: [
+                { ml_item_id: 'MLB1', listing_type_id: 'gold_special' },
+                { ml_item_id: 'MLB2', listing_type_id: 'gold_pro' },
+            ],
+        }));
+        assert.deepEqual(r.tipos.map((t) => t.nome), ['Clássico', 'Premium']);
+        assert.deepEqual(r.tipos.map((t) => t.mlb), ['MLB1', 'MLB2']);
     });
 
     await contexto.test('parcial em formato inesperado volta para a contagem normal', () => {
@@ -807,6 +819,197 @@ test('LinhaDeProduto — gate de fonte: tudo dentro do callback do .map() e nada
     assert.doesNotMatch(fonte, /axios/);
     assert.doesNotMatch(fonte, /router\./);
     assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4 — PainelDoProdutoLateral: ver o detalhe SEM sair da lista
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('PainelDoProdutoLateral — render real: os blocos da spec, 440px e acessível', async (contexto) => {
+    const { default: Painel } = await montar(PAINEL, 'painel-lateral-render');
+
+    const props = (overrides = {}) => ({
+        produto: produtoBase({
+            anuncios: [
+                { ml_item_id: 'MLB7781120934', listing_type_id: 'gold_special' },
+                { ml_item_id: 'MLB7781120977', listing_type_id: 'gold_pro' },
+            ],
+        }),
+        sugestao: null,
+        proximaFase: 2,
+        acao: acaoPrincipal(produtoBase().status),
+        onFechar: () => {},
+        onAbrirProduto: () => {},
+        onAcao: () => {},
+        onVincular: () => {},
+        onRecusar: () => {},
+        ...overrides,
+    });
+
+    const render = (overrides) => renderToStaticMarkup(React.createElement(Painel, props(overrides)));
+
+    await contexto.test('linha completa: identificação, situação, atualizado, anúncios e rodapé', () => {
+        let html;
+        assert.doesNotThrow(() => { html = render(); });
+        assert.match(html, /role="dialog"/);
+        assert.match(html, /aria-modal="true"/);
+        // Identificação: miniatura de iniciais, nome completo, SKU, origem, fase.
+        assert.match(html, /data-miniatura="CE"/);
+        assert.match(html, /Cadeira Executiva ECF Giratória/);
+        assert.match(html, />CAD-01</);
+        assert.match(html, />Portal</);
+        assert.match(html, /Fase 1/);
+        // Situação + atualizado.
+        assert.match(html, /Publicado/);
+        assert.match(html, /há \d+ (min|h|d)|agora/);
+        // Anúncios: tipo + MLB com link.
+        assert.match(html, /Clássico/);
+        assert.match(html, /Premium/);
+        assert.match(html, /data-link-ml="MLB7781120934"/);
+        assert.match(html, /produto\.mercadolivre\.com\.br/);
+        // Rodapé: "Abrir produto" + a ação principal.
+        assert.match(html, /Abrir produto/);
+        assert.match(html, />Abrir</);
+        // Largura de 440px, à direita.
+        assert.match(html, /width:440px/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('⚠️ SEM preço: `anuncios[]` só traz ml_item_id e listing_type_id', () => {
+        const html = render();
+        // Nenhum valor em reais em lugar nenhum do painel.
+        assert.doesNotMatch(html, /R\$/);
+        // E nenhuma menção a preço DENTRO do bloco de anúncios. (A única
+        // ocorrência de "preço" no painel é o title da pílula do Portal,
+        // "Título e preço seguem o Portal", que já existia e não é valor.)
+        const inicio = html.indexOf('>Anúncios<');
+        assert.ok(inicio > -1, 'bloco de anúncios não encontrado');
+        const bloco = html.slice(inicio);
+        assert.doesNotMatch(bloco, /[Pp]re[çc]o/);
+        assert.equal((html.match(/[Pp]re[çc]o/g) ?? []).length, 1, 'só o title da pílula do Portal pode citar preço');
+    });
+
+    await contexto.test('"Falta para conferir": o NÚMERO e a barra, só quando faltam > 0', () => {
+        const com = render({
+            produto: produtoBase({ status: { chave: 'conferir', rotulo: 'em preenchimento', faltam: 4 } }),
+            acao: acaoPrincipal({ chave: 'conferir' }),
+        });
+        assert.match(com, /Falta para conferir/);
+        assert.match(com, /faltam 4/);
+        assert.match(com, /role="progressbar"/);
+
+        // faltam = 0 esconde a seção inteira (nada de "faltam 0").
+        const sem = render({ produto: produtoBase({ status: { chave: 'pronto', faltam: 0 } }) });
+        assert.doesNotMatch(sem, /Falta para conferir/);
+        assert.doesNotMatch(sem, /faltam 0/);
+
+        // Singular.
+        const um = render({ produto: produtoBase({ status: { chave: 'conferir', faltam: 1 } }) });
+        assert.match(um, /falta 1 item/);
+    });
+
+    await contexto.test('⚠️ a LISTA de pendências não existe no dado — só o número é mostrado', () => {
+        // `prontidao()` devolve {chave, rotulo, faltam}: não há lista de itens
+        // nem etapa do editor por pendência. A spec pedia a lista; a decisão A
+        // do plano manda mostrar só o número e NÃO criar endpoint.
+        const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelDoProdutoLateral.jsx');
+        assert.doesNotMatch(fonte, /pendencias|pendências|itens_faltando/);
+    });
+
+    await contexto.test('sugestão de kit: "Vincular como Fase N" e "Não é kit" no painel', () => {
+        const html = render({
+            produto: produtoBase({ id: 40, sku: 'CAD-CB2', nome: 'Combo 2 Cadeiras Executivas' }),
+            sugestao: { base_id: 1, base_sku: 'CAD-01', base_nome: 'Cadeira Executiva ECF', quantidade: 2, origem: 'sku', conflito_heuristica: false },
+            proximaFase: 2,
+        });
+        assert.match(html, /Vincular como Fase 2/);
+        assert.match(html, /Não é kit/);
+        assert.match(html, /CAD-01/);
+
+        // Fase que vai nascer muda o rótulo; sem sugestão os dois botões saem.
+        assert.match(render({
+            produto: produtoBase({ id: 40, sku: 'CAD-CB2' }),
+            sugestao: { base_id: 1, base_sku: 'CAD-01' },
+            proximaFase: 3,
+        }), /Vincular como Fase 3/);
+
+        const semSugestao = render({ sugestao: null });
+        assert.doesNotMatch(semSugestao, /Vincular como Fase/);
+        assert.doesNotMatch(semSugestao, /Não é kit/);
+    });
+
+    await contexto.test('anuncios vazio diz que não há anúncio no ar, sem lista vazia', () => {
+        const html = render({ produto: produtoBase({ anuncios: [], parcial: null, status: { chave: 'rascunho', faltam: 0 } }) });
+        assert.match(html, /Nenhum anúncio no ar/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('fecha com ×, com clique no fundo e com Esc', () => {
+        const html = render();
+        assert.match(html, /aria-label="Fechar o painel"/);
+        assert.match(html, /data-fundo-do-painel/);
+        const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelDoProdutoLateral.jsx');
+        assert.match(fonte, /'Escape'/);
+        assert.match(fonte, /removeEventListener/);
+    });
+
+    await contexto.test('produto nulo não renderiza nada; props TODAS ausentes não estouram', () => {
+        assert.equal(renderToStaticMarkup(React.createElement(Painel, props({ produto: null }))), '');
+        let html;
+        assert.doesNotThrow(() => { html = renderToStaticMarkup(React.createElement(Painel, {})); });
+        assert.equal(html, '');
+    });
+
+    await contexto.test('CADA campo chegando como objeto, array, nulo ou ausente: nada de [object Object]', () => {
+        const campos = ['sku', 'nome', 'origem', 'rotulo_fase', 'status', 'anuncios', 'parcial', 'atualizado_em', 'oferta_id', 'fase', 'quantidade_kit', 'eh_kit', 'url_produto'];
+        for (const campo of campos) {
+            for (const valor of [{ foo: 'bar' }, ['foo'], null, undefined]) {
+                let html;
+                assert.doesNotThrow(
+                    () => { html = render({ produto: produtoBase({ [campo]: valor }) }); },
+                    `${campo} = ${JSON.stringify(valor)}`,
+                );
+                assert.doesNotMatch(html, /\[object Object\]/, `${campo} = ${JSON.stringify(valor)}`);
+                assert.doesNotMatch(html, /foo/, `${campo} = ${JSON.stringify(valor)}`);
+            }
+        }
+    });
+
+    await contexto.test('produto só com id, sugestão lixo, acao lixo e proximaFase lixo renderizam', () => {
+        for (const overrides of [
+            { produto: { id: 70 } },
+            { produto: { id: 70, sku: 'ANT-70', nome: 'Produto do contrato antigo' } },
+            { sugestao: 'nao-e-objeto' },
+            { sugestao: { base_id: 1, base_sku: { foo: 'bar' }, base_nome: [], quantidade: 'dois' } },
+            { acao: null },
+            { acao: { rotulo: {}, destino: [], estilo: 7 } },
+            { proximaFase: 'duas' },
+            { proximaFase: null },
+        ]) {
+            let html;
+            assert.doesNotThrow(() => { html = render(overrides); }, JSON.stringify(overrides));
+            assert.doesNotMatch(html, /\[object Object\]/, JSON.stringify(overrides));
+            assert.doesNotMatch(html, /foo/, JSON.stringify(overrides));
+            assert.doesNotMatch(html, /undefined/, JSON.stringify(overrides));
+        }
+    });
+});
+
+test('PainelDoProdutoLateral — gate de fonte: recebe a linha pronta e NÃO busca nada', () => {
+    const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelDoProdutoLateral.jsx');
+
+    // ⚠️ O painel não faz requisição nenhuma: a linha chega por prop e quem
+    // grava/navega é a página (o vínculo reusa o DialogoVincularKit que já existe).
+    assert.doesNotMatch(fonte, /axios/);
+    assert.doesNotMatch(fonte, /\broute\(/);
+    assert.doesNotMatch(fonte, /router\./);
+    assert.doesNotMatch(fonte, /useEffect\([^)]*fetch/);
+    assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+    // Acessibilidade do painel.
+    assert.match(fonte, /role="dialog"/);
+    assert.match(fonte, /aria-modal="true"/);
+    assert.match(fonte, /tabIndex={-1}/);
+    assert.match(fonte, /\.focus\(\)/);
 });
 
 test('layout — Produtos.jsx reexporta as funções novas AO LADO das quatro antigas', async () => {

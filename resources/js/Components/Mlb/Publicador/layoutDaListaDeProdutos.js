@@ -271,6 +271,8 @@ export function resumoDosAnuncios(produto) {
         const nome = Object.prototype.hasOwnProperty.call(LABEL_TIER_HISTORICO, tipo) ? LABEL_TIER_HISTORICO[tipo] : null;
         tipos.push({
             letra: nome !== null ? nome[0] : '·',
+            // `nome` é o rótulo longo que o PAINEL mostra ao lado do MLB.
+            nome: nome !== null ? nome : '',
             titulo: nome !== null ? `${nome} · ${mlb}` : mlb,
             mlb,
         });
