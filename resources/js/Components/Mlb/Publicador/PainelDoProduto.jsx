@@ -136,9 +136,14 @@ function Fato({ rotulo, valor = null, motivo = '' }) {
 }
 
 /**
- * Os 6 blocos da tela do Produto (§3 da ETAPA-3, Fase 175 plano 04):
- * cabeçalho, fases, ofertas no ar, histórico e as duas laterais (Criativos e
- * Mapeamento).
+ * A tela do Produto (§3 da ETAPA-3, Fase 175 plano 04), no layout da tela 04 do
+ * pacote do Stitch (quick 261009-t04): cabeçalho com a faixa de números, matriz
+ * de fases, anúncios no ar, biblioteca de criativos, o rodapé "Pronto para a
+ * Fase N", histórico e a lateral de Mapeamento.
+ *
+ * Os 6 blocos que a Etapa 3 entregou continuam todos aqui — mudaram de lugar e
+ * de forma, nunca de efeito. A lateral de Criativos virou a grade da coluna
+ * principal; o resto ficou onde estava.
  *
  * Fica FORA de `Pages/Mlb/Publicador/Produto.jsx` de propósito, pela MESMA
  * razão documentada na SUMMARY da 173-06: aquela página só soma `AppLayout` +
@@ -254,6 +259,37 @@ export default function PainelDoProduto({
     };
     const vendasSomadas = somaDasOfertas('vendas');
     const visitasSomadas = somaDasOfertas('visitas');
+
+    // Quantas imagens o kit REALMENTE tem. ⚠️ O mockup fala em "8 imagens
+    // prontas" e um custo total de IA fixo: é o kit de 7 imagens, que deixou de
+    // existir (quick 261007-kit2). A grade conta o que veio do servidor.
+    let totalDeImagens = 0;
+    for (const bruto of listaCriativos) {
+        for (const mini of listaSegura(objetoSeguro(bruto).miniaturas)) {
+            const url = objetoSeguro(mini).url;
+            if (typeof url === 'string' && url !== '') totalDeImagens += 1;
+        }
+    }
+
+    // Decisão 6: a metodologia tem três fases, então o cartão de roadmap só
+    // existe enquanto houver uma fase seguinte à próxima para prometer.
+    const numeroDoRoadmap = proximoNumero + 1 <= 3 ? proximoNumero + 1 : null;
+
+    /**
+     * ⚠️ O botão "Criar Fase N" é definido UMA vez e renderizado em dois
+     * lugares (o cartão da próxima fase e o rodapé "Pronto para a Fase N" do
+     * mockup). Mesmo elemento, mesmo gatilho, mesmo painel — o rodapé REUSA a
+     * ação, não cria um segundo caminho para ela.
+     */
+    const acaoCriarFase = podeCriarFase ? (
+        <button type="button" onClick={() => setCriarFaseAberto(true)} className={BOTAO_SECUNDARIO}>
+            Criar Fase {proximoNumero}
+        </button>
+    ) : (
+        <button type="button" disabled aria-disabled="true" title={motivoDeNaoCriar} className={BOTAO_TRAVADO}>
+            Criar Fase {proximoNumero}
+        </button>
+    );
 
     /**
      * §6 (quick 261009-uec): "Usar estoque calculado" deste kit.
@@ -385,21 +421,42 @@ export default function PainelDoProduto({
                     </div>
                 </section>
 
-                {/* 2 — Fases */}
+                {/* 2 — Fases da publicação (a "Metodologia de evolução" do mockup) */}
                 <section className={CARTAO}>
-                    <h2 className={TITULO_BLOCO}>Fases</h2>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <h2 className={TITULO_BLOCO}>Fases da publicação</h2>
+                            <p className="mt-1 text-[13px] font-normal text-white/55">
+                                Cada fase é um anúncio próprio do mesmo produto, com mais unidades por venda. A fase seguinte nasce com o título, a ficha técnica e as fotos da anterior.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] font-normal text-white/40">
+                            <span className="inline-flex items-center gap-1">
+                                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />No ar
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-ecf-yellow/70" />Disponível
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-white/30" />Roadmap
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
                         {listaFases.length === 0 ? (
                             // Nunca uma lista vazia: a Fase 1 é o próprio produto, mesmo sem rascunho.
-                            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
-                                <p className="text-[13px] font-bold text-white">Fase 1 · 1 unidade</p>
-                                <p className="mt-1 text-[13px] font-normal text-white/55">Não iniciada</p>
-                                {editorDoBase !== null ? (
-                                    <Link href={editorDoBase} className={cn(BOTAO_SECUNDARIO, 'mt-3')}>Começar rascunho</Link>
-                                ) : (
-                                    <button type="button" disabled className={cn(BOTAO_TRAVADO, 'mt-3')}>Começar rascunho</button>
-                                )}
-                            </div>
+                            <CartaoDaFase
+                                numero={1}
+                                titulo={TITULO_DA_FASE[1]}
+                                subtitulo="1 unidade"
+                                descricao={DESCRICAO_DA_FASE[1]}
+                                variante="concluida"
+                                selo="Não iniciada"
+                                acao={editorDoBase !== null
+                                    ? <Link href={editorDoBase} className={BOTAO_SECUNDARIO}>Começar rascunho</Link>
+                                    : <button type="button" disabled className={BOTAO_TRAVADO}>Começar rascunho</button>}
+                            />
                         ) : listaFases.map((item, indice) => {
                             // Flags calculadas DENTRO do callback — variável de escopo do
                             // componente lida só aqui já foi eliminada pelo Rollup no bundle
@@ -428,26 +485,68 @@ export default function PainelDoProduto({
                             const podeAdotar = contaDaFase !== null && produtoDaFase !== null;
                             const adotandoEsta = produtoDaFase !== null && adotandoEstoque === produtoDaFase;
                             const erroAoAdotar = produtoDaFase !== null ? textoSeguro(erroDoEstoque[produtoDaFase], '') : '';
+                            // ⚠️ Os FATOS da fase também saem daqui de dentro: preço,
+                            // vendas e criativos são lidos das listas no próprio
+                            // callback (armadilha do Rollup). Nenhum deles vira 0 por
+                            // falta de dado — sem número, a linha diz o motivo.
+                            const ofertasDaFase = listaOfertas
+                                .map((o) => objetoSeguro(o))
+                                .filter((o) => numeroFase !== null && numeroSeguro(o.fase) === numeroFase);
+                            const precosDaFase = ofertasDaFase.map((o) => numeroSeguro(o.preco)).filter((v) => v !== null);
+                            const precoTexto = precosDaFase.length === 0
+                                ? null
+                                : (Math.min(...precosDaFase) === Math.max(...precosDaFase)
+                                    ? moeda(Math.min(...precosDaFase))
+                                    : `${moeda(Math.min(...precosDaFase))} a ${moeda(Math.max(...precosDaFase))}`);
+                            let vendasDaFase = null;
+                            for (const oferta of ofertasDaFase) {
+                                const v = numeroSeguro(oferta.vendas);
+                                if (v !== null) vendasDaFase = (vendasDaFase ?? 0) + v;
+                            }
+                            let imagensDaFase = 0;
+                            for (const bruto of listaCriativos) {
+                                const grupo = objetoSeguro(bruto);
+                                if (numeroFase === null || numeroSeguro(grupo.fase) !== numeroFase) continue;
+                                for (const mini of listaSegura(grupo.miniaturas)) {
+                                    const url = objetoSeguro(mini).url;
+                                    if (typeof url === 'string' && url !== '') imagensDaFase += 1;
+                                }
+                            }
+                            const mlbDaFase = ofertasDaFase
+                                .map((o) => o.ml_item_id)
+                                .find((v) => typeof v === 'string' && v !== '') ?? null;
+                            const tituloDaFase = TITULO_DA_FASE[numeroFase]
+                                ?? (quantidade >= 2 ? `Kit de ${quantidade} unidades` : 'Publicação individual');
 
                             return (
-                                <div
+                                <CartaoDaFase
                                     key={indice}
-                                    className={cn(
-                                        'rounded-lg border border-white/[0.08] bg-white/[0.03] p-3',
-                                        destacada && 'ring-2 ring-ecf-yellow',
-                                    )}
+                                    numero={numeroFase}
+                                    titulo={tituloDaFase}
+                                    subtitulo={rotuloFase}
+                                    descricao={DESCRICAO_DA_FASE[numeroFase] ?? ''}
+                                    variante="concluida"
+                                    selo={rotuloEstado}
+                                    destaque={destacada}
+                                    linhas={[
+                                        {
+                                            rotulo: 'Anúncios no ar',
+                                            valor: noAr > 0 ? (noAr === 1 ? '1 oferta' : `${noAr} ofertas`) : null,
+                                            motivo: 'nenhum anúncio no ar',
+                                        },
+                                        { rotulo: 'Preço unitário', valor: precoTexto, motivo: NAO_COLETADO },
+                                        {
+                                            rotulo: 'Criativos aplicados',
+                                            valor: imagensDaFase > 0 ? (imagensDaFase === 1 ? '1 imagem' : `${imagensDaFase} imagens`) : null,
+                                            motivo: 'nenhum kit aprovado',
+                                        },
+                                        { rotulo: 'Vendas acumuladas', valor: vendasDaFase, motivo: NAO_COLETADO },
+                                    ]}
                                 >
-                                    <p className="text-[13px] font-bold text-white">
-                                        Fase {numeroFase ?? '—'} · {rotuloFase}
-                                    </p>
-                                    <p className="mt-0.5 font-mono text-[11px] text-white/55">{skuFase}</p>
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
                                         <SeloStatusProduto status={estado} />
-                                        <span className="text-[11px] font-normal text-white/55">{rotuloEstado}</span>
+                                        <span className="font-mono text-[11px] text-white/40">{skuFase}</span>
                                     </div>
-                                    <p className="mt-2 text-[13px] font-normal text-white/55">
-                                        {noAr === 0 ? 'nenhum anúncio no ar' : noAr === 1 ? '1 anúncio no ar' : `${noAr} anúncios no ar`}
-                                    </p>
                                     {quantidade >= 2 && (
                                         <div className="mt-1 flex flex-wrap items-center gap-2">
                                             {/* O texto da §6 que já existia — ele CONTINUA, e o
@@ -480,83 +579,108 @@ export default function PainelDoProduto({
                                             )}
                                         </div>
                                     )}
-                                    {editorDaFase !== null && (
-                                        <Link href={editorDaFase} className="mt-2 inline-block text-[13px] font-normal text-white/55 hover:text-ecf-yellow">
-                                            Abrir no editor
-                                        </Link>
-                                    )}
-                                </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                                        {editorDaFase !== null && (
+                                            <Link href={editorDaFase} className="text-[13px] font-normal text-white/55 hover:text-ecf-yellow">
+                                                Abrir no editor
+                                            </Link>
+                                        )}
+                                        {mlbDaFase !== null && <LinkMl mlb={mlbDaFase} className="text-[11px]" />}
+                                    </div>
+                                </CartaoDaFase>
                             );
                         })}
 
-                        {/* Cartão de ação "Criar Fase N".
+                        {/* O cartão da PRÓXIMA fase — a "Oportunidade" do mockup.
                             A regra de habilitação chega pronta do servidor
                             (`proxima_fase.habilitado`) e o motivo aparece visível quando ela
                             é falsa — desabilitado COM explicação, nunca escondido (D23).
-                            Desde o 175-07 o botão ABRE o painel "Criar Fase N" (§4); antes
-                            dele ficava travado com "Em breve nesta tela", porque um botão
-                            que abre nada é pior que um botão que explica. Sem a conta ou sem
-                            o id do produto o painel não teria a quem perguntar a prévia, e
-                            aí o botão continua travado — também com explicação. */}
-                        <div className="rounded-lg border border-dashed border-white/[0.10] bg-white/[0.02] p-3">
-                            <p className="text-[13px] font-bold text-white/70">
-                                Criar Fase {proximoNumero}
-                                {proximaQuantidade !== null && (
-                                    <span className="ml-2 font-normal text-white/40">Kit {proximaQuantidade}</span>
-                                )}
-                            </p>
-                            {podeCriarFase ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setCriarFaseAberto(true)}
-                                    className={cn(BOTAO_SECUNDARIO, 'mt-2')}
-                                >
-                                    Criar Fase {proximoNumero}
-                                </button>
-                            ) : (
-                                <>
-                                    <button
-                                        type="button"
-                                        disabled
-                                        aria-disabled="true"
-                                        title={motivoDeNaoCriar}
-                                        className={cn(BOTAO_TRAVADO, 'mt-2')}
-                                    >
-                                        Criar Fase {proximoNumero}
-                                    </button>
-                                    <p className="mt-2 text-[11px] font-normal text-white/40">{motivoDeNaoCriar}</p>
-                                </>
-                            )}
-                            <PainelCriarFase
-                                aberto={criarFaseAberto}
-                                onFechar={() => setCriarFaseAberto(false)}
-                                conta={contaDaTela}
-                                produtoBase={{ id: produtoId, nome }}
-                                proximaFase={proxima}
-                                criativosIa={criativosIa === true}
-                                onCriado={(url) => {
-                                    setCriarFaseAberto(false);
-                                    if (typeof url === 'string' && url !== '') router.get(url);
-                                }}
+                            Desde o 175-07 o botão ABRE o painel "Criar Fase N" (§4).
+                            ⚠️ O botão é o `acaoCriarFase`, definido UMA vez: o rodapé
+                            "Pronto para a Fase N" renderiza esse mesmo elemento. Não há
+                            segundo caminho para a mesma ação. */}
+                        <CartaoDaFase
+                            numero={proximoNumero}
+                            titulo={TITULO_DA_FASE[proximoNumero]
+                                ?? (proximaQuantidade !== null ? `Kit de ${proximaQuantidade} unidades` : 'Próxima fase')}
+                            subtitulo={proximaQuantidade !== null ? `Kit ${proximaQuantidade}` : ''}
+                            descricao={DESCRICAO_DA_FASE[proximoNumero] ?? ''}
+                            variante={podeCriarFase ? 'oportunidade' : 'roadmap'}
+                            selo={podeCriarFase ? 'Disponível para criação' : 'Em planejamento'}
+                            linhas={[
+                                {
+                                    rotulo: 'Kit sugerido',
+                                    valor: proximaQuantidade !== null ? `${proximaQuantidade} unidades` : null,
+                                    motivo: 'o servidor ainda não sugeriu o tamanho',
+                                },
+                                // Decisão 2: o preço do kit e a economia do cliente são
+                                // desenhados e VAZIOS — quem define o preço é o editor,
+                                // depois que a fase existe.
+                                { rotulo: 'Preço do kit', valor: null, motivo: 'definido no editor, depois de criar a fase' },
+                                { rotulo: 'Economia para o cliente', valor: null, motivo: 'depende do preço do kit' },
+                                { rotulo: 'Herança técnica', valor: 'título, ficha e fotos do base' },
+                                {
+                                    rotulo: 'Estoque do rascunho',
+                                    valor: estoqueTotal !== null ? `${estoqueTotal} un` : null,
+                                    motivo: SEM_ESTOQUE,
+                                },
+                            ]}
+                            acao={acaoCriarFase}
+                            notaDaAcao={podeCriarFase
+                                ? 'Herda as fotos e a ficha já aprovadas da fase anterior.'
+                                : motivoDeNaoCriar}
+                        />
+
+                        {/* O cartão de ROADMAP da fase seguinte (decisão 6): sem ticket
+                            estimado e sem requisito inventado. O bloqueio que ele mostra é
+                            real — a próxima fase só aparece quando a anterior existe. */}
+                        {numeroDoRoadmap !== null && (
+                            <CartaoDaFase
+                                numero={numeroDoRoadmap}
+                                titulo={TITULO_DA_FASE[numeroDoRoadmap] ?? `Fase ${numeroDoRoadmap}`}
+                                descricao={DESCRICAO_DA_FASE[numeroDoRoadmap] ?? ''}
+                                variante="roadmap"
+                                selo="Em planejamento"
+                                linhas={[
+                                    { rotulo: 'Ticket estimado', valor: null, motivo: 'não estimamos preço aqui' },
+                                    { rotulo: 'Requisito', valor: `a Fase ${proximoNumero} precisa existir` },
+                                ]}
+                                notaDaAcao={`Liberado depois que a Fase ${proximoNumero} existir.`}
                             />
-                        </div>
+                        )}
                     </div>
                 </section>
 
-                {/* 3 — Ofertas no ar */}
+                {/* 3 — Publicações & ofertas no Mercado Livre */}
                 <section className={CARTAO}>
-                    <h2 className={TITULO_BLOCO}>Anúncios no ar</h2>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <h2 className={TITULO_BLOCO}>Anúncios no ar</h2>
+                            <p className="mt-1 text-[13px] font-normal text-white/55">
+                                As publicações deste SKU no Mercado Livre, com o link de cada uma.
+                            </p>
+                        </div>
+                        {listaOfertas.length > 0 && (
+                            <span className={PILULA}>
+                                {listaOfertas.length === 1 ? '1 anúncio ativo' : `${listaOfertas.length} anúncios ativos`}
+                            </span>
+                        )}
+                    </div>
                     {listaOfertas.length === 0 ? (
                         <p className="mt-3 text-[13px] font-normal text-white/55">Nenhum anúncio no ar ainda.</p>
                     ) : (
                         <div className="mt-3 overflow-x-auto">
                             <table className="w-full text-left text-[13px] font-normal text-white/70">
                                 <thead>
+                                    {/* ⚠️ "Tipo de exposição" vai SEM o percentual de comissão
+                                        que o mockup mostra ao lado de "Premium": a tarifa do ML
+                                        varia por categoria e faixa de preço, e sem
+                                        `logistic_type` + `shipping_mode` ela sai errada
+                                        (learnings do projeto). Número errado com cara de certo
+                                        é pior que número nenhum. */}
                                     <tr className="border-b border-white/[0.08] text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
-                                        <th className="py-2 pr-3">Fase</th>
-                                        <th className="py-2 pr-3">Tipo</th>
-                                        <th className="py-2 pr-3">Título</th>
-                                        <th className="py-2 pr-3">MLB</th>
+                                        <th className="py-2 pr-3">Oferta / fase</th>
+                                        <th className="py-2 pr-3">Tipo de exposição</th>
                                         <th className="py-2 pr-3">Preço</th>
                                         <th className="py-2 pr-3">Vendas</th>
                                         <th className="py-2 pr-3">Visitas</th>
@@ -582,11 +706,19 @@ export default function PainelDoProduto({
                                         const motivoDetalhe = textoSeguro(linha.detalhe_motivo, '');
 
                                         return (
-                                            <tr key={indice} className="border-b border-white/[0.06] last:border-b-0">
-                                                <td className="py-2 pr-3 font-mono tabular-nums">{faseOferta ?? '—'}</td>
+                                            <tr key={indice} className="border-b border-white/[0.06] last:border-b-0 align-top">
+                                                {/* Oferta e fase na mesma célula, como no mockup:
+                                                    o selo da fase, o título e o link do anúncio. */}
+                                                <td className="max-w-[320px] py-2 pr-3">
+                                                    <span className="mr-2 inline-flex items-center rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-0.5 align-middle text-[11px] font-bold text-white/55">
+                                                        {faseOferta !== null ? `Fase ${faseOferta}` : 'Fase —'}
+                                                    </span>
+                                                    <span className="text-white" title={titulo}>{titulo}</span>
+                                                    <span className="mt-0.5 block">
+                                                        {mlb !== null ? <LinkMl mlb={mlb} className="text-[11px]" /> : <span className="text-[11px] text-white/40">—</span>}
+                                                    </span>
+                                                </td>
                                                 <td className="py-2 pr-3 text-[11px] text-white/55">{tipo}</td>
-                                                <td className="max-w-[260px] truncate py-2 pr-3 text-white" title={titulo}>{titulo}</td>
-                                                <td className="py-2 pr-3">{mlb !== null ? <LinkMl mlb={mlb} className="text-[11px]" /> : '—'}</td>
                                                 <td className="py-2 pr-3 font-mono tabular-nums">{moeda(linha.preco)}</td>
                                                 <td className="py-2 pr-3 font-mono tabular-nums">{vendas ?? '—'}</td>
                                                 <td className="py-2 pr-3 font-mono tabular-nums">
@@ -631,7 +763,105 @@ export default function PainelDoProduto({
                     )}
                 </section>
 
-                {/* 4 — Histórico */}
+                {/* 4 — Biblioteca de criativos.
+                    Saiu da lateral para a coluna principal, no formato de grade do
+                    mockup. ⚠️ A contagem é a REAL (`totalDeImagens`): o "8 imagens
+                    prontas", com custo fixo de IA, do desenho é o kit de 7
+                    imagens, extinto pelo quick 261007-kit2. Nenhum custo aparece
+                    aqui porque ele não chega nesta tela. */}
+                <section className={CARTAO}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <h2 className={TITULO_BLOCO}>Criativos</h2>
+                            <p className="mt-1 text-[13px] font-normal text-white/55">
+                                As imagens já aprovadas de cada fase, nas resoluções que o catálogo do Mercado Livre aceita.
+                            </p>
+                        </div>
+                        {totalDeImagens > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={PILULA}>
+                                    {totalDeImagens === 1 ? '1 imagem pronta' : `${totalDeImagens} imagens prontas`}
+                                </span>
+                                {/* Decisão 5: esta promessa do mockup é VERDADE — o
+                                    `CriarFaseService` copia as fotos do base para o kit,
+                                    com bytes próprios e sem gerar nada de novo. */}
+                                <span className="rounded-full border border-ecf-yellow/40 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-normal text-ecf-yellow">
+                                    Reutilizáveis na próxima fase, a custo zero
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {totalDeImagens === 0 ? (
+                        <p className="mt-3 text-[13px] font-normal text-white/55">Nenhum criativo aprovado ainda.</p>
+                    ) : (
+                        <>
+                            {listaCriativos.map((item, indice) => {
+                                // Flags dentro do callback (armadilha do Rollup).
+                                const grupo = objetoSeguro(item);
+                                const faseGrupo = numeroSeguro(grupo.fase);
+                                const rotuloGrupo = textoSeguro(grupo.rotulo, '1 unidade');
+                                const miniaturas = listaSegura(grupo.miniaturas)
+                                    .map((m) => objetoSeguro(m))
+                                    .filter((m) => typeof m.url === 'string' && m.url !== '');
+                                if (miniaturas.length === 0) return null;
+
+                                return (
+                                    <div key={indice} className="mt-3">
+                                        <p className="text-[11px] font-normal text-white/40">
+                                            Fase {faseGrupo ?? '—'} · {rotuloGrupo} · {miniaturas.length === 1 ? '1 imagem' : `${miniaturas.length} imagens`}
+                                        </p>
+                                        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+                                            {miniaturas.map((mini, i) => {
+                                                // Nada de escopo de fora aqui dentro também.
+                                                const indiceDoSlot = numeroSeguro(mini.indice);
+
+                                                return (
+                                                    <figure key={i} className="min-w-0">
+                                                        <img
+                                                            src={mini.url}
+                                                            alt=""
+                                                            loading="lazy"
+                                                            className="aspect-square w-full rounded-lg bg-white object-contain"
+                                                        />
+                                                        <figcaption className="mt-1 truncate text-[11px] font-normal text-white/40">
+                                                            {indiceDoSlot !== null ? `Imagem ${indiceDoSlot}` : 'Imagem'}
+                                                        </figcaption>
+                                                    </figure>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <p className="mt-3 text-[11px] font-normal text-white/40">
+                                O que cada geração custou não chega a esta tela — esse número fica no painel de criativos do rascunho.
+                            </p>
+                        </>
+                    )}
+                </section>
+
+                {/* 5 — O rodapé "Pronto para a Fase N" do mockup.
+                    ⚠️ Ele RENDERIZA O MESMO `acaoCriarFase` do cartão da próxima
+                    fase: um elemento só, um gatilho só, um painel só. */}
+                <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.04] p-4">
+                    <div className="min-w-0">
+                        <p className="font-display text-[15px] font-bold text-white">
+                            Pronto para a Fase {proximoNumero}{proximaQuantidade !== null ? `: Kit ${proximaQuantidade}` : ''}
+                        </p>
+                        <p className="mt-1 text-[13px] font-normal text-white/55">
+                            {totalDeImagens > 0
+                                ? 'As imagens aprovadas são copiadas para a fase nova a custo zero, junto com o título e a ficha técnica do base.'
+                                : 'A fase nova nasce com o título, a ficha técnica e as fotos do produto base.'}
+                        </p>
+                        {!podeCriarFase && (
+                            <p className="mt-1 text-[11px] font-normal text-white/40">{motivoDeNaoCriar}</p>
+                        )}
+                    </div>
+                    {acaoCriarFase}
+                </section>
+
+                {/* 6 — Histórico */}
                 <section className={CARTAO}>
                     <h2 className={TITULO_BLOCO}>Histórico</h2>
                     {listaHistorico.length === 0 ? (
@@ -671,46 +901,7 @@ export default function PainelDoProduto({
 
             <div className="flex flex-col gap-6">
 
-                {/* 5 — Lateral: Criativos */}
-                <section className={CARTAO}>
-                    <h2 className={TITULO_BLOCO}>Criativos</h2>
-                    {listaCriativos.length === 0 ? (
-                        <p className="mt-3 text-[13px] font-normal text-white/55">Nenhum criativo aprovado ainda.</p>
-                    ) : (
-                        <div className="mt-3 flex flex-col gap-3">
-                            {listaCriativos.map((item, indice) => {
-                                // Flags dentro do callback (armadilha do Rollup).
-                                const grupo = objetoSeguro(item);
-                                const faseGrupo = numeroSeguro(grupo.fase);
-                                const rotuloGrupo = textoSeguro(grupo.rotulo, '1 unidade');
-                                const miniaturas = listaSegura(grupo.miniaturas)
-                                    .map((m) => objetoSeguro(m))
-                                    .filter((m) => typeof m.url === 'string' && m.url !== '');
-
-                                return (
-                                    <div key={indice}>
-                                        <p className="text-[11px] font-normal text-white/40">
-                                            Fase {faseGrupo ?? '—'} · {rotuloGrupo}
-                                        </p>
-                                        <div className="mt-1 flex flex-wrap gap-2">
-                                            {miniaturas.map((m, i) => (
-                                                <img
-                                                    key={i}
-                                                    src={m.url}
-                                                    alt=""
-                                                    loading="lazy"
-                                                    className="h-16 w-16 rounded-lg bg-white object-contain"
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </section>
-
-                {/* 6 — Lateral: Mapeamento */}
+                {/* 7 — Lateral: Mapeamento */}
                 <section className={CARTAO}>
                     <h2 className={TITULO_BLOCO}>Mapeamento</h2>
                     {mapaVazio ? (
@@ -754,6 +945,21 @@ export default function PainelDoProduto({
                     )}
                 </section>
             </div>
+
+            {/* O painel "Criar Fase N" (§4) é montado UMA vez, fora dos cartões:
+                os dois lugares que mostram o botão abrem este mesmo painel. */}
+            <PainelCriarFase
+                aberto={criarFaseAberto}
+                onFechar={() => setCriarFaseAberto(false)}
+                conta={contaDaTela}
+                produtoBase={{ id: produtoId, nome }}
+                proximaFase={proxima}
+                criativosIa={criativosIa === true}
+                onCriado={(url) => {
+                    setCriarFaseAberto(false);
+                    if (typeof url === 'string' && url !== '') router.get(url);
+                }}
+            />
 
             {/* O modal de 90 dias já existe (Meus Anúncios, Fase 134) — só é montado
                 quando alguém clica em "Detalhe", e exige `company_id` (D23). */}
