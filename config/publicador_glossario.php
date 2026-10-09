@@ -121,7 +121,7 @@ return [
         'comprimento' => 'Comprimento da caixa com o produto embalado, em centímetros.',
         'largura' => 'Largura da caixa com o produto embalado, em centímetros.',
         'altura' => 'Altura da caixa com o produto embalado, em centímetros.',
-        'peso' => 'Peso da caixa com o produto embalado, em quilos.',
+        'peso' => 'Peso da caixa com o produto embalado, em quilos. É com ele que calculamos o frete e a forma de envio, por isso é pedido sempre, mesmo que o produto não tenha campo de peso.',
         'descricao' => 'Texto livre sobre o produto: para que serve, os diferenciais, os cuidados e o que acompanha.',
         // Topo da ficha: com uma variação é o estoque dela; com várias, a soma (só leitura).
         'estoque_produto' => 'Quantas unidades você tem do produto. Com uma variação, informe aqui; com várias, é a soma do estoque de cada variação. Vazio é não informado; 0 é sem estoque.',
