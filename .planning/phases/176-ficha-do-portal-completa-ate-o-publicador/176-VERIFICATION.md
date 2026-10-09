@@ -1,5 +1,5 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 verified: 2026-10-08T00:00:00Z
 status: human_needed
 score: 9/9 requisitos verificados no código (itens de produção pendentes como humanos)
@@ -7,7 +7,7 @@ overrides_applied: 0
 human_verification:
   - test: "Deploy autorizado: integrar origin/main, contar estrutura_produtos / estrutura_produto_variacoes / pub_produtos antes e depois, migrate, queue:restart"
     expected: "Contagens idênticas antes/depois; 4 migrations aditivas aplicadas; workers reiniciados (jobs novos em high e default)"
-    why_human: "Só em produção; deploy exige autorização explícita (FP172-04)"
+    why_human: "Só em produção; deploy exige autorização explícita (FP176-04)"
   - test: "GD com suporte a WebP na VPS (conversão WebP -> JPG, D-15)"
     expected: "Foto WebP do portal chega como JPG no rascunho"
     why_human: "Depende da extensão PHP da VPS"
@@ -16,10 +16,10 @@ human_verification:
     why_human: "Ponta a ponta com dado e IA reais; conta de cliente nunca publica"
   - test: "Pendência de sigilo da Fase 167: texto 'N anúncios' no cartão da variação da ficha do portal"
     expected: "Decisão do usuário sobre manter ou neutralizar"
-    why_human: "Registrado no 172-13-SUMMARY como pendente fora da fase"
+    why_human: "Registrado no 176-13-SUMMARY como pendente fora da fase"
 ---
 
-# Fase 172: Verificação
+# Fase 176: Verificação
 
 **Objetivo:** tudo o que o cliente preenche na ficha do portal chega ao Publicador no "Sincronizar do Portal", preenchendo só o vazio e sem nunca publicar.
 **Status:** human_needed (nenhuma lacuna encontrada no código)
@@ -29,15 +29,15 @@ human_verification:
 
 | ID | Verdade | Status | Evidência |
 |----|---------|--------|-----------|
-| FP172-01 | Estoque por variação (anulável, 0 != vazio) | VERIFICADO | migration `2026_10_08_150000` (`unsignedInteger nullable`); testes de GravarLinhas/Normalizador e JS verdes |
-| FP172-02 | Descrição por produto na ficha | VERIFICADO | migration `150100` (`text nullable`); `DescricaoDoProdutoTest` dentro da suíte verde |
-| FP172-03 | Sigilo cobre campos novos | VERIFICADO | `assertSemOrigem` estendido; suíte `tests/Feature/PortalCliente/Estrutura` 465 OK |
-| FP172-04 | Migrations aditivas, idempotentes, com down seguro | VERIFICADO (código) | 4 migrations aditivas lidas (hasColumn, nullable, down só tira vínculo); prova no MariaDB local registrada no baseline. Contagem em prod: item humano |
-| FP172-05 | Agrupamento D-06 (N ofertas -> 1 rascunho) | VERIFICADO | `estrutura_produto_id` em `pub_produtos`; `SincronizaPortalAgrupamentoTest`/`CompletoTest` verdes |
-| FP172-06 | Sincronizar completo, só-vazio, idempotente | VERIFICADO | `PortalParaRascunhoService` (832 linhas, regra D-05 em todos os blocos, fotos só em grupo vazio, `enviar: false`); `PortalParaRascunhoTest`, `PortalFotosTest`, `PortalCamposDoEditorNoRascunhoTest` verdes |
-| FP172-07 | Combo/Kit/Combit derivam o que der | VERIFICADO | `PortalComposicaoNoRascunhoTest`, `ComposicaoDoPortalTest` verdes; estoque nulo quando componente descartado (ajuste pós-visual, coerente com D-07) |
-| FP172-08 | Descrição do cliente alimenta MAG T8, automática no rascunho vazio | VERIFICADO | `DescricaoIaService`, `DescricaoIaTest` verde (D-11) |
-| FP172-09 | Isolamento entre empresas; sem gate de piloto no Sincronizar (D-10); nada no ML | VERIFICADO | `test_empresa_fora_do_piloto_tambem_e_preenchida_sem_escrever_no_ml`; grep sem `contas_liberadas` no serviço |
+| FP176-01 | Estoque por variação (anulável, 0 != vazio) | VERIFICADO | migration `2026_10_08_150000` (`unsignedInteger nullable`); testes de GravarLinhas/Normalizador e JS verdes |
+| FP176-02 | Descrição por produto na ficha | VERIFICADO | migration `150100` (`text nullable`); `DescricaoDoProdutoTest` dentro da suíte verde |
+| FP176-03 | Sigilo cobre campos novos | VERIFICADO | `assertSemOrigem` estendido; suíte `tests/Feature/PortalCliente/Estrutura` 465 OK |
+| FP176-04 | Migrations aditivas, idempotentes, com down seguro | VERIFICADO (código) | 4 migrations aditivas lidas (hasColumn, nullable, down só tira vínculo); prova no MariaDB local registrada no baseline. Contagem em prod: item humano |
+| FP176-05 | Agrupamento D-06 (N ofertas -> 1 rascunho) | VERIFICADO | `estrutura_produto_id` em `pub_produtos`; `SincronizaPortalAgrupamentoTest`/`CompletoTest` verdes |
+| FP176-06 | Sincronizar completo, só-vazio, idempotente | VERIFICADO | `PortalParaRascunhoService` (832 linhas, regra D-05 em todos os blocos, fotos só em grupo vazio, `enviar: false`); `PortalParaRascunhoTest`, `PortalFotosTest`, `PortalCamposDoEditorNoRascunhoTest` verdes |
+| FP176-07 | Combo/Kit/Combit derivam o que der | VERIFICADO | `PortalComposicaoNoRascunhoTest`, `ComposicaoDoPortalTest` verdes; estoque nulo quando componente descartado (ajuste pós-visual, coerente com D-07) |
+| FP176-08 | Descrição do cliente alimenta MAG T8, automática no rascunho vazio | VERIFICADO | `DescricaoIaService`, `DescricaoIaTest` verde (D-11) |
+| FP176-09 | Isolamento entre empresas; sem gate de piloto no Sincronizar (D-10); nada no ML | VERIFICADO | `test_empresa_fora_do_piloto_tambem_e_preenchida_sem_escrever_no_ml`; grep sem `contas_liberadas` no serviço |
 
 ## Ajustes pós-plano (conferência visual) versus decisões travadas
 

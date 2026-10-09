@@ -1,4 +1,4 @@
-# Fase 172: Ficha do portal completa até o Publicador - Mapa de Padrões
+# Fase 176: Ficha do portal completa até o Publicador - Mapa de Padrões
 
 **Mapeado em:** 2026-10-08
 **Arquivos analisados:** 24 (novos e modificados)
@@ -479,7 +479,7 @@ Aplicar o texto tratado SEMPRE por `m.mudarRasc({ descricao })` (mesmo caminho d
 
 | Arquivo | Papel | Fluxo | Motivo |
 |---|---|---|---|
-| `app/Services/Publicador/PortalProdutoLeitor.php` | service | leitura agregada (produto + variações + fotos + composição) | Nenhum leitor do portal para o Publicador existe. Usar como referência parcial `DadosEfetivosService::daOferta` (leitura ao vivo escopada por empresa) e `MigracaoAnunciarAntigo::planejar` (:87-151, mapeia atributos/pacote/estoque/fotos do formato antigo; bom modelo de mapeamento). Composição de Combo/Kit/Combit: `EstruturaOfertaComponente(oferta_id, componente_id, quantidade)`; "principal" do Kit pelo par de tipos `estrutura_tipo_pares` (D-12) — NÃO lido nesta passada, o planner deve abrir `estrutura_tipo_pares` e o gerador da Fase 168 antes de planejar o 172-08. |
+| `app/Services/Publicador/PortalProdutoLeitor.php` | service | leitura agregada (produto + variações + fotos + composição) | Nenhum leitor do portal para o Publicador existe. Usar como referência parcial `DadosEfetivosService::daOferta` (leitura ao vivo escopada por empresa) e `MigracaoAnunciarAntigo::planejar` (:87-151, mapeia atributos/pacote/estoque/fotos do formato antigo; bom modelo de mapeamento). Composição de Combo/Kit/Combit: `EstruturaOfertaComponente(oferta_id, componente_id, quantidade)`; "principal" do Kit pelo par de tipos `estrutura_tipo_pares` (D-12) — NÃO lido nesta passada, o planner deve abrir `estrutura_tipo_pares` e o gerador da Fase 168 antes de planejar o 176-08. |
 | Conversão WebP -> JPG (D-15) | utility | transform | Nenhuma conversão com GD no repositório de portal/Publicador foi localizada; `ValidadorImagem::FORMATOS` só aceita JPG/PNG. Confirmar GD em prod (A7). |
 
 ## Metadados

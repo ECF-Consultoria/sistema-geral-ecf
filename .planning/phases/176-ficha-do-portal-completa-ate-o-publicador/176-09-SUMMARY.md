@@ -1,15 +1,15 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 09
 subsystem: publicador
 tags: [ia, mag-t8, descricao, portal, job, cache]
-requires: [172-07]
+requires: [176-07]
 provides:
   - DescricaoIaService (pedir, estado, executar, falhou, specs)
   - GerarDescricaoIaJob (fila high, tries 1, timeout 300)
   - POST/GET mlb.anuncios.publicador.descricao-ia (+ .status)
   - estado().portal.descricao_cliente
-affects: [172-10]
+affects: [176-10]
 key-files:
   created:
     - app/Services/Publicador/DescricaoIaService.php
@@ -19,11 +19,11 @@ key-files:
   modified:
     - routes/mlb_anuncios.php
     - app/Services/Publicador/EditorRascunhoService.php
-requirements: [FP172-08]
+requirements: [FP176-08]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 09: descrição do cliente como insumo do MAG T8
+# Phase 176 Plan 09: descrição do cliente como insumo do MAG T8
 
 O servidor entrega ao editor a descrição que o cliente escreveu no Portal e gera, sob demanda ou uma vez automaticamente, a descrição MAG T8 no cache, sem nunca gravar no rascunho.
 
@@ -45,7 +45,7 @@ O servidor entrega ao editor a descrição que o cliente escreveu no Portal e ge
 ## Testes
 
 - `DescricaoIaTest`: 15 testes, 56 asserções, OK (nenhuma chamada real à IA ou ao ML).
-- `tests/Feature/Publicador` + `tests/Unit/Publicador`: 929 testes, 4484 asserções, OK (era 896 no fim do 172-07).
+- `tests/Feature/Publicador` + `tests/Unit/Publicador`: 929 testes, 4484 asserções, OK (era 896 no fim do 176-07).
 
 ## Deviations from Plan
 

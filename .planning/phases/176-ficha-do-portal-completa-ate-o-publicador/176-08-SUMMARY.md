@@ -1,24 +1,24 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 08
 subsystem: publicador
 tags: [portal, rascunho, so-vazio, variacoes, sku, estoque]
-requires: [172-04, 172-07]
+requires: [176-04, 176-07]
 provides:
   - PortalParaRascunhoService::preencher(PubProduto) com resumo (rascunho_id, intocavel, variantes, campos_preenchidos, campos_mantidos, fotos_*, avisos)
   - RascunhoRepository::colunasDeValor grava values_multi
-affects: [172-09, 172-10]
+affects: [176-09, 176-10]
 key-files:
   created:
     - app/Services/Publicador/PortalParaRascunhoService.php
     - tests/Feature/Publicador/PortalParaRascunhoTest.php
   modified:
     - app/Services/Publicador/RascunhoRepository.php
-requirements: [FP172-05, FP172-06, FP172-09]
+requirements: [FP176-05, FP176-06, FP176-09]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 08: Portal para o rascunho (produto Simples agrupado)
+# Phase 176 Plan 08: Portal para o rascunho (produto Simples agrupado)
 
 Categoria, ficha técnica, pacote, eixo por cor e SKU/estoque de cada variante chegam ao rascunho só onde está vazio, sob a mesma trava da IA, sem escrever no ML.
 
@@ -26,7 +26,7 @@ Categoria, ficha técnica, pacote, eixo por cor e SKU/estoque de cada variante c
 
 | Task | Commit | Assunto |
 |---|---|---|
-| 1 e 2 | 8699c445 | feat(172-08): PortalParaRascunhoService leva o produto agrupado do Portal ao rascunho |
+| 1 e 2 | 8699c445 | feat(176-08): PortalParaRascunhoService leva o produto agrupado do Portal ao rascunho |
 
 As duas tarefas foram implementadas juntas e entraram num commit só (o serviço é um arquivo; o eixo depende do plano da ficha).
 
@@ -58,7 +58,7 @@ Nenhuma de regra. Pontos de julgamento:
 
 ## Known Stubs
 
-`fotos_trazidas` e `fotos_nao_trazidas` ficam 0 e [] até o 172-10 (previsto no plano). Sem front-end alterado (sem `npm run build`).
+`fotos_trazidas` e `fotos_nao_trazidas` ficam 0 e [] até o 176-10 (previsto no plano). Sem front-end alterado (sem `npm run build`).
 
 ## Self-Check: PASSED
 

@@ -1,13 +1,13 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 05
 subsystem: portal-estrutura-produtos
 tags: [descricao, ficha, sigilo, react]
-requires: [172-01, 172-02]
+requires: [176-01, 176-02]
 provides:
   - PUT /portal/estrutura/produtos/{produto}/descricao (escopo por empresa, max 5000, vazio limpa, auditado)
   - prop `descricao` na ficha e bloco "Descrição do produto" gravado no mesmo Salvar
-affects: [172-09, 172-11]
+affects: [176-09, 176-11]
 key-files:
   created:
     - app/Services/Portal/Estrutura/Produtos/DescricaoDoProduto.php
@@ -23,11 +23,11 @@ key-files:
     - tests/Feature/PortalCliente/Estrutura/Produtos/AcessoAosProdutosTest.php
     - resources/js/Components/Portal/Estrutura/Produtos/useFichaProduto.js
     - resources/js/Pages/Portal/EstruturaProdutoFicha.jsx
-requirements: [FP172-02, FP172-03]
+requirements: [FP176-02, FP176-03]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 05: descrição do produto na ficha
+# Phase 176 Plan 05: descrição do produto na ficha
 
 Descrição por produto ponta a ponta: serviço (trim, vazio vira null, só grava e audita se mudou), endpoint com 404 antes da validação, prop na ficha, linha exata na allowlist do domínio e bloco na tela, gravado logo depois da ficha técnica no mesmo Salvar.
 
@@ -35,10 +35,10 @@ Descrição por produto ponta a ponta: serviço (trim, vazio vira null, só grav
 
 | Task | Commit | Assunto |
 |---|---|---|
-| 1 | 3c9e5338 | feat(172-05): endpoint e serviço da descrição do produto na ficha |
-| 2 | 96634977 | test(172-05): sigilo cobre descricao e estoque; assertSemOrigem decodifica acento escapado |
-| 3 | 60f96fdc | feat(172-05): bloco Descrição do produto na ficha, gravado no mesmo Salvar |
-| fix | 09d0d880 | test(172-05): contagem de rotas e allowlist do AcessoAosProdutosTest |
+| 1 | 3c9e5338 | feat(176-05): endpoint e serviço da descrição do produto na ficha |
+| 2 | 96634977 | test(176-05): sigilo cobre descricao e estoque; assertSemOrigem decodifica acento escapado |
+| 3 | 60f96fdc | feat(176-05): bloco Descrição do produto na ficha, gravado no mesmo Salvar |
+| fix | 09d0d880 | test(176-05): contagem de rotas e allowlist do AcessoAosProdutosTest |
 
 ## Testes
 

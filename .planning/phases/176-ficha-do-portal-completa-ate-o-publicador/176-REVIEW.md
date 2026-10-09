@@ -1,5 +1,5 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 part: 1-backend
 reviewed: 2026-10-08T00:00:00Z
 depth: standard
@@ -56,7 +56,7 @@ findings:
 status: issues_found
 ---
 
-# Phase 172: Code Review Report (Parte 1 — backend)
+# Phase 176: Code Review Report (Parte 1 — backend)
 
 **Reviewed:** 2026-10-08
 **Depth:** standard (com leitura dos chamados fora do escopo quando a correção dependia deles: `SoltarProdutoDaOfertaService`, `RegeneradorVariantes`, `EditorRascunhoService::colocarFotoNoGrupo`, `RascunhoRepository::valor`, `ProgramasPublicadorService::empresas`)

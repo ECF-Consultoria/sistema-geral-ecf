@@ -1,5 +1,5 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 part: 2-frontend
 reviewed: 2026-10-08T19:12:26Z
 depth: standard
@@ -43,7 +43,7 @@ findings:
 status: issues_found
 ---
 
-# Fase 172: Relatório de Code Review — Parte 2 (frontend)
+# Fase 176: Relatório de Code Review — Parte 2 (frontend)
 
 **Revisado:** 2026-10-08T19:12:26Z
 **Profundidade:** standard (com leitura dos chamados: `usePublicador.mudarRasc`, `MlbPublicadorDescricaoController`, `DescricaoIaService::pedir/concluir`, `PortalClienteLayout`)
@@ -52,7 +52,7 @@ status: issues_found
 
 ## Resumo
 
-Revisão adversarial do frontend da Fase 172: estoque e descrição na ficha do Portal, "Não se aplica", eixo
+Revisão adversarial do frontend da Fase 176: estoque e descrição na ficha do Portal, "Não se aplica", eixo
 escondido por produto, `Explicacao` (o "o que é isto?"), descrição MAG T8 automática no editor e o resumo do
 Sincronizar.
 

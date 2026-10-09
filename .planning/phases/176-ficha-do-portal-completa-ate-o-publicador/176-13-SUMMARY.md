@@ -1,27 +1,27 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 13
 subsystem: portal + publicador
 tags: [portao-final, conferencia-visual, learnings]
-requires: [172-01, 172-02, 172-03, 172-04, 172-05, 172-06, 172-07, 172-08, 172-09, 172-10, 172-11, 172-12]
+requires: [176-01, 176-02, 176-03, 176-04, 176-05, 176-06, 176-07, 176-08, 176-09, 176-10, 176-11, 176-12]
 provides:
   - portão final verde (4 grupos PHP + test:js no piso + build)
   - conferência visual APROVADA pelo usuário (08/10/2026)
   - learnings publicador-ml §14/§15 e portal-do-cliente §37/§38
 affects: []
-requirements: [FP172-01, FP172-02, FP172-03, FP172-04, FP172-05, FP172-06, FP172-07, FP172-08, FP172-09]
+requirements: [FP176-01, FP176-02, FP176-03, FP176-04, FP176-05, FP176-06, FP176-07, FP176-08, FP176-09]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 13: Portão final e conferência visual
+# Phase 176 Plan 13: Portão final e conferência visual
 
 ## Commits
 
 | Task | Commit | Assunto |
 |---|---|---|
-| 1 | 305253ef | docs(172): portão final, validação e learnings |
-| 2 | 4095bd53 | docs(172-13): nota da conferência local da cópia da #459 |
-| 3 | (este) | docs(172-13): resumo — conferência aprovada |
+| 1 | 305253ef | docs(176): portão final, validação e learnings |
+| 2 | 4095bd53 | docs(176-13): nota da conferência local da cópia da #459 |
+| 3 | (este) | docs(176-13): resumo — conferência aprovada |
 
 ## Portão (HEAD 39c2ae2b)
 

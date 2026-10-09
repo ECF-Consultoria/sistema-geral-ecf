@@ -1,15 +1,15 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 12
 subsystem: publicador
 tags: [sincronizar, job, resumo, isolamento, d-10]
-requires: [172-03, 172-08, 172-10]
+requires: [176-03, 176-08, 176-10]
 provides:
   - PreencherRascunhoDoPortalJob (um por produto agrupado/composto, fila high)
   - ResumoDoSincronizar (resumo agregado por pedido, escopado por empresa)
   - GET publicador/empresas/{conta}/sincronizar/{pedido}
   - painel de resumo na página de produtos do Publicador
-affects: [172-13]
+affects: [176-13]
 key-files:
   created:
     - app/Jobs/Publicador/PreencherRascunhoDoPortalJob.php
@@ -23,21 +23,21 @@ key-files:
     - routes/mlb_anuncios.php
     - resources/js/Components/Mlb/Publicador/BotaoSincronizarPortal.jsx
     - resources/js/Pages/Mlb/Publicador/Produtos.jsx
-requirements: [FP172-06, FP172-09]
+requirements: [FP176-06, FP176-09]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 12: Sincronizar do Portal ponta a ponta
+# Phase 176 Plan 12: Sincronizar do Portal ponta a ponta
 
-O clique agrupa (172-03), despacha um `PreencherRascunhoDoPortalJob` por item de `para_preencher` (fila `high`, `timeout` 300 s, `tries` 1, `failed()` registra aviso no resumo), e a página acompanha o resumo agregado por `pedido` (uuid, cache de 1 h, escopado por `company_id`).
+O clique agrupa (176-03), despacha um `PreencherRascunhoDoPortalJob` por item de `para_preencher` (fila `high`, `timeout` 300 s, `tries` 1, `failed()` registra aviso no resumo), e a página acompanha o resumo agregado por `pedido` (uuid, cache de 1 h, escopado por `company_id`).
 
 ## Commits
 
 | Task | Commit | Assunto |
 |---|---|---|
-| 1 | 8dfbe81b | feat(172-12): Sincronizar despacha um Job por produto e agrega o resumo por pedido |
-| 2 | f046133e | test(172-12): Sincronizar isolado por empresa, sem piloto, sem escrita no ML e idempotente |
-| 3 | 31348224 | feat(172-12): botao acompanha o preenchimento e a pagina mostra o resumo do Sincronizar |
+| 1 | 8dfbe81b | feat(176-12): Sincronizar despacha um Job por produto e agrega o resumo por pedido |
+| 2 | f046133e | test(176-12): Sincronizar isolado por empresa, sem piloto, sem escrita no ML e idempotente |
+| 3 | 31348224 | feat(176-12): botao acompanha o preenchimento e a pagina mostra o resumo do Sincronizar |
 
 ## Mutação 1 (isolamento)
 
@@ -46,7 +46,7 @@ Removido `->where('company_id', $p->company_id)` de `PortalProdutoLeitor::produt
 ## Testes
 
 - `SincronizaPortalCompletoTest`: 9 testes, 51 asserções (resumo pronto, 404 de outra empresa/inexistente, `failed()`, sem pedido quando nada a preencher, Job na fila high, isolamento, fora do piloto D-10, nada_no_ml com conta liberada + token (zero HTTP, zero `pub_publicacoes`), idempotente (contagens e revisão iguais)).
-- `tests/Feature/Publicador` inteiro: 663 testes, 3650 asserções, OK (era 583 no 172-03).
+- `tests/Feature/Publicador` inteiro: 663 testes, 3650 asserções, OK (era 583 no 176-03).
 - `npm run test:js`: 1332 testes, 2 falhas (as 2 antigas conhecidas); `publicador-sincronizar-resumo` 7/7 e `publicador-entrada` verdes.
 - `npm run build`: exit 0, manifest contém `Pages/Mlb/Publicador/Produtos.jsx`.
 

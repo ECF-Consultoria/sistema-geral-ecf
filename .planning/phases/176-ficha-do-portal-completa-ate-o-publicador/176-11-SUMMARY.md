@@ -1,9 +1,9 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 11
 subsystem: publicador-front
 tags: [publicador, descricao-ia, react]
-requires: [172-09]
+requires: [176-09]
 provides: [useDescricaoIa, descricaoIa.js, painel Descrição do cliente]
 key-files:
   created:
@@ -15,10 +15,10 @@ key-files:
     - resources/js/Pages/Mlb/Publicador/Editor.jsx
     - tests/js/publicador-mesa.test.js
     - tests/js/publicador-editor.test.js
-requirements-completed: [FP172-08]
+requirements-completed: [FP176-08]
 ---
 
-# Fase 172 Plano 11: Descrição do cliente e descrição por IA no editor
+# Fase 176 Plano 11: Descrição do cliente e descrição por IA no editor
 
 O editor mostra a descrição do cliente (recolhível, só leitura), dispara sozinho a descrição MAG T8 no rascunho vazio e oferece o botão de gerar/regerar, aplicando sempre por `m.mudarRasc`.
 
@@ -42,7 +42,7 @@ O editor mostra a descrição do cliente (recolhível, só leitura), dispara soz
 - Nada de prova real (a IA roda na fila; não testada em browser/#459).
 
 ## Commits
-- fb1b52b7 feat(172-11): regras puras e hook useDescricaoIa
-- (task 2) feat(172-11): painel Descrição do cliente e botão Gerar descrição com IA no editor
+- fb1b52b7 feat(176-11): regras puras e hook useDescricaoIa
+- (task 2) feat(176-11): painel Descrição do cliente e botão Gerar descrição com IA no editor
 
 ## Self-Check: PASSED

@@ -1,4 +1,4 @@
-# Fase 172 — Baseline de testes (antes de mexer)
+# Fase 176 — Baseline de testes (antes de mexer)
 
 - Data: 2026-10-08 (medida antes de qualquer código da fase)
 - `git rev-parse HEAD`: `fedc37f87998ff0169f655e93ebb9feb6e5081ba`
@@ -8,7 +8,7 @@
 - PHPUnit com SQLite em memória; `-d memory_limit=2G`.
 - Árvore suja no momento da medida por OUTRA sessão (Portal "Planejamento"/Sugestões): `PortalEstruturaSugestoesController`, `ListaDeSugestoes`, `config/estrutura_geracao.php`, `sugestoesEstrutura.js` e 5 testes de `Estrutura/Sugestoes`. Nenhum arquivo desta fase.
 
-| # | Grupo (comando) | Testes | Asserções | Falhas | Erros | Pulados | Exit | Tempo | Depois (172-13) |
+| # | Grupo (comando) | Testes | Asserções | Falhas | Erros | Pulados | Exit | Tempo | Depois (176-13) |
 |---|---|---|---|---|---|---|---|---|---|
 | G1 | `tests/Feature/Publicador` | 567 | 3264 | 0 | 0 | 0 | 0 | 153 s | 663 testes, 0 falhas, exit 0 |
 | G2 | `tests/Unit/Publicador` | 256 | 877 | 0 | 0 | 0 | 0 | 12 s | 293 testes, 0 falhas, exit 0 |
@@ -30,9 +30,9 @@ momento da medida. Não são desta fase e podem sumir quando ela commitar; o pis
 ## Regra de comparação
 
 Cada grupo com contagem maior ou igual à desta tabela e nenhuma falha nova (G5: as 2 acima são o piso conhecido; G4: só
-as falhas de `Estrutura/Sugestoes` são toleradas, e só se ainda forem da outra sessão). O 172-13 preenche a coluna "Depois (172-13)".
+as falhas de `Estrutura/Sugestoes` são toleradas, e só se ainda forem da outra sessão). O 176-13 preenche a coluna "Depois (176-13)".
 
-## Prova no MariaDB 10.4 (172-01)
+## Prova no MariaDB 10.4 (176-01)
 
 Data: 2026-10-08. Conexão conferida: `mysql` / banco `ecf_admin` (MariaDB 10.4 local, compartilhado). Só `migrate --path=` e
 `migrate:rollback --path=` dos 3 arquivos da fase; nenhum `migrate` puro, `--step`, `--batch` nem escrita em `migrations`.
@@ -72,12 +72,12 @@ ou o banco não for exatamente o arquivo do scratchpad):
   (O rollback por `--path` também listou "Migration not found" para migrations do mesmo lote cujo arquivo não existe nesta árvore;
   ruído do banco descartável, sem efeito.)
 
-## Gate final (172-13)
+## Gate final (176-13)
 
 - Data: 2026-10-08. HEAD: `39c2ae2b`. Autoloader conferido: carrega ESTE worktree. Um grupo por vez, saída em arquivo, exit capturado.
 - Árvore: só o `.gitkeep` da pasta da fase como não rastreado (nada de outras sessões no worktree).
 
-| # | Grupo | Baseline | Final (172-13) | Falhas | Exit | Tempo |
+| # | Grupo | Baseline | Final (176-13) | Falhas | Exit | Tempo |
 |---|---|---|---|---|---|---|
 | G1 | `tests/Feature/Publicador` | 567 / 3264 | 663 / 3650 | 0 | 0 | 130 s |
 | G2 | `tests/Unit/Publicador` | 256 / 877 | 293 / 957 | 0 | 0 | 8 s |
@@ -97,12 +97,12 @@ ou o banco não for exatamente o arquivo do scratchpad):
 
 ### Mutações registradas nos SUMMARY
 
-- Só-vazio (172-08): ficha ignorando `preenchido()` e estoque sobrescrevendo o digitado -> `test_so_preenche_o_vazio_e_conta_o_que_manteve` VERMELHO nas duas; revertidas.
-- `company_id` (172-12): removido `where('company_id', ...)` de `PortalProdutoLeitor::produtoDoGrupo` -> `test_isolamento_entre_empresas...` VERMELHO; restaurado.
-- Sigilo (172-05): mensagem do estoque com "anúncio" -> `test_campos_novos_nao_revelam_origem` VERMELHO (depois de corrigir `assertSemOrigem` para decodificar acento); restaurada.
-- Também: 172-10 (guarda do grupo vazio; principal forçado ao índice 0), ambas vermelhas e revertidas.
+- Só-vazio (176-08): ficha ignorando `preenchido()` e estoque sobrescrevendo o digitado -> `test_so_preenche_o_vazio_e_conta_o_que_manteve` VERMELHO nas duas; revertidas.
+- `company_id` (176-12): removido `where('company_id', ...)` de `PortalProdutoLeitor::produtoDoGrupo` -> `test_isolamento_entre_empresas...` VERMELHO; restaurado.
+- Sigilo (176-05): mensagem do estoque com "anúncio" -> `test_campos_novos_nao_revelam_origem` VERMELHO (depois de corrigir `assertSemOrigem` para decodificar acento); restaurada.
+- Também: 176-10 (guarda do grupo vazio; principal forçado ao índice 0), ambas vermelhas e revertidas.
 
-## Conferência local (172-13)
+## Conferência local (176-13)
 
 Cópia FICTÍCIA da #459 em SQLite de arquivo no scratchpad da sessão (`172-conferencia.sqlite`), guarda `guarda-conf.php`.
 - Recusa provada: sem as variáveis a guarda imprimiu `driver=mysql banco=ecf_admin`, `RECUSADO`, exit 1, e o `&&` seguinte não rodou.

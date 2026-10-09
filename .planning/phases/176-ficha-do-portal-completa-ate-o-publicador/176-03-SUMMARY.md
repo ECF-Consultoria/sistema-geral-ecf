@@ -1,14 +1,14 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 03
 subsystem: publicador
 tags: [sincronizar, agrupamento, pub_produtos, portal-estrutura]
-requires: [172-01]
+requires: [176-01]
 provides:
   - Sincronizar cria/adota UM pub_produtos por produto do Portal (estrutura_produto_id), ancorado na 1ª variação
   - retorno do serviço com adotados, duplicados, avisos e para_preencher
   - situacaoPortal conta o grupo como cobertura
-affects: [172-12]
+affects: [176-12]
 key-files:
   modified:
     - app/Models/PubProduto.php
@@ -17,11 +17,11 @@ key-files:
     - tests/Feature/Publicador/SincronizaPortalTest.php
   created:
     - tests/Feature/Publicador/SincronizaPortalAgrupamentoTest.php
-requirements: [FP172-05, FP172-09]
+requirements: [FP176-05, FP176-09]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 03: agrupamento do D-06 no Sincronizar
+# Phase 176 Plan 03: agrupamento do D-06 no Sincronizar
 
 As ofertas Simples de um produto do Portal viram um único `pub_produtos` com `estrutura_produto_id`. Legado com rascunho ainda sem publicação é adotado (só `estrutura_produto_id` muda); legado publicado (por fato, via `IaParaRascunhoService::intocavel`) nunca é adotado. Nada é apagado.
 
@@ -29,8 +29,8 @@ As ofertas Simples de um produto do Portal viram um único `pub_produtos` com `e
 
 | Task | Commit | Assunto |
 |---|---|---|
-| 1 | bfcf1758 | feat(172-03): Sincronizar agrupa as cores de um produto do Portal em um unico produto |
-| 2 | bc418bf8 | feat(172-03): situacaoPortal conta o grupo do produto como cobertura |
+| 1 | bfcf1758 | feat(176-03): Sincronizar agrupa as cores de um produto do Portal em um unico produto |
+| 2 | bc418bf8 | feat(176-03): situacaoPortal conta o grupo do produto como cobertura |
 
 ## Decisões de implementação
 
@@ -39,7 +39,7 @@ As ofertas Simples de um produto do Portal viram um único `pub_produtos` com `e
 - `duplicados` lista os legados das outras cores a cada execução (não é gravado); aviso extra quando algum é intocável.
 - `skuExibido`/`nomeExibido` do grupo usam o produto do Portal só se `company_id` coincide; senão cai no comportamento anterior.
 - Corrida: captura 23000 e relê o grupo por `estrutura_produto_id`; `criados` não conta o que outro processo criou.
-- Ofertas, variações e produtos consultados sempre com `company_id` da Company recebida (T-172-08).
+- Ofertas, variações e produtos consultados sempre com `company_id` da Company recebida (T-176-08).
 
 ## Testes
 
@@ -48,7 +48,7 @@ As ofertas Simples de um produto do Portal viram um único `pub_produtos` com `e
 
 ## Deviations from Plan
 
-Nenhuma de regra. Observação: `MlbPublicadorEntradaController::sincronizar` não foi tocado (dono: 172-12), então `adotados`, `duplicados`, `avisos` e `para_preencher` ainda não chegam à tela.
+Nenhuma de regra. Observação: `MlbPublicadorEntradaController::sincronizar` não foi tocado (dono: 176-12), então `adotados`, `duplicados`, `avisos` e `para_preencher` ainda não chegam à tela.
 
 ## Known Stubs
 

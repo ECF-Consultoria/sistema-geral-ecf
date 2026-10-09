@@ -1,11 +1,11 @@
-# Fase 172: Ficha do portal completa até o Publicador - Pesquisa
+# Fase 176: Ficha do portal completa até o Publicador - Pesquisa
 
 **Pesquisado em:** 2026-10-08
 **Domínio:** Laravel 12 + Inertia/React; Mapeamento Estrutural (portal do cliente) -> Publicador ML interno (`pub_*`)
 **Confiança geral:** ALTA no mapa do código (lido linha a linha neste worktree); MÉDIA nas decisões de desenho (D-06, multivalor, "principal" do Kit); BAIXA onde marcado `[ASSUMED]`.
 
 <user_constraints>
-## User Constraints (de 172-CONTEXT.md)
+## User Constraints (de 176-CONTEXT.md)
 
 ### Decisões travadas
 - **D-01** Estoque POR VARIAÇÃO: inteiro >= 0, anulável (nulo = "não informado" != 0 = "sem estoque"). Coluna nova, anulável, aditiva em `estrutura_produto_variacoes`. Aparece na linha de cada variação, ao lado de SKU/custo.
@@ -33,15 +33,15 @@
 
 | ID | Descrição | Suporte da pesquisa |
 |----|-----------|---------------------|
-| FP172-01 | Estoque por variação na ficha do portal (coluna, validação, tela, JSON) | §Portal: estoque; Normalizador/Cadastro/Linhas/JS |
-| FP172-02 | Descrição por produto na ficha do portal (coluna, endpoint, bloco) | §Portal: descrição |
-| FP172-03 | Sigilo cobre os campos novos | §Sigilo; `assertSemOrigem` |
-| FP172-04 | Migrations aditivas provadas no MariaDB | §Migrations |
-| FP172-05 | Agrupamento D-06: N ofertas Simples -> 1 rascunho com N variantes, sem quebrar o que existe | §D-06 |
-| FP172-06 | Sincronizar completo só-preenche-vazio e idempotente (categoria, ficha, variações, estoque, pacote, fotos) | §Pontos de escrita, §Categoria, §Multivalor, §Imagens, §Eixos, §Volumes |
-| FP172-07 | Combo/Kit/Combit derivam o que der | §Combo/Kit/Combit |
-| FP172-08 | Descrição do cliente como referência + matéria-prima do MAG T8 | §D-09 |
-| FP172-09 | Isolamento entre empresas, idempotência, trava piloto | §Modelo de ameaças, §Piloto |
+| FP176-01 | Estoque por variação na ficha do portal (coluna, validação, tela, JSON) | §Portal: estoque; Normalizador/Cadastro/Linhas/JS |
+| FP176-02 | Descrição por produto na ficha do portal (coluna, endpoint, bloco) | §Portal: descrição |
+| FP176-03 | Sigilo cobre os campos novos | §Sigilo; `assertSemOrigem` |
+| FP176-04 | Migrations aditivas provadas no MariaDB | §Migrations |
+| FP176-05 | Agrupamento D-06: N ofertas Simples -> 1 rascunho com N variantes, sem quebrar o que existe | §D-06 |
+| FP176-06 | Sincronizar completo só-preenche-vazio e idempotente (categoria, ficha, variações, estoque, pacote, fotos) | §Pontos de escrita, §Categoria, §Multivalor, §Imagens, §Eixos, §Volumes |
+| FP176-07 | Combo/Kit/Combit derivam o que der | §Combo/Kit/Combit |
+| FP176-08 | Descrição do cliente como referência + matéria-prima do MAG T8 | §D-09 |
+| FP176-09 | Isolamento entre empresas, idempotência, trava piloto | §Modelo de ameaças, §Piloto |
 
 </phase_requirements>
 
@@ -193,7 +193,7 @@ Idempotência do eixo: ao reexecutar, casar valor existente por `ChaveCanonica::
 
 ## Lado do portal (pergunta 10)
 
-**Estoque (FP172-01)** - molde: `custo`.
+**Estoque (FP176-01)** - molde: `custo`.
 - Migration: `estrutura_produto_variacoes.estoque` `unsignedInteger NULL` `after('custo')`.
 - `EstruturaProdutoVariacao`: `$fillable[]='estoque'`, cast `integer` (cuidado: cast de NULL permanece NULL).
 - `NormalizadorDeLinha::normalizar` (`NormalizadorDeLinha.php`, campos em :53-69): novo campo `estoque` inteiro >= 0, máx razoável (ex. 99.999.999), `null` explícito = limpar e entra em `presentes`; chave ausente/'' = "não mexi". Mensagem de erro neutra.
@@ -203,12 +203,12 @@ Idempotência do eixo: ao reexecutar, casar valor existente por `ChaveCanonica::
 - Planilha-modelo: **não** adicionar coluna. As 11 colunas espelham a aba "Produtos" da 3Planejamento "com os mesmos nomes e a mesma ordem" (`ModeloProdutosXlsx.php`, docblock) e há testes de contrato (`ModeloEImportacaoTest`). Estoque e descrição entram só pela ficha. -> Pergunta aberta 3 se o usuário quiser coluna opcional.
 - Lista SKUs/Precificação: não exibem estoque de cadastro; o `estoque` do `EstruturaVisaoService` é o do acervo ML (outro conceito, tabela diferente) - sem colisão.
 
-**Descrição (FP172-02)** - molde: ficha técnica.
+**Descrição (FP176-02)** - molde: ficha técnica.
 - Migration: `estrutura_produtos.descricao` `text NULL` `after('categoria_ml_caminho')`; `$fillable`.
 - Endpoint: `PUT /estrutura/produtos/{produto}/descricao` (nome `portal.auth.estrutura.produtos.descricao`, `whereNumber`, `throttle:30,1,...`, dentro do grupo portal existente - o módulo já está na allowlist de `RestringeDominioDoPortal`; checar o grupo antes). Controller: 404 de outra empresa ANTES da validação (molde `gravarFichaTecnica` `PortalEstruturaProdutosController.php:369-398`); `validate(['descricao' => 'nullable|string|max:5000'])`; serviço `DescricaoDoProduto::gravar` (trim, vazio -> NULL, `RegistroEstrutura::registrar`). O middleware `ConvertEmptyStringsToNull` torna '' em null = "limpar" aqui é intencional.
 - `renderFicha` (`:530-547`): `'descricao' => $produto?->descricao`. Hook `useDescricaoProduto` gravado em `salvar()` logo depois de `tecnica.gravar(r.produtoId)` (`useFichaProduto.js` ~:278-289), mesmo tratamento de produto novo (só grava depois de existir id).
 - Bloco "Descrição do produto" na ficha (junto da ficha técnica), texto de ajuda: "Conte para que serve, os diferenciais, os cuidados e o que acompanha o produto." Sem as palavras proibidas.
-- **Sigilo (FP172-03):** estender `assertSemOrigem` (`FichaTecnicaDoProdutoTest.php`) para varrer o JSON de `ficha` (props Inertia) e a resposta do `PUT` com `/mercado|an[uú]ncio|publicar|\bmlb|\bml\b/iu` (mesma regex de `FichaTecnicaDaCategoria::TERMOS_PROIBIDOS`). Cuidado: o cliente digita a descrição - o teste usa texto neutro; não filtrar o que o cliente escreve. `ml_conectado` já existe nas props (`:541`) e é anterior à fase; não é rótulo do campo.
+- **Sigilo (FP176-03):** estender `assertSemOrigem` (`FichaTecnicaDoProdutoTest.php`) para varrer o JSON de `ficha` (props Inertia) e a resposta do `PUT` com `/mercado|an[uú]ncio|publicar|\bmlb|\bml\b/iu` (mesma regex de `FichaTecnicaDaCategoria::TERMOS_PROIBIDOS`). Cuidado: o cliente digita a descrição - o teste usa texto neutro; não filtrar o que o cliente escreve. `ml_conectado` já existe nas props (`:541`) e é anterior à fase; não é rótulo do campo.
 
 ## Migrations (pergunta 11)
 
@@ -344,24 +344,24 @@ ASVS: V4 (controle de acesso por empresa) e V5 (validação: `estoque`, `descric
 | PortalCliente inteiro | `... phpunit tests/Feature/PortalCliente` | **não medido hoje** (168 final: 510/3668; 94 s) - medir no Wave 0 | |
 | JS | `npm run test:js` | exit 1 pelas 2 falhas antigas ("Características secundárias nasce recolhido", "FASES_TERMINAIS cobre as três fases...") | contagem: registrar no Wave 0 |
 
-Regra: contagem >= baseline e nenhuma falha nova; as 2 falhas JS são o piso. Wave 0 grava `172-BASELINE-TESTES.md` no formato do `168-BASELINE-TESTES.md`.
+Regra: contagem >= baseline e nenhuma falha nova; as 2 falhas JS são o piso. Wave 0 grava `176-BASELINE-TESTES.md` no formato do `168-BASELINE-TESTES.md`.
 
 ### Requisito -> teste
 
 | Req | Comportamento | Tipo | Comando | Arquivo |
 |---|---|---|---|---|
-| FP172-01 | `estoque` valida (>=0, int), 0 != null, não herda da 1ª variação, volta em `linhas` | feature+unit | `phpunit tests/Unit/PortalEstrutura/NormalizadorDeLinhaTest.php` e `tests/Feature/PortalCliente/Estrutura/Produtos/GravarLinhasTest.php` | existem (estender); Wave 0 |
-| FP172-01 | JS: estoque em `linhaParaServidor`/`novaVariacao` zera | node:test | `node --test tests/js/estrutura-grid-produtos.test.js` (ou novo `estrutura-estoque-descricao.test.js`) | novo |
-| FP172-02 | PUT descrição: 404 outra empresa antes de validar, max 5000, vazio limpa, auditoria | feature | `phpunit tests/Feature/PortalCliente/Estrutura/Produtos/DescricaoDoProdutoTest.php` | novo, Wave 0 |
-| FP172-03 | Sigilo nos JSON/erros novos | feature | `phpunit tests/Feature/PortalCliente/Estrutura/Produtos/FichaTecnicaDoProdutoTest.php --filter SemOrigem` | existe (estender) |
-| FP172-04 | Migrations aditivas, driver mariadb, up/down | feature | `phpunit tests/Feature/Publicador/MigracoesDaFaseDetectamMariaDbTest.php` + prova manual `--path` registrada | existe (estender) |
-| FP172-05 | N ofertas Simples -> 1 produto-grupo, 1 rascunho, N variantes; adoção de legado; legado publicado não adotado; `situacaoPortal` | feature | `phpunit tests/Feature/Publicador/SincronizaPortalTest.php` | existe + novo `SincronizaPortalCompletoTest.php` |
-| FP172-06 | Só-vazio por campo; idempotência (2ª execução não muda nada nem sobe `revisao`); SKUs distintos; acrescenta cor nova | feature | `phpunit tests/Feature/Publicador/PortalParaRascunhoTest.php` | novo, Wave 0 |
-| FP172-06 | Multivalor, lista, número+unidade, boolean | unit | `phpunit tests/Unit/Publicador/PortalValorDeAtributoTest.php` | novo |
-| FP172-06 | Fotos: dedupe sha, WebP/pequena contadas, grupo vazio, `enviar:false` não chama ML | feature | `phpunit tests/Feature/Publicador/PortalFotosTest.php` | novo |
-| FP172-07 | Combo piso(est/N); Kit mín piso; principal por maior custo; estoque NULL propaga | unit+feature | `phpunit tests/Unit/Publicador/ComposicaoDoPortalTest.php` | novo |
-| FP172-08 | `estado().portal.descricao_cliente` ao vivo; Job grava só no cache; pedido velho não pisa | feature | `phpunit tests/Feature/Publicador/DescricaoIaTest.php` | novo (Http::fake ÚNICO, §5) |
-| FP172-09 | IDOR entre empresas; gate de piloto; sync nunca chama `/items` nem sobe foto | feature | `phpunit tests/Feature/Publicador/PortalParaRascunhoTest.php --filter isolamento` | novo |
+| FP176-01 | `estoque` valida (>=0, int), 0 != null, não herda da 1ª variação, volta em `linhas` | feature+unit | `phpunit tests/Unit/PortalEstrutura/NormalizadorDeLinhaTest.php` e `tests/Feature/PortalCliente/Estrutura/Produtos/GravarLinhasTest.php` | existem (estender); Wave 0 |
+| FP176-01 | JS: estoque em `linhaParaServidor`/`novaVariacao` zera | node:test | `node --test tests/js/estrutura-grid-produtos.test.js` (ou novo `estrutura-estoque-descricao.test.js`) | novo |
+| FP176-02 | PUT descrição: 404 outra empresa antes de validar, max 5000, vazio limpa, auditoria | feature | `phpunit tests/Feature/PortalCliente/Estrutura/Produtos/DescricaoDoProdutoTest.php` | novo, Wave 0 |
+| FP176-03 | Sigilo nos JSON/erros novos | feature | `phpunit tests/Feature/PortalCliente/Estrutura/Produtos/FichaTecnicaDoProdutoTest.php --filter SemOrigem` | existe (estender) |
+| FP176-04 | Migrations aditivas, driver mariadb, up/down | feature | `phpunit tests/Feature/Publicador/MigracoesDaFaseDetectamMariaDbTest.php` + prova manual `--path` registrada | existe (estender) |
+| FP176-05 | N ofertas Simples -> 1 produto-grupo, 1 rascunho, N variantes; adoção de legado; legado publicado não adotado; `situacaoPortal` | feature | `phpunit tests/Feature/Publicador/SincronizaPortalTest.php` | existe + novo `SincronizaPortalCompletoTest.php` |
+| FP176-06 | Só-vazio por campo; idempotência (2ª execução não muda nada nem sobe `revisao`); SKUs distintos; acrescenta cor nova | feature | `phpunit tests/Feature/Publicador/PortalParaRascunhoTest.php` | novo, Wave 0 |
+| FP176-06 | Multivalor, lista, número+unidade, boolean | unit | `phpunit tests/Unit/Publicador/PortalValorDeAtributoTest.php` | novo |
+| FP176-06 | Fotos: dedupe sha, WebP/pequena contadas, grupo vazio, `enviar:false` não chama ML | feature | `phpunit tests/Feature/Publicador/PortalFotosTest.php` | novo |
+| FP176-07 | Combo piso(est/N); Kit mín piso; principal por maior custo; estoque NULL propaga | unit+feature | `phpunit tests/Unit/Publicador/ComposicaoDoPortalTest.php` | novo |
+| FP176-08 | `estado().portal.descricao_cliente` ao vivo; Job grava só no cache; pedido velho não pisa | feature | `phpunit tests/Feature/Publicador/DescricaoIaTest.php` | novo (Http::fake ÚNICO, §5) |
+| FP176-09 | IDOR entre empresas; gate de piloto; sync nunca chama `/items` nem sobe foto | feature | `phpunit tests/Feature/Publicador/PortalParaRascunhoTest.php --filter isolamento` | novo |
 | Build | front compila | build | `npm run build` | — |
 
 Amostragem: por commit `phpunit <arquivo tocado>`; por onda o grupo da pasta; portão da fase = os 5 grupos acima + `npm run test:js` (piso de 2 falhas) + `npm run build`. Mutação obrigatória em 2 testes-chave (§5 do learnings): tirar o "só-vazio" e a trava de `company_id` e ver o teste quebrar.
@@ -391,21 +391,21 @@ Amostragem: por commit `phpunit <arquivo tocado>`; por onda o grupo da pasta; po
 
 ## Divisão sugerida em planos (ondas)
 
-- **Wave 0 (sequencial, pequena):** baseline (`172-BASELINE-TESTES.md`), contagens de prod (leitura), `git status` das sessões paralelas, esqueleto dos testes novos (vermelhos).
+- **Wave 0 (sequencial, pequena):** baseline (`176-BASELINE-TESTES.md`), contagens de prod (leitura), `git status` das sessões paralelas, esqueleto dos testes novos (vermelhos).
 - **Wave 1 (paralelizável, portal - sem Publicador):**
-  - 172-01 Migrations 1 e 2 + prova `--path` + atualizar `MigracoesDaFaseDetectamMariaDbTest`.
-  - 172-02 Estoque: Normalizador, Cadastro, Linhas, model, JS (CartaoVariacao/produtosEstrutura/useFichaProduto) + testes.
-  - 172-03 Descrição: endpoint, serviço, bloco da ficha, hook + sigilo (`assertSemOrigem`) + testes.
+  - 176-01 Migrations 1 e 2 + prova `--path` + atualizar `MigracoesDaFaseDetectamMariaDbTest`.
+  - 176-02 Estoque: Normalizador, Cadastro, Linhas, model, JS (CartaoVariacao/produtosEstrutura/useFichaProduto) + testes.
+  - 176-03 Descrição: endpoint, serviço, bloco da ficha, hook + sigilo (`assertSemOrigem`) + testes.
 - **Wave 2 (Publicador - base):**
-  - 172-04 Migration 3 (`pub_produtos.estrutura_produto_id`) + prova + `PubProduto` (`skuExibido/nomeExibido`) + `situacaoPortal` + agrupamento/adoção no `PublicadorSincronizaPortalService` + `SincronizaPortalTest`.
-  - 172-05 `PortalProdutoLeitor` + extrair `criarVazio` + `ImagemAssetService::receber(enviar:false)` + `comEfetivos($porVariante)`/`DadosEfetivosService`.
+  - 176-04 Migration 3 (`pub_produtos.estrutura_produto_id`) + prova + `PubProduto` (`skuExibido/nomeExibido`) + `situacaoPortal` + agrupamento/adoção no `PublicadorSincronizaPortalService` + `SincronizaPortalTest`.
+  - 176-05 `PortalProdutoLeitor` + extrair `criarVazio` + `ImagemAssetService::receber(enviar:false)` + `comEfetivos($porVariante)`/`DadosEfetivosService`.
 - **Wave 3 (preenchimento):**
-  - 172-06 `PortalParaRascunhoService`: categoria, atributos (resolução de valores), pacote, eixos/variantes/estoque/SKU, só-vazio, idempotência.
-  - 172-07 Fotos por grupo + resumo/feedback + Job por produto + gate do piloto + endpoint de resumo.
-  - 172-08 Combo/Kit/Combit (composição, estoque, fotos, descrições).
+  - 176-06 `PortalParaRascunhoService`: categoria, atributos (resolução de valores), pacote, eixos/variantes/estoque/SKU, só-vazio, idempotência.
+  - 176-07 Fotos por grupo + resumo/feedback + Job por produto + gate do piloto + endpoint de resumo.
+  - 176-08 Combo/Kit/Combit (composição, estoque, fotos, descrições).
 - **Wave 4 (descrição e tela):**
-  - 172-09 `DescricaoIaService` + `GerarDescricaoIaJob` + `specs` em `iaAnaliseStorePublicador` + `estado().portal`.
-  - 172-10 UI do editor (painel "Descrição do cliente", botão, hook novo) e resumo do Sincronizar em `Produtos.jsx`; `npm run build`.
+  - 176-09 `DescricaoIaService` + `GerarDescricaoIaJob` + `specs` em `iaAnaliseStorePublicador` + `estado().portal`.
+  - 176-10 UI do editor (painel "Descrição do cliente", botão, hook novo) e resumo do Sincronizar em `Produtos.jsx`; `npm run build`.
 - **Wave 5:** verificação (baselines, mutações, prova de migration repetida, conferência visual em SQLite com guarda), learnings (`publicador-ml.md` nova seção), sem deploy sem autorização. Deploy: `migrate --force` + `queue:restart`; contagens antes/depois.
 
 ## Fontes

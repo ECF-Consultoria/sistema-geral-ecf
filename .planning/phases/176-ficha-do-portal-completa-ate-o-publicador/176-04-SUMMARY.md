@@ -1,24 +1,24 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 plan: 04
 subsystem: publicador
 tags: [puro, atributos, composicao, combo-kit-combit]
-requires: [172-01]
+requires: [176-01]
 provides:
   - PortalValorDeAtributo::resolver / pacoteParaAtributos
   - ComposicaoDoPortal::estoque / principal / pacoteDoGrupo / pacoteDoConjunto / descricoes
-affects: [172-08, 172-10]
+affects: [176-08, 176-10]
 key-files:
   created:
     - app/Support/Publicador/Portal/PortalValorDeAtributo.php
     - app/Support/Publicador/Portal/ComposicaoDoPortal.php
     - tests/Unit/Publicador/PortalValorDeAtributoTest.php
     - tests/Unit/Publicador/ComposicaoDoPortalTest.php
-requirements: [FP172-06, FP172-07]
+requirements: [FP176-06, FP176-07]
 completed: 2026-10-08
 ---
 
-# Phase 172 Plan 04: tradução de atributo e composição do portal
+# Phase 176 Plan 04: tradução de atributo e composição do portal
 
 Duas classes estáticas e puras (sem banco/HTTP) que o preenchimento do rascunho (172-08/10) consome.
 
@@ -26,8 +26,8 @@ Duas classes estáticas e puras (sem banco/HTTP) que o preenchimento do rascunho
 
 | Task | Assunto |
 |---|---|
-| 1 | feat(172-04): PortalValorDeAtributo traduz campo do portal em valor do rascunho |
-| 2 | feat(172-04): ComposicaoDoPortal com estoque, principal, pacotes e descricoes |
+| 1 | feat(176-04): PortalValorDeAtributo traduz campo do portal em valor do rascunho |
+| 2 | feat(176-04): ComposicaoDoPortal com estoque, principal, pacotes e descricoes |
 
 ## Testes
 

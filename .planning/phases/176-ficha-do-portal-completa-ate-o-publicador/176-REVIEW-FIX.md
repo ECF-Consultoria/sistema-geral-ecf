@@ -1,9 +1,9 @@
 ---
-phase: 172-ficha-do-portal-completa-ate-o-publicador
+phase: 176-ficha-do-portal-completa-ate-o-publicador
 fixed_at: 2026-10-08T23:30:00Z
 review_path:
-  - .planning/phases/172-ficha-do-portal-completa-ate-o-publicador/172-REVIEW.md
-  - .planning/phases/172-ficha-do-portal-completa-ate-o-publicador/172-REVIEW-FRONT.md
+  - .planning/phases/176-ficha-do-portal-completa-ate-o-publicador/176-REVIEW.md
+  - .planning/phases/176-ficha-do-portal-completa-ate-o-publicador/176-REVIEW-FRONT.md
 iteration: 1
 findings_in_scope: 23
 fixed: 23
@@ -11,10 +11,10 @@ skipped: 0
 status: all_fixed
 ---
 
-# Fase 172: Relatório das correções do code review
+# Fase 176: Relatório das correções do code review
 
 **Corrigido em:** 2026-10-08
-**Revisões de origem:** `172-REVIEW.md` (backend) e `172-REVIEW-FRONT.md` (frontend)
+**Revisões de origem:** `176-REVIEW.md` (backend) e `176-REVIEW-FRONT.md` (frontend)
 **Iteração:** 1
 
 **Resumo:**
@@ -39,7 +39,7 @@ Os achados de lógica estão marcados como **"corrigido: requer conferência hum
 
 Nas correções com teste novo de regra, o teste foi rodado também contra o código antigo e falhou, o que confirma que ele pega o defeito.
 
-## Corrigidos — backend (`172-REVIEW.md`)
+## Corrigidos — backend (`176-REVIEW.md`)
 
 ### CR-01: Excluir a oferta âncora congela o preço de uma cor em todas as variantes
 **Arquivos:** `app/Services/Publicador/SoltarProdutoDaOfertaService.php`, `tests/Feature/Publicador/OfertaAncoraDoGrupoExcluidaTest.php`
@@ -113,7 +113,7 @@ Nas correções com teste novo de regra, o teste foi rodado também contra o có
 **Commit:** `963d2371`
 **O que mudou:** o detalhe vai só para o `Log::error`. A tela recebe um texto nosso.
 
-## Corrigidos — frontend (`172-REVIEW-FRONT.md`)
+## Corrigidos — frontend (`176-REVIEW-FRONT.md`)
 
 ### CR-01: "Sincronizar do Portal" no estado vazio perde o acompanhamento
 **Arquivos:** `acompanhamentoDoSincronizar.js` (novo, puro), `BotaoSincronizarPortal.jsx`, `ResumoDoSincronizar.jsx`, `Produtos.jsx`, `tests/js/publicador-sincronizar-resumo.test.js`
