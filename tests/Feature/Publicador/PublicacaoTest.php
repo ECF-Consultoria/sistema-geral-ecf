@@ -5,6 +5,7 @@ namespace Tests\Feature\Publicador;
 use App\Jobs\Publicador\PublicarRascunhoJob;
 use App\Models\EstruturaAnuncio;
 use App\Models\MlbEmpresa;
+use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
@@ -263,6 +264,37 @@ class PublicacaoTest extends TestCase
         $this->assertSame('MODEL', $problema->alvo['atributo']);
         $this->assertSame('Preencha os atributos obrigatórios: «Modelo».', $problema->mensagem);
         $this->assertSame(0, EstruturaAnuncio::where('oferta_id', $this->r->produto->oferta_id)->count());
+    }
+
+    /**
+     * `problemas()` é informativo: ele explica, para a tela, por que o ML recusou um item.
+     * `EditorRascunhoService::estado()` o chama para TODA publicação que não esteja
+     * `RUNNING`, então uma exceção aqui derruba o editor inteiro em 500 — de um anúncio
+     * que pode estar no ar e correto. O cenário é o de produção: categoria fora do cache
+     * (o `obter()` precisa ir ao ML) e app token recusado, que é `\RuntimeException` do
+     * `MlColetaService`, NÃO `RegraViolada`. Ver `deferred-items.md` item 1 da Fase 175.
+     */
+    public function test_problemas_sobrevive_a_falha_de_token_e_segue_explicando_o_erro_do_ml(): void
+    {
+        $this->criar = fn () => Http::response(['message' => 'Validation error', 'error' => 'validation_error', 'status' => 400, 'cause' => [
+            ['department' => 'items', 'cause_id' => 147, 'type' => 'error', 'code' => 'item.attributes.missing_required', 'references' => ['item.attributes'], 'message' => 'The attributes [MODEL] are required for category MLB193945.'],
+        ]], 400);
+
+        $p = $this->publicar();
+        $this->assertSame(PubPublicacaoItem::FAILED, $p->itens()->sole()->status, 'o cenário precisa de um item recusado');
+
+        // Categoria fora do cache + app token recusado: `obter()` não chega a lançar
+        // `RegraViolada`, ele estoura antes, no token.
+        MlCategoriaSchema::query()->delete();
+        Cache::forget('ml_app_token_coleta');
+        $this->oauthFalha = true;
+
+        $problemas = app(PublicacaoService::class)->problemas($p);
+
+        // Sem schema o mapeador não traduz o atributo para «Modelo», mas a causa do ML
+        // continua chegando à tela — que é todo o propósito deste método.
+        $this->assertNotSame([], $problemas, 'a lista não pode voltar vazia: o item falhou');
+        $this->assertSame('MODEL', $problemas[0]->alvo['atributo']);
     }
 
     public function test_tc82_aviso_na_criacao_fica_visivel(): void
