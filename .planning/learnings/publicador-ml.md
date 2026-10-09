@@ -598,6 +598,18 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   então varrer por "anúncio" passava batido. O helper agora decodifica antes de varrer; teste de sigilo novo deve usá-lo.
 - **Gates de fonte antigos em JS** (`hook.includes('toque')`, proibição de `<details`) quebram com palavras novas
   (`estoque` contém "toque"): restrinja o gate ao trecho, não afrouxe.
+- **Absorção das linhas antigas por cor (09/10, decisão do usuário).** O Sincronizar de ANTES do agrupamento criou um
+  `pub_produtos` por oferta; na #459 sobraram 7 (um por cor não-âncora, vazios) ao lado do grupo. Agora, com o grupo de
+  pé, o legado de uma cor DO GRUPO (mesma `company_id`, `origem = portal`, `estrutura_produto_id` nulo, oferta na lista
+  já filtrada pelo `CoresDoGrupo` — a variação que vira produto separado nunca entra) que NADA referencia é APAGADO e
+  contado em `absorvidos`. "Nada referencia" = sem `pub_rascunhos.produto_id` (a ÚNICA FK viva para `pub_produtos.id`,
+  e ela é CASCADE: apagar com rascunho levaria o trabalho da equipe junto) e, se a tabela existir,
+  `pub_produto_fatos_criativo`. Publicação, análise de IA e kit de criativos pendem do RASCUNHO, então sem rascunho
+  não há nada deles. Por isso a condição "sem rascunho" mora no próprio `DELETE` (subconsulta), não numa leitura antes.
+  **Com rascunho, publicado ou referenciado: nunca é tocado** (fica em `duplicados` e o aviso continua). Tabela nova
+  com FK para `pub_produtos.id` tem de entrar em `semReferencias()`. Prova de mutação: tirar o `whereNotExists` do
+  rascunho derruba 4 testes do `SincronizaPortalAgrupamentoTest`. Atenção: rascunho em QUALQUER cor faz dela a adotada
+  (`adotar` prefere quem tem rascunho), então "a âncora vazia" é absorvida quando outra cor tem rascunho.
 
 ### Checklist de DEPLOY (só com autorização do usuário)
 

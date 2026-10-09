@@ -168,3 +168,51 @@ test('ResumoDoSincronizar.jsx — só a frase final é anunciada e as chaves nã
     assert.doesNotMatch(fonte, /<section[^>]*aria-live/);
     assert.doesNotMatch(fonte, /key=\{a\}|key=\{m\}/);
 });
+
+// ─── 09/10: linhas antigas de cor absorvidas pelo grupo ───
+
+test('textoDosAbsorvidos — singular, plural e nada quando zero', async () => {
+    const { textoDosAbsorvidos } = await import('../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js');
+    assert.equal(textoDosAbsorvidos(1), '1 linha antiga de cor foi juntada ao produto.');
+    assert.equal(textoDosAbsorvidos(7), '7 linhas antigas de cor foram juntadas ao produto.');
+    for (const n of [0, null, undefined, -1, 'x']) assert.equal(textoDosAbsorvidos(n), null, String(n));
+});
+
+test('ResumoDoSincronizar — mostra as linhas juntadas; sem elas, nada muda', async () => {
+    const path = await import('node:path');
+    const fs = await import('node:fs');
+    const { fileURLToPath, pathToFileURL } = await import('node:url');
+    const esbuild = await import('esbuild');
+    const React = (await import('react')).default;
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const aqui = path.dirname(fileURLToPath(import.meta.url));
+    const raiz = path.resolve(aqui, '../..');
+    const r = await esbuild.build({
+        entryPoints: [path.resolve(raiz, DIR + 'ResumoDoSincronizar.jsx')], bundle: true, format: 'esm', platform: 'node', jsx: 'automatic',
+        write: false, logLevel: 'silent', alias: { '@': path.resolve(raiz, 'resources/js') },
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react'],
+    });
+    const arquivo = path.join(aqui, `.resumo-sinc-${process.pid}-${Date.now()}.mjs`);
+    fs.writeFileSync(arquivo, r.outputFiles[0].text, 'utf8');
+    let Resumo;
+    try {
+        Resumo = (await import(pathToFileURL(arquivo).href)).default;
+    } finally {
+        fs.rmSync(arquivo, { force: true });
+    }
+
+    const html = renderToStaticMarkup(React.createElement(Resumo, { resumo: { status: 'pronto', so_avisos: true }, absorvidos: 2, onFechar: () => {} }));
+    assert.match(html, /data-absorvidos="2"/);
+    assert.ok(html.includes('2 linhas antigas de cor foram juntadas ao produto.'));
+
+    const sem = renderToStaticMarkup(React.createElement(Resumo, { resumo: { status: 'pronto', so_avisos: true }, onFechar: () => {} }));
+    assert.doesNotMatch(sem, /data-absorvidos/);
+});
+
+test('Produtos.jsx — guarda os absorvidos do clique, abre o painel com eles e limpa ao fechar', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
+    assert.match(fonte, /const absorvidos = Number\(json\?\.absorvidos \?\? 0\)/);
+    assert.match(fonte, /avisos\.length > 0 \|\| absorvidos > 0 \? \{ status: 'pronto', so_avisos: true \}/);
+    assert.match(fonte, /absorvidos=\{absorvidosDoClique\}/);
+    assert.match(fonte, /function fecharResumo\(\) \{[\s\S]*?setAbsorvidosDoClique\(0\);[\s\S]*?\}/);
+});

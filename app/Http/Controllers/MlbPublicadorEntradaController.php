@@ -176,7 +176,7 @@ class MlbPublicadorEntradaController extends Controller
         ]);
     }
 
-    /** "Sincronizar do Portal" (D16): só acrescenta produtos das ofertas novas. */
+    /** "Sincronizar do Portal" (D16): acrescenta os produtos das ofertas novas e junta ao grupo as linhas antigas de cor vazias. */
     public function sincronizar(string $conta, PublicadorSincronizaPortalService $sincroniza, ResumoDoSincronizar $resumo)
     {
         $alvo = $this->programas->resolver($conta);
@@ -208,6 +208,13 @@ class MlbPublicadorEntradaController extends Controller
                 ? ' Preenchendo 1 rascunho com o que está no Portal.'
                 : " Preenchendo {$preenchendo} rascunhos com o que está no Portal.";
         }
+        // Linhas antigas, uma por cor, que nada referenciava: saíram porque a cor já está no grupo.
+        $absorvidos = (int) ($r['absorvidos'] ?? 0);
+        if ($absorvidos > 0) {
+            $mensagem .= $absorvidos === 1
+                ? ' 1 linha antiga de cor foi juntada ao produto.'
+                : " {$absorvidos} linhas antigas de cor foram juntadas ao produto.";
+        }
 
         return response()->json([
             'criados' => $r['criados'],
@@ -217,6 +224,7 @@ class MlbPublicadorEntradaController extends Controller
             'preenchendo' => $preenchendo,
             'avisos' => $r['avisos'],
             'duplicados' => $r['duplicados'],
+            'absorvidos' => $absorvidos,
             'portal' => $this->programas->situacaoPortal($company),
         ]);
     }

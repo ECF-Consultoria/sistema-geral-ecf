@@ -372,15 +372,46 @@ class SincronizaPortalCompletoTest extends TestCase
         [$c, $e, $p] = $this->empresaComPortal();
         Queue::fake();
         $ofertas = EstruturaOferta::where('company_id', $c->id)->orderBy('id')->get();
-        // A 1ª cor é adotada como o grupo; a 2ª fica avulsa.
-        PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[0]->id, 'sku' => $ofertas[0]->sku, 'nome' => 'Mesa Azul',
+        // As duas têm rascunho: a 1ª cor é adotada como o grupo; a 2ª (trabalho da equipe) fica avulsa.
+        $primeira = PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[0]->id, 'sku' => $ofertas[0]->sku, 'nome' => 'Mesa Azul',
             'origem' => PubProduto::ORIGEM_PORTAL]);
+        PubRascunho::create(['produto_id' => $primeira->id, 'status' => PubRascunho::DRAFT]);
         $avulso = PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[1]->id, 'sku' => $ofertas[1]->sku, 'nome' => 'Mesa Preto',
             'origem' => PubProduto::ORIGEM_PORTAL]);
+        PubRascunho::create(['produto_id' => $avulso->id, 'status' => PubRascunho::DRAFT]);
 
         $r = $this->sincronizar($e)->assertOk();
 
         $this->assertSame([['produto_id' => $p->id, 'pub_produto_ids' => [$avulso->id]]], $r->json('duplicados'));
         $this->assertTrue(collect($r->json('avisos'))->contains(fn ($a) => str_contains($a, '"Preto" (produto #'.$avulso->id.')')));
+        $this->assertSame(0, $r->json('absorvidos'));
+    }
+
+    /** 09/10: a linha antiga de uma cor, sem rascunho, sai — e a resposta do clique diz quantas. */
+    public function test_resposta_do_clique_conta_as_linhas_antigas_de_cor_absorvidas(): void
+    {
+        [$c, $e, $p] = $this->empresaComPortal();
+        Queue::fake();
+        $ofertas = EstruturaOferta::where('company_id', $c->id)->orderBy('id')->get();
+        $grupo = PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[0]->id, 'sku' => $ofertas[0]->sku, 'nome' => 'Mesa Azul',
+            'origem' => PubProduto::ORIGEM_PORTAL]);
+        foreach ([1, 2] as $i) {
+            PubProduto::create(['company_id' => $c->id, 'oferta_id' => $ofertas[$i]->id, 'sku' => $ofertas[$i]->sku, 'nome' => 'Mesa '.$i,
+                'origem' => PubProduto::ORIGEM_PORTAL]);
+        }
+
+        $r = $this->sincronizar($e)->assertOk();
+
+        $this->assertSame(2, $r->json('absorvidos'));
+        $this->assertSame([], $r->json('duplicados'));
+        $this->assertStringContainsString('2 linhas antigas de cor foram juntadas ao produto.', $r->json('mensagem'));
+        $this->assertSame([$grupo->id], PubProduto::where('company_id', $c->id)->pluck('id')->all());
+        $this->assertSame($p->id, $grupo->fresh()->estrutura_produto_id);
+        $this->assertSame('sincronizado', $r->json('portal.situacao'));
+        $this->assertSame(0, $r->json('portal.novas'));
+
+        $r2 = $this->sincronizar($e)->assertOk();
+        $this->assertSame(0, $r2->json('absorvidos'));
+        $this->assertStringNotContainsString('linhas antigas', $r2->json('mensagem'));
     }
 }

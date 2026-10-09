@@ -1,16 +1,18 @@
 import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motivosNaoTrazidas, textoDoResumo } from './regrasDoResumoDoSincronizar';
+import { motivosNaoTrazidas, textoDoResumo, textoDosAbsorvidos } from './regrasDoResumoDoSincronizar';
 
 /**
  * Painel do que o "Sincronizar do Portal" preencheu nos rascunhos: enquanto roda mostra o andamento;
- * pronto, a frase do resumo, as fotos que não vieram (com o motivo) e os avisos. Fechável.
+ * pronto, a frase do resumo, as linhas antigas de cor juntadas ao produto, as fotos que não vieram
+ * (com o motivo) e os avisos. Fechável.
  */
-export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFechar, className }) {
+export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], absorvidos = 0, onFechar, className }) {
     if (!resumo) return null;
     const pronto = resumo.status === 'pronto';
     const expirou = resumo.status === 'expirou';
     const motivos = motivosNaoTrazidas(resumo.fotos_nao_trazidas);
+    const juntadas = textoDosAbsorvidos(absorvidos);
     // Os avisos do clique (cores avulsas, variações que viraram produto) e os do preenchimento, sem repetir.
     const avisos = [...new Set([...(avisosDoClique ?? []), ...(resumo.avisos ?? [])])];
 
@@ -48,6 +50,10 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], onFec
                     <X className="h-4 w-4" aria-hidden="true" />
                 </button>
             </div>
+
+            {juntadas && (
+                <p className="mt-3 text-[13px] font-normal text-white/70" data-absorvidos={Number(absorvidos)}>{juntadas}</p>
+            )}
 
             {pronto && motivos.length > 0 && (
                 <div className="mt-3">

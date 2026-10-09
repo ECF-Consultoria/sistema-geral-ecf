@@ -24,6 +24,19 @@ export function textoDoResumo(resumo) {
     return `${trazido}; ${mantidos} ${mantidos === 1 ? 'campo' : 'campos'} ${verbo}.`;
 }
 
+/**
+ * Linhas antigas de cor (uma por oferta, sem rascunho) que o Sincronizar removeu porque a cor já é
+ * variante do produto agrupado. Zero ou ausente = nada a dizer (null).
+ */
+export function textoDosAbsorvidos(n) {
+    const total = Number(n ?? 0);
+    if (! Number.isFinite(total) || total <= 0) return null;
+
+    return total === 1
+        ? '1 linha antiga de cor foi juntada ao produto.'
+        : `${total} linhas antigas de cor foram juntadas ao produto.`;
+}
+
 const MOTIVOS = {
     pequena: (n) => `${n} ${n === 1 ? 'foto pequena' : 'fotos pequenas'} demais (mínimo 500 px)`,
     formato: (n) => `${n} ${n === 1 ? 'foto em formato não aceito' : 'fotos em formato não aceito'}`,
