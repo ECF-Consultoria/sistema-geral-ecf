@@ -36,6 +36,7 @@ const LINHA = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/LinhaDe
 const MENU = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/MenuDeAcoesDoProduto.jsx');
 const PAINEL = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/PainelDoProdutoLateral.jsx');
 const LAYOUT = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/layoutDaListaDeProdutos.js');
+const PAGINACAO = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/PaginacaoDaLista.jsx');
 
 global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
 
@@ -120,6 +121,28 @@ const {
     COLUNAS_ESTREITO,
     LARGURA_DE_CORTE,
 } = await montar(LAYOUT, 'produtos-layout-puras');
+
+// ⚠️ O bundle do rodapé de paginação é montado AQUI, no topo do arquivo e
+// ANTES do primeiro `test()`: o `after()` deste arquivo apaga os stubs do
+// esbuild, e um `montar()` tardio já pegou os stubs apagados no meio da
+// compilação — um arquivo de teste inteiro morreu assim nesta semana (tela
+// 01), sem nenhuma asserção falhar e só na suíte completa.
+const {
+    default: PaginacaoDaLista,
+    achatarFamilias,
+    chaveDaVista,
+    familiasDasLinhas,
+    paginaDaVista,
+    paginaSegura,
+    paginar,
+    paginasVisiveis,
+    porPaginaSegura,
+    resumoDaExibicao,
+    totalDePaginas,
+    CHAVE_DAS_LINHAS,
+    OPCOES_POR_PAGINA,
+    POR_PAGINA_PADRAO,
+} = await montar(PAGINACAO, 'paginacao-da-lista');
 
 // ─── Fixtures: o contrato de `ProgramasPublicadorService::produtosParaTela` ──
 
@@ -1306,4 +1329,432 @@ test('layout — Produtos.jsx reexporta as funções novas AO LADO das quatro an
     assert.equal(mod.colunasDaLargura(1280), COLUNAS_LARGO);
     assert.equal(mod.alturaDaLinha('compacto'), 52);
     assert.deepEqual(mod.acaoPrincipal({ chave: 'pronto' }), { rotulo: 'Publicar', destino: 'editor', estilo: 'primario' });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6 — PaginacaoDaLista: o rodapé do mockup (quick 261009-t03)
+//
+// ⚠️ A ARMADILHA que define este componente: a paginação é sobre LINHAS DE
+// TOPO, nunca sobre as linhas da tabela. Os kits aparecem recuados SOB o seu
+// base (`recuado` de `montarLinhas`); paginar as linhas cruas poria um base
+// na página 1 e o kit dele na página 2 — e ninguém entende por que um
+// "Kit 2" apareceu solto no topo da página seguinte. Por isso `paginar()`
+// recebe FAMÍLIAS (`{ topo, kits }`) e o teste central deste bloco é a prova
+// de que base e kits nunca se separam.
+//
+// ⚠️ A SEGUNDA armadilha: ficar na página 7 de um resultado que agora tem 2
+// páginas é beco sem saída. A página não é estado solto — ela vale para a
+// VISTA (filtro + fase + busca + ordenação) em que foi escolhida, e
+// `paginaDaVista()` devolve 1 assim que a vista muda.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Uma família sintética: um topo e N kits recuados. */
+const familiaDe = (id, quantosKits = 0) => ({
+    topo: linhaDe(produtoBase({ id, sku: `P${id}`, nome: `Produto ${id}` })),
+    kits: Array.from({ length: quantosKits }, (_, i) => linhaDe(
+        produtoBase({ id: id * 100 + i + 2, sku: `P${id}-KIT${i + 2}`, nome: `Kit ${i + 2} Produto ${id}`, eh_kit: true, base: { id, sku: `P${id}` } }),
+        true,
+    )),
+});
+
+test('Paginação — porPaginaSegura: whitelist por ARRAY includes, nunca hasOwnProperty', async (contexto) => {
+    await contexto.test('as opções do mockup e a chave do localStorage', () => {
+        assert.deepEqual(OPCOES_POR_PAGINA, [10, 25, 50, 100]);
+        assert.equal(POR_PAGINA_PADRAO, 10);
+        assert.equal(CHAVE_DAS_LINHAS, 'publicador.produtos.linhas');
+    });
+
+    await contexto.test('número e string numérica passam; todo o resto cai no padrão', () => {
+        assert.equal(porPaginaSegura(10), 10);
+        assert.equal(porPaginaSegura(25), 25);
+        assert.equal(porPaginaSegura(50), 50);
+        assert.equal(porPaginaSegura(100), 100);
+        assert.equal(porPaginaSegura('25'), 25, 'o localStorage devolve STRING');
+        for (const lixo of [null, undefined, '', '  ', 0, -10, 7, 'dez', true, false, {}, { porPagina: 25 }, NaN, Infinity]) {
+            assert.equal(porPaginaSegura(lixo), POR_PAGINA_PADRAO, String(JSON.stringify(lixo)));
+        }
+    });
+
+    await contexto.test('array NÃO passa, mesmo que Number([25]) dê 25', () => {
+        assert.equal(porPaginaSegura([25]), POR_PAGINA_PADRAO);
+        assert.equal(porPaginaSegura([]), POR_PAGINA_PADRAO);
+    });
+
+    await contexto.test('__proto__, constructor e toString NÃO passam', () => {
+        for (const chave of ['__proto__', 'constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+            assert.equal(porPaginaSegura(chave), POR_PAGINA_PADRAO, chave);
+        }
+    });
+});
+
+test('Paginação — totalDePaginas e paginaSegura: lista vazia dá 1 página, nunca 0', async (contexto) => {
+    await contexto.test('a conta de páginas arredonda para cima e tem piso 1', () => {
+        assert.equal(totalDePaginas(0, 10), 1);
+        assert.equal(totalDePaginas(1, 10), 1);
+        assert.equal(totalDePaginas(10, 10), 1);
+        assert.equal(totalDePaginas(11, 10), 2);
+        assert.equal(totalDePaginas(22, 10), 3, 'os 22 produtos do mockup em 3 páginas');
+        assert.equal(totalDePaginas(22, 25), 1);
+    });
+
+    await contexto.test('total adverso cai em 1 página e NUNCA estoura', () => {
+        for (const lixo of [null, undefined, -5, 'muitos', {}, [], NaN, Infinity]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = totalDePaginas(lixo, 10); }, String(JSON.stringify(lixo)));
+            assert.equal(saida, 1, String(JSON.stringify(lixo)));
+        }
+    });
+
+    await contexto.test('página fora do intervalo cai na VÁLIDA mais próxima', () => {
+        assert.equal(paginaSegura(1, 3), 1);
+        assert.equal(paginaSegura(3, 3), 3);
+        assert.equal(paginaSegura(0, 3), 1);
+        assert.equal(paginaSegura(-7, 3), 1);
+        assert.equal(paginaSegura(99, 3), 3, 'a página 99 de um resultado de 3 cai na 3');
+        assert.equal(paginaSegura(2.7, 3), 2);
+    });
+
+    await contexto.test('página adversa cai na 1', () => {
+        for (const lixo of [null, undefined, '', 'duas', {}, [], NaN, Infinity, true]) {
+            assert.equal(paginaSegura(lixo, 5), 1, String(JSON.stringify(lixo)));
+        }
+    });
+});
+
+test('Paginação — familiasDasLinhas e achatarFamilias: ida e volta preserva ordem e recuo', async (contexto) => {
+    const base = linhaDe(produtoBase({ id: 1, sku: 'A' }));
+    const kit2 = linhaDe(produtoBase({ id: 102, sku: 'A-KIT2', eh_kit: true }), true);
+    const kit3 = linhaDe(produtoBase({ id: 103, sku: 'A-KIT3', eh_kit: true }), true);
+    const outro = linhaDe(produtoBase({ id: 2, sku: 'B' }));
+
+    await contexto.test('agrupa o recuado sob o topo anterior', () => {
+        const familias = familiasDasLinhas([base, kit2, kit3, outro]);
+        assert.equal(familias.length, 2);
+        assert.equal(familias[0].topo.produto.sku, 'A');
+        assert.deepEqual(familias[0].kits.map((l) => l.produto.sku), ['A-KIT2', 'A-KIT3']);
+        assert.equal(familias[1].topo.produto.sku, 'B');
+        assert.deepEqual(familias[1].kits, []);
+    });
+
+    await contexto.test('achatar devolve EXATAMENTE a lista original', () => {
+        const linhas = [base, kit2, kit3, outro];
+        assert.deepEqual(achatarFamilias(familiasDasLinhas(linhas)), linhas);
+    });
+
+    await contexto.test('recuado SEM topo antes vira topo — nada pode sumir da lista', () => {
+        const familias = familiasDasLinhas([kit2, base]);
+        assert.equal(familias.length, 2);
+        assert.equal(familias[0].topo.produto.sku, 'A-KIT2');
+    });
+
+    await contexto.test('entrada adversa devolve lista vazia e NUNCA estoura', () => {
+        for (const lixo of [null, undefined, {}, 'linhas', 7, [null, undefined, 'x', 7]]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = familiasDasLinhas(lixo); }, String(JSON.stringify(lixo)));
+            assert.ok(Array.isArray(saida));
+        }
+        assert.deepEqual(achatarFamilias(null), []);
+        assert.deepEqual(achatarFamilias({}), []);
+    });
+});
+
+test('Paginação — paginar: um base e seus kits NUNCA caem em páginas diferentes', async (contexto) => {
+    // 12 famílias, 10 por página. A décima — a ÚLTIMA da página 1 — tem 3
+    // kits: é exatamente a fronteira onde paginar linhas cruas quebraria.
+    const familias = Array.from({ length: 12 }, (_, i) => familiaDe(i + 1, i + 1 === 10 ? 3 : 0));
+
+    await contexto.test('a página 1 leva as 10 famílias inteiras, os 3 kits da décima junto', () => {
+        const p1 = paginar(familias, 1, 10);
+        assert.equal(p1.itens.length, 10, '10 FAMÍLIAS, não 10 linhas');
+        const linhas = achatarFamilias(p1.itens);
+        assert.equal(linhas.length, 13, '10 bases + os 3 kits do décimo');
+        assert.deepEqual(
+            linhas.slice(9).map((l) => l.produto.sku),
+            ['P10', 'P10-KIT2', 'P10-KIT3', 'P10-KIT4'],
+            'o base e os três kits dele, juntos, no fim da página 1',
+        );
+    });
+
+    await contexto.test('nenhuma página COMEÇA com uma linha recuada', () => {
+        for (let pagina = 1; pagina <= 2; pagina += 1) {
+            const linhas = achatarFamilias(paginar(familias, pagina, 10).itens);
+            assert.equal(linhas[0].recuado, false, `página ${pagina} começou com linha recuada`);
+        }
+    });
+
+    await contexto.test('as páginas, concatenadas, reproduzem a lista original sem perder nem repetir', () => {
+        const inteiro = achatarFamilias(familias).map((l) => l.produto.sku);
+        const porPaginas = [1, 2].flatMap((p) => achatarFamilias(paginar(familias, p, 10).itens).map((l) => l.produto.sku));
+        assert.deepEqual(porPaginas, inteiro);
+        assert.equal(new Set(porPaginas).size, porPaginas.length, 'nenhum produto repetido entre páginas');
+    });
+
+    await contexto.test('a faixa "Exibindo X - Y de N" conta PRODUTOS, não famílias', () => {
+        const p1 = paginar(familias, 1, 10);
+        assert.equal(p1.totalDeTopos, 12);
+        assert.equal(p1.totalDeProdutos, 15, '12 bases + 3 kits');
+        assert.equal(p1.inicio, 1);
+        assert.equal(p1.fim, 13);
+        assert.equal(p1.totalPaginas, 2);
+
+        const p2 = paginar(familias, 2, 10);
+        assert.equal(p2.inicio, 14, 'a página 2 começa logo depois do fim da 1');
+        assert.equal(p2.fim, 15);
+        assert.equal(p2.itens.length, 2);
+    });
+
+    await contexto.test('lista vazia: 1 página, faixa zerada, nada estourando', () => {
+        const vazia = paginar([], 1, 10);
+        assert.equal(vazia.totalPaginas, 1);
+        assert.equal(vazia.itens.length, 0);
+        assert.equal(vazia.inicio, 0);
+        assert.equal(vazia.fim, 0);
+        assert.equal(vazia.totalDeProdutos, 0);
+    });
+});
+
+test('Paginação — paginar: defensivo em TODOS os argumentos', async (contexto) => {
+    const familias = Array.from({ length: 22 }, (_, i) => familiaDe(i + 1));
+
+    await contexto.test('página fora do intervalo cai na válida mais próxima', () => {
+        assert.equal(paginar(familias, 99, 10).pagina, 3);
+        assert.equal(paginar(familias, 0, 10).pagina, 1);
+        assert.equal(paginar(familias, -4, 10).pagina, 1);
+    });
+
+    await contexto.test('porPagina fora da whitelist cai no padrão de 10', () => {
+        assert.equal(paginar(familias, 1, 7).porPagina, 10);
+        assert.equal(paginar(familias, 1, '25').porPagina, 25);
+        assert.equal(paginar(familias, 1, '__proto__').porPagina, 10);
+    });
+
+    await contexto.test('argumentos adversos NUNCA estouram e sempre devolvem a forma completa', () => {
+        for (const pagina of [null, undefined, {}, [], 'duas', NaN, true]) {
+            for (const porPagina of [null, undefined, {}, 'dez', NaN]) {
+                let saida;
+                assert.doesNotThrow(() => { saida = paginar(familias, pagina, porPagina); });
+                assert.equal(saida.pagina, 1);
+                assert.equal(saida.porPagina, 10);
+                assert.equal(saida.totalPaginas, 3);
+                assert.ok(Array.isArray(saida.itens));
+            }
+        }
+        for (const lixo of [null, undefined, {}, 'familias', 7]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = paginar(lixo, 1, 10); }, String(JSON.stringify(lixo)));
+            assert.equal(saida.totalPaginas, 1);
+            assert.deepEqual(saida.itens, []);
+        }
+    });
+
+    await contexto.test('família sem `kits` (ou com kits adversos) conta 1 produto e não quebra', () => {
+        const tortas = [{ topo: linhaDe(produtoBase({ id: 1 })) }, { topo: linhaDe(produtoBase({ id: 2 })), kits: null }];
+        const saida = paginar(tortas, 1, 10);
+        assert.equal(saida.totalDeProdutos, 2);
+        assert.equal(saida.fim, 2);
+    });
+});
+
+test('Paginação — paginasVisiveis: a janela com reticências do mockup', async (contexto) => {
+    await contexto.test('até 7 páginas aparecem todas, sem reticência', () => {
+        assert.deepEqual(paginasVisiveis(1, 1), [1]);
+        assert.deepEqual(paginasVisiveis(1, 3), [1, 2, 3], 'as 3 páginas do mockup');
+        assert.deepEqual(paginasVisiveis(4, 7), [1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    await contexto.test('acima de 7, janela com reticências nas pontas', () => {
+        assert.deepEqual(paginasVisiveis(1, 12), [1, 2, 3, 4, '…', 12]);
+        assert.deepEqual(paginasVisiveis(6, 12), [1, '…', 5, 6, 7, '…', 12]);
+        assert.deepEqual(paginasVisiveis(12, 12), [1, '…', 9, 10, 11, 12]);
+    });
+
+    await contexto.test('a página atual, a 1 e a última estão SEMPRE na janela, em ordem crescente', () => {
+        for (const total of [1, 2, 8, 12, 40, 137]) {
+            for (const atual of [1, 2, Math.ceil(total / 2), total - 1, total]) {
+                const janela = paginasVisiveis(atual, total);
+                const numeros = janela.filter((x) => typeof x === 'number');
+                const esperada = Math.min(Math.max(1, atual), total);
+                assert.ok(numeros.includes(1), `${atual}/${total}: perdeu a primeira`);
+                assert.ok(numeros.includes(total), `${atual}/${total}: perdeu a última`);
+                assert.ok(numeros.includes(esperada), `${atual}/${total}: perdeu a atual`);
+                assert.deepEqual([...numeros].sort((a, b) => a - b), numeros, `${atual}/${total}: fora de ordem`);
+                assert.equal(new Set(numeros).size, numeros.length, `${atual}/${total}: página repetida`);
+                assert.ok(!numeros.some((n) => n < 1 || n > total), `${atual}/${total}: página fora do intervalo`);
+            }
+        }
+    });
+
+    await contexto.test('nunca há duas reticências seguidas', () => {
+        for (const total of [8, 9, 10, 12, 40]) {
+            for (let atual = 1; atual <= total; atual += 1) {
+                const janela = paginasVisiveis(atual, total);
+                for (let i = 1; i < janela.length; i += 1) {
+                    assert.ok(!(janela[i] === '…' && janela[i - 1] === '…'), `${atual}/${total}: duas reticências seguidas`);
+                }
+            }
+        }
+    });
+
+    await contexto.test('argumentos adversos devolvem [1] e NUNCA estouram', () => {
+        for (const lixo of [null, undefined, {}, [], 'tres', NaN, -4, 0]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = paginasVisiveis(lixo, lixo); }, String(JSON.stringify(lixo)));
+            assert.deepEqual(saida, [1], String(JSON.stringify(lixo)));
+        }
+    });
+});
+
+test('Paginação — chaveDaVista/paginaDaVista: mudar filtro, busca, fase ou ordenação volta para a página 1', async (contexto) => {
+    const vista = { filtro: 'todos', fase: 'todas', busca: '', ordem: { coluna: 'situacao', direcao: 1 } };
+    const chave = chaveDaVista(vista);
+
+    await contexto.test('a mesma vista mantém a página escolhida', () => {
+        assert.equal(paginaDaVista({ chave, pagina: 7 }, chaveDaVista(vista)), 7);
+        assert.equal(paginaDaVista({ chave, pagina: 7 }, chaveDaVista({ ...vista })), 7, 'a chave é por VALOR, não por identidade');
+    });
+
+    await contexto.test('qualquer mudança de vista zera a página — o beco sem saída da página 7', () => {
+        const mudancas = {
+            filtro: { ...vista, filtro: 'publicados' },
+            fase: { ...vista, fase: 'so_kits' },
+            busca: { ...vista, busca: 'cadeira' },
+            'ordem.coluna': { ...vista, ordem: { coluna: 'produto', direcao: 1 } },
+            'ordem.direcao': { ...vista, ordem: { coluna: 'situacao', direcao: -1 } },
+        };
+        for (const [rotulo, nova] of Object.entries(mudancas)) {
+            assert.notEqual(chaveDaVista(nova), chave, `${rotulo}: a chave não mudou`);
+            assert.equal(paginaDaVista({ chave, pagina: 7 }, chaveDaVista(nova)), 1, `${rotulo}: ficou presa na página 7`);
+        }
+    });
+
+    await contexto.test('buscas diferentes são vistas diferentes e o separador não colide', () => {
+        assert.notEqual(chaveDaVista({ ...vista, busca: 'cadeira' }), chaveDaVista({ ...vista, busca: 'cadeiras' }));
+        assert.notEqual(
+            chaveDaVista({ filtro: 'a', fase: 'b', busca: '', ordem: {} }),
+            chaveDaVista({ filtro: 'a|b', fase: '', busca: '', ordem: {} }),
+            'o separador da chave não pode colidir',
+        );
+    });
+
+    await contexto.test('vista adversa devolve string e página 1, nunca estoura', () => {
+        for (const lixo of [null, undefined, {}, [], 'vista', 7, { ordem: 'situacao' }, { filtro: {}, busca: null }]) {
+            let saidaChave;
+            assert.doesNotThrow(() => { saidaChave = chaveDaVista(lixo); }, String(JSON.stringify(lixo)));
+            assert.equal(typeof saidaChave, 'string');
+            assert.equal(paginaDaVista(lixo, chave), 1, String(JSON.stringify(lixo)));
+        }
+        assert.equal(paginaDaVista({ chave, pagina: 0 }, chave), 1);
+        assert.equal(paginaDaVista({ chave, pagina: -3 }, chave), 1);
+        assert.equal(paginaDaVista({ chave, pagina: {} }, chave), 1);
+    });
+});
+
+test('Paginação — resumoDaExibicao: "cadastrados" sem filtro, "no filtro" com filtro', async (contexto) => {
+    await contexto.test('a frase do mockup, com a faixa e o total', () => {
+        const r = resumoDaExibicao({ inicio: 1, fim: 7, totalDeProdutos: 22 }, false);
+        assert.equal(r.faixa, '1 - 7');
+        assert.equal(r.total, '22');
+        assert.equal(r.rotulo, 'produtos cadastrados');
+    });
+
+    await contexto.test('com filtro/busca o rótulo muda — "de 22 cadastrados" mentiria', () => {
+        assert.equal(resumoDaExibicao({ inicio: 1, fim: 3, totalDeProdutos: 3 }, true).rotulo, 'produtos no filtro');
+        assert.equal(resumoDaExibicao({ inicio: 1, fim: 1, totalDeProdutos: 1 }, true).rotulo, 'produto no filtro');
+        assert.equal(resumoDaExibicao({ inicio: 1, fim: 1, totalDeProdutos: 1 }, false).rotulo, 'produto cadastrado');
+    });
+
+    await contexto.test('nada exibido vira "0" e não "1 - 0"', () => {
+        assert.equal(resumoDaExibicao({ inicio: 0, fim: 0, totalDeProdutos: 0 }, false).faixa, '0');
+    });
+
+    await contexto.test('resumo adverso NUNCA estoura nem vaza [object Object]', () => {
+        for (const lixo of [null, undefined, {}, [], 'resumo', 7, { inicio: {}, fim: [], totalDeProdutos: 'x' }]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = resumoDaExibicao(lixo, false); }, String(JSON.stringify(lixo)));
+            assert.equal(typeof saida.faixa, 'string');
+            assert.doesNotMatch(saida.faixa + saida.total + saida.rotulo, /\[object Object\]/);
+        }
+    });
+});
+
+test('PaginacaoDaLista — render real: resumo, seletor e controles do mockup', async (contexto) => {
+    const render = (props) => renderToStaticMarkup(React.createElement(PaginacaoDaLista, props));
+
+    await contexto.test('uma página só: a frase do mockup e os QUATRO controles desabilitados', () => {
+        const html = render({
+            paginacao: paginar(Array.from({ length: 7 }, (_, i) => familiaDe(i + 1)), 1, 10),
+            rascunhos: 19,
+            publicados: 3,
+        });
+        assert.match(html, /Exibindo/);
+        assert.match(html, /1 - 7/);
+        assert.match(html, /produtos cadastrados/);
+        assert.match(html, />19</);
+        assert.match(html, /rascunhos/);
+        assert.match(html, />3</);
+        assert.match(html, /publicados no Meli/);
+        assert.match(html, /Linhas por página/);
+        // ⚠️ `/disabled=/` e nunca `/disabled/`: as classes têm `disabled:opacity-40`.
+        assert.equal((html.match(/disabled=""/g) ?? []).length, 4, 'primeira, anterior, próxima e última desabilitadas');
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('muitas páginas: reticências, página atual marcada e vizinhas navegáveis', () => {
+        const familias = Array.from({ length: 120 }, (_, i) => familiaDe(i + 1));
+        const html = render({ paginacao: paginar(familias, 6, 10), rascunhos: 0, publicados: 0 });
+        assert.match(html, /…/);
+        assert.match(html, /aria-current="page"/);
+        assert.match(html, /aria-label="Página 6"/);
+        assert.match(html, /aria-label="Página 12"/);
+        assert.match(html, /aria-label="Primeira página"/);
+        assert.match(html, /aria-label="Página anterior"/);
+        assert.match(html, /aria-label="Próxima página"/);
+        assert.match(html, /aria-label="Última página"/);
+        assert.equal((html.match(/disabled=""/g) ?? []).length, 0, 'no meio da lista nenhum controle fica travado');
+        assert.match(html, /51 - 60/);
+    });
+
+    await contexto.test('na última página só os controles de avanço travam', () => {
+        const familias = Array.from({ length: 22 }, (_, i) => familiaDe(i + 1));
+        const html = render({ paginacao: paginar(familias, 3, 10) });
+        assert.equal((html.match(/disabled=""/g) ?? []).length, 2);
+        assert.match(html, /21 - 22/);
+    });
+
+    await contexto.test('o seletor traz as 4 opções e o valor em vigor', () => {
+        const html = render({ paginacao: paginar(Array.from({ length: 60 }, (_, i) => familiaDe(i + 1)), 1, 25) });
+        for (const n of OPCOES_POR_PAGINA) assert.match(html, new RegExp(`<option value="${n}"`));
+        assert.match(html, /select[^>]*value="25"|value="25"[^>]*>/);
+    });
+
+    await contexto.test('a tela preta: paginação como objeto, nulo, array, string e ausente', () => {
+        for (const lixo of [undefined, null, {}, [], 'paginacao', 7, { pagina: {}, totalPaginas: [], inicio: null, fim: {}, totalDeProdutos: 'x', porPagina: {} }]) {
+            let html;
+            assert.doesNotThrow(() => { html = render({ paginacao: lixo, rascunhos: {}, publicados: [] }); }, String(JSON.stringify(lixo)));
+            assert.doesNotMatch(html, /\[object Object\]/, String(JSON.stringify(lixo)));
+            assert.match(html, /Linhas por página/);
+        }
+    });
+
+    await contexto.test('sem callbacks o render não estoura (nada de aoMudar obrigatório)', () => {
+        assert.doesNotThrow(() => render({ paginacao: paginar([familiaDe(1)], 1, 10) }));
+    });
+});
+
+test('PaginacaoDaLista — gate de fonte: amarelo translúcido, whitelist por array e componente burro', () => {
+    const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/PaginacaoDaLista.jsx');
+
+    // Amarelo SÓLIDO é proibido no vocabulário do módulo.
+    assert.doesNotMatch(fonte, /\bbg-ecf-yellow(?!\/)/);
+    // Whitelist por array, nunca por hasOwnProperty (`__proto__` passaria).
+    assert.doesNotMatch(fonte, /hasOwnProperty/);
+    assert.match(fonte, /OPCOES_POR_PAGINA\.includes\(/);
+    // ⚠️ Armadilha do Rollup: as flags das páginas são calculadas DENTRO do
+    // callback do `.map()`.
+    assert.match(fonte, /\.map\(\(/);
+    assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+    // O componente é BURRO: recebe o resultado de `paginar()` pronto e não lê
+    // nem localStorage nem window — quem persiste é a página.
+    assert.doesNotMatch(fonte, /localStorage/);
+    assert.doesNotMatch(fonte, /useEffect/);
 });
