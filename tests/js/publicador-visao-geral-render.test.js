@@ -352,4 +352,172 @@ test('PainelVisaoGeral — render real (esbuild + react-dom/server), não só es
             assert.doesNotMatch(html, /\[object Object\]/);
         });
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Fase 175, plano 10 (§7) — "Produtos por fase" e a coluna Fase.
+    //
+    // ⚠️ O bloco novo vai ABAIXO de "Situação dos produtos", não no lugar
+    // dele: a §7 da ETAPA-3 manda substituir, mas a regra inviolável "nada
+    // que existe pode sumir" vence (divergência já registrada pelo 175-08).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const porFaseBase = (overrides = {}) => ({
+        sem_oferta: { numero: 4, rotulo: 'Sem oferta' },
+        fase1_publicada: { numero: 3, rotulo: 'Fase 1 publicada' },
+        fase2_preparacao: { numero: 2, rotulo: 'Fase 2 em preparação' },
+        fase2_publicada: { numero: 1, rotulo: 'Fase 2 publicada' },
+        fase3_mais: { numero: 0, rotulo: 'Fase 3+' },
+        ...overrides,
+    });
+
+    await contexto.test('os DOIS blocos convivem: "Situação dos produtos" continua e "Produtos por fase" nasce abaixo', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({ produtosPorFase: porFaseBase() })));
+        });
+        // O bloco de hoje, com os 4 rótulos dele, intacto.
+        assert.match(html, /Situação dos produtos/);
+        for (const rotulo of ['Rascunho', 'Conferidos', 'Publicados', 'Com problema']) {
+            assert.ok(html.includes(rotulo), `rótulo da Situação ausente: ${rotulo}`);
+        }
+        // O bloco novo, com os 5 rótulos em pt-BR.
+        assert.match(html, /Produtos por fase/);
+        for (const rotulo of ['Sem oferta', 'Fase 1 publicada', 'Fase 2 em preparação', 'Fase 2 publicada', 'Fase 3+']) {
+            assert.ok(html.includes(rotulo), `rótulo da fase ausente: ${rotulo}`);
+        }
+        // Na ordem: o novo vem DEPOIS do antigo.
+        assert.ok(html.indexOf('Situação dos produtos') < html.indexOf('Produtos por fase'));
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('cada bucket é clicável (um <button> por bucket)', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({ produtosPorFase: porFaseBase() })));
+        const bloco = html.slice(html.indexOf('Produtos por fase'));
+        const botoes = bloco.match(/<button type="button"/g) ?? [];
+        assert.ok(botoes.length >= 5, `esperado ao menos 5 botões no bloco por fase, achou ${botoes.length}`);
+    });
+
+    await contexto.test('produtosPorFase ausente (servidor antigo) — o bloco simplesmente não aparece, e nada mais muda', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase()));
+        assert.doesNotMatch(html, /Produtos por fase/);
+        assert.match(html, /Situação dos produtos/);
+    });
+
+    await contexto.test('produtosPorFase com TODOS os números 0 — renderiza o bloco com zeros, não um vazio enigmático', () => {
+        const zerado = Object.fromEntries(
+            Object.entries(porFaseBase()).map(([chave, item]) => [chave, { numero: 0, rotulo: item.rotulo }]),
+        );
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({ produtosPorFase: zerado })));
+        assert.match(html, /Produtos por fase/);
+        assert.match(html, /Fase 3\+/);
+        const bloco = html.slice(html.indexOf('Produtos por fase'));
+        assert.ok((bloco.match(/>0</g) ?? []).length >= 5, 'os 5 zeros têm de aparecer');
+    });
+
+    await contexto.test('produtosPorFase em formato inesperado (array, número, campo objeto) nunca lança', () => {
+        assert.doesNotThrow(() => {
+            const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({ produtosPorFase: 42 })));
+            assert.doesNotMatch(html, /\[object Object\]/);
+        });
+        assert.doesNotThrow(() => {
+            const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({
+                produtosPorFase: { sem_oferta: { numero: { foo: 'bar' }, rotulo: [] }, fase1_publicada: 'nao-e-objeto' },
+            })));
+            assert.doesNotMatch(html, /\[object Object\]/);
+            assert.doesNotMatch(html, /foo/);
+        });
+    });
+
+    await contexto.test('"Prontos para a Fase 2" continua clicável com o destino novo (?filtro=publicados&fase=so_base)', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({
+            oQueFazerAgora: [{
+                texto: 'Prontos para a Fase 2',
+                numero: 2,
+                destino: {
+                    rota: 'mlb.anuncios.publicador.produtos',
+                    params: { conta: 'company-459', filtro: 'publicados', fase: 'so_base' },
+                },
+            }],
+        })));
+        assert.match(html, /Prontos para a Fase 2/);
+        assert.match(html, />Ver<\/button>/);
+    });
+
+    await contexto.test('Últimas publicações ganham a coluna Fase, com rotulo_fase', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({
+            ultimasPublicacoes: {
+                disponivel: true,
+                itens: [{
+                    titulo: 'Kit 2 Cadeira Executiva', ml_item_id: 'MLB999', tipo: 'classico',
+                    quem: { tipo: 'equipe', nome: 'Fulano' }, quando: '2026-10-08T10:00:00Z',
+                    vendas: 3, situacao: 'PUBLISHED', fase: 2, rotulo_fase: 'Kit 2',
+                }],
+            },
+        })));
+        assert.match(html, /Kit 2 Cadeira Executiva/);
+        assert.match(html, />Kit 2</);
+        // Nenhum campo antigo saiu da linha.
+        assert.match(html, /MLB999/);
+        assert.match(html, /Fulano/);
+        assert.match(html, /PUBLISHED/);
+    });
+
+    await contexto.test('item de Últimas publicações sem fase mostra "—" na coluna Fase', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({
+            ultimasPublicacoes: {
+                disponivel: true,
+                itens: [{
+                    titulo: 'Caneca azul 300ml', ml_item_id: 'MLB123456', tipo: 'classico',
+                    quem: { tipo: 'equipe', nome: 'Ciclano' }, quando: '2026-10-08T10:00:00Z',
+                    vendas: 7, situacao: 'PUBLISHED',
+                }],
+            },
+        })));
+        // Todos os outros campos da linha estão preenchidos: o único "—" é da fase.
+        const linha = html.slice(html.indexOf('Caneca azul 300ml'));
+        assert.equal((linha.match(/—/g) ?? []).length, 1);
+    });
+
+    await contexto.test('rotulo_fase chegando como OBJETO não derruba a tela', () => {
+        assert.doesNotThrow(() => {
+            const html = renderToStaticMarkup(React.createElement(PainelVisaoGeral, propsBase({
+                ultimasPublicacoes: {
+                    disponivel: true,
+                    itens: [{ titulo: 'X', ml_item_id: 'MLB1', tipo: 'classico', quem: null, quando: null, vendas: 1, situacao: 'active', fase: {}, rotulo_fase: { foo: 'bar' } }],
+                },
+            })));
+            assert.doesNotMatch(html, /\[object Object\]/);
+            assert.doesNotMatch(html, /foo/);
+        });
+    });
+});
+
+test('PainelVisaoGeral — destinoDaFase: cada bucket vira um par (filtro, fase) que a lista de Produtos entende', async () => {
+    const { destinoDaFase, itensPorFase } = await montarPainelVisaoGeral();
+    assert.equal(typeof destinoDaFase, 'function');
+
+    // Os dois filtros da lista: situação (chips de hoje) e fase (Fase 175).
+    assert.deepEqual(destinoDaFase('fase1_publicada'), { filtro: 'publicados', fase: 'so_base' });
+    assert.deepEqual(destinoDaFase('fase2_preparacao'), { filtro: 'rascunho', fase: 'so_kits' });
+    assert.deepEqual(destinoDaFase('fase2_publicada'), { filtro: 'publicados', fase: 'so_kits' });
+    assert.deepEqual(destinoDaFase('fase3_mais'), { filtro: 'todos', fase: 'so_kits' });
+    // "Sem oferta" (= sem anúncio no ar) não é chip da lista: abre a lista inteira.
+    assert.deepEqual(destinoDaFase('sem_oferta'), { filtro: 'todos', fase: 'todas' });
+    assert.deepEqual(destinoDaFase('inventado'), { filtro: 'todos', fase: 'todas' });
+
+    // A normalização aceita o mapa que o servidor manda HOJE...
+    assert.equal(typeof itensPorFase, 'function');
+    const doMapa = itensPorFase({
+        fase3_mais: { numero: 1, rotulo: 'Fase 3+' },
+        sem_oferta: { numero: 2, rotulo: 'Sem oferta' },
+    });
+    // ...e devolve na ordem do contrato, não na ordem em que as chaves chegaram.
+    assert.deepEqual(doMapa.map((i) => i.chave), ['sem_oferta', 'fase3_mais']);
+    assert.deepEqual(doMapa.map((i) => i.numero), [2, 1]);
+    // ...e também a LISTA que o PLAN descrevia (divergência de contrato do 175-08).
+    const daLista = itensPorFase([{ chave: 'fase2_publicada', numero: 5, rotulo: 'Fase 2 publicada' }]);
+    assert.deepEqual(daLista, [{ chave: 'fase2_publicada', numero: 5, rotulo: 'Fase 2 publicada' }]);
+    // Ausente ou inválido: lista vazia (o bloco não aparece).
+    assert.deepEqual(itensPorFase(undefined), []);
+    assert.deepEqual(itensPorFase(42), []);
 });
