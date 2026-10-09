@@ -271,3 +271,17 @@ Para auditar sem gerar: `MlAnuncioCriativo::where('kit_id', …)->pluck('slot_pl
 *Phase: 175-publicador-etapa-3-produto-fases*
 *Plan: 11*
 *Completed: 2026-10-09*
+
+## Self-Check: PASSED
+
+Conferido por reconsulta ao disco e ao git, não por memória da sessão:
+
+- `175-11-SUMMARY.md`, `MlbPublicadorFaseController.php`, `PlanejarKitCriativosJob.php` e
+  `CapaDoKitTest.php` existem.
+- Commits `8eb134b9`, `79e9d9d5` e `cb1f6d3e` existem em `git log --all`.
+- `cenaComComposicao()` existe e é `public static` (L132 do job).
+- `grep -c criativos_ia` no `MlbPublicadorFaseController` = **1**.
+- `git diff --stat` dos meus commits para `app/Services/Creative/` e `resources/js/`:
+  **vazio** nos dois.
+- Árvore de trabalho limpa em `app/`, `tests/` e `resources/` (fora o
+  `tests/Feature/CompanyPortfolioAccessTest.php` untracked, que não é deste plano).
