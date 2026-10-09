@@ -130,8 +130,8 @@ class PortalValorDeAtributoTest extends TestCase
     {
         $def = $this->def('number_unit', [], ['unidades' => ['cm', 'mm'], 'unidadePadrao' => 'cm']);
         $r = PortalValorDeAtributo::resolver($def, ['valor' => '45', 'unidade' => 'CM']);
-        $this->assertSame(45.0, $r['valor']['value_number']);
-        $this->assertSame('cm', $r['valor']['value_unit']);
+        $this->assertSame(['value_id' => null, 'value_name' => '45 cm', 'origem' => 'portal', 'revisar' => false], $r['valor'],
+            'formato do editor: o texto em value_name, sem value_number/value_unit (09/10/2026, rascunho 9)');
     }
 
     public function test_numero_com_virgula_decimal_e_unidade_nao_aceita_nao_vira_a_padrao_com_o_mesmo_numero(): void
@@ -147,18 +147,15 @@ class PortalValorDeAtributoTest extends TestCase
     {
         $mm = $this->def('number_unit', [], ['unidades' => ['mm'], 'unidadePadrao' => 'mm']);
         $r = PortalValorDeAtributo::resolver($mm, ['valor' => '50', 'unidade' => 'cm']);
-        $this->assertSame(500.0, $r['valor']['value_number'], '50 cm = 500 mm, nunca 50 mm');
-        $this->assertSame('mm', $r['valor']['value_unit']);
+        $this->assertSame('500 mm', $r['valor']['value_name'], '50 cm = 500 mm, nunca 50 mm');
 
         $g = $this->def('number_unit', [], ['unidades' => ['g'], 'unidadePadrao' => 'g']);
         $r = PortalValorDeAtributo::resolver($g, ['valor' => '2,5', 'unidade' => 'kg']);
-        $this->assertSame(2500.0, $r['valor']['value_number']);
-        $this->assertSame('g', $r['valor']['value_unit']);
+        $this->assertSame('2500 g', $r['valor']['value_name']);
 
         $m = $this->def('number_unit', [], ['unidades' => ['m', 'cm'], 'unidadePadrao' => 'm']);
         $r = PortalValorDeAtributo::resolver($m, ['valor' => '15', 'unidade' => 'mm']);
-        $this->assertSame(0.015, $r['valor']['value_number']);
-        $this->assertSame('m', $r['valor']['value_unit']);
+        $this->assertSame('0.015 m', $r['valor']['value_name']);
     }
 
     public function test_unidade_de_outra_grandeza_nao_e_convertida(): void
@@ -173,8 +170,28 @@ class PortalValorDeAtributoTest extends TestCase
     {
         $def = $this->def('number_unit', [], ['unidades' => ['cm', 'mm'], 'unidadePadrao' => 'cm']);
         $r = PortalValorDeAtributo::resolver($def, ['valor' => '12', 'unidade' => null]);
-        $this->assertSame(12.0, $r['valor']['value_number']);
-        $this->assertSame('cm', $r['valor']['value_unit']);
+        $this->assertSame('12 cm', $r['valor']['value_name']);
+    }
+
+    public function test_numero_vai_como_texto_sem_zeros_a_toa_no_formato_do_editor(): void
+    {
+        // O caso do Puff (#459, rascunho 9): o Portal guarda "3", "1" e "60 kg"; o editor só lê value_name.
+        foreach (['3' => '3', '1.0000' => '1', '2,50' => '2.5', '0' => '0', '1250' => '1250'] as $portal => $texto) {
+            $r = PortalValorDeAtributo::resolver($this->def('number'), ['valor' => $portal]);
+            $this->assertSame(['value_id' => null, 'value_name' => $texto, 'origem' => 'portal', 'revisar' => false], $r['valor'], $portal);
+            $this->assertArrayNotHasKey('value_number', $r['valor']);
+        }
+
+        $kg = $this->def('number_unit', [], ['unidades' => ['kg'], 'unidadePadrao' => 'kg']);
+        $this->assertSame('60 kg', PortalValorDeAtributo::resolver($kg, ['valor' => '60.0000', 'unidade' => 'kg'])['valor']['value_name']);
+        $this->assertSame('60 kg', PortalValorDeAtributo::resolver($kg, ['valor' => '60000', 'unidade' => 'g'])['valor']['value_name'], 'g convertido para kg');
+    }
+
+    public function test_numero_sem_unidade_no_tipo_number_nao_ganha_unidade_no_texto(): void
+    {
+        // `number` com unidades no schema (raro): a unidade só valida/converte; o editor e o payload usam só o número.
+        $def = $this->def('number', [], ['unidades' => ['mm'], 'unidadePadrao' => 'mm']);
+        $this->assertSame('500', PortalValorDeAtributo::resolver($def, ['valor' => '50', 'unidade' => 'cm'])['valor']['value_name']);
     }
 
     public function test_numero_com_unidade_fora_e_sem_padrao_avisa(): void

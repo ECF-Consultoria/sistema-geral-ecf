@@ -657,6 +657,19 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   (trocar categoria apaga ficha incompatível; foto trocada é decisão da equipe) — continuam só no vazio. Resumo ganhou
   `campos_atualizados`. Valor do Portal que deixou de ser resolvível (opção sumiu) também SAI do rascunho se era do
   Portal: o campo fica pendente, que é a verdade.
+- **Formato canônico do NÚMERO no rascunho = texto em `value_name` (09/10, rascunho 9 da #459, Puff Redondo).** O editor
+  (`CampoAtributo`: `number_unit` → `"${n} ${u}"`; `number` → o texto digitado; `MedidasDoPacote` → `"${n} ${unidadeMl}"`)
+  grava `value_name = "60 kg"` / `"3"` com `value_number`/`value_unit` NULOS, e a tela SÓ lê `value_name`. O Sincronizar
+  gravava `value_number = 3.0000`, `value_name` nulo → "Quantidade de pés", "Quantidade de puffs" e "Peso máximo
+  suportado" apareciam VAZIOS com o Portal tendo 3, 1 e 60 kg. O payload NÃO perdia: `ValorAtributo::paraPayload` lê
+  `value_number` primeiro e cai no começo de `value_name` (idem `ValidadorRascunho::medida`), então o ML receberia "60 kg".
+  Agora `PortalValorDeAtributo` escreve ponto decimal sem zeros à toa ("48.5 cm", "0.015 m", "1"); `number` nunca leva a
+  unidade no texto. Linha velha `origem=portal` se conserta sozinha no próximo Sincronizar: o `mesmoValor` compara as
+  colunas, então `value_number=3` ≠ `value_name="3"` → reescrita e contada em `campos_atualizados`; `user`/`ia` com
+  número em `value_number` ficam como estão. **Ainda grava `value_number`: a IA (`IaParaRascunhoService`, quando a
+  resposta traz só `value_number`, sem `value_name`)** — mesmo sintoma na tela se acontecer. Pacote (`SELLER_PACKAGE_*`) sempre esteve certo.
+  Multivalor: a tela mostra só a 1ª opção e o payload leva só ela (D-13, de propósito). Prova:
+  `SincronizarNoFormatoDoEditorTest` (o "o editor mostra" espelha a leitura do `CampoAtributo` em PHP).
 
 ### Checklist de DEPLOY (só com autorização do usuário)
 
