@@ -141,14 +141,37 @@ class AnaliseAnuncioService
      * `FatosDoProduto::paraPrompt()`, o mesmo do Modelo: o título só usa termo que
      * os fatos confirmam. Vazio = o prompt de antes.
      *
+     * `marca` (09/10/2026) = o valor do atributo BRAND: o prompt proíbe citá-la (e "ECF", loja, número
+     * de especificação). `evitar` = o título do OUTRO tipo de anúncio já preenchido: o prompt pede para
+     * não repeti-lo. Quem garante as duas coisas é o `PalavrasChaveService` (`RegrasDoTitulo`).
+     *
      * @param  list<string>  $termos
      * @param  list<string>  $escolhidos
      */
-    public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = ''): array
+    public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar), 2500);
 
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
+    }
+
+    /**
+     * DOIS títulos para o mesmo produto, um do Clássico e um do Premium, numa chamada só (preparo
+     * pelo Portal, 09/10/2026): o Mercado Livre barra dois anúncios com o mesmo nome. Mesmo prompt do
+     * `tituloPorTermos`, com a regra de diferenciação; `evitar` = títulos que a equipe já escreveu.
+     *
+     * @param  list<string>  $termos
+     * @param  list<string>  $escolhidos
+     * @return array{dados: array{classico: string, premium: string}, meta: array}
+     */
+    public function titulosPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = ''): array
+    {
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos, $marca, $evitar, dois: true), 2500);
+
+        return ['dados' => [
+            'classico' => trim((string) ($r['json']['classico'] ?? '')),
+            'premium' => trim((string) ($r['json']['premium'] ?? '')),
+        ], 'meta' => $r['meta']];
     }
 
     // ═══ Texto do KIT (Publicador, Fase 175 — "Criar Fase N") ════════════════
@@ -524,7 +547,12 @@ class AnaliseAnuncioService
         TXT;
     }
 
-    private function promptTituloPorTermos(string $produto, string $caminho, array $termos, array $escolhidos, int $maximo, string $fatos = ''): string
+    /**
+     * `dois` = o preparo pelo Portal: um título do Clássico e um do Premium, diferentes. Regras 7 e 8
+     * (09/10/2026, relato do usuário: "Puff … ECF 130 kg" igual nos dois tipos): sem marca/loja e sem
+     * número de especificação. `evitar` = título(s) que o resultado não pode repetir.
+     */
+    private function promptTituloPorTermos(string $produto, string $caminho, array $termos, array $escolhidos, int $maximo, string $fatos = '', string $marca = '', string $evitar = '', bool $dois = false): string
     {
         $lista = $this->listaDeTermos($termos);
         $marcados = $escolhidos === [] ? '' : "\n\nA equipe marcou estes termos como os mais importantes — priorize-os:\n- ".implode("\n- ", $escolhidos);
@@ -532,9 +560,29 @@ class AnaliseAnuncioService
         // Mesmo bloco do Modelo (09/10/2026): o ML diz o que é BUSCADO, os fatos dizem o que o produto É.
         $blocoFatos = $fatos === '' ? '' : "\n\nFATOS DO PRODUTO (use só o que é verdade segundo estes fatos):\n{$fatos}";
         $regraFatos = $fatos === '' ? '' : "\nNunca cite material, tamanho, público, formato ou característica que os fatos não confirmem.";
+        $daMarca = trim($marca) === '' ? '' : " (a marca deste produto é \"{$marca}\" — ela NÃO entra)";
+        $pedido = $dois
+            ? "Gere DOIS títulos para o anúncio do produto **{$produto}** no Mercado Livre: um para o anúncio Clássico e outro para o Premium do MESMO produto."
+            : "Gere UM título para o anúncio do produto **{$produto}** no Mercado Livre.";
+        $diferenca = 'mesma intenção de busca e o mesmo produto principal no começo; diferencie trocando 1 ou 2 palavras '
+            .'por sinônimo ou termo de busca coerente e/ou mudando a ordem das palavras depois do produto principal. Não mude tudo.';
+        $regraDois = $dois ? <<<TXT
+
+
+        DOIS TÍTULOS DIFERENTES (o Mercado Livre barra dois anúncios com o mesmo nome):
+        os dois descrevem o mesmo produto, com {$diferenca}
+        Cada um segue todas as regras acima.
+        TXT : '';
+        $regraEvitar = trim($evitar) === '' ? '' : <<<TXT
+
+
+        NÃO REPITA este título, que já é de outro anúncio deste produto: "{$evitar}"
+        O seu precisa ser diferente dele, com {$diferenca}
+        TXT;
+        $formato = $dois ? '{"classico":"...","premium":"..."}' : '{"titulo":"..."}';
 
         return <<<TXT
-        Gere UM título para o anúncio do produto **{$produto}** no Mercado Livre.
+        {$pedido}
         Categoria: {$caminho}{$blocoFatos}
 
         Termos mais buscados nesta categoria (do mais buscado para o menos):
@@ -550,9 +598,13 @@ class AnaliseAnuncioService
         4. SEM CARACTERES ESPECIAIS: sem parênteses, traços, aspas ou pontuação.
         5. ENTRE {$minimo} E {$maximo} CARACTERES — conte de verdade, caractere por caractere.
         6. Não repita palavra.
+        7. SEM MARCA: não use a marca do produto{$daMarca}, nome de loja ou de empresa, nem "ECF".
+        8. SEM NÚMEROS DE ESPECIFICAÇÃO: nada de peso suportado, capacidade, potência, voltagem,
+           quantidade de peças ou medidas (ex.: "130 kg", "2 L", "1000 W"). Só use medida que já faz
+           parte do nome do produto. Use só o que identifica o produto e termos de busca.{$regraDois}{$regraEvitar}
 
         Responda APENAS com JSON válido, sem crases:
-        {"titulo":"..."}
+        {$formato}
         TXT;
     }
 

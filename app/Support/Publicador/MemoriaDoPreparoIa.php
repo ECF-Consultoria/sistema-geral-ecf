@@ -10,7 +10,7 @@ namespace App\Support\Publicador;
  *   editou": a automação só escreve num campo VAZIO ou que ainda tem EXATAMENTE esse valor.
  *   Perder a memória (outra escrita do `step_state` que a pisou) é seguro: o campo preenchido
  *   passa a contar como da equipe e nunca mais é sobrescrito.
- * - `ia_preparo` = `{hash, em, titulo_gerado, etapas: {etapa: {status, em}}}`: os fatos da última
+ * - `ia_preparo` = `{hash, em, titulo_gerado (listing_type_id → título), etapas: {etapa: {status, em}}}`: os fatos da última
  *   geração (hash igual = não chama a IA de novo) e como cada etapa terminou.
  */
 final class MemoriaDoPreparoIa

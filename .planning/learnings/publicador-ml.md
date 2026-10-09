@@ -764,8 +764,9 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
 - **Cadeia**: `Bus::chain` de `GerarPreparoIaJob` (título → Modelo → descrição), fila `default`, `tries=1`,
   `timeout=300`, prazo da IA 240 s. A falha da IA NÃO lança (fica `erro` na etapa) para a cadeia seguir; o Modelo sem
   título nenhum é `pulado`. Quebra fora da IA para a cadeia — o `failed()` do título/Modelo põe a descrição na fila.
-  Título: UM, nos dois tipos ativos, cortado no `max_title_length`, com o bloco FATOS DO PRODUTO no prompt (vale também
-  para o botão "Sugerir com IA"). Modelo: `gerarModelo` com o título GERADO (`ia_preparo.titulo_gerado`), MODEL gravado
+  Título: DOIS, um por tipo (ver "dois títulos" abaixo), cortados no `max_title_length`, com o bloco FATOS DO PRODUTO no
+  prompt (vale também para o botão "Sugerir com IA"). Modelo: `gerarModelo` com os títulos GERADOS
+  (`ia_preparo.titulo_gerado`, listing_type_id → título), MODEL gravado
   `{value_id: null, value_name, origem: 'ia'}` como o editor. Descrição: `DescricaoIaService::gerar` (MAG T8 intocado) e
   gasta a chance do automático do editor (`chaveAuto`), então o D-11 não gera de novo.
 - **Editor aberto = não escreve.** O editor salva a chave de topo inteira da cópia local (`atributos`, `alvos` →
@@ -790,4 +791,18 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   `origem=portal` de rascunho antigo (para a IA poder gerá-lo); `user`/`ia` nunca. Única diferença de propósito entre
   a ficha do Portal e o editor: o teste da régua (`test_na_cadeira_a_ficha_tem_exatamente…`) tira o Modelo do lado
   do editor (43 campos, não 44).
+- **Dois títulos diferentes, sem marca nem peso (relato do usuário, 09/10/2026).** O preparo gerou "Puff Sala Redondo
+  Banqueta Moderno ECF 130 kg" e gravou o MESMO título no Clássico e no Premium — o ML barra dois anúncios com o mesmo
+  nome, e a marca/o peso vinham do bloco FATOS (BRAND e "Peso máximo suportado" estão na ficha). Agora o preparo faz UMA
+  chamada `titulosPorTermos` que devolve `{"classico","premium"}` (mesma intenção de busca, 1–2 palavras trocadas e/ou
+  ordem); o botão de um tipo manda o título do OUTRO (`tituloDoOutroTipo` → `titulo` do pedido) como "NÃO REPITA". A
+  garantia é do servidor (`RegrasDoTitulo`), porque a IA não obedece sempre: `limpar` tira a marca (BRAND, como frase
+  inteira, sem caixa/acento) e "ECF" sempre, número + kg/g/l/ml/W/V/mAh sempre, e medida/dimensão/quantidade/número
+  solto só fica se o nome do produto ou os termos de busca a têm ("Mesa 160x90"). `mesmo` = mesma sequência de palavras
+  ignorando caixa, acento e plural (ordem diferente É diferente). `diferenciar` não inventa: troca a ordem das duas
+  últimas palavras (3+ palavras; o produto principal fica no começo) e só então acrescenta/troca uma palavra de termo de
+  busca relacionado que passa nos fatos. Sem saída: o preparo NÃO escreve aquele tipo e o botão dá erro — nunca dois
+  iguais. A escrita confere de novo contra o título que a equipe deu ao outro tipo (`titulosFixos`). O BRAND sai do
+  bloco FATOS do título (vai como proibição, regra 7). `valorPronto` do título é JSON; texto puro = Job adiado de antes.
+  O Modelo NÃO mudou. "Copiar do Clássico/Premium" na tela ainda copia igual — é escolha explícita da pessoa.
 - **Deploy**: sem migration. `queue:restart` (Jobs novos na fila `default`); `npm run build` (selo + sinal).

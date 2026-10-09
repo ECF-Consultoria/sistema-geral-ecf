@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
     UNIDADES_MEDIDA, UNIDADES_PESO, conferirPacote, daUnidadeMl, digitoEan13, eanValido, eixosComValores, eixosSemValor, gerarEan13, gtinsEmUso, juntarTermo,
-    medidaEmCm, modeloLivreParaIa, nomeDaCor, numeroDoAtributo, paraUnidadeMl, pedidoCompleto, pesoEmG, termoNoTitulo, tituloParaModelo, tomDaCor, unidadeInicial,
+    medidaEmCm, modeloLivreParaIa, nomeDaCor, numeroDoAtributo, paraUnidadeMl, pedidoCompleto, pesoEmG, termoNoTitulo, tituloDoOutroTipo, tituloParaModelo, tomDaCor, unidadeInicial,
     varianteDoPedido, variantesSemGtin,
 } from '../../resources/js/Components/Publicador/ferramentas.js';
 
@@ -107,6 +107,19 @@ test('tituloParaModelo — só os tipos ativos, o digitado ou o herdado, sem rep
     assert.equal(tituloParaModelo([{ listing_type_id: 'gold_pro', ativo: false, titulo: 'Desligado' }]), '');
     assert.equal(tituloParaModelo(null), '');
     assert.ok(tituloParaModelo([{ ativo: true, titulo: 'x'.repeat(300) }]).length <= 255);
+});
+
+test('tituloDoOutroTipo — o "Sugerir com IA" de um tipo leva o título do OUTRO para não repeti-lo (09/10/2026)', () => {
+    const alvos = [
+        { listing_type_id: 'gold_special', ativo: true, titulo: 'Puff Sala Redondo', titulo_efetivo: 'Velho' },
+        { listing_type_id: 'gold_pro', ativo: true, titulo: '', titulo_efetivo: 'Puff Herdado' },
+    ];
+    assert.equal(tituloDoOutroTipo(alvos, 'gold_pro'), 'Puff Sala Redondo');
+    assert.equal(tituloDoOutroTipo(alvos, 'gold_special'), 'Puff Herdado');
+    assert.equal(tituloDoOutroTipo([{ ...alvos[0], ativo: false }, alvos[1]], 'gold_pro'), '', 'tipo desligado não conta');
+    assert.equal(tituloDoOutroTipo(null, 'gold_pro'), '');
+    const hook = lerSemComentarios(`${BASE}/usePublicador.js`);
+    assert.match(hook, /titulo: tituloDoOutroTipo\(mesclarAlvos\(estado\?\.alvos, rascRef\.current\?\.alvos\), alvo\.replace\('titulo_', ''\)\)/);
 });
 
 test('modeloLivreParaIa — a IA só (re)preenche o Modelo vazio ou ainda como ela deixou', () => {

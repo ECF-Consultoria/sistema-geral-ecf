@@ -18,6 +18,7 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -257,10 +258,11 @@ class PreparoIaDoRascunhoService
                 return self::PULADO;
             }
             if ($etapa === self::TITULO) {
-                // O Modelo usa o título GERADO, mesmo que a escrita dele espere o editor fechar.
-                $this->comEstado($r->id, function (array $estado) use ($hash, $valor) {
+                // O Modelo usa os títulos GERADOS, mesmo que a escrita deles espere o editor fechar.
+                $gerados = self::titulosDoValor($valor);
+                $this->comEstado($r->id, function (array $estado) use ($hash, $gerados) {
                     if (($estado[Memoria::PREPARO]['hash'] ?? null) === $hash) {
-                        $estado[Memoria::PREPARO]['titulo_gerado'] = $valor;
+                        $estado[Memoria::PREPARO]['titulo_gerado'] = $gerados;
                     }
 
                     return $estado;
@@ -308,23 +310,29 @@ class PreparoIaDoRascunhoService
     {
         // Custo: campo que a equipe já preencheu não recebe nada — então nem se chama a IA. A decisão
         // que vale é a da escrita, sob a trava; esta é só a economia.
-        if ($this->livres($r, $etapa, $this->lerEstado($r->id), $this->planejados($r, $etapa)) === []) {
+        $planejados = $this->planejados($r, $etapa);
+        $livres = $this->livres($r, $etapa, $this->lerEstado($r->id), $planejados);
+        if ($livres === []) {
             return null;
         }
         $prazo = microtime(true) + self::PRAZO_S;
 
         switch ($etapa) {
             case self::TITULO:
-                $titulo = $this->palavras->gerarTitulo($r, $prazo);
-                if (trim($titulo) === '') {
+                // Dois títulos DIFERENTES (09/10/2026: o ML barra dois anúncios com o mesmo nome), e
+                // nenhum igual ao título que a equipe já deu ao outro tipo.
+                $titulos = $this->palavras->gerarTitulos($r, $prazo, $this->titulosFixos($r, $livres, $planejados));
+                if (array_filter($titulos) === []) {
                     throw new \RuntimeException('A IA não devolveu um título aproveitável.');
                 }
 
-                return $titulo;
+                return json_encode($titulos, JSON_UNESCAPED_UNICODE);
 
             case self::MODELO:
-                // O Modelo depende do título: o gerado agora, ou o que o rascunho já tem.
-                $gerado = is_string($preparo['titulo_gerado'] ?? null) ? $preparo['titulo_gerado'] : null;
+                // O Modelo depende do título: os gerados agora, ou o que o rascunho já tem.
+                $gerado = $preparo['titulo_gerado'] ?? null;
+                $gerado = is_array($gerado) ? array_values(array_unique(array_filter(array_map('strval', $gerado)))) : (is_string($gerado) ? $gerado : null);
+                $gerado = $gerado === [] ? null : $gerado;
                 $temTitulo = $gerado !== null || $r->alvos()->where('ativo', true)->whereNotNull('titulo')->where('titulo', '<>', '')->exists();
                 if (! $temTitulo) {
                     return null;
@@ -373,11 +381,22 @@ class PreparoIaDoRascunhoService
             if ($etapa === self::TITULO) {
                 $titulos = [];
                 $atuais = collect($snap->alvos)->mapWithKeys(fn ($a) => [$a->listingTypeId => (string) ($a->titulo ?? '')]);
+                // Última guarda antes de gravar (a equipe pode ter escrito o outro tipo depois da IA):
+                // nunca dois iguais — o que não dá para diferenciar fica sem escrever.
+                $gerados = self::titulosDoValor($valor);
+                $finais = RegrasDoTitulo::semRepetir(
+                    array_intersect_key(array_merge(array_fill_keys(self::TIPOS_TITULO, ''), $gerados), array_flip($livres)),
+                    $this->titulosFixos($r, $livres, $planejados, $snap), [], 255,
+                );
                 foreach ($livres as $tipo) {
-                    if ($atuais[$tipo] !== $valor) {
-                        $titulos[$tipo] = $valor;
+                    $novo = $finais[$tipo] ?? '';
+                    if ($novo === '') {
+                        continue;
                     }
-                    $escrito[Memoria::chaveDoTitulo($tipo)] = $valor;
+                    if ($atuais[$tipo] !== $novo) {
+                        $titulos[$tipo] = $novo;
+                    }
+                    $escrito[Memoria::chaveDoTitulo($tipo)] = $novo;
                 }
                 if ($titulos !== []) {
                     $this->repo->gravarTitulos($r, $titulos);
@@ -455,6 +474,47 @@ class PreparoIaDoRascunhoService
         }
 
         return $tipos;
+    }
+
+    /**
+     * Os títulos dos tipos ativos que a automação NÃO vai escrever (da equipe, ou o planejado na aba
+     * Anúncios): o título gerado não pode repetir nenhum deles.
+     *
+     * @param  list<string>  $livres
+     * @param  array<string, ?string>  $planejados
+     * @return array<string, string> listing_type_id → título
+     */
+    private function titulosFixos(PubRascunho $r, array $livres, array $planejados, ?RascunhoSnapshot $snap = null): array
+    {
+        $snap ??= $this->repo->snapshot($r);
+        $fixos = [];
+        foreach ($snap->alvos as $alvo) {
+            if (! $alvo->ativo || ! in_array($alvo->listingTypeId, self::TIPOS_TITULO, true) || in_array($alvo->listingTypeId, $livres, true)) {
+                continue;
+            }
+            $titulo = trim((string) ($alvo->titulo ?? '')) ?: trim((string) ($planejados[$alvo->listingTypeId] ?? ''));
+            if ($titulo !== '') {
+                $fixos[$alvo->listingTypeId] = $titulo;
+            }
+        }
+
+        return $fixos;
+    }
+
+    /**
+     * O valor da etapa do título → listing_type_id → título. É JSON (`gerarTitulos`); texto puro é
+     * de um Job adiado antes de 09/10/2026, quando havia um título só para os dois tipos.
+     *
+     * @return array<string, string>
+     */
+    private static function titulosDoValor(string $valor): array
+    {
+        $mapa = json_decode($valor, true);
+        if (is_array($mapa)) {
+            return array_map(fn ($t) => trim((string) $t), array_intersect_key($mapa, array_flip(self::TIPOS_TITULO)));
+        }
+
+        return array_fill_keys(self::TIPOS_TITULO, trim($valor));
     }
 
     /** @return array<string, ?string> os títulos planejados na aba Anúncios (só para o título) */

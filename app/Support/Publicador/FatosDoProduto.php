@@ -188,6 +188,12 @@ final class FatosDoProduto
         return implode("\n", $partes);
     }
 
+    /** A palavra (já em `palavras()`) é uma cor, inclusive "colorido/estampado"? O título não leva cor. */
+    public static function ehCor(string $palavra): bool
+    {
+        return isset(self::CORES[$palavra]) || isset(self::CORES_GENERICAS[$palavra]);
+    }
+
     /**
      * Minúsculas, sem acento, só letras e números; "off white" vira uma palavra.
      *

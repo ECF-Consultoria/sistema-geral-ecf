@@ -7,7 +7,7 @@ import {
     mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar,
     resumoDoLancamento, semRepetir, textoDaConferencia, totalDeAnuncios,
 } from './derivados.js';
-import { modeloLivreParaIa, tituloParaModelo } from './ferramentas.js';
+import { modeloLivreParaIa, tituloDoOutroTipo, tituloParaModelo } from './ferramentas.js';
 
 // ─── Lógica do editor do Publicador (D24) ───────────────────────────────────
 //
@@ -522,14 +522,15 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
     /**
      * `automatico` = pedido pela escolha de categoria ou pelo título por IA: o resultado não pisa no que a pessoa
-     * escreveu enquanto isso. O Modelo leva o título à vista (talvez ainda não salvo) para não repetir as palavras dele.
+     * escreveu enquanto isso. O Modelo leva o título à vista (talvez ainda não salvo) para não repetir as palavras dele;
+     * o título de um tipo leva o do OUTRO tipo, para não sair igual a ele (09/10/2026).
      */
     const pedirPalavrasIa = async (alvo, { escolhidos = [], automatico = false } = {}) => {
         mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now(), descartados: [] });
         try {
             const corpo = alvo === 'modelo'
                 ? { alvo, titulo: tituloParaModelo(mesclarAlvos(estado?.alvos, rascRef.current?.alvos)) }
-                : { alvo, escolhidos };
+                : { alvo, escolhidos, titulo: tituloDoOutroTipo(mesclarAlvos(estado?.alvos, rascRef.current?.alvos), alvo.replace('titulo_', '')) };
             const { data } = await axios.post(rota('palavras-ia', produtoId), corpo);
             mudarIa(alvo, { pedido: data.pedido });
         } catch (e) {

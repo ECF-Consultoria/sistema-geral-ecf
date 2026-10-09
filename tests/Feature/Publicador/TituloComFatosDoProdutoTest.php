@@ -32,7 +32,8 @@ class TituloComFatosDoProdutoTest extends TestCase
 
         $titulo = app(PalavrasChaveService::class)->gerarTitulo($this->r->fresh());
 
-        $this->assertSame('Cadeira Escritório Executiva ECF Giratória', $titulo);
+        // A marca (BRAND = ECF) sai do título no servidor, mesmo que a IA a escreva (09/10/2026).
+        $this->assertSame('Cadeira Escritório Executiva Giratória', $titulo);
         Http::assertSent(function (Request $req) {
             $prompt = (string) ($req->data()['messages'][0]['content'] ?? '');
 

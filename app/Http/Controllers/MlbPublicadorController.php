@@ -290,7 +290,8 @@ class MlbPublicadorController extends Controller
             'alvo' => ['required', Rule::in(PalavrasChaveService::ALVOS)],
             'escolhidos' => ['sometimes', 'array', 'max:20'],
             'escolhidos.*' => ['string', 'max:120'],
-            // O título na tela (talvez ainda não salvo): o Modelo não repete as palavras dele.
+            // O título na tela (talvez ainda não salvo): o Modelo não repete as palavras dele; no título de
+            // um tipo, é o do OUTRO tipo, que a sugestão não pode repetir (09/10/2026).
             'titulo' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
         $r = $this->rascunho($produto);
