@@ -426,3 +426,150 @@ test('tela 04 — mapeamento.vazio=true mantém o bloco âmbar "não informado" 
     assert.match(html, /amber/);
     assert.match(html, /n[ãa]o informado/i);
 });
+
+// ─── Task 3: matriz de fases, ofertas, criativos e o rodapé ───
+
+test('tela 04 — a matriz traz a fase que existe, a próxima (oportunidade) e o roadmap da seguinte', () => {
+    const texto = semTags(desenhar(props()));
+
+    assert.match(texto, /Publica[çc][ãa]o individual/);
+    assert.match(texto, /Kits m[úu]ltiplos/);
+    assert.match(texto, /Cross-selling e combos/);
+    assert.match(texto, /Dispon[íi]vel para cria[çc][ãa]o/);
+    assert.match(texto, /Em planejamento/);
+});
+
+test('tela 04 — o cartão da fase existente lista anúncios no ar, preço unitário e vendas acumuladas', () => {
+    const texto = semTags(desenhar(props()));
+
+    assert.match(texto, /An[úu]ncios no ar/);
+    assert.match(texto, /Pre[çc]o unit[áa]rio/);
+    assert.match(texto, /R\$ 179,90/);
+    assert.match(texto, /Vendas acumuladas/);
+    assert.match(texto, /38/);
+});
+
+test('tela 04 — preço unitário com duas ofertas de preços diferentes vira faixa, nunca uma média inventada', () => {
+    const texto = semTags(desenhar(props({
+        ofertas: [ofertaBase(), ofertaBase({ ml_item_id: 'MLB2222', preco: 169.9, vendas: 14 })],
+    })));
+    assert.match(texto, /R\$ 169,90 a R\$ 179,90/);
+});
+
+test('tela 04 — fase sem criativo e sem venda coletada diz o motivo, nunca 0', () => {
+    const texto = semTags(desenhar(props({
+        criativos: [],
+        ofertas: [ofertaBase({ vendas: null, preco: null })],
+    })));
+    assert.match(texto, /Criativos aplicados/);
+    assert.match(texto, /nenhum kit aprovado/i);
+    assert.doesNotMatch(texto, /Criativos aplicados\s*0/);
+    assert.doesNotMatch(texto, /Vendas acumuladas\s*0/);
+});
+
+test('tela 04 — criativos aprovados aparecem no cartão da fase com a contagem REAL', () => {
+    const texto = semTags(desenhar(props({
+        criativos: [{ fase: 1, produto_id: 10, rotulo: '1 unidade', miniaturas: [{ indice: 1, url: '/a.png' }, { indice: 2, url: '/b.png' }] }],
+    })));
+    assert.match(texto, /Criativos aplicados/);
+    assert.match(texto, /2 imagens/);
+    // O kit de 7 imagens deixou de existir (quick 261007-kit2).
+    assert.doesNotMatch(texto, /8 imagens/i);
+});
+
+test('tela 04 — próxima fase travada: cartão roadmap com o motivo do servidor e o botão DESABILITADO (D23)', () => {
+    const html = desenhar(props({
+        proxima_fase: { numero: 2, quantidade_sugerida: 2, habilitado: false, motivo: 'Publique a Fase 1 primeiro' },
+    }));
+
+    assert.match(html, /Criar Fase 2/);
+    assert.match(html, /Publique a Fase 1 primeiro/);
+    assert.match(tagDoBotao(html, 'Criar Fase 2'), /disabled=/);
+});
+
+test('tela 04 — tabela de ofertas mostra o TIPO sem percentual de comissão (mockup desatualizado)', () => {
+    const html = desenhar(props({
+        ofertas: [ofertaBase({ tipo_rotulo: 'Premium' }), ofertaBase({ ml_item_id: 'MLB2222', tipo_rotulo: 'Clássico', preco: 169.9 })],
+    }));
+
+    assert.match(html, /Premium/);
+    assert.match(html, /Cl[áa]ssico/);
+    // A comissão do ML varia por categoria e faixa de preço — e sem
+    // `logistic_type` + `shipping_mode` a tarifa sai errada (learnings).
+    assert.doesNotMatch(html, /16%/);
+    assert.doesNotMatch(html, /12%/);
+    assert.doesNotMatch(semTags(html), /\(\d+%\)/);
+});
+
+test('tela 04 — a coluna Especialista NÃO existe: o dado não vem do servidor, e avatar inventado é mentira', () => {
+    const html = desenhar(props());
+    assert.doesNotMatch(html, /Especialista/i);
+});
+
+test('tela 04 — biblioteca de criativos conta as imagens REAIS do kit, sem "R$ 3,40"', () => {
+    const texto = semTags(desenhar(props({
+        criativos: [
+            { fase: 1, produto_id: 10, rotulo: '1 unidade', miniaturas: [{ indice: 1, url: '/a.png' }, { indice: 2, url: '/b.png' }] },
+            { fase: 2, produto_id: 11, rotulo: 'Kit 2', miniaturas: [{ indice: 1, url: '/c.png' }] },
+        ],
+    })));
+
+    assert.match(texto, /3 imagens prontas/);
+    assert.doesNotMatch(texto, /8 Imagens/i);
+    assert.doesNotMatch(texto, /3,40/);
+    // Decisão 5: o clone copia as fotos do base, então a promessa é verdadeira.
+    assert.match(texto, /custo zero/i);
+});
+
+test('tela 04 — sem criativo nenhum a biblioteca não promete reutilização a custo zero', () => {
+    const texto = semTags(desenhar(props({ criativos: [] })));
+    assert.match(texto, /Nenhum criativo aprovado ainda/);
+    assert.doesNotMatch(texto, /custo zero/i);
+});
+
+test('tela 04 — o rodapé "Pronto para a Fase N" REUSA o mesmo botão, sem criar um segundo caminho', () => {
+    const html = desenhar(props());
+
+    assert.match(semTags(html), /Pronto para a Fase 2/);
+    // O mesmo botão renderizado nos dois lugares (cartão e rodapé): duas
+    // ocorrências com o MESMO estado, nunca uma ação alternativa.
+    const ocorrencias = html.split('Criar Fase 2').length - 1;
+    assert.equal(ocorrencias, 2, 'o rodapé deve reusar o botão "Criar Fase N", não inventar outro');
+    assert.doesNotMatch(html, /Iniciar Cria[çc][ãa]o da Fase/);
+    assert.doesNotMatch(html, /Configurar Kit Agora/);
+});
+
+test('tela 04 — gate de fonte do PainelDoProduto: um só PainelCriarFase e um só gatilho', () => {
+    const fonte = lerSemComentarios(REL_PAINEL);
+
+    assert.equal((fonte.match(/<PainelCriarFase/g) ?? []).length, 1, 'o painel Criar Fase é montado uma vez só');
+    assert.equal((fonte.match(/setCriarFaseAberto\(true\)/g) ?? []).length, 1, 'um só gatilho para abrir o painel');
+    assert.doesNotMatch(fonte, /3,40/);
+    assert.doesNotMatch(fonte, /\b1[26]%/);
+    assert.doesNotMatch(fonte, /\bbg-ecf-yellow(?!\/)/);
+    assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+    const tamanhos = [...fonte.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map((m) => m[1]);
+    for (const t of tamanhos) assert.ok(['24', '15', '13', '11'].includes(t), `tamanho fora do vocabulário: ${t}px`);
+    assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/);
+    assert.doesNotMatch(fonte, /font-(thin|extralight|light|medium|semibold|extrabold|black)\b/);
+});
+
+test('tela 04 — campos novos chegando como OBJETO, nulos e ausentes: a tela nunca fica preta', () => {
+    const adversos = [
+        props({ criativos: [{ fase: {}, produto_id: [], rotulo: { foo: 1 }, miniaturas: [{ indice: {}, url: { foo: 1 } }, 'x', null] }] }),
+        props({ ofertas: [{ fase: {}, tipo_rotulo: { foo: 1 }, titulo: [], preco: 'cem', vendas: {}, visitas: 'x', situacao: {}, ml_item_id: {} }] }),
+        props({ fases: [{ produto_id: {}, fase: {}, rotulo: [], estado: 'nao-e-objeto', estado_fase: 9, ofertas_no_ar: 'duas', quantidade_kit: {} }] }),
+        props({ mapeamento: null, criativos: null, ofertas: null, fases: null, proxima_fase: null, produto: null }),
+        props({ empresa: null, abas: null }),
+        {},
+    ];
+
+    for (const caso of adversos) {
+        let html;
+        assert.doesNotThrow(() => {
+            html = desenhar(caso);
+        }, `props adversas derrubaram a tela: ${JSON.stringify(Object.keys(caso))}`);
+        semLixoNoHtml(html, 'tela 04 adversa');
+        assert.doesNotMatch(html, /foo/);
+    }
+});
