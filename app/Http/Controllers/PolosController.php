@@ -1552,6 +1552,11 @@ class PolosController extends Controller
      * respondeu por aquela conta há menos de PoloAdsStatus::FRESCOR_HORAS. Para essas, a
      * leitura manda no `ads_desligado` da linha e a tela não oferece marcação manual.
      *
+     * Também anexa `ads_campanha` (TKT-0015), que alimenta o filtro "Campanhas": 'ativa',
+     * 'desligada', 'sem_campanha' ou null (não verificado). Regra em
+     * PoloAdsStatus::situacaoDaEmpresa(). Como este método só roda no mês corrente, mês
+     * fechado não traz a chave e a tela esconde o filtro.
+     *
      * @param  array<int, array<string,mixed>>  $empresas
      * @return array<int, array<string,mixed>>
      */
@@ -1572,6 +1577,8 @@ class PolosController extends Controller
             if ($l) {
                 $e['ads_desligado'] = $l->desligado();
             }
+            $manual = $e['ads_desligado'] ?? null;
+            $e['ads_campanha'] = PoloAdsStatus::situacaoDaEmpresa($l, $manual === null ? null : (bool) $manual);
         }
         unset($e);
 

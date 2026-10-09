@@ -19,8 +19,22 @@ const FILTROS = [
     { key: 'Em progresso', label: 'Em progresso' },
     { key: 'Não',          label: 'Não faturou' },
     { key: 'Problema',     label: 'Problema' },
-    { key: 'ads',          label: 'Ads desligado' },
+    { key: 'ads',          label: 'Ads desligado', title: 'Nenhuma campanha ativa: soma as desligadas e as sem campanha' },
 ];
+
+// Filtro "Campanhas" (TKT-0015): separa o que o chip "Ads desligado" junta — campanha
+// parada × conta sem campanha nenhuma (a lista de quem ainda precisa ter campanha criada).
+// A chave vem pronta do servidor em `ads_campanha` (PoloAdsStatus::situacaoDaEmpresa);
+// null = não verificado. Só o mês corrente traz a chave: é estado de agora.
+const CAMPANHAS = [
+    { key: 'todas',          label: 'Todas' },
+    { key: 'ativa',          label: 'Ativa',          title: 'Ao menos uma campanha ativa' },
+    { key: 'desligada',      label: 'Desligada',      title: 'Tem campanha, mas nenhuma ativa' },
+    { key: 'sem_campanha',   label: 'Sem campanha',   title: 'Nenhuma campanha criada na conta' },
+    { key: 'nao_verificado', label: 'Não verificado', title: 'A Adman não enxerga a conta e ninguém marcou Ligado/Desligado na coluna Sinais' },
+];
+
+const campanhaDa = (e) => e.ads_campanha ?? 'nao_verificado';
 
 function StatusBadge({ status }) {
     const meta = STATUS_META[status] ?? { cor: '#94a3b8', label: status };
@@ -54,6 +68,8 @@ export default function PolosEmpresas({
     // Chegando do clique numa fatia da "Distribuição de status", a lista já abre filtrada
     // naquele status. O backend valida a chave (ver todasEmpresas) — aqui ela só vira o chip.
     const [filtro, setFiltro]   = useState(statusInicial ?? 'todas');
+    // Independente do status: "Não faturou" + "Sem campanha" é uma combinação útil.
+    const [campanha, setCampanha] = useState('todas');
     const [busca, setBusca]     = useState('');
     const [ordem, setOrdem]     = useState({ campo: 'faturamento', dir: 'desc' });
     const [aberta, setAberta]   = useState(null);   // cust_id expandido
@@ -102,6 +118,7 @@ export default function PolosEmpresas({
         let l = empresas.filter((e) => {
             if (filtro === 'ads') { if (e.ads_desligado !== true) return false; }
             else if (filtro !== 'todas' && e.status !== filtro) return false;
+            if (parcial && campanha !== 'todas' && campanhaDa(e) !== campanha) return false;
             if (busca.trim() && !(`${e.nome} ${e.polo}`.toLowerCase().includes(busca.trim().toLowerCase()))) return false;
             return true;
         });
@@ -114,11 +131,14 @@ export default function PolosEmpresas({
             return 0;
         });
         return l;
-    }, [empresas, filtro, busca, ordem]);
+    }, [empresas, filtro, campanha, busca, ordem, parcial]);
 
     const contar = (key) => key === 'todas' ? empresas.length
         : key === 'ads' ? empresas.filter((e) => e.ads_desligado === true).length
         : empresas.filter((e) => e.status === key).length;
+
+    const contarCampanha = (key) => key === 'todas' ? empresas.length
+        : empresas.filter((e) => campanhaDa(e) === key).length;
 
     const Th = ({ campo, children, className }) => (
         <th className={cn('px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40', className)}>
@@ -180,14 +200,32 @@ export default function PolosEmpresas({
 
                 {/* Filtros + busca */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap gap-1.5">
-                        {FILTROS.map((f) => (
-                            <button key={f.key} type="button" onClick={() => setFiltro(f.key)}
-                                    className={cn('rounded-full px-3 py-1 text-xs font-semibold transition',
-                                        filtro === f.key ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
-                                {f.label} <span className="tabular-nums opacity-70">{contar(f.key)}</span>
-                            </button>
-                        ))}
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-1.5">
+                            {FILTROS.map((f) => (
+                                <button key={f.key} type="button" onClick={() => setFiltro(f.key)} title={f.title}
+                                        className={cn('rounded-full px-3 py-1 text-xs font-semibold transition',
+                                            filtro === f.key ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
+                                    {f.label} <span className="tabular-nums opacity-70">{contar(f.key)}</span>
+                                </button>
+                            ))}
+                        </div>
+                        {parcial && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-white/35"
+                                      title="Lido da Adman às 13:00 e às 17:30">
+                                    Campanhas
+                                </span>
+                                {CAMPANHAS.map((c) => (
+                                    <button key={c.key} type="button" onClick={() => setCampanha(c.key)} title={c.title}
+                                            aria-pressed={campanha === c.key}
+                                            className={cn('rounded-full px-3 py-1 text-xs font-semibold transition',
+                                                campanha === c.key ? 'bg-ecf-yellow text-black' : 'bg-white/[0.05] text-white/60 hover:bg-white/[0.1]')}>
+                                        {c.label} <span className="tabular-nums opacity-70">{contarCampanha(c.key)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
