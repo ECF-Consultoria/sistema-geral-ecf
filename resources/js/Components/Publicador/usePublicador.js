@@ -511,7 +511,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
      * escreveu enquanto isso. O Modelo leva o título à vista (talvez ainda não salvo) para não repetir as palavras dele.
      */
     const pedirPalavrasIa = async (alvo, { escolhidos = [], automatico = false } = {}) => {
-        mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now() });
+        mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now(), descartados: [] });
         try {
             const corpo = alvo === 'modelo'
                 ? { alvo, titulo: tituloParaModelo(mesclarAlvos(estado?.alvos, rascRef.current?.alvos)) }
@@ -523,7 +523,8 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         }
     };
 
-    const aplicarPalavras = (alvo, valor, automatico) => {
+    // `descartados` (só no Modelo): termos que a IA sugeriu e o servidor tirou por não condizerem com o produto.
+    const aplicarPalavras = (alvo, valor, automatico, descartados = []) => {
         if (alvo === 'modelo') {
             if (automatico && ! modeloLivreParaIa(rascRef.current?.atributos?.MODEL)) {
                 mudarIa(alvo, { status: 'pronto', erro: null });
@@ -531,7 +532,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
                 return;
             }
             mudarAtributo('MODEL', { value_id: null, value_name: valor, origem: 'ia', revisar: false });
-            mudarIa(alvo, { status: 'pronto', erro: null });
+            mudarIa(alvo, { status: 'pronto', erro: null, descartados });
 
             return;
         }
@@ -559,7 +560,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
                 try {
                     const { data } = await axios.get(rota('palavras-ia.status', produtoId, { alvo }));
                     if (data.pedido !== s.pedido) continue;
-                    if (data.status === 'pronto') aplicarPalavras(alvo, data.valor, s.automatico);
+                    if (data.status === 'pronto') aplicarPalavras(alvo, data.valor, s.automatico, data.descartados ?? []);
                     else if (data.status === 'erro') mudarIa(alvo, { status: 'erro', erro: data.erro ?? 'A IA não conseguiu agora. Tente de novo.' });
                 } catch {
                     // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.

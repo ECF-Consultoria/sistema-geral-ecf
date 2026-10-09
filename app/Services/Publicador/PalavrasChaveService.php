@@ -6,7 +6,10 @@ use App\Jobs\Publicador\GerarPalavrasChaveIaJob;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Incubadora\Publicador\TermosMaisBuscadosService;
+use App\Support\Publicador\FatosDoProduto;
 use App\Support\Publicador\RegraViolada;
+use App\Support\Publicador\Schema\CategorySchema;
+use App\Support\Publicador\Schema\ValorAtributo;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -89,15 +92,21 @@ class PalavrasChaveService
         return is_array($e) ? $e : null;
     }
 
-    /** Roda no Job: grava `pronto` ou `erro` — só se o pedido ainda for o mais recente. */
+    /**
+     * Roda no Job: grava `pronto` ou `erro` — só se o pedido ainda for o mais recente.
+     * No Modelo, `descartados` lista os termos que a IA sugeriu e o servidor tirou por
+     * não condizerem com o produto (cor, público, tamanho), com o motivo.
+     */
     public function executar(PubRascunho $r, string $alvo, string $pedido, array $escolhidos, ?float $prazo = null, ?string $tituloDaTela = null): void
     {
         try {
-            $valor = $alvo === self::MODELO ? $this->modelo($r, $prazo, $tituloDaTela) : $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo);
+            ['valor' => $valor, 'descartados' => $descartados] = $alvo === self::MODELO
+                ? $this->modelo($r, $prazo, $tituloDaTela)
+                : ['valor' => $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo), 'descartados' => []];
             if ($valor === '') {
                 throw new \RuntimeException('A IA não devolveu nada aproveitável. Tente de novo.');
             }
-            $this->concluir($r->id, $alvo, $pedido, ['status' => 'pronto', 'valor' => $valor, 'erro' => null]);
+            $this->concluir($r->id, $alvo, $pedido, ['status' => 'pronto', 'valor' => $valor, 'erro' => null, 'descartados' => $descartados]);
         } catch (\Throwable $e) {
             $this->concluir($r->id, $alvo, $pedido, ['status' => 'erro', 'valor' => null, 'erro' => $e->getMessage()]);
 
@@ -128,16 +137,38 @@ class PalavrasChaveService
      * tem desperdiça caractere (pedido do usuário, 08/10/2026). "puff sala" com
      * "Puff ... Sala" no título sai; "puff para quarto infantil" fica, porque
      * "infantil" é novo. O prompt pede o mesmo, mas a IA não obedece sempre.
+     *
+     * Com `fatos`, sai ANTES todo termo que cita cor, público ou tamanho que o
+     * produto não tem (`FatosDoProduto::motivoParaDescartar`, 09/10/2026) — aí
+     * "infantil" só fica se a ficha confirmar.
      */
-    public static function ajustarModelo(string $bruto, int $limite = self::LIMITE_MODELO, string $titulo = ''): string
+    public static function ajustarModelo(string $bruto, int $limite = self::LIMITE_MODELO, string $titulo = '', ?FatosDoProduto $fatos = null): string
+    {
+        return self::filtrarModelo($bruto, $limite, $titulo, $fatos)['valor'];
+    }
+
+    /**
+     * O `ajustarModelo` com o que saiu por não condizer com o produto.
+     *
+     * @return array{valor: string, descartados: list<array{termo: string, motivo: string}>}
+     */
+    public static function filtrarModelo(string $bruto, int $limite = self::LIMITE_MODELO, string $titulo = '', ?FatosDoProduto $fatos = null): array
     {
         $partes = preg_split('/[,;\n|]+/', Str::lower(Str::ascii($bruto))) ?: [];
         $doTitulo = self::palavrasDoTitulo($titulo);
         $vistos = [];
+        $descartados = [];
         $saida = '';
         foreach ($partes as $p) {
             $termo = trim(preg_replace('/\s+/', ' ', preg_replace('/[^a-z0-9 ]+/', ' ', $p)));
             if ($termo === '' || isset($vistos[$termo])) {
+                continue;
+            }
+            $motivo = $fatos?->motivoParaDescartar($termo);
+            if ($motivo !== null) {
+                $vistos[$termo] = true;
+                $descartados[] = ['termo' => $termo, 'motivo' => $motivo];
+
                 continue;
             }
             if ($doTitulo !== [] && ! self::trazPalavraNova($termo, $doTitulo)) {
@@ -152,7 +183,7 @@ class PalavrasChaveService
             $saida = $candidato;
         }
 
-        return $saida;
+        return ['valor' => $saida, 'descartados' => $descartados];
     }
 
     /**
@@ -225,20 +256,133 @@ class PalavrasChaveService
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
 
-    private function modelo(PubRascunho $r, ?float $prazo, ?string $tituloDaTela): string
+    /** @return array{valor: string, descartados: list<array{termo: string, motivo: string}>} */
+    private function modelo(PubRascunho $r, ?float $prazo, ?string $tituloDaTela): array
     {
         [$categoria, $caminho] = $this->categoria($r);
         $termos = $this->termosParaIa($categoria, $r, $caminho);
         $titulo = $this->tituloParaModelo($r, $tituloDaTela);
+        $produto = $r->produto->nomeExibido();
+        $fatos = $this->fatos($r, $this->schemas->obter($categoria), $produto, implode(' > ', $caminho).' '.$titulo);
         $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
 
-        $bruto = $ia->modeloPorTermos($r->produto->nomeExibido(), implode(' > ', $caminho), $termos, self::LIMITE_MODELO, $titulo)['dados'];
-        $valor = self::ajustarModelo($bruto, self::LIMITE_MODELO, $titulo);
-        if ($valor === '' && $titulo !== '' && self::ajustarModelo($bruto) !== '') {
-            throw new \RuntimeException('Todos os termos que a IA sugeriu já estão no título. Tente de novo.');
+        $bruto = $ia->modeloPorTermos($produto, implode(' > ', $caminho), $termos, self::LIMITE_MODELO, $titulo, $fatos->paraPrompt())['dados'];
+        $filtrado = self::filtrarModelo($bruto, self::LIMITE_MODELO, $titulo, $fatos);
+        if ($filtrado['valor'] === '' && self::ajustarModelo($bruto) !== '') {
+            // Sobrou termo sem o filtro do título? Então foi o título que tirou tudo.
+            throw new \RuntimeException($titulo !== '' && self::ajustarModelo($bruto, self::LIMITE_MODELO, '', $fatos) !== ''
+                ? 'Todos os termos que a IA sugeriu já estão no título. Tente de novo.'
+                : 'Os termos que a IA sugeriu citam característica que o produto não tem. Tente de novo.');
         }
 
-        return $valor;
+        return $filtrado;
+    }
+
+    /** Atributos que não descrevem o produto (identificação, embalagem, o próprio Modelo) ou que viram cor. */
+    private const FORA_DOS_FATOS = ['MODEL', 'GTIN', 'SELLER_SKU', 'EMPTY_GTIN_REASON', 'SHIPMENT_PACKING', 'VERTICAL_TAGS', 'ITEM_CONDITION', 'FILTRABLE_COLOR'];
+
+    /** Atributos de cor: o eixo da variação ou, sem variação, o valor da ficha. */
+    private const ATRIBUTOS_DE_COR = ['COLOR', 'MAIN_COLOR'];
+
+    /** Quantas linhas da ficha vão para a IA (o prompt é curto). */
+    private const MAX_LINHAS_FICHA = 40;
+
+    /**
+     * Os fatos do produto lidos do rascunho NO SERVIDOR: a ficha preenchida (nome
+     * pt-BR do schema), as medidas com unidade, o público/idade e as cores das
+     * variantes ATIVAS — o eixo COLOR/MAIN_COLOR ou um eixo próprio chamado "Cor",
+     * mais a Cor principal de cada variante; sem variação, a cor da ficha.
+     * Vazio e "Não se aplica" ficam de fora.
+     */
+    private function fatos(PubRascunho $r, CategorySchema $schema, string $produto, string $contexto): FatosDoProduto
+    {
+        $nomes = [];
+        $numericos = [];
+        foreach ($schema->atributos as $a) {
+            if (isset($a['id'])) {
+                $nomes[(string) $a['id']] = (string) ($a['name'] ?? $a['id']);
+                if (in_array($a['value_type'] ?? null, ['number', 'number_unit'], true)) {
+                    $numericos[(string) $a['id']] = true;
+                }
+            }
+        }
+
+        $ficha = [];
+        $medidas = [];
+        $publico = [];
+        $coresDaFicha = [];
+        foreach ($r->atributos()->orderBy('id')->get() as $a) {
+            $id = (string) $a->attribute_id;
+            $valor = self::valorDoAtributo($a->value_id, $a->value_name, $a->value_number, $a->value_unit, $a->values_multi);
+            if ($valor === '' || in_array($id, self::FORA_DOS_FATOS, true) || preg_match('/PACKAGE|DATA_SOURCE|SIZE_GRID/', $id)) {
+                continue;
+            }
+            // Valor da ficha pode ter vindo do cliente (Portal): sem link nem e-mail.
+            $valor = mb_substr(DescricaoIaService::semContato($valor, telefones: false), 0, 120);
+            $nome = $nomes[$id] ?? $id;
+            if (in_array($id, self::ATRIBUTOS_DE_COR, true)) {
+                $coresDaFicha[] = $valor;
+            } elseif (preg_match('/AGE|GENDER/', $id)) {
+                $publico[] = [$nome, $valor];
+            } elseif (isset($numericos[$id]) || ($a->value_number !== null && trim((string) $a->value_name) === '')) {
+                $medidas[] = [$nome, $valor];
+            } elseif (count($ficha) < self::MAX_LINHAS_FICHA) {
+                $ficha[] = [$nome, $valor];
+            }
+        }
+
+        return new FatosDoProduto(
+            cores: $this->coresDasVariantes($r) ?: array_values(array_unique($coresDaFicha)),
+            ficha: $ficha,
+            medidas: $medidas,
+            publico: $publico,
+            produto: $produto,
+            contexto: $contexto,
+        );
+    }
+
+    /** @return list<string> as cores das variantes ATIVAS (nunca as órfãs nem as desligadas), sem repetir */
+    private function coresDasVariantes(PubRascunho $r): array
+    {
+        $eixosDeCor = $r->eixos()->where('removido', false)->get()
+            ->filter(fn ($e) => in_array($e->attribute_id, self::ATRIBUTOS_DE_COR, true)
+                || ($e->attribute_id === null && preg_match('/^cor(es)?( principal)?$/', Str::lower(Str::ascii(trim((string) $e->nome))))))
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $cores = [];
+        $variantes = $r->variantes()->where('ativa', true)->where('orfa', false)->with(['valoresDosEixos', 'atributos'])->get();
+        foreach ($variantes as $v) {
+            foreach ($v->valoresDosEixos as $valor) {
+                if (in_array((int) $valor->pivot->eixo_id, $eixosDeCor, true) && ! $valor->removido && trim((string) $valor->value_name) !== '') {
+                    $cores[] = trim((string) $valor->value_name);
+                }
+            }
+            foreach ($v->atributos->whereIn('attribute_id', self::ATRIBUTOS_DE_COR) as $a) {
+                $valor = self::valorDoAtributo($a->value_id, $a->value_name, null, null, null);
+                if ($valor !== '') {
+                    $cores[] = $valor;
+                }
+            }
+        }
+
+        return array_values(array_unique($cores));
+    }
+
+    /** O valor legível de uma linha de atributo; vazio para nada preenchido ou "Não se aplica". */
+    private static function valorDoAtributo(?string $valueId, ?string $valueName, ?float $numero, ?string $unidade, ?array $multi): string
+    {
+        if ((string) $valueId === ValorAtributo::NAO_SE_APLICA) {
+            return '';
+        }
+        $valor = trim((string) $valueName);
+        if ($valor === '' && $numero !== null) {
+            $valor = rtrim(rtrim(number_format($numero, 4, '.', ''), '0'), '.').($unidade ? ' '.$unidade : '');
+        }
+        if ($valor === '' && is_array($multi)) {
+            $valor = implode(', ', array_filter(array_map(fn ($v) => trim((string) (is_array($v) ? ($v['name'] ?? $v['value_name'] ?? '') : $v)), $multi)));
+        }
+
+        return in_array(Str::lower(Str::ascii($valor)), ['n/a', 'na', 'nao se aplica'], true) ? '' : $valor;
     }
 
     /**

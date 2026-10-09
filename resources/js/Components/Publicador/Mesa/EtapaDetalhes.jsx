@@ -34,7 +34,8 @@ import { cn } from '@/lib/utils';
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
 // Termo que só repete palavras do título fica de fora (o servidor filtra, 08/10):
-// sem título ainda, a IA gera sem o filtro e a tela avisa.
+// sem título ainda, a IA gera sem o filtro e a tela avisa. Termo com cor, público
+// ou tamanho que o produto não tem também sai (09/10), e a tela diz quantos.
 
 const MODELO = 'MODEL';
 const COR = 'COLOR';
@@ -65,6 +66,8 @@ function CampoDaFicha({ m, a, rotulo = null }) {
     const rodando = ia.status === 'rodando';
     const tamanho = String(valor?.value_name ?? '').length;
     const semTitulo = modelo && tituloParaModelo(m.alvos) === '';
+    // Termos que a IA sugeriu e o servidor tirou: cor, público ou tamanho que o produto não tem (09/10).
+    const descartados = Array.isArray(ia.descartados) ? ia.descartados : [];
 
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
@@ -88,6 +91,12 @@ function CampoDaFicha({ m, a, rotulo = null }) {
                         {rodando ? 'IA montando o Modelo…' : 'Preencher com IA pelos termos mais buscados'}
                     </button>
                     {semTitulo && <p className="mt-1.5 text-[13px] text-white/50" data-aviso-modelo-sem-titulo>Gere o título antes para o Modelo não repetir palavras.</p>}
+                    {ia.status === 'pronto' && descartados.length > 0 && (
+                        <p className="mt-1.5 text-[13px] text-white/50" data-modelo-descartados={descartados.length}
+                            title={descartados.map((d) => `${d.termo}: ${d.motivo}`).join('\n')}>
+                            {descartados.length === 1 ? '1 termo removido' : `${descartados.length} termos removidos`}: não condizem com o produto ({descartados.map((d) => d.termo).join(', ')})
+                        </p>
+                    )}
                     {ia.status === 'erro' && <p className="mt-1.5 text-[13px] text-amber-300">{ia.erro}</p>}
                 </div>
             )}

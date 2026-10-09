@@ -273,6 +273,20 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   tela manda (pode não estar salvo). Por isso o pedido automático mudou: na escolha de
   categoria só dispara se já houver título; senão dispara quando o título por IA é
   aplicado e o Modelo está vazio ou ainda com `origem: 'ia'`.
+- **Modelo: fatos do produto no prompt + filtro de cor/público/tamanho no servidor (09/10).**
+  "Puff Redondo" só em Azul saiu com "puff gigante, puff colorido, puff infantil, puff rosa,
+  puff azul marinho": a IA só via nome, categoria e trends, e o ML diz o que é BUSCADO, não o
+  que o produto É. Agora o serviço lê do rascunho (`FatosDoProduto`) as cores das variantes
+  ATIVAS (eixo COLOR/MAIN_COLOR ou eixo próprio "Cor", + Cor principal da variante; sem
+  variação, a cor da ficha), a ficha preenchida, as medidas e o público (AGE*/GENDER*) e manda
+  como bloco "FATOS DO PRODUTO". E o servidor descarta, com vocabulário explícito, termo com
+  cor fora das cores do anúncio ("azul marinho" com "Azul" é OUTRA cor; "colorido/estampado"
+  só com 3+ cores ou ficha estampada; sem cor conhecida, nenhum termo com cor), público ou
+  tamanho que os fatos (ficha textual + nome + categoria + título) não confirmem. Medida
+  numérica NÃO confirma ("500 g" não é tamanho G). Palavra do nome do produto não conta como
+  cor ("Taça Vinho"). Os descartados voltam no estado (`descartados`) e a tela diz quantos.
+  O exemplo antigo do prompt ("puff para quarto infantil", "puff azul marinho") ENSINAVA o erro
+  — não traga de volta exemplo com característica inventada.
 - **Preço "do Portal" é MOSTRADO, não gravado.** O campo exibe o efetivo da
   Precificação como valor (selo "do Portal"); sair do campo com o mesmo valor não grava
   nada — senão o preço congelaria (`16` §1.6). Só valor diferente vira digitado.

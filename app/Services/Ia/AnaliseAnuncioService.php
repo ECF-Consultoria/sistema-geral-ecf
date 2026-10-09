@@ -121,13 +121,15 @@ class AnaliseAnuncioService
      * por vírgula ("cadeira escritorio, cadeira home office, ..."). Quem corta
      * no limite exato é o `PalavrasChaveService` — o modelo erra contagem.
      * Com `titulo`, o prompt proíbe repetir o que ele já tem (o serviço ainda
-     * filtra depois: a IA nem sempre obedece).
+     * filtra depois: a IA nem sempre obedece). `fatos` é o bloco do
+     * `FatosDoProduto` (cores do anúncio, ficha, medidas, público): sem ele a IA
+     * inventava "gigante", "infantil", "colorido" num puff de uma cor só (09/10).
      *
      * @param  list<string>  $termos  do mais buscado para o menos
      */
-    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = ''): array
+    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = '', string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo), 2500);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -383,37 +385,47 @@ class AnaliseAnuncioService
             : implode("\n", array_map(fn ($t, $i) => ($i + 1).'. '.$t, $termos, array_keys($termos)));
     }
 
-    private function promptModelo(string $produto, string $caminho, array $termos, int $limite, string $titulo = ''): string
+    private function promptModelo(string $produto, string $caminho, array $termos, int $limite, string $titulo = '', string $fatos = ''): string
     {
         $lista = $this->listaDeTermos($termos);
+        $blocoFatos = $fatos === '' ? '' : "\n\nFATOS DO PRODUTO (use só o que é verdade segundo estes fatos):\n{$fatos}";
         $regraTitulo = $titulo === '' ? '' : <<<TXT
 
-        6. Título do anúncio: {$titulo}
+        9. Título do anúncio: {$titulo}
            Não repita termo cujas palavras já estão todas no título. Cada termo precisa
-           trazer pelo menos uma palavra nova (cor, ambiente, uso, formato, público,
-           material) combinada com o nome do produto — ex.: se o título tem
-           "Puff Sala Quarto", use "puff para quarto infantil", "puff azul marinho",
+           trazer pelo menos uma palavra nova e VERDADEIRA (sinônimo, ambiente, uso ou
+           característica confirmada pelos fatos) combinada com o nome do produto — ex.:
+           se o título tem "Puff Sala Quarto", use "puff banqueta", "puff decorativo",
            não "puff sala".
         TXT;
 
         return <<<TXT
         Produto: **{$produto}**
-        Categoria no Mercado Livre: {$caminho}
+        Categoria no Mercado Livre: {$caminho}{$blocoFatos}
 
         Termos mais buscados nesta categoria (do mais buscado para o menos):
         {$lista}
 
         Monte o valor do campo "Modelo" do anúncio no Mercado Livre: uma lista de
         buscas que um comprador DESTE produto faria, separadas por vírgula e espaço.
-        Exemplo de formato: cadeira escritorio, cadeira para trabalho, cadeira home office, cadeira preta
+        Exemplo de formato: cadeira escritorio, cadeira para trabalho, cadeira home office
 
         REGRAS:
-        1. Use SÓ termos coerentes com o produto. Descarte os que descrevem outro
-           produto, outro uso ou outro público.
-        2. NUNCA use marca de concorrente nem nome de loja.
-        3. Prefira os termos da lista; complete com variações reais do nome do produto.
-        4. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
-        5. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
+        1. Use SÓ termos verdadeiros para ESTE produto segundo os fatos. Descarte os que
+           descrevem outro produto, outro uso ou outro público — mesmo que estejam entre
+           os mais buscados.
+        2. COR: só as cores listadas nos fatos. Com uma cor só, no máximo UM termo com
+           cor e nunca "colorido". Sem cor nos fatos, nenhum termo com cor.
+        3. NUNCA cite tamanho (gigante, grande, mini, pequeno…), público (infantil, bebe,
+           crianca, adulto, gamer…), material, formato ou uso que os fatos não confirmem.
+        4. Prefira expandir com sinônimos do produto, ambientes e usos coerentes (ex.:
+           puff para sala, puff banqueta, puff decorativo) e com características que os
+           fatos confirmam.
+        5. NUNCA use marca de concorrente nem nome de loja.
+        6. Prefira os termos da lista que passam nas regras acima; complete com variações
+           reais do nome do produto.
+        7. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
+        8. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
            perto possível de {$limite} sem passar.{$regraTitulo}
 
         Responda APENAS com JSON válido, sem crases:

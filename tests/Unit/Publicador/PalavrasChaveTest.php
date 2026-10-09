@@ -4,6 +4,7 @@ namespace Tests\Unit\Publicador;
 
 use App\Services\Publicador\PalavrasChaveService;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
+use App\Support\Publicador\FatosDoProduto;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -64,6 +65,84 @@ class PalavrasChaveTest extends TestCase
         $this->assertTrue(PalavrasChaveService::trazPalavraNova('mesa 4 lugares', $doTitulo), 'número também é termo novo');
         $this->assertFalse(PalavrasChaveService::trazPalavraNova('de para com', $doTitulo), 'só ligação não é palavra nova');
         $this->assertSame([], PalavrasChaveService::palavrasDoTitulo('  '));
+    }
+
+    // ═══ Fatos do produto: cor, público e tamanho (09/10/2026) ════════════════
+
+    private const TITULO_PUFF = 'Puff Redondo Sala Quarto Enchimento Fofao Banqueta Descanso';
+
+    private const BRUTO_PUFF = 'puff azul, puff gigante, puff redondo de chao, puff colorido, puff infantil, puff rosa, puff azul marinho, puff fofao';
+
+    public function test_caso_do_usuario_puff_azul_sem_publico_nem_tamanho_tira_o_que_o_produto_nao_tem(): void
+    {
+        // O caso EXATO de produção (09/10): uma variante Azul, ficha sem público e sem tamanho.
+        $fatos = new FatosDoProduto(cores: ['Azul'], ficha: [['Formato', 'Redondo']], produto: 'Puff Redondo', contexto: self::TITULO_PUFF);
+
+        $r = PalavrasChaveService::filtrarModelo(self::BRUTO_PUFF, 120, self::TITULO_PUFF, $fatos);
+
+        $this->assertSame('puff azul, puff redondo de chao', $r['valor']);
+        $this->assertSame([
+            ['termo' => 'puff gigante', 'motivo' => FatosDoProduto::MOTIVO_TAMANHO],
+            ['termo' => 'puff colorido', 'motivo' => FatosDoProduto::MOTIVO_COR],
+            ['termo' => 'puff infantil', 'motivo' => FatosDoProduto::MOTIVO_PUBLICO],
+            ['termo' => 'puff rosa', 'motivo' => FatosDoProduto::MOTIVO_COR],
+            ['termo' => 'puff azul marinho', 'motivo' => FatosDoProduto::MOTIVO_COR],
+        ], $r['descartados']);
+        // "puff fofao" sai por repetir o título — não conta como "não condiz".
+        $this->assertNotContains('puff fofao', array_column($r['descartados'], 'termo'));
+        $this->assertSame($r['valor'], PalavrasChaveService::ajustarModelo(self::BRUTO_PUFF, 120, self::TITULO_PUFF, $fatos));
+    }
+
+    public function test_tres_cores_aceitam_as_tres_e_colorido_e_azul_marinho_so_com_marinho_no_anuncio(): void
+    {
+        $fatos = new FatosDoProduto(cores: ['Azul', 'Rosa', 'Verde-limão']);
+        $r = PalavrasChaveService::filtrarModelo('puff azul, puff rosa, puff verde, puff colorido, puff preto, puff azul marinho', 120, '', $fatos);
+
+        $this->assertSame('puff azul, puff rosa, puff verde, puff colorido', $r['valor']);
+        $this->assertSame(['puff preto', 'puff azul marinho'], array_column($r['descartados'], 'termo'));
+
+        // A cor do anúncio tem "marinho": aí "azul marinho" é a cor dele, e "azul" também vale.
+        $marinho = new FatosDoProduto(cores: ['Azul Marinho']);
+        $this->assertSame('puff azul marinho, puff azul', PalavrasChaveService::ajustarModelo('puff azul marinho, puff azul, puff colorido', 120, '', $marinho));
+        // Ficha que diz estampado libera "estampado/colorido" mesmo com uma cor.
+        $estampa = new FatosDoProduto(cores: ['Azul'], ficha: [['Desenho do tecido', 'Estampa localizada']]);
+        $this->assertSame('puff estampado, puff colorido', PalavrasChaveService::ajustarModelo('puff estampado, puff colorido', 120, '', $estampa));
+        // Sem cor conhecida, nenhum termo com cor; plural e feminino contam ("pretas").
+        $semCor = new FatosDoProduto(ficha: [['Material', 'Courino']]);
+        $this->assertSame('cadeira de couro', PalavrasChaveService::ajustarModelo('cadeiras pretas, cadeira de couro, cadeira off white', 120, '', $semCor));
+    }
+
+    public function test_publico_e_tamanho_so_entram_quando_os_fatos_confirmam(): void
+    {
+        $infantil = new FatosDoProduto(cores: ['Azul'], publico: [['Idade', 'Crianças']]);
+        $this->assertSame('puff infantil, puff para crianca', PalavrasChaveService::ajustarModelo('puff infantil, puff para crianca, puff adulto, puff bebe', 120, '', $infantil));
+
+        // "Bebês" confirma "infantil"; "Sem gênero infantil" também.
+        $bebe = new FatosDoProduto(publico: [['Gênero', 'Bebês']]);
+        $this->assertSame('body bebe, body infantil', PalavrasChaveService::ajustarModelo('body bebe, body infantil, body adulto', 120, '', $bebe));
+
+        // Tamanho: a ficha com "Grande" confirma "grande"; a medida em gramas NÃO confirma "g".
+        $grande = new FatosDoProduto(ficha: [['Tamanho', 'Grande']], medidas: [['Peso', '500 g']]);
+        $this->assertSame('puff grande', PalavrasChaveService::ajustarModelo('puff grande, puff gigante, puff g, puff mini', 120, '', $grande));
+
+        // O nome do produto confirma: "Mini Puff" aceita "mini"; "Cadeira Gamer" aceita "gamer".
+        $this->assertSame('mini puff redondo', PalavrasChaveService::ajustarModelo('mini puff redondo', 120, '', new FatosDoProduto(produto: 'Mini Puff')));
+        $this->assertSame('cadeira gamer reclinavel', PalavrasChaveService::ajustarModelo('cadeira gamer reclinavel, cadeira infantil', 120, '', new FatosDoProduto(produto: 'Cadeira Gamer')));
+        // Palavra de cor que é o próprio produto não é cor: "Taça Vinho".
+        $this->assertSame('taca vinho tinto', PalavrasChaveService::ajustarModelo('taca vinho tinto', 120, '', new FatosDoProduto(produto: 'Taça Vinho')));
+    }
+
+    public function test_bloco_de_fatos_do_prompt_traz_cores_ficha_medidas_e_publico(): void
+    {
+        $p = (new FatosDoProduto(cores: ['Azul'], ficha: [['Material do estofamento', 'Courino']], medidas: [['Diâmetro', '50 cm']]))->paraPrompt();
+        $this->assertStringContainsString('- Cores do anúncio: Azul (uma cor só)', $p);
+        $this->assertStringContainsString('Material do estofamento: Courino', $p);
+        $this->assertStringContainsString('Diâmetro: 50 cm', $p);
+        $this->assertStringContainsString('Público/idade: não informado (não cite público)', $p);
+
+        $vazio = (new FatosDoProduto)->paraPrompt();
+        $this->assertStringContainsString('não informadas (não use nenhum termo com cor)', $vazio);
+        $this->assertStringContainsString('Medidas: não informadas (não cite tamanho)', $vazio);
     }
 
     public function test_titulo_tira_caracteres_especiais_e_corta_na_palavra(): void
