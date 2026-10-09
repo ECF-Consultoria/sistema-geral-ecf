@@ -527,6 +527,8 @@ class PreparoIaDoRascunhoService
             'atributos' => $atributos,
             'cores' => $cores,
             'cliente' => $r->produto !== null ? $this->leitor->descricaoDoCliente($r->produto) : null,
+            // O Modelo que o cliente gravou no Portal antes de o campo sair da ficha: é fato para a IA.
+            'modelo_do_cliente' => $r->produto !== null ? $this->leitor->modeloDoCliente($r->produto) : null,
         ], JSON_UNESCAPED_UNICODE));
     }
 

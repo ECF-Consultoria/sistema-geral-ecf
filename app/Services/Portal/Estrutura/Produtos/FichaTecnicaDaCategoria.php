@@ -95,6 +95,13 @@ class FichaTecnicaDaCategoria
         AtributoClassificado::SECAO_AVANCADO,
     ];
 
+    /**
+     * O Modelo NÃO é do cliente (decisão do usuário, 09/10/2026): quem o preenche é a IA no editor
+     * interno, com os termos mais buscados — nem quando a categoria o exige ele aparece na ficha. O
+     * que o cliente já gravou antes fica guardado e vira só um fato para a IA.
+     */
+    public const ID_MODELO = 'MODEL';
+
     /** Atributos que a ficha já cobre em outro lugar (código do produto, volumes) ou que são de grade. */
     private const IDS_FORA = [
         'SELLER_SKU', 'CATALOG_PRODUCT_ID', 'SIZE_GRID_ID',
@@ -394,7 +401,7 @@ class FichaTecnicaDaCategoria
         $id = trim((string) ($atributo['id'] ?? ''));
         $nome = trim((string) ($atributo['name'] ?? ''));
 
-        if ($id === '' || $nome === '' || in_array($id, self::IDS_FORA, true) || str_contains($id, 'GRID')) {
+        if ($id === '' || $nome === '' || $id === self::ID_MODELO || in_array($id, self::IDS_FORA, true) || str_contains($id, 'GRID')) {
             return null;
         }
 

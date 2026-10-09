@@ -173,13 +173,13 @@ class FichaTecnicaDaCategoriaTest extends TestCase
             ['id' => 'FABRIC_DESIGN', 'name' => 'Desenho do tecido', 'value_type' => 'string', 'tags' => [],
                 'values' => [['id' => '10', 'name' => 'Liso'], ['id' => '11', 'name' => 'Listras']]],
             // Sem opção nenhuma, segue texto livre.
-            ['id' => 'MODEL', 'name' => 'Modelo', 'value_type' => 'string', 'tags' => []],
+            ['id' => 'LINE', 'name' => 'Linha', 'value_type' => 'string', 'tags' => []],
         ]);
 
         $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'SHAPE')['tipo']);
         $this->assertSame([['id' => '1', 'nome' => 'Quadrada'], ['id' => '2', 'nome' => 'Redonda']], self::campo($grupos, 'SHAPE')['valores']);
         $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'FABRIC_DESIGN')['tipo']);
-        $this->assertSame(F::TIPO_TEXTO, self::campo($grupos, 'MODEL')['tipo'], 'sem opção, texto livre');
+        $this->assertSame(F::TIPO_TEXTO, self::campo($grupos, 'LINE')['tipo'], 'sem opção, texto livre');
     }
 
     public function test_numero_e_sim_nao_com_opcoes_mantem_o_proprio_controle(): void
@@ -287,19 +287,24 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         };
         $definicao = F::daAtributos(self::atributosDaCadeira());
 
+        // A ÚNICA diferença de propósito: o Modelo é do editor (a IA o preenche), nunca da ficha do
+        // cliente — nem aqui, onde a cadeira o exige (decisão do usuário, 09/10/2026).
+        $semModelo = fn (array $ids) => array_values(array_diff($ids, [F::ID_MODELO]));
+
         // Produto que varia por cor (o caso da cadeira de escritório).
         [$editorPorCor] = $doEditor(['COLOR']);
+        $this->assertContains(F::ID_MODELO, $editorPorCor);
         $porCor = array_keys(F::camposPorId(F::doProduto($definicao, ['cor'])));
         sort($porCor);
-        $this->assertSame($editorPorCor, $porCor);
-        $this->assertCount(44, $porCor, '28 de antes + 15 escondidos editáveis + o estofamento');
+        $this->assertSame($semModelo($editorPorCor), $porCor);
+        $this->assertCount(43, $porCor, '28 de antes + 15 escondidos editáveis + o estofamento − o Modelo');
 
         // Produto sem eixo: a cor volta a ser atributo do produto, dos dois lados.
         [$editorSemEixo, $classificado] = $doEditor([]);
         $campos = F::camposPorId($definicao);
         $semEixo = array_keys($campos);
         sort($semEixo);
-        $this->assertSame($editorSemEixo, $semEixo);
+        $this->assertSame($semModelo($editorSemEixo), $semEixo);
         $this->assertSame(['COLOR'], array_values(array_diff($semEixo, $porCor)));
 
         // E o "Não se aplica" é o mesmo dos dois lados.
@@ -486,5 +491,20 @@ class FichaTecnicaDaCategoriaTest extends TestCase
 
         $this->assertArrayNotHasKey('VOLUME_FECHADO', $campos, 'texto livre ali gravaria valor que não publica');
         $this->assertSame(F::TIPO_TEXTO, $campos['VOLUME_LIVRE']['tipo'], 'sem opção segura, onde o editor aceita texto, sobra o texto');
+    }
+
+    public function test_modelo_nunca_entra_na_ficha_do_cliente_mesmo_obrigatorio(): void
+    {
+        // Na cadeira real (MLB193945) o Modelo é `required`; mesmo assim fica fora.
+        $cadeira = F::daAtributos(self::atributosDaCadeira());
+        $this->assertArrayNotHasKey(F::ID_MODELO, F::camposPorId($cadeira));
+        $this->assertArrayNotHasKey(F::ID_MODELO, F::camposPorId(F::doProduto($cadeira, [])));
+
+        // Em qualquer categoria, com ou sem opções.
+        $grupos = F::daAtributos([
+            ['id' => 'MODEL', 'name' => 'Modelo', 'value_type' => 'string', 'tags' => ['required' => true]],
+            ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true]],
+        ]);
+        $this->assertSame(['BRAND'], array_keys(F::camposPorId($grupos)));
     }
 }

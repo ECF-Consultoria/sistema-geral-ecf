@@ -4,12 +4,14 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoGeracao;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\EstruturaTipoPar;
 use App\Models\EstruturaTipoProduto;
 use App\Models\PubProduto;
 use App\Services\Portal\Estrutura\Geracao\TipoDoProduto;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
 use Illuminate\Support\Collection;
@@ -119,6 +121,52 @@ class PortalProdutoLeitor
         $disco = Storage::disk(VariacaoImagensService::DISCO);
 
         return $disco->exists($caminho) ? $disco->get($caminho) : null;
+    }
+
+    /**
+     * O "Modelo" que o cliente gravou no Portal ANTES de o campo sair da ficha (decisão do usuário,
+     * 09/10/2026: o Modelo é da IA). A linha fica no Portal (é dado do cliente), mas não vai mais para
+     * o rascunho como MODEL — vira FATO para a IA (`FatosDoProduto`). Grupo/simples -> o do produto;
+     * composta -> "Nome: modelo" de cada componente que tem. Nada -> null.
+     */
+    public function modeloDoCliente(PubProduto $p): ?string
+    {
+        $empresaId = (int) $p->company_id;
+        $produtos = []; // id => nome
+        if ($p->estrutura_produto_id !== null) {
+            $produto = $this->produtoDoGrupo($p, false);
+            if ($produto !== null) {
+                $produtos[(int) $produto->id] = (string) $produto->nome;
+            }
+        } elseif ($p->oferta_id !== null) {
+            $oferta = EstruturaOferta::query()->where('company_id', $empresaId)
+                ->with(['variacao.produto', 'componentes.componente.variacao.produto'])->find($p->oferta_id);
+            $variacoes = $oferta === null ? [] : ($oferta->fase === EstruturaOferta::FASE_SIMPLES
+                ? [$oferta->variacao]
+                : $oferta->componentes->map(fn ($c) => (int) $c->componente?->company_id === $empresaId ? $c->componente?->variacao : null)->all());
+            foreach ($variacoes as $v) {
+                $produto = $v?->produto;
+                if ($produto !== null && (int) $produto->company_id === $empresaId) {
+                    $produtos[(int) $produto->id] = (string) $produto->nome;
+                }
+            }
+        }
+        if ($produtos === []) {
+            return null;
+        }
+
+        $valores = EstruturaProdutoAtributo::query()->where('company_id', $empresaId)
+            ->whereIn('produto_id', array_keys($produtos))->where('atributo_id', FichaTecnicaDaCategoria::ID_MODELO)
+            ->pluck('valor', 'produto_id')
+            ->map(fn ($v) => trim((string) $v))->filter(fn ($v) => $v !== '');
+        if ($valores->isEmpty()) {
+            return null;
+        }
+        if (count($produtos) === 1) {
+            return (string) $valores->first();
+        }
+
+        return $valores->map(fn ($v, $id) => "{$produtos[$id]}: {$v}")->implode('; ');
     }
 
     /**

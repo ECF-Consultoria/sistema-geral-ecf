@@ -49,6 +49,7 @@ class PalavrasChaveService
         private TermosMaisBuscadosService $trends,
         private CategorySchemaRepository $schemas,
         private AnaliseAnuncioService $ia,
+        private PortalProdutoLeitor $leitor,
     ) {}
 
     /**
@@ -278,6 +279,9 @@ class PalavrasChaveService
         return $filtrado;
     }
 
+    /** O rótulo do fato com o Modelo que o cliente gravou no Portal antes de o campo sair da ficha. */
+    public const FATO_MODELO_DO_CLIENTE = 'Nome/modelo informado pelo cliente';
+
     /** Atributos que não descrevem o produto (identificação, embalagem, o próprio Modelo) ou que viram cor. */
     private const FORA_DOS_FATOS = ['MODEL', 'GTIN', 'SELLER_SKU', 'EMPTY_GTIN_REASON', 'SHIPMENT_PACKING', 'VERTICAL_TAGS', 'ITEM_CONDITION', 'FILTRABLE_COLOR'];
 
@@ -329,6 +333,13 @@ class PalavrasChaveService
             } elseif (count($ficha) < self::MAX_LINHAS_FICHA) {
                 $ficha[] = [$nome, $valor];
             }
+        }
+
+        // O Modelo saiu da ficha do Portal (09/10/2026): o que o cliente escreveu ali antes não é o valor
+        // do campo, mas é um FATO sobre o produto — vai para a IA, sem link nem e-mail.
+        $doCliente = $r->produto !== null ? $this->leitor->modeloDoCliente($r->produto) : null;
+        if ($doCliente !== null && trim($doCliente) !== '') {
+            array_unshift($ficha, [self::FATO_MODELO_DO_CLIENTE, mb_substr(DescricaoIaService::semContato($doCliente, telefones: false), 0, 120)]);
         }
 
         return new FatosDoProduto(

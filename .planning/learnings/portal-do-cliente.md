@@ -1285,6 +1285,9 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   inteiros e o cliente nunca via 16 campos que a equipe preenchia à mão (MLB193945). Teste
   `test_na_cadeira_a_ficha_tem_exatamente_os_atributos_de_produto_que_o_editor_deixa_editar` compara as duas listas
   com o schema COMPLETO (com `technical_specs`); se ele quebrar, uma das duas regras mudou sozinha.
+- **Exceção à régua: o Modelo (`MODEL`) NUNCA aparece na ficha do cliente** (09/10/2026, decisão do usuário: a IA o
+  gera no Publicador), mesmo obrigatório. O valor que o cliente gravou antes fica no banco e vira fato para a IA. Ver
+  [[publicador-ml]] §16.
 - **O classificador recebe só id/nome/tags/value_type** (sem `technical_specs`): sem grupo `MAIN` tudo cai em FICHA, o
   que para o Portal dá no mesmo (PRINCIPAIS e FICHA entram juntos). Opções/unidades continuam lidas pelo Portal, com o
   filtro de sigilo.

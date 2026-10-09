@@ -622,4 +622,49 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->assertFalse(MemoriaDoPreparoIa::podeEscrever('Título da IA editado', 'Título da IA'), 'a equipe mexeu');
         $this->assertFalse(MemoriaDoPreparoIa::podeEscrever('Qualquer', null), 'preenchido sem memória = da equipe');
     }
+
+    // ═══ O Modelo é da IA (decisão do usuário, 09/10/2026) ═══════════════════
+
+    public function test_modelo_do_cliente_vira_fato_e_o_modelo_antigo_do_portal_da_lugar_ao_da_ia(): void
+    {
+        $p = $this->produtoDoPortal(completo: false);
+        // O cliente gravou o Modelo antes de ele sair da ficha: a linha fica (é dado dele).
+        $this->noPortal($p, 'MODEL', 'Puff Redondo Lia');
+        $this->salvarERodar($p);
+        $r = $this->rascunhoDo($p);
+        $this->assertNull($this->modelo($r), 'o Sincronizar não leva mais o Modelo do Portal');
+
+        // Rascunho de antes da decisão: o Sincronizar antigo tinha gravado o MODEL com origem portal.
+        (new RascunhoRepository())->mesclarAtributos($r->fresh(), ['MODEL' => ['value_name' => 'Puff Redondo Lia', 'origem' => 'portal']]);
+
+        $this->preencherFicha($p);
+        [, $ia] = $this->salvarERodar($p);
+
+        $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
+        $modelo = $this->modelo($r);
+        $this->assertSame('ia', $modelo['origem'], 'o MODEL do Portal saiu e a IA gerou o dela');
+        $this->assertSame('cadeira home office, cadeira para escritorio em casa', $modelo['value_name']);
+        $this->assertSame('Puff Redondo Lia', EstruturaProdutoAtributo::where('produto_id', $p->id)->where('atributo_id', 'MODEL')->value('valor'),
+            'a linha do cliente no Portal não é apagada');
+        // O que o cliente escreveu entra como FATO nos dois prompts.
+        $this->assertStringContainsString('Nome/modelo informado pelo cliente: Puff Redondo Lia', $this->chamadas['titulo'][0][5]);
+        $this->assertStringContainsString('Nome/modelo informado pelo cliente: Puff Redondo Lia', $this->chamadas['modelo'][0][5]);
+    }
+
+    public function test_modelo_da_equipe_nao_sai_no_sincronizar(): void
+    {
+        $p = $this->produtoDoPortal(completo: false);
+        $this->salvarERodar($p);
+        $r = $this->rascunhoDo($p);
+        (new RascunhoRepository())->mesclarAtributos($r->fresh(), ['MODEL' => ['value_name' => 'Linha Executiva', 'origem' => 'user']]);
+
+        $this->preencherFicha($p);
+        [, $ia] = $this->salvarERodar($p);
+
+        $this->assertSame(['escrito', 'pulado', 'escrito'], $ia, 'Modelo da equipe: nada a gerar');
+        $this->assertSame(['value_name' => 'Linha Executiva', 'origem' => 'user'],
+            array_intersect_key($this->modelo($r), array_flip(['value_name', 'origem'])));
+        $this->assertCount(0, $this->chamadas['modelo']);
+    }
 }
+

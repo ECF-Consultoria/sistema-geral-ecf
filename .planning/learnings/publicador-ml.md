@@ -739,8 +739,7 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   `titulo_gold_special`, `titulo_gold_pro`, `modelo`, `descricao`. Escreve só no campo VAZIO ou que ainda tem
   EXATAMENTE esse valor (`podeEscrever`). Título planejado na aba Anúncios (efetivo) conta como preenchido; MODEL com
   `value_id` (opção/N/A) também. **Atenção:** se o cliente preencher o Modelo no Portal (obrigatório na cadeira), o
-  Sincronizar o grava `origem=portal` e a IA NUNCA o substitui — é a regra do usuário ("vazio ou o último que ela
-  escreveu"). Perder a memória (outra escrita do `step_state` que a pisou — `ConferenciaService` e `lerContaSeVencida`
+  Sincronizar o grava `origem=portal` e a IA NUNCA o substitui — era a regra até a decisão abaixo. Perder a memória (outra escrita do `step_state` que a pisou — `ConferenciaService` e `lerContaSeVencida`
   regravam o `step_state` inteiro de um modelo lido antes) é SEGURO: o campo passa a contar como da equipe. Prova de
   mutação: `podeEscrever` sempre true derruba 3 testes; só-vazio derruba 5 (`PreparoIaAoSalvarNoPortalTest`).
 - **Hash dos fatos em `step_state.ia_preparo`** (nome, categoria, atributos do rascunho fora MODEL/GTIN/SELLER_SKU/
@@ -768,4 +767,12 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
 - **Custo**: `PUBLICADOR_PREPARO_IA_ATIVO=false` desliga TUDO (nem sincroniza); `PUBLICADOR_PREPARO_IA_LIMITE_DIARIO`
   (60) conta PREPARAÇÕES (um produto = título + Modelo + descrição, ~4 chamadas com a análise MAG T8) por empresa por
   dia, em cache; passou, só sincroniza e loga `[Publicador] Preparo pela IA: limite diário…`.
+- **O Modelo saiu do Portal; a IA gera (decisão do usuário, 09/10/2026).** `FichaTecnicaDaCategoria::ID_MODELO`
+  nunca entra na ficha do cliente, nem onde a categoria o exige (cadeira MLB193945); o PUT ignora `MODEL`. O que o
+  cliente gravou antes FICA em `estrutura_produto_atributos` (o salvar da ficha não o apaga e `salvos()` não o devolve à
+  tela) e entra só como FATO: `PortalProdutoLeitor::modeloDoCliente` → linha "Nome/modelo informado pelo cliente: …"
+  no bloco FATOS do título e do Modelo, e no hash. O Sincronizar não leva mais `MODEL` (`daFicha`) e REMOVE o `MODEL`
+  `origem=portal` de rascunho antigo (para a IA poder gerá-lo); `user`/`ia` nunca. Única diferença de propósito entre
+  a ficha do Portal e o editor: o teste da régua (`test_na_cadeira_a_ficha_tem_exatamente…`) tira o Modelo do lado
+  do editor (43 campos, não 44).
 - **Deploy**: sem migration. `queue:restart` (Jobs novos na fila `default`); `npm run build` (selo + sinal).

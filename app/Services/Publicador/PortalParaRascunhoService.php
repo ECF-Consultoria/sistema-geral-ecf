@@ -6,6 +6,7 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
@@ -467,6 +468,13 @@ class PortalParaRascunhoService
                 }
             }
 
+            // O Modelo é da IA (09/10/2026): o MODEL que um Sincronizar antigo trouxe do Portal sai, para a
+            // IA poder gerá-lo. `user`/`ia`/qualquer outra origem nunca é tocada.
+            if (self::doPortal($snap->atributos[FichaTecnicaDaCategoria::ID_MODELO] ?? null)) {
+                $remover[] = FichaTecnicaDaCategoria::ID_MODELO;
+                $resumo['campos_atualizados']++;
+            }
+
             if ($divergem) {
                 $resumo['avisos'][] = 'As cores têm pacotes diferentes no Portal; foi usado o de maior peso. Confira o card de envio.';
             }
@@ -499,10 +507,11 @@ class PortalParaRascunhoService
         });
     }
 
-    /** O atributo é da ficha que o Portal alimenta? (de produto, não é o eixo, não é o pacote) */
+    /** O atributo é da ficha que o Portal alimenta? (de produto, não é o eixo, não é o pacote, não é o Modelo — da IA) */
     private function daFicha(?AtributoClassificado $def, string $id, ?string $chaveEixo): bool
     {
         return $def !== null && $def->papel === AtributoClassificado::PRODUCT && $id !== $chaveEixo
+            && $id !== FichaTecnicaDaCategoria::ID_MODELO
             && $def->secao !== AtributoClassificado::SECAO_EMBALAGEM;
     }
 
