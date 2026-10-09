@@ -12,6 +12,7 @@ use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioCriativo;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlbEmpresa;
+use App\Models\MlCategoriaSchema;
 use App\Models\MlToken;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
@@ -589,7 +590,7 @@ class TelaDoProdutoTest extends TestCase
         $base = $this->base($empresa, $company);
         $r = $this->rascunho($base, PubRascunho::PUBLISHED);
         $r->update(['categoria_id' => 'MLB193945']);
-        \App\Models\MlCategoriaSchema::create([
+        MlCategoriaSchema::create([
             'category_id' => 'MLB193945',
             'categoria' => ['id' => 'MLB193945', 'name' => 'Cadeiras de Escritório', 'path_from_root' => [
                 ['id' => 'MLB1574', 'name' => 'Casa, Móveis e Decoração'],
