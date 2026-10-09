@@ -46,10 +46,21 @@ final class PayloadBuilderUserProducts
         $doProduto = self::atributosDoProduto($r, $schema, $eixos);
         $condicao = self::condicao($r, $schema);
 
+        // Combo da Fase 2: a MESMA capa nos dois tipos (decisão do usuário em
+        // 2026-10-09). A capa do combo é a imagem que mostra as N unidades;
+        // rotacionar o Premium (D6/CAPA-01) o jogaria para a 2ª foto — herdada do
+        // produto base, mostrando UMA unidade —, e um anúncio de N unidades
+        // abrindo com a foto de 1 é pior que dois anúncios com a capa repetida.
+        // `indiceParaCapa = 0` para todo alvo é exatamente "não rotaciona", sem
+        // precisar de ramo dentro do `OrdemCapaPorAlvo`, que segue puro e intacto.
+        // Na Fase 1 (`unidadesPorOferta = 1`) nada muda: o CAPA-01 vale inteiro.
+        $combo = $r->unidadesPorOferta >= 2;
+
         $itens = [];
         foreach ($r->alvosAtivos() as $indiceAlvo => $alvo) {
+            $indiceParaCapa = $combo ? 0 : $indiceAlvo;
             foreach ($r->variantesAtivas() as $v) {
-                $daVariante = OrdemCapaPorAlvo::aplicar($fotos[$v->chave] ?? [], $indiceAlvo);
+                $daVariante = OrdemCapaPorAlvo::aplicar($fotos[$v->chave] ?? [], $indiceParaCapa);
                 $pendentes = array_values(array_filter($daVariante, fn ($id) => ! isset($fotosMl[$id])));
 
                 $payload = array_filter([

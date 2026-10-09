@@ -336,6 +336,34 @@ class MontadorDePlanoTest extends TestCase
         $this->assertNotSame($classico['pictures'][0], $premium['pictures'][0]);
     }
 
+    /**
+     * Fase 2 (combo), decisão do usuário em 2026-10-09: *"use a mesma foto tanto
+     * para clássico quanto para o premium, nesse caso pode quebrar aquela regra"*.
+     *
+     * A capa do combo é a imagem que mostra as N unidades. Rotacionar o Premium
+     * (D6/CAPA-01) o jogaria para a 2ª foto — herdada do produto base, mostrando
+     * UMA unidade —, o que é pior do que repetir a capa: o anúncio de 2 unidades
+     * abriria com a foto de 1. Então, e SÓ no combo, a rotação não se aplica.
+     *
+     * O CAPA-01 segue valendo inteiro na Fase 1 (`unidadesPorOferta = 1`), provado
+     * pelo teste logo acima — este aqui não o afrouxa, delimita.
+     */
+    public function test_combo_usa_a_mesma_capa_no_classico_e_no_premium(): void
+    {
+        $plano = $this->montar(self::rascunhoSimples(
+            [new Alvo('gold_special', self::TITULO_CLASSICO), new Alvo('gold_pro', self::TITULO_PREMIUM)],
+            ['unidadesPorOferta' => 2],
+        ));
+
+        [$classico, $premium] = array_map(fn ($i) => $i->payload, $plano->itens);
+        $this->assertSame(['id' => 'ML-A1'], $classico['pictures'][0], 'a capa do combo abre o Clássico');
+        $this->assertSame(['id' => 'ML-A1'], $premium['pictures'][0], 'e a MESMA capa abre o Premium');
+
+        // Nada além da capa muda: a lista continua inteira e na mesma ordem nos dois.
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($classico['pictures'])->pluck('id')->all());
+        $this->assertSame(['ML-A1', 'ML-A2'], collect($premium['pictures'])->pluck('id')->all());
+    }
+
     /** D6/CAPA-02: mesma lista de fotos aprovadas nos dois alvos — nunca duplica, nunca descarta. */
     public function test_capa02_mesma_lista_de_fotos_sem_duplicar_nem_descartar(): void
     {

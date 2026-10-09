@@ -145,10 +145,28 @@ class VinculoDeKitTest extends TestCase
         return self::BASE."/empresas/empresa-{$e->id}/produtos/{$p->id}/vinculo".$sufixo;
     }
 
-    /** O rascunho inteiro serializado — o "byte a byte" do critério de aceite da §9. */
+    /**
+     * O rascunho inteiro serializado — o "byte a byte" do critério de aceite da §9.
+     *
+     * ⚠️ `unidadesPorOferta` fica FORA da assinatura, e isso não afrouxa nada: ele
+     * não é dado do rascunho, é a leitura de `pub_produtos.quantidade_kit` que o
+     * `snapshot()` passou a expor (09/10/2026, para a capa do combo não rotacionar
+     * entre Clássico e Premium). Vincular GRAVA essa coluna — é o que a §6 manda —
+     * então o valor muda de 1 para 2 por definição, e exigi-lo igual seria exigir
+     * que vincular não fizesse o seu trabalho. O que a §9 protege continua
+     * protegido ao pé da letra: vincular não escreve NADA nas tabelas do rascunho,
+     * e qualquer deriva em categoria, atributos, eixos, variantes, estoque, alvos,
+     * fotos, descrição, envio ou garantia ainda reprova aqui.
+     *
+     * A mudança de 1 para 2 é afirmada à parte, no teste do vincular, para não
+     * virar omissão silenciosa.
+     */
     private function assinaturaDoRascunho(PubRascunho $r): string
     {
-        return (string) json_encode(app(RascunhoRepository::class)->snapshot($r->fresh()));
+        $s = (array) app(RascunhoRepository::class)->snapshot($r->fresh());
+        unset($s['unidadesPorOferta']);
+
+        return (string) json_encode($s);
     }
 
     /** @return list<array> as linhas de publicação do rascunho, com MLB e payload */
@@ -250,6 +268,14 @@ class VinculoDeKitTest extends TestCase
         $this->assertEquals($antesDoRascunhoRow, DB::table('pub_rascunhos')->where('id', $rascunhoDoCombo->id)->first(), 'nem o updated_at do rascunho é tocado');
         $this->assertSame(11, (int) $rascunhoDoCombo->variantes()->first()->estoque, 'o estoque do combo continua o dele');
         Http::assertNotSent(fn ($r) => str_contains($r->url(), 'mercadolibre'));
+
+        // A ÚNICA coisa que a assinatura deixa de fora, afirmada aqui: o combo
+        // passou a ser lido como oferta de 2 unidades. É consequência direta das
+        // três colunas que vincular grava — não é escrita no rascunho — e é o que
+        // faz a capa dele parar de rotacionar entre Clássico e Premium se ele for
+        // republicado algum dia. O anúncio que já está no ar NÃO é atualizado por
+        // isso (§7 da ETAPA-3: atualizar o ML não é desta etapa).
+        $this->assertSame(2, app(RascunhoRepository::class)->snapshot($rascunhoDoCombo->fresh())->unidadesPorOferta);
     }
 
     public function test_vincular_a_base_de_outra_conta_da_404_e_nao_grava(): void

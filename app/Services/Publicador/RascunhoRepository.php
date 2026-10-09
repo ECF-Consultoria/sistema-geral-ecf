@@ -111,6 +111,11 @@ class RascunhoRepository
             descricao: $r->descricao,
             envio: $r->envio ?? ['modo' => 'me2', 'frete_gratis' => false, 'retirada' => false],
             garantia: $r->garantia,
+            // `loadMissing`, nunca `load`: o `snapshot()` roda em quase toda leitura
+            // do módulo e o produto costuma já vir carregado por quem chamou —
+            // `load()` refaria a consulta em todas elas. Produto nulo é caso real
+            // (D27: rascunho solto de oferta apagada) e vale 1 unidade.
+            unidadesPorOferta: max(1, (int) ($r->loadMissing('produto')->produto->quantidade_kit ?? 1)),
         );
     }
 

@@ -19,6 +19,11 @@ use App\Support\Publicador\Variacao\Variante;
  * - `imagens`: atribuições `{imagem, grupo, posicao}` (ver `ResolvedorGruposImagem`).
  * - `envio`: `{modo, frete_gratis, retirada, logistic_type?}`.
  * - `garantia`: `{tipo: value_id de WARRANTY_TYPE, tempo: ?int, unidade: ?string}` ou nula.
+ * - `unidadesPorOferta`: quantas unidades do MESMO produto a oferta contém — `1`
+ *   na Fase 1, `pub_produtos.quantidade_kit` (≥ 2) no combo da Fase 2. É FATO do
+ *   cadastro, NUNCA lido do título (título é texto que uma pessoa edita; a
+ *   quantidade é dado estruturado). Quem consome hoje é a montagem do payload,
+ *   para a capa do combo não rotacionar entre Clássico e Premium.
  */
 final class RascunhoSnapshot
 {
@@ -43,6 +48,7 @@ final class RascunhoSnapshot
         public readonly ?string $descricao = null,
         public readonly array $envio = ['modo' => 'me2', 'frete_gratis' => false, 'retirada' => false],
         public readonly ?array $garantia = null,
+        public readonly int $unidadesPorOferta = 1,
     ) {}
 
     /**
@@ -81,9 +87,15 @@ final class RascunhoSnapshot
             return $v->comDados([...$v->dados, 'precos' => $proprios]);
         }, $this->variantes);
 
+        // ⚠️ Argumentos POSICIONAIS: todo campo novo do construtor precisa ser
+        // repetido aqui, senão volta ao default silenciosamente — e é por este
+        // caminho que a PUBLICAÇÃO passa (`comEfetivos()` é o que a conferência e
+        // o payload usam). `unidadesPorOferta` esquecido aqui faria o combo
+        // publicar como Fase 1 sem nenhum erro aparecer.
         return new self(
             $this->categoriaId, $this->condicao, $this->atributos, $this->eixos, $variantes, $alvos, $this->imagens,
             $this->fotosPorVariante, $this->incluirGeral, $this->descricao, $this->envio, $this->garantia,
+            $this->unidadesPorOferta,
         );
     }
 
