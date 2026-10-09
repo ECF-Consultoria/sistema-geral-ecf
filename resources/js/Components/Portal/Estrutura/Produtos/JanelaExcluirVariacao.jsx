@@ -61,7 +61,7 @@ export default function JanelaExcluirVariacao({ linha, ultima = false, novasNaoS
                     <>
                         {anuncios > 0 ? (
                             <p>
-                                Esta variação tem {anuncios} {anuncios === 1 ? 'anúncio cadastrado' : 'anúncios cadastrados'}. Eles voltam para a área de espera e o item do Publicador fica solto.
+                                Esta variação já está em uso pela equipe da ECF. Se excluir, a equipe precisa revisar o que estava ligado a ela.
                                 {oferta && <> A oferta {oferta.sku} também será excluída.</>}
                             </p>
                         ) : (

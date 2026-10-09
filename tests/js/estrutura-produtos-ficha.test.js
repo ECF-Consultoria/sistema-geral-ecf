@@ -82,7 +82,7 @@ test('Peças: foto sem upload (D-29), selo de logística, obrigatório e caminho
 });
 
 test('Dados gerais: nome, família, ambientes e categoria nos pickers do projeto', () => {
-    for (const t of ['Nome do produto', 'Família', 'Ambientes', 'Categoria do Mercado Livre']) {
+    for (const t of ['Nome do produto', 'Família', 'Ambientes', 'Categoria']) {
         assert.ok(dados.includes(t), `faltou: ${t}`);
     }
     assert.equal(contar(dados, /<Obrigatorio/g), 1, 'só o nome do produto é obrigatório aqui');

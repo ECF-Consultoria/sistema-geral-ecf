@@ -119,7 +119,7 @@ test('nenhuma conta de logística ou frete no JS: a conta é do servidor', () =>
 test('a janela de exclusão tem os textos do contrato de tela (D-22)', () => {
     for (const t of [
         'Excluir a variação',
-        'Eles voltam para a área de espera e o item do Publicador fica solto',
+        'Esta variação já está em uso pela equipe da ECF', // texto neutro desde 09/10 (sigilo)
         'É a última variação',
         'Tire-a dessas ofertas antes',
         'Excluir variação',

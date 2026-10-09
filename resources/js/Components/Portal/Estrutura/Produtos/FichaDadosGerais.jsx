@@ -127,7 +127,7 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                 </div>
 
                 <div className="mt-3">
-                    <RotuloComExplicacao como="span" className={ROTULO} explicacao={explicacoes.categoria} nome="Categoria">Categoria do Mercado Livre</RotuloComExplicacao>
+                    <RotuloComExplicacao como="span" className={ROTULO} explicacao={explicacoes.categoria} nome="Categoria">Categoria</RotuloComExplicacao>
                     <Popover.Root open={escolhendo === 'categoria'} onOpenChange={aoMudar('categoria')}>
                         {/* "Limpar categoria" é irmão do gatilho, posto sobre o lugar que o gatilho guarda para
                             ele (borda 1 + px-3 12 + seta 16 + folga 8 = 37 px da direita) — revisão FE-IN-09. */}
