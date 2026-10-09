@@ -174,6 +174,28 @@ class PublicacaoService
      * Os erros do ML de cada item que falhou, no campo certo da tela (`09` §3,
      * TC-80) — mapeados sobre o payload QUE FOI ENVIADO (N-17), guardado no item.
      *
+     * ⚠️ ESTE MÉTODO NÃO PODE LANÇAR, e é por isso que o `catch` é largo.
+     * `EditorRascunhoService::estado()` o chama para TODA publicação que não
+     * esteja `RUNNING`: uma exceção aqui derruba a tela INTEIRA do editor em 500
+     * — de um anúncio que pode estar no ar e correto — por causa de uma lista que
+     * é apenas informativa.
+     *
+     * `RegraViolada` sozinha não cobre o caminho: o `obter()` só a lança quando
+     * CONSEGUIU falar com o ML e as quatro fontes da categoria recusaram. Antes
+     * disso ele passa pelo app token (`ClienteMlPublicador::publico()` →
+     * `MlColetaService::getAppToken()`), que lança `\RuntimeException` quando o
+     * ML responde sem `access_token` ou com erro HTTP — e escapava. Mesmo molde,
+     * e mesma razão, do `PreviaDaFaseService::maxTitulo()`.
+     *
+     * `$schema = null` NÃO é um estado novo: é exatamente o que o `catch` de
+     * antes já produzia, e `MapeadorErrosMl::problema()` o recebe sem reclamar.
+     * Sem schema a causa do ML continua chegando à tela, só não traduzida para o
+     * nome do atributo em português. Não aperte este `catch` de volta.
+     *
+     * Isto vale SÓ para esta leitura. `iniciar()` e `executarFatia()` precisam
+     * falhar alto quando a conta não responde — é o que grava `FAILED` com motivo
+     * (TC-85/TC-88).
+     *
      * @return list<Problema>
      */
     public function problemas(PubPublicacao $p): array
@@ -182,7 +204,8 @@ class PublicacaoService
         try {
             $eixos = $r->eixos()->whereNotNull('attribute_id')->pluck('attribute_id')->all();
             $schema = (new ClassificadorAtributos())->classificar($this->schemas->obter((string) $r->categoria_id), new ContextoClassificacao($r->condicao, $eixos));
-        } catch (RegraViolada) {
+        } catch (\Throwable $e) {
+            Log::warning('[Publicador] lista de problemas da publicação '.$p->id.' sem o schema de '.$r->categoria_id.': '.$e->getMessage());
             $schema = null;
         }
 
