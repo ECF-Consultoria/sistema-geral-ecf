@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { ChevronDown, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, Layers, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import BarraDaConta, { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
 import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
@@ -14,6 +14,15 @@ import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
 import LinhaDeProduto from '@/Components/Mlb/Publicador/LinhaDeProduto';
 import PainelDoProdutoLateral from '@/Components/Mlb/Publicador/PainelDoProdutoLateral';
+import PaginacaoDaLista, {
+    achatarFamilias,
+    chaveDaVista,
+    CHAVE_DAS_LINHAS,
+    familiasDasLinhas,
+    paginaDaVista,
+    paginar,
+    porPaginaSegura,
+} from '@/Components/Mlb/Publicador/PaginacaoDaLista';
 import {
     acaoPrincipal,
     CHAVE_DA_DENSIDADE,
@@ -91,6 +100,43 @@ const DENSIDADES_DA_TELA = [
     { chave: 'confortavel', rotulo: 'Confortável', titulo: 'Linhas de 64px' },
     { chave: 'compacto', rotulo: 'Compacto', titulo: 'Linhas de 52px' },
 ];
+
+// ─── Os três cards abaixo da tabela (quick 261009-t03, tela 03) ────────────
+// ⚠️ O PRIMEIRO card do mockup se chamava "Sincronização Contínua ERP Bling"
+// e afirmava que mudanças de estoque apareciam nas ofertas na hora. É FALSO:
+// este sistema não conversa com ERP nenhum, e a decisão 8 do handoff proíbe
+// afirmar sincronização que não existe. O card ficou, dizendo o que o
+// Sincronizar do Portal de fato faz — e dizendo, com todas as letras, que a
+// integração com ERP não existe.
+// Os outros dois descrevem o que a Etapa 3 (vínculo de kit) e a conferência
+// do rascunho realmente fazem hoje.
+const CARTOES_DO_RODAPE = [
+    {
+        chave: 'portal',
+        titulo: 'Sincronizar do Portal',
+        texto: 'Os produtos que o cliente cadastrou no Portal entram aqui quando alguém clica no botão Sincronizar do Portal, acima. Não existe integração com ERP: nada entra nem some sozinho.',
+        verde: false,
+    },
+    {
+        chave: 'kits',
+        titulo: 'Fase 2 e kits',
+        texto: 'Quando um produto parece ser kit de outro, a lista sugere o vínculo. Confirmado o vínculo, o kit vira uma fase do produto base e passa a aparecer recuado logo abaixo dele.',
+        verde: false,
+    },
+    {
+        chave: 'conferencia',
+        titulo: 'Conferência antes de publicar',
+        texto: 'Cada rascunho mostra quantos campos obrigatórios ainda faltam. O produto só fica Pronto quando não falta nenhum, e a publicação no Mercado Livre espera a conta ser liberada.',
+        verde: true,
+    },
+];
+
+/** O ícone de cada card, fora do objeto para o `.map()` nunca ler nada de fora do callback. */
+const ICONE_DO_CARTAO = {
+    portal: RefreshCw,
+    kits: Layers,
+    conferencia: ShieldCheck,
+};
 
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
@@ -279,6 +325,29 @@ function guardarDensidade(valor) {
 }
 
 /**
+ * O "linhas por página" guardado no navegador — mesmo par da densidade, com
+ * as duas pontas em `try/catch` pelo mesmo motivo: em janela privada o
+ * acessor `window.localStorage` LANÇA, não só o `getItem`.
+ * ⚠️ O que volta do `localStorage` é STRING; a whitelist de
+ * `porPaginaSegura()` trata disso.
+ */
+function linhasGuardadas() {
+    try {
+        return porPaginaSegura(window.localStorage.getItem(CHAVE_DAS_LINHAS));
+    } catch {
+        return porPaginaSegura(null);
+    }
+}
+
+function guardarLinhas(valor) {
+    try {
+        window.localStorage.setItem(CHAVE_DAS_LINHAS, String(valor));
+    } catch {
+        // Janela privada: a preferência simplesmente não persiste.
+    }
+}
+
+/**
  * O dropdown "Fase: Todas ▾" (§7 do layout v2) — as MESMAS três opções e o
  * mesmo `?fase=` dos chips antigos. Fecha com Esc e com clique fora.
  *
@@ -392,6 +461,16 @@ export default function Produtos({
     // Ordenação do CLIENTE; o default é Situação, com "precisa de ação" primeiro.
     const [ordem, setOrdem] = useState({ coluna: 'situacao', direcao: 1 });
     const [densidade, setDensidade] = useState(densidadeGuardada);
+    // ─── Paginação do CLIENTE (quick 261009-t03) ───
+    // O servidor manda a lista INTEIRA (`ProgramasPublicadorService` não tem
+    // `paginate` nem `limit`), então o corte é aqui, como a ordenação.
+    const [porPagina, setPorPagina] = useState(linhasGuardadas);
+    // ⚠️ A página NÃO é estado solto: ela vale para a VISTA (filtro + fase +
+    // busca + ordenação) em que foi escolhida. Mudou a vista, `paginaDaVista`
+    // devolve 1 — é isso que impede o beco sem saída de ficar na página 7 de
+    // um resultado que agora tem 2. Derivado no render, sem `useEffect`:
+    // effect zerando a página piscaria a página errada por um frame.
+    const [vista, setVista] = useState({ chave: '', pagina: 1 });
     // A largura do CONTEÚDO (não da janela): o card vive dentro do `<main>` e
     // da barra lateral, então `window.innerWidth` mentiria em 250px ou mais e
     // a grade larga voltaria a estourar o card (= a rolagem horizontal que
@@ -461,33 +540,37 @@ export default function Produtos({
         clearTimeout(esperaRealce.current);
     }, []);
 
-    // Filtro de situação + filtro de fase + busca, e o agrupamento em família
-    // (base com os kits recuados logo abaixo) — tudo numa função pura. Depois,
-    // a ordenação do cliente: ela reordena só as linhas de TOPO e os kits
-    // continuam logo abaixo do base deles.
-    const linhas = useMemo(() => {
-        const agrupadas = montarLinhas(lista, { filtro, fase, busca });
+    // ⚠️ A ORDEM destas etapas importa, e é esta:
+    //   1. filtro de situação + filtro de fase + busca (`montarLinhas`);
+    //   2. agrupamento em FAMÍLIA (base com os kits recuados logo abaixo);
+    //   3. ordenação do cliente, só nas linhas de TOPO;
+    //   4. paginação, por ÚLTIMO.
+    // Quem filtra espera ver a página 1 do resultado FILTRADO — paginar antes
+    // de filtrar mostraria o recorte errado.
+    const familias = useMemo(() => {
+        const cruas = familiasDasLinhas(montarLinhas(lista, { filtro, fase, busca }));
+        const kitsPorTopo = new Map(cruas.map((f) => [f.topo, f.kits]));
 
-        const familias = [];
-        for (const linha of agrupadas) {
-            if (linha.recuado === true && familias.length > 0) {
-                familias[familias.length - 1].kits.push(linha);
-            } else {
-                familias.push({ topo: linha, kits: [] });
-            }
-        }
-
-        const kitsPorTopo = new Map(familias.map((f) => [f.topo, f.kits]));
-        const ordenadas = ordenarTopo(familias.map((f) => f.topo), ordem.coluna, ordem.direcao);
-
-        const resultado = [];
-        for (const topo of ordenadas) {
-            resultado.push(topo);
-            for (const kit of (kitsPorTopo.get(topo) ?? [])) resultado.push(kit);
-        }
-
-        return resultado;
+        return ordenarTopo(cruas.map((f) => f.topo), ordem.coluna, ordem.direcao)
+            .map((topo) => ({ topo, kits: kitsPorTopo.get(topo) ?? [] }));
     }, [lista, filtro, fase, busca, ordem]);
+
+    // A vista em vigor e a página que vale nela (ver o comentário do `vista`).
+    const chaveAtual = chaveDaVista({ filtro, fase, busca, ordem });
+    const pagina = paginaDaVista(vista, chaveAtual);
+
+    // ⚠️ `paginar` corta entre FAMÍLIAS, nunca entre linhas: um base e os kits
+    // recuados dele saem sempre na mesma página. Paginar as linhas cruas poria
+    // o base na página 1 e o kit dele na 2, e um "Kit 2" solto no topo da
+    // página seguinte não se explica para ninguém.
+    const paginacao = useMemo(() => paginar(familias, pagina, porPagina), [familias, pagina, porPagina]);
+
+    // As linhas DESTA página, já achatadas de volta (base, kits, base, …).
+    const linhas = useMemo(() => achatarFamilias(paginacao.itens), [paginacao]);
+
+    // Há recorte em vigor? Só muda o rótulo da frase do rodapé: dizer "de N
+    // produtos cadastrados" mostrando o resultado de um filtro seria mentira.
+    const filtrado = filtro !== 'todos' || fase !== 'todas' || busca.trim() !== '';
 
     const skus = useMemo(() => lista.map((p) => p?.sku).filter(Boolean), [lista]);
 
@@ -571,6 +654,26 @@ export default function Produtos({
     function trocarDensidade(valor) {
         setDensidade(valor);
         guardarDensidade(valor);
+    }
+
+    /**
+     * Vai para outra página. ⚠️ Carimba a chave da vista ATUAL: é o que
+     * garante que a escolha morre junto com a vista (filtro, fase, busca ou
+     * ordenação que mudem devolvem a página 1).
+     * A seleção em lote é zerada, como já acontece ao trocar de filtro — ela
+     * se refere ao que está à vista.
+     */
+    function irParaPagina(numero) {
+        setVista({ chave: chaveAtual, pagina: numero });
+        setSelecao(new Set());
+    }
+
+    /** Troca o "linhas por página", persiste no navegador e volta para a 1. */
+    function trocarPorPagina(valor) {
+        setPorPagina(valor);
+        guardarLinhas(valor);
+        setVista({ chave: chaveAtual, pagina: 1 });
+        setSelecao(new Set());
     }
 
     /** Zera busca e os dois filtros — o mesmo botão do estado vazio de sempre. */
@@ -978,7 +1081,60 @@ export default function Produtos({
                             })}
                         </div>
                     )}
+
+                    {/* O rodapé de paginação (tela 03 do pacote do Stitch). Só
+                        aparece quando há lista: nos três estados de vazio o que
+                        a pessoa precisa é do botão, não de controles travados.
+                        ⚠️ `rascunhos` e `publicados` vêm das CONTAGENS do
+                        servidor — a tela não recalcula o que já recebeu pronto. */}
+                    {!recarregando && !vazio && linhas.length > 0 && (
+                        <PaginacaoDaLista
+                            paginacao={paginacao}
+                            filtrado={filtrado}
+                            rascunhos={total('rascunho')}
+                            publicados={total('publicados')}
+                            aoMudarPagina={irParaPagina}
+                            aoMudarPorPagina={trocarPorPagina}
+                        />
+                    )}
                 </section>
+
+                {/* Os três cards do mockup, abaixo da tabela. ⚠️ O primeiro
+                    substitui o "Sincronização Contínua ERP Bling" da referência,
+                    que afirmava fato falso — ver o comentário do
+                    CARTOES_DO_RODAPE. */}
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    {CARTOES_DO_RODAPE.map((cartao) => {
+                        // ⚠️ Flags e ícone calculados DENTRO do callback:
+                        // variável de escopo do componente lida dentro de um
+                        // `.map()` já foi eliminada pelo Rollup no bundle de
+                        // produção deste projeto (feedback_rollup_map_scope_bug.md).
+                        const Icone = ICONE_DO_CARTAO[cartao.chave] ?? RefreshCw;
+                        const verde = cartao.verde === true;
+
+                        return (
+                            <div
+                                key={cartao.chave}
+                                className="flex items-start gap-3 rounded-xl border border-white/[0.08] bg-ecf-card p-4"
+                            >
+                                <span
+                                    className={cn(
+                                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border',
+                                        verde
+                                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                                            : 'border-white/[0.10] bg-white/[0.04] text-ecf-yellow',
+                                    )}
+                                >
+                                    <Icone className="h-4 w-4" aria-hidden="true" />
+                                </span>
+                                <div className="min-w-0">
+                                    <p className="text-[13px] font-bold text-white">{cartao.titulo}</p>
+                                    <p className="mt-1 text-[11px] font-normal leading-relaxed text-white/55">{cartao.texto}</p>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
 
                 {/* Ponte até a Fase 165: os criativos por IA ainda ficam no assistente antigo. */}
                 {criativos_ia?.url && (

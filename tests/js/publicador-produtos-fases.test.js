@@ -1020,8 +1020,10 @@ test('Tela 03 — gates de fonte: ordem filtro → busca → ordenação → PAG
     // ⚠️ Mudar filtro, fase, busca ou ordenação volta para a página 1: a
     // página NÃO é estado solto, ela é derivada da VISTA em vigor. Sem
     // `useEffect` — effect zerando página pisca a página errada por um frame.
-    assert.match(fonte, /chaveDaVista\(\{/);
-    assert.match(fonte, /paginaDaVista\(vista, chaveDaVista/);
+    assert.match(fonte, /const chaveAtual = chaveDaVista\(\{ filtro, fase, busca, ordem \}\)/,
+        'a vista tem de incluir as QUATRO coisas: filtro, fase, busca e ordenação');
+    assert.match(fonte, /const pagina = paginaDaVista\(vista, chaveAtual\)/,
+        'a página é DERIVADA da vista, nunca lida crua do estado');
     assert.doesNotMatch(fonte, /useEffect\([^;]*setVista/);
     // Toda escrita da página carimba a chave da vista atual.
     const escritas = fonte.match(/setVista\(/g) ?? [];

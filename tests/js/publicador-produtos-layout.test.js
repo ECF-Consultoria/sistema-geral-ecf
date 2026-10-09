@@ -1288,7 +1288,12 @@ test('Tela B (página) — gates de fonte do layout v2', () => {
 
     // A densidade persiste na chave combinada, com as DUAS pontas em try/catch.
     assert.match(fonte, /publicador\.produtos\.densidade|CHAVE_DA_DENSIDADE/);
-    assert.equal((fonte.match(/try \{/g) ?? []).length, 2, 'leitura e escrita do localStorage em try/catch');
+    // 4 = densidade (leitura + escrita) e "linhas por página" (leitura +
+    // escrita, quick 261009-t03). ⚠️ O acessor `window.localStorage` LANÇA em
+    // janela privada, não só o `getItem`: as DUAS pontas de cada preferência
+    // precisam do try/catch.
+    assert.match(fonte, /publicador\.produtos\.linhas|CHAVE_DAS_LINHAS/);
+    assert.equal((fonte.match(/try \{/g) ?? []).length, 4, 'as duas pontas de cada preferência em try/catch');
     assert.match(fonte, /localStorage\.getItem/);
     assert.match(fonte, /localStorage\.setItem/);
 
