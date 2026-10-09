@@ -263,7 +263,10 @@ test('CartaoDaFase — gate do Rollup: tudo que o .map() das linhas usa é calcu
     const fonte = lerSemComentarios(REL_CARTAO);
     // O corpo do `.map(` das linhas precisa declarar as suas próprias variáveis;
     // flag de escopo do componente lida só aqui já sumiu do bundle de produção.
-    const mapa = fonte.match(/\.map\(\([^)]*\)\s*=>\s*\{[\s\S]*?\n\s{4}\}\)/);
+    const mapa = fonte.match(/\.map\(\([^)]*\)\s*=>\s*\{([\s\S]*?)\n\s*\}\)\}/);
     assert.ok(mapa, 'o .map() das linhas precisa de corpo em bloco, não expressão');
-    assert.match(mapa[0], /const\s/);
+    // O callback declara as próprias variáveis a partir do item da lista.
+    assert.match(mapa[1], /const item =/);
+    assert.match(mapa[1], /const rotulo = textoSeguro\(item\.rotulo/);
+    assert.match(mapa[1], /const motivo = textoSeguro\(item\.motivo/);
 });
