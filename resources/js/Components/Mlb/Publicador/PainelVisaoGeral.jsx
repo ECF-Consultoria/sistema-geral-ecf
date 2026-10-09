@@ -21,6 +21,66 @@ function numeroSeguro(valor) {
     return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
 }
 
+// ─── "Produtos por fase" (Fase 175, §7 da ETAPA-3) ──────────────────────────
+//
+// ⚠️ Este bloco nasce ABAIXO de "Situação dos produtos", não no lugar dele: a
+// §7 manda substituir, mas a regra inviolável "nada que existe pode sumir"
+// vence (divergência já registrada pelo 175-08, que entrega as duas props).
+
+/** A ordem dos 5 buckets, do contrato do 175-08 — nunca a ordem das chaves do JSON. */
+const ORDEM_POR_FASE = ['sem_oferta', 'fase1_publicada', 'fase2_preparacao', 'fase2_publicada', 'fase3_mais'];
+
+/**
+ * O par (filtro de situação, filtro de fase) com que a lista de Produtos
+ * expressa cada bucket. A lista tem dois filtros: os chips de situação (de
+ * hoje) e o de fase (`todas | so_base | so_kits`, Fase 175).
+ *
+ * ⚠️ "Sem oferta" aqui é "sem nenhum anúncio no ar" — e isso NÃO é um dos
+ * chips de situação da lista. Em vez de inventar um filtro que não existe (ou
+ * de deixar o número sem destino), ele abre a lista inteira: é o mesmo número,
+ * sem mentir sobre o recorte.
+ */
+export function destinoDaFase(chave) {
+    if (chave === 'fase1_publicada') return { filtro: 'publicados', fase: 'so_base' };
+    if (chave === 'fase2_preparacao') return { filtro: 'rascunho', fase: 'so_kits' };
+    if (chave === 'fase2_publicada') return { filtro: 'publicados', fase: 'so_kits' };
+    if (chave === 'fase3_mais') return { filtro: 'todos', fase: 'so_kits' };
+
+    return { filtro: 'todos', fase: 'todas' };
+}
+
+/**
+ * Normaliza a prop `produtosPorFase` em `[{chave, numero, rotulo}]`.
+ *
+ * Aceita as DUAS formas: o MAPA por bucket que `PainelVisaoGeralService`
+ * manda hoje (`{sem_oferta: {numero, rotulo}, …}`) e a LISTA de
+ * `{chave, rotulo, numero}` que o PLAN do 175-10 descrevia — o contrato
+ * divergiu entre o plano e o que o 175-08 implementou, e a tela não pode
+ * ficar vazia por causa disso. Qualquer outra forma vira lista vazia, e o
+ * bloco não aparece (servidor antigo).
+ */
+export function itensPorFase(valor) {
+    const item = (chave, dados) => {
+        const d = dados && typeof dados === 'object' && !Array.isArray(dados) ? dados : {};
+
+        return { chave, numero: numeroSeguro(d.numero) ?? 0, rotulo: textoSeguro(d.rotulo, chave) };
+    };
+
+    if (Array.isArray(valor)) {
+        return valor
+            .filter((linha) => linha && typeof linha === 'object' && typeof linha.chave === 'string')
+            .map((linha) => item(linha.chave, linha));
+    }
+
+    if (!valor || typeof valor !== 'object') return [];
+
+    const conhecidos = ORDEM_POR_FASE.filter((chave) => Object.prototype.hasOwnProperty.call(valor, chave));
+    // Bucket novo que o servidor passe a mandar entra no fim, nunca desaparece.
+    const extras = Object.keys(valor).filter((chave) => !ORDEM_POR_FASE.includes(chave));
+
+    return [...conhecidos, ...extras].map((chave) => item(chave, valor[chave]));
+}
+
 /**
  * Cartão de indicador do topo — mesmo padrão visual do `Cartao` interno de
  * `IndicadoresDoPrograma.jsx` (rótulo 11px/bold/uppercase, número 24px
@@ -100,6 +160,7 @@ export default function PainelVisaoGeral({
     indicadores = {},
     oQueFazerAgora = [],
     situacaoProdutos = {},
+    produtosPorFase = null,
     ultimasPublicacoes = { disponivel: false, itens: [] },
     integracoes = {},
     identidadeResumo = { tem_identidade: false, texto_resumo: null },
@@ -128,6 +189,8 @@ export default function PainelVisaoGeral({
         ? situacaoProdutos
         : {};
 
+    const linhasPorFase = itensPorFase(produtosPorFase);
+
     const ultimasSeguras = ultimasPublicacoes && typeof ultimasPublicacoes === 'object' ? ultimasPublicacoes : {};
     const ultimasDisponiveis = ultimasSeguras.disponivel === true;
     const itensUltimas = Array.isArray(ultimasSeguras.itens) ? ultimasSeguras.itens : [];
@@ -148,6 +211,13 @@ export default function PainelVisaoGeral({
     function abrirProdutos(filtro) {
         if (!contaChave) return;
         router.get(route('mlb.anuncios.publicador.produtos', { conta: contaChave, filtro }));
+    }
+
+    /** Bucket por fase → lista de Produtos com os DOIS filtros (§7). */
+    function abrirProdutosPorFase(chave) {
+        if (!contaChave) return;
+        const destino = destinoDaFase(chave);
+        router.get(route('mlb.anuncios.publicador.produtos', { conta: contaChave, ...destino }));
     }
 
     function atualizarAgora() {
@@ -279,6 +349,37 @@ export default function PainelVisaoGeral({
                     </div>
                 </section>
 
+                {/* 3b — Produtos por fase (Fase 175, §7) — ABAIXO do bloco de cima,
+                    não no lugar dele. Sem a prop (servidor antigo) o bloco nem
+                    aparece, e a tela fica exatamente como era. */}
+                {linhasPorFase.length > 0 && (
+                    <section className="rounded-xl bg-ecf-card p-4">
+                        <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Produtos por fase</h2>
+                        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                            {linhasPorFase.map((linha) => {
+                                // Flags calculadas DENTRO do callback — variável de escopo do
+                                // componente lida só dentro do .map() já foi eliminada pelo
+                                // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
+                                const chaveDaFase = linha.chave;
+                                const numeroDaFase = numeroSeguro(linha.numero) ?? 0;
+                                const rotuloDaFase = textoSeguro(linha.rotulo, chaveDaFase);
+
+                                return (
+                                    <button
+                                        key={chaveDaFase}
+                                        type="button"
+                                        onClick={() => abrirProdutosPorFase(chaveDaFase)}
+                                        className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 text-left hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                                    >
+                                        <p className="font-mono text-[18px] font-bold tabular-nums text-white">{numeroDaFase}</p>
+                                        <p className="text-[11px] font-normal text-white/55">{rotuloDaFase}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                )}
+
                 {/* 4 — Últimas publicações */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <div className="flex items-center justify-between">
@@ -316,6 +417,9 @@ export default function PainelVisaoGeral({
                                 const quandoTexto = haQuanto(typeof linha.quando === 'string' ? linha.quando : null) ?? '—';
                                 const vendas = numeroSeguro(linha.vendas);
                                 const situacao = textoSeguro(linha.situacao, '—');
+                                // Coluna Fase (Fase 175, §7): o rótulo vem pronto do servidor
+                                // (`rotuloFase()`); publicação antiga, sem fase, mostra "—".
+                                const rotuloDaFase = textoSeguro(linha.rotulo_fase, '—');
 
                                 return (
                                     <div
@@ -327,6 +431,7 @@ export default function PainelVisaoGeral({
                                             {mlbId && <LinkMl mlb={mlbId} className="text-[11px]" />}
                                         </div>
                                         <span className="text-[11px] text-white/55">{tipo}</span>
+                                        <span className="text-[11px] text-white/55">{rotuloDaFase}</span>
                                         <span>
                                             {quemTexto} <span className="font-mono text-[11px] text-white/40">· {quandoTexto}</span>
                                         </span>
