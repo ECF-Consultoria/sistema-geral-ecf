@@ -151,6 +151,19 @@ class RascunhoRepository
     }
 
     /**
+     * Apaga SÓ os atributos do produto dados (o Sincronizar do Portal, quando o cliente apagou o campo
+     * que o próprio Portal tinha escrito). Quem chama decide quais — sob a trava do rascunho.
+     *
+     * @param  list<string>  $ids
+     */
+    public function removerAtributos(PubRascunho $r, array $ids): void
+    {
+        if ($ids !== []) {
+            $r->atributos()->whereIn('attribute_id', array_values(array_unique($ids)))->delete();
+        }
+    }
+
+    /**
      * O título de alvos que JÁ existem, por tipo de anúncio (WR-B02): não cria nem apaga alvo,
      * não mexe em `ativo` nem na ordem — o resto da lista fica como está.
      *

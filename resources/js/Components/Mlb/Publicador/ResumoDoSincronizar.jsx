@@ -1,36 +1,33 @@
 import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motivosNaoTrazidas, textoDoResumo, textoDosAbsorvidos } from './regrasDoResumoDoSincronizar';
+import { linhaDoResumo } from './regrasDoResumoDoSincronizar';
 
 /**
- * Painel do que o "Sincronizar do Portal" preencheu nos rascunhos: enquanto roda mostra o andamento;
- * pronto, a frase do resumo, as linhas antigas de cor juntadas ao produto, as fotos que não vieram
- * (com o motivo) e os avisos. Fechável.
+ * Painel do "Sincronizar do Portal": enquanto roda mostra o andamento; pronto, UMA linha curta
+ * ("Sincronizado: 13 produtos, 20 variações, 0 fotos.") e o X para fechar.
+ *
+ * Os avisos (do clique e do preenchimento) NÃO aparecem aqui — decisão do usuário em 09/10/2026
+ * ("vai poluir muito"): o servidor os registra no log (`[Publicador] Sincronizar avisos`). O campo
+ * que não pôde ser preenchido aparece pendente no editor, que é onde a equipe age.
  */
-export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], absorvidos = 0, onFechar, className }) {
+export default function ResumoDoSincronizar({ resumo, absorvidos = 0, onFechar, className }) {
     if (!resumo) return null;
     const pronto = resumo.status === 'pronto';
     const expirou = resumo.status === 'expirou';
-    const motivos = motivosNaoTrazidas(resumo.fotos_nao_trazidas);
-    const juntadas = textoDosAbsorvidos(absorvidos);
-    // Os avisos do clique (cores avulsas, variações que viraram produto) e os do preenchimento, sem repetir.
-    const avisos = [...new Set([...(avisosDoClique ?? []), ...(resumo.avisos ?? [])])];
+    const linha = pronto ? linhaDoResumo(resumo, absorvidos) : '';
 
     return (
-        <section className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4', className)}>
+        <section className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3', className)}>
             {/* Leitor de tela: só a frase final é anunciada, não o contador a cada leitura (IN-04). */}
             <p className="sr-only" aria-live="polite">
-                {pronto && ! resumo.so_avisos ? `Rascunhos preenchidos. ${textoDoResumo(resumo)}` : ''}
+                {pronto ? linha : ''}
                 {expirou ? 'Ainda preenchendo. Recarregue a página em alguns minutos.' : ''}
             </p>
-            <div className="flex items-start justify-between gap-4">
-                {pronto && resumo.so_avisos ? (
-                    <p className="text-[15px] font-bold text-white">Sincronizar do Portal</p>
-                ) : pronto ? (
-                    <div>
-                        <p className="text-[15px] font-bold text-white">Rascunhos preenchidos com o que está no Portal</p>
-                        <p className="mt-1 text-[13px] font-normal text-white/70">{textoDoResumo(resumo)}</p>
-                    </div>
+            <div className="flex items-center justify-between gap-4">
+                {pronto ? (
+                    <p className="text-[13px] font-normal text-white/70" data-absorvidos={Number(absorvidos) > 0 ? Number(absorvidos) : undefined}>
+                        {linha}
+                    </p>
                 ) : expirou ? (
                     <p className="text-[13px] font-normal text-white/70">
                         Ainda preenchendo ({resumo.concluidos ?? 0}/{resumo.total ?? 0}). Recarregue a página em alguns minutos para ver o resultado.
@@ -50,28 +47,6 @@ export default function ResumoDoSincronizar({ resumo, avisosDoClique = [], absor
                     <X className="h-4 w-4" aria-hidden="true" />
                 </button>
             </div>
-
-            {juntadas && (
-                <p className="mt-3 text-[13px] font-normal text-white/70" data-absorvidos={Number(absorvidos)}>{juntadas}</p>
-            )}
-
-            {pronto && motivos.length > 0 && (
-                <div className="mt-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">Fotos que não vieram</p>
-                    <ul className="mt-1 list-disc pl-5 text-[13px] font-normal text-white/70">
-                        {motivos.map((m, i) => <li key={`${i}-${m}`}>{m}</li>)}
-                    </ul>
-                </div>
-            )}
-
-            {pronto && avisos.length > 0 && (
-                <div className="mt-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">Avisos</p>
-                    <ul className="mt-1 list-disc pl-5 text-[13px] font-normal text-white/70">
-                        {avisos.slice(0, 20).map((a, i) => <li key={`${i}-${a}`}>{a}</li>)}
-                    </ul>
-                </div>
-            )}
         </section>
     );
 }

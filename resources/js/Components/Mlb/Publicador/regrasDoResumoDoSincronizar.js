@@ -1,27 +1,38 @@
-// Textos do resumo do "Sincronizar do Portal" (Fase 172-12). Funções puras, sem React.
+// Textos do resumo do "Sincronizar do Portal" (Fase 172-12; enxuto desde 09/10/2026). Funções puras, sem React.
 
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
+const inteiro = (v) => {
+    const n = Number(v ?? 0);
+
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0;
+};
+
 /**
- * Frase do que veio do Portal: "2 produtos, 5 variações, 8 fotos trazidas; 3 campos mantidos
- * porque já estavam preenchidos." Singular correto com 1; a parte dos mantidos só aparece com mantidos.
+ * A linha única do painel: "Sincronizado: 13 produtos, 20 variações, 0 fotos." — com
+ * ", N campos atualizados" só quando o Portal mudou algo que ele mesmo tinha escrito, e as linhas
+ * antigas de cor juntadas ao produto, na mesma linha, só quando houve. Sem "campos mantidos" e sem
+ * avisos: o painel não é lugar de lista (os avisos vão para o log do servidor).
+ *
+ * `so_avisos` = o clique não tinha nada a preencher; sobra só o que foi juntado (ou "Sincronizado.").
  */
-export function textoDoResumo(resumo) {
+export function linhaDoResumo(resumo, absorvidos = 0) {
     const r = resumo ?? {};
-    const produtos = Number(r.produtos ?? 0);
-    const variantes = Number(r.variantes ?? 0);
-    const fotos = Number(r.fotos_trazidas ?? 0);
-    const mantidos = Number(r.campos_mantidos ?? 0);
+    const juntadas = textoDosAbsorvidos(absorvidos);
 
-    const trazido = [
-        plural(produtos, 'produto', 'produtos'),
-        plural(variantes, 'variação', 'variações'),
-        `${plural(fotos, 'foto', 'fotos')} ${fotos === 1 ? 'trazida' : 'trazidas'}`,
-    ].join(', ');
+    if (r.so_avisos) return juntadas ?? 'Sincronizado.';
 
-    if (mantidos <= 0) return `${trazido}.`;
-    const verbo = mantidos === 1 ? 'mantido porque já estava preenchido' : 'mantidos porque já estavam preenchidos';
-    return `${trazido}; ${mantidos} ${mantidos === 1 ? 'campo' : 'campos'} ${verbo}.`;
+    const partes = [
+        plural(inteiro(r.produtos), 'produto', 'produtos'),
+        plural(inteiro(r.variantes), 'variação', 'variações'),
+        plural(inteiro(r.fotos_trazidas), 'foto', 'fotos'),
+    ];
+    const atualizados = inteiro(r.campos_atualizados);
+    if (atualizados > 0) partes.push(plural(atualizados, 'campo atualizado', 'campos atualizados'));
+
+    const frase = `Sincronizado: ${partes.join(', ')}.`;
+
+    return juntadas ? `${frase} ${juntadas}` : frase;
 }
 
 /**
@@ -35,20 +46,4 @@ export function textoDosAbsorvidos(n) {
     return total === 1
         ? '1 linha antiga de cor foi juntada ao produto.'
         : `${total} linhas antigas de cor foram juntadas ao produto.`;
-}
-
-const MOTIVOS = {
-    pequena: (n) => `${n} ${n === 1 ? 'foto pequena' : 'fotos pequenas'} demais (mínimo 500 px)`,
-    formato: (n) => `${n} ${n === 1 ? 'foto em formato não aceito' : 'fotos em formato não aceito'}`,
-    arquivo_sumido: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} cujo arquivo não foi encontrado`,
-    acima_do_limite: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} além do limite de fotos do anúncio`,
-    arquivo_grande: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} com arquivo grande demais`,
-    dimensao_grande: (n) => `${n} ${n === 1 ? 'foto' : 'fotos'} com resolução grande demais (acima de 40 megapixels)`,
-};
-
-/** Lista de frases, uma por motivo; motivo desconhecido aparece com o código. */
-export function motivosNaoTrazidas(mapa) {
-    return Object.entries(mapa ?? {})
-        .filter(([, n]) => Number(n) > 0)
-        .map(([motivo, n]) => (MOTIVOS[motivo] ? MOTIVOS[motivo](Number(n)) : `${Number(n)} ${Number(n) === 1 ? 'foto' : 'fotos'} (${motivo})`));
 }

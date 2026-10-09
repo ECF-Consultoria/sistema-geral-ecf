@@ -10,7 +10,8 @@ use Illuminate\Support\Str;
  *
  * Cada produto preenchido por um Job grava o resumo dele no cache; a tela lê o total por
  * `pedido`. O índice do pedido guarda a empresa que clicou: outra empresa não lê o resumo (T-172-42).
- * Nada aqui toca o ML; é só cache (TTL de 1 hora).
+ * Nada aqui toca o ML; é só cache (TTL de 1 hora). Os `avisos` seguem no JSON, mas a tela não os
+ * mostra (09/10/2026): o servidor os registra no log (`[Publicador] Sincronizar avisos`).
  */
 class ResumoDoSincronizar
 {
@@ -36,7 +37,7 @@ class ResumoDoSincronizar
     /**
      * Soma os resumos já registrados. null = pedido inexistente OU de outra empresa.
      *
-     * @return ?array{status: string, total: int, concluidos: int, produtos: int, variantes: int, fotos_trazidas: int, fotos_nao_trazidas: array<string, int>, campos_preenchidos: int, campos_mantidos: int, avisos: list<string>}
+     * @return ?array{status: string, total: int, concluidos: int, produtos: int, variantes: int, fotos_trazidas: int, fotos_nao_trazidas: array<string, int>, campos_preenchidos: int, campos_mantidos: int, campos_atualizados: int, avisos: list<string>}
      */
     public function ler(string $pedido, int $companyId): ?array
     {
@@ -46,7 +47,7 @@ class ResumoDoSincronizar
         }
 
         $r = ['status' => 'preenchendo', 'total' => count($indice['ids']), 'concluidos' => 0, 'produtos' => 0, 'variantes' => 0,
-            'fotos_trazidas' => 0, 'fotos_nao_trazidas' => [], 'campos_preenchidos' => 0, 'campos_mantidos' => 0, 'avisos' => []];
+            'fotos_trazidas' => 0, 'fotos_nao_trazidas' => [], 'campos_preenchidos' => 0, 'campos_mantidos' => 0, 'campos_atualizados' => 0, 'avisos' => []];
 
         foreach ($indice['ids'] as $id) {
             $p = Cache::get($this->chave($pedido, (int) $id));
@@ -61,6 +62,7 @@ class ResumoDoSincronizar
             $r['fotos_trazidas'] += (int) ($p['fotos_trazidas'] ?? 0);
             $r['campos_preenchidos'] += (int) ($p['campos_preenchidos'] ?? 0);
             $r['campos_mantidos'] += (int) ($p['campos_mantidos'] ?? 0);
+            $r['campos_atualizados'] += (int) ($p['campos_atualizados'] ?? 0);
             foreach (($p['fotos_nao_trazidas'] ?? []) as $motivo => $n) {
                 $r['fotos_nao_trazidas'][$motivo] = ($r['fotos_nao_trazidas'][$motivo] ?? 0) + (int) $n;
             }

@@ -33,10 +33,21 @@ use Illuminate\Support\Facades\Log;
  * "intocável" refeito a cada escrita, SEMPRE pelo motor (`EditorRascunhoService` /
  * `RascunhoRepository`, nunca SQL direto em `pub_*`) —, com o Portal como fonte.
  *
- * Regra de ouro (D-05): o Portal NUNCA sobrescreve. Só preenche o que está vazio: categoria sem
- * categoria, atributo sem valor, estoque nulo, SKU vazio (ou repetido, ou cópia do SKU do grupo).
- * Cor nova entra como variação nova; nada é removido. Rodar de novo não muda nada (a revisão
- * do rascunho só sobe quando algo foi gravado).
+ * Regra de ouro (D-05, refinada em 09/10/2026): o Portal NUNCA sobrescreve o trabalho da EQUIPE.
+ * Preenche o vazio (categoria sem categoria, atributo sem valor, estoque nulo, SKU vazio, repetido
+ * ou cópia do SKU do grupo) e ATUALIZA o que ele mesmo escreveu antes, quando o cliente mudou no
+ * Portal:
+ * - atributo (ficha e pacote SELLER_PACKAGE_*) com `origem = 'portal'`: segue o Portal — muda junto
+ *   e, se o cliente apagou, sai. `origem` `user`, `ia`, `migrated` ou qualquer outra: intocado.
+ * - estoque e SKU da variante (sem coluna `origem`): o último valor que o Sincronizar escreveu fica
+ *   em `step_state.portal_escrito`; só atualiza se o rascunho AINDA tem esse valor (ninguém mexeu).
+ *   Estoque de kit calculado (`pub_produtos.estoque_calculado`, Fase 175) nunca é escrito.
+ * - categoria e fotos: continuam só no vazio (trocar categoria apaga ficha; trocar foto é escolha
+ *   da equipe).
+ * Cor nova entra como variação nova; nenhuma cor é removida. Rodar de novo sem mudança no Portal
+ * não muda nada (a revisão do rascunho só sobe quando algo foi gravado).
+ *
+ * Os avisos são para o LOG (`[Publicador] Sincronizar avisos`), não para a tela (09/10/2026).
  *
  * D-10: vale para qualquer empresa (piloto ou não) e não escreve no ML — a única rede possível é
  * a leitura do schema da categoria (app token), a mesma que o editor já faz.
@@ -63,13 +74,41 @@ class PortalParaRascunhoService
     ) {}
 
     /**
-     * @return array{produto_id: int, rascunho_id: ?int, intocavel: bool, variantes: int, campos_preenchidos: int, campos_mantidos: int, fotos_trazidas: int, fotos_nao_trazidas: array<string, int>, avisos: list<string>}
+     * @return array{produto_id: int, rascunho_id: ?int, intocavel: bool, variantes: int, campos_preenchidos: int, campos_mantidos: int, campos_atualizados: int, fotos_trazidas: int, fotos_nao_trazidas: array<string, int>, avisos: list<string>}
      */
     public function preencher(PubProduto $produto): array
     {
+        $resumo = $this->preencherProduto($produto);
+        $this->registrarAvisos($produto, $resumo);
+
+        return $resumo;
+    }
+
+    /**
+     * Os avisos vão para o log do servidor, não para a tela: o painel do Sincronizar mostra uma linha
+     * só (decisão do usuário em 09/10/2026, "vai poluir muito"). O campo que não pôde ser preenchido
+     * aparece pendente no editor.
+     */
+    private function registrarAvisos(PubProduto $produto, array $resumo): void
+    {
+        $avisos = array_values(array_unique((array) ($resumo['avisos'] ?? [])));
+        if ($avisos === []) {
+            return;
+        }
+
+        Log::info('[Publicador] Sincronizar avisos', [
+            'company_id' => (int) $produto->company_id,
+            'produto_id' => (int) $produto->id,
+            'rascunho_id' => $resumo['rascunho_id'] ?? null,
+            'avisos' => $avisos,
+        ]);
+    }
+
+    private function preencherProduto(PubProduto $produto): array
+    {
         $resumo = [
             'produto_id' => (int) $produto->id, 'rascunho_id' => null, 'intocavel' => false, 'variantes' => 0,
-            'campos_preenchidos' => 0, 'campos_mantidos' => 0, 'fotos_trazidas' => 0, 'fotos_nao_trazidas' => [], 'avisos' => [],
+            'campos_preenchidos' => 0, 'campos_mantidos' => 0, 'campos_atualizados' => 0, 'fotos_trazidas' => 0, 'fotos_nao_trazidas' => [], 'avisos' => [],
         ];
 
         if ($produto->estrutura_produto_id === null) {
@@ -132,7 +171,7 @@ class PortalParaRascunhoService
 
         // ─── Variações: eixo, uma variante por cor, SKU e estoque de cada uma ───
         $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($grupo, $plano, $produto, &$resumo) {
-            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $resumo['avisos'], $resumo['campos_preenchidos'], $resumo['campos_mantidos']);
+            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $resumo['avisos'], $resumo);
         });
         if (! $vivo) {
             return $this->parou($resumo);
@@ -206,7 +245,7 @@ class PortalParaRascunhoService
         $resumo['avisos'] = array_values(array_unique($resumo['avisos']));
 
         Log::info("[Publicador] Portal -> rascunho: produto {$produto->id} ({$produto->nome}) rascunho {$r->id}: "
-            ."{$resumo['campos_preenchidos']} preenchidos, {$resumo['campos_mantidos']} mantidos, {$resumo['variantes']} variante(s), "
+            ."{$resumo['campos_preenchidos']} preenchidos, {$resumo['campos_atualizados']} atualizados, {$resumo['campos_mantidos']} mantidos, {$resumo['variantes']} variante(s), "
             ."{$resumo['fotos_trazidas']} foto(s), ".count($resumo['avisos']).' aviso(s)');
 
         return $resumo;
@@ -275,10 +314,14 @@ class PortalParaRascunhoService
             if ($snap->eixos !== [] || ! $unica) {
                 return false;
             }
-            $dados = $this->dadosDaVariante($unica, ['estoque' => $estoque, 'codigo' => (string) $composta['sku']], false, [], $produto, $resumo['campos_preenchidos'], $resumo['campos_mantidos']);
+            $escrito = $this->escritoPeloPortal($r);
+            $lembrar = [];
+            $dados = $this->dadosDaVariante($unica, ['estoque' => $estoque, 'codigo' => (string) $composta['sku']], false, [], $produto,
+                $resumo, (array) ($escrito[ChaveCanonica::UNICA] ?? []), $lembrar);
             if ($dados !== null) {
                 $this->editor->salvarVariantes($r->fresh(), [ChaveCanonica::UNICA => $dados]);
             }
+            $this->lembrarEscrito($r, $lembrar === [] ? [] : [ChaveCanonica::UNICA => $lembrar]);
 
             return true;
         });
@@ -368,19 +411,19 @@ class PortalParaRascunhoService
         return [$r, $schema];
     }
 
+    /** Os atributos do pacote que o Portal escreve (os mesmos de {@see PortalValorDeAtributo::pacoteParaAtributos()}). */
+    private const IDS_PACOTE = ['SELLER_PACKAGE_LENGTH', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_WEIGHT'];
+
     /**
-     * Ficha técnica e pacote numa escrita só, só o vazio.
+     * Ficha técnica e pacote numa escrita só: o vazio é preenchido, o que o Portal escreveu antes
+     * segue o Portal (muda ou sai) e o resto — da equipe, da IA, da migração — fica.
      *
      * @param  list<array>  $atributosPortal
      * @return bool false = o rascunho ficou intocável
      */
     private function aplicarFicha(PubRascunho $r, ?SchemaClassificado $schema, array $atributosPortal, ?array $pacote, bool $divergem, ?string $chaveEixo, array &$resumo): bool
     {
-        $avisos = &$resumo['avisos'];
-        $preenchidos = &$resumo['campos_preenchidos'];
-        $mantidos = &$resumo['campos_mantidos'];
-
-        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$avisos, &$preenchidos, &$mantidos) {
+        return $this->sobTrava($r->id, function (PubRascunho $r) use ($schema, $atributosPortal, $pacote, $divergem, $chaveEixo, &$resumo) {
             $schema = $this->schemaQueVale($schema, $r);
             if ($schema === null) {
                 return false;
@@ -388,52 +431,145 @@ class PortalParaRascunhoService
             $snap = $this->repo->snapshot($r);
 
             $novos = [];
+            $remover = [];
+            $noPortal = []; // ids que o Portal informa hoje
             foreach ($atributosPortal as $salvo) {
                 $id = (string) ($salvo['id'] ?? '');
                 $def = $schema->atributo($id);
-                if ($def === null || $def->papel !== AtributoClassificado::PRODUCT || $id === $chaveEixo
-                    || $def->secao === AtributoClassificado::SECAO_EMBALAGEM) {
+                if (! $this->daFicha($def, $id, $chaveEixo)) {
                     continue;
                 }
-                if ($this->preenchido($snap->atributos[$id] ?? null) || isset($novos[$id])) {
-                    $mantidos++;
+                if (isset($noPortal[$id])) {
+                    $resumo['campos_mantidos']++;
+
+                    continue;
+                }
+                $noPortal[$id] = true;
+                $atual = $snap->atributos[$id] ?? null;
+                if ($this->daEquipe($atual)) {
+                    $resumo['campos_mantidos']++; // equipe, IA ou migração: o Portal nem resolve
 
                     continue;
                 }
                 $res = PortalValorDeAtributo::resolver($def, $salvo);
                 if ($res['aviso'] !== null) {
-                    $avisos[] = $res['aviso'];
+                    $resumo['avisos'][] = $res['aviso'];
                 }
-                if ($res['valor'] !== null) {
-                    $novos[$id] = $res['valor'];
+                $this->decidir($id, $atual, $res['valor'], $novos, $remover, $resumo);
+            }
+
+            // O cliente apagou o campo no Portal: o que o PORTAL tinha escrito sai junto.
+            foreach ($snap->atributos as $id => $atual) {
+                $id = (string) $id;
+                if (! isset($noPortal[$id]) && self::doPortal($atual) && $this->preenchido($atual)
+                    && $this->daFicha($schema->atributo($id), $id, $chaveEixo)) {
+                    $this->decidir($id, $atual, null, $novos, $remover, $resumo);
                 }
             }
 
             if ($divergem) {
-                $avisos[] = 'As cores têm pacotes diferentes no Portal; foi usado o de maior peso. Confira o card de envio.';
+                $resumo['avisos'][] = 'As cores têm pacotes diferentes no Portal; foi usado o de maior peso. Confira o card de envio.';
             }
-            foreach (PortalValorDeAtributo::pacoteParaAtributos($pacote) as $id => $texto) {
+            $doPacote = PortalValorDeAtributo::pacoteParaAtributos($pacote);
+            foreach (self::IDS_PACOTE as $id) {
                 $def = $schema->atributo($id);
                 if ($def === null || ! $this->aceitaUnidadeDoPacote($def, $id)) {
                     continue;
                 }
-                if ($this->preenchido($snap->atributos[$id] ?? null) || isset($novos[$id])) {
-                    $mantidos++;
-
-                    continue;
+                $atual = $snap->atributos[$id] ?? null;
+                $valor = isset($doPacote[$id]) ? ['value_name' => $doPacote[$id], 'origem' => 'portal', 'revisar' => $divergem] : null;
+                if ($valor === null && ! self::doPortal($atual)) {
+                    continue; // o Portal não tem pacote e o do rascunho não é dele
                 }
-                $novos[$id] = ['value_name' => $texto, 'origem' => 'portal', 'revisar' => $divergem];
+                $this->decidir($id, $atual, $valor, $novos, $remover, $resumo);
             }
 
-            if ($novos === []) {
+            if ($novos === [] && $remover === []) {
                 return false;
             }
-            $this->repo->mesclarAtributos($r, $novos);
+            if ($novos !== []) {
+                $this->repo->mesclarAtributos($r, $novos);
+            }
+            if ($remover !== []) {
+                $this->repo->removerAtributos($r, $remover);
+            }
             $this->repo->tocar($r);
-            $preenchidos += count($novos);
 
             return true;
         });
+    }
+
+    /** O atributo é da ficha que o Portal alimenta? (de produto, não é o eixo, não é o pacote) */
+    private function daFicha(?AtributoClassificado $def, string $id, ?string $chaveEixo): bool
+    {
+        return $def !== null && $def->papel === AtributoClassificado::PRODUCT && $id !== $chaveEixo
+            && $def->secao !== AtributoClassificado::SECAO_EMBALAGEM;
+    }
+
+    /** O valor do rascunho foi escrito pelo Portal (e ninguém o trocou desde então)? */
+    private static function doPortal(?array $atual): bool
+    {
+        return $atual !== null && ($atual['origem'] ?? null) === 'portal';
+    }
+
+    /**
+     * A checagem que protege a equipe (uma só, para a ficha e o pacote): valor preenchido que o Portal
+     * não escreveu — `user`, `ia`, `migrated`, `auto` ou o que vier — é de outra pessoa e nunca muda.
+     */
+    private function daEquipe(?array $atual): bool
+    {
+        return $this->preenchido($atual) && ! self::doPortal($atual);
+    }
+
+    /**
+     * O que fazer com UM atributo: vazio → preenche; da equipe/IA/migração → fica; do Portal → segue
+     * o Portal (valor novo, ou sai quando o Portal não tem mais). Conta no resumo.
+     *
+     * @param  ?array  $valor  o que o Portal pede hoje, já convertido; null = nada
+     */
+    private function decidir(string $id, ?array $atual, ?array $valor, array &$novos, array &$remover, array &$resumo): void
+    {
+        if (! $this->preenchido($atual)) {
+            if ($valor !== null) {
+                $novos[$id] = $valor;
+                $resumo['campos_preenchidos']++;
+            }
+
+            return;
+        }
+        if ($this->daEquipe($atual)) {
+            $resumo['campos_mantidos']++;
+
+            return;
+        }
+        if ($valor === null) {
+            $remover[] = $id;
+            $resumo['campos_atualizados']++;
+
+            return;
+        }
+        if (self::mesmoValor($atual, $valor)) {
+            $resumo['campos_mantidos']++;
+
+            return;
+        }
+        // `values_multi` explícito: sem a chave, o repositório manteria a lista velha da mesma 1ª opção.
+        $novos[$id] = $valor + ['values_multi' => []];
+        $resumo['campos_atualizados']++;
+    }
+
+    /** Mesmo valor nas colunas que valem (id, nome, número, unidade, opções); `origem`/`revisar` não contam. */
+    private static function mesmoValor(array $atual, array $novo): bool
+    {
+        $colunas = fn (array $v) => [
+            trim((string) ($v['value_id'] ?? '')),
+            trim((string) ($v['value_name'] ?? '')),
+            isset($v['value_number']) && is_numeric($v['value_number']) ? round((float) $v['value_number'], 4) : null,
+            trim((string) ($v['value_unit'] ?? '')),
+            array_values(array_map('strval', (array) ($v['values_multi'] ?? []))),
+        ];
+
+        return $colunas($atual) === $colunas($novo);
     }
 
     // ═══ Fotos (D-08, D-15) ══════════════════════════════════════════════════
@@ -748,9 +884,11 @@ class PortalParaRascunhoService
      *
      * @param  list<array>  $variacoes
      */
-    private function aplicarVariacoes(PubRascunho $r, PubProduto $produto, array $variacoes, array $plano, array &$avisos, int &$preenchidos, int &$mantidos): bool
+    private function aplicarVariacoes(PubRascunho $r, PubProduto $produto, array $variacoes, array $plano, array &$avisos, array &$resumo): bool
     {
         $snap = $this->repo->snapshot($r);
+        $escrito = $this->escritoPeloPortal($r);
+        $lembrar = [];
 
         // ── Produto de uma só variação (ou sem variação útil): a variante única recebe SKU e estoque ──
         if ($plano['chave'] === null) {
@@ -761,9 +899,12 @@ class PortalParaRascunhoService
             if (! $unica) {
                 return false;
             }
-            $porChave = $this->dadosDaVariante($unica, $variacoes[0], false, [], $produto, $preenchidos, $mantidos);
+            $daUnica = [];
+            $porChave = $this->dadosDaVariante($unica, $variacoes[0], false, [], $produto, $resumo, (array) ($escrito[ChaveCanonica::UNICA] ?? []), $daUnica);
+            $gravou = $this->gravarVariantes($r, $porChave !== null ? [ChaveCanonica::UNICA => $porChave] : []);
+            $this->lembrarEscrito($r, $daUnica === [] ? [] : [ChaveCanonica::UNICA => $daUnica]);
 
-            return $this->gravarVariantes($r, $porChave !== null ? [ChaveCanonica::UNICA => $porChave] : []);
+            return $gravou;
         }
 
         // ── Eixo ──
@@ -852,13 +993,55 @@ class PortalParaRascunhoService
             if ($cor === null) {
                 continue; // cor que a equipe criou no rascunho e o Portal não tem
             }
-            $dados = $this->dadosDaVariante($v, $cor['variacao'], true, $skus, $produto, $preenchidos, $mantidos);
+            $daVariante = [];
+            $dados = $this->dadosDaVariante($v, $cor['variacao'], true, $skus, $produto, $resumo, (array) ($escrito[$v->chave] ?? []), $daVariante);
             if ($dados !== null) {
                 $porChave[$v->chave] = $dados;
             }
+            if ($daVariante !== []) {
+                $lembrar[$v->chave] = $daVariante;
+            }
         }
 
-        return $this->gravarVariantes($r, $porChave);
+        $gravou = $this->gravarVariantes($r, $porChave);
+        $this->lembrarEscrito($r, $lembrar);
+
+        return $gravou;
+    }
+
+    /** Chave de `step_state` com o último estoque/SKU que o Sincronizar escreveu em cada variante. */
+    private const MEMORIA_ESCRITO = 'portal_escrito';
+
+    /** @return array<string, array{estoque?: int, sku?: string}> chave da variante → o que o Portal escreveu nela */
+    private function escritoPeloPortal(PubRascunho $r): array
+    {
+        $estado = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+
+        return (array) ($estado[self::MEMORIA_ESCRITO] ?? []);
+    }
+
+    /**
+     * Guarda o que o Sincronizar escreveu (ou confirmou igual) em cada variante. Como {@see self::lembrarCores()}:
+     * direto na linha já travada, sem `tocar()` — gravar só a memória não sobe a revisão.
+     *
+     * @param  array<string, array{estoque?: int, sku?: string}>  $porChave
+     */
+    private function lembrarEscrito(PubRascunho $r, array $porChave): void
+    {
+        if ($porChave === []) {
+            return;
+        }
+        $estado = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
+        $antes = (array) ($estado[self::MEMORIA_ESCRITO] ?? []);
+        $depois = $antes;
+        foreach ($porChave as $chave => $campos) {
+            $depois[$chave] = array_merge((array) ($depois[$chave] ?? []), $campos);
+        }
+        if ($depois === $antes) {
+            return;
+        }
+        $estado[self::MEMORIA_ESCRITO] = $depois;
+        DB::table('pub_rascunhos')->where('id', $r->id)->update(['step_state' => json_encode($estado, JSON_UNESCAPED_UNICODE)]);
     }
 
     /** Chave de `step_state` com as cores (texto canônico) que já estiveram no eixo do rascunho. */
@@ -912,31 +1095,55 @@ class PortalParaRascunhoService
     }
 
     /**
-     * Só o que mudou na variante, ou null. Estoque: só se ainda é nulo. SKU: só se vazio, se se repete
-     * em outra variante ou (várias cores) se é a cópia do SKU do grupo que o ancestral deixou.
+     * Só o que mudou na variante, ou null.
+     * - Estoque: preenche o nulo; atualiza quando o rascunho ainda tem o último que o Portal escreveu
+     *   (`$escrito`) e o Portal mudou. Kit com estoque calculado (Fase 175) não recebe estoque.
+     * - SKU: preenche o vazio, o repetido em outra variante e (várias cores) a cópia do SKU do grupo;
+     *   atualiza, pela mesma prova, quando o Portal trocou o código.
+     * Sem memória ainda (rascunho de antes de 09/10), valor IGUAL ao do Portal é anotado como dele:
+     * daí em diante passa a segui-lo. Diferente e sem memória = da equipe, fica.
      *
      * @param  array<string, string>  $skus  SKU → chave da 1ª variante que o tem hoje
+     * @param  array{estoque?: int, sku?: string}  $escrito  o que o Portal escreveu nesta variante
+     * @param  array{estoque?: int, sku?: string}  $lembrar  (saída) o que guardar na memória
      */
-    private function dadosDaVariante(Variante $v, array $variacao, bool $varias, array $skus, PubProduto $produto, int &$preenchidos, int &$mantidos): ?array
+    private function dadosDaVariante(Variante $v, array $variacao, bool $varias, array $skus, PubProduto $produto, array &$resumo, array $escrito, array &$lembrar): ?array
     {
         $novo = [];
 
-        if (($v->dados['estoque'] ?? null) !== null) {
-            $mantidos++;
-        } elseif ($variacao['estoque'] !== null) {
-            $novo['estoque'] = max(0, (int) $variacao['estoque']);
-            $preenchidos++;
+        if (! $produto->estoque_calculado) {
+            $atualEstoque = $v->dados['estoque'] ?? null;
+            $doPortal = $variacao['estoque'] !== null ? max(0, (int) $variacao['estoque']) : null;
+            if ($atualEstoque === null) {
+                if ($doPortal !== null) {
+                    $novo['estoque'] = $lembrar['estoque'] = $doPortal;
+                    $resumo['campos_preenchidos']++;
+                }
+            } elseif (array_key_exists('estoque', $escrito) && (int) $escrito['estoque'] === (int) $atualEstoque && $doPortal !== null && $doPortal !== (int) $atualEstoque) {
+                $novo['estoque'] = $lembrar['estoque'] = $doPortal;
+                $resumo['campos_atualizados']++;
+            } else {
+                if (! array_key_exists('estoque', $escrito) && $doPortal !== null && $doPortal === (int) $atualEstoque) {
+                    $lembrar['estoque'] = $doPortal;
+                }
+                $resumo['campos_mantidos']++;
+            }
         }
 
         $codigo = trim((string) $variacao['codigo']);
         $atual = trim((string) ($v->dados['atributos']['SELLER_SKU']['value_name'] ?? ''));
         $troca = $atual === '' || ($varias && ((isset($skus[$atual]) && $skus[$atual] !== $v->chave) || $atual === trim($produto->skuExibido())));
-        if ($atual !== '' && ! $troca) {
-            $mantidos++;
-        } elseif ($codigo !== '' && $codigo !== $atual && $troca) {
+        $seguePortal = ! $troca && array_key_exists('sku', $escrito) && (string) $escrito['sku'] === $atual;
+        if ($codigo !== '' && $codigo !== $atual && ($troca || $seguePortal)) {
             $novo['atributos'] = (array) ($v->dados['atributos'] ?? []);
             $novo['atributos']['SELLER_SKU'] = ['value_name' => $codigo];
-            $preenchidos++;
+            $lembrar['sku'] = $codigo;
+            $resumo[$troca ? 'campos_preenchidos' : 'campos_atualizados']++;
+        } elseif ($atual !== '' && ! $troca) {
+            if (! array_key_exists('sku', $escrito) && $codigo !== '' && $codigo === $atual) {
+                $lembrar['sku'] = $codigo;
+            }
+            $resumo['campos_mantidos']++;
         }
 
         return $novo === [] ? null : $novo;
