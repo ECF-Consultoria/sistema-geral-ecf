@@ -6,12 +6,17 @@ use App\Models\Company;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
+use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -362,6 +367,172 @@ class ListaPorFaseTest extends TestCase
         $this->assertSame($contagem['todos'], array_sum($contagem['por_fase']));
         $this->assertCount(3, $lista);
         $this->assertNotNull($solto->id);
+    }
+
+    // ═══ Task 3 — a Visão geral por fase ════════════════════════════════════
+
+    public function test_situacao_produtos_continua_com_os_quatro_buckets_de_hoje(): void
+    {
+        // ⚠️ Gate de regressão da §7: a spec manda SUBSTITUIR este bloco por
+        // "Produtos por fase"; a regra inviolável "nada que existe pode sumir"
+        // vence e os dois convivem. Se este literal mudar, a Etapa 2 regrediu.
+        $r = app(PainelVisaoGeralService::class)
+            ->situacaoProdutos(['rascunho' => 2, 'conferidos' => 1, 'publicados' => 3, 'com_problema' => 4]);
+
+        $this->assertSame([
+            'rascunho' => ['numero' => 2, 'rotulo' => 'Rascunho'],
+            'conferidos' => ['numero' => 1, 'rotulo' => 'Conferidos'],
+            'publicados' => ['numero' => 3, 'rotulo' => 'Publicados'],
+            'com_problema' => ['numero' => 4, 'rotulo' => 'Com problema'],
+        ], $r);
+    }
+
+    public function test_produtos_por_fase_devolve_os_cinco_buckets_com_rotulos_pt_br(): void
+    {
+        $contagem = $this->servico()->contagemProdutos([
+            ['status' => ['chave' => 'rascunho'], 'oferta_id' => null, 'fase' => 1, 'eh_kit' => false, 'anuncios' => []],
+            ['status' => ['chave' => 'publicado'], 'oferta_id' => null, 'fase' => 1, 'eh_kit' => false, 'anuncios' => []],
+            ['status' => ['chave' => 'conferir'], 'oferta_id' => null, 'fase' => 2, 'eh_kit' => true, 'anuncios' => []],
+            ['status' => ['chave' => 'publicado'], 'oferta_id' => null, 'fase' => 2, 'eh_kit' => true, 'anuncios' => []],
+            ['status' => ['chave' => 'rascunho'], 'oferta_id' => null, 'fase' => 3, 'eh_kit' => true, 'anuncios' => []],
+        ]);
+
+        $r = app(PainelVisaoGeralService::class)->produtosPorFase($contagem);
+
+        $this->assertSame([
+            'sem_oferta' => ['numero' => 1, 'rotulo' => 'Sem oferta'],
+            'fase1_publicada' => ['numero' => 1, 'rotulo' => 'Fase 1 publicada'],
+            'fase2_preparacao' => ['numero' => 1, 'rotulo' => 'Fase 2 em preparação'],
+            'fase2_publicada' => ['numero' => 1, 'rotulo' => 'Fase 2 publicada'],
+            'fase3_mais' => ['numero' => 1, 'rotulo' => 'Fase 3+'],
+        ], $r);
+    }
+
+    public function test_produtos_por_fase_sem_a_contagem_nova_devolve_zeros_sem_quebrar(): void
+    {
+        $r = app(PainelVisaoGeralService::class)->produtosPorFase(['publicados' => 3]);
+
+        $this->assertSame([0, 0, 0, 0, 0], array_column($r, 'numero'));
+    }
+
+    public function test_prontos_para_a_fase_2_conta_bases_publicados_sem_nenhum_kit(): void
+    {
+        [$e, $c] = $this->conta();
+
+        $semKit = $this->produto($e, $c, 'SEM-KIT');
+        $this->rascunho($semKit, PubRascunho::PUBLISHED);
+
+        $comKit = $this->produto($e, $c, 'COM-KIT');
+        $this->rascunho($comKit, PubRascunho::PUBLISHED);
+        $kit = $this->produto($e, $c, 'COM-KIT-K2', ['produto_base_id' => $comKit->id, 'quantidade_kit' => 2, 'fase' => 2]);
+        $this->rascunho($kit, PubRascunho::PUBLISHED);
+
+        $props = $this->visaoGeral($e);
+        $linhas = collect($props['oQueFazerAgora'])->keyBy('texto');
+
+        // Três produtos publicados; só UM é base sem kit.
+        $this->assertSame(3, $props['situacaoProdutos']['publicados']['numero'], 'o bloco de hoje continua contando os 3');
+        $this->assertTrue($linhas->has('Prontos para a Fase 2'));
+        $this->assertSame(1, $linhas['Prontos para a Fase 2']['numero'], '§7: base publicado que já tem Kit 2 não é mais contado');
+        $this->assertSame(
+            ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => 'empresa-'.$e->id, 'filtro' => 'publicados', 'fase' => 'so_base']],
+            $linhas['Prontos para a Fase 2']['destino'],
+        );
+    }
+
+    public function test_prontos_para_a_fase_2_desaparece_quando_todo_base_publicado_ja_tem_kit(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $this->rascunho($base, PubRascunho::PUBLISHED);
+        $kit = $this->produto($e, $c, 'CAD-KIT2', ['produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
+        $this->rascunho($kit, PubRascunho::PUBLISHED);
+
+        $props = $this->visaoGeral($e);
+
+        $this->assertFalse(
+            collect($props['oQueFazerAgora'])->contains('texto', 'Prontos para a Fase 2'),
+            'número 0 não aparece — regra de hoje, preservada'
+        );
+    }
+
+    public function test_conta_sem_nenhum_kit_tem_produtos_por_fase_so_nas_duas_primeiras_chaves(): void
+    {
+        [$e, $c] = $this->conta();
+        $publicado = $this->produto($e, $c, 'PUB');
+        $this->rascunho($publicado, PubRascunho::PUBLISHED);
+        $this->produto($e, $c, 'NOVO');
+
+        $props = $this->visaoGeral($e);
+
+        $this->assertSame(1, $props['produtosPorFase']['fase1_publicada']['numero']);
+        $this->assertSame(1, $props['produtosPorFase']['sem_oferta']['numero']);
+        $this->assertSame(0, $props['produtosPorFase']['fase2_preparacao']['numero']);
+        $this->assertSame(0, $props['produtosPorFase']['fase2_publicada']['numero']);
+        $this->assertSame(0, $props['produtosPorFase']['fase3_mais']['numero']);
+        // Sem kit nenhum, "Prontos para a Fase 2" continua com o número de hoje.
+        $linhas = collect($props['oQueFazerAgora'])->keyBy('texto');
+        $this->assertSame(1, $linhas['Prontos para a Fase 2']['numero']);
+    }
+
+    public function test_visao_geral_entrega_produtos_por_fase_sem_perder_nenhuma_prop(): void
+    {
+        [$e] = $this->conta();
+
+        $props = $this->visaoGeral($e);
+
+        // Literal das props da Etapa 2 (mesma lista de VisaoGeralTest) + a nova.
+        foreach (['empresa', 'liberada', 'indicadores', 'oQueFazerAgora', 'situacaoProdutos', 'ultimasPublicacoes',
+            'integracoes', 'identidadeResumo', 'quemPublicou', 'abas', 'produtosPorFase'] as $chave) {
+            $this->assertArrayHasKey($chave, $props, "a prop '$chave' faltou no contrato da Visão geral");
+        }
+
+        // Formato: 5 buckets, cada um {numero: int, rotulo: string} — nunca objeto solto.
+        $this->assertCount(5, $props['produtosPorFase']);
+        foreach ($props['produtosPorFase'] as $bucket) {
+            $this->assertIsInt($bucket['numero']);
+            $this->assertIsString($bucket['rotulo']);
+        }
+    }
+
+    public function test_ultimas_publicacoes_ganha_fase_e_rotulo_sem_perder_campo(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $kit = $this->produto($e, $c, 'CAD-KIT3', ['produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2]);
+        $rascunho = $this->rascunho($kit, PubRascunho::PUBLISHED);
+        $publicacao = PubPublicacao::create([
+            'rascunho_id' => $rascunho->id, 'revisao' => 1, 'modelo_publicacao' => 'items',
+            'status' => PubPublicacao::PUBLISHED, 'chave_idempotencia' => (string) Str::uuid(),
+            'concluida_em' => now()->subDay(), 'ator' => ['equipe' => true, 'id' => 1, 'nome' => 'Dev'],
+        ]);
+        PubPublicacaoItem::create([
+            'publicacao_id' => $publicacao->id, 'indice' => 0, 'listing_type_id' => 'gold_special',
+            'variante_chave' => ChaveCanonica::UNICA, 'status' => PubPublicacaoItem::CREATED,
+            'ml_item_id' => 'MLB777', 'payload' => ['family_name' => 'Kit 3 Cadeira'],
+        ]);
+
+        $itens = $this->visaoGeral($e)['ultimasPublicacoes']['itens'];
+
+        $this->assertCount(1, $itens);
+        // Nenhum campo de hoje saiu.
+        foreach (['titulo', 'ml_item_id', 'tipo', 'quem', 'quando', 'vendas', 'situacao'] as $chave) {
+            $this->assertArrayHasKey($chave, $itens[0], "o campo '$chave' de ultimasPublicacoes não pode sair");
+        }
+        $this->assertSame('MLB777', $itens[0]['ml_item_id']);
+        // E os dois novos, escalares.
+        $this->assertSame(2, $itens[0]['fase']);
+        $this->assertSame('Kit 3', $itens[0]['rotulo_fase']);
+        $this->assertIsInt($itens[0]['fase']);
+        $this->assertIsString($itens[0]['rotulo_fase']);
+    }
+
+    /** @return array<string, mixed> as props da Visão geral da conta */
+    private function visaoGeral(MlbEmpresa $e): array
+    {
+        return $this->actingAs($this->admin())
+            ->get('/mlb/anuncios/publicador/empresas/empresa-'.$e->id.'/visao-geral')
+            ->assertOk()->viewData('page')['props'];
     }
 
     public function test_a_tela_de_produtos_continua_respondendo_com_o_contrato_de_hoje(): void
