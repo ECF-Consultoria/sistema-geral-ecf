@@ -69,7 +69,9 @@ test('trocar o eixo da variação faz o campo aparecer e sumir; o digitado só v
 test('o hook da ficha técnica esconde e grava pelos eixos de AGORA das variações', () => {
     const hook = lerSemComentarios(`${DIR}/useFichaTecnica.js`);
     assert.match(hook, /eixos = \[\]/);
-    assert.match(hook, /const grupos = gruposDoProduto\(definicao\?\.grupos, eixos\)/);
+    // 09/10/2026: o recorte pelo eixo vem antes de separar as medidas do produto (bloco próprio).
+    assert.match(hook, /const doProduto = gruposDoProduto\(definicao\?\.grupos, eixos\)/);
+    assert.match(hook, /const grupos = gruposSemMedidas\(doProduto\)/);
     assert.match(hook, /montarAtributos\(gruposDoProduto\(atual\?\.grupos, eixosRef\.current\), valoresRef\.current\)/);
     assert.match(hook, /valores, definicao, grupos,/);
     const ficha = lerSemComentarios(`${DIR}/useFichaProduto.js`);

@@ -214,40 +214,71 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertFalse(self::campo($grupos, 'GTIN')['multivalor'], 'texto livre não vira chips');
     }
 
-    // ═══ Medida do produto × medida do embalado (Volumes) ═════════════════════
+    // ═══ Medidas do produto fora da caixa: bloco próprio (09/10/2026) ═════════
 
     /**
-     * O modo de falha que isto impede: a ficha mostrava DOIS conjuntos de medida — o do
-     * produto (daqui) e o do embalado (Volumes) — e a pessoa digitava duas vezes. Só o
-     * embalado alimenta peso cubado, logística e frete.
+     * O modo de falha que isto impede: o Portal só pedia as medidas do produto quando a categoria as
+     * exigia, então o "Produto fora da caixa" do editor interno ficava vazio e o "Diâmetro" nunca vinha
+     * (Puff Redondo da #459). Agora TODAS as que a categoria tem vêm, num grupo próprio marcado
+     * `medidas_do_produto` (fora dos grupos comuns, para não aparecer duas vezes), na ordem do volume.
      */
-    public function test_medida_do_produto_sai_da_ficha_quando_a_categoria_nao_exige(): void
+    public function test_medidas_do_produto_vem_todas_num_grupo_proprio_fora_dos_grupos_comuns(): void
     {
-        $crus = [];
-        foreach (['LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT'] as $id) {
-            $crus[] = ['id' => $id, 'name' => "Medida {$id}", 'value_type' => 'number_unit', 'tags' => []];
+        $crus = [['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true]]];
+        foreach (['WEIGHT', 'DIAMETER', 'HEIGHT', 'DEPTH', 'WIDTH', 'LENGTH'] as $id) {
+            $crus[] = ['id' => $id, 'name' => "Medida {$id}", 'value_type' => 'number_unit', 'tags' => ['hidden' => true],
+                'allowed_units' => [['id' => 'cm', 'name' => 'cm']], 'default_unit' => 'cm'];
         }
-        // Não é medida do produto: é quanto ele aguenta. Fica.
+        // Não é medida do produto: é quanto ele aguenta. Fica nos grupos comuns.
         $crus[] = ['id' => 'MAX_WEIGHT_SUPPORTED', 'name' => 'Peso máximo suportado', 'value_type' => 'number_unit', 'tags' => []];
+        $crus[] = ['id' => 'SEAT_WIDTH', 'name' => 'Largura do assento', 'value_type' => 'number_unit', 'tags' => ['hidden' => true]];
 
-        $campos = F::camposPorId(F::daAtributos($crus));
+        $grupos = F::daAtributos($crus);
+        $medidas = array_values(array_filter($grupos, fn (array $g) => ! empty($g['medidas_do_produto'])));
 
-        foreach (['LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT'] as $id) {
-            $this->assertArrayNotHasKey($id, $campos, "{$id} duplica o Volume e não deve aparecer");
+        $this->assertCount(1, $medidas);
+        $this->assertSame(F::GRUPO_MEDIDAS_DO_PRODUTO, $medidas[0]['grupo']);
+        $this->assertSame(['LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT'], array_column($medidas[0]['campos'], 'id'), 'na ordem do volume');
+        $this->assertSame(F::TIPO_NUMERO_UNIDADE, $medidas[0]['campos'][0]['tipo']);
+
+        $comuns = array_merge(...array_map(fn (array $g) => array_column($g['campos'], 'id'),
+            array_filter($grupos, fn (array $g) => empty($g['medidas_do_produto']))));
+        foreach (F::IDS_MEDIDA_DO_PRODUTO as $id) {
+            $this->assertNotContains($id, $comuns, "{$id} não aparece duas vezes");
         }
-        $this->assertArrayHasKey('MAX_WEIGHT_SUPPORTED', $campos);
+        $this->assertContains('MAX_WEIGHT_SUPPORTED', $comuns);
+        $this->assertContains('SEAT_WIDTH', $comuns, 'medida própria da categoria não é a genérica do produto');
+        $this->assertSame(F::GRUPO_MAIS_DETALHES, end($grupos)['grupo'], '"Mais detalhes" continua por último');
+
+        // Continuam sendo campos da ficha: a validação os acha pelo id.
+        $this->assertArrayHasKey('DIAMETER', F::camposPorId($grupos));
     }
 
-    public function test_medida_do_produto_fica_quando_a_categoria_exige(): void
+    public function test_medida_que_a_categoria_exige_fica_obrigatoria_no_bloco_e_sem_medida_nao_ha_bloco(): void
     {
-        $campos = F::camposPorId(F::daAtributos([
+        $grupos = F::daAtributos([
             ['id' => 'HEIGHT', 'name' => 'Altura', 'value_type' => 'number_unit', 'tags' => ['required' => true]],
             ['id' => 'WIDTH', 'name' => 'Largura', 'value_type' => 'number_unit', 'tags' => []],
-        ]));
+        ]);
+        $campos = F::camposPorId($grupos);
 
-        $this->assertArrayHasKey('HEIGHT', $campos, 'exigida pela categoria, esconder deixaria o cadastro incompleto');
         $this->assertTrue($campos['HEIGHT']['obrigatorio']);
-        $this->assertArrayNotHasKey('WIDTH', $campos);
+        $this->assertFalse($campos['WIDTH']['obrigatorio'], 'antes sumia; agora aparece, opcional');
+        $this->assertSame([F::GRUPO_MEDIDAS_DO_PRODUTO], array_column($grupos, 'grupo'));
+
+        $sem = F::daAtributos([['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => []]]);
+        $this->assertSame([], array_filter($sem, fn (array $g) => ! empty($g['medidas_do_produto'])));
+    }
+
+    public function test_a_marca_do_grupo_sobrevive_ao_recorte_por_produto(): void
+    {
+        $grupos = F::doProduto(F::daAtributos([
+            ['id' => 'COLOR', 'name' => 'Cor', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            ['id' => 'HEIGHT', 'name' => 'Altura', 'value_type' => 'number_unit', 'tags' => []],
+        ]), ['cor']);
+
+        $this->assertSame([F::GRUPO_MEDIDAS_DO_PRODUTO], array_column($grupos, 'grupo'));
+        $this->assertTrue($grupos[0]['medidas_do_produto']);
     }
 
     // ═══ Os campos que o editor interno deixa preencher (08/10/2026) ══════════

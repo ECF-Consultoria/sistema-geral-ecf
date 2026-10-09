@@ -7,6 +7,7 @@ import { apagarRascunho, gravarRascunho, lerRascunho } from '@/lib/produtosNaveg
 import useDescricaoProduto from '@/Components/Portal/Estrutura/Produtos/useDescricaoProduto';
 import useFichaTecnica from '@/Components/Portal/Estrutura/Produtos/useFichaTecnica';
 import { eixosEmUso } from '@/lib/fichaTecnica';
+import { caixaComMedidasDoProduto, estadoDasMesmasMedidas, medidasCompletas, medidasDoProdutoNoVolume, seguirMedidasDoProduto } from '@/lib/medidasDoProduto';
 
 // ─── Regra da ficha do produto (167-16/18, agora da ficha em PÁGINA — D-27) ──
 //
@@ -132,6 +133,15 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
         eixos: eixosEmUso(vars, vocabulario?.eixos), aoAlterar: () => setAlterado(true) });
     const eixos = Object.values(vocabulario?.eixos ?? {});
 
+    // ─── Medidas do produto fora da caixa × volume (09/10/2026) ────────────
+    // "Usar as mesmas medidas do produto fora da caixa": a escolha feita NESTA tela, por variação
+    // ({ _k: true|false }); sem escolha, vale o derivado (volume igual ao produto). Não é gravada:
+    // o que fica no servidor são só as medidas do volume.
+    const [vinculos, setVinculos] = useState({});
+    const vinculosRef = useRef(vinculos);
+    vinculosRef.current = vinculos;
+    const medidasNoVolume = medidasDoProdutoNoVolume(tecnica.medidas, tecnica.valores);
+
     const alterar = (chave, campo, valor) => { setAlterado(true); setVars((atual) => atual.map((v) => (v._k === chave ? { ...v, [campo]: valor } : v))); };
 
     /**
@@ -181,6 +191,34 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     };
     const adicionarVolume = (v) => gravarCaixas(v._k, [...caixasEdit(v), { c: '', l: '', a: '', kg: '' }]);
     const removerCaixa = (v, indice) => gravarCaixas(v._k, caixasEdit(v).filter((_, i) => i !== indice));
+
+    /** A caixa "Usar as mesmas medidas…" desta variação: { disponivel, marcada }. */
+    const mesmasMedidas = (v) => estadoDasMesmasMedidas(caixasEdit(v), medidasNoVolume, vinculos[v._k]);
+
+    /** Marcar copia as medidas (e o peso do produto, se houver) para o volume; desmarcar só libera os campos. */
+    const marcarMesmasMedidas = (v, marcar) => {
+        setVinculos((atual) => ({ ...atual, [v._k]: !! marcar }));
+        // Desmarcar não muda dado nenhum: só libera os campos do volume.
+        if (marcar && medidasCompletas(medidasNoVolume)) {
+            gravarCaixas(v._k, [caixaComMedidasDoProduto(caixasEdit(v)[0], medidasNoVolume, { forcarPeso: true })]);
+        }
+    };
+
+    /**
+     * Mudar uma medida do produto: grava no estado da ficha técnica e, nas variações com a caixa
+     * marcada, leva a nova medida ao volume (o peso só enquanto o do volume for a cópia do produto).
+     */
+    const mudarMedidaDoProduto = (id, parte) => {
+        const r = seguirMedidasDoProduto({
+            variacoes: varsRef.current.map((v) => ({ _k: v._k, caixas: caixasEdit(v) })),
+            campos: tecnica.medidas, valores: tecnica.valores, id, parte, vinculos: vinculosRef.current,
+        });
+        tecnica.mudar(id, parte);
+        const chaves = Object.keys(r.volumes);
+        if (chaves.length === 0) return;
+        setVinculos(r.vinculos);
+        chaves.forEach((k) => gravarCaixas(k, [r.volumes[k]]));
+    };
 
     // ─── Nova variação (D-04): nasce com tudo da 1ª, só o Valor fica vazio ──
 
@@ -338,6 +376,7 @@ export default function useFichaProduto({ linhas = [], produto = null, vocabular
     return {
         vars, primeira, novoProduto, eixos, erros, aviso, salvando, alterado,
         alterarNome, alterar, definirImagens, aplicarEscolha, caixasEdit, mudarCaixa, adicionarVolume, removerCaixa,
+        mesmasMedidas, marcarMesmasMedidas, mudarMedidaDoProduto,
         novaVariacao, removerVariacao, salvar,
         rascunho, recuperarRascunho, descartarRascunho, esquecerRascunho,
         tecnica, descricao,

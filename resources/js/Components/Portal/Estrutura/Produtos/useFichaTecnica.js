@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
     categoriaParaConsulta, deveGravar, errosDaResposta, gruposDoProduto, idDoElemento, montarAtributos, valoresIniciais,
 } from '@/lib/fichaTecnica';
+import { camposDeMedidas, gruposSemMedidas } from '@/lib/medidasDoProduto';
 
 // ─── Estado da ficha técnica do produto ─────────────────────────────────────
 //
@@ -15,6 +16,10 @@ import {
 // `eixos`: as chaves dos eixos que as variações usam agora. O campo que é um desses
 // eixos sai da tela (`grupos`) e do PUT; o que estava digitado fica em memória e
 // volta se a variação trocar de eixo antes de salvar.
+//
+// As medidas do produto fora da caixa (grupo marcado `medidas_do_produto`) saem de
+// `grupos` e vêm em `medidas`: a tela as mostra num bloco próprio, perto das
+// Variações. O estado e o PUT são os mesmos (a gravação usa a definição inteira).
 
 const ESPERA_MS = 350;
 
@@ -37,7 +42,9 @@ export default function useFichaTecnica({ salvos = [], categoria = null, eixos =
 
     const idCategoria = categoriaParaConsulta(categoria);
     // O que a tela mostra: a definição da categoria menos o eixo das variações deste produto.
-    const grupos = gruposDoProduto(definicao?.grupos, eixos);
+    const doProduto = gruposDoProduto(definicao?.grupos, eixos);
+    const grupos = gruposSemMedidas(doProduto);
+    const medidas = camposDeMedidas(doProduto);
 
     useEffect(() => {
         if (! idCategoria) {
@@ -130,7 +137,7 @@ export default function useFichaTecnica({ salvos = [], categoria = null, eixos =
     };
 
     return {
-        valores, definicao, grupos, carregando, indisponivel, erros, erroGeral,
+        valores, definicao, grupos, medidas, carregando, indisponivel, erros, erroGeral,
         temCategoria: !! idCategoria,
         mudar, tentarDeNovo, gravar,
     };
