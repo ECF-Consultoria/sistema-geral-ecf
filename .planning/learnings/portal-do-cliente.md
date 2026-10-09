@@ -1323,3 +1323,12 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
   obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
   como preenchido (re-sincronizar não mexe).
+- **Campo com opção é SÓ lista, mesmo onde o editor interno aceita texto (09/10/2026, decisão do usuário).** O §35
+  continua valendo: a ficha não oferece "Outro (digitar)" (foi aberto em `dc48b1b7` e desfeito no mesmo dia) e o
+  servidor recusa com 422 neutro texto fora das opções. O texto ANTIGO gravado antes de 08/10 nesses campos (ex.:
+  "Madeira maciça de eucalipto" na #459) não aparece nos chips e sai no próximo salvar do cliente — mas antes disso o
+  Sincronizar já o leva ao rascunho como texto onde o editor aceita. **Atenção:** como o rascunho segue o que o
+  Portal escreveu (D-05 refinado), quando o cliente salvar a ficha de novo o legado sai também do rascunho no
+  Sincronizar seguinte — se a equipe quer guardar, basta editar o campo no Publicador (vira `origem = user`). Lista fechada cujas opções o filtro de sigilo
+  derruba inteiras sai da ficha (não vira texto). Ver [[publicador-ml]] §14. (Com o D-05 refinado, re-sincronizar
+  passa a ATUALIZAR o que o Portal escreveu.)

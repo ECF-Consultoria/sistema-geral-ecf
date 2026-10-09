@@ -61,7 +61,7 @@ export function textoFrete(frete) {
 const emLinha = (...filhos) => h('span', { className: 'inline-flex min-w-0 items-center gap-1 text-[13px]' }, ...filhos);
 
 const TIP_ME1 = 'Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora; ainda não calculamos aqui.';
-const TIP_FALHOU = 'Não deu para consultar o Mercado Livre agora. Tente de novo.';
+const TIP_FALHOU = 'Não deu para consultar o frete agora. Tente de novo.';
 const TIP_REFERENCIA = 'Informe o custo para o frete usar o preço certo.';
 const TIP_FAIXA = 'Neste preço o frete pode mudar de faixa.';
 

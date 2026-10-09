@@ -28,7 +28,7 @@ export default function JanelaSugestoesCategoria({ aberta, sugestoes = [], indis
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-3xl" titulo="Revisar categorias sugeridas">
             <div className="space-y-3 text-[13px] text-white/70" data-janela-sugestoes>
                 {indisponivel && comSugestao.length === 0 && (
-                    <p className="text-white/60">Nada encontrado ou o Mercado Livre está indisponível agora. Tente de novo mais tarde.</p>
+                    <p className="text-white/60">Nada encontrado ou a busca está indisponível agora. Tente de novo mais tarde.</p>
                 )}
                 {comSugestao.length > 0 && (
                     <div className="flex gap-4 text-[12px]">

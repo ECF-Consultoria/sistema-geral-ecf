@@ -80,7 +80,7 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
                 onKeyDown={aoTecla}
                 maxLength={MAXIMO_BUSCA}
                 placeholder="Buscar categoria"
-                aria-label="Buscar categoria do Mercado Livre"
+                aria-label="Buscar categoria"
                 className="h-10 w-full rounded-lg border border-white/[0.10] bg-white/[0.04] px-3 text-[13.5px] text-white placeholder:text-white/25 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
             />
 

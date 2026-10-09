@@ -407,7 +407,6 @@ export default function Produtos({
     const [faixaDeSugestoes, setFaixaDeSugestoes] = useState(true);
     const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
     const resumoPronto = useRef(false);
-    const [avisosDoClique, setAvisosDoClique] = useState([]); // avisos do próprio Sincronizar (cores avulsas etc.)
     const [absorvidosDoClique, setAbsorvidosDoClique] = useState(0); // linhas antigas de cor juntadas ao grupo
     const aoLerRef = useRef(null);
     const [acompanhando, setAcompanhando] = useState(false);
@@ -595,23 +594,21 @@ export default function Produtos({
     function fecharResumo() {
         acompanhamento.current.cancelar();
         setResumo(null);
-        setAvisosDoClique([]);
         setAbsorvidosDoClique(0);
     }
 
     function aoConcluirSync(json) {
         resumoPronto.current = false;
-        const avisos = json?.avisos ?? [];
+        // Os avisos do clique (`json.avisos`) não vão para a tela (09/10): o servidor os registra no log.
         const absorvidos = Number(json?.absorvidos ?? 0);
-        setAvisosDoClique(avisos);
         setAbsorvidosDoClique(absorvidos);
         if (json?.pedido) {
             setResumo({ status: 'preenchendo', total: json.preenchendo ?? 0, concluidos: 0 });
             acompanhamento.current.acompanhar(json.pedido);
         } else {
             acompanhamento.current.cancelar();
-            // Sem nada a preencher, os avisos do clique (e as linhas antigas juntadas) ainda precisam aparecer.
-            setResumo(avisos.length > 0 || absorvidos > 0 ? { status: 'pronto', so_avisos: true } : null);
+            // Sem nada a preencher, só as linhas antigas juntadas ainda precisam aparecer.
+            setResumo(absorvidos > 0 ? { status: 'pronto', so_avisos: true } : null);
         }
         const texto = json?.criados > 0 || absorvidos > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
         setStatus({ tipo: 'ok', texto });
@@ -684,7 +681,7 @@ export default function Produtos({
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
-                <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} absorvidos={absorvidosDoClique} onFechar={fecharResumo} />
+                <ResumoDoSincronizar resumo={resumo} absorvidos={absorvidosDoClique} onFechar={fecharResumo} />
 
                 {/* Faixa de sugestões de kit, acima do card: o × esconde até recarregar. */}
                 {faixaDeSugestoes && comSugestao.length > 0 && (

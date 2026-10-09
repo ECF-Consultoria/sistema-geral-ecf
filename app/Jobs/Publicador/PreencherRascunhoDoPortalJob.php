@@ -83,7 +83,7 @@ class PreencherRascunhoDoPortalJob implements ShouldQueue
     /** Resumo de um produto que não foi preenchido, só com o aviso. */
     private static function vazio(int $produtoId, string $aviso): array
     {
-        return ['produto_id' => $produtoId, 'rascunho_id' => null, 'variantes' => 0, 'campos_preenchidos' => 0, 'campos_mantidos' => 0,
+        return ['produto_id' => $produtoId, 'rascunho_id' => null, 'variantes' => 0, 'campos_preenchidos' => 0, 'campos_mantidos' => 0, 'campos_atualizados' => 0,
             'fotos_trazidas' => 0, 'fotos_nao_trazidas' => [], 'avisos' => [$aviso]];
     }
 }

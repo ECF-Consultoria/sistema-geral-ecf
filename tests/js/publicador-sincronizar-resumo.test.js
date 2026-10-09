@@ -1,39 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
-import { motivosNaoTrazidas, textoDoResumo } from '../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js';
+import { linhaDoResumo } from '../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js';
 import { criarAcompanhamento } from '../../resources/js/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 
 // Fase 172-12 — resumo do "Sincronizar do Portal": textos puros e gates de fonte do acompanhamento.
 
 const DIR = 'resources/js/Components/Mlb/Publicador/';
 
-test('textoDoResumo — frase completa com mantidos', () => {
+// 09/10/2026 — o painel virou UMA linha: sem "campos mantidos", sem lista de avisos ("vai poluir muito").
+
+test('linhaDoResumo — uma linha curta, singular com 1, sem "mantidos"', () => {
     assert.equal(
-        textoDoResumo({ produtos: 2, variantes: 5, fotos_trazidas: 8, campos_mantidos: 3 }),
-        '2 produtos, 5 variações, 8 fotos trazidas; 3 campos mantidos porque já estavam preenchidos.',
+        linhaDoResumo({ produtos: 13, variantes: 20, fotos_trazidas: 0, campos_mantidos: 287 }),
+        'Sincronizado: 13 produtos, 20 variações, 0 fotos.',
     );
+    assert.equal(linhaDoResumo({ produtos: 1, variantes: 1, fotos_trazidas: 1 }), 'Sincronizado: 1 produto, 1 variação, 1 foto.');
+    assert.equal(linhaDoResumo(null), 'Sincronizado: 0 produtos, 0 variações, 0 fotos.');
 });
 
-test('textoDoResumo — singular com 1 e sem a parte dos mantidos quando zero', () => {
+test('linhaDoResumo — campos atualizados e linhas juntadas só quando houver, na mesma linha', () => {
     assert.equal(
-        textoDoResumo({ produtos: 1, variantes: 1, fotos_trazidas: 1, campos_mantidos: 1 }),
-        '1 produto, 1 variação, 1 foto trazida; 1 campo mantido porque já estava preenchido.',
+        linhaDoResumo({ produtos: 2, variantes: 3, fotos_trazidas: 4, campos_atualizados: 5 }),
+        'Sincronizado: 2 produtos, 3 variações, 4 fotos, 5 campos atualizados.',
     );
-    assert.equal(textoDoResumo({ produtos: 0, variantes: 0, fotos_trazidas: 0, campos_mantidos: 0 }), '0 produtos, 0 variações, 0 fotos trazidas.');
-    assert.equal(textoDoResumo(null), '0 produtos, 0 variações, 0 fotos trazidas.');
-});
-
-test('motivosNaoTrazidas — frases por motivo, código quando desconhecido', () => {
-    const l = motivosNaoTrazidas({ pequena: 2, formato: 1 });
-    assert.deepEqual(l, ['2 fotos pequenas demais (mínimo 500 px)', '1 foto em formato não aceito']);
-    assert.deepEqual(motivosNaoTrazidas({ estranho: 3 }), ['3 fotos (estranho)']);
-    assert.deepEqual(motivosNaoTrazidas({ dimensao_grande: 1, arquivo_grande: 2 }), [
-        '1 foto com resolução grande demais (acima de 40 megapixels)',
-        '2 fotos com arquivo grande demais',
-    ]);
-    assert.deepEqual(motivosNaoTrazidas({ pequena: 0 }), []);
-    assert.deepEqual(motivosNaoTrazidas(undefined), []);
+    assert.equal(linhaDoResumo({ produtos: 1, variantes: 1, fotos_trazidas: 0, campos_atualizados: 1 }),
+        'Sincronizado: 1 produto, 1 variação, 0 fotos, 1 campo atualizado.');
+    assert.equal(linhaDoResumo({ produtos: 1, variantes: 2, fotos_trazidas: 0, campos_atualizados: 0 }, 7),
+        'Sincronizado: 1 produto, 2 variações, 0 fotos. 7 linhas antigas de cor foram juntadas ao produto.');
+    assert.equal(linhaDoResumo({ so_avisos: true }, 2), '2 linhas antigas de cor foram juntadas ao produto.');
+    assert.equal(linhaDoResumo({ so_avisos: true }, 0), 'Sincronizado.');
 });
 
 // ─── Acompanhamento (review 172 CR-01): mora na página, um pedido por vez ───
@@ -212,7 +208,60 @@ test('ResumoDoSincronizar — mostra as linhas juntadas; sem elas, nada muda', a
 test('Produtos.jsx — guarda os absorvidos do clique, abre o painel com eles e limpa ao fechar', () => {
     const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
     assert.match(fonte, /const absorvidos = Number\(json\?\.absorvidos \?\? 0\)/);
-    assert.match(fonte, /avisos\.length > 0 \|\| absorvidos > 0 \? \{ status: 'pronto', so_avisos: true \}/);
+    assert.match(fonte, /setResumo\(absorvidos > 0 \? \{ status: 'pronto', so_avisos: true \} : null\)/);
+    // 09/10: os avisos do clique não vão para a tela.
+    assert.doesNotMatch(fonte, /avisosDoClique/);
     assert.match(fonte, /absorvidos=\{absorvidosDoClique\}/);
     assert.match(fonte, /function fecharResumo\(\) \{[\s\S]*?setAbsorvidosDoClique\(0\);[\s\S]*?\}/);
+});
+
+// ─── 09/10: o painel não mostra avisos (vão para o log do servidor) ───
+
+async function renderizarResumo(props) {
+    const path = await import('node:path');
+    const fs = await import('node:fs');
+    const { fileURLToPath, pathToFileURL } = await import('node:url');
+    const esbuild = await import('esbuild');
+    const React = (await import('react')).default;
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const aqui = path.dirname(fileURLToPath(import.meta.url));
+    const raiz = path.resolve(aqui, '../..');
+    const r = await esbuild.build({
+        entryPoints: [path.resolve(raiz, DIR + 'ResumoDoSincronizar.jsx')], bundle: true, format: 'esm', platform: 'node', jsx: 'automatic',
+        write: false, logLevel: 'silent', alias: { '@': path.resolve(raiz, 'resources/js') },
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react'],
+    });
+    const arquivo = path.join(aqui, `.resumo-sinc-av-${process.pid}-${Date.now()}.mjs`);
+    fs.writeFileSync(arquivo, r.outputFiles[0].text, 'utf8');
+    try {
+        const Resumo = (await import(pathToFileURL(arquivo).href)).default;
+
+        return renderToStaticMarkup(React.createElement(Resumo, { onFechar: () => {}, ...props }));
+    } finally {
+        fs.rmSync(arquivo, { force: true });
+    }
+}
+
+test('ResumoDoSincronizar — pronto: uma linha e o X; nenhum aviso, nem do clique nem do preenchimento', async () => {
+    const aviso = 'Materiais da estrutura: nenhuma das opções ("Madeira maciça de eucalipto") existe na lista; nada foi preenchido.';
+    const html = await renderizarResumo({
+        resumo: { status: 'pronto', produtos: 13, variantes: 20, fotos_trazidas: 0, campos_mantidos: 287, avisos: [aviso],
+            fotos_nao_trazidas: { pequena: 2 } },
+        avisosDoClique: ['A cor "Preto" já foi publicada.'],
+    });
+
+    assert.ok(html.includes('Sincronizado: 13 produtos, 20 variações, 0 fotos.'));
+    assert.ok(html.includes('aria-label="Fechar o resumo"'));
+    assert.doesNotMatch(html, /Avisos|Madeira maciça|já foi publicada|mantidos|<ul|<li/);
+});
+
+test('ResumoDoSincronizar — enquanto preenche, o andamento como antes', async () => {
+    const html = await renderizarResumo({ resumo: { status: 'preenchendo', total: 13, concluidos: 4, avisos: ['x'] } });
+    assert.ok(html.includes('Preenchendo os rascunhos com o que está no Portal… (4/13)'));
+    assert.doesNotMatch(html, /Sincronizado:/);
+});
+
+test('ResumoDoSincronizar.jsx — a fonte não lê avisos nem lista', () => {
+    const fonte = lerSemComentarios(DIR + 'ResumoDoSincronizar.jsx');
+    assert.doesNotMatch(fonte, /\.avisos|avisosDoClique|<ul|<li/);
 });

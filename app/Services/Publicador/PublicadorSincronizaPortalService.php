@@ -193,6 +193,10 @@ class PublicadorSincronizaPortalService
         Log::info("[Publicador] Sincronizar do Portal: empresa {$company->id} ({$company->name}) — {$criados} produto(s) novo(s), {$nAdotados} adotado(s), "
             ."{$nAbsorvidos} linha(s) antiga(s) de cor absorvida(s)".($absorvidos !== [] ? ' (#'.implode(', #', $absorvidos).')' : '').', '
             .count($duplicados).' produto(s) com cores avulsas.');
+        // Os avisos do clique vão para o log, não para a tela (09/10/2026: o painel mostra uma linha só).
+        if ($avisos !== []) {
+            Log::info('[Publicador] Sincronizar avisos', ['company_id' => (int) $company->id, 'rascunho_id' => null, 'avisos' => array_values(array_unique($avisos))]);
+        }
 
         return [
             'criados' => $criados,

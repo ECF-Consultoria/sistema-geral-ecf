@@ -38,8 +38,8 @@ test('gate de fonte: o hook zera o estoque na variação nova e o cartão tem o 
 
     const cartao = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/CartaoVariacao.jsx');
     assert.match(cartao, /estoque-\$\{k\}/);
-    // O cartão já fala de "anúncios" na linha da oferta (Lista SKUs); o gate vale para o BLOCO do estoque.
     const bloco = cartao.slice(cartao.indexOf('htmlFor={`estoque-'), cartao.indexOf('podeExcluir &&'));
     assert.ok(bloco.length > 50);
-    assert.doesNotMatch(bloco, /mercado|an[uú]ncio|publicar|MLB/i);
+    // Sigilo vale para o cartão INTEIRO: a contagem "N anúncios" da linha da oferta saiu em 09/10.
+    assert.doesNotMatch(cartao, /mercado|an[uú]ncio|publicar|\bMLB\b/i);
 });

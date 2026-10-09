@@ -12,7 +12,11 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
  * para o valor de atributo do rascunho do Publicador (172, D-08/D-13).
  *
  * Puro: sem banco, sem HTTP. Regra de ouro: nunca devolver valor fora de uma lista
- * fechada (o ML recusa com 3510) — o que não casa vira aviso, não valor.
+ * fechada (o ML recusa com 3510) — o que não casa vira aviso, não valor. "Fechada" é
+ * `! aceitaTextoLivre` do editor: onde o editor aceita texto, o texto do Portal vai como
+ * `value_name`, sem `value_id`. Hoje a ficha do Portal só deixa ESCOLHER onde há opção
+ * (decisão de 09/10/2026); texto ali é o legado gravado antes de 08/10, e é ele que isto salva.
+ * Os avisos são para o log do servidor (09/10/2026: a tela não os mostra mais).
  * Todo valor traz `origem => 'portal'`. Campo de várias opções guarda a 1ª opção
  * resolvida em `value_id`/`value_name`, todas em `values_multi`, e liga `revisar`.
  */
@@ -126,6 +130,22 @@ final class PortalValorDeAtributo
         }
 
         if ($resolvidas === []) {
+            // Nada casou (texto antigo, de antes de 08/10). Onde o editor aceita texto livre, o que o
+            // Portal tem vai como texto, sem `value_id` — é o que a equipe digitaria. Mais de um nome
+            // vira um texto só, separado por vírgula, e pede revisão. Onde não aceita, fica vazio: o
+            // campo aparece pendente no editor (o aviso vai só para o log).
+            if ($def->aceitaTextoLivre && $perdidos !== [] && implode('', $perdidos) !== '') {
+                return [
+                    'valor' => [
+                        'value_id'   => null,
+                        'value_name' => mb_substr(implode(', ', $perdidos), 0, self::limite($def)),
+                        'origem'     => 'portal',
+                        'revisar'    => count($perdidos) > 1,
+                    ],
+                    'aviso' => null,
+                ];
+            }
+
             return self::semValor("{$nomeCampo}: nenhuma das opções (\"{$texto}\") existe na lista do Mercado Livre; nada foi preenchido.");
         }
 

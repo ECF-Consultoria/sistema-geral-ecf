@@ -97,7 +97,7 @@ test('categoria escolhida vai ao servidor como id, nunca como texto', () => {
 test('coluna Frete ME2: todos os estados do UI-SPEC', () => {
     assert.match(lib, /export function renderFrete\(row, \{ consultando = false \}/);
     for (const t of ['consultando', 'sem frete aqui', 'Informe o custo para o frete usar o preço certo.',
-        'Neste preço o frete pode mudar de faixa.', 'Não deu para consultar o Mercado Livre agora. Tente de novo.',
+        'Neste preço o frete pode mudar de faixa.', 'Não deu para consultar o frete agora. Tente de novo.',
         'Fora do tamanho do envio ME2. O frete usa a tabela da sua transportadora; ainda não calculamos aqui.']) {
         assert.ok(lib.includes(t), t);
     }

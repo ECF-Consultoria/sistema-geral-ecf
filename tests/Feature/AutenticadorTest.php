@@ -43,6 +43,31 @@ class AutenticadorTest extends TestCase
         $resp->assertDontSee(self::SECRET, false);
     }
 
+    public function test_lista_abre_sem_conta_selecionada(): void
+    {
+        $this->criar();
+
+        $this->actingAs($this->user)->get(route('autenticadores.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Autenticadores/Index')
+                ->where('selecionado', null));
+    }
+
+    public function test_link_da_conta_abre_a_lista_com_o_painel_dela(): void
+    {
+        $this->criar(['cliente' => 'Outra Loja']);
+        $a = $this->criar(['cliente' => 'Loja Prime', 'secret' => 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP']);
+
+        $resp = $this->actingAs($this->user)->get(route('autenticadores.show', $a));
+
+        $resp->assertOk();
+        $resp->assertInertia(fn (Assert $page) => $page
+            ->component('Autenticadores/Index')
+            ->has('autenticadores', 2)
+            ->where('selecionado', $a->id));
+        $resp->assertDontSee(self::SECRET, false);
+    }
+
     public function test_cadastra_por_secret_e_grava_cifrado(): void
     {
         $this->actingAs($this->user)->post(route('autenticadores.store'), [

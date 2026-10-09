@@ -66,6 +66,13 @@ use Illuminate\Support\Facades\Log;
  * só no `list` jogava esses campos em texto livre e deixava o cliente digitar valor
  * que não existe na lista. Lista marcada `multivalued` aceita mais de uma opção.
  *
+ * ### Campo com opção é SÓ lista, mesmo onde o editor interno aceita texto (decisão do usuário, 09/10/2026)
+ * O editor da equipe aceita texto livre em `string` com opções (`allow_custom_value: true` nas
+ * respostas reais: Materiais, Salas…). A ficha do cliente, não: aqui quem tem opção só escolhe entre
+ * elas (§35 de 08/10, mantido). O texto ANTIGO gravado antes de 08/10 nesses campos não se perde no
+ * caminho: o Sincronizar o leva ao rascunho como texto onde o editor aceita
+ * ({@see \App\Support\Publicador\Portal\PortalValorDeAtributo}).
+ *
  * A montagem ({@see self::daAtributos()}) é uma função PURA: sem HTTP, sem cache.
  */
 class FichaTecnicaDaCategoria
@@ -349,8 +356,13 @@ class FichaTecnicaDaCategoria
                 continue;
             }
             $tags = ClassificadorAtributos::tags($atributo['tags'] ?? []);
+            // `values` cru entra só para o classificador decidir `aceitaTextoLivre` como o editor decide
+            // (sem opção = texto; com opção, `string` aceita texto e `list`/`boolean` não) — usado só
+            // quando o filtro de sigilo derruba todas as opções. As opções que vão para a tela continuam
+            // saindo de {@see self::opcoes()}, com o filtro de sigilo.
+            $valores = array_values(array_filter((array) ($atributo['values'] ?? []), fn ($v) => is_array($v) && trim((string) ($v['id'] ?? '')) !== ''));
             $enxutos[] = ['id' => $id, 'name' => (string) ($atributo['name'] ?? $id), 'tags' => $tags,
-                'value_type' => (string) ($atributo['value_type'] ?? 'string')];
+                'value_type' => (string) ($atributo['value_type'] ?? 'string'), 'values' => $valores];
         }
 
         if ($enxutos === []) {
@@ -409,7 +421,12 @@ class FichaTecnicaDaCategoria
         $valores = self::opcoes($atributo);
 
         if ($valores === []) {
-            // Lista sem nenhuma opção não dá para preencher: cai para texto livre.
+            // Sem opção que possa ir à tela, só sobra digitar — e só onde o editor interno aceitaria
+            // texto livre. A lista FECHADA cujas opções o filtro de sigilo derrubou inteiras
+            // (§35: "500 ml") não vira texto: o cliente gravaria valor que não publica. Sai da ficha.
+            if (! $classificado->aceitaTextoLivre && in_array($tipo, [self::TIPO_LISTA, self::TIPO_TEXTO], true)) {
+                return null;
+            }
             if ($tipo === self::TIPO_LISTA) {
                 $tipo = self::TIPO_TEXTO;
             }
