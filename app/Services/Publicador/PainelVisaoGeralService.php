@@ -5,6 +5,7 @@ namespace App\Services\Publicador;
 use App\Models\CreativeIdentidade;
 use App\Models\EstruturaPublicacao;
 use App\Models\MlAcervoItem;
+use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\User;
@@ -174,20 +175,47 @@ class PainelVisaoGeralService
      * `ProgramasPublicadorService::contagemProdutos()` — MESMA fonte que a
      * aba Produtos usa, nunca recalculado aqui (o número tem que bater).
      *
+     * ═══ Chaves NOVAS (quick 261009-t02) ═══════════════════════════════════
+     *
+     * Tudo ADITIVO: nenhuma chave acima mudou de nome, de ordem ou de valor —
+     * a Visão geral está em produção desde 08/10 e a tela 02 só reorganiza.
+     *
+     * - `no_ar_por_fase` — `{fase1, kits}` dos produtos da conta que estão no
+     *   ar. ⚠️ Rotulado **"kits"**, nunca "Fase 2": `quantidade_kit >= 2`
+     *   inclui o kit de 3, que é Fase 3 (mesma correção da tela 01).
+     * - `criativos_packs` — quantos kits de criativo (`ml_anuncio_criativo_kits`)
+     *   a conta tem. NÃO existe "reaproveitados": o acervo não conta reuso.
+     * - `tracao_pct` — `com_venda ÷ no_ar`, arredondado. **Nulo** quando não há
+     *   o que dividir (`no_ar` 0, acervo nunca coletado ou conta sem Company).
+     *   ⚠️ Nunca 0%: "não sabemos" não é "é zero" (mesma armadilha do "dia sem
+     *   linha ≠ venda zero" dos learnings deste projeto).
+     *
+     * `$produtos` (shape de `produtosParaTela()`) é opcional pelo mesmo motivo
+     * do `oQueFazerAgora()`: chamador antigo que não passa a lista continua
+     * funcionando, e aí `no_ar_por_fase` diz "não sei" (null) em vez de mentir
+     * um zero. Nenhuma consulta nova sai daqui — a lista já está carregada.
+     *
      * @param  array{sem_oferta?: int}  $contagemProdutos
+     * @param  list<array>  $produtos
      * @return array{
      *   no_ar: ?int, com_venda: ?int, sem_oferta: int,
      *   publicados_30d: int, publicados_30d_pessoas: int,
      *   acervo_disponivel: bool, nunca_coletado: bool,
+     *   no_ar_por_fase: array{fase1: ?int, kits: ?int}, criativos_packs: int, tracao_pct: ?int,
      * }
      */
-    public function indicadores(array $alvo, array $contagemProdutos): array
+    public function indicadores(array $alvo, array $contagemProdutos, array $produtos = []): array
     {
         $company = $alvo['company'];
         $publicados = $this->publicadosRecentes($alvo);
         $pessoas = count($publicados['equipe'])
             + ($publicados['cliente']['quantidade'] > 0 ? 1 : 0)
             + ($publicados['origem_antiga']['quantidade'] > 0 ? 1 : 0);
+
+        $novas = [
+            'no_ar_por_fase' => $this->noArPorFase($produtos),
+            'criativos_packs' => $this->criativosPacks($alvo),
+        ];
 
         if ($company === null) {
             // D23: sem Company não há acervo nenhum pra consultar — "—" na tela, nunca zero.
@@ -199,7 +227,7 @@ class PainelVisaoGeralService
                 'publicados_30d_pessoas' => $pessoas,
                 'acervo_disponivel' => false,
                 'nunca_coletado' => false,
-            ];
+            ] + $novas + ['tracao_pct' => null];
         }
 
         $defasagem = $this->acervoTriagem->defasagem($company);
@@ -223,6 +251,136 @@ class PainelVisaoGeralService
             'publicados_30d_pessoas' => $pessoas,
             'acervo_disponivel' => true,
             'nunca_coletado' => $defasagem['nunca_coletado'],
+        ] + $novas + [
+            // Divisão só quando HÁ o que dividir. `no_ar === 0` e `no_ar === null`
+            // caem os dois em null — e são coisas diferentes na tela: o primeiro é
+            // "medimos e não há anúncio", o segundo é "não medimos".
+            'tracao_pct' => ($noAr !== null && $noAr > 0 && $comVenda !== null)
+                ? (int) round($comVenda / $noAr * 100)
+                : null,
+        ];
+    }
+
+    /**
+     * Os produtos NO AR da conta, separados em base e kit — o "218 Fase 1 ·
+     * 124 kits" do topo da tela 02.
+     *
+     * Lê a lista que `produtosParaTela()` já devolveu (zero consulta nova) e
+     * aplica a MESMA regra de "no ar" de `ProgramasPublicadorService::bucketDaFase()`:
+     * status derivado publicado/parcial OU anúncio CREATED na lista.
+     *
+     * ⚠️ Guarda de honestidade (mesmo desenho do `prontosParaFase2()`): lista
+     * NÃO ciente de fase (shape antigo, sem `eh_kit`/`quantidade_kit`) devolve
+     * `null` nos dois, porque aí não dá para separar nada e zero seria mentira.
+     * Lista VAZIA é outra coisa: a conta não tem produto, e aí zero é medido.
+     *
+     * @param  list<array>  $produtos
+     * @return array{fase1: ?int, kits: ?int}
+     */
+    private function noArPorFase(array $produtos): array
+    {
+        if ($produtos === []) {
+            return ['fase1' => 0, 'kits' => 0];
+        }
+
+        $cienteDeFase = false;
+        $fase1 = 0;
+        $kits = 0;
+
+        foreach ($produtos as $p) {
+            if (! array_key_exists('eh_kit', $p) && ! array_key_exists('quantidade_kit', $p)) {
+                continue;
+            }
+            $cienteDeFase = true;
+
+            $noAr = in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
+                || ($p['anuncios'] ?? []) !== [];
+            if (! $noAr) {
+                continue;
+            }
+
+            // "kit" é quantidade_kit >= 2 — o que inclui o kit de 3 (Fase 3).
+            if (($p['eh_kit'] ?? false) === true || (int) ($p['quantidade_kit'] ?? 1) >= 2) {
+                $kits++;
+            } else {
+                $fase1++;
+            }
+        }
+
+        return $cienteDeFase ? ['fase1' => $fase1, 'kits' => $kits] : ['fase1' => null, 'kits' => null];
+    }
+
+    /**
+     * Quantos kits de criativo por IA a conta já tem (`ml_anuncio_criativo_kits`).
+     *
+     * UMA consulta, escopada pela dupla-âncora da conta, com os `orWhere`
+     * SEMPRE agrupados dentro de `where(function...)` — orWhere solto sobe ao
+     * topo do WHERE e anula o escopo por empresa (armadilha documentada em
+     * `AcervoTriagemService::escopo()`). Sem nenhuma das duas âncoras a
+     * consulta é fechada com `1 = 0`, nunca aberta à base inteira.
+     *
+     * ⚠️ É a CONTAGEM de packs, e só. "Reaproveitados" não existe na tabela e
+     * não pode ser inventado na tela.
+     */
+    public function criativosPacks(array $alvo): int
+    {
+        $mlbEmpresaId = $alvo['mlb_empresa']?->id;
+        $companyId = $alvo['company']?->id;
+
+        if ($mlbEmpresaId === null && $companyId === null) {
+            return 0;
+        }
+
+        return MlAnuncioCriativoKit::query()
+            ->where(function ($q) use ($mlbEmpresaId, $companyId) {
+                if ($mlbEmpresaId !== null) {
+                    $q->orWhere('mlb_empresa_id', $mlbEmpresaId);
+                }
+                if ($companyId !== null) {
+                    $q->orWhere('company_id', $companyId);
+                }
+            })
+            ->count();
+    }
+
+    /**
+     * Os "Alertas Meli & ERP" do mockup da tela 02 — que são, na prática, a
+     * TRIAGEM do acervo que esta tela já carregava.
+     *
+     * ⚠️ Nenhum motivo é reimplementado aqui: a ordem, os rótulos e as cores
+     * saem de `AcervoTriagemService::motivosDef()` (fonte única, decisão da
+     * Etapa 2) e os números saem dos chips que o controller já calculou. ZERO
+     * consulta nova — só reformata o que chegou.
+     *
+     * `disponivel` distingue "sem Company, não há acervo para triar" de
+     * "triamos e não há alerta": a tela não pode afirmar zero no primeiro caso.
+     *
+     * `total` é o de anúncios DISTINTOS com pelo menos um motivo (o
+     * `triagem['total']`), nunca a soma dos chips — um anúncio pode ter dois
+     * motivos e seria contado duas vezes.
+     *
+     * @param  array{total?: int, chips?: array}  $triagem  retorno de `AcervoTriagemService::triagem()`
+     * @return array{disponivel: bool, total: int, itens: list<array{chave: string, label: string, cor: string, total: int}>}
+     */
+    public function alertas(array $alvo, array $triagem): array
+    {
+        if ($alvo['company'] === null) {
+            return ['disponivel' => false, 'total' => 0, 'itens' => []];
+        }
+
+        $porChave = collect($triagem['chips'] ?? [])->keyBy('chave');
+
+        $itens = array_map(fn (array $m) => [
+            'chave' => $m['chave'],
+            'label' => $m['label'],
+            'cor' => $m['cor'],
+            'total' => (int) ($porChave[$m['chave']]['count'] ?? 0),
+        ], $this->acervoTriagem->motivosDef());
+
+        return [
+            'disponivel' => true,
+            'total' => (int) ($triagem['total'] ?? 0),
+            'itens' => $itens,
         ];
     }
 

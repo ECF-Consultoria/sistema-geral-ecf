@@ -3,6 +3,8 @@
 namespace Tests\Feature\Publicador;
 
 use App\Models\Company;
+use App\Models\MlAcervoItem;
+use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\PubProduto;
@@ -12,6 +14,7 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -167,5 +170,207 @@ class VisaoGeralTest extends TestCase
         $e = $this->empresa();
         $this->actingAs(User::factory()->create(['role' => 'consultor']))
             ->get(self::BASE.'/empresas/empresa-'.$e->id.'/visao-geral')->assertForbidden();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Quick 261009-t02 — redesign da tela 02 (Dashboard do Publicador).
+    //
+    // Tudo ADITIVO: as chaves antigas de `indicadores` continuam todas lá, com
+    // o mesmo nome e o mesmo valor. O que entra é `no_ar_por_fase`,
+    // `criativos_packs`, `tracao_pct` e a prop nova `alertas`.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Uma Company com token de ML ativo — o alvo `company-{id}` das contas de Gestão. */
+    private function companyComToken(): Company
+    {
+        $c = Company::factory()->create();
+        MlToken::create(['company_id' => $c->id, 'ml_user_id' => '9', 'access_token' => 'x', 'refresh_token' => 'y',
+            'expires_at' => now()->addHours(5), 'status' => 'active']);
+
+        return $c;
+    }
+
+    private function acervo(Company $c, string $mlItemId, string $status, int $vendidos, array $extra = []): MlAcervoItem
+    {
+        return MlAcervoItem::create(array_merge([
+            'company_id' => $c->id,
+            'ml_item_id' => $mlItemId,
+            'title' => 'Item',
+            'status' => $status,
+            'available_quantity' => 10,
+            'sold_quantity' => $vendidos,
+            'nota_ecf' => 60,
+            'motivos' => [],
+            'severidade' => MlAcervoItem::SEVERIDADE_SAUDAVEL,
+            'origem' => MlAcervoItem::ORIGEM_LEGADO,
+            'coletado_em' => now(),
+        ], $extra));
+    }
+
+    /** Produto com rascunho PUBLISHED — `prontidao()` devolve a chave 'publicado' (= no ar). */
+    private function produtoNoAr(Company $c, string $sku, array $extra = []): PubProduto
+    {
+        $p = PubProduto::create(array_merge([
+            'company_id' => $c->id, 'sku' => $sku, 'nome' => $sku, 'origem' => PubProduto::ORIGEM_PUBLICADOR,
+        ], $extra));
+        PubRascunho::create(['produto_id' => $p->id, 'status' => PubRascunho::PUBLISHED]);
+
+        return $p;
+    }
+
+    public function test_indicadores_mantem_todas_as_chaves_antigas_e_ganha_as_novas(): void
+    {
+        $c = $this->companyComToken();
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        // Gate de FORMA: nenhuma chave antiga pode sumir nem mudar de nome.
+        foreach (['no_ar', 'com_venda', 'sem_oferta', 'publicados_30d', 'publicados_30d_pessoas', 'acervo_disponivel', 'nunca_coletado'] as $chave) {
+            $this->assertArrayHasKey($chave, $p['indicadores'], "chave ANTIGA '$chave' sumiu de indicadores");
+        }
+        foreach (['no_ar_por_fase', 'criativos_packs', 'tracao_pct'] as $chave) {
+            $this->assertArrayHasKey($chave, $p['indicadores'], "chave NOVA '$chave' ausente de indicadores");
+        }
+        $this->assertArrayHasKey('alertas', $p, 'a prop `alertas` é o bloco de Alertas da coluna lateral');
+    }
+
+    public function test_no_ar_por_fase_separa_base_de_kits_e_rotula_kits_nunca_fase_2(): void
+    {
+        $c = $this->companyComToken();
+        $base = $this->produtoNoAr($c, 'BASE-1');
+        $this->produtoNoAr($c, 'BASE-2');
+        // Kit de 2 e kit de 3 (Fase 3) — os DOIS contam como "kits", nunca como "Fase 2".
+        $this->produtoNoAr($c, 'KIT-2', ['produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
+        $this->produtoNoAr($c, 'KIT-3', ['produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 3]);
+        // Produto sem rascunho nenhum: não está no ar, não entra em nenhum dos dois.
+        PubProduto::create(['company_id' => $c->id, 'sku' => 'PARADO', 'nome' => 'Parado', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        $this->assertSame(2, $p['indicadores']['no_ar_por_fase']['fase1'], 'só os dois bases publicados');
+        $this->assertSame(2, $p['indicadores']['no_ar_por_fase']['kits'], 'kit de 2 E kit de 3 — "kits", não "Fase 2"');
+    }
+
+    public function test_no_ar_por_fase_de_conta_sem_produto_nenhum_e_zero_de_verdade(): void
+    {
+        $c = $this->companyComToken();
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        $this->assertSame(['fase1' => 0, 'kits' => 0], $p['indicadores']['no_ar_por_fase'], 'nenhum produto = zero medido, não "não sabemos"');
+    }
+
+    public function test_criativos_packs_conta_os_kits_de_criativo_da_conta(): void
+    {
+        $c = $this->companyComToken();
+
+        $semKit = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+        $this->assertSame(0, $semKit['indicadores']['criativos_packs']);
+
+        MlAnuncioCriativoKit::create(['token' => Str::random(32), 'company_id' => $c->id, 'status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+        MlAnuncioCriativoKit::create(['token' => Str::random(32), 'company_id' => $c->id, 'status' => MlAnuncioCriativoKit::STATUS_APROVADO]);
+        // Kit de OUTRA conta nunca entra.
+        MlAnuncioCriativoKit::create(['token' => Str::random(32), 'company_id' => Company::factory()->create()->id, 'status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+
+        $comKit = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+        $this->assertSame(2, $comKit['indicadores']['criativos_packs']);
+    }
+
+    public function test_tracao_pct_e_a_razao_entre_com_venda_e_no_ar(): void
+    {
+        $c = $this->companyComToken();
+        $this->acervo($c, 'MLBT1', 'active', 5);
+        $this->acervo($c, 'MLBT2', 'active', 1);
+        $this->acervo($c, 'MLBT3', 'active', 0);
+        $this->acervo($c, 'MLBT4', 'paused', 0);
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        $this->assertSame(4, $p['indicadores']['no_ar']);
+        $this->assertSame(2, $p['indicadores']['com_venda']);
+        $this->assertSame(50, $p['indicadores']['tracao_pct']);
+    }
+
+    public function test_tracao_pct_e_nulo_e_nunca_zero_quando_nao_ha_o_que_medir(): void
+    {
+        // (a) acervo coletado, mas nenhum anúncio acionável: no_ar = 0, nada a dividir.
+        $c = $this->companyComToken();
+        $this->acervo($c, 'MLBF1', 'closed', 9);
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+        $this->assertSame(0, $p['indicadores']['no_ar']);
+        $this->assertNull($p['indicadores']['tracao_pct'], 'no_ar = 0 não vira 0%');
+
+        // (b) acervo NUNCA coletado — "não medimos" nunca pode virar 0%.
+        $c2 = $this->companyComToken();
+        $p2 = $this->pagina(self::BASE.'/empresas/company-'.$c2->id.'/visao-geral')['props'];
+        $this->assertTrue($p2['indicadores']['nunca_coletado']);
+        $this->assertNull($p2['indicadores']['tracao_pct']);
+
+        // (c) empresa sem Company: não há acervo nenhum para consultar.
+        $e = $this->empresa();
+        $p3 = $this->pagina(self::BASE.'/empresas/empresa-'.$e->id.'/visao-geral')['props'];
+        $this->assertFalse($p3['indicadores']['acervo_disponivel']);
+        $this->assertNull($p3['indicadores']['tracao_pct']);
+    }
+
+    public function test_alertas_espelham_a_triagem_do_acervo_sem_reimplementar_motivo(): void
+    {
+        $c = $this->companyComToken();
+        $this->acervo($c, 'MLBA1', 'paused', 0, ['motivos' => [MlAcervoItem::MOTIVO_PAUSADO], 'severidade' => MlAcervoItem::SEVERIDADE_CRITICA]);
+        $this->acervo($c, 'MLBA2', 'active', 0, ['motivos' => [MlAcervoItem::MOTIVO_FICHA_INCOMPLETA], 'severidade' => MlAcervoItem::SEVERIDADE_ATENCAO]);
+        $this->acervo($c, 'MLBA3', 'active', 0, ['motivos' => [MlAcervoItem::MOTIVO_FICHA_INCOMPLETA, MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE], 'severidade' => MlAcervoItem::SEVERIDADE_ATENCAO]);
+
+        $alertas = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props']['alertas'];
+
+        $this->assertTrue($alertas['disponivel']);
+        // A ordem e os rótulos são os de `AcervoTriagemService::motivosDef()` — fonte única.
+        $this->assertSame(
+            ['pausado', 'sem_estoque', 'ficha_incompleta', 'perdendo_catalogo', 'foto_insuficiente'],
+            array_column($alertas['itens'], 'chave')
+        );
+        $porChave = collect($alertas['itens'])->keyBy('chave');
+        $this->assertSame('Pausado', $porChave['pausado']['label']);
+        $this->assertSame('red', $porChave['pausado']['cor']);
+        $this->assertSame(1, $porChave['pausado']['total']);
+        $this->assertSame(2, $porChave['ficha_incompleta']['total']);
+        $this->assertSame(1, $porChave['foto_insuficiente']['total']);
+        $this->assertSame(0, $porChave['perdendo_catalogo']['total']);
+        // O total é o de anúncios DISTINTOS com motivo (3), nunca a soma dos chips (4).
+        $this->assertSame(3, $alertas['total']);
+    }
+
+    public function test_alertas_de_empresa_sem_company_nao_afirmam_zero(): void
+    {
+        $e = $this->empresa();
+
+        $alertas = $this->pagina(self::BASE.'/empresas/empresa-'.$e->id.'/visao-geral')['props']['alertas'];
+
+        $this->assertFalse($alertas['disponivel'], 'sem Company não há acervo para triar — não é "zero alertas"');
+        $this->assertSame([], $alertas['itens']);
+    }
+
+    public function test_as_chaves_novas_nao_criam_n_mais_1_na_visao_geral(): void
+    {
+        $c = $this->companyComToken();
+        $base = $this->produtoNoAr($c, 'N1');
+        for ($i = 2; $i <= 12; $i++) {
+            $this->produtoNoAr($c, 'N'.$i, ['produto_base_id' => $base->id, 'quantidade_kit' => $i, 'fase' => $i]);
+            MlAnuncioCriativoKit::create(['token' => Str::random(32), 'company_id' => $c->id, 'status' => MlAnuncioCriativoKit::STATUS_PRONTO]);
+            $this->acervo($c, 'MLBN'.$i, 'active', $i % 2);
+        }
+
+        $admin = $this->admin();
+        $url = self::BASE.'/empresas/company-'.$c->id.'/visao-geral';
+        // Aquece: a primeira requisição carrega schemas/config que não são do laço.
+        $this->actingAs($admin)->get($url)->assertOk();
+
+        DB::enableQueryLog();
+        $this->actingAs($admin)->get($url)->assertOk();
+        $consultas = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        // Teto generoso de propósito: o que o gate prova é que 11 produtos/11 kits
+        // de criativo NÃO viram uma consulta por item (N+1), não o número exato.
+        $this->assertLessThan(60, $consultas, "consultas demais na Visão geral ({$consultas}) — cheiro de N+1 nas chaves novas");
     }
 }

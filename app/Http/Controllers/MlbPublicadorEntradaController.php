@@ -335,8 +335,13 @@ class MlbPublicadorEntradaController extends Controller
         return Inertia::render('Mlb/Publicador/VisaoGeral', [
             'empresa' => $empresa,
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $company)),
-            'indicadores' => $painel->indicadores($alvo, $contagemProdutos),
+            // Quick 261009-t02: `$produtos` entra para o `no_ar_por_fase` — é a
+            // MESMA lista que a tela já carrega, nenhuma consulta nova.
+            'indicadores' => $painel->indicadores($alvo, $contagemProdutos, $produtos),
             'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos),
+            // Quick 261009-t02: os "Alertas" da coluna lateral são a triagem que
+            // já está carregada acima — reformatada, nunca recalculada.
+            'alertas' => $painel->alertas($alvo, $triagem),
             'situacaoProdutos' => $painel->situacaoProdutos($contagemProdutos),
             // §7 (plano 175-08): bloco NOVO, ao lado do de cima — a spec mandava
             // substituir, mas nada que existe pode sumir (ver o docblock do
