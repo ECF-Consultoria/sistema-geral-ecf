@@ -50,7 +50,7 @@ class ExplicacaoDeAtributosRegrasTest extends TestCase
     {
         $portal = self::glossario()['portal_campos'];
         foreach (['nome', 'familia', 'ambientes', 'categoria', 'ref', 'eixo', 'valor', 'custo', 'volumes',
-            'comprimento', 'largura', 'altura', 'peso', 'descricao'] as $chave) {
+            'comprimento', 'largura', 'altura', 'peso', 'descricao', 'estoque_produto'] as $chave) {
             $this->assertArrayHasKey($chave, $portal, $chave);
         }
         // Um texto só para o Estoque nas duas telas: ele mora em `campos`, não aqui.

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { ChevronDown, Search, X } from 'lucide-react';
+import EstoqueDoProduto from '@/Components/Portal/Estrutura/Produtos/EstoqueDoProduto';
 import PickerLista from '@/Components/Portal/Estrutura/Produtos/PickerLista';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import { CaminhoCategoria, Obrigatorio, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
@@ -10,7 +11,8 @@ import { cn } from '@/lib/utils';
 // ─── Dados gerais da ficha (REF-2, 167-19) ──────────────────────────────────
 //
 // O bloco de cima: quadro da foto à esquerda (sem upload, D-29) e, na largura
-// que sobra, Nome · Família, Ambientes (chips) e Categoria do Mercado Livre.
+// que sobra, Nome · Família, Ambientes (chips), Categoria do Mercado Livre e o
+// Estoque do produto (o da única variação, ou a soma delas — `EstoqueDoProduto`).
 // Família e ambiente só da lista da empresa, com criar-uma-vez (D-05/D-07); a
 // categoria é sempre escolhida, nunca aceita sozinha (D-06) — os pickers já
 // garantem. A escolha vale para o produto inteiro (o servidor olha a 1ª).
@@ -158,6 +160,8 @@ export default function FichaDadosGerais({ ficha, listas, onListas }) {
                         </Popover.Portal>
                     </Popover.Root>
                 </div>
+
+                <EstoqueDoProduto ficha={ficha} />
             </div>
         </section>
     );

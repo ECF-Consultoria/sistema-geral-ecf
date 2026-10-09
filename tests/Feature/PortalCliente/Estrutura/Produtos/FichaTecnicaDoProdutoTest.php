@@ -548,7 +548,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 $this->assertSemOrigem(json_encode($fixos, JSON_UNESCAPED_UNICODE), 'explicações dos campos fixos');
                 $this->assertArrayNotHasKey('custo', $fixos);
                 $this->assertSame(app(ExplicacaoDeAtributos::class)->camposFixos()['estoque'], $fixos['estoque'], 'o mesmo texto do editor');
-                foreach (['nome', 'familia', 'ambientes', 'categoria', 'ref', 'eixo', 'valor', 'volumes', 'comprimento', 'largura', 'altura', 'peso', 'descricao'] as $chave) {
+                foreach (['nome', 'familia', 'ambientes', 'categoria', 'ref', 'eixo', 'valor', 'volumes', 'comprimento', 'largura', 'altura', 'peso', 'descricao', 'estoque_produto'] as $chave) {
                     $this->assertNotEmpty($fixos[$chave] ?? null, "sem explicação para {$chave}");
                 }
             });
