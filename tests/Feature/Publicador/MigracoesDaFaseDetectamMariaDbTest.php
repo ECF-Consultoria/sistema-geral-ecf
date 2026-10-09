@@ -33,6 +33,8 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         '2026_10_07_100200_create_estrutura_produto_atributos_table.php',
         // Imagens por variação do produto
         '2026_10_07_100300_create_estrutura_produto_variacao_imagens_table.php',
+        // Fase 175: consulta o driver nos helpers `emMysql`/`hasIndex`/`hasForeignKey`
+        '2026_10_08_120000_add_fases_to_pub_produtos.php',
     ];
 
     /** A conexão padrão vira uma `$driver` FALSA só para a decisão — nenhuma query é feita. */
@@ -110,6 +112,17 @@ class MigracoesDaFaseDetectamMariaDbTest extends TestCase
         $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
 
         $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb repõe as FKs pelo information_schema');
+        $this->assertTrue($this->comDriver('mysql', $emMysql));
+        $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
+    }
+
+    /** Fase 175: o ALTER das fases de `pub_produtos` guarda índice e FK pelo information_schema no MySQL/MariaDB. */
+    public function test_a_migration_das_fases_do_produto_trata_mariadb_como_mysql(): void
+    {
+        $migration = require database_path('migrations/2026_10_08_120000_add_fases_to_pub_produtos.php');
+        $emMysql = (new \ReflectionMethod($migration, 'emMysql'))->getClosure($migration);
+
+        $this->assertTrue($this->comDriver('mariadb', $emMysql), 'DB_CONNECTION=mariadb usa information_schema');
         $this->assertTrue($this->comDriver('mysql', $emMysql));
         $this->assertFalse($emMysql(), 'o SQLite dos testes segue no PRAGMA');
     }
