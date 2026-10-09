@@ -163,6 +163,22 @@ esperando stdin e o comando nunca volta. Sempre
 `php artisan tinker /tmp/x.php > /tmp/x.out 2>&1 < /dev/null` e depois leia o
 arquivo. Perdi duas rodadas nisso.
 
+**E o `tinker` como `www-data` MORRE antes de rodar, com `ConfigPaths.php line 456:
+Writing to directory /var/www/.config/psysh is not allowed`** (medido em 2026-10-09,
+no deploy da Fase 175). O home do `www-data` é `/var/www` e não é gravável por ele,
+então o psysh (o REPL por trás do tinker) aborta ao tentar criar o diretório de
+configuração — **antes** de executar uma única linha do seu código. Não é erro do seu
+script e não tem nada a ver com permissão de banco. Receita:
+
+```
+sudo -u www-data env XDG_CONFIG_HOME=/tmp HOME=/tmp php artisan tinker --execute='...' < /dev/null
+```
+
+Isso NÃO está no repositório (é propriedade do sistema de arquivos da VPS) e volta a
+morder quem reconstruir o servidor. Alternativa sem tinker, quando serve: `php artisan
+db:table <tabela>` mostra colunas, defaults, índices e FKs com a regra de exclusão —
+foi como conferi o schema de `pub_produtos` em produção sem precisar do REPL.
+
 ---
 
 ## 6. O faturamento passou a ser o do painel da Shopee (2026-10-06, quick `261006-fac`)
