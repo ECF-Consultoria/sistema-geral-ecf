@@ -159,12 +159,20 @@ const itemRecente = (extra = {}) => ({
 
 const linhaViva = (extra = {}) => ({
     chave: 'empresa-12',
+    tipo: 'mlb_empresa',
+    id: 12,
     nome: 'Boutique Têxtil Brasil',
     identificador: '48.910.201/0001-92',
+    company_id: 90,
+    tem_token: true,
+    token_expirado: false,
     token: 'ativo',
+    link_reconexao: null,
     produtos: 148,
     publicados: 312,
     prontos: 4,
+    liberada: true,
+    publicados_mes: 7,
     portal: { situacao: 'sincronizado', novas: 0, sincronizado_em: '2026-10-09T10:00:00Z' },
     erp: { nome: 'Bling' },
     fases: { kits: 12 },
@@ -274,8 +282,272 @@ test('Cartão — textoSeguro e numeroSeguro recusam objeto, array e NaN', () =>
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Task 3 — a tela (`Pages/Mlb/AnunciosEmpresas.jsx`), render REAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+const paginaModulo = await montar(PAGINA, 'pagina-selecao-empresas');
+const AnunciosEmpresas = paginaModulo.default;
+
+const segunda = () => linhaViva({
+    chave: 'empresa-13',
+    id: 13,
+    nome: 'TechStore Eletrônicos Ltda',
+    identificador: '31.844.912/0001-44',
+    company_id: 91,
+    token: 'expirado',
+    token_expirado: true,
+    link_reconexao: '/implementacao/abc/conectar-ml',
+    produtos: 412,
+    publicados: 890,
+    prontos: 0,
+    liberada: false,
+    erp: { nome: null },
+    fases: { kits: 0 },
+    portal: { situacao: 'novas', novas: 3, sincronizado_em: null },
+});
+
+const propsPagina = (over = {}) => ({
+    programa: 'polos',
+    programas: { polos: 6, incubadora: 2, gestao: 3 },
+    indicadores: { empresas: 6, com_portal: 4, pct_sincronizado: 75, prontos: 9, publicados_mes: 12 },
+    empresas: [linhaViva(), segunda()],
+    paginacao: { pagina: 1, por_pagina: 50, total: 2, de: 1, ate: 2 },
+    filtros: { busca: '', filtro: 'todos' },
+    ...over,
+});
+
+/** Renderiza a tela com o localStorage que o caso pedir. */
+function desenharPagina(props, armazenamento = localStorageFalso({})) {
+    global.window.localStorage = armazenamento;
+    try {
+        return renderToStaticMarkup(React.createElement(AnunciosEmpresas, props));
+    } finally {
+        global.window.localStorage = localStorageFalso({});
+    }
+}
+
+const recentesEm = (lista) => localStorageFalso({ 'publicador.recentes.7': JSON.stringify(lista) });
+
+test('Tela — cabeçalho do mockup: título, "Conectar nova empresa" desabilitado com "Em breve"', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.match(html, /Seleção de Empresas/);
+    assert.match(html, /Publicador Mercado Livre/, 'o nome do módulo continua visível');
+    assert.match(html, /Conectar nova empresa/);
+    assert.match(html, /Em breve/);
+    assert.match(tagDoBotao(html, 'Conectar nova empresa'), /disabled=/);
+    semLixoNoHtml(html, 'cabeçalho');
+});
+
+test('Tela — as 7 colunas, com Portal E ERP convivendo (decisão 1)', () => {
+    const html = desenharPagina(propsPagina());
+
+    for (const coluna of ['Empresa', 'Conta ML', 'Portal', 'ERP', 'Catálogo', 'Anúncios', 'Fases']) {
+        assert.ok(html.includes(coluna), `coluna ausente: ${coluna}`);
+    }
+    // Portal continua com o selo de verdade (situação + tempo), que o mockup tinha tirado.
+    assert.match(html, /Sincronizado/);
+    assert.match(html, /3<\/span><span>ofertas novas/);
+});
+
+test('Tela — ERP declarado na linha; sem declaração escreve "não informado"', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.match(html, /Bling/);
+    assert.match(html, /declarado/);
+    assert.match(html, /não informado/);
+});
+
+test('Tela — NADA afirma ERP conectado ou sincronizado (decisão 8 do handoff)', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.doesNotMatch(html, /ERP[^<]{0,60}(conectad|sincronizad)/i);
+    assert.doesNotMatch(html, /(conectad|sincronizad)[^<]{0,20}\bERP\b/i);
+});
+
+test('Tela — Fases/pendências só mostra o que é real: kits e prontos', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.match(html, /12 kits/);
+    assert.match(html, /4 prontos/);
+});
+
+test('Tela — os 4 filtros continuam existindo, com os mesmos rótulos', () => {
+    const html = desenharPagina(propsPagina({ filtros: { busca: '', filtro: 'atencao' } }));
+
+    for (const rotulo of ['Todos', 'Prontos para publicar', 'Precisam de atenção', 'Nunca sincronizado']) {
+        assert.ok(html.includes(rotulo), `filtro ausente: ${rotulo}`);
+    }
+    assert.match(tagDoBotao(html, 'Precisam de atenção'), /aria-pressed="true"/);
+});
+
+test('Tela — o que já existia continua na tela (nada sumiu)', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.match(html, /role="radiogroup"/, 'SeletorPrograma');
+    assert.match(html, /Prontos para publicar/, 'IndicadoresDoPrograma');
+    assert.match(html, /Buscar/, 'busca');
+    assert.match(html, /Mostrando 1–2 de 2/, 'paginação');
+    assert.match(html, /Sincronizar/, 'BotaoSincronizarPortal');
+    assert.match(html, /Como funciona/, 'PainelComoFunciona');
+    assert.match(html, /Falta reconectar|Reconectar/, 'SeloConta');
+    assert.match(html, /ainda não foi liberada/, 'AvisoContaTravada da conta não liberada');
+    assert.match(html, /navegador DELE/, 'LinkReconexao da conta expirada');
+    assert.match(html, /class="h-14/, 'a linha focável de 56px');
+});
+
+test('Tela — Acesso rápido desenha os Recentes do localStorage', () => {
+    const html = desenharPagina(propsPagina(), recentesEm([
+        { chave: 'empresa-12', nome: 'Boutique Têxtil Brasil', identificador: '48.910.201/0001-92', programa: 'polos' },
+        { chave: 'empresa-99', nome: 'Fora Desta Página', identificador: '00.000.000/0001-00', programa: 'polos' },
+    ]));
+
+    assert.match(html, /Acesso rápido/);
+    // A que está na página exibida ganha os números da linha viva…
+    assert.match(html, /148 produtos · 312 anúncios/);
+    // …e a que não está diz a verdade, em vez de inventar número.
+    assert.match(html, /Fora Desta Página/);
+    assert.match(html, /Números aparecem ao abrir a conta\./);
+    semLixoNoHtml(html, 'acesso rápido');
+});
+
+test('Tela — sem Recentes o bloco de Acesso rápido simplesmente não existe', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.doesNotMatch(html, /Acesso rápido/);
+});
+
+test('Tela — localStorage que ESTOURA (janela privada) não derruba a tela', () => {
+    const html = desenharPagina(propsPagina(), localStorageQueEstoura());
+
+    assert.match(html, /Seleção de Empresas/);
+    assert.doesNotMatch(html, /Acesso rápido/);
+});
+
+test('Tela — Recentes corrompido, não-array e com item sem chave são descartados sem quebrar', () => {
+    for (const bruto of ['{{{', '"só uma string"', '42', JSON.stringify([null, { nome: 'sem chave' }, { chave: 7 }])]) {
+        const html = desenharPagina(propsPagina(), localStorageFalso({ 'publicador.recentes.7': bruto }));
+        assert.match(html, /Seleção de Empresas/, `localStorage: ${bruto}`);
+        semLixoNoHtml(html, `localStorage: ${bruto}`);
+    }
+});
+
+test('Tela — `empresas: null` não derruba a página', () => {
+    const html = desenharPagina(propsPagina({ empresas: null }));
+
+    assert.match(html, /Seleção de Empresas/);
+    semLixoNoHtml(html, 'empresas null');
+});
+
+test('Tela — props nulas/ausentes em bloco não derrubam a página', () => {
+    const vazios = [
+        {},
+        { empresas: undefined, paginacao: null, filtros: null, indicadores: null, programas: null },
+        { empresas: 'não é lista', paginacao: 'nem isto', filtros: 7, indicadores: [], programas: 'x' },
+    ];
+    for (const props of vazios) {
+        const html = desenharPagina(props);
+        assert.match(html, /Seleção de Empresas/, JSON.stringify(props));
+        semLixoNoHtml(html, JSON.stringify(props));
+    }
+});
+
+test('Tela — as chaves NOVAS chegando como objeto, nulas e ausentes (a tela preta de 07/10)', () => {
+    const formas = [
+        { erp: { nome: { marca: 'Bling' } }, fases: { kits: { total: 12 } } },
+        { erp: null, fases: null },
+        { erp: 'Bling', fases: 'kits' },
+        { erp: ['Bling'], fases: [12] },
+    ];
+    for (const forma of formas) {
+        const linha = linhaViva(forma);
+        delete linha.erp_inexistente;
+        const html = desenharPagina(propsPagina({ empresas: [linha] }));
+        semLixoNoHtml(html, JSON.stringify(forma));
+    }
+
+    // Chaves simplesmente AUSENTES (payload de antes deste plano).
+    const antiga = linhaViva();
+    delete antiga.erp;
+    delete antiga.fases;
+    const html = desenharPagina(propsPagina({ empresas: [antiga] }));
+    assert.match(html, /não informado/);
+    semLixoNoHtml(html, 'linha sem as chaves novas');
+});
+
+test('Tela — campos ANTIGOS da linha chegando como objeto também caem no fallback', () => {
+    const html = desenharPagina(propsPagina({
+        empresas: [linhaViva({
+            nome: { pt: 'Objeto' },
+            identificador: { a: 1 },
+            produtos: { total: 1 },
+            publicados: null,
+            prontos: 'quatro',
+            token: { estado: 'ativo' },
+            portal: 'não é objeto',
+        })],
+    }));
+
+    semLixoNoHtml(html, 'campos antigos como objeto');
+});
+
+test('Tela — os dois estados vazios continuam, com o mesmo texto', () => {
+    const semEmpresa = desenharPagina(propsPagina({
+        empresas: [], indicadores: { empresas: 0 }, paginacao: { pagina: 1, por_pagina: 50, total: 0, de: 0, ate: 0 },
+    }));
+    assert.match(semEmpresa, /Nenhuma empresa de Polos com conta do Mercado Livre\./);
+
+    const semResultado = desenharPagina(propsPagina({
+        empresas: [], filtros: { busca: 'abc', filtro: 'todos' },
+        paginacao: { pagina: 1, por_pagina: 50, total: 0, de: 0, ate: 0 },
+    }));
+    assert.match(semResultado, /Nenhuma empresa encontrada para/);
+    assert.match(semResultado, /Limpar busca/);
+});
+
+test('Tela — rodapé: três cards, e os dois com número leem número REAL', () => {
+    const html = desenharPagina(propsPagina());
+
+    // 1 conta a reconectar entre as 2 exibidas (a de token expirado).
+    assert.match(html, /1 conta/);
+    // `prontos` do programa inteiro vem dos indicadores (9), não da página.
+    assert.match(html, /9 produtos/);
+    // 12 kits na primeira + 0 na segunda.
+    assert.match(html, /12 kits/);
+    // O card do ⌘K do mockup não promete atalho que não existe.
+    assert.doesNotMatch(html, /⌘K|Ctrl\+K/);
+});
+
+test('Tela — a ordenação do cliente é nativa (sem Radix) e tem as opções declaradas', () => {
+    const html = desenharPagina(propsPagina());
+
+    assert.match(html, /<select/);
+    for (const rotulo of ['Nome (A–Z)', 'Mais produtos', 'Mais anúncios', 'Prontos primeiro']) {
+        assert.ok(html.includes(rotulo), `ordenação sem a opção: ${rotulo}`);
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Gates de fonte do cartão — o mesmo vocabulário visual do módulo
 // ═══════════════════════════════════════════════════════════════════════════
+
+test('Tela — nenhuma flag booleana de escopo do componente é lida dentro do .map() das linhas', () => {
+    const fonte = lerSemComentarios(REL_PAGINA);
+    const inicio = fonte.indexOf('linhas.map(');
+    assert.ok(inicio > -1, 'o .map() das linhas não foi encontrado');
+    const trecho = fonte.slice(inicio, fonte.indexOf('</tbody>', inicio));
+
+    // As flags da tela existem — mas nenhuma delas pode ser LIDA aqui dentro
+    // (feedback_rollup_map_scope_bug.md: o Rollup já eliminou uma e o bundle
+    // de produção estourou com ReferenceError).
+    for (const flag of ['precisaPaginar', 'vazioDoPrograma', 'temBuscaOuFiltro', 'carregando', 'erroCarga']) {
+        assert.ok(!trecho.includes(flag), `flag de escopo lida dentro do .map(): ${flag}`);
+    }
+});
+
+test('Tela — o seletor de ordenação não usa o select do Radix (gate do módulo)', () => {
+    assert.doesNotMatch(lerSemComentarios(REL_PAGINA), /@\/Components\/ui\/select/);
+});
 
 for (const relativo of [REL_CARTAO, REL_PAGINA]) {
     const fonte = lerSemComentarios(relativo);
