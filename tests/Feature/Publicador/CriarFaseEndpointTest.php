@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -271,9 +272,8 @@ class CriarFaseEndpointTest extends TestCase
     /**
      * A quantidade é validada nos DOIS endpoints. 65536 estouraria o
      * `unsignedSmallInteger` de `quantidade_kit` (T-175-20).
-     *
-     * @dataProvider quantidadesRecusadas
      */
+    #[DataProvider('quantidadesRecusadas')]
     public function test_quantidade_invalida_e_422_com_mensagem_de_campo(mixed $quantidade): void
     {
         [$e] = $this->conta();
@@ -586,7 +586,7 @@ class CriarFaseEndpointTest extends TestCase
         $this->assertSame(1, PubProduto::count());
     }
 
-    public function test_criar_a_partir_de_um_kit_e_recusado_com_kit_02(): void
+    public function test_criar_pedido_pelo_id_de_um_kit_nasce_do_base_sem_cadeia(): void
     {
         [$e] = $this->conta();
         $base = $this->base($e);

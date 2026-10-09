@@ -246,6 +246,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('publicador/empresas/{conta}/produtos/{produto}', [MlbPublicadorFaseController::class, 'mostrar'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')->name('publicador.produto');
 
+        // ─── Fase 175, Plano 05 (§4 da ETAPA-3) — o painel "Criar Fase N" ───
+        // A prévia LÊ (nunca grava) e a criação grava numa transação. As duas têm
+        // throttle NOMEADO: a criação com o mesmo teto do `publicador.produtos.criar`
+        // (a §8 manda seguir o padrão dele) e a prévia mais folgada, porque o painel
+        // a chama a cada mudança de quantidade. T-175-19/T-175-20.
+        Route::get('publicador/empresas/{conta}/produtos/{produto}/fases/previa', [MlbPublicadorFaseController::class, 'previa'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:120,1,publicador.fases.previa')->name('publicador.fases.previa');
+        Route::post('publicador/empresas/{conta}/produtos/{produto}/fases', [MlbPublicadorFaseController::class, 'criar'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:60,1,publicador.fases.criar')->name('publicador.fases.criar');
+
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
         // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
