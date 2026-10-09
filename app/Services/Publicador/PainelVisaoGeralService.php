@@ -277,8 +277,13 @@ class PainelVisaoGeralService
             $linhas[] = $this->linhaDeProdutos('Produtos com problema na publicação', (int) $contagemProdutos['com_problema'], $alvo['chave'], 'com_problema');
         }
 
-        if ((int) ($contagemProdutos['publicados'] ?? 0) > 0) {
-            $linhas[] = $this->linhaDeProdutos('Prontos para a Fase 2', (int) $contagemProdutos['publicados'], $alvo['chave'], 'publicados');
+        // §7 (plano 175-08): "Prontos para a Fase 2" = base publicado SEM NENHUM
+        // kit. Base que já tem Kit 2 não está mais esperando nada e saiu da conta.
+        $prontosParaFase2 = $this->prontosParaFase2($contagemProdutos, $produtos);
+        if ($prontosParaFase2 > 0) {
+            // `fase=so_base` casa com o filtro "Fase: todas / só base / só kits" da
+            // lista (§7): a linha leva a quem ainda pode ganhar uma fase nova.
+            $linhas[] = $this->linhaDeProdutos('Prontos para a Fase 2', $prontosParaFase2, $alvo['chave'], 'publicados', 'so_base');
         }
 
         if ((int) ($contagemProdutos['conferidos'] ?? 0) > 0) {
@@ -332,13 +337,51 @@ class PainelVisaoGeralService
         return $linhas;
     }
 
-    private function linhaDeProdutos(string $texto, int $numero, string $chaveConta, string $filtro): array
+    /** `$fase` entra no destino só quando a linha filtra por fase (§7) — nunca nas antigas. */
+    private function linhaDeProdutos(string $texto, int $numero, string $chaveConta, string $filtro, ?string $fase = null): array
     {
+        $params = ['conta' => $chaveConta, 'filtro' => $filtro];
+        if ($fase !== null) {
+            $params['fase'] = $fase;
+        }
+
         return [
             'texto' => $texto,
             'numero' => $numero,
-            'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $chaveConta, 'filtro' => $filtro]],
+            'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => $params],
         ];
+    }
+
+    /**
+     * Quantos produtos estão de fato esperando uma Fase 2: base (não kit)
+     * publicado ou parcial e SEM NENHUM kit — a regra nova da §7.
+     *
+     * ⚠️ Compatibilidade com chamador antigo, de propósito: a regra só pode ser
+     * aplicada quando `$produtos` é a lista CIENTE DE FASE (a que
+     * `produtosParaTela()` devolve desde o plano 175-08, com `eh_kit` e `kits`).
+     * Sem essas chaves — lista omitida ou shape antigo — o número volta a ser
+     * `contagemProdutos['publicados']`, que é exatamente o de hoje. Assim a linha
+     * NUNCA desaparece por falta de dado: ou ela conta certo, ou conta como antes.
+     */
+    private function prontosParaFase2(array $contagemProdutos, array $produtos): int
+    {
+        $cienteDeFase = false;
+        $total = 0;
+
+        foreach ($produtos as $p) {
+            if (! array_key_exists('eh_kit', $p)) {
+                continue;
+            }
+            $cienteDeFase = true;
+
+            if ($p['eh_kit'] === false
+                && in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
+                && ($p['kits'] ?? []) === []) {
+                $total++;
+            }
+        }
+
+        return $cienteDeFase ? $total : (int) ($contagemProdutos['publicados'] ?? 0);
     }
 
     /** Passthrough com rótulos — MESMA fonte de `contagemProdutos()` usada por Produtos.jsx. */
@@ -349,6 +392,37 @@ class PainelVisaoGeralService
             'conferidos' => ['numero' => (int) ($contagemProdutos['conferidos'] ?? 0), 'rotulo' => 'Conferidos'],
             'publicados' => ['numero' => (int) ($contagemProdutos['publicados'] ?? 0), 'rotulo' => 'Publicados'],
             'com_problema' => ['numero' => (int) ($contagemProdutos['com_problema'] ?? 0), 'rotulo' => 'Com problema'],
+        ];
+    }
+
+    /**
+     * Bloco "Produtos por fase" da §7 — passthrough com rótulos sobre
+     * `contagemProdutos['por_fase']`, no MESMO padrão de `situacaoProdutos()`.
+     *
+     * ⚠️ Divergência deliberada da spec, registrada: a §7 diz
+     * `"Situação dos produtos" → "Produtos por fase"` (substituir). A regra
+     * inviolável do projeto é que nenhuma informação existente desaparece, então
+     * os DOIS blocos convivem — `situacaoProdutos()` continua intacto e este
+     * nasce ao lado. Se o usuário preferir substituir de fato, é um ajuste de uma
+     * linha no JSX, não aqui.
+     *
+     * **Fonte única:** nunca reconta nada. A contagem é a do
+     * `ProgramasPublicadorService`, a MESMA que a lista de Produtos usa — é isso
+     * que faz "a Visão geral por fase bate com a lista" ser verdade por
+     * construção, e não por coincidência.
+     *
+     * @return array<string, array{numero: int, rotulo: string}>
+     */
+    public function produtosPorFase(array $contagemProdutos): array
+    {
+        $porFase = $contagemProdutos['por_fase'] ?? [];
+
+        return [
+            'sem_oferta' => ['numero' => (int) ($porFase['sem_oferta'] ?? 0), 'rotulo' => 'Sem oferta'],
+            'fase1_publicada' => ['numero' => (int) ($porFase['fase1_publicada'] ?? 0), 'rotulo' => 'Fase 1 publicada'],
+            'fase2_preparacao' => ['numero' => (int) ($porFase['fase2_preparacao'] ?? 0), 'rotulo' => 'Fase 2 em preparação'],
+            'fase2_publicada' => ['numero' => (int) ($porFase['fase2_publicada'] ?? 0), 'rotulo' => 'Fase 2 publicada'],
+            'fase3_mais' => ['numero' => (int) ($porFase['fase3_mais'] ?? 0), 'rotulo' => 'Fase 3+'],
         ];
     }
 
@@ -417,6 +491,13 @@ class PainelVisaoGeralService
                 'pub_publicacoes.ator',
                 'pub_publicacoes.concluida_em',
                 'pub_publicacoes.status as publicacao_status',
+                // §7 (plano 175-08): a coluna Fase das últimas publicações.
+                // ⚠️ `pub_produtos.fase` QUALIFICADO: `estrutura_ofertas.fase` é
+                // outra coisa (o TIPO da oferta no Portal) e, sem qualificar, o
+                // MariaDB resolveria para a primeira tabela do FROM — valor calado
+                // e errado. Apelidado para não colidir com nada do payload.
+                'pub_produtos.fase as produto_fase',
+                'pub_produtos.quantidade_kit as produto_quantidade_kit',
             ])
             ->orderByDesc('pub_publicacoes.concluida_em')
             ->limit(5)
@@ -438,6 +519,11 @@ class PainelVisaoGeralService
                 // (corrida de dados legados) vazariam venda uma da outra.
                 'vendas' => MlAcervoItem::where('company_id', $companyId)->where('ml_item_id', $linha->ml_item_id)->value('sold_quantity'),
                 'situacao' => $linha->publicacao_status,
+                // §7: a fase do produto que gerou a publicação — escalares, nunca
+                // objeto (a "tela preta" de 07/10). O rótulo sai da fonte única
+                // `ProgramasPublicadorService::rotuloFase()`.
+                'fase' => (int) $linha->produto_fase,
+                'rotulo_fase' => ProgramasPublicadorService::rotuloFase((int) $linha->produto_quantidade_kit),
             ];
         })->values()->all();
 

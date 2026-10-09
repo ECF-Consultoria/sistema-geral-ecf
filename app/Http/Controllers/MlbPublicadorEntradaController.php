@@ -277,7 +277,8 @@ class MlbPublicadorEntradaController extends Controller
         }
 
         $empresa = $this->programas->empresaParaTela($alvo);
-        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
+        // A chave da conta vai para `url_produto` de cada linha (plano 175-08).
+        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company'], $alvo['chave']);
         $contagemProdutos = $this->programas->contagemProdutos($produtos);
         $company = $alvo['company'];
 
@@ -293,6 +294,11 @@ class MlbPublicadorEntradaController extends Controller
             'indicadores' => $painel->indicadores($alvo, $contagemProdutos),
             'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos),
             'situacaoProdutos' => $painel->situacaoProdutos($contagemProdutos),
+            // §7 (plano 175-08): bloco NOVO, ao lado do de cima — a spec mandava
+            // substituir, mas nada que existe pode sumir (ver o docblock do
+            // `produtosPorFase()`). Mesma fonte de contagem, logo os números batem
+            // com a lista de Produtos por construção.
+            'produtosPorFase' => $painel->produtosPorFase($contagemProdutos),
             'ultimasPublicacoes' => $painel->ultimasPublicacoes($alvo),
             'integracoes' => $painel->integracoes($alvo, $empresa),
             'identidadeResumo' => $painel->identidadeResumo($alvo),
