@@ -775,7 +775,7 @@ test('DialogoVincularKit — gates de fonte: rotas do contrato, Escape e nenhum 
 test('Tela B — monta o diálogo de vínculo e recarrega só produtos/contagens ao concluir', () => {
     const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
 
-    assert.match(fonte, /import DialogoVincularKit from '@\/Components\/Mlb\/Publicador\/DialogoVincularKit'/);
+    assert.match(fonte, /import DialogoVincularKit(, \{[^}]*\})? from '@\/Components\/Mlb\/Publicador\/DialogoVincularKit'/);
     assert.match(fonte, /<DialogoVincularKit/);
     // A fase que vai nascer é calculada com a família que a própria lista já tem.
     assert.match(fonte, /proximaFaseDaFamilia/);

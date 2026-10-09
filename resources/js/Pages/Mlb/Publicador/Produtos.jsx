@@ -9,6 +9,7 @@ import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
+import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 
@@ -312,6 +313,18 @@ export default function Produtos({
         esperaRealce.current = setTimeout(() => setNovos(new Set()), 2000);
     }
 
+    /**
+     * O vínculo (ou a recusa) deu certo: avisa, fecha e recarrega SÓ a lista e as
+     * contagens — a mesma recarga enxuta do polling de "Publicando".
+     */
+    function aoConcluirVinculo(resultado) {
+        setVinculo(null);
+        setStatus({ tipo: 'ok', texto: resultado?.texto ?? 'Pronto.' });
+        router.reload({ only: ['produtos', 'contagens'] });
+        clearTimeout(esperaStatus.current);
+        esperaStatus.current = setTimeout(() => setStatus(null), 6000);
+    }
+
     const vazio = produtos.length === 0;
     const total = (chave) => contagens?.[chave] ?? 0;
 
@@ -608,6 +621,19 @@ export default function Produtos({
                 onFechar={() => setModal(false)}
                 conta={empresa.chave}
                 skusExistentes={skus}
+            />
+
+            {/* §6: a sugestão de kit e o "Não é kit" — os dois pelo mesmo diálogo,
+                em modos diferentes (nada de confirmação nativa do navegador). */}
+            <DialogoVincularKit
+                aberto={vinculo !== null}
+                onFechar={() => setVinculo(null)}
+                conta={empresa.chave}
+                produto={vinculo?.produto ?? null}
+                sugestao={vinculo?.sugestao ?? null}
+                proximaFase={proximaFaseDaFamilia(produtos, vinculo?.sugestao?.base_id ?? null)}
+                modo={vinculo?.modo ?? 'vincular'}
+                onConcluido={aoConcluirVinculo}
             />
         </AppLayout>
     );
