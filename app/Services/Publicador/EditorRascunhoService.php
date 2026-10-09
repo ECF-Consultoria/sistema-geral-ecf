@@ -33,6 +33,7 @@ use App\Support\Publicador\Variacao\RegeneradorVariantes;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * A tela do Publicador no Anunciar (F1.11): abre o rascunho da oferta, grava
@@ -208,6 +209,21 @@ class EditorRascunhoService
     /**
      * Os dados por variante (E5): `{chave: {ativa?, estoque?, estoque_depositos?, precos?, atributos?}}`.
      * Com estoque por depósito, o estoque do item é a soma (vai no payload — N-19).
+     *
+     * ⚠️ Fase 175 plano 09 (§7 da ETAPA-3): esta é a única gravação em que o
+     * estoque muda, então é daqui que o estoque dos KITS deste produto é
+     * recalculado (`floor(base ÷ N)` por variante e por depósito).
+     *
+     * O recálculo roda **depois** da transação, não dentro: ele abre a própria
+     * transação por kit e trava a linha do rascunho do kit, e aninhar duas travas
+     * de rascunho é corrida garantida (T-175-40). E roda dentro de
+     * `try/catch (\Throwable)`: a escrita do base é a que a pessoa pediu, a
+     * propagação é consequência e não pode derrubá-la.
+     *
+     * `app()` em vez de injeção no construtor de propósito:
+     * `RecalculoEstoqueDoKitService` chama `salvarVariantes()` de volta (é o
+     * caminho normal de escrita que ele reusa), e as duas dependências no
+     * construtor fariam o container recursar na resolução.
      */
     public function salvarVariantes(PubRascunho $r, array $porChave): void
     {
@@ -237,6 +253,12 @@ class EditorRascunhoService
             $this->repo->gravarVariacao($r, $s->eixos, $variantes);
             $this->repo->tocar($r);
         });
+
+        try {
+            app(RecalculoEstoqueDoKitService::class)->propagar($r);
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] propagação do estoque para os kits do rascunho {$r->id} falhou: ".$e->getMessage());
+        }
     }
 
     /** @param list<array{imagem: int|string, grupo: string, posicao: int}> $atribuicoes */

@@ -172,7 +172,7 @@ class EstoqueDoKitTest extends TestCase
         $kit2 = $this->kit($base, 2);
         $kit3 = $this->kit($base, 3);
 
-        $r = $this->editor()->salvarVariantes($base->rascunho, [ChaveCanonica::UNICA => ['estoque' => 7]]);
+        $this->editor()->salvarVariantes($base->rascunho, [ChaveCanonica::UNICA => ['estoque' => 7]]);
 
         $this->assertSame(3, (int) $kit2->rascunho->fresh()->variantes()->value('estoque'));
         $this->assertSame(2, (int) $kit3->rascunho->fresh()->variantes()->value('estoque'));
@@ -295,14 +295,21 @@ class EstoqueDoKitTest extends TestCase
 
     // ═══ Custo e recursão ════════════════════════════════════════════════════
 
+    /**
+     * ⚠️ Divergência do `<behavior>` do plano, medida: o plano escreve "não
+     * dispara consulta extra nenhuma", e isso é impossível — o produto não sabe
+     * se tem kit sem perguntar ao banco. O contrato REAL, que este teste trava,
+     * é UMA consulta: o `exists()` indexado por `produto_base_id`. Em especial,
+     * o serviço NÃO carrega `$rascunho->produto` (seria a segunda consulta, em
+     * toda gravação de variante do módulo) — ele usa `produto_id` do rascunho.
+     */
     public function test_gravar_variantes_de_produto_sem_kit_custa_uma_consulta_a_mais(): void
     {
         $base = $this->base();
-        $r = $base->rascunho;
-        // Primeira gravação fora da contagem: ela aquece o que o Eloquent carrega.
+        $r = $base->rascunho->fresh();
         $this->editor()->salvarVariantes($r, [ChaveCanonica::UNICA => ['estoque' => 5]]);
 
-        $semGancho = $this->contarConsultas(fn () => $this->recalculo()->propagar($r->fresh()));
+        $semGancho = $this->contarConsultas(fn () => $this->recalculo()->propagar($r));
 
         $this->assertSame(1, $semGancho, 'só o exists() indexado por produto_base_id');
     }
@@ -313,13 +320,38 @@ class EstoqueDoKitTest extends TestCase
         $kit = $this->kit($base, 2);
         $this->editor()->salvarVariantes($base->rascunho, [ChaveCanonica::UNICA => ['estoque' => 7]]);
         $revisaoDoBase = (int) $base->rascunho->fresh()->revisao;
+        $doKit = $kit->rascunho->fresh();
 
-        // Gravar o KIT: o gancho roda de novo e tem de sair sem consulta nenhuma.
-        $consultas = $this->contarConsultas(fn () => $this->recalculo()->propagar($kit->rascunho->fresh()));
+        // Gravar o KIT: o gancho roda de novo e tem de parar no `exists()`.
+        $consultas = $this->contarConsultas(fn () => $this->recalculo()->propagar($doKit));
 
-        $this->assertSame(0, $consultas, 'kit não pode ser base de ninguém: sai antes de consultar');
+        $this->assertSame(1, $consultas, 'kit não é base de ninguém: o exists() devolve falso e o laço morre aí');
         $this->assertSame($revisaoDoBase, (int) $base->rascunho->fresh()->revisao, 'e o base não foi reescrito');
         $this->assertSame(7, (int) $base->rascunho->fresh()->variantes()->value('estoque'));
+    }
+
+    /**
+     * O fusível de memória (T-175-38), para o caso de dados corrompidos criarem o
+     * CICLO em `produto_base_id` que o `CriarFaseService` (KIT-02) e o unique
+     * `pubprod_base_qtd_uq` recusam: a propagação dá no máximo uma volta de
+     * sobra e PARA — nunca estoura a pilha nem escreve para sempre.
+     */
+    public function test_ciclo_corrompido_na_familia_nao_recursa_infinitamente(): void
+    {
+        $base = $this->base();
+        $kit = $this->kit($base, 2);
+        // Ciclo à mão: o base passa a apontar para o próprio kit.
+        $base->update(['produto_base_id' => $kit->id, 'quantidade_kit' => 2, 'estoque_calculado' => true]);
+        $revisaoDoBase = (int) $base->rascunho->fresh()->revisao;
+
+        $this->editor()->salvarVariantes($base->rascunho->fresh(), [ChaveCanonica::UNICA => ['estoque' => 8]]);
+
+        $this->assertSame(4, (int) $kit->rascunho->fresh()->variantes()->value('estoque'), 'floor(8 ÷ 2)');
+        $this->assertLessThanOrEqual(
+            $revisaoDoBase + 2,
+            (int) $base->rascunho->fresh()->revisao,
+            'a escrita pedida mais, no máximo, uma volta de sobra',
+        );
     }
 
     public function test_falha_na_propagacao_nao_desfaz_a_gravacao_do_base(): void
