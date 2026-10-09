@@ -33,6 +33,13 @@ o caminho de publicação — não é escopo de uma plan de estoque de kit.
 **Correção provável:** `catch (\Throwable $e)` com `Log::warning` e `$schema = null`,
 no mesmo molde do `PreviaDaFaseService::maxTitulo()`.
 
+_(resolvido em `0607fe38`, pela quick `261009-ng9` — foi exatamente essa correção. A
+hipótese do parágrafo "Por que não foi corrigido aqui" **estava errada num ponto** e vale
+registrar: a troca do `catch` NÃO muda o comportamento de todo o caminho de publicação,
+porque `problemas()` tem um único chamador — `EditorRascunhoService:571` — e `iniciar()` /
+`executarFatia()` têm os `catch` deles. O cenário foi reproduzido em teste antes do fix,
+com a pilha de produção literal: `MlColetaService:58` → `ClienteMlPublicador:99`.)_
+
 ---
 
 ## 2. A capa do kit não PEDE "N unidades lado a lado" — só informa a contagem (descoberto no 175-06)
