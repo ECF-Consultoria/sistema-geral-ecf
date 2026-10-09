@@ -118,6 +118,17 @@ export const mesclarComPendentes = ({ servidor, local, base }) => {
     };
 };
 
+// ─── Preparo pela IA ao salvar no Portal (09/10/2026) ───────────────────────
+
+/**
+ * Mostra o selo "gerado pela IA a partir da ficha do Portal"? Só quando o servidor diz que o campo
+ * AINDA tem o que a IA escreveu (`estado.preparo_ia`) e a tela mostra esse mesmo valor — a pessoa
+ * não começou a editar. Campo vazio nunca leva selo.
+ */
+export const mostraSeloDaIa = (marca, valorNaTela, valorNoServidor) => marca === true
+    && String(valorNaTela ?? '').trim() !== ''
+    && String(valorNaTela ?? '') === String(valorNoServidor ?? '');
+
 // ─── Salvamento automático que falha (WR-F02) ───────────────────────────────
 
 /** Espera antes de cada nova tentativa de um salvamento que falhou (curta, poucas vezes). */

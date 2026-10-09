@@ -10,6 +10,7 @@ use App\Models\EstruturaProdutoVolume;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -106,6 +107,7 @@ class ProdutoCadastroService
         $totais = ['criadas' => 0, 'atualizadas' => 0, 'sem_mudanca' => 0, 'com_erro' => 0, 'absorvidos_da_espera' => 0];
         $chaves = [];           // variacao_id => chave da linha no navegador
         $produtosTocados = [];  // produto_id => true
+        $produtosMudados = [];  // produto_id => true, só os que a linha criou ou mudou
 
         $estado = $this->carregar($empresa);
 
@@ -114,7 +116,7 @@ class ProdutoCadastroService
         $lidas = array_map(fn ($bruta) => NormalizadorDeLinha::normalizar(is_array($bruta) ? $bruta : []), array_values($linhas));
         $estado['categorias'] = $this->categoriasDoLote($lidas);
 
-        DB::transaction(function () use ($empresa, $lidas, $ator, $modo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$estado) {
+        DB::transaction(function () use ($empresa, $lidas, $ator, $modo, &$erros, &$avisos, &$criadasNasListas, &$totais, &$chaves, &$produtosTocados, &$produtosMudados, &$estado) {
             $skusParaVarrer = [];
 
             foreach ($lidas as $indice => $lida) {
@@ -163,6 +165,9 @@ class ProdutoCadastroService
 
                 $totais[$res['resultado']]++;
                 $produtosTocados[$res['produto']->id] = true;
+                if ($res['resultado'] !== 'sem_mudanca') {
+                    $produtosMudados[$res['produto']->id] = true;
+                }
                 $skusParaVarrer = [...$skusParaVarrer, ...$res['skus']];
                 if ($campos['chave'] !== null) {
                     $chaves[$res['variacao']->id] = $campos['chave'];
@@ -185,6 +190,12 @@ class ProdutoCadastroService
                     ['modo' => $modo, 'totais' => $totais, 'criadas_nas_listas' => $criadasNasListas]);
             }
         });
+
+        // O produto mudou: o Publicador o prepara, com espera (sincronizar + IA; `PreparoIaAgenda`).
+        // Vale para a grade e para a importação da planilha, que passa por aqui.
+        if ($produtosMudados !== []) {
+            app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, array_keys($produtosMudados));
+        }
 
         $saida = $this->linhas->paraProdutos($empresa, array_keys($produtosTocados));
         foreach ($saida as &$l) {

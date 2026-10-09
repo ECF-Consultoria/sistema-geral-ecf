@@ -398,14 +398,58 @@ class PalavrasChaveService
         return $titulos->implode(' / ');
     }
 
+    /**
+     * O título pelos termos mais buscados, com os FATOS DO PRODUTO no prompt (09/10/2026, o mesmo
+     * bloco do Modelo) e cortado no `max_title_length` da categoria.
+     */
     private function titulo(PubRascunho $r, string $listingType, array $escolhidos, ?float $prazo): string
     {
         [$categoria, $caminho] = $this->categoria($r);
-        $maximo = (int) ($this->schemas->obter($categoria)->settings()['max_title_length'] ?? 60) ?: 60;
+        $schema = $this->schemas->obter($categoria);
+        $maximo = (int) ($schema->settings()['max_title_length'] ?? 60) ?: 60;
         $termos = $this->termosParaIa($categoria, $r, $caminho);
+        $produto = $r->produto->nomeExibido();
+        $fatos = $this->fatos($r, $schema, $produto, implode(' > ', $caminho));
         $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
 
-        return self::ajustarTitulo($ia->tituloPorTermos($r->produto->nomeExibido(), implode(' > ', $caminho), $termos, $escolhidos, $maximo)['dados'], $maximo);
+        return self::ajustarTitulo($ia->tituloPorTermos($produto, implode(' > ', $caminho), $termos, $escolhidos, $maximo, $fatos->paraPrompt())['dados'], $maximo);
+    }
+
+    // ═══ Geração direta (o preparo pelo Portal, sem pedido nem cache) ════════
+
+    /**
+     * Um título para o rascunho, devolvido direto (sem pedido no cache): quem grava é o
+     * `PreparoIaDoRascunhoService`, sob a trava do rascunho. Mesmo prompt do botão da tela.
+     *
+     * @throws RegraViolada sem categoria
+     */
+    public function gerarTitulo(PubRascunho $r, ?float $prazo = null): string
+    {
+        return $this->titulo($r, 'gold_special', [], $prazo);
+    }
+
+    /**
+     * O Modelo para o rascunho, devolvido direto. `titulo` = o título que acabou de ser gerado
+     * (soma-se aos ativos gravados, como o da tela).
+     *
+     * @return array{valor: string, descartados: list<array{termo: string, motivo: string}>}
+     *
+     * @throws RegraViolada sem categoria
+     */
+    public function gerarModelo(PubRascunho $r, ?float $prazo = null, ?string $titulo = null): array
+    {
+        return $this->modelo($r, $prazo, $titulo);
+    }
+
+    /**
+     * As cores das variantes ATIVAS do rascunho (a mesma leitura dos fatos), para quem precisa
+     * saber se os fatos mudaram (o hash do preparo pelo Portal).
+     *
+     * @return list<string>
+     */
+    public function coresDoRascunho(PubRascunho $r): array
+    {
+        return $this->coresDasVariantes($r);
     }
 
     /**

@@ -424,6 +424,9 @@ class EstoqueDoKitTest extends TestCase
             // `portal` entrou no merge da Fase 176 (D-09, descrição que o cliente escreveu no
             // Portal). É ADITIVA e o gate pegou a mudança de forma — era para isso que ele existe.
             'portal',
+            // `preparo_ia` (09/10/2026): o que a IA escreveu ao salvar no Portal e ainda está no campo —
+            // o selo discreto do editor. Também ADITIVA.
+            'preparo_ia',
         ], array_keys($e));
     }
 

@@ -2,11 +2,12 @@ import { Fragment } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { valorVazio } from '../apoio';
+import { mostraSeloDaIa } from '../derivados.js';
 import { MEDIDAS_DO_PRODUTO, tituloParaModelo } from '../ferramentas';
 import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
 import DadosDasVariacoes from './DadosDasVariacoes';
 import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
-import { AREA, Campo, INVALIDO, LINK, Secao, Subtitulo, useErroDoCampo } from './comum';
+import { AREA, Campo, GeradoPelaIa, INVALIDO, LINK, Secao, Subtitulo, useErroDoCampo } from './comum';
 import { cn } from '@/lib/utils';
 
 // ─── Etapa 2 — Detalhes: variações, ficha técnica e descrição ──────────────
@@ -68,6 +69,8 @@ function CampoDaFicha({ m, a, rotulo = null }) {
     const semTitulo = modelo && tituloParaModelo(m.alvos) === '';
     // Termos que a IA sugeriu e o servidor tirou: cor, público ou tamanho que o produto não tem (09/10).
     const descartados = Array.isArray(ia.descartados) ? ia.descartados : [];
+    // Preparo pela IA (09/10): o Modelo que ela escreveu sozinha e ninguém mudou ainda.
+    const seloIa = modelo && mostraSeloDaIa(m.estado?.preparo_ia?.modelo, valor?.value_name, m.estado?.atributos?.[MODELO]?.value_name);
 
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
@@ -84,6 +87,7 @@ function CampoDaFicha({ m, a, rotulo = null }) {
                     placeholder={corLivre ? 'Escolha na lista ou digite' : null}
                     onChange={(v) => m.mudarAtributo(a.id, v)} />
             </Campo>
+            {seloIa && <GeradoPelaIa campo="modelo" />}
             {modelo && ! m.disabled && (
                 <div className="mt-2">
                     <button type="button" onClick={() => m.pedirPalavrasIa('modelo')} disabled={rodando} className={LINK} data-acao="gerar-modelo-ia">
@@ -213,6 +217,7 @@ function Descricao({ m, descricaoIa }) {
                     placeholder="Ex.: Cadeira de escritório com encosto reclinável, assento em espuma de alta densidade e rodízios de nylon. Acompanha manual de montagem."
                     aria-invalid={!! erro || undefined} className={cn(AREA, 'min-h-[260px] resize-y', erro && INVALIDO)} data-campo="descricao" />
             </Campo>
+            {mostraSeloDaIa(m.estado?.preparo_ia?.descricao, texto, m.estado?.rascunho?.descricao) && <GeradoPelaIa campo="descricao" />}
         </Secao>
     );
 }

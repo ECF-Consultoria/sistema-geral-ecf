@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\Company;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaOfertaComponente;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use App\Models\MlbEmpresa;
@@ -51,10 +52,15 @@ class PublicadorSincronizaPortalService
      *   legados sem rascunho removidos porque a cor já está no grupo; `para_preencher` são os grupos
      *   e os produtos de ofertas compostas, que a ficha do Portal vai preencher.
      */
-    public function sincronizar(?MlbEmpresa $empresa, Company $company): array
+    public function sincronizar(?MlbEmpresa $empresa, Company $company, ?int $soDoProduto = null): array
     {
         $ofertas = EstruturaOferta::query()->where('company_id', $company->id)
             ->orderBy('id')->get(['id', 'company_id', 'variacao_id', 'sku', 'fase', 'nome']);
+        // Salvar no Portal (09/10/2026): as MESMAS regras, só com as ofertas daquele produto — as Simples
+        // das variações dele e as compostas (Combo/Kit/Combit) que o têm como componente.
+        if ($soDoProduto !== null) {
+            $ofertas = $this->ofertasDoProduto($ofertas, $company, $soDoProduto);
+        }
 
         $ids = [];
         $adotados = [];
@@ -186,11 +192,15 @@ class PublicadorSincronizaPortalService
             ->whereIn('oferta_id', $compostos)->orderBy('id')->pluck('id')->all();
         $paraPreencher = array_values(array_unique(array_merge($grupos, $doPortalComposto)));
 
-        Cache::forever('publicador.portal_sincronizado_em.company-'.$company->id, now()->toIso8601String());
+        // "Sincronizado em" é do clique da empresa inteira; o de um produto só não o representa.
+        if ($soDoProduto === null) {
+            Cache::forever('publicador.portal_sincronizado_em.company-'.$company->id, now()->toIso8601String());
+        }
         $criados = count($ids);
         $nAdotados = count($adotados);
         $nAbsorvidos = count($absorvidos);
-        Log::info("[Publicador] Sincronizar do Portal: empresa {$company->id} ({$company->name}) — {$criados} produto(s) novo(s), {$nAdotados} adotado(s), "
+        $escopo = $soDoProduto === null ? '' : " (só o produto {$soDoProduto} do Portal, salvo pelo cliente)";
+        Log::info("[Publicador] Sincronizar do Portal{$escopo}: empresa {$company->id} ({$company->name}) — {$criados} produto(s) novo(s), {$nAdotados} adotado(s), "
             ."{$nAbsorvidos} linha(s) antiga(s) de cor absorvida(s)".($absorvidos !== [] ? ' (#'.implode(', #', $absorvidos).')' : '').', '
             .count($duplicados).' produto(s) com cores avulsas.');
         // Os avisos do clique vão para o log, não para a tela (09/10/2026: o painel mostra uma linha só).
@@ -259,6 +269,29 @@ class PublicadorSincronizaPortalService
         }
 
         return $q;
+    }
+
+    /**
+     * As ofertas que tocam UM produto do Portal: as Simples das variações dele e as compostas que têm
+     * uma dessas como componente. Tudo escopado pela Company (a variação de outra empresa não entra).
+     *
+     * @param  Collection<int, EstruturaOferta>  $ofertas
+     * @return Collection<int, EstruturaOferta>
+     */
+    private function ofertasDoProduto(Collection $ofertas, Company $company, int $produtoId): Collection
+    {
+        $variacoes = EstruturaProdutoVariacao::query()->where('company_id', $company->id)
+            ->where('produto_id', $produtoId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($variacoes === []) {
+            return collect();
+        }
+        $simples = $ofertas->filter(fn (EstruturaOferta $o) => $o->variacao_id !== null && in_array((int) $o->variacao_id, $variacoes, true))
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $compostas = $simples === [] ? [] : EstruturaOfertaComponente::query()->whereIn('componente_id', $simples)
+            ->pluck('oferta_id')->map(fn ($id) => (int) $id)->all();
+        $ids = array_flip([...$simples, ...$compostas]);
+
+        return $ofertas->filter(fn (EstruturaOferta $o) => isset($ids[(int) $o->id]))->values();
     }
 
     /** @return Collection<int, EstruturaProdutoVariacao> variações das ofertas, indexadas por id e só da Company */

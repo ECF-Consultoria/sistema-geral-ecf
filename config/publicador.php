@@ -120,6 +120,26 @@ return [
         'previa_validade_minutos' => 10,
     ],
 
+    // ═══ IA prepara o rascunho ao salvar no Portal (09/10/2026) ═══
+    // Cada save do produto no Portal agenda, com espera, a sincronização SÓ daquele produto e, com a
+    // ficha completa, a geração de título, Modelo e descrição pela IA — gravados no rascunho sem tela
+    // aberta, nunca por cima do que a equipe editou (learnings publicador-ml §16).
+    'preparo_ia' => [
+        // Chave de segurança: false desliga TUDO (nem sincroniza nem gera).
+        'ativo' => (bool) env('PUBLICADOR_PREPARO_IA_ATIVO', true),
+        // Espera depois do último save do produto; um save novo dentro dela adia (debounce).
+        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 10),
+        // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
+        // Passou disso, o produto só é sincronizado e o log diz por quê.
+        'limite_diario_por_empresa' => (int) env('PUBLICADOR_PREPARO_IA_LIMITE_DIARIO', 60),
+        // O editor do produto conta como "em uso" por este tempo depois do último sinal da tela.
+        'editor_em_uso_min' => 3,
+        // Editor em uso (ou "Anunciar por IA" rodando): a escrita espera este tempo e tenta de novo,
+        // no máximo `max_adiamentos` vezes; depois desiste e o próximo save no Portal recomeça.
+        'adiar_min' => 5,
+        'max_adiamentos' => 24,
+    ],
+
     // Só a conferência visual local (plano 166-16) aponta para um servidor de mentira;
     // em produção o cliente IGNORA este valor e usa o host oficial (plano 166-02).
     'ml_api_base' => env('PUBLICADOR_ML_API_BASE', 'https://api.mercadolibre.com'),

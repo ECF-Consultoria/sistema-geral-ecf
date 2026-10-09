@@ -20,6 +20,7 @@ use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\ExplicacaoDeAtributos;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
@@ -398,6 +399,7 @@ class PortalEstruturaProdutosController extends Controller
         ]);
 
         $salvos = $this->fichaTecnica->gravar($empresa, $p, (array) $request->input('atributos'), PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, [$p->id]);
 
         return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
     }
@@ -417,6 +419,7 @@ class PortalEstruturaProdutosController extends Controller
         );
 
         $salvo = $this->descricao->gravar($empresa, $p, $dados['descricao'] ?? null, PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, [$p->id]);
 
         return response()->json(['descricao' => $salvo, 'mensagem' => 'Descrição salva.']);
     }
@@ -455,6 +458,7 @@ class PortalEstruturaProdutosController extends Controller
 
         $arquivos = array_values((array) $request->file('imagens'));
         $galeria = $this->imagens->enviar($empresa, $v, $arquivos, PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, [$v->produto_id]);
 
         return response()->json(['imagens' => $galeria, 'mensagem' => count($arquivos) === 1 ? 'Imagem enviada.' : 'Imagens enviadas.']);
     }
@@ -483,8 +487,11 @@ class PortalEstruturaProdutosController extends Controller
         $v = $this->variacaoDaEmpresa($empresa->id, $variacao);
         $img = $this->imagemDaEmpresa($empresa->id, $variacao, $imagem);
 
+        $galeria = $this->imagens->excluir($empresa, $v, $img, PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, [$v->produto_id]);
+
         return response()->json([
-            'imagens'  => $this->imagens->excluir($empresa, $v, $img, PortalContexto::ator()),
+            'imagens'  => $galeria,
             'mensagem' => 'Imagem excluída.',
         ]);
     }
@@ -506,8 +513,11 @@ class PortalEstruturaProdutosController extends Controller
             'ordem.*.integer' => 'Ordem inválida.',
         ]);
 
+        $galeria = $this->imagens->reordenar($empresa, $v, $dados['ordem'], PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, [$v->produto_id]);
+
         return response()->json([
-            'imagens'  => $this->imagens->reordenar($empresa, $v, $dados['ordem'], PortalContexto::ator()),
+            'imagens'  => $galeria,
             'mensagem' => 'Ordem das imagens salva.',
         ]);
     }
@@ -589,6 +599,18 @@ class PortalEstruturaProdutosController extends Controller
     }
 
     /** A variação da empresa da sessão; de outra empresa ou inexistente, 404 igual. */
+    /**
+     * O cliente salvou o produto: agenda, com espera, o preparo no Publicador (sincronizar só este
+     * produto e, com a ficha completa, a IA de título/Modelo/descrição — `PreparoIaAgenda`). A resposta
+     * ao cliente não muda (sigilo: nada disso aparece no Portal) e uma falha aqui nunca quebra o save.
+     *
+     * @param  list<int|string|null>  $produtoIds
+     */
+    private function prepararNoPublicador(\App\Models\Company $empresa, array $produtoIds): void
+    {
+        app(PreparoIaAgenda::class)->aoSalvar((int) $empresa->id, $produtoIds);
+    }
+
     private function variacaoDaEmpresa(int $empresaId, int $variacao): EstruturaProdutoVariacao
     {
         return EstruturaProdutoVariacao::query()->where('company_id', $empresaId)->whereKey($variacao)->firstOrFail();

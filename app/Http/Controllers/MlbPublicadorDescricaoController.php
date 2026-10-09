@@ -6,6 +6,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Publicador\DescricaoIaService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\EditorEmUso;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -49,6 +50,8 @@ class MlbPublicadorDescricaoController extends Controller
     {
         $p = PubProduto::findOrFail($id);
         abort_if($this->programas->empresaDoProduto($p) === null, 404);
+        // A tela está aberta: o preparo pela IA (salvar no Portal) espera (EditorEmUso).
+        EditorEmUso::marcar((int) $p->id);
 
         return PubRascunho::where('produto_id', $p->id)->firstOrFail();
     }

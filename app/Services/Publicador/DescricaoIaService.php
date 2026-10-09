@@ -81,20 +81,7 @@ class DescricaoIaService
     public function executar(PubRascunho $r, string $pedido, ?float $prazo = null): void
     {
         try {
-            $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
-            $produto = $r->produto;
-            // O nome também vem do cliente: sem link nem e-mail (WR-10).
-            $nome = self::semContato($produto->nomeExibido(), telefones: false);
-            // Loja como no "Anunciar por IA".
-            $loja = $produto->contaOuNula()?->nomeContaMl() ?? ($produto->mlbEmpresa?->nome ?? $produto->company?->name ?? '');
-            $specs = $this->specs($r);
-
-            $analise = $ia->analise($nome, $loja, $specs)['dados'];
-            // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
-            $texto = self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados']));
-            if ($texto === '') {
-                throw new \RuntimeException(self::ERRO_VAZIA);
-            }
+            $texto = $this->gerar($r, $prazo);
             $this->concluir($r->id, $pedido, ['status' => 'pronto', 'valor' => $texto, 'erro' => null]);
         } catch (\Throwable $e) {
             // IN-04: a mensagem crua (URL, corpo do provedor) fica só no log; a tela recebe um texto nosso.
@@ -104,6 +91,33 @@ class DescricaoIaService
 
             throw $e;
         }
+    }
+
+    /**
+     * A descrição MAG T8 do rascunho (análise e depois descrição), já limpa, devolvida direto —
+     * sem pedido no cache. É o que o Job da tela põe no cache e o que o preparo pelo Portal grava
+     * (`PreparoIaDoRascunhoService`). Os prompts são os de sempre; só a entrada (`specs`) é nossa.
+     *
+     * @throws \RuntimeException a IA falhou ou não devolveu nada aproveitável
+     */
+    public function gerar(PubRascunho $r, ?float $prazo = null): string
+    {
+        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+        $produto = $r->produto;
+        // O nome também vem do cliente: sem link nem e-mail (WR-10).
+        $nome = self::semContato($produto->nomeExibido(), telefones: false);
+        // Loja como no "Anunciar por IA".
+        $loja = $produto->contaOuNula()?->nomeContaMl() ?? ($produto->mlbEmpresa?->nome ?? $produto->company?->name ?? '');
+        $specs = $this->specs($r);
+
+        $analise = $ia->analise($nome, $loja, $specs)['dados'];
+        // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
+        $texto = self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados']));
+        if ($texto === '') {
+            throw new \RuntimeException(self::ERRO_VAZIA);
+        }
+
+        return $texto;
     }
 
     /** Marca o pedido como falho (Job que caiu sem passar pelo `executar`). */

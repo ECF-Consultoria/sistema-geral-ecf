@@ -666,8 +666,9 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   Agora `PortalValorDeAtributo` escreve ponto decimal sem zeros à toa ("48.5 cm", "0.015 m", "1"); `number` nunca leva a
   unidade no texto. Linha velha `origem=portal` se conserta sozinha no próximo Sincronizar: o `mesmoValor` compara as
   colunas, então `value_number=3` ≠ `value_name="3"` → reescrita e contada em `campos_atualizados`; `user`/`ia` com
-  número em `value_number` ficam como estão. **Ainda grava `value_number`: a IA (`IaParaRascunhoService`, quando a
-  resposta traz só `value_number`, sem `value_name`)** — mesmo sintoma na tela se acontecer. Pacote (`SELLER_PACKAGE_*`) sempre esteve certo.
+  número em `value_number` ficam como estão. A IA (`IaParaRascunhoService`, "Anunciar por IA") gravava `value_number`
+  sem `value_name` — **corrigido em 09/10**: usa `PortalValorDeAtributo::numeroNoFormatoDoEditor` (mesma conversão de
+  unidade), prova em `IaNumeroNoFormatoDoEditorTest`. Pacote (`SELLER_PACKAGE_*`) sempre esteve certo.
   Multivalor: a tela mostra só a 1ª opção e o payload leva só ela (D-13, de propósito). Prova:
   `SincronizarNoFormatoDoEditorTest` (o "o editor mostra" espelha a leitura do `CampoAtributo` em PHP).
 
@@ -713,3 +714,58 @@ Pedido do usuário ("AGID? MPN? … isso para tudo, não apenas para siglas"). O
 - **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_08_160000`): up → rollback → up, DONE ×3, `Ran` no lote 139;
   `UNIQUE KEY atributo_explicacoes_atributo_uq`; `INSERT IGNORE` do mesmo id não duplica (linha de prova apagada; 0
   linhas). Tabela fica criada no local. Deploy: `migrate --force` + `queue:restart` (Job novo na fila `default`).
+
+## 16. IA prepara o rascunho ao salvar no Portal (09/10/2026)
+
+Pedido do usuário: a IA é lenta, então trabalha ANTES — o cliente salva o produto no Portal e, quando a equipe abre
+o Publicador, título, Modelo e descrição já estão lá. É a EXCEÇÃO consciente do §10 ("a IA deixa no cache e a tela
+aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não se deduz do código:
+
+- **Gatilho e debounce.** `PreparoIaAgenda::aoSalvar` é chamado por gravar linhas (só produto criado/mudado — a
+  importação da planilha passa por `ProdutoCadastroService::gravarLinhas`), ficha técnica, descrição e imagens
+  (enviar/excluir/ordenar) no `PortalEstruturaProdutosController`. Cada save grava `publicador:preparo:marca:{produto}`
+  (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` (10). O Job que acorda com marca diferente
+  sai (`superado`): numa rajada de saves só o último age. Fila `sync` NÃO agenda (rodaria dentro do save do cliente).
+  Exclusão de variação não agenda (o Sincronizar nunca remove cor).
+- **Sincroniza SÓ o produto**: `PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)` filtra as ofertas
+  Simples das variações dele + as compostas que o têm como componente; as regras são as mesmas do botão (D-05
+  refinado). Não grava o "sincronizado em" da empresa. O preenchimento usa a MESMA trava do Job do botão
+  (`PreencherRascunhoDoPortalJob::chaveDaTrava`).
+- **IA só com ficha completa**: categoria + todos os `obrigatorio` de `FichaTecnicaDaCategoria::daAtributos` (do schema
+  já guardado, com o eixo do produto fora), MENOS o `MODEL` — ele é obrigatório na cadeira (e o cliente o vê na ficha),
+  mas é a IA que o gera. Combo/Kit/Combit: todos os componentes completos. Kit/fase do Publicador (`produto_base_id`)
+  nunca é preparado.
+- **Memória `step_state.ia_escrito`** (`MemoriaDoPreparoIa`): o último valor que a automação escreveu em
+  `titulo_gold_special`, `titulo_gold_pro`, `modelo`, `descricao`. Escreve só no campo VAZIO ou que ainda tem
+  EXATAMENTE esse valor (`podeEscrever`). Título planejado na aba Anúncios (efetivo) conta como preenchido; MODEL com
+  `value_id` (opção/N/A) também. **Atenção:** se o cliente preencher o Modelo no Portal (obrigatório na cadeira), o
+  Sincronizar o grava `origem=portal` e a IA NUNCA o substitui — é a regra do usuário ("vazio ou o último que ela
+  escreveu"). Perder a memória (outra escrita do `step_state` que a pisou — `ConferenciaService` e `lerContaSeVencida`
+  regravam o `step_state` inteiro de um modelo lido antes) é SEGURO: o campo passa a contar como da equipe. Prova de
+  mutação: `podeEscrever` sempre true derruba 3 testes; só-vazio derruba 5 (`PreparoIaAoSalvarNoPortalTest`).
+- **Hash dos fatos em `step_state.ia_preparo`** (nome, categoria, atributos do rascunho fora MODEL/GTIN/SELLER_SKU/
+  EMPTY_GTIN_REASON, cores das variantes ativas, descrição do cliente): igual = não chama a IA. Por etapa:
+  `ok`/`pulado`/`intocavel` não repetem; `erro`/`desistiu` refazem no próximo save (título refeito leva o Modelo junto);
+  `rodando`/`adiado` com menos de 3 h não duplicam. Campo já preenchido pela equipe nem chama a IA (`livres`).
+- **Cadeia**: `Bus::chain` de `GerarPreparoIaJob` (título → Modelo → descrição), fila `default`, `tries=1`,
+  `timeout=300`, prazo da IA 240 s. A falha da IA NÃO lança (fica `erro` na etapa) para a cadeia seguir; o Modelo sem
+  título nenhum é `pulado`. Quebra fora da IA para a cadeia — o `failed()` do título/Modelo põe a descrição na fila.
+  Título: UM, nos dois tipos ativos, cortado no `max_title_length`, com o bloco FATOS DO PRODUTO no prompt (vale também
+  para o botão "Sugerir com IA"). Modelo: `gerarModelo` com o título GERADO (`ia_preparo.titulo_gerado`), MODEL gravado
+  `{value_id: null, value_name, origem: 'ia'}` como o editor. Descrição: `DescricaoIaService::gerar` (MAG T8 intocado) e
+  gasta a chance do automático do editor (`chaveAuto`), então o D-11 não gera de novo.
+- **Editor aberto = não escreve.** O editor salva a chave de topo inteira da cópia local (`atributos`, `alvos` →
+  `gravarAtributos`/`gravarAlvos` regravam a lista): uma escrita por trás da tela não apagaria o que a pessoa digita
+  (o salvamento dela vence), mas seria desfeita sem ninguém ver no próximo salvamento. Por isso: `EditorEmUso` (cache
+  `publicador:editor:em-uso:{pub_produto}`, 3 min), renovado por TODA rota do editor (`MlbPublicadorController::produto`,
+  `MlbPublicadorDescricaoController`) e por um sinal por minuto da tela com a aba visível (`POST …/presenca`). Com ele
+  valendo (ou "Anunciar por IA" rodando no rascunho), o preparo inteiro espera `adiar_min` (5) e tenta de novo; se a
+  IA já gerou, a escrita espera com o valor pronto (`valorPronto`, sem chamar a IA de novo). Até `max_adiamentos` (24);
+  depois `desistiu` e o próximo save recomeça. Adiar é Job NOVO com `delay`, nunca `release()` (§6, `tries=1`).
+- **Tela**: `estado().preparo_ia` diz o que AINDA é da IA; o selo "Gerado pela IA a partir da ficha do Portal." (13px,
+  `text-white/50`) aparece no título, Modelo e descrição enquanto a tela mostra o mesmo valor (`mostraSeloDaIa`). Nada
+  muda no Portal (sigilo): a resposta dos saves é a mesma.
+- **Custo**: `PUBLICADOR_PREPARO_IA_ATIVO=false` desliga TUDO (nem sincroniza); `PUBLICADOR_PREPARO_IA_LIMITE_DIARIO`
+  (60) conta PREPARAÇÕES (um produto = título + Modelo + descrição, ~4 chamadas com a análise MAG T8) por empresa por
+  dia, em cache; passou, só sincroniza e loga `[Publicador] Preparo pela IA: limite diário…`.
+- **Deploy**: sem migration. `queue:restart` (Jobs novos na fila `default`); `npm run build` (selo + sinal).

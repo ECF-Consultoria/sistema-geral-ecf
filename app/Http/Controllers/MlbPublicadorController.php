@@ -16,6 +16,7 @@ use App\Services\Publicador\PublicacaoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
@@ -337,11 +338,23 @@ class MlbPublicadorController extends Controller
         }
     }
 
-    /** O produto autorizado: inexistente, de empresa arquivada ou sem dono → 404. */
+    /**
+     * Sinal da tela aberta (09/10/2026): o editor manda um por minuto enquanto a aba está visível, e o
+     * preparo pela IA (salvar no Portal) não escreve no rascunho enquanto ele vale (`EditorEmUso`).
+     */
+    public function presenca(int $produto): JsonResponse
+    {
+        $this->produto($produto);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** O produto autorizado: inexistente, de empresa arquivada ou sem dono → 404. Toda rota do editor marca o uso. */
     private function produto(int $id): PubProduto
     {
         $p = PubProduto::findOrFail($id);
         abort_if($this->programas->empresaDoProduto($p) === null, 404);
+        EditorEmUso::marcar((int) $p->id);
 
         return $p;
     }
