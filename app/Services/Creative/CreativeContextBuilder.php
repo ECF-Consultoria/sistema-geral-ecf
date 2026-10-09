@@ -164,6 +164,14 @@ class CreativeContextBuilder
                 ->values()
                 ->all(),
             pubRascunhoId: $rascunho->id,
+            // Fase 175 (§5): a quantidade de unidades iguais do KIT, direto do
+            // CADASTRO (`pub_produtos.quantidade_kit`). Produto base vale 1 e
+            // sai NULO — assim nada muda para quem não é kit, e o ramo antigo
+            // (`payload` do assistente) nem passa por aqui. `with('produto')`
+            // já estava na consulta acima: nenhuma query nova.
+            unidadesDoKit: ($rascunho->produto?->quantidade_kit ?? 1) >= 2
+                ? (int) $rascunho->produto->quantidade_kit
+                : null,
         );
     }
 }

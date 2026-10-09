@@ -146,6 +146,31 @@ class ProductTruthBuilder
             ];
         }
 
+        // Fase 175 (§5 da ETAPA-3) — as N unidades IGUAIS de um kit do
+        // Publicador. Nulo em todo produto que não é kit: o default de ninguém
+        // muda, e o ramo antigo (`payload` do assistente) nunca preenche isto.
+        //
+        // POR QUE ISTO É TRUTH-02-COMPATÍVEL. O N vem de
+        // `pub_produtos.quantidade_kit`, campo de **cadastro** que a pessoa
+        // digitou no painel "Criar Fase N" e conferiu na prévia antes de
+        // confirmar — não é inferência sobre título nem sobre descrição, que
+        // continuam fora do alcance deste método (não são nem parâmetro dele).
+        // A proibição do §18 do spike é contra EXTRAIR número de texto livre,
+        // não contra usar um campo numérico do cadastro.
+        //
+        // POR QUE ENTRA EM `contagens` E NÃO COMO FRASE. É assim que o
+        // `CreativePromptBuilder::linhasContagens()` o renderiza — "CONTAGENS
+        // CONFIRMADAS NO CADASTRO (respeite exatamente)" — em vez de texto
+        // solto no meio do prompt, que o modelo pode reinterpretar ou ignorar.
+        // Nenhuma linha do prompt builder precisou mudar para isto.
+        if ($contexto->unidadesDoKit !== null) {
+            $contagens[] = [
+                'peca'       => 'unidades idênticas do mesmo produto',
+                'quantidade' => (string) $contexto->unidadesDoKit,
+                'origem'     => 'cadastro',
+            ];
+        }
+
         return $contagens;
     }
 

@@ -40,11 +40,31 @@ class CreativePlanner
      * decisão para `CreativeSlotCatalog::elegiveis()`, nunca consulta a
      * API ele mesmo (nunca chama rede nesta classe, mantém os testes de
      * unidade sem HTTP).
+     *
+     * `$tiposFixos` (Fase 175, §5 da ETAPA-3): lista FECHADA de tipos de slot,
+     * na ordem. Vazia = comportamento de sempre. Preenchida, ela substitui a
+     * elegibilidade do catálogo e define a quantidade — usada SÓ pela capa de
+     * kit (`CapaDoKitService`), que precisa de exatamente `lifestyle` +
+     * `hero`: ambientada e fundo limpo, para o operador escolher qual vira a
+     * foto 1 do anúncio do kit.
+     *
+     * @param  list<string>  $tiposFixos
      */
-    public function planejar(CreativeContext $contexto, ProductTruth $truth, int $quantidade = 7, bool $categoriaMoveis = false): CreativePlan
+    public function planejar(CreativeContext $contexto, ProductTruth $truth, int $quantidade = 7, bool $categoriaMoveis = false, array $tiposFixos = []): CreativePlan
     {
-        $elegiveis = $this->catalogo->elegiveis($truth, $categoriaMoveis);
-        $primeiro  = $categoriaMoveis ? 'lifestyle' : 'hero';
+        // Fase 175 (§5): `$tiposFixos` vazio — o default, e o que TODO chamador
+        // existente continua passando — não muda NADA: a lista elegível e o
+        // primeiro slot saem do catálogo como sempre. Preenchido, ele é a
+        // lista FECHADA de tipos daquele kit, na ordem dada, e a quantidade
+        // passa a ser o tamanho dela (a capa de kit precisa de exatamente
+        // `lifestyle` + `hero`, não dos dois que o Truth sugeriria).
+        $fixos     = array_values(array_filter(array_map('strval', $tiposFixos)));
+        $elegiveis = $fixos !== [] ? $fixos : $this->catalogo->elegiveis($truth, $categoriaMoveis);
+        $primeiro  = $fixos !== [] ? $fixos[0] : ($categoriaMoveis ? 'lifestyle' : 'hero');
+
+        if ($fixos !== []) {
+            $quantidade = count($fixos);
+        }
 
         $origem = 'deterministico';
         $modelo = null;

@@ -53,7 +53,22 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
 
     public bool $failOnTimeout = true;
 
-    public function __construct(public int $criativoReferenciaId, public int $kitId)
+    /**
+     * Fase 175 (§5): os tipos de slot FIXADOS por quem despacha, na ordem.
+     * `null` (o default, e o que TODO despacho existente continua usando) =
+     * a quantidade sai de `config('services.creative.kit.slots')` e os tipos
+     * saem do catálogo/LLM, exatamente como sempre — nenhum kit existente
+     * muda de comportamento, e não há migration nem mudança de default.
+     *
+     * Hoje só a CAPA DE KIT usa isto, com `['lifestyle', 'hero']`: a decisão
+     * do usuário em 2026-10-08 é "gerar as duas e você escolhe", e esses dois
+     * precisam ser EXATAMENTE esses — não os dois que o planner escolheria
+     * sozinho a partir do Truth (que, com medida no cadastro, seriam
+     * `hero` + `dimensions`).
+     *
+     * @var list<string>|null
+     */
+    public function __construct(public int $criativoReferenciaId, public int $kitId, public ?array $tiposFixos = null)
     {
         // Fila `creative`, NUNCA `high` nem `default`. Definido no construtor
         // porque `Queueable` já declara `$queue` e redeclarar a propriedade
@@ -61,7 +76,14 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
         $this->onQueue('creative');
     }
 
-    /** Chave do KIT — unicidade natural depois que ele já existe. */
+    /**
+     * Chave do KIT — unicidade natural depois que ele já existe.
+     *
+     * ⚠️ Fase 175: `tiposFixos` NÃO entra aqui de propósito. A unicidade é por
+     * kit, e um kit tem um plano só; dois despachos do mesmo kit com tipos
+     * diferentes continuam sendo o MESMO trabalho duplicado, que é exatamente
+     * o que esta chave existe para evitar.
+     */
     public function uniqueId(): string
     {
         return 'kit-plano:' . $this->kitId;
@@ -116,14 +138,20 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
         $truth = $truthBuilder->paraContexto($contexto);
 
         $kit->update(['etapa' => 'plano']);
-        $quantidade = (int) config('services.creative.kit.slots', MlAnuncioCriativoKit::SLOTS_PADRAO);
+        // Fase 175: só a capa de kit fixa os tipos. Sem `tiposFixos` (todo
+        // despacho que já existe), a fonte da quantidade continua sendo a
+        // config — nenhum kit existente muda de comportamento.
+        $fixos = array_values(array_filter(array_map('strval', $this->tiposFixos ?? [])));
+        $quantidade = $fixos !== []
+            ? count($fixos)
+            : (int) config('services.creative.kit.slots', MlAnuncioCriativoKit::SLOTS_PADRAO);
         // Quick 261007-amb: categoria de móvel troca o 1º slot do kit para
         // AMBIENTAÇÃO em vez do hero de fundo branco — detecção por
         // `path_from_root` (nunca uma chamada nova à API: reaproveita o
         // cache de `MlCatalogoMetaService::categoria()`, já aquecido pelo
         // wizard). Degrada para `false` (hero) em qualquer falha.
         $categoriaMoveis = $categoriaMobiliario->ehMoveis($contexto->categoriaId);
-        $plano = $planner->planejar($contexto, $truth, $quantidade, $categoriaMoveis);
+        $plano = $planner->planejar($contexto, $truth, $quantidade, $categoriaMoveis, $fixos);
 
         $t0 = microtime(true);
 
