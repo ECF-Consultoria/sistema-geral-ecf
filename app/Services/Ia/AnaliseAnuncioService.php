@@ -145,6 +145,95 @@ class AnaliseAnuncioService
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
 
+    // ═══ Texto do KIT (Publicador, Fase 175 — "Criar Fase N") ════════════════
+
+    /**
+     * Reescreve o TÍTULO ou a DESCRIÇÃO da Fase 1 para um kit de `$unidades`
+     * unidades do mesmo produto (§4 da ETAPA-3, Fase 175 plano 06).
+     *
+     * Método NOVO, acrescentado sem tocar em nenhum dos existentes: nenhum
+     * deles serve aqui sem mudar assinatura. `tituloPorTermos()` seria o mais
+     * perto, mas ele é SEO por termos mais buscados do ML — prompt errado para
+     * um kit, que não compete por busca nova: ele só precisa dizer, no título
+     * já conferido da Fase 1, que agora são N unidades.
+     *
+     * Quem corta no `max_title_length` e quem garante a marca "Kit {N}" é o
+     * `SugestaoKitIaService` — aqui só se pergunta (mesma divisão de
+     * `modeloPorTermos()`/`PalavrasChaveService`: o modelo erra contagem).
+     *
+     * @param  'titulo'|'descricao'  $alvo
+     * @return array{dados: string, meta: array}
+     */
+    public function textoDeKit(string $alvo, string $produto, string $tituloBase, ?string $descricaoBase, int $unidades, int $maximo): array
+    {
+        $chave = $alvo === 'descricao' ? 'descricao' : 'titulo';
+        $r = $this->chamar(
+            $this->promptTextoDeKit($chave, $produto, $tituloBase, $descricaoBase, $unidades, $maximo),
+            $chave === 'descricao' ? 3000 : 2500,
+        );
+
+        return ['dados' => trim((string) ($r['json'][$chave] ?? '')), 'meta' => $r['meta']];
+    }
+
+    /**
+     * Prompt do texto do kit. A frase obrigatória da descrição e o prefixo do
+     * título são PEDIDOS aqui e GARANTIDOS depois pelo serviço — o modelo
+     * esquece, e o número de unidades não pode se perder.
+     */
+    private function promptTextoDeKit(string $alvo, string $produto, string $tituloBase, ?string $descricaoBase, int $unidades, int $maximo): string
+    {
+        $doBase = trim((string) $descricaoBase);
+        $frase = "Este kit contém {$unidades} unidades de {$produto}.";
+
+        if ($alvo === 'titulo') {
+            $minimo = max(1, $maximo - 2);
+
+            return <<<TXT
+            Reescreva o título abaixo para o anúncio de um KIT com {$unidades} unidades IGUAIS deste mesmo produto no Mercado Livre.
+
+            Produto: **{$produto}**
+            Título da unidade avulsa (já conferido pela equipe): {$tituloBase}
+
+            REGRAS:
+            1. O título TEM de começar por "Kit {$unidades}".
+            2. É o MESMO produto, só em quantidade maior: não troque o produto, não invente
+               variação, cor, medida, material nem acessório que não esteja no título acima.
+            3. SEM PREPOSIÇÕES (de, para, com, do, da, e, em), SEM CORES e SEM caracteres
+               especiais (sem parênteses, traços, aspas ou pontuação).
+            4. ENTRE {$minimo} E {$maximo} CARACTERES — conte de verdade, caractere por caractere.
+            5. Não repita palavra.
+
+            Responda APENAS com JSON válido, sem crases:
+            {"titulo":"..."}
+            TXT;
+        }
+
+        $bloco = $doBase === ''
+            ? '(a Fase 1 ainda não tem descrição — escreva a do kit a partir do título)'
+            : $doBase;
+
+        return <<<TXT
+        Escreva a descrição do anúncio de um KIT com {$unidades} unidades IGUAIS do mesmo produto no Mercado Livre.
+
+        Produto: **{$produto}**
+        Título da unidade avulsa: {$tituloBase}
+
+        Descrição da unidade avulsa (a Fase 1, já conferida pela equipe):
+        {$bloco}
+
+        REGRAS:
+        1. A PRIMEIRA linha é exatamente esta frase, sem mudar nada: {$frase}
+        2. Depois dela, adapte a descrição acima para o kit: é o MESMO produto, só em
+           quantidade maior.
+        3. Não invente especificação, medida, material, garantia nem brinde que não esteja
+           na descrição acima.
+        4. Não prometa desconto, frete grátis nem prazo de entrega.
+
+        Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
+        {"descricao":"..."}
+        TXT;
+    }
+
     // ═══ Chamada ao provedor ══════════════════════════════════════════════════
 
     /**

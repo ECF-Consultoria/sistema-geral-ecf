@@ -211,12 +211,16 @@ class SugestaoKitIaTest extends TestCase
         $servico = $this->servico('   ');
         $pedido = $servico->pedir($r, 'titulo', 2);
 
+        $mensagem = null;
         try {
             $servico->executar($r, 'titulo', 2, $pedido);
-            $this->fail('executar() tinha de lançar para o Job registrar a falha');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('IA', $e->getMessage());
+            $mensagem = $e->getMessage();
         }
+
+        // Lançar é parte do contrato: é assim que o Job sabe que caiu e loga.
+        $this->assertNotNull($mensagem, 'executar() tinha de lançar para o Job registrar a falha');
+        $this->assertStringContainsString('IA', $mensagem);
 
         $estado = $servico->estado($r, 'titulo', 2);
         $this->assertSame('erro', $estado['status']);
@@ -228,6 +232,7 @@ class SugestaoKitIaTest extends TestCase
     {
         $r = $this->rascunhoDoBase();
         $longo = 'Kit 2 Cadeira Escritório Executiva Giratória Ergonômica Premium Reclinável Apoio Lombar';
+        $recebido = [];
         $servico = $this->servico($longo, $recebido);
         $pedido = $servico->pedir($r, 'titulo', 2);
 
@@ -266,6 +271,7 @@ class SugestaoKitIaTest extends TestCase
     public function test_descricao_preserva_a_frase_obrigatoria_no_comeco(): void
     {
         $r = $this->rascunhoDoBase();
+        $recebido = [];
         $servico = $this->servico('Leve 2 cadeiras e monte seu escritório.', $recebido);
         $pedido = $servico->pedir($r, 'descricao', 2);
 
@@ -296,6 +302,7 @@ class SugestaoKitIaTest extends TestCase
     public function test_sem_categoria_no_base_o_limite_cai_no_padrao_de_60(): void
     {
         $r = $this->rascunhoDoBase(categoria: null);
+        $recebido = [];
         $servico = $this->servico('Kit 2 Cadeira', $recebido);
         $pedido = $servico->pedir($r, 'titulo', 2);
 
@@ -308,6 +315,7 @@ class SugestaoKitIaTest extends TestCase
     public function test_o_prazo_do_job_e_repassado_a_ia(): void
     {
         $r = $this->rascunhoDoBase();
+        $recebido = [];
         $servico = $this->servico('Kit 2 Cadeira', $recebido);
         $pedido = $servico->pedir($r, 'titulo', 2);
 
