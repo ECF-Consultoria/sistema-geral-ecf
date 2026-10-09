@@ -71,6 +71,38 @@ const PONTOS_CONVERSAO = CONVERSAO_EXEMPLO.pontos
 /** O mesmo caminho fechado contra a base, para o preenchimento esmaecido. */
 const AREA_CONVERSAO = `${PONTOS_CONVERSAO} 320,48 0,48`;
 
+/**
+ * As linhas REAIS da "Atividade da equipe": as últimas publicações desta conta,
+ * no formato de evento do mockup (quem, quando, o quê e a fase).
+ *
+ * Fica no escopo do MÓDULO de propósito — assim o `.map()` do JSX consome um
+ * array pronto e não lê nada do escopo do componente, que é como o Rollup já
+ * eliminou variável no bundle de produção (feedback_rollup_map_scope_bug.md).
+ *
+ * Nenhum campo vira texto sem passar por `textoSeguro`: a tela preta de 07/10
+ * nasceu de um campo que chegou como objeto.
+ */
+export function eventosDasPublicacoes(itens, limite = 3) {
+    if (!Array.isArray(itens)) return [];
+
+    return itens.slice(0, limite).map((bruto, indice) => {
+        const linha = bruto && typeof bruto === 'object' && !Array.isArray(bruto) ? bruto : {};
+        const quem = linha.quem && typeof linha.quem === 'object' && !Array.isArray(linha.quem) ? linha.quem : {};
+        const autor = quem.tipo === 'cliente'
+            ? 'Cliente'
+            : (quem.tipo === 'origem_antiga' ? 'Origem antiga' : textoSeguro(quem.nome, '—'));
+        const titulo = textoSeguro(linha.titulo, '—');
+        const fase = textoSeguro(linha.rotulo_fase, null);
+
+        return {
+            chave: `publicacao-${indice}`,
+            quem: autor,
+            quando: haQuanto(typeof linha.quando === 'string' ? linha.quando : null) ?? '—',
+            texto: fase !== null ? `Publicou ${titulo} — ${fase}` : `Publicou ${titulo}`,
+        };
+    });
+}
+
 /** Soma a contagem de produtos de "Situação dos produtos" — o catálogo real da conta. */
 function totalDoCatalogo(situacao) {
     if (!situacao || typeof situacao !== 'object' || Array.isArray(situacao)) return null;
@@ -278,6 +310,10 @@ export default function PainelVisaoGeral({
     const alerta = alertasSeguros(alertas);
     // Sem venda registrada: só existe quando os DOIS números existem.
     const semVenda = (noAr !== null && comVenda !== null && noAr >= comVenda) ? noAr - comVenda : null;
+    // Os "dormentes" da alavanca recomendada: o número é REAL (os sem venda
+    // registrada). Sem acervo medido não existe contagem, e o card cai no texto
+    // genérico em vez de inventar um número.
+    const dormentes = (semVenda !== null && semVenda > 0) ? semVenda : null;
     const motivoSemAcervo = acervoIndisponivel ? TITLE_SEM_COMPANY : 'Acervo ainda não coletado';
 
     const situacaoProdutosSegura = situacaoProdutos && typeof situacaoProdutos === 'object' && !Array.isArray(situacaoProdutos)
@@ -289,6 +325,8 @@ export default function PainelVisaoGeral({
     const ultimasSeguras = ultimasPublicacoes && typeof ultimasPublicacoes === 'object' ? ultimasPublicacoes : {};
     const ultimasDisponiveis = ultimasSeguras.disponivel === true;
     const itensUltimas = Array.isArray(ultimasSeguras.itens) ? ultimasSeguras.itens : [];
+    // As primeiras linhas da "Atividade da equipe" — dado REAL desta conta.
+    const atividadeReal = eventosDasPublicacoes(itensUltimas);
 
     const integracoesSeguras = integracoes && typeof integracoes === 'object' ? integracoes : {};
 
@@ -543,7 +581,7 @@ export default function PainelVisaoGeral({
                                 demanda orgânica". Nada disso é lido aqui — dizer o que a
                                 fila realmente é vale mais que repetir a legenda do mockup. */}
                             <p className="text-[13px] font-normal text-white/55">
-                                As pendências que o sistema sabe medir. Não lemos estoque do ERP nem demanda orgânica.
+                                As pendências que o sistema sabe medir, nos produtos e no acervo desta conta.
                             </p>
                         </div>
                         {linhasOQueFazer.length > 0 && (
@@ -610,13 +648,17 @@ export default function PainelVisaoGeral({
                 </section>
 
                 {/* 2b — Desempenho rápido das publicações (tela 02): a divisão
-                    com venda × sem venda do acervo no ar.
+                    com venda × sem venda do acervo no ar, mais os dois blocos
+                    que o mockup desenha ao lado.
 
-                    ⚠️ O mockup desenha também um sparkline de conversão diária e
-                    um seletor Hoje/7 dias/Este mês. Ficaram FORA de propósito: a
-                    série diária existe (`ml_acervo_metricas_diarias`), então isso
-                    é factível com dado real e merece tarefa própria — um gráfico
-                    de mentira agora seria pior que nenhum gráfico. */}
+                    REAL: a barra com/sem venda, a tração e a CONTAGEM de
+                    dormentes da alavanca. EXEMPLO: o diagnóstico da alavanca, o
+                    botão "Reotimizar com IA" (não existe reotimização por IA) e
+                    o sparkline de conversão diária.
+
+                    ⚠️ O caminho real do sparkline já existe: a série diária por
+                    conta mora em `ml_acervo_metricas_diarias` — ver o comentário
+                    de `PONTOS_CONVERSAO`, no topo deste arquivo. */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -628,41 +670,90 @@ export default function PainelVisaoGeral({
                                 Venda acumulada do anúncio, não uma janela de 30 dias.
                             </p>
                         </div>
-                        {tracaoPct !== null && (
-                            <span className="rounded-md border border-ecf-yellow/40 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">
-                                {tracaoPct}% já vendeu
-                            </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {tracaoPct !== null && (
+                                <span className="rounded-md border border-ecf-yellow/40 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">
+                                    {tracaoPct}% já vendeu
+                                </span>
+                            )}
+                            <SeloExemplo title="A barra com/sem venda e a contagem de dormentes são desta conta. O diagnóstico da alavanca, o botão de reotimizar e o gráfico de conversão diária são de exemplo." />
+                        </div>
                     </div>
 
-                    {noAr === null ? (
-                        <p className="mt-3 text-[13px] font-normal text-white/55">{motivoSemAcervo}</p>
-                    ) : noAr === 0 ? (
-                        <p className="mt-3 text-[13px] font-normal text-white/55">Nenhum anúncio no ar para medir.</p>
-                    ) : (
-                        <div className="mt-3 flex flex-col gap-2">
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                                <div className="h-2 rounded-full bg-ecf-yellow/60" style={{ width: `${Math.max(0, Math.min(100, tracaoPct ?? 0))}%` }} />
-                            </div>
-                            <div className="flex items-center justify-between text-[13px] font-normal text-white/70">
-                                <span>Com venda registrada ({comVenda ?? 0} {(comVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
-                                <span className="font-mono tabular-nums">{tracaoPct !== null ? `${tracaoPct}%` : '—'}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-[13px] font-normal text-white/55">
-                                <span>Sem venda registrada ({semVenda ?? 0} {(semVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
-                                <span className="font-mono tabular-nums">{tracaoPct !== null ? `${100 - tracaoPct}%` : '—'}</span>
-                            </div>
-                            {semVenda !== null && semVenda > 0 && contaChave && (
-                                <button
-                                    type="button"
-                                    onClick={() => router.get(route('mlb.anuncios.publicador.alavancas.index', { conta: contaChave }))}
-                                    className={cn(BOTAO_SECUNDARIO, 'mt-1 self-start')}
-                                >
-                                    Ver alavancas desta conta
-                                </button>
+                    <div className="mt-3 grid gap-4 md:grid-cols-12">
+                        <div className="flex flex-col gap-3 md:col-span-7">
+                            {noAr === null ? (
+                                <p className="text-[13px] font-normal text-white/55">{motivoSemAcervo}</p>
+                            ) : noAr === 0 ? (
+                                <p className="text-[13px] font-normal text-white/55">Nenhum anúncio no ar para medir.</p>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                                        <div className="h-2 rounded-full bg-ecf-yellow/60" style={{ width: `${Math.max(0, Math.min(100, tracaoPct ?? 0))}%` }} />
+                                    </div>
+                                    <div className="flex items-center justify-between text-[13px] font-normal text-white/70">
+                                        <span>Com venda registrada ({comVenda ?? 0} {(comVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
+                                        <span className="font-mono tabular-nums">{tracaoPct !== null ? `${tracaoPct}%` : '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[13px] font-normal text-white/55">
+                                        <span>Sem venda registrada ({semVenda ?? 0} {(semVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
+                                        <span className="font-mono tabular-nums">{tracaoPct !== null ? `${100 - tracaoPct}%` : '—'}</span>
+                                    </div>
+                                    {semVenda !== null && semVenda > 0 && contaChave && (
+                                        <button
+                                            type="button"
+                                            onClick={() => router.get(route('mlb.anuncios.publicador.alavancas.index', { conta: contaChave }))}
+                                            className={cn(BOTAO_SECUNDARIO, 'mt-1 self-start')}
+                                        >
+                                            Ver alavancas desta conta
+                                        </button>
+                                    )}
+                                </div>
                             )}
+
+                            {/* Sparkline do mockup — série de EXEMPLO. */}
+                            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-normal text-white/40">
+                                    <span>{CONVERSAO_EXEMPLO.titulo}</span>
+                                    <span className="font-bold text-ecf-yellow">{CONVERSAO_EXEMPLO.media}</span>
+                                </div>
+                                <svg
+                                    aria-hidden="true"
+                                    viewBox="0 0 320 48"
+                                    preserveAspectRatio="none"
+                                    className="mt-1 h-10 w-full"
+                                >
+                                    <polygon points={AREA_CONVERSAO} fill="rgba(255,230,0,0.12)" />
+                                    <polyline points={PONTOS_CONVERSAO} fill="none" stroke="rgba(255,230,0,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </div>
                         </div>
-                    )}
+
+                        {/* Alavanca recomendada — número real, recomendação de exemplo. */}
+                        <div className="flex flex-col justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 md:col-span-5">
+                            <div>
+                                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.05em] text-ecf-yellow">
+                                    <Zap className="h-4 w-4" aria-hidden="true" />
+                                    {TRACAO_EXEMPLO.eyebrow}
+                                </p>
+                                <p className="mt-1.5 text-[13px] font-bold text-white">
+                                    {dormentes !== null
+                                        ? `${TRACAO_EXEMPLO.prefixo} ${dormentes} ${TRACAO_EXEMPLO.sufixo}`
+                                        : TRACAO_EXEMPLO.sem_numero}
+                                </p>
+                                <p className="mt-1.5 text-[13px] font-normal text-white/55">{TRACAO_EXEMPLO.detalhe}</p>
+                            </div>
+                            <button
+                                type="button"
+                                disabled
+                                title={TITULO_BOTAO_EXEMPLO}
+                                className="inline-flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 opacity-40"
+                            >
+                                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                                {TRACAO_EXEMPLO.acao}
+                            </button>
+                        </div>
+                    </div>
                 </section>
 
                 {/* 3 — Situação dos produtos */}
@@ -787,20 +878,23 @@ export default function PainelVisaoGeral({
 
             <div className="flex flex-col gap-6">
 
-                {/* 4b — Lateral: Alertas (tela 02).
+                {/* 4b — Lateral: Alertas Meli & ERP (tela 02).
 
-                    São a TRIAGEM do acervo que esta tela já carregava, com
-                    outro nome. `motivosDef()` segue sendo a fonte única dos
-                    motivos — nada é reimplementado aqui, nem rótulo nem cor.
+                    As linhas SEM a marca de exemplo são a TRIAGEM do acervo que
+                    esta tela já carregava — `motivosDef()` segue sendo a fonte
+                    única dos motivos, nada é reimplementado aqui.
 
-                    ⚠️ O mockup chama o bloco de "Alertas Meli & ERP". Aqui não:
-                    nada vem do ERP, e o título não pode prometer o que não há. */}
+                    ⚠️ Os dois alertas do mockup ("Atributo Obrigatório
+                    Pendente" e "Estoque Baixo no Bling") não têm origem nenhuma
+                    no sistema: o acervo não guarda atributo faltante por anúncio
+                    e não lemos ERP. Entram como EXEMPLO, e os botões deles não
+                    navegam (261010-t02b). */}
                 {alerta.presente && (
                     <section className="rounded-xl bg-ecf-card p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
                                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                                Alertas do acervo
+                                Alertas Meli &amp; ERP
                             </h2>
                             {alerta.disponivel && alerta.total > 0 && (
                                 <span className="rounded-md border border-red-400/40 bg-red-400/10 px-2 py-0.5 text-[11px] font-bold text-red-300">
@@ -842,21 +936,117 @@ export default function PainelVisaoGeral({
                                     );
                                 })}
                                 <p className="text-[11px] font-normal text-white/40">
-                                    Do acervo do Mercado Livre. Nada aqui vem do ERP.
+                                    As linhas acima vêm do acervo do Mercado Livre desta conta.
                                 </p>
                             </div>
                         )}
+
+                        {/* Os dois alertas do mockup que ainda não têm origem. */}
+                        <div className="mt-3 flex flex-col gap-2 border-t border-white/[0.06] pt-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-normal uppercase tracking-[0.05em] text-white/40">Do mockup, ainda sem origem</span>
+                                <SeloExemplo title="Estes dois alertas são de exemplo: o acervo não guarda atributo obrigatório faltante por anúncio, e não existe integração de estoque com o ERP." />
+                            </div>
+                            {ALERTAS_ML_EXEMPLO.map((item) => {
+                                // Flags calculadas DENTRO do callback — variável de escopo do
+                                // componente lida só dentro do .map() já foi eliminada pelo
+                                // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
+                                const chaveDoExemplo = item.chave;
+                                const criticoDoExemplo = item.critico === true;
+
+                                return (
+                                    <div
+                                        key={chaveDoExemplo}
+                                        className={cn(
+                                            'flex flex-col gap-1 rounded-lg border p-3',
+                                            criticoDoExemplo ? 'border-red-400/20 bg-red-400/[0.04]' : 'border-white/[0.06] bg-white/[0.02]',
+                                        )}
+                                    >
+                                        <span className="text-[13px] font-bold text-white/85">{item.titulo}</span>
+                                        <span className="text-[11px] font-normal text-white/40">{item.detalhe}</span>
+                                        <button
+                                            type="button"
+                                            disabled
+                                            title={TITULO_BOTAO_EXEMPLO}
+                                            className="mt-1 inline-flex h-10 w-fit cursor-not-allowed items-center rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 opacity-40"
+                                        >
+                                            {item.acao}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </section>
                 )}
 
-                {/* 4c — Lateral: Quem publicou.
+                {/* 4c — Lateral: Atividade da equipe (tela 02).
 
-                    Ocupa o lugar do "Atividade da Equipe" do mockup, por decisão
-                    do usuário: é o que o sistema de fato sabe — quem publicou o
-                    quê e quando. O mockup inventa "gerou 5 imagens IA" e "revisão
-                    aprovada"; nenhum dos dois existe como registro. */}
+                    A linha do tempo do mockup, nesta ordem:
+                    1. as publicações REAIS desta conta (quem, quando, o quê e a
+                       fase — tudo de `ultimasPublicacoes`);
+                    2. os dois eventos do mockup que não existem como registro
+                       ("gerou 5 imagens IA", "revisão aprovada"), de EXEMPLO;
+                    3. o "Quem publicou" que a tela já tinha, intacto — é o
+                       agregado real dos últimos 30 dias, e ele não se joga fora
+                       só porque o mockup não o desenhou. */}
                 <section className="rounded-xl bg-ecf-card p-4">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Quem publicou</h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                            <Clock className="h-4 w-4" aria-hidden="true" />
+                            Atividade da equipe
+                        </h2>
+                        <span className="text-[11px] font-normal text-white/40">Tempo real</span>
+                    </div>
+
+                    <div className="mt-3 flex flex-col gap-3">
+                        {atividadeReal.map((evento) => {
+                            // Flags calculadas DENTRO do callback — variável de escopo do
+                            // componente lida só dentro do .map() já foi eliminada pelo
+                            // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
+                            const chaveDoEvento = evento.chave;
+
+                            return (
+                                <div key={chaveDoEvento} className="flex items-start gap-2">
+                                    <span aria-hidden="true" className="mt-1.5 h-[6px] w-[6px] shrink-0 rounded-full bg-ecf-yellow/70" />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="truncate text-[13px] font-bold text-white">{evento.quem}</span>
+                                            <span className="shrink-0 font-mono text-[11px] text-white/40">{evento.quando}</span>
+                                        </div>
+                                        <p className="text-[11px] font-normal text-white/55">{evento.texto}</p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
+                            <span className="text-[11px] font-normal uppercase tracking-[0.05em] text-white/40">Do mockup, ainda sem registro</span>
+                            <SeloExemplo title="Os dois eventos abaixo são de exemplo: não existe log de geração de imagens por IA nem etapa de revisão de qualidade. As publicações acima e o “Quem publicou” são desta conta." />
+                        </div>
+
+                        {ATIVIDADE_EXEMPLO.map((evento) => {
+                            // Flags calculadas DENTRO do callback (mesma armadilha do Rollup).
+                            const chaveDoExemplo = evento.chave;
+                            const corDoPonto = evento.cor;
+
+                            return (
+                                <div key={chaveDoExemplo} className="flex items-start gap-2">
+                                    <span aria-hidden="true" className={cn('mt-1.5 h-[6px] w-[6px] shrink-0 rounded-full', corDoPonto)} />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="truncate text-[13px] font-bold text-white">{evento.quem}</span>
+                                            <span className="shrink-0 font-mono text-[11px] text-white/40">{evento.quando}</span>
+                                        </div>
+                                        <p className="text-[11px] font-normal text-white/55">{evento.texto}</p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <h3 className="mt-4 border-t border-white/[0.06] pt-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                        Quem publicou
+                    </h3>
                     <div className="mt-3 flex flex-col gap-2 text-[13px] font-normal text-white/70">
                         {equipeSegura.length === 0 && clienteQtd === 0 && origemQtd === 0 ? (
                             <p className="text-white/55">Nenhuma publicação nos últimos 30 dias.</p>
@@ -905,6 +1095,56 @@ export default function PainelVisaoGeral({
                     )}
                 </section>
 
+                {/* 6a — Lateral: o par de cards do rodapé do mockup (Criativos
+                    e Identidade), com os números REAIS que já temos — por isso
+                    nenhum dos dois leva a pilha de exemplo.
+
+                    Não há biblioteca de criativos no Publicador: a geração mora
+                    DENTRO do produto, no card de Fotos (Fase 165). O atalho leva
+                    para lá em vez de prometer uma tela que não existe. O detalhe
+                    da identidade continua no bloco "Identidade visual", logo
+                    abaixo — o card aqui é só o atalho do mockup. */}
+                <section className="grid grid-cols-2 gap-3">
+                    <button
+                        type="button"
+                        onClick={() => contaChave && abrirProdutos('todos')}
+                        className="flex flex-col gap-3 rounded-xl bg-ecf-card p-4 text-left hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                    >
+                        <span className="flex items-center justify-between">
+                            <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-ecf-yellow">
+                                <Images className="h-4 w-4" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-white/30" aria-hidden="true" />
+                        </span>
+                        <span>
+                            <span className="block text-[13px] font-bold text-white">Criativos</span>
+                            <span className="block text-[11px] font-normal text-white/55">
+                                {criativosPacks !== null
+                                    ? `${criativosPacks} ${criativosPacks === 1 ? 'pack gerado' : 'packs gerados'}`
+                                    : 'Ainda não medimos'}
+                            </span>
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => contaChave && router.get(route('mlb.anuncios.publicador.configuracoes', { conta: contaChave }))}
+                        className="flex flex-col gap-3 rounded-xl bg-ecf-card p-4 text-left hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
+                    >
+                        <span className="flex items-center justify-between">
+                            <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-ecf-yellow">
+                                <Palette className="h-4 w-4" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-white/30" aria-hidden="true" />
+                        </span>
+                        <span>
+                            <span className="block text-[13px] font-bold text-white">Identidade</span>
+                            <span className="block text-[11px] font-normal text-white/55">
+                                {identidadeTemTexto ? 'Kits e marca cadastrados' : 'Não cadastrada'}
+                            </span>
+                        </span>
+                    </button>
+                </section>
+
                 {/* 5 — Lateral: Integrações */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Integrações</h2>
@@ -941,40 +1181,6 @@ export default function PainelVisaoGeral({
                             </span>
                         </div>
                     </div>
-                </section>
-
-                {/* 6a — Lateral: atalho de Criativos (o par de cards do rodapé
-                    do mockup; aqui empilhados, porque a coluna tem 340px e dois
-                    cards lado a lado ficariam ilegíveis).
-
-                    Não há biblioteca de criativos no Publicador: a geração mora
-                    DENTRO do produto, no card de Fotos (Fase 165). O atalho leva
-                    para lá em vez de prometer uma tela que não existe. */}
-                <section className="rounded-xl bg-ecf-card p-4">
-                    <div className="flex items-start justify-between gap-2">
-                        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
-                            <Sparkles className="h-4 w-4" aria-hidden="true" />
-                            Criativos por IA
-                        </h2>
-                        <span className="font-mono text-[13px] font-bold tabular-nums text-white">
-                            {criativosPacks !== null ? criativosPacks : '—'}
-                        </span>
-                    </div>
-                    <p className="mt-2 text-[13px] font-normal text-white/55">
-                        {criativosPacks !== null
-                            ? `${criativosPacks === 1 ? 'pack gerado' : 'packs gerados'} nesta conta. A geração fica dentro do produto, no card de Fotos.`
-                            : 'Ainda não medimos os criativos desta conta.'}
-                    </p>
-                    {contaChave && (
-                        <button
-                            type="button"
-                            onClick={() => abrirProdutos('todos')}
-                            className="mt-3 inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
-                        >
-                            Abrir Produtos
-                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                    )}
                 </section>
 
                 {/* 6 — Lateral: Identidade visual */}

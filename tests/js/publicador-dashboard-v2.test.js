@@ -502,7 +502,7 @@ test('Painel — a régua nova: o que é exemplo aparece, mas sempre marcado', (
     assert.match(html, /Ritmo de conversão diária/);
 
     // E cada um deles está num bloco com a pilha.
-    for (const titulo of ['Alertas Meli & ERP', 'Atividade da equipe', 'Desempenho rápido das publicações']) {
+    for (const titulo of ['Alertas Meli', 'Atividade da equipe', 'Desempenho rápido das publicações']) {
         assert.match(secaoDe(html, titulo), />exemplo</, `bloco sem a pilha: ${titulo}`);
     }
     semLixoNoHtml(html, 'régua nova');
@@ -607,7 +607,7 @@ test('Painel — "Nova publicação direta" é desabilitado e marcado "Em breve"
 test('Painel — Alertas saem da triagem: só motivo com número, cada um com destino', () => {
     const html = desenharPainel(propsPainel());
 
-    assert.match(html, /Alertas Meli & ERP/, 'o título do mockup (261010-t02b)');
+    assert.match(html, /Alertas Meli/, 'o título do mockup (261010-t02b)');
     assert.match(html, /Pausado/);
     assert.match(html, /Ficha incompleta/);
     assert.doesNotMatch(html, /Sem estoque/, 'motivo zerado não vira linha');
@@ -621,7 +621,7 @@ test('Painel — Alertas saem da triagem: só motivo com número, cada um com de
 test('Painel — alertas disponivel=false diz o motivo em vez de afirmar zero', () => {
     const html = desenharPainel(propsPainel({ alertas: { disponivel: false, total: 0, itens: [] } }));
 
-    assert.match(html, /Alertas Meli & ERP/);
+    assert.match(html, /Alertas Meli/);
     assert.match(html, /Disponível só para empresas cadastradas no sistema/);
     assert.doesNotMatch(html, /Nenhum alerta no acervo/, '"sem Company" não é "sem alerta"');
 });
@@ -639,7 +639,7 @@ test('Painel — sem a prop `alertas` (servidor antigo) o bloco nem aparece', ()
     delete semAlertas.alertas;
     const html = desenharPainel(semAlertas);
 
-    assert.doesNotMatch(html, /Alertas Meli & ERP/);
+    assert.doesNotMatch(html, /Alertas Meli/);
     assert.match(html, /O que fazer agora/, 'o resto da tela continua inteiro');
 });
 
@@ -697,6 +697,127 @@ test('Painel — o sub-número "Prontos para a Fase 2" some quando a linha não 
     assert.match(semTags(cartaoDe(html, 'Aguardando ação')), /6/, 'sobra só o "sem oferta"');
     const cartao = html.slice(html.indexOf('Aguardando ação'), html.indexOf('Publicados nos últimos 30 dias'));
     assert.ok(!cartao.includes('Prontos para a Fase 2'));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Quick 261010-t02b — Task 3: coluna da direita e o card de Desempenho
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('Painel — Alertas: os do acervo são reais, os dois do mockup são exemplo', () => {
+    const html = desenharPainel(propsPainel());
+    const bloco = secaoDe(html, 'Alertas Meli');
+
+    // Reais (triagem do acervo) — continuam clicáveis.
+    assert.match(bloco, /Pausado/);
+    assert.match(bloco, /Ficha incompleta/);
+    // De exemplo (não existem no sistema) — presentes e marcados.
+    assert.match(bloco, /Atributo Obrigatório Pendente/);
+    assert.match(bloco, /Estoque Baixo no Bling/);
+    assert.match(bloco, />exemplo</);
+    assert.match(bloco, /vêm do acervo do Mercado Livre/);
+});
+
+test('Painel — Atividade da equipe: as primeiras linhas são as publicações REAIS', () => {
+    const html = desenharPainel(propsPainel());
+    const bloco = secaoDe(html, 'Atividade da equipe');
+
+    assert.match(bloco, /Tempo real/);
+    // Real: sai de `ultimasPublicacoes` (quem + quando + título + fase).
+    assert.match(bloco, /Fulano/);
+    assert.match(bloco, /Caneca azul 300ml/);
+    // Exemplo: os eventos que não existem como registro.
+    assert.match(bloco, /Gerou 5 imagens IA/);
+    assert.match(bloco, /aprovada para disparo/);
+    assert.match(bloco, />exemplo</);
+    // E o "Quem publicou" (real) continua inteiro dentro do bloco.
+    assert.match(bloco, /Quem publicou/);
+    assert.match(bloco, /responsável/);
+    assert.match(bloco, /Ver histórico completo/);
+});
+
+test('Painel — sem publicação real a Atividade não finge: só as linhas de exemplo', () => {
+    const html = desenharPainel(propsPainel({
+        ultimasPublicacoes: { disponivel: true, itens: [] },
+        quemPublicou: { equipe: [], cliente: { quantidade: 0 }, origem_antiga: { quantidade: 0 } },
+    }));
+    const bloco = secaoDe(html, 'Atividade da equipe');
+
+    assert.match(bloco, /Nenhuma publicação nos últimos 30 dias\./);
+    assert.match(bloco, /Gerou 5 imagens IA/, 'as linhas de exemplo seguem desenhando o bloco');
+    assert.doesNotMatch(bloco, /Caneca azul/);
+});
+
+test('Painel — Desempenho: o número de dormentes é REAL, a recomendação é exemplo', () => {
+    const html = desenharPainel(propsPainel());
+    const bloco = secaoDe(html, 'Desempenho rápido das publicações');
+
+    assert.match(bloco, /Alavanca Recomendada/i);
+    assert.match(semTags(bloco), /Otimizar 58 anúncios dormentes/, '58 = 342 no ar − 284 com venda, número real');
+    assert.match(bloco, /Reotimizar com IA/);
+    assert.match(bloco, /Ritmo de conversão diária/);
+    assert.match(bloco, /pedidos\/dia/);
+    assert.match(bloco, /<(polyline|path|svg)/, 'o sparkline do mockup precisa existir');
+    assert.match(bloco, />exemplo</);
+    // E o que já existia continua.
+    assert.match(bloco, /Com venda registrada \(284 anúncios\)/);
+    assert.match(bloco, /Ver alavancas desta conta/);
+});
+
+test('Painel — sem número real de dormentes a alavanca não inventa um', () => {
+    const html = desenharPainel(propsPainel({
+        indicadores: indicadoresBase({ no_ar: null, com_venda: null, tracao_pct: null, nunca_coletado: true }),
+    }));
+    const bloco = secaoDe(html, 'Desempenho rápido das publicações');
+
+    assert.match(semTags(bloco), /Otimizar os anúncios dormentes/);
+    assert.doesNotMatch(semTags(bloco), /Otimizar \d+ anúncios/, 'sem acervo não há contagem de dormentes');
+});
+
+test('Painel — o par de cards Criativos / Identidade usa os números REAIS', () => {
+    const html = desenharPainel(propsPainel());
+    const par = secaoDe(html, '>Criativos<');
+
+    assert.match(par, />Identidade</, 'o par do mockup tem os dois cards');
+    assert.match(semTags(par), /48/, 'os packs são o número real do acervo');
+    assert.match(par, /<svg|chevron|lucide/i, 'cada card do par tem a seta do mockup');
+    assert.doesNotMatch(par, />exemplo</, 'o par usa número real, não leva pilha');
+    assert.doesNotMatch(secaoDe(html, 'Identidade visual'), />exemplo</, 'card de dado real não leva pilha');
+});
+
+test('Painel — nenhuma flag de escopo do componente entra nos .map() novos', () => {
+    const fonte = lerSemComentarios(REL_PAINEL);
+    const proibidas = ['acervoIndisponivel', 'nuncaColetado', 'semAcervoOuNuncaColetado', 'identidadeTemTexto', 'ultimasDisponiveis', 'aguardandoAcao', 'tracaoPct', 'semVenda', 'companyIdAbas', 'contaChave', 'periodoEscolhido', 'catalogoTexto', 'mlConectado'];
+
+    for (const marcador of ['PERIODOS_EXEMPLO.opcoes.map(', 'ALERTAS_ML_EXEMPLO.map(', 'ATIVIDADE_EXEMPLO.map(', 'atividadeReal.map(']) {
+        const inicio = fonte.indexOf(marcador);
+        assert.ok(inicio > -1, `.map() não encontrado: ${marcador}`);
+        const trecho = fonte.slice(inicio, fonte.indexOf('})}', inicio));
+        for (const flag of proibidas) {
+            assert.ok(!trecho.includes(flag), `flag de escopo dentro de ${marcador}: ${flag}`);
+        }
+    }
+});
+
+test('Painel — TELA PRETA: os campos novos do cabeçalho como objeto, nulos e ausentes', () => {
+    const formas = [
+        { empresa: { chave: 'c', nome: { pt: 'x' }, identificador: { cnpj: '1' }, token: { t: 1 } } },
+        { empresa: { chave: 'c', nome: null, identificador: null, token: null } },
+        { empresa: null },
+        { empresa: {} },
+        { integracoes: { erp: { valor: { nome: 'Bling' } } } },
+        { integracoes: { erp: null } },
+        { integracoes: { mercado_livre: { token: { t: 'ativo' } } } },
+        { situacaoProdutos: { a: { numero: { n: 1 } }, b: 'x', c: null } },
+        { situacaoProdutos: [] },
+        { ultimasPublicacoes: { disponivel: true, itens: [{ titulo: { t: 'x' }, quem: 'texto', quando: { d: 1 }, rotulo_fase: ['a'] }] } },
+    ];
+
+    for (const forma of formas) {
+        const html = desenharPainel(propsPainel(forma));
+        semLixoNoHtml(html, JSON.stringify(forma));
+        assert.match(html, /Visão geral da conta/, JSON.stringify(forma));
+        assert.match(html, /Atividade da equipe/, JSON.stringify(forma));
+    }
 });
 
 test('Painel — numeroDaLinha e alertasSeguros recusam formas inesperadas', () => {
