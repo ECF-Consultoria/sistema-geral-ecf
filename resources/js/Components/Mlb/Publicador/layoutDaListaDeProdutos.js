@@ -18,6 +18,11 @@
 // ("Objects are not valid as a React child").
 // ═══════════════════════════════════════════════════════════════════════════
 
+// `LABEL_TIER_HISTORICO` é o par Clássico/Premium que o resto do módulo já
+// usa — sem enum compartilhado entre PHP e JS, convenção do projeto. O módulo
+// é folha (nenhum import próprio), então não arrasta nada para o bundle.
+import { LABEL_TIER_HISTORICO } from '@/Pages/Mlb/anuncioHistoricoUtils';
+
 /** O breakpoint da largura do CONTEÚDO (não da janela) que a referência usa. */
 export const LARGURA_DE_CORTE = 1100;
 
@@ -218,6 +223,72 @@ export function ordenarTopo(linhasDeTopo, coluna, direcao) {
     });
 
     return decorada.map((d) => d.linha);
+}
+
+/**
+ * A linha 1 da célula Fase: "Fase 1" no base, "Fase 2 · Kit N" no kit — o
+ * texto da referência. O `rotulo_fase` do servidor (fonte ÚNICA do rótulo,
+ * ver `ProgramasPublicadorService::rotuloFase`) entra como o pedaço "Kit N" e
+ * vai também no `title`, para a mesma linha nunca discordar da tela do
+ * Produto.
+ *
+ * @param {unknown} produto
+ * @returns {{texto: string, titulo: string, ehKit: boolean}}
+ */
+export function textoDaFase(produto) {
+    const p = objetoSeguro(produto);
+    const fase = typeof p.fase === 'number' && Number.isFinite(p.fase) ? p.fase : 1;
+    const rotulo = stringSegura(p.rotulo_fase);
+    const ehKit = p.eh_kit === true;
+
+    if (!ehKit) {
+        return { texto: `Fase ${fase}`, titulo: rotulo, ehKit: false };
+    }
+
+    const quantidade = typeof p.quantidade_kit === 'number' && Number.isFinite(p.quantidade_kit) ? p.quantidade_kit : null;
+    const parte = rotulo !== '' ? rotulo : (quantidade !== null && quantidade > 1 ? `Kit ${quantidade}` : 'Kit');
+
+    return { texto: `Fase ${fase} · ${parte}`, titulo: rotulo, ehKit: true };
+}
+
+/**
+ * A célula Anúncios: quadradinhos C/P com o MLB no `title`, mais "2 no ar" ou
+ * "1 de 2" (parcial). Sem lista de MLBs na linha (eles ficam no painel).
+ *
+ * @param {unknown} produto
+ * @returns {{tipos: Array<{letra: string, titulo: string, mlb: string}>, texto: string, vazio: boolean}}
+ */
+export function resumoDosAnuncios(produto) {
+    const p = objetoSeguro(produto);
+    const brutos = Array.isArray(p.anuncios) ? p.anuncios : [];
+
+    const tipos = [];
+    for (const bruto of brutos) {
+        const anuncio = objetoSeguro(bruto);
+        const mlb = stringSegura(anuncio.ml_item_id);
+        if (mlb === '') continue;
+        const tipo = stringSegura(anuncio.listing_type_id);
+        const nome = Object.prototype.hasOwnProperty.call(LABEL_TIER_HISTORICO, tipo) ? LABEL_TIER_HISTORICO[tipo] : null;
+        tipos.push({
+            letra: nome !== null ? nome[0] : '·',
+            titulo: nome !== null ? `${nome} · ${mlb}` : mlb,
+            mlb,
+        });
+    }
+
+    // `parcial` tem precedência no texto: "1 de 2" diz mais que "1 no ar".
+    const parcial = objetoSeguro(p.parcial);
+    const publicados = typeof parcial.publicados === 'number' && Number.isFinite(parcial.publicados) ? parcial.publicados : null;
+    const total = typeof parcial.total === 'number' && Number.isFinite(parcial.total) ? parcial.total : null;
+    if (publicados !== null && total !== null) {
+        return { tipos, texto: `${publicados} de ${total}`, vazio: false };
+    }
+
+    if (tipos.length === 0) {
+        return { tipos, texto: '', vazio: true };
+    }
+
+    return { tipos, texto: `${tipos.length} no ar`, vazio: false };
 }
 
 /**

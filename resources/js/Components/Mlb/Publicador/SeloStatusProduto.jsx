@@ -12,10 +12,17 @@ const VERMELHO = 'border-red-500/30 bg-red-500/10 text-red-300';
  * `status` vem de prontidao(): { chave, rotulo, faltam }.
  * Chaves: rascunho (sem rascunho) · conferir · pronto · publicando · publicado · parcial · erro.
  * `compacto` tira a borda e o fundo (faixa do editor).
+ *
+ * `curto` mantém só o RÓTULO no selo, sem o "Faltam N itens" dentro dele — é
+ * o que a lista de Produtos (layout v2) usa, porque lá o número de pendências
+ * virou barra de progresso + "faltam N itens" ABAIXO do selo, e o texto
+ * dentro do selo quebrava a linha em duas alturas diferentes. Default `false`:
+ * o editor e as outras telas continuam exatamente como estavam.
  */
-export default function SeloStatusProduto({ status, compacto = false }) {
+export default function SeloStatusProduto({ status, compacto = false, curto = false }) {
     const chave = status?.chave ?? 'rascunho';
-    const faltam = status?.faltam ?? 0;
+    const bruto = status?.faltam ?? 0;
+    const faltam = curto === true ? 0 : bruto;
     const moldura = compacto ? 'inline-flex items-center gap-1 text-[11px] font-bold' : BASE;
 
     if (chave === 'publicando') {
