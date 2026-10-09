@@ -7,7 +7,8 @@ import CampoFichaTecnica from '@/Components/Portal/Estrutura/Produtos/CampoFicha
 // vez, agrupados, e quem preenche é o cliente; o que ele digita vai junto no
 // "Salvar produto". Os grupos e os rótulos vêm do servidor, como estão, cada
 // campo com a sua explicação (ícone ao lado do rótulo). O campo que é o eixo de
-// alguma variação do produto já chega fora de `tecnica.grupos`.
+// alguma variação do produto já chega fora de `tecnica.grupos`, e as medidas do
+// produto fora da caixa também (têm bloco próprio, `MedidasDoProduto`).
 
 export default function FichaTecnica({ tecnica, salvando }) {
     if (! tecnica.temCategoria) return null;

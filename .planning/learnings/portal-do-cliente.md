@@ -1208,7 +1208,7 @@ A ficha mostrava DOIS conjuntos e a pessoa digitava os dois (produto 2: 12/12/12
 embalado, e é o único que alimenta peso cubado, logística e frete. Agora `LENGTH/WIDTH/HEIGHT/DEPTH/DIAMETER/
 WEIGHT` **só aparecem na ficha quando a categoria os marca `required`** — onde o ML exige, esconder deixaria o
 cadastro incompleto. `MAX_WEIGHT_SUPPORTED` fica de fora dessa regra de propósito: é quanto o móvel aguenta,
-não medida dele. **O Publicador resolveu o MESMO problema de outro jeito** (§11 de [[publicador-ml]]: renomeia
+não medida dele. **Superado em 09/10/2026:** agora todas aparecem, num bloco próprio — ver §38. **O Publicador resolveu o MESMO problema de outro jeito** (§11 de [[publicador-ml]]: renomeia
 para "… do produto" e põe ao lado do pacote). A divergência é intencional — lá o vendedor publica, aqui o
 cliente cadastra.
 
@@ -1285,6 +1285,9 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   inteiros e o cliente nunca via 16 campos que a equipe preenchia à mão (MLB193945). Teste
   `test_na_cadeira_a_ficha_tem_exatamente_os_atributos_de_produto_que_o_editor_deixa_editar` compara as duas listas
   com o schema COMPLETO (com `technical_specs`); se ele quebrar, uma das duas regras mudou sozinha.
+- **Exceção à régua: o Modelo (`MODEL`) NUNCA aparece na ficha do cliente** (09/10/2026, decisão do usuário: a IA o
+  gera no Publicador), mesmo obrigatório. O valor que o cliente gravou antes fica no banco e vira fato para a IA. Ver
+  [[publicador-ml]] §16.
 - **O classificador recebe só id/nome/tags/value_type** (sem `technical_specs`): sem grupo `MAIN` tudo cai em FICHA, o
   que para o Portal dá no mesmo (PRINCIPAIS e FICHA entram juntos). Opções/unidades continuam lidas pelo Portal, com o
   filtro de sigilo.
@@ -1332,3 +1335,15 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   Sincronizar seguinte — se a equipe quer guardar, basta editar o campo no Publicador (vira `origem = user`). Lista fechada cujas opções o filtro de sigilo
   derruba inteiras sai da ficha (não vira texto). Ver [[publicador-ml]] §14. (Com o D-05 refinado, re-sincronizar
   passa a ATUALIZAR o que o Portal escreveu.)
+- **Medidas do produto fora da caixa: bloco próprio, e o §35 "só quando exigida" caiu (09/10/2026, pedido do usuário).**
+  No Puff Redondo da #459 o cliente pôs 23×22×15 cm / 8 kg no Volume e o "Produto fora da caixa" do editor ficou vazio
+  (e o "Diâmetro" nunca era pedido). Agora `FichaTecnicaDaCategoria::IDS_MEDIDA_DO_PRODUTO` (LENGTH, WIDTH, HEIGHT, DEPTH,
+  DIAMETER, WEIGHT — os de `MEDIDAS_DO_PRODUTO` do editor + o diâmetro) saem TODOS os que a categoria tem, num grupo
+  `medidas_do_produto: true` ("Medidas do produto (fora da caixa)", antes de "Mais detalhes"). A tela tira esse grupo da
+  Ficha técnica (`gruposSemMedidas`) e o mostra antes das Variações (`MedidasDoProduto.jsx`); estado, PUT e validação
+  são os da ficha técnica (sem coluna nova). Medida própria da categoria (SEAT_WIDTH, BASE_DIAMETER) NÃO entra no bloco.
+  - **"Usar as mesmas medidas do produto fora da caixa"** (no `CartaoVolume`, só com 1 volume e C/L/A do produto
+    preenchidos) é DERIVADA, sem gravar nada: marcada quando o volume já tem as medidas do produto (o peso não conta).
+    A escolha na tela (`vinculos` no `useFichaProduto`) vence o derivado; marcada, trava C/L/A e acompanha as mudanças do
+    produto (`seguirMedidasDoProduto`, puro). O peso do volume continua obrigatório e editável: marcar copia o peso do
+    produto se houver; depois só acompanha enquanto ele ainda for a cópia. Recarregar a página volta ao derivado.

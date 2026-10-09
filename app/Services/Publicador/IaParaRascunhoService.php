@@ -6,6 +6,7 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Support\Publicador\Portal\PortalValorDeAtributo;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
@@ -567,9 +568,17 @@ class IaParaRascunhoService
                 $valor['value_name'] = mb_substr(trim((string) $item['value_name']), 0, 255);
             }
             if (isset($item['value_number']) && is_numeric($item['value_number'])) {
-                $valor['value_number'] = (float) $item['value_number'];
-                if (isset($item['value_unit']) && $item['value_unit'] !== '') {
-                    $valor['value_unit'] = (string) $item['value_unit'];
+                // Formato canônico do EDITOR (09/10/2026, learnings §14): número é TEXTO em `value_name`
+                // ("60 kg", "3"). Com o número só em `value_number` o campo aparecia VAZIO na tela.
+                $texto = in_array($def->valueType, ['number', 'number_unit'], true)
+                    ? PortalValorDeAtributo::numeroNoFormatoDoEditor($def, (float) $item['value_number'], isset($item['value_unit']) ? (string) $item['value_unit'] : null)
+                    : null;
+                if ($texto !== null) {
+                    $valor['value_name'] = $texto;
+                } elseif (! isset($valor['value_name'])) {
+                    $num = rtrim(rtrim(number_format((float) $item['value_number'], 4, '.', ''), '0'), '.');
+                    $unidade = trim((string) ($item['value_unit'] ?? ''));
+                    $valor['value_name'] = $unidade !== '' ? "{$num} {$unidade}" : $num;
                 }
             }
             if ($valor !== []) {

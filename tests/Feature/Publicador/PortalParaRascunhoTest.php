@@ -131,7 +131,8 @@ class PortalParaRascunhoTest extends TestCase
     {
         [$p, $pub] = $this->produto();
         $this->ficha($p, 'BRAND', 'ECF');
-        $this->ficha($p, 'MODEL', 'Executiva');
+        // Texto livre da ficha (era o Modelo, que desde 09/10/2026 é da IA e o Portal não leva).
+        $this->ficha($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Executiva');
 
         $resumo = $this->servico->preencher($pub);
 
@@ -141,7 +142,7 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertNotNull($r->schema_hash);
         $this->assertSame('ECF', $s->atributos['BRAND']['value_name']);
         $this->assertSame('portal', $s->atributos['BRAND']['origem']);
-        $this->assertSame('Executiva', $s->atributos['MODEL']['value_name']);
+        $this->assertSame('Executiva', $s->atributos['INMETRO_CERTIFICATION_REGISTRATION_NUMBER']['value_name']);
         $this->assertSame('50 cm', $s->atributos['SELLER_PACKAGE_LENGTH']['value_name']);
         $this->assertSame('40 cm', $s->atributos['SELLER_PACKAGE_WIDTH']['value_name']);
         $this->assertSame('30 cm', $s->atributos['SELLER_PACKAGE_HEIGHT']['value_name']);
@@ -169,7 +170,7 @@ class PortalParaRascunhoTest extends TestCase
     {
         [$p, $pub] = $this->produto([['Azul', 10], ['Preto', 7]]);
         $this->ficha($p, 'BRAND', 'ECF');
-        $this->ficha($p, 'MODEL', 'Executiva');
+        $this->ficha($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Executiva');
 
         // A equipe já mexeu: categoria, uma marca, o comprimento do pacote e o estoque da variante única.
         $r = $this->editor->rascunhoDoProduto($pub, false);
@@ -183,7 +184,7 @@ class PortalParaRascunhoTest extends TestCase
         $this->assertSame('Marca da equipe', $s->atributos['BRAND']['value_name']);
         $this->assertSame('user', $s->atributos['BRAND']['origem']);
         $this->assertSame('99 cm', $s->atributos['SELLER_PACKAGE_LENGTH']['value_name']);
-        $this->assertSame('Executiva', $s->atributos['MODEL']['value_name'], 'o vazio é preenchido');
+        $this->assertSame('Executiva', $s->atributos['INMETRO_CERTIFICATION_REGISTRATION_NUMBER']['value_name'], 'o vazio é preenchido');
         $this->assertGreaterThanOrEqual(2, $resumo['campos_mantidos']);
 
         $estoques = array_column($this->porCor($s), 'estoque');

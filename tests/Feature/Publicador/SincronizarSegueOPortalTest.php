@@ -181,29 +181,29 @@ class SincronizarSegueOPortalTest extends TestCase
     public function test_o_que_a_ia_escreveu_nunca_muda(): void
     {
         [$p, $pub] = $this->produto();
-        $this->noPortal($p, 'MODEL', 'Puff do Portal');
+        $this->noPortal($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Puff do Portal');
         $this->servico->preencher($pub);
-        $this->repo->mesclarAtributos($this->rascunho($pub), ['MODEL' => ['value_name' => 'Puff da IA', 'origem' => 'ia']]);
+        $this->repo->mesclarAtributos($this->rascunho($pub), ['INMETRO_CERTIFICATION_REGISTRATION_NUMBER' => ['value_name' => 'Puff da IA', 'origem' => 'ia']]);
 
-        $this->noPortal($p, 'MODEL', 'Puff do Portal 2');
+        $this->noPortal($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Puff do Portal 2');
         $this->servico->preencher($pub);
 
-        $this->assertSame('Puff da IA', $this->snap($pub)->atributos['MODEL']['value_name']);
-        $this->assertSame('ia', $this->snap($pub)->atributos['MODEL']['origem']);
+        $this->assertSame('Puff da IA', $this->snap($pub)->atributos['INMETRO_CERTIFICATION_REGISTRATION_NUMBER']['value_name']);
+        $this->assertSame('ia', $this->snap($pub)->atributos['INMETRO_CERTIFICATION_REGISTRATION_NUMBER']['origem']);
     }
 
     public function test_o_cliente_apagou_no_portal_e_o_valor_que_o_portal_escreveu_sai(): void
     {
         [$p, $pub] = $this->produto();
-        $this->noPortal($p, 'MODEL', 'Puff');
+        $this->noPortal($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Puff');
         $this->noPortal($p, 'BRAND', 'ECF');
         $this->servico->preencher($pub);
-        $this->assertArrayHasKey('MODEL', $this->snap($pub)->atributos);
+        $this->assertArrayHasKey('INMETRO_CERTIFICATION_REGISTRATION_NUMBER', $this->snap($pub)->atributos);
 
-        EstruturaProdutoAtributo::where('atributo_id', 'MODEL')->delete();
+        EstruturaProdutoAtributo::where('atributo_id', 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER')->delete();
         $resumo = $this->servico->preencher($pub);
 
-        $this->assertArrayNotHasKey('MODEL', $this->snap($pub)->atributos);
+        $this->assertArrayNotHasKey('INMETRO_CERTIFICATION_REGISTRATION_NUMBER', $this->snap($pub)->atributos);
         $this->assertSame('ECF', $this->snap($pub)->atributos['BRAND']['value_name'], 'só o campo apagado sai');
         $this->assertSame(1, $resumo['campos_atualizados']);
     }
@@ -320,19 +320,39 @@ class SincronizarSegueOPortalTest extends TestCase
         $this->assertSame(0, $resumo['campos_preenchidos']);
     }
 
+    /** O Modelo é da IA (09/10/2026): o Portal não o leva, e o MODEL que um Sincronizar antigo trouxe sai. */
+    public function test_modelo_do_portal_nao_vai_e_o_antigo_origem_portal_sai_mas_o_da_equipe_fica(): void
+    {
+        [$p, $pub] = $this->produto();
+        $this->noPortal($p, 'MODEL', 'Puff do Cliente');
+        $this->servico->preencher($pub);
+        $this->assertArrayNotHasKey('MODEL', $this->snap($pub)->atributos, 'o Modelo do Portal não vai para o rascunho');
+
+        $this->repo->mesclarAtributos($this->rascunho($pub), ['MODEL' => ['value_name' => 'Puff do Cliente', 'origem' => 'portal']]);
+        $resumo = $this->servico->preencher($pub);
+        $this->assertArrayNotHasKey('MODEL', $this->snap($pub)->atributos, 'o MODEL antigo do Portal sai para a IA gerar');
+        $this->assertSame(1, $resumo['campos_atualizados']);
+
+        foreach (['user', 'ia'] as $origem) {
+            $this->repo->mesclarAtributos($this->rascunho($pub), ['MODEL' => ['value_name' => "Modelo {$origem}", 'origem' => $origem]]);
+            $this->servico->preencher($pub);
+            $this->assertSame("Modelo {$origem}", $this->snap($pub)->atributos['MODEL']['value_name'], "origem {$origem} nunca é tocada");
+        }
+    }
+
     public function test_rascunho_publicado_nao_segue_o_portal(): void
     {
         [$p, $pub, $vars] = $this->produto();
-        $this->noPortal($p, 'MODEL', 'Puff');
+        $this->noPortal($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Puff');
         $this->servico->preencher($pub);
         $this->rascunho($pub)->update(['status' => PubRascunho::PUBLISHED]);
 
-        $this->noPortal($p, 'MODEL', 'Puff novo');
+        $this->noPortal($p, 'INMETRO_CERTIFICATION_REGISTRATION_NUMBER', 'Puff novo');
         $vars[0]->update(['estoque' => 1]);
         $resumo = $this->servico->preencher($pub);
 
         $this->assertTrue($resumo['intocavel']);
-        $this->assertSame('Puff', $this->snap($pub)->atributos['MODEL']['value_name']);
+        $this->assertSame('Puff', $this->snap($pub)->atributos['INMETRO_CERTIFICATION_REGISTRATION_NUMBER']['value_name']);
         $this->assertSame(10, $this->porCor($pub)['Azul']['estoque']);
     }
 

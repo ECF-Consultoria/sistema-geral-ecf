@@ -1554,6 +1554,8 @@ Route::middleware(['auth', 'verified'])
          Route::delete('/comentarios/{comentario}', [PolosController::class, 'comentarioDestroy'])->name('comentarios.destroy');
          // Opção ADS ligado/desligado por empresa (coluna Sinais de /polos/empresas — TKT-0003).
          Route::patch('/empresas/{empresa}/ads', [PolosController::class, 'marcarAds'])->name('empresas.ads');
+         // Check "reunião do mês feita" por empresa/mês (gaveta de /polos/empresas — TKT-0004).
+         Route::post('/reunioes', [PolosController::class, 'reuniaoMarcar'])->name('reunioes.marcar');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────

@@ -50,6 +50,7 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 return Http::response(match ($m[1]) {
                     'MLB1' => $this->atributosDaCategoria(),
                     'MLB2' => $this->atributosComEixos(),
+                    'MLB3' => $this->atributosComMedidas(),
                     default => [],
                 }, 200);
             }
@@ -108,6 +109,27 @@ class FichaTecnicaDoProdutoTest extends TestCase
                 'values' => [['id' => '52049', 'name' => 'Preto'], ['id' => '52055', 'name' => 'Branco']]],
             ['id' => 'MATERIAL', 'name' => 'Material', 'value_type' => 'string', 'tags' => ['allow_variations' => true, 'required' => true],
                 'values' => [['id' => '201', 'name' => 'Madeira'], ['id' => '202', 'name' => 'Metal']]],
+        ];
+    }
+
+    /**
+     * Categoria do Puff (09/10/2026): as medidas genéricas do produto (escondidas, como no catálogo
+     * real) e uma ajuda que cita a plataforma, que não pode chegar ao cliente.
+     */
+    private function atributosComMedidas(): array
+    {
+        $medida = fn (string $id, string $nome, array $unidades) => ['id' => $id, 'name' => $nome, 'value_type' => 'number_unit',
+            'tags' => ['hidden' => true], 'allowed_units' => array_map(fn ($u) => ['id' => $u, 'name' => $u], $unidades),
+            'default_unit' => $unidades[0], 'tooltip' => 'Medida exibida no anúncio do Mercado Livre'];
+
+        return [
+            ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => []],
+            ['id' => 'COLOR', 'name' => 'Cor', 'value_type' => 'string', 'tags' => ['allow_variations' => true]],
+            $medida('HEIGHT', 'Altura', ['cm', 'mm']),
+            $medida('DIAMETER', 'Diâmetro', ['cm', 'mm']),
+            $medida('WEIGHT', 'Peso', ['kg', 'g']),
+            $medida('LENGTH', 'Comprimento', ['cm', 'mm']),
+            $medida('WIDTH', 'Largura', ['cm', 'mm']),
         ];
     }
 
@@ -802,5 +824,53 @@ class FichaTecnicaDoProdutoTest extends TestCase
         $marca = collect($salvos)->firstWhere('id', 'BRAND');
         $this->assertSame('-1', $marca['valor']);
         $this->assertNull($marca['valor_id'], 'só o marcador grava o N/A');
+    }
+
+    // ─── Medidas do produto fora da caixa (09/10/2026) ───────────────────────
+
+    public function test_medidas_do_produto_vem_num_bloco_proprio_e_gravam_como_atributo_normal(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa, ['categoria_ml_id' => 'MLB3']);
+        $this->variacoes($empresa, $produto, [['cor', 'Azul']]);
+        $sessao = $this->withoutVite()->entrarNoPortal($empresa);
+
+        $grupos = $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB3']))->assertOk()->json('grupos');
+        $medidas = collect($grupos)->firstWhere('medidas_do_produto', true);
+        $this->assertNotNull($medidas, 'as medidas do produto vêm num grupo próprio');
+        $this->assertSame('Medidas do produto (fora da caixa)', $medidas['grupo']);
+        $this->assertSame(['LENGTH', 'WIDTH', 'HEIGHT', 'DIAMETER', 'WEIGHT'], array_column($medidas['campos'], 'id'));
+        $outros = collect($grupos)->reject(fn ($g) => ! empty($g['medidas_do_produto']))->flatMap(fn ($g) => array_column($g['campos'], 'id'))->all();
+        $this->assertNotContains('DIAMETER', $outros, 'não aparece duas vezes');
+        $this->assertSemOrigem(json_encode($medidas, JSON_UNESCAPED_UNICODE), 'bloco das medidas do produto');
+
+        // Gravam pelo mesmo PUT da ficha, como atributos normais (sem coluna nova).
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
+        $salvou = $sessao->putJson($url, ['atributos' => [
+            ['id' => 'LENGTH', 'valor' => '60', 'unidade' => 'cm'], ['id' => 'WIDTH', 'valor' => '60', 'unidade' => 'cm'],
+            ['id' => 'HEIGHT', 'valor' => '40', 'unidade' => 'cm'], ['id' => 'DIAMETER', 'valor' => '58,5', 'unidade' => 'cm'],
+            ['id' => 'WEIGHT', 'valor' => '7,5', 'unidade' => 'kg'],
+        ]])->assertOk();
+        $this->assertSemOrigem($salvou->getContent(), 'PUT com as medidas');
+
+        $linhas = EstruturaProdutoAtributo::where('produto_id', $produto->id)->get()->keyBy('atributo_id');
+        $this->assertSame('58.5', $linhas['DIAMETER']->valor);
+        $this->assertSame('cm', $linhas['DIAMETER']->unidade);
+        $this->assertSame('7.5', $linhas['WEIGHT']->valor);
+        $this->assertSame('kg', $linhas['WEIGHT']->unidade);
+        $this->assertCount(5, $linhas);
+
+        // Unidade que a medida não aceita é recusada como qualquer outro campo.
+        $sessao->putJson($url, ['atributos' => [['id' => 'HEIGHT', 'valor' => '40', 'unidade' => 'km']]])
+            ->assertStatus(422)->assertJsonValidationErrors('atributos.HEIGHT');
+    }
+
+    public function test_a_explicacao_do_bloco_e_da_caixa_do_volume_sao_neutras(): void
+    {
+        $textos = app(ExplicacaoDeAtributos::class)->camposDoPortal();
+
+        $this->assertArrayHasKey('medidas_produto', $textos);
+        $this->assertArrayHasKey('mesmas_medidas', $textos);
+        $this->assertSemOrigem(json_encode([$textos['medidas_produto'], $textos['mesmas_medidas']], JSON_UNESCAPED_UNICODE), 'explicações das medidas');
     }
 }

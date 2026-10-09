@@ -21,6 +21,7 @@ use App\Models\PoloAdsStatus;
 use App\Models\PoloMetaEntrada;
 use App\Models\PoloRosterSnapshot;
 use App\Models\PolosComentario;
+use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
@@ -451,6 +452,9 @@ class PolosController extends Controller
                     // Texto livre do item "Observações sobre publicação" (mora em
                     // `observacao`, não em `valor` — ver observacaoPublicacao()).
                     'obs_publicacao'           => $impl?->observacaoPublicacao(),
+                    // Opção "quer jardinagem/otimização de anúncios" marcada abaixo da
+                    // Planilha de Produtos (TKT-0010): 'Sim' ou null (desmarcado/sem ficha).
+                    'jardinagem'               => $impl?->querJardinagem() ? 'Sim' : null,
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
                     // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
                     'data_cadastro'            => $e->created_at?->format('Y-m-d'),
@@ -634,6 +638,7 @@ class PolosController extends Controller
             ['key' => 'central_promocao',    'label' => 'Central de Promoção', 'tipo' => 'texto'],
             // Resposta do cliente no link do Onboarding (JSON, não coluna).
             ['key' => 'obs_publicacao',      'label' => 'Obs. publicação',     'tipo' => 'texto'],
+            ['key' => 'jardinagem',          'label' => 'Jardinagem',          'tipo' => 'texto'],
             // ── Logística ──
             ['key' => 'contextos_logistica', 'label' => 'Contextos logística', 'tipo' => 'texto'],
             ['key' => 'me1',                 'label' => 'ME1',                 'tipo' => 'texto'],
@@ -850,6 +855,7 @@ class PolosController extends Controller
                 'campanha_criada'     => $simNao($impl ? (bool) $impl->campanha_criada : null),
                 'central_promocao'    => $impl?->central_promocao,
                 'obs_publicacao'      => $impl?->observacaoPublicacao(),
+                'jardinagem'          => $impl?->querJardinagem() ? 'Sim' : null,
                 'contextos_logistica' => $impl?->contextos_logistica,
                 'me1'                 => $impl?->me1,
                 'integradora'         => $impl?->integradora,
@@ -1286,6 +1292,8 @@ class PolosController extends Controller
             // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
             'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'comentarios'    => (object) [],
+            // Check "reunião do mês feita" por cust_id (TKT-0004).
+            'reunioes'       => (object) [],
             'statusInicial'  => $statusInicial,
             'erro'           => null,
         ];
@@ -1329,12 +1337,15 @@ class PolosController extends Controller
                 ],
                 'adsLimites'     => $d['adsLimites'],
                 'metricaFaturamento' => $d['metricaFaturamento'],
-                // Comentarios de performance do mes, agrupados por cust_id. Vem junto com a
-                // pagina (volume pequeno) em vez de um fetch por linha aberta: sem isso, abrir
-                // 20 empresas seriam 20 idas ao servidor para mostrar 3 frases.
-                'comentarios'    => $this->comentariosDoMes($d['mesSel'], $request->user()),
+                // Comentarios das empresas da lista, de TODOS os meses (TKT-0007), agrupados
+                // por cust_id. Vem junto com a pagina (volume pequeno) em vez de um fetch por
+                // linha aberta: sem isso, abrir 20 empresas seriam 20 idas ao servidor para
+                // mostrar 3 frases.
+                'comentarios'    => $this->comentariosDasEmpresas(array_column($empresas, 'cust_id'), $request->user()),
                 'statusInicial'  => $statusInicial,
                 'erro'           => null,
+                // Check "reunião do mês feita" do mês selecionado, por cust_id (TKT-0004).
+                'reunioes'       => (object) $this->reunioesDoMes($d['mesSel']),
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -1348,29 +1359,40 @@ class PolosController extends Controller
     // Ver o docblock da migration polos_comentarios para as decisões de schema.
 
     /**
-     * Comentários do mês agrupados por cust_id, no shape que a tela consome.
+     * Comentários das empresas informadas, de TODOS os meses, agrupados por cust_id, no
+     * shape que a tela consome — o mais recente primeiro.
+     *
+     * Permanentes desde o TKT-0007: até então só apareciam no mês em que foram escritos, e
+     * o time reescrevia todo mês a mesma anotação ("foi para outra consultoria", "seller
+     * cuida das campanhas"). A coluna `mes` continua sendo gravada e vira só a referência
+     * (`mes_label`) de quando a anotação foi feita — nada muda no schema.
      *
      * `pode_editar` é resolvido AQUI e não no front: a regra (autor ou admin) é a mesma
      * que os endpoints aplicam, e derivar isso no JSX abriria caminho para a tela mostrar
      * um lápis que o servidor recusa.
      *
+     * @param  array<int, string|null> $custIds  cust_id normalizado das linhas da tela
      * @return array<string, array<int, array<string,mixed>>>
      */
-    private function comentariosDoMes(?string $mes, ?User $user): array
+    private function comentariosDasEmpresas(array $custIds, ?User $user): array
     {
-        if ($mes === null || $mes === '') {
+        $custIds = array_values(array_unique(array_filter(array_map('strval', $custIds), fn ($c) => $c !== '')));
+        if ($custIds === []) {
             return [];
         }
 
         return PolosComentario::with('autor:id,name')
-            ->where('mes', $mes)
-            ->orderBy('created_at')
+            ->whereIn('cust_id', $custIds)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get()
             ->groupBy('cust_id')
             ->map(fn ($grupo) => $grupo->map(fn (PolosComentario $c) => [
                 'id'          => $c->id,
                 'texto'       => $c->texto,
                 'autor'       => $c->autorNome(),
+                'mes'         => $c->mes,
+                'mes_label'   => $this->mesLabel((string) $c->mes),
                 'criado_em'   => $c->created_at?->format('d/m/Y H:i'),
                 'editado_em'  => $c->editado_em?->format('d/m/Y H:i'),
                 'pode_editar' => $this->podeMexerNoComentario($user, $c),
@@ -1438,6 +1460,74 @@ class PolosController extends Controller
         $comentario->delete();
 
         return back()->with('success', 'Comentário removido.');
+    }
+
+    // ═══ Reunião do mês (/polos/empresas — TKT-0004) ═══
+    // Check manual "a reunião do mês foi feita?", por cust_id + mês. Manual porque o
+    // sistema não registra reunião mensal das empresas dos Polos (ver o docblock da
+    // migration polos_reunioes_mes).
+
+    /**
+     * Marcações do mês, no shape que a tela consome:
+     * `[cust_id => ['feita' => bool, 'por' => nome, 'em' => 'd/m/Y H:i']]`.
+     *
+     * @return array<string, array{feita: bool, por: string, em: ?string}>
+     */
+    private function reunioesDoMes(?string $mes): array
+    {
+        if ($mes === null || $mes === '') {
+            return [];
+        }
+
+        return PolosReuniaoMes::with('marcadoPor:id,name')
+            ->where('mes', $mes)
+            ->get()
+            ->mapWithKeys(fn (PolosReuniaoMes $r) => [$r->cust_id => [
+                'feita' => (bool) $r->feita,
+                'por'   => $r->marcadoPorNome(),
+                'em'    => $r->marcado_em?->format('d/m/Y H:i'),
+            ]])
+            ->all();
+    }
+
+    public function reuniaoMarcar(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $this->checkFaturamentoAccess();
+
+        $dados = $request->validate([
+            'cust_id' => ['required', 'string', 'max:50'],
+            'mes'     => ['required', 'string', 'regex:/^[0-9]{6}$/'],
+            'feita'   => ['required', 'boolean'],
+        ]);
+
+        // Normaliza na escrita: a lista da tela é montada por cust normalizado.
+        $cust = CustId::normaliza($dados['cust_id']);
+        if ($cust === '') {
+            return back()->withErrors(['cust_id' => 'Empresa sem cust_id.']);
+        }
+
+        $user  = $request->user();
+        $feita = $request->boolean('feita');
+
+        $registro = PolosReuniaoMes::firstOrNew(['cust_id' => $cust, 'mes' => $dados['mes']]);
+        $mudou    = ! $registro->exists || (bool) $registro->feita !== $feita;
+
+        if ($mudou) {
+            $registro->fill([
+                'feita'            => $feita,
+                'user_id'          => $user->id,
+                'marcado_por_nome' => $user->name,
+                'marcado_em'       => now(),
+            ])->save();
+
+            activity('polos')
+                ->causedBy($user)
+                ->performedOn($registro)
+                ->withProperties(['cust_id' => $cust, 'mes' => $dados['mes'], 'feita' => $feita])
+                ->log("[Polos] Reunião do mês {$dados['mes']} (cust {$cust}): " . ($feita ? 'feita' : 'não feita'));
+        }
+
+        return back()->with('success', $feita ? 'Reunião do mês marcada como feita.' : 'Reunião do mês marcada como não feita.');
     }
 
     // ═══ ADS ligado/desligado (/polos/empresas) ═══

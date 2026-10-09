@@ -33,9 +33,16 @@ use Illuminate\Support\Facades\Log;
  * - os de sistema (read_only/inferred/fixed), os de dado de variante
  *   (`variation_attribute`: SKU, GTIN, cor principal...), condição e pacote;
  * - o atributo que é o EIXO da variação do PRODUTO — ver "Eixo por produto" abaixo;
- * - o que a ficha já cobre em outro lugar (SKU, volumes) e a grade de medidas;
- * - medida do produto que a categoria não exige ({@see self::IDS_MEDIDA_DO_PRODUTO}).
+ * - o que a ficha já cobre em outro lugar (SKU, volumes) e a grade de medidas.
  * `allow_variations` sozinho NÃO tira mais o campo ("Material do estofamento").
+ *
+ * ### Medidas do produto fora da caixa (09/10/2026, pedido do usuário)
+ * As medidas do produto SOZINHO ({@see self::IDS_MEDIDA_DO_PRODUTO}: comprimento, largura, altura,
+ * profundidade, diâmetro e peso — as que a categoria tiver) saem dos grupos comuns e vão para um
+ * grupo próprio, marcado `medidas_do_produto`, que a tela mostra como bloco à parte, perto das
+ * Variações. Todas aparecem (antes só as obrigatórias apareciam, e o editor interno ficava com
+ * "Diâmetro"/"Altura do produto" vazios). Continuam sendo atributos normais da ficha: mesma
+ * gravação, mesma validação, mesmo caminho até o rascunho.
  *
  * Os `hidden` editáveis (a seção AVANCADO do editor) vão num grupo próprio no fim,
  * {@see self::GRUPO_MAIS_DETALHES}, aberto como os outros (a ficha não recolhe nada).
@@ -82,6 +89,12 @@ class FichaTecnicaDaCategoria
     /** Grupo do fim da ficha: os campos que o editor interno mostra como "Avançado". Rótulo neutro. */
     public const GRUPO_MAIS_DETALHES = 'Mais detalhes';
 
+    /**
+     * Grupo das medidas do produto fora da caixa (vem antes de "Mais detalhes", com a marca
+     * `medidas_do_produto`). A tela o tira da Ficha técnica e o mostra num bloco próprio.
+     */
+    public const GRUPO_MEDIDAS_DO_PRODUTO = 'Medidas do produto (fora da caixa)';
+
     public const TIPO_TEXTO = 'texto';
     public const TIPO_NUMERO = 'numero';
     public const TIPO_NUMERO_UNIDADE = 'numero_unidade';
@@ -95,6 +108,13 @@ class FichaTecnicaDaCategoria
         AtributoClassificado::SECAO_AVANCADO,
     ];
 
+    /**
+     * O Modelo NÃO é do cliente (decisão do usuário, 09/10/2026): quem o preenche é a IA no editor
+     * interno, com os termos mais buscados — nem quando a categoria o exige ele aparece na ficha. O
+     * que o cliente já gravou antes fica guardado e vira só um fato para a IA.
+     */
+    public const ID_MODELO = 'MODEL';
+
     /** Atributos que a ficha já cobre em outro lugar (código do produto, volumes) ou que são de grade. */
     private const IDS_FORA = [
         'SELLER_SKU', 'CATALOG_PRODUCT_ID', 'SIZE_GRID_ID',
@@ -102,16 +122,18 @@ class FichaTecnicaDaCategoria
     ];
 
     /**
-     * Medidas DO PRODUTO. A ficha já pede medida em Volumes, que é a do produto EMBALADO —
-     * a que vale para peso cubado, logística e frete. Ter os dois conjuntos na mesma tela
-     * faz a pessoa digitar duas vezes (e foi o que aconteceu: produto 2 com 12/12/12 nos dois).
+     * Medidas DO PRODUTO fora da caixa, na ordem do bloco (a mesma do Volume: comprimento, largura,
+     * altura, peso). Volumes é o produto EMBALADO — o que vale para peso cubado, logística e frete;
+     * estas são o produto sozinho. Os ids são os do editor interno em "Produto fora da caixa"
+     * (`MEDIDAS_DO_PRODUTO` em `ferramentas.js`), mais o diâmetro.
      *
-     * Por isso estes só aparecem quando a categoria os EXIGE: onde o catálogo marca `required`,
-     * esconder deixaria o cadastro incompleto. Onde não marca, somem e fica só Volumes.
+     * Até 09/10/2026 só apareciam quando a categoria as exigia (para não digitar duas vezes). O
+     * usuário pediu as duas — o produto fora da caixa e o embalado — e, no volume, a opção de usar
+     * as mesmas medidas do produto; por isso agora aparecem todas, num bloco próprio.
      *
      * `MAX_WEIGHT_SUPPORTED` não entra aqui de propósito: é quanto o móvel aguenta, não medida dele.
      */
-    private const IDS_MEDIDA_DO_PRODUTO = [
+    public const IDS_MEDIDA_DO_PRODUTO = [
         'LENGTH', 'WIDTH', 'HEIGHT', 'DEPTH', 'DIAMETER', 'WEIGHT',
     ];
 
@@ -241,7 +263,8 @@ class FichaTecnicaDaCategoria
                 fn (array $c) => ! isset($usados[(string) ($c['eixo_do_portal'] ?? '')]),
             ));
             if ($campos !== []) {
-                $saida[] = ['grupo' => $grupo['grupo'], 'campos' => $campos];
+                // As outras chaves do grupo (a marca `medidas_do_produto`) vão junto.
+                $saida[] = array_merge($grupo, ['campos' => $campos]);
             }
         }
 
@@ -282,6 +305,7 @@ class FichaTecnicaDaCategoria
 
         $grupos = [];
         $maisDetalhes = [];
+        $medidas = [];
 
         foreach ($atributos as $atributo) {
             $classificado = $classificados[trim((string) ($atributo['id'] ?? ''))] ?? null;
@@ -291,6 +315,13 @@ class FichaTecnicaDaCategoria
 
             $campo = self::campoDe($atributo, $classificado);
             if ($campo === null) {
+                continue;
+            }
+
+            // Medida do produto fora da caixa: bloco próprio, qualquer que seja a seção do editor.
+            if (in_array($campo['id'], self::IDS_MEDIDA_DO_PRODUTO, true)) {
+                $medidas[$campo['id']] = $campo;
+
                 continue;
             }
 
@@ -326,6 +357,12 @@ class FichaTecnicaDaCategoria
         });
 
         $saida = array_map(fn ($x) => $x[1], $indexados);
+
+        // As medidas do produto fora da caixa, na ordem do bloco (a tela as mostra à parte).
+        $ordenadas = array_values(array_filter(array_map(fn (string $id) => $medidas[$id] ?? null, self::IDS_MEDIDA_DO_PRODUTO)));
+        if ($ordenadas !== []) {
+            $saida[] = ['grupo' => self::GRUPO_MEDIDAS_DO_PRODUTO, 'medidas_do_produto' => true, 'campos' => $ordenadas];
+        }
 
         // Os "Avançado" do editor, sempre por último (nenhum é obrigatório, por construção).
         if ($maisDetalhes !== []) {
@@ -394,7 +431,7 @@ class FichaTecnicaDaCategoria
         $id = trim((string) ($atributo['id'] ?? ''));
         $nome = trim((string) ($atributo['name'] ?? ''));
 
-        if ($id === '' || $nome === '' || in_array($id, self::IDS_FORA, true) || str_contains($id, 'GRID')) {
+        if ($id === '' || $nome === '' || $id === self::ID_MODELO || in_array($id, self::IDS_FORA, true) || str_contains($id, 'GRID')) {
             return null;
         }
 
@@ -408,11 +445,6 @@ class FichaTecnicaDaCategoria
         }
 
         $obrigatorio = self::temTag($tags, 'required');
-
-        // Medida do produto sem exigência da categoria sai da ficha: Volumes já pede a do embalado.
-        if (! $obrigatorio && in_array($id, self::IDS_MEDIDA_DO_PRODUTO, true)) {
-            return null;
-        }
 
         // QUEM TEM OPÇÃO VIRA LISTA, qualquer que seja o `value_type`. O catálogo entrega a maior
         // parte das opções em atributo `string` COM `values` (Forma, Desenho do tecido, Materiais,

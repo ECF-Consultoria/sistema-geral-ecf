@@ -6,6 +6,7 @@ import { AvisoFlash } from '@/Components/Portal/Estrutura/comum';
 import FichaDadosGerais from '@/Components/Portal/Estrutura/Produtos/FichaDadosGerais';
 import FichaDescricao from '@/Components/Portal/Estrutura/Produtos/FichaDescricao';
 import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
+import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoProduto';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
@@ -256,6 +257,10 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 <fieldset disabled={ficha.salvando} className="mt-4 min-w-0 border-0 p-0 lg:mt-2" data-campos-ficha>
                     <FichaDadosGerais ficha={ficha} listas={listas} onListas={setListas} />
                 </fieldset>
+
+                {/* As medidas do produto fora da caixa vêm logo antes das Variações: o volume de cada
+                    variação pode usar as mesmas (caixa no cartão do volume). */}
+                <MedidasDoProduto ficha={ficha} />
 
                 {/* Variações ANTES da Ficha técnica: é o miolo do cadastro (Ref, custo, volumes,
                     imagens) e precede a lista longa de características da categoria. Dados gerais

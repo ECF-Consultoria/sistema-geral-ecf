@@ -2034,6 +2034,37 @@ function itemTemConteudo(item, dado = {}) {
 
 // ─── Item do checklist ────────────────────────────────────────────────────────
 
+// Opção dentro do item "Planilha de Produtos" (TKT-0010): o cliente que já tem anúncios
+// no ML marca se quer jardinagem/otimização deles. NÃO é item do checklist — mora em
+// dados.itens.planilha_produtos.jardinagem e fica fora do progresso (x de 17), das
+// pendências e da trava do "Marcar como feito". A equipe vê no Painel Polos e na ficha.
+function OpcaoJardinagem({ marcado, onToggle }) {
+    return (
+        <button
+            type="button"
+            role="checkbox"
+            aria-checked={marcado}
+            onClick={onToggle}
+            className={cn(
+                'mt-2 w-full flex items-start gap-2.5 p-4 rounded-xl border text-left transition-all',
+                marcado
+                    ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.06]'
+                    : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.16]'
+            )}
+        >
+            <span className={cn(
+                'w-5 h-5 mt-px rounded border-2 flex items-center justify-center shrink-0 transition-all',
+                marcado ? 'border-ecf-yellow bg-ecf-yellow' : 'border-white/20'
+            )}>
+                {marcado && <Check size={11} className="text-[#252525]" />}
+            </span>
+            <span className={cn('text-[13px] leading-snug', marcado ? 'text-white' : 'text-white/60')}>
+                Caso tenha anúncios no Mercado Livre e queira jardinagem/otimização de anúncios
+            </span>
+        </button>
+    );
+}
+
 function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, onOpenPassoAPasso, tabelaFreteUrl, num }) {
     const feito = dado?.feito ?? false;
     // Já feito nunca trava (permite desmarcar); senão exige o conteúdo mínimo.
@@ -2063,16 +2094,22 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
             </div>
 
             {item.tipo === 'produtos' ? (
-                <div className="mt-3 flex items-center justify-between p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                    <span className="text-white/50 text-[13px]">
-                        {(dado?.produtos ?? []).length > 0
-                            ? `${dado.produtos.length} produto${dado.produtos.length !== 1 ? 's' : ''} cadastrado${dado.produtos.length !== 1 ? 's' : ''}`
-                            : 'Nenhum produto cadastrado ainda'}
-                    </span>
-                    <button onClick={onOpenProdutos} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ecf-yellow text-[#252525] font-bold text-[13px] hover:brightness-110 transition-all">
-                        Abrir Planilha
-                    </button>
-                </div>
+                <>
+                    <div className="mt-3 flex items-center justify-between p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
+                        <span className="text-white/50 text-[13px]">
+                            {(dado?.produtos ?? []).length > 0
+                                ? `${dado.produtos.length} produto${dado.produtos.length !== 1 ? 's' : ''} cadastrado${dado.produtos.length !== 1 ? 's' : ''}`
+                                : 'Nenhum produto cadastrado ainda'}
+                        </span>
+                        <button onClick={onOpenProdutos} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ecf-yellow text-[#252525] font-bold text-[13px] hover:brightness-110 transition-all">
+                            Abrir Planilha
+                        </button>
+                    </div>
+                    <OpcaoJardinagem
+                        marcado={dado?.jardinagem === true}
+                        onToggle={() => onChange(item.id, 'jardinagem', !(dado?.jardinagem === true), true)}
+                    />
+                </>
             ) : item.tipo === 'precificacao' ? (
                 <>
                     <div className="mt-3 flex items-center justify-between p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
@@ -2194,9 +2231,15 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
         saveTimer.current = setTimeout(() => setSaveStatus('idle'), 2000);
     }
 
+    // Fila única de gravações: cada PATCH espera o anterior terminar (TKT-0010).
+    const filaSave = useRef(Promise.resolve());
+
     // Devolve SEMPRE uma promise para que o chamador possa encadear duas gravações do
     // mesmo item (ex.: 'canal' e depois 'feito'). Cada PATCH lê e reescreve o JSON de
     // `dados` INTEIRO — dois em paralelo e o último a gravar apaga o campo do outro.
+    // Por isso as gravações também passam pela fila: cliques rápidos em campos
+    // diferentes (ex.: a opção de jardinagem e o "Marcar como feito" do item 10) não
+    // correm mais soltos. O .catch interno garante que a fila nunca trava num erro.
     const onChange = useCallback((id, campo, valor, doSave) => {
         setDadosLocais(prev => ({
             ...prev,
@@ -2206,13 +2249,15 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
         if (!doSave) return Promise.resolve();
 
         setSaveStatus('saving');
-        return axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
+        const envio = filaSave.current.then(() => axios.patch(route('implementacao.salvar', impl.token), { id, campo, valor })
             .then(res => { setProgresso(res.data.progresso); showSaved(); })
             .catch(() => {
                 setSaveStatus('error');
                 clearTimeout(saveTimer.current);
                 saveTimer.current = setTimeout(() => setSaveStatus('idle'), 3000);
-            });
+            }));
+        filaSave.current = envio;
+        return envio;
     }, [impl.token]);
 
     const itens      = dadosLocais?.itens     ?? {};

@@ -71,6 +71,8 @@ class FichaTecnicaDoProduto
         return EstruturaProdutoAtributo::query()
             ->where('company_id', $produto->company_id)
             ->where('produto_id', $produto->id)
+            // O Modelo saiu da ficha (09/10/2026): o que o cliente gravou antes fica no banco, mas não volta à tela.
+            ->where('atributo_id', '<>', FichaTecnicaDaCategoria::ID_MODELO)
             ->orderBy('id')
             ->get()
             ->map(fn (EstruturaProdutoAtributo $a) => [
@@ -145,6 +147,8 @@ class FichaTecnicaDoProduto
                 ->where('company_id', $empresa->id)
                 ->where('produto_id', $produto->id)
                 ->whereNotIn('atributo_id', array_keys($preenchidos) ?: [''])
+                // O Modelo saiu da ficha (09/10/2026), mas o que o cliente gravou antes é dado dele: fica.
+                ->where('atributo_id', '<>', FichaTecnicaDaCategoria::ID_MODELO)
                 ->delete();
 
             foreach ($preenchidos as $id => $p) {

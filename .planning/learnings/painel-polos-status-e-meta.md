@@ -463,6 +463,17 @@ adicionar uma, conferir `mb_strtoupper` da grafia da planilha — com e sem acen
 Fase terminal (`FASES_TERMINAIS`) também muda comportamento: entra no `confirm` da edição
 em massa e sai do escopo M1–M4 do AutoFiltro. "Desistência" é terminal, como Churn.
 
+**"Acompanhamento" (TKT-0005, 08/10/2026)** — 30 dias de acompanhamento gratuito de empresa
+com problema; o pedido era "não conta na meta". Fora da meta de faturamento ela fica **de
+graça**, porque todo roster de meta é lista branca (`M2–M4 + Fechamento` no `PolosController`
+e em `PoloRosterSnapshot::FASES_ATIVAS`). Para a meta de entrantes ela entrou em
+`FASES_TERMINAIS` de `lib/polosEntrantes.js`, que é o recorte de meta da "Visão geral" —
+o nome da constante diz "terminal", mas o papel dela é "fora da meta". Efeitos colaterais
+aceitos de propósito, iguais aos de Encerrado: **sem faturamento** enquanto está na fase
+(o `polos:warm` só aquece M1–M4), fora do card de faturamento M1–M4 e **fora de
+`FASE_PARA_PROJETO`** (só pesa para empresa sem `projeto` gravado). A volta para a fase
+anterior é manual — não existe vencimento automático dos 30 dias.
+
 ## 9. O "% da meta" de /polos/empresas está travado em 100 de propósito (2026-09-09)
 
 A meta por empresa é **limiar de entrada** (D-13: M2=1.000, M3=4.000, M4=8.000), não alvo
@@ -489,6 +500,16 @@ Duas decisões que parecem redundância e não são: `autor_nome` é **snapshot*
 `user_id` (autoria não pode virar "—" quando o usuário é desativado), e `editado_em` é
 coluna **explícita** em vez de comparar `updated_at != created_at` — qualquer `touch()`
 futuro marcaria o comentário como editado sem ninguém ter editado nada.
+
+**Desde 08/10/2026 (TKT-0007) o comentário é permanente.** A tela lista os comentários da
+empresa de **todos os meses**, o mais recente primeiro, cada um com o mês em que foi escrito
+(`mes_label`). O pedido veio da operação, e os dados confirmavam: o time reescrevia todo mês
+a mesma anotação ("foi pra consultoria" em setembro e de novo em outubro) e seguia comentando
+em setembro já em outubro. **Sem mudança de schema**: `mes` continua obrigatório e gravado
+com o mês selecionado, mas virou só referência — a leitura (`comentariosDasEmpresas`) não
+filtra mais por ele, só pelos `cust_id` da lista. O docblock da migration ainda descreve a
+regra antiga ("comentário de agosto não polui setembro"); vale este parágrafo. Se um dia
+pedirem de volta "só deste mês", é filtro no front pelo `mes`, não tabela nova.
 
 ## 13. A gaveta da linha é uma célula `colSpan` — ela tem a largura da TABELA, não da tela (2026-09-29)
 

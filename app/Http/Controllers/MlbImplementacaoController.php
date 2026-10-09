@@ -61,6 +61,8 @@ class MlbImplementacaoController extends Controller
                 'publicacao'          => $impl->publicacao,
                 'decola'              => $impl->decola,
                 'central_promocao'    => $impl->central_promocao,
+                // Resposta do CLIENTE no link, abaixo da Planilha de Produtos (TKT-0010)
+                'jardinagem'          => $impl->querJardinagem(),
                 // Campos operacionais do bloco Logística
                 'contextos_logistica' => $impl->contextos_logistica,
                 'me1'                 => $impl->me1,
@@ -1068,6 +1070,13 @@ class MlbImplementacaoController extends Controller
         $dados = MlbImplementacao::mesclarItensPadrao($impl->dados ?? MlbImplementacao::dadosPadrao());
         abort_unless(isset($dados['itens'][$id]), 422);
 
+        // Opção de jardinagem/otimização abaixo da Planilha de Produtos (TKT-0010): grava
+        // sempre booleano, para o Painel e a ficha não dependerem do formato do envio.
+        $ehJardinagem = $id === 'planilha_produtos' && $campo === 'jardinagem';
+        if ($ehJardinagem) {
+            $valor = filter_var($valor, FILTER_VALIDATE_BOOLEAN);
+        }
+
         $dados['itens'][$id][$campo] = $valor;
 
         // Trava anti-check-vazio: o cliente não pode marcar "feito" sem ter
@@ -1140,6 +1149,12 @@ class MlbImplementacaoController extends Controller
             activity('implementacao')
                 ->withProperties(['empresa' => $impl->empresa->nome, 'anterior' => $anterior])
                 ->log('[Onboarding] Programa Decola marcado como "Verificar" — o cliente declarou adesão na implementação de "' . $impl->empresa->nome . '" (cliente)');
+        }
+
+        if ($ehJardinagem) {
+            activity('implementacao')
+                ->withProperties(['empresa' => $impl->empresa->nome, 'item' => $id, 'jardinagem' => $valor])
+                ->log('[Onboarding] Opção "quer jardinagem/otimização de anúncios" ' . ($valor ? 'marcada' : 'desmarcada') . ' na implementação de "' . $impl->empresa->nome . '" (cliente)');
         }
 
         // Log público (cliente preenchendo o checklist) — sem usuário autenticado

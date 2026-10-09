@@ -13,6 +13,7 @@ const ARQUIVOS = [
     'resources/js/Pages/Portal/EstruturaProdutoFicha.jsx',
     'resources/js/lib/fichaTecnica.js',
     'resources/js/lib/estoqueDoProduto.js',
+    'resources/js/lib/medidasDoProduto.js',
     ...readdirSync(PASTA).filter((f) => /\.(jsx|js)$/.test(f)).map((f) => `${PASTA}/${f}`),
 ];
 

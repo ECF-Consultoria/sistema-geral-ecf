@@ -19,6 +19,8 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
  * Os avisos são para o log do servidor (09/10/2026: a tela não os mostra mais).
  * Todo valor traz `origem => 'portal'`. Campo de várias opções guarda a 1ª opção
  * resolvida em `value_id`/`value_name`, todas em `values_multi`, e liga `revisar`.
+ * Número (`number`/`number_unit`) vai como o EDITOR grava: texto em `value_name` ("3", "60 kg"),
+ * sem `value_number`/`value_unit` — a tela só lê `value_name` (learnings publicador-ml §14).
  */
 final class PortalValorDeAtributo
 {
@@ -197,7 +199,8 @@ final class PortalValorDeAtributo
             return self::semValor("{$nomeCampo}: \"{$texto}\" não é um número; nada foi preenchido.");
         }
 
-        $valor = ['value_number' => (float) $limpo, 'origem' => 'portal', 'revisar' => false];
+        $numero = (float) $limpo;
+        $unidadeFinal = null;
 
         if ($def->valueType === 'number_unit' || $def->unidades !== []) {
             $unidade = trim((string) ($salvo['unidade'] ?? ''));
@@ -215,16 +218,45 @@ final class PortalValorDeAtributo
                 if ($convertido === null) {
                     return self::semValor("{$nomeCampo}: unidade \"{$unidade}\" não é aceita aqui; nada foi preenchido.");
                 }
-                [$valor['value_number'], $achada] = $convertido;
+                [$numero, $achada] = $convertido;
             }
             $achada ??= $def->unidadePadrao;
             if ($achada === null) {
                 return self::semValor("{$nomeCampo}: sem unidade e o atributo não tem unidade padrão; nada foi preenchido.");
             }
-            $valor['value_unit'] = $achada;
+            $unidadeFinal = $achada;
         }
 
-        return ['valor' => $valor, 'aviso' => null];
+        // Formato do EDITOR (09/10/2026, rascunho 9 da #459): o número vai como TEXTO em `value_name`
+        // ("60 kg", "3"), igual ao que `CampoAtributo`/`MedidasDoPacote` gravam; `value_number` e
+        // `value_unit` ficam vazios. O editor só lê `value_name` — com o número em `value_number`
+        // o campo aparecia VAZIO na tela, embora o payload (que lê os dois) o publicasse.
+        $texto = self::formatarNumero($numero);
+        if ($def->valueType === 'number_unit') {
+            $texto .= ' '.$unidadeFinal;
+        }
+
+        return ['valor' => ['value_id' => null, 'value_name' => $texto, 'origem' => 'portal', 'revisar' => false], 'aviso' => null];
+    }
+
+    /**
+     * O número no formato canônico do EDITOR ("60 kg", "3") para quem não é o Portal — o "Anunciar
+     * por IA" (`IaParaRascunhoService`), que recebe `value_number`/`value_unit` da IA. Mesmas regras:
+     * unidade aceita (sem caixa), convertida na mesma grandeza, ou a padrão; null = não dá para gravar.
+     */
+    public static function numeroNoFormatoDoEditor(AtributoClassificado $def, float $numero, ?string $unidade): ?string
+    {
+        $r = self::numero($def, ['unidade' => $unidade], self::formatarNumero($numero), $def->nome !== '' ? $def->nome : $def->id);
+
+        return $r['valor']['value_name'] ?? null;
+    }
+
+    /** 3.0 → "3", 2.50 → "2.5", 0.015 → "0.015": ponto decimal, sem zeros à toa (como `ValorAtributo` e o pacote). */
+    private static function formatarNumero(float $n): string
+    {
+        $texto = rtrim(rtrim(number_format($n, 4, '.', ''), '0'), '.');
+
+        return $texto === '-0' ? '0' : $texto;
     }
 
     /** Fator de cada unidade conhecida para a base da sua grandeza (comprimento em mm, massa em g). */

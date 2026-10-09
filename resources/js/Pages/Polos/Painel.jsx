@@ -39,10 +39,12 @@ import ModoTV from './components/ModoTV';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
-const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+const ORDEM_FASE = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 // 'Desistência' = saída por decisão do cliente. Terminal como Churn: mover pra cá tira a
 // empresa dos polos ativos, então passa pelo mesmo confirm da edição em massa.
-const FASES_TERMINAIS = ['Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+// 'Acompanhamento' (TKT-0005) = 30 dias de acompanhamento gratuito de empresa com problema.
+// Não é saída, mas também tira a empresa da meta e do escopo M1–M4 — por isso o mesmo confirm.
+const FASES_TERMINAIS = ['Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 
 // Escopo operacional do painel: só quem está EM OPERAÇÃO conta nos filtros/donuts/grade.
 // Fora ficam as fases que não são trabalho ativo — Churn, Encerrado, Aceite no Projeto,
@@ -101,7 +103,7 @@ const fmtPct = (n) => `${Number(n ?? 0).toFixed(0)}%`;
 const estagioKey = (e) => (e?.estagio && e.estagio !== '') ? e.estagio : SEM_ESTAGIO;
 
 // Cor do texto por Fase M — hierarquia rápida na grade.
-const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', 'Desistência': 'text-rose-300', Churn: 'text-red-300' };
+const COR_FASE = { 'Encaminhar Comercial': 'text-white/45', 'Aceite no Projeto': 'text-fuchsia-300', M0: 'text-violet-300', M1: 'text-sky-300', M2: 'text-amber-200', M3: 'text-amber-300', M4: 'text-emerald-300', Acompanhamento: 'text-cyan-300', Encerrado: 'text-white/40', 'Protocolo Churn': 'text-orange-300', 'Desistência': 'text-rose-300', Churn: 'text-red-300' };
 const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 
 // Tag de fase (pílula) exibida na coluna Empresa em TODAS as lentes. A coluna "Fase" só
@@ -117,6 +119,7 @@ const BADGE_FASE = {
     M3:                     'text-amber-100 bg-amber-400/10 border-amber-400/30',
     M4:                     'text-emerald-200 bg-emerald-500/10 border-emerald-500/25',
     Fechamento:             'text-teal-200 bg-teal-500/10 border-teal-500/25',
+    Acompanhamento:         'text-cyan-200 bg-cyan-500/10 border-cyan-500/25',
     Encerrado:              'text-white/45 bg-white/[0.05] border-white/10',
     'Protocolo Churn':      'text-orange-200 bg-orange-500/10 border-orange-500/25',
     'Desistência':          'text-rose-200 bg-rose-500/10 border-rose-500/25',
@@ -149,7 +152,7 @@ function corValor(v) {
 
 // Classificadores de "tom" p/ os indicadores acionáveis do OperacoesPanel (reusam as listas acima).
 const toneValor = (v) => (VAL_POS.includes(v) ? 'green' : VAL_PROG.includes(v) ? 'amber' : VAL_NEG.includes(v) ? 'red' : 'neutral');
-const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Encerrado: 'neutral', 'Protocolo Churn': 'red', 'Desistência': 'red', Churn: 'red' };
+const TONE_FASE = { 'Encaminhar Comercial': 'neutral', 'Aceite no Projeto': 'violet', M0: 'violet', M1: 'sky', M2: 'amber', M3: 'amber', M4: 'green', Acompanhamento: 'sky', Encerrado: 'neutral', 'Protocolo Churn': 'red', 'Desistência': 'red', Churn: 'red' };
 const toneFase = (f) => TONE_FASE[f] ?? 'neutral';
 
 // Coluna do indicador → lente onde ela é editável (p/ navegar ao clicar). null = visível em todas.
@@ -824,6 +827,9 @@ export default function PolosPainel({
             // Texto livre — não há dicionário de rótulo curto. Filtrável pelo mesmo motivo
             // do link_whatsapp: o uso real é isolar "(Sem observação)" e ler quem escreveu.
             obs_publicacao:      { key: 'obs_publicacao', label: 'Obs. publicação', accessor: (e) => e.obs_publicacao, format: (v) => (v === VAZIO ? '(Sem observação)' : encurtaTexto(v)) },
+            // Opção "jardinagem/otimização de anúncios" marcada pelo cliente abaixo da Planilha
+            // de Produtos (TKT-0010). 'Sim' ou vazio — desmarcado não quer dizer "não quer".
+            jardinagem:          { key: 'jardinagem', label: 'Jardinagem', accessor: (e) => e.jardinagem, format: (v) => (v === VAZIO ? '(Não marcou)' : v) },
             places:              { key: 'places', label: 'Places', accessor: (e) => e.places },
             erp:                 { key: 'erp', label: 'ERP', accessor: (e) => e.erp },
         };
@@ -1470,7 +1476,7 @@ export default function PolosPainel({
                     </div>
                     <button type="button" onClick={() => setSoEscopo((v) => !v)}
                         title={soEscopo
-                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Desistência, Protocolo Churn, Encerrado, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
+                            ? `Mostrando só M1–M4. ${nForaDoEscopo} empresa(s) fora do escopo (Churn, Desistência, Protocolo Churn, Encerrado, Acompanhamento, Aceite no Projeto, M0, Fechamento, sem fase) estão ocultas — clique para incluir.`
                             : 'Mostrando todas as fases, inclusive Churn/Encerrado — clique para voltar ao escopo M1–M4.'}
                         className={cn('inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition shrink-0',
                             soEscopo ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/15'
@@ -1773,7 +1779,7 @@ const COLS_POR_LENTE = {
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
         'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
-        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao',
+        'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao', 'jardinagem',
         'contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
@@ -1781,7 +1787,8 @@ const COLS_POR_LENTE = {
     acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
     // 'obs_publicacao' fecha o bloco: é a resposta do CLIENTE sobre a publicação, ao lado
     // das colunas que a equipe preenche sobre o mesmo assunto.
-    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao'],
+    // 'jardinagem' também é resposta do cliente, marcada logo abaixo da Planilha de Produtos.
+    produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao', 'jardinagem'],
     // 'produtos_perfil' vive aqui, ao lado do ME1: é a resposta do cliente que decide o ME1.
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
@@ -2075,6 +2082,8 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
         // demais respostas dele. A célula mostra o começo truncado; clicar abre o painel
         // com o texto inteiro (ver CelObs).
         obs_publicacao: <td className={td}><CelObs valor={e.obs_publicacao} empresa={e.nome} /></td>,
+        // Opção de jardinagem/otimização marcada pelo CLIENTE no link — somente leitura.
+        jardinagem: <td className={td}><CelResposta valor={e.jardinagem} /></td>,
 
         // ── Logística ──
         contextos_logistica: <td className={td}><div className="min-w-[240px]"><EditText e={e} campo="contextos_logistica" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="anotação…" wide /></div></td>,

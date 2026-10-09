@@ -134,8 +134,10 @@ class PortalCamposDoEditorNoRascunhoTest extends TestCase
         $resumo = app(PortalParaRascunhoService::class)->preencher($pub);
         $a = $this->snap($pub)->atributos;
 
-        $this->assertSame(48.5, (float) $a['SEAT_WIDTH']['value_number']);
-        $this->assertSame('cm', $a['SEAT_WIDTH']['value_unit']);
+        // No formato do editor (09/10/2026): o número com a unidade, como texto em `value_name`.
+        $this->assertSame('48.5 cm', $a['SEAT_WIDTH']['value_name']);
+        $this->assertArrayNotHasKey('value_number', $a['SEAT_WIDTH']);
+        $this->assertArrayNotHasKey('value_unit', $a['SEAT_WIDTH']);
         $this->assertSame('portal', $a['SEAT_WIDTH']['origem']);
         $this->assertSame('10201909', $a['LUMBAR_SUPPORT_TYPE']['value_id']);
         $this->assertSame('242084', $a['IS_KIT']['value_id']);

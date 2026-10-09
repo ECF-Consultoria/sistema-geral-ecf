@@ -160,6 +160,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->middleware('throttle:20,1,publicador.palavras-ia')->name('palavras-ia');
             Route::get('/palavras-ia/{alvo}', [MlbPublicadorController::class, 'palavrasIa'])
                 ->middleware('throttle:240,1,publicador.palavras-ia.status')->name('palavras-ia.status');
+            // 09/10/2026 — sinal de "editor aberto": o preparo pela IA (salvar no Portal) não escreve por trás da tela.
+            Route::post('/presenca', [MlbPublicadorController::class, 'presenca'])
+                ->middleware('throttle:30,1,publicador.presenca')->name('presenca');
             // Fase 172 — descrição do anúncio pelo MAG T8 a partir da descrição do cliente (D-09/D-11).
             Route::post('/descricao-ia', [MlbPublicadorDescricaoController::class, 'pedir'])
                 ->middleware('throttle:20,1,publicador.descricao-ia')->name('descricao-ia');

@@ -10,7 +10,7 @@ import { MlOauthBadge } from '@/Pages/Mlb/components/MlOauthStatus';
 
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
-const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
+const ONB_FASE_OPCOES     = ['Encaminhar Comercial', 'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Acompanhamento', 'Encerrado', 'Protocolo Churn', 'Desistência', 'Churn'];
 const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Falta Aceitar', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
@@ -1050,6 +1050,14 @@ export default function OnboardingFicha({ impl, empresa, opcoes }) {
                                 {impl.central_promocao !== null && impl.central_promocao !== undefined && (
                                     <span className="text-white/30 text-[11px] ml-1">Central de Promoção</span>
                                 )}
+                            </div>
+                            {/* Opção que o CLIENTE marca no link, abaixo da Planilha de Produtos
+                                (TKT-0010). Somente leitura: quem responde é o cliente. */}
+                            <div className="text-[12px] text-white/40">
+                                Jardinagem: {impl.jardinagem
+                                    ? <span className="text-ecf-yellow">quer otimização dos anúncios</span>
+                                    : <span className="text-white/20">não marcou</span>
+                                }
                             </div>
                         </div>
                     </div>

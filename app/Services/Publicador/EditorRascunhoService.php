@@ -15,6 +15,7 @@ use App\Services\Portal\Estrutura\EstruturaConjunto;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
+use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RascunhoSnapshot;
@@ -597,6 +598,14 @@ class EditorRascunhoService
             'ja_publicados' => $jaPublicados,
             // Fase 176 (D-09): o que o cliente escreveu no Portal, lido ao vivo — insumo da IA de descrição.
             'portal' => ['descricao_cliente' => $this->leitor->descricaoDoCliente($r->produto)],
+            // 09/10/2026: o que o preparo pela IA (salvar no Portal) escreveu e AINDA está no campo — o selo
+            // discreto "gerado pela IA a partir da ficha do Portal". Some quando a equipe edita o campo.
+            'preparo_ia' => MemoriaDoPreparoIa::paraTela(
+                (array) $r->step_state,
+                collect($digitado->alvos)->mapWithKeys(fn (Alvo $a) => [$a->listingTypeId => $a->titulo])->all(),
+                $digitado->atributos['MODEL'] ?? null,
+                $r->descricao,
+            ),
         ];
     }
 

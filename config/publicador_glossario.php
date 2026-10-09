@@ -121,7 +121,10 @@ return [
         'comprimento' => 'Comprimento da caixa com o produto embalado, em centímetros.',
         'largura' => 'Largura da caixa com o produto embalado, em centímetros.',
         'altura' => 'Altura da caixa com o produto embalado, em centímetros.',
-        'peso' => 'Peso da caixa com o produto embalado, em quilos.',
+        'peso' => 'Peso da caixa com o produto embalado, em quilos. É com ele que calculamos o frete e a forma de envio, por isso é pedido sempre, mesmo que o produto não tenha campo de peso.',
+        // Bloco "Medidas do produto (fora da caixa)" e a caixa "Usar as mesmas medidas…" do volume (09/10/2026).
+        'medidas_produto' => 'As medidas e o peso do produto sozinho, montado e sem caixa nem embalagem. São diferentes das do volume, que é a caixa com o produto dentro.',
+        'mesmas_medidas' => 'Marque quando a caixa tem as mesmas medidas do produto fora dela. Enquanto marcada, mudar as medidas do produto muda as do volume. O peso do volume continua obrigatório.',
         'descricao' => 'Texto livre sobre o produto: para que serve, os diferenciais, os cuidados e o que acompanha.',
         // Topo da ficha: com uma variação é o estoque dela; com várias, a soma (só leitura).
         'estoque_produto' => 'Quantas unidades você tem do produto. Com uma variação, informe aqui; com várias, é a soma do estoque de cada variação. Vazio é não informado; 0 é sem estoque.',

@@ -137,14 +137,16 @@ class AnaliseAnuncioService
     /**
      * Um título sob o ruleset ECF montado com os termos mais buscados que têm
      * a ver com o produto. `escolhidos` = os que a pessoa marcou na tela: entram
-     * na frente dos demais.
+     * na frente dos demais. `fatos` (09/10/2026) = o bloco "FATOS DO PRODUTO" de
+     * `FatosDoProduto::paraPrompt()`, o mesmo do Modelo: o título só usa termo que
+     * os fatos confirmam. Vazio = o prompt de antes.
      *
      * @param  list<string>  $termos
      * @param  list<string>  $escolhidos
      */
-    public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo): array
+    public function tituloPorTermos(string $produto, string $caminhoCategoria, array $termos, array $escolhidos, int $maximo, string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo), 2500);
+        $r = $this->chamar($this->promptTituloPorTermos($produto, $caminhoCategoria, $termos, $escolhidos, $maximo, $fatos), 2500);
 
         return ['dados' => trim((string) ($r['json']['titulo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -522,21 +524,24 @@ class AnaliseAnuncioService
         TXT;
     }
 
-    private function promptTituloPorTermos(string $produto, string $caminho, array $termos, array $escolhidos, int $maximo): string
+    private function promptTituloPorTermos(string $produto, string $caminho, array $termos, array $escolhidos, int $maximo, string $fatos = ''): string
     {
         $lista = $this->listaDeTermos($termos);
         $marcados = $escolhidos === [] ? '' : "\n\nA equipe marcou estes termos como os mais importantes — priorize-os:\n- ".implode("\n- ", $escolhidos);
         $minimo = max(1, $maximo - 2);
+        // Mesmo bloco do Modelo (09/10/2026): o ML diz o que é BUSCADO, os fatos dizem o que o produto É.
+        $blocoFatos = $fatos === '' ? '' : "\n\nFATOS DO PRODUTO (use só o que é verdade segundo estes fatos):\n{$fatos}";
+        $regraFatos = $fatos === '' ? '' : "\nNunca cite material, tamanho, público, formato ou característica que os fatos não confirmem.";
 
         return <<<TXT
         Gere UM título para o anúncio do produto **{$produto}** no Mercado Livre.
-        Categoria: {$caminho}
+        Categoria: {$caminho}{$blocoFatos}
 
         Termos mais buscados nesta categoria (do mais buscado para o menos):
         {$lista}{$marcados}
 
         FILTRO DE COERÊNCIA: use só os termos que descrevem ESTE produto. Descarte
-        termo de outro produto, outro uso, outro público, marca de concorrente ou loja.
+        termo de outro produto, outro uso, outro público, marca de concorrente ou loja.{$regraFatos}
 
         REGRAS DOS TÍTULOS (ruleset ECF):
         1. SEM PREPOSIÇÕES: proibido usar de, para, com, do, da, e, em.

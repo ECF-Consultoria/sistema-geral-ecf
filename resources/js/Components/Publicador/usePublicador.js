@@ -40,6 +40,8 @@ const CONFIRMA_SAIR = 'Há alterações que não foram salvas. Sair mesmo assim 
 const INTERVALO_ANDAMENTO = 2500;
 const LIMITE_ANDAMENTO = 4 * 60 * 1000;
 const LIMITE_PALAVRAS_IA = 5 * 60 * 1000;
+// Sinal de editor aberto (09/10/2026): o preparo pela IA (salvar no Portal) não escreve por trás da tela.
+const SINAL_PRESENCA = 60 * 1000;
 
 const rota = criarRota('mlb.anuncios.publicador', 'produto');
 
@@ -314,6 +316,18 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
             }
         };
     }, [produtoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Editor aberto (09/10/2026) ──
+    // Um sinal por minuto enquanto a aba está visível. Com ele valendo, o preparo pela IA (o cliente
+    // salvou no Portal) espera e tenta de novo, em vez de gravar o rascunho por trás de quem edita.
+    useEffect(() => {
+        const t = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            axios.post(rota('presenca', produtoId)).catch(() => {});
+        }, SINAL_PRESENCA);
+
+        return () => clearInterval(t);
+    }, [produtoId]);
 
     // ── IA gravando no servidor (CR-F02) ──
     // Saindo da pausa sem releitura (análise sumiu, prazo estourado): o pendente volta a ser salvo.

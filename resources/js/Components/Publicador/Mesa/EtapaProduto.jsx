@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import { NOME_TIPO } from '../apoio';
+import { mostraSeloDaIa } from '../derivados.js';
 import { juntarTermo, termoNoTitulo } from '../ferramentas';
-import { CAMPO, Campo, ErroDoCampo, INVALIDO, LINK, Secao, useErroDoCampo } from './comum';
+import { CAMPO, Campo, ErroDoCampo, GeradoPelaIa, INVALIDO, LINK, Secao, useErroDoCampo } from './comum';
 import TermosMaisBuscados from './TermosMaisBuscados';
 import { cn } from '@/lib/utils';
 
@@ -164,6 +165,9 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
     const erro = useErroDoCampo((x) => x.etapa === 'E7' && x.alvo === lt, { vazio: ! titulo && ! a.titulo_efetivo });
     // A IA prioriza os termos que a pessoa já pôs no título.
     const escolhidos = termos.filter((t) => termoNoTitulo(titulo || a.titulo_efetivo, t));
+    // Preparo pela IA (09/10): o título que ela escreveu sozinha e ninguém mudou ainda.
+    const doServidor = m.estado.alvos?.find((x) => x.listing_type_id === lt)?.titulo ?? '';
+    const seloIa = mostraSeloDaIa(m.estado.preparo_ia?.titulos?.[lt], titulo, doServidor);
 
     const mudar = (patch) => m.mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, ...patch } : x)) }));
 
@@ -188,6 +192,7 @@ function CampoTitulo({ m, a, outro, maxTitulo, termos }) {
                     onChange={(e) => mudar({ titulo: e.target.value })} aria-invalid={!! erro || undefined}
                     className={cn(CAMPO, (erro || tamanho > maxTitulo) && INVALIDO)} data-titulo={lt} />
             </Campo>
+            {seloIa && <GeradoPelaIa campo={`titulo-${lt}`} />}
             <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
                 {! m.disabled && (
                     <button type="button" onClick={() => m.pedirPalavrasIa(`titulo_${lt}`, { escolhidos })} disabled={rodando} className={LINK} data-acao={`titulo-ia-${lt}`}>

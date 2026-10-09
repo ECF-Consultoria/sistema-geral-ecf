@@ -102,6 +102,14 @@ export function Secao({ id, titulo, descricao = null, acao = null, children, cla
     );
 }
 
+/**
+ * Selo discreto do preparo pela IA (09/10/2026): o campo ainda tem o que a IA escreveu sozinha a
+ * partir da ficha do Portal. Some quando a pessoa começa a editar (quem decide é `mostraSeloDaIa`).
+ */
+export function GeradoPelaIa({ campo }) {
+    return <p className="mt-1.5 text-[13px] font-normal text-white/50" data-gerado-pela-ia={campo}>Gerado pela IA a partir da ficha do Portal.</p>;
+}
+
 /** Subtítulo dentro de uma seção (ex.: "Características principais"). */
 export function Subtitulo({ children, descricao = null }) {
     return (
