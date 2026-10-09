@@ -114,12 +114,53 @@ test('Tela A — troca de programa, filtro, busca e página por router.get na ro
     assert.match(fonte, /pagina/);
 });
 
-test('Tela A — a linha abre a tela B por clique e por Enter (focável)', () => {
+test('Tela A — a linha abre a Visão geral por clique e por Enter (focável)', () => {
     const fonte = lerSemComentarios(PAGINA_A);
-    assert.match(fonte, /mlb\.anuncios\.publicador\.produtos/);
+    // Fase 173, plano 03: abrir uma empresa leva à Visão geral, não mais
+    // direto a Produtos — a URL de Produtos não muda, só deixa de ser o
+    // destino do clique nesta tela.
+    assert.match(fonte, /mlb\.anuncios\.publicador\.visao-geral/);
+    assert.doesNotMatch(fonte, /mlb\.anuncios\.publicador\.produtos/);
     assert.match(fonte, /tabIndex=\{0\}/);
     assert.match(fonte, /onKeyDown/);
     assert.match(fonte, /'Enter'/);
+});
+
+test('Tela A — abrirConta é a ÚNICA função de abertura, usada pela linha e pelo botão "Publicar →"', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    const ocorrencias = fonte.match(/abrirConta\(/g) ?? [];
+    // 3 chamadas: onClick da linha, onKeyDown (Enter) da linha e onClick do botão.
+    assert.equal(ocorrencias.length, 3, `esperado 3 ocorrências de abrirConta(, achou ${ocorrencias.length}`);
+    assert.doesNotMatch(fonte, /abrirProdutos/);
+});
+
+test('Tela A — grava em localStorage ANTES de navegar, tudo em try/catch', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.match(fonte, /publicador\.recentes\.\$\{userId\}/);
+    assert.match(fonte, /window\.localStorage\.getItem/);
+    assert.match(fonte, /window\.localStorage\.setItem/);
+    // lerRecentes e gravarRecente: duas funções, cada uma com seu próprio
+    // try/catch — nenhuma leitura/escrita de localStorage fica desprotegida.
+    const tentativas = fonte.match(/\btry\s*\{/g) ?? [];
+    assert.ok(tentativas.length >= 2, `esperado pelo menos 2 blocos try, achou ${tentativas.length}`);
+    assert.match(fonte, /catch\s*\{\s*return \[\];?\s*\}/);
+});
+
+test('Tela A — Recentes: até 4, sem duplicar, mais recente primeiro, nunca um estado vazio dedicado', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.match(fonte, /MAX_RECENTES = 4/);
+    assert.match(fonte, /slice\(0, MAX_RECENTES\)/);
+    // dedup: remove a entrada antiga da MESMA chave antes de colocar a nova no topo (índice 0)
+    assert.match(fonte, /filter\(\(r\) => r\?\.chave !== item\.chave\)/);
+    assert.match(fonte, /\[item, \.\.\.semDuplicata\]/);
+    // renderização condicional — sem "Nenhum recente ainda" (não é um estado vazio pedido pela spec)
+    assert.match(fonte, /recentes\.length > 0 &&/);
+    assert.doesNotMatch(fonte, /Nenhum recente ainda/);
+});
+
+test('Tela A — item de Recentes não guarda token (T-173-07, sem dado sensível)', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
+    assert.match(fonte, /const item = \{ chave: e\.chave, nome: e\.nome, identificador: e\.identificador, programa: e\.programa \?\? programa \};/);
 });
 
 test('Tela A — sem itens inventados do Stitch e sem linha avermelhada', () => {
@@ -203,4 +244,18 @@ test('Tela B — nenhuma linha avermelhada', () => {
     const abertura = fonte.match(/'h-14[^']*'/);
     assert.ok(abertura, 'linha h-14 não encontrada');
     assert.doesNotMatch(abertura[0], /bg-red|border-red/);
+});
+
+// Fase 173, plano 06: link ?filtro=X vindo da Visão geral precisa pré-selecionar
+// o filtro — mesmo padrão `ABA_INICIAL()` já usado por Alavancas.jsx (leitura
+// ÚNICA na montagem, validada contra a whitelist, nunca sincronizada de volta
+// pra URL ao trocar à mão).
+test('Tela B — filtroInicial() lê ?filtro= da querystring, validado contra CHAVES_DO_FILTRO', () => {
+    const fonte = lerSemComentarios(PAGINA_B);
+    assert.match(fonte, /function filtroInicial\(\)/);
+    assert.match(fonte, /new URLSearchParams\(window\.location\.search\)\.get\('filtro'\)/);
+    assert.match(fonte, /Object\.prototype\.hasOwnProperty\.call\(CHAVES_DO_FILTRO, pedido\)/);
+    assert.match(fonte, /useState\(filtroInicial\)/);
+    // Nunca sincroniza de volta pra URL ao trocar o filtro à mão.
+    assert.doesNotMatch(fonte, /history\.(push|replace)State|window\.location\.search\s*=/);
 });

@@ -13,6 +13,7 @@ use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -210,6 +211,40 @@ class MlbPublicadorProdutosTest extends TestCase
         $this->assertSame(2, $c['publicados']);
         $this->assertSame(1, $c['com_problema']);
         $this->assertSame($c['todos'], $c['rascunho'] + $c['conferidos'] + $c['publicados'] + $c['com_problema']);
+    }
+
+    /**
+     * 173-01 Task 1: `ProgramasPublicadorService::contagemProdutos()` é a MESMA fonte de
+     * verdade usada por `produtos()` — teste de unidade sobre o método do service, sem
+     * passar pela tela, cobrindo `sem_oferta` (que Produtos.jsx não consome hoje).
+     */
+    public function test_contagem_produtos_do_service_classifica_por_status_e_sem_oferta(): void
+    {
+        $service = app(ProgramasPublicadorService::class);
+
+        $this->assertSame(
+            ['todos' => 0, 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0],
+            $service->contagemProdutos([]),
+            'array vazio devolve todas as chaves zeradas, nunca ausentes'
+        );
+
+        $produtos = [
+            ['status' => ['chave' => 'rascunho'], 'oferta_id' => null],
+            ['status' => ['chave' => 'pronto'], 'oferta_id' => 10],
+            ['status' => ['chave' => 'publicado'], 'oferta_id' => 11],
+            ['status' => ['chave' => 'parcial'], 'oferta_id' => null],
+            ['status' => ['chave' => 'erro'], 'oferta_id' => 12],
+            ['status' => ['chave' => ''], 'oferta_id' => null], // default = rascunho (chave desconhecida)
+        ];
+
+        $c = $service->contagemProdutos($produtos);
+
+        $this->assertSame(6, $c['todos']);
+        $this->assertSame(2, $c['rascunho']);
+        $this->assertSame(1, $c['conferidos']);
+        $this->assertSame(2, $c['publicados']);
+        $this->assertSame(1, $c['com_problema']);
+        $this->assertSame(3, $c['sem_oferta']);
     }
 
     public function test_criar_produto_grava_ancoras_do_servidor_e_devolve_url(): void

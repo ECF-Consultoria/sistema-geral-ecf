@@ -27,6 +27,15 @@ import { linkAnuncioMl, rotuloTier, precoBRL, dataPublicacao } from '@/Pages/Mlb
 
 // ─── Card de um anúncio publicado (usado solto e dentro de um lote expandido) ───
 function CardAnuncio({ a, clonando, onSemelhante }) {
+    // Fase 173-05: fail-safe — só habilita quando pode_duplicar vier EXPLICITAMENTE
+    // true (nunca por omissão/undefined, ex. dado antigo em cache). Hoje todo item
+    // do Histórico vem do editor novo (pub_publicacoes), que ainda não tem rotina
+    // de clonar um PubRascunho — por isso o botão continua VISÍVEL, mas desabilitado
+    // com explicação, nunca escondido (ver 173-05-PLAN.md).
+    const podeDuplicar = a.pode_duplicar === true;
+    const estaClonando = clonando === a.id;
+    const desabilitadoPorFonte = !estaClonando && !podeDuplicar;
+
     return (
         <div className="flex flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-ecf-card/60">
             {/* Capa (1ª foto do payload) */}
@@ -58,15 +67,18 @@ function CardAnuncio({ a, clonando, onSemelhante }) {
                     <button
                         type="button"
                         onClick={() => onSemelhante(a)}
-                        disabled={clonando === a.id}
+                        disabled={estaClonando || !podeDuplicar}
+                        title={desabilitadoPorFonte ? 'Ainda não é possível duplicar anúncios publicados pelo editor novo.' : undefined}
                         className={cn(
                             'inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] transition',
-                            clonando === a.id
+                            estaClonando
                                 ? 'cursor-wait border-white/[0.06] text-white/30'
-                                : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
+                                : desabilitadoPorFonte
+                                    ? 'cursor-not-allowed border-white/[0.06] text-white/25'
+                                    : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
                         )}
                     >
-                        {clonando === a.id
+                        {estaClonando
                             ? <><Loader2 className="h-3 w-3 animate-spin" /> Duplicando…</>
                             : <><CopyPlus className="h-3 w-3" /> Anunciar semelhante</>}
                     </button>
@@ -105,6 +117,13 @@ function GradeCards({ itens, clonando, onSemelhante }) {
 function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante, clonandoLote, onSemelhanteLote }) {
     const capa = grupo.itens.find((i) => i.foto)?.foto ?? null;
     const esteClonando = clonandoLote === grupo.chave;
+    // Fase 173-05: desabilita o "em massa" só quando NENHUM item do lote pode
+    // duplicar (fail-safe, mesma regra do CardAnuncio). Hoje é sempre o caso —
+    // documentado como lacuna conhecida no SUMMARY: um lote MISTO (alguns itens
+    // do assistente antigo, outros do editor novo) deixaria o botão ativo e a
+    // ação de massa precisaria filtrar os ids antes de clonar; não existe hoje
+    // nenhum lote misto (o Histórico é 100% da fonte nova).
+    const loteSemDuplicar = grupo.itens.every((i) => i.pode_duplicar !== true);
 
     return (
         <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card/40">
@@ -152,13 +171,21 @@ function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante, clonandoLo
                 <button
                     type="button"
                     onClick={() => onSemelhanteLote(grupo)}
-                    disabled={esteClonando}
-                    title="Clona o lote inteiro e abre a grade em massa já preenchida"
+                    disabled={esteClonando || loteSemDuplicar}
+                    title={
+                        esteClonando
+                            ? undefined
+                            : loteSemDuplicar
+                                ? 'Ainda não é possível duplicar anúncios publicados pelo editor novo.'
+                                : 'Clona o lote inteiro e abre a grade em massa já preenchida'
+                    }
                     className={cn(
                         'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] transition',
                         esteClonando
                             ? 'cursor-wait border-white/[0.06] text-white/30'
-                            : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
+                            : loteSemDuplicar
+                                ? 'cursor-not-allowed border-white/[0.06] text-white/25'
+                                : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
                     )}
                 >
                     {esteClonando

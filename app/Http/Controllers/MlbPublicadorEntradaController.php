@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
+use App\Models\CreativeIdentidade;
 use App\Models\MlAnuncioRascunho;
 use App\Models\PubProduto;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
+use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Services\Publicador\ResumoDoSincronizar;
 use App\Support\Publicador\ContasLiberadas;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -22,6 +26,9 @@ class MlbPublicadorEntradaController extends Controller
 {
     private const POR_PAGINA = 50;
     private const FILTROS = ['todos', 'prontos', 'atencao', 'nunca'];
+    private const BUSCA_LIMITE = 20;
+
+    private const PROGRAMA_ROTULO = ['polos' => 'Polos', 'incubadora' => 'Incubadora', 'gestao' => 'Gestão'];
 
     public function __construct(private ProgramasPublicadorService $programas) {}
 
@@ -85,6 +92,41 @@ class MlbPublicadorEntradaController extends Controller
         ]);
     }
 
+    /**
+     * JSON do seletor "Trocar empresa" (D-06 do handoff): busca entre TODAS as contas dos
+     * 3 programas, reusando `ProgramasPublicadorService::empresas()` já usado por `index()` —
+     * mesmo filtro por nome/identificador (`mb_stripos`), nunca uma query nova. Junta as 3
+     * coleções ANTES de filtrar (uma chamada por programa, nunca uma por letra digitada).
+     * NUNCA devolve token de acesso/refresh — só os campos que o popover precisa.
+     */
+    public function buscaEmpresas(Request $request): JsonResponse
+    {
+        $q = mb_substr(trim((string) $request->query('q', '')), 0, 120);
+        if ($q === '') {
+            return response()->json([]);
+        }
+
+        $todas = collect(ProgramasPublicadorService::PROGRAMAS)
+            ->flatMap(fn (string $programa) => $this->programas->empresas($programa)
+                ->map(fn (array $l) => $l + ['programa' => $programa, 'programa_rotulo' => self::PROGRAMA_ROTULO[$programa]]));
+
+        $achadas = $todas
+            ->filter(fn (array $l) => mb_stripos($l['nome'], $q) !== false || mb_stripos($l['identificador'], $q) !== false)
+            ->take(self::BUSCA_LIMITE)
+            ->map(fn (array $l) => [
+                'chave' => $l['chave'],
+                'nome' => $l['nome'],
+                'identificador' => $l['identificador'],
+                'company_id' => $l['company_id'],
+                'programa' => $l['programa'],
+                'programa_rotulo' => $l['programa_rotulo'],
+                'token' => $l['token'],
+            ])
+            ->values();
+
+        return response()->json($achadas);
+    }
+
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */
     public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao)
     {
@@ -98,15 +140,7 @@ class MlbPublicadorEntradaController extends Controller
         $empresa = $this->programas->empresaParaTela($alvo);
         $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
 
-        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0];
-        foreach ($produtos as $p) {
-            match ($p['status']['chave']) {
-                'pronto' => $contagens['conferidos']++,
-                'publicado', 'parcial' => $contagens['publicados']++,
-                'erro' => $contagens['com_problema']++,
-                default => $contagens['rascunho']++,
-            };
-        }
+        $contagens = $this->programas->contagemProdutos($produtos);
 
         // D22: o assistente antigo fica acessível só por este rodapé, sem aba nem card.
         $companyId = $alvo['company']?->id;
@@ -258,6 +292,76 @@ class MlbPublicadorEntradaController extends Controller
             // do Creative Engine; NÃO exige Company (a loja vem da conta do produto). Só esconde o
             // botão: toda ação é conferida de novo no servidor.
             'criativos_ia' => $creativeAtivo->ativa() && $creativePermissao->podeGerar($request->user()),
+        ]);
+    }
+
+    /**
+     * Fase 173, Plano 04 (VISG-03..08) — aba inicial da conta: indicadores, "O que
+     * fazer agora", situação dos produtos, últimas publicações, integrações, resumo
+     * de identidade e quem publicou. ZERO chamada ao Mercado Livre neste request —
+     * só leitura do que já está gravado (design_handoff_publicador/ETAPA-2-visao-geral.md).
+     */
+    public function visaoGeral(string $conta, AcervoTriagemService $acervoTriagem, PainelVisaoGeralService $painel)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        if ($alvo['chave'] !== $conta) {
+            return redirect()->route('mlb.anuncios.publicador.visao-geral', ['conta' => $alvo['chave']]);
+        }
+
+        $empresa = $this->programas->empresaParaTela($alvo);
+        $produtos = $this->programas->produtosParaTela($alvo['mlb_empresa'], $alvo['company']);
+        $contagemProdutos = $this->programas->contagemProdutos($produtos);
+        $company = $alvo['company'];
+
+        // D23: sem Company não há acervo pra triar/defasar — agregados vazios, nunca erro.
+        $triagem = $company !== null ? $acervoTriagem->triagem($company, '', 'acionaveis') : ['total' => 0, 'chips' => [], 'nao_avaliado' => 0];
+        $defasagem = $company !== null ? $acervoTriagem->defasagem($company) : ['coletado_em' => null, 'horas' => null, 'defasado' => false, 'nunca_coletado' => false, 'motivo' => null];
+        $situacaoPortal = $this->programas->situacaoPortal($company);
+        $publicados = $painel->publicadosRecentes($alvo);
+
+        return Inertia::render('Mlb/Publicador/VisaoGeral', [
+            'empresa' => $empresa,
+            'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $company)),
+            'indicadores' => $painel->indicadores($alvo, $contagemProdutos),
+            'oQueFazerAgora' => $painel->oQueFazerAgora($alvo, $empresa, $contagemProdutos, $triagem, $defasagem, $situacaoPortal, $produtos),
+            'situacaoProdutos' => $painel->situacaoProdutos($contagemProdutos),
+            'ultimasPublicacoes' => $painel->ultimasPublicacoes($alvo),
+            'integracoes' => $painel->integracoes($alvo, $empresa),
+            'identidadeResumo' => $painel->identidadeResumo($alvo),
+            'quemPublicou' => [
+                'equipe' => $publicados['equipe'],
+                'cliente' => $publicados['cliente'],
+                'origem_antiga' => $publicados['origem_antiga'],
+            ],
+            'abas' => ['company_id' => $company?->id],
+        ]);
+    }
+
+    /**
+     * Fase 173, Plano 04 (CONF-02/03) — "Configurações da conta": identidade visual
+     * (texto cru, sem resumo), conexões (somente leitura) e programa/responsável.
+     * Nada novo no banco.
+     */
+    public function configuracoes(string $conta, PainelVisaoGeralService $painel)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        if ($alvo['chave'] !== $conta) {
+            return redirect()->route('mlb.anuncios.publicador.configuracoes', ['conta' => $alvo['chave']]);
+        }
+
+        $empresa = $this->programas->empresaParaTela($alvo);
+        $identidade = CreativeIdentidade::paraAncora($alvo['company']?->id, $alvo['mlb_empresa']?->id);
+
+        return Inertia::render('Mlb/Publicador/Configuracoes', [
+            'empresa' => $empresa,
+            'identidade' => $identidade?->texto,
+            'conexoes' => $painel->integracoes($alvo, $empresa),
+            'programa' => $alvo['programa'],
+            'responsavel' => $alvo['mlb_empresa']?->responsavel?->name,
         ]);
     }
 }

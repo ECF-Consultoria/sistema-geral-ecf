@@ -16,7 +16,9 @@ use App\Models\MlAnuncioIaAnalise;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PubImagem;
 use App\Models\PubProduto;
+use App\Models\PubPublicacaoItem;
 use App\Models\User;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativeKitDespachante;
@@ -24,6 +26,7 @@ use App\Services\Creative\CreativeKitPublicacao;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
+use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -258,14 +261,20 @@ class MlbAnuncioController extends Controller
     /**
      * HIST-86-1/HIST-86-3 — Histórico: os anúncios já PUBLICADOS da empresa.
      *
-     * Por que precisa de consulta própria: `massa()` e `index()` filtram
-     * `whereIn([rascunho, validado, erro, publicando])` — 'publicado' fica de fora
-     * de propósito (a grade edita o que ainda não foi), então o anúncio some da
-     * tela justamente quando dá certo. Esta é a consulta que o traz de volta, e é
-     * a base do "Anunciar semelhante".
+     * Fase 173-05: fonte trocada de `ml_anuncio_rascunhos` (assistente antigo)
+     * para `pub_publicacoes`/`pub_publicacao_itens` (editor novo, Fase 134/164).
+     * Medido em produção: o assistente antigo tem ZERO publicações em toda conta
+     * de teste — esta aba ficava vazia enquanto as publicações reais (editor
+     * novo) não apareciam em lugar nenhum. Decisão do usuário: "Histórico agora,
+     * descontinuar depois" (a descontinuação do resto do assistente antigo — Em
+     * massa, wizard, Meus Anúncios — é etapa própria e futura).
      *
-     * Retorna item enxuto (sem `payload`): a listagem só precisa mostrar; quem
-     * clona é o `duplicarComoTemplate`, que lê o payload direto do banco.
+     * `pode_duplicar=false` em todo item desta fonte: não existe hoje nenhuma
+     * rotina de clonar um `PubRascunho` (só existe para `MlAnuncioRascunho`, via
+     * `duplicarComoTemplate`/`duplicarLoteComoTemplate`, abaixo). Construir o
+     * equivalente para o editor novo é recurso novo, não troca de fonte — por
+     * isso a tela desabilita (nunca esconde) "Anunciar semelhante"/"duplicar
+     * lote" para estes itens.
      */
     public function historico(Request $request, Company $company, ProgramasPublicadorService $programas)
     {
@@ -280,57 +289,116 @@ class MlbAnuncioController extends Controller
 
         $busca = trim((string) $request->query('busca', ''));
 
+        // Mesma dupla-âncora usada no resto do módulo (`$alvo`/`$conta` acima resolvem
+        // pelo Publicador; aqui a query filtra direto em `pub_produtos`, que é quem
+        // guarda as duas âncoras — MlbEmpresa antes de Company, D15).
+        $mlbEmpresaId = MlbEmpresa::where('company_id', $company->id)->value('id');
+
+        $query = PubPublicacaoItem::query()
+            ->join('pub_publicacoes', 'pub_publicacoes.id', '=', 'pub_publicacao_itens.publicacao_id')
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_publicacoes.rascunho_id')
+            ->join('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            // Só o que de fato nasceu no ML (CREATED) — SENT/PENDING/FAILED/UNKNOWN
+            // não são "publicado" (equivalente ao antigo STATUS_PUBLICADO).
+            ->where('pub_publicacao_itens.status', PubPublicacaoItem::CREATED)
+            ->where(function ($q) use ($company, $mlbEmpresaId) {
+                $q->where('pub_produtos.company_id', $company->id);
+                if ($mlbEmpresaId !== null) {
+                    $q->orWhere('pub_produtos.mlb_empresa_id', $mlbEmpresaId);
+                }
+            });
+
+        if ($busca !== '') {
+            // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e anula
+            // o escopo por empresa/status — vazaria anúncio de outra empresa na busca.
+            $query->where(function ($s) use ($busca) {
+                $s->where('pub_publicacao_itens.payload->family_name', 'like', "%{$busca}%")
+                  ->orWhere('pub_produtos.sku', 'like', "%{$busca}%");
+            });
+        }
+
         // Todos os publicados da empresa. O agrupamento por lote precisa do conjunto
-        // inteiro: a publicação em massa cria N rascunhos SOLTOS (sem coluna de lote no
-        // banco — ver publicarLote), então o lote é reconstruído aqui pelos dados que
-        // sobraram (category_id + dia de published_at).
-        $publicados = MlAnuncioRascunho::where('company_id', $company->id)
-            ->where('status', MlAnuncioRascunho::STATUS_PUBLICADO)
-            ->when($busca !== '', function ($q) use ($busca) {
-                // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e
-                // anula o escopo por company_id/status — vazaria anúncio de outra
-                // empresa na busca.
-                $q->where(function ($s) use ($busca) {
-                    $s->where('payload->title', 'like', "%{$busca}%")
-                      ->orWhere('sku_origem', 'like', "%{$busca}%");
-                });
-            })
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
+        // inteiro: a publicação em massa cria N itens SEM coluna de lote no banco,
+        // então o lote é reconstruído aqui (categoria do rascunho + dia de conclusão).
+        $publicados = $query
+            ->select([
+                'pub_publicacao_itens.id',
+                'pub_publicacao_itens.payload',
+                'pub_publicacao_itens.listing_type_id',
+                'pub_publicacao_itens.ml_item_id',
+                'pub_rascunhos.id as rascunho_id',
+                'pub_rascunhos.categoria_id as category_id',
+                'pub_produtos.id as produto_id',
+                'pub_publicacoes.concluida_em as published_at',
+            ])
+            ->orderByDesc('pub_publicacoes.concluida_em')
+            ->orderByDesc('pub_publicacao_itens.id')
             ->get();
 
-        // ─── Agrupa por LOTE = categoria + dia de publicação ───
-        // O módulo já define lote como empresa + categoria (massa()/grade: 1 aba = 1
-        // category_id, comentário em massa()). O dia separa corridas de massa distintas
-        // da mesma categoria. groupBy preserva a ordem (published_at desc) → o lote mais
-        // recente vem primeiro. Anúncio avulso vira um grupo de total=1 (a tela o renderiza
-        // como card solto; só total>1 colapsa num cabeçalho de lote).
-        $chaveLote = fn ($r) => ($r->category_id ?? 'sem-cat')
-            . '|' . (optional($r->published_at)->toDateString() ?? 'sem-data');
+        // ─── SKU exibido (PubProduto::skuExibido(), não a coluna cru — mesma
+        // convenção de produtosParaTela()) e foto (o payload só guarda o
+        // ml_picture_id enviado ao ML; a URL que dá para exibir mora em
+        // pub_imagens.ml_url) — os dois em lote, para não virar N+1. ───
+        $produtoIds  = $publicados->pluck('produto_id')->unique()->filter()->values();
+        $rascunhoIds = $publicados->pluck('rascunho_id')->unique()->filter()->values();
+
+        $produtos = PubProduto::with('oferta')->whereIn('id', $produtoIds)->get()->keyBy('id');
+        $imagensPorRascunho = PubImagem::whereIn('rascunho_id', $rascunhoIds)
+            ->whereNotNull('ml_url')
+            ->get()
+            ->groupBy('rascunho_id');
+
+        $fotoDoItem = function ($item) use ($imagensPorRascunho) {
+            $picId   = data_get($item->payload, 'pictures.0.id');
+            $imagens = $imagensPorRascunho->get($item->rascunho_id, collect());
+            if ($picId !== null && ($match = $imagens->firstWhere('ml_picture_id', $picId)) !== null) {
+                return $match->ml_url;
+            }
+
+            // Fallback: a primeira foto enviada do rascunho, quando o id do payload
+            // não bate com nenhuma (dado legado/migração) — nunca inventa URL.
+            return $imagens->sortBy('id')->first()?->ml_url;
+        };
+
+        // ─── Agrupa por LOTE = categoria + dia de conclusão (MESMA chave de hoje) ───
+        $chaveLote = fn ($i) => ($i->category_id ?? 'sem-cat')
+            . '|' . (optional($i->published_at ? \Illuminate\Support\Carbon::parse($i->published_at) : null)->toDateString() ?? 'sem-data');
 
         $grupos = $publicados
             ->groupBy($chaveLote)
-            ->map(function ($itens) use ($chaveLote) {
-                $primeiro = $itens->first();
+            ->map(function ($itens) use ($chaveLote, $produtos, $fotoDoItem) {
+                $primeiro    = $itens->first();
+                $publicadoEm = $primeiro->published_at ? \Illuminate\Support\Carbon::parse($primeiro->published_at) : null;
 
                 return [
                     'chave'        => $chaveLote($primeiro),
                     'category_id'  => $primeiro->category_id,
                     'categoria'    => $this->nomeCategoria($primeiro->category_id),
-                    'data'         => optional($primeiro->published_at)->toDateString(),
-                    'published_at' => optional($primeiro->published_at)->toIso8601String(),
+                    'data'         => optional($publicadoEm)->toDateString(),
+                    'published_at' => optional($publicadoEm)->toIso8601String(),
                     'total'        => $itens->count(),
-                    'itens'        => $itens->map(fn ($r) => [
-                        'id'           => $r->id,
-                        'titulo'       => (string) data_get($r->payload, 'title', ''),
-                        'preco'        => data_get($r->payload, 'price'),
-                        'foto'         => data_get($r->payload, 'pictures.0.source'),
-                        'sku_origem'   => $r->sku_origem,
-                        'listing_tier' => $r->listing_tier,
-                        'category_id'  => $r->category_id,
-                        'published_at' => $r->published_at,
-                        'ml_item_id'   => $r->ml_item_id,
-                    ])->values(),
+                    'itens'        => $itens->map(function ($i) use ($produtos, $fotoDoItem) {
+                        $produto = $produtos->get($i->produto_id);
+
+                        return [
+                            'id'           => $i->id,
+                            'titulo'       => (string) data_get($i->payload, 'family_name', ''),
+                            'preco'        => data_get($i->payload, 'price'),
+                            'foto'         => $fotoDoItem($i),
+                            'sku_origem'   => $produto?->skuExibido(),
+                            // Raw do ML ('gold_special'/'gold_pro') — MESMO literal que
+                            // `listing_tier` já guardava no modelo antigo; rotuloTier()
+                            // no front (anuncioHistoricoUtils.js) é indexado por esse
+                            // valor, não pelo rótulo interno 'classico'/'premium'.
+                            'listing_tier' => $i->listing_type_id,
+                            'category_id'  => $i->category_id,
+                            'published_at' => $i->published_at,
+                            'ml_item_id'   => $i->ml_item_id,
+                            // Não existe hoje rotina de clonar um PubRascunho (ver
+                            // docblock do método) — desabilitado no front, nunca escondido.
+                            'pode_duplicar' => false,
+                        ];
+                    })->values(),
                 ];
             })
             ->values();
@@ -373,7 +441,7 @@ class MlbAnuncioController extends Controller
      * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
      * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
      */
-    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas)
+    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas, AcervoTriagemService $acervoTriagem)
     {
         // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
         $company->loadMissing('mlToken');
@@ -402,7 +470,7 @@ class MlbAnuncioController extends Controller
 
         // Motivo é validado contra a whitelist fechada de MlAcervoItem::MOTIVO_*
         // antes de qualquer uso — nunca aceito de forma livre.
-        $motivosDef     = $this->motivosTriagemDef();
+        $motivosDef     = $acervoTriagem->motivosDef();
         $motivosValidos = array_column($motivosDef, 'chave');
         $motivo         = $request->query('motivo');
         $motivo         = in_array($motivo, $motivosValidos, true) ? $motivo : null;
@@ -414,10 +482,17 @@ class MlbAnuncioController extends Controller
             $sub = 'publicados';
         }
 
+        // Fase 173-02: filtro novo, opcional — o indicador "Com venda" da
+        // Visão geral linka para aqui. NÃO entra no escopo de triagem/defasagem
+        // abaixo: aqueles continuam mostrando o universo completo do status
+        // filtrado, senão os chips ficariam errados com comVenda=1 ativo.
+        $comVenda = $request->boolean('comVenda');
+
         // ─── Listagem — ordenação por gravidade (D-12), determinística, sem
         // nenhum dado da camada cara: 3 níveis de desempate + tie-break estável. ───
-        $anuncios = $this->escopoAcervo($company, $busca, $statusFiltro)
+        $anuncios = $acervoTriagem->escopo($company, $busca, $statusFiltro)
             ->when($motivo !== null, fn ($q) => $q->where('motivos', 'like', '%"' . $motivo . '"%'))
+            ->when($comVenda, fn ($q) => $q->where('sold_quantity', '>', 0))
             ->orderByDesc('severidade')
             ->orderByRaw('nota_ecf IS NULL ASC') // não avaliado vai para o fim, não para o topo (D-12/D-18)
             ->orderBy('nota_ecf')
@@ -462,60 +537,11 @@ class MlbAnuncioController extends Controller
             'saude_ml_nao_se_aplica' => $item->saudeMlNaoSeAplica(),
         ]);
 
-        // ─── Triagem (D-09) — UMA query agregada, nunca um laço de ->count()
-        // por motivo. Reusa os MESMOS filtros de status/busca, mas SEM o
-        // filtro de motivo: os chips precisam continuar mostrando os outros
-        // motivos quando um já está filtrado. ───
-        $selects = [
-            // Total = anúncios DISTINTOS com >=1 motivo, nunca soma dos chips
-            // (severidade > 0 <=> motivos não vazio, ver AnuncioSaudeService::triagem()).
-            'SUM(CASE WHEN severidade > 0 THEN 1 ELSE 0 END) as total_com_motivo',
-            'SUM(CASE WHEN catalog_listing = 1 AND buybox_status IS NULL THEN 1 ELSE 0 END) as nao_avaliado',
-        ];
-        foreach ($motivosDef as $i => $m) {
-            // $m['chave'] vem da whitelist fechada (constantes do model), nunca da querystring.
-            $selects[] = "SUM(CASE WHEN motivos LIKE '%\"{$m['chave']}\"%' THEN 1 ELSE 0 END) as motivo_{$i}";
-        }
-
-        $linhaTriagem = $this->escopoAcervo($company, $busca, $statusFiltro)
-            ->selectRaw(implode(', ', $selects))
-            ->first();
-
-        $chips = [];
-        foreach ($motivosDef as $i => $m) {
-            $chips[] = [
-                'chave' => $m['chave'],
-                'label' => $m['label'],
-                'count' => (int) ($linhaTriagem->{"motivo_{$i}"} ?? 0),
-                'cor'   => $m['cor'],
-            ];
-        }
-
-        $triagem = [
-            'total'        => (int) ($linhaTriagem->total_com_motivo ?? 0),
-            'chips'        => $chips,
-            'nao_avaliado' => (int) ($linhaTriagem->nao_avaliado ?? 0),
-        ];
-
-        // ─── Defasagem (D-08) — nunca resposta vazia. ───
-        $temLinhas     = MlAcervoItem::where('company_id', $company->id)->exists();
-        $nuncaColetado = ! $temLinhas;
-        $coletadoEmRaw = $nuncaColetado ? null : MlAcervoItem::where('company_id', $company->id)->max('coletado_em');
-        $coletadoEm    = $coletadoEmRaw !== null ? \Illuminate\Support\Carbon::parse($coletadoEmRaw) : null;
-        $horas         = $coletadoEm !== null ? $coletadoEm->diffInHours(now()) : null;
-        $limiteHoras   = (int) config('mlb_acervo.defasagem_horas');
-        $motivoErro    = MlAcervoItem::where('company_id', $company->id)
-            ->whereNotNull('coleta_erro')
-            ->orderByDesc('updated_at')
-            ->value('coleta_erro');
-
-        $defasagem = [
-            'coletado_em'    => $coletadoEm?->toIso8601String(),
-            'horas'          => $horas,
-            'defasado'       => $horas !== null && $horas > $limiteHoras,
-            'nunca_coletado' => $nuncaColetado,
-            'motivo'         => $motivoErro,
-        ];
+        // ─── Triagem (D-09) e defasagem (D-08) — extraídas para
+        // AcervoTriagemService (Fase 173-02): fonte única também usada pela
+        // Visão geral, mesmos números de antes. ───
+        $triagem   = $acervoTriagem->triagem($company, $busca, $statusFiltro);
+        $defasagem = $acervoTriagem->defasagem($company);
 
         // Fase 134 Plano 09: sub-aba Rascunhos — a tela oficial de rascunhos, com
         // TODOS os registros da empresa (não só os 50 mais recentes do wizard).
@@ -553,7 +579,7 @@ class MlbAnuncioController extends Controller
             'anuncios'          => $anuncios,
             'rascunhos'         => $rascunhosProp,
             'triagem'           => $triagem,
-            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo],
+            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo, 'com_venda' => $comVenda],
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
@@ -734,57 +760,6 @@ class MlbAnuncioController extends Controller
             'serie'             => $serie,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
         ]);
-    }
-
-    /**
-     * Escopo base do acervo por empresa (T-134-01) — company_id é a fronteira
-     * de segurança inteira desta tela e não pode sair de nenhum caminho:
-     * busca, triagem, contagem, paginação. A busca é OBRIGATORIAMENTE
-     * agrupada dentro de where(function...): um orWhere solto sobe ao topo
-     * do WHERE e anula o escopo por empresa (mesma pegadinha travada em
-     * historico(), Fase 86).
-     */
-    private function escopoAcervo(Company $company, string $busca, string $statusFiltro)
-    {
-        // 'acionaveis' (default) cobre DOIS status — é o universo sobre o qual
-        // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
-        // filtros recortam um status só; 'todos' não filtra.
-        $statusColunas = match ($statusFiltro) {
-            'acionaveis' => ['active', 'paused'],
-            'ativos'     => ['active'],
-            'pausados'   => ['paused'],
-            'encerrados' => ['closed'],
-            default      => null, // 'todos' não filtra
-        };
-
-        return MlAcervoItem::where('company_id', $company->id)
-            ->when($busca !== '', function ($q) use ($busca) {
-                $q->where(function ($s) use ($busca) {
-                    $s->where('title', 'like', "%{$busca}%")
-                      ->orWhere('ml_item_id', 'like', "%{$busca}%");
-                });
-            })
-            ->when($statusColunas !== null, fn ($q) => $q->whereIn('status', $statusColunas));
-    }
-
-    /**
-     * Definição fechada dos 5 motivos de triagem (D-09), na mesma ordem de
-     * gravidade do D-12: pausado/sem estoque (crítica, red) antes de ficha
-     * incompleta/perdendo catálogo/foto insuficiente (atenção, amber).
-     * Fonte única para a whitelist de validação e para os chips/selects
-     * agregados — nunca duplicar esta lista.
-     *
-     * @return array<int, array{chave:string, label:string, cor:string}>
-     */
-    private function motivosTriagemDef(): array
-    {
-        return [
-            ['chave' => MlAcervoItem::MOTIVO_PAUSADO,           'label' => 'Pausado',           'cor' => 'red'],
-            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE,       'label' => 'Sem estoque',        'cor' => 'red'],
-            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA,  'label' => 'Ficha incompleta',   'cor' => 'amber'],
-            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo',  'cor' => 'amber'],
-            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente',  'cor' => 'amber'],
-        ];
     }
 
     /**

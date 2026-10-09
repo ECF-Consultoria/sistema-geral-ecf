@@ -37,6 +37,16 @@ const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 rounded-lg border 
 
 const TITLE_PORTAL_APAGADO = 'Veio do Portal; a oferta foi apagada lá e o produto ficou aqui.';
 
+// Leitura ÚNICA na montagem (sem sincronizar de volta pra URL ao trocar à
+// mão — não muda o comportamento de voltar/avançar do navegador). Link
+// ?filtro=X vindo da Visão geral (Fase 173, plano 06) só pré-seleciona
+// quando X é uma chave válida de CHAVES_DO_FILTRO; ausente ou inválido cai
+// no mesmo 'todos' de sempre.
+function filtroInicial() {
+    const pedido = new URLSearchParams(window.location.search).get('filtro');
+    return (pedido === 'todos' || Object.prototype.hasOwnProperty.call(CHAVES_DO_FILTRO, pedido)) ? pedido : 'todos';
+}
+
 // Pílula de origem. D27: decidida por oferta_id (vínculo vivo com o Portal),
 // nunca por `origem`, que é só a origem histórica do produto.
 function PilulaOrigem({ produto }) {
@@ -79,7 +89,7 @@ export default function Produtos({
     criativos_ia = { url: null },
     abas = { company_id: null },
 }) {
-    const [filtro, setFiltro] = useState('todos');
+    const [filtro, setFiltro] = useState(filtroInicial);
     const [busca, setBusca] = useState('');
     const [modal, setModal] = useState(false);
     const [recarregando, setRecarregando] = useState(false);

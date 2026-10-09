@@ -1,6 +1,8 @@
+import { Link } from '@inertiajs/react';
 import AcervoDaConta from './AcervoDaConta';
 import FotosEVariacoes from './FotosEVariacoes';
 import IdentidadeDaConta from './IdentidadeDaConta';
+import { LINK } from './comum';
 
 // ─── Etapa 3 — Imagens, SÓ imagens (D1, Fase 169, 07/10/2026) ───────────────
 //
@@ -31,9 +33,22 @@ import IdentidadeDaConta from './IdentidadeDaConta';
 // você já gerou antes e pode reaproveitar". Também montado UMA VEZ, pelo
 // mesmo motivo de `IdentidadeDaConta`.
 
-export default function EtapaImagens({ m, produtoId }) {
+// Fase 173, plano 07 (08/10/2026): a identidade visual da conta também ganhou
+// lugar próprio em "Configurações da conta" — os dois lugares leem e gravam
+// o MESMO registro. Único acréscimo nesta etapa: o link para lá, logo acima
+// do campo. `empresa` chega como prop nova (de `Editor.jsx`, mesmo objeto que
+// a página já usa para outras rotas por conta) só para montar essa rota.
+
+export default function EtapaImagens({ m, produtoId, empresa }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="imagens">
+            {empresa?.chave && (
+                <div className="flex justify-end">
+                    <Link href={route('mlb.anuncios.publicador.configuracoes', { conta: empresa.chave })} className={LINK}>
+                        Gerenciar em Configurações da conta
+                    </Link>
+                </div>
+            )}
             <IdentidadeDaConta produtoId={produtoId} />
             <FotosEVariacoes m={m} />
             <AcervoDaConta m={m} produtoId={produtoId} />

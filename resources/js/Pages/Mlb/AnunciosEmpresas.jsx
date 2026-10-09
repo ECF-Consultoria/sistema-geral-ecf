@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Rocket, Search } from 'lucide-react';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
@@ -26,6 +26,41 @@ const COLUNAS = ['Empresa', 'Conta ML', 'Portal', 'Produtos', 'Publicados'];
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
 const contagem = (n, singular, plural) => (n > 0 ? `${n} ${n === 1 ? singular : plural}` : '—');
+
+// ─── "Recentes" (Fase 173, plano 03) — até 4 contas abertas pelo usuário,
+// em localStorage do navegador, chave `publicador.recentes.{user_id}`.
+// Sem tabela nova: é dado do próprio usuário, no próprio navegador
+// (T-173-07). TODA leitura/escrita passa por try/catch — localStorage pode
+// falhar ou vir vazio (modo privado, quota, primeiro acesso, JSON
+// corrompido) e a tela precisa funcionar normalmente sem ele.
+const MAX_RECENTES = 4;
+const chaveRecentes = (userId) => `publicador.recentes.${userId}`;
+
+function lerRecentes(userId) {
+    try {
+        const bruto = window.localStorage.getItem(chaveRecentes(userId));
+        if (!bruto) return [];
+        const lista = JSON.parse(bruto);
+        if (!Array.isArray(lista)) return [];
+        // Descarta item sem `chave` string válida — forma inesperada (lixo
+        // gravado por versão antiga, edição manual do localStorage etc.)
+        // nunca derruba a tela nem quebra a navegação do clique.
+        return lista.filter((item) => item && typeof item.chave === 'string' && item.chave !== '').slice(0, MAX_RECENTES);
+    } catch {
+        return [];
+    }
+}
+
+function gravarRecente(userId, item) {
+    try {
+        const semDuplicata = lerRecentes(userId).filter((r) => r?.chave !== item.chave);
+        const novaLista = [item, ...semDuplicata].slice(0, MAX_RECENTES);
+        window.localStorage.setItem(chaveRecentes(userId), JSON.stringify(novaLista));
+        return novaLista;
+    } catch {
+        return null;
+    }
+}
 
 // Casca de esqueleto: 4 cards + 8 linhas de 56px enquanto a visita carrega.
 function Esqueleto() {
@@ -58,10 +93,14 @@ export default function AnunciosEmpresas({
     paginacao = { pagina: 1, por_pagina: 50, total: 0, de: 0, ate: 0 },
     filtros = { busca: '', filtro: 'todos' },
 }) {
+    const { auth } = usePage().props;
+    const userId = auth?.user?.id ?? null;
+
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [carregando, setCarregando] = useState(false);
     const [erroCarga, setErroCarga] = useState(false);
     const [status, setStatus] = useState(null); // { tipo: 'ok' | 'erro', texto }
+    const [recentes, setRecentes] = useState(() => lerRecentes(userId));
     const espera = useRef(null);
     const primeira = useRef(true);
 
@@ -105,7 +144,15 @@ export default function AnunciosEmpresas({
     const irParaPagina = (pagina) => visitar({ filtro: filtroAtual, busca: busca || undefined, pagina });
     const limparBusca = () => { setBusca(''); visitar({ filtro: filtroAtual }); };
 
-    const abrirProdutos = (e) => router.get(route('mlb.anuncios.publicador.produtos', { conta: e.chave }));
+    // Abrir uma empresa (linha ou botão "Publicar →") leva à Visão geral —
+    // a URL de Produtos não muda, continua acessível pela aba Produtos de
+    // dentro da conta. Grava a conta em Recentes ANTES de navegar.
+    const abrirConta = (e) => {
+        const item = { chave: e.chave, nome: e.nome, identificador: e.identificador, programa: e.programa ?? programa };
+        const novaLista = gravarRecente(userId, item);
+        if (novaLista !== null) setRecentes(novaLista);
+        router.get(route('mlb.anuncios.publicador.visao-geral', { conta: e.chave }));
+    };
 
     function aoConcluirSync(e, json) {
         setStatus({ tipo: 'ok', texto: `${e.nome}: ${json?.mensagem ?? 'Nada novo no Portal.'}` });
@@ -165,6 +212,24 @@ export default function AnunciosEmpresas({
                     <div className="grid gap-8 min-[1600px]:grid-cols-[1fr_320px]">
                         <div className="min-w-0 space-y-8">
                             <IndicadoresDoPrograma indicadores={indicadores} onFiltrarProntos={() => aplicarFiltro('prontos')} />
+
+                            {recentes.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-2" aria-label="Empresas recentes">
+                                    <span className="text-[13px] font-normal text-white/55">Recentes:</span>
+                                    {recentes.map((r) => (
+                                        <button
+                                            key={r.chave}
+                                            type="button"
+                                            onClick={() => router.get(route('mlb.anuncios.publicador.visao-geral', { conta: r.chave }))}
+                                            className={cn(BOTAO_SECUNDARIO, 'h-9')}
+                                        >
+                                            <span className="max-w-[160px] truncate">
+                                                {typeof r.nome === 'string' && r.nome !== '' ? r.nome : r.chave}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
                             <section className="rounded-xl bg-ecf-card">
                                 <div className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -247,9 +312,9 @@ export default function AnunciosEmpresas({
                                                     <tr
                                                         key={e.chave}
                                                         tabIndex={0}
-                                                        onClick={() => abrirProdutos(e)}
+                                                        onClick={() => abrirConta(e)}
                                                         onKeyDown={(ev) => {
-                                                            if (ev.key === 'Enter' && ev.target === ev.currentTarget) abrirProdutos(e);
+                                                            if (ev.key === 'Enter' && ev.target === ev.currentTarget) abrirConta(e);
                                                         }}
                                                         className="h-14 cursor-pointer border-b border-white/[0.06] hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow"
                                                     >
@@ -278,7 +343,7 @@ export default function AnunciosEmpresas({
                                                                 {e.token !== 'sem_token' ? (
                                                                     <button
                                                                         type="button"
-                                                                        onClick={(ev) => { ev.stopPropagation(); abrirProdutos(e); }}
+                                                                        onClick={(ev) => { ev.stopPropagation(); abrirConta(e); }}
                                                                         className={BOTAO_SECUNDARIO}
                                                                     >
                                                                         Publicar →

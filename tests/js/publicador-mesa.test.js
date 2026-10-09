@@ -23,7 +23,6 @@ const CARDS = [
     `${BASE}/Mesa/Etapas.jsx`,
     `${BASE}/Mesa/EtapaProduto.jsx`,
     `${BASE}/Mesa/EtapaDetalhes.jsx`,
-    `${BASE}/Mesa/EtapaImagens.jsx`,
     `${BASE}/Mesa/FotosEVariacoes.jsx`,
     `${BASE}/Mesa/CartaoFotosVariante.jsx`,
     `${BASE}/Mesa/DadosDasVariacoes.jsx`,
@@ -38,7 +37,9 @@ const CARDS = [
     `${BASE}/Mesa/PainelCriativos.jsx`,
 ];
 // "Revisar e publicar" reenvia a descrição por rota própria: mesmas regras, menos a de rota.
-const COM_ROTA = [`${BASE}/Mesa/Publicar.jsx`];
+// EtapaImagens monta o link "Gerenciar em Configurações da conta" (Fase 173, plano 07):
+// mesmas regras de apresentação, só exceção à regra de nenhuma rota direta.
+const COM_ROTA = [`${BASE}/Mesa/Publicar.jsx`, `${BASE}/Mesa/EtapaImagens.jsx`];
 // Componentes de campo reaproveitados do piloto, normalizados.
 const NORMALIZADOS = [
     `${BASE}/CampoAtributo.jsx`,

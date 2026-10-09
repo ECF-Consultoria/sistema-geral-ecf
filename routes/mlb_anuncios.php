@@ -36,6 +36,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // (?programa=polos|incubadora|gestao), só admins (D17).
         Route::get('/', [MlbPublicadorEntradaController::class, 'index'])->name('index');
 
+        // 173-01 (D-06): busca de empresas pro seletor "Trocar empresa" — rota literal
+        // `empresas-busca`, nunca bate no regex `(empresa|company)-[0-9]+` de `{conta}`
+        // abaixo (não tem o hífen seguido de dígitos), mas fica ANTES por clareza de leitura.
+        Route::get('publicador/empresas-busca', [MlbPublicadorEntradaController::class, 'buscaEmpresas'])
+            ->middleware('throttle:60,1,publicador.empresas-busca')->name('publicador.empresas-busca');
+
         // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
         // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
         Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
@@ -215,6 +221,27 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                     ->whereNumber('criativo')->middleware('throttle:30,1,publicador.acervo.usar')->name('usar');
             });
         });
+
+        // Fase 173, Plano 01 (VISG-05/CONF-01) — identidade visual por CONTA, pra tela
+        // "Configurações da conta". Mesmo controller e throttles nomeados da versão por
+        // produto (Fase 170) — reusar os MESMOS nomes é proposital: a conta tem um teto
+        // só, não dois, se for acessada pelos dois caminhos ao mesmo tempo. Nome de rota
+        // DIFERENTE de mlb.anuncios.publicador.identidade.* (nested em
+        // publicador/produtos/{produto}/identidade) pra não colidir no route() do Ziggy.
+        Route::get('publicador/empresas/{conta}/identidade', [MlbPublicadorIdentidadeController::class, 'mostrarPorConta'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.identidade.mostrar')->name('publicador.conta.identidade.mostrar');
+        Route::put('publicador/empresas/{conta}/identidade', [MlbPublicadorIdentidadeController::class, 'salvarPorConta'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:30,1,publicador.identidade.salvar')->name('publicador.conta.identidade.salvar');
+
+        // Fase 173, Plano 04 (VISG-03..08/CONF-02/03) — Visão geral e Configurações da
+        // conta: só leitura agregada do que já está gravado, ZERO chamada ao Mercado
+        // Livre no request. Fonte única de publicação (pub_publicacoes).
+        Route::get('publicador/empresas/{conta}/visao-geral', [MlbPublicadorEntradaController::class, 'visaoGeral'])
+            ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.visao-geral');
+        Route::get('publicador/empresas/{conta}/configuracoes', [MlbPublicadorEntradaController::class, 'configuracoes'])
+            ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.configuracoes');
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do

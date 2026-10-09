@@ -228,6 +228,35 @@ class ProgramasPublicadorService
         })->values();
     }
 
+    /**
+     * Contagem de produtos por situação — MESMO `match` que hoje mora em
+     * `MlbPublicadorEntradaController::produtos()`, extraído aqui para que
+     * Produtos.jsx e (nas próximas plans da Fase 173) a Visão geral leiam
+     * exatamente o mesmo número, nunca duas implementações do mesmo cálculo.
+     * `sem_oferta` é um `array_filter` adicional sobre o MESMO array recebido
+     * (produtos com `oferta_id === null`) — não dispara nenhuma query nova.
+     *
+     * @param  list<array>  $produtos  shape de `produtosParaTela()`
+     * @return array{todos: int, rascunho: int, conferidos: int, publicados: int, com_problema: int, sem_oferta: int}
+     */
+    public function contagemProdutos(array $produtos): array
+    {
+        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0];
+        foreach ($produtos as $p) {
+            match ($p['status']['chave']) {
+                'pronto' => $contagens['conferidos']++,
+                'publicado', 'parcial' => $contagens['publicados']++,
+                'erro' => $contagens['com_problema']++,
+                default => $contagens['rascunho']++,
+            };
+            if ($p['oferta_id'] === null) {
+                $contagens['sem_oferta']++;
+            }
+        }
+
+        return $contagens;
+    }
+
     /** Empresas com token por programa (as abas da tela A). */
     public function contagens(): array
     {
