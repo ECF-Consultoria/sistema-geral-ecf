@@ -142,11 +142,19 @@ function tagDoBotao(html, rotulo) {
     return html.slice(abertura, html.indexOf('>', abertura) + 1);
 }
 
+// ⚠️ Os DOIS bundles são montados aqui, ANTES de registrar qualquer `test()`.
+// Não é estilo: o `node --test` roda os testes à medida que são registrados e
+// dispara o `after()` quando os registrados acabam. Com o `montar()` da página
+// depois do primeiro bloco de testes, o `after()` apagava os arquivos de stub
+// no meio do segundo esbuild — e o arquivo inteiro morria com um "test failed"
+// sem teste nenhum falhando, só na suíte completa (nunca rodando sozinho).
+const cartao = await montar(CARTAO, 'cartao-acesso-rapido');
+const paginaModulo = await montar(PAGINA, 'pagina-selecao-empresas');
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Task 2 — CartaoAcessoRapido
 // ═══════════════════════════════════════════════════════════════════════════
 
-const cartao = await montar(CARTAO, 'cartao-acesso-rapido');
 const CartaoAcessoRapido = cartao.default;
 
 const itemRecente = (extra = {}) => ({
@@ -285,7 +293,6 @@ test('Cartão — textoSeguro e numeroSeguro recusam objeto, array e NaN', () =>
 // Task 3 — a tela (`Pages/Mlb/AnunciosEmpresas.jsx`), render REAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-const paginaModulo = await montar(PAGINA, 'pagina-selecao-empresas');
 const AnunciosEmpresas = paginaModulo.default;
 
 const segunda = () => linhaViva({
@@ -294,8 +301,9 @@ const segunda = () => linhaViva({
     nome: 'TechStore Eletrônicos Ltda',
     identificador: '31.844.912/0001-44',
     company_id: 91,
-    token: 'expirado',
-    token_expirado: true,
+    tem_token: false,
+    token: 'sem_token',
+    token_expirado: false,
     link_reconexao: '/implementacao/abc/conectar-ml',
     produtos: 412,
     publicados: 890,
@@ -391,7 +399,7 @@ test('Tela — o que já existia continua na tela (nada sumiu)', () => {
     assert.match(html, /Sincronizar/, 'BotaoSincronizarPortal');
     assert.match(html, /Como funciona/, 'PainelComoFunciona');
     assert.match(html, /Falta reconectar|Reconectar/, 'SeloConta');
-    assert.match(html, /ainda não foi liberada/, 'AvisoContaTravada da conta não liberada');
+    assert.match(html, /Publicação ainda não liberada/, 'AvisoContaTravada da conta não liberada');
     assert.match(html, /navegador DELE/, 'LinkReconexao da conta expirada');
     assert.match(html, /class="h-14/, 'a linha focável de 56px');
 });
