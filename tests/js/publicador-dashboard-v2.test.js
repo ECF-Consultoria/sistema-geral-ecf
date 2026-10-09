@@ -32,8 +32,12 @@ const RAIZ = path.resolve(__dirname, '../..');
 
 const REL_CARTAO = 'resources/js/Components/Mlb/Publicador/CartaoKpi.jsx';
 const REL_PAINEL = 'resources/js/Components/Mlb/Publicador/PainelVisaoGeral.jsx';
+const REL_SELO = 'resources/js/Components/Mlb/Publicador/SeloExemplo.jsx';
+const REL_DADOS = 'resources/js/Components/Mlb/Publicador/dadosDeExemplo.js';
 const CARTAO = path.resolve(RAIZ, REL_CARTAO);
 const PAINEL = path.resolve(RAIZ, REL_PAINEL);
+const SELO = path.resolve(RAIZ, REL_SELO);
+const DADOS = path.resolve(RAIZ, REL_DADOS);
 
 // Stub de route() global — mesmo truque dos outros testes de render do módulo.
 global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
@@ -127,7 +131,90 @@ function cartaoDe(html, rotulo) {
 // nenhum falhando, e só na suíte completa (nunca rodando sozinho). Aconteceu de
 // verdade na tela 01, em 08/10.
 const cartaoModulo = await montar(CARTAO, 'cartao-kpi');
+const seloModulo = await montar(SELO, 'selo-exemplo');
+const dadosModulo = await montar(DADOS, 'dados-de-exemplo');
 const painelModulo = await montar(PAINEL, 'painel-visao-geral-v2');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Quick 261010-t02b — Task 1: a convenção do dado de exemplo
+//
+// ⚠️ MUDANÇA DE RÉGUA (usuário, 10/10): o main/content passa a ser o do mockup
+// INTEIRO. Onde o dado existe, é o dado da conta; onde não existe, é um valor
+// de EXEMPLO — nunca mais um quadro vazio. O que torna isso reversível é a
+// disciplina: todo valor fictício do módulo mora em `dadosDeExemplo.js` e todo
+// bloco que o usa carrega a pilha `SeloExemplo`. Apagar aquele arquivo um dia
+// mostra exatamente o que ainda era mentira.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SeloExemplo = seloModulo.default;
+
+test('SeloExemplo — a pilha discreta renderiza com a palavra "exemplo"', () => {
+    const html = renderToStaticMarkup(React.createElement(SeloExemplo, {}));
+
+    assert.match(semTags(html), /exemplo/i);
+    semLixoNoHtml(html, 'selo sem props');
+});
+
+test('SeloExemplo — sempre tem title explicando que o dado é fictício', () => {
+    const padrao = renderToStaticMarkup(React.createElement(SeloExemplo, {}));
+    assert.match(padrao, /title="[^"]*exemplo[^"]*"/i, 'sem title a pilha não explica nada');
+
+    const proprio = renderToStaticMarkup(React.createElement(SeloExemplo, { title: 'Motivo próprio deste bloco' }));
+    assert.match(proprio, /title="Motivo próprio deste bloco"/);
+});
+
+test('SeloExemplo — `title` e `className` NULOS (≠ ausentes) caem no padrão', () => {
+    // O default de desestruturação só cobre `undefined`; prop nula chega como null
+    // e já foi bug real em duas telas desta semana.
+    const html = renderToStaticMarkup(React.createElement(SeloExemplo, { title: null, className: null }));
+
+    assert.match(html, /title="[^"]*exemplo[^"]*"/i);
+    semLixoNoHtml(html, 'selo com props nulas');
+});
+
+test('SeloExemplo — title/className em formato inesperado não vazam para o HTML', () => {
+    for (const forma of [{ title: { a: 1 } }, { title: 42 }, { className: ['x'] }, { className: { y: 2 } }]) {
+        const html = renderToStaticMarkup(React.createElement(SeloExemplo, forma));
+        semLixoNoHtml(html, JSON.stringify(forma));
+        assert.match(semTags(html), /exemplo/i);
+    }
+});
+
+test('dadosDeExemplo — GATE: é só dado, nunca lógica disfarçada', () => {
+    const fonte = fs.readFileSync(DADOS, 'utf8');
+
+    // Nenhum import/require: o arquivo não pode depender de nada nem puxar o
+    // módulo para dentro de si.
+    assert.doesNotMatch(fonte, /^\s*import\s/m, 'dadosDeExemplo.js não pode importar nada');
+    assert.doesNotMatch(fonte, /\brequire\s*\(/, 'dadosDeExemplo.js não pode usar require()');
+
+    // Nenhuma função — nem declarada, nem arrow, nem método de objeto.
+    assert.doesNotMatch(fonte, /\bfunction\b/, 'dadosDeExemplo.js não pode declarar função');
+    assert.doesNotMatch(fonte, /=>/, 'dadosDeExemplo.js não pode ter arrow function');
+
+    // E a prova em runtime: nenhum export é chamável.
+    const exportados = Object.entries(dadosModulo).filter(([chave]) => chave !== 'default');
+    assert.ok(exportados.length > 0, 'o arquivo precisa exportar as constantes dos blocos');
+    for (const [chave, valor] of exportados) {
+        assert.notEqual(typeof valor, 'function', `export chamável: ${chave}`);
+    }
+});
+
+test('dadosDeExemplo — tem o comentário de topo dizendo o que é e quando sai', () => {
+    const fonte = fs.readFileSync(DADOS, 'utf8');
+    const topo = fonte.slice(0, fonte.indexOf('export'));
+
+    assert.match(topo, /exemplo/i);
+    assert.match(topo, /nada aqui vem desta conta|nenhum valor aqui vem/i, 'o topo precisa dizer que nada é da conta');
+});
+
+test('dadosDeExemplo — as constantes dos blocos do mockup existem', () => {
+    for (const chave of ['CONTA_EXEMPLO', 'ERP_EXEMPLO', 'PERIODOS_EXEMPLO', 'ALERTAS_ML_EXEMPLO', 'ATIVIDADE_EXEMPLO', 'TRACAO_EXEMPLO', 'CONVERSAO_EXEMPLO']) {
+        assert.ok(chave in dadosModulo, `constante ausente: ${chave}`);
+    }
+    assert.ok(Array.isArray(dadosModulo.CONVERSAO_EXEMPLO.pontos), 'o sparkline precisa de uma série');
+    assert.ok(dadosModulo.CONVERSAO_EXEMPLO.pontos.every((n) => typeof n === 'number'));
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Task 2 — `CartaoKpi.jsx`
@@ -577,7 +664,7 @@ test('Painel — nenhuma flag de escopo do componente é lida dentro do .map() d
     }
 });
 
-for (const relativo of [REL_CARTAO, REL_PAINEL]) {
+for (const relativo of [REL_CARTAO, REL_PAINEL, REL_SELO]) {
     const fonte = lerSemComentarios(relativo);
 
     test(`${relativo} — tipografia: só 24/15/13/11px`, () => {
