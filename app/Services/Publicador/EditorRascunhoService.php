@@ -310,10 +310,21 @@ class EditorRascunhoService
      * O envio ao Mercado Livre (`ImagemAssetService::receber`/`enviarAoMl`, que
      * pode fazer HTTP) fica de propósito FORA desta transação — quem chama
      * decide a ordem (D-04: aqui só se atribui a foto já guardada).
+     *
+     * @param  bool  $naFrente  `false` (o padrão, e o que TODO chamador existente
+     *                          usa) põe a foto no FIM do grupo. `true` a põe na
+     *                          POSIÇÃO 0 e empurra as outras do MESMO grupo uma
+     *                          casa — é a capa do combo da Fase 2, que precisa ser
+     *                          a foto 1 do anúncio: o rascunho do kit nasce com as
+     *                          fotos clonadas do produto base, e no fim da fila a
+     *                          capa gerada nunca viraria a capa no Mercado Livre.
+     *                          Opt-in de propósito: este método também atende o
+     *                          upload manual e toda aprovação de criativo da Fase
+     *                          1, onde "no fim do grupo" é o comportamento certo.
      */
-    public function colocarFotoNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo): void
+    public function colocarFotoNoGrupo(PubRascunho $r, PubImagem $imagem, string $grupo, bool $naFrente = false): void
     {
-        DB::transaction(function () use ($r, $imagem, $grupo) {
+        DB::transaction(function () use ($r, $imagem, $grupo, $naFrente) {
             $this->repo->travar($r);
             $atuais = $this->repo->snapshot($r)->imagens;
             $doGrupo = array_values(array_filter($atuais, fn ($a) => $a['grupo'] === $grupo));
@@ -321,7 +332,18 @@ class EditorRascunhoService
                 // Já está no grupo: nada a gravar, revisão não sobe (mesmo comportamento do private antigo).
                 return;
             }
-            $this->repo->gravarAtribuicoes($r, [...$atuais, ['imagem' => $imagem->id, 'grupo' => $grupo, 'posicao' => count($doGrupo)]]);
+
+            // Só o grupo de destino é renumerado: os outros grupos (as cores da
+            // variação) ficam byte a byte como estavam.
+            $outras = $naFrente
+                ? array_map(fn (array $a) => $a['grupo'] === $grupo ? [...$a, 'posicao' => ((int) $a['posicao']) + 1] : $a, $atuais)
+                : $atuais;
+
+            $this->repo->gravarAtribuicoes($r, [...$outras, [
+                'imagem' => $imagem->id,
+                'grupo' => $grupo,
+                'posicao' => $naFrente ? 0 : count($doGrupo),
+            ]]);
             $this->repo->tocar($r);
         });
     }

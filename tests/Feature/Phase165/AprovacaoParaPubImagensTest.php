@@ -110,6 +110,57 @@ class AprovacaoParaPubImagensTest extends TestCase
         $this->assertNull($slot->ml_picture_url);
     }
 
+    /**
+     * Fase 2 (combo): a capa gerada do combo tem de ser a FOTO 1 do anúncio.
+     *
+     * O caminho de sempre põe a foto aprovada no FIM do grupo (teste acima), e o
+     * rascunho do kit nasce com as fotos CLONADAS do produto base — então, sem
+     * este ramo, a posição 0 continuava sendo a foto do base (UMA unidade), ela
+     * virava a capa no Mercado Livre, e a capa do combo — já gerada e paga —
+     * ficava por último na galeria. O `CapaDoKitService` afirmava no docblock que
+     * a imagem "vira foto 1", e não era verdade.
+     *
+     * O gatilho é `slot_plano['unidades_da_composicao']`, gravado pelo
+     * `PlanejarKitCriativosJob` SÓ na capa de kit — dado estruturado, nunca a
+     * frase da `cena` (texto no prompt não é regra de negócio).
+     */
+    public function test_capa_de_combo_entra_como_foto_1_e_empurra_as_herdadas(): void
+    {
+        $this->cenario();
+        $a = $this->fotoExistenteNoGrupo(R::GERAL);
+        $b = $this->fotoExistenteNoGrupo(R::GERAL);
+        $kit = $this->kitProntoDoPublicador(R::GERAL, 1);
+        $slot = $kit->slots()->first();
+        $slot->update(['slot_plano' => ['tipo' => 'hero', 'indice' => 1, 'unidades_da_composicao' => 2]]);
+
+        $res = $this->servico()->aprovarSlot($this->r->fresh(), $slot->fresh(), $kit->pub_grupo, $this->admin());
+
+        $this->assertTrue($res['ok'], (string) $res['mensagem']);
+
+        $doGeral = $this->doGrupo(R::GERAL);
+        $this->assertSame(
+            [(string) $res['imagem_id'], (string) $a->id, (string) $b->id],
+            array_column($doGeral, 'imagem'),
+            'a capa do combo abre a galeria e as herdadas do base descem uma posição',
+        );
+        $this->assertSame([0, 1, 2], array_column($doGeral, 'posicao'), 'sem buraco nem posição repetida');
+    }
+
+    /** Fronteira: uma unidade NÃO é combo — segue o caminho de sempre, no fim do grupo. */
+    public function test_composicao_de_uma_unidade_nao_vira_capa(): void
+    {
+        $this->cenario();
+        $a = $this->fotoExistenteNoGrupo(R::GERAL);
+        $kit = $this->kitProntoDoPublicador(R::GERAL, 1);
+        $slot = $kit->slots()->first();
+        $slot->update(['slot_plano' => ['tipo' => 'hero', 'indice' => 1, 'unidades_da_composicao' => 1]]);
+
+        $res = $this->servico()->aprovarSlot($this->r->fresh(), $slot->fresh(), $kit->pub_grupo, $this->admin());
+
+        $this->assertTrue($res['ok'], (string) $res['mensagem']);
+        $this->assertSame([(string) $a->id, (string) $res['imagem_id']], array_column($this->doGrupo(R::GERAL), 'imagem'));
+    }
+
     public function test_kit_do_grupo_da_variacao_poe_a_foto_no_grupo_da_cor_nao_no_geral(): void
     {
         $this->cenario();

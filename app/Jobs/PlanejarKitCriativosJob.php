@@ -263,6 +263,18 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
                         (string) ($paraPrompt['cena'] ?? ''),
                         $unidadesDaComposicao,
                     );
+                    // O MESMO número, estruturado. Quem o lê é a aprovação
+                    // (`PublicadorCriativoAprovacaoService`), para a capa do combo
+                    // entrar na POSIÇÃO 0 do grupo em vez do fim — senão a capa do
+                    // produto base, clonada no kit, seguiria sendo a capa no ML.
+                    // Tem de ser chave própria e não a frase da `cena`: regra de
+                    // negócio lida de texto de prompt é exatamente o que a
+                    // disciplina TRUTH-02/03 deste módulo proíbe.
+                    //
+                    // Seguro no prompt: `CreativePromptBuilder::paraSlot()` lê
+                    // chaves NOMEADAS (`tipo`, `indice`, `objetivo`, `cena`, …) e
+                    // nunca itera o array — esta chave não chega ao modelo.
+                    $paraPrompt['unidades_da_composicao'] = $unidadesDaComposicao;
                 }
 
                 MlAnuncioCriativo::create([

@@ -53,9 +53,20 @@ use Illuminate\Support\Str;
  * - **Não edita `CreativePermissao` nem `CreativeEngineAtivo`** — usa os dois
  *   como estão. Sem a chave do Creative Engine ou sem a permissão de gastar
  *   cota, nada é disparado e o motivo volta para a resposta.
- * - **Não aprova nada.** A imagem só vira foto 1 do kit DEPOIS de aprovada,
+ * - **Não aprova nada.** A imagem só entra nas fotos do kit DEPOIS de aprovada,
  *   pelo caminho normal (`PublicadorCriativoAprovacaoService`); as fotos 2+
  *   seguem herdadas do base.
+ *
+ *   ⚠️ Até 09/10/2026 esta linha dizia que a imagem "vira foto 1 do kit", e
+ *   **não era verdade**: `EditorRascunhoService::colocarFotoNoGrupo()` põe a foto
+ *   aprovada no FIM do grupo, e o rascunho do kit nasce com as fotos CLONADAS do
+ *   produto base — então a posição 0 continuava sendo a foto do base (UMA
+ *   unidade), ela virava a capa no Mercado Livre, e a capa do combo, já gerada e
+ *   paga, ficava por último na galeria. Nenhum teste pegava isso porque o fixture
+ *   deste arquivo tem UM alvo só. Corrigido na mesma data: a aprovação lê
+ *   `slot_plano['unidades_da_composicao']` e, de 2 unidades para cima, chama
+ *   `colocarFotoNoGrupo(..., naFrente: true)`. E o payload não rotaciona a capa
+ *   no combo (decisão do usuário: mesma foto no Clássico e no Premium).
  * - **Não devolve token** (D-13): só o `kit_id` numérico.
  */
 class CapaDoKitService

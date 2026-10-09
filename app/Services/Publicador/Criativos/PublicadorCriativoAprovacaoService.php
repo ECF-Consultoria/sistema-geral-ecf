@@ -99,7 +99,16 @@ class PublicadorCriativoAprovacaoService
             return $this->recusa($mensagem);
         }
 
-        $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo);
+        // Capa de combo (Fase 2): vai para a POSIÇÃO 0, não para o fim do grupo.
+        // O rascunho do kit nasce com as fotos clonadas do produto base, então no
+        // fim da fila a capa gerada — que mostra as N unidades — nunca viraria a
+        // capa no Mercado Livre, e o anúncio de N unidades abriria com a foto de
+        // uma. O gatilho é `unidades_da_composicao`, que o `PlanejarKitCriativosJob`
+        // grava no `slot_plano` SÓ na capa de kit: dado estruturado, nunca a frase
+        // da `cena` (texto de prompt não é regra de negócio). Ausente ou < 2 — todo
+        // criativo da Fase 1 — segue no fim do grupo, como sempre.
+        $unidades = (int) (((array) $slot->slot_plano)['unidades_da_composicao'] ?? 0);
+        $this->editor->colocarFotoNoGrupo($r, $res['imagem'], $grupo, naFrente: $unidades >= 2);
 
         $slot->update([
             'status' => MlAnuncioCriativo::STATUS_APROVADO,
