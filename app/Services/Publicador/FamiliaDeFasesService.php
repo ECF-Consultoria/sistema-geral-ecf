@@ -114,7 +114,10 @@ class FamiliaDeFasesService
             $ofertasPorProduto[$i->produto_id] = ($ofertasPorProduto[$i->produto_id] ?? 0) + 1;
         }
 
-        $estoqueBase = $this->estoqueTotal($rascunhos[$base->id] ?? null);
+        // Uma leitura só das variantes ativas do base serve aos DOIS números: o
+        // total do cabeçalho e o calculado de cada cartão de kit.
+        $variantesDoBase = $this->estoqueDasVariantesDoBase($rascunhos[$base->id] ?? null);
+        $estoqueBase = $this->estoqueTotal($variantesDoBase);
         $companyId = $empresaParaTela['company_id'] ?? null;
 
         return [
@@ -131,7 +134,7 @@ class FamiliaDeFasesService
                 'base_excluido' => $baseExcluido,
             ],
             'fase_destacada' => $faseDestacada,
-            'fases' => $this->fases($familia, $estados, $ofertasPorProduto, $rascunhos, $estoqueBase),
+            'fases' => $this->fases($familia, $estados, $ofertasPorProduto, $rascunhos, $variantesDoBase),
             'proxima_fase' => $this->proximaFase($familia, $estados[$base->id] ?? null),
             'ofertas' => $this->ofertas($itens, $acervo, $companyId),
             'historico' => $this->historico($familia, $rascunhos, $kitsCriativo, $alvo),
@@ -304,16 +307,78 @@ class FamiliaDeFasesService
         return $caminho === [] ? $id : implode(' › ', $caminho);
     }
 
-    /** Soma do estoque das variantes ATIVAS do rascunho (órfã/desativada não é estoque). */
-    private function estoqueTotal(?PubRascunho $r): ?int
+    /**
+     * O estoque digitado em cada variante ATIVA do rascunho do base (órfã ou
+     * desativada não é estoque), no shape que
+     * `PreviaDaFaseService::estoqueDoKit()` espera.
+     *
+     * ⚠️ `estoque_depositos` entra no select porque o valor calculado do cartão
+     * de kit divide DEPÓSITO por depósito — ver `estoqueCalculadoDoKit()`. É a
+     * mesma consulta de antes com uma coluna a mais: nenhuma consulta nova.
+     *
+     * @return ?list<array{estoque: ?int, estoque_depositos: ?array}>
+     */
+    private function estoqueDasVariantesDoBase(?PubRascunho $r): ?array
     {
         if ($r === null) {
             return null;
         }
 
-        $ativas = $r->variantes()->where('ativa', true)->get(['estoque']);
+        $ativas = $r->variantes()->where('ativa', true)->get(['estoque', 'estoque_depositos']);
+        if ($ativas->isEmpty()) {
+            return null;
+        }
 
-        return $ativas->isEmpty() ? null : (int) $ativas->sum('estoque');
+        return $ativas->map(fn ($v) => [
+            'estoque' => $v->estoque === null ? null : (int) $v->estoque,
+            'estoque_depositos' => $v->estoque_depositos,
+        ])->values()->all();
+    }
+
+    /**
+     * Soma do estoque das variantes ATIVAS — o número do cabeçalho do produto.
+     * Essa conta está certa e NÃO mudou com o quick 261009-div.
+     *
+     * @param  ?list<array{estoque: ?int, estoque_depositos: ?array}>  $variantesDoBase
+     */
+    private function estoqueTotal(?array $variantesDoBase): ?int
+    {
+        if ($variantesDoBase === null) {
+            return null;
+        }
+
+        return (int) array_sum(array_map(fn (array $v) => (int) ($v['estoque'] ?? 0), $variantesDoBase));
+    }
+
+    /**
+     * O estoque que o kit ganharia do base — pela MESMA regra da adoção.
+     *
+     * ⚠️ NÃO é `floor(estoque_total ÷ N)` (quick 261009-div): a adoção
+     * (`RecalculoEstoqueDoKitService`, chamado por
+     * `VinculoDeKitService::usarEstoqueCalculado()`) divide cada DEPÓSITO de
+     * cada variante antes de somar, e as duas contas dão números diferentes
+     * (`{A:5, B:5}` com N=3: 1+1=2, e `floor(10 ÷ 3)`=3). Prometer no cartão um
+     * número que o botão "Usar estoque calculado" não grava é o defeito que
+     * nasceu na 175-10 e ficou visível quando o botão passou a existir.
+     *
+     * A regra do `floor(÷ N)` NÃO é reimplementada aqui: `PreviaDaFaseService`
+     * (175-05) é a fonte única, e é um método estático — nenhuma dependência
+     * nova no construtor, que este módulo tem ciclo conhecido no container.
+     *
+     * @param  ?list<array{estoque: ?int, estoque_depositos: ?array}>  $variantesDoBase
+     */
+    private function estoqueCalculadoDoKit(?array $variantesDoBase, int $quantidade): ?int
+    {
+        if ($variantesDoBase === null) {
+            return null;
+        }
+
+        $soma = 0;
+        foreach ($variantesDoBase as $dados) {
+            $soma += (int) (PreviaDaFaseService::estoqueDoKit($dados, $quantidade)['estoque'] ?? 0);
+        }
+
+        return $soma;
     }
 
     /**
@@ -356,6 +421,7 @@ class FamiliaDeFasesService
      * @param  array<int, array>  $estados
      * @param  array<int, int>  $ofertasPorProduto
      * @param  Collection<int, PubRascunho>  $rascunhos
+     * @param  ?list<array{estoque: ?int, estoque_depositos: ?array}>  $variantesDoBase
      * @return list<array>
      */
     private function fases(
@@ -363,16 +429,16 @@ class FamiliaDeFasesService
         array $estados,
         array $ofertasPorProduto,
         Collection $rascunhos,
-        ?int $estoqueBase,
+        ?array $variantesDoBase,
     ): array {
-        return $familia->map(function (PubProduto $p) use ($estados, $ofertasPorProduto, $rascunhos, $estoqueBase) {
+        return $familia->map(function (PubProduto $p) use ($estados, $ofertasPorProduto, $rascunhos, $variantesDoBase) {
             $quantidade = max(1, (int) $p->quantidade_kit);
             $estado = $estados[$p->id] ?? ['chave' => 'rascunho', 'rotulo' => 'a preencher', 'faltam' => 0];
             // §6: combo já cadastrado que foi só VINCULADO mantém o próprio estoque;
             // o valor calculado aparece ao lado, sem gravar nada.
             $proprio = ! (bool) $p->estoque_calculado;
-            $calculado = $proprio && $quantidade >= 2 && $estoqueBase !== null
-                ? (int) floor($estoqueBase / $quantidade)
+            $calculado = $proprio && $quantidade >= 2
+                ? $this->estoqueCalculadoDoKit($variantesDoBase, $quantidade)
                 : null;
 
             return [
