@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
+import { AlertTriangle, Boxes, ChevronRight, ClipboardList, Send, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { textoSeguro } from './BarraDaConta';
+import CartaoKpi from './CartaoKpi';
 import LinkReconexao from './LinkReconexao';
 import BotaoSincronizarPortal from './BotaoSincronizarPortal';
 import SeloConta from './SeloConta';
@@ -81,63 +83,60 @@ export function itensPorFase(valor) {
     return [...conhecidos, ...extras].map((chave) => item(chave, valor[chave]));
 }
 
+// ─── Helpers da faixa de KPIs (quick 261009-t02) ────────────────────────────
+//
+// O cartão em si mora em `CartaoKpi.jsx`; aqui ficam só os recortes que
+// dependem do contrato do servidor desta tela.
+
 /**
- * Cartão de indicador do topo — mesmo padrão visual do `Cartao` interno de
- * `IndicadoresDoPrograma.jsx` (rótulo 11px/bold/uppercase, número 24px
- * font-display, nota 13px). Não importamos aquele componente porque os
- * rótulos são de outra tela (painel do PROGRAMA inteiro: "Empresas", "Com
- * dados do Portal"...) e esta precisa do estado "nunca coletado" (botão
- * "Atualizar agora") que o componente genérico não tem — decisão
- * documentada na SUMMARY da plan 06.
+ * O número de UMA linha de "O que fazer agora", pelo texto que o servidor
+ * escreveu.
+ *
+ * É assim que o KPI "Aguardando ação" alcança o "Prontos para a Fase 2": esse
+ * número já existe, e existe EXATAMENTE em um lugar — a linha montada por
+ * `PainelVisaoGeralService::oQueFazerAgora()`. Recalcular aqui criaria uma
+ * segunda implementação do mesmo número, que é como duas telas passam a
+ * discordar. Linha ausente devolve `null` (não zero): a linha some quando o
+ * número é zero, mas também quando o servidor é antigo — e os dois casos
+ * aparecem como "sem sub-número", nunca como "0".
  */
-function CartaoIndicador({ rotulo, numero, nota, barraPct = null, onClick, botaoTexto, onBotao }) {
-    const corpo = (
-        <>
-            <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">{rotulo}</p>
-            <p className="mt-1 font-display text-[24px] font-bold tabular-nums text-white">{numero}</p>
-            {nota && <p className="text-[13px] font-normal text-white/55">{nota}</p>}
-            {typeof barraPct === 'number' && (
-                <div className="mt-2 h-1 w-full rounded-full bg-white/10">
-                    <div
-                        className="h-1 rounded-full bg-ecf-yellow/50"
-                        style={{ width: `${Math.max(0, Math.min(100, barraPct))}%` }}
-                    />
-                </div>
-            )}
-        </>
-    );
+export function numeroDaLinha(linhas, texto) {
+    if (!Array.isArray(linhas)) return null;
 
-    // Card com botão de ação (ex.: "Atualizar agora") nunca é ele mesmo um
-    // <button> — evita <button> dentro de <button> quando o acervo nunca
-    // foi coletado.
-    if (botaoTexto) {
-        return (
-            <div className="rounded-xl bg-ecf-card p-4 text-left">
-                {corpo}
-                <button
-                    type="button"
-                    onClick={onBotao}
-                    className="mt-2 inline-flex h-8 items-center rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[11px] font-bold text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
-                >
-                    {botaoTexto}
-                </button>
-            </div>
-        );
+    for (const bruto of linhas) {
+        const linha = bruto && typeof bruto === 'object' ? bruto : {};
+        if (textoSeguro(linha.texto, '') === texto) {
+            return numeroSeguro(linha.numero);
+        }
     }
 
-    if (onClick) {
-        return (
-            <button
-                type="button"
-                onClick={onClick}
-                className="rounded-xl bg-ecf-card p-4 text-left hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
-            >
-                {corpo}
-            </button>
-        );
+    return null;
+}
+
+/**
+ * Normaliza a prop `alertas` (quick 261009-t02) — a triagem do acervo que o
+ * servidor já carregava, no formato que a coluna lateral consome.
+ *
+ * `presente` distingue "servidor antigo, sem a prop" (o bloco nem aparece) de
+ * "servidor novo": só então `disponivel` separa "sem Company, não há acervo
+ * para triar" de "triamos e não há alerta". Nenhum dos dois pode virar zero.
+ */
+export function alertasSeguros(valor) {
+    const bruto = valor && typeof valor === 'object' && !Array.isArray(valor) ? valor : null;
+    if (bruto === null || typeof bruto.disponivel !== 'boolean') {
+        return { presente: false, disponivel: false, total: 0, itens: [] };
     }
 
-    return <div className="rounded-xl bg-ecf-card p-4 text-left">{corpo}</div>;
+    const itens = (Array.isArray(bruto.itens) ? bruto.itens : [])
+        .map((linha) => (linha && typeof linha === 'object' && !Array.isArray(linha) ? linha : {}))
+        .filter((linha) => typeof linha.chave === 'string');
+
+    return {
+        presente: true,
+        disponivel: bruto.disponivel === true,
+        total: numeroSeguro(bruto.total) ?? 0,
+        itens,
+    };
 }
 
 /**
@@ -165,6 +164,7 @@ export default function PainelVisaoGeral({
     integracoes = {},
     identidadeResumo = { tem_identidade: false, texto_resumo: null },
     quemPublicou = { equipe: [], cliente: { quantidade: 0 }, origem_antiga: { quantidade: 0 } },
+    alertas = null,
     abas = { company_id: null },
 }) {
     const [erroSincronizar, setErroSincronizar] = useState(null);
@@ -183,7 +183,32 @@ export default function PainelVisaoGeral({
     const publicados30d = numeroSeguro(indicadoresSeguros.publicados_30d) ?? 0;
     const publicados30dPessoas = numeroSeguro(indicadoresSeguros.publicados_30d_pessoas) ?? 0;
 
+    // ─── Chaves novas da tela 02 (quick 261009-t02) ──────────────────────
+    //
+    // Todas opcionais: servidor antigo não manda nenhuma delas, e aí o cartão
+    // correspondente mostra "—" com o motivo, nunca um zero inventado.
+    const porFase = indicadoresSeguros.no_ar_por_fase && typeof indicadoresSeguros.no_ar_por_fase === 'object'
+        ? indicadoresSeguros.no_ar_por_fase
+        : {};
+    const noArBase = numeroSeguro(porFase.fase1);
+    // ⚠️ "kits", NUNCA "Fase 2": `quantidade_kit >= 2` inclui o kit de 3, que é
+    // Fase 3 (foi a correção que a tela 01 precisou fazer).
+    const noArKits = numeroSeguro(porFase.kits);
+    const criativosPacks = numeroSeguro(indicadoresSeguros.criativos_packs);
+    // ⚠️ `tracao_pct` é NULO quando não há o que dividir. Nunca 0%: "não
+    // medimos" e "medimos e deu zero" são coisas diferentes nesta tela.
+    const tracaoPct = numeroSeguro(indicadoresSeguros.tracao_pct);
+
     const linhasOQueFazer = Array.isArray(oQueFazerAgora) ? oQueFazerAgora : [];
+    // O "Prontos para a Fase 2" sai da linha que o servidor já monta — fonte
+    // única; aqui nunca se recalcula o número de ninguém.
+    const prontosFase2 = numeroDaLinha(linhasOQueFazer, 'Prontos para a Fase 2');
+    const aguardandoAcao = semOferta + (prontosFase2 ?? 0);
+
+    const alerta = alertasSeguros(alertas);
+    // Sem venda registrada: só existe quando os DOIS números existem.
+    const semVenda = (noAr !== null && comVenda !== null && noAr >= comVenda) ? noAr - comVenda : null;
+    const motivoSemAcervo = acervoIndisponivel ? TITLE_SEM_COMPANY : 'Acervo ainda não coletado';
 
     const situacaoProdutosSegura = situacaoProdutos && typeof situacaoProdutos === 'object' && !Array.isArray(situacaoProdutos)
         ? situacaoProdutos
@@ -220,54 +245,146 @@ export default function PainelVisaoGeral({
         router.get(route('mlb.anuncios.publicador.produtos', { conta: contaChave, ...destino }));
     }
 
+    /**
+     * Um motivo da triagem → a lista de Publicações filtrada por ele. MESMO
+     * destino da linha 8 de "O que fazer agora", nunca um segundo caminho.
+     *
+     * Existe como FUNÇÃO de propósito: o `.map()` dos alertas chama isto em vez
+     * de ler `companyIdAbas` lá dentro — variável de escopo do componente lida
+     * dentro de um `.map()` já foi eliminada pelo Rollup no bundle de produção
+     * deste projeto (feedback_rollup_map_scope_bug.md).
+     */
+    function abrirAlertaNoAcervo(motivo) {
+        if (!companyIdAbas) return;
+        router.get(route('mlb.anuncios.meus', { company: companyIdAbas, motivo }));
+    }
+
     function atualizarAgora() {
         if (!companyIdAbas) return;
         router.post(route('mlb.anuncios.meus.atualizar', { company: companyIdAbas }));
     }
 
     return (
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6">
 
-                {/* 1 — Indicadores (4) */}
-                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                    <CartaoIndicador
-                        rotulo="No ar"
-                        numero={semAcervoOuNuncaColetado ? '—' : (noAr ?? '—')}
-                        nota={acervoIndisponivel ? TITLE_SEM_COMPANY : 'ativos e pausados'}
-                        botaoTexto={!acervoIndisponivel && nuncaColetado ? 'Atualizar agora' : null}
-                        onBotao={atualizarAgora}
-                        onClick={!semAcervoOuNuncaColetado && companyIdAbas
-                            ? () => router.get(route('mlb.anuncios.meus', { company: companyIdAbas, status: 'acionaveis' }))
-                            : null}
-                    />
-                    <CartaoIndicador
-                        rotulo="Com venda"
-                        numero={semAcervoOuNuncaColetado ? '—' : (comVenda ?? '—')}
-                        nota={acervoIndisponivel ? TITLE_SEM_COMPANY : `de ${noAr ?? '—'} no ar`}
-                        barraPct={!semAcervoOuNuncaColetado && noAr && noAr > 0 && comVenda !== null ? (comVenda / noAr) * 100 : null}
-                        botaoTexto={!acervoIndisponivel && nuncaColetado ? 'Atualizar agora' : null}
-                        onBotao={atualizarAgora}
-                        onClick={!semAcervoOuNuncaColetado && companyIdAbas
-                            ? () => router.get(route('mlb.anuncios.meus', { company: companyIdAbas, comVenda: 1 }))
-                            : null}
-                    />
-                    <CartaoIndicador
-                        rotulo="Publicados nos últimos 30 dias"
-                        numero={publicados30d}
-                        nota={`${publicados30dPessoas} ${publicados30dPessoas === 1 ? 'pessoa' : 'pessoas'}`}
-                        onClick={companyIdAbas ? () => router.get(route('mlb.anuncios.historico', { company: companyIdAbas })) : null}
-                    />
-                    <CartaoIndicador
-                        rotulo="Sem oferta"
-                        numero={semOferta}
-                        nota="produtos sem oferta do Portal vinculada"
-                    />
+            {/* 0 — Cabeçalho do painel (tela 02 do Stitch). O "Nova Publicação
+                Direta" do mockup nasce DESABILITADO com "Em breve": não existe
+                fluxo de publicação direta a partir do painel, e prometer botão
+                que não leva a lugar nenhum é pior que não ter o botão. */}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h2 className="text-[15px] font-bold text-white">Visão geral da conta</h2>
+                    <p className="text-[13px] font-normal text-white/55">
+                        Tudo que já está gravado sobre esta conta — nenhuma consulta ao Mercado Livre nesta tela.
+                    </p>
                 </div>
+                <button
+                    type="button"
+                    disabled
+                    title="Ainda não existe publicação direta a partir do painel."
+                    className="inline-flex h-10 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 opacity-40"
+                >
+                    <Send className="h-4 w-4" aria-hidden="true" />
+                    Nova publicação direta
+                    <span className="rounded-md border border-white/[0.10] px-2 py-0.5 text-[11px] font-normal text-white/55">Em breve</span>
+                </button>
+            </div>
+
+            {/* 1 — A faixa de KPIs. O mockup tem 5; aqui são 6, porque
+                "Publicados nos últimos 30 dias" já existia e nada que a tela
+                fazia desde 08/10 pode sumir. */}
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+                <CartaoKpi
+                    rotulo="No ar"
+                    numero={semAcervoOuNuncaColetado ? null : noAr}
+                    motivoVazio={motivoSemAcervo}
+                    nota="anúncios ativos e pausados"
+                    icone={<Boxes className="h-4 w-4" aria-hidden="true" />}
+                    subs={[
+                        ...(noArBase !== null ? [{ rotulo: 'produtos base', valor: noArBase }] : []),
+                        ...(noArKits !== null ? [{ rotulo: 'produtos em kit', valor: noArKits }] : []),
+                    ]}
+                    botaoTexto={!acervoIndisponivel && nuncaColetado ? 'Atualizar agora' : null}
+                    onBotao={atualizarAgora}
+                    onClick={!semAcervoOuNuncaColetado && companyIdAbas
+                        ? () => router.get(route('mlb.anuncios.meus', { company: companyIdAbas, status: 'acionaveis' }))
+                        : null}
+                />
+                <CartaoKpi
+                    rotulo="Aguardando ação"
+                    numero={aguardandoAcao}
+                    nota="produtos esperando um passo seu"
+                    icone={<ClipboardList className="h-4 w-4" aria-hidden="true" />}
+                    destaque="atencao"
+                    destaqueTexto={aguardandoAcao > 0 ? 'Prioritário' : null}
+                    subs={[
+                        { rotulo: 'Sem oferta', valor: semOferta },
+                        ...(prontosFase2 !== null ? [{ rotulo: 'Prontos para a Fase 2', valor: prontosFase2 }] : []),
+                    ]}
+                    onClick={contaChave ? () => abrirProdutos('todos') : null}
+                />
+                <CartaoKpi
+                    rotulo="Publicados nos últimos 30 dias"
+                    numero={publicados30d}
+                    nota={`${publicados30dPessoas} ${publicados30dPessoas === 1 ? 'pessoa' : 'pessoas'}`}
+                    icone={<Send className="h-4 w-4" aria-hidden="true" />}
+                    onClick={companyIdAbas ? () => router.get(route('mlb.anuncios.historico', { company: companyIdAbas })) : null}
+                />
+                <CartaoKpi
+                    rotulo="Com venda"
+                    numero={semAcervoOuNuncaColetado ? null : comVenda}
+                    motivoVazio={motivoSemAcervo}
+                    // ⚠️ O mockup chama este cartão de "Tração (30D)". Aqui NÃO:
+                    // `sold_quantity` é a venda ACUMULADA do anúncio, não uma
+                    // janela de 30 dias — afirmar a janela seria mentir.
+                    nota={tracaoPct !== null ? `${tracaoPct}% do que está no ar já vendeu` : 'venda acumulada do anúncio'}
+                    icone={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
+                    barraPct={tracaoPct}
+                    botaoTexto={!acervoIndisponivel && nuncaColetado ? 'Atualizar agora' : null}
+                    onBotao={atualizarAgora}
+                    onClick={!semAcervoOuNuncaColetado && companyIdAbas
+                        ? () => router.get(route('mlb.anuncios.meus', { company: companyIdAbas, comVenda: 1 }))
+                        : null}
+                />
+                <CartaoKpi
+                    rotulo="Criativos por IA"
+                    numero={criativosPacks}
+                    motivoVazio="Ainda não medimos os criativos desta conta"
+                    // O mockup escreve "32 packs reaproveitados". O acervo NÃO
+                    // registra reuso — o número não existe e não entra aqui.
+                    nota="packs de imagens gerados nesta conta"
+                    icone={<Sparkles className="h-4 w-4" aria-hidden="true" />}
+                    onClick={contaChave ? () => abrirProdutos('todos') : null}
+                />
+                <CartaoKpi
+                    rotulo="Revisão humana"
+                    numero={null}
+                    motivoVazio="Não existe no sistema — nada passa por revisão manual hoje"
+                    icone={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+                />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+                <div className="flex flex-col gap-6">
 
                 {/* 2 — O que fazer agora */}
                 <section className="rounded-xl bg-ecf-card p-4">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">O que fazer agora</h2>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                            <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">O que fazer agora</h2>
+                            {/* O mockup promete "estoque sincronizado do ERP com alta
+                                demanda orgânica". Nada disso é lido aqui — dizer o que a
+                                fila realmente é vale mais que repetir a legenda do mockup. */}
+                            <p className="text-[13px] font-normal text-white/55">
+                                As pendências que o sistema sabe medir. Não lemos estoque do ERP nem demanda orgânica.
+                            </p>
+                        </div>
+                        {linhasOQueFazer.length > 0 && (
+                            <span className="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-bold text-amber-300">
+                                {linhasOQueFazer.length} {linhasOQueFazer.length === 1 ? 'pendência' : 'pendências'}
+                            </span>
+                        )}
+                    </div>
                     <div className="mt-3 flex flex-col gap-2">
                         {linhasOQueFazer.length === 0 ? (
                             <p className="text-[13px] font-normal text-white/55">Nada pendente nesta conta.</p>
@@ -325,6 +442,62 @@ export default function PainelVisaoGeral({
                     )}
                 </section>
 
+                {/* 2b — Desempenho rápido das publicações (tela 02): a divisão
+                    com venda × sem venda do acervo no ar.
+
+                    ⚠️ O mockup desenha também um sparkline de conversão diária e
+                    um seletor Hoje/7 dias/Este mês. Ficaram FORA de propósito: a
+                    série diária existe (`ml_acervo_metricas_diarias`), então isso
+                    é factível com dado real e merece tarefa própria — um gráfico
+                    de mentira agora seria pior que nenhum gráfico. */}
+                <section className="rounded-xl bg-ecf-card p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                            <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Desempenho rápido das publicações</h2>
+                            {/* O mockup chama isto de "tração nos últimos 30 dias".
+                                `sold_quantity` é a venda ACUMULADA do anúncio — a
+                                janela não existe no dado e não pode ser afirmada. */}
+                            <p className="text-[13px] font-normal text-white/55">
+                                Venda acumulada do anúncio, não uma janela de 30 dias.
+                            </p>
+                        </div>
+                        {tracaoPct !== null && (
+                            <span className="rounded-md border border-ecf-yellow/40 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">
+                                {tracaoPct}% já vendeu
+                            </span>
+                        )}
+                    </div>
+
+                    {noAr === null ? (
+                        <p className="mt-3 text-[13px] font-normal text-white/55">{motivoSemAcervo}</p>
+                    ) : noAr === 0 ? (
+                        <p className="mt-3 text-[13px] font-normal text-white/55">Nenhum anúncio no ar para medir.</p>
+                    ) : (
+                        <div className="mt-3 flex flex-col gap-2">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                                <div className="h-2 rounded-full bg-ecf-yellow/60" style={{ width: `${Math.max(0, Math.min(100, tracaoPct ?? 0))}%` }} />
+                            </div>
+                            <div className="flex items-center justify-between text-[13px] font-normal text-white/70">
+                                <span>Com venda registrada ({comVenda ?? 0} {(comVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
+                                <span className="font-mono tabular-nums">{tracaoPct !== null ? `${tracaoPct}%` : '—'}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[13px] font-normal text-white/55">
+                                <span>Sem venda registrada ({semVenda ?? 0} {(semVenda ?? 0) === 1 ? 'anúncio' : 'anúncios'})</span>
+                                <span className="font-mono tabular-nums">{tracaoPct !== null ? `${100 - tracaoPct}%` : '—'}</span>
+                            </div>
+                            {semVenda !== null && semVenda > 0 && contaChave && (
+                                <button
+                                    type="button"
+                                    onClick={() => router.get(route('mlb.anuncios.publicador.alavancas.index', { conta: contaChave }))}
+                                    className={cn(BOTAO_SECUNDARIO, 'mt-1 self-start')}
+                                >
+                                    Ver alavancas desta conta
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </section>
+
                 {/* 3 — Situação dos produtos */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Situação dos produtos</h2>
@@ -341,7 +514,7 @@ export default function PainelVisaoGeral({
                                     onClick={() => abrirProdutos(chave)}
                                     className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 text-left hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
                                 >
-                                    <p className="font-mono text-[18px] font-bold tabular-nums text-white">{numero}</p>
+                                    <p className="font-mono text-[24px] font-bold tabular-nums text-white">{numero}</p>
                                     <p className="text-[11px] font-normal text-white/55">{rotulo}</p>
                                 </button>
                             );
@@ -371,7 +544,7 @@ export default function PainelVisaoGeral({
                                         onClick={() => abrirProdutosPorFase(chaveDaFase)}
                                         className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 text-left hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow"
                                     >
-                                        <p className="font-mono text-[18px] font-bold tabular-nums text-white">{numeroDaFase}</p>
+                                        <p className="font-mono text-[24px] font-bold tabular-nums text-white">{numeroDaFase}</p>
                                         <p className="text-[11px] font-normal text-white/55">{rotuloDaFase}</p>
                                     </button>
                                 );
@@ -447,68 +620,74 @@ export default function PainelVisaoGeral({
 
             <div className="flex flex-col gap-6">
 
-                {/* 5 — Lateral: Integrações */}
-                <section className="rounded-xl bg-ecf-card p-4">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Integrações</h2>
-                    <div className="mt-3 flex flex-col gap-3 text-[13px] font-normal text-white/70">
-                        <div className="flex items-center justify-between">
-                            <span>Mercado Livre</span>
-                            <SeloConta token={textoSeguro(integracoesSeguras.mercado_livre?.token, textoSeguro(empresaSegura.token, 'sem_token'))} />
-                        </div>
-                        {textoSeguro(empresaSegura.token, 'ativo') !== 'ativo' && (
-                            <LinkReconexao link={typeof empresaSegura.link_reconexao === 'string' ? empresaSegura.link_reconexao : null} />
-                        )}
-                        <div className="flex items-center justify-between">
-                            <span>Publicação</span>
-                            {integracoesSeguras.publicacao_liberada === true ? (
-                                <span className="text-[11px] font-bold text-emerald-400">Liberada</span>
-                            ) : (
-                                <AvisoContaTravada variante="selo" />
+                {/* 4b — Lateral: Alertas (tela 02).
+
+                    São a TRIAGEM do acervo que esta tela já carregava, com
+                    outro nome. `motivosDef()` segue sendo a fonte única dos
+                    motivos — nada é reimplementado aqui, nem rótulo nem cor.
+
+                    ⚠️ O mockup chama o bloco de "Alertas Meli & ERP". Aqui não:
+                    nada vem do ERP, e o título não pode prometer o que não há. */}
+                {alerta.presente && (
+                    <section className="rounded-xl bg-ecf-card p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                                Alertas do acervo
+                            </h2>
+                            {alerta.disponivel && alerta.total > 0 && (
+                                <span className="rounded-md border border-red-400/40 bg-red-400/10 px-2 py-0.5 text-[11px] font-bold text-red-300">
+                                    {alerta.total} {alerta.total === 1 ? 'anúncio' : 'anúncios'}
+                                </span>
                             )}
                         </div>
-                        <div className="flex items-center justify-between">
-                            <span>Alavancas</span>
-                            <span className={cn('text-[11px] font-bold', integracoesSeguras.alavancas_liberada === true ? 'text-emerald-400' : 'text-white/40')}>
-                                {integracoesSeguras.alavancas_liberada === true ? 'Liberada' : 'Não liberada'}
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <span>Portal</span>
-                            <SeloPortal portal={integracoesSeguras.portal} />
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                            <span>ERP</span>
-                            <span className="truncate text-white/55">
-                                {textoSeguro(integracoesSeguras.erp?.valor, textoSeguro(integracoesSeguras.erp?.rotulo, 'Não informado'))}
-                            </span>
-                        </div>
-                    </div>
-                </section>
 
-                {/* 6 — Lateral: Identidade visual */}
-                <section className="rounded-xl bg-ecf-card p-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Identidade visual</h2>
-                        <button
-                            type="button"
-                            onClick={() => contaChave && router.get(route('mlb.anuncios.publicador.configuracoes', { conta: contaChave }))}
-                            className="text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
-                        >
-                            Editar
-                        </button>
-                    </div>
-                    <div className="mt-3 text-[13px] font-normal text-white/70">
-                        {identidadeTemTexto ? (
-                            linhasIdentidade.map((linha, indice) => (
-                                <p key={indice} className="truncate">{textoSeguro(linha, '')}</p>
-                            ))
+                        {!alerta.disponivel ? (
+                            <p className="mt-3 text-[13px] font-normal text-white/55">{TITLE_SEM_COMPANY}</p>
                         ) : (
-                            <p className="text-white/55">Não cadastrada. Os criativos são gerados sem identidade.</p>
-                        )}
-                    </div>
-                </section>
+                            <div className="mt-3 flex flex-col gap-2">
+                                {alerta.itens.filter((linha) => (numeroSeguro(linha.total) ?? 0) > 0).length === 0 ? (
+                                    <p className="text-[13px] font-normal text-white/55">Nenhum alerta no acervo desta conta.</p>
+                                ) : alerta.itens.map((bruto) => {
+                                    // Flags calculadas DENTRO do callback — variável de escopo do
+                                    // componente lida só dentro do .map() já foi eliminada pelo
+                                    // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
+                                    const chaveDoAlerta = bruto.chave;
+                                    const totalDoAlerta = numeroSeguro(bruto.total) ?? 0;
+                                    const rotuloDoAlerta = textoSeguro(bruto.label, chaveDoAlerta);
+                                    const critico = textoSeguro(bruto.cor, '') === 'red';
 
-                {/* 7 — Lateral: Quem publicou */}
+                                    if (totalDoAlerta === 0) return null;
+
+                                    return (
+                                        <button
+                                            key={chaveDoAlerta}
+                                            type="button"
+                                            onClick={() => abrirAlertaNoAcervo(chaveDoAlerta)}
+                                            className={cn(
+                                                'flex items-center justify-between gap-2 rounded-lg border p-3 text-left text-[13px] font-normal hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                                                critico ? 'border-red-400/30 text-red-200' : 'border-amber-400/30 text-amber-100',
+                                            )}
+                                        >
+                                            <span className="min-w-0 truncate">{rotuloDoAlerta}</span>
+                                            <span className="font-mono tabular-nums">{totalDoAlerta}</span>
+                                        </button>
+                                    );
+                                })}
+                                <p className="text-[11px] font-normal text-white/40">
+                                    Do acervo do Mercado Livre. Nada aqui vem do ERP.
+                                </p>
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {/* 4c — Lateral: Quem publicou.
+
+                    Ocupa o lugar do "Atividade da Equipe" do mockup, por decisão
+                    do usuário: é o que o sistema de fato sabe — quem publicou o
+                    quê e quando. O mockup inventa "gerou 5 imagens IA" e "revisão
+                    aprovada"; nenhum dos dois existe como registro. */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Quem publicou</h2>
                     <div className="mt-3 flex flex-col gap-2 text-[13px] font-normal text-white/70">
@@ -547,7 +726,114 @@ export default function PainelVisaoGeral({
                             </>
                         )}
                     </div>
+                    {companyIdAbas && (
+                        <button
+                            type="button"
+                            onClick={() => router.get(route('mlb.anuncios.historico', { company: companyIdAbas }))}
+                            className="mt-3 inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
+                        >
+                            Ver histórico completo
+                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    )}
                 </section>
+
+                {/* 5 — Lateral: Integrações */}
+                <section className="rounded-xl bg-ecf-card p-4">
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Integrações</h2>
+                    <div className="mt-3 flex flex-col gap-3 text-[13px] font-normal text-white/70">
+                        <div className="flex items-center justify-between">
+                            <span>Mercado Livre</span>
+                            <SeloConta token={textoSeguro(integracoesSeguras.mercado_livre?.token, textoSeguro(empresaSegura.token, 'sem_token'))} />
+                        </div>
+                        {textoSeguro(empresaSegura.token, 'ativo') !== 'ativo' && (
+                            <LinkReconexao link={typeof empresaSegura.link_reconexao === 'string' ? empresaSegura.link_reconexao : null} />
+                        )}
+                        <div className="flex items-center justify-between">
+                            <span>Publicação</span>
+                            {integracoesSeguras.publicacao_liberada === true ? (
+                                <span className="text-[11px] font-bold text-emerald-400">Liberada</span>
+                            ) : (
+                                <AvisoContaTravada variante="selo" />
+                            )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span>Alavancas</span>
+                            <span className={cn('text-[11px] font-bold', integracoesSeguras.alavancas_liberada === true ? 'text-emerald-400' : 'text-white/40')}>
+                                {integracoesSeguras.alavancas_liberada === true ? 'Liberada' : 'Não liberada'}
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span>Portal</span>
+                            <SeloPortal portal={integracoesSeguras.portal} />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                            <span>ERP</span>
+                            <span className="truncate text-white/55">
+                                {textoSeguro(integracoesSeguras.erp?.valor, textoSeguro(integracoesSeguras.erp?.rotulo, 'Não informado'))}
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                {/* 6a — Lateral: atalho de Criativos (o par de cards do rodapé
+                    do mockup; aqui empilhados, porque a coluna tem 340px e dois
+                    cards lado a lado ficariam ilegíveis).
+
+                    Não há biblioteca de criativos no Publicador: a geração mora
+                    DENTRO do produto, no card de Fotos (Fase 165). O atalho leva
+                    para lá em vez de prometer uma tela que não existe. */}
+                <section className="rounded-xl bg-ecf-card p-4">
+                    <div className="flex items-start justify-between gap-2">
+                        <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
+                            <Sparkles className="h-4 w-4" aria-hidden="true" />
+                            Criativos por IA
+                        </h2>
+                        <span className="font-mono text-[13px] font-bold tabular-nums text-white">
+                            {criativosPacks !== null ? criativosPacks : '—'}
+                        </span>
+                    </div>
+                    <p className="mt-2 text-[13px] font-normal text-white/55">
+                        {criativosPacks !== null
+                            ? `${criativosPacks === 1 ? 'pack gerado' : 'packs gerados'} nesta conta. A geração fica dentro do produto, no card de Fotos.`
+                            : 'Ainda não medimos os criativos desta conta.'}
+                    </p>
+                    {contaChave && (
+                        <button
+                            type="button"
+                            onClick={() => abrirProdutos('todos')}
+                            className="mt-3 inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
+                        >
+                            Abrir Produtos
+                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    )}
+                </section>
+
+                {/* 6 — Lateral: Identidade visual */}
+                <section className="rounded-xl bg-ecf-card p-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Identidade visual</h2>
+                        <button
+                            type="button"
+                            onClick={() => contaChave && router.get(route('mlb.anuncios.publicador.configuracoes', { conta: contaChave }))}
+                            className="text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
+                        >
+                            Editar
+                        </button>
+                    </div>
+                    <div className="mt-3 text-[13px] font-normal text-white/70">
+                        {identidadeTemTexto ? (
+                            linhasIdentidade.map((linha, indice) => (
+                                <p key={indice} className="truncate">{textoSeguro(linha, '')}</p>
+                            ))
+                        ) : (
+                            <p className="text-white/55">Não cadastrada. Os criativos são gerados sem identidade.</p>
+                        )}
+                    </div>
+                </section>
+
+                </div>
             </div>
         </div>
     );

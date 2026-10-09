@@ -474,7 +474,14 @@ test('PainelVisaoGeral — render real (esbuild + react-dom/server), não só es
             },
         })));
         // Todos os outros campos da linha estão preenchidos: o único "—" é da fase.
-        const linha = html.slice(html.indexOf('Caneca azul 300ml'));
+        //
+        // ⚠️ O recorte termina no fim da SEÇÃO "Últimas publicações" (quick
+        // 261009-t02). Antes ele ia até o fim do documento e só passava por
+        // acidente: bastou a coluna lateral ganhar um cartão com estado vazio
+        // ("Criativos por IA" sem dado escreve "—") para a contagem virar 2.
+        // Limitar à seção prova o que a frase acima diz, e nada além.
+        const daLinha = html.slice(html.indexOf('Caneca azul 300ml'));
+        const linha = daLinha.slice(0, daLinha.indexOf('</section>'));
         assert.equal((linha.match(/—/g) ?? []).length, 1);
     });
 
