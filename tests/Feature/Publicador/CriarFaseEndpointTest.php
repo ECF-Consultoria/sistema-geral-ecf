@@ -557,10 +557,16 @@ class CriarFaseEndpointTest extends TestCase
     }
 
     /**
-     * A capa é RECEBIDA como flag e devolvida na resposta; quem dispara a geração
-     * é o 175-07. `Queue::fake()` prova que nada foi enfileirado aqui.
+     * A capa é pedida como flag e disparada pelo `CapaDoKitService` depois da
+     * transação (plano 175-06). Aqui a chave do Creative Engine está DESLIGADA
+     * (o default: "desligado" é a ausência de registro em `configuracoes`),
+     * então nada é enfileirado e o motivo volta em `capa.motivo` — com 201, que
+     * é o ponto: recusa da capa nunca é recusa da fase.
+     *
+     * O caminho feliz (chave ligada → um job com os dois slots) está em
+     * `CapaDoKitTest`.
      */
-    public function test_capa_pedida_volta_na_resposta_e_nenhum_job_e_disparado(): void
+    public function test_capa_recusada_pela_chave_desligada_nao_derruba_a_fase(): void
     {
         [$e] = $this->conta();
         $base = $this->base($e);
@@ -572,8 +578,28 @@ class CriarFaseEndpointTest extends TestCase
             ->json();
 
         $this->assertTrue($json['capa_pedida']);
+        $this->assertFalse($json['capa']['ok']);
+        $this->assertNotEmpty($json['capa']['motivo']);
+        $this->assertNull($json['capa']['kit_id'], 'D-13: nunca sai token daqui, e sem kit nem id sai');
+        $this->assertSame(1, PubProduto::where('produto_base_id', $base->id)->count(), 'a fase existe mesmo sem a capa');
         Queue::assertNothingPushed();
         $this->semChamadaAoMl();
+    }
+
+    /** Sem a flag, `capa` é nulo: nada é pedido e nada é disparado. */
+    public function test_sem_a_flag_a_capa_nem_e_consultada(): void
+    {
+        [$e] = $this->conta();
+        $base = $this->base($e);
+        $this->rascunhoPublicado($base);
+
+        $this->actingAs($this->admin())
+            ->postJson($this->urlCriar($e, $base), $this->corpo())
+            ->assertStatus(201)
+            ->assertJsonPath('capa_pedida', false)
+            ->assertJsonPath('capa', null);
+
+        Queue::assertNothingPushed();
     }
 
     public function test_sku_e_obrigatorio_na_criacao(): void

@@ -6,6 +6,7 @@ use App\Models\MlbEmpresa;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubRascunho;
+use App\Services\Publicador\CapaDoKitService;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Payload\Alvo;
@@ -362,7 +363,7 @@ class CriarFaseServiceTest extends TestCase
         $base = $this->baseComRascunho();
         $antes = [PubProduto::count(), PubRascunho::count(), DB::table('pub_eixos')->count(), DB::table('pub_rascunho_alvos')->count()];
 
-        $servico = new class(new RascunhoRepository()) extends CriarFaseService
+        $servico = new class(new RascunhoRepository(), app(CapaDoKitService::class)) extends CriarFaseService
         {
             /** Estoura DEPOIS dos eixos: produto, rascunho, alvos, atributos e eixos já estão gravados. */
             protected function copiarVariantes(PubRascunho $base, PubRascunho $kit, array $dados, array $mapaEixoValor, array $mapaAlvo): void
@@ -386,7 +387,9 @@ class CriarFaseServiceTest extends TestCase
 
     private function servico(): CriarFaseService
     {
-        return new CriarFaseService(new RascunhoRepository());
+        // A capa (175-06) vem do container: nenhum teste deste arquivo a pede,
+        // e sem `capa` em $dados ela nem é consultada.
+        return new CriarFaseService(new RascunhoRepository(), app(CapaDoKitService::class));
     }
 
     /** O que a prévia do 175-05 passaria para o serviço. */

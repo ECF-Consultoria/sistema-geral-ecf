@@ -6,6 +6,7 @@ use App\Models\MlbEmpresa;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Publicador\CapaDoKitService;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\ImagemAssetService;
 use App\Services\Publicador\RascunhoRepository;
@@ -208,7 +209,7 @@ class CriarFaseCloneTest extends TestCase
         [$base] = $this->baseCheio();
         $antes = Storage::disk('local')->allFiles();
 
-        $servico = new class(new RascunhoRepository()) extends CriarFaseService
+        $servico = new class(new RascunhoRepository(), app(CapaDoKitService::class)) extends CriarFaseService
         {
             protected function copiarImagens(PubRascunho $base, PubRascunho $kit, array &$escritos): void
             {
@@ -232,7 +233,9 @@ class CriarFaseCloneTest extends TestCase
 
     private function servico(): CriarFaseService
     {
-        return new CriarFaseService(new RascunhoRepository());
+        // A capa (175-06) vem do container: nenhum teste deste arquivo a pede,
+        // e sem `capa` em $dados ela nem é consultada.
+        return new CriarFaseService(new RascunhoRepository(), app(CapaDoKitService::class));
     }
 
     private function dados(int $quantidade): array

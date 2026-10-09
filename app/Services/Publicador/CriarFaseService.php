@@ -118,7 +118,24 @@ class CriarFaseService
         'PACKAGE_WEIGHT',
     ];
 
-    public function __construct(private RascunhoRepository $repo) {}
+    /**
+     * O resultado da CAPA da última chamada a `criar()` — `null` quando a capa
+     * não foi pedida.
+     *
+     * Por que uma propriedade e não o retorno: `criar()` devolve o `PubProduto`
+     * do kit, e esse contrato é lido por quem já chama. A capa é um EFEITO de
+     * fora da transação, que não pode desfazer a fase criada nem mudar o
+     * retorno; quem precisa do motivo (o endpoint, para a resposta) lê daqui.
+     * Uma chamada por requisição — este serviço é resolvido por requisição.
+     *
+     * @var array{ok: bool, motivo: ?string, kit_id: ?int}|null
+     */
+    public ?array $resultadoDaCapa = null;
+
+    public function __construct(
+        private RascunhoRepository $repo,
+        private CapaDoKitService $capa,
+    ) {}
 
     /**
      * Cria a próxima fase (o kit de N unidades) do produto base.
@@ -126,7 +143,8 @@ class CriarFaseService
      * @param  array{quantidade: int, sku?: ?string, seller_skus?: array<string, ?string>,
      *     titulo_por_tipo?: array<string, ?string>, descricao?: ?string,
      *     estoque_por_variante?: array<string, array{estoque?: ?int, depositos?: ?array}>,
-     *     ator?: ?array}  $dados  tudo já calculado por quem chama (a prévia do 175-05)
+     *     ator?: ?array, capa?: ?bool, user?: ?\App\Models\User}  $dados  tudo já
+     *     calculado por quem chama (a prévia do 175-05)
      *
      * @throws RegraViolada KIT-01 (base sem rascunho), KIT-02 (base que já é kit),
      *                      KIT-03 (quantidade < 2), KIT-04 (Kit N já existe)
@@ -135,6 +153,7 @@ class CriarFaseService
     {
         $quantidade = (int) ($dados['quantidade'] ?? 0);
         $rascunhoDoBase = $base->rascunho;
+        $this->resultadoDaCapa = null;
 
         // ── 1. Recusas, ANTES de qualquer escrita ────────────────────────────
         if ($rascunhoDoBase === null) {
@@ -153,7 +172,7 @@ class CriarFaseService
         $escritos = [];
 
         try {
-            return DB::transaction(function () use ($base, $rascunhoDoBase, $dados, $quantidade, &$escritos) {
+            $kit = DB::transaction(function () use ($base, $rascunhoDoBase, $dados, $quantidade, &$escritos) {
                 // WR-B02: travar PRIMEIRO, ler DEPOIS — o editor do base pode estar gravando agora.
                 $this->repo->travar($rascunhoDoBase);
 
@@ -176,6 +195,8 @@ class CriarFaseService
                 return $kit->fresh('rascunho');
             });
         } catch (\Throwable $e) {
+            $this->resultadoDaCapa = null;
+
             // O banco já voltou; o disco não. Órfão residual é inócuo (caminho por
             // sha, sem linha apontando), mas não se deixa de propósito (T-175-08).
             $this->apagarArquivos($escritos);
@@ -188,6 +209,20 @@ class CriarFaseService
 
             throw $e;
         }
+
+        // ── 3. A CAPA (§5), **fora** da transação e nunca dentro dela: o
+        //       planejamento enfileira job, pega lock de cache e lê disco — nada
+        //       disso volta atrás num rollback, e segurar a transação enquanto
+        //       isso acontece prenderia a trava do rascunho do base.
+        //
+        //       Falha da capa NÃO desfaz a fase: a fase criada é o trabalho da
+        //       pessoa, a capa é um extra que ela pode pedir de novo depois. O
+        //       motivo volta em `$resultadoDaCapa`, para a resposta do endpoint.
+        if (($dados['capa'] ?? false) && ($dados['user'] ?? null) instanceof \App\Models\User) {
+            $this->resultadoDaCapa = $this->capa->planejar($kit, $dados['user']);
+        }
+
+        return $kit;
     }
 
     // ═══ O produto e o rascunho do kit ═══════════════════════════════════════

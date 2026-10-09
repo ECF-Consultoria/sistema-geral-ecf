@@ -149,9 +149,10 @@ class MlbPublicadorFaseController extends Controller
      * `seller_skus` e a flag `capa`. Tudo o mais é calculado aqui — ver o
      * docblock da classe.
      *
-     * ⚠️ A capa é **recebida como flag e devolvida na resposta**; quem dispara a
-     * geração é o 175-07, de propósito: a decisão de produto sobre a capa
-     * ambientada não pode travar a criação da fase.
+     * ⚠️ A capa (§5) é disparada pelo `CriarFaseService` **depois** da transação,
+     * e a recusa dela nunca derruba a fase: a resposta continua 201 e o motivo
+     * vai em `capa.motivo` (plano 175-06; decisão do usuário em 2026-10-08 é
+     * gerar DUAS imagens — ambientada e fundo limpo — para ele escolher).
      */
     public function criar(Request $request, string $conta, int $produto): JsonResponse
     {
@@ -194,6 +195,10 @@ class MlbPublicadorFaseController extends Controller
                 'seller_skus' => $this->sellerSkusParaGravar($previa, (array) ($dados['seller_skus'] ?? [])),
                 'estoque_por_variante' => $this->estoqueParaGravar($previa),
                 'ator' => $this->ator($request),
+                // A capa é planejada DEPOIS da transação, dentro do serviço; a
+                // falha dela não desfaz a fase (plano 175-06, §5).
+                'capa' => (bool) ($dados['capa'] ?? false),
+                'user' => $request->user(),
             ]);
         } catch (RegraViolada $e) {
             return $this->recusa($e);
@@ -206,8 +211,11 @@ class MlbPublicadorFaseController extends Controller
             // `etapaValida()`, cujas chaves são produto|detalhes|imagens|condicoes.
             // `condicoes` é "Condições de venda" — exatamente o que a §4 pede.
             'url' => route('mlb.anuncios.publicador.editor', ['produto' => $kit->id]).'?etapa=condicoes',
-            // Registrada, não disparada: o job da capa é do 175-07.
             'capa_pedida' => (bool) ($dados['capa'] ?? false),
+            // Plano 175-06 (§5): o resultado do pedido da capa — `null` quando
+            // não foi pedida. Recusa da capa NÃO é recusa da fase: a resposta
+            // continua 201, com o motivo aqui para a tela avisar.
+            'capa' => $this->clone->resultadoDaCapa,
         ], 201);
     }
 

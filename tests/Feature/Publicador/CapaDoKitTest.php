@@ -4,22 +4,34 @@ namespace Tests\Feature\Publicador;
 
 use App\Jobs\PlanejarKitCriativosJob;
 use App\Models\Company;
+use App\Models\Configuracao;
+use App\Models\MlAnuncioCriativo;
+use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlbEmpresa;
 use App\Models\MlCategoriaSchema;
+use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\User;
 use App\Services\Creative\Contracts\ImageGenerationProvider;
 use App\Services\Creative\CreativeContextBuilder;
+use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativePlanner;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\Dto\CreativeContext;
 use App\Services\Creative\Dto\CreativeGenerationRequest;
 use App\Services\Creative\Dto\CreativeGenerationResult;
 use App\Services\Creative\ProductTruthBuilder;
+use App\Services\Publicador\CapaDoKitService;
+use App\Services\Publicador\CriarFaseService;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -177,15 +189,15 @@ class CapaDoKitTest extends TestCase
         $metodo = new \ReflectionMethod(CreativeContextBuilder::class, 'paraPublicador');
         $metodo->setAccessible(true);
 
-        $portador = \App\Models\MlAnuncioCriativo::create([
-            'token' => \Illuminate\Support\Str::random(32),
+        $portador = MlAnuncioCriativo::create([
+            'token' => Str::random(32),
             'company_id' => $p->company_id,
             'mlb_empresa_id' => $p->mlb_empresa_id,
             'rascunho_id' => null,
             'pub_rascunho_id' => $p->rascunho->id,
-            'pub_grupo' => \App\Support\Publicador\Imagem\ResolvedorGruposImagem::GERAL,
+            'pub_grupo' => ResolvedorGruposImagem::GERAL,
             'slot' => 'hero',
-            'status' => \App\Models\MlAnuncioCriativo::STATUS_PENDENTE,
+            'status' => MlAnuncioCriativo::STATUS_PENDENTE,
         ]);
 
         /** @var CreativeContext $ctx */
@@ -314,5 +326,250 @@ class CapaDoKitTest extends TestCase
 
         $this->assertCount(7, $plano->slots, 'os kits de 7 slots continuam sendo planejados como sempre');
         $this->assertSame('hero', $plano->slots[0]->tipo);
+    }
+
+    // ═══ `CapaDoKitService` ══════════════════════════════════════════════════
+
+    /** Liga a chave do Creative Engine SEM tocar em `configuracoes` (uso de teste). */
+    private function ligarCreative(bool $ligada = true): void
+    {
+        $chave = app(CreativeEngineAtivo::class);
+        $chave->forcar($ligada);
+        $this->app->instance(CreativeEngineAtivo::class, $chave);
+    }
+
+    /** A foto 1 do grupo GENERAL do rascunho, com arquivo de verdade no disco local. */
+    private function fotoNaGaleria(PubRascunho $r, int $posicao = 0): PubImagem
+    {
+        $conteudo = 'bytes-de-foto-'.$r->id.'-'.$posicao;
+        $sha = hash('sha256', $conteudo);
+        $caminho = "publicador/{$r->id}/{$sha}.jpg";
+        Storage::disk('local')->put($caminho, $conteudo);
+
+        $img = $r->imagens()->create([
+            'caminho' => $caminho,
+            'sha256' => $sha,
+            'mime' => 'image/jpeg',
+            'bytes' => strlen($conteudo),
+            'largura' => 1200,
+            'altura' => 1200,
+            'upload_status' => PubImagem::PENDENTE,
+        ]);
+        $img->atribuicoes()->create([
+            'grupo_chave' => ResolvedorGruposImagem::GERAL,
+            'grupo_hash' => hash('sha256', ResolvedorGruposImagem::GERAL),
+            'posicao' => $posicao,
+        ]);
+
+        return $img;
+    }
+
+    private function capa(): CapaDoKitService
+    {
+        return app(CapaDoKitService::class);
+    }
+
+    public function test_capa_cria_o_kit_de_criativos_com_a_copia_da_foto_do_proprio_kit(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [$base, $kit] = $this->familia(4);
+        $doBase = $this->fotoNaGaleria($base->rascunho);
+        $doKit = $this->fotoNaGaleria($kit->rascunho);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $r = $this->capa()->planejar($kit, $admin);
+
+        $this->assertTrue($r['ok'], $r['motivo'] ?? '');
+        $this->assertNull($r['motivo']);
+
+        $kitCriativo = MlAnuncioCriativoKit::findOrFail($r['kit_id']);
+        $this->assertSame($kit->rascunho->id, $kitCriativo->pub_rascunho_id, 'o kit de criativos é do rascunho DO KIT');
+        $this->assertSame(ResolvedorGruposImagem::GERAL, $kitCriativo->pub_grupo);
+        $this->assertSame(MlAnuncioCriativoKit::STATUS_PLANEJANDO, $kitCriativo->status);
+        $this->assertNull($kitCriativo->rascunho_id);
+
+        // A referência é a CÓPIA do kit, nunca a foto do base.
+        $portador = MlAnuncioCriativo::findOrFail($kitCriativo->criativo_referencia_id);
+        $this->assertNotEmpty($portador->referencias);
+        $this->assertNotSame($doBase->id, $doKit->id);
+        $this->assertSame($kit->rascunho->id, $portador->pub_rascunho_id);
+
+        // Exatamente um job, com os DOIS slots da capa.
+        Queue::assertPushed(PlanejarKitCriativosJob::class, 1);
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($job) => $job->kitId === $kitCriativo->id
+            && $job->criativoReferenciaId === $portador->id
+            && $job->tiposFixos === ['lifestyle', 'hero']);
+
+        // Nenhuma chamada paga saiu daqui.
+        Http::assertNothingSent();
+    }
+
+    public function test_a_capa_sao_dois_slots_ambientada_e_fundo_limpo(): void
+    {
+        $this->assertSame(['lifestyle', 'hero'], CapaDoKitService::SLOTS_DA_CAPA);
+    }
+
+    public function test_sem_a_chave_do_creative_engine_nada_e_disparado_e_o_motivo_volta(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative(false);
+        [, $kit] = $this->familia(2);
+        $this->fotoNaGaleria($kit->rascunho);
+
+        $r = $this->capa()->planejar($kit, User::factory()->create(['role' => 'admin']));
+
+        $this->assertFalse($r['ok']);
+        $this->assertNotNull($r['motivo']);
+        $this->assertNull($r['kit_id']);
+        $this->assertSame(0, MlAnuncioCriativoKit::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_sem_permissao_de_gastar_cota_a_capa_recusa_sem_derrubar_nada(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(2);
+        $this->fotoNaGaleria($kit->rascunho);
+        $admin = User::factory()->create(['role' => 'admin']);
+        // Lista preenchida SEM este admin: a 2ª camada do OPS-04 barra (sem editar nada).
+        Configuracao::set(CreativePermissao::CHAVE_LISTA, (string) ($admin->id + 777));
+
+        $r = $this->capa()->planejar($kit, $admin);
+
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('permissão', (string) $r['motivo']);
+        $this->assertSame(0, MlAnuncioCriativoKit::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_rascunho_do_kit_em_status_intocavel_recusa(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(2);
+        $this->fotoNaGaleria($kit->rascunho);
+        $kit->rascunho->update(['status' => PubRascunho::PUBLISHED]);
+
+        $r = $this->capa()->planejar($kit->fresh(), User::factory()->create(['role' => 'admin']));
+
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('publicado', (string) $r['motivo']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_kit_sem_foto_na_galeria_recusa_com_motivo_claro(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(2);
+
+        $r = $this->capa()->planejar($kit, User::factory()->create(['role' => 'admin']));
+
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('foto', (string) $r['motivo']);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_capa_pedida_duas_vezes_retoma_o_mesmo_kit_sem_gastar_de_novo(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(3);
+        $this->fotoNaGaleria($kit->rascunho);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $primeira = $this->capa()->planejar($kit, $admin);
+        $segunda = $this->capa()->planejar($kit, $admin);
+
+        $this->assertTrue($segunda['ok']);
+        $this->assertSame($primeira['kit_id'], $segunda['kit_id'], 'D-15: no máximo um kit ativo por (rascunho, grupo)');
+        $this->assertSame(1, MlAnuncioCriativoKit::count());
+        Queue::assertPushed(PlanejarKitCriativosJob::class, 1);
+    }
+
+    // ═══ A ligação com o Confirmar do painel ═════════════════════════════════
+
+    public function test_criar_fase_com_capa_dispara_o_planejamento_depois_da_transacao(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [$base] = $this->familia(4);
+        $this->fotoNaGaleria($base->rascunho);
+        $base->rascunho->update(['status' => PubRascunho::PUBLISHED]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $servico = app(CriarFaseService::class);
+        $kit = $servico->criar($base->fresh(), [
+            'quantidade' => 6,
+            'sku' => 'CAD-KIT6',
+            'capa' => true,
+            'user' => $admin,
+        ]);
+
+        $this->assertTrue($servico->resultadoDaCapa['ok'] ?? false, $servico->resultadoDaCapa['motivo'] ?? '');
+        $this->assertSame(6, (int) $kit->quantidade_kit);
+        // O clone copiou a foto do base: a referência da capa é a CÓPIA do kit.
+        $this->assertSame(1, $kit->rascunho->imagens()->count());
+        Queue::assertPushed(PlanejarKitCriativosJob::class, fn ($job) => $job->tiposFixos === ['lifestyle', 'hero']);
+    }
+
+    public function test_criar_fase_sem_capa_nao_dispara_nada(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [$base] = $this->familia(4);
+        $this->fotoNaGaleria($base->rascunho);
+        $base->rascunho->update(['status' => PubRascunho::PUBLISHED]);
+
+        $servico = app(CriarFaseService::class);
+        $servico->criar($base->fresh(), ['quantidade' => 7, 'sku' => 'CAD-KIT7']);
+
+        $this->assertNull($servico->resultadoDaCapa);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_capa_recusada_nao_desfaz_a_fase_criada(): void
+    {
+        Storage::fake('local');
+        // Creative Engine DESLIGADO: a capa recusa, mas a fase tem de existir.
+        $this->ligarCreative(false);
+        [$base] = $this->familia(4);
+        $base->rascunho->update(['status' => PubRascunho::PUBLISHED]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $servico = app(CriarFaseService::class);
+        $kit = $servico->criar($base->fresh(), [
+            'quantidade' => 8,
+            'sku' => 'CAD-KIT8',
+            'capa' => true,
+            'user' => $admin,
+        ]);
+
+        $this->assertFalse($servico->resultadoDaCapa['ok']);
+        $this->assertNotNull($servico->resultadoDaCapa['motivo']);
+        $this->assertTrue(PubProduto::whereKey($kit->id)->exists(), 'a fase criada nunca é desfeita por falha da capa');
+        Queue::assertNothingPushed();
+    }
+
+    public function test_endpoint_devolve_201_com_o_motivo_da_capa_recusada(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative(false);
+        [$base] = $this->familia(4);
+        $base->rascunho->update(['status' => PubRascunho::PUBLISHED]);
+        $empresa = MlbEmpresa::findOrFail($base->mlb_empresa_id);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->postJson("/mlb/anuncios/publicador/empresas/empresa-{$empresa->id}/produtos/{$base->id}/fases", [
+                'quantidade' => 9,
+                'sku' => 'CAD-KIT9',
+                'capa' => true,
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('capa_pedida', true)
+            ->assertJsonPath('capa.ok', false)
+            ->assertJsonPath('capa.kit_id', null);
     }
 }
