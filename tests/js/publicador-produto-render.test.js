@@ -78,6 +78,22 @@ async function montarPainelDoProduto() {
     }
 }
 
+/**
+ * A tag `<button …>` que contém o texto pedido.
+ *
+ * ⚠️ `assert.match(html, /disabled/)` é asserção VAZIA nesta base: as classes
+ * dos botões contêm `disabled:opacity-40` e casam sempre. A prova de
+ * "desabilitado" é `/disabled=/` DENTRO da tag do botão certo — e no cartão da
+ * fase há mais de um botão por render.
+ */
+function tagDoBotao(html, texto) {
+    const onde = html.indexOf(texto);
+    if (onde < 0) return null;
+    const inicio = html.lastIndexOf('<button', onde);
+
+    return inicio < 0 ? null : html.slice(inicio, html.indexOf('>', inicio) + 1);
+}
+
 const produtoBase = (overrides = {}) => ({
     id: 10,
     sku: 'CAD-01',
@@ -197,6 +213,95 @@ test('PainelDoProduto — render real (esbuild + react-dom/server), não só est
         })));
         assert.match(html, /estoque pr[óo]prio/i);
         assert.match(html, /calculado/i);
+    });
+
+    // ─── Quick 261009-uec (§6): a ação "Usar estoque calculado" ───
+    // Ela entra AO LADO do texto que já existia — "melhorar sem regredir": o
+    // `estoque próprio · calculado do base: N` continua lá.
+
+    await contexto.test('combo vinculado com valor calculado ganha o botão "Usar estoque calculado" AO LADO do texto', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            fases: [faseBase(), faseBase({
+                produto_id: 11, fase: 3, rotulo: 'Kit 3', quantidade_kit: 3,
+                estoque_proprio: true, estoque_calculado_valor: 2,
+            })],
+        })));
+        assert.match(html, /estoque pr[óo]prio/i);
+        assert.match(html, /calculado do base: 2/);
+        assert.match(html, /Usar estoque calculado/);
+        // Com conta e produto_id na tela o botão é CLICÁVEL.
+        assert.doesNotMatch(tagDoBotao(html, 'Usar estoque calculado'), /disabled=/);
+    });
+
+    await contexto.test('kit que já usa o estoque do base NÃO tem o botão (não há o que adotar)', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            fases: [faseBase({
+                produto_id: 11, fase: 2, rotulo: 'Kit 2', quantidade_kit: 2,
+                estoque_proprio: false, estoque_calculado_valor: null,
+            })],
+        })));
+        assert.match(html, /estoque calculado do produto base/);
+        assert.doesNotMatch(html, /Usar estoque calculado/);
+    });
+
+    await contexto.test('combo vinculado SEM valor calculado não tem o botão (o base não tem estoque de onde dividir)', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            fases: [faseBase({
+                produto_id: 11, fase: 2, rotulo: 'Kit 2', quantidade_kit: 2,
+                estoque_proprio: true, estoque_calculado_valor: null,
+            })],
+        })));
+        assert.match(html, /estoque pr[óo]prio/i);
+        assert.doesNotMatch(html, /Usar estoque calculado/);
+    });
+
+    await contexto.test('Fase 1 (1 unidade) nunca tem o botão, mesmo com valor calculado chegando à toa', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            fases: [faseBase({ quantidade_kit: 1, estoque_proprio: true, estoque_calculado_valor: 3 })],
+        })));
+        assert.doesNotMatch(html, /Usar estoque calculado/);
+    });
+
+    await contexto.test('sem a conta na tela o botão fica DESABILITADO com explicação, nunca escondido (D23)', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            empresa: {},
+            fases: [faseBase({
+                produto_id: 11, fase: 3, rotulo: 'Kit 3', quantidade_kit: 3,
+                estoque_proprio: true, estoque_calculado_valor: 2,
+            })],
+        })));
+        assert.match(html, /Usar estoque calculado/);
+        assert.match(tagDoBotao(html, 'Usar estoque calculado'), /disabled=/);
+        assert.match(html, /n[ãa]o recebeu a conta do produto/i);
+    });
+
+    await contexto.test('estoque_calculado_valor em formato inesperado (objeto, string, negativo) nunca lança nem vaza [object Object]', () => {
+        for (const valor of [{ n: 2 }, 'dois', [2], true, -5, 0]) {
+            let html;
+            assert.doesNotThrow(() => {
+                html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+                    fases: [faseBase({
+                        produto_id: 11, fase: 3, rotulo: 'Kit 3', quantidade_kit: 3,
+                        estoque_proprio: true, estoque_calculado_valor: valor,
+                    })],
+                })));
+            }, `estoque_calculado_valor = ${JSON.stringify(valor)} derrubou a tela`);
+            assert.doesNotMatch(html, /\[object Object\]/);
+            // `numeroSeguro` barra tudo o que não é number finito: só o -5 e o
+            // 0 chegam ao texto, e nenhum formato estranho aparece na tela.
+            assert.doesNotMatch(html, /dois/);
+        }
+    });
+
+    await contexto.test('sem produto_id na linha da fase o botão fica DESABILITADO com explicação', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelDoProduto, propsBase({
+            fases: [faseBase({
+                produto_id: null, fase: 3, rotulo: 'Kit 3', quantidade_kit: 3,
+                estoque_proprio: true, estoque_calculado_valor: 2,
+            })],
+        })));
+        assert.match(html, /Usar estoque calculado/);
+        assert.match(tagDoBotao(html, 'Usar estoque calculado'), /disabled=/);
     });
 
     await contexto.test('proxima_fase.habilitado=false renderiza o botão desabilitado COM o motivo visível (D23)', () => {

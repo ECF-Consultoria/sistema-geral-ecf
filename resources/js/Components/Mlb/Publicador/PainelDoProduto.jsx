@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, router } from '@inertiajs/react';
+import axios from 'axios';
 import { cn } from '@/lib/utils';
+import { criarRota, mensagemDe } from '@/Components/Publicador/apoio.js';
 import { textoSeguro } from './BarraDaConta';
 import PainelCriarFase from './PainelCriarFase';
 import SeloStatusProduto from './SeloStatusProduto';
@@ -14,6 +16,9 @@ const TITLE_SEM_COMPANY = 'Disponível só para empresas cadastradas no sistema'
 
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 const BOTAO_TRAVADO = 'inline-flex h-10 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/40 opacity-60';
+// O botão miúdo que cabe AO LADO do "estoque próprio · calculado do base: N"
+// (quick 261009-uec, §6). Mesmas cores do secundário, na escala do texto de 11px.
+const BOTAO_MINI = 'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md border border-white/[0.10] bg-white/[0.03] px-2 text-[11px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:cursor-not-allowed disabled:text-white/40 disabled:opacity-60';
 const CARTAO = 'rounded-xl bg-ecf-card p-4';
 const TITULO_BLOCO = 'text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 const AMBAR = 'rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[13px] font-normal text-amber-300';
@@ -40,6 +45,13 @@ const ROTULO_ORIGEM = {
     portal: 'Do Portal',
     publicador: 'Cadastrado aqui',
 };
+
+const rotaDoPublicador = criarRota('mlb.anuncios.publicador', 'conta');
+
+// §6 (quick 261009-uec). Mesma frase do botão "Criar Fase N" para o mesmo
+// motivo — a tela não recebeu a conta, então não há a quem pedir a ação.
+const SEM_CONTA_PARA_AGIR = 'Esta tela não recebeu a conta do produto. Recarregue a página.';
+const AJUDA_ESTOQUE_CALCULADO = 'O estoque deste kit passa a ser o do produto base dividido pelas unidades do kit, depósito por depósito.';
 
 /** Só aceita number finito do servidor; qualquer outra forma cai em null (nunca derruba a tela). */
 function numeroSeguro(valor) {
@@ -115,6 +127,12 @@ export default function PainelDoProduto({
 }) {
     const [mlbAberto, setMlbAberto] = useState(null);
     const [criarFaseAberto, setCriarFaseAberto] = useState(false);
+    // §6 (quick 261009-uec), por kit: qual está em voo, qual já adotou nesta
+    // sessão e o erro de cada um. Por `produto_id` porque a ação é POR KIT — um
+    // combo adotar não diz nada sobre o irmão.
+    const [adotandoEstoque, setAdotandoEstoque] = useState(null);
+    const [estoqueAdotado, setEstoqueAdotado] = useState({});
+    const [erroDoEstoque, setErroDoEstoque] = useState({});
 
     const p = objetoSeguro(produto ?? base);
     const nome = textoSeguro(p.nome, 'Produto');
@@ -152,6 +170,32 @@ export default function PainelDoProduto({
 
     const companyId = objetoSeguro(abas).company_id ?? null;
     const destaque = numeroSeguro(faseDestacada);
+
+    /**
+     * §6 (quick 261009-uec): "Usar estoque calculado" deste kit.
+     *
+     * Recebe a conta e o id POR ARGUMENTO, nunca por closure sobre uma flag do
+     * escopo do componente — a armadilha do Rollup documentada no topo deste
+     * arquivo. O cartão vira na hora com o `produto` que o servidor devolveu, e
+     * o `reload` traz os números novos das variantes (o estoque de verdade é
+     * recalculado no servidor, não um palpite da tela).
+     */
+    const adotarEstoqueCalculado = async (conta, produtoDaFase) => {
+        if (conta === null || produtoDaFase === null || adotandoEstoque !== null) return;
+        setAdotandoEstoque(produtoDaFase);
+        setErroDoEstoque((atual) => { const resto = { ...atual }; delete resto[produtoDaFase]; return resto; });
+        try {
+            const { data } = await axios.post(rotaDoPublicador('vinculo.estoque-calculado', conta, { produto: produtoDaFase }));
+            if (objetoSeguro(objetoSeguro(data).produto).estoque_calculado === true) {
+                setEstoqueAdotado((atual) => ({ ...atual, [produtoDaFase]: true }));
+            }
+            router.reload({ only: ['produto', 'fases', 'ofertas', 'historico'] });
+        } catch (e) {
+            setErroDoEstoque((atual) => ({ ...atual, [produtoDaFase]: mensagemDe(e) }));
+        } finally {
+            setAdotandoEstoque(null);
+        }
+    };
 
     return (
         <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -229,6 +273,19 @@ export default function PainelDoProduto({
                             const calculado = numeroSeguro(linha.estoque_calculado_valor);
                             const editorDaFase = typeof linha.editor_url === 'string' ? linha.editor_url : null;
                             const destacada = numeroFase !== null && numeroFase === destaque;
+                            // §6 (quick 261009-uec) — todas as flags da ação computadas
+                            // AQUI DENTRO (armadilha do Rollup), inclusive a conta.
+                            const produtoDaFase = numeroSeguro(linha.produto_id);
+                            const jaAdotou = produtoDaFase !== null && estoqueAdotado[produtoDaFase] === true;
+                            // `jaAdotou` faz o cartão virar na hora, antes do reload chegar.
+                            const estoqueProprio = linha.estoque_proprio === true && !jaAdotou;
+                            // Sem número calculado não há o que adotar: aí a ação nem existe
+                            // (não é "desabilitado com motivo", é ação sem objeto).
+                            const temOqueAdotar = estoqueProprio && calculado !== null && quantidade >= 2;
+                            const contaDaFase = textoSeguro(objetoSeguro(empresa).chave, '') || null;
+                            const podeAdotar = contaDaFase !== null && produtoDaFase !== null;
+                            const adotandoEsta = produtoDaFase !== null && adotandoEstoque === produtoDaFase;
+                            const erroAoAdotar = produtoDaFase !== null ? textoSeguro(erroDoEstoque[produtoDaFase], '') : '';
 
                             return (
                                 <div
@@ -250,11 +307,36 @@ export default function PainelDoProduto({
                                         {noAr === 0 ? 'nenhum anúncio no ar' : noAr === 1 ? '1 anúncio no ar' : `${noAr} anúncios no ar`}
                                     </p>
                                     {quantidade >= 2 && (
-                                        <p className="mt-1 text-[11px] font-normal text-white/40">
-                                            {linha.estoque_proprio === true
-                                                ? `estoque próprio${calculado !== null ? ` · calculado do base: ${calculado}` : ''}`
-                                                : 'estoque calculado do produto base'}
-                                        </p>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                                            {/* O texto da §6 que já existia — ele CONTINUA, e o
+                                                botão entra ao lado dele. */}
+                                            <p className="text-[11px] font-normal text-white/40">
+                                                {estoqueProprio
+                                                    ? `estoque próprio${calculado !== null ? ` · calculado do base: ${calculado}` : ''}`
+                                                    : 'estoque calculado do produto base'}
+                                            </p>
+                                            {temOqueAdotar && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        disabled={!podeAdotar || adotandoEsta}
+                                                        aria-disabled={!podeAdotar || adotandoEsta ? 'true' : undefined}
+                                                        title={podeAdotar ? AJUDA_ESTOQUE_CALCULADO : SEM_CONTA_PARA_AGIR}
+                                                        onClick={() => adotarEstoqueCalculado(contaDaFase, produtoDaFase)}
+                                                        className={BOTAO_MINI}
+                                                    >
+                                                        {adotandoEsta ? 'Adotando o estoque do base…' : 'Usar estoque calculado'}
+                                                    </button>
+                                                    {/* D23: desabilitado COM explicação, nunca escondido. */}
+                                                    {!podeAdotar && (
+                                                        <span className="text-[11px] font-normal text-white/40">{SEM_CONTA_PARA_AGIR}</span>
+                                                    )}
+                                                </>
+                                            )}
+                                            {erroAoAdotar !== '' && (
+                                                <span className="text-[11px] font-normal text-red-300">{erroAoAdotar}</span>
+                                            )}
+                                        </div>
                                     )}
                                     {editorDaFase !== null && (
                                         <Link href={editorDaFase} className="mt-2 inline-block text-[13px] font-normal text-white/55 hover:text-ecf-yellow">
