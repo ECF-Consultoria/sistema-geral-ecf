@@ -1323,3 +1323,8 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
   obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
   como preenchido (re-sincronizar não mexe).
+- **Digitar fora das opções = `texto_livre` da definição (09/10/2026), a régua do editor interno.** `string` com opções
+  deixa digitar AO LADO das opções; `list` só as opções (422 neutro no servidor). Isso reverte em parte o §35 de
+  propósito: "valor fora da lista que a plataforma recusa" vale para `list`, não para `string` (`allow_custom_value:
+  true` nas respostas reais). Texto antigo gravado como chip agora aparece e sobrevive ao salvar (antes sumia em
+  silêncio). Ver [[publicador-ml]] §14. (Com o D-05 refinado, re-sincronizar passa a ATUALIZAR o que o Portal escreveu.)

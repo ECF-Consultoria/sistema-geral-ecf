@@ -625,6 +625,40 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   rascunho derruba 4 testes do `SincronizaPortalAgrupamentoTest`. Atenção: rascunho em QUALQUER cor faz dela a adotada
   (`adotar` prefere quem tem rascunho), então "a âncora vazia" é absorvida quando outra cor tem rascunho.
 
+- **Avisos do Sincronizar vão para o LOG, não para a tela (09/10, pedido do usuário: "vai poluir muito").** O painel
+  é UMA linha ("Sincronizado: 13 produtos, 20 variações, 0 fotos." + "N campos atualizados" e linhas de cor juntadas só se
+  > 0). `PortalParaRascunhoService::preencher` e `PublicadorSincronizaPortalService` gravam
+  `Log::info('[Publicador] Sincronizar avisos', {company_id, rascunho_id, avisos})`; o JSON do resumo ainda leva
+  `avisos`, a tela só não lê. Campo não preenchido aparece pendente no editor — é lá que a equipe age. Para investigar
+  um "não veio", procure essa linha no `laravel.log` da VPS.
+- **Texto livre: a MESMA régua nas duas pontas (09/10).** Causa dos avisos "nenhuma das opções ("Madeira maciça de
+  eucalipto") existe na lista": os produtos 3–7 da #459 tiveram a ficha gravada às ~10:44 de 08/10, ANTES de
+  `045cf1dd`/`e7af3d22` (11:03), quando `string` com `values` ainda era texto no Portal. Depois o Portal passou a só
+  oferecer as opções, e o ramo MULTIVALOR do `PortalValorDeAtributo` ignorava `aceitaTextoLivre` — que é TRUE nesses
+  atributos (`STRUCTURE_MATERIALS`, `CABINET_MATERIALS`, `RECOMMENDED_INSTALLATION_ROOMS`: `string` + `multivalued`;
+  nas 4 fixtures, 100% dos `string` com opções têm `allow_custom_value: true` e 100% dos `list`, `false`). Ou seja: o
+  editor aceitava, o Sincronizar recusava e o Portal escondia. Agora a ficha do Portal recebe `texto_livre` do PRÓPRIO
+  `ClassificadorAtributos` (os `values` crus entram no classificar) e deixa digitar SÓ ali (chips + "digite outro";
+  escolha única + "Outro (digitar)"); `FichaTecnicaDoProduto::gravar` dá 422 neutro em texto fora das opções de lista
+  fechada; o Sincronizar leva o texto como `value_name` sem `value_id` onde aceita (multivalor sem nada casando: os
+  nomes juntos por vírgula, `revisar` se > 1) e não preenche onde não aceita. Teste-régua:
+  `test_texto_livre_da_ficha_e_o_mesmo_do_editor_nas_respostas_reais` (as 4 fixtures, com `technical_specs` do lado
+  do editor) e `TextoLivreMesmaReguaPortalEPublicadorTest` (o mesmo schema nas duas pontas). Lista FECHADA cujas opções
+  o filtro de sigilo derruba inteiras agora SAI da ficha em vez de virar texto. Efeito aceito: `SHAPE`/`FABRIC_DESIGN`
+  (string) voltam a deixar digitar — ao lado das opções, que continuam visíveis.
+- **D-05 refinado (09/10): o que não se sobrescreve é o trabalho da EQUIPE, não o do Portal.** Caso real: rascunho 13
+  (Puff 2) com `SHAPE = "REDONDO"`, `origem=portal`; o cliente trocou para "Redonda" e o Sincronizar dizia "mantido".
+  Agora atributo (ficha e SELLER_PACKAGE_*) com `origem = 'portal'` SEGUE o Portal: muda junto e sai se o cliente
+  apagou. `user` (a tela grava `origem: 'user'` ao editar — `CampoAtributo`, `MedidasDoPacote`), `ia`, `migrated`,
+  `auto` → nunca. A checagem é UMA (`daEquipe`); tirá-la derruba 4 testes. Estoque e SKU da variante não têm `origem`:
+  `step_state.portal_escrito[chave] = {estoque, sku}` guarda o último valor escrito e só se atualiza se o rascunho AINDA
+  o tem. Rascunho de antes da memória: valor IGUAL ao do Portal é anotado como dele (daí em diante segue); diferente =
+  da equipe. Memória gravada direto na linha travada (como `portal_cores`), sem `tocar()`: rodar 2× sem mudança não
+  sobe `revisao`. Kit com `estoque_calculado` (Fase 175) nunca recebe estoque. **Categoria e fotos ficaram FORA**
+  (trocar categoria apaga ficha incompatível; foto trocada é decisão da equipe) — continuam só no vazio. Resumo ganhou
+  `campos_atualizados`. Valor do Portal que deixou de ser resolvível (opção sumiu) também SAI do rascunho se era do
+  Portal: o campo fica pendente, que é a verdade.
+
 ### Checklist de DEPLOY (só com autorização do usuário)
 
 1. Contar em produção ANTES e DEPOIS: `estrutura_produtos`, `estrutura_produto_variacoes`, `pub_produtos`,
