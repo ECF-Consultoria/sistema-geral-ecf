@@ -245,3 +245,483 @@ test('useSugestaoKitIa — não mexe no hook do editor (usePublicador segue into
     assert.doesNotMatch(editor, /useSugestaoKitIa/);
     assert.doesNotMatch(editor, /fases\.ia/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2 — PainelCriarFase (§4): render REAL com o payload do servidor
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Prévia no formato REAL de `PreviaDaFaseService::previa()`. */
+const previaBase = (o = {}) => ({
+    quantidade: 2,
+    sku: 'CAD-01-KIT2',
+    titulo_por_tipo: { gold_special: 'Kit 2 Cadeira Executiva ECF Giratória' },
+    descricao: 'Este kit contém 2 unidades de Cadeira Executiva ECF.\n\nCadeira giratória com apoio de braço.',
+    variantes: { __single__: { seller_sku: 'CAD-01-KIT2', estoque: 3, depositos: null, ativa: true } },
+    avisos: [{ chave: 'preco_vazio', mensagem: 'O kit vai nascer sem preço. Ele é criado normalmente, mas só vai para o ar depois que você informar o valor de cada tipo de anúncio no editor do kit.' }],
+    erro_campo: null,
+    max_title_length: 60,
+    tipos: ['gold_special'],
+    ...o,
+});
+
+/** Props do corpo do painel, no estado "prévia já respondeu". */
+const corpoBase = (o = {}) => ({
+    previa: previaBase(),
+    carregando: false,
+    erroPrevia: null,
+    quantidade: '2',
+    erroQuantidade: null,
+    sku: 'CAD-01-KIT2',
+    titulo: 'Kit 2 Cadeira Executiva ECF Giratória',
+    descricao: 'Este kit contém 2 unidades de Cadeira Executiva ECF.',
+    tocados: {},
+    sugeridos: {},
+    anteriores: {},
+    capa: true,
+    mostrarCapa: true,
+    enviando: false,
+    errosCampo: {},
+    erroGeral: null,
+    resultado: null,
+    iaEstados: {},
+    proximoNumero: 2,
+    ...o,
+});
+
+/** A tag de abertura do `<button>` que contém o rótulo (para conferir `disabled`). */
+function tagDoBotao(html, rotulo) {
+    const alvo = html.indexOf(rotulo);
+    if (alvo < 0) return null;
+    const abre = html.lastIndexOf('<button', alvo);
+
+    return abre < 0 ? null : html.slice(abre, html.indexOf('>', abre) + 1);
+}
+
+test('PainelCriarFase — os 8 campos da §4 no render real', async (contexto) => {
+    const mod = await montar(PAINEL, 'criar-fase-painel');
+    const PainelCriarFase = mod.default;
+    const { CorpoDoPainel } = mod;
+    const corpo = (o = {}) => renderToStaticMarkup(React.createElement(CorpoDoPainel, corpoBase(o)));
+
+    // ─── A casca ───
+    await contexto.test('fechado (aberto=false) não renderiza nada', () => {
+        const html = renderToStaticMarkup(React.createElement(PainelCriarFase, {
+            aberto: false, conta: 'empresa-7', produtoBase: { id: 10, nome: 'Cadeira' },
+            proximaFase: { numero: 2, quantidade_sugerida: 2 }, criativosIa: true,
+        }));
+        assert.equal(html, '');
+    });
+
+    await contexto.test('aberto monta o painel lateral de 620px com role=dialog e aria-modal', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(PainelCriarFase, {
+                aberto: true, conta: 'empresa-7', produtoBase: { id: 10, nome: 'Cadeira Executiva ECF' },
+                proximaFase: { numero: 2, quantidade_sugerida: 2 }, criativosIa: true,
+            }));
+        });
+        assert.match(html, /role="dialog"/);
+        assert.match(html, /aria-modal="true"/);
+        assert.match(html, /w-\[620px\]/);
+        assert.match(html, /Criar Fase 2/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('aberto com TODAS as props ausentes (undefined) nunca lança', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(PainelCriarFase, { aberto: true }));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+        assert.doesNotMatch(html, /undefined/);
+    });
+
+    // ─── 1. Unidades no kit ───
+    await contexto.test('o campo Unidades aparece com a quantidade sugerida e mínimo 2', () => {
+        const html = corpo();
+        assert.match(html, /Unidades no kit/);
+        assert.match(html, /min="2"/);
+        assert.match(html, /value="2"/);
+    });
+
+    await contexto.test('erro_campo da prévia aparece abaixo de Unidades e DESABILITA o Confirmar', () => {
+        const html = corpo({ previa: previaBase({ erro_campo: 'Já existe Kit 2 deste produto.' }) });
+        assert.match(html, /J[áa] existe Kit 2 deste produto\./);
+        assert.match(tagDoBotao(html, 'Confirmar'), /disabled=/);
+    });
+
+    await contexto.test('erro local de quantidade (1, 0, vazio, não numérico) aparece no campo e desabilita Confirmar', () => {
+        const html = corpo({ quantidade: '1', erroQuantidade: 'Um kit tem 2 unidades ou mais.', previa: null });
+        assert.match(html, /Um kit tem 2 unidades ou mais\./);
+        assert.match(tagDoBotao(html, 'Confirmar'), /disabled=/);
+    });
+
+    // ─── 2. SKU ───
+    await contexto.test('o SKU vem da prévia e ganha a marca "editado por você" quando tocado', () => {
+        assert.match(corpo(), /CAD-01-KIT2/);
+        assert.doesNotMatch(corpo(), /editado por voc[êe]/);
+        assert.match(corpo({ tocados: { sku: true }, sku: 'CAD-DUPLA' }), /editado por voc[êe]/);
+        assert.match(corpo({ tocados: { sku: true }, sku: 'CAD-DUPLA' }), /CAD-DUPLA/);
+    });
+
+    // ─── 3. Estoque ───
+    await contexto.test('o estoque é somente leitura, com a legenda "calculado do produto base"', () => {
+        const html = corpo();
+        assert.match(html, /calculado do produto base/);
+        assert.match(html, /readonly/i);
+        assert.match(html, /\b3\b/);
+    });
+
+    await contexto.test('multidepósito mostra uma linha por depósito', () => {
+        const html = corpo({
+            previa: previaBase({
+                variantes: { __single__: { seller_sku: 'CAD-01-KIT2', estoque: 5, depositos: { SP: 3, RJ: 2 }, ativa: true } },
+            }),
+        });
+        assert.match(html, /SP/);
+        assert.match(html, /RJ/);
+    });
+
+    await contexto.test('estoque desconhecido (null) mostra "—", nunca 0', () => {
+        const html = corpo({
+            previa: previaBase({ variantes: { __single__: { seller_sku: 'X', estoque: null, depositos: null, ativa: true } } }),
+        });
+        assert.match(html, /—/);
+    });
+
+    await contexto.test('a chave interna da variante (combinacao_chave) NUNCA vai para a tela', () => {
+        const html = corpo({
+            previa: previaBase({
+                variantes: {
+                    'COLOR=id:52049|SIZE=txt:m': { seller_sku: 'CAD-01-KIT2-PM', estoque: 2, depositos: null, ativa: true },
+                },
+            }),
+        });
+        assert.doesNotMatch(html, /COLOR=id/);
+        assert.doesNotMatch(html, /__single__/);
+        assert.match(html, /CAD-01-KIT2-PM/);
+    });
+
+    // ─── 4. Título ───
+    await contexto.test('o título tem contador contra o max_title_length e um campo só (o corpo manda UM titulo)', () => {
+        const html = corpo();
+        assert.match(html, /60/);
+        assert.match(html, /T[íi]tulo/);
+    });
+
+    await contexto.test('títulos diferentes por tipo avisam que o mesmo título vale para todos se editar', () => {
+        const html = corpo({
+            previa: previaBase({
+                tipos: ['gold_special', 'gold_pro'],
+                titulo_por_tipo: { gold_special: 'Kit 2 Cadeira Clássica', gold_pro: 'Kit 2 Cadeira Premium' },
+            }),
+        });
+        assert.match(html, /Kit 2 Cadeira Cl[áa]ssica/);
+        assert.match(html, /Kit 2 Cadeira Premium/);
+        assert.match(html, /mesmo t[íi]tulo/i);
+    });
+
+    // ─── 5. Descrição e 7. ausência de Preço ───
+    await contexto.test('NÃO existe campo de preço no painel (§4: vazio, sem sugestão)', () => {
+        const html = corpo();
+        assert.match(html, /Descri[çc][ãa]o/);
+        assert.doesNotMatch(html, /Pre[çc]o/);
+        assert.doesNotMatch(html, /R\$/);
+    });
+
+    // ─── Avisos do servidor ───
+    await contexto.test('TODOS os avisos do servidor aparecem antes do Confirmar, com o botão HABILITADO', () => {
+        const html = corpo({
+            previa: previaBase({
+                avisos: [
+                    { chave: 'estoque_zero', mensagem: 'O estoque calculado do kit ficou em zero. Você pode criar o kit assim.' },
+                    { chave: 'sku_repetido', mensagem: 'Já existe um produto com este SKU nesta empresa.' },
+                    { chave: 'preco_vazio', mensagem: 'O kit vai nascer sem o valor. Ele é criado normalmente.' },
+                ],
+            }),
+        });
+        assert.match(html, /ficou em zero/);
+        assert.match(html, /este SKU nesta empresa/);
+        assert.match(html, /nascer sem o valor/);
+        assert.match(html, /amber/);
+        assert.doesNotMatch(tagDoBotao(html, 'Confirmar'), /disabled=/);
+    });
+
+    await contexto.test('a frase do preço vem do SERVIDOR — a fonte do painel não a escreve', () => {
+        const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelCriarFase.jsx');
+        assert.doesNotMatch(fonte, /nascer sem/i);
+        assert.doesNotMatch(fonte, /informar o valor de cada tipo/i);
+        const html = corpo({ previa: previaBase({ avisos: [{ chave: 'preco_vazio', mensagem: 'FRASE QUE SÓ O SERVIDOR CONHECE' }] }) });
+        assert.match(html, /FRASE QUE S[ÓO] O SERVIDOR CONHECE/);
+    });
+
+    await contexto.test('aviso titulo_cortado aparece junto ao campo Título, com o max_title_length', () => {
+        const html = corpo({
+            previa: previaBase({
+                max_title_length: 70,
+                avisos: [{ chave: 'titulo_cortado', mensagem: 'O título ficou maior que o limite desta categoria (70 caracteres) e foi cortado na última palavra inteira.' }],
+            }),
+        });
+        assert.match(html, /cortado/i);
+        assert.match(html, /70/);
+        assert.doesNotMatch(tagDoBotao(html, 'Confirmar'), /disabled=/);
+    });
+
+    await contexto.test('aviso de chave desconhecida ainda aparece (nenhum aviso do servidor é engolido)', () => {
+        const html = corpo({ previa: previaBase({ avisos: [{ chave: 'chave_que_nao_existe_ainda', mensagem: 'Aviso novo do servidor' }] }) });
+        assert.match(html, /Aviso novo do servidor/);
+    });
+
+    // ─── 6. Sugerir com IA ───
+    await contexto.test('"Sugerir com IA" existe e mexe só em título e descrição', () => {
+        const html = corpo();
+        assert.match(html, /Sugerir com IA/);
+        assert.match(html, /t[íi]tulo e (a |na )?descri[çc][ãa]o/i);
+    });
+
+    await contexto.test('IA rodando mostra "pedindo…" e desabilita o botão da IA', () => {
+        const html = corpo({ iaEstados: { titulo: { status: 'rodando', erro: null }, descricao: { status: 'rodando', erro: null } } });
+        assert.match(html, /pedindo/i);
+        assert.match(tagDoBotao(html, 'pedindo'), /disabled=/);
+    });
+
+    await contexto.test('campo com sugestão aplicada mostra "sugerido pela IA" e um Desfazer', () => {
+        const html = corpo({
+            sugeridos: { titulo: true },
+            anteriores: { titulo: { valor: 'Kit 2 Cadeira Executiva ECF Giratória', tocado: false } },
+            titulo: 'Kit 2 Cadeiras Executivas ECF — 2 unidades',
+            iaEstados: { titulo: { status: 'pronto', erro: null } },
+        });
+        assert.match(html, /sugerido pela IA/);
+        assert.match(html, /Desfazer/);
+    });
+
+    await contexto.test('erro da IA aparece junto ao botão e os campos ficam como estavam', () => {
+        const html = corpo({ iaEstados: { titulo: { status: 'erro', erro: 'A IA demorou demais. Tente de novo.' } } });
+        assert.match(html, /A IA demorou demais\. Tente de novo\./);
+        assert.match(html, /Kit 2 Cadeira Executiva ECF Giratória/);
+        assert.doesNotMatch(tagDoBotao(html, 'Confirmar'), /disabled=/);
+    });
+
+    // ─── 7. Capa ───
+    await contexto.test('mostrarCapa=false não renderiza a caixa NENHUMA (é capacidade do servidor)', () => {
+        const html = corpo({ mostrarCapa: false });
+        assert.doesNotMatch(html, /capa/i);
+    });
+
+    await contexto.test('mostrarCapa=true renderiza a caixa MARCADA por padrão', () => {
+        const html = corpo();
+        assert.match(html, /Gerar a capa do kit/);
+        assert.match(html, /checked/);
+    });
+
+    await contexto.test('capa desmarcada mostra "A capa ainda mostra 1 unidade"', () => {
+        const html = corpo({ capa: false });
+        assert.match(html, /A capa ainda mostra 1 unidade/);
+    });
+
+    // ─── 8. Confirmar ───
+    await contexto.test('Confirmar fica desabilitado enquanto a prévia carrega e enquanto o POST está em voo', () => {
+        assert.match(tagDoBotao(corpo({ carregando: true, previa: null }), 'Confirmar'), /disabled=/);
+        assert.match(tagDoBotao(corpo({ enviando: true }), 'Confirmar'), /disabled=/);
+    });
+
+    await contexto.test('SKU vazio desabilita Confirmar (o SKU é obrigatório)', () => {
+        assert.match(tagDoBotao(corpo({ sku: '   ', tocados: { sku: true } }), 'Confirmar'), /disabled=/);
+    });
+
+    await contexto.test('422 com campo marca o CAMPO indicado, sem fechar o painel', () => {
+        const html = corpo({ errosCampo: { quantidade: 'Já existe Kit 2 deste produto.' } });
+        assert.match(html, /J[áa] existe Kit 2 deste produto\./);
+        assert.match(html, /Unidades no kit/);
+    });
+
+    await contexto.test('422 sem campo (KIT-02) mostra a mensagem geral, não marca campo nenhum', () => {
+        const html = corpo({ erroGeral: 'Este produto já é um kit. Crie a fase nova a partir do produto base (1 unidade).' });
+        assert.match(html, /j[áa] [ée] um kit/i);
+    });
+
+    await contexto.test('201 com capa recusada mostra o MOTIVO e NÃO trata como erro da criação', () => {
+        const html = corpo({
+            resultado: { url: '/editor/11?etapa=condicoes', capaMotivo: 'A conta não tem foto 1 aprovada na Fase 1.' },
+        });
+        assert.match(html, /Fase 2 criada/);
+        assert.match(html, /A conta n[ãa]o tem foto 1 aprovada na Fase 1\./);
+        assert.match(html, /Abrir o editor do kit/);
+        assert.doesNotMatch(html, /N[ãa]o foi poss[íi]vel criar/);
+    });
+
+    // ─── Dado adverso: a lição da tela preta de 07/10 ───
+    await contexto.test('CADA campo da prévia chegando como OBJETO não derruba o painel', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(CorpoDoPainel, corpoBase({
+                previa: {
+                    quantidade: {}, sku: { foo: 'bar' }, titulo_por_tipo: { gold_special: { foo: 'bar' } },
+                    descricao: { foo: 'bar' }, variantes: { __single__: { seller_sku: {}, estoque: {}, depositos: 'nao-e-mapa', ativa: 'talvez' } },
+                    avisos: [{ chave: {}, mensagem: { foo: 'bar' } }], erro_campo: { foo: 'bar' },
+                    max_title_length: { foo: 'bar' }, tipos: { foo: 'bar' },
+                },
+            })));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+        assert.doesNotMatch(html, /foo/);
+    });
+
+    await contexto.test('avisos não-array, variantes nula e tipos não-array nunca lançam', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(CorpoDoPainel, corpoBase({
+                previa: previaBase({ avisos: 'nao-e-array', variantes: null, tipos: 42, titulo_por_tipo: null }),
+            })));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('resultado/iaEstados/errosCampo em formato adverso nunca lançam', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(CorpoDoPainel, corpoBase({
+                resultado: { url: {}, capaMotivo: { foo: 'bar' } },
+                iaEstados: 'nao-e-objeto',
+                errosCampo: [1, 2, 3],
+                erroGeral: { foo: 'bar' },
+                tocados: 'nao-e-objeto',
+                sugeridos: 7,
+                anteriores: null,
+            })));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+        assert.doesNotMatch(html, /foo/);
+    });
+
+    await contexto.test('CorpoDoPainel com TODAS as props ausentes nunca lança', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = renderToStaticMarkup(React.createElement(CorpoDoPainel, {}));
+        });
+        assert.doesNotMatch(html, /\[object Object\]/);
+        assert.doesNotMatch(html, /undefined/);
+    });
+});
+
+test('PainelCriarFase — as regras da §4 que são cálculo puro', async (contexto) => {
+    const { valoresAposPrevia, erroLocalDaQuantidade, erroDeRecusa, motivoDaCapa, tituloSugerido } = await montar(PAINEL, 'criar-fase-puro');
+
+    await contexto.test('mudar N atualiza SKU, título e descrição quando NADA foi editado à mão', () => {
+        const v = valoresAposPrevia({
+            dados: previaBase({ quantidade: 3, sku: 'CAD-01-KIT3', titulo_por_tipo: { gold_special: 'Kit 3 Cadeira' }, descricao: 'Este kit contém 3 unidades.' }),
+            tocados: {},
+            valores: { sku: 'CAD-01-KIT2', titulo: 'Kit 2 Cadeira', descricao: 'Este kit contém 2 unidades.' },
+        });
+        assert.deepEqual(v, { sku: 'CAD-01-KIT3', titulo: 'Kit 3 Cadeira', descricao: 'Este kit contém 3 unidades.' });
+    });
+
+    await contexto.test('campo editado à mão NÃO é sobrescrito ao mudar N — os outros são', () => {
+        const v = valoresAposPrevia({
+            dados: previaBase({ quantidade: 3, sku: 'CAD-01-KIT3', titulo_por_tipo: { gold_special: 'Kit 3 Cadeira' }, descricao: 'Este kit contém 3 unidades.' }),
+            tocados: { sku: true },
+            valores: { sku: 'CAD-DUPLA-ESPECIAL', titulo: 'Kit 2 Cadeira', descricao: 'Este kit contém 2 unidades.' },
+        });
+        assert.equal(v.sku, 'CAD-DUPLA-ESPECIAL', 'o que a pessoa digitou não pode ser apagado');
+        assert.equal(v.titulo, 'Kit 3 Cadeira');
+        assert.equal(v.descricao, 'Este kit contém 3 unidades.');
+    });
+
+    await contexto.test('os três campos tocados: a prévia nova não apaga nenhum', () => {
+        const v = valoresAposPrevia({
+            dados: previaBase({ sku: 'X', titulo_por_tipo: { gold_special: 'Y' }, descricao: 'Z' }),
+            tocados: { sku: true, titulo: true, descricao: true },
+            valores: { sku: 'A', titulo: 'B', descricao: 'C' },
+        });
+        assert.deepEqual(v, { sku: 'A', titulo: 'B', descricao: 'C' });
+    });
+
+    await contexto.test('prévia em formato adverso devolve string vazia, nunca objeto', () => {
+        const v = valoresAposPrevia({ dados: { sku: {}, titulo_por_tipo: 'x', descricao: null }, tocados: {}, valores: {} });
+        assert.deepEqual(v, { sku: '', titulo: '', descricao: '' });
+        assert.deepEqual(valoresAposPrevia({}), { sku: '', titulo: '', descricao: '' });
+    });
+
+    await contexto.test('tituloSugerido respeita a ordem de `tipos` e aceita só string', () => {
+        assert.equal(tituloSugerido({ tipos: ['gold_pro', 'gold_special'], titulo_por_tipo: { gold_special: 'A', gold_pro: 'B' } }), 'B');
+        assert.equal(tituloSugerido({ tipos: [], titulo_por_tipo: { gold_special: 'A' } }), 'A');
+        assert.equal(tituloSugerido({ titulo_por_tipo: { gold_special: {} } }), '');
+        assert.equal(tituloSugerido(null), '');
+    });
+
+    await contexto.test('erroLocalDaQuantidade recusa vazio, 0, 1 e não numérico — e aceita 2', () => {
+        assert.ok(erroLocalDaQuantidade(''));
+        assert.ok(erroLocalDaQuantidade('   '));
+        assert.ok(erroLocalDaQuantidade('0'));
+        assert.ok(erroLocalDaQuantidade('1'));
+        assert.ok(erroLocalDaQuantidade('abc'));
+        assert.ok(erroLocalDaQuantidade('2,5'));
+        assert.ok(erroLocalDaQuantidade('2.5'));
+        assert.ok(erroLocalDaQuantidade('-3'));
+        assert.equal(erroLocalDaQuantidade('2'), null);
+        assert.equal(erroLocalDaQuantidade('12'), null);
+        assert.equal(erroLocalDaQuantidade(4), null);
+    });
+
+    await contexto.test('erroDeRecusa usa o `campo` do servidor — NUNCA assume quantidade', () => {
+        const kit04 = erroDeRecusa({ message: 'Já existe Kit 2 deste produto.', regra: 'KIT-04', campo: 'quantidade' });
+        assert.deepEqual(kit04.porCampo, { quantidade: 'Já existe Kit 2 deste produto.' });
+        assert.equal(kit04.geral, null);
+
+        const kit02 = erroDeRecusa({ message: 'Este produto já é um kit.', regra: 'KIT-02', campo: null });
+        assert.deepEqual(kit02.porCampo, {});
+        assert.equal(kit02.geral, 'Este produto já é um kit.');
+
+        const kit05 = erroDeRecusa({ message: 'Publique a Fase 1 primeiro', regra: 'KIT-05' });
+        assert.equal(kit05.geral, 'Publique a Fase 1 primeiro');
+        assert.deepEqual(kit05.porCampo, {});
+    });
+
+    await contexto.test('erroDeRecusa aproveita os `errors` da validação do Laravel', () => {
+        const r = erroDeRecusa({ message: 'The given data was invalid.', errors: { sku: ['O SKU é obrigatório.'], quantidade: ['Máximo 65535.'] } });
+        assert.equal(r.porCampo.sku, 'O SKU é obrigatório.');
+        assert.equal(r.porCampo.quantidade, 'Máximo 65535.');
+        assert.equal(r.geral, null);
+    });
+
+    await contexto.test('erroDeRecusa em formato adverso devolve mensagem padrão e nenhum campo', () => {
+        const r = erroDeRecusa({ message: {}, campo: {}, errors: 'nao-e-objeto' });
+        assert.equal(typeof r.geral, 'string');
+        assert.deepEqual(r.porCampo, {});
+        assert.equal(typeof erroDeRecusa(null).geral, 'string');
+    });
+
+    await contexto.test('motivoDaCapa: null quando não foi pedida ou quando deu certo', () => {
+        assert.equal(motivoDaCapa({ capa_pedida: false, capa: null }), null);
+        assert.equal(motivoDaCapa({ capa_pedida: true, capa: { ok: true, motivo: null, kit_id: 9 } }), null);
+        assert.equal(motivoDaCapa(null), null);
+    });
+
+    await contexto.test('motivoDaCapa: devolve o motivo do servidor; capa nula pedida cai num texto padrão', () => {
+        assert.equal(motivoDaCapa({ capa_pedida: true, capa: { ok: false, motivo: 'Sem foto 1 aprovada.', kit_id: null } }), 'Sem foto 1 aprovada.');
+        assert.equal(typeof motivoDaCapa({ capa_pedida: true, capa: null }), 'string');
+        assert.equal(typeof motivoDaCapa({ capa_pedida: true, capa: { ok: false, motivo: {} } }), 'string');
+    });
+});
+
+test('PainelCriarFase — gates de fonte: 620px, nada de preço, debounce e o corpo mínimo do POST', () => {
+    const f = lerSemComentarios('resources/js/Components/Mlb/Publicador/PainelCriarFase.jsx');
+
+    assert.match(f, /w-\[620px\] max-w-full/, 'painel lateral de 620px');
+    assert.match(f, /role="dialog"/);
+    assert.match(f, /aria-modal/);
+    assert.match(f, /Escape/, 'fecha por Escape');
+    assert.match(f, /fases\.previa/, 'chama a prévia do servidor');
+    assert.match(f, /fases\.criar/, 'confirma no endpoint de criação');
+    assert.match(f, /setTimeout\(/, 'debounce antes de chamar a prévia');
+    assert.match(f, /useSugestaoKitIa/, 'usa o hook da IA do kit');
+
+    // T-175-29: o corpo do POST não manda estoque, âncora nem base.
+    assert.doesNotMatch(f, /estoque:/, 'o estoque é recalculado no servidor, nunca enviado');
+    assert.doesNotMatch(f, /mlb_empresa_id|company_id|produto_base_id/, 'âncoras nunca saem do navegador');
+    // D-13: nada de criativo endereçado por token.
+    assert.doesNotMatch(f, /token/i, 'nenhum token de criativo no navegador');
+    // §4: preço é vazio e não existe no painel.
+    assert.doesNotMatch(f, /preco|pre[çc]o/i, 'nenhum campo nem texto de preço escrito no painel');
+});
