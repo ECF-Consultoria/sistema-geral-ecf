@@ -627,7 +627,7 @@ test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções 
     assert.match(f, /useIaDoPublicador\(/);
     assert.match(f, /<Etapas atual=\{etapa\}/);
     assert.match(f, /<EtapaProduto m=\{m\} \/>/);
-    assert.match(f, /<EtapaDetalhes m=\{m\} \/>/);
+    assert.match(f, /<EtapaDetalhes m=\{m\}( descricaoIa=\{descricaoIa\})? \/>/);
     // Fase 170 (D2, IDENT-01/04): ganhou `produtoId` para a identidade visual da conta (170-02).
     // Fase 173, plano 07: ganhou `empresa` para o link "Gerenciar em Configurações da conta".
     assert.match(f, /<EtapaImagens m=\{m\} produtoId=\{produto\.id\} empresa=\{empresa\} \/>/);

@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Rótulos e textos da tela "Sugestões de ofertas" (Fase 168) — SÓ formatação.
+// Rótulos e textos da tela "Planejamento" (sugestões de ofertas, Fase 168) — SÓ formatação.
 // Os textos seguem o contrato de copy da UI-SPEC (sem exclamação). Os limites
 // (título, código, lote) vêm do servidor, por isso as mensagens que os citam são
 // funções.
@@ -214,4 +214,59 @@ export function dicaDaAba(aba) {
     if (aba === 'descartadas') return 'Na aba Descartadas o status não se aplica.';
 
     return null;
+}
+
+// ─── Combos recolhidos por família (08/10) ──────────────────────────────
+
+/** "Ver 1 combo" / "Ver 9 combos". */
+export const textoVerCombos = (n) => `Ver ${n} ${n === 1 ? 'combo' : 'combos'}`;
+
+/** Aviso do bloco expandido quando o servidor cortou no teto. */
+export const textoCombosCortados = (mostrando, total) =>
+    `Mostrando ${mostrando} de ${total}. Use o filtro Combo para ver todos.`;
+
+const familiaDoItem = (item) => String(item.familia?.id ?? 'sem');
+
+/**
+ * Grupos da página na ordem do servidor. Com `grupos` (aba Pendentes), cada família
+ * aparece uma vez e, se tiver bloco de Combos, os Combos expandidos vão para `combos`
+ * e o resto para `itens`. Sem `grupos`, agrupa os itens consecutivos por família.
+ *
+ * @returns {{ chave: string, nome: ?string, itens: object[], combos: ?object[], bloco: ?{total: number, expandido: boolean, mostrando: number} }[]}
+ */
+export function montarGrupos(itens, grupos) {
+    const lista = itens ?? [];
+    if (! Array.isArray(grupos)) {
+        const saida = [];
+        for (const item of lista) {
+            const chave = familiaDoItem(item);
+            const ultimo = saida[saida.length - 1];
+            if (ultimo && ultimo.chave === chave) ultimo.itens.push(item);
+            else saida.push({ chave, nome: item.familia?.nome ?? null, itens: [item], combos: null, bloco: null });
+        }
+
+        return saida;
+    }
+
+    return grupos.map((g) => {
+        const chave = String(g.chave);
+        const daFamilia = lista.filter((i) => familiaDoItem(i) === chave);
+        if (! g.combos) return { chave, nome: g.nome ?? null, itens: daFamilia, combos: null, bloco: null };
+
+        return {
+            chave,
+            nome: g.nome ?? null,
+            itens: daFamilia.filter((i) => i.fase !== 'combo'),
+            combos: daFamilia.filter((i) => i.fase === 'combo'),
+            bloco: g.combos,
+        };
+    });
+}
+
+/** Lista de famílias com Combos abertos depois de alternar `chave` (sem repetir). */
+export function alternarCombos(abertos, chave) {
+    const atual = (abertos ?? []).map(String);
+    const c = String(chave);
+
+    return atual.includes(c) ? atual.filter((x) => x !== c) : [...atual, c];
 }

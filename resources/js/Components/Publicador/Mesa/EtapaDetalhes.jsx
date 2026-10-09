@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import CampoAtributo, { RotuloAtributo } from '../CampoAtributo';
 import { valorVazio } from '../apoio';
-import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
+import { MEDIDAS_DO_PRODUTO, tituloParaModelo } from '../ferramentas';
 import { TomDoProduto, ondeFicaOTom } from './CorPrincipal';
 import DadosDasVariacoes from './DadosDasVariacoes';
 import { AvisoDoPacote, CamposDoPacote, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
@@ -33,6 +33,9 @@ import { cn } from '@/lib/utils';
 // ML) fica ao lado dela quando a Cor é do produto (ver CorPrincipal.jsx).
 //
 // O Modelo ganha a IA dos termos mais buscados (docx §2): até 120 caracteres.
+// Termo que só repete palavras do título fica de fora (o servidor filtra, 08/10):
+// sem título ainda, a IA gera sem o filtro e a tela avisa. Termo com cor, público
+// ou tamanho que o produto não tem também sai (09/10), e a tela diz quantos.
 
 const MODELO = 'MODEL';
 const COR = 'COLOR';
@@ -62,12 +65,21 @@ function CampoDaFicha({ m, a, rotulo = null }) {
     const ia = modelo ? (m.palavrasIa?.modelo ?? {}) : {};
     const rodando = ia.status === 'rodando';
     const tamanho = String(valor?.value_name ?? '').length;
+    const semTitulo = modelo && tituloParaModelo(m.alvos) === '';
+    // Termos que a IA sugeriu e o servidor tirou: cor, público ou tamanho que o produto não tem (09/10).
+    const descartados = Array.isArray(ia.descartados) ? ia.descartados : [];
 
     return (
         <div className={cn(modelo && 'md:col-span-2')} data-ia-modelo={modelo ? (ia.status ?? 'nenhum') : undefined}>
             <Campo rotulo={<RotuloAtributo atributo={rotulo ? { ...a, nome: rotulo } : a} valor={valor} />} htmlFor={id} erro={erro}
+                explicacao={a.explicacao} nome={rotulo ?? a.nome}
                 dica={corLivre ? 'Escolha na lista ou digite um nome próprio (ex.: Azul-petróleo), como no Mercado Livre.' : a.dica}
-                extra={modelo ? <span className={cn('font-mono text-[13px] tabular-nums', tamanho > LIMITE_MODELO ? 'text-red-300' : 'text-white/45')} data-contador-modelo>{tamanho}/{LIMITE_MODELO}</span> : null}>
+                extra={modelo ? (
+                    <span className="flex items-baseline gap-3">
+                        <span className="text-[13px] text-white/45" data-modelo-regra-titulo>Termos que já estão no título ficam de fora</span>
+                        <span className={cn('font-mono text-[13px] tabular-nums', tamanho > LIMITE_MODELO ? 'text-red-300' : 'text-white/45')} data-contador-modelo>{tamanho}/{LIMITE_MODELO}</span>
+                    </span>
+                ) : null}>
                 <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} invalido={!! erro} disabled={m.disabled || rodando}
                     placeholder={corLivre ? 'Escolha na lista ou digite' : null}
                     onChange={(v) => m.mudarAtributo(a.id, v)} />
@@ -78,6 +90,13 @@ function CampoDaFicha({ m, a, rotulo = null }) {
                         {rodando ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Sparkles size={14} aria-hidden="true" />}
                         {rodando ? 'IA montando o Modelo…' : 'Preencher com IA pelos termos mais buscados'}
                     </button>
+                    {semTitulo && <p className="mt-1.5 text-[13px] text-white/50" data-aviso-modelo-sem-titulo>Gere o título antes para o Modelo não repetir palavras.</p>}
+                    {ia.status === 'pronto' && descartados.length > 0 && (
+                        <p className="mt-1.5 text-[13px] text-white/50" data-modelo-descartados={descartados.length}
+                            title={descartados.map((d) => `${d.termo}: ${d.motivo}`).join('\n')}>
+                            {descartados.length === 1 ? '1 termo removido' : `${descartados.length} termos removidos`}: não condizem com o produto ({descartados.map((d) => d.termo).join(', ')})
+                        </p>
+                    )}
                     {ia.status === 'erro' && <p className="mt-1.5 text-[13px] text-amber-300">{ia.erro}</p>}
                 </div>
             )}
@@ -157,13 +176,36 @@ function FichaTecnica({ m }) {
     );
 }
 
-function Descricao({ m }) {
+function Descricao({ m, descricaoIa }) {
     const texto = m.rasc.descricao ?? '';
+    const doCliente = m.estado?.portal?.descricao_cliente ?? null;
+    const rodando = descricaoIa?.status === 'rodando';
     const maximo = m.schema?.limites?.max_description_length ?? null;
     const erro = useErroDoCampo((x) => x.campo === 'descricao', { preenchido: texto.trim() !== '' });
 
     return (
         <Secao id="descricao" titulo="Descrição" descricao="Texto simples, sem formatação. Conte o que o produto é e para quem serve, material, medidas, o que vem na caixa e a garantia.">
+            {doCliente && (
+                <details className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                    <summary className="cursor-pointer text-[13px] text-white/80">Descrição do cliente</summary>
+                    <p className="mt-2 text-[11px] text-white/45">O que o cliente escreveu no portal. A IA usa este texto como base; ele não vai direto para o anúncio.</p>
+                    <div className="mt-2 whitespace-pre-line text-[13px] text-white/70" data-descricao-cliente>{doCliente}</div>
+                </details>
+            )}
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => descricaoIa?.pedir({ automatico: false })} disabled={m.disabled || rodando || ! descricaoIa}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[13px] text-white/85 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+                    data-acao="gerar-descricao-ia">
+                    {rodando ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Sparkles className="h-3.5 w-3.5" aria-hidden />}
+                    {rodando ? 'Gerando…' : 'Gerar descrição com IA'}
+                </button>
+                {descricaoIa?.status === 'pronto' && descricaoIa.valor != null && (
+                    <button type="button" onClick={descricaoIa.aplicar} disabled={m.disabled} className={LINK} data-acao="usar-descricao-ia">
+                        Usar a descrição gerada
+                    </button>
+                )}
+                {descricaoIa?.status === 'erro' && <span className="text-[13px] text-red-300">{descricaoIa.erro}</span>}
+            </div>
             <Campo rotulo="Descrição do anúncio" htmlFor="campo-descricao" erro={erro}
                 dica="O Mercado Livre recusa telefone, e-mail, link, redes sociais e preço no texto."
                 extra={<span className={cn('font-mono text-[13px] tabular-nums', maximo && texto.length > maximo ? 'text-red-300' : 'text-white/45')} data-contador-descricao>{texto.length}{maximo ? `/${maximo}` : ''}</span>}>
@@ -175,12 +217,12 @@ function Descricao({ m }) {
     );
 }
 
-export default function EtapaDetalhes({ m }) {
+export default function EtapaDetalhes({ m, descricaoIa }) {
     return (
         <div className="space-y-6" data-etapa-conteudo="detalhes">
             <DadosDasVariacoes m={m} />
             <FichaTecnica m={m} />
-            <Descricao m={m} />
+            <Descricao m={m} descricaoIa={descricaoIa} />
         </div>
     );
 }

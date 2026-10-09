@@ -168,6 +168,12 @@ class PortalEstruturaSugestoesController extends Controller
         $tipo = (string) $request->query('tipo', '');
         $status = (string) $request->query('status', '');
 
+        // Famílias com os Combos expandidos (08/10): "12,sem". O serviço confere contra as famílias que existem.
+        $combos = array_slice(array_values(array_filter(
+            explode(',', (string) $request->query('combos', '')),
+            fn ($v) => preg_match('/^(\d{1,12}|sem)$/D', $v) === 1
+        )), 0, 50);
+
         return [
             'aba'     => in_array($aba, self::ABAS, true) ? $aba : 'sugestoes',
             'fase'    => in_array($fase, self::FASES, true) ? $fase : null,
@@ -175,6 +181,7 @@ class PortalEstruturaSugestoesController extends Controller
             'tipo'    => preg_match('/^[a-z0-9-]{2,40}$/D', $tipo) === 1 ? $tipo : null,
             'status'  => in_array($status, ListaDeSugestoes::STATUS, true) ? $status : null,
             'q'       => mb_substr(trim((string) $request->query('q', '')), 0, 100),
+            'combos'  => $combos,
         ];
     }
 }

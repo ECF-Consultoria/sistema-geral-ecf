@@ -7,14 +7,16 @@ const ERRO_PADRAO = 'Não foi possível buscar do Portal. Nada foi alterado. Ten
 
 /**
  * Sincroniza os produtos do Portal da conta (idempotente: só acrescenta).
- * 200 -> onConcluido({criados, ids, mensagem, portal}); falha -> onErro(mensagem).
+ * 200 -> onConcluido({criados, ids, mensagem, pedido, preenchendo, avisos, duplicados, portal}); falha -> onErro(mensagem).
+ * O botão só faz o POST: quem acompanha o preenchimento (o `pedido`) é a página, que não desmonta
+ * quando a lista recarrega (review 172 CR-01). `desabilitado`: a página ainda está acompanhando.
  */
-export default function BotaoSincronizarPortal({ conta, onConcluido, onErro, className }) {
+export default function BotaoSincronizarPortal({ conta, onConcluido, onErro, desabilitado = false, className }) {
     const [ocupado, setOcupado] = useState(false);
 
     async function sincronizar(ev) {
         ev.stopPropagation();
-        if (ocupado) return;
+        if (ocupado || desabilitado) return;
         setOcupado(true);
         try {
             const { data } = await axios.post(route('mlb.anuncios.publicador.sincronizar', { conta }));
@@ -30,7 +32,7 @@ export default function BotaoSincronizarPortal({ conta, onConcluido, onErro, cla
         <button
             type="button"
             onClick={sincronizar}
-            disabled={ocupado}
+            disabled={ocupado || desabilitado}
             className={cn(
                 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow disabled:cursor-not-allowed disabled:opacity-60',
                 className,

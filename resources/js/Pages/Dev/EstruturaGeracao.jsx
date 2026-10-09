@@ -205,12 +205,12 @@ export default function EstruturaGeracao({ tipos = [], pares = [] }) {
     const ordenados = [...tipos].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
 
     return (
-        <AppLayout title="Tipos e pares das sugestões de ofertas">
+        <AppLayout title="Tipos e pares do Planejamento">
             <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 sm:px-6">
                 <div>
-                    <h1 className="font-display text-2xl font-semibold text-white">Tipos e pares das sugestões de ofertas</h1>
+                    <h1 className="font-display text-2xl font-semibold text-white">Tipos e pares do Planejamento</h1>
                     <p className="mt-1 text-[13px] text-white/40">
-                        Valem para todas as empresas. A mudança aparece na próxima vez que alguém abrir Sugestões de ofertas. Ofertas já criadas não mudam.
+                        Valem para todas as empresas. A mudança aparece na próxima vez que alguém abrir o Planejamento. Ofertas já criadas não mudam.
                     </p>
                 </div>
 

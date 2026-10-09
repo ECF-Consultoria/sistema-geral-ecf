@@ -244,6 +244,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.campos')->name('portal.auth.estrutura.produtos.campos_categoria');
     Route::put('/estrutura/produtos/{produto}/ficha-tecnica', [PortalEstruturaProdutosController::class, 'gravarFichaTecnica'])
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.ficha_tecnica')->name('portal.auth.estrutura.produtos.ficha_tecnica');
+    // Descrição do produto (texto livre do cliente); gravada no mesmo Salvar da ficha.
+    Route::put('/estrutura/produtos/{produto}/descricao', [PortalEstruturaProdutosController::class, 'gravarDescricao'])
+        ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.descricao')->name('portal.auth.estrutura.produtos.descricao');
     // Imagens por variação (a galeria da cor). Disco privado; a empresa vem sempre da sessão.
     // O GET é o `<img src>` da tela (várias por página), por isso o throttle é folgado.
     Route::post('/estrutura/produtos/variacao/{variacao}/imagens', [PortalEstruturaProdutosController::class, 'enviarImagens'])

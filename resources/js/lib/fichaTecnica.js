@@ -10,12 +10,60 @@
 //
 // O `id` do campo é interno: nunca aparece na tela, só o `nome`.
 //
-// Valores em memória: { [id]: { valor: string, unidade: string } }
+// Valores em memória: { [id]: { valor: string, unidade: string, naoSeAplica?: boolean } }
+//
+// "Não se aplica": o campo marcado `nao_se_aplica` pelo servidor ganha a opção.
+// Marcada, o PUT manda `{ id, nao_se_aplica: true }` (nunca um valor), e o servidor
+// a grava com `valor_id = NAO_SE_APLICA`. O valor digitado antes fica guardado em
+// memória: desmarcar o devolve.
 // ═══════════════════════════════════════════════════════════════════════
+
+/** Como o servidor grava o "Não se aplica" (`valor_id`). */
+export const NAO_SE_APLICA = '-1';
+
+/** O campo oferece "Não se aplica"? (só quando o servidor marcou). */
+export const aceitaNaoSeAplica = (campo) => !! campo?.nao_se_aplica;
 
 /** Os campos da definição numa lista só, na ordem em que a tela os mostra. */
 export function camposDaDefinicao(grupos) {
     return (Array.isArray(grupos) ? grupos : []).flatMap((g) => (Array.isArray(g?.campos) ? g.campos : []));
+}
+
+// ─── Eixo de variação por PRODUTO, não por categoria ────────────────────────
+//
+// O campo que É um eixo de variação (`eixo_do_portal`: 'cor', 'material'…) vem na
+// definição da categoria, e quem decide se ele aparece é o PRODUTO: some só quando
+// alguma variação usa aquele eixo (o valor vem da variação). A cadeira que varia por
+// cor informa o material aqui; a que varia por material, não. É a mesma regra do
+// servidor (`FichaTecnicaDaCategoria::doProduto`), que ignora o campo ao gravar.
+
+/**
+ * As chaves dos eixos usados nas variações (`eixo_rotulo`: "Cor", "Material"…), a partir do
+ * vocabulário do servidor ({ cor: 'Cor', … }). Aceita a chave direto também. Vazio não conta.
+ */
+export function eixosEmUso(variacoes, eixosDoVocabulario) {
+    const porRotulo = new Map();
+    Object.entries(eixosDoVocabulario ?? {}).forEach(([chave, rotulo]) => {
+        porRotulo.set(String(rotulo).trim().toLowerCase(), chave);
+        porRotulo.set(String(chave).trim().toLowerCase(), chave);
+    });
+    const usados = [];
+    (Array.isArray(variacoes) ? variacoes : []).forEach((v) => {
+        const texto = String(v?.eixo_rotulo ?? v?.eixo ?? '').trim().toLowerCase();
+        const chave = texto === '' ? null : porRotulo.get(texto);
+        if (chave && ! usados.includes(chave)) usados.push(chave);
+    });
+
+    return usados;
+}
+
+/** A definição como vale para o produto: sem os campos que são eixo de alguma variação dele. Grupo vazio sai. */
+export function gruposDoProduto(grupos, eixos) {
+    const usados = new Set(Array.isArray(eixos) ? eixos : []);
+
+    return (Array.isArray(grupos) ? grupos : [])
+        .map((g) => ({ ...g, campos: (Array.isArray(g?.campos) ? g.campos : []).filter((c) => ! (c?.eixo_do_portal && usados.has(c.eixo_do_portal))) }))
+        .filter((g) => g.campos.length > 0);
 }
 
 /**
@@ -27,6 +75,11 @@ export function valoresIniciais(salvos) {
     (Array.isArray(salvos) ? salvos : []).forEach((s) => {
         if (! s || s.id == null) return;
         const id = String(s.id);
+        if (String(s.valor_id ?? '') === NAO_SE_APLICA) {
+            out[id] = { valor: '', unidade: '', naoSeAplica: true };
+
+            return;
+        }
         const doIdDaOpcao = s.valor_id !== null && s.valor_id !== undefined && s.valor_id !== '';
         const bruto = doIdDaOpcao ? s.valor_id : s.valor;
         out[id] = { valor: bruto === null || bruto === undefined ? '' : String(bruto), unidade: s.unidade ? String(s.unidade) : '' };
@@ -102,6 +155,13 @@ export function montarAtributos(grupos, valores) {
     camposDaDefinicao(grupos).forEach((campo) => {
         const atual = valores?.[campo.id];
         const bruto = atual?.valor;
+
+        // "Não se aplica" vence o que estiver digitado, e só vale onde o servidor oferece.
+        if (atual?.naoSeAplica && aceitaNaoSeAplica(campo)) {
+            out.push({ id: campo.id, nao_se_aplica: true });
+
+            return;
+        }
 
         if (ehMultivalor(campo)) {
             const ids = idsMultivalor(campo, bruto);

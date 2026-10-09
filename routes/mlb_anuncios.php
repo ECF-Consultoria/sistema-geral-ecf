@@ -6,6 +6,7 @@ use App\Http\Controllers\MlbAnuncioController;
 use App\Http\Controllers\MlbPublicadorAcervoController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
+use App\Http\Controllers\MlbPublicadorDescricaoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
 use App\Http\Controllers\MlbPublicadorFaseController;
 use App\Http\Controllers\MlbPublicadorIdentidadeController;
@@ -49,6 +50,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('publicador/empresas/{conta}/sincronizar', [MlbPublicadorEntradaController::class, 'sincronizar'])
             ->where('conta', '(empresa|company)-[0-9]+')
             ->middleware('throttle:20,1,publicador.sincronizar')->name('publicador.sincronizar');
+        Route::get('publicador/empresas/{conta}/sincronizar/{pedido}', [MlbPublicadorEntradaController::class, 'resumoDoSincronizar'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereUuid('pedido')
+            ->middleware('throttle:240,1,publicador.sincronizar.resumo')->name('publicador.sincronizar.resumo');
         Route::post('publicador/empresas/{conta}/produtos', [MlbPublicadorEntradaController::class, 'criarProduto'])
             ->where('conta', '(empresa|company)-[0-9]+')
             ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
@@ -156,6 +160,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->middleware('throttle:20,1,publicador.palavras-ia')->name('palavras-ia');
             Route::get('/palavras-ia/{alvo}', [MlbPublicadorController::class, 'palavrasIa'])
                 ->middleware('throttle:240,1,publicador.palavras-ia.status')->name('palavras-ia.status');
+            // Fase 172 — descrição do anúncio pelo MAG T8 a partir da descrição do cliente (D-09/D-11).
+            Route::post('/descricao-ia', [MlbPublicadorDescricaoController::class, 'pedir'])
+                ->middleware('throttle:20,1,publicador.descricao-ia')->name('descricao-ia');
+            Route::get('/descricao-ia', [MlbPublicadorDescricaoController::class, 'estado'])
+                ->middleware('throttle:240,1,publicador.descricao-ia.status')->name('descricao-ia.status');
 
             // Fase 165 — Creative Engine por produto do Publicador (D-03/D-09). Nomes:
             // mlb.anuncios.publicador.criativos.*. O kit vai pelo id numérico escopado;

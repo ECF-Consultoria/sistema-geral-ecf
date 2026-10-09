@@ -119,9 +119,10 @@ class RascunhoRepository
     {
         DB::transaction(function () use ($r, $atributos) {
             $r->atributos()->whereNotIn('attribute_id', array_keys($atributos) ?: [''])->delete();
+            $multi = $this->multiGuardados($r);
             foreach ($atributos as $id => $valor) {
                 $r->atributos()->updateOrCreate(['attribute_id' => $id], [
-                    ...self::colunasDeValor((array) $valor),
+                    ...self::colunasDoProduto((array) $valor, $multi[$id] ?? null),
                     'origem' => $valor['origem'] ?? 'user',
                     'revisar' => (bool) ($valor['revisar'] ?? false),
                 ]);
@@ -138,9 +139,10 @@ class RascunhoRepository
     public function mesclarAtributos(PubRascunho $r, array $atributos): void
     {
         DB::transaction(function () use ($r, $atributos) {
+            $multi = $this->multiGuardados($r);
             foreach ($atributos as $id => $valor) {
                 $r->atributos()->updateOrCreate(['attribute_id' => $id], [
-                    ...self::colunasDeValor((array) $valor),
+                    ...self::colunasDoProduto((array) $valor, $multi[$id] ?? null),
                     'origem' => $valor['origem'] ?? 'user',
                     'revisar' => (bool) ($valor['revisar'] ?? false),
                 ]);
@@ -351,7 +353,39 @@ class RascunhoRepository
             'value_name' => $linha->value_name,
             'value_number' => $linha->value_number,
             'value_unit' => $linha->value_unit,
-        ], fn ($x) => $x !== null);
+            // D-13: as opções de um atributo de várias opções vão à tela e voltam (o payload não as usa).
+            'values_multi' => $linha->values_multi ?? null,
+        ], fn ($x) => $x !== null && $x !== []);
+    }
+
+    /** @return array<string, array{value_id: ?string, values_multi: array}> atributo → o que está guardado com várias opções */
+    private function multiGuardados(PubRascunho $r): array
+    {
+        $saida = [];
+        foreach ($r->atributos()->whereNotNull('values_multi')->get(['attribute_id', 'value_id', 'values_multi']) as $a) {
+            if (is_array($a->values_multi) && $a->values_multi !== []) {
+                $saida[$a->attribute_id] = ['value_id' => $a->value_id, 'values_multi' => $a->values_multi];
+            }
+        }
+
+        return $saida;
+    }
+
+    /**
+     * Colunas de um atributo do PRODUTO. Quem grava sem mandar `values_multi` (a tela, a IA) não apaga as
+     * opções guardadas enquanto a 1ª opção (`value_id`) continuar a mesma; trocou a opção, a lista velha sai.
+     *
+     * @param  ?array{value_id: ?string, values_multi: array}  $guardado
+     */
+    private static function colunasDoProduto(array $v, ?array $guardado): array
+    {
+        $colunas = self::colunasDeValor($v);
+        if (! array_key_exists('values_multi', $v) && $guardado !== null && $colunas['value_id'] !== null
+            && $colunas['value_id'] === (string) $guardado['value_id']) {
+            $colunas['values_multi'] = array_values($guardado['values_multi']);
+        }
+
+        return $colunas;
     }
 
     private static function colunasDeValor(array $v): array
@@ -361,6 +395,8 @@ class RascunhoRepository
             'value_name' => isset($v['value_name']) && $v['value_name'] !== '' ? (string) $v['value_name'] : null,
             'value_number' => isset($v['value_number']) && is_numeric($v['value_number']) ? (float) $v['value_number'] : null,
             'value_unit' => $v['value_unit'] ?? null,
+            // Atributo de várias opções (Fase 172): a 1ª fica em value_id, todas aqui. Sem lista, a coluna zera.
+            'values_multi' => isset($v['values_multi']) && is_array($v['values_multi']) && $v['values_multi'] !== [] ? array_values($v['values_multi']) : null,
         ];
     }
 }

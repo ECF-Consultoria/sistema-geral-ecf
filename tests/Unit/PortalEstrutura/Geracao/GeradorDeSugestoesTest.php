@@ -144,12 +144,15 @@ class GeradorDeSugestoesTest extends TestCase
         $familias = array_map(fn ($s) => $s['familia'], $lista);
         $this->assertSame(['Alfa', 'Zeta', null], array_values(array_unique($familias, SORT_REGULAR)));
 
-        $ordemFase = ['combo' => 0, 'kit' => 1, 'combit' => 2];
+        // 08/10: dentro da família, Kit e Combit antes do Combo.
+        $ordemFase = ['kit' => 0, 'combit' => 1, 'combo' => 2];
         $alfa = array_values(array_filter($lista, fn ($s) => $s['familia'] === 'Alfa'));
         $fases = array_map(fn ($s) => $ordemFase[$s['fase']], $alfa);
         $ordenado = $fases;
         sort($ordenado);
         $this->assertSame($ordenado, $fases);
+        $this->assertSame('kit', $alfa[0]['fase']);
+        $this->assertSame('combo', $alfa[count($alfa) - 1]['fase']);
     }
 
     public function test_kit_orienta_pela_ordem_do_tipo(): void
@@ -162,6 +165,23 @@ class GeradorDeSugestoesTest extends TestCase
         $kit = array_values(array_filter(GeradorDeSugestoes::gerar($r), fn ($s) => $s['fase'] === 'kit'))[0];
         $this->assertSame('Mesa Polo + Cadeira Polo', $kit['nome']);
         $this->assertSame(['mesa', 'cadeira'], $kit['tipos']);
+    }
+
+    /** 08/10 (teste do usuário): cores que não se repetem entre mesa e cadeira davam zero Kit. */
+    public function test_mesa_e_cadeira_com_cores_diferentes_geram_kit_e_combit(): void
+    {
+        $r = $this->retrato([
+            $this->produto(1, 'Mesa Polo', 'mesa', [$this->variacao(101, null, 'Freijó'), $this->variacao(102, null, 'Off White', 1)]),
+            $this->produto(2, 'Cadeira Polo', 'cadeira', [$this->variacao(201, null, 'Linho Bege'), $this->variacao(202, null, 'Linho Cinza', 1)]),
+        ]);
+
+        $por = array_column(GeradorDeSugestoes::gerar($r), null, 'chave');
+
+        $this->assertSame('kit', $por['v101*1+v201*1']['fase']);
+        $this->assertSame('kit', $por['v102*1+v202*1']['fase']);
+        $this->assertSame('Mesa Polo + Cadeira Polo — Freijó / Linho Bege', $por['v101*1+v201*1']['nome']);
+        $this->assertSame('combit', $por['v101*1+v201*4']['fase']);
+        $this->assertArrayNotHasKey('v101*1+v202*1', $por, 'sem cartesiano');
     }
 
     public function test_existente_nao_sai_e_descartada_volta_marcada(): void

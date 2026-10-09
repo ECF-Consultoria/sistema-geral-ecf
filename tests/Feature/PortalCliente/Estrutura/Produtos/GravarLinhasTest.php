@@ -178,6 +178,47 @@ class GravarLinhasTest extends TestCase
         $this->assertNull($r->json('linhas.0.familia'));
     }
 
+    /** Fase 172-02: estoque por variação — 0 e vazio são coisas diferentes e variação nova não herda. */
+    public function test_estoque_por_variacao_zero_nulo_e_sem_heranca(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $sessao = $this->entrarNoPortal($empresa);
+
+        $r = $this->gravar($sessao, [[
+            'chave' => 'k', 'codigo' => 'EST-1', 'nome' => 'Mesa', 'eixo' => 'cor', 'valor' => 'Natural',
+            'volumes' => $this->vol(), 'estoque' => '12',
+        ]])->assertOk();
+        $this->assertSame(12, $r->json('linhas.0.estoque'));
+        $v1 = EstruturaProdutoVariacao::where('company_id', $empresa->id)->firstOrFail();
+        $this->assertSame(12, $v1->estoque);
+
+        // Variação nova do mesmo produto, sem estoque informado: NÃO herda os 12.
+        $r = $this->gravar($sessao, [[
+            'chave' => 'k2', 'produto_id' => $v1->produto_id, 'codigo' => 'EST-2', 'nome' => 'Mesa', 'eixo' => 'cor', 'valor' => 'Preto',
+        ]])->assertOk();
+        $this->assertSame([], $r->json('erros'));
+        $v2 = EstruturaProdutoVariacao::where('company_id', $empresa->id)->where('codigo', 'EST-2')->firstOrFail();
+        $this->assertNull($v2->estoque);
+
+        // Atualização sem a chave mantém; 0 grava 0; vazio não mexe; null limpa.
+        $this->gravar($sessao, [['id' => $v1->id, 'codigo' => 'EST-1', 'nome' => 'Mesa']])->assertOk();
+        $this->assertSame(12, $v1->fresh()->estoque);
+
+        $r = $this->gravar($sessao, [['id' => $v1->id, 'codigo' => 'EST-1', 'nome' => 'Mesa', 'estoque' => 0]])->assertOk();
+        $this->assertSame(0, $v1->fresh()->estoque);
+        $this->assertSame(0, $r->json('linhas.0.estoque'));
+
+        $this->gravar($sessao, [['id' => $v1->id, 'codigo' => 'EST-1', 'nome' => 'Mesa', 'estoque' => '']])->assertOk();
+        $this->assertSame(0, $v1->fresh()->estoque);
+
+        $this->gravar($sessao, [['id' => $v1->id, 'codigo' => 'EST-1', 'nome' => 'Mesa', 'estoque' => null]])->assertOk();
+        $this->assertNull($v1->fresh()->estoque);
+
+        // Inválido vira erro da linha, sem gravar.
+        $r = $this->gravar($sessao, [['chave' => 'x', 'id' => $v1->id, 'codigo' => 'EST-1', 'nome' => 'Mesa', 'estoque' => '-3']])->assertOk();
+        $this->assertSame(1, $r->json('totais.com_erro'));
+    }
+
     public function test_201_linhas_ou_nenhuma_dao_422(): void
     {
         $sessao = $this->entrarNoPortal($this->empresaDoGabarito());

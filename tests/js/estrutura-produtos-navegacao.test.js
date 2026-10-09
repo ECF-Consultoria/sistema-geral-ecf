@@ -263,3 +263,12 @@ test('rolarParaVolta: volta pelo histórico sem produto novo não mexe na rolage
     rolarParaVolta({ aviso: null, produtoId: null, scrollY: null, historico: true });
     assert.equal(rolou, false);
 });
+
+test('rascunho: guarda a descrição do produto junto (review 172 WR-06); sem ela, a chave nem aparece', () => {
+    gravarRascunho(11, vars, { descricao: 'Texto longo do cliente.' });
+    assert.equal(lerRascunho(11).descricao, 'Texto longo do cliente.');
+    assert.deepEqual(lerRascunho(11).vars, vars);
+
+    gravarRascunho(12, vars);
+    assert.equal('descricao' in lerRascunho(12), false, 'rascunho sem descrição continua como antes');
+});

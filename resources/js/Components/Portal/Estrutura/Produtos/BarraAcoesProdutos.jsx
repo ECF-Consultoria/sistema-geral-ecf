@@ -40,7 +40,7 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                 {temProdutos && (
                     <Link href={route('portal.auth.estrutura.sugestoes')} data-acao="sugestoes-de-ofertas" className={cn(ACAO, SECUNDARIA)}
                         title="Veja combos, kits e combits sugeridos a partir dos seus produtos.">
-                        <Sparkles size={18} /> Sugestões de ofertas
+                        <Sparkles size={18} /> Planejamento
                     </Link>
                 )}
             </div>

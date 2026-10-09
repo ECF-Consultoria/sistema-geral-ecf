@@ -143,7 +143,7 @@ export default function EstruturaAgenda({ empresa, modulos = [], agenda, vocabul
     const vazia = SECOES.every((s) => agenda.secoes[s.chave].total === 0);
 
     return (
-        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural · Agenda">
+        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Mapeamento Estrutural · Cronograma">
             <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
                 <CabecalhoEstrutura etapa="planejamento" onComoFunciona={() => setAula(true)}
                     descricao="Uma publicação por dia até zerar. Sete dias depois de publicar, a Jardinagem: olhar as métricas e ajustar." />

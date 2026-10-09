@@ -3,6 +3,8 @@
 // Sem React e sem rota: EAN-13, conversão de unidades do pacote e montagem do
 // título com os termos mais buscados. Testadas em tests/js/publicador-ferramentas.test.js.
 
+import { valorVazio } from './apoio.js';
+
 // ── Código universal (EAN-13) ──
 // Mesmo gerador do assistente antigo (AnunciarML.jsx) e do RascunhoAnuncioIaService:
 // prefixo 789 (Brasil) + 9 dígitos + verificador (posição ímpar ×1, par ×3).
@@ -208,6 +210,20 @@ export const termoNoTitulo = (titulo, termo) => {
 
     return palavras.length > 0 && palavras.every((p) => tem.has(normalizar(p)));
 };
+
+// ── Modelo × título (08/10/2026) ──
+// O Modelo existe para expandir a busca: termo que só repete palavras do título
+// desperdiça caractere. Quem filtra é o servidor (PalavrasChaveService); a tela
+// manda o título que está à vista, porque ele pode ainda não estar salvo.
+
+/** Os títulos ATIVOS na tela (o digitado ou, sem ele, o herdado da aba Anúncios), sem repetir. */
+export const tituloParaModelo = (alvos) => [...new Set((alvos ?? [])
+    .filter((a) => a.ativo)
+    .map((a) => String(a.titulo || a.titulo_efetivo || '').trim())
+    .filter(Boolean))].join(' / ').slice(0, 255);
+
+/** A IA pode (re)preencher o Modelo sozinha? Só vazio ou ainda como a IA deixou — nunca o que a pessoa escreveu. */
+export const modeloLivreParaIa = (valor) => valorVazio(valor) || valor?.origem === 'ia';
 
 // ── Variações "como no Mercado Livre" (03/10/2026) ──
 // Cada variação é um cartão com o valor dela em cada eixo. Por baixo continua o modelo

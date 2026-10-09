@@ -36,6 +36,8 @@ test('barra de ações: seis ações na ordem, a sexta só com produtos, modelo 
     assert.match(barra, /temProdutos \? 'bg-ecf-yellow/);
     // Fase 168-15: a sexta ação é link para as sugestões, secundária e só com produtos (o amarelo segue só no "Adicionar produto").
     assert.match(barra, /\{temProdutos && \(\s*<Link href=\{route\('portal\.auth\.estrutura\.sugestoes'\)\} data-acao="sugestoes-de-ofertas" className=\{cn\(ACAO, SECUNDARIA\)\}/);
+    // 08/10: o rótulo do link virou "Planejamento" (a rota segue a mesma).
+    assert.ok(barra.includes('<Sparkles size={18} /> Planejamento') && ! barra.includes('Sugestões de ofertas'));
 });
 
 test('seletor: grupo de rádio com os dois modos', () => {

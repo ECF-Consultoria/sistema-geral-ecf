@@ -52,6 +52,20 @@ final class NomesSugeridos
     }
 
     /**
+     * Kit de 3 (08/10): mesmo padrão do Kit de 2, com todos os produtos e SKUs na ordem.
+     *
+     * @param  list<array{produto_nome: string, sku: string, valor: ?string}>  $itens
+     * @return array{nome: string, sku: string}
+     */
+    public static function kitDeVarios(array $itens): array
+    {
+        return [
+            'nome' => implode(' + ', array_column($itens, 'produto_nome')) . self::sufixo(array_map(fn ($i) => $i['valor'] ?? null, $itens)),
+            'sku'  => 'KT-' . implode('-', array_column($itens, 'sku')),
+        ];
+    }
+
+    /**
      * @param  array{produto_nome: string, sku: string, valor: ?string}  $fixo
      * @param  array{produto_nome: string, sku: string, valor: ?string}  $repetido
      * @param  array{nome: string, plural: string}  $tipoRepetido
@@ -89,7 +103,7 @@ final class NomesSugeridos
     /**
      * Texto do porquê, no contrato da UI-SPEC.
      *
-     * @param  array{familia?: ?string, ambientes?: list<string>, tipo_a?: ?string, tipo_b?: ?string, repete?: ?string, tipo?: ?string, quantidades?: list<int>, quantidades_do_produto?: bool}  $ctx
+     * @param  array{familia?: ?string, ambientes?: list<string>, tipo_a?: ?string, tipo_b?: ?string, tipos?: list<string>, repete?: ?string, tipo?: ?string, quantidades?: list<int>, quantidades_do_produto?: bool}  $ctx
      */
     public static function porque(string $fase, array $ctx): string
     {
@@ -114,6 +128,14 @@ final class NomesSugeridos
         }
         if (! empty($ctx['ambientes'])) {
             $partes[] = 'Ambiente em comum: ' . implode(', ', $ctx['ambientes']) . '.';
+        }
+
+        // Kit de 3 (08/10): os três pares entre os tipos estão na lista.
+        if (! empty($ctx['tipos'])) {
+            $nomes = array_map(fn ($t) => mb_strtolower((string) $t), $ctx['tipos']);
+            $partes[] = 'Conjunto: ' . implode(' + ', $nomes) . '; todos os pares estão na lista.';
+
+            return implode(' ', $partes);
         }
 
         $a = mb_strtolower((string) ($ctx['tipo_a'] ?? ''));

@@ -16,6 +16,11 @@ use Illuminate\Support\Str;
  *  - senão, primeiro por eixo + valor (sem caixa e sem acento) quando os dois lados têm;
  *  - o que sobrou casa por posição (ordem, id), PULANDO o par em que as duas têm
  *    valor, pois valores diferentes nunca casam;
+ *  - EXCEÇÃO (08/10): se NENHUMA variação casou por valor, os dois lados são linhas
+ *    de cor independentes (mesa Freijó/Off White × cadeira Linho Bege/Linho Cinza)
+ *    e casam por posição mesmo com valor. Antes saía zero Kit; agora sai um por
+ *    posição (min(n, m)), ainda sem repetir variação e sem cartesiano. A pessoa
+ *    monta outra combinação à mão na Lista SKUs se quiser;
  *  - o que sobrar é ignorado.
  *
  * Classe pura: sem banco, sem config, sem relógio.
@@ -65,7 +70,9 @@ final class VariacoesEmParalelo
             }
         }
 
-        // Passo 2: as que sobraram, por posição; par com valor nos dois lados não casa.
+        // Passo 2: as que sobraram, por posição; par com valor nos dois lados não casa,
+        // salvo quando nada casou por valor (linhas de cor independentes).
+        $nadaCasou = $pares === [];
         $sobraA = array_keys(array_diff_key($a, $pares));
         $sobraB = array_keys(array_diff_key($b, $usadasB));
         foreach ($sobraA as $pos => $ia) {
@@ -74,7 +81,7 @@ final class VariacoesEmParalelo
             }
             $va = $a[$ia];
             $vb = $b[$sobraB[$pos]];
-            if (self::temValor($va) && self::temValor($vb)) {
+            if (! $nadaCasou && self::temValor($va) && self::temValor($vb)) {
                 continue;
             }
             $pares[$ia] = [$va, $vb];

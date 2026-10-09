@@ -42,7 +42,7 @@ export function CampoCorPrincipal({ id, atributo, valor, nome, disabled, erro, o
     const sugerido = ! valor?.value_id ? tomDaCor(nome, tons) : null;
 
     return (
-        <Campo rotulo="Cor principal" htmlFor={id} erro={erro} dica={dicaDoTom(nome, valor)}>
+        <Campo rotulo="Cor principal" htmlFor={id} erro={erro} dica={dicaDoTom(nome, valor)} explicacao={atributo?.explicacao}>
             <select id={id} value={valor?.value_id ?? ''} disabled={disabled} aria-invalid={!! erro || undefined} data-atributo="MAIN_COLOR" data-tom-origem={valor?.origem ?? 'nenhum'}
                 className={cn(SELECT, erro && INVALIDO)}
                 onChange={(e) => {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
 use App\Models\CreativeIdentidade;
 use App\Models\MlAnuncioRascunho;
 use App\Models\PubProduto;
@@ -11,6 +12,7 @@ use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
+use App\Services\Publicador\ResumoDoSincronizar;
 use App\Support\Publicador\ContasLiberadas;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -176,8 +178,8 @@ class MlbPublicadorEntradaController extends Controller
         ]);
     }
 
-    /** "Sincronizar do Portal" (D16): só acrescenta produtos das ofertas novas. */
-    public function sincronizar(string $conta, PublicadorSincronizaPortalService $sincroniza)
+    /** "Sincronizar do Portal" (D16): acrescenta os produtos das ofertas novas e junta ao grupo as linhas antigas de cor vazias. */
+    public function sincronizar(string $conta, PublicadorSincronizaPortalService $sincroniza, ResumoDoSincronizar $resumo)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -189,14 +191,56 @@ class MlbPublicadorEntradaController extends Controller
 
         $r = $sincroniza->sincronizar($alvo['mlb_empresa'], $company);
 
+        // Fase 172-12 (D-05/D-10): um Job por produto agrupado/composto preenche o rascunho com a ficha do
+        // Portal. Sem trava de piloto: vale para qualquer empresa com Portal. Nada disso fala com o ML.
+        $pedido = null;
+        $preenchendo = count($r['para_preencher']);
+        if ($preenchendo > 0) {
+            $pedido = $resumo->abrir((int) $company->id, $r['para_preencher']);
+            foreach ($r['para_preencher'] as $id) {
+                PreencherRascunhoDoPortalJob::dispatch((int) $id, $pedido);
+            }
+        }
+
+        $mensagem = $r['criados'] > 0
+            ? ($r['criados'] === 1 ? '1 produto novo do Portal.' : $r['criados'].' produtos novos do Portal.')
+            : 'Nada novo no Portal.';
+        if ($preenchendo > 0) {
+            $mensagem .= $preenchendo === 1
+                ? ' Preenchendo 1 rascunho com o que está no Portal.'
+                : " Preenchendo {$preenchendo} rascunhos com o que está no Portal.";
+        }
+        // Linhas antigas, uma por cor, que nada referenciava: saíram porque a cor já está no grupo.
+        $absorvidos = (int) ($r['absorvidos'] ?? 0);
+        if ($absorvidos > 0) {
+            $mensagem .= $absorvidos === 1
+                ? ' 1 linha antiga de cor foi juntada ao produto.'
+                : " {$absorvidos} linhas antigas de cor foram juntadas ao produto.";
+        }
+
         return response()->json([
             'criados' => $r['criados'],
             'ids' => $r['ids'],
-            'mensagem' => $r['criados'] > 0
-                ? ($r['criados'] === 1 ? '1 produto novo do Portal.' : $r['criados'].' produtos novos do Portal.')
-                : 'Nada novo no Portal.',
+            'mensagem' => $mensagem,
+            'pedido' => $pedido,
+            'preenchendo' => $preenchendo,
+            'avisos' => $r['avisos'],
+            'duplicados' => $r['duplicados'],
+            'absorvidos' => $absorvidos,
             'portal' => $this->programas->situacaoPortal($company),
         ]);
+    }
+
+    /** Resumo do preenchimento de um clique; só a empresa que clicou lê (T-172-42). */
+    public function resumoDoSincronizar(string $conta, string $pedido, ResumoDoSincronizar $resumo)
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null || $alvo['company'] === null, 404);
+
+        $r = $resumo->ler($pedido, (int) $alvo['company']->id);
+        abort_if($r === null, 404);
+
+        return response()->json($r);
     }
 
     /** "+ Produto": cadastro manual para empresa sem Portal (D15). SKU repetido é aviso, não bloqueio. */

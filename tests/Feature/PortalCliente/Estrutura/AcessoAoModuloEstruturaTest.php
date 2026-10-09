@@ -63,6 +63,8 @@ class AcessoAoModuloEstruturaTest extends TestCase
                     return $estrutura['ativo']
                         && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento']
                         && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
+                        // 08/10: a agenda se chama "Cronograma"; "Planejamento" ficou para a tela de sugestões.
+                        && collect($estrutura['submodulos'])->pluck('rotulo')->all() === ['Produtos', 'Lista SKUs', 'Precificação', 'Anúncios', 'Cronograma', 'Mapeamento']
                         // 02/10 (D18): o Anunciar saiu do Portal — são 6 submódulos (Produtos primeiro), todos abertos.
                         && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null);
                 })

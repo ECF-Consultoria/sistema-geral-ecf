@@ -121,8 +121,15 @@ test('barra da aba Descartadas: o ramo restaurar não usa amarelo', () => {
 
 // ─── Gate: entradas ─────────────────────────────────────────────────────────
 
-test('Lista SKUs: link secundário "Sugestões de ofertas" no cabeçalho', () => {
+test('Lista SKUs: link secundário "Planejamento" no cabeçalho (antes "Sugestões de ofertas", 08/10)', () => {
     const lista = lerSemComentarios('resources/js/Pages/Portal/EstruturaLista.jsx');
     assert.ok(lista.includes("route('portal.auth.estrutura.sugestoes')"));
-    assert.ok(lista.includes('Sugestões de ofertas') && lista.includes('data-acao="sugestoes-de-ofertas"'));
+    assert.ok(lista.includes('<Sparkles size={14} /> Planejamento') && lista.includes('data-acao="sugestoes-de-ofertas"'));
+    assert.ok(! lista.includes('Sugestões de ofertas'));
+});
+
+test('08/10: a agenda do portal se chama "Cronograma" (o nome "Planejamento" ficou para as sugestões)', () => {
+    const agenda = lerSemComentarios('resources/js/Pages/Portal/EstruturaAgenda.jsx');
+    assert.ok(agenda.includes('titulo="Mapeamento Estrutural · Cronograma"'));
+    assert.ok(! agenda.includes('Planejamento'));
 });

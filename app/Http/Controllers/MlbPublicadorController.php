@@ -289,10 +289,12 @@ class MlbPublicadorController extends Controller
             'alvo' => ['required', Rule::in(PalavrasChaveService::ALVOS)],
             'escolhidos' => ['sometimes', 'array', 'max:20'],
             'escolhidos.*' => ['string', 'max:120'],
+            // O título na tela (talvez ainda não salvo): o Modelo não repete as palavras dele.
+            'titulo' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
         $r = $this->rascunho($produto);
         try {
-            $pedido = $palavras->pedir($r, $dados['alvo'], $dados['escolhidos'] ?? []);
+            $pedido = $palavras->pedir($r, $dados['alvo'], $dados['escolhidos'] ?? [], $dados['titulo'] ?? null);
         } catch (RegraViolada $e) {
             return response()->json(['message' => $e->getMessage(), 'regra' => $e->regra], 422);
         }

@@ -14,6 +14,8 @@
 |   (cadeira, banqueta, banco, prateleira, cabeceira, criado-mudo, mesa-lateral, cama;
 |   mesa e os demais: nenhuma). A ECF amplia pelo admin.
 | - D-20/D-21/D-23: só a lista aprovada pelo usuário entra (18 pares; bicama em cama; tipo beliche).
+| - 08/10: tipos e pares de banheiro (gabinete, espelho, lixeira, toalheiro, acessórios), 23 pares.
+|   Quem já rodou a semente da 168 recebe os novos pela migration 2026_10_08_140000.
 |
 | Vocabulário GENÉRICO de móveis: nunca nome de produto, marca ou família de
 | cliente.
@@ -26,6 +28,10 @@ return [
     'por_pagina'     => 20,
     'lote_aceite'    => 100,
     'teto_sugestoes' => 5000,
+
+    // Combos recolhidos por família (08/10): no máximo estes na família expandida;
+    // o resto se vê com o filtro Combo.
+    'max_combos_expandidos' => 200,
 
     // Limites de campo: título do ML (RascunhoAnuncioIaService) e SKU (EstruturaOfertaService::campos()).
     'max_titulo'      => 60,
@@ -144,6 +150,32 @@ return [
             'nome' => 'Puff', 'plural' => 'Puffs', 'palavras' => ['puff', 'puf'],
             'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 78,
         ],
+
+        // 08/10 — banheiro (pedido do usuário: gabinete + espelho + lixeira caíam em "Sem tipo").
+        // Semeados pela migration 2026_10_08_140000 (aditiva, insertOrIgnore por slug).
+        // "armario banheiro" é gabinete: o trecho mais longo vence o "armario" solto.
+        'gabinete' => [
+            'nome' => 'Gabinete', 'plural' => 'Gabinetes',
+            'palavras' => ['gabinete', 'armario banheiro', 'armario de banheiro', 'balcao banheiro', 'balcao de banheiro'],
+            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 80,
+        ],
+        'espelho' => [
+            'nome' => 'Espelho', 'plural' => 'Espelhos', 'palavras' => ['espelho', 'espelheira'],
+            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 82,
+        ],
+        'lixeira' => [
+            'nome' => 'Lixeira', 'plural' => 'Lixeiras', 'palavras' => ['lixeira', 'cesto de lixo', 'cesto lixo'],
+            'qtd_combo' => '2', 'qtd_combit' => null, 'ordem' => 84,
+        ],
+        'toalheiro' => [
+            'nome' => 'Toalheiro', 'plural' => 'Toalheiros', 'palavras' => ['toalheiro', 'porta toalha'],
+            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 86,
+        ],
+        'acessorio-banheiro' => [
+            'nome' => 'Acessório de banheiro', 'plural' => 'Acessórios de banheiro',
+            'palavras' => ['saboneteira', 'porta sabonete', 'porta escova', 'papeleira', 'porta papel higienico', 'kit acessorios'],
+            'qtd_combo' => null, 'qtd_combit' => null, 'ordem' => 88,
+        ],
     ],
 
     // Pares de tipo: `repete` = null (só Kit), o slug do lado que se repete no Combit, ou 'ambos'.
@@ -167,6 +199,15 @@ return [
         ['tipos' => ['comoda', 'guarda-roupa'], 'repete' => null],
         ['tipos' => ['comoda', 'prateleira'], 'repete' => 'prateleira'],
         ['tipos' => ['mesa-centro', 'mesa-lateral'], 'repete' => 'mesa-lateral'],
+
+        // 08/10 — banheiro: só Kit (ninguém vende gabinete + 2 espelhos). Gabinete, espelho e
+        // lixeira formam os três pares entre si, e por isso também o Kit de 3. Toalheiro e
+        // acessórios só com o gabinete, a peça principal do banheiro.
+        ['tipos' => ['gabinete', 'espelho'], 'repete' => null],
+        ['tipos' => ['gabinete', 'lixeira'], 'repete' => null],
+        ['tipos' => ['espelho', 'lixeira'], 'repete' => null],
+        ['tipos' => ['gabinete', 'toalheiro'], 'repete' => null],
+        ['tipos' => ['gabinete', 'acessorio-banheiro'], 'repete' => null],
     ],
 
 ];

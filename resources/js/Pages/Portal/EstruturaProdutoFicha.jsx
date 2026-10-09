@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Info, Loader2, Plus, Save } from 'lucide-react
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash } from '@/Components/Portal/Estrutura/comum';
 import FichaDadosGerais from '@/Components/Portal/Estrutura/Produtos/FichaDadosGerais';
+import FichaDescricao from '@/Components/Portal/Estrutura/Produtos/FichaDescricao';
 import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
@@ -28,8 +29,8 @@ import {
 
 const CONFIRMA_SAIR = 'Há alterações não salvas neste produto. Sair sem salvar?';
 
-export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica }) {
-    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica });
+export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, linhas = [], listas: listasIniciais, vocabulario, limites, ficha_tecnica: fichaTecnica, descricao, explicacoes_campos: explicacoes }) {
+    const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes });
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
     const liberado = useRef(false);
@@ -287,6 +288,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                 </section>
 
                 <FichaTecnica tecnica={ficha.tecnica} salvando={ficha.salvando} />
+                <FichaDescricao descricao={ficha.descricao} salvando={ficha.salvando} explicacao={ficha.explicacoes.descricao} />
 
                 {/* Cancelar/Salvar saíram de dentro de Variações: com a Ficha técnica depois dela,
                     ali os botões ficariam no meio da página. As margens negativas acompanham o

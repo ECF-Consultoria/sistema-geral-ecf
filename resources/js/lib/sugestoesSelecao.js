@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Lógica de navegador da tela "Sugestões de ofertas" (Fase 168).
+// Lógica de navegador da tela "Planejamento" (sugestões de ofertas, Fase 168).
 //
 // Funções puras e imutáveis: marcar, editar, montar o pedido de aceite, aplicar o
 // resultado e decidir a guarda de saída. Nenhuma regra de combinação, logística ou

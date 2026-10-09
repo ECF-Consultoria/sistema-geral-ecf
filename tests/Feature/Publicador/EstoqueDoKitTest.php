@@ -421,6 +421,9 @@ class EstoqueDoKitTest extends TestCase
             'produto', 'rascunho', 'alvos', 'atributos', 'eixos', 'variantes', 'imagens',
             'atribuicoes', 'grupos_imagem', 'schema', 'erro_schema', 'conta', 'efetivos',
             'problemas', 'conferencia', 'publicacao', 'ja_publicados',
+            // `portal` entrou no merge da Fase 176 (D-09, descrição que o cliente escreveu no
+            // Portal). É ADITIVA e o gate pegou a mudança de forma — era para isso que ele existe.
+            'portal',
         ], array_keys($e));
     }
 

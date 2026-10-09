@@ -7,6 +7,7 @@ import {
     mesclarComPendentes, mesclarVariantes, pendenciasDaConferencia, podeConferir as calcularPodeConferir, podePublicar as calcularPodePublicar,
     resumoDoLancamento, semRepetir, textoDaConferencia, totalDeAnuncios,
 } from './derivados.js';
+import { modeloLivreParaIa, tituloParaModelo } from './ferramentas.js';
 
 // ─── Lógica do editor do Publicador (D24) ───────────────────────────────────
 //
@@ -412,8 +413,11 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         const data = await estruturar(() => axios.put(rota('categoria', produtoId), { categoria_id: id }));
         const fora = data?.migracao?.descartados ?? [];
         if (fora.length) setAviso(`Ficaram de fora na categoria nova: ${fora.map((d) => d.nome).join(', ')}.`);
-        // Docx §2: com a categoria escolhida, a IA monta o Modelo com os termos mais buscados — só se ele estiver vazio.
-        if (data?.schema?.atributos?.MODEL && valorVazio(rascRef.current?.atributos?.MODEL)) {
+        // Docx §2: com a categoria escolhida, a IA monta o Modelo com os termos mais buscados — só se ele estiver vazio
+        // E já houver título: sem título o Modelo repetiria as palavras dele (08/10). Sem título, quem dispara é
+        // a aplicação do título por IA (`aplicarPalavras`).
+        if (data?.schema?.atributos?.MODEL && valorVazio(rascRef.current?.atributos?.MODEL)
+            && tituloParaModelo(mesclarAlvos(data?.alvos, rascRef.current?.alvos)) !== '') {
             pedirPalavrasIa('modelo', { automatico: true });
         }
     };
@@ -502,30 +506,43 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         setPalavrasIa(palavrasRef.current);
     };
 
-    /** `automatico` = pedido pela escolha de categoria: o resultado não pisa no que a pessoa escreveu enquanto isso. */
+    /**
+     * `automatico` = pedido pela escolha de categoria ou pelo título por IA: o resultado não pisa no que a pessoa
+     * escreveu enquanto isso. O Modelo leva o título à vista (talvez ainda não salvo) para não repetir as palavras dele.
+     */
     const pedirPalavrasIa = async (alvo, { escolhidos = [], automatico = false } = {}) => {
-        mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now() });
+        mudarIa(alvo, { status: 'rodando', erro: null, pedido: null, automatico, desde: Date.now(), descartados: [] });
         try {
-            const { data } = await axios.post(rota('palavras-ia', produtoId), { alvo, escolhidos });
+            const corpo = alvo === 'modelo'
+                ? { alvo, titulo: tituloParaModelo(mesclarAlvos(estado?.alvos, rascRef.current?.alvos)) }
+                : { alvo, escolhidos };
+            const { data } = await axios.post(rota('palavras-ia', produtoId), corpo);
             mudarIa(alvo, { pedido: data.pedido });
         } catch (e) {
             mudarIa(alvo, { status: 'erro', erro: mensagemDe(e) });
         }
     };
 
-    const aplicarPalavras = (alvo, valor, automatico) => {
+    // `descartados` (só no Modelo): termos que a IA sugeriu e o servidor tirou por não condizerem com o produto.
+    const aplicarPalavras = (alvo, valor, automatico, descartados = []) => {
         if (alvo === 'modelo') {
-            if (automatico && ! valorVazio(rascRef.current?.atributos?.MODEL)) {
+            if (automatico && ! modeloLivreParaIa(rascRef.current?.atributos?.MODEL)) {
                 mudarIa(alvo, { status: 'pronto', erro: null });
 
                 return;
             }
             mudarAtributo('MODEL', { value_id: null, value_name: valor, origem: 'ia', revisar: false });
-        } else {
-            const lt = alvo.replace('titulo_', '');
-            mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, titulo: valor } : x)) }));
+            mudarIa(alvo, { status: 'pronto', erro: null, descartados });
+
+            return;
         }
+        const lt = alvo.replace('titulo_', '');
+        mudarRasc((r) => ({ alvos: r.alvos.map((x) => (x.listing_type_id === lt ? { ...x, titulo: valor } : x)) }));
         mudarIa(alvo, { status: 'pronto', erro: null });
+        // Com o título pronto, o Modelo (vazio ou ainda o da IA) é refeito sem repetir as palavras dele.
+        if (estado?.schema?.atributos?.MODEL && modeloLivreParaIa(rascRef.current?.atributos?.MODEL)) {
+            pedirPalavrasIa('modelo', { automatico: true });
+        }
     };
 
     // Acompanha os pedidos em andamento; só aceita a resposta do PRÓPRIO pedido.
@@ -543,7 +560,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
                 try {
                     const { data } = await axios.get(rota('palavras-ia.status', produtoId, { alvo }));
                     if (data.pedido !== s.pedido) continue;
-                    if (data.status === 'pronto') aplicarPalavras(alvo, data.valor, s.automatico);
+                    if (data.status === 'pronto') aplicarPalavras(alvo, data.valor, s.automatico, data.descartados ?? []);
                     else if (data.status === 'erro') mudarIa(alvo, { status: 'erro', erro: data.erro ?? 'A IA não conseguiu agora. Tente de novo.' });
                 } catch {
                     // Uma leitura que falha não para o acompanhamento: tenta na próxima volta.

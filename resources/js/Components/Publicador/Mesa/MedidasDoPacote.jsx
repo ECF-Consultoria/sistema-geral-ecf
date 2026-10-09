@@ -64,7 +64,7 @@ function MedidaPacote({ m, a, rotulo, tipo, prefixo, comErro }) {
     };
 
     return (
-        <Campo rotulo={rotulo} htmlFor={id} erro={erro} dica={unidade !== unidadeMl && preenchido ? `Vai ao Mercado Livre como ${valor?.value_name}.` : null}>
+        <Campo rotulo={rotulo} htmlFor={id} erro={erro} explicacao={a.explicacao} dica={unidade !== unidadeMl && preenchido ? `Vai ao Mercado Livre como ${valor?.value_name}.` : null}>
             <div className="flex gap-2" data-campo-atributo={a.id}>
                 <input id={id} inputMode="decimal" value={texto} disabled={m.disabled} onChange={(e) => setTexto(e.target.value)} onBlur={() => gravar(texto, unidade)}
                     placeholder="0" aria-invalid={!! erro || undefined} className={cn(CAMPO, 'min-w-0 tabular-nums', erro && INVALIDO)} data-atributo={a.id} />
@@ -85,7 +85,7 @@ function CampoEmbalagem({ m, a, prefixo, comErro }) {
     const erro = comErro ? erroDaEtapa : null;
 
     return (
-        <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro}>
+        <Campo rotulo={<RotuloAtributo atributo={a} valor={valor} />} htmlFor={id} erro={erro} explicacao={a.explicacao} nome={a.nome}>
             <CampoAtributo variante="campo" id={id} atributo={a} valor={valor} disabled={m.disabled} invalido={!! erro} onChange={(v) => m.mudarAtributo(a.id, v)} />
         </Campo>
     );

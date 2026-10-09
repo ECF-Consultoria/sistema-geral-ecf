@@ -37,6 +37,8 @@ class GerarPalavrasChaveIaJob implements ShouldQueue
         public string $alvo,
         public string $pedido,
         public array $escolhidos = [],
+        // O título da tela no momento do pedido do Modelo (o serviço soma aos gravados).
+        public ?string $titulo = null,
     ) {
         // Clique de pessoa: fila `high`. No construtor porque `Queueable` já declara `$queue`.
         $this->onQueue('high');
@@ -52,7 +54,7 @@ class GerarPalavrasChaveIaJob implements ShouldQueue
         }
 
         try {
-            $servico->executar($r, $this->alvo, $this->pedido, $this->escolhidos, microtime(true) + self::PRAZO_S);
+            $servico->executar($r, $this->alvo, $this->pedido, $this->escolhidos, microtime(true) + self::PRAZO_S, $this->titulo);
             Log::info("[Publicador] IA de palavras-chave ({$this->alvo}) pronta para o rascunho {$r->id}.");
         } catch (\Throwable $e) {
             // O erro já está no pedido, com a mensagem para a tela; o Job termina sem nova tentativa.

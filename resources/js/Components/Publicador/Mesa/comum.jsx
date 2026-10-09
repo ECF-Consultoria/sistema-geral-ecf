@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { AlertCircle } from 'lucide-react';
+import Explicacao from '@/Components/Explicacao';
 import { cn } from '@/lib/utils';
 
 // ─── Base do formulário do anúncio (3 etapas, 04/10/2026) ───────────────────
@@ -62,13 +63,20 @@ export function ErroDoCampo({ id, children }) {
 /**
  * Um campo: rótulo em cima (13px, negrito, sem caixa-alta), o controle, e embaixo o erro ou a
  * dica. `extra` fica à direita do rótulo (contador, "Sugerir com IA"). `htmlFor` liga o rótulo.
+ * `explicacao` = o "o que é isto?" do ícone ao lado do rótulo (08/10/2026); `nome` dá o nome do
+ * campo ao leitor de tela quando o rótulo não é texto.
  */
-export function Campo({ rotulo, htmlFor, extra = null, dica = null, erro = null, className, children }) {
+export function Campo({ rotulo, htmlFor, extra = null, dica = null, erro = null, explicacao = null, nome = null, className, children }) {
     return (
         <div className={className} data-campo-rotulo={typeof rotulo === 'string' ? rotulo : undefined}>
             {(rotulo || extra) && (
                 <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    {rotulo && <label htmlFor={htmlFor} className="text-[13px] font-bold text-white/90">{rotulo}</label>}
+                    {rotulo && (
+                        <span className="inline-flex items-center gap-1.5">
+                            <label htmlFor={htmlFor} className="text-[13px] font-bold text-white/90">{rotulo}</label>
+                            <Explicacao texto={explicacao} nome={nome ?? (typeof rotulo === 'string' ? rotulo : null)} />
+                        </span>
+                    )}
                     {extra}
                 </div>
             )}

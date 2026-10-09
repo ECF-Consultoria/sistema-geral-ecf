@@ -66,6 +66,21 @@ trait CatalogoSinteticoDeSugestoes
     }
 
     /**
+     * 08/10: os Combos de cada família chegam RECOLHIDOS na aba Pendentes sem filtro de
+     * fase. Quem precisa da lista inteira, um por linha, expande todas as famílias
+     * (`'combos' => $this->combosDeTodas($empresa)`).
+     *
+     * @return list<string>
+     */
+    protected function combosDeTodas(Company $empresa): array
+    {
+        $ids = EstruturaProduto::where('company_id', $empresa->id)->whereNotNull('familia_id')
+            ->distinct()->pluck('familia_id')->map(fn ($id) => (string) $id)->all();
+
+        return array_merge($ids, ['sem']);
+    }
+
+    /**
      * @return array{produtos: array<string,int>, variacoes: array<string,int>, ofertas: array<string,int>}
      *         produtos por nome, variações por código e ofertas simples por SKU
      */

@@ -25,7 +25,7 @@ class EstruturaProduto extends Model
 
     protected $fillable = [
         'company_id', 'codigo', 'nome', 'familia_id',
-        'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho',
+        'categoria_ml_id', 'categoria_ml_nome', 'categoria_ml_caminho', 'descricao',
     ];
 
     public function company(): BelongsTo

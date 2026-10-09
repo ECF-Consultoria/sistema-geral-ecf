@@ -47,6 +47,8 @@ const NORMALIZADOS = [
     `${BASE}/Problemas.jsx`,
     `${BASE}/EditorDeEixos.jsx`,
     `${BASE}/GradeVariantes.jsx`,
+    // O "o que é isto?" de todo campo (08/10/2026).
+    'resources/js/Components/Explicacao.jsx',
 ];
 
 for (const caminho of [...CARDS, ...COM_ROTA, ...NORMALIZADOS]) {
@@ -312,7 +314,8 @@ test('EtapaDetalhes — ficha inteira aberta: "Características principais" e "M
     const f = lerSemComentarios(`${BASE}/Mesa/EtapaDetalhes.jsx`);
     assert.match(f, /Características principais/);
     assert.match(f, /Mais características/);
-    assert.doesNotMatch(f, /opcion|aria-expanded|<details/i);
+    // Ficha nada recolhida; o único recolhível é a "Descrição do cliente" (Fase 172), que mora em Descricao.
+    assert.doesNotMatch(f.split("function Descricao")[0], /opcion|aria-expanded|<details/i);
     assert.match(f, /a\.obrigatoriedade === 'REQUIRED' && valorVazio\(valor\)/);
     assert.doesNotMatch(f, /<FotosEVariacoes|<CartaoFotosVariante/);
     assert.match(f, /<textarea id="campo-descricao"/);

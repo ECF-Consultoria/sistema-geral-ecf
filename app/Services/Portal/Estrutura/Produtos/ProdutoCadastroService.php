@@ -587,6 +587,8 @@ class ProdutoCadastroService
                 'eixo'       => $eixo,
                 'valor'      => $campos['valor'],
                 'custo'      => $custo,
+                // Estoque é por variação: nunca se herda da primeira (diferente do custo).
+                'estoque'    => in_array('estoque', $presentes, true) ? $campos['estoque'] : null,
             ]);
             $variacao->company_id = $empresa->id;
             $variacao->save();
@@ -601,7 +603,7 @@ class ProdutoCadastroService
             $mudouVariacao = true;
         } else {
             $novo = ['codigo' => $codigo];
-            foreach (['eixo', 'valor', 'ordem', 'custo'] as $c) {
+            foreach (['eixo', 'valor', 'ordem', 'custo', 'estoque'] as $c) {
                 if (in_array($c, $presentes, true)) {
                     $novo[$c] = $campos[$c];
                 }

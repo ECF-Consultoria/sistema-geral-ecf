@@ -120,12 +120,16 @@ class AnaliseAnuncioService
      * O campo Modelo como lista de buscas coerentes com o produto, separadas
      * por vírgula ("cadeira escritorio, cadeira home office, ..."). Quem corta
      * no limite exato é o `PalavrasChaveService` — o modelo erra contagem.
+     * Com `titulo`, o prompt proíbe repetir o que ele já tem (o serviço ainda
+     * filtra depois: a IA nem sempre obedece). `fatos` é o bloco do
+     * `FatosDoProduto` (cores do anúncio, ficha, medidas, público): sem ele a IA
+     * inventava "gigante", "infantil", "colorido" num puff de uma cor só (09/10).
      *
      * @param  list<string>  $termos  do mais buscado para o menos
      */
-    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite): array
+    public function modeloPorTermos(string $produto, string $caminhoCategoria, array $termos, int $limite, string $titulo = '', string $fatos = ''): array
     {
-        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite), 2500);
+        $r = $this->chamar($this->promptModelo($produto, $caminhoCategoria, $termos, $limite, $titulo, $fatos), 2500);
 
         return ['dados' => trim((string) ($r['json']['modelo'] ?? '')), 'meta' => $r['meta']];
     }
@@ -232,6 +236,30 @@ class AnaliseAnuncioService
         Responda APENAS com JSON válido, sem crases. Quebras de linha dentro do texto como \\n:
         {"descricao":"..."}
         TXT;
+    }
+
+    // ═══ Explicação dos campos (Publicador, 08/10/2026) ══════════════════════
+    //
+    // NÃO é MAG T8: o texto curto do ícone de informação ao lado de cada campo
+    // da ficha ("o que é AGID?"). Uma chamada para até ~40 atributos; quem
+    // confere tamanho, HTML e citação de plataforma é o `ExplicacaoDeAtributos`
+    // (o modelo nem sempre obedece). O texto vai também para o Portal, por isso
+    // o prompt pede texto NEUTRO.
+
+    /**
+     * @param  list<array{id: string, nome: string, tipo?: string, unidades?: list<string>, valores?: list<string>}>  $atributos
+     * @return array{dados: array<string, mixed>, meta: array}
+     */
+    public function explicacoesDeAtributos(array $atributos, string $contexto = ''): array
+    {
+        $r = $this->chamar($this->promptExplicacoes($atributos, $contexto), 6000);
+        $dados = $r['json'];
+        // O modelo às vezes embrulha: {"explicacoes": {...}}.
+        if (isset($dados['explicacoes']) && is_array($dados['explicacoes'])) {
+            $dados = $dados['explicacoes'];
+        }
+
+        return ['dados' => $dados, 'meta' => $r['meta']];
     }
 
     // ═══ Chamada ao provedor ══════════════════════════════════════════════════
@@ -446,29 +474,48 @@ class AnaliseAnuncioService
             : implode("\n", array_map(fn ($t, $i) => ($i + 1).'. '.$t, $termos, array_keys($termos)));
     }
 
-    private function promptModelo(string $produto, string $caminho, array $termos, int $limite): string
+    private function promptModelo(string $produto, string $caminho, array $termos, int $limite, string $titulo = '', string $fatos = ''): string
     {
         $lista = $this->listaDeTermos($termos);
+        $blocoFatos = $fatos === '' ? '' : "\n\nFATOS DO PRODUTO (use só o que é verdade segundo estes fatos):\n{$fatos}";
+        $regraTitulo = $titulo === '' ? '' : <<<TXT
+
+        9. Título do anúncio: {$titulo}
+           Não repita termo cujas palavras já estão todas no título. Cada termo precisa
+           trazer pelo menos uma palavra nova e VERDADEIRA (sinônimo, ambiente, uso ou
+           característica confirmada pelos fatos) combinada com o nome do produto — ex.:
+           se o título tem "Puff Sala Quarto", use "puff banqueta", "puff decorativo",
+           não "puff sala".
+        TXT;
 
         return <<<TXT
         Produto: **{$produto}**
-        Categoria no Mercado Livre: {$caminho}
+        Categoria no Mercado Livre: {$caminho}{$blocoFatos}
 
         Termos mais buscados nesta categoria (do mais buscado para o menos):
         {$lista}
 
         Monte o valor do campo "Modelo" do anúncio no Mercado Livre: uma lista de
         buscas que um comprador DESTE produto faria, separadas por vírgula e espaço.
-        Exemplo de formato: cadeira escritorio, cadeira para trabalho, cadeira home office, cadeira preta
+        Exemplo de formato: cadeira escritorio, cadeira para trabalho, cadeira home office
 
         REGRAS:
-        1. Use SÓ termos coerentes com o produto. Descarte os que descrevem outro
-           produto, outro uso ou outro público.
-        2. NUNCA use marca de concorrente nem nome de loja.
-        3. Prefira os termos da lista; complete com variações reais do nome do produto.
-        4. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
-        5. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
-           perto possível de {$limite} sem passar.
+        1. Use SÓ termos verdadeiros para ESTE produto segundo os fatos. Descarte os que
+           descrevem outro produto, outro uso ou outro público — mesmo que estejam entre
+           os mais buscados.
+        2. COR: só as cores listadas nos fatos. Com uma cor só, no máximo UM termo com
+           cor e nunca "colorido". Sem cor nos fatos, nenhum termo com cor.
+        3. NUNCA cite tamanho (gigante, grande, mini, pequeno…), público (infantil, bebe,
+           crianca, adulto, gamer…), material, formato ou uso que os fatos não confirmem.
+        4. Prefira expandir com sinônimos do produto, ambientes e usos coerentes (ex.:
+           puff para sala, puff banqueta, puff decorativo) e com características que os
+           fatos confirmam.
+        5. NUNCA use marca de concorrente nem nome de loja.
+        6. Prefira os termos da lista que passam nas regras acima; complete com variações
+           reais do nome do produto.
+        7. Minúsculas, sem acento, sem pontuação além da vírgula, sem repetir termo.
+        8. Até {$limite} caracteres no total, contando vírgulas e espaços. Chegue o mais
+           perto possível de {$limite} sem passar.{$regraTitulo}
 
         Responda APENAS com JSON válido, sem crases:
         {"modelo":"..."}
@@ -563,6 +610,42 @@ class AnaliseAnuncioService
         Responda APENAS com JSON válido, sem crases, usando os IDs como chaves:
         {"atributos":{"ID":"valor"},"variacoes":[{"ID":"valor"}],"pacote":{"peso_g":0,"comprimento_cm":0,"largura_cm":0,"altura_cm":0},"garantia":null}
         TXT;
+    }
+
+    /** Prompt da explicação dos campos: texto neutro, curto, um por id. */
+    private function promptExplicacoes(array $atributos, string $contexto): string
+    {
+        $linhas = collect($atributos)->map(function (array $a) {
+            $partes = [(string) ($a['id'] ?? ''), (string) ($a['nome'] ?? '')];
+            if (! empty($a['tipo'])) {
+                $partes[] = 'tipo: '.$a['tipo'];
+            }
+            if (! empty($a['unidades'])) {
+                $partes[] = 'unidades: '.implode(', ', array_slice((array) $a['unidades'], 0, 6));
+            }
+            if (! empty($a['valores'])) {
+                $partes[] = 'exemplos de valores: '.implode(', ', array_slice((array) $a['valores'], 0, 6));
+            }
+
+            return '- '.implode(' | ', $partes);
+        })->implode("\n");
+        $ctx = trim($contexto) !== '' ? "\nCategoria do produto (só para entender o sentido dos campos; NÃO cite): {$contexto}\n" : '';
+
+        return <<<PROMPT
+        Você escreve a explicação curta que aparece ao passar o mouse sobre um campo do cadastro de um produto, para quem está preenchendo a ficha técnica.
+        {$ctx}
+        Campos (ID | nome | tipo | unidades | exemplos de valores):
+        {$linhas}
+
+        REGRAS para cada explicação:
+        1. Português do Brasil, linguagem simples, 1 ou 2 frases, NO MÁXIMO 200 caracteres.
+        2. Diga o que o campo é. Se for comum o produto não ter essa informação, diga que pode ficar vazio.
+        3. Texto NEUTRO: não cite plataforma, marketplace, loja, site, anúncio, vendedor nem onde o produto será vendido.
+        4. Sem HTML, sem markdown, sem aspas em volta do texto.
+        5. Explique o campo; não invente o valor do produto.
+
+        Responda SOMENTE com um JSON no formato {"ID_DO_CAMPO": "explicação"}, com exatamente os IDs da lista acima.
+        PROMPT;
     }
 
     // ═══ Saída ════════════════════════════════════════════════════════════════

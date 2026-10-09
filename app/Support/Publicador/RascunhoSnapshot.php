@@ -2,6 +2,7 @@
 
 namespace App\Support\Publicador;
 
+use App\Models\EstruturaOferta;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\Variante;
@@ -54,19 +55,26 @@ final class RascunhoSnapshot
      *
      * @param  array<string, ?string>  $titulos  listing_type_id → título planejado
      * @param  array<string, ?float>  $precos  listing_type_id → preço anunciado da Precificação
+     * @param  array<string, array<string, ?float>>  $porVariante  SKU normalizado → (listing_type_id → preço) da oferta daquela cor (produto agrupado); a variante sem casamento usa `$precos`
      */
-    public function comEfetivos(array $titulos, array $precos): self
+    public function comEfetivos(array $titulos, array $precos, array $porVariante = []): self
     {
         $alvos = array_map(fn (Alvo $a) => trim((string) $a->titulo) !== ''
             ? $a
             : new Alvo($a->listingTypeId, $titulos[$a->listingTypeId] ?? null, $a->ativo), $this->alvos);
 
-        $variantes = array_map(function (Variante $v) use ($precos) {
+        $variantes = array_map(function (Variante $v) use ($precos, $porVariante) {
             $proprios = (array) ($v->dados['precos'] ?? []);
+            $sku = EstruturaOferta::normalizarSku($v->dados['atributos']['SELLER_SKU']['value_name'] ?? $this->atributos['SELLER_SKU']['value_name'] ?? null);
+            $daVariante = $sku !== null ? ($porVariante[$sku] ?? null) : null;
             foreach ($this->alvos as $alvo) {
                 $lt = $alvo->listingTypeId;
-                if (($proprios[$lt] ?? null) === null && isset($precos[$lt])) {
-                    $proprios[$lt] = (float) $precos[$lt];
+                if (($proprios[$lt] ?? null) !== null) {
+                    continue;
+                }
+                $efetivo = $daVariante[$lt] ?? $precos[$lt] ?? null;
+                if ($efetivo !== null) {
+                    $proprios[$lt] = (float) $efetivo;
                 }
             }
 

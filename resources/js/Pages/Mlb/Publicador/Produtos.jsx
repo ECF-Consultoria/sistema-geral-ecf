@@ -2,11 +2,14 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import { Link2, PencilLine, Plus, Search } from 'lucide-react';
 import BarraDaConta, { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
 import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
+import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar';
+import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
@@ -255,6 +258,27 @@ export default function Produtos({
     const [erroAbrir, setErroAbrir] = useState(false);
     // A sugestão de kit em confirmação: { produto, sugestao, modo: 'vincular' | 'recusar' }.
     const [vinculo, setVinculo] = useState(null);
+    const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
+    const resumoPronto = useRef(false);
+    const [avisosDoClique, setAvisosDoClique] = useState([]); // avisos do próprio Sincronizar (cores avulsas etc.)
+    const [absorvidosDoClique, setAbsorvidosDoClique] = useState(0); // linhas antigas de cor juntadas ao grupo
+    const aoLerRef = useRef(null);
+    const [acompanhando, setAcompanhando] = useState(false);
+    // O acompanhamento mora na PÁGINA (review 172 CR-01): o botão do estado vazio desmonta quando a
+    // lista recarrega, e com ele morria o polling — o resumo nunca aparecia e a lista não recarregava.
+    const contaRef = useRef(empresa.chave);
+    contaRef.current = empresa.chave;
+    const acompanhamento = useRef(null);
+    if (acompanhamento.current === null) {
+        acompanhamento.current = criarAcompanhamento({
+            ler: async (pedido) => (await axios.get(route('mlb.anuncios.publicador.sincronizar.resumo', { conta: contaRef.current, pedido }))).data,
+            aoLer: (r) => aoLerRef.current?.(r),
+            aoMudar: setAcompanhando,
+            // Parou de acompanhar sem ficar pronto: o painel diz isso em vez de girar para sempre (WR-03).
+            aoExpirar: () => setResumo((r) => (r ? { ...r, status: 'expirou' } : r)),
+        });
+    }
+    useEffect(() => () => acompanhamento.current.cancelar(), []);
     const esperaStatus = useRef(null);
     const esperaRealce = useRef(null);
 
@@ -298,8 +322,39 @@ export default function Produtos({
         });
     }
 
+    // Cada leitura do resumo; ao ficar pronto, recarrega a lista (variantes e status mudaram).
+    aoLerRef.current = aoLerResumo;
+    function aoLerResumo(r) {
+        setResumo(r);
+        if (r?.status === 'pronto' && !resumoPronto.current) {
+            resumoPronto.current = true;
+            router.reload({ only: ['produtos', 'contagens'] });
+        }
+    }
+
+    // Fechar o painel também para o acompanhamento: senão a próxima leitura o reabria (WR-03).
+    function fecharResumo() {
+        acompanhamento.current.cancelar();
+        setResumo(null);
+        setAvisosDoClique([]);
+        setAbsorvidosDoClique(0);
+    }
+
     function aoConcluirSync(json) {
-        const texto = json?.criados > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
+        resumoPronto.current = false;
+        const avisos = json?.avisos ?? [];
+        const absorvidos = Number(json?.absorvidos ?? 0);
+        setAvisosDoClique(avisos);
+        setAbsorvidosDoClique(absorvidos);
+        if (json?.pedido) {
+            setResumo({ status: 'preenchendo', total: json.preenchendo ?? 0, concluidos: 0 });
+            acompanhamento.current.acompanhar(json.pedido);
+        } else {
+            acompanhamento.current.cancelar();
+            // Sem nada a preencher, os avisos do clique (e as linhas antigas juntadas) ainda precisam aparecer.
+            setResumo(avisos.length > 0 || absorvidos > 0 ? { status: 'pronto', so_avisos: true } : null);
+        }
+        const texto = json?.criados > 0 || absorvidos > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
         setStatus({ tipo: 'ok', texto });
         setNovos(new Set(json?.ids ?? []));
         setRecarregando(true);
@@ -342,6 +397,7 @@ export default function Produtos({
                                 <BotaoSincronizarPortal
                                     conta={empresa.chave}
                                     onConcluido={aoConcluirSync}
+                                    desabilitado={acompanhando}
                                     onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                                 />
                             )}
@@ -358,6 +414,8 @@ export default function Produtos({
                 </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
+
+                <ResumoDoSincronizar resumo={resumo} avisosDoClique={avisosDoClique} absorvidos={absorvidosDoClique} onFechar={fecharResumo} />
 
                 <section className="rounded-xl bg-ecf-card">
                     <div className="flex flex-wrap items-center justify-between gap-4 p-4">
@@ -457,6 +515,7 @@ export default function Produtos({
                                     <BotaoSincronizarPortal
                                         conta={empresa.chave}
                                         onConcluido={aoConcluirSync}
+                                        desabilitado={acompanhando}
                                         onErro={(texto) => setStatus({ tipo: 'erro', texto })}
                                     />
                                 )}

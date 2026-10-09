@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link, router } from '@inertiajs/react';
-import { ChevronRight, Loader2, Tag, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Loader2, Tag, Truck } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
@@ -23,13 +23,14 @@ import {
 import {
     MSG_FALHA_REDE, MSG_GUARDA, msgLimiteDoLote, msgMarcamosPrimeiras, qualEstadoVazio, textoDescarte, textoRestauracao, textoResultadoAceite,
     corpoDaGeracao, textoTipoDefinido, textoAtualizado, filtroAtivo, filtrosDaAba,
+    montarGrupos, alternarCombos, textoVerCombos, textoCombosCortados,
 } from '@/lib/sugestoesEstrutura';
 import { chegouPeloHistorico, definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
 import { avisoDosFretes } from '@/lib/produtosFretes';
 import { entradaAtual, passosAte } from '@/lib/produtosNavegacao';
 import { cn } from '@/lib/utils';
 
-// ─── Mapeamento Estrutural — Sugestões de ofertas (Fase 168-14) ─────────────
+// ─── Mapeamento Estrutural — Planejamento (sugestões de ofertas, Fase 168-14) ─
 //
 // D-01: a pessoa aceita uma ou várias e descarta; nada é criado sozinho.
 // D-08: cada cartão mostra composição, o porquê, logística e frete estimado.
@@ -72,19 +73,34 @@ function EstadoVazio({ titulo, corpo, children }) {
 const LINK_SECUNDARIO = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white';
 const LINK_PRIMARIO = 'inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-ecf-yellow px-4 text-[13px] font-semibold text-black transition-colors hover:bg-ecf-yellow/90';
 
-const chaveDaFamilia = (item) => String(item.familia?.id ?? 'sem');
+/**
+ * Combos de uma família, recolhidos (08/10): uma linha "Ver N combos" no fim do grupo. Abrir
+ * pede a mesma página ao servidor com a família em `combos`; os Combos chegam como as outras
+ * sugestões (marcar, editar, aceitar e descartar iguais).
+ */
+function BlocoDeCombos({ chave, bloco, ocupado, onAlternar, children }) {
+    const Icone = bloco.expandido ? ChevronUp : ChevronDown;
 
-/** Agrupa os itens da página por família, na ordem em que o servidor mandou (a página não "anda"). */
-function agruparPorFamilia(itens) {
-    const grupos = [];
-    for (const item of itens) {
-        const chave = chaveDaFamilia(item);
-        const ultimo = grupos[grupos.length - 1];
-        if (ultimo && ultimo.chave === chave) ultimo.itens.push(item);
-        else grupos.push({ chave, nome: item.familia?.nome ?? null, itens: [item] });
-    }
-
-    return grupos;
+    return (
+        <div data-bloco-combos={chave} className="rounded-[10px] border border-dashed border-white/[0.10] bg-white/[0.02]">
+            <button type="button" data-acao="alternar-combos" onClick={onAlternar} disabled={ocupado} aria-expanded={bloco.expandido}
+                className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-[10px] px-3 text-left text-[13px] text-white/75 transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40 disabled:opacity-60 xl:min-h-10">
+                <span>
+                    {bloco.expandido ? 'Ocultar combos' : textoVerCombos(bloco.total)}
+                    <span className="text-white/45"> · mesmo produto em mais unidades</span>
+                </span>
+                <Icone size={16} aria-hidden="true" />
+            </button>
+            {bloco.expandido && (
+                <div className="space-y-1.5 p-1.5 pt-0">
+                    {children}
+                    {bloco.mostrando < bloco.total && (
+                        <p data-combos-cortados className="px-2 py-1 text-[12px] text-white/55">{textoCombosCortados(bloco.mostrando, bloco.total)}</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, filtros, ml_conectado = false, vocabulario }) {
@@ -118,7 +134,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     const ehAbaSemTipo = sugestoes.aba === 'sem_tipo';
     const ehAbaDescartadas = sugestoes.aba === 'descartadas';
     const itens = sugestoes.itens ?? [];
-    const grupos = useMemo(() => agruparPorFamilia(itens), [itens]);
+    const grupos = useMemo(() => montarGrupos(itens, sugestoes.grupos), [itens, sugestoes.grupos]);
     const marcadas = estado.marcadas;
     const marcadasDesc = estadoDesc.marcadas;
     const barraVisivel = ehAbaDescartadas ? marcadasDesc.length > 0 : (ehAbaSugestoes && marcadas.length > 0);
@@ -129,10 +145,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     // Os filtros "de agora": atualizados na hora do clique, para duas mudanças seguidas
     // (limpar filtros e a busca esvaziando) não pisarem uma na outra com as props antigas.
-    const filtrosRef = useRef({ fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined });
+    // `combos`: famílias com os Combos abertos ("12,sem"), que seguem em toda visita da tela.
+    const combosDosFiltros = (filtros.combos ?? []).join(',') || undefined;
+    const filtrosRef = useRef({ fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined, combos: combosDosFiltros });
     useEffect(() => {
-        filtrosRef.current = { fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined };
-    }, [filtros.fase, filtros.familia, filtros.tipo, filtros.status, filtros.q]);
+        filtrosRef.current = { fase: filtros.fase ?? undefined, familia: filtros.familia ?? undefined, tipo: filtros.tipo ?? undefined, status: filtros.status ?? undefined, q: filtros.q || undefined, combos: combosDosFiltros };
+    }, [filtros.fase, filtros.familia, filtros.tipo, filtros.status, filtros.q, combosDosFiltros]);
 
     // "Atualizado há N min" anda sozinho, sem recarregar (D-31); recomeça quando a carga muda.
     useEffect(() => {
@@ -144,7 +162,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
     const visitar = (mudancas = {}) => {
         const proximo = { ...filtrosRef.current, ...mudancas };
-        filtrosRef.current = { fase: proximo.fase, familia: proximo.familia, tipo: proximo.tipo, status: proximo.status, q: proximo.q };
+        filtrosRef.current = { fase: proximo.fase, familia: proximo.familia, tipo: proximo.tipo, status: proximo.status, q: proximo.q, combos: proximo.combos };
         const params = { ...(sugestoes.aba !== 'sugestoes' ? { aba: sugestoes.aba } : {}) };
         for (const [k, v] of Object.entries({ ...proximo, pagina: mudancas.pagina })) {
             if (v !== undefined && v !== null && v !== '') params[k] = v;
@@ -163,6 +181,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
         return () => clearTimeout(t);
     }, [busca]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /** "Ver N combos" / "Ocultar combos": a mesma página, com a família aberta ou fechada. */
+    const alternarBlocoDeCombos = (chave) => {
+        const abertos = alternarCombos(String(filtrosRef.current.combos ?? '').split(',').filter(Boolean), chave);
+        visitar({ combos: abertos.join(',') || undefined, pagina: sugestoes.paginacao.pagina });
+    };
 
     const limparFiltros = () => {
         setBusca('');
@@ -513,19 +537,20 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     const todasDaPaginaMarcadas = naPagina.length > 0 && naPagina.every((i) => marcadas.includes(i.chave));
     const todasDescPaginaMarcadas = itens.length > 0 && itens.every((i) => marcadasDesc.includes(i.chave));
     const vazio = ehAbaSugestoes
-        ? qualEstadoVazio({ temProdutos: sugestoes.tem_produtos, contagens: sugestoes.contagens, filtroAtivo: comFiltro, aceitouNaSessao, qtdItens: itens.length })
+        // Um bloco de Combos recolhido também é conteúdo da página.
+        ? qualEstadoVazio({ temProdutos: sugestoes.tem_produtos, contagens: sugestoes.contagens, filtroAtivo: comFiltro, aceitouNaSessao, qtdItens: itens.length + grupos.filter((g) => g.bloco).length })
         : null;
     const textoDeAtualizacao = textoAtualizado(sugestoes.gerado_em, agora);
     const horaExata = sugestoes.gerado_em ? new Date(sugestoes.gerado_em).toLocaleString('pt-BR') : undefined;
 
     return (
-        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Sugestões de ofertas">
+        <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Planejamento">
             <div className={cn('mx-auto w-full max-w-[1600px] px-4 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11', barraVisivel ? 'pb-28 lg:pb-10' : 'pb-10')} data-sugestoes-pagina>
                 <header data-cabecalho-sugestoes>
                     <nav aria-label="Caminho" data-trilha className="flex items-center gap-2 text-[13px] text-white/65">
                         <Link href={route('portal.auth.estrutura.produtos')} data-acao="voltar-produtos" className="hover:text-white">Produtos</Link>
                         <ChevronRight size={13} aria-hidden="true" className="text-white/40" />
-                        <span className="truncate text-white">Sugestões de ofertas</span>
+                        <span className="truncate text-white">Planejamento</span>
                     </nav>
                     <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
                         <div className="flex min-w-0 items-start gap-3">
@@ -533,7 +558,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                                 <Tag size={20} aria-hidden="true" />
                             </span>
                             <div className="min-w-0">
-                                <h1 className="font-display text-[26px] font-bold leading-tight text-white">Sugestões de ofertas</h1>
+                                <h1 className="font-display text-[26px] font-bold leading-tight text-white">Planejamento</h1>
                                 <p className="mt-0.5 max-w-[900px] text-[14px] leading-relaxed text-white/65">
                                     O sistema encontrou combinações possíveis de produtos para aumentar suas vendas.
                                 </p>
@@ -596,25 +621,33 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
 
                         <div className={cn('mt-4 space-y-[13px]', visitando && 'opacity-60')} aria-busy={visitando} data-lista-sugestoes>
                             {grupos.map((g, indice) => {
-                                const aceitaveis = g.itens.filter((i) => podeAceitar(i, estado, limites));
+                                // Visíveis = o que está na tela: Kits/Combits e os Combos do bloco aberto.
+                                const visiveis = [...g.itens, ...(g.combos ?? [])];
+                                const aceitaveis = visiveis.filter((i) => podeAceitar(i, estado, limites));
+                                const linha = (item) => (
+                                    <LinhaSugestao key={item.chave} sugestao={item} estado={estado} limites={limites} vocabulario={vocabulario}
+                                        marcada={marcadas.includes(item.chave)} aceitando={aceitando.has(item.chave)} bloqueado={emLote}
+                                        erro={errosPorChave[item.chave] ?? null} freteCotado={fretesCotados[item.chave] ?? null}
+                                        onMarcar={marcar} onEditar={editar} onDesfazer={desfazer}
+                                        onAceitar={aceitarUma} onDescartar={descartarUma}
+                                        onTipo={(id) => setTipoAberto(produtoDaPagina(id))} />
+                                );
 
                                 return (
                                     <GrupoFamilia key={`${g.chave}-${indice}`} chave={g.chave} nome={g.nome} semFamilia={g.chave === 'sem'}
                                         ambientes={sugestoes.familia_ambientes?.[g.chave] ?? []}
-                                        total={sugestoes.familia_totais?.[g.chave] ?? g.itens.length} naPagina={g.itens.length}
+                                        total={sugestoes.familia_totais?.[g.chave] ?? visiveis.length} naPagina={visiveis.length}
                                         continua={indice === 0 && sugestoes.familia_continua !== null && sugestoes.familia_continua !== undefined && String(sugestoes.familia_continua) === g.chave}
                                         todasMarcadas={aceitaveis.length > 0 && aceitaveis.every((i) => marcadas.includes(i.chave))}
                                         podeMarcar={aceitaveis.length > 0}
                                         recolhido={recolhidos.has(g.chave)} onAlternar={() => alternarRecolhido(g.chave)}
-                                        onMarcarTodas={() => alternarVarias(g.itens.map((i) => i.chave))}>
-                                        {g.itens.map((item) => (
-                                            <LinhaSugestao key={item.chave} sugestao={item} estado={estado} limites={limites} vocabulario={vocabulario}
-                                                marcada={marcadas.includes(item.chave)} aceitando={aceitando.has(item.chave)} bloqueado={emLote}
-                                                erro={errosPorChave[item.chave] ?? null} freteCotado={fretesCotados[item.chave] ?? null}
-                                                onMarcar={marcar} onEditar={editar} onDesfazer={desfazer}
-                                                onAceitar={aceitarUma} onDescartar={descartarUma}
-                                                onTipo={(id) => setTipoAberto(produtoDaPagina(id))} />
-                                        ))}
+                                        onMarcarTodas={() => alternarVarias(visiveis.map((i) => i.chave))}>
+                                        {g.itens.map(linha)}
+                                        {g.bloco && (
+                                            <BlocoDeCombos chave={g.chave} bloco={g.bloco} ocupado={visitando} onAlternar={() => alternarBlocoDeCombos(g.chave)}>
+                                                {(g.combos ?? []).map(linha)}
+                                            </BlocoDeCombos>
+                                        )}
                                     </GrupoFamilia>
                                 );
                             })}

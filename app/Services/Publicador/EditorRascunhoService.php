@@ -33,6 +33,7 @@ use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\RegeneradorVariantes;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -58,6 +59,8 @@ class EditorRascunhoService
         private DadosEfetivosService $efetivos,
         private MigracaoAnunciarAntigo $migracao,
         private PublicacaoService $publicacoes,
+        private PortalProdutoLeitor $leitor,
+        private ExplicacaoDeAtributos $explicacoes,
     ) {}
 
     // ═══ Abrir ═══════════════════════════════════════════════════════════════
@@ -65,17 +68,42 @@ class EditorRascunhoService
     /** O rascunho do produto: o que já existe, o migrado do Anunciar antigo (só com oferta), ou um novo com os tipos que faltam. */
     public function abrir(PubProduto $produto): PubRascunho
     {
+        $r = $this->rascunhoDoProduto($produto);
+
+        $this->lerContaSeVencida($r);
+
+        return $r->fresh();
+    }
+
+    /**
+     * O mesmo que `abrir`, SEM a leitura da conta no ML (nenhum HTTP de conta). Quem só grava
+     * rascunho (o Sincronizar do Portal, D-10) usa este método, nunca `abrir`.
+     *
+     * @param  bool  $comSku  false = a variante única nasce sem SELLER_SKU (produto agrupado em cores:
+     *                        o regenerador copiaria o SKU do produto para todas as variantes)
+     */
+    public function rascunhoDoProduto(PubProduto $produto, bool $comSku = true): PubRascunho
+    {
         $r = PubRascunho::where('produto_id', $produto->id)->first();
         if (! $r && $produto->oferta_id !== null && ($antiga = EstruturaPublicacao::where('oferta_id', $produto->oferta_id)->first())) {
             $r = $this->migracao->aplicar($antiga);
         }
         if (! $r) {
             $mlbs = $this->mlbsDaRegua($produto);
-            $r = $this->repo->criar($produto, array_map(
-                fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
-                array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
-            ), ['origem' => 'publicador']);
-            $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]]])]);
+            try {
+                $r = $this->repo->criar($produto, array_map(
+                    fn ($tipo, $lt) => new Alvo($lt, null, $mlbs[$tipo] === null),
+                    array_keys(EstruturaPublicacao::LISTING_TYPES), EstruturaPublicacao::LISTING_TYPES,
+                ), ['origem' => 'publicador']);
+                $atributos = $comSku ? ['SELLER_SKU' => ['value_name' => $produto->skuExibido()]] : [];
+                $this->repo->gravarVariacao($r, [], [new Variante(ChaveCanonica::UNICA, [], dados: ['atributos' => $atributos])]);
+            } catch (QueryException $e) {
+                // Corrida no `pubr_produto_uq`: outro processo criou o rascunho deste produto — usa o dele.
+                $r = (string) $e->getCode() === '23000' ? PubRascunho::where('produto_id', $produto->id)->first() : null;
+                if ($r === null) {
+                    throw $e;
+                }
+            }
         }
 
         // Migrado com categoria e sem hash: grava o hash do schema de hoje.
@@ -87,9 +115,7 @@ class EditorRascunhoService
             }
         }
 
-        $this->lerContaSeVencida($r);
-
-        return $r->fresh();
+        return $r;
     }
 
     // ═══ Gravar ══════════════════════════════════════════════════════════════
@@ -309,7 +335,7 @@ class EditorRascunhoService
             return [];
         }
         $e = $this->efetivos->daProduto($r->produto);
-        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
         $primeira = $s->variantesAtivas()[0] ?? null;
         $conta = (array) ($r->step_state['conta'] ?? []);
         $pacote = $this->dimensoes($s->atributos);
@@ -362,7 +388,7 @@ class EditorRascunhoService
             return $saida;
         }
         $e = $this->efetivos->daProduto($r->produto);
-        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos']);
+        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
         // Fora do Mercado Envios não há frete grátis obrigatório.
         if (($s->envio['modo'] ?? 'me2') !== 'me2') {
             return ['conhecido' => true] + $saida;
@@ -433,7 +459,7 @@ class EditorRascunhoService
         $r = $r->fresh(['produto.oferta']);
         $e = $this->efetivos->daProduto($r->produto);
         $digitado = $this->repo->snapshot($r);
-        $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos']);
+        $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
 
         [$schema, $erroSchema] = $this->schemaDe($r, $snapshot);
         $conta = (array) ($r->step_state['conta'] ?? []);
@@ -514,7 +540,7 @@ class EditorRascunhoService
             ])->all(),
             'atribuicoes' => $snapshot->imagens,
             'grupos_imagem' => $grupos,
-            'schema' => $schema ? self::schemaParaTela($schema) : null,
+            'schema' => $schema ? self::schemaParaTela($schema, $this->explicacoes) : null,
             'erro_schema' => $erroSchema,
             'conta' => $conta ? [
                 'modelo' => $conta['modelo'] ?? null,
@@ -544,7 +570,11 @@ class EditorRascunhoService
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,
+            // RN-94: a MESMA query de antes, só extraída para `$jaPublicados` acima — ela
+            // virou também a base da comparação com o acervo (175-09, `estoqueDivergeDoMl`).
             'ja_publicados' => $jaPublicados,
+            // Fase 176 (D-09): o que o cliente escreveu no Portal, lido ao vivo — insumo da IA de descrição.
+            'portal' => ['descricao_cliente' => $this->leitor->descricaoDoCliente($r->produto)],
         ];
     }
 
@@ -727,18 +757,33 @@ class EditorRascunhoService
         }
     }
 
-    public static function schemaParaTela(SchemaClassificado $s): array
+    /**
+     * O schema como a tela usa. Cada atributo leva `explicacao` (o texto do ícone de informação ao
+     * lado do rótulo, 08/10/2026): glossário > guardado > ML > texto montado — e o que faltar vai
+     * para a IA, uma vez por atributo (`ExplicacaoDeAtributos`). Atributo oculto recebe texto, mas
+     * não gasta IA. `explicacoes_campos` = os campos fixos que não são atributo (estoque).
+     */
+    public static function schemaParaTela(SchemaClassificado $s, ?ExplicacaoDeAtributos $explicacoes = null): array
     {
+        $explicacoes ??= app(ExplicacaoDeAtributos::class);
+        $textos = $explicacoes->paraAtributos(array_values(array_map(fn (AtributoClassificado $a) => [
+            'id' => $a->id, 'nome' => $a->nome, 'tooltip' => $a->tooltip, 'hint' => $a->dica, 'tipo' => $a->valueType,
+            'unidades' => $a->unidades, 'unidade_padrao' => $a->unidadePadrao, 'valores' => $a->valores,
+            'oculto' => $a->secao === AtributoClassificado::SECAO_OCULTO,
+        ], $s->atributos)), $s->caminho !== [] ? implode(' > ', $s->caminho) : $s->dominio);
+
         return [
             'categoria_id' => $s->categoriaId, 'dominio' => $s->dominio, 'caminho' => $s->caminho, 'hash' => $s->schemaHash,
             'limites' => $s->limites, 'flags' => $s->flags, 'bloqueios_fase2' => $s->bloqueiosFase2, 'garantia' => $s->garantia,
             'grupos' => $s->grupos,
+            'explicacoes_campos' => $explicacoes->camposFixos(),
             'atributos' => array_map(fn (AtributoClassificado $a) => [
                 'id' => $a->id, 'nome' => $a->nome, 'papel' => $a->papel, 'obrigatoriedade' => $a->obrigatoriedade, 'secao' => $a->secao,
                 'grupo' => $a->grupo, 'tipo' => $a->valueType, 'valores' => $a->valores, 'unidades' => $a->unidades, 'unidade_padrao' => $a->unidadePadrao,
                 'texto_livre' => $a->aceitaTextoLivre, 'nao_se_aplica' => $a->aceitaNaoSeAplica, 'pode_ser_eixo' => $a->podeSerEixo,
                 'define_foto' => $a->definePicture, 'multivalor' => $a->multivalor, 'max' => $a->maxLength,
                 'dica' => $a->dica, 'exemplo' => $a->exemplo, 'tooltip' => $a->tooltip,
+                'explicacao' => $textos[$a->id] ?? ExplicacaoDeAtributos::provisorio(['nome' => $a->nome, 'tipo' => $a->valueType, 'unidades' => $a->unidades]),
             ], $s->atributos),
         ];
     }

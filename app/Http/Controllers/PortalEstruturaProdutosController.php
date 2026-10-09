@@ -8,6 +8,7 @@ use App\Models\EstruturaProdutoVariacaoImagem;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
+use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
@@ -19,6 +20,7 @@ use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
+use App\Services\Publicador\ExplicacaoDeAtributos;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
@@ -67,7 +69,9 @@ class PortalEstruturaProdutosController extends Controller
         private FreteMe2Service $frete,
         private FichaTecnicaDaCategoria $camposDaCategoria,
         private FichaTecnicaDoProduto $fichaTecnica,
+        private DescricaoDoProduto $descricao,
         private VariacaoImagensService $imagens,
+        private ExplicacaoDeAtributos $explicacoes,
     ) {
     }
 
@@ -342,7 +346,8 @@ class PortalEstruturaProdutosController extends Controller
      * ao escolher a categoria). Dado público: só o app token sai da nossa casa.
      * Nada é gravado. `indisponivel` quando o catálogo não respondeu ou a categoria
      * não tem campos — a tela segue sem a ficha, nunca com erro. O sigilo da origem
-     * dos campos está em {@see FichaTecnicaDaCategoria}.
+     * dos campos está em {@see FichaTecnicaDaCategoria}. Cada campo leva a sua `explicacao`
+     * (o ícone de informação ao lado do rótulo) e, se for eixo do portal, `eixo_do_portal`.
      */
     public function camposDaCategoria(Request $request)
     {
@@ -352,7 +357,7 @@ class PortalEstruturaProdutosController extends Controller
         );
 
         try {
-            $grupos = $this->camposDaCategoria->definicao($dados['categoria']);
+            $grupos = $this->camposDaCategoria->definicaoComExplicacoes($dados['categoria']);
         } catch (\Throwable $e) {
             Log::warning('[Estrutura Produtos] campos da categoria falharam', ['erro' => $e->getMessage()]);
             $grupos = [];
@@ -376,6 +381,8 @@ class PortalEstruturaProdutosController extends Controller
             'atributos.*'         => 'array',
             'atributos.*.id'      => 'required|string|max:80',
             'atributos.*.unidade' => 'nullable|string|max:20',
+            // "Não se aplica" vem por marcador próprio, nunca pelo valor (ver FichaTecnicaDoProduto::NAO_SE_APLICA).
+            'atributos.*.nao_se_aplica' => 'nullable|boolean',
             // Escalar, ou a LISTA de opções de um campo multivalor (os chips). Quem confere se
             // o campo aceita lista, e se cada opção existe, é o serviço — contra a definição
             // da categoria. Aqui só se barra o que não é nenhum dos dois (objeto, lista aninhada).
@@ -393,6 +400,25 @@ class PortalEstruturaProdutosController extends Controller
         $salvos = $this->fichaTecnica->gravar($empresa, $p, (array) $request->input('atributos'), PortalContexto::ator());
 
         return response()->json(['salvos' => $salvos, 'mensagem' => 'Ficha técnica salva.']);
+    }
+
+    /**
+     * Grava a descrição do produto (vazio limpa). Produto de outra empresa responde 404,
+     * igual ao inexistente, e o 404 vem ANTES da validação.
+     */
+    public function gravarDescricao(Request $request, int $produto)
+    {
+        $empresa = PortalContexto::empresa();
+        $p = EstruturaProduto::query()->where('company_id', $empresa->id)->findOrFail($produto);
+
+        $dados = $request->validate(
+            ['descricao' => 'nullable|string|max:5000'],
+            ['descricao.max' => 'A descrição pode ter até 5.000 caracteres.', 'descricao.string' => 'Descrição inválida.'],
+        );
+
+        $salvo = $this->descricao->gravar($empresa, $p, $dados['descricao'] ?? null, PortalContexto::ator());
+
+        return response()->json(['descricao' => $salvo, 'mensagem' => 'Descrição salva.']);
     }
 
     // ═══ Imagens da variação ════════════════════════════════════════════════
@@ -534,8 +560,12 @@ class PortalEstruturaProdutosController extends Controller
         return Inertia::render('Portal/EstruturaProdutoFicha', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.produtos', PortalContexto::ator()),
             'produto'      => $produto ? ['id' => (int) $produto->id, 'nome' => $produto->nome] : null,
+            'descricao'    => $produto?->descricao,
             // Ficha técnica já salva (a definição dos campos vem do endpoint por categoria).
             'ficha_tecnica' => ['salvos' => $produto ? $this->fichaTecnica->salvos($produto) : []],
+            // O "o que é isto?" dos campos fixos da ficha (nome, família, Ref, custo, volumes…). Texto
+            // neutro, já passado pelo filtro de sigilo; os da ficha técnica vêm com cada campo.
+            'explicacoes_campos' => $this->explicacoes->camposDoPortal(),
             'linhas'       => $this->linhasComImagens($empresa, $produto),
             'listas'       => $this->listasDaEmpresa(),
             'vocabulario'  => $this->vocabulario(),

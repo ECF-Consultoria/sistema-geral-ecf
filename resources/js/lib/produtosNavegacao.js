@@ -223,9 +223,13 @@ const chaveRascunho = (produtoId) => {
     return PREFIXO_RASCUNHO + (produtoId && Number.isInteger(id) && id > 0 ? id : 'novo');
 };
 
-/** Grava o rascunho das variações da ficha (produtoId null = produto novo). */
-export function gravarRascunho(produtoId, vars) {
-    gravar(chaveRascunho(produtoId), { em: Date.now(), vars });
+/**
+ * Grava o rascunho das variações da ficha (produtoId null = produto novo). `extra` leva o que a ficha
+ * tem fora das variações — hoje a descrição do produto (review 172 WR-06), o texto mais longo da ficha.
+ */
+export function gravarRascunho(produtoId, vars, extra = {}) {
+    const descricao = typeof extra?.descricao === 'string' ? { descricao: extra.descricao } : {};
+    gravar(chaveRascunho(produtoId), { em: Date.now(), vars, ...descricao });
 }
 
 /** O rascunho guardado e ainda válido ({ em, vars }), ou null. Vencido ou estranho é apagado. */

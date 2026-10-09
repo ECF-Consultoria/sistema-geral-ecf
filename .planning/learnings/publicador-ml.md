@@ -264,6 +264,29 @@ O que não se deduz do código, na ordem em que mais custou descobrir.
   concorrente no rascunho (as travas do item 9) e o resultado de um pedido velho não
   pisa no novo (`pedido` comparado dos dois lados). O pedido automático (ao escolher
   categoria) só aplica se o Modelo continuar vazio na hora em que a IA termina.
+- **Modelo não repete palavra de conteúdo do título (08/10, pedido do usuário).** O
+  Modelo serve para EXPANDIR a busca: termo cujas palavras de conteúdo (fora de/para/
+  com…) já estão todas no título é descartado — "puff sala" sai com "Puff … Sala" no
+  título; "puff para quarto infantil" fica. O filtro é do SERVIDOR
+  (`PalavrasChaveService::ajustarModelo` com `titulo`), não só do prompt: a IA não
+  obedece sempre. O título é a união dos títulos ATIVOS gravados + o `titulo` que a
+  tela manda (pode não estar salvo). Por isso o pedido automático mudou: na escolha de
+  categoria só dispara se já houver título; senão dispara quando o título por IA é
+  aplicado e o Modelo está vazio ou ainda com `origem: 'ia'`.
+- **Modelo: fatos do produto no prompt + filtro de cor/público/tamanho no servidor (09/10).**
+  "Puff Redondo" só em Azul saiu com "puff gigante, puff colorido, puff infantil, puff rosa,
+  puff azul marinho": a IA só via nome, categoria e trends, e o ML diz o que é BUSCADO, não o
+  que o produto É. Agora o serviço lê do rascunho (`FatosDoProduto`) as cores das variantes
+  ATIVAS (eixo COLOR/MAIN_COLOR ou eixo próprio "Cor", + Cor principal da variante; sem
+  variação, a cor da ficha), a ficha preenchida, as medidas e o público (AGE*/GENDER*) e manda
+  como bloco "FATOS DO PRODUTO". E o servidor descarta, com vocabulário explícito, termo com
+  cor fora das cores do anúncio ("azul marinho" com "Azul" é OUTRA cor; "colorido/estampado"
+  só com 3+ cores ou ficha estampada; sem cor conhecida, nenhum termo com cor), público ou
+  tamanho que os fatos (ficha textual + nome + categoria + título) não confirmem. Medida
+  numérica NÃO confirma ("500 g" não é tamanho G). Palavra do nome do produto não conta como
+  cor ("Taça Vinho"). Os descartados voltam no estado (`descartados`) e a tela diz quantos.
+  O exemplo antigo do prompt ("puff para quarto infantil", "puff azul marinho") ENSINAVA o erro
+  — não traga de volta exemplo com característica inventada.
 - **Preço "do Portal" é MOSTRADO, não gravado.** O campo exibe o efetivo da
   Precificação como valor (selo "do Portal"); sair do campo com o mesmo valor não grava
   nada — senão o preço congelaria (`16` §1.6). Só valor diferente vira digitado.
@@ -553,3 +576,94 @@ próximo disponível (13), não o que o plano previa.
   file(s) known to git`. É preciso `git add -- <caminho>` antes do commit. Isso importa especificamente neste
   projeto porque a árvore é compartilhada entre sessões e a regra é nunca usar `git add -A`/`git add .` — então
   todo arquivo NOVO (não só modificado) precisa do `add` explícito, um por um, antes do `commit -- `.
+
+## 14. Sincronizar completo do Portal (Fase 176 — era 172, 08/10/2026)
+
+O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da fase 176):
+
+- **Um `pub_produtos` por produto do Portal, não por oferta.** O vínculo é `pub_produtos.estrutura_produto_id`
+  (unique, FK `SET NULL`). Legado de uma cor com rascunho ainda sem publicação é ADOTADO (só o vínculo muda); legado
+  publicado é intocável **por fato** (`IaParaRascunhoService::intocavel`, não por flag) e nunca é adotado nem apagado.
+  Duplicados das outras cores ficam listados a cada execução, não gravados.
+- **O regenerador de SKU copia o `skuExibido()` do grupo para todas as cores.** Por isso a regra "SKU igual ao de
+  outra variante = vazio" (a 1ª que o tem fica): sem ela as 3 cores nascem com o mesmo SKU e a conferência trava.
+- **Eixo em dois passos.** Sem eixo no rascunho, `salvarEixos` roda duas vezes (a cor âncora primeiro, depois todas),
+  senão a variante única não passa os dados à âncora. Só vira COLOR/SIZE/VOLTAGE/MATERIAL/FLAVOR se o schema diz
+  `podeSerEixo`; senão `~custom` com o rótulo do Portal. Nada grava MAIN_COLOR.
+- **Preço por variante pelo SKU normalizado** (`precos_por_variante` em `DadosEfetivosService`): casa por
+  `dados.atributos.SELLER_SKU`; sem casamento cai no preço da âncora. Produto não agrupado não recebe a chave.
+- **`ImagemAssetService::receber(..., enviar: false)`** guarda a foto sem subir ao ML; o Sincronizar nunca chama
+  `/items` nem sobe foto, mesmo com a conta liberada e com token (teste com `Http::preventStrayRequests`).
+  WebP do Portal é convertida a JPG com GD; **confira GD com WebP no PHP de produção** antes de confiar.
+- **`values_multi` (D-13) vai no snapshot e sobrevive à gravação sem a chave** (review 176 WR-03): `gravarAtributos`/
+  `mesclarAtributos` sem `values_multi` mantêm a lista guardada enquanto o `value_id` (1ª opção) não muda; trocou a
+  opção, a lista velha sai. O payload do ML não usa a coluna (`ValorAtributo::paraPayload` monta as chaves à mão).
+- **Job por produto (`PreencherRascunhoDoPortalJob`), fila `high`, `timeout` 300 s < `retry_after`, `tries` 1.**
+  Resumo agregado por `pedido` (uuid, cache 1 h) escopado por `company_id`. Com `QUEUE_CONNECTION=sync` a exceção
+  sobe ao request, então `failed()` só se prova chamando-o direto.
+- **Descrição MAG T8 automática: uma vez por rascunho, via `Cache::add`**, e só depois de checar rascunho sem
+  descrição E texto do cliente existente (senão gasta a única chance sem material). Nunca grava no rascunho.
+- **Sincronizar NÃO tem gate de piloto (D-10).** `ContasLiberadas` só governa o selo da página; o caminho do
+  Sincronizar não deve citá-lo (há teste "fora do piloto também é enriquecida").
+- **Vite no Windows: `ResumoDoSincronizar.jsx` x `resumoDoSincronizar.js` colidiam** (FS sem caixa; o módulo puro virou
+  `regrasDoResumoDoSincronizar.js` no review 176 WR-05, e um teste recusa par só pela caixa na pasta): o build falhava com
+  "default is not exported". Import com extensão explícita resolve; melhor ainda, nunca nomear dois arquivos só pela caixa.
+- **`assertSemOrigem` (sigilo do Portal) não pegava acento:** o JSON do Laravel escapa "ú" como sequência unicode,
+  então varrer por "anúncio" passava batido. O helper agora decodifica antes de varrer; teste de sigilo novo deve usá-lo.
+- **Gates de fonte antigos em JS** (`hook.includes('toque')`, proibição de `<details`) quebram com palavras novas
+  (`estoque` contém "toque"): restrinja o gate ao trecho, não afrouxe.
+- **Absorção das linhas antigas por cor (09/10, decisão do usuário).** O Sincronizar de ANTES do agrupamento criou um
+  `pub_produtos` por oferta; na #459 sobraram 7 (um por cor não-âncora, vazios) ao lado do grupo. Agora, com o grupo de
+  pé, o legado de uma cor DO GRUPO (mesma `company_id`, `origem = portal`, `estrutura_produto_id` nulo, oferta na lista
+  já filtrada pelo `CoresDoGrupo` — a variação que vira produto separado nunca entra) que NADA referencia é APAGADO e
+  contado em `absorvidos`. "Nada referencia" = sem `pub_rascunhos.produto_id` (a ÚNICA FK viva para `pub_produtos.id`,
+  e ela é CASCADE: apagar com rascunho levaria o trabalho da equipe junto) e, se a tabela existir,
+  `pub_produto_fatos_criativo`. Publicação, análise de IA e kit de criativos pendem do RASCUNHO, então sem rascunho
+  não há nada deles. Por isso a condição "sem rascunho" mora no próprio `DELETE` (subconsulta), não numa leitura antes.
+  **Com rascunho, publicado ou referenciado: nunca é tocado** (fica em `duplicados` e o aviso continua). Tabela nova
+  com FK para `pub_produtos.id` tem de entrar em `semReferencias()`. Prova de mutação: tirar o `whereNotExists` do
+  rascunho derruba 4 testes do `SincronizaPortalAgrupamentoTest`. Atenção: rascunho em QUALQUER cor faz dela a adotada
+  (`adotar` prefere quem tem rascunho), então "a âncora vazia" é absorvida quando outra cor tem rascunho.
+
+### Checklist de DEPLOY (só com autorização do usuário)
+
+1. Contar em produção ANTES e DEPOIS: `estrutura_produtos`, `estrutura_produto_variacoes`, `pub_produtos`,
+   `pub_rascunhos`, `pub_variantes`, `pub_imagens` (as 3 migrations são aditivas e anuláveis; nenhuma linha deve mudar).
+2. `php artisan migrate --force` (3 migrations de 2026_10_08_15xxxx; o MariaDB local estava vazio nessas tabelas, a
+   prova com linhas só existe em SQLite).
+3. `sudo -u www-data php artisan queue:restart`: os Jobs novos rodam na fila `high`; worker velho não os conhece.
+4. Conferir GD com suporte a WebP no PHP de produção (`php -r "var_dump(function_exists('imagecreatefromwebp'));"`).
+5. "Sincronizar do Portal" na #459 e abrir o rascunho, sem publicar (conta de cliente: só a #459 recebe publicação).
+
+## 15. Explicação de todo campo ao passar o mouse (08/10/2026)
+
+Pedido do usuário ("AGID? MPN? … isso para tudo, não apenas para siglas"). O que não se deduz do código:
+
+- **Prioridade decidida pelo usuário: glossário > guardado > ML > texto montado + IA.** Glossário em
+  `config/publicador_glossario.php` (NEUTRO, ≤ 220: o teste `ExplicacaoDeAtributosRegrasTest` reprova texto que cite
+  plataforma/anúncio). O `tooltip`/`hint` do ML é guardado com origem `ml` na 1ª vez e **não é atualizado** se o ML
+  mudar o texto depois (a linha guardada vence o ML). Para reescrever, apague a linha em `atributo_explicacoes`.
+- **Cobertura medida nas 4 fixtures da sondagem** (atributos únicos não ocultos): 43 pelo glossário, 11 pelo texto do
+  ML, 89 ficam com texto montado até a IA escrever. O ML traz pouco (MLB193945: tooltip em 20 de 91, hint em 2), e boa
+  parte dos tooltips é de atributo oculto. A IA roda ~1 vez por atributo, para sempre: 89 atributos ≈ 3 chamadas.
+- **AGID não tem tooltip nem documentação nas fixtures** (`hierarchy: PRODUCT_IDENTIFIER`, oculto, por variação). O
+  texto do glossário é genérico de propósito ("outro código de identificação… pode deixar vazio"); não "corrija" para
+  um significado inventado.
+- **Fila `sync` NÃO enfileira** (`ExplicacaoDeAtributos::enfileirar`): no `sync` o Job rodaria dentro de `estado()` e a
+  tela esperaria a IA. Por isso testes que queiram ver o enfileiramento precisam de `Queue::fake()` (aí a conexão não é
+  `SyncQueue`). Máquina local com `QUEUE_CONNECTION=database` enfileira, mas só gera com worker rodando.
+- **Trava por atributo: `Cache::add('publicador:explicacao:{ID}')` por 6 h**, nunca liberada na falha — IA fora ou
+  texto reprovado (longo, HTML, cita plataforma/loja) só tenta de novo quando a trava vence. Atributo oculto
+  (`secao = OCULTO`) recebe texto mas nunca gasta IA.
+- **Sem a tabela a tela não quebra** (`salvos` captura a exceção): glossário e ML aparecem, nada é guardado nem
+  enfileirado. É o estado de produção entre o deploy do código e o `migrate`.
+- **Portal (`paraPortal`)**: o texto do ML costuma citar "anúncio"; o filtro de sigilo troca pelo texto montado e, se
+  nem esse passar (nome de atributo com "Marketplace"), usa "Característica do produto.". A sigla "ML" só é pega em
+  caixa-alta (`\bML\b` no texto original): "500 ml" é unidade. `\bmercado\b` poupa "mercadoria".
+- **Front**: o ícone mora no `Campo` (`explicacao`/`nome`), FORA do `<label>` (botão dentro do rótulo focaria o campo a
+  cada clique). Balão próprio em CSS, abre no hover e no foco; o `title` nativo saiu do `RotuloAtributo` para não
+  somar dois balões. A chave do campo fixo é `estoque_por_deposito` porque um gate antigo proíbe a string
+  `estoque_depositos` no `CartaoVariante`.
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_08_160000`): up → rollback → up, DONE ×3, `Ran` no lote 139;
+  `UNIQUE KEY atributo_explicacoes_atributo_uq`; `INSERT IGNORE` do mesmo id não duplica (linha de prova apagada; 0
+  linhas). Tabela fica criada no local. Deploy: `migrate --force` + `queue:restart` (Job novo na fila `default`).

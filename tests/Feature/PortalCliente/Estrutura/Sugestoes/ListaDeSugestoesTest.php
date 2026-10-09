@@ -92,36 +92,109 @@ class ListaDeSugestoesTest extends TestCase
         $this->assertSame(['valor' => 'sem', 'nome' => 'Sem família', 'total' => 3], $ultima);
     }
 
-    public function test_paginacao_estavel_20_e_9_sem_repetir(): void
+    /**
+     * 08/10: a paginação anda sobre LINHAS. Na aba Pendentes sem filtro de fase, os Combos
+     * de cada família viram uma linha só, no fim da família. Catálogo: Polo tem 6 Kit +
+     * 8 Combit + 9 Combo, Solo A 3 Combo, Sem família 3 Combo = 14 + 3 blocos = 17 linhas.
+     */
+    public function test_paginacao_estavel_sobre_linhas_com_combos_recolhidos(): void
     {
         [$empresa] = $this->cenario();
+        config(['estrutura_geracao.por_pagina' => 10]);
 
         $p1 = $this->listar($empresa);
         $p2 = $this->listar($empresa, [], 2);
         $de_novo = $this->listar($empresa);
 
-        $this->assertCount(20, $p1['itens']);
-        $this->assertCount(9, $p2['itens']);
+        $this->assertTrue($p1['combos_recolhidos']);
+        $this->assertSame(['pagina' => 1, 'paginas' => 2, 'total' => 29, 'blocos' => 29, 'linhas' => 17, 'por_pagina' => 10], $p1['paginacao']);
+        $this->assertCount(10, $p1['itens']);
         $this->assertSame($this->chaves($p1), $this->chaves($de_novo));
+        $this->assertNotContains('combo', array_column($p1['itens'], 'fase'));
+
+        // Página 2: 4 Kit/Combit da Polo e os 3 blocos de Combos (Polo, Solo A, Sem família).
+        $this->assertCount(4, $p2['itens']);
+        $this->assertNotContains('combo', array_column($p2['itens'], 'fase'));
+        $polo = $this->valorDaFamilia($p1, 'Polo');
+        $soloA = $this->valorDaFamilia($p1, 'Solo A');
+        $this->assertSame(
+            [[$polo, ['total' => 9, 'expandido' => false, 'mostrando' => 0]], [$soloA, ['total' => 3, 'expandido' => false, 'mostrando' => 0]], ['sem', ['total' => 3, 'expandido' => false, 'mostrando' => 0]]],
+            array_map(fn ($g) => [$g['chave'], $g['combos']], $p2['grupos'])
+        );
+        $this->assertSame($polo, $p2['familia_continua']);
+        $this->assertNull($p1['familia_continua']);
 
         $todas = array_merge($this->chaves($p1), $this->chaves($p2));
-        $this->assertCount(29, array_unique($todas));
-        $this->assertSame(['pagina' => 1, 'paginas' => 2, 'total' => 29, 'blocos' => 29, 'por_pagina' => 20], $p1['paginacao']);
+        $this->assertCount(14, array_unique($todas));
 
         $ultima = $this->listar($empresa, [], 99);
         $this->assertSame(2, $ultima['paginacao']['pagina']);
         $this->assertSame($this->chaves($p2), $this->chaves($ultima));
     }
 
-    public function test_familia_continua_so_quando_a_familia_vem_da_pagina_anterior(): void
+    public function test_familia_expandida_traz_os_combos_dela_na_mesma_pagina(): void
+    {
+        [$empresa] = $this->cenario();
+        config(['estrutura_geracao.por_pagina' => 10]);
+        $soloA = $this->valorDaFamilia($this->listar($empresa), 'Solo A');
+
+        $p2 = $this->listar($empresa, ['combos' => [$soloA, '999999']], 2);
+
+        // Só a Solo A abre; a paginação (linhas) não muda.
+        $this->assertSame(2, $p2['paginacao']['paginas']);
+        $this->assertCount(4 + 3, $p2['itens']);
+        $combos = array_values(array_filter($p2['itens'], fn ($i) => $i['fase'] === 'combo'));
+        $this->assertCount(3, $combos);
+        $this->assertSame(['Solo A'], array_values(array_unique(array_map(fn ($i) => $i['familia']['nome'], $combos))));
+        $this->assertNotNull($combos[0]['logistica'], 'o Combo expandido chega com logística, como os outros');
+        $grupo = collect($p2['grupos'])->firstWhere('chave', $soloA);
+        $this->assertSame(['total' => 3, 'expandido' => true, 'mostrando' => 3], $grupo['combos']);
+
+        // Teto do bloco expandido: o resto se vê pelo filtro Combo.
+        config(['estrutura_geracao.max_combos_expandidos' => 2]);
+        $grupo = collect($this->listar($empresa, ['combos' => [$soloA]], 2)['grupos'])->firstWhere('chave', $soloA);
+        $this->assertSame(['total' => 3, 'expandido' => true, 'mostrando' => 2], $grupo['combos']);
+    }
+
+    public function test_com_filtro_de_fase_ou_fora_de_pendentes_nada_e_recolhido(): void
     {
         [$empresa] = $this->cenario();
 
-        $p1 = $this->listar($empresa);
-        $p2 = $this->listar($empresa, [], 2);
+        $combo = $this->listar($empresa, ['fase' => 'combo']);
+        $this->assertFalse($combo['combos_recolhidos']);
+        $this->assertSame(15, $combo['paginacao']['total']);
+        $this->assertCount(15, $combo['itens']);
+        $this->assertSame([null], array_values(array_unique(array_column($combo['grupos'], 'combos'), SORT_REGULAR)));
 
+        $kit = $this->listar($empresa, ['fase' => 'kit']);
+        $this->assertFalse($kit['combos_recolhidos']);
+
+        $this->assertFalse($this->listar($empresa, ['aba' => 'descartadas'])['combos_recolhidos']);
+    }
+
+    public function test_resumo_contagens_e_aceitar_os_filtrados_contam_os_combos_recolhidos(): void
+    {
+        [$empresa] = $this->cenario();
+        $base = $this->listar($empresa);
+        $polo = $this->valorDaFamilia($base, 'Polo');
+
+        $this->assertSame(['total' => 29, 'combo' => 15, 'kit' => 6, 'combit' => 8], $base['resumo']);
+        $this->assertSame(15, $base['por_fase']['combo']);
+
+        // "Aceitar os filtrados" (família Polo, sem fase) leva os 9 Combos dela, mesmo recolhidos.
+        $r = $this->listar($empresa, ['familia' => $polo]);
+        $this->assertCount(23, $r['chaves_filtradas']);
+    }
+
+    public function test_familia_continua_so_quando_a_familia_vem_da_pagina_anterior(): void
+    {
+        [$empresa] = $this->cenario();
+        config(['estrutura_geracao.por_pagina' => 10]);
+
+        $p1 = $this->listar($empresa, ['fase' => 'combo']);
         $this->assertNull($p1['familia_continua']);
 
+        $p2 = $this->listar($empresa, ['fase' => 'combo'], 2);
         $ultimaDaP1 = end($p1['itens'])['familia']['id'];
         $primeiraDaP2 = $p2['itens'][0]['familia']['id'];
         $esperado = $ultimaDaP1 === $primeiraDaP2 ? ($primeiraDaP2 === null ? 'sem' : (string) $primeiraDaP2) : null;
@@ -256,7 +329,7 @@ class ListaDeSugestoesTest extends TestCase
     {
         [$empresa, $ator] = $this->cenario();
         $combo = null;
-        foreach ($this->listar($empresa)['itens'] as $item) {
+        foreach ($this->listar($empresa, ['fase' => 'combo'])['itens'] as $item) {
             if ($item['fase'] === 'combo') {
                 $combo = $item;
                 break;
@@ -269,9 +342,9 @@ class ListaDeSugestoesTest extends TestCase
             'sku' => $combo['sku'], 'fase' => 'simples', 'nome' => 'Feita à mão', 'logistica' => 'mercado_envios',
         ], $ator);
 
-        $depois = collect($this->listar($empresa)['itens'])->firstWhere('chave', $combo['chave']);
+        $depois = collect($this->listar($empresa, ['fase' => 'combo'])['itens'])->firstWhere('chave', $combo['chave']);
         $this->assertTrue($depois['sku_repetido']);
-        $this->assertSame(1, collect($this->listar($empresa)['itens'])->where('sku_repetido', true)->count());
+        $this->assertSame(1, collect($this->listar($empresa, ['fase' => 'combo'])['itens'])->where('sku_repetido', true)->count());
     }
 
     public function test_limites_vem_do_config(): void
@@ -363,8 +436,8 @@ class ListaDeSugestoesTest extends TestCase
     {
         [$empresa] = $this->cenario();
 
-        $esperado = ['aba', 'chaves_filtradas', 'contagens', 'excedeu_teto', 'familia_ambientes', 'familia_continua', 'familia_totais',
-            'familias', 'gerado_em', 'itens', 'limites', 'paginacao', 'por_fase', 'por_status', 'produtos', 'produtos_sem_tipo',
+        $esperado = ['aba', 'chaves_filtradas', 'combos_recolhidos', 'contagens', 'excedeu_teto', 'familia_ambientes', 'familia_continua', 'familia_totais',
+            'familias', 'gerado_em', 'grupos', 'itens', 'limites', 'paginacao', 'por_fase', 'por_status', 'produtos', 'produtos_sem_tipo',
             'resumo', 'tem_produtos', 'teto', 'tipos'];
 
         foreach (['sugestoes', 'sem_tipo', 'descartadas'] as $aba) {

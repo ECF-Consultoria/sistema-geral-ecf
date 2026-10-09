@@ -43,9 +43,10 @@ class StatusEResumoTest extends TestCase
         return app(ListaDeSugestoes::class)->listar($empresa, $filtros, $pagina);
     }
 
-    /** Todos os itens de todas as páginas do filtro. */
+    /** Todos os itens de todas as páginas do filtro (com os Combos de todas as famílias expandidos). */
     private function todos(Company $empresa, array $filtros = []): array
     {
+        $filtros += ['combos' => $this->combosDeTodas($empresa)];
         $r      = $this->listar($empresa, $filtros);
         $itens  = $r['itens'];
         for ($p = 2; $p <= $r['paginacao']['paginas']; $p++) {

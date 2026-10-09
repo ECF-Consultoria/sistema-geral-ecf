@@ -19,17 +19,27 @@ use App\Models\EstruturaOferta;
  * Regras (CONTEXT): só variação com oferta simples ligada (D-09); Combo vale
  * para qualquer produto, com as quantidades do produto ou do tipo (D-07); Kit e
  * Combit só dentro da mesma família não nula, com ambiente em comum, os dois com
- * tipo e o par de tipos na lista (D-05, D-06); Combit dirigido (D-14); só 2
- * itens (D-16); variações em paralelo, nunca cartesiano (D-17); composição que
- * já existe nunca sai e a descartada sai marcada (D-03).
+ * tipo e o par de tipos na lista (D-05, D-06); Combit dirigido (D-14);
+ * variações em paralelo, nunca cartesiano (D-17); composição que já existe nunca
+ * sai e a descartada sai marcada (D-03).
+ *
+ * Kit de 3 (08/10, revê o D-16 a pedido do usuário): três produtos da mesma
+ * família, de três tipos diferentes, com ambiente em comum aos TRÊS e os TRÊS
+ * pares de tipo na lista (gabinete + espelho + lixeira). Regra conservadora: um
+ * conjunto "conexo" (só dois pares) não basta. Só Kit, todos x1; Combit de 3 e
+ * conjuntos de 4+ ficam fora.
  */
 final class GeradorDeSugestoes
 {
-    /** Ordem das fases na saída. */
+    /**
+     * Ordem das fases DENTRO da família (08/10): primeiro o que a pessoa não montaria
+     * sozinha (Kit, depois Combit) e por último o Combo. Antes o Combo vinha primeiro e
+     * as cadeiras x2/x4/x6/x8 enchiam a página de 20 antes do primeiro Kit.
+     */
     private const ORDEM_FASE = [
-        EstruturaOferta::FASE_COMBO  => 0,
-        EstruturaOferta::FASE_KIT    => 1,
-        EstruturaOferta::FASE_COMBIT => 2,
+        EstruturaOferta::FASE_KIT    => 0,
+        EstruturaOferta::FASE_COMBIT => 1,
+        EstruturaOferta::FASE_COMBO  => 2,
     ];
 
     /**
@@ -103,6 +113,9 @@ final class GeradorDeSugestoes
             for ($i = 0; $i < $n; $i++) {
                 for ($j = $i + 1; $j < $n; $j++) {
                     self::paraOPar($grupo[$i], $grupo[$j], $tipos, $pares, $limites, $saida);
+                    for ($k = $j + 1; $k < $n; $k++) {
+                        self::paraOTrio([$grupo[$i], $grupo[$j], $grupo[$k]], $tipos, $pares, $limites, $saida);
+                    }
                 }
             }
         }
@@ -217,6 +230,93 @@ final class GeradorDeSugestoes
     }
 
     /**
+     * Kit de 3 produtos: tipos distintos, os três pares na lista e ambiente em comum
+     * aos três. As variações casam pela âncora (o produto com mais variações): cada
+     * variação dela casa em paralelo com cada um dos outros dois, e só sai o kit em
+     * que os dois casaram. Assim cada variação da âncora aparece uma vez, nunca cartesiano.
+     *
+     * @param  array{0: array, 1: array, 2: array}  $trio
+     */
+    private static function paraOTrio(array $trio, array $tipos, array $pares, array $limites, array &$saida): void
+    {
+        $slugs = array_column($trio, 'tipo');
+        if (count(array_unique($slugs)) !== 3) {
+            return;
+        }
+
+        foreach ([[0, 1], [0, 2], [1, 2]] as [$a, $b]) {
+            if (! isset($pares[self::chaveDoPar($slugs[$a], $slugs[$b])])) {
+                return;
+            }
+        }
+
+        $comum = array_intersect_key($trio[0]['ambientes'] ?? [], $trio[1]['ambientes'] ?? [], $trio[2]['ambientes'] ?? []);
+        if ($comum === []) {
+            return;
+        }
+
+        // Orienta pela ordem do tipo (gabinete, espelho, lixeira); desempate por id.
+        usort($trio, fn ($x, $y) => [$tipos[$x['tipo']]['ordem'] ?? 0, $x['id']] <=> [$tipos[$y['tipo']]['ordem'] ?? 0, $y['id']]);
+
+        // Âncora: mais variações; empate, a primeira na orientação.
+        $ancora = 0;
+        foreach ($trio as $pos => $p) {
+            if (count($p['variacoes']) > count($trio[$ancora]['variacoes'])) {
+                $ancora = $pos;
+            }
+        }
+
+        $casadas = [];
+        foreach ($trio as $pos => $p) {
+            if ($pos === $ancora) {
+                continue;
+            }
+            foreach (VariacoesEmParalelo::casar($trio[$ancora]['variacoes'], $p['variacoes']) as [$va, $vp]) {
+                $casadas[$pos][$va['id']] ??= $vp;
+            }
+        }
+
+        $ambientes = self::ambientesDe($comum);
+        $slugs     = array_column($trio, 'tipo');
+        $nomesTipo = array_map(fn ($p) => $tipos[$p['tipo']]['nome'] ?? $p['tipo'], $trio);
+
+        foreach (self::variacoesOrdenadas($trio[$ancora]['variacoes']) as $va) {
+            $escolhidas = [];
+            foreach ($trio as $pos => $p) {
+                $v = $pos === $ancora ? $va : ($casadas[$pos][$va['id']] ?? null);
+                if ($v === null) {
+                    continue 2;
+                }
+                $escolhidas[$pos] = $v;
+            }
+
+            $itens = [];
+            $paraNome = [];
+            foreach ($trio as $pos => $p) {
+                $v = $escolhidas[$pos];
+                $itens[] = self::item($p, $v, 1, $p['tipo']);
+                $paraNome[] = ['produto_nome' => $p['nome'], 'sku' => $v['sku'], 'valor' => $v['valor'] ?? null];
+            }
+
+            $saida[] = self::montar(
+                EstruturaOferta::FASE_KIT,
+                $trio[0],
+                $ambientes,
+                $slugs,
+                null,
+                $itens,
+                NomesSugeridos::kitDeVarios($paraNome),
+                NomesSugeridos::porque(EstruturaOferta::FASE_KIT, [
+                    'familia'   => $trio[0]['familia'] ?? null,
+                    'ambientes' => $ambientes,
+                    'tipos'     => $nomesTipo,
+                ]),
+                $limites
+            );
+        }
+    }
+
+    /**
      * 'x' / 'y' para cada lado que se repete. Par sem direção (repete nulo) =
      * só Kit. Mesmo tipo dos dois lados com repete não nulo = os dois lados.
      *
@@ -326,7 +426,10 @@ final class GeradorDeSugestoes
         ];
     }
 
-    /** Família pelo nome normalizado (desempate id), nula por último; depois fase e chave. */
+    /**
+     * Família pelo nome normalizado (desempate id), nula por último; depois fase
+     * (Kit, Combit, Combo), o Kit de 3 antes do de 2, e a chave.
+     */
     private static function ordenar(array $lista): array
     {
         usort($lista, function ($a, $b) {
@@ -336,8 +439,8 @@ final class GeradorDeSugestoes
                 return $fa === null ? 1 : -1;
             }
 
-            return [TipoDoProduto::normalizar($a['familia']), (int) $fa, self::ORDEM_FASE[$a['fase']], $a['chave']]
-                <=> [TipoDoProduto::normalizar($b['familia']), (int) $fb, self::ORDEM_FASE[$b['fase']], $b['chave']];
+            return [TipoDoProduto::normalizar($a['familia']), (int) $fa, self::ORDEM_FASE[$a['fase']], -count($a['itens']), $a['chave']]
+                <=> [TipoDoProduto::normalizar($b['familia']), (int) $fb, self::ORDEM_FASE[$b['fase']], -count($b['itens']), $b['chave']];
         });
 
         return $lista;

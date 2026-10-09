@@ -66,6 +66,10 @@ class CatalogoDaEcfTest extends TestCase
             'mesa-lateral' => ['2', '2'],
             'cama'         => ['2', null],
             'mesa'         => ['0', '0'],
+            // 08/10: só a lixeira tem Combo no banheiro; nenhum tem Combit.
+            'lixeira'      => ['2', null],
+            'gabinete'     => [null, null],
+            'espelho'      => [null, null],
         ];
 
         foreach ($esperado as $slug => [$combo, $combit]) {
@@ -74,10 +78,10 @@ class CatalogoDaEcfTest extends TestCase
         }
     }
 
-    /** D-21 e D-23: 18 pares aprovados; bicama em cama; tipo beliche. */
+    /** D-21 e D-23: 18 pares aprovados; bicama em cama; tipo beliche. 08/10: +5 pares de banheiro. */
     public function test_lista_aprovada_de_pares_e_tipos(): void
     {
-        $this->assertCount(18, config('estrutura_geracao.pares'));
+        $this->assertCount(23, config('estrutura_geracao.pares'));
         $this->assertContains('bicama', config('estrutura_geracao.tipos.cama.palavras'));
         $this->assertSame(['beliche', 'treliche'], config('estrutura_geracao.tipos.beliche.palavras'));
         $this->assertSame(21, config('estrutura_geracao.tipos.beliche.ordem'));

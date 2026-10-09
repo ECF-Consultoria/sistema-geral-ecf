@@ -51,7 +51,7 @@ test('Hook: a regra do painel antigo, agora em lotes e sem fechar nada', () => {
     assert.ok(hook.includes('limites?.colar'));
     assert.ok(hook.includes('Não salvamos esta variação: informe a Ref e o nome do produto.'));
     assert.ok(hook.includes('Não salvamos esta variação: ${'));
-    assert.ok(! hook.includes('Não salvamos esta linha') && ! hook.includes('toque'));
+    assert.ok(! hook.includes('Não salvamos esta linha') && ! /\btoque\b/.test(hook));
     assert.ok(hook.includes('CAMPOS_DO_PRODUTO'));
     assert.ok(hook.includes('ok:'));
     assert.ok(! hook.includes('onFechar') && ! hook.includes('onGravado'), 'o hook não fecha nem avisa a página: devolve { ok, data }');
@@ -220,7 +220,11 @@ test('Rascunho: gravado a cada alteração, oferecido ao abrir, apagado ao salva
         assert.ok(hook.includes(t), `faltou no hook: ${t}`);
     }
     assert.match(hook, /if \(ok\) \{\s*setAlterado\(false\);[\s\S]*?apagarRascunho\(r\.produtoId\)/, 'salvo por inteiro apaga o rascunho');
-    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars\)/, 'grava só com alteração');
+    assert.match(hook, /useEffect\(\(\) => \{\s*if \(! alterado\) return;[\s\S]*?gravarRascunho\(id, vars, \{ descricao: descricao\.texto \}\)/, 'grava só com alteração');
+    // Review 172 WR-06: a descrição entra no rascunho, conta na comparação e volta ao recuperar.
+    assert.match(hook, /\}, \[vars, alterado, descricao\.texto\]\);/);
+    assert.match(hook, /assinatura\(guardado\.vars, descricaoGuardada\) !== assinatura\(iniciais, descricaoInicial\)/);
+    assert.match(hook, /if \(typeof rascunho\.descricao === 'string'\) descricao\.alterar\(rascunho\.descricao\);/);
     for (const t of ['Você tinha alterações não salvas neste produto.', 'Recuperar', 'Descartar', 'data-rascunho',
         'onClick={ficha.recuperarRascunho}', 'onClick={ficha.descartarRascunho}']) {
         assert.ok(pagina.includes(t), `faltou na página: ${t}`);

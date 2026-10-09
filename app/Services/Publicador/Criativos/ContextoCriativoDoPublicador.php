@@ -35,7 +35,7 @@ class ContextoCriativoDoPublicador
 
         if ($r->produto !== null) {
             $e = $this->efetivos->daProduto($r->produto);
-            $snapshot = $snapshot->comEfetivos($e['titulos'], $e['precos']);
+            $snapshot = $snapshot->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
         }
 
         $produto = '';

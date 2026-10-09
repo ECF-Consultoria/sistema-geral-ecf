@@ -163,8 +163,128 @@ class MlbPublicadorMelhoriasTest extends TestCase
         $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
         $this->assertStringContainsString('cadeira escritorio giratoria', $prompt);
         $this->assertStringContainsString('120', $prompt);
+        // Sem título ainda: o Modelo sai sem a regra (e sem o filtro) do título.
+        $this->assertStringNotContainsString('Não repita termo cujas palavras', $prompt);
         // Nada foi gravado no rascunho por trás da pessoa: quem aplica é a tela.
         $this->assertNull(PubRascunho::firstOrFail()->atributos()->where('attribute_id', 'MODEL')->first());
+    }
+
+    public function test_modelo_nao_repete_palavras_dos_titulos_ativos_salvos_nem_do_titulo_da_tela(): void
+    {
+        $r = $this->comCategoria();
+        // O Premium está desligado: o título dele não conta.
+        $this->mesa()->putJson($this->rota('salvar'), ['alvos' => [
+            ['listing_type_id' => 'gold_special', 'ativo' => true, 'titulo' => 'Cadeira Gamer Giratória Reclinável'],
+            ['listing_type_id' => 'gold_pro', 'ativo' => false, 'titulo' => 'Cadeira Presidente Couro'],
+        ]])->assertOk();
+
+        // O título da tela (ainda não salvo) se SOMA aos gravados.
+        $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo', 'titulo' => 'Cadeira Ergonômica'])->assertStatus(202);
+        $job = Queue::pushed(GerarPalavrasChaveIaJob::class)->last();
+        $this->assertSame('Cadeira Ergonômica', $job->titulo);
+
+        $this->respostaIa = json_encode(['modelo' => 'cadeira gamer, cadeira giratoria reclinavel, cadeira ergonomica, cadeira gamer preta, cadeiras gamers, cadeira presidente, cadeira para escritorio']);
+        $job->handle(app(PalavrasChaveService::class));
+
+        $estado = $this->mesa()->getJson($this->rota('palavras-ia.status', ['alvo' => 'modelo']))->json();
+        $this->assertSame('pronto', $estado['status']);
+        // "cadeira gamer preta" traz palavra nova, mas o anúncio não tem cor nenhuma (09/10): sai pelos fatos.
+        $this->assertSame('cadeira presidente, cadeira para escritorio', $estado['valor']);
+        $this->assertSame([['termo' => 'cadeira gamer preta', 'motivo' => 'cita cor que o anúncio não tem']], $estado['descartados']);
+
+        $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
+        $this->assertStringContainsString('Cadeira Gamer Giratória Reclinável', $prompt);
+        $this->assertStringContainsString('Cadeira Ergonômica', $prompt);
+        $this->assertStringContainsString('Não repita termo cujas palavras já estão todas no título', $prompt);
+        $this->assertStringNotContainsString('Cadeira Presidente Couro', $prompt);
+    }
+
+    public function test_modelo_com_tudo_no_titulo_vira_erro_claro_e_titulo_longo_demais_e_recusado(): void
+    {
+        $this->comCategoria();
+        $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo', 'titulo' => str_repeat('a', 256)])->assertUnprocessable();
+
+        $pedido = $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo', 'titulo' => 'Cadeira Gamer Escritório'])->json('pedido');
+        $this->respostaIa = json_encode(['modelo' => 'cadeira gamer, cadeira de escritorio, cadeiras gamer']);
+        Queue::pushed(GerarPalavrasChaveIaJob::class)->last()->handle(app(PalavrasChaveService::class));
+
+        $e = $this->mesa()->getJson($this->rota('palavras-ia.status', ['alvo' => 'modelo']))->json();
+        $this->assertSame($pedido, $e['pedido']);
+        $this->assertSame('erro', $e['status']);
+        $this->assertStringContainsString('já estão no título', $e['erro']);
+    }
+
+    // ═══ Modelo com os fatos do produto (09/10/2026) ═════════════════════════
+
+    public function test_caso_do_usuario_puff_azul_o_modelo_so_fica_com_o_que_o_produto_tem(): void
+    {
+        // O caso EXATO de produção: "Puff Redondo", UMA variante Azul, ficha sem público e sem tamanho.
+        $this->ofertas['CAD-01-CB3']->update(['nome' => 'Puff Redondo']);
+        $r = $this->comCategoria();
+        $titulo = 'Puff Redondo Sala Quarto Enchimento Fofao Banqueta Descanso';
+        $this->mesa()->putJson($this->rota('eixos'), ['eixos' => [
+            ['chave' => 'COLOR', 'nome' => 'Cor', 'defines_picture' => true, 'valores' => [['id' => '52028', 'nome' => 'Azul']]],
+        ]])->assertOk();
+        $this->mesa()->putJson($this->rota('salvar'), [
+            'alvos' => [['listing_type_id' => 'gold_special', 'ativo' => true, 'titulo' => $titulo]],
+            'atributos' => ['BRAND' => ['value_name' => 'ECF'], 'BACKREST_HEIGHT' => ['value_name' => '45 cm']],
+        ])->assertOk();
+
+        $pedido = $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo', 'titulo' => $titulo])->assertStatus(202)->json('pedido');
+        $this->respostaIa = json_encode(['modelo' => 'puff azul, puff gigante, puff redondo de chao, puff colorido, puff infantil, puff rosa, puff azul marinho, puff fofao']);
+        Queue::pushed(GerarPalavrasChaveIaJob::class)->last()->handle(app(PalavrasChaveService::class));
+
+        $e = $this->mesa()->getJson($this->rota('palavras-ia.status', ['alvo' => 'modelo']))->assertOk()->json();
+        $this->assertSame($pedido, $e['pedido']);
+        $this->assertSame('pronto', $e['status']);
+        $this->assertSame('puff azul, puff redondo de chao', $e['valor']);
+        foreach (['gigante', 'colorido', 'infantil', 'rosa', 'marinho', 'fofao'] as $fora) {
+            $this->assertStringNotContainsString($fora, $e['valor']);
+        }
+        // A tela recebe o que saiu por não condizer (o "puff fofao" saiu por repetir o título, não conta).
+        $this->assertSame(['puff gigante', 'puff colorido', 'puff infantil', 'puff rosa', 'puff azul marinho'], array_column($e['descartados'], 'termo'));
+
+        // O prompt levou os FATOS lidos do rascunho: a cor da variante, a ficha e a medida.
+        $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->first()[0]->data()['messages'][0]['content'];
+        $this->assertStringContainsString('Puff Redondo', $prompt);
+        $this->assertStringContainsString('FATOS DO PRODUTO (use só o que é verdade segundo estes fatos)', $prompt);
+        $this->assertStringContainsString('- Cores do anúncio: Azul (uma cor só)', $prompt);
+        $this->assertStringContainsString('Marca: ECF', $prompt);
+        $this->assertStringContainsString('45 cm', $prompt);
+        $this->assertStringContainsString('Público/idade: não informado', $prompt);
+        $this->assertStringContainsString('NUNCA cite tamanho', $prompt);
+        $this->assertStringNotContainsString('SKU', $prompt, 'identificação não é fato do produto');
+    }
+
+    public function test_cores_do_modelo_vem_so_das_variantes_ativas_e_sem_variacao_da_ficha(): void
+    {
+        $this->comCategoria();
+        $this->mesa()->putJson($this->rota('eixos'), ['eixos' => [
+            ['chave' => 'COLOR', 'nome' => 'Cor', 'defines_picture' => true, 'valores' => [['id' => '52049', 'nome' => 'Preto'], ['id' => '52028', 'nome' => 'Azul']]],
+        ]])->assertOk();
+        // O Azul foi desligado: não é cor do anúncio.
+        $this->mesa()->putJson($this->rota('variantes'), ['variantes' => ['COLOR=id:52028' => ['ativa' => false]]])->assertOk();
+
+        $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo'])->assertStatus(202);
+        $this->respostaIa = json_encode(['modelo' => 'cadeira preta, cadeira azul, cadeira giratoria']);
+        Queue::pushed(GerarPalavrasChaveIaJob::class)->last()->handle(app(PalavrasChaveService::class));
+        $e = $this->mesa()->getJson($this->rota('palavras-ia.status', ['alvo' => 'modelo']))->json();
+        $this->assertSame('cadeira preta, cadeira giratoria', $e['valor']);
+
+        $prompt = Http::recorded(fn (Request $q) => str_contains($q->url(), 'ia.teste'))->last()[0]->data()['messages'][0]['content'];
+        $this->assertStringContainsString('- Cores do anúncio: Preto (uma cor só)', $prompt);
+    }
+
+    public function test_modelo_so_com_termos_que_o_produto_nao_tem_vira_erro_claro(): void
+    {
+        $this->comCategoria();
+        $this->mesa()->postJson($this->rota('palavras-ia'), ['alvo' => 'modelo'])->assertStatus(202);
+        $this->respostaIa = json_encode(['modelo' => 'cadeira infantil, cadeira gigante, cadeira rosa']);
+        Queue::pushed(GerarPalavrasChaveIaJob::class)->last()->handle(app(PalavrasChaveService::class));
+
+        $e = $this->mesa()->getJson($this->rota('palavras-ia.status', ['alvo' => 'modelo']))->json();
+        $this->assertSame('erro', $e['status']);
+        $this->assertStringContainsString('característica que o produto não tem', $e['erro']);
     }
 
     public function test_titulo_pela_ia_respeita_o_maximo_da_categoria_e_tira_caractere_especial(): void

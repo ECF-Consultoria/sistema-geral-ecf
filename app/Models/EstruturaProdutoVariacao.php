@@ -26,13 +26,27 @@ class EstruturaProdutoVariacao extends Model
         'outro'    => 'Outro',
     ];
 
+    /**
+     * Eixo do portal → id do atributo da categoria que ele É. Uso interno (nunca vai à tela).
+     * Uma fonte só para as duas pontas: a ficha técnica do portal tira esse atributo (ele já é
+     * a variação) e o Sincronizar o usa como eixo do rascunho. "Outro" não tem atributo.
+     */
+    public const EIXO_PARA_ATRIBUTO = [
+        'cor'      => 'COLOR',
+        'tamanho'  => 'SIZE',
+        'voltagem' => 'VOLTAGE',
+        'material' => 'MATERIAL',
+        'sabor'    => 'FLAVOR',
+    ];
+
     protected $table = 'estrutura_produto_variacoes';
 
-    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'custo'];
+    protected $fillable = ['produto_id', 'company_id', 'ordem', 'codigo', 'eixo', 'valor', 'custo', 'estoque'];
 
     protected $casts = [
         'custo' => 'float',
         'ordem' => 'integer',
+        'estoque' => 'integer',
     ];
 
     public function produto(): BelongsTo

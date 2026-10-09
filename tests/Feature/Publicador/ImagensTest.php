@@ -194,4 +194,15 @@ class ImagensTest extends TestCase
         Storage::disk('local')->assertMissing($img->caminho);
         $this->assertSame(0, PubImagem::count());
     }
+
+    public function test_receber_sem_enviar_guarda_pendente_e_nao_chama_o_ml(): void
+    {
+        $r = $this->servico->receber($this->rascunho, self::jpg(), 'a.jpg', enviar: false);
+
+        $this->assertTrue($r['nova']);
+        $this->assertSame(PubImagem::PENDENTE, $r['imagem']->upload_status);
+        $this->assertNull($r['imagem']->ml_picture_id);
+        Storage::disk('local')->assertExists($r['imagem']->caminho);
+        Http::assertNothingSent();
+    }
 }

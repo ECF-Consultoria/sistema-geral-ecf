@@ -1239,3 +1239,87 @@ Valor que não bate em opção nenhuma continua vazio **de propósito** (`SHAPE 
 "Redonda"): é dado que não publica, e o obrigatório volta como "Preencha …" em vez de 422 travando a
 ficha inteira. **Regra geral: ao promover texto → lista, casar por nome não é refinamento, é migração
 de dado feita em leitura.**
+
+## 36. Planejamento (ex-"Sugestões de ofertas"): banheiro, Kit de 3 e ordem (08/10/2026)
+
+O teste do usuário (mesa + cadeira, gabinete + espelho + lixeira) só dava Combos de cadeira. Eram
+quatro causas somadas, e consertar uma só não muda a 1ª página:
+- **Tipo nulo por nome com dois tipos.** "Gabinete Armário ... Nichos" casava gabinete + nicho e
+  "Espelho com Prateleira" casava prateleira. Agora a categoria só decide quando aponta UM tipo;
+  ambígua ou sem tipo cai para o nome, onde vence a 1ª palavra-tipo (empate: a mais longa). Isso
+  também passa a tipar "Penteadeira com Espelho" e "Cômoda ... com Espelho" pela 1ª palavra.
+- **Cores que nunca se repetem davam zero Kit** (D-17 pulava par posicional com valor nos dois
+  lados). Quando NADA casa por valor, casa por posição: min(n, m), sem cartesiano.
+- **O Combo vinha primeiro na família** e as cadeiras ×2/×4/×6/×8 por cor enchiam a página de 20.
+  A ordem dentro da família virou Kit (3 antes de 2) → Combit → Combo, e os Combos de cada
+  família viraram UMA linha da paginação ("Ver N combos"), aberta por `?combos=<família>`
+  na mesma página. Sem isso, entre famílias o problema voltava: com a mesa em 3 cores o
+  banheiro ia para a página 2. A paginação anda sobre LINHAS (`paginacao.linhas`); os totais
+  (`total`, `blocos`, resumo, "aceitar os filtrados") continuam contando sugestões.
+- **O Kit de 3 exige os TRÊS pares na lista**, e a lista D-21 tirou de propósito os 5 pares que a
+  planilha só usava em trios (banco+cadeira, buffet+cadeira, cabeceira+cômoda, cama+cômoda,
+  guarda-roupa+prateleira). Logo os trios reais da planilha (mesa+cadeira+banco...) NÃO saem só
+  com esta regra. Pôr esses pares de volta pelo admin libera os trios, mas também o Kit de 2
+  deles (banco + cadeira sozinhos), que a 168 evitou. Decisão do usuário (08/10): não recolocar;
+  a ECF põe pelo admin se quiser.
+- **Semente nova de tipos: nunca reler o config inteiro.** A semente da 168 já rodou em produção e
+  a ECF edita/exclui tipos pelo admin; a migration de 08/10 só insere os slugs e pares dela
+  (`insertOrIgnore`), senão ressuscitaria o que a ECF apagou.
+- **"Planejamento" era o nome do submódulo da agenda** (`ModulosPortal`, chave `planejamento`, rota
+  `portal.auth.estrutura.agenda`). Desde 08/10 o rótulo dele é "Cronograma" e "Planejamento" é a
+  tela de sugestões (rota `.sugestoes`). Chave e rotas não mudaram: código que procura a chave
+  `planejamento` está falando da AGENDA.
+
+## 37. Estoque por variação e descrição do produto (Fase 176 — era 172, 08/10/2026)
+
+- **Estoque por variação: `0` é diferente de vazio e NÃO herda da 1ª variação.** Vazio (`null`) = "não informado"; `0` =
+  "sem estoque". No POST, campo ausente ou `''` não mexe; `null` explícito limpa. Teto 99.999.999.
+- **Descrição do produto** (`estrutura_produtos.descricao`) segue o sigilo da 167: nenhum texto do campo fala de Mercado
+  Livre, anúncio ou publicar (o Publicador a lê, o cliente não sabe).
+- **Sem coluna na planilha-modelo (D-14):** estoque e descrição só entram pela ficha na tela, não pela importação XLSX.
+
+## 38. Ficha do Portal = régua do editor do Publicador, e "Não se aplica" (08/10/2026)
+
+- **A ficha técnica agora usa o `ClassificadorAtributos` como régua** (`FichaTecnicaDaCategoria::classificar`): entra todo
+  atributo de PRODUTO nas seções PRINCIPAIS/FICHA/AVANCADO. Antes, `TAGS_FORA` descartava `hidden` e `allow_variations`
+  inteiros e o cliente nunca via 16 campos que a equipe preenchia à mão (MLB193945). Teste
+  `test_na_cadeira_a_ficha_tem_exatamente_os_atributos_de_produto_que_o_editor_deixa_editar` compara as duas listas
+  com o schema COMPLETO (com `technical_specs`); se ele quebrar, uma das duas regras mudou sozinha.
+- **O classificador recebe só id/nome/tags/value_type** (sem `technical_specs`): sem grupo `MAIN` tudo cai em FICHA, o
+  que para o Portal dá no mesmo (PRINCIPAIS e FICHA entram juntos). Opções/unidades continuam lidas pelo Portal, com o
+  filtro de sigilo.
+- **O eixo é decidido por PRODUTO, não por categoria (corrigido no mesmo dia).** `EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO`
+  (cor→COLOR, tamanho→SIZE, voltagem→VOLTAGE, material→MATERIAL, sabor→FLAVOR) é a MESMA tabela do Sincronizar. A
+  definição da categoria classifica SEM eixo e devolve o atributo-eixo com `eixo_do_portal` ('cor', 'material'…) só
+  quando ele tem `allow_variations`; sem a tag é atributo comum, sem marca. Quem tira é o produto: `FichaTecnicaDaCategoria::doProduto`
+  (servidor, eixos lidos de `estrutura_produto_variacoes.eixo`) e `gruposDoProduto`/`eixosEmUso` (tela, pelo
+  `eixo_rotulo` das variações AINDA NÃO SALVAS) — as duas regras têm de concordar. Na gravação o campo-eixo é ignorado
+  e, como gravar substitui, a linha antiga dele SAI. Isso só funciona porque o "Salvar produto" grava as linhas ANTES da
+  ficha (`useFichaProduto`); se essa ordem mudar, o servidor julga pelo eixo velho.
+  - **Efeito colateral aceito:** produto SEM eixo (ou só "Outro") passa a ver "Cor" na ficha; onde a categoria marca COLOR
+    `required` (camiseta MLB31447), ele vira obrigatório para esse produto. É o que o editor também exige.
+  - O teste da cadeira agora compara DOIS pares: ficha por cor × editor com eixo COLOR (44 campos) e ficha sem eixo ×
+    editor sem eixo (45: a cor volta). Nenhuma fixture real tem MATERIAL com `allow_variations`; o teste do Sincronizar
+    (`PortalCamposDoEditorNoRascunhoTest`) acrescenta um ao schema da cadeira.
+  - O Sincronizar não precisou mudar: `aplicarFicha` já pula `$id === $chaveEixo`. Mas essa chave só é o id do ML quando
+    o schema diz `podeSerEixo` — exatamente a mesma condição da marca. Se uma das duas mudar sozinha, um material
+    gravado no Portal some do rascunho (ou o eixo vira atributo).
+- **Explicação de todo campo da ficha (o "o que é isto?").** O componente é UM só, `resources/js/Components/Explicacao.jsx`
+  (saiu de `Components/Publicador/`); o Portal usa via `RotuloComExplicacao` (`PecasDoProduto.jsx`), com o ícone FORA
+  do `<label>`. A ficha técnica leva `explicacao` em cada campo do `campos-categoria` (`definicaoComExplicacoes`, que
+  chama `ExplicacaoDeAtributos::paraPortal` — pode enfileirar a IA; na fila `sync` não). A validação do PUT usa
+  `definicao()` SEM explicação, de propósito (não gasta consulta nem IA a cada salvar). Os campos fixos vêm na prop
+  `explicacoes_campos` (fora de `ficha_tecnica`, porque `entradaDoProduto` sobrescreve `ficha_tecnica` inteira no
+  histórico), do glossário `portal_campos` + o Estoque de `campos.estoque` (um texto para as duas telas).
+  `camposDoPortal()` DESCARTA (não reescreve) texto fixo que revele o destino: o campo fica sem ícone.
+  - O comentário do `Explicacao.jsx` é lido pelo gate de sigilo (fonte crua): nada de "Publicador"/"ML" nele — a regex
+    do Portal pega `public(ar|ação|ador)` e `\bML\b`.
+  - O `title` antigo da Família (no gatilho) e o `title`/`aria-description` do `CampoFichaTecnica` saíram: com o balão
+    novo seriam dois.
+- **`hidden` editável vai para "Mais detalhes", no fim, ABERTO** (gate JS: a ficha não recolhe nada). Um
+  `hidden` com `required` fica no grupo normal, senão o rótulo "opcional" mentiria.
+- **"Não se aplica" = `valor_id = '-1'`, `valor` e `unidade` nulos** em `estrutura_produto_atributos` (sem migration):
+  é o id do N/A do próprio editor (`ValorAtributo::NAO_SE_APLICA`). A tela pede por `{id, nao_se_aplica: true}`, NUNCA
+  pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
+  obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
+  como preenchido (re-sincronizar não mexe).

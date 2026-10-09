@@ -5,6 +5,7 @@ namespace App\Services\Portal\Estrutura\Produtos;
 use App\Models\Company;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
+use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,13 @@ use InvalidArgumentException;
  * presente, opção de lista válida, número numérico, unidade permitida. Id que a categoria
  * não conhece é IGNORADO (a tela pode estar com a definição de antes) — nunca gravado.
  *
+ * ### Eixo do produto
+ * O campo que é o eixo de alguma variação do produto (`eixo_do_portal`, ver
+ * {@see FichaTecnicaDaCategoria::doProduto()}) não vale para este produto: o valor vem da
+ * variação. Ele é IGNORADO na entrada e, como gravar é substituir, a linha antiga dele sai
+ * (produto que passou a variar por material perde o "Material" da ficha). As variações já
+ * estão gravadas quando a ficha chega: a tela grava as linhas antes, no mesmo "Salvar produto".
+ *
  * ### Sigilo
  * Nenhuma mensagem de erro cita a origem dos campos; os rótulos vêm da definição, já filtrada.
  */
@@ -37,6 +45,19 @@ class FichaTecnicaDoProduto
      * catálogo (que usa vírgula e hífen), então divide de volta sem ambiguidade.
      */
     public const SEPARADOR = ' | ';
+
+    /**
+     * "Não se aplica", como fica gravado: `valor_id = '-1'`, `valor` e `unidade` nulos.
+     *
+     * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2), sem migration. É o mesmo id que o editor
+     * interno usa para o N/A (`ValorAtributo::NAO_SE_APLICA`), então o Sincronizar o leva
+     * como está. É inequívoco: opção do catálogo não tem id "-1", multivalor grava `valor_id`
+     * nulo e texto/número/Sim-Não também. Nunca se lê "-1" em `valor` — número negativo
+     * digitado continua número.
+     *
+     * A tela pede pelo marcador `nao_se_aplica: true` na entrada, não pelo valor.
+     */
+    public const NAO_SE_APLICA = '-1';
 
     public function __construct(private FichaTecnicaDaCategoria $definicao) {}
 
@@ -77,14 +98,16 @@ class FichaTecnicaDoProduto
             ]);
         }
 
-        $campos = FichaTecnicaDaCategoria::camposPorId($this->definicao->definicao($categoria));
-        if ($campos === []) {
+        $definicao = $this->definicao->definicao($categoria);
+        if ($definicao === []) {
             throw ValidationException::withMessages([
                 'atributos' => 'A ficha técnica desta categoria não está disponível agora. Tente novamente em instantes.',
             ]);
         }
 
-        // id => entrada (a última vence); ids que a categoria não conhece não entram.
+        $campos = FichaTecnicaDaCategoria::camposPorId(FichaTecnicaDaCategoria::doProduto($definicao, self::eixosDoProduto($produto)));
+
+        // id => entrada (a última vence); ids que a categoria não conhece (ou que são o eixo do produto) não entram.
         $porId = [];
         foreach ($recebidos as $entrada) {
             if (is_array($entrada) && isset($entrada['id']) && isset($campos[(string) $entrada['id']])) {
@@ -144,6 +167,25 @@ class FichaTecnicaDoProduto
     }
 
     /**
+     * Os eixos (chaves de {@see EstruturaProdutoVariacao::EIXOS}) usados em alguma variação do produto.
+     *
+     * @return list<string>
+     */
+    public static function eixosDoProduto(EstruturaProduto $produto): array
+    {
+        return EstruturaProdutoVariacao::query()
+            ->where('company_id', $produto->company_id)
+            ->where('produto_id', $produto->id)
+            ->whereNotNull('eixo')
+            ->where('eixo', '<>', '')
+            ->distinct()
+            ->pluck('eixo')
+            ->map(fn ($e) => (string) $e)
+            ->values()
+            ->all();
+    }
+
+    /**
      * Uma entrada da tela → o que se grava, ou null quando está vazia.
      *
      * @return array{valor: ?string, valor_id: ?string, unidade: ?string}|null
@@ -154,6 +196,15 @@ class FichaTecnicaDoProduto
     {
         $bruto = $entrada['valor'] ?? null;
         $nome = $campo['nome'];
+
+        // "Não se aplica" vence o valor: o controle fica travado na tela enquanto ele está marcado.
+        if (filter_var($entrada['nao_se_aplica'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            if (! ($campo['nao_se_aplica'] ?? false)) {
+                throw new InvalidArgumentException("“{$nome}” não aceita “Não se aplica”.");
+            }
+
+            return ['valor' => null, 'valor_id' => self::NAO_SE_APLICA, 'unidade' => null];
+        }
 
         // Lista multivalor: a tela manda uma lista de ids (os chips). Trilha própria, antes da
         // exigência de escalar lá embaixo — e uma lista vazia conta como campo não preenchido.
