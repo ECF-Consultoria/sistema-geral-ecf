@@ -66,6 +66,14 @@ use Illuminate\Support\Facades\Log;
  * só no `list` jogava esses campos em texto livre e deixava o cliente digitar valor
  * que não existe na lista. Lista marcada `multivalued` aceita mais de uma opção.
  *
+ * ### Digitar fora das opções (`texto_livre`, 09/10/2026)
+ * A MESMA régua do editor interno ({@see AtributoClassificado::$aceitaTextoLivre}): onde ele aceita
+ * texto livre, a ficha também deixa digitar (além de escolher); onde ele só aceita opção, a ficha
+ * também. Duas regras separadas deixaram o cliente gravar "Madeira maciça de eucalipto" que o
+ * Sincronizar depois recusava. Nas respostas reais guardadas, `string` com opções tem
+ * `allow_custom_value: true` e `list` tem `false` — que é o que o classificador decide sem o
+ * `technical_specs` (teste `test_texto_livre_da_ficha_e_o_mesmo_do_editor_nas_respostas_reais`).
+ *
  * A montagem ({@see self::daAtributos()}) é uma função PURA: sem HTTP, sem cache.
  */
 class FichaTecnicaDaCategoria
@@ -349,8 +357,12 @@ class FichaTecnicaDaCategoria
                 continue;
             }
             $tags = ClassificadorAtributos::tags($atributo['tags'] ?? []);
+            // `values` cru entra só para o classificador decidir `aceitaTextoLivre` como o editor decide
+            // (sem opção = texto; com opção, `string` aceita texto e `list`/`boolean` não). As opções
+            // que vão para a tela continuam saindo de {@see self::opcoes()}, com o filtro de sigilo.
+            $valores = array_values(array_filter((array) ($atributo['values'] ?? []), fn ($v) => is_array($v) && trim((string) ($v['id'] ?? '')) !== ''));
             $enxutos[] = ['id' => $id, 'name' => (string) ($atributo['name'] ?? $id), 'tags' => $tags,
-                'value_type' => (string) ($atributo['value_type'] ?? 'string')];
+                'value_type' => (string) ($atributo['value_type'] ?? 'string'), 'values' => $valores];
         }
 
         if ($enxutos === []) {
@@ -409,7 +421,12 @@ class FichaTecnicaDaCategoria
         $valores = self::opcoes($atributo);
 
         if ($valores === []) {
-            // Lista sem nenhuma opção não dá para preencher: cai para texto livre.
+            // Sem opção que possa ir à tela, só sobra digitar — e digitar só onde o editor interno
+            // aceita texto livre. A lista FECHADA cujas opções o filtro de sigilo derrubou inteiras
+            // (§35: "500 ml") não vira texto: o cliente gravaria valor que não publica. Sai da ficha.
+            if (! $classificado->aceitaTextoLivre && in_array($tipo, [self::TIPO_LISTA, self::TIPO_TEXTO], true)) {
+                return null;
+            }
             if ($tipo === self::TIPO_LISTA) {
                 $tipo = self::TIPO_TEXTO;
             }
@@ -458,6 +475,15 @@ class FichaTecnicaDaCategoria
             'unidades'      => $unidades,
             'unidade_padrao' => $unidadePadrao,
             'max'           => $max > 0 ? $max : null,
+            // O cliente pode DIGITAR um valor que não está entre as opções? Mesma régua do editor
+            // interno (`aceitaTextoLivre`): texto sem opção, sim; lista vinda de `string` com opções
+            // (Materiais, Salas…), sim, ao lado das opções; lista `list` (fechada), não. Número e
+            // Sim/Não têm controle próprio e não usam a chave.
+            'texto_livre'   => match ($tipo) {
+                self::TIPO_TEXTO => true,
+                self::TIPO_LISTA => $classificado->aceitaTextoLivre,
+                default => false,
+            },
             // Mesma regra do editor interno; obrigatório da ficha nunca aceita (lá também não).
             'nao_se_aplica' => $classificado->aceitaNaoSeAplica && ! $obrigatorio,
             // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela

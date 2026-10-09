@@ -78,6 +78,40 @@ class PortalValorDeAtributoTest extends TestCase
         $this->assertNotNull($r['aviso']);
     }
 
+    // ─── Texto livre gravado antes no Portal (09/10/2026) ──────────────────
+
+    public function test_multivalor_que_aceita_texto_livre_e_nada_casa_leva_o_texto_sem_value_id(): void
+    {
+        $def = $this->def('string', self::MATERIAIS, ['multi' => true, 'livre' => true]);
+
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'Madeira maciça de eucalipto']);
+        $this->assertNull($r['valor']['value_id']);
+        $this->assertSame('Madeira maciça de eucalipto', $r['valor']['value_name']);
+        $this->assertArrayNotHasKey('values_multi', $r['valor']);
+        $this->assertFalse($r['valor']['revisar']);
+        $this->assertNull($r['aviso']);
+
+        // Mais de um nome digitado: um texto só, e a equipe confere.
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'Seda | Nylon']);
+        $this->assertSame('Seda, Nylon', $r['valor']['value_name']);
+        $this->assertTrue($r['valor']['revisar']);
+    }
+
+    public function test_multivalor_que_aceita_texto_livre_leva_so_as_opcoes_que_casam_quando_alguma_casa(): void
+    {
+        // D-13: com opção resolvida, o valor é a opção; o nome que não casa fica de fora (vai para o log).
+        $r = PortalValorDeAtributo::resolver($this->def('string', self::MATERIAIS, ['multi' => true, 'livre' => true]), ['valor' => 'Couro | Seda']);
+        $this->assertSame('2', $r['valor']['value_id']);
+        $this->assertSame(['2'], $r['valor']['values_multi']);
+        $this->assertStringContainsString('Seda', (string) $r['aviso']);
+    }
+
+    public function test_multivalor_fechado_com_texto_livre_antigo_fica_vazio(): void
+    {
+        $r = PortalValorDeAtributo::resolver($this->def('list', self::MATERIAIS, ['multi' => true]), ['valor' => 'Madeira maciça de eucalipto']);
+        $this->assertNull($r['valor'], 'lista fechada: o campo fica pendente no editor');
+    }
+
     public function test_separador_no_texto_basta_para_tratar_como_multivalor(): void
     {
         $r = PortalValorDeAtributo::resolver($this->def('list', self::MATERIAIS), ['valor' => 'Couro | Linho']);

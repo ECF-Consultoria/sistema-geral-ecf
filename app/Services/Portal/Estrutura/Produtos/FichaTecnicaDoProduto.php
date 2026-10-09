@@ -25,6 +25,8 @@ use InvalidArgumentException;
  * Contra a definição da categoria do produto ({@see FichaTecnicaDaCategoria}): obrigatório
  * presente, opção de lista válida, número numérico, unidade permitida. Id que a categoria
  * não conhece é IGNORADO (a tela pode estar com a definição de antes) — nunca gravado.
+ * Valor digitado fora das opções só passa onde a definição diz `texto_livre` (a régua do
+ * editor interno); nos demais, 422 com mensagem neutra.
  *
  * ### Eixo do produto
  * O campo que é o eixo de alguma variação do produto (`eixo_do_portal`, ver
@@ -237,7 +239,7 @@ class FichaTecnicaDoProduto
             case FichaTecnicaDaCategoria::TIPO_LISTA:
                 $opcao = $this->opcao($campo, (string) $bruto);
 
-                return ['valor' => $opcao['nome'], 'valor_id' => $opcao['id'], 'unidade' => null];
+                return ['valor' => $opcao['nome'], 'valor_id' => $opcao['id'] !== '' ? $opcao['id'] : null, 'unidade' => null];
 
             default:
                 $texto = trim((string) $bruto);
@@ -309,8 +311,9 @@ class FichaTecnicaDoProduto
      * (company_id, produto_id, atributo_id) e `valor_id` é varchar(40) — nem cabe uma
      * linha por opção, nem os ids emendados. Como `valor` é `text`, o que se grava é a
      * lista de NOMES separada por {@see self::SEPARADOR}, na ordem em que foi escolhida,
-     * e `valor_id` fica nulo. Os nomes vêm da definição da categoria (nunca do que o
-     * cliente digitou), então quem publicar reencontra o id pelo nome na mesma definição.
+     * e `valor_id` fica nulo. Os nomes vêm da definição da categoria, então quem publicar
+     * reencontra o id pelo nome na mesma definição. Onde o campo aceita digitar (`texto_livre`),
+     * o que o cliente digitou entra na mesma linha, como mais um nome (sem `|`).
      *
      * Dar coluna própria aos ids é ALTERAR tabela com dado em produção — fase GSD, não
      * trabalho direto. Vale a pena quando o publicador precisar dos ids; hoje não precisa.
@@ -339,7 +342,13 @@ class FichaTecnicaDoProduto
         return ['valor' => implode(self::SEPARADOR, $nomes), 'valor_id' => null, 'unidade' => null];
     }
 
-    /** @return array{id: string, nome: string} */
+    /**
+     * A opção pelo id; onde o campo aceita digitar (`texto_livre`, a régua do editor interno), o nome
+     * de uma opção (sem caixa) vira a opção e o resto vai como texto, com `id` vazio. Onde não aceita,
+     * só a opção pelo id passa — o resto é o 422 de sempre, com a mensagem neutra.
+     *
+     * @return array{id: string, nome: string}  `id` '' = texto digitado
+     */
     private function opcao(array $campo, string $bruto): array
     {
         $texto = trim($bruto);
@@ -348,6 +357,24 @@ class FichaTecnicaDoProduto
             if ($v['id'] === $texto) {
                 return $v;
             }
+        }
+
+        if (($campo['texto_livre'] ?? false) === true && $texto !== '') {
+            foreach ($campo['valores'] as $v) {
+                if (mb_strtolower($v['nome']) === mb_strtolower($texto)) {
+                    return $v;
+                }
+            }
+            $max = $campo['max'] ?? self::MAX_PADRAO;
+            if (mb_strlen($texto) > $max) {
+                throw new InvalidArgumentException("“{$campo['nome']}” aceita até {$max} caracteres.");
+            }
+            // O separador da lista de várias opções não pode morar dentro de uma opção digitada.
+            if (str_contains($texto, '|')) {
+                throw new InvalidArgumentException("“{$campo['nome']}” não aceita o caractere |.");
+            }
+
+            return ['id' => '', 'nome' => $texto];
         }
 
         throw new InvalidArgumentException("Escolha uma das opções de “{$campo['nome']}”.");

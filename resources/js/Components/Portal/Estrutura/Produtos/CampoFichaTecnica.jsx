@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Obrigatorio, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { aceitaNaoSeAplica, ehMultivalor, idDeLista, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
+import { aceitaNaoSeAplica, aceitaTextoLivre, ehMultivalor, idDeLista, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
 import { cn } from '@/lib/utils';
 
 // ─── Um campo da ficha técnica ──────────────────────────────────────────────
@@ -21,20 +22,34 @@ const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-b
 const ROTULO = 'block text-[13px] font-medium text-white/80';
 const BOTAO_OPCAO = 'h-11 min-w-[64px] flex-1 px-3 text-[14px] lg:h-9 lg:flex-none';
 
+/** Valor do `<option>` que abre a digitação na lista de escolha única. Nunca vai ao servidor. */
+const OUTRO = '__digitar__';
+
 /**
  * Lista que aceita mais de uma opção: cada escolha vira um chip com X, e o que ainda
  * não foi escolhido continua à mão para somar. Mesmo visual dos chips de Ambientes.
  *
- * Escolher é por lista fechada de propósito: as opções são as da categoria, e valor
- * digitado fora delas é justamente o que a plataforma recusa.
+ * Escolher é por lista fechada, a não ser que o servidor marque `texto_livre` (a mesma régua
+ * do editor interno): aí, abaixo das opções, um campo deixa somar um valor digitado, que vira
+ * chip igual aos outros. Sem a marca, valor fora das opções não serve e não é oferecido.
  */
 function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido }) {
     const opcoes = Array.isArray(campo.valores) ? campo.valores : [];
     const nomePorId = new Map(opcoes.map((o) => [String(o.id), o.nome]));
     const restantes = opcoes.filter((o) => ! escolhidos.includes(String(o.id)));
+    const livre = aceitaTextoLivre(campo);
+    const [digitado, setDigitado] = useState('');
 
-    const somar = (valor) => { if (valor) onChange([...escolhidos, valor]); };
+    const somar = (valor) => { if (valor && ! escolhidos.includes(valor)) onChange([...escolhidos, valor]); };
     const tirar = (valor) => onChange(escolhidos.filter((x) => x !== valor));
+    const somarDigitado = () => {
+        // O nome de uma opção vira a opção; o resto entra como texto. "|" separa os chips gravados.
+        const t = digitado.replace(/\|/g, ' ').trim();
+        if (t === '') return;
+        const opcao = opcoes.find((o) => String(o.nome).toLowerCase() === t.toLowerCase());
+        somar(opcao ? String(opcao.id) : t);
+        setDigitado('');
+    };
 
     return (
         <div data-multivalor className={cn('min-w-0 rounded-lg border bg-black/40 p-1.5', invalido ? 'border-red-400/50' : 'border-white/20')}>
@@ -62,6 +77,53 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
                 </option>
                 {restantes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
             </select>
+            {livre && (
+                <div className="mt-1.5 flex gap-1.5" data-digitar>
+                    <input value={digitado} maxLength={campo.max || undefined} autoComplete="off"
+                        placeholder="Ou digite outro valor" aria-label={`Digitar outro valor para ${campo.nome}`}
+                        onChange={(e) => setDigitado(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); somarDigitado(); } }}
+                        className="h-9 w-full min-w-0 rounded-md border border-white/10 bg-transparent px-2 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-7" />
+                    <button type="button" onClick={somarDigitado} disabled={digitado.trim() === ''}
+                        className="h-9 shrink-0 rounded-md border border-white/10 px-3 text-[13px] text-white/80 hover:bg-white/[0.07] disabled:text-white/30 lg:h-7">
+                        Adicionar
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Lista de escolha única que também aceita digitar (`texto_livre`): as opções primeiro e, no fim,
+ * "Outro (digitar)", que abre um campo de texto. Valor guardado que não é opção (texto de antes)
+ * abre já digitado — sem isso ele sumiria da tela e o salvar o apagaria.
+ */
+function ListaComDigitacao({ id, campo, valor, onChange, descricao, invalido, classe }) {
+    const escolhido = idDeLista(campo, valor);
+    const bruto = String(valor ?? '');
+    const [digitando, setDigitando] = useState(escolhido === '' && bruto.trim() !== '');
+    // Digitando, o campo mostra o que a pessoa escreveu, mesmo que bata com uma opção (no salvar vira a opção).
+    const mostraTexto = digitando || (escolhido === '' && bruto.trim() !== '');
+    const texto = mostraTexto ? bruto : '';
+
+    return (
+        <div className="flex flex-col gap-2">
+            <select id={id} className={classe} value={mostraTexto ? OUTRO : escolhido} aria-invalid={invalido || undefined} aria-describedby={descricao}
+                onChange={(e) => {
+                    const v = e.target.value;
+                    setDigitando(v === OUTRO);
+                    onChange(v === OUTRO ? texto : v);
+                }}>
+                <option value="">Selecione</option>
+                {(campo.valores ?? []).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                <option value={OUTRO}>Outro (digitar)</option>
+            </select>
+            {mostraTexto && (
+                <input className={classe} value={texto} maxLength={campo.max || undefined} autoComplete="off" data-digitar
+                    placeholder="Digite o valor" aria-label={`Valor digitado para ${campo.nome}`}
+                    onChange={(e) => onChange(e.target.value)} />
+            )}
         </div>
     );
 }
@@ -127,6 +189,9 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
             controle = ehMultivalor(campo) ? (
                 <ListaMultipla id={id} campo={campo} escolhidos={idsMultivalor(campo, valor)} descricao={descricao} invalido={invalido}
                     onChange={(ids) => onMudar(campo.id, { valor: ids })} />
+            ) : aceitaTextoLivre(campo) ? (
+                <ListaComDigitacao id={id} campo={campo} valor={valor} descricao={descricao} invalido={invalido} classe={classe}
+                    onChange={(v) => onMudar(campo.id, { valor: v })} />
             ) : (
                 // `idDeLista` casa por nome também: campo que hoje é lista pode ter o nome
                 // gravado como texto livre de antes — sem isso ele apareceria vazio.
