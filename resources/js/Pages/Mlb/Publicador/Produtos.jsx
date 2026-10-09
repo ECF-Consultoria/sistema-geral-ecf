@@ -15,6 +15,32 @@ import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
+import {
+    acaoPrincipal,
+    alturaDaLinha,
+    CHAVE_DA_DENSIDADE,
+    colunasDaLargura,
+    densidadeInicial,
+    iniciaisDoNome,
+    miniaturasVisiveis,
+    ordenarTopo,
+    tamanhoDaMiniatura,
+} from '@/Components/Mlb/Publicador/layoutDaListaDeProdutos.js';
+
+// As funções puras do layout v2 moram em `layoutDaListaDeProdutos.js` para
+// `LinhaDeProduto`/`PainelDoProdutoLateral` poderem usá-las sem fechar um
+// CICLO de import com esta página. A reexportação mantém
+// `import { acaoPrincipal } from '.../Produtos.jsx'` válido.
+export {
+    acaoPrincipal,
+    alturaDaLinha,
+    colunasDaLargura,
+    densidadeInicial,
+    iniciaisDoNome,
+    miniaturasVisiveis,
+    ordenarTopo,
+    tamanhoDaMiniatura,
+} from '@/Components/Mlb/Publicador/layoutDaListaDeProdutos.js';
 
 const FILTROS = [
     { chave: 'todos', rotulo: 'Todos' },
