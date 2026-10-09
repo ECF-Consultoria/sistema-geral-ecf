@@ -574,3 +574,213 @@ test('Tela B — gates de fonte: rota da tela do Produto, stopPropagation e tabe
     assert.match(fonte, /new URLSearchParams\(window\.location\.search\)\.get\('filtro'\)/);
     assert.doesNotMatch(fonte, /history\.(push|replace)State/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4 — DialogoVincularKit (§6): o combo que já existe vira fase de outro
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DIALOGO = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/DialogoVincularKit.jsx');
+
+test('DialogoVincularKit — as funções puras (quantidade, recusa do servidor e fase que vai nascer)', async (contexto) => {
+    const mod = await montar(DIALOGO, 'dialogo-vinculo-puras');
+    const { erroLocalDaQuantidade, erroDeRecusa, proximaFaseDaFamilia, quantidadeInicial } = mod;
+
+    await contexto.test('erroLocalDaQuantidade: vazia, 1 e não numérica bloqueiam; 2 passa', () => {
+        assert.equal(typeof erroLocalDaQuantidade, 'function');
+        assert.match(erroLocalDaQuantidade(''), /Informe quantas unidades/);
+        assert.match(erroLocalDaQuantidade('   '), /Informe quantas unidades/);
+        assert.match(erroLocalDaQuantidade(null), /Informe quantas unidades/);
+        assert.match(erroLocalDaQuantidade('abc'), /número inteiro/);
+        assert.match(erroLocalDaQuantidade('2,5'), /número inteiro/);
+        assert.match(erroLocalDaQuantidade('2.5'), /número inteiro/);
+        assert.match(erroLocalDaQuantidade('1'), /2 unidades ou mais/);
+        assert.match(erroLocalDaQuantidade('0'), /2 unidades ou mais/);
+        assert.equal(erroLocalDaQuantidade('2'), null);
+        assert.equal(erroLocalDaQuantidade(' 12 '), null);
+    });
+
+    await contexto.test('erroDeRecusa: 422 com campo marca o campo; sem campo vira erro geral', () => {
+        // VINC-03/VINC-04 trazem `campo: 'quantidade'`.
+        const comCampo = erroDeRecusa({ message: 'Já existe Kit 2 deste produto.', regra: 'VINC-04', campo: 'quantidade' });
+        assert.equal(comCampo.porCampo.quantidade, 'Já existe Kit 2 deste produto.');
+        assert.equal(comCampo.geral, null);
+
+        // VINC-02/05/06 são recusas do produto inteiro: não têm campo para marcar.
+        const semCampo = erroDeRecusa({ message: 'O produto escolhido já é um kit.', regra: 'VINC-02', campo: null });
+        assert.deepEqual(semCampo.porCampo, {});
+        assert.equal(semCampo.geral, 'O produto escolhido já é um kit.');
+
+        // 422 de validação do Laravel (errors por campo).
+        const validacao = erroDeRecusa({ message: 'Dados inválidos.', errors: { quantidade: ['Um kit tem 2 unidades ou mais.'] } });
+        assert.equal(validacao.porCampo.quantidade, 'Um kit tem 2 unidades ou mais.');
+
+        // Resposta sem nada aproveitável ainda diz algo à pessoa.
+        assert.match(erroDeRecusa(undefined).geral, /Não foi possível/);
+        assert.match(erroDeRecusa('nao-e-objeto').geral, /Não foi possível/);
+    });
+
+    await contexto.test('proximaFaseDaFamilia: espelha PubProduto::proximaFase (max + 1, mínimo 2)', () => {
+        const base = produtoBase();
+        const kit2 = kitDe(base, 2);
+        const kit3 = kitDe(base, 3);
+
+        // Base sem kit nenhum: a fase que vai nascer é a 2.
+        assert.equal(proximaFaseDaFamilia([base], 1), 2);
+        // Com Kit 2: a 3.
+        assert.equal(proximaFaseDaFamilia([base, kit2], 1), 3);
+        // Com Kit 2 e Kit 3: a 4 (o buraco de quantidade é outro assunto).
+        assert.equal(proximaFaseDaFamilia([base, kit2, kit3], 1), 4);
+        // Base fora da lista ou lista inválida: 2, nunca menos.
+        assert.equal(proximaFaseDaFamilia([], 1), 2);
+        assert.equal(proximaFaseDaFamilia('nao-e-array', 1), 2);
+        assert.equal(proximaFaseDaFamilia([base], null), 2);
+        // Fase em formato inesperado não derruba a conta.
+        assert.equal(proximaFaseDaFamilia([produtoBase({ fase: 'um' })], 1), 2);
+    });
+
+    await contexto.test('quantidadeInicial: o N da sugestão, ou campo VAZIO quando o servidor não sabe (§6)', () => {
+        assert.equal(quantidadeInicial({ quantidade: 2 }), '2');
+        assert.equal(quantidadeInicial({ quantidade: 6 }), '6');
+        // Casamento por SKU não traz o N: o campo abre vazio para a pessoa preencher.
+        assert.equal(quantidadeInicial({ quantidade: null }), '');
+        assert.equal(quantidadeInicial({ quantidade: 1 }), '');
+        assert.equal(quantidadeInicial({ quantidade: 'dois' }), '');
+        assert.equal(quantidadeInicial(null), '');
+        assert.equal(quantidadeInicial(undefined), '');
+    });
+});
+
+test('DialogoVincularKit — render real: confirma o vínculo e explica o que NÃO muda', async (contexto) => {
+    const { default: DialogoVincularKit } = await montar(DIALOGO, 'dialogo-vinculo-render');
+
+    const sugestaoBase = (overrides = {}) => ({
+        base_id: 1,
+        base_sku: 'CAD-01',
+        base_nome: 'Cadeira Executiva ECF',
+        quantidade: 2,
+        origem: 'sku',
+        conflito_heuristica: false,
+        ...overrides,
+    });
+
+    const props = (overrides = {}) => ({
+        aberto: true,
+        onFechar: () => {},
+        conta: 'company-459',
+        produto: produtoBase({ id: 40, sku: 'CAD-CB2', nome: 'Combo 2 Cadeiras Executivas' }),
+        sugestao: sugestaoBase(),
+        proximaFase: 2,
+        modo: 'vincular',
+        onConcluido: () => {},
+        ...overrides,
+    });
+
+    const render = (overrides) => renderToStaticMarkup(React.createElement(DialogoVincularKit, props(overrides)));
+
+    await contexto.test('fechado não renderiza nada', () => {
+        assert.equal(render({ aberto: false }), '');
+    });
+
+    await contexto.test('aberto: diálogo acessível, base da sugestão fixo e quantidade pré-preenchida', () => {
+        let html;
+        assert.doesNotThrow(() => { html = render(); });
+        assert.match(html, /role="dialog"/);
+        assert.match(html, /aria-modal="true"/);
+        assert.match(html, /CAD-01/);
+        assert.match(html, /Cadeira Executiva ECF/);
+        assert.match(html, /value="2"/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('o botão diz a fase que vai nascer', () => {
+        assert.match(render(), /Vincular como Fase 2/);
+        assert.match(render({ proximaFase: 3 }), /Vincular como Fase 3/);
+    });
+
+    await contexto.test('texto explícito do que vincular NÃO altera (§6)', () => {
+        const html = render();
+        assert.match(html, /rascunho/i);
+        assert.match(html, /estoque/i);
+        assert.match(html, /SKU/);
+        assert.match(html, /an[úu]ncios/i);
+    });
+
+    await contexto.test('quantidade ausente na sugestão abre o campo VAZIO e trava o botão COM explicação (D23)', () => {
+        const html = render({ sugestao: sugestaoBase({ quantidade: null }) });
+        assert.match(html, /value=""/);
+        assert.match(html, /Informe quantas unidades/);
+        const botao = html.lastIndexOf('<button', html.indexOf('Vincular como Fase'));
+        assert.match(html.slice(botao, html.indexOf('>', botao) + 1), /disabled=/);
+    });
+
+    await contexto.test('conflito_heuristica avisa que o nome sugere outro produto e manda conferir o Portal', () => {
+        const html = render({ sugestao: sugestaoBase({ conflito_heuristica: true }) });
+        assert.match(html, /nome sugere outro produto/i);
+        assert.match(html, /Portal/);
+        assert.match(html, /amber/);
+    });
+
+    await contexto.test('modo "recusar" pede confirmação e avisa que a sugestão não volta', () => {
+        const html = render({ modo: 'recusar' });
+        assert.match(html, /não volta a aparecer/i);
+        assert.match(html, /Não é kit/);
+        // Nada de campo de quantidade nem de "Vincular como Fase" nesse modo.
+        assert.doesNotMatch(html, /Vincular como Fase/);
+    });
+
+    await contexto.test('sugestão nula ou em formato inesperado nunca derruba a tela', () => {
+        assert.doesNotThrow(() => {
+            const html = render({ sugestao: null, proximaFase: null });
+            assert.doesNotMatch(html, /\[object Object\]/);
+        });
+        assert.doesNotThrow(() => {
+            const html = render({
+                sugestao: { base_id: 1, base_sku: { foo: 'bar' }, base_nome: [], quantidade: {}, conflito_heuristica: 'talvez' },
+                produto: null,
+                conta: null,
+                proximaFase: 'duas',
+            });
+            assert.doesNotMatch(html, /\[object Object\]/);
+            assert.doesNotMatch(html, /foo/);
+        });
+    });
+});
+
+test('DialogoVincularKit — gates de fonte: rotas do contrato, Escape e nenhum window.confirm', () => {
+    const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/DialogoVincularKit.jsx');
+
+    // Os endpoints do 175-08, com os verbos do contrato.
+    assert.match(fonte, /axios\.put\(/);
+    assert.match(fonte, /vinculo\.salvar/);
+    assert.match(fonte, /axios\.post\(/);
+    assert.match(fonte, /vinculo\.recusar/);
+    // O corpo do PUT é só `base_id` + `quantidade` (T-175-44: o resto é do servidor).
+    assert.match(fonte, /base_id/);
+    assert.match(fonte, /quantidade/);
+    // Escape fecha, e sem confirmação nativa do navegador numa tela dark.
+    assert.match(fonte, /'Escape'/);
+    assert.doesNotMatch(fonte, /window\.confirm|\bconfirm\(/);
+    // Acessibilidade do diálogo.
+    assert.match(fonte, /role="dialog"/);
+    assert.match(fonte, /aria-modal="true"/);
+    // Tipografia e peso do módulo (mesmo gate de publicador-entrada.test.js).
+    for (const tamanho of [...fonte.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map((m) => m[1])) {
+        assert.ok(['24', '15', '13', '11'].includes(tamanho), `tamanho fora do vocabulário: ${tamanho}px`);
+    }
+    assert.doesNotMatch(fonte, /font-(thin|extralight|light|medium|semibold|extrabold|black)\b/);
+    assert.doesNotMatch(fonte, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/);
+    assert.doesNotMatch(fonte, /dangerouslySetInnerHTML/);
+});
+
+test('Tela B — monta o diálogo de vínculo e recarrega só produtos/contagens ao concluir', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
+
+    assert.match(fonte, /import DialogoVincularKit from '@\/Components\/Mlb\/Publicador\/DialogoVincularKit'/);
+    assert.match(fonte, /<DialogoVincularKit/);
+    // A fase que vai nascer é calculada com a família que a própria lista já tem.
+    assert.match(fonte, /proximaFaseDaFamilia/);
+    // ⚠️ Literal do gate de publicador-entrada.test.js: a recarga é exatamente esta.
+    assert.ok((fonte.match(/only: \['produtos', 'contagens'\]/g) ?? []).length >= 2);
+    // A tela não pergunta nada pelo navegador: a confirmação é do próprio diálogo.
+    assert.doesNotMatch(fonte, /window\.confirm/);
+});
