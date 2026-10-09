@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaAnuncio;
 use App\Models\EstruturaPublicacao;
+use App\Models\MlAcervoItem;
 use App\Models\PubImagem;
 use App\Models\PubPublicacao;
 use App\Models\PubProduto;
@@ -467,11 +468,20 @@ class EditorRascunhoService
         /** @var ?PubPublicacao $p */
         $p = $r->publicacoes()->latest('id')->first();
 
+        // "tipo|variante" → MLB, de TODAS as publicações: o que "publicar de novo"
+        // não reenvia (RN-94) — e a base da comparação com o acervo (175-09).
+        $jaPublicados = PubPublicacaoItem::query()
+            ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
+            ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
+            ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all();
+
         return [
             'produto' => [
                 'id' => $r->produto->id, 'sku' => $r->produto->skuExibido(), 'nome' => $r->produto->nomeExibido(),
                 'oferta_id' => $r->produto->oferta_id, 'origem' => $r->produto->origem,
                 'mlb_empresa_id' => $r->produto->mlb_empresa_id, 'company_id' => $r->produto->company_id,
+                // Fase 175 plano 09: as chaves de FASE, ADITIVAS (ver `faseDoProduto()`).
+                ...$this->faseDoProduto($r, $digitado, $jaPublicados),
             ],
             'rascunho' => [
                 'id' => $r->id, 'revisao' => $r->revisao, 'status' => $r->status,
@@ -534,12 +544,131 @@ class EditorRascunhoService
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,
-            // "tipo|variante" → MLB, de TODAS as publicações: o que "publicar de novo" não reenvia (RN-94).
-            'ja_publicados' => PubPublicacaoItem::query()
-                ->whereIn('publicacao_id', $r->publicacoes()->select('id'))
-                ->where('status', PubPublicacaoItem::CREATED)->orderBy('id')->get()
-                ->mapWithKeys(fn ($i) => [$i->listing_type_id.'|'.$i->variante_chave => $i->ml_item_id])->all(),
+            'ja_publicados' => $jaPublicados,
         ];
+    }
+
+    // ═══ A fase do produto na barra do editor (175-09, §7 da ETAPA-3) ════════
+
+    /**
+     * D23: MESMO texto literal de `BarraDoEditor.jsx`. Não variar num só lugar.
+     * O rascunho é a verdade local; atualizar o anúncio no ML está fora desta
+     * etapa (§1, "Não entra"), então quando os dois divergem a barra DIZ isso em
+     * vez de mentir (T-175-41).
+     */
+    public const AVISO_ESTOQUE_ML = 'Estoque no ML difere do calculado';
+
+    /**
+     * As chaves de FASE do sub-array `produto`. ADITIVAS de propósito: o topo do
+     * `estado` é consumido por `usePublicador`, por
+     * `MlbPublicadorController::responder()` e por dezenas de testes, e o front
+     * lê por nome — então nada aqui sai do lugar de nada.
+     *
+     * ⚠️ `eh_kit` NÃO é `PubProduto::ehKit()`: aquele exige `produto_base_id`, e
+     * `pubprod_base_fk` é SET NULL — kit cujo base foi apagado continua sendo
+     * "Kit 2" para quem está com o editor aberto, só sem o link. Por isso a conta
+     * aqui é `quantidade_kit >= 2`, e o órfão ganha `aviso_base_apagado`.
+     *
+     * @param  array<string, ?string>  $jaPublicados  "tipo|variante" → MLB
+     * @return array{fase: int, quantidade_kit: int, eh_kit: bool, rotulo_fase: ?string,
+     *     estoque_calculado: bool, base: ?array{id: int, sku: string, nome: string, url: ?string},
+     *     aviso_base_apagado: bool, aviso_estoque_ml: bool}
+     */
+    private function faseDoProduto(PubRascunho $r, RascunhoSnapshot $digitado, array $jaPublicados): array
+    {
+        $produto = $r->produto;
+        $quantidade = (int) ($produto->quantidade_kit ?: 1);
+        $ehKit = $quantidade >= 2;
+        $apagado = $ehKit && $produto->produto_base_id === null;
+        $base = $apagado ? null : $produto->base;
+        $calculado = $ehKit && (bool) $produto->estoque_calculado;
+
+        return [
+            'fase' => (int) ($produto->fase ?: 1),
+            'quantidade_kit' => $quantidade,
+            'eh_kit' => $ehKit,
+            // Uma string só, montada no servidor: a barra exibe e não calcula.
+            'rotulo_fase' => $ehKit ? 'Fase '.(int) ($produto->fase ?: 1)." · Kit {$quantidade}" : null,
+            'estoque_calculado' => $calculado,
+            'base' => $base === null ? null : [
+                'id' => (int) $base->id,
+                'sku' => (string) $base->skuExibido(),
+                'nome' => (string) $base->nomeExibido(),
+                'url' => $this->urlDoProduto($base),
+            ],
+            'aviso_base_apagado' => $apagado,
+            'aviso_estoque_ml' => $calculado && $this->estoqueDivergeDoMl($produto, $digitado, $jaPublicados),
+        ];
+    }
+
+    /**
+     * A tela do Produto deste produto. NULL quando a conta não tem token ativo —
+     * a rota exige a chave da conta, e link quebrado é pior que link ausente
+     * (a barra simplesmente não o renderiza).
+     */
+    private function urlDoProduto(PubProduto $produto): ?string
+    {
+        $chave = $produto->contaOuNula()?->chaveContaMl();
+
+        return $chave === null ? null : route('mlb.anuncios.publicador.produto', ['conta' => $chave, 'produto' => $produto->id]);
+    }
+
+    /**
+     * O estoque calculado do kit difere do que está no ar?
+     *
+     * A comparação é POR ITEM: no modelo User Products existe um anúncio por
+     * (tipo de anúncio × variante) — `PayloadBuilderUserProducts` monta assim —
+     * e o `available_quantity` daquele item é o estoque daquela variante.
+     *
+     * ⚠️ **Sem coleta, não avisa.** `ml_acervo_itens` é alimentado por job; linha
+     * ausente, ou `available_quantity` NULL, ou conta sem Company (D23 — o acervo
+     * é escopado por `company_id`, e `ml_item_id` não é único globalmente)
+     * significam "não sei", não "difere". Aviso baseado em dado inexistente é
+     * pior que silêncio.
+     *
+     * Zero chamada ao Mercado Livre: é leitura do acervo guardado (T-175-16).
+     *
+     * @param  array<string, ?string>  $jaPublicados
+     */
+    private function estoqueDivergeDoMl(PubProduto $produto, RascunhoSnapshot $digitado, array $jaPublicados): bool
+    {
+        if ($produto->company_id === null || $jaPublicados === []) {
+            return false;
+        }
+
+        $calculado = [];
+        foreach ($digitado->variantes as $v) {
+            if ($v->ativa) {
+                $calculado[$v->chave] = isset($v->dados['estoque']) ? (int) $v->dados['estoque'] : null;
+            }
+        }
+
+        $chaveDoMlb = [];
+        foreach ($jaPublicados as $tipoEVariante => $mlb) {
+            if ($mlb !== null) {
+                $chaveDoMlb[(string) $mlb] = (string) (explode('|', (string) $tipoEVariante, 2)[1] ?? '');
+            }
+        }
+        if ($chaveDoMlb === []) {
+            return false;
+        }
+
+        $noAr = MlAcervoItem::query()
+            ->where('company_id', $produto->company_id)
+            ->whereIn('ml_item_id', array_keys($chaveDoMlb))
+            ->get(['ml_item_id', 'available_quantity']);
+
+        foreach ($noAr as $item) {
+            if ($item->available_quantity === null) {
+                continue;
+            }
+            $meu = $calculado[$chaveDoMlb[(string) $item->ml_item_id] ?? ''] ?? null;
+            if ($meu !== null && $meu !== (int) $item->available_quantity) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

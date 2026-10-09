@@ -3,13 +3,17 @@
 namespace Tests\Feature\Publicador;
 
 use App\Models\Company;
-use App\Models\EstruturaOferta;
+use App\Models\MlAcervoItem;
+use App\Models\MlToken;
 use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Services\Publicador\RecalculoEstoqueDoKitService;
 use App\Support\Publicador\Payload\Alvo;
+use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\RegeneradorVariantes;
@@ -27,14 +31,19 @@ use Tests\TestCase;
  * escrita mais quente do módulo (roda a cada digitação na grade de variantes).
  * Por isso este arquivo guarda três coisas que não são sobre kit nenhum:
  *
- * 1. **Custo.** Gravar variantes de um produto que não é base de ninguém custa
- *    UMA consulta a mais (o `exists()` indexado por `produto_base_id`), e
- *    gravar as do próprio kit custa ZERO (kit não pode ser base).
+ * 1. **Custo.** Gravar variantes de qualquer produto do módulo custa UMA consulta
+ *    a mais: o `exists()` indexado por `produto_base_id`. Nem o `PubProduto` é
+ *    carregado (seria a segunda).
  * 2. **Não recorre.** `salvarVariantes` do kit chama o gancho de novo; o laço
  *    só não existe porque kit nunca é base. É um laço que só apareceria em
- *    produção, então ele é provado por execução aqui.
+ *    produção, então ele é provado por execução aqui — e há um teste do fusível
+ *    de memória para o ciclo que só dados corrompidos criam.
  * 3. **Falha na propagação não derruba a gravação do base.** A escrita do base
  *    é a que a pessoa pediu; o recálculo é consequência.
+ *
+ * A segunda metade do arquivo é o `estado()` contando a fase ao editor — com o
+ * GATE de regressão que prova que nenhuma chave antiga do presenter saiu e que
+ * produto que não é kit passa por ele sem mudança.
  *
  * @group phase175
  */
@@ -64,14 +73,24 @@ class EstoqueDoKitTest extends TestCase
 
     // ═══ Cenário: um base e os kits dele ═════════════════════════════════════
 
-    /** Um produto base da Fase 1 com rascunho e a variante única. */
+    /**
+     * Um produto base da Fase 1 com rascunho e a variante única.
+     *
+     * Sem oferta do Portal de propósito: `DadosEfetivosService::daProduto()` sai
+     * na hora quando `oferta_id` é NULL (D16), e nenhum teste deste arquivo é
+     * sobre título/preço efetivo — é o jeito de `estado()` rodar aqui sem mock.
+     */
     private function base(): PubProduto
     {
         $empresa = Company::factory()->create();
-        $oferta = EstruturaOferta::create(['company_id' => $empresa->id, 'sku' => 'CAD-01', 'fase' => 'simples', 'nome' => 'Cadeira']);
+        MlToken::create([
+            'company_id' => $empresa->id, 'ml_user_id' => '1555596317', 'access_token' => 'fake-access-token',
+            'refresh_token' => 'fake-refresh-token', 'token_type' => 'bearer', 'expires_at' => now()->addHours(5),
+            'last_refreshed_at' => now(), 'status' => 'active', 'connected_at' => now(),
+        ]);
         $produto = PubProduto::create([
-            'company_id' => $empresa->id, 'oferta_id' => $oferta->id, 'sku' => 'CAD-01',
-            'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PORTAL,
+            'company_id' => $empresa->id, 'sku' => 'CAD-01',
+            'nome' => 'Cadeira', 'origem' => PubProduto::ORIGEM_PUBLICADOR,
         ]);
         $this->repo->criar($produto, [new Alvo('gold_special', 'Cadeira Executiva ECF')]);
 
@@ -385,7 +404,187 @@ class EstoqueDoKitTest extends TestCase
         $this->assertSame(2, (int) $kit3->rascunho->fresh()->variantes()->value('estoque'));
     }
 
+    // ═══ `estado()` conta a fase ao editor (Task 2) ══════════════════════════
+
+    /**
+     * ⚠️ O GATE DE REGRESSÃO do plano: `estado()` é o presenter do editor
+     * inteiro, consumido por `usePublicador`, por `MlbPublicadorController` e por
+     * dezenas de testes. Chave nova é ADITIVA; nenhuma antiga pode sair.
+     */
+    public function test_nenhuma_chave_de_primeiro_nivel_do_estado_saiu(): void
+    {
+        $base = $this->base();
+
+        $e = $this->editor()->estado($base->rascunho);
+
+        $this->assertSame([
+            'produto', 'rascunho', 'alvos', 'atributos', 'eixos', 'variantes', 'imagens',
+            'atribuicoes', 'grupos_imagem', 'schema', 'erro_schema', 'conta', 'efetivos',
+            'problemas', 'conferencia', 'publicacao', 'ja_publicados',
+        ], array_keys($e));
+    }
+
+    public function test_produto_que_nao_e_kit_passa_pelo_estado_sem_mudanca(): void
+    {
+        $base = $this->base();
+
+        $p = $this->editor()->estado($base->rascunho)['produto'];
+
+        // As sete chaves de antes, com os mesmos valores.
+        $this->assertSame($base->id, $p['id']);
+        $this->assertSame('CAD-01', $p['sku']);
+        $this->assertSame('Cadeira', $p['nome']);
+        $this->assertNull($p['oferta_id']);
+        $this->assertSame(PubProduto::ORIGEM_PUBLICADOR, $p['origem']);
+        $this->assertSame($base->company_id, $p['company_id']);
+        $this->assertNull($p['mlb_empresa_id']);
+
+        // E as novas dizem "não é kit", sem nada para a barra renderizar.
+        $this->assertFalse($p['eh_kit']);
+        $this->assertNull($p['rotulo_fase']);
+        $this->assertNull($p['base']);
+        $this->assertSame(1, $p['fase']);
+        $this->assertSame(1, $p['quantidade_kit']);
+        $this->assertFalse($p['estoque_calculado']);
+        $this->assertFalse($p['aviso_base_apagado']);
+        $this->assertFalse($p['aviso_estoque_ml']);
+    }
+
+    public function test_estado_do_kit_traz_a_fase_o_rotulo_e_o_produto_base(): void
+    {
+        $base = $this->base();
+        $kit = $this->kit($base, 2);
+        $kit->update(['fase' => 2]);
+
+        $p = $this->editor()->estado($kit->rascunho)['produto'];
+
+        $this->assertTrue($p['eh_kit']);
+        $this->assertSame(2, $p['fase']);
+        $this->assertSame(2, $p['quantidade_kit']);
+        $this->assertSame('Fase 2 · Kit 2', $p['rotulo_fase']);
+        $this->assertTrue($p['estoque_calculado']);
+        $this->assertSame($base->id, $p['base']['id']);
+        $this->assertSame('CAD-01', $p['base']['sku']);
+        $this->assertSame('Cadeira', $p['base']['nome']);
+        $this->assertStringContainsString((string) $base->id, (string) $p['base']['url']);
+        // Todo campo que a barra exibe é string ou número — nunca objeto (07/10).
+        foreach (['rotulo_fase'] as $campo) {
+            $this->assertIsString($p[$campo]);
+        }
+        foreach (['id', 'sku', 'nome', 'url'] as $campo) {
+            $this->assertNotIsArrayOuObjeto($p['base'][$campo]);
+        }
+    }
+
+    public function test_kit_de_conta_sem_token_tem_base_sem_url_nunca_link_quebrado(): void
+    {
+        $base = $this->base();
+        $kit = $this->kit($base, 2);
+        // A conta perdeu o token: `contaOuNula()` devolve null e não há chave de conta.
+        $base->company->mlToken()->delete();
+
+        $p = $this->editor()->estado($kit->rascunho->fresh())['produto'];
+
+        $this->assertSame($base->id, $p['base']['id']);
+        $this->assertNull($p['base']['url']);
+    }
+
+    public function test_kit_cujo_base_foi_apagado_avisa_e_fica_sem_base(): void
+    {
+        $base = $this->base();
+        $kit = $this->kit($base, 2);
+        // `pubprod_base_fk` é SET NULL: o kit fica solto COM o histórico dele.
+        $kit->update(['produto_base_id' => null]);
+
+        $p = $this->editor()->estado($kit->rascunho->fresh())['produto'];
+
+        $this->assertTrue($p['aviso_base_apagado']);
+        $this->assertNull($p['base']);
+        $this->assertTrue($p['eh_kit'], 'órfão continua sendo Kit 2 na barra');
+        $this->assertSame('Fase 2 · Kit 2', $p['rotulo_fase']);
+    }
+
+    public function test_kit_publicado_com_estoque_diferente_no_acervo_avisa(): void
+    {
+        [$base, $kit] = $this->kitPublicado(estoqueNoMl: 9);
+
+        $p = $this->editor()->estado($kit->rascunho->fresh())['produto'];
+
+        $this->assertTrue($p['aviso_estoque_ml'], 'calculado 3, no ar 9');
+        $this->assertSame('Estoque no ML difere do calculado', EditorRascunhoService::AVISO_ESTOQUE_ML);
+    }
+
+    public function test_kit_publicado_com_o_mesmo_estoque_no_acervo_nao_avisa(): void
+    {
+        [$base, $kit] = $this->kitPublicado(estoqueNoMl: 3);
+
+        $this->assertFalse($this->editor()->estado($kit->rascunho->fresh())['produto']['aviso_estoque_ml']);
+    }
+
+    /** Aviso baseado em dado inexistente é pior que silêncio: sem coleta, não avisa. */
+    public function test_sem_coleta_de_acervo_o_kit_publicado_nao_avisa(): void
+    {
+        [$base, $kit] = $this->kitPublicado(estoqueNoMl: null);
+
+        $this->assertFalse($this->editor()->estado($kit->rascunho->fresh())['produto']['aviso_estoque_ml']);
+
+        MlAcervoItem::query()->delete();
+        $this->assertFalse($this->editor()->estado($kit->rascunho->fresh())['produto']['aviso_estoque_ml'], 'nem linha de acervo há');
+    }
+
+    /** O combo vinculado digita o estoque dele: divergência com o ML não é notícia. */
+    public function test_combo_vinculado_publicado_nao_avisa_divergencia(): void
+    {
+        [$base, $kit] = $this->kitPublicado(estoqueNoMl: 9, calculado: false);
+
+        $this->assertFalse($this->editor()->estado($kit->rascunho->fresh())['produto']['aviso_estoque_ml']);
+    }
+
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Um kit publicado (um item CREATED no ML) com o estoque do acervo em
+     * `$estoqueNoMl` (null = coletado sem quantidade). O calculado é 3.
+     *
+     * @return array{0: PubProduto, 1: PubProduto}
+     */
+    private function kitPublicado(?int $estoqueNoMl, bool $calculado = true): array
+    {
+        $base = $this->base();
+        $kit = $this->kit($base, 2, calculado: $calculado);
+        $this->editor()->salvarVariantes($base->rascunho, [ChaveCanonica::UNICA => ['estoque' => 7]]);
+        if (! $calculado) {
+            // Combo vinculado: o estoque dele é o que a pessoa digitou.
+            $this->editor()->salvarVariantes($kit->rascunho, [ChaveCanonica::UNICA => ['estoque' => 3]]);
+        }
+
+        $r = $kit->rascunho->fresh();
+        $r->update(['status' => PubRascunho::PUBLISHED]);
+        // ⚠️ `RUNNING` de propósito: com qualquer outro status o `estado()` chama
+        // `PublicacaoService::problemas()`, que pede o schema da CATEGORIA — e
+        // este cenário é sem categoria, para não falar com o ML. O que importa
+        // aqui é o ITEM `CREATED` (é ele que alimenta `ja_publicados`) e o
+        // `status` do RASCUNHO, que é PUBLISHED.
+        $pub = $r->publicacoes()->create([
+            'status' => PubPublicacao::RUNNING, 'revisao' => $r->revisao,
+            'modelo_publicacao' => MontadorDePlano::UP, 'chave_idempotencia' => "kit-{$kit->id}-r{$r->revisao}",
+        ]);
+        $pub->itens()->create([
+            'indice' => 0, 'listing_type_id' => 'gold_special', 'variante_chave' => ChaveCanonica::UNICA,
+            'status' => PubPublicacaoItem::CREATED, 'ml_item_id' => 'MLB9090',
+        ]);
+        MlAcervoItem::create([
+            'company_id' => $base->company_id, 'ml_item_id' => 'MLB9090',
+            'title' => 'Kit 2 Cadeira', 'available_quantity' => $estoqueNoMl,
+        ]);
+
+        return [$base, $kit];
+    }
+
+    private function assertNotIsArrayOuObjeto(mixed $valor): void
+    {
+        $this->assertTrue($valor === null || is_scalar($valor), 'campo do presenter não pode ser objeto (tela preta de 07/10)');
+    }
 
     /** Grava no base SEM passar pelo gancho — para testar `propagar()` sozinho. */
     private function gravarNoBase(PubProduto $base, array $porChave): PubRascunho
