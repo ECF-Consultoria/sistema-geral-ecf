@@ -637,4 +637,140 @@ class TelaDoProdutoTest extends TestCase
         $this->assertSame('MLB999999', $this->tela($base->fresh(), $empresa)['base']['categoria']);
         Http::assertNothingSent();
     }
+
+    // ═══ Task 2 — rota, controller e escopo (D-13) ══════════════════════════
+
+    private function admin(): static
+    {
+        return $this->withoutVite()->actingAs(User::factory()->create(['role' => 'admin']));
+    }
+
+    private function url(string $conta, int|string $produto): string
+    {
+        return '/mlb/anuncios/publicador/empresas/'.$conta.'/produtos/'.$produto;
+    }
+
+    public function test_admin_abre_a_tela_do_produto_com_todas_as_chaves_do_contrato(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+        $r = $this->rascunho($base, PubRascunho::PUBLISHED);
+        $this->publicacao($r, [['gold_special', 'MLB1111']]);
+
+        $resposta = $this->admin()->get(route('mlb.anuncios.publicador.produto', [
+            'conta' => 'empresa-'.$empresa->id, 'produto' => $base->id,
+        ]))->assertOk();
+
+        $props = $resposta->viewData('page')['props'];
+        foreach (['empresa', 'liberada', 'produto', 'fases', 'proxima_fase', 'ofertas', 'historico', 'criativos', 'mapeamento', 'abas'] as $chave) {
+            $this->assertArrayHasKey($chave, $props, "falta a prop {$chave}");
+        }
+        $this->assertSame('Mlb/Publicador/Produto', $resposta->viewData('page')['component']);
+        $this->assertSame($base->id, $props['produto']['id']);
+        $this->assertSame('empresa-'.$empresa->id, $props['empresa']['chave']);
+        $this->assertSame($company->id, $props['abas']['company_id']);
+        $this->assertTrue($props['liberada']);
+        $this->assertNull($props['fase_destacada']);
+        // Nenhum token da conta chega ao navegador.
+        $resposta->assertDontSee('fake-access-token');
+        $resposta->assertDontSee('fake-refresh-token');
+        Http::assertNothingSent();
+    }
+
+    public function test_abrir_um_kit_pela_rota_leva_a_tela_do_base_com_a_fase_destacada(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+        $this->rascunho($base, PubRascunho::PUBLISHED);
+        $kit = $this->kit($base, 2, 2);
+
+        $props = $this->admin()->get(route('mlb.anuncios.publicador.produto', [
+            'conta' => 'empresa-'.$empresa->id, 'produto' => $kit->id,
+        ]))->assertOk()->viewData('page')['props'];
+
+        $this->assertSame($base->id, $props['produto']['id']);
+        $this->assertSame(2, $props['fase_destacada']);
+    }
+
+    /** D-13: produto de OUTRA conta não existe para esta conta — 404, nunca 403. */
+    public function test_produto_de_outra_conta_e_404_nunca_403(): void
+    {
+        [$empresaA, $companyA] = $this->conta();
+        $meu = $this->base($empresaA, $companyA, 'MEU-01');
+        [$empresaB, $companyB] = $this->conta();
+        $alheio = $this->base($empresaB, $companyB, 'ALHEIO-01');
+
+        $resposta = $this->admin()->get(route('mlb.anuncios.publicador.produto', [
+            'conta' => 'empresa-'.$empresaA->id, 'produto' => $alheio->id,
+        ]));
+
+        $resposta->assertNotFound();
+        $this->assertNotSame(403, $resposta->getStatusCode(), 'D-13: 404, nunca 403');
+        // Pela conta dona, o mesmo produto abre.
+        $this->admin()->get(route('mlb.anuncios.publicador.produto', [
+            'conta' => 'empresa-'.$empresaB->id, 'produto' => $alheio->id,
+        ]))->assertOk();
+        unset($meu);
+    }
+
+    public function test_produto_inexistente_e_404(): void
+    {
+        [$empresa] = $this->conta();
+
+        $this->admin()->get($this->url('empresa-'.$empresa->id, 999999))->assertNotFound();
+    }
+
+    public function test_conta_inexistente_ou_sem_programa_e_404(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+
+        $this->admin()->get($this->url('empresa-999999', $base->id))->assertNotFound();
+
+        $empresa->forceFill(['arquivado_em' => now()])->save();
+        $this->admin()->get($this->url('empresa-'.$empresa->id, $base->id))->assertNotFound();
+    }
+
+    public function test_chave_nao_canonica_redireciona_preservando_o_produto(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+
+        $this->admin()->get($this->url('company-'.$company->id, $base->id))
+            ->assertRedirect(route('mlb.anuncios.publicador.produto', [
+                'conta' => 'empresa-'.$empresa->id, 'produto' => $base->id,
+            ]));
+    }
+
+    public function test_conta_fora_do_padrao_e_404_pela_propria_rota(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+
+        $this->admin()->get($this->url('foo-1', $base->id))->assertNotFound();
+        $this->admin()->get($this->url('empresa-abc', $base->id))->assertNotFound();
+        $this->admin()->get($this->url('empresa-'.$empresa->id, 'abc'))->assertNotFound();
+    }
+
+    public function test_nao_admin_e_bloqueado_pelo_middleware(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+
+        $this->withoutVite()->actingAs(User::factory()->create(['role' => 'consultor']))
+            ->get($this->url('empresa-'.$empresa->id, $base->id))
+            ->assertForbidden();
+    }
+
+    public function test_conta_nao_liberada_abre_a_tela_com_liberada_false(): void
+    {
+        [$empresa, $company] = $this->conta();
+        $base = $this->base($empresa, $company);
+        config(['publicador.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+
+        $props = $this->admin()->get($this->url('empresa-'.$empresa->id, $base->id))
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertFalse($props['liberada']);
+    }
 }
