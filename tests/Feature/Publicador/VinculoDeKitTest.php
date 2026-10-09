@@ -477,4 +477,271 @@ class VinculoDeKitTest extends TestCase
         $this->assertSame([$combo->id], $lista[$base->id]['kits']);
         $this->assertSame(['id' => $base->id, 'sku' => 'CAD', 'nome' => 'CAD'], $lista[$combo->id]['base']);
     }
+
+    // ═══ §6 — "Usar estoque calculado" (quick 261009-uec) ═════════════════════
+    //
+    // A ação explícita da §6: o combo vinculado MANTÉM o próprio estoque, e
+    // quem decide adotar o calculado é a pessoa, num clique, por kit. É por
+    // isso que a ação grava `estoque_calculado = true` ANTES de chamar o
+    // recálculo — o `RecalculoEstoqueDoKitService` pula de propósito quem está
+    // em `false`, e esse contrato continua valendo depois desta ação.
+
+    public function test_a_rota_do_estoque_calculado_vive_no_grupo_admin_com_o_throttle_da_familia(): void
+    {
+        $rota = Route::getRoutes()->getByName('mlb.anuncios.publicador.vinculo.estoque-calculado');
+
+        $this->assertNotNull($rota, 'a rota de "Usar estoque calculado" precisa existir com nome');
+        $this->assertContains('role:admin', $rota->gatherMiddleware());
+        $this->assertSame('(empresa|company)-[0-9]+', $rota->wheres['conta'] ?? null, 'D-13: {conta} morre na própria rota');
+        $this->assertSame('[0-9]+', $rota->wheres['produto'] ?? null);
+        $this->assertContains('throttle:60,1,publicador.vinculo', $rota->gatherMiddleware(), 'é a mesma família de ação do vínculo');
+        $this->assertSame(['POST'], $rota->methods());
+    }
+
+    public function test_usar_estoque_calculado_exige_admin(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $kit = $this->produto($e, $c, 'CAD-CB3', ['produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2]);
+
+        $this->actingAs(User::factory()->create(['role' => 'consultor']))
+            ->postJson($this->urlEstoque($e, $kit))
+            ->assertForbidden();
+
+        $this->assertFalse((bool) $kit->fresh()->estoque_calculado);
+    }
+
+    public function test_usar_estoque_calculado_de_produto_de_outra_conta_da_404_nunca_403(): void
+    {
+        [$e, $c] = $this->conta();
+        [$outraE, $outraC] = $this->conta('Outro Polo');
+        $baseDeFora = $this->produto($outraE, $outraC, 'CAD');
+        $kitDeFora = $this->produto($outraE, $outraC, 'CAD-CB3', [
+            'produto_base_id' => $baseDeFora->id, 'quantidade_kit' => 3, 'fase' => 2,
+        ]);
+        $this->assertNotNull($c->id);
+
+        $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $kitDeFora))->assertNotFound();
+
+        $this->assertFalse((bool) $kitDeFora->fresh()->estoque_calculado, 'D-13: produto fora do escopo não existe aqui');
+    }
+
+    /**
+     * ⚠️ O caso que distingue as duas contas possíveis: o recálculo divide CADA
+     * DEPÓSITO e só depois soma. Com A=5, B=5 e N=3 isso dá `{A:1, B:1}` = 2;
+     * somar primeiro (`floor(10 ÷ 3)`) daria 3. Se um dia alguém trocar a ordem,
+     * este teste é o que cai.
+     */
+    public function test_usar_estoque_calculado_grava_a_coluna_e_divide_cada_deposito_antes_de_somar(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $rascunhoDoBase = $this->rascunhoCompleto($base, 10);
+        $this->comDepositos($rascunhoDoBase, ['A' => 5, 'B' => 5]);
+
+        $kit = $this->produto($e, $c, 'CAD-CB3', [
+            'produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2,
+        ]);
+        $rascunhoDoKit = $this->rascunhoCompleto($kit, 11);
+
+        $this->actingAs($this->admin())
+            ->postJson($this->urlEstoque($e, $kit))
+            ->assertOk()
+            ->assertJsonPath('produto.id', $kit->id)
+            ->assertJsonPath('produto.estoque_calculado', true)
+            ->assertJsonPath('produto.produto_base_id', $base->id)
+            ->assertJsonPath('produto.quantidade_kit', 3)
+            ->assertJsonPath('produto.fase', 2)
+            ->assertJsonPath('produto.eh_kit', true);
+
+        $this->assertTrue((bool) $kit->fresh()->estoque_calculado, 'a coluna é gravada ANTES do recálculo, senão ele pularia o kit');
+
+        $variante = $rascunhoDoKit->fresh()->variantes()->first();
+        $this->assertSame(['A' => 1, 'B' => 1], $variante->estoque_depositos, 'floor por depósito');
+        $this->assertSame(2, (int) $variante->estoque, 'soma dos divididos (2), nunca floor(soma ÷ N) (3)');
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'mercadolibre'));
+    }
+
+    public function test_usar_estoque_calculado_nao_muda_sku_nome_precos_publicacoes_nem_mlb_do_kit(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $rascunhoDoBase = $this->rascunhoCompleto($base, 10);
+        $this->comDepositos($rascunhoDoBase, ['A' => 5, 'B' => 5]);
+
+        $kit = $this->produto($e, $c, 'CAD-CB3', [
+            'produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2,
+            'nome' => 'Combo 3 Cadeiras', 'sku' => 'CAD-CB3',
+        ]);
+        $rascunhoDoKit = $this->rascunhoCompleto($kit, 11);
+        $this->comPreco($rascunhoDoKit, 349.9);
+        $this->publicado($rascunhoDoKit, 'MLB999888');
+
+        $antesSemEstoque = $this->assinaturaSemEstoque($rascunhoDoKit);
+        $antesPublicacao = $this->linhasDePublicacao($rascunhoDoKit);
+        $antesProduto = $this->linhaDoProduto($kit);
+        $revisaoAntes = (int) $rascunhoDoKit->fresh()->revisao;
+
+        $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $kit))->assertOk();
+
+        // O que a ação PODE mudar: o estoque das variantes e a revisão (a
+        // conferência antiga do kit não vale para o estoque novo).
+        $this->assertSame(2, (int) $rascunhoDoKit->fresh()->variantes()->value('estoque'));
+        $this->assertGreaterThan($revisaoAntes, (int) $rascunhoDoKit->fresh()->revisao);
+
+        // O que a ação NÃO pode mudar.
+        $this->assertSame($antesSemEstoque, $this->assinaturaSemEstoque($rascunhoDoKit), 'categoria, título, descrição, preços e SELLER_SKU do kit ficam byte a byte iguais');
+        $this->assertSame($antesPublicacao, $this->linhasDePublicacao($rascunhoDoKit), 'nenhuma linha de publicação (nem o ml_item_id) pode mudar');
+        $this->assertSame($antesProduto, $this->linhaDoProduto($kit), 'nada do produto fora de `estoque_calculado` muda');
+
+        $kit->refresh();
+        $this->assertSame('CAD-CB3', $kit->sku);
+        $this->assertSame('Combo 3 Cadeiras', $kit->nome);
+        $this->assertNull($kit->oferta_id);
+        $this->assertSame(349.9, (float) $rascunhoDoKit->fresh()->variantes()->first()->precos()->value('preco'));
+    }
+
+    public function test_usar_estoque_calculado_duas_vezes_e_idempotente(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $rascunhoDoBase = $this->rascunhoCompleto($base, 10);
+        $this->comDepositos($rascunhoDoBase, ['A' => 5, 'B' => 5]);
+
+        $kit = $this->produto($e, $c, 'CAD-CB3', [
+            'produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2,
+        ]);
+        $rascunhoDoKit = $this->rascunhoCompleto($kit, 11);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->postJson($this->urlEstoque($e, $kit))->assertOk();
+        $depoisDaPrimeira = DB::table('pub_rascunhos')->where('id', $rascunhoDoKit->id)->first();
+
+        $this->travel(2)->minutes();
+        $this->actingAs($admin)->postJson($this->urlEstoque($e, $kit))->assertOk();
+        $this->travelBack();
+
+        $this->assertTrue((bool) $kit->fresh()->estoque_calculado);
+        $this->assertEquals(
+            $depoisDaPrimeira,
+            DB::table('pub_rascunhos')->where('id', $rascunhoDoKit->id)->first(),
+            'a segunda vez não grava de novo nem recalcula: a revisão e o updated_at do rascunho ficam parados',
+        );
+        $this->assertSame(2, (int) $rascunhoDoKit->fresh()->variantes()->value('estoque'));
+    }
+
+    public function test_usar_estoque_calculado_em_produto_que_nao_e_kit_da_422(): void
+    {
+        [$e, $c] = $this->conta();
+        $solto = $this->produto($e, $c, 'CAD');
+        $this->rascunhoCompleto($solto, 10);
+
+        $r = $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $solto))
+            ->assertStatus(422)
+            ->assertJsonPath('regra', 'VINC-07');
+
+        $this->assertStringNotContainsString('estoque_calculado', (string) $r->json('message'), 'mensagem em pt-BR, sem jargão de coluna');
+        $this->assertFalse((bool) $solto->fresh()->estoque_calculado);
+    }
+
+    public function test_usar_estoque_calculado_em_kit_cujo_base_foi_apagado_da_422(): void
+    {
+        [$e, $c] = $this->conta();
+        // `produto_base_id` NULL com `quantidade_kit >= 2` é exatamente o estado
+        // que o SET NULL deixa quando o base é apagado (mesma leitura do
+        // `base_excluido` do `FamiliaDeFasesService`).
+        $orfao = $this->produto($e, $c, 'CAD-CB3', ['quantidade_kit' => 3, 'fase' => 2]);
+
+        $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $orfao))
+            ->assertStatus(422)
+            ->assertJsonPath('regra', 'VINC-08');
+
+        $this->assertFalse((bool) $orfao->fresh()->estoque_calculado);
+    }
+
+    public function test_usar_estoque_calculado_sem_rascunho_no_base_da_422(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $kit = $this->produto($e, $c, 'CAD-CB3', [
+            'produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2,
+        ]);
+        $this->rascunhoCompleto($kit, 11);
+
+        $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $kit))
+            ->assertStatus(422)
+            ->assertJsonPath('regra', 'VINC-09');
+
+        $this->assertFalse((bool) $kit->fresh()->estoque_calculado, 'sem rascunho no base não há de onde ler estoque');
+    }
+
+    public function test_adotar_num_kit_nao_adota_no_combo_irmao_que_segue_com_estoque_proprio(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $rascunhoDoBase = $this->rascunhoCompleto($base, 10);
+        $this->comDepositos($rascunhoDoBase, ['A' => 5, 'B' => 5]);
+
+        $kit3 = $this->produto($e, $c, 'CAD-CB3', ['produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 2]);
+        $this->rascunhoCompleto($kit3, 11);
+        $irmao = $this->produto($e, $c, 'CAD-CB4', ['produto_base_id' => $base->id, 'quantidade_kit' => 4, 'fase' => 3]);
+        $rascunhoDoIrmao = $this->rascunhoCompleto($irmao, 7);
+
+        $this->actingAs($this->admin())->postJson($this->urlEstoque($e, $kit3))->assertOk();
+
+        $this->assertTrue((bool) $kit3->fresh()->estoque_calculado);
+        $this->assertFalse((bool) $irmao->fresh()->estoque_calculado, 'a ação é POR KIT: o irmão continua com estoque próprio');
+        $this->assertSame(7, (int) $rascunhoDoIrmao->fresh()->variantes()->value('estoque'), 'o recálculo continua PULANDO quem tem estoque_calculado = false');
+    }
+
+    // ═══ Apoio de "Usar estoque calculado" ═══════════════════════════════════
+
+    private function urlEstoque(MlbEmpresa $e, PubProduto $p): string
+    {
+        return self::BASE."/empresas/empresa-{$e->id}/produtos/{$p->id}/estoque-calculado";
+    }
+
+    /**
+     * Põe estoque POR DEPÓSITO na variante única — o caso que separa "divide
+     * cada depósito e soma" de "soma e divide".
+     */
+    private function comDepositos(PubRascunho $r, array $depositos): void
+    {
+        $v = $r->variantes()->first();
+        $v->estoque_depositos = $depositos;
+        $v->estoque = array_sum(array_map('intval', $depositos));
+        $v->save();
+    }
+
+    /** Um preço na variante única, para provar que a ação não mexe em preço. */
+    private function comPreco(PubRascunho $r, float $preco): void
+    {
+        $r->fresh()->variantes()->first()->precos()->create([
+            'alvo_id' => $r->fresh()->alvos()->value('id'),
+            'preco' => $preco,
+        ]);
+    }
+
+    /**
+     * O rascunho serializado SEM os campos de estoque — adotar o calculado muda
+     * o estoque de propósito, e tudo o mais tem de ficar byte a byte igual.
+     */
+    private function assinaturaSemEstoque(PubRascunho $r): string
+    {
+        $dados = json_decode((string) json_encode(app(RascunhoRepository::class)->snapshot($r->fresh())), true);
+        foreach (array_keys($dados['variantes'] ?? []) as $i) {
+            unset($dados['variantes'][$i]['dados']['estoque'], $dados['variantes'][$i]['dados']['estoque_depositos']);
+        }
+
+        return (string) json_encode($dados);
+    }
+
+    /** A linha do produto sem `estoque_calculado` nem `updated_at` — o resto não muda. */
+    private function linhaDoProduto(PubProduto $p): array
+    {
+        $linha = (array) DB::table('pub_produtos')->where('id', $p->id)->first();
+        unset($linha['estoque_calculado'], $linha['updated_at']);
+
+        return $linha;
+    }
 }

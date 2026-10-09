@@ -384,6 +384,35 @@ class MlbPublicadorFaseController extends Controller
         return response()->json(['produto' => $this->produtoParaResposta($p->fresh())]);
     }
 
+    /**
+     * `POST …/produtos/{produto}/estoque-calculado` — a ação explícita "Usar
+     * estoque calculado" da §6 (quick 261009-uec).
+     *
+     * O combo vinculado mantém o estoque dele por padrão; aqui a pessoa decide
+     * adotar o `floor(estoque do base ÷ N)` — um clique, por kit. O serviço
+     * grava a coluna e só então dispara o recálculo (que de propósito pula quem
+     * está em `estoque_calculado = false`).
+     *
+     * ⚠️ `produtoDaConta()`, nunca `baseDaConta()`: quem adota o calculado é o
+     * KIT que a pessoa está vendo. `baseDaConta()` devolve `$p->base ?? $p` e
+     * gravaria no produto errado — foi o bug que o 175-08 corrigiu.
+     *
+     * Mesmo contrato de resposta das outras três rotas de vínculo
+     * (`{produto: {...}}`), para a tela atualizar o cartão sem recarregar.
+     */
+    public function usarEstoqueCalculado(string $conta, int $produto): JsonResponse
+    {
+        [, $p] = $this->produtoDaConta($conta, $produto);
+
+        try {
+            $this->vinculos->usarEstoqueCalculado($p);
+        } catch (RegraViolada $e) {
+            return $this->recusa($e);
+        }
+
+        return response()->json(['produto' => $this->produtoParaResposta($p->fresh())]);
+    }
+
     // ═══ Apoio dos endpoints ═════════════════════════════════════════════════
 
     /**

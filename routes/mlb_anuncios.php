@@ -297,6 +297,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('publicador/empresas/{conta}/produtos/{produto}/vinculo/recusar', [MlbPublicadorFaseController::class, 'recusarSugestao'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
             ->middleware('throttle:60,1,publicador.vinculo.recusar')->name('publicador.vinculo.recusar');
+        // Quick 261009-uec (§6): "Usar estoque calculado" — a ação explícita que
+        // faz ESTE kit passar a acompanhar o estoque do base. Mesmo teto e mesmo
+        // balde do vínculo: é a mesma família de ação, decidida pela pessoa no
+        // cartão da fase. Nada recalcula sozinho — o recálculo automático segue
+        // pulando quem tem `estoque_calculado = false`.
+        Route::post('publicador/empresas/{conta}/produtos/{produto}/estoque-calculado', [MlbPublicadorFaseController::class, 'usarEstoqueCalculado'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:60,1,publicador.vinculo')->name('publicador.vinculo.estoque-calculado');
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
