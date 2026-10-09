@@ -4,9 +4,15 @@ namespace Tests\Feature\Publicador;
 
 use App\Models\Company;
 use App\Models\MlbEmpresa;
+use App\Models\MlbImplementacao;
+use App\Models\MlToken;
+use App\Models\PubProduto;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /** Fase 164 / 164-03: programa derivado da MlbEmpresa (D13) e contas liberadas por âncora (D21). */
@@ -164,5 +170,156 @@ class ProgramaPublicadorTest extends TestCase
     {
         $this->assertSame([459], config('publicador.contas_liberadas.companies'));
         $this->assertSame([], config('publicador.contas_liberadas.mlb_empresas'));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Quick 261009-t01 — as duas chaves ADITIVAS da linha da tela A:
+    // `erp` (o ERP DECLARADO no onboarding — decisão 8 do handoff: nunca
+    // "conectado" nem "sincronizado") e `fases.kits` (quantos produtos da
+    // empresa são kit, `quantidade_kit >= 2`). Nenhuma chave antiga muda de
+    // nome nem de valor, e nenhuma das duas pode custar consulta por empresa.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Empresa de Polos com token ativo — é o que entra em `empresas('polos')`. */
+    private function empresaComToken(string $nome, array $attrs = []): MlbEmpresa
+    {
+        $e = MlbEmpresa::create($attrs + ['nome' => $nome, 'projeto' => 'POLOS'])->fresh();
+        MlToken::create([
+            'mlb_empresa_id' => $e->id,
+            'ml_user_id' => (string) random_int(1000, 99999999),
+            'access_token' => 'APP_USR-x',
+            'refresh_token' => 'TG-x',
+            'expires_at' => now()->addHours(5),
+            'status' => 'active',
+        ]);
+
+        return $e;
+    }
+
+    private function linhaDe(string $nome): array
+    {
+        $linha = app(ProgramasPublicadorService::class)->empresas('polos')->firstWhere('nome', $nome);
+        $this->assertNotNull($linha, "linha de {$nome} não veio em empresas('polos')");
+
+        return $linha;
+    }
+
+    public function test_erp_declarado_vem_do_onboarding_e_sem_declaracao_e_nulo(): void
+    {
+        $comErp = $this->empresaComToken('Com ERP');
+        MlbImplementacao::create([
+            'empresa_id' => $comErp->id,
+            'token' => (string) Str::uuid(),
+            'dados' => ['itens' => ['erp' => ['valor' => 'Bling', 'outro' => '', 'acesso' => '', 'feito' => true]]],
+        ]);
+
+        $this->empresaComToken('Sem ERP');
+
+        $this->assertSame(['nome' => 'Bling'], $this->linhaDe('Com ERP')['erp']);
+        $this->assertSame(['nome' => null], $this->linhaDe('Sem ERP')['erp']);
+    }
+
+    /** "---" é o valor de partida da ficha de onboarding — não é ERP declarado. */
+    public function test_erp_placeholder_da_ficha_nao_conta_como_declarado(): void
+    {
+        $e = $this->empresaComToken('Ficha Em Branco');
+        MlbImplementacao::create([
+            'empresa_id' => $e->id,
+            'token' => (string) Str::uuid(),
+            'dados' => ['itens' => ['erp' => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false]]],
+        ]);
+
+        $this->assertNull($this->linhaDe('Ficha Em Branco')['erp']['nome']);
+    }
+
+    public function test_erp_outro_usa_o_texto_livre_e_a_coluna_da_planilha_e_o_segundo_caminho(): void
+    {
+        $outro = $this->empresaComToken('ERP Outro');
+        MlbImplementacao::create([
+            'empresa_id' => $outro->id,
+            'token' => (string) Str::uuid(),
+            'dados' => ['itens' => ['erp' => ['valor' => 'Outro', 'outro' => 'ERP Caseiro', 'acesso' => '', 'feito' => true]]],
+        ]);
+
+        // Ficha sem o item no JSON, mas com a coluna `erp` preenchida pelo sync da planilha de Polos.
+        $planilha = $this->empresaComToken('ERP Da Planilha');
+        MlbImplementacao::create([
+            'empresa_id' => $planilha->id,
+            'token' => (string) Str::uuid(),
+            'erp' => 'Tiny',
+        ]);
+
+        $this->assertSame('ERP Caseiro', $this->linhaDe('ERP Outro')['erp']['nome']);
+        $this->assertSame('Tiny', $this->linhaDe('ERP Da Planilha')['erp']['nome']);
+    }
+
+    public function test_fases_conta_os_produtos_que_sao_kit(): void
+    {
+        $comKits = $this->empresaComToken('Com Kits');
+        $base = PubProduto::create(['mlb_empresa_id' => $comKits->id, 'sku' => 'BASE', 'nome' => 'Base']);
+        PubProduto::create(['mlb_empresa_id' => $comKits->id, 'sku' => 'BASE-KIT2', 'nome' => 'Kit 2',
+            'produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
+        PubProduto::create(['mlb_empresa_id' => $comKits->id, 'sku' => 'BASE-KIT3', 'nome' => 'Kit 3',
+            'produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 3]);
+
+        $semKit = $this->empresaComToken('Sem Kit');
+        PubProduto::create(['mlb_empresa_id' => $semKit->id, 'sku' => 'SO-BASE', 'nome' => 'Só base']);
+
+        $this->assertSame(['kits' => 2], $this->linhaDe('Com Kits')['fases']);
+        $this->assertSame(['kits' => 0], $this->linhaDe('Sem Kit')['fases']);
+    }
+
+    /** Gate de forma: as chaves antigas continuam todas lá, com os mesmos nomes. */
+    public function test_as_chaves_antigas_da_linha_continuam_todas(): void
+    {
+        $this->empresaComToken('Forma');
+
+        $linha = $this->linhaDe('Forma');
+
+        foreach ([
+            'chave', 'tipo', 'id', 'nome', 'identificador', 'company_id', 'tem_token', 'token_expirado',
+            'token', 'link_reconexao', 'portal', 'produtos', 'publicados', 'prontos', 'liberada', 'publicados_mes',
+        ] as $chave) {
+            $this->assertArrayHasKey($chave, $linha, $chave);
+        }
+        $this->assertSame(['situacao', 'novas', 'sincronizado_em'], array_keys($linha['portal']));
+        $this->assertArrayHasKey('erp', $linha);
+        $this->assertArrayHasKey('fases', $linha);
+    }
+
+    /** ERP e kits entram EM LOTE: 30 empresas não podem custar mais consultas que 3. */
+    public function test_erp_e_fases_nao_geram_consulta_por_empresa(): void
+    {
+        $cenario = function (int $n, string $prefixo) {
+            for ($i = 0; $i < $n; $i++) {
+                $e = $this->empresaComToken("{$prefixo} {$i}", ['company_id' => Company::factory()->create()->id]);
+                MlbImplementacao::create([
+                    'empresa_id' => $e->id,
+                    'token' => (string) Str::uuid(),
+                    'dados' => ['itens' => ['erp' => ['valor' => 'Bling', 'outro' => '', 'acesso' => '', 'feito' => true]]],
+                ]);
+                $base = PubProduto::create(['mlb_empresa_id' => $e->id, 'sku' => "B{$prefixo}{$i}", 'nome' => 'B']);
+                PubProduto::create(['mlb_empresa_id' => $e->id, 'sku' => "K{$prefixo}{$i}", 'nome' => 'K',
+                    'produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
+            }
+        };
+        $consultas = function (): int {
+            $servico = app(ProgramasPublicadorService::class);
+            $servico->empresas('polos'); // aquece cache de schema/boot — não conta
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $servico->empresas('polos');
+            $n = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return $n;
+        };
+
+        $cenario(3, 'Pequena');
+        $com3 = $consultas();
+        $cenario(27, 'Grande');
+        $com30 = $consultas();
+
+        $this->assertSame($com3, $com30, "3 empresas: {$com3} consultas; 30 empresas: {$com30}");
     }
 }
