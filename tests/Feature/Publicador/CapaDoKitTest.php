@@ -572,4 +572,100 @@ class CapaDoKitTest extends TestCase
             ->assertJsonPath('capa.ok', false)
             ->assertJsonPath('capa.kit_id', null);
     }
+
+    // ═══ Plano 175-11, furo 1 — a prop `criativos_ia` na tela do Produto ═════
+    //
+    // Sem esta prop a caixa "Gerar a capa do kit" NUNCA aparece: o default do
+    // `PainelDoProduto` é `false`, e `PainelCriarFase` só renderiza a caixa com
+    // `mostrarCapa` ligado — o Confirmar mandaria `capa: false` sempre. Toda a
+    // capa desta fase ficava construída e inalcançável pela interface.
+    //
+    // ⚠️ A prop é a BOOLEANA de `MlbPublicadorEntradaController::editor()` (L260),
+    // não a `['url' => …]` homônima de `produtos()` (ponte velha do assistente).
+
+    /** As props da tela do Produto, pela rota de verdade. */
+    private function propsDaTelaDoProduto(PubProduto $p, User $user): array
+    {
+        $empresa = MlbEmpresa::findOrFail($p->mlb_empresa_id);
+
+        return $this->withoutVite()->actingAs($user)
+            ->get("/mlb/anuncios/publicador/empresas/empresa-{$empresa->id}/produtos/{$p->id}")
+            ->assertOk()
+            ->viewData('page')['props'];
+    }
+
+    public function test_a_tela_do_produto_anuncia_que_o_servidor_pode_gerar_a_capa(): void
+    {
+        $this->ligarCreative();
+        [$base] = $this->familia(4);
+
+        $props = $this->propsDaTelaDoProduto($base, User::factory()->create(['role' => 'admin']));
+
+        $this->assertTrue(
+            $props['criativos_ia'] ?? null,
+            'sem `criativos_ia` a caixa "Gerar a capa do kit" nunca aparece no painel Criar Fase N'
+        );
+    }
+
+    public function test_com_a_chave_do_creative_engine_desligada_a_prop_da_capa_e_falsa(): void
+    {
+        $this->ligarCreative(false);
+        [$base] = $this->familia(4);
+
+        $props = $this->propsDaTelaDoProduto($base, User::factory()->create(['role' => 'admin']));
+
+        $this->assertFalse($props['criativos_ia'] ?? null, 'OPS-03: chave desligada esconde a caixa');
+    }
+
+    public function test_sem_permissao_de_gastar_cota_a_prop_da_capa_e_falsa(): void
+    {
+        $this->ligarCreative();
+        [$base] = $this->familia(4);
+        $admin = User::factory()->create(['role' => 'admin']);
+        // Lista preenchida SEM este admin: a 2ª camada do OPS-04 barra.
+        Configuracao::set(CreativePermissao::CHAVE_LISTA, (string) ($admin->id + 777));
+
+        $props = $this->propsDaTelaDoProduto($base, $admin);
+
+        $this->assertFalse($props['criativos_ia'] ?? null, 'OPS-04: sem permissão de gastar cota, a caixa não aparece');
+    }
+
+    /**
+     * Regressão de forma: a prop é ADITIVA. Nenhuma chave que `mostrar()` já
+     * enviava muda de nome, de ordem ou de valor — a tela do Produto é a mesma
+     * de antes, só com uma capacidade a mais declarada.
+     *
+     * ⚠️ `podeGerar()`, nunca `exigir()`: `exigir()` faz `abort(403)` e isto
+     * aqui sairia 403 para quem não pode gerar, derrubando a tela inteira.
+     */
+    public function test_a_prop_da_capa_e_aditiva_e_nao_mexe_no_contrato_da_tela(): void
+    {
+        $this->ligarCreative();
+        [$base] = $this->familia(4);
+        $empresa = MlbEmpresa::findOrFail($base->mlb_empresa_id);
+
+        $props = $this->propsDaTelaDoProduto($base, User::factory()->create(['role' => 'admin']));
+
+        $contrato = [
+            'empresa', 'liberada', 'produto', 'fase_destacada', 'fases',
+            'proxima_fase', 'ofertas', 'historico', 'criativos', 'mapeamento', 'abas',
+        ];
+
+        foreach ($contrato as $chave) {
+            $this->assertArrayHasKey($chave, $props, "a prop nova não pode tirar `{$chave}` do contrato da tela");
+        }
+
+        // Mesma ORDEM relativa de antes (as compartilhadas do
+        // `HandleInertiaRequests` ficam fora deste recorte de propósito).
+        $this->assertSame(
+            $contrato,
+            array_values(array_intersect(array_keys($props), $contrato)),
+            'as chaves antigas continuam na mesma ordem'
+        );
+
+        // E os MESMOS valores.
+        $this->assertSame($base->id, $props['produto']['id']);
+        $this->assertSame('empresa-'.$empresa->id, $props['empresa']['chave']);
+        $this->assertNull($props['fase_destacada']);
+    }
 }

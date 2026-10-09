@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Services\Creative\CreativeEngineAtivo;
+use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PreviaDaFaseService;
@@ -82,9 +84,20 @@ class MlbPublicadorFaseController extends Controller
      * destacada (§3) — nunca a uma tela de kit solta. Quem decide isso é o
      * `FamiliaDeFasesService`, que também marca `base_excluido` quando o base
      * de um kit foi apagado (`produto_base_id` NULL depois do SET NULL).
+     *
+     * ⚠️ Plano 175-11: `CreativeEngineAtivo`/`CreativePermissao` entram pela
+     * ASSINATURA DO MÉTODO (padrão do projeto, igual ao `editor()` do
+     * `MlbPublicadorEntradaController`), não pelo construtor — o construtor
+     * desta classe é compartilhado por endpoints que não têm nada a ver com
+     * criativos.
      */
-    public function mostrar(string $conta, int $produto)
-    {
+    public function mostrar(
+        Request $request,
+        string $conta,
+        int $produto,
+        CreativeEngineAtivo $creativeAtivo,
+        CreativePermissao $creativePermissao,
+    ) {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
 
@@ -122,6 +135,22 @@ class MlbPublicadorFaseController extends Controller
             'criativos' => $payload['criativos'],
             'mapeamento' => $payload['mapeamento'],
             'abas' => ['company_id' => $alvo['company']?->id],
+            // Plano 175-11 (§5): a CAPACIDADE do servidor de gerar a capa do
+            // kit — mesma chave e mesma permissão do `editor()`
+            // (`MlbPublicadorEntradaController`). Sem isto aqui o
+            // `PainelDoProduto` cai no default `false`, a caixa "Gerar a capa
+            // do kit" nunca renderiza e o Confirmar manda `capa: false`
+            // sempre: a capa inteira fica inalcançável pela interface.
+            //
+            // ⚠️ É o booleano do `editor()`, NÃO a prop homônima de
+            // `produtos()` (`['url' => …]`, a ponte velha do assistente
+            // antigo) — copiar aquela quebraria o painel.
+            //
+            // ⚠️ `podeGerar()`, nunca `exigir()`: `exigir()` faz `abort(403)` e
+            // derrubaria a tela inteira de quem não pode gerar. Esconder não é
+            // impedir: o Confirmar é conferido de novo no servidor, pelo
+            // `CapaDoKitService`.
+            'criativos_ia' => $creativeAtivo->ativa() && $creativePermissao->podeGerar($request->user()),
         ]);
     }
 
