@@ -14,10 +14,12 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Creative\Contracts\ImageGenerationProvider;
+use App\Services\Creative\CreativeCategoriaMobiliarioService;
 use App\Services\Creative\CreativeContextBuilder;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativePlanner;
+use App\Services\Creative\CreativePromptBuilder;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\Dto\CreativeContext;
 use App\Services\Creative\Dto\CreativeGenerationRequest;
@@ -667,5 +669,216 @@ class CapaDoKitTest extends TestCase
         $this->assertSame($base->id, $props['produto']['id']);
         $this->assertSame('empresa-'.$empresa->id, $props['empresa']['chave']);
         $this->assertNull($props['fase_destacada']);
+    }
+
+    // ═══ Plano 175-11, furo 2 — o prompt pede a COMPOSIÇÃO de N unidades ═════
+    //
+    // O N já chegava ao prompt como FATO ("CONTAGENS CONFIRMADAS NO CADASTRO"),
+    // mas NENHUMA linha pedia o arranjo — a `cena` dos slots não sabia que era
+    // kit — e o bloco MASTER manda "nunca mude a quantidade ou o conteúdo da
+    // embalagem", com a foto de referência mostrando UMA unidade.
+    //
+    // ⚠️ O conserto NÃO passa pelo `CreativePromptBuilder`: ele já imprime
+    // `'CENA: '.$slotPlano['cena']`, e a `cena` vem do PLANO. Quem sabe que
+    // este kit é capa de kit (`$tiposFixos`) e quantas unidades ele tem
+    // (`$contexto->unidadesDoKit`) é o `PlanejarKitCriativosJob` — é lá que a
+    // composição entra, sem tocar o arquivo que monta o prompt de TODOS os
+    // criativos em produção.
+    //
+    // ⚠️ TRUTH-02/03: a frase é montada em PHP a partir do INTEIRO do cadastro
+    // (`pub_produtos.quantidade_kit`), nunca de texto livre do operador.
+
+    public function test_a_composicao_acrescenta_sem_apagar_a_cena_do_plano(): void
+    {
+        $original = 'Cadeira em escritório residencial, luz natural de fim de tarde.';
+
+        $comComposicao = PlanejarKitCriativosJob::cenaComComposicao($original, 4);
+
+        // A cena original descreve o ENQUADRAMENTO do slot (lifestyle ambientada
+        // × hero fundo limpo) e continua valendo inteira.
+        $this->assertStringStartsWith($original, $comComposicao);
+        $this->assertStringContainsString('exatamente 4 unidades idênticas do mesmo produto, lado a lado', $comComposicao);
+
+        // Idempotente: chamar de novo não duplica a frase.
+        $this->assertSame($comComposicao, PlanejarKitCriativosJob::cenaComComposicao($comComposicao, 4));
+        $this->assertSame(1, substr_count($comComposicao, 'unidades idênticas do mesmo produto'));
+    }
+
+    public function test_a_composicao_nunca_pede_uma_unidade_so(): void
+    {
+        // Guarda de TRUTH-02/03: 1 (ou 0) não é kit. "exatamente 1 unidades
+        // idênticas lado a lado" seria um pedido sem sentido que o modelo
+        // obedeceria com confiança — número errado é pior que número nenhum.
+        $this->assertSame('Fundo branco liso.', PlanejarKitCriativosJob::cenaComComposicao('Fundo branco liso.', 1));
+        $this->assertSame('Fundo branco liso.', PlanejarKitCriativosJob::cenaComComposicao('Fundo branco liso.', 0));
+    }
+
+    /**
+     * Roda o planejamento DE VERDADE (o `handle()` do job), com plano
+     * determinístico: o provedor de texto dublê lança, o planner cai no plano
+     * de catálogo. ZERO chamada paga.
+     *
+     * `$tiposFixos` é o do job, não o do `CapaDoKitService` — é assim que o
+     * mesmo fixture prova os dois caminhos (capa de kit × kit comum).
+     */
+    private function planejarDeVerdade(PubProduto $produto, ?array $tiposFixos): MlAnuncioCriativoKit
+    {
+        $r = $this->capa()->planejar($produto, User::factory()->create(['role' => 'admin']));
+        $this->assertTrue($r['ok'], (string) ($r['motivo'] ?? ''));
+
+        $kitCriativo = MlAnuncioCriativoKit::findOrFail($r['kit_id']);
+
+        (new PlanejarKitCriativosJob((int) $kitCriativo->criativo_referencia_id, (int) $kitCriativo->id, $tiposFixos))
+            ->handle(
+                app(CreativeContextBuilder::class),
+                new ProductTruthBuilder,
+                $this->planner(),
+                app(CreativeCategoriaMobiliarioService::class),
+            );
+
+        return $kitCriativo->fresh();
+    }
+
+    /** Os slots gravados de um kit de criativos, em ordem (o portador fica fora). */
+    private function slotsGravados(MlAnuncioCriativoKit $kitCriativo): \Illuminate\Support\Collection
+    {
+        return MlAnuncioCriativo::query()
+            ->where('kit_id', $kitCriativo->id)
+            ->whereNotNull('slot_indice')
+            ->orderBy('slot_indice')
+            ->get();
+    }
+
+    public function test_a_capa_do_kit_grava_a_composicao_de_n_unidades_nos_dois_slots(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(2);
+        $this->fotoNaGaleria($kit->rascunho);
+
+        $kitCriativo = $this->planejarDeVerdade($kit, CapaDoKitService::SLOTS_DA_CAPA);
+
+        $slots = $this->slotsGravados($kitCriativo);
+        $this->assertSame(['lifestyle', 'hero'], $slots->pluck('slot')->all());
+
+        foreach ($slots as $slot) {
+            $cena = (string) ($slot->slot_plano['cena'] ?? '');
+
+            $this->assertStringContainsString(
+                'exatamente 2 unidades idênticas do mesmo produto, lado a lado',
+                $cena,
+                "o slot {$slot->slot} da capa tem de pedir a composição"
+            );
+            // A cena do slot (o enquadramento) continua ali, antes da composição.
+            $this->assertNotSame(
+                0,
+                strpos($cena, 'Mostre exatamente'),
+                'a composição é ACRESCENTADA, nunca substitui a cena do plano'
+            );
+        }
+    }
+
+    /**
+     * ⚠️ REGRESSÃO: kit SEM `tiposFixos` é o caminho de TODO kit em produção,
+     * inclusive os 3 kits de 7 slots que existem lá. A `cena` tem de sair byte
+     * a byte igual à do plano, sem UM caractere a mais.
+     *
+     * O fixture tem `quantidade_kit = 4` de propósito: `unidadesDoKit` NÃO é
+     * nulo aqui, e mesmo assim nada é acrescentado — o que prova que a trava é
+     * `$fixos !== []`, não a ausência das unidades.
+     */
+    public function test_kit_sem_tipos_fixos_grava_a_cena_byte_a_byte_igual_a_do_plano(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(4);
+        $this->fotoNaGaleria($kit->rascunho);
+
+        $kitCriativo = $this->planejarDeVerdade($kit, null);
+
+        // O MESMO plano, recalculado aqui pelo mesmo caminho do job: com o
+        // provedor de texto fora do ar o planner é determinístico.
+        $portador = MlAnuncioCriativo::findOrFail($kitCriativo->criativo_referencia_id);
+        $contexto = app(CreativeContextBuilder::class)->paraCriativo($portador);
+        $truth = (new ProductTruthBuilder)->paraContexto($contexto);
+        $esperado = $this->planner()->planejar(
+            $contexto,
+            $truth,
+            (int) config('services.creative.kit.slots', MlAnuncioCriativoKit::SLOTS_PADRAO),
+            app(CreativeCategoriaMobiliarioService::class)->ehMoveis($contexto->categoriaId),
+            [],
+        );
+
+        $gravadas = $this->slotsGravados($kitCriativo)
+            ->map(fn ($c) => (string) ($c->slot_plano['cena'] ?? ''))
+            ->all();
+
+        $this->assertNotSame([], $gravadas);
+        $this->assertSame(
+            array_map(fn ($s) => $s->cena, $esperado->slots),
+            $gravadas,
+            'kit sem tiposFixos: a cena é a do plano, byte a byte'
+        );
+        foreach ($gravadas as $cena) {
+            $this->assertStringNotContainsString('unidades idênticas', $cena);
+            $this->assertStringNotContainsString('Mostre exatamente', $cena);
+        }
+    }
+
+    /**
+     * Capa de kit em produto de 1 unidade (`unidadesDoKit` nulo): sem o N do
+     * cadastro, NENHUMA linha de composição é emitida. É a outra metade de
+     * TRUTH-02/03 — na dúvida, não afirmar quantidade.
+     */
+    public function test_capa_sem_as_unidades_do_cadastro_nao_acrescenta_nada(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        // O BASE (1 unidade) — `CreativeContextBuilder` devolve `unidadesDoKit` nulo.
+        [$base] = $this->familia(4);
+        $this->fotoNaGaleria($base->rascunho);
+
+        $kitCriativo = $this->planejarDeVerdade($base, CapaDoKitService::SLOTS_DA_CAPA);
+
+        $slots = $this->slotsGravados($kitCriativo);
+        $this->assertSame(['lifestyle', 'hero'], $slots->pluck('slot')->all());
+
+        foreach ($slots as $slot) {
+            $this->assertStringNotContainsString('Mostre exatamente', (string) ($slot->slot_plano['cena'] ?? ''));
+        }
+    }
+
+    /**
+     * Ponta a ponta sem tocar o builder: o `slot_plano` gravado atravessa
+     * `CreativePromptBuilder::paraSlot()` e a composição sai na linha `CENA:`.
+     */
+    public function test_o_prompt_final_pede_a_composicao_na_linha_da_cena(): void
+    {
+        Storage::fake('local');
+        $this->ligarCreative();
+        [, $kit] = $this->familia(3);
+        $this->fotoNaGaleria($kit->rascunho);
+
+        $kitCriativo = $this->planejarDeVerdade($kit, CapaDoKitService::SLOTS_DA_CAPA);
+
+        $portador = MlAnuncioCriativo::findOrFail($kitCriativo->criativo_referencia_id);
+        $truth = (new ProductTruthBuilder)->paraContexto(
+            app(CreativeContextBuilder::class)->paraCriativo($portador)
+        );
+
+        foreach ($this->slotsGravados($kitCriativo) as $slot) {
+            $prompt = app(CreativePromptBuilder::class)->paraSlot($truth, (array) $slot->slot_plano);
+
+            $linhaCena = collect(explode("\n", $prompt))
+                ->first(fn ($l) => str_starts_with($l, 'CENA: '));
+
+            $this->assertNotNull($linhaCena, "o prompt do slot {$slot->slot} tem de ter a linha CENA");
+            $this->assertStringContainsString(
+                'exatamente 3 unidades idênticas do mesmo produto, lado a lado',
+                (string) $linhaCena
+            );
+            // E o N também continua chegando como FATO de cadastro (TRUTH-02/03).
+            $this->assertStringContainsString('CONTAGENS CONFIRMADAS NO CADASTRO', $prompt);
+        }
     }
 }

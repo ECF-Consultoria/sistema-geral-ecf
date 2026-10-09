@@ -95,6 +95,68 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
         return 300;
     }
 
+    /**
+     * Fase 175 (plano 175-11, §5) — a COMPOSIÇÃO de N unidades acrescentada à
+     * `cena` do slot. Puro e estático de propósito: testável sem banco e sem
+     * fila.
+     *
+     * ═══ Por que aqui e não no `CreativePromptBuilder` ══════════════════════
+     *
+     * O builder já imprime `'CENA: '.$slotPlano['cena']` em `paraSlot()`, e a
+     * `cena` vem do PLANO. Este job é o único lugar que sabe que o kit é uma
+     * CAPA DE KIT (`$tiposFixos`) e quantas unidades ele tem
+     * (`$contexto->unidadesDoKit`) — então a composição entra pelo plano, sem
+     * tocar o arquivo que monta o prompt de TODOS os criativos em produção.
+     *
+     * O canal `ajusteOperador` NÃO serviria: `linhasVariacao()` devolve vazio
+     * quando `$regeneracao < 1` (e a capa nasce com 0), e o próprio bloco
+     * instrui o modelo a ignorar o que vier por ali em matéria de QUANTIDADE —
+     * proteção deliberada de TRUTH-02/03.
+     *
+     * ═══ TRUTH-02/03 ═══════════════════════════════════════════════════════
+     *
+     * `$unidades` é o INTEIRO do cadastro (`pub_produtos.quantidade_kit`, via
+     * `CreativeContext::$unidadesDoKit`) — NUNCA texto livre, nome de produto
+     * ou qualquer coisa que o operador digite. O número já está no bloco
+     * "CONTAGENS CONFIRMADAS NO CADASTRO" do mesmo prompt: esta linha pede só o
+     * ARRANJO, não afirma fato novo.
+     *
+     * Abaixo de 2 nada é emitido: "exatamente 1 unidades idênticas lado a lado"
+     * é um pedido sem sentido que o modelo obedeceria com confiança, e número
+     * errado no prompt é pior que número nenhum.
+     *
+     * A cena original (o enquadramento do slot — `lifestyle` ambientada ×
+     * `hero` fundo limpo) é PRESERVADA: a composição vem depois dela, nunca em
+     * lugar dela. Idempotente — chamar duas vezes não duplica a frase.
+     */
+    public static function cenaComComposicao(string $cenaOriginal, int $unidades): string
+    {
+        if ($unidades < 2) {
+            return $cenaOriginal;
+        }
+
+        $marca = 'Mostre exatamente ' . $unidades . ' unidades idênticas';
+
+        if (str_contains($cenaOriginal, $marca)) {
+            return $cenaOriginal;
+        }
+
+        $frase = $marca . ' do mesmo produto, lado a lado, preservando cor, forma'
+            . ' e acabamento de todas; nada além do produto na cena.';
+
+        $base = rtrim($cenaOriginal);
+
+        if ($base === '') {
+            return $frase;
+        }
+
+        // Cena já terminada em pontuação só precisa de emenda; sem pontuação, o
+        // travessão separa o enquadramento do slot do pedido de composição.
+        return str_ends_with($base, '.') || str_ends_with($base, '!') || str_ends_with($base, '?')
+            ? $base . ' ' . $frase
+            : $base . ' — ' . $frase;
+    }
+
     public function handle(
         CreativeContextBuilder $ctxBuilder,
         ProductTruthBuilder $truthBuilder,
@@ -153,12 +215,30 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
         $categoriaMoveis = $categoriaMobiliario->ehMoveis($contexto->categoriaId);
         $plano = $planner->planejar($contexto, $truth, $quantidade, $categoriaMoveis, $fixos);
 
+        // Fase 175 (plano 175-11, §5): a COMPOSIÇÃO de N unidades só entra na
+        // CAPA DE KIT, e só com o N do cadastro. As duas condições juntas:
+        //
+        // - `$fixos !== []` — hoje só a capa de kit fixa os tipos. Sem isso,
+        //   NADA é acrescentado: é o caminho de todo kit em produção, inclusive
+        //   os kits de 7 slots, cuja `cena` sai byte a byte igual à do plano.
+        // - `unidadesDoKit !== null` — o inteiro de `pub_produtos.quantidade_kit`
+        //   (>= 2). Sem ele, nenhuma linha de composição é emitida (TRUTH-02/03:
+        //   na dúvida, não afirmar quantidade).
+        $unidadesDaComposicao = ($fixos !== [] && $contexto->unidadesDoKit !== null)
+            ? (int) $contexto->unidadesDoKit
+            : null;
+
         $t0 = microtime(true);
 
         // (4) grava plano + cria os N criativos, numa única transação —
         // nenhum criativo órfão se algo falhar no meio.
-        DB::transaction(function () use ($kit, $portador, $plano) {
+        DB::transaction(function () use ($kit, $portador, $plano, $unidadesDaComposicao) {
             $kit->update([
+                // ⚠️ A auditoria guarda o plano COMO O PLANNER O PRODUZIU — a
+                // composição da capa (175-11) é acrescentada só no
+                // `slot_plano` de cada criativo, que é o que de fato alimenta
+                // o prompt. Assim dá para ver os dois: o que foi planejado e o
+                // que foi pedido ao modelo.
                 'plano'               => $plano->paraAuditoria(),
                 'plano_origem'        => $plano->origem,
                 'planner_provider'    => (string) config('services.creative.provider', 'gemini'),
@@ -173,6 +253,18 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
             ]);
 
             foreach ($plano->slots as $slotPlano) {
+                $paraPrompt = $slotPlano->paraPrompt();
+
+                // Plano 175-11: a `cena` é o canal certo — o builder já a
+                // imprime como a linha CENA. Fora da capa de kit
+                // (`$unidadesDaComposicao === null`), o array sai INTACTO.
+                if ($unidadesDaComposicao !== null) {
+                    $paraPrompt['cena'] = self::cenaComComposicao(
+                        (string) ($paraPrompt['cena'] ?? ''),
+                        $unidadesDaComposicao,
+                    );
+                }
+
                 MlAnuncioCriativo::create([
                     'token'          => Str::random(32),
                     'company_id'     => $portador->company_id,
@@ -182,7 +274,7 @@ class PlanejarKitCriativosJob implements ShouldQueue, ShouldBeUnique
                     'kit_id'         => $kit->id,
                     'slot'           => $slotPlano->tipo,
                     'slot_indice'    => $slotPlano->indice,
-                    'slot_plano'     => $slotPlano->paraPrompt(),
+                    'slot_plano'     => $paraPrompt,
                     'status'         => MlAnuncioCriativo::STATUS_PENDENTE,
                 ]);
             }
