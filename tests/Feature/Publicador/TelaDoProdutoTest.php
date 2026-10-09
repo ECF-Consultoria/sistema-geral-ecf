@@ -19,6 +19,7 @@ use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\VinculoDeKitService;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -147,12 +148,14 @@ class TelaDoProdutoTest extends TestCase
         ]);
     }
 
-    private function variante(PubRascunho $r, int $estoque, string $chave = '__single__'): void
+    /** `$depositos` (D11): `store_id` → quantidade, nas contas multidepósito. */
+    private function variante(PubRascunho $r, int $estoque, string $chave = '__single__', ?array $depositos = null): void
     {
         $r->variantes()->create([
             'combinacao_chave' => $chave,
             'combinacao_hash' => hash('sha256', $chave),
             'estoque' => $estoque,
+            'estoque_depositos' => $depositos,
         ]);
     }
 
@@ -315,6 +318,74 @@ class TelaDoProdutoTest extends TestCase
         $this->assertNull($porFase[2]['estoque_calculado_valor']);
         $this->assertTrue($porFase[3]['estoque_proprio'], 'combo vinculado mantém o próprio (§6)');
         $this->assertSame(2, $porFase[3]['estoque_calculado_valor'], 'floor(7 ÷ 3) só para exibição');
+    }
+
+    /**
+     * ⚠️ O defeito do quick 261009-div: o cartão prometia
+     * `floor(estoque_total ÷ N)` e a adoção ("Usar estoque calculado") grava a
+     * SOMA DOS DEPÓSITOS DIVIDIDOS. Com `{A:5, B:5}` e N=3 o cartão mostrava 3 e
+     * o botão gravava 2 — número errado numa tela em produção.
+     *
+     * Este teste cobra os DOIS números no MESMO cenário: se as duas contas
+     * divergirem de novo, ele cai.
+     */
+    public function test_estoque_calculado_do_cartao_divide_cada_deposito_como_a_adocao(): void
+    {
+        [$empresa] = $this->conta();
+        $base = $this->base($empresa);
+        $rb = $this->rascunho($base, PubRascunho::PUBLISHED);
+        $this->variante($rb, 10, depositos: ['A' => 5, 'B' => 5]);
+
+        $kit = $this->kit($base, 3, 2, estoqueCalculado: false);
+        $rk = $this->rascunho($kit);
+        $this->variante($rk, 11);
+
+        $tela = $this->tela($base->fresh(), $empresa);
+        $porFase = array_column($tela['fases'], null, 'fase');
+        $doCartao = $porFase[2]['estoque_calculado_valor'];
+
+        $this->assertSame(10, $tela['base']['estoque_total'], 'o total do cabeçalho do produto NÃO muda');
+        $this->assertSame(2, $doCartao, 'soma dos divididos (1+1), nunca floor(10 ÷ 3)');
+
+        // A adoção, no MESMO cenário, tem de gravar exatamente esse número.
+        app(VinculoDeKitService::class)->usarEstoqueCalculado($kit->fresh());
+        $this->assertSame($doCartao, (int) $rk->fresh()->variantes()->value('estoque'), 'o cartão promete o que o botão grava');
+    }
+
+    /**
+     * Não-regressão do mesmo quick: conta de UM depósito (ou sem depósito
+     * nenhum) tem de continuar com o valor de antes — os dois caminhos já davam
+     * o mesmo número nesses casos, e a correção não pode mexer neles.
+     */
+    public function test_estoque_calculado_de_um_deposito_so_ou_sem_deposito_segue_o_mesmo(): void
+    {
+        [$empresa] = $this->conta();
+
+        $umDeposito = $this->base($empresa, sku: 'CAD-UM');
+        $rb1 = $this->rascunho($umDeposito, PubRascunho::PUBLISHED);
+        $this->variante($rb1, 10, depositos: ['A' => 10]);
+        $kit1 = $this->kit($umDeposito, 3, 2, estoqueCalculado: false);
+        $rk1 = $this->rascunho($kit1);
+        $this->variante($rk1, 11);
+
+        $semDeposito = $this->base($empresa, sku: 'CAD-SEM');
+        $rb2 = $this->rascunho($semDeposito, PubRascunho::PUBLISHED);
+        $this->variante($rb2, 10);
+        $kit2 = $this->kit($semDeposito, 3, 2, estoqueCalculado: false);
+        $rk2 = $this->rascunho($kit2);
+        $this->variante($rk2, 11);
+
+        $cartao1 = array_column($this->tela($umDeposito->fresh(), $empresa)['fases'], null, 'fase');
+        $cartao2 = array_column($this->tela($semDeposito->fresh(), $empresa)['fases'], null, 'fase');
+
+        $this->assertSame(3, $cartao1[2]['estoque_calculado_valor'], 'um depósito só: intdiv(10, 3) == floor(10 ÷ 3)');
+        $this->assertSame(3, $cartao2[2]['estoque_calculado_valor'], 'sem depósito: a conta é a mesma de antes');
+
+        app(VinculoDeKitService::class)->usarEstoqueCalculado($kit1->fresh());
+        app(VinculoDeKitService::class)->usarEstoqueCalculado($kit2->fresh());
+
+        $this->assertSame(3, (int) $rk1->fresh()->variantes()->value('estoque'));
+        $this->assertSame(3, (int) $rk2->fresh()->variantes()->value('estoque'));
     }
 
     // ═══ Task 1 — ofertas no ar ═════════════════════════════════════════════
