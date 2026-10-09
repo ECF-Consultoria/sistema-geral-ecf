@@ -671,6 +671,21 @@ O que custou descobrir e NÃO se deduz do código (o resto está nos SUMMARY da 
   unidade), prova em `IaNumeroNoFormatoDoEditorTest`. Pacote (`SELLER_PACKAGE_*`) sempre esteve certo.
   Multivalor: a tela mostra só a 1ª opção e o payload leva só ela (D-13, de propósito). Prova:
   `SincronizarNoFormatoDoEditorTest` (o "o editor mostra" espelha a leitura do `CampoAtributo` em PHP).
+- **Cor do produto de UMA cor e Cor principal (09/10, Puff Redondo da #459 com "Cor"/"Cor principal" vazias).** A ficha
+  do Portal não pede COLOR quando o produto varia por cor (é o eixo), e com 1 variação não há eixo no rascunho — a cor
+  "Azul" não ia a lugar nenhum. Agora, com `plano.chave` nulo e todas as variações de eixo cor com o MESMO valor
+  (`corUnica`), o valor entra na ficha como COLOR `origem=portal` (resolvido como qualquer atributo: opção pelo nome ou
+  texto livre). MAIN_COLOR (lista fechada, §11) vai na VARIANTE (única ou cada cor do eixo) com a opção de mesmo nome
+  `ChaveCanonica::texto` — sem sinônimo (isso é o `tomDaCor` da tela); sem casamento fica vazia e só loga. **Atributo de
+  variante não tem `origem`** (`pub_variante_atributos` não tem a coluna; o `origem: 'auto'/'user'` da tela some ao
+  gravar): a regra D-05 refinada usa `step_state.portal_escrito[chave].tom`, igual SKU/estoque. Quando a cor única vira
+  eixo (cliente acrescentou cores), o COLOR de produto `origem=portal` sai (`aplicarFicha`, o eixo novo). Prova:
+  `SincronizarCorEMedidasDoProdutoTest` (tirar a checagem da memória derruba o teste da equipe).
+- **Medidas do produto fora da caixa chegam do Portal (09/10).** O Portal passou a pedir LENGTH/WIDTH/HEIGHT/DEPTH/
+  DIAMETER/WEIGHT num bloco próprio (portal §38); o Sincronizar não mudou — já levava todo atributo de produto, no formato
+  canônico ("58.5 cm", "7.5 kg"). `DIAMETER` entrou em `MEDIDAS_DO_PRODUTO` (`ferramentas.js`): sai de "Mais
+  características" e fica em "Produto fora da caixa" como "Diâmetro do produto". Um teste JS amarra os ids do bloco do
+  Portal aos do editor.
 
 ### Checklist de DEPLOY (só com autorização do usuário)
 

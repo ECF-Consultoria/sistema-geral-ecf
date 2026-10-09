@@ -82,9 +82,13 @@ export const daUnidadeMl = (valorMl, fator) => {
 // O ML calcula o frete pelo pacote FECHADO (SELLER_PACKAGE_*, sempre cm e g). As medidas do
 // produto fora da caixa (HEIGHT, WIDTH…) chegam em várias unidades e só aparecem na ficha.
 
-/** Medidas genéricas do produto sozinho, com o rótulo que deixa claro que não são do pacote. */
+/**
+ * Medidas genéricas do produto sozinho, com o rótulo que deixa claro que não são do pacote. O diâmetro
+ * entrou em 09/10/2026: o Portal passou a pedi-lo no bloco "Medidas do produto (fora da caixa)" e ele
+ * aparecia solto em "Mais características" (Puff Redondo da #459).
+ */
 export const MEDIDAS_DO_PRODUTO = {
-    HEIGHT: 'Altura do produto', WIDTH: 'Largura do produto', LENGTH: 'Comprimento do produto', DEPTH: 'Profundidade do produto', WEIGHT: 'Peso do produto',
+    HEIGHT: 'Altura do produto', WIDTH: 'Largura do produto', LENGTH: 'Comprimento do produto', DEPTH: 'Profundidade do produto', DIAMETER: 'Diâmetro do produto', WEIGHT: 'Peso do produto',
 };
 const PARA_CM = { mm: 0.1, cm: 1, m: 100, '"': 2.54, in: 2.54, ft: 30.48 };
 const PARA_G = { mg: 0.001, g: 1, kg: 1000, lb: 453.592, oz: 28.3495 };

@@ -45,6 +45,13 @@ use Illuminate\Support\Facades\Log;
  *   Estoque de kit calculado (`pub_produtos.estoque_calculado`, Fase 175) nunca é escrito.
  * - categoria e fotos: continuam só no vazio (trocar categoria apaga ficha; trocar foto é escolha
  *   da equipe).
+ * - cor (09/10/2026, Puff Redondo da #459 com "Cor" e "Cor principal" vazias): o produto de UMA cor
+ *   (uma variação de eixo cor, ou todas com a mesma cor) leva o valor dela para a "Cor" (COLOR) do
+ *   produto, como atributo `origem = portal` — a ficha do Portal não pede a Cor porque ela é o eixo.
+ *   A "Cor principal" (MAIN_COLOR, lista FECHADA — learnings §11) de cada variante recebe a opção
+ *   cujo nome casa com o da cor sem acento/caixa; sem casamento fica vazia (aviso só no log). Como
+ *   o atributo de variante não tem `origem`, ela segue o Portal pela mesma memória do SKU/estoque
+ *   (`step_state.portal_escrito[chave].tom`).
  * Cor nova entra como variação nova; nenhuma cor é removida. Rodar de novo sem mudança no Portal
  * não muda nada (a revisão do rascunho só sobe quando algo foi gravado).
  *
@@ -166,13 +173,17 @@ class PortalParaRascunhoService
             array_values(array_filter($grupo['variacoes'], fn (array $v) => $v['volumes'] !== [])),
         );
         $doGrupo = ComposicaoDoPortal::pacoteDoGrupo($pacotes);
-        if (! $this->aplicarFicha($r, $schema, $grupo['atributos'], $doGrupo['pacote'], $doGrupo['divergem'], $plano['chave'] ?? null, $resumo)) {
+        // Produto de uma cor só: a cor da variação é a Cor do produto (a ficha do Portal não a pede).
+        $corDoProduto = $plano['chave'] === null ? self::corUnica($grupo['variacoes']) : null;
+        $atributosPortal = $corDoProduto !== null ? self::comCor($grupo['atributos'], $corDoProduto) : $grupo['atributos'];
+        if (! $this->aplicarFicha($r, $schema, $atributosPortal, $doGrupo['pacote'], $doGrupo['divergem'], $plano['chave'] ?? null, $resumo)) {
             return $this->parou($resumo);
         }
 
-        // ─── Variações: eixo, uma variante por cor, SKU e estoque de cada uma ───
-        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($grupo, $plano, $produto, &$resumo) {
-            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $resumo['avisos'], $resumo);
+        // ─── Variações: eixo, uma variante por cor, SKU, estoque e Cor principal de cada uma ───
+        $tom = $schema->atributo(self::COR_PRINCIPAL);
+        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($grupo, $plano, $produto, $tom, $corDoProduto, &$resumo) {
+            return $this->aplicarVariacoes($r, $produto, $grupo['variacoes'], $plano, $resumo['avisos'], $resumo, $tom, $corDoProduto);
         });
         if (! $vivo) {
             return $this->parou($resumo);
@@ -472,6 +483,14 @@ class PortalParaRascunhoService
             // IA poder gerá-lo. `user`/`ia`/qualquer outra origem nunca é tocada.
             if (self::doPortal($snap->atributos[FichaTecnicaDaCategoria::ID_MODELO] ?? null)) {
                 $remover[] = FichaTecnicaDaCategoria::ID_MODELO;
+                $resumo['campos_atualizados']++;
+            }
+
+            // O atributo que virou o EIXO (ex.: a Cor do produto de uma cor só, que ganhou outras cores):
+            // o valor de produto que o Portal tinha escrito sai — agora a cor mora em cada variante.
+            if ($chaveEixo !== null && $chaveEixo !== ChaveCanonica::EIXO_CUSTOM && ! in_array($chaveEixo, $remover, true)
+                && self::doPortal($snap->atributos[$chaveEixo] ?? null)) {
+                $remover[] = $chaveEixo;
                 $resumo['campos_atualizados']++;
             }
 
@@ -893,15 +912,17 @@ class PortalParaRascunhoService
      *
      * @param  list<array>  $variacoes
      */
-    private function aplicarVariacoes(PubRascunho $r, PubProduto $produto, array $variacoes, array $plano, array &$avisos, array &$resumo): bool
+    private function aplicarVariacoes(PubRascunho $r, PubProduto $produto, array $variacoes, array $plano, array &$avisos, array &$resumo,
+        ?AtributoClassificado $tom = null, ?string $corDoProduto = null): bool
     {
         $snap = $this->repo->snapshot($r);
         $escrito = $this->escritoPeloPortal($r);
         $lembrar = [];
 
         // ── Produto de uma só variação (ou sem variação útil): a variante única recebe SKU e estoque ──
+        // e, com uma cor só (mesmo em várias variações de mesma cor), a Cor principal dessa cor.
         if ($plano['chave'] === null) {
-            if (count($variacoes) !== 1 || $snap->eixos !== []) {
+            if ($snap->eixos !== []) {
                 return false;
             }
             $unica = collect($snap->variantes)->first(fn (Variante $v) => $v->chave === ChaveCanonica::UNICA);
@@ -909,7 +930,12 @@ class PortalParaRascunhoService
                 return false;
             }
             $daUnica = [];
-            $porChave = $this->dadosDaVariante($unica, $variacoes[0], false, [], $produto, $resumo, (array) ($escrito[ChaveCanonica::UNICA] ?? []), $daUnica);
+            $doEscrito = (array) ($escrito[ChaveCanonica::UNICA] ?? []);
+            if (count($variacoes) === 1) {
+                $porChave = $this->dadosDaVariante($unica, $variacoes[0], false, [], $produto, $resumo, $doEscrito, $daUnica, $tom, $corDoProduto);
+            } else {
+                $porChave = $corDoProduto !== null ? $this->soOTom($unica, $tom, $corDoProduto, $doEscrito, $daUnica, $resumo) : null;
+            }
             $gravou = $this->gravarVariantes($r, $porChave !== null ? [ChaveCanonica::UNICA => $porChave] : []);
             $this->lembrarEscrito($r, $daUnica === [] ? [] : [ChaveCanonica::UNICA => $daUnica]);
 
@@ -1003,7 +1029,10 @@ class PortalParaRascunhoService
                 continue; // cor que a equipe criou no rascunho e o Portal não tem
             }
             $daVariante = [];
-            $dados = $this->dadosDaVariante($v, $cor['variacao'], true, $skus, $produto, $resumo, (array) ($escrito[$v->chave] ?? []), $daVariante);
+            // A Cor principal só quando as variações do Portal são por cor (o valor É o nome da cor).
+            $nomeDaCor = ($cor['variacao']['eixo'] ?? null) === 'cor' ? (string) $cor['variacao']['valor'] : null;
+            $dados = $this->dadosDaVariante($v, $cor['variacao'], true, $skus, $produto, $resumo, (array) ($escrito[$v->chave] ?? []), $daVariante,
+                $tom, $nomeDaCor);
             if ($dados !== null) {
                 $porChave[$v->chave] = $dados;
             }
@@ -1021,7 +1050,7 @@ class PortalParaRascunhoService
     /** Chave de `step_state` com o último estoque/SKU que o Sincronizar escreveu em cada variante. */
     private const MEMORIA_ESCRITO = 'portal_escrito';
 
-    /** @return array<string, array{estoque?: int, sku?: string}> chave da variante → o que o Portal escreveu nela */
+    /** @return array<string, array{estoque?: int, sku?: string, tom?: string}> chave da variante → o que o Portal escreveu nela */
     private function escritoPeloPortal(PubRascunho $r): array
     {
         $estado = json_decode((string) DB::table('pub_rascunhos')->where('id', $r->id)->value('step_state'), true) ?: [];
@@ -1112,11 +1141,14 @@ class PortalParaRascunhoService
      * Sem memória ainda (rascunho de antes de 09/10), valor IGUAL ao do Portal é anotado como dele:
      * daí em diante passa a segui-lo. Diferente e sem memória = da equipe, fica.
      *
+     * - Cor principal: ver {@see self::tomDaVariante()} (só com `$nomeDaCor`).
+     *
      * @param  array<string, string>  $skus  SKU → chave da 1ª variante que o tem hoje
-     * @param  array{estoque?: int, sku?: string}  $escrito  o que o Portal escreveu nesta variante
-     * @param  array{estoque?: int, sku?: string}  $lembrar  (saída) o que guardar na memória
+     * @param  array{estoque?: int, sku?: string, tom?: string}  $escrito  o que o Portal escreveu nesta variante
+     * @param  array{estoque?: int, sku?: string, tom?: string}  $lembrar  (saída) o que guardar na memória
      */
-    private function dadosDaVariante(Variante $v, array $variacao, bool $varias, array $skus, PubProduto $produto, array &$resumo, array $escrito, array &$lembrar): ?array
+    private function dadosDaVariante(Variante $v, array $variacao, bool $varias, array $skus, PubProduto $produto, array &$resumo, array $escrito, array &$lembrar,
+        ?AtributoClassificado $tom = null, ?string $nomeDaCor = null): ?array
     {
         $novo = [];
 
@@ -1155,7 +1187,125 @@ class PortalParaRascunhoService
             $resumo['campos_mantidos']++;
         }
 
+        if ($nomeDaCor !== null) {
+            $atributos = $novo['atributos'] ?? (array) ($v->dados['atributos'] ?? []);
+            if ($this->tomDaVariante($atributos, $tom, $nomeDaCor, $escrito, $lembrar, $resumo)) {
+                $novo['atributos'] = $atributos;
+            }
+        }
+
         return $novo === [] ? null : $novo;
+    }
+
+    /** Atributo de variante da "Cor principal" (o tom dos filtros; lista fechada). */
+    private const COR_PRINCIPAL = 'MAIN_COLOR';
+
+    /** Só a Cor principal da variante (várias variações do Portal com a mesma cor: SKU e estoque não vêm). */
+    private function soOTom(Variante $v, ?AtributoClassificado $tom, string $nomeDaCor, array $escrito, array &$lembrar, array &$resumo): ?array
+    {
+        $atributos = (array) ($v->dados['atributos'] ?? []);
+
+        return $this->tomDaVariante($atributos, $tom, $nomeDaCor, $escrito, $lembrar, $resumo) ? ['atributos' => $atributos] : null;
+    }
+
+    /**
+     * A "Cor principal" (MAIN_COLOR) da variante pelo nome da cor do Portal. Lista FECHADA (o ML recusa
+     * valor fora dela — learnings §11): só a opção cujo nome casa com a cor sem acento/caixa ("Azul" →
+     * "Azul"). Sinônimo ("Marinho" → Azul) é da tela (`tomDaCor`, `origem: 'auto'`), não daqui.
+     * Sem `origem` no atributo de variante, a regra D-05 refinada usa a memória `tom` (o `value_id`
+     * que o Portal escreveu): vazio → preenche; ainda com o que o Portal escreveu → segue o Portal
+     * (troca ou sai); qualquer outro valor é da equipe, da IA ou da tela → fica. Rascunho sem memória
+     * com o MESMO tom do Portal é anotado como dele, como o SKU.
+     *
+     * @param  array<string, mixed>  $atributos  (entrada e saída) os atributos da variante
+     * @return bool true = `$atributos` mudou
+     */
+    private function tomDaVariante(array &$atributos, ?AtributoClassificado $tom, string $nomeDaCor, array $escrito, array &$lembrar, array &$resumo): bool
+    {
+        if ($tom === null || $tom->valores === [] || trim($nomeDaCor) === '') {
+            return false;
+        }
+        $opcao = null;
+        foreach ($tom->valores as $o) {
+            if (ChaveCanonica::texto((string) ($o['name'] ?? '')) === ChaveCanonica::texto($nomeDaCor)) {
+                $opcao = ['value_id' => (string) $o['id'], 'value_name' => (string) $o['name']];
+                break;
+            }
+        }
+        $atualId = trim((string) ($atributos[self::COR_PRINCIPAL]['value_id'] ?? ''));
+        if ($atualId === '') {
+            if ($opcao === null) {
+                $resumo['avisos'][] = "Cor principal: \"{$nomeDaCor}\" não é uma opção da lista; escolha o tom no Publicador.";
+
+                return false;
+            }
+            $atributos[self::COR_PRINCIPAL] = $opcao;
+            $lembrar['tom'] = $opcao['value_id'];
+            $resumo['campos_preenchidos']++;
+
+            return true;
+        }
+        $doPortal = array_key_exists('tom', $escrito) && (string) $escrito['tom'] === $atualId;
+        if (! $doPortal) {
+            if (! array_key_exists('tom', $escrito) && $opcao !== null && $opcao['value_id'] === $atualId) {
+                $lembrar['tom'] = $atualId;
+            }
+            $resumo['campos_mantidos']++;
+
+            return false;
+        }
+        if ($opcao !== null && $opcao['value_id'] === $atualId) {
+            $resumo['campos_mantidos']++;
+
+            return false;
+        }
+        if ($opcao === null) {
+            unset($atributos[self::COR_PRINCIPAL]);
+        } else {
+            $atributos[self::COR_PRINCIPAL] = $opcao;
+            $lembrar['tom'] = $opcao['value_id'];
+        }
+        $resumo['campos_atualizados']++;
+
+        return true;
+    }
+
+    /**
+     * A cor do produto quando ele tem UMA cor só: as variações com valor são todas de eixo cor e com o
+     * mesmo valor (sem acento/caixa). Null nos demais casos (sem cor, várias cores, outro eixo).
+     *
+     * @param  list<array>  $variacoes
+     */
+    private static function corUnica(array $variacoes): ?string
+    {
+        $cor = null;
+        foreach ($variacoes as $v) {
+            $valor = trim((string) ($v['valor'] ?? ''));
+            if ($valor === '') {
+                continue;
+            }
+            if (($v['eixo'] ?? null) !== 'cor' || ($cor !== null && ChaveCanonica::texto($cor) !== ChaveCanonica::texto($valor))) {
+                return null;
+            }
+            $cor ??= $valor;
+        }
+
+        return $cor;
+    }
+
+    /**
+     * A ficha do Portal com a Cor do produto (COLOR) no lugar da que estiver gravada: o valor da
+     * variação vence (a linha antiga é de quando o produto não variava por cor).
+     *
+     * @param  list<array>  $atributos
+     * @return list<array>
+     */
+    private static function comCor(array $atributos, string $cor): array
+    {
+        $id = EstruturaProdutoVariacao::EIXO_PARA_ATRIBUTO['cor'];
+        $sem = array_values(array_filter($atributos, fn (array $a) => (string) ($a['id'] ?? '') !== $id));
+
+        return [...$sem, ['id' => $id, 'nome' => 'Cor', 'valor' => $cor, 'valor_id' => null, 'unidade' => null]];
     }
 
     /** A cor que herda os dados da variante única: a da oferta do produto, senão a de menor ordem. */
