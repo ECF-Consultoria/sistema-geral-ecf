@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, Boxes, ChevronRight, ClipboardList, Send, ShieldCheck, Sparkles, TrendingUp } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Boxes, ChevronRight, ClipboardList, Clock, Images, Palette, Send, ShieldCheck, Sparkles, TrendingUp, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { textoSeguro } from './BarraDaConta';
 import CartaoKpi from './CartaoKpi';
+import SeloExemplo from './SeloExemplo';
+import {
+    ALERTAS_ML_EXEMPLO,
+    ATIVIDADE_EXEMPLO,
+    CATALOGO_EXEMPLO,
+    CONTA_EXEMPLO,
+    CONVERSAO_EXEMPLO,
+    ERP_EXEMPLO,
+    PERIODOS_EXEMPLO,
+    TRACAO_EXEMPLO,
+} from './dadosDeExemplo';
 import LinkReconexao from './LinkReconexao';
 import BotaoSincronizarPortal from './BotaoSincronizarPortal';
 import SeloConta from './SeloConta';
@@ -17,6 +28,62 @@ import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 const TITLE_SEM_COMPANY = 'Disponível só para empresas cadastradas no sistema';
 
 const BOTAO_SECUNDARIO = 'inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+
+// ─── A régua do dado de exemplo (quick 261010-t02b) ─────────────────────────
+//
+// O main/content desta tela é o do mockup do Stitch INTEIRO: onde o dado da
+// conta existe ele é usado; onde ainda não existe, entra um valor de exemplo —
+// nunca um quadro vazio (decisão do usuário em 10/10).
+//
+// Todo valor fictício vem de `dadosDeExemplo.js` e todo bloco que o usa carrega
+// `SeloExemplo`. Nada de número inventado escrito aqui no JSX.
+
+/** O `title` de um botão que só existe para completar o desenho do mockup. */
+const TITULO_BOTAO_EXEMPLO = 'Bloco de exemplo: este botão não leva a lugar nenhum porque a integração ainda não existe.';
+
+/** O `title` do seletor de período — ele marca o escolhido e não refiltra nada. */
+const TITULO_PERIODO = 'O recorte por período ainda não está ligado: o seletor marca a opção e a tela continua mostrando o acervo inteiro.';
+
+/**
+ * O caminho do sparkline de conversão diária, em coordenadas da viewBox 320×48.
+ *
+ * Fica no escopo do MÓDULO de propósito: a série é constante, e calcular isso
+ * dentro do componente colocaria uma variável de escopo do componente dentro de
+ * um `.map()` — exatamente o que o Rollup já eliminou no bundle de produção
+ * deste projeto (feedback_rollup_map_scope_bug.md).
+ *
+ * ⚠️ O CAMINHO REAL já existe no banco: a série diária por conta mora em
+ * `ml_acervo_metricas_diarias`. Quando o servidor mandar os últimos 14 dias nos
+ * `indicadores`, basta trocar `CONVERSAO_EXEMPLO.pontos` pela série do servidor.
+ */
+const PONTOS_CONVERSAO = CONVERSAO_EXEMPLO.pontos
+    .map((valor, indice, lista) => {
+        const maximo = Math.max(...lista);
+        const minimo = Math.min(...lista);
+        const faixa = (maximo - minimo) || 1;
+        const x = lista.length > 1 ? (indice / (lista.length - 1)) * 320 : 0;
+        const y = 44 - (((valor - minimo) / faixa) * 40);
+
+        return `${Math.round(x)},${Math.round(y)}`;
+    })
+    .join(' ');
+
+/** O mesmo caminho fechado contra a base, para o preenchimento esmaecido. */
+const AREA_CONVERSAO = `${PONTOS_CONVERSAO} 320,48 0,48`;
+
+/** Soma a contagem de produtos de "Situação dos produtos" — o catálogo real da conta. */
+function totalDoCatalogo(situacao) {
+    if (!situacao || typeof situacao !== 'object' || Array.isArray(situacao)) return null;
+
+    let total = null;
+    for (const valor of Object.values(situacao)) {
+        const item = valor && typeof valor === 'object' && !Array.isArray(valor) ? valor : {};
+        const numero = numeroSeguro(item.numero);
+        if (numero !== null) total = (total ?? 0) + numero;
+    }
+
+    return total;
+}
 
 /** Só aceita number finito do servidor; qualquer outra forma cai em null (nunca derruba a tela). */
 function numeroSeguro(valor) {
@@ -168,6 +235,9 @@ export default function PainelVisaoGeral({
     abas = { company_id: null },
 }) {
     const [erroSincronizar, setErroSincronizar] = useState(null);
+    // Seletor de período do mockup: VISUAL. Marca o escolhido e não refiltra
+    // nada — a tela não tem janela de período, e fingir que filtra seria mentir.
+    const [periodoEscolhido, setPeriodoEscolhido] = useState(PERIODOS_EXEMPLO.escolhido);
 
     const empresaSegura = empresa && typeof empresa === 'object' ? empresa : {};
     const contaChave = textoSeguro(empresaSegura.chave, null);
@@ -222,6 +292,35 @@ export default function PainelVisaoGeral({
 
     const integracoesSeguras = integracoes && typeof integracoes === 'object' ? integracoes : {};
 
+    // ─── Cabeçalho da conta (261010-t02b) ────────────────────────────────
+    //
+    // REAL: nome, identificador, estado do token ML, nome do ERP declarado e a
+    // contagem do catálogo. EXEMPLO: a reputação e o frescor do ERP.
+    const nomeDaConta = textoSeguro(empresaSegura.nome, 'Conta');
+    const identificadorDaConta = textoSeguro(empresaSegura.identificador, null);
+    const tokenDaConta = textoSeguro(integracoesSeguras.mercado_livre?.token, textoSeguro(empresaSegura.token, 'sem_token'));
+    const mlConectado = tokenDaConta === 'ativo';
+    const mlSituacao = mlConectado
+        ? 'Conectado'
+        : (tokenDaConta === 'expirado' ? 'Token expirado' : 'Falta reconectar');
+    const erpDeclarado = textoSeguro(integracoesSeguras.erp?.valor, null);
+    // "Catálogo SKU ativo" é a soma de "Situação dos produtos" — número real da
+    // conta. Só quando não há NENHUM produto cadastrado entra o valor de exemplo.
+    const catalogoReal = totalDoCatalogo(situacaoProdutos);
+    const catalogoTexto = catalogoReal !== null ? String(catalogoReal) : CATALOGO_EXEMPLO.sku_ativo;
+
+    /**
+     * O período marcado, como FUNÇÃO — o `.map()` do seletor chama isto em vez
+     * de ler `periodoEscolhido` lá dentro (feedback_rollup_map_scope_bug.md).
+     */
+    function periodoEstaAtivo(opcao) {
+        return opcao === periodoEscolhido;
+    }
+
+    function escolherPeriodo(opcao) {
+        setPeriodoEscolhido(opcao);
+    }
+
     const identidadeSegura = identidadeResumo && typeof identidadeResumo === 'object' ? identidadeResumo : {};
     const identidadeTemTexto = identidadeSegura.tem_identidade === true
         && Array.isArray(identidadeSegura.texto_resumo)
@@ -267,28 +366,96 @@ export default function PainelVisaoGeral({
     return (
         <div className="flex flex-col gap-6">
 
-            {/* 0 — Cabeçalho do painel (tela 02 do Stitch). O "Nova Publicação
-                Direta" do mockup nasce DESABILITADO com "Em breve": não existe
-                fluxo de publicação direta a partir do painel, e prometer botão
-                que não leva a lugar nenhum é pior que não ter o botão. */}
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <h2 className="text-[15px] font-bold text-white">Visão geral da conta</h2>
-                    <p className="text-[13px] font-normal text-white/55">
-                        Tudo que já está gravado sobre esta conta — nenhuma consulta ao Mercado Livre nesta tela.
-                    </p>
+            {/* 0 — Cabeçalho da conta (tela 02 do Stitch, quick 261010-t02b).
+                Nome e identificador são da conta; a reputação ("Conta Líder
+                Platinum", "Platinum 100%") e o frescor do ERP são exemplo. O
+                "Nova Publicação Direta" do mockup segue DESABILITADO com "Em
+                breve": não existe fluxo de publicação direta a partir do painel,
+                e prometer botão que não leva a lugar nenhum é pior que não ter
+                o botão. */}
+            <section className="rounded-xl bg-ecf-card p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-col gap-2">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">Visão geral da conta</p>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="font-display text-[15px] font-bold text-white">{nomeDaConta}</h2>
+                            {identificadorDaConta !== null && (
+                                <span className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 font-mono text-[11px] text-white/55">
+                                    {identificadorDaConta}
+                                </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 rounded-full border border-ecf-yellow/30 bg-ecf-yellow/10 px-2 py-0.5 text-[11px] font-bold text-ecf-yellow">
+                                <BadgeCheck className="h-[14px] w-[14px]" aria-hidden="true" />
+                                {CONTA_EXEMPLO.selo}
+                            </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-normal text-white/55">
+                            <span className="inline-flex items-center gap-1.5">
+                                <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', mlConectado ? 'bg-emerald-400' : 'bg-amber-300')} />
+                                <span className="font-bold text-white">Mercado Livre:</span>
+                                {mlConectado ? `${mlSituacao} (${CONTA_EXEMPLO.reputacao})` : mlSituacao}
+                            </span>
+                            <span aria-hidden="true" className="text-white/20">•</span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-ecf-yellow/70" />
+                                <span className="font-bold text-white">{erpDeclarado !== null ? `ERP ${erpDeclarado}:` : 'ERP:'}</span>
+                                {erpDeclarado !== null ? ERP_EXEMPLO.frescor : 'não informado'}
+                            </span>
+                            <span aria-hidden="true" className="text-white/20">•</span>
+                            <span>
+                                Catálogo SKU ativo: <span className="font-bold text-white">{catalogoTexto}</span>
+                            </span>
+                            <SeloExemplo title="A reputação da conta e o frescor do ERP são de exemplo. O nome, o identificador, o estado da conexão com o Mercado Livre e a contagem do catálogo são desta conta." />
+                        </div>
+
+                        <p className="text-[13px] font-normal text-white/55">
+                            Tudo que já está gravado sobre esta conta — nenhuma consulta ao Mercado Livre nesta tela.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] p-1">
+                            {PERIODOS_EXEMPLO.opcoes.map((opcao) => {
+                                // Flags calculadas DENTRO do callback — variável de escopo do
+                                // componente lida só dentro do .map() já foi eliminada pelo
+                                // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
+                                const rotuloDoPeriodo = textoSeguro(opcao, '');
+                                const ativo = periodoEstaAtivo(rotuloDoPeriodo);
+
+                                return (
+                                    <button
+                                        key={rotuloDoPeriodo}
+                                        type="button"
+                                        title={TITULO_PERIODO}
+                                        onClick={() => escolherPeriodo(rotuloDoPeriodo)}
+                                        className={cn(
+                                            'rounded-md px-3 py-1 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                                            ativo
+                                                ? 'border border-ecf-yellow/30 bg-ecf-yellow/10 font-bold text-ecf-yellow'
+                                                : 'border border-transparent font-normal text-white/55 hover:text-white',
+                                        )}
+                                    >
+                                        {rotuloDoPeriodo}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <SeloExemplo title={TITULO_PERIODO} />
+                        <button
+                            type="button"
+                            disabled
+                            title="Ainda não existe publicação direta a partir do painel."
+                            className="inline-flex h-10 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 opacity-40"
+                        >
+                            <Send className="h-4 w-4" aria-hidden="true" />
+                            Nova publicação direta
+                            <span className="rounded-md border border-white/[0.10] px-2 py-0.5 text-[11px] font-normal text-white/55">Em breve</span>
+                        </button>
+                    </div>
                 </div>
-                <button
-                    type="button"
-                    disabled
-                    title="Ainda não existe publicação direta a partir do painel."
-                    className="inline-flex h-10 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[13px] font-normal text-white/80 opacity-40"
-                >
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                    Nova publicação direta
-                    <span className="rounded-md border border-white/[0.10] px-2 py-0.5 text-[11px] font-normal text-white/55">Em breve</span>
-                </button>
-            </div>
+            </section>
 
             {/* 1 — A faixa de KPIs. O mockup tem 5; aqui são 6, porque
                 "Publicados nos últimos 30 dias" já existia e nada que a tela

@@ -114,6 +114,21 @@ function semTags(html) {
     return html.replace(/<[^>]*>/g, '').replace(/<!--[\s\S]*?-->/g, '');
 }
 
+/**
+ * A `<section>` inteira que contém um título — do `<section` que a abre até o
+ * próximo `<section` (ou o fim). É assim que o gate prova que a pilha "exemplo"
+ * está DENTRO do bloco certo, e não em qualquer lugar da tela.
+ */
+function secaoDe(html, titulo) {
+    const indice = html.indexOf(titulo);
+    assert.ok(indice > -1, `bloco "${titulo}" não encontrado`);
+    const abertura = html.lastIndexOf('<section', indice);
+    assert.ok(abertura > -1, `<section> de "${titulo}" não encontrada`);
+    const proxima = html.indexOf('<section', indice);
+
+    return html.slice(abertura, proxima > -1 ? proxima : html.length);
+}
+
 /** O trecho do rótulo de um KPI até o fim do parágrafo do número logo abaixo. */
 function cartaoDe(html, rotulo) {
     const regex = new RegExp(`${rotulo}</p>[\\s\\S]*?</p>`);
@@ -369,7 +384,7 @@ const alertasBase = (over = {}) => ({
 });
 
 const propsPainel = (over = {}) => ({
-    empresa: { chave: 'company-459', nome: 'Kive Shop Eletrônicos', token: 'ativo', link_reconexao: null },
+    empresa: { chave: 'company-459', nome: 'Kive Shop Eletrônicos', identificador: '28.192.831/0001-94', token: 'ativo', link_reconexao: null },
     liberada: true,
     indicadores: indicadoresBase(),
     oQueFazerAgora: [
@@ -468,15 +483,117 @@ test('Painel — Revisão humana nasce VAZIA e honesta: nunca um número inventa
     assert.match(html, /Não existe no sistema — nada passa por revisão manual hoje/);
 });
 
-test('Painel — nada afirma estoque de ERP, reputação de conta nem revisão aprovada', () => {
+// ⚠️ A régua INVERTEU em 10/10 (quick 261010-t02b). Até aqui este arquivo tinha
+// um gate exigindo que "Platinum", "Estoque Baixo" e "imagens IA" NÃO
+// aparecessem — era a régua antiga ("widget sem dado real nasce vazio"). O
+// usuário olhou a tela em produção e pediu o contrário: o main/content tem de
+// ser o do mockup inteiro, com dado de exemplo onde o real não existe. O gate
+// abaixo substitui aquele: o conteúdo do mockup PODE aparecer, desde que venha
+// de `dadosDeExemplo.js` e o bloco carregue a pilha.
+test('Painel — a régua nova: o que é exemplo aparece, mas sempre marcado', () => {
     const html = desenharPainel(propsPainel());
 
-    assert.doesNotMatch(html, /Platinum|Conta Líder|reputaç/i);
-    assert.doesNotMatch(html, /Estoque Bling|Estoque Baixo|estoque sincronizado/i);
-    assert.doesNotMatch(html, /Revisão de Qualidade|revisão aprovada|imagens IA/i);
-    assert.doesNotMatch(html, /Giro Alto|Volume Alto|demanda orgânica com/i);
-    // E o que o mockup prometia sobre o ERP é desmentido explicitamente.
-    assert.match(html, /Não lemos estoque do ERP/);
+    // Os blocos do mockup que não têm dado real agora existem na tela.
+    assert.match(html, /Conta Líder Platinum/);
+    assert.match(html, /Estoque Baixo no Bling/);
+    assert.match(html, /Gerou 5 imagens IA/);
+    assert.match(html, /Atributo Obrigatório Pendente/);
+    assert.match(html, /Reotimizar com IA/);
+    assert.match(html, /Ritmo de conversão diária/);
+
+    // E cada um deles está num bloco com a pilha.
+    for (const titulo of ['Alertas Meli & ERP', 'Atividade da equipe', 'Desempenho rápido das publicações']) {
+        assert.match(secaoDe(html, titulo), />exemplo</, `bloco sem a pilha: ${titulo}`);
+    }
+    semLixoNoHtml(html, 'régua nova');
+});
+
+test('Painel — o bloco de dado REAL nunca leva a pilha de exemplo', () => {
+    const html = desenharPainel(propsPainel());
+
+    for (const titulo of ['O que fazer agora', 'Situação dos produtos', 'Produtos por fase', 'Últimas publicações', 'Integrações', 'Identidade visual']) {
+        assert.doesNotMatch(secaoDe(html, titulo), />exemplo</, `bloco real marcado como exemplo: ${titulo}`);
+    }
+});
+
+test('Painel — nenhum número fictício solto: todo exemplo vem de dadosDeExemplo.js', () => {
+    const fonte = lerSemComentarios(REL_PAINEL);
+
+    assert.match(fonte, /from '\.\/dadosDeExemplo'/, 'o painel precisa importar o arquivo de exemplo');
+    // Os literais do mockup não podem estar escritos no JSX.
+    for (const literal of ['Conta Líder Platinum', 'Platinum 100%', 'Sincronizado há 8 min', 'Estoque Baixo no Bling', 'imagens IA', 'Reotimizar com IA', 'Otimizar', 'pedidos/dia', '1.420']) {
+        assert.ok(!fonte.includes(literal), `literal de exemplo solto no painel: ${literal}`);
+    }
+});
+
+test('Painel — cabeçalho: nome e identificador são REAIS, a reputação é exemplo', () => {
+    const html = desenharPainel(propsPainel());
+    const texto = semTags(html);
+
+    assert.match(texto, /Kive Shop Eletrônicos/, 'o nome da conta vem do servidor');
+    assert.match(texto, /28\.192\.831\/0001-94/, 'o identificador (CNPJ) vem do servidor');
+    assert.match(texto, /Mercado Livre:\s*Conectado/);
+    assert.match(texto, /Platinum 100%/, 'a reputação é exemplo, mas aparece');
+    assert.match(html, /Visão geral da conta/, 'o título antigo da tela continua');
+    semLixoNoHtml(html, 'cabeçalho');
+});
+
+test('Painel — o ERP: o NOME é real, o "sincronizado há 8 min" é exemplo', () => {
+    const comErp = desenharPainel(propsPainel());
+    assert.match(semTags(comErp), /ERP Bling:\s*Sincronizado há 8 min/);
+
+    // Sem ERP declarado não se inventa frescor de sincronização nenhum.
+    const semErp = desenharPainel(propsPainel({
+        integracoes: { ...propsPainel().integracoes, erp: { valor: null, rotulo: 'Não informado' } },
+    }));
+    assert.match(semTags(semErp), /ERP:\s*não informado/i);
+    assert.doesNotMatch(semTags(semErp), /Sincronizado há 8 min/, 'sem ERP declarado não há frescor para mostrar');
+});
+
+test('Painel — ML desconectado não é "Conectado" nem ganha reputação inventada', () => {
+    const html = desenharPainel(propsPainel({
+        empresa: { chave: 'company-459', nome: 'Kive Shop Eletrônicos', identificador: 'CUST 77', token: 'expirado', link_reconexao: 'https://x' },
+        integracoes: { ...propsPainel().integracoes, mercado_livre: { token: 'expirado' } },
+    }));
+    const cabecalho = html.slice(0, html.indexOf('No ar'));
+
+    assert.doesNotMatch(semTags(cabecalho), /Mercado Livre:\s*Conectado/);
+    assert.doesNotMatch(semTags(cabecalho), /Platinum 100%/, 'conta sem token não ganha reputação de exemplo');
+    assert.match(semTags(cabecalho), /Conta Líder Platinum/, 'o selo segue sendo exemplo declarado');
+});
+
+test('Painel — "Catálogo SKU ativo" é REAL quando há produtos (soma da Situação)', () => {
+    const html = desenharPainel(propsPainel());
+    // 1 + 2 + 3 + 0 = 6 produtos no catálogo do Publicador.
+    assert.match(semTags(html), /Catálogo SKU ativo:\s*6/);
+    assert.doesNotMatch(semTags(html), /1\.420/, 'com contagem real o valor de exemplo não entra');
+});
+
+test('Painel — sem nenhum produto cadastrado o catálogo cai no valor de exemplo', () => {
+    const html = desenharPainel(propsPainel({ situacaoProdutos: {} }));
+
+    assert.match(semTags(html), /Catálogo SKU ativo:\s*1\.420/);
+    semLixoNoHtml(html, 'catálogo de exemplo');
+});
+
+test('Painel — o seletor de período é VISUAL e diz isso no title', () => {
+    const html = desenharPainel(propsPainel());
+
+    for (const opcao of ['Hoje', 'Últimos 7 dias', 'Este mês']) {
+        assert.ok(html.includes(opcao), `opção de período ausente: ${opcao}`);
+    }
+    const tag = tagDoBotao(html, 'Últimos 7 dias');
+    assert.match(tag, /title="[^"]*não (está ligado|refiltra)[^"]*"/i, 'o seletor precisa dizer que não filtra');
+});
+
+test('Painel — botão de bloco de EXEMPLO não navega e o title diz isso', () => {
+    const html = desenharPainel(propsPainel());
+
+    for (const rotulo of ['Corrigir Atributo', 'Pausar Anúncios', 'Reotimizar com IA']) {
+        const tag = tagDoBotao(html, rotulo);
+        assert.match(tag, /disabled=/, `botão de exemplo navegável: ${rotulo}`);
+        assert.match(tag, /title="[^"]*exemplo[^"]*"/i, `botão de exemplo sem title: ${rotulo}`);
+    }
 });
 
 test('Painel — "Nova publicação direta" é desabilitado e marcado "Em breve"', () => {
@@ -490,14 +607,13 @@ test('Painel — "Nova publicação direta" é desabilitado e marcado "Em breve"
 test('Painel — Alertas saem da triagem: só motivo com número, cada um com destino', () => {
     const html = desenharPainel(propsPainel());
 
-    assert.match(html, /Alertas do acervo/);
+    assert.match(html, /Alertas Meli & ERP/, 'o título do mockup (261010-t02b)');
     assert.match(html, /Pausado/);
     assert.match(html, /Ficha incompleta/);
     assert.doesNotMatch(html, /Sem estoque/, 'motivo zerado não vira linha');
     assert.doesNotMatch(html, /Perdendo catálogo/);
-    // O título não promete ERP, e o rodapé diz de onde vem.
-    assert.doesNotMatch(html, /Alertas Meli & ERP/);
-    assert.match(html, /Nada aqui vem do ERP/);
+    // O rodapé continua dizendo de onde vem o que NÃO é exemplo.
+    assert.match(html, /vêm do acervo do Mercado Livre/);
     // O total é o de anúncios distintos (3), não a soma dos chips.
     assert.match(html, />3<\/span>|3 anúncios/);
 });
@@ -505,7 +621,7 @@ test('Painel — Alertas saem da triagem: só motivo com número, cada um com de
 test('Painel — alertas disponivel=false diz o motivo em vez de afirmar zero', () => {
     const html = desenharPainel(propsPainel({ alertas: { disponivel: false, total: 0, itens: [] } }));
 
-    assert.match(html, /Alertas do acervo/);
+    assert.match(html, /Alertas Meli & ERP/);
     assert.match(html, /Disponível só para empresas cadastradas no sistema/);
     assert.doesNotMatch(html, /Nenhum alerta no acervo/, '"sem Company" não é "sem alerta"');
 });
@@ -523,7 +639,7 @@ test('Painel — sem a prop `alertas` (servidor antigo) o bloco nem aparece', ()
     delete semAlertas.alertas;
     const html = desenharPainel(semAlertas);
 
-    assert.doesNotMatch(html, /Alertas do acervo/);
+    assert.doesNotMatch(html, /Alertas Meli & ERP/);
     assert.match(html, /O que fazer agora/, 'o resto da tela continua inteiro');
 });
 
@@ -544,7 +660,10 @@ test('Painel — sem acervo coletado o Desempenho rápido diz o motivo, nunca 0%
     }));
 
     assert.match(html, /Acervo ainda não coletado/);
-    assert.doesNotMatch(html, /0%/, '"não medimos" nunca pode virar 0%');
+    // ⚠️ Escopado ao BLOCO desde o 261010-t02b: o cabeçalho passou a mostrar a
+    // reputação de exemplo "(Platinum 100%)", e um `/0%/` solto casaria com os
+    // dois últimos caracteres de "100%" — asserção que não prova mais nada.
+    assert.doesNotMatch(secaoDe(html, 'Desempenho rápido das publicações'), /0%/, '"não medimos" nunca pode virar 0%');
     assert.match(html, /Atualizar agora/);
     assert.match(semTags(cartaoDe(html, 'No ar')), /—/);
 });
