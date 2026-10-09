@@ -202,6 +202,14 @@ const propsBase = (overrides = {}) => ({
 /** O índice da primeira aparição de um texto no HTML (−1 se não aparece). */
 const onde = (html, texto) => html.indexOf(texto);
 
+// ⚠️ O bundle da tela usado pelos testes da tela 03 (quick 261009-t03) é
+// montado AQUI, no topo e ANTES do primeiro `test()`: o `after()` deste
+// arquivo apaga os stubs do esbuild, e um `montar()` tardio já pegou os
+// stubs apagados no meio da compilação — um arquivo de teste inteiro morreu
+// assim nesta semana (tela 01), sem nenhuma asserção falhar e só na suíte
+// completa.
+const { default: TelaDeProdutos } = await montar(PAGINA, 'produtos-t03-render');
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1 — As funções puras da tela (whitelist da querystring e famílias)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -864,4 +872,183 @@ test('Tela B — monta o diálogo de vínculo e recarrega só produtos/contagens
     assert.ok((fonte.match(/only: \['produtos', 'contagens'\]/g) ?? []).length >= 2);
     // A tela não pergunta nada pelo navegador: a confirmação é do próprio diálogo.
     assert.doesNotMatch(fonte, /window\.confirm/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5 — Tela 03 do pacote do Stitch (quick 261009-t03): a paginação ligada e
+//     os três cards de rodapé.
+//
+// ⚠️ O card "Sincronização Contínua ERP Bling" do mockup afirma fato FALSO
+// ("modificações de estoque físico são refletidas em tempo real"): não existe
+// integração com ERP nenhum neste sistema, e a decisão 8 do handoff proíbe
+// afirmar sincronização. O card entra com texto honesto sobre o Sincronizar
+// do Portal — que existe — e os gates abaixo recusam qualquer promessa de
+// tempo real ou de ERP.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Doze bases; a DÉCIMA (a última da página 1) é a que tem kits. */
+const dozeComKitsNaFronteira = () => {
+    const bases = Array.from({ length: 12 }, (_, i) => produtoBase({
+        id: i + 1,
+        sku: `P${String(i + 1).padStart(2, '0')}`,
+        nome: `Produto numero ${i + 1}`,
+        status: { chave: 'publicado', rotulo: 'Publicado' },
+    }));
+    const decimo = bases[9];
+    const kits = [kitDe(decimo, 2), kitDe(decimo, 3)];
+
+    return [...bases, ...kits];
+};
+
+test('Tela 03 — a lista pagina em 10 e o rodapé traz a frase, o seletor e os controles', async (contexto) => {
+    const render = (props, busca = '') => {
+        comQuerystring(busca);
+
+        return renderToStaticMarkup(React.createElement(TelaDeProdutos, propsBase(props)));
+    };
+
+    await contexto.test('⚠️ o base da fronteira leva os kits DELE junto — nunca em páginas diferentes', () => {
+        let html;
+        assert.doesNotThrow(() => {
+            html = render({
+                produtos: dozeComKitsNaFronteira(),
+                contagens: contagensBase({ todos: 14, rascunho: 11, publicados: 3 }),
+            });
+        });
+
+        // As 10 primeiras bases estão na página…
+        for (let i = 1; i <= 10; i += 1) {
+            assert.ok(onde(html, `>P${String(i).padStart(2, '0')}<`) > -1, `a base P${i} sumiu da página 1`);
+        }
+        // …e os kits do décimo vieram junto, mesmo estourando as 10 linhas.
+        assert.ok(onde(html, '>P10-KIT2<') > -1, 'o kit 2 do décimo ficou para a página 2');
+        assert.ok(onde(html, '>P10-KIT3<') > -1, 'o kit 3 do décimo ficou para a página 2');
+        // A décima primeira e a décima segunda ficaram para a página 2.
+        assert.equal(onde(html, '>P11<'), -1, 'a página 1 vazou para a 11ª base');
+        assert.equal(onde(html, '>P12<'), -1, 'a página 1 vazou para a 12ª base');
+    });
+
+    await contexto.test('a frase do rodapé conta PRODUTOS e repete as contagens do servidor', () => {
+        const html = render({
+            produtos: dozeComKitsNaFronteira(),
+            contagens: contagensBase({ todos: 14, rascunho: 11, publicados: 3 }),
+        });
+        assert.match(html, /Exibindo/);
+        assert.match(html, /1 - 12/, '10 bases + os 2 kits do décimo');
+        assert.match(html, /14/);
+        assert.match(html, /produtos cadastrados/);
+        assert.match(html, /rascunhos/);
+        assert.match(html, /publicados no Meli/);
+        assert.match(html, /Linhas por página/);
+        assert.match(html, /aria-label="Página 2"/);
+        assert.match(html, /aria-current="page"/);
+        assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('lista curta: o rodapé aparece com os controles travados, sem página 2', () => {
+        const html = render({ produtos: [produtoBase()] });
+        assert.match(html, /Linhas por página/);
+        assert.equal(onde(html, 'aria-label="Página 2"'), -1);
+        // ⚠️ `/disabled=/` e nunca `/disabled/`: as classes têm `disabled:opacity-40`.
+        assert.ok((html.match(/disabled=""/g) ?? []).length >= 4, 'os 4 controles travados numa página só');
+    });
+
+    await contexto.test('lista vazia e filtro sem resultado NÃO mostram rodapé de paginação', () => {
+        const vazio = render({ produtos: [] });
+        assert.equal(onde(vazio, 'Linhas por página'), -1);
+        assert.match(vazio, /Esta empresa ainda não tem produtos\./);
+
+        const semResultado = render({ produtos: [produtoBase()] }, '?filtro=com_problema');
+        assert.equal(onde(semResultado, 'Linhas por página'), -1);
+        assert.match(semResultado, /Nenhum produto neste filtro\./);
+        assert.match(semResultado, /Limpar busca e filtros/);
+    });
+
+    await contexto.test('⚠️ a tela preta: lista adversa com rodapé montado não estoura', () => {
+        for (const lixo of [null, undefined, 'produtos', 7, {}, [null, undefined, 'x', { id: {} }]]) {
+            let html;
+            assert.doesNotThrow(() => { html = render({ produtos: lixo, contagens: null }); }, String(JSON.stringify(lixo)));
+            assert.doesNotMatch(html, /\[object Object\]/, String(JSON.stringify(lixo)));
+        }
+    });
+});
+
+test('Tela 03 — os três cards de rodapé, com o do ERP honesto', async (contexto) => {
+    const render = (props = {}) => {
+        comQuerystring('');
+
+        return renderToStaticMarkup(React.createElement(TelaDeProdutos, propsBase(props)));
+    };
+
+    await contexto.test('os três cards aparecem, inclusive com a lista vazia', () => {
+        for (const produtos of [[], [produtoBase()]]) {
+            const html = render({ produtos });
+            assert.match(html, /Sincronizar do Portal/);
+            assert.match(html, /Fase 2 e kits/);
+            assert.match(html, /Conferência antes de publicar/);
+        }
+    });
+
+    await contexto.test('⚠️ NENHUMA promessa de ERP nem de tempo real', () => {
+        const html = render({ produtos: [produtoBase()] });
+        assert.doesNotMatch(html, /tempo real/i, 'o mockup promete tempo real; o sistema não faz isso');
+        assert.doesNotMatch(html, /Bling/i, 'não existe integração com o Bling');
+        assert.doesNotMatch(html, /estoque físico/i);
+        assert.doesNotMatch(html, /margem de lucro garantida/i);
+        // E diz explicitamente que a integração com ERP não existe.
+        assert.match(html, /não existe integração com ERP/i);
+    });
+
+    await contexto.test('os outros dois cards descrevem o que a tela de fato faz', () => {
+        const html = render({ produtos: [produtoBase()] });
+        assert.match(html, /recuado/i, 'o card dos kits explica o recuo que a lista usa');
+        assert.match(html, /Pronto/, 'o card da conferência cita a situação Pronto');
+    });
+});
+
+test('Tela 03 — gates de fonte: ordem filtro → busca → ordenação → PAGINAÇÃO, e nada de ERP', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
+
+    // ⚠️ A ORDEM importa: quem filtra espera ver a página 1 do resultado
+    // filtrado, e não o recorte antigo.
+    const posMontar = fonte.indexOf('montarLinhas(lista');
+    const posOrdenar = fonte.indexOf('ordenarTopo(');
+    const posPaginar = fonte.indexOf('paginar(');
+    assert.ok(posMontar > -1 && posOrdenar > posMontar, 'a ordenação tem de vir depois do filtro/busca');
+    assert.ok(posPaginar > posOrdenar, 'a paginação tem de ser a ÚLTIMA etapa');
+
+    // ⚠️ Mudar filtro, fase, busca ou ordenação volta para a página 1: a
+    // página NÃO é estado solto, ela é derivada da VISTA em vigor. Sem
+    // `useEffect` — effect zerando página pisca a página errada por um frame.
+    assert.match(fonte, /chaveDaVista\(\{/);
+    assert.match(fonte, /paginaDaVista\(vista, chaveDaVista/);
+    assert.doesNotMatch(fonte, /useEffect\([^;]*setVista/);
+    // Toda escrita da página carimba a chave da vista atual.
+    const escritas = fonte.match(/setVista\(/g) ?? [];
+    assert.ok(escritas.length >= 2, `esperado ao menos 2 setVista, achou ${escritas.length}`);
+    assert.equal((fonte.match(/setVista\(\{ chave: chaveAtual/g) ?? []).length, escritas.length,
+        'todo setVista tem de carimbar a chave da vista atual');
+
+    // O rodapé é o componente novo, e ele recebe as contagens do SERVIDOR.
+    assert.match(fonte, /<PaginacaoDaLista/);
+    assert.match(fonte, /rascunhos=\{total\('rascunho'\)\}/);
+    assert.match(fonte, /publicados=\{total\('publicados'\)\}/);
+
+    // "Linhas por página" persiste na chave combinada, com as duas pontas em
+    // try/catch (em janela privada o acessor do localStorage LANÇA).
+    assert.match(fonte, /CHAVE_DAS_LINHAS/);
+    assert.equal((fonte.match(/try \{/g) ?? []).length, 4, 'densidade e linhas por página, leitura e escrita');
+
+    // ⚠️ Nenhuma promessa de ERP ou de tempo real na fonte.
+    assert.doesNotMatch(fonte, /tempo real/i);
+    assert.doesNotMatch(fonte, /Bling/i);
+
+    // ⚠️ Armadilha do Rollup: os cards do rodapé calculam as flags DENTRO do
+    // callback do `.map()`.
+    assert.match(fonte, /CARTOES_DO_RODAPE\.map\(\(/);
+
+    // ⚠️ MANTIDO: as quatro funções puras do layout v2 continuam exportadas.
+    for (const nome of ['montarLinhas', 'faseDaQuerystring', 'sugestaoSegura', 'destinoDoProduto']) {
+        assert.match(fonte, new RegExp(`export function ${nome}\\(`), `export perdido: ${nome}`);
+    }
 });
