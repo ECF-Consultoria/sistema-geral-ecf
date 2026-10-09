@@ -349,15 +349,38 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         return renderToStaticMarkup(React.createElement(Produtos, propsBase(props)));
     };
 
-    await contexto.test('a coluna Fases entra entre Origem e Situação, sem tirar nenhuma coluna', () => {
+    // ⚠️ Layout v2 (quick 261009-prd): as colunas SKU e Origem SAÍRAM da
+    // grade e viraram a 2ª linha da célula Produto, e "Fases" virou "Fase" —
+    // é exatamente isso que faz a lista caber em 1240px sem rolagem
+    // horizontal (problema 1 da spec). O dado dos dois não desapareceu: o SKU
+    // e a pílula Portal/Publicador continuam em TODA linha, agora dentro da
+    // célula Produto. É o que as duas asserções abaixo provam.
+    await contexto.test('a coluna Fase fica entre Produto e Situação; SKU e Origem viraram a 2ª linha da célula Produto', () => {
         let html;
         assert.doesNotThrow(() => { html = render({ produtos: familia }); });
-        for (const coluna of ['SKU', 'Produto', 'Origem', 'Fases', 'Situação', 'Anúncios', 'Atualizado']) {
+        for (const coluna of ['Produto', 'Fase', 'Situação', 'Anúncios', 'Atualizado']) {
             assert.ok(onde(html, `>${coluna}`) > -1, `coluna ausente: ${coluna}`);
         }
-        assert.ok(onde(html, '>Origem') < onde(html, '>Fases'), 'Fases tem de vir depois de Origem');
-        assert.ok(onde(html, '>Fases') < onde(html, '>Situação'), 'Fases tem de vir antes de Situação');
+        assert.ok(onde(html, '>Produto') < onde(html, '>Fase'), 'Fase tem de vir depois de Produto');
+        assert.ok(onde(html, '>Fase') < onde(html, '>Situação'), 'Fase tem de vir antes de Situação');
+        // SKU e Origem deixaram de ser CABEÇALHO de coluna…
+        assert.equal(onde(html, '>SKU<'), -1, 'SKU não é mais coluna');
+        assert.equal(onde(html, '>Origem<'), -1, 'Origem não é mais coluna');
+        // …mas o DADO dos dois continua em toda linha.
+        assert.match(html, />CAD-01</);
+        assert.match(html, />Portal</);
         assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    await contexto.test('nada de `<table>` nem de rolagem horizontal: a grade é CSS', () => {
+        const html = render({ produtos: familia });
+        assert.doesNotMatch(html, /<table|<tbody|<thead|<td|<th[ >]/);
+        assert.doesNotMatch(html, /overflow-x-auto/);
+        // O bloco fixo (filtros + seleção + cabeçalho) existe e cola no topo.
+        assert.match(html, /sticky top-0 z-10/);
+        // E a grade usa as colunas do breakpoint largo (sem `innerWidth` no
+        // stub do window, a tela cai no default largo da referência).
+        assert.match(html, /grid-template-columns:44px minmax\(240px,1fr\) 132px 172px 120px 92px 152px/);
     });
 
     await contexto.test('base com 2 kits: 3 linhas, "Kit 2"/"Kit 3" na coluna Fases e recuo visual', () => {
@@ -378,16 +401,40 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         assert.equal((html.match(/pl-8/g) ?? []).length, 0);
     });
 
-    await contexto.test('o grupo de filtro de fase convive com os chips de situação — nenhum chip saiu', () => {
+    // ⚠️ Layout v2: os chips de situação viraram um grupo SEGMENTADO (mesmos
+    // 5 filtros, mesmas contagens, mesmo `?filtro=`) e o grupo de fase virou
+    // um DROPDOWN "Fase: Todas ▾". Por isso as três opções de fase não estão
+    // mais no HTML com o menu fechado — o teste seguinte abre o dropdown e
+    // confere as três, para a cobertura não cair.
+    await contexto.test('o grupo segmentado de situação convive com o dropdown de fase — nenhum filtro saiu', () => {
         const html = render({ produtos: familia });
         for (const chip of ['Todos', 'Rascunho', 'Conferidos', 'Publicados', 'Com problema']) {
-            assert.ok(html.includes(chip), `chip de situação ausente: ${chip}`);
+            assert.ok(html.includes(chip), `filtro de situação ausente: ${chip}`);
         }
         assert.match(html, /aria-label="Filtro por situação"/);
         assert.match(html, /aria-label="Filtro por fase"/);
-        for (const chip of ['Todas', 'Só base', 'Só kits']) {
-            assert.ok(html.includes(chip), `chip de fase ausente: ${chip}`);
+        // O gatilho do dropdown mostra a fase escolhida e diz que é um menu.
+        assert.match(html, /Fase: Todas/);
+        assert.match(html, /aria-haspopup="menu"/);
+        assert.match(html, /aria-expanded="false"/);
+    });
+
+    await contexto.test('o dropdown de fase ABERTO traz as três opções, com a atual marcada', async () => {
+        const { DropdownDeFase } = await montar(PAGINA, 'produtos-fases-dropdown');
+        assert.equal(typeof DropdownDeFase, 'function');
+
+        const aberto = renderToStaticMarkup(React.createElement(DropdownDeFase, {
+            valor: 'so_base', aoEscolher: () => {}, defaultAberto: true,
+        }));
+        for (const opcao of ['Todas', 'Só base', 'Só kits']) {
+            assert.ok(aberto.includes(opcao), `opção de fase ausente: ${opcao}`);
         }
+        assert.match(aberto, /role="menu"/);
+        assert.match(aberto, /aria-expanded="true"/);
+        // A escolhida vira o rótulo do gatilho e fica marcada na lista.
+        assert.match(aberto, /Fase: Só base/);
+        const soBase = aberto.lastIndexOf('<button', aberto.indexOf('>Só base<'));
+        assert.match(aberto.slice(soBase, aberto.indexOf('>', soBase) + 1), /aria-checked="true"/);
     });
 
     await contexto.test('?fase=so_base pré-seleciona "Só base" e ESCONDE os kits (link da Visão geral)', () => {
@@ -395,9 +442,9 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         assert.ok(html.includes('CAD-01'), 'o base tem de continuar na lista');
         assert.doesNotMatch(html, /CAD-01-KIT2/);
         assert.doesNotMatch(html, /CAD-01-KIT3/);
-        // O chip "Só base" fica marcado, e o de situação "Publicados" também.
-        const soBase = html.lastIndexOf('<button', onde(html, 'Só base'));
-        assert.match(html.slice(soBase, html.indexOf('>', soBase) + 1), /aria-pressed="true"/);
+        // O dropdown de fase mostra "Só base" no gatilho (antes era um chip
+        // com aria-pressed), e o segmento de situação "Publicados" fica marcado.
+        assert.match(html, /Fase: Só base/);
         const publicados = html.lastIndexOf('<button', onde(html, 'Publicados'));
         assert.match(html.slice(publicados, html.indexOf('>', publicados) + 1), /aria-pressed="true"/);
     });
@@ -410,8 +457,8 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         const tudo = render({ produtos: familia }, '');
         assert.match(tudo, />CAD-01</);
         assert.match(tudo, /CAD-01-KIT2/);
-        const todas = tudo.lastIndexOf('<button', onde(tudo, 'Todas'));
-        assert.match(tudo.slice(todas, tudo.indexOf('>', todas) + 1), /aria-pressed="true"/);
+        // Sem ?fase= o gatilho do dropdown fica em "Todas".
+        assert.match(tudo, /Fase: Todas/);
     });
 
     await contexto.test('?fase= com valor arbitrário cai em "todas" e não esconde nada (T-175-43)', () => {
@@ -420,20 +467,40 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         assert.match(html, /CAD-01-KIT2/);
     });
 
-    await contexto.test('com rascunho: "Abrir produto" (tela do Produto) E "Continuar" (editor)', () => {
-        const html = render({ produtos: [produtoBase({ rascunho_id: 55 })] });
-        assert.match(html, /Abrir produto/);
+    // ⚠️ Layout v2 (problema 4 da spec): as DUAS ações idênticas de toda linha
+    // ("Abrir produto" + "Continuar") viraram UM botão contextual. "Abrir
+    // produto" não desapareceu — passou a ser item do menu ⋯ e botão do
+    // rodapé do painel lateral.
+    await contexto.test('UM botão contextual por linha, no lugar das duas ações idênticas', () => {
+        const html = render({ produtos: [produtoBase({ rascunho_id: 55, status: { chave: 'conferir', rotulo: 'em preenchimento', faltam: 2 } })] });
         assert.match(html, /Continuar/);
         assert.doesNotMatch(html, /Começar rascunho/);
+        // Um, e só um, botão de ação por linha.
+        assert.equal((html.match(/data-acao-principal/g) ?? []).length, 1);
+        // "Abrir produto" saiu da LINHA (o menu ⋯ nasce fechado).
+        assert.doesNotMatch(html, />Abrir produto</);
     });
 
-    await contexto.test('sem rascunho: segue "Começar rascunho" num clique, como hoje', () => {
-        const html = render({ produtos: [produtoBase({ rascunho_id: null, status: { chave: 'sem_rascunho' } })] });
+    // ⚠️ `status.chave === 'rascunho'` é "NÃO existe rascunho" neste módulo
+    // (`prontidao()` devolve rótulo "a preencher" quando não há rascunho) —
+    // não existe chave 'sem_rascunho'. A fixture antiga usava uma chave que o
+    // servidor nunca emite; agora o botão é decidido por `acaoPrincipal()`.
+    await contexto.test('sem rascunho (chave "rascunho" = a preencher): segue "Começar rascunho" num clique', () => {
+        const html = render({ produtos: [produtoBase({ rascunho_id: null, status: { chave: 'rascunho', rotulo: 'a preencher', faltam: 0 } })] });
         assert.match(html, /Começar rascunho/);
         assert.doesNotMatch(html, /Continuar/);
     });
 
-    await contexto.test('sugestão de kit: "Kit de CAD-01?" com "Vincular" e "Não é kit"', () => {
+    await contexto.test('a ação principal muda com a situação (a tabela do handoff)', () => {
+        const comChave = (chave) => render({ produtos: [produtoBase({ status: { chave, faltam: 0 } })] });
+        assert.match(comChave('pronto'), /Publicar/);
+        assert.match(comChave('publicando'), /Acompanhar/);
+        assert.match(comChave('publicado'), />Abrir</);
+        assert.match(comChave('parcial'), /Ver erro/);
+        assert.match(comChave('erro'), /Ver erro/);
+    });
+
+    await contexto.test('sugestão de kit: a pílula "Kit de CAD-01?" fica na linha; Vincular/Não é kit saíram para o painel', () => {
         const html = render({
             produtos: [produtoBase({
                 id: 40, sku: 'CAD-CB2', nome: 'Combo 2 Cadeiras Executivas', rotulo_fase: '1 unidade',
@@ -444,8 +511,13 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
             })],
         });
         assert.match(html, /Kit de CAD-01\?/);
-        assert.match(html, />Vincular</);
-        assert.match(html, /Não é kit/);
+        // ⚠️ Eram estes dois botões que empilhavam texto + 2 botões na célula
+        // e quebravam a altura da linha (problema 3 da spec).
+        assert.doesNotMatch(html, />Vincular</);
+        assert.doesNotMatch(html, /Não é kit/);
+        // A faixa de sugestões aparece acima do card, com "Revisar".
+        assert.match(html, /parece kit de CAD-01/);
+        assert.match(html, />Revisar</);
     });
 
     // ─── Dado adverso: a lição da tela preta de 07/10 ───
@@ -561,13 +633,22 @@ test('Tela B — gates de fonte: rota da tela do Produto, stopPropagation e tabe
     assert.match(fonte, /url_produto/);
     assert.match(fonte, /mlb\.anuncios\.publicador\.editor/);
 
-    // A linha inteira é clicável: todo botão dentro dela para a propagação.
-    const paradas = fonte.match(/ev\.stopPropagation\(\)/g) ?? [];
-    assert.ok(paradas.length >= 4, `esperado ao menos 4 stopPropagation, achou ${paradas.length}`);
+    // ⚠️ Layout v2: os controles da linha moraram para `LinhaDeProduto.jsx`
+    // (ver o comentário do LINHA_B em publicador-entrada.test.js), e é lá que
+    // o `stopPropagation` de cada um é conferido agora.
+    const linha = lerSemComentarios('resources/js/Components/Mlb/Publicador/LinhaDeProduto.jsx');
+    const paradas = linha.match(/stopPropagation\(\)/g) ?? [];
+    assert.ok(paradas.length >= 3, `esperado ao menos 3 stopPropagation na linha, achou ${paradas.length}`);
+    assert.match(fonte, /<LinhaDeProduto/);
 
-    // O recuo é visual, nunca sublista HTML — a tabela tem UM <tbody> só, senão
-    // o Enter/tabulação por linha para de funcionar.
-    assert.equal((fonte.match(/<tbody>/g) ?? []).length, 1);
+    // ⚠️ O `<table>` com `overflow-x-auto` SAIU: era ele que causava a rolagem
+    // horizontal e que impedia o cabeçalho de colar no topo. A grade é CSS, e
+    // o recuo do kit continua sendo só visual (uma lista plana de linhas).
+    assert.doesNotMatch(fonte, /<table|<tbody|<thead|overflow-x-auto/);
+    assert.match(fonte, /sticky top-0 z-10/);
+    assert.match(fonte, /colunasDaLargura\(largura\)/);
+    // O card não pode ter overflow-hidden, senão o sticky morre.
+    assert.doesNotMatch(fonte, /rounded-xl bg-ecf-card[^'"]*overflow-hidden/);
 
     // A leitura da fase é irmã do filtroInicial(): whitelist, sem escrever na URL.
     assert.match(fonte, /function faseInicial\(\)/);
