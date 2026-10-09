@@ -167,3 +167,46 @@ tocar (dono: 175-07).
 estoque do base e ver o cartão oferecer o número calculado; clicar e conferir no
 editor do kit que o estoque do rascunho passou a ser o calculado — e que o
 anúncio no ML **não** foi atualizado (§7: isso não é desta etapa).
+
+---
+
+## Item 5 — Flakiness nas suítes combinadas do Creative Engine (`Phase165`)
+
+**Registrado em:** 2026-10-09, durante o plano **175-11** (fechamento dos furos da capa).
+**Fora do escopo:** fixtures de `tests/Feature/Phase165/**`, de outra fase. Não é regressão do 175-11.
+
+**O sintoma.** Rodando o filtro combinado do plano
+(`--filter="Phase160|Phase161|Phase162|Phase165|Phase168|Phase169|Phase170|Phase171"`),
+2 de 7 rodadas falharam — 1 falha numa, 2 noutra — sempre com a mesma mensagem:
+
+```
+SQLSTATE[23000]: Integrity constraint violation: 19
+UNIQUE constraint failed: pub_imagens.rascunho_id, pub_imagens.sha256
+```
+
+As outras 5 rodadas saíram limpas: **419 passed + 1 incomplete, 0 failed**.
+
+**O que já foi medido (não repetir):**
+- **`Phase165` isolado é estável:** 3 rodadas, `1 incomplete, 151 passed` nas três. A falha
+  **só** aparece no filtro combinado → é vazamento de estado/ordem **entre suítes**, não um
+  teste quebrado.
+- **O banco de teste é `:memory:`** (`phpunit.xml` L27-28), então **não** é interferência da
+  sessão paralela nem do MariaDB local. A colisão é intra-processo.
+- Os dois fixtures candidatos usam contadores de instância para garantir sha único —
+  `CenarioCriativoDoPublicador::fotoComArquivo()` (lado `1200 + ++$fotoComArquivoSeq`) e
+  `AprovacaoParaPubImagensTest::fotoExistenteNoGrupo()` (lado `900 + ++$fotoSeq`). Contador de
+  **instância** zera por teste, então a colisão provavelmente vem de estado que **não** zera:
+  `Storage::disk('local')` **real** (os fixtures gravam em `storage/app/publicador/{id}/{sha}.jpg`
+  sem `Storage::fake` em alguns caminhos), um dedupe por sha256 que encontra arquivo de rodada
+  anterior, ou cache de snapshot do `RascunhoRepository`.
+
+**Por onde começar:** rodar o filtro combinado com `--order-by=defect` / `--stop-on-failure` para
+pinar o nome do teste (nas 7 rodadas aqui ele não reapareceu depois que passei a rodar o filtro
+isolado), e conferir se `Phase165` pede `Storage::fake('local')` em todos os `setUp()` que gravam
+foto com arquivo.
+
+**Por que não consertei agora:** o 175-11 toca 3 arquivos
+(`MlbPublicadorFaseController`, `PlanejarKitCriativosJob`, `CapaDoKitTest`) e nenhum deles
+escreve em `pub_imagens`; além disso o ramo novo do job só é alcançado por quem passa
+`tiposFixos`, e o único chamador é o `CapaDoKitService` da Fase 175. Mexer em fixture de outra
+fase para calar uma falha intermitente seria invadir escopo alheio.
