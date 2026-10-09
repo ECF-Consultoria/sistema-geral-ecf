@@ -38,7 +38,6 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                         {oferta && (
                             <p className="mt-1 text-[12px] text-white/55">
                                 Oferta {oferta.sku}
-                                {oferta.anuncios > 0 ? ` · ${oferta.anuncios} ${oferta.anuncios === 1 ? 'anúncio' : 'anúncios'}` : ''}
                                 {' · '}
                                 <a href={route('portal.auth.estrutura.lista', { q: oferta.sku })} className="text-white/70 underline-offset-2 hover:text-white hover:underline">Ver na Lista SKUs</a>
                             </p>
