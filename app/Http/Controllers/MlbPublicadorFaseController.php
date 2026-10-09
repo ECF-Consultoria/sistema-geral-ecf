@@ -8,7 +8,9 @@ use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PreviaDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\SugestaoDeKitService;
 use App\Services\Publicador\SugestaoKitIaService;
+use App\Services\Publicador\VinculoDeKitService;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\RegraViolada;
@@ -68,6 +70,8 @@ class MlbPublicadorFaseController extends Controller
         private PreviaDaFaseService $previas,
         private CriarFaseService $clone,
         private SugestaoKitIaService $sugestoes,
+        private VinculoDeKitService $vinculos,
+        private SugestaoDeKitService $sugestoesDeKit,
     ) {}
 
     /**
@@ -280,17 +284,86 @@ class MlbPublicadorFaseController extends Controller
         );
     }
 
+    // ═══ §6 — o vínculo de combo já cadastrado (plano 175-08) ════════════════
+
+    /**
+     * `PUT …/produtos/{produto}/vinculo` — registra que este produto é, na
+     * verdade, o kit de N unidades de outro produto da MESMA conta.
+     *
+     * Grava TRÊS colunas e nada mais (ver o docblock do `VinculoDeKitService`):
+     * rascunho, SKU, estoque, publicações e `ml_item_id` ficam intocados, e
+     * `estoque_calculado` fica false — o combo mantém o estoque dele.
+     *
+     * ⚠️ T-175-32: `base_id` é o ÚNICO id de entidade que vem do CORPO nesta
+     * fase. Ele é resolvido DENTRO de `produtosQuery($alvo)`, o mesmo escopo do
+     * produto da URL: base de outra empresa simplesmente não existe aqui e sai
+     * como **404, nunca 403**.
+     *
+     * ⚠️ Aqui o produto é o DA URL, nunca o `baseDaConta()`: quem vai virar kit é
+     * o combo que a pessoa abriu. Mandar o base da família para o serviço
+     * vincularia o produto errado.
+     */
+    public function vincular(Request $request, string $conta, int $produto): JsonResponse
+    {
+        [$alvo, $p] = $this->produtoDaConta($conta, $produto);
+
+        $dados = $request->validate([
+            'base_id' => ['required', 'integer'],
+            'quantidade' => ['required', 'integer', 'min:2', 'max:'.PreviaDaFaseService::MAX_QUANTIDADE],
+        ]);
+
+        // D-13: o id do corpo passa pelo escopo da conta ANTES de ser usado.
+        $base = $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])
+            ->whereKey((int) $dados['base_id'])
+            ->first();
+        abort_if($base === null, 404);
+
+        try {
+            $this->vinculos->vincular($p, $base, (int) $dados['quantidade']);
+        } catch (RegraViolada $e) {
+            return $this->recusa($e);
+        }
+
+        return response()->json(['produto' => $this->produtoParaResposta($p->fresh())]);
+    }
+
+    /**
+     * `DELETE …/produtos/{produto}/vinculo` — desfaz o vínculo (§6: "vínculo
+     * desfazível na tela do Produto"). Zera as três colunas e não toca em mais
+     * nada, nem no carimbo do "Não é kit".
+     */
+    public function desvincular(string $conta, int $produto): JsonResponse
+    {
+        [, $p] = $this->produtoDaConta($conta, $produto);
+
+        $this->vinculos->desvincular($p);
+
+        return response()->json(['produto' => $this->produtoParaResposta($p->fresh())]);
+    }
+
+    /**
+     * `POST …/produtos/{produto}/vinculo/recusar` — o "Não é kit" da §6: carimba
+     * `kit_sugestao_recusada_em` e o produto nunca mais recebe sugestão.
+     * Idempotente (T-175-36): a segunda recusa preserva a data da primeira.
+     */
+    public function recusarSugestao(string $conta, int $produto): JsonResponse
+    {
+        [, $p] = $this->produtoDaConta($conta, $produto);
+
+        $this->vinculos->recusar($p);
+
+        return response()->json(['produto' => $this->produtoParaResposta($p->fresh())]);
+    }
+
     // ═══ Apoio dos endpoints ═════════════════════════════════════════════════
 
     /**
-     * O produto BASE da família, escopado pela conta. Mesma disciplina do
-     * `mostrar()`: `resolver()` + `produtosQuery()->whereKey()` + 404.
+     * O produto DA URL, escopado pela conta — a disciplina do `mostrar()` num só
+     * lugar: `resolver()` + `produtosQuery()->whereKey()` + 404 (D-13, nunca 403).
      *
-     * Pedir pelo id de um KIT responde sobre o BASE (§3: abrir um kit leva à tela
-     * do base), e é o que impede uma cadeia de kits: a fase nova sempre nasce do
-     * produto de 1 unidade.
+     * @return array{0: array{mlb_empresa: ?\App\Models\MlbEmpresa, company: ?\App\Models\Company, programa: string, chave: string}, 1: PubProduto}
      */
-    private function baseDaConta(string $conta, int $produto): PubProduto
+    private function produtoDaConta(string $conta, int $produto): array
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -301,7 +374,47 @@ class MlbPublicadorFaseController extends Controller
             ->first();
         abort_if($p === null, 404);
 
+        return [$alvo, $p];
+    }
+
+    /**
+     * O produto BASE da família, escopado pela conta.
+     *
+     * Pedir pelo id de um KIT responde sobre o BASE (§3: abrir um kit leva à tela
+     * do base), e é o que impede uma cadeia de kits: a fase nova sempre nasce do
+     * produto de 1 unidade.
+     *
+     * ⚠️ Os endpoints de vínculo (§6) NÃO usam este helper — eles precisam do
+     * produto da URL, não do base dele.
+     */
+    private function baseDaConta(string $conta, int $produto): PubProduto
+    {
+        [, $p] = $this->produtoDaConta($conta, $produto);
+
         return $p->base ?? $p;
+    }
+
+    /**
+     * O produto depois de uma operação de vínculo, no MESMO vocabulário de
+     * `ProgramasPublicadorService::produtosParaTela()` — a tela atualiza a linha
+     * sem precisar recarregar a lista inteira.
+     *
+     * Só escalares (fora de `sugestao_kit`, que é o payload do 175-03 ou null):
+     * um objeto inesperado aqui é a "tela preta" de 07/10.
+     */
+    private function produtoParaResposta(PubProduto $p): array
+    {
+        return [
+            'id' => (int) $p->id,
+            'produto_base_id' => $p->produto_base_id !== null ? (int) $p->produto_base_id : null,
+            'quantidade_kit' => (int) $p->quantidade_kit,
+            'fase' => (int) $p->fase,
+            'eh_kit' => $p->ehKit(),
+            'estoque_calculado' => (bool) $p->estoque_calculado,
+            'rotulo_fase' => ProgramasPublicadorService::rotuloFase($p->quantidade_kit),
+            'kit_sugestao_recusada_em' => $p->kit_sugestao_recusada_em?->toIso8601String(),
+            'sugestao_kit' => $this->sugestoesDeKit->sugerirPara($p),
+        ];
     }
 
     /**

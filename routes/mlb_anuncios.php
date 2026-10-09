@@ -271,6 +271,24 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')->where('alvo', 'titulo|descricao')
             ->middleware('throttle:240,1,publicador.fases.ia.status')->name('publicador.fases.ia.status');
 
+        // ─── Fase 175, Plano 08 (§6) — o vínculo de combo JÁ cadastrado ───
+        // Vincular NÃO cria nada: grava `produto_base_id`, `quantidade_kit` e `fase`
+        // (mais `estoque_calculado = false`) e deixa rascunho, SKU, estoque,
+        // publicações e MLBs intocados — o contrário do `fases.criar`, que clona.
+        // Mesmo teto do `publicador.produtos.criar` (a §8 manda seguir o padrão dele).
+        // ⚠️ T-175-32: `base_id` é o ÚNICO id de entidade que vem do CORPO nesta fase;
+        // o controller o resolve DENTRO do escopo da conta e devolve 404 fora dele.
+        Route::put('publicador/empresas/{conta}/produtos/{produto}/vinculo', [MlbPublicadorFaseController::class, 'vincular'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:60,1,publicador.vinculo')->name('publicador.vinculo.salvar');
+        Route::delete('publicador/empresas/{conta}/produtos/{produto}/vinculo', [MlbPublicadorFaseController::class, 'desvincular'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:60,1,publicador.vinculo')->name('publicador.vinculo.remover');
+        // "Não é kit": carimbo de decisão humana, por isso tem throttle próprio.
+        Route::post('publicador/empresas/{conta}/produtos/{produto}/vinculo/recusar', [MlbPublicadorFaseController::class, 'recusarSugestao'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
+            ->middleware('throttle:60,1,publicador.vinculo.recusar')->name('publicador.vinculo.recusar');
+
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
         // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
