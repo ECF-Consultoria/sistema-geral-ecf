@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
@@ -447,16 +448,86 @@ class CriarFaseService
     }
 
     /**
-     * As fotos do kit (ver a decisão 4 do docblock da classe). Chega no próximo passo
-     * deste plano; até lá, base COM foto é recusado em vez de clonado sem foto —
-     * perder foto em silêncio seria pior que não clonar.
+     * As fotos do kit: BYTES próprios em `publicador/{rascunho_do_kit}/{sha}.ext`,
+     * ids do Mercado Livre preservados. Ver a decisão 4 do docblock da classe —
+     * é o que impede "tirar a foto do kit" de apagar o arquivo do base (T-175-04).
+     *
+     * **NUNCA** chamar `ImagemAssetService::receber()` nem `enviarAoMl()` daqui:
+     * `receber()` revalida a imagem (L1) e TERMINA enviando ao ML — HTTP dentro da
+     * transação e cota de foto gasta de novo, por uma foto que já está na conta
+     * (T-175-06). O que o kit precisa é só o `ml_picture_id`, e ele vem copiado.
+     *
+     * A cópia de bytes é I/O dentro da transação de propósito: é disco LOCAL, não
+     * HTTP. Cada `put()` entra em `$escritos` para o rollback de disco.
      *
      * @param  list<string>  $escritos  caminhos gravados no disco, para o rollback
      */
     protected function copiarImagens(PubRascunho $base, PubRascunho $kit, array &$escritos): void
     {
-        if ($base->imagens->isNotEmpty()) {
-            throw new \RuntimeException('A cópia das fotos do rascunho ainda não está implementada (175-02 Task 3).');
+        $disco = Storage::disk(self::DISCO);
+        // Dedup pelo unique `(rascunho_id, sha256)`: se duas fotos do base caírem no
+        // mesmo sha (só possível quando o base tem `sha256` NULL), a segunda reusa a
+        // primeira em vez de estourar o unique e derrubar o clone inteiro.
+        $porSha = [];
+
+        foreach ($base->imagens as $original) {
+            $conteudo = null;
+            $sha = $original->sha256;
+
+            if ($original->caminho !== null && $disco->exists($original->caminho)) {
+                $conteudo = $disco->get($original->caminho);
+                // `sha256` NULL com arquivo presente: calcula, porque é ele que nomeia o arquivo.
+                $sha ??= hash('sha256', (string) $conteudo);
+            }
+
+            if ($conteudo !== null && isset($porSha[$sha])) {
+                $this->copiarAtribuicoes($original, $porSha[$sha]);
+
+                continue;
+            }
+
+            $caminho = null;
+            if ($conteudo !== null) {
+                // MESMA extensão do original (o ML aceita jpg e png; não se converte nada aqui).
+                $ext = strtolower(pathinfo((string) $original->caminho, PATHINFO_EXTENSION)) ?: 'jpg';
+                $caminho = "publicador/{$kit->id}/{$sha}.{$ext}";
+                $disco->put($caminho, $conteudo);
+                $escritos[] = $caminho;
+            }
+
+            // `caminho` NULL: ou a foto veio do Anunciar antigo só com o id do ML (H-22),
+            // ou o arquivo sumiu do disco. Nos dois casos a linha é copiada SEM arquivo,
+            // nunca apontando para um caminho que não existe — e nada é lançado.
+            $copia = $kit->imagens()->create([
+                'caminho' => $caminho,
+                'sha256' => $conteudo !== null ? $sha : $original->sha256,
+                'mime' => $original->mime,
+                'bytes' => $original->bytes,
+                'largura' => $original->largura,
+                'altura' => $original->altura,
+                // Mesma conta do ML ⇒ a foto já está lá: preservar os ids É o "sem reupload" da §5.
+                'ml_picture_id' => $original->ml_picture_id,
+                'ml_url' => $original->ml_url,
+                'upload_status' => $original->upload_status,
+                'upload_erro' => $original->upload_erro,
+            ]);
+
+            if ($conteudo !== null) {
+                $porSha[$sha] = $copia;
+            }
+
+            $this->copiarAtribuicoes($original, $copia);
+        }
+    }
+
+    /** O grupo e a ordem da foto (`06` §3), apontando para a imagem NOVA. */
+    private function copiarAtribuicoes(PubImagem $original, PubImagem $copia): void
+    {
+        foreach ($original->atribuicoes as $a) {
+            $copia->atribuicoes()->firstOrCreate(
+                ['grupo_hash' => $a->grupo_hash],
+                ['grupo_chave' => $a->grupo_chave, 'posicao' => $a->posicao],
+            );
         }
     }
 
