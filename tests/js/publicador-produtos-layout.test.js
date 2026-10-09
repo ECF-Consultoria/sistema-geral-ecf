@@ -640,6 +640,54 @@ test('LinhaDeProduto — render real: as células, a altura fixa e os dois break
         assert.match(render({ densidade: 'compacto' }), /width:32px/);
     });
 
+    // ⚠️ Aceite 3 da spec: "todas as linhas com a mesma altura, inclusive SKU
+    // longo, nome longo, sugestão de kit e pendências". Eram EXATAMENTE esses
+    // quatro casos que empurravam a linha antes (SKU quebrando em 2 linhas,
+    // "Faltam N itens" dentro do selo, texto + 2 botões na célula Fases).
+    await contexto.test('⚠️ altura IGUAL nos quatro casos que antes empurravam a linha', () => {
+        const longo = 'Cadeira de Jantar Farmhouse Estofada Bege com Pés de Madeira Maciça e Acabamento Premium Importado';
+        const casos = {
+            'normal': {},
+            'SKU longo': { produto: produtoBase({ sku: 'CAD-FH-BEG-CB2-ESTOFADA-COURO-SINTETICO-PREMIUM-2026' }) },
+            'nome longo': { produto: produtoBase({ nome: longo }) },
+            'sugestão de kit': {
+                produto: produtoBase({ sku: 'CAD-CB2' }),
+                sugestao: { base_id: 1, base_sku: 'CAD-FH-BEG-ESTOFADA-PREMIUM', base_nome: longo, quantidade: 2 },
+            },
+            'pendências': {
+                produto: produtoBase({ status: { chave: 'conferir', rotulo: 'em preenchimento', faltam: 9 } }),
+                acao: acaoPrincipal({ chave: 'conferir' }),
+            },
+            'kit recuado': {
+                produto: produtoBase({ eh_kit: true, fase: 2, quantidade_kit: 2, rotulo_fase: 'Kit 2', nome: longo }),
+                recuado: true,
+            },
+            'tudo junto': {
+                produto: produtoBase({
+                    sku: 'CAD-FH-BEG-CB2-ESTOFADA-COURO-SINTETICO-PREMIUM-2026',
+                    nome: longo,
+                    status: { chave: 'conferir', faltam: 12 },
+                    anuncios: [
+                        { ml_item_id: 'MLB7781120934', listing_type_id: 'gold_special' },
+                        { ml_item_id: 'MLB7781120977', listing_type_id: 'gold_pro' },
+                    ],
+                }),
+                sugestao: { base_id: 1, base_sku: 'CAD-FH-BEG-ESTOFADA-PREMIUM', base_nome: longo, quantidade: 2 },
+            },
+        };
+
+        for (const [rotulo, overrides] of Object.entries(casos)) {
+            const html = render(overrides);
+            assert.match(html, /height:64px/, `altura diferente em: ${rotulo}`);
+            // Uma altura por linha — nada de célula com altura própria.
+            assert.equal((html.match(/height:64px/g) ?? []).length, 1, `mais de uma altura em: ${rotulo}`);
+            // E no compacto, 52px em todos eles.
+            const compacto = render({ ...overrides, densidade: 'compacto' });
+            assert.match(compacto, /height:52px/, `altura diferente no compacto em: ${rotulo}`);
+            assert.equal((compacto.match(/height:52px/g) ?? []).length, 1, rotulo);
+        }
+    });
+
     await contexto.test('a classe da linha não tem vermelho nenhum (a linha nunca é avermelhada)', () => {
         assert.equal(typeof CLASSE_DA_LINHA, 'string');
         assert.doesNotMatch(CLASSE_DA_LINHA, /bg-red|border-red/);
