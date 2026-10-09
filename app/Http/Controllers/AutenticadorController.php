@@ -28,6 +28,21 @@ class AutenticadorController extends Controller
 
     public function index(Request $request)
     {
+        return $this->listagem($request, null);
+    }
+
+    /**
+     * Link direto de uma conta: abre a mesma lista, já com o painel lateral
+     * dessa conta aberto. O código em si é buscado pela tela via GET /codigo
+     * (que audita a visualização) — aqui não vai secret nenhum.
+     */
+    public function show(Request $request, Autenticador $autenticador)
+    {
+        return $this->listagem($request, $autenticador->id);
+    }
+
+    private function listagem(Request $request, ?int $selecionado)
+    {
         $busca = trim((string) $request->query('q', ''));
 
         $query = Autenticador::query()
@@ -57,15 +72,7 @@ class AutenticadorController extends Controller
                 'status'      => $request->query('status', ''),
             ],
             'servicos'       => Autenticador::query()->distinct()->orderBy('servico')->pluck('servico'),
-        ]);
-    }
-
-    public function show(Autenticador $autenticador)
-    {
-        // O código em si é buscado pela tela via GET /codigo (que audita a
-        // visualização). Aqui só vão os dados públicos da conta, sem o secret.
-        return Inertia::render('Autenticadores/Show', [
-            'autenticador' => $this->publico($autenticador),
+            'selecionado'    => $selecionado,
         ]);
     }
 
@@ -182,7 +189,7 @@ class AutenticadorController extends Controller
     {
         $autenticador->delete();
 
-        // Removido a partir da página da conta — volta para a lista.
+        // Volta para a lista sem conta selecionada (o link /{id} morreu junto).
         return redirect()->route('autenticadores.index')->with('success', 'Autenticador removido.');
     }
 
