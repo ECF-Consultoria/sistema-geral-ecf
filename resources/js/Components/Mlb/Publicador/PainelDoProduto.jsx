@@ -4,8 +4,11 @@ import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { criarRota, mensagemDe } from '@/Components/Publicador/apoio.js';
 import { textoSeguro } from './BarraDaConta';
+import CartaoDaFase from './CartaoDaFase';
+import CartaoKpi from './CartaoKpi';
 import PainelCriarFase from './PainelCriarFase';
 import SeloStatusProduto from './SeloStatusProduto';
+import { iniciaisDoNome } from './layoutDaListaDeProdutos.js';
 import { haQuanto } from './tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
@@ -22,6 +25,33 @@ const BOTAO_MINI = 'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded
 const CARTAO = 'rounded-xl bg-ecf-card p-4';
 const TITULO_BLOCO = 'text-[11px] font-bold uppercase tracking-[0.05em] text-white/40';
 const AMBAR = 'rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[13px] font-normal text-amber-300';
+const PILULA = 'rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[11px] font-normal text-white/55';
+
+// ─── Os quadros financeiros do mockup que o sistema NÃO tem ────────────────
+//
+// Decisão 2 do plano (quick 261009-t04), mesmo tratamento das telas 01 e 02:
+// o quadro é DESENHADO e fica VAZIO, dizendo o motivo. "Não sabemos" não é
+// "é zero" — e número inventado com cara de certo é pior que número nenhum.
+// Nenhum destes existe em `pub_produtos`, `pub_rascunhos` nem no acervo do ML.
+const SEM_CUSTO = 'Não temos custo de compra no Publicador';
+const SEM_PRECO_SUGERIDO = 'Não calculamos preço nem margem sem o custo';
+const SEM_SAUDE = 'Não avaliamos a saúde do cadastro nesta tela';
+const SEM_ESTOQUE = 'O rascunho ainda não informou estoque';
+const NAO_COLETADO = 'ainda não coletado';
+const FORA_DESTA_TELA = 'não calculamos aqui';
+
+// Os títulos da metodologia de fases. São DESCRIÇÃO do método, não dado do
+// servidor: nenhum número, nenhum ticket, nenhum percentual.
+const TITULO_DA_FASE = {
+    1: 'Publicação individual',
+    2: 'Kits múltiplos',
+    3: 'Cross-selling e combos',
+};
+const DESCRICAO_DA_FASE = {
+    1: 'O produto sozinho, uma unidade por venda — a fase que valida o cadastro no catálogo.',
+    2: 'O mesmo produto em kit de mais de uma unidade: o frete se dilui no ticket maior.',
+    3: 'Anúncios que juntam este produto a outros SKUs já cadastrados na conta.',
+};
 
 // O mapa da §3 ("Não iniciada / Em preparação / Publicada / Com problema"). O
 // SELO do estado continua sendo `SeloStatusProduto` (nenhum selo novo); isto é
@@ -80,6 +110,29 @@ function decimal(valor) {
     const n = numeroSeguro(valor);
 
     return n === null ? null : String(n).replace('.', ',');
+}
+
+/**
+ * Um número da faixa "Performance últimos 30 dias".
+ *
+ * ⚠️ Sem valor ele escreve "— {motivo}", NUNCA 0. Um 0 aqui diria "não vendeu"
+ * quando a verdade é "ainda não coletamos" — a mesma distinção que, nos
+ * learnings deste projeto, já custou caro no "dia sem linha ≠ venda zero".
+ */
+function Fato({ rotulo, valor = null, motivo = '' }) {
+    const numero = numeroSeguro(valor);
+    const texto = numero !== null ? String(numero) : textoSeguro(valor, '');
+
+    return (
+        <span className="text-[13px] font-normal text-white/55">
+            {textoSeguro(rotulo, '')}:{' '}
+            {texto !== '' ? (
+                <span className="font-mono tabular-nums text-white/80">{texto}</span>
+            ) : (
+                <span className="text-white/40">— {textoSeguro(motivo, FORA_DESTA_TELA)}</span>
+            )}
+        </span>
+    );
 }
 
 /**
@@ -171,6 +224,37 @@ export default function PainelDoProduto({
     const companyId = objetoSeguro(abas).company_id ?? null;
     const destaque = numeroSeguro(faseDestacada);
 
+    // ─── Cabeçalho (tela 04, task 2) ───
+    const nomeDaEmpresa = textoSeguro(objetoSeguro(empresa).nome, '');
+    const iniciais = iniciaisDoNome(nome);
+    const eanDoMapa = mapaVazio ? '' : textoSeguro(mapa.ean, '');
+    // A ficha curta do mockup ("Sensor PixArt • Peso 78g • Categoria"), montada
+    // só com o que o Mapeamento Estrutural de fato trouxe.
+    const fichaCurta = mapaVazio ? '' : [
+        [medidas.comprimento, medidas.largura, medidas.altura].every((v) => numeroSeguro(v) !== null)
+            ? `${decimal(medidas.comprimento)} × ${decimal(medidas.largura)} × ${decimal(medidas.altura)} ${textoSeguro(medidas.unidade, 'cm')}`
+            : '',
+        decimal(mapa.peso) !== null ? `${decimal(mapa.peso)} kg` : '',
+        textoSeguro(mapa.material, ''),
+    ].filter((parte) => parte !== '').join(' • ');
+
+    /**
+     * Soma de uma métrica das ofertas, ou `null` quando NENHUMA oferta trouxe o
+     * número. ⚠️ Zero só aparece se o acervo tiver mesmo devolvido zero —
+     * ausência de coleta nunca vira 0.
+     */
+    const somaDasOfertas = (chave) => {
+        let soma = null;
+        for (const bruto of listaOfertas) {
+            const n = numeroSeguro(objetoSeguro(bruto)[chave]);
+            if (n !== null) soma = (soma ?? 0) + n;
+        }
+
+        return soma;
+    };
+    const vendasSomadas = somaDasOfertas('vendas');
+    const visitasSomadas = somaDasOfertas('visitas');
+
     /**
      * §6 (quick 261009-uec): "Usar estoque calculado" deste kit.
      *
@@ -208,30 +292,53 @@ export default function PainelDoProduto({
                             O produto base deste kit foi excluído. O histórico dele continua aqui, mas ele não pertence mais a nenhuma família.
                         </p>
                     )}
+                    {/* A trilha do mockup: empresa › Produtos › este produto. Só
+                        com a conta na tela — sem ela não há para onde voltar. */}
+                    {contaDaTela !== null && (
+                        <p className="mb-3 flex flex-wrap items-center gap-1 text-[11px] font-normal text-white/40">
+                            {nomeDaEmpresa !== '' && (
+                                <>
+                                    <span>{nomeDaEmpresa}</span>
+                                    <span aria-hidden="true">›</span>
+                                </>
+                            )}
+                            <Link href={rotaDoPublicador('produtos', contaDaTela)} className="hover:text-ecf-yellow">Produtos</Link>
+                            <span aria-hidden="true">›</span>
+                            <span className="text-white/55">{nome}</span>
+                        </p>
+                    )}
+
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex min-w-0 items-start gap-4">
-                            {fotoUrl !== null && (
+                            {/* Sem foto, as INICIAIS — mesma solução da lista de
+                                Produtos (quick 261009-prd), nunca uma imagem quebrada. */}
+                            {fotoUrl !== null ? (
                                 <img
                                     src={fotoUrl}
                                     alt=""
                                     loading="lazy"
                                     className="h-20 w-20 shrink-0 rounded-lg bg-white object-contain"
                                 />
+                            ) : (
+                                <span
+                                    data-miniatura={iniciais}
+                                    aria-hidden="true"
+                                    className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] font-display text-[24px] font-bold text-white/40"
+                                >
+                                    {iniciais}
+                                </span>
                             )}
                             <div className="min-w-0">
-                                <h1 className="font-display text-[20px] font-bold leading-tight text-white">{nome}</h1>
-                                <p className="mt-1 flex flex-wrap items-center gap-2 text-[13px] font-normal text-white/55">
-                                    <span className="font-mono text-[11px] text-white/70">{sku}</span>
-                                    {origemRotulo !== null && (
-                                        <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold text-white/55">
-                                            {origemRotulo}
-                                        </span>
-                                    )}
+                                <p className="flex flex-wrap items-center gap-2">
+                                    <span className={PILULA}>{categoria}</span>
+                                    {eanDoMapa !== '' && <span className={PILULA}>EAN: {eanDoMapa}</span>}
+                                    {origemRotulo !== null && <span className={PILULA}>{origemRotulo}</span>}
                                 </p>
-                                <p className="mt-1 text-[13px] font-normal text-white/55">{categoria}</p>
-                                <p className="mt-1 text-[13px] font-normal text-white/55">
-                                    Estoque: <span className="font-mono tabular-nums text-white/80">{estoqueTotal ?? '—'}</span>
-                                </p>
+                                <h1 className="mt-2 font-display text-[24px] font-bold leading-tight text-white">{nome}</h1>
+                                <p className="mt-1 font-mono text-[11px] text-white/70">SKU: {sku}</p>
+                                {fichaCurta !== '' && (
+                                    <p className="mt-1 text-[13px] font-normal text-white/55">{fichaCurta}</p>
+                                )}
                             </div>
                         </div>
 
@@ -240,6 +347,41 @@ export default function PainelDoProduto({
                         ) : (
                             <button type="button" disabled className={BOTAO_TRAVADO}>Editar Fase 1</button>
                         )}
+                    </div>
+
+                    {/* A faixa de números do mockup. ⚠️ Só o estoque existe — e
+                        ele é o do RASCUNHO, não o de um ERP (decisão 3). Os três
+                        quadros financeiros ficam desenhados e VAZIOS, dizendo o
+                        motivo (decisão 2). */}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <CartaoKpi
+                            rotulo="Estoque do rascunho"
+                            numero={estoqueTotal}
+                            nota="unidades somadas das variantes do rascunho"
+                            motivoVazio={SEM_ESTOQUE}
+                        />
+                        <CartaoKpi rotulo="Custo médio" numero={null} motivoVazio={SEM_CUSTO} />
+                        <CartaoKpi rotulo="Preço sugerido" numero={null} motivoVazio={SEM_PRECO_SUGERIDO} />
+                        <CartaoKpi rotulo="Saúde cadastral" numero={null} motivoVazio={SEM_SAUDE} />
+                    </div>
+
+                    {/* Performance de 30 dias: vendas e visitas são reais (vêm do
+                        acervo, somadas das ofertas). GMV, conversão e ranking não
+                        chegam nesta tela — ficam em branco, com o motivo, em vez
+                        de virar estimativa. O sparkline do mockup fica de fora:
+                        não há série temporal nenhuma para desenhar. */}
+                    <div className="mt-4 border-t border-white/[0.06] pt-3">
+                        <p className={TITULO_BLOCO}>Performance últimos 30 dias</p>
+                        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                            <Fato rotulo="Vendas" valor={vendasSomadas !== null ? `${vendasSomadas} un` : null} motivo={NAO_COLETADO} />
+                            <Fato rotulo="Visitas" valor={visitasSomadas} motivo={NAO_COLETADO} />
+                            <Fato rotulo="GMV faturado" motivo={FORA_DESTA_TELA} />
+                            <Fato rotulo="Conversão estimada" motivo={FORA_DESTA_TELA} />
+                            <Fato rotulo="Ranking de categoria" motivo="não consultamos o Mercado Livre aqui" />
+                        </div>
+                        <p className="mt-2 text-[11px] font-normal text-white/40">
+                            Vendas e visitas vêm do acervo do Mercado Livre. Faturamento, conversão e posição na categoria não chegam a esta tela — por isso ficam em branco em vez de virar palpite.
+                        </p>
                     </div>
                 </section>
 
