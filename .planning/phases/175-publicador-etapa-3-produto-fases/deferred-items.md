@@ -76,3 +76,47 @@ Mexer nele por causa da capa de kit é mudança de comportamento para todo mundo
 conta #459 depois do 175-07 e olhar se a imagem saiu com N unidades ou com uma.
 É barato (duas imagens, ~R$ 1,10) e é a única prova honesta — o resto é
 suposição sobre o que o modelo faz.
+
+---
+
+## 3. A tela do Produto não recebe `criativos_ia`, então a caixa da capa NUNCA aparece (descoberto no 175-07)
+
+**Onde:** `app/Http/Controllers/MlbPublicadorFaseController::mostrar()`, o
+`Inertia::render('Mlb/Publicador/Produto', [...])`.
+
+**O que é:** o painel "Criar Fase N" só renderiza a caixa "Gerar a capa do kit"
+quando a prop `criativos_ia` é `true` — e isso é de propósito (§4: "só aparece se
+`CreativePermissao` + chave do Creative Engine permitirem"; D23 não se aplica,
+porque capacidade do servidor não vira caixa desabilitada). O lado React está
+pronto e coberto por teste: `Produto.jsx` faz `<PainelDoProduto {...props} />`,
+`PainelDoProduto` repassa `criativos_ia` ao painel, e o painel mostra/esconde a
+caixa.
+
+**Consequência medida:** `mostrar()` devolve `empresa`, `liberada`, `produto`,
+`fase_destacada`, `fases`, `proxima_fase`, `ofertas`, `historico`, `criativos`,
+`mapeamento` e `abas` — **e nada mais**. Em produção `criativos_ia` chega
+`undefined`, o default do componente é `false`, e a caixa da capa não é
+renderizada. Resultado prático: hoje o Confirmar manda `capa: false` sempre, e a
+capa do kit entregue pelo 175-06 **não é acionável pela tela**.
+
+**Por que não foi corrigido aqui:** `MlbPublicadorFaseController.php` é do
+`175-08`, que rodou **em paralelo** a este plano e é dono do arquivo (e das
+rotas). O briefing da execução é explícito: "NÃO tocar em NENHUM arquivo de
+servidor — se algo parecer exigir mudança de servidor, pare e registre".
+
+**Correção provável (uma linha, no 175-08 ou numa quick):** no array do
+`Inertia::render` do `mostrar()`, acrescentar
+
+```php
+'criativos_ia' => $creativeAtivo->ativa() && $creativePermissao->podeGerar($request->user()),
+```
+
+com `App\Services\Creative\CreativeEngineAtivo` e
+`App\Services\Creative\CreativePermissao` injetados no método — **o mesmo par
+literal** de `MlbPublicadorEntradaController::produtos()` (conferido em
+2026-10-09, linha 260). O `mostrar()` hoje não recebe `Request`, então a
+assinatura muda junto.
+
+**Como conferir que ficou certo:** abrir um produto publicado da conta #459,
+clicar "Criar Fase 2" e ver a caixa "Gerar a capa do kit" **marcada**. Com um
+usuário sem a permissão, a caixa não deve aparecer (nem desabilitada).
