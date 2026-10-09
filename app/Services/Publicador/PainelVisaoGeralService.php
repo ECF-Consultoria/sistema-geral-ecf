@@ -433,21 +433,20 @@ class PainelVisaoGeralService
     public function integracoes(array $alvo, array $empresaParaTela): array
     {
         $ancora = PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company']);
-        $itemErp = $alvo['mlb_empresa']?->implementacao?->dados['itens']['erp'] ?? null;
-        $valorErp = is_array($itemErp) ? trim((string) ($itemErp['valor'] ?? '')) : '';
 
-        $rotuloErp = match (true) {
-            $valorErp === '' || $valorErp === '---' => 'Não informado',
-            $valorErp === 'Outro' => (trim((string) ($itemErp['outro'] ?? '')) !== '' ? trim((string) $itemErp['outro']) : 'Outro'),
-            default => $valorErp,
-        };
+        // ⚠️ FONTE ÚNICA do ERP declarado (quick 261009-t01): a mesma estática que a
+        // lista de empresas (tela A) usa. Enquanto eram duas implementações, a tela A
+        // e a Visão geral podiam mostrar ERPs diferentes para a MESMA conta — a lista
+        // lê também a coluna `erp` que o sync da planilha de Polos preenche, e aqui só
+        // o JSON da ficha era lido. Não duplicar de novo.
+        $nomeErp = ProgramasPublicadorService::erpDeclarado($alvo['mlb_empresa']?->implementacao);
 
         return [
             'mercado_livre' => ['token' => $empresaParaTela['token']],
             'publicacao_liberada' => ContasLiberadas::libera($ancora),
             'alavancas_liberada' => AlavancasLiberadas::libera($ancora),
             'portal' => $empresaParaTela['portal'],
-            'erp' => ['valor' => $valorErp !== '' ? $valorErp : null, 'rotulo' => $rotuloErp],
+            'erp' => ['valor' => $nomeErp, 'rotulo' => $nomeErp ?? 'Não informado'],
         ];
     }
 

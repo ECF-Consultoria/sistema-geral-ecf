@@ -24,7 +24,9 @@ use Illuminate\Support\Facades\DB;
  * `{ chave, tipo: 'mlb_empresa'|'company', id, nome, identificador, company_id,
  *    tem_token, token_expirado, token: 'ativo'|'expirado'|'sem_token', link_reconexao,
  *    portal: { situacao, novas, sincronizado_em }, produtos, publicados, prontos,
- *    liberada, publicados_mes }` (`publicados_mes` é extra, alimenta os indicadores).
+ *    liberada, publicados_mes, erp: { nome }, fases: { kits } }`
+ * (`publicados_mes` é extra, alimenta os indicadores; `erp` e `fases` entraram no
+ * quick 261009-t01 e são ADITIVAS — nenhuma chave acima mudou de nome ou de valor).
  *
  * Os agregados saem de consultas agrupadas — nunca uma consulta por linha.
  * O carimbo de OAuth da implementação só serve para "autorizou, falta reconectar";
@@ -163,12 +165,24 @@ class ProgramasPublicadorService
         $companyIds = $linhas->pluck('company_id')->filter()->unique()->values()->all();
 
         // Produtos de todas as linhas numa só leitura (regra OU: mlb_empresa_id = X ou company_id = X.company_id).
+        // `quantidade_kit` entra no MESMO select (quick 261009-t01): é o que sustenta
+        // `fases.kits` da tela sem nenhuma consulta nova.
         $produtos = PubProduto::query()
             ->where(function ($q) use ($empresaIds, $companyIds) {
                 $q->whereIn('mlb_empresa_id', $empresaIds ?: [0])
                     ->orWhereIn('company_id', $companyIds ?: [0]);
             })
-            ->get(['id', 'mlb_empresa_id', 'company_id', 'oferta_id', 'origem', 'created_at']);
+            ->get(['id', 'mlb_empresa_id', 'company_id', 'oferta_id', 'origem', 'created_at', 'quantidade_kit']);
+
+        // ERP DECLARADO no onboarding, em lote (quick 261009-t01).
+        // ⚠️ Decisão 8 do handoff: o ERP é só declarado — NUNCA existe "conectado"
+        // nem "sincronizado há N min". Por isso a chave é `['nome' => ...]` e não
+        // traz carimbo de tempo nenhum: não há integração real para carimbar.
+        // Duas consultas de custo FIXO (as MlbEmpresa das linhas + a implementação
+        // de cada uma), nunca uma por empresa. A busca é por `mlb_empresa_id` E por
+        // `company_id` porque a lista de Gestão é montada a partir de Company — ali
+        // a ficha de onboarding só é alcançável pela MlbEmpresa ligada à Company.
+        [$erpPorEmpresa, $erpPorCompany] = $this->erpDeclaradoEmLote($empresaIds, $companyIds);
 
         $ids = $produtos->pluck('id')->all();
         $prontosPor = [];
@@ -207,9 +221,10 @@ class ProgramasPublicadorService
         $maisRecentePor = $produtos->where('origem', PubProduto::ORIGEM_PORTAL)->whereNotNull('company_id')
             ->groupBy('company_id')->map(fn ($g) => $g->max('created_at'));
 
-        return $linhas->map(function (array $l) use ($produtos, $prontosPor, $publicadosPor, $mesPor, $ofertasPor, $comProdutoPor, $cacheChaves, $emCache, $maisRecentePor) {
-            $meus = $produtos->filter(fn ($p) => ($l['mlb_empresa_id'] !== null && (int) $p->mlb_empresa_id === (int) $l['mlb_empresa_id'])
-                || ($l['company_id'] !== null && (int) $p->company_id === (int) $l['company_id']))->pluck('id');
+        return $linhas->map(function (array $l) use ($produtos, $prontosPor, $publicadosPor, $mesPor, $ofertasPor, $comProdutoPor, $cacheChaves, $emCache, $maisRecentePor, $erpPorEmpresa, $erpPorCompany) {
+            $meusProdutos = $produtos->filter(fn ($p) => ($l['mlb_empresa_id'] !== null && (int) $p->mlb_empresa_id === (int) $l['mlb_empresa_id'])
+                || ($l['company_id'] !== null && (int) $p->company_id === (int) $l['company_id']));
+            $meus = $meusProdutos->pluck('id');
 
             $ancora = $l['ancora'];
             $token = $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo');
@@ -254,8 +269,84 @@ class ProgramasPublicadorService
                 'prontos' => (int) $meus->sum(fn ($id) => $prontosPor[$id] ?? 0),
                 'liberada' => ContasLiberadas::libera($ancora),
                 'publicados_mes' => (int) $meus->sum(fn ($id) => $mesPor[$id] ?? 0),
+                // ── Chaves ADITIVAS do quick 261009-t01 (nada acima mudou) ──
+                'erp' => ['nome' => $erpPorEmpresa[$l['mlb_empresa_id']]
+                    ?? ($companyId !== null ? ($erpPorCompany[$companyId] ?? null) : null)],
+                'fases' => ['kits' => $meusProdutos->filter(fn ($p) => (int) $p->quantidade_kit >= 2)->count()],
             ];
         })->values();
+    }
+
+    /**
+     * ERP declarado por `mlb_empresa_id` e por `company_id`, em duas consultas de
+     * custo fixo. Só entram no mapa as empresas que DECLARARAM alguma coisa — quem
+     * não declarou simplesmente não tem chave, e a linha fica com `nome => null`.
+     *
+     * @param  list<int>  $empresaIds
+     * @param  list<int>  $companyIds
+     * @return array{0: array<int, string>, 1: array<int, string>}
+     */
+    private function erpDeclaradoEmLote(array $empresaIds, array $companyIds): array
+    {
+        if ($empresaIds === [] && $companyIds === []) {
+            return [[], []];
+        }
+
+        $empresas = MlbEmpresa::query()
+            ->where(function ($q) use ($empresaIds, $companyIds) {
+                $q->whereIn('id', $empresaIds ?: [0])->orWhereIn('company_id', $companyIds ?: [0]);
+            })
+            ->with('implementacao:id,empresa_id,dados,erp')
+            ->get(['id', 'company_id']);
+
+        $porEmpresa = [];
+        $porCompany = [];
+        foreach ($empresas as $e) {
+            $nome = self::erpDeclarado($e->implementacao);
+            if ($nome === null) {
+                continue;
+            }
+            $porEmpresa[(int) $e->id] = $nome;
+            // Uma Company pode ter mais de uma MlbEmpresa: vale a PRIMEIRA que declarou.
+            if ($e->company_id !== null && ! isset($porCompany[(int) $e->company_id])) {
+                $porCompany[(int) $e->company_id] = $nome;
+            }
+        }
+
+        return [$porEmpresa, $porCompany];
+    }
+
+    /**
+     * O ERP que a empresa DECLAROU no onboarding — nome puro, sem adjetivo de
+     * conexão (decisão 8 do handoff: "Exibir 'Bling · declarado no onboarding',
+     * nunca 'conectado', até existir integração real").
+     *
+     * Dois caminhos, nesta ordem: a ficha pública de onboarding
+     * (`dados.itens.erp.valor`, com `Outro` caindo no texto livre `outro`) e, se ela
+     * estiver em branco, a coluna `erp` que o sync da planilha de Polos preenche.
+     * `''` e `'---'` são o valor de PARTIDA da ficha — não são declaração, e por
+     * isso devolvem `null`.
+     */
+    public static function erpDeclarado(?MlbImplementacao $impl): ?string
+    {
+        if ($impl === null) {
+            return null;
+        }
+
+        $item = $impl->dados['itens']['erp'] ?? null;
+        $valor = is_array($item) ? trim((string) ($item['valor'] ?? '')) : '';
+
+        if ($valor === 'Outro') {
+            $livre = is_array($item) ? trim((string) ($item['outro'] ?? '')) : '';
+
+            return $livre !== '' ? $livre : 'Outro';
+        }
+
+        if ($valor === '' || $valor === '---') {
+            $valor = trim((string) ($impl->erp ?? ''));
+        }
+
+        return ($valor === '' || $valor === '---') ? null : $valor;
     }
 
     /**
