@@ -13,6 +13,29 @@ import { BASE_BOTAO, SECUNDARIO } from './botoes';
 // depois o indicador real do salvamento e "Anunciar por IA". Conferir e
 // Publicar moram no fim da etapa "Condições de venda", então a barra não tem
 // amarelo sólido nenhum.
+//
+// Fase 175 plano 09 (§7 da ETAPA-3): num KIT a barra ainda diz QUAL fase está
+// aberta ("Fase 2 · Kit 2") e leva de volta ao produto base. Num produto que
+// não é kit NADA disso é renderizado — a trilha fica idêntica à de antes.
+
+/**
+ * `textoSeguro` é a única porta de entrada dos textos do presenter nesta barra
+ * (mesma defesa de `PainelCriativos.jsx`/`AcervoDaConta.jsx`, REND-02). Local de
+ * propósito: a barra não importa nada de fora do editor, e um campo que chega
+ * como OBJETO renderizado cru derruba a árvore React inteira — foi a tela preta
+ * de 05-07/10/2026.
+ */
+const textoSeguro = (v) => (typeof v === 'string' || typeof v === 'number' ? v : null);
+
+/** Aviso âmbar da barra: uma linha, texto do servidor já peneirado. */
+function AvisoDaBarra({ children, marca }) {
+    return (
+        <p className="flex min-w-0 shrink items-center gap-1 text-[11px] font-normal text-amber-300" data-aviso-barra={marca}>
+            <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />
+            <span className="truncate">{children}</span>
+        </p>
+    );
+}
 
 /**
  * Indicador do salvamento (WR-F02): "Salvo há Ns" (atualizado a cada 10 s) só quando nada
@@ -55,6 +78,13 @@ export default function BarraDoEditor({ pub, empresa, produto, produtos = [], on
     const reconectar = empresa.token !== 'ativo';
     const voltar = () => onVoltar?.();
 
+    // A fase do produto em edição (`EditorRascunhoService::estado()`, 175-09).
+    const doEstado = pub.m.estado?.produto ?? {};
+    const ehKit = !! doEstado.eh_kit;
+    const rotuloFase = textoSeguro(doEstado.rotulo_fase);
+    // Sem conta com token o servidor manda `url` nula: link quebrado é pior que link ausente.
+    const urlDoBase = textoSeguro(doEstado.base?.url);
+
     // -top-6: o <main> do AppLayout tem p-6 e o sticky cola na borda do CONTEÚDO, não do padding; sem isso sobra uma faixa de 24px por onde a página rola.
     return (
         <div className="sticky -top-6 z-20 flex h-14 items-center gap-2 border-b max-sm:h-auto max-sm:flex-wrap max-sm:gap-y-2 max-sm:py-2 max-sm:px-4 border-white/[0.06] bg-ecf-bg px-6" data-barra-editor>
@@ -91,6 +121,27 @@ export default function BarraDoEditor({ pub, empresa, produto, produtos = [], on
             <div className="min-w-0 flex-1 max-sm:order-last max-sm:w-full max-sm:flex-none">
                 <SeletorDeProdutos produtos={produtos} produtoId={produto.id} produtoNome={produto.nome} conta={empresa.chave} onTrocar={onTrocar} />
             </div>
+
+            {/* Só em kit: a fase aberta e a volta ao produto base (§7). */}
+            {ehKit && (rotuloFase || urlDoBase) && (
+                <div className="flex min-w-0 shrink-0 items-center gap-2" data-fase-do-editor>
+                    {rotuloFase && (
+                        <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/70" data-rotulo-fase>
+                            {rotuloFase}
+                        </span>
+                    )}
+                    {urlDoBase && (
+                        <Link href={urlDoBase} onClick={voltar} data-link-produto-base
+                            className="max-sm:hidden shrink-0 rounded text-[13px] font-normal text-white/55 hover:text-ecf-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">
+                            Produto base
+                        </Link>
+                    )}
+                </div>
+            )}
+
+            {!! doEstado.aviso_base_apagado && <AvisoDaBarra marca="base-apagado">o produto base deste kit foi excluído</AvisoDaBarra>}
+            {/* O rascunho é a verdade local; o anúncio no ar não é tocado nesta etapa (§1). */}
+            {!! doEstado.aviso_estoque_ml && <AvisoDaBarra marca="estoque-ml">Estoque no ML difere do calculado</AvisoDaBarra>}
 
             <div className="min-w-[90px] max-w-[220px] shrink-0 max-sm:min-w-0 max-sm:flex-1"><Salvamento pub={pub} /></div>
 

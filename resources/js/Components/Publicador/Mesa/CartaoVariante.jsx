@@ -112,6 +112,13 @@ function CampoExtra({ v, a, travada, onMudar }) {
 export default function CartaoVariante({ m, v, eixos, onTirar = null }) {
     const { estado, schema } = m;
     const travada = m.disabled || v.publicada;
+    // Fase 175 plano 09 (§7): num kit com estoque calculado o número vem do
+    // produto base (`floor(base ÷ N)` por variante e por depósito) e ninguém
+    // digita duas vezes a mesma coisa. O campo fica somente leitura COM a
+    // explicação ao lado — desabilitado com explicação, nunca escondido (D23).
+    // ⚠️ `travada` NÃO muda: SKU, GTIN e os demais campos do kit SÃO editáveis.
+    const estoqueDoBase = !! estado.produto?.estoque_calculado;
+    const estoqueTravado = travada || estoqueDoBase;
     // A "Cor principal" fica junto do nome da cor: aqui quando as variações são por Cor; na ficha quando a Cor é do produto.
     const tom = ondeFicaOTom(schema, eixos);
     const extras = atributosExtrasDaVariante(schema).filter((a) => ! (tom && a.id === 'MAIN_COLOR'));
@@ -138,8 +145,9 @@ export default function CartaoVariante({ m, v, eixos, onTirar = null }) {
                 <p className="text-[13px] text-white/45">Fora do anúncio. Marque "Vender esta variação" para preencher estoque e código.</p>
             ) : (
                 <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-                    <Campo rotulo={multi ? 'Estoque por depósito' : 'Estoque'} htmlFor={`estoque-${v.chave}`} erro={erroEstoque}>
-                        <CampoEstoque grande id={`estoque-${v.chave}`} invalido={!! erroEstoque} v={v} conta={estado.conta} travada={travada} onMudar={m.mudarVar} />
+                    <Campo rotulo={multi ? 'Estoque por depósito' : 'Estoque'} htmlFor={`estoque-${v.chave}`} erro={erroEstoque}
+                        dica={estoqueDoBase ? 'calculado do produto base' : null}>
+                        <CampoEstoque grande id={`estoque-${v.chave}`} invalido={!! erroEstoque} v={v} conta={estado.conta} travada={estoqueTravado} onMudar={m.mudarVar} />
                     </Campo>
                     <Campo rotulo="SKU" htmlFor={`sku-${v.chave}`} erro={erroSku} dica={erroSku ? null : 'Código seu para este item; não se repete entre variações.'}>
                         <CampoSku grande id={`sku-${v.chave}`} invalido={!! erroSku} v={v} travada={travada} onMudar={m.mudarVar} />
