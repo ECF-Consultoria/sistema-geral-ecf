@@ -120,3 +120,50 @@ assinatura muda junto.
 **Como conferir que ficou certo:** abrir um produto publicado da conta #459,
 clicar "Criar Fase 2" e ver a caixa "Gerar a capa do kit" **marcada**. Com um
 usuário sem a permissão, a caixa não deve aparecer (nem desabilitada).
+
+_(resolvido em `8eb134b9`, pela plan 175-11.)_
+
+---
+
+## 4. A ação "Usar estoque calculado" da §6 não existe — e exige servidor (descoberto no 175-10)
+
+**Onde:** o cartão da fase em
+`resources/js/Components/Mlb/Publicador/PainelDoProduto.jsx` (~L254) e,
+do lado servidor, `routes/mlb_anuncios.php` + o
+`RecalculoEstoqueDoKitService` (175-09).
+
+**O que é:** a §6 da ETAPA-3 pede três coisas no cartão do combo vinculado —
+"estoque próprio", o valor calculado ao lado **e a ação explícita 'Usar estoque
+calculado'**. As duas primeiras existem desde o 175-04/06: o cartão mostra
+`estoque próprio · calculado do base: N`. **A terceira não existe em nenhum
+lugar:** o texto só aparece como comentário no docblock do
+`VinculoDeKitService` ("a pessoa decide, não o sistema").
+
+**Consequência medida:** combo vinculado nasce com `estoque_calculado = false`
+(§6, de propósito), e por isso o `RecalculoEstoqueDoKitService` **nunca** o
+recalcula quando o estoque do base muda. Hoje não há como a pessoa mudar de
+ideia: o valor calculado é mostrado, mas não dá para adotá-lo. O combo fica para
+sempre no estoque próprio, a não ser que alguém edite o rascunho à mão.
+
+**Por que não foi corrigido no 175-10:** este plano é **frontend puro**, com
+instrução explícita de não tocar em `app/` nem em `routes/`; não existe endpoint
+que grave `estoque_calculado = true` (as rotas de vínculo gravam o parentesco e
+nada mais). E o botão viveria em `PainelDoProduto.jsx`, que o briefing manda não
+tocar (dono: 175-07).
+
+**Correção provável (3 peças, nessa ordem):**
+1. rota + ação no `MlbPublicadorFaseController` (ex.:
+   `PUT publicador/empresas/{conta}/produtos/{produto}/estoque-calculado`), no
+   mesmo grupo `role:admin` e com throttle nomeado, usando o
+   `produtoDaConta()` que o 175-08 já extraiu (escopo por conta, 404 fora dele);
+2. gravar `estoque_calculado = true` e chamar o `RecalculoEstoqueDoKitService`
+   para o kit em questão, devolvendo o produto para a tela atualizar a linha;
+3. botão "Usar estoque calculado" no cartão da fase, só quando
+   `estoque_proprio === true` **e** `estoque_calculado_valor !== null` — com a
+   confirmação de que isso **muda o rascunho** do kit (diferente de vincular,
+   que não muda nada).
+
+**Como conferir que ficou certo:** na conta #459, vincular um combo, mudar o
+estoque do base e ver o cartão oferecer o número calculado; clicar e conferir no
+editor do kit que o estoque do rascunho passou a ser o calculado — e que o
+anúncio no ML **não** foi atualizado (§7: isso não é desta etapa).
