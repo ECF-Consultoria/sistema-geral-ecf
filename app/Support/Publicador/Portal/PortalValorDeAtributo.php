@@ -239,6 +239,18 @@ final class PortalValorDeAtributo
         return ['valor' => ['value_id' => null, 'value_name' => $texto, 'origem' => 'portal', 'revisar' => false], 'aviso' => null];
     }
 
+    /**
+     * O número no formato canônico do EDITOR ("60 kg", "3") para quem não é o Portal — o "Anunciar
+     * por IA" (`IaParaRascunhoService`), que recebe `value_number`/`value_unit` da IA. Mesmas regras:
+     * unidade aceita (sem caixa), convertida na mesma grandeza, ou a padrão; null = não dá para gravar.
+     */
+    public static function numeroNoFormatoDoEditor(AtributoClassificado $def, float $numero, ?string $unidade): ?string
+    {
+        $r = self::numero($def, ['unidade' => $unidade], self::formatarNumero($numero), $def->nome !== '' ? $def->nome : $def->id);
+
+        return $r['valor']['value_name'] ?? null;
+    }
+
     /** 3.0 → "3", 2.50 → "2.5", 0.015 → "0.015": ponto decimal, sem zeros à toa (como `ValorAtributo` e o pacote). */
     private static function formatarNumero(float $n): string
     {
