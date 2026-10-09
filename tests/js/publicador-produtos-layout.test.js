@@ -1724,7 +1724,8 @@ test('PaginacaoDaLista — render real: resumo, seletor e controles do mockup', 
     await contexto.test('o seletor traz as 4 opções e o valor em vigor', () => {
         const html = render({ paginacao: paginar(Array.from({ length: 60 }, (_, i) => familiaDe(i + 1)), 1, 25) });
         for (const n of OPCOES_POR_PAGINA) assert.match(html, new RegExp(`<option value="${n}"`));
-        assert.match(html, /select[^>]*value="25"|value="25"[^>]*>/);
+        assert.match(html, /<option value="25" selected=""/, 'o 25 escolhido fica marcado no seletor');
+        assert.doesNotMatch(html, /<option value="10" selected=""/);
     });
 
     await contexto.test('a tela preta: paginação como objeto, nulo, array, string e ausente', () => {

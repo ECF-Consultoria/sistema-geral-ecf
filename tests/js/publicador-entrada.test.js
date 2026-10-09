@@ -28,6 +28,8 @@ const ARQUIVOS = [
     DIR + 'LinhaDeProduto.jsx',
     DIR + 'MenuDeAcoesDoProduto.jsx',
     DIR + 'PainelDoProdutoLateral.jsx',
+    // Rodapé de paginação da lista (quick 261009-t03) — mesmo vocabulário.
+    DIR + 'PaginacaoDaLista.jsx',
     'resources/js/Pages/Mlb/AnunciosEmpresas.jsx',
     'resources/js/Pages/Mlb/Publicador/Produtos.jsx',
 ];
