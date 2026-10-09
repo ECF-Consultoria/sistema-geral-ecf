@@ -21,6 +21,7 @@ use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem as R;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -674,7 +675,10 @@ class TelaDoProdutoTest extends TestCase
         // Nenhum token da conta chega ao navegador.
         $resposta->assertDontSee('fake-access-token');
         $resposta->assertDontSee('fake-refresh-token');
-        Http::assertNothingSent();
+        // T-175-16: nada do Mercado Livre neste request. `assertNothingSent()` NÃO serve
+        // aqui: `HandleInertiaRequests` busca os sinais do ECF Drive em TODA página
+        // autenticada, e isso não é a tela do Produto chamando o ML.
+        Http::assertNotSent(fn (Request $q) => str_contains($q->url(), 'mercadolibre'));
     }
 
     public function test_abrir_um_kit_pela_rota_leva_a_tela_do_base_com_a_fase_destacada(): void

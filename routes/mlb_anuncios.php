@@ -7,6 +7,7 @@ use App\Http\Controllers\MlbPublicadorAcervoController;
 use App\Http\Controllers\MlbPublicadorController;
 use App\Http\Controllers\MlbPublicadorCriativoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
+use App\Http\Controllers\MlbPublicadorFaseController;
 use App\Http\Controllers\MlbPublicadorIdentidadeController;
 use Illuminate\Support\Facades\Route;
 
@@ -233,6 +234,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.visao-geral');
         Route::get('publicador/empresas/{conta}/configuracoes', [MlbPublicadorEntradaController::class, 'configuracoes'])
             ->where('conta', '(empresa|company)-[0-9]+')->name('publicador.configuracoes');
+
+        // ─── Fase 175, Plano 04 (§3 da ETAPA-3) — a tela do Produto ───
+        // Nome `publicador.produto` (SINGULAR): `publicador.produtos` já é a lista da
+        // tela B e `publicador.editor` já é o editor por produto — sem colisão no Ziggy.
+        // Vem DEPOIS de `publicador.produtos.criar` (que é POST no mesmo caminho, sem
+        // colidir) e nunca é confundida com a rota literal `publicador/empresas-busca`
+        // (que não tem hífen seguido de dígitos). T-175-15: {conta} fora do padrão e
+        // {produto} não numérico morrem na própria rota, antes do controller; nenhum
+        // {conta} desta fase vem do corpo da requisição (D-13).
+        Route::get('publicador/empresas/{conta}/produtos/{produto}', [MlbPublicadorFaseController::class, 'mostrar'])
+            ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')->name('publicador.produto');
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
