@@ -23,14 +23,35 @@ class ColocarFotoNoGrupoSobTravaTest extends TestCase
     use CenarioCriativoDoPublicador;
     use RefreshDatabase;
 
+    /** Contador da faixa 1400 desta classe — ver `fotoSemGrupo()`. */
+    private int $fotoSemGrupoSeq = 0;
+
     /**
      * Uma foto com arquivo em disco, SEM atribuição em nenhum grupo ainda — com
      * conteúdo ÚNICO (`jpeg()` de mesmo lado devolve os mesmos bytes, e
      * `pub_imagens` tem unique por `(rascunho_id, sha256)`).
+     *
+     * ⚠️ O lado é um CONTADOR, nunca `random_int()`. Até 09/10/2026 esta linha
+     * era `jpeg(1200 + random_int(1, 200))`, e era a fonte da falha intermitente
+     * `UNIQUE constraint failed: pub_imagens.rascunho_id, pub_imagens.sha256`
+     * (`deferred-items.md` item 5 da Fase 175): sorteio PODE REPETIR, e
+     * `test_foto_entra_no_fim_do_grupo_sem_mexer_nas_que_ja_estavam_la` tira
+     * TRÊS fotos no MESMO rascunho — 1 − (199/200)(198/200) ≈ **1,5% de falha
+     * por rodada**, que não reproduz quando se procura e quebra quando não se
+     * procura. Provado em 09/10 estreitando a faixa para `random_int(1, 1)`:
+     * só aquele teste falhou, com o erro literal acima.
+     *
+     * A faixa 1400 é própria desta classe, de propósito. As outras em uso:
+     * `900 + k` (`AprovacaoParaPubImagensTest::fotoExistenteNoGrupo()`),
+     * `1200 + k` (`CenarioCriativoDoPublicador::fotoComArquivo()` **e** o
+     * provider falso do cenário — essas duas convivem na mesma faixa e é por
+     * isso que `RegenerarEAprovarKitTest` precisa do desvio documentado lá),
+     * `300` e `1500` (lados fixos avulsos). Faixa nova? Escolha uma livre e
+     * acrescente aqui.
      */
     private function fotoSemGrupo(): PubImagem
     {
-        $bytes = self::jpeg(1200 + random_int(1, 200));
+        $bytes = self::jpeg(1400 + (++$this->fotoSemGrupoSeq));
         $sha = hash('sha256', $bytes);
         $caminho = "publicador/{$this->r->id}/{$sha}.jpg";
         Storage::disk('local')->put($caminho, $bytes);
