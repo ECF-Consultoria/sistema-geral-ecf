@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
 
 /**
  * O que a tela de sugestões recebe (Fase 168): painel sobre o CONJUNTO, página no
@@ -653,9 +654,11 @@ class ListaDeSugestoes
 
         $avaliados = [];
         $paraFrete = [];
+        // Limites do ME2 da modalidade de envio da conta (cache da cotação real); sem ela, os dos Correios.
+        $modalidade = ModalidadeDeEnvio::emCache($empresa);
 
         foreach ($itens as $k => $item) {
-            $av = $this->avaliar($item, $detalhes);
+            $av = $this->avaliar($item, $detalhes, $modalidade);
             $avaliados[$k] = $av;
             $paraFrete[(string) $item['chave']] = $this->itemDeFrete($av);
         }
@@ -681,12 +684,12 @@ class ListaDeSugestoes
      * @param  array<string,mixed>  $s  sugestão (do gerador ou já no formato da página: ambos têm `itens`)
      * @return array{logistica: array, custo: ?float}
      */
-    private function avaliar(array $s, array $detalhes): array
+    private function avaliar(array $s, array $detalhes, ?string $modalidade = null): array
     {
         $conjunto = $this->conjunto($s, $detalhes);
 
         return [
-            'logistica' => ConjuntoLogistico::avaliar($conjunto),
+            'logistica' => ConjuntoLogistico::avaliar($conjunto, $modalidade),
             'custo'     => ConjuntoLogistico::custo($conjunto),
         ];
     }

@@ -89,7 +89,8 @@ class ProdutoLinhasTest extends TestCase
 
         [$me2, $me1] = $this->linhas()->paraProdutos($empresa, [$p->id]);
 
-        $this->assertSame('me2', $me2['logistica']);
+        // 93×55×6 com 9,5 kg cabe no Full do ML (até 25 kg, lado 120): ME2 · Full desde 09/10/2026.
+        $this->assertSame('me2_full', $me2['logistica']);
         $this->assertEquals(['c' => 93.0, 'l' => 55.0, 'a' => 6.0, 'peso_real' => 9.5], $me2['pacote']);
         $this->assertSame('tabela_ecf', $me2['frete']['origem']);
 
@@ -97,6 +98,22 @@ class ProdutoLinhasTest extends TestCase
         $this->assertSame(39.9, $me1['peso_total']);
         $this->assertNull($me1['frete']['valor']);
         $this->assertContains('frete_me1', $me1['pendencias']);
+    }
+
+    /** A conta despacha pela Coleta (modalidade já lida pela cotação real): o que nos Correios é ME1 cabe no ME2. */
+    public function test_limites_do_me2_seguem_a_modalidade_de_envio_da_conta(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        \App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio::guardar($empresa->id, 'cross_docking');
+        $p = $this->produto($empresa, 'B');
+        // Pacote 186×43×24 com 39,9 kg: nos Correios (lado 100, 30 kg) é ME1; na Coleta (lado 200, 50 kg), ME2.
+        $this->variacao($p, 'B-1', 1, [[186, 43, 12, 27.8], [97, 42, 12, 12.1]]);
+
+        [$linha] = $this->linhas()->paraProdutos($empresa, [$p->id]);
+
+        $this->assertSame('me2', $linha['logistica']);
+        $this->assertSame('tabela_ecf', $linha['frete']['origem']);
+        $this->assertNotContains('frete_me1', $linha['pendencias']);
     }
 
     public function test_pendencias_na_ordem_fixa_e_completa_nao_tem_nenhuma(): void

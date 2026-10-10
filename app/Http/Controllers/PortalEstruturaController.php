@@ -20,6 +20,7 @@ use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -42,6 +43,9 @@ use Inertia\Inertia;
  */
 class PortalEstruturaController extends Controller
 {
+    /** "Cotar agora" da Precificação: rodadas por minuto, por empresa (a tela repete sozinha enquanto sobra pendência). */
+    private const COTACOES_POR_MINUTO = 20;
+
     public function __construct(
         private PortalClienteService $portal,
         private EstruturaVisaoService $visao,
@@ -114,6 +118,11 @@ class PortalEstruturaController extends Controller
      * Precificação: os produtos da Lista SKUs com custo, fretes e o preço de
      * Clássico e Premium — a conta da Calculadora de Custo, feita no PHP
      * (ADR PORTAL-02). O resumo é da empresa inteira; o detalhe, da página.
+     *
+     * `?cotar=1` é o botão "Cotar agora" (09/10/2026): antes de montar a página, cota na
+     * conta do cliente o frete das ofertas DESTA página e devolve o resumo em `cotacao`.
+     * A tela visita com `preserveUrl`, então o parâmetro não fica no endereço. O resto do
+     * tempo a página não faz nenhuma requisição ao ML (frete sugerido = cache ou tabela).
      */
     public function precificacaoIndex(Request $request)
     {
@@ -122,12 +131,30 @@ class PortalEstruturaController extends Controller
         $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1));
         $ids = array_merge(...array_map(fn ($b) => array_column($b['ofertas'], 'id'), $estrutura['blocos'] ?: [['ofertas' => []]]));
 
+        $cotacao = null;
+        if ($request->boolean('cotar')) {
+            // Teto por empresa: cada clique gasta até `max_por_requisicao` cotações na conta do cliente.
+            $cotou = RateLimiter::attempt("estrutura.precificacao.cotar:{$empresa->id}", self::COTACOES_POR_MINUTO,
+                function () use (&$cotacao, $empresa, $ids) {
+                    $cotacao = $this->precificacao->cotarFretes($empresa, $ids);
+                }, 60);
+            if (! $cotou) {
+                $cotacao = ['limitado' => true];
+            }
+        }
+
         return Inertia::render('Portal/EstruturaPrecificacao', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.precificacao', PortalContexto::ator()),
             'estrutura'    => $estrutura,
             'precificacao' => $this->precificacao->pagina($empresa, $ids),
             'filtros'      => ['q' => $busca],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
+            'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
+            'frete_tabela' => [
+                'vigente_desde' => config('estrutura_produtos.frete.vigente_desde'),
+                'reputacao'     => config('estrutura_produtos.frete.reputacao'),
+            ],
+            'cotacao'      => $cotacao,
         ]);
     }
 

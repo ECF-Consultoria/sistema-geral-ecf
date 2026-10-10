@@ -112,7 +112,9 @@ vazio → Premium R$ 81,86 contra Clássico R$ 131,22. A comissão maior do Prem
 só garante preço maior com o mesmo frete.
 
 Agora `PrecificacaoEstrutura::fretes()`: digitado vence; em branco, vale o do
-outro tipo (o frete do Mercado Envios não muda entre Clássico e Premium); o
+outro tipo (o frete do Mercado Envios não muda entre Clássico e Premium — **errado,
+corrigido em 09/10**: o custo depende da faixa de preço, e o Premium pode cair em
+outra; ver a revisão abaixo); o
 campo mostra o valor herdado apagado, com "mesmo do Clássico". **Zero digitado
 fica zero.** "Sem frete" só quando os dois estão em branco. Também veio do
 onboarding a regra da comissão: mexer na do Clássico leva a do Premium a
@@ -124,3 +126,48 @@ os dois preços como o link do Publicador do onboarding: **Anunciar** (com o
 acréscimo: é por ele que se publica) e **Promoção** (sem: é por ele que se
 vende), com botão de copiar e o passo a passo acima da tabela. O campo segue
 se chamando `minimo` no PHP; só o nome na tela mudou.
+
+## Revisão de 09/10/2026 — frete SUGERIDO (revoga a D-19 da Fase 167)
+
+Decisão do usuário: **"seguir o ML em tudo"**. A D-19 ("o frete calculado no
+Produtos não entra na Precificação; é só exibido") caiu. O tipo sem frete
+digitado passa a usar o frete do Mercado Envios **do próprio tipo**, e o preço
+(`minimo`/`anunciado`) sai com ele.
+
+**Ordem em `PrecificacaoEstrutura::fretes()`:**
+
+1. o **digitado** (zero digitado continua zero);
+2. o **sugerido do próprio tipo**: a cotação real da conta do cliente, se já
+   estiver em cache, ou a tabela de custos do ML (vigente desde 24/08/2026);
+3. o digitado do **outro tipo** — só quando não há sugestão (ME1, logística
+   declarada `transportadora_me1`/`combinar`, oferta sem medidas). Ficou de
+   propósito: sem ele, a oferta antiga sem produto volta ao caso PUFF-AZ;
+4. nada → a pendência **"sem frete"** continua existindo.
+
+**Por tipo, no próprio preço.** O custo do envio depende da faixa de PREÇO; o
+Premium tem comissão maior, logo preço maior, e pode cair em outra faixa (custo
+45 e 750 g faturados: Clássico R$ 76,91 → frete 8,45; Premium R$ 92,17 → 14,45).
+O frete muda o preço e o preço muda o frete: o valor é o ponto fixo dos dois
+(`FreteMe2Service::pontoFixo`), com os percentuais da própria oferta (exceções
+incluídas).
+
+**Pacote.** Oferta simples: o da variação do produto. Composta (combo, kit,
+combit): o pacote SOMADO dos componentes (`ConjuntoLogistico`) — provisório por
+decisão do usuário ("por enquanto deixa somando").
+
+**Desempenho.** Carregar a página não faz requisição ao ML: as ofertas da
+página leem a cotação em cache (uma leitura) e a tabela; o resto da empresa
+(resumo) só a tabela, porque o resumo só precisa saber SE há sugestão. A
+cotação real é o botão **"Cotar agora"** = a mesma rota com `?cotar=1`
+(`preserveUrl` na tela, `RateLimiter` de 20/min por empresa no controller;
+nenhuma rota nova): cota as ofertas da página, só os tipos sem frete digitado.
+
+**Tela.** O campo mostra o sugerido apagado, com rótulo neutro de origem —
+"sugerido pela sua conta" (cotação real) ou "estimado pela tabela"; digitar por
+cima vence, e a sugestão segue visível ao lado do digitado.
+
+**Publicador.** `DadosEfetivosService` lê o preço daqui; o rascunho herda o
+mesmo frete. Uma verdade só.
+
+Regras do ML por trás disto (tabela, cubado sem o mínimo de 5 kg, limites por
+modalidade, `free_shipping`, teto abaixo de R$ 19): `.planning/learnings/frete-mercado-envios.md`.

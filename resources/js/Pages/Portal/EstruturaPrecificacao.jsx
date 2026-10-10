@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, Check, Copy, Loader2, Percent, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import { deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — submódulo Precificação ─────────────────────────
@@ -22,6 +23,12 @@ import { cn } from '@/lib/utils';
 // - Por produto: custo e os dois fretes. Combo, kit e combit já chegam com o
 //   custo SOMADO dos componentes (CB4 = 4 × o da CAD-01) — dá para corrigir.
 // Tudo salva ao sair do campo, como nas outras abas.
+//
+// ### Frete sugerido (09/10/2026, D-19 revogada)
+// Frete em branco não é zero: o servidor sugere o do Mercado Envios de CADA tipo, no
+// preço daquele tipo — a cotação da conta do cliente, quando já cotada, ou a tabela de
+// custos do ML. O campo mostra o sugerido apagado, com a origem embaixo; digitar por
+// cima vence. "Cotar agora" pede a cotação real das ofertas desta página.
 
 const FASE_CURTA = { simples: 'Simples', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
@@ -49,6 +56,12 @@ const paraNumero = (texto) => {
 };
 const paraTexto = (n) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
 const fmtPct = (n) => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+const dataBr = (iso) => {
+    if (! iso) return '';
+    const [a, m, d] = String(iso).slice(0, 10).split('-');
+
+    return `${d}/${m}/${a}`;
+};
 
 const CELULA = 'w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5 text-right text-[13px] tabular-nums text-white placeholder:text-white/30 hover:border-white/[0.14] focus:border-ecf-yellow/40 focus:bg-white/[0.04] focus:outline-none focus:ring-0';
 
@@ -184,18 +197,34 @@ function ComoPublicar({ acrescimo }) {
     );
 }
 
-// Frete em branco usa o do outro tipo (`PrecificacaoEstrutura::fretes`): o campo
-// mostra esse valor apagado, como o custo somado dos componentes.
-const placeholderFrete = (tipo) => (tipo.frete_origem === 'outro_tipo' ? paraTexto(tipo.frete) : 'R$');
+// Frete em branco (`PrecificacaoEstrutura::fretes`): o campo mostra, apagado, o que a conta
+// usa — o sugerido do próprio tipo ou, sem sugestão (ME1, sem medidas), o do outro tipo.
+const placeholderFrete = (tipo) => (freteEmBranco(tipo) ? paraTexto(tipo.frete) : 'R$');
 
-function FreteHerdado({ calculo, de }) {
-    if (calculo.frete_origem !== 'outro_tipo') return null;
+/** De onde veio o frete daquele tipo, com rótulo neutro; a tabela diz a vigência na dica. */
+function OrigemDoFrete({ calculo, de, freteTabela }) {
+    const r = rotuloDoFrete(calculo, de, fmtReais);
+    if (! r) return null;
 
-    return <span className="mt-0.5 block text-right text-[10.5px] text-white/35" data-frete-herdado>mesmo do {de}</span>;
+    const s = calculo.frete_sugerido;
+    const vigencia = freteTabela?.vigente_desde ? ` vigente desde ${dataBr(freteTabela.vigente_desde)}` : '';
+    const reputacao = freteTabela?.reputacao ? `, reputação ${freteTabela.reputacao}` : '';
+    const dica = r.tipo === 'herdado'
+        ? `Sem frete do Mercado Envios para sugerir: vale o que você digitou no ${de}.`
+        : s?.fonte === 'conta'
+            ? 'Cotado na sua conta do Mercado Livre, no preço deste tipo de anúncio.'
+            : `Tabela de custos de envio do Mercado Livre${vigencia}${reputacao}.`;
+
+    return (
+        <span className="mt-0.5 block text-right text-[10.5px] text-white/35" title={dica}
+            data-frete-origem={r.tipo} data-frete-fonte={r.fonte ?? ''}>
+            {r.texto}
+        </span>
+    );
 }
 
 /** Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços. */
-function LinhaPreco({ oferta, calculo, onAjustar }) {
+function LinhaPreco({ oferta, calculo, onAjustar, freteTabela }) {
     // D-10: na oferta que veio do Produtos o custo mora no produto (167-08); a
     // tela mostra o valor e não manda custo no salvar (o servidor o recusaria).
     const doProduto = calculo.do_produto === true;
@@ -270,12 +299,12 @@ function LinhaPreco({ oferta, calculo, onAjustar }) {
             <td className="px-1.5 py-1.5">
                 <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.classico)} className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
-                <FreteHerdado calculo={calculo.classico} de="Premium" />
+                <OrigemDoFrete calculo={calculo.classico} de="Premium" freteTabela={freteTabela} />
             </td>
             <td className="px-1.5 py-1.5">
                 <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.premium)} className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
-                <FreteHerdado calculo={calculo.premium} de="Clássico" />
+                <OrigemDoFrete calculo={calculo.premium} de="Clássico" freteTabela={freteTabela} />
             </td>
             <td className="px-3 py-2"><Preco calculo={calculo.classico} tipo="classico" /></td>
             <td className="px-3 py-2"><Preco calculo={calculo.premium} tipo="premium" /></td>
@@ -348,10 +377,12 @@ function Numero({ valor, rotulo, classe }) {
     );
 }
 
-export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura, precificacao, filtros }) {
+export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura, precificacao, filtros, ml_conectado = false, frete_tabela = null }) {
     const [ajustar, setAjustar] = useState(null);   // { oferta, calculo }
     const [aula, setAula] = useState(false);
     const [busca, setBusca] = useState(filtros.q ?? '');
+    const [cotando, setCotando] = useState(false);
+    const [avisoCotacao, setAvisoCotacao] = useState(null);
 
     const { painel, blocos, paginacao } = estrutura;
     const { parametros, padroes, resumo, por_oferta: porOferta } = precificacao;
@@ -360,6 +391,33 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const visitar = (params) => router.get(route('portal.auth.estrutura.precificacao'), params, {
         preserveState: true, preserveScroll: false, replace: true, only: ['estrutura', 'precificacao', 'filtros'],
     });
+
+    // "Cotar agora": a mesma página com `cotar=1` — o servidor cota na conta do cliente o frete
+    // das ofertas DESTA página e devolve o resumo em `cotacao`. `preserveUrl` mantém o endereço
+    // limpo; repete sozinho enquanto sobra pendência (o lote do servidor é por chamada).
+    const visitarCotando = () => new Promise((resolve) => {
+        let resultado = null;
+        router.get(route('portal.auth.estrutura.precificacao'), {
+            q: filtros.q || undefined, pagina: paginacao.pagina > 1 ? paginacao.pagina : undefined, cotar: 1,
+        }, {
+            preserveState: true, preserveScroll: true, preserveUrl: true, only: ['precificacao', 'cotacao'],
+            onSuccess: (page) => { resultado = page.props.cotacao ?? null; },
+            onFinish: () => resolve(resultado),
+        });
+    });
+
+    const cotarAgora = async () => {
+        if (cotando) return;
+        setCotando(true);
+        setAvisoCotacao(null);
+        let c = null;
+        for (let voltas = 1; ; voltas++) {
+            c = await visitarCotando();
+            if (! deveCotarDeNovo(c, voltas)) break;
+        }
+        setCotando(false);
+        setAvisoCotacao(textoDaCotacao(c));
+    };
 
     const primeiraVez = useRef(true);
     useEffect(() => {
@@ -373,7 +431,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Precificação">
             <div className="mx-auto max-w-7xl space-y-4 px-4 py-6">
                 <CabecalhoEstrutura etapa="precificacao" onComoFunciona={() => setAula(true)}
-                    descricao="Quanto cobrar em cada produto, no Clássico e no Premium. Informe o custo e o frete; a conta é a da Calculadora de Custo." />
+                    descricao="Quanto cobrar em cada produto, no Clássico e no Premium. Informe o custo; o frete do Mercado Envios vem sugerido e você corrige quando o seu for outro. A conta é a da Calculadora de Custo." />
 
                 <ParametrosEmpresa parametros={parametros} padroes={padroes} />
 
@@ -403,17 +461,39 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                             </p>
                         )}
 
-                        <div className="relative max-w-md">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-                            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar SKU ou nome…"
-                                className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] py-2 pl-8 pr-8 text-[13px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
-                                data-busca />
-                            {busca && (
-                                <button type="button" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/35 hover:text-white" aria-label="Limpar busca">
-                                    <X size={14} />
-                                </button>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="relative w-full max-w-md">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar SKU ou nome…"
+                                    className="w-full rounded-xl border border-white/[0.10] bg-white/[0.04] py-2 pl-8 pr-8 text-[13px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0"
+                                    data-busca />
+                                {busca && (
+                                    <button type="button" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/35 hover:text-white" aria-label="Limpar busca">
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                            {ml_conectado && (
+                                <Botao onClick={cotarAgora} disabled={cotando} data-acao="cotar-fretes"
+                                    title="Pergunta ao Mercado Livre, pela sua conta, o frete dos produtos desta página que estão sem frete digitado">
+                                    {cotando ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                    {cotando ? 'Cotando…' : 'Cotar agora'}
+                                </Botao>
                             )}
                         </div>
+
+                        <p className="text-[12px] leading-relaxed text-white/45" data-explica-frete>
+                            Frete em branco vem sugerido para cada tipo, no preço dele: <span className="text-white/65">sugerido pela sua conta</span> quando
+                            já cotado no Mercado Livre{ml_conectado ? '' : ' (conecte a sua conta para cotar)'}, ou <span className="text-white/65">estimado pela tabela</span> de
+                            custos do Mercado Livre{frete_tabela?.vigente_desde ? ` vigente desde ${dataBr(frete_tabela.vigente_desde)}` : ''}. Digite por cima se o seu frete for outro.
+                        </p>
+
+                        {avisoCotacao && (
+                            <div role="status" className="flex items-start justify-between gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12.5px] text-white/65" data-aviso-cotacao>
+                                <span>{avisoCotacao}</span>
+                                <button type="button" onClick={() => setAvisoCotacao(null)} className="text-white/35 hover:text-white" aria-label="Dispensar aviso"><X size={13} /></button>
+                            </div>
+                        )}
 
                         <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-ecf-card">
                             <table className="w-full min-w-[1140px] table-fixed border-collapse text-left" data-tabela-precos>
@@ -435,7 +515,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                                 </thead>
                                 <tbody>
                                     {ofertas.filter((o) => porOferta[o.id]).map((o) => (
-                                        <LinhaPreco key={o.id} oferta={o} calculo={porOferta[o.id]} onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
+                                        <LinhaPreco key={o.id} oferta={o} calculo={porOferta[o.id]} freteTabela={frete_tabela} onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
                                     ))}
                                 </tbody>
                             </table>

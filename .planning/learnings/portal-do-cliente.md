@@ -1400,3 +1400,16 @@ termo da plataforma; a 3Planejamento inteira continua sendo entregável da ECF. 
   importações; agora é `MENSAGENS_DO_ARQUIVO` no controller.
 - **Ainda fala da plataforma (fora deste trabalho):** a página da lista diz "Consultar fretes no Mercado Livre" e
   "Conectando sua conta do Mercado Livre" (copy da 167, §34). Mudar pede decisão do usuário.
+
+## 40. Frete do Mercado Envios segue o ML: tabela de 24/08, cubado sem corte, modalidade e frete sugerido (09/10/2026)
+
+Tudo em `frete-mercado-envios.md` — leia antes de mexer em frete, cubagem, ME1/ME2/Full ou no frete da
+Precificação. Em uma linha cada:
+- a tabela de custos do ML mudou em **24/08/2026** (30 faixas, ganhou "9 a 10 kg"); o sistema seguia na de
+  02/03 — provado pela cotação real da #459 (8,45 · 14,45 · 21,35) e pela página oficial, célula a célula;
+- peso faturado = max(real, cubado), **sem** o mínimo de 5 kg da planilha;
+- limites do ME2 pela **modalidade** da conta (Correios × Agências/Coleta × Full), lida de
+  `shipping_preferences` na cotação real e guardada 7 dias; sem ela, Correios;
+- **frete sugerido** na Precificação (D-19 revogada, ADR PORTAL-02): digitado → sugerido do próprio tipo →
+  outro tipo (só sem sugestão) → nada; "Cotar agora" é a própria rota com `?cotar=1`;
+- o ML trocou a tabela **2× em 2026**: falta uma checagem periódica (sugestão no §1 do arquivo).

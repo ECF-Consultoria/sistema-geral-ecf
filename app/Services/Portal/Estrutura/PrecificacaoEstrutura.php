@@ -51,26 +51,34 @@ final class PrecificacaoEstrutura
     }
 
     /**
-     * O frete que a conta usa em cada tipo. O digitado vence; em branco, vale o
-     * do OUTRO tipo — o frete do Mercado Envios não muda entre Clássico e
-     * Premium, e o cliente costuma preencher um só.
+     * O frete que a conta usa em cada tipo, nesta ordem:
      *
-     * Sem isto, o tipo em branco entrava com frete ZERO e saía mais barato que o
-     * outro: PUFF-AZ (custo 44, frete Clássico 32, Premium vazio) deu Premium
-     * R$ 81,86 contra Clássico R$ 131,22 — o inverso do que a comissão maior do
-     * Premium garante (30/09). Zero DIGITADO é escolha do cliente e fica.
+     *  1. o DIGITADO — zero digitado é escolha do cliente e fica;
+     *  2. o SUGERIDO do próprio tipo (09/10/2026, D-19 revogada): a cotação real da conta em
+     *     cache ou, sem ela, a tabela de custos do ML — cada tipo no próprio preço, porque o
+     *     custo do envio depende da faixa de preço e o Premium é mais caro;
+     *  3. o digitado do OUTRO tipo, quando não há sugestão (ME1, oferta sem medidas): sem
+     *     isto, o tipo em branco entrava com frete ZERO e saía mais barato que o outro —
+     *     PUFF-AZ (custo 44, frete Clássico 32, Premium vazio) deu Premium R$ 81,86 contra
+     *     Clássico R$ 131,22, o inverso do que a comissão maior do Premium garante (30/09);
+     *  4. nada (a pendência "sem frete").
      *
+     * @param  array{classico?: ?float, premium?: ?float}  $sugeridos  o frete sugerido de cada tipo (null = sem sugestão)
      * @return array{classico: array{valor: ?float, origem: ?string}, premium: array{valor: ?float, origem: ?string}}
      */
-    public static function fretes(?float $classico, ?float $premium): array
+    public static function fretes(?float $classico, ?float $premium, array $sugeridos = []): array
     {
-        $efetivo = fn (?float $proprio, ?float $outro) => match (true) {
-            $proprio !== null => ['valor' => $proprio, 'origem' => 'digitado'],
-            $outro !== null   => ['valor' => $outro, 'origem' => 'outro_tipo'],
-            default           => ['valor' => null, 'origem' => null],
+        $efetivo = fn (?float $proprio, ?float $sugerido, ?float $outro) => match (true) {
+            $proprio !== null  => ['valor' => $proprio, 'origem' => 'digitado'],
+            $sugerido !== null => ['valor' => $sugerido, 'origem' => 'sugerido'],
+            $outro !== null    => ['valor' => $outro, 'origem' => 'outro_tipo'],
+            default            => ['valor' => null, 'origem' => null],
         };
 
-        return ['classico' => $efetivo($classico, $premium), 'premium' => $efetivo($premium, $classico)];
+        return [
+            'classico' => $efetivo($classico, $sugeridos['classico'] ?? null, $premium),
+            'premium'  => $efetivo($premium, $sugeridos['premium'] ?? null, $classico),
+        ];
     }
 
     /**

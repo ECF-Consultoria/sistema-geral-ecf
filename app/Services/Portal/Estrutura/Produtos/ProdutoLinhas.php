@@ -93,6 +93,9 @@ class ProdutoLinhas
         $capas = $this->capas($empresa, $variacaoIds);
 
         // Passo 1: o que depende só dos volumes; Passo 2: UMA estimativa de frete para todas.
+        // Os limites do ME2 são os da modalidade de envio da conta, já lida pela cotação real
+        // (cache); sem ela, os dos Correios.
+        $modalidade = ModalidadeDeEnvio::emCache($empresa);
         $base  = [];
         $itens = [];
 
@@ -103,7 +106,7 @@ class ProdutoLinhas
                     ->values()
                     ->all();
 
-                $log = LogisticaProduto::daVolumes($volumes);
+                $log = LogisticaProduto::daVolumes($volumes, $modalidade);
 
                 $base[$variacao->id] = [$volumes, $log];
                 $itens[$variacao->id] = [
