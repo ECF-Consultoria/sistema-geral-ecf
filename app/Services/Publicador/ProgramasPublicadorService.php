@@ -60,9 +60,17 @@ class ProgramasPublicadorService
      * O rótulo da fase na lista e nos cartões: "1 unidade" para o base, "Kit N" para o
      * kit. Fonte ÚNICA do texto — `PainelVisaoGeralService::ultimasPublicacoes()` lê
      * daqui também, para o mesmo produto nunca aparecer com dois rótulos na mesma tela.
+     *
+     * Planejamento × Fase N (09/10/2026): o produto ligado a uma oferta Combo/Kit/Combit do
+     * Portal NÃO é base de Fase 1 — o rótulo é o do tipo ("Combo do Planejamento"…), vindo
+     * de `$composto` (`PlanejamentoDaFaseService::tipoComposto`). Sem o 2º argumento, nada
+     * muda para quem já chama.
      */
-    public static function rotuloFase(?int $quantidadeKit): string
+    public static function rotuloFase(?int $quantidadeKit, ?string $composto = null): string
     {
+        if ($composto !== null && $composto !== '') {
+            return PlanejamentoDaFaseService::rotuloDoComposto($composto);
+        }
         $n = (int) $quantidadeKit;
 
         return $n <= 1 ? '1 unidade' : "Kit {$n}";
@@ -375,6 +383,12 @@ class ProgramasPublicadorService
      * 4. `fase1_publicada` — base com anúncio no ar;
      * 5. `sem_oferta`      — base sem nenhum anúncio no ar.
      *
+     * Planejamento × Fase N (09/10/2026): o produto ligado a uma oferta Combo/Kit/Combit do Portal
+     * (`composto` na lista) NÃO é base de Fase 1 e não entra em nenhum dos cinco buckets de
+     * `por_fase`: ele é contado à parte, na chave de topo `compostos` (aditiva). A soma fecha
+     * assim: `array_sum(por_fase) + compostos === todos`. `por_fase` continua com os cinco
+     * buckets de sempre (a Visão geral os desenha numa ordem fixa).
+     *
      * ⚠️ `por_fase['sem_oferta']` NÃO é o `sem_oferta` de cima. O de cima é
      * "produto sem oferta do Portal" (`oferta_id === null`, o que a Visão geral já
      * mostra como indicador); o do `por_fase` é o rótulo da §7 ("Sem oferta") e
@@ -387,12 +401,12 @@ class ProgramasPublicadorService
      * no banco depois da migration sem backfill.
      *
      * @param  list<array>  $produtos  shape de `produtosParaTela()`
-     * @return array{todos: int, rascunho: int, conferidos: int, publicados: int, com_problema: int, sem_oferta: int,
+     * @return array{todos: int, rascunho: int, conferidos: int, publicados: int, com_problema: int, sem_oferta: int, compostos: int,
      *     por_fase: array{sem_oferta: int, fase1_publicada: int, fase2_preparacao: int, fase2_publicada: int, fase3_mais: int}}
      */
     public function contagemProdutos(array $produtos): array
     {
-        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0];
+        $contagens = ['todos' => count($produtos), 'rascunho' => 0, 'conferidos' => 0, 'publicados' => 0, 'com_problema' => 0, 'sem_oferta' => 0, 'compostos' => 0];
         $porFase = ['sem_oferta' => 0, 'fase1_publicada' => 0, 'fase2_preparacao' => 0, 'fase2_publicada' => 0, 'fase3_mais' => 0];
 
         foreach ($produtos as $p) {
@@ -406,6 +420,12 @@ class ProgramasPublicadorService
                 $contagens['sem_oferta']++;
             }
 
+            // Composto do Planejamento: fora dos cinco buckets da família (nem Fase 1, nem kit).
+            if (self::ehComposto($p)) {
+                $contagens['compostos']++;
+
+                continue;
+            }
             $porFase[$this->bucketDaFase($p)]++;
         }
 
@@ -434,6 +454,19 @@ class ProgramasPublicadorService
         }
 
         return $noAr ? 'fase1_publicada' : 'sem_oferta';
+    }
+
+    /**
+     * O produto da lista (shape de `produtosParaTela()`) é um composto do Planejamento — Combo, Kit ou
+     * Combit do Portal — e por isso NÃO é base de Fase 1: fica fora de "Fase 1", de "Prontos para a
+     * Fase 2" e do "Criar Fase N" (KIT-06). Lista no shape antigo (sem a chave) nunca é composto.
+     * Pública e estática para a Visão geral (`PainelVisaoGeralService`) usar a MESMA regra.
+     */
+    public static function ehComposto(array $p): bool
+    {
+        $composto = $p['composto'] ?? null;
+
+        return is_string($composto) && $composto !== '';
     }
 
     /** Empresas com token por programa (as abas da tela A). */
@@ -665,7 +698,8 @@ class ProgramasPublicadorService
      * ═══ Fases e kits na lista (Fase 175 plano 08, §7) ═══════════════════════
      *
      * O retorno ganhou `fase`, `quantidade_kit`, `produto_base_id`, `eh_kit`,
-     * `rotulo_fase`, `url_produto`, `sugestao_kit`, `kits` e `base`. **Nenhuma
+     * `rotulo_fase`, `url_produto`, `sugestao_kit`, `kits` e `base` — e, em 09/10/2026
+     * (Planejamento × Fase N), `composto` (`combo|kit|combit` ou null). **Nenhuma
      * chave antiga saiu nem mudou de tipo** — `Produtos.jsx`, `Editor.jsx`,
      * `contagemProdutos()` e `PainelVisaoGeralService` leem todas elas em
      * produção, e `tests/Feature/Publicador/ListaPorFaseTest.php` guarda a lista
@@ -766,6 +800,9 @@ class ProgramasPublicadorService
             // O base deste kit, quando ele existe no escopo (SET NULL deixa `base` null).
             /** @var ?PubProduto $base */
             $base = $p->produto_base_id !== null ? ($porId[$p->produto_base_id] ?? null) : null;
+            // Planejamento × Fase N (09/10/2026): ligado a Combo/Kit/Combit do Portal = composto, não
+            // base de Fase 1. A oferta já veio no eager load: nenhuma consulta nova.
+            $composto = PlanejamentoDaFaseService::tipoComposto($p);
 
             return [
                 'id' => $p->id,
@@ -791,7 +828,9 @@ class ProgramasPublicadorService
                 'quantidade_kit' => (int) $p->quantidade_kit,
                 'produto_base_id' => $p->produto_base_id !== null ? (int) $p->produto_base_id : null,
                 'eh_kit' => $p->ehKit(),
-                'rotulo_fase' => self::rotuloFase($p->quantidade_kit),
+                'rotulo_fase' => self::rotuloFase($p->quantidade_kit, $composto),
+                // `combo|kit|combit` (o TIPO da oferta do Portal) ou null — escalar, sempre.
+                'composto' => $composto,
                 'url_produto' => $chaveConta === null ? null
                     : route('mlb.anuncios.publicador.produto', ['conta' => $chaveConta, 'produto' => $p->id]),
                 // Estruturas conhecidas (o 175-10 as lê campo por campo, nunca como texto):

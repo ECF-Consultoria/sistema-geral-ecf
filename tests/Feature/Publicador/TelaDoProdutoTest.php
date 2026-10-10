@@ -560,7 +560,12 @@ class TelaDoProdutoTest extends TestCase
         $tela = $this->tela($base, $empresa);
 
         $this->assertSame(1, $tela['fases'][0]['fase']);
-        $this->assertSame('1 unidade', $tela['fases'][0]['rotulo']);
+        // Planejamento × Fase N (decisão do usuário de 09/10/2026): o produto ligado a uma oferta
+        // Combo/Kit/Combit do Portal é um COMPOSTO do Planejamento, com rótulo próprio — e não mais
+        // "1 unidade". O rótulo lê o TIPO pela relação `oferta` (consulta só de `estrutura_ofertas`),
+        // nunca pela coluna `fase` de um SELECT com as duas tabelas: a guarda da colisão é o `fase`
+        // numérico acima, que continua 1.
+        $this->assertSame('Combit do Planejamento', $tela['fases'][0]['rotulo']);
     }
 
     // ═══ Task 1 — histórico e criativos ═════════════════════════════════════

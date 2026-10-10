@@ -39,7 +39,43 @@ use Illuminate\Support\Facades\DB;
  */
 class PlanejamentoDaFaseService
 {
+    /** Os tipos de oferta do Planejamento que juntam unidades (o que não é Fase 1 de ninguém). */
+    public const TIPOS_COMPOSTOS = [EstruturaOferta::FASE_COMBO, EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT];
+
     public function __construct(private RascunhoRepository $repo) {}
+
+    // ═══ Classificação (item C) ══════════════════════════════════════════════
+
+    /**
+     * O tipo da oferta do Planejamento (`combo|kit|combit`) de um produto que NÃO é kit da família;
+     * null para o resto. O kit (`produto_base_id`) já é uma fase — mesmo o combo antigo vinculado — e
+     * produto sem oferta não tem tipo. Lê `estrutura_ofertas.fase` pela relação (consulta só daquela
+     * tabela; carregue `oferta` antes numa lista para não pagar uma por produto).
+     */
+    public static function tipoComposto(PubProduto $p): ?string
+    {
+        if ($p->produto_base_id !== null || $p->oferta_id === null) {
+            return null;
+        }
+        $tipo = $p->oferta?->fase;
+
+        return in_array($tipo, self::TIPOS_COMPOSTOS, true) ? $tipo : null;
+    }
+
+    /** "Combo do Planejamento", "Kit do Planejamento", "Combit do Planejamento". */
+    public static function rotuloDoComposto(string $tipo): string
+    {
+        return (EstruturaOferta::FASES[$tipo] ?? 'Composto').' do Planejamento';
+    }
+
+    /** A mensagem da regra KIT-06: composto do Planejamento não é base de fase nenhuma. */
+    public static function motivoKit06(string $tipo): string
+    {
+        $nome = EstruturaOferta::FASES[$tipo] ?? 'composto';
+
+        return "Este produto é um {$nome} do Planejamento do Portal, não a Fase 1 de um produto: não dá para criar fases a partir dele. "
+            .'Para vender mais unidades, crie a fase no produto de 1 unidade.';
+    }
 
     // ═══ Leitura do Portal ═══════════════════════════════════════════════════
 

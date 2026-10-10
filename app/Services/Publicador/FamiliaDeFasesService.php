@@ -135,7 +135,7 @@ class FamiliaDeFasesService
             ],
             'fase_destacada' => $faseDestacada,
             'fases' => $this->fases($familia, $estados, $ofertasPorProduto, $rascunhos, $variantesDoBase),
-            'proxima_fase' => $this->proximaFase($familia, $estados[$base->id] ?? null),
+            'proxima_fase' => $this->proximaFase($familia, $estados[$base->id] ?? null, $base),
             'ofertas' => $this->ofertas($itens, $acervo, $companyId),
             'historico' => $this->historico($familia, $rascunhos, $kitsCriativo, $alvo),
             'criativos' => $this->criativos($familia, $rascunhos, $kitsCriativo),
@@ -444,7 +444,8 @@ class FamiliaDeFasesService
             return [
                 'produto_id' => $p->id,
                 'fase' => (int) $p->fase,
-                'rotulo' => $quantidade >= 2 ? 'Kit '.$quantidade : '1 unidade',
+                // O composto do Planejamento não é "1 unidade" (09/10/2026): a fonte única do rótulo decide.
+                'rotulo' => ProgramasPublicadorService::rotuloFase($quantidade, PlanejamentoDaFaseService::tipoComposto($p)),
                 'sku' => $p->skuExibido(),
                 'quantidade_kit' => $quantidade,
                 'estado' => $estado,
@@ -483,19 +484,28 @@ class FamiliaDeFasesService
      * "Criar Fase N": habilitado só com o rascunho do BASE publicado — inclui
      * `PARTIALLY_PUBLISHED` ("Parte publicada"), como a §9 manda.
      *
+     * Planejamento × Fase N (09/10/2026): o composto do Planejamento (produto ligado a
+     * Combo/Kit/Combit do Portal) nunca ganha fase — fica desabilitado com o motivo do KIT-06,
+     * a MESMA recusa do `CriarFaseService` (esconder não é impedir: o servidor recusa também).
+     *
      * @param  Collection<int, PubProduto>  $familia
      * @param  ?array  $estadoDoBase  retorno de `prontidao()` do base
      * @return array{numero:int, quantidade_sugerida:int, habilitado:bool, motivo:?string}
      */
-    private function proximaFase(Collection $familia, ?array $estadoDoBase): array
+    private function proximaFase(Collection $familia, ?array $estadoDoBase, ?PubProduto $base = null): array
     {
-        $habilitado = in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
+        $composto = $base !== null ? PlanejamentoDaFaseService::tipoComposto($base) : null;
+        $habilitado = $composto === null && in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
 
         return [
             'numero' => PubProduto::proximaFase($familia->pluck('fase')->all()),
             'quantidade_sugerida' => PubProduto::proximaQuantidade($familia->pluck('quantidade_kit')->all()),
             'habilitado' => $habilitado,
-            'motivo' => $habilitado ? null : self::MOTIVO_FASE_1,
+            'motivo' => match (true) {
+                $composto !== null => PlanejamentoDaFaseService::motivoKit06($composto),
+                $habilitado => null,
+                default => self::MOTIVO_FASE_1,
+            },
         ];
     }
 

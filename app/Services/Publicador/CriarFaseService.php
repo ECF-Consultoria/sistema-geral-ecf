@@ -146,8 +146,8 @@ class CriarFaseService
      *     ator?: ?array, capa?: ?bool, user?: ?\App\Models\User}  $dados  tudo já
      *     calculado por quem chama (a prévia do 175-05)
      *
-     * @throws RegraViolada KIT-01 (base sem rascunho), KIT-02 (base que já é kit),
-     *                      KIT-03 (quantidade < 2), KIT-04 (Kit N já existe)
+     * @throws RegraViolada KIT-06 (composto do Planejamento), KIT-01 (base sem rascunho),
+     *                      KIT-02 (base que já é kit), KIT-03 (quantidade < 2), KIT-04 (Kit N já existe)
      */
     public function criar(PubProduto $base, array $dados): PubProduto
     {
@@ -156,6 +156,8 @@ class CriarFaseService
         $this->resultadoDaCapa = null;
 
         // ── 1. Recusas, ANTES de qualquer escrita ────────────────────────────
+        // KIT-06 primeiro: para um composto, o conselho do KIT-01 ("abra a Fase 1") seria o errado.
+        $this->recusarComposto($base);
         if ($rascunhoDoBase === null) {
             throw new RegraViolada('KIT-01', 'Este produto ainda não tem um anúncio preparado. Abra a Fase 1 no editor antes de criar um kit.');
         }
@@ -223,6 +225,22 @@ class CriarFaseService
         }
 
         return $kit;
+    }
+
+    /**
+     * KIT-06 (Planejamento × Fase N, decisões do usuário de 09/10/2026): o produto ligado a uma oferta
+     * Combo/Kit/Combit do Portal é uma composição pronta do Planejamento, não a Fase 1 de um produto —
+     * criar "Kit 2" dele seria o Kit 2 de um combo. Público para o endpoint recusar ANTES do KIT-05
+     * ("publique a Fase 1"), que daria o conselho errado.
+     *
+     * @throws RegraViolada KIT-06
+     */
+    public function recusarComposto(PubProduto $base): void
+    {
+        $tipo = PlanejamentoDaFaseService::tipoComposto($base);
+        if ($tipo !== null) {
+            throw new RegraViolada('KIT-06', PlanejamentoDaFaseService::motivoKit06($tipo));
+        }
     }
 
     // ═══ O produto e o rascunho do kit ═══════════════════════════════════════

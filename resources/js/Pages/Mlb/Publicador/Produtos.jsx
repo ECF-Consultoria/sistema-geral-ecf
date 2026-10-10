@@ -28,6 +28,7 @@ import {
     CHAVE_DA_DENSIDADE,
     colunasDaLargura,
     densidadeInicial,
+    ehComposto,
     LARGURA_DE_CORTE,
     miniaturasVisiveis,
     ordenarTopo,
@@ -264,7 +265,8 @@ export function montarLinhas(produtos, opcoes) {
     const visiveis = (Array.isArray(produtos) ? produtos : []).filter((item) => {
         if (!produtoValido(item)) return false;
         if (chavesDaSituacao !== null && !chavesDaSituacao.includes(objetoSeguro(item.status).chave)) return false;
-        if (fase === 'so_base' && ehKit(item)) return false;
+        // O composto do Planejamento não é base (09/10/2026): fica só em "Todas".
+        if (fase === 'so_base' && (ehKit(item) || ehComposto(item))) return false;
         if (fase === 'so_kits' && !ehKit(item)) return false;
         if (termo === '') return true;
 
@@ -779,7 +781,7 @@ export default function Produtos({
                     {/* `contagens?.todos`: o default `{}` só cobre `undefined`;
                         `contagens: null` numa recarga parcial derrubava a tela
                         inteira aqui (bug encontrado pelo teste de dado adverso). */}
-                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas?.company_id ?? null} contagemProdutos={contagens?.todos ?? null} />
+                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas?.company_id ?? null} contagemProdutos={contagens?.todos ?? null} contagemAlavancas={abas?.alavancas_pendentes ?? null} />
                 </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
