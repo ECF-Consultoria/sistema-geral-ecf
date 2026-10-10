@@ -8,6 +8,7 @@ import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
+import JanelaFotosEmLote from '@/Components/Portal/Estrutura/Produtos/JanelaFotosEmLote';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
 import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
 import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
@@ -55,6 +56,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
+    const [enviandoFotos, setEnviandoFotos] = useState(false);   // janela das fotos em lote pelo nome do arquivo
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
     const [voltouDe, setVoltouDe] = useState(null);        // D-32: produto de onde a pessoa acabou de voltar
     const [destaqueForte, setDestaqueForte] = useState(true);
@@ -264,7 +266,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
                 <div className="mt-8">
                     <BarraAcoesProdutos temProdutos={temProdutos} busca={busca} onBusca={setBusca}
-                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)}
+                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)} onFotosEmLote={() => setEnviandoFotos(true)}
                         onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} />
                 </div>
 
@@ -328,6 +330,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
             <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} />
+            <JanelaFotosEmLote aberta={enviandoFotos} onFechar={() => setEnviandoFotos(false)} onConcluir={recarregarProdutos} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[

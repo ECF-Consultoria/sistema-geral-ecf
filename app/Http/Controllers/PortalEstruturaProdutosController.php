@@ -10,6 +10,7 @@ use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
@@ -76,6 +77,7 @@ class PortalEstruturaProdutosController extends Controller
         private ExplicacaoDeAtributos $explicacoes,
         private PlanilhaDosProdutos $planilha,
         private SugestaoDeCategoriaPorNome $sugestaoPorNome,
+        private FotosEmLoteService $fotosEmLote,
     ) {
     }
 
@@ -585,6 +587,54 @@ class PortalEstruturaProdutosController extends Controller
             'imagens'  => $galeria,
             'mensagem' => 'Ordem das imagens salva.',
         ]);
+    }
+
+    // ═══ Fotos em lote pelo nome do arquivo ═════════════════════════════════
+
+    /**
+     * A prévia das fotos em lote: só os NOMES dos arquivos (nada é enviado ainda). Diz em que
+     * variação cada foto entra, em que ordem, e o que fica de fora — pela regra do
+     * {@see FotosEmLoteService}, dentro da empresa da sessão.
+     */
+    public function previaFotosEmLote(Request $request)
+    {
+        $max = FotosEmLoteService::MAX_NOMES;
+        $dados = $request->validate([
+            'nomes'   => "required|array|min:1|max:{$max}",
+            'nomes.*' => 'required|string|max:255',
+        ], [
+            'nomes.required' => 'Escolha ao menos uma foto.',
+            'nomes.max'      => "Escolha no máximo {$max} fotos de uma vez.",
+        ]);
+
+        return response()->json($this->fotosEmLote->previa(PortalContexto::empresa(), $dados['nomes']));
+    }
+
+    /**
+     * Uma remessa das fotos em lote (`imagens[]`): cada foto vai para a variação que o NOME dela
+     * indica. O resultado é por arquivo — a foto que não entra não derruba as outras.
+     */
+    public function enviarFotosEmLote(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $this->recusarEnvioQueNaoChegou($request);
+
+        $max = FotosEmLoteService::MAX_POR_ENVIO;
+        $request->validate([
+            'imagens'   => ['required', 'array', 'min:1', "max:{$max}"],
+            'imagens.*' => ['file'],
+        ], [
+            'imagens.required' => 'Escolha ao menos uma foto.',
+            'imagens.array'    => 'Escolha ao menos uma foto.',
+            'imagens.min'      => 'Escolha ao menos uma foto.',
+            'imagens.max'      => "Envie no máximo {$max} fotos por vez.",
+            'imagens.*.file'   => 'Não foi possível receber a foto :position. Tente de novo.',
+        ]);
+
+        $r = $this->fotosEmLote->enviar($empresa, array_values((array) $request->file('imagens')), PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, $r['produtos']);
+
+        return response()->json(['resultados' => $r['resultados'], 'enviadas' => $r['enviadas']]);
     }
 
     // ═══ Frete ══════════════════════════════════════════════════════════════

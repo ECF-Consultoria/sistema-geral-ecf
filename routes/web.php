@@ -255,6 +255,11 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.descricao')->name('portal.auth.estrutura.produtos.descricao');
     // Imagens por variação (a galeria da cor). Disco privado; a empresa vem sempre da sessão.
     // O GET é o `<img src>` da tela (várias por página), por isso o throttle é folgado.
+    // 09/10/2026 — fotos em lote pelo nome do arquivo (Ref_número.jpg): prévia só com os nomes, depois remessas.
+    Route::post('/estrutura/produtos/fotos/previa', [PortalEstruturaProdutosController::class, 'previaFotosEmLote'])
+        ->middleware('throttle:30,1,estrutura.produtos.fotos.previa')->name('portal.auth.estrutura.produtos.fotos.previa');
+    Route::post('/estrutura/produtos/fotos', [PortalEstruturaProdutosController::class, 'enviarFotosEmLote'])
+        ->middleware('throttle:60,1,estrutura.produtos.fotos.enviar')->name('portal.auth.estrutura.produtos.fotos.enviar');
     Route::post('/estrutura/produtos/variacao/{variacao}/imagens', [PortalEstruturaProdutosController::class, 'enviarImagens'])
         ->whereNumber('variacao')->middleware('throttle:30,1,estrutura.produtos.imagens.enviar')->name('portal.auth.estrutura.produtos.imagens.enviar');
     Route::put('/estrutura/produtos/variacao/{variacao}/imagens/ordem', [PortalEstruturaProdutosController::class, 'ordenarImagens'])
