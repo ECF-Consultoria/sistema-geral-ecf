@@ -427,6 +427,9 @@ class EstoqueDoKitTest extends TestCase
             // `preparo_ia` (09/10/2026): o que a IA escreveu ao salvar no Portal e ainda está no campo —
             // o selo discreto do editor. Também ADITIVA.
             'preparo_ia',
+            // `promocao_automatica` (10/10/2026): se a conta cria a promoção de 14 dias sozinha depois de
+            // publicar (a frase embaixo do preço). ADITIVA, no fim.
+            'promocao_automatica',
         ], array_keys($e));
     }
 

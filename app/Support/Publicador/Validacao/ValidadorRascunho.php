@@ -7,6 +7,7 @@ use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\Schema\AtributoClassificado as A;
 use App\Support\Publicador\Schema\SchemaClassificado;
 use App\Support\Publicador\Schema\ValorAtributo;
@@ -375,12 +376,18 @@ final class ValidadorRascunho
                 $this->p[] = Problema::aviso('V-TIT-02', "O título do {$nome} tem «{$termo}». O Mercado Livre não permite contato, frete, parcelamento ou condição no título.", $onde, 'L1');
             }
 
-            // D1: o par precisa de títulos diferentes ("mesmo SKU, títulos diferentes").
-            $chave = ChaveCanonica::texto($titulo);
-            if (isset($vistos[$chave])) {
-                $this->p[] = Problema::bloqueio('D1', 'Clássico e Premium precisam de títulos diferentes.', $onde);
+            // V-TIT-04 (10/10/2026, decisão do usuário; era o D1 "mesmo SKU, títulos diferentes"): o ML
+            // barra dois anúncios com o mesmo nome. "Igual" é o critério do preparo pela IA
+            // (`RegrasDoTitulo::mesmo`): mesmas palavras na mesma ordem, sem caixa, acento nem plural
+            // simples — "Puffs Redondos" é igual a "puff redondo"; a ordem trocada já é outro título.
+            foreach ($vistos as $outroTipo => $outroTitulo) {
+                if (RegrasDoTitulo::mesmo($titulo, $outroTitulo)) {
+                    $this->p[] = Problema::bloqueio('V-TIT-04', "O título do {$nome} é igual ao do {$outroTipo}: o Mercado Livre não aceita dois anúncios com o mesmo título. Mude ao menos uma palavra (ou a ordem delas) em um dos dois.", $onde);
+
+                    break;
+                }
             }
-            $vistos[$chave] = true;
+            $vistos[$nome] = $titulo;
         }
     }
 
@@ -433,8 +440,18 @@ final class ValidadorRascunho
 
                 if (! is_numeric($preco) || (float) $preco <= 0 || round((float) $preco, 2) != (float) $preco) {
                     $this->p[] = Problema::bloqueio('V-SAL-02', "Informe o preço do {$rotulo} (maior que zero, com até 2 casas).", $onde, 'L1');
-                } elseif (($minimo !== null && $preco < $minimo) || ($maximo !== null && $preco > $maximo)) {
+
+                    continue;
+                }
+                if (($minimo !== null && $preco < $minimo) || ($maximo !== null && $preco > $maximo)) {
                     $this->p[] = Problema::bloqueio('V-SAL-03', "O preço do {$rotulo} está fora da faixa desta categoria (mínimo R$ ".number_format((float) $minimo, 2, ',', '.').').', $onde);
+                }
+                // V-SAL-08 (10/10/2026, decisão do usuário): o preço que VEIO do Portal (não digitado)
+                // calculado sem frete — a Precificação conta frete zero e só marca — não vai ao ML calado.
+                // O digitado é decisão da equipe e passa. Vale para a conferência e para publicar, porque
+                // as duas validam pelo `comEfetivosDe` (é ele que grava as marcas lidas aqui).
+                if (! empty($v->dados['preco_do_portal'][$alvo->listingTypeId]) && ! empty($v->dados['portal'][$alvo->listingTypeId]['sem_frete'])) {
+                    $this->p[] = Problema::bloqueio('V-SAL-08', "O preço do {$rotulo} veio da Precificação do Portal calculado sem frete. Informe ou aceite o frete na Precificação do Portal, ou digite o preço aqui.", $onde);
                 }
             }
         }

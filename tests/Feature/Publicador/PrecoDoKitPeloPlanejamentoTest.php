@@ -28,7 +28,9 @@ class PrecoDoKitPeloPlanejamentoTest extends TestCase
     use CenarioPlanejamentoDaFase;
     use RefreshDatabase;
 
-    private const VAZIO = ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []];
+    // 10/10/2026: `promocoes` (o mínimo do Portal) e `sem_frete` acompanham `precos` — vazios aqui também.
+    private const VAZIO = ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null],
+        'promocoes' => ['gold_special' => null, 'gold_pro' => null], 'sem_frete' => ['gold_special' => false, 'gold_pro' => false], 'mlbs' => []];
 
     protected function setUp(): void
     {

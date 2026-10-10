@@ -280,12 +280,17 @@ class ConferenciaService
 
     // ═══ Passos ══════════════════════════════════════════════════════════════
 
-    /** @return array{snapshot: RascunhoSnapshot, mlbs: list<string>} */
+    /**
+     * `comEfetivosDe` (10/10/2026): leva junto o mínimo da promoção e a marca de preço do Portal sem
+     * frete — é por aqui que a conferência e a publicação (`preparar`) aplicam o V-SAL-08.
+     *
+     * @return array{snapshot: RascunhoSnapshot, mlbs: list<string>}
+     */
     private function comEfetivos(PubRascunho $r): array
     {
         $e = $this->efetivos->daProduto($r->produto);
 
-        return ['snapshot' => $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []), 'mlbs' => $e['mlbs']];
+        return ['snapshot' => $this->repo->snapshot($r)->comEfetivosDe($e), 'mlbs' => $e['mlbs']];
     }
 
     private function classificar(CategorySchema $categoria, RascunhoSnapshot $s, array $condicionais): SchemaClassificado
