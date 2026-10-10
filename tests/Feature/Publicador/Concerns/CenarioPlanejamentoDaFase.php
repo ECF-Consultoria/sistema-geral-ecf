@@ -154,7 +154,7 @@ trait CenarioPlanejamentoDaFase
         $kit = PubProduto::create([
             'company_id' => $grupo->company_id, 'mlb_empresa_id' => $grupo->mlb_empresa_id, 'oferta_id' => null,
             'sku' => $grupo->sku."-KIT{$n}", 'nome' => "Kit {$n} Cadeira Jantar", 'origem' => PubProduto::ORIGEM_PUBLICADOR,
-            'produto_base_id' => $grupo->id, 'quantidade_kit' => $n, 'fase' => PubProduto::proximaFase($grupo->familia()->pluck('fase')->all()),
+            'produto_base_id' => $grupo->id, 'quantidade_kit' => $n, 'fase' => PubProduto::faseDaQuantidade($n),
             'estoque_calculado' => true,
         ]);
         if ($skus === null) {

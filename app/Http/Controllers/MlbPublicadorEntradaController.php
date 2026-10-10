@@ -381,6 +381,10 @@ class MlbPublicadorEntradaController extends Controller
             // com a lista de Produtos por construção.
             'produtosPorFase' => $painel->produtosPorFase($contagemProdutos),
             'ultimasPublicacoes' => $painel->ultimasPublicacoes($alvo),
+            // Quick 261010-hdr: a "Atividade da equipe" era MOCKADA e o usuário
+            // apontou isso em 10/10 — agora é a linha do tempo real das três
+            // fontes já gravadas (publicou / gerou criativos / conferiu).
+            'atividadeEquipe' => $painel->atividadeDaEquipe($alvo),
             'integracoes' => $painel->integracoes($alvo, $empresa),
             'identidadeResumo' => $painel->identidadeResumo($alvo),
             'quemPublicou' => [

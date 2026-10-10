@@ -9,6 +9,7 @@ use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubTarefa;
+use App\Models\PubValidacao;
 use App\Models\User;
 use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\ContasLiberadas;
@@ -29,6 +30,32 @@ use Illuminate\Support\Carbon;
  */
 class PainelVisaoGeralService
 {
+    // ═══ Rótulos de autor da linha do tempo (quick 261010-hdr) ══════════════
+    //
+    // A "Atividade da equipe" mostra UM texto escalar em `quem`. Quando não há
+    // um usuário do sistema por trás do evento, o rótulo é um destes — nunca um
+    // nome inventado, nunca `undefined` na tela. São os MESMOS três baldes que
+    // o bloco "Quem publicou" já usa (`resolverAtor`), mais os dois casos que
+    // só existem nas fontes novas.
+
+    /** Equipe com `id` que não resolve mais em `users` (usuário removido). */
+    public const QUEM_EQUIPE_SEM_NOME = 'Equipe';
+
+    /** `ator.equipe` falso: é o cliente pelo Portal — T-173-09, nome/id nunca saem. */
+    public const QUEM_CLIENTE = 'Cliente';
+
+    /** `ator` sem `id`: linha migrada do assistente antigo. */
+    public const QUEM_ORIGEM_ANTIGA = 'Origem antiga';
+
+    /** Kit de criativo sem `user_id` (gerado por rotina, ou linha antiga). */
+    public const QUEM_SEM_AUTOR = 'Autor não registrado';
+
+    /** `pub_validacoes` não tem coluna de autor: a conferência é das camadas L2/L3. */
+    public const QUEM_CONFERENCIA = 'Conferência automática';
+
+    /** Resultados de `pub_validacoes` que contam como "a conferência passou". */
+    public const CONFERENCIA_PASSOU = ['OK', 'AVISOS'];
+
     public function __construct(private AcervoTriagemService $acervoTriagem) {}
 
     // ═══ Base compartilhada ══════════════════════════════════════════════════
@@ -100,17 +127,41 @@ class PainelVisaoGeralService
      */
     private function resolverAtor(array $ator): array
     {
+        $classificado = $this->classificarAtor($ator);
+
+        if ($classificado['tipo'] === 'equipe') {
+            return [
+                'tipo' => 'equipe',
+                'id' => $classificado['id'],
+                'nome' => User::find($classificado['id'])?->name ?? self::QUEM_EQUIPE_SEM_NOME,
+            ];
+        }
+
+        return ['tipo' => $classificado['tipo'], 'id' => $classificado['id'], 'nome' => null];
+    }
+
+    /**
+     * A parte de `resolverAtor()` que SÓ olha a forma do JSON — nenhuma
+     * consulta. Existe separada porque `atividadeDaEquipe()` resolve os nomes
+     * EM LOTE (um `whereIn`, nunca um `find` por linha): chamar `resolverAtor()`
+     * dentro do laço da linha do tempo seria N+1 por construção.
+     *
+     * @return array{tipo: 'equipe'|'cliente'|'origem_antiga', id: ?int}
+     */
+    private function classificarAtor(array $ator): array
+    {
+        // Ator sem `id` = linha migrada do assistente antigo (`estrutura_publicacoes`).
         if (! array_key_exists('id', $ator) || $ator['id'] === null) {
-            return ['tipo' => 'origem_antiga', 'id' => null, 'nome' => null];
+            return ['tipo' => 'origem_antiga', 'id' => null];
         }
 
+        // `equipe` falso = o CLIENTE pelo Portal. T-173-09: o id existe, mas
+        // nome/id de cliente NUNCA saem para a tela — só o rótulo agregado.
         if (($ator['equipe'] ?? false) === true) {
-            $nome = User::find($ator['id'])?->name ?? 'Equipe';
-
-            return ['tipo' => 'equipe', 'id' => (int) $ator['id'], 'nome' => $nome];
+            return ['tipo' => 'equipe', 'id' => (int) $ator['id']];
         }
 
-        return ['tipo' => 'cliente', 'id' => (int) $ator['id'], 'nome' => null];
+        return ['tipo' => 'cliente', 'id' => (int) $ator['id']];
     }
 
     // ═══ Publicados recentes / indicadores (Task 1) ═════════════════════════
@@ -710,5 +761,233 @@ class PainelVisaoGeralService
         })->values()->all();
 
         return ['disponivel' => true, 'itens' => $itens];
+    }
+
+    // ═══ Atividade da equipe (quick 261010-hdr) ═════════════════════════════
+
+    /**
+     * A linha do tempo da "Atividade da equipe" — TRÊS fontes reais já
+     * gravadas no banco, numa lista única ordenada por data desc.
+     *
+     * Nasceu de um pedido direto do usuário em 10/10/2026: a tela entregou
+     * esse widget com dado MOCKADO ("Gerou 5 imagens IA", "revisão aprovada")
+     * e ele respondeu que *"já existem dados dinâmicos para esse widget"*.
+     * Está certo — as três fontes abaixo existem desde a Fase 161/165:
+     *
+     * | `tipo`      | tabela                      | o que mostra                        |
+     * |-------------|-----------------------------|-------------------------------------|
+     * | `publicou`  | `pub_publicacoes`           | quem publicou, o produto e a fase   |
+     * | `criativos` | `ml_anuncio_criativo_kits`  | quem gerou, quantas imagens, produto|
+     * | `conferiu`  | `pub_validacoes`            | a conferência que passou            |
+     *
+     * ⚠️ O ramo `publicou` REAPROVEITA `baseQuery()` + `classificarAtor()` —
+     * o mesmo escopo de dupla-âncora e a mesma classificação de ator do bloco
+     * "Quem publicou". Nada de segunda implementação do escopo da conta.
+     *
+     * ⚠️ EM LOTE, teto fixo de consultas (gate de contagem no teste): uma
+     * consulta por fonte (3) + UMA `whereIn` para os nomes de usuário das
+     * fontes que têm autor. Nunca um `User::find()` por linha.
+     *
+     * ⚠️ Shape ESCALAR por item — `{tipo, quem, quando_iso, titulo, detalhe}`,
+     * todos string/null. Nenhum objeto aninhado que a tela possa renderizar
+     * cru: a tela preta de 07/10 em produção ("Objects are not valid as a
+     * React child") nasceu exatamente disso.
+     *
+     * ⚠️ `quem` já chega pronto para a tela e NUNCA é um nome inventado:
+     * cliente pelo Portal vira `QUEM_CLIENTE` (T-173-09 — nome/id de cliente
+     * não saem do servidor), ator sem `id` vira `QUEM_ORIGEM_ANTIGA`, kit sem
+     * `user_id` vira `QUEM_SEM_AUTOR` e a conferência, que não tem coluna de
+     * autor nenhuma, vira `QUEM_CONFERENCIA`.
+     *
+     * `disponivel` falso em DOIS casos (D23): sem Company não há o que ler, e
+     * nenhuma das três fontes com linha também não afirma nada — a tela decide
+     * o que dizer. "Não sabemos" não é "é zero".
+     *
+     * @return array{disponivel: bool, itens: list<array{tipo: string, quem: string, quando_iso: ?string, titulo: ?string, detalhe: ?string}>}
+     */
+    public function atividadeDaEquipe(array $alvo, int $limite = 8): array
+    {
+        if ($alvo['company'] === null) {
+            return ['disponivel' => false, 'itens' => []];
+        }
+
+        $mlbEmpresaId = $alvo['mlb_empresa']?->id;
+        $companyId = $alvo['company']->id;
+
+        // ─── Fonte 1: publicou (reaproveita baseQuery + classificarAtor) ───
+        // ⚠️ `distinct()` + a `id` da publicação no select: `baseQuery()` devolve
+        // uma linha por ITEM criado, e uma publicação de kit com variantes
+        // repetiria o mesmo evento N vezes — e, pior, encheria o `$limite`
+        // inteiro com um único evento. O evento da linha do tempo é a
+        // PUBLICAÇÃO, não o item.
+        $publicacoes = $this->baseQuery($alvo, comJanela: false)
+            ->distinct()
+            ->select([
+                'pub_publicacoes.id as publicacao_id',
+                'pub_publicacoes.ator',
+                'pub_publicacoes.concluida_em',
+                'pub_produtos.nome as produto_nome',
+                'pub_produtos.quantidade_kit as produto_quantidade_kit',
+            ])
+            ->orderByDesc('pub_publicacoes.concluida_em')
+            ->limit($limite)
+            ->get();
+
+        // ─── Fonte 2: gerou criativos ──────────────────────────────────────
+        // `pub_rascunho_id` é anulável (kit do assistente ANTIGO usa
+        // `rascunho_id`), logo leftJoin: sem o rascunho do Publicador o evento
+        // continua valendo, só fica sem o nome do produto.
+        // Só entra kit que REALMENTE gerou imagem — "gerou 0 imagens" seria
+        // ruído, e um kit em `planejando` ainda não gerou nada.
+        $kits = MlAnuncioCriativoKit::query()
+            ->leftJoin('pub_rascunhos', 'pub_rascunhos.id', '=', 'ml_anuncio_criativo_kits.pub_rascunho_id')
+            ->leftJoin('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            ->where(function ($q) use ($mlbEmpresaId, $companyId) {
+                // Colunas QUALIFICADAS: com os joins acima, `company_id` solto
+                // seria ambíguo (também existe em `pub_produtos`).
+                if ($mlbEmpresaId !== null) {
+                    $q->orWhere('ml_anuncio_criativo_kits.mlb_empresa_id', $mlbEmpresaId);
+                }
+                $q->orWhere('ml_anuncio_criativo_kits.company_id', $companyId);
+            })
+            ->where('ml_anuncio_criativo_kits.imagens_geradas', '>', 0)
+            ->select([
+                'ml_anuncio_criativo_kits.user_id',
+                'ml_anuncio_criativo_kits.created_at',
+                'ml_anuncio_criativo_kits.imagens_geradas',
+                'pub_produtos.nome as produto_nome',
+            ])
+            ->orderByDesc('ml_anuncio_criativo_kits.created_at')
+            ->limit($limite)
+            ->get();
+
+        // ─── Fonte 3: conferiu ─────────────────────────────────────────────
+        // `pub_validacoes` NÃO tem coluna de autor — a conferência é das
+        // camadas L2/L3, não de uma pessoa. O escopo da conta vem do produto.
+        $conferencias = PubValidacao::query()
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_validacoes.rascunho_id')
+            ->join('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            ->whereIn('pub_validacoes.resultado', self::CONFERENCIA_PASSOU)
+            ->where(function ($q) use ($mlbEmpresaId, $companyId) {
+                if ($mlbEmpresaId !== null) {
+                    $q->orWhere('pub_produtos.mlb_empresa_id', $mlbEmpresaId);
+                }
+                $q->orWhere('pub_produtos.company_id', $companyId);
+            })
+            ->select([
+                'pub_validacoes.resultado',
+                'pub_validacoes.revisao',
+                'pub_validacoes.created_at',
+                'pub_produtos.nome as produto_nome',
+            ])
+            ->orderByDesc('pub_validacoes.created_at')
+            ->limit($limite)
+            ->get();
+
+        // ─── UMA consulta para todos os nomes (nunca um find por linha) ────
+        $idsDeUsuario = [];
+        $atoresPorLinha = [];
+        foreach ($publicacoes as $indice => $linha) {
+            $classificado = $this->classificarAtor($this->atorDecodificado($linha->ator));
+            $atoresPorLinha[$indice] = $classificado;
+            if ($classificado['tipo'] === 'equipe') {
+                $idsDeUsuario[] = $classificado['id'];
+            }
+        }
+        foreach ($kits as $kit) {
+            if ($kit->user_id !== null) {
+                $idsDeUsuario[] = (int) $kit->user_id;
+            }
+        }
+        $idsDeUsuario = array_values(array_unique($idsDeUsuario));
+        $nomes = $idsDeUsuario === []
+            ? []
+            : User::whereIn('id', $idsDeUsuario)->pluck('name', 'id')->all();
+
+        // ─── Linha do tempo única ──────────────────────────────────────────
+        $itens = [];
+
+        foreach ($publicacoes as $indice => $linha) {
+            $classificado = $atoresPorLinha[$indice];
+            $itens[] = [
+                'tipo' => 'publicou',
+                'quem' => match ($classificado['tipo']) {
+                    'equipe' => (string) ($nomes[$classificado['id']] ?? self::QUEM_EQUIPE_SEM_NOME),
+                    'cliente' => self::QUEM_CLIENTE,
+                    'origem_antiga' => self::QUEM_ORIGEM_ANTIGA,
+                },
+                'quando_iso' => $this->isoOuNulo($linha->concluida_em),
+                'titulo' => $this->textoOuNulo($linha->produto_nome),
+                // Mesmo rótulo de fase das "Últimas publicações" — fonte única.
+                'detalhe' => ProgramasPublicadorService::rotuloFase((int) $linha->produto_quantidade_kit),
+            ];
+        }
+
+        foreach ($kits as $kit) {
+            $quantidade = (int) $kit->imagens_geradas;
+            $itens[] = [
+                'tipo' => 'criativos',
+                'quem' => $kit->user_id !== null
+                    ? (string) ($nomes[(int) $kit->user_id] ?? self::QUEM_SEM_AUTOR)
+                    : self::QUEM_SEM_AUTOR,
+                'quando_iso' => $this->isoOuNulo($kit->created_at),
+                'titulo' => $this->textoOuNulo($kit->produto_nome),
+                'detalhe' => $quantidade === 1 ? '1 imagem gerada' : "{$quantidade} imagens geradas",
+            ];
+        }
+
+        foreach ($conferencias as $conferencia) {
+            $revisao = (int) $conferencia->revisao;
+            $itens[] = [
+                'tipo' => 'conferiu',
+                'quem' => self::QUEM_CONFERENCIA,
+                'quando_iso' => $this->isoOuNulo($conferencia->created_at),
+                'titulo' => $this->textoOuNulo($conferencia->produto_nome),
+                'detalhe' => $conferencia->resultado === 'AVISOS'
+                    ? "Revisão {$revisao} passou com avisos"
+                    : "Revisão {$revisao} passou sem problemas",
+            ];
+        }
+
+        // Data desc; linha sem data vai para o FIM (nunca para o topo por ser
+        // "menor" numa comparação de string vazia).
+        usort($itens, function (array $a, array $b) {
+            if ($a['quando_iso'] === $b['quando_iso']) {
+                return 0;
+            }
+            if ($a['quando_iso'] === null) {
+                return 1;
+            }
+            if ($b['quando_iso'] === null) {
+                return -1;
+            }
+
+            return strcmp($b['quando_iso'], $a['quando_iso']);
+        });
+
+        $itens = array_slice($itens, 0, max(0, $limite));
+
+        return ['disponivel' => $itens !== [], 'itens' => $itens];
+    }
+
+    /** Data de coluna crua → ISO 8601, ou null. Nunca string vazia nem objeto. */
+    private function isoOuNulo(mixed $valor): ?string
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        return Carbon::parse($valor)->toIso8601String();
+    }
+
+    /** Texto de coluna crua → string não vazia, ou null (a tela trata o null). */
+    private function textoOuNulo(mixed $valor): ?string
+    {
+        if (! is_string($valor) && ! is_numeric($valor)) {
+            return null;
+        }
+        $texto = trim((string) $valor);
+
+        return $texto === '' ? null : $texto;
     }
 }

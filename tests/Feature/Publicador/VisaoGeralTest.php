@@ -11,7 +11,10 @@ use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Models\PubValidacao;
 use App\Models\User;
+use App\Services\Publicador\PainelVisaoGeralService;
+use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -68,7 +71,9 @@ class VisaoGeralTest extends TestCase
         $this->assertSame('Mlb/Publicador/VisaoGeral', $page['component']);
         $p = $page['props'];
 
-        foreach (['empresa', 'liberada', 'indicadores', 'oQueFazerAgora', 'situacaoProdutos', 'ultimasPublicacoes', 'integracoes', 'identidadeResumo', 'quemPublicou', 'abas'] as $chave) {
+        // Quick 261010-hdr: `atividadeEquipe` entra ADITIVA — o gate de forma
+        // é ATUALIZADO para a chave nova, nunca afrouxado.
+        foreach (['empresa', 'liberada', 'indicadores', 'oQueFazerAgora', 'situacaoProdutos', 'ultimasPublicacoes', 'atividadeEquipe', 'integracoes', 'identidadeResumo', 'quemPublicou', 'abas'] as $chave) {
             $this->assertArrayHasKey($chave, $p, "chave '$chave' ausente do contrato");
         }
 
@@ -372,5 +377,212 @@ class VisaoGeralTest extends TestCase
         // Teto generoso de propósito: o que o gate prova é que 11 produtos/11 kits
         // de criativo NÃO viram uma consulta por item (N+1), não o número exato.
         $this->assertLessThan(60, $consultas, "consultas demais na Visão geral ({$consultas}) — cheiro de N+1 nas chaves novas");
+    }
+
+    // ═══ Atividade da equipe — dado REAL das 3 fontes (quick 261010-hdr) ════
+    //
+    // A tela entregou este widget MOCKADO ("Gerou 5 imagens IA", "revisão
+    // aprovada") e o usuário apontou em 10/10 que o dado dinâmico já existe.
+    // Estes testes são o contrato das três fontes reais.
+
+    /** Produto + rascunho da conta, para pendurar publicação/kit/conferência. */
+    private function rascunhoDaConta(Company $c, string $sku, array $extraProduto = []): PubRascunho
+    {
+        $produto = PubProduto::create(array_merge([
+            'company_id' => $c->id, 'sku' => $sku, 'nome' => $sku, 'origem' => PubProduto::ORIGEM_PUBLICADOR,
+        ], $extraProduto));
+
+        return PubRascunho::create(['produto_id' => $produto->id, 'status' => PubRascunho::PUBLISHED]);
+    }
+
+    /**
+     * Kit de criativo com `created_at` CONTROLADO.
+     *
+     * ⚠️ `created_at` NÃO está no `$fillable` de `MlAnuncioCriativoKit`: passá-lo
+     * para `create()` é silenciosamente descartado e o kit nasce com `now()` —
+     * foi o que fez a primeira rodada destes testes ordenar errado. O carimbo
+     * vai por `forceFill` com `timestamps` desligado.
+     */
+    private function kitDeCriativo(Company $c, ?int $userId, int $imagens, string $quando, ?PubRascunho $rascunho = null): MlAnuncioCriativoKit
+    {
+        $kit = MlAnuncioCriativoKit::create([
+            'token' => Str::random(32), 'company_id' => $c->id, 'user_id' => $userId,
+            'pub_rascunho_id' => $rascunho?->id,
+            'status' => $imagens > 0 ? MlAnuncioCriativoKit::STATUS_PRONTO : MlAnuncioCriativoKit::STATUS_PLANEJANDO,
+            'imagens_geradas' => $imagens,
+        ]);
+        $kit->timestamps = false;
+        $kit->forceFill(['created_at' => $quando, 'updated_at' => $quando])->save();
+
+        return $kit;
+    }
+
+    /** Uma publicação concluída com UM item CREATED (é o que `baseQuery()` enxerga). */
+    private function publicacaoConcluida(PubRascunho $rascunho, ?array $ator, string $quando, string $mlItemId = 'MLB1'): PubPublicacao
+    {
+        $publicacao = PubPublicacao::create([
+            'rascunho_id' => $rascunho->id, 'revisao' => 1, 'modelo_publicacao' => 'items',
+            'status' => PubPublicacao::PUBLISHED, 'chave_idempotencia' => (string) Str::uuid(),
+            'concluida_em' => $quando, 'ator' => $ator,
+        ]);
+        PubPublicacaoItem::create([
+            'publicacao_id' => $publicacao->id, 'indice' => 0, 'listing_type_id' => 'gold_special',
+            'variante_chave' => ChaveCanonica::UNICA, 'status' => PubPublicacaoItem::CREATED,
+            'ml_item_id' => $mlItemId, 'payload' => ['family_name' => 'Família'],
+        ]);
+
+        return $publicacao;
+    }
+
+    public function test_atividade_da_equipe_junta_as_tres_fontes_reais_em_ordem_desc(): void
+    {
+        $c = $this->companyComToken();
+        $dev = User::factory()->create(['name' => 'Dev ECF']);
+
+        // (1) conferiu — o mais antigo dos três.
+        $rConf = $this->rascunhoDaConta($c, 'CONF');
+        PubValidacao::create([
+            'rascunho_id' => $rConf->id, 'revisao' => 2, 'camada' => 'L3',
+            'resultado' => 'OK', 'created_at' => now()->subDays(5), 'updated_at' => now()->subDays(5),
+        ]);
+
+        // (2) gerou criativos — o do meio.
+        $rKit = $this->rascunhoDaConta($c, 'KITCRI');
+        $this->kitDeCriativo($c, $dev->id, 2, now()->subDays(3)->toDateTimeString(), $rKit);
+
+        // (3) publicou — o mais recente.
+        $rPub = $this->rascunhoDaConta($c, 'PUBLI');
+        $this->publicacaoConcluida($rPub, ['equipe' => true, 'id' => $dev->id, 'nome' => $dev->name], now()->subDay()->toDateTimeString());
+
+        $atividade = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props']['atividadeEquipe'];
+
+        $this->assertTrue($atividade['disponivel']);
+        $this->assertCount(3, $atividade['itens']);
+        // A ordem é por data desc: publicou (1d) → criativos (3d) → conferiu (5d).
+        $this->assertSame(['publicou', 'criativos', 'conferiu'], array_column($atividade['itens'], 'tipo'));
+
+        // Shape ESCALAR em TODO item — nenhum objeto que a tela possa renderizar cru.
+        foreach ($atividade['itens'] as $item) {
+            $this->assertSame(['tipo', 'quem', 'quando_iso', 'titulo', 'detalhe'], array_keys($item));
+            foreach ($item as $chave => $valor) {
+                $this->assertTrue($valor === null || is_string($valor), "item['$chave'] não é escalar de texto");
+            }
+        }
+
+        [$publicou, $criativos, $conferiu] = $atividade['itens'];
+        $this->assertSame('Dev ECF', $publicou['quem']);
+        $this->assertSame('PUBLI', $publicou['titulo']);
+        $this->assertSame('1 unidade', $publicou['detalhe']);
+
+        $this->assertSame('Dev ECF', $criativos['quem']);
+        $this->assertSame('KITCRI', $criativos['titulo']);
+        $this->assertSame('2 imagens geradas', $criativos['detalhe']);
+
+        $this->assertSame('Conferência automática', $conferiu['quem'], 'pub_validacoes não tem autor — nunca inventar um');
+        $this->assertSame('CONF', $conferiu['titulo']);
+        $this->assertSame('Revisão 2 passou sem problemas', $conferiu['detalhe']);
+    }
+
+    public function test_atividade_da_equipe_sem_company_nao_afirma_zero(): void
+    {
+        $e = $this->empresa();
+
+        $p = $this->pagina(self::BASE.'/empresas/empresa-'.$e->id.'/visao-geral')['props'];
+
+        $this->assertSame(['disponivel' => false, 'itens' => []], $p['atividadeEquipe'], 'sem Company — D23, "não sabemos" não é "é zero"');
+    }
+
+    public function test_atividade_da_equipe_sem_nenhuma_das_tres_fontes_nao_afirma_zero(): void
+    {
+        $c = $this->companyComToken();
+
+        $p = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props'];
+
+        $this->assertSame(['disponivel' => false, 'itens' => []], $p['atividadeEquipe']);
+    }
+
+    public function test_atividade_da_equipe_com_ator_sem_id_e_ator_cliente_nunca_vira_undefined(): void
+    {
+        $c = $this->companyComToken();
+
+        // Ator do PORTAL (equipe falso): é o cliente — T-173-09, nome/id não saem.
+        $this->publicacaoConcluida($this->rascunhoDaConta($c, 'PORTAL'), ['equipe' => false, 'id' => 77, 'nome' => 'João Cliente'], now()->subDay()->toDateTimeString(), 'MLBP1');
+        // Ator migrado do assistente ANTIGO: sem `id` nenhum.
+        $this->publicacaoConcluida($this->rascunhoDaConta($c, 'ANTIGO'), ['equipe' => true, 'nome' => 'quem sabe'], now()->subDays(2)->toDateTimeString(), 'MLBA1');
+        // Ator nulo na coluna — a forma mais crua de "não sabemos".
+        $this->publicacaoConcluida($this->rascunhoDaConta($c, 'NULO'), null, now()->subDays(3)->toDateTimeString(), 'MLBN1');
+        // Equipe com id que não existe mais em `users` (usuário removido).
+        $this->publicacaoConcluida($this->rascunhoDaConta($c, 'FANTASMA'), ['equipe' => true, 'id' => 999999], now()->subDays(4)->toDateTimeString(), 'MLBF1');
+        // Kit SEM user_id — gerado por rotina ou linha antiga.
+        $this->kitDeCriativo($c, null, 1, now()->subDays(5)->toDateTimeString());
+
+        $itens = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props']['atividadeEquipe']['itens'];
+
+        $this->assertSame(['Cliente', 'Origem antiga', 'Origem antiga', 'Equipe', 'Autor não registrado'], array_column($itens, 'quem'));
+        foreach ($itens as $item) {
+            $this->assertIsString($item['quem']);
+            $this->assertNotSame('', $item['quem']);
+            $this->assertStringNotContainsStringIgnoringCase('undefined', $item['quem']);
+            // O nome do cliente do Portal NUNCA pode vazar para a tela.
+            $this->assertStringNotContainsString('João Cliente', json_encode($item, JSON_UNESCAPED_UNICODE));
+        }
+        // Kit sem rascunho do Publicador: sem título, nunca "undefined".
+        $this->assertNull($itens[4]['titulo']);
+        $this->assertSame('1 imagem gerada', $itens[4]['detalhe']);
+    }
+
+    public function test_atividade_da_equipe_respeita_o_limite_e_ignora_kit_que_nao_gerou(): void
+    {
+        $c = $this->companyComToken();
+        $dev = User::factory()->create(['name' => 'Dev ECF']);
+
+        for ($i = 1; $i <= 6; $i++) {
+            $this->publicacaoConcluida($this->rascunhoDaConta($c, 'P'.$i), ['equipe' => true, 'id' => $dev->id], now()->subMinutes($i)->toDateTimeString(), 'MLBL'.$i);
+        }
+        for ($i = 1; $i <= 6; $i++) {
+            $this->kitDeCriativo($c, $dev->id, 2, now()->subHours($i)->toDateTimeString());
+        }
+        // Kit que ainda NÃO gerou imagem: "gerou 0 imagens" não é evento.
+        $this->kitDeCriativo($c, $dev->id, 0, now()->toDateTimeString());
+
+        $atividade = $this->pagina(self::BASE.'/empresas/company-'.$c->id.'/visao-geral')['props']['atividadeEquipe'];
+
+        $this->assertCount(8, $atividade['itens'], 'o limite padrão é 8');
+        // As 6 publicações (minutos) vêm antes dos kits (horas) — ordem desc.
+        $this->assertSame(array_merge(array_fill(0, 6, 'publicou'), ['criativos', 'criativos']), array_column($atividade['itens'], 'tipo'));
+    }
+
+    public function test_atividade_da_equipe_nao_cria_n_mais_1(): void
+    {
+        $c = $this->companyComToken();
+        $dev = User::factory()->create(['name' => 'Dev ECF']);
+        $outro = User::factory()->create(['name' => 'Outro Dev']);
+
+        // 12 de cada fonte, com autores diferentes alternados: se os nomes
+        // fossem resolvidos por linha (`User::find`), a contagem explodiria.
+        for ($i = 1; $i <= 12; $i++) {
+            $r = $this->rascunhoDaConta($c, 'Q'.$i);
+            $this->publicacaoConcluida($r, ['equipe' => true, 'id' => $i % 2 === 0 ? $dev->id : $outro->id], now()->subMinutes($i)->toDateTimeString(), 'MLBQ'.$i);
+            $this->kitDeCriativo($c, $i % 2 === 0 ? $dev->id : $outro->id, 2, now()->subHours($i)->toDateTimeString(), $r);
+            PubValidacao::create([
+                'rascunho_id' => $r->id, 'revisao' => 1, 'camada' => 'L3', 'resultado' => 'AVISOS',
+                'created_at' => now()->subDays($i), 'updated_at' => now()->subDays($i),
+            ]);
+        }
+
+        $alvo = app(ProgramasPublicadorService::class)->resolver('company-'.$c->id);
+        $painel = app(PainelVisaoGeralService::class);
+
+        // Aquece (schema/config fora do laço) e mede SÓ o método novo.
+        $painel->atividadeDaEquipe($alvo);
+
+        DB::enableQueryLog();
+        $atividade = $painel->atividadeDaEquipe($alvo);
+        $consultas = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertCount(8, $atividade['itens']);
+        // Teto duro: 3 fontes + 1 `whereIn` de nomes = 4. Nada por linha.
+        $this->assertLessThanOrEqual(4, $consultas, "atividadeDaEquipe fez {$consultas} consultas — é N+1");
     }
 }

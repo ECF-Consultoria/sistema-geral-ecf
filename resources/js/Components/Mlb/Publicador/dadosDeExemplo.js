@@ -80,28 +80,15 @@ export const ALERTAS_ML_EXEMPLO = [
     },
 ];
 
-/**
- * Os eventos do feed do mockup que não existem como registro: geração de
- * imagens por IA com autor e horário, e aprovação de revisão de qualidade.
- * As primeiras linhas do feed são REAIS (saem de `ultimasPublicacoes`).
- * SAI quando houver log de geração de criativo e etapa de revisão.
- */
-export const ATIVIDADE_EXEMPLO = [
-    {
-        chave: 'imagens_ia',
-        quem: 'Vitória Duarte',
-        quando: 'há 42m',
-        texto: 'Gerou 5 imagens IA para Teclado Mecânico Pro.',
-        cor: 'bg-sky-400',
-    },
-    {
-        chave: 'revisao_qualidade',
-        quem: 'Revisão de Qualidade',
-        quando: 'há 1h',
-        texto: 'Fase 1 do Headset 7.1 aprovada para disparo.',
-        cor: 'bg-emerald-400',
-    },
-];
+// ⚠️ `ATIVIDADE_EXEMPLO` SAIU daqui em 10/10/2026 (quick 261010-hdr).
+//
+// Eram os dois eventos do feed do mockup — "Gerou 5 imagens IA" e "revisão
+// aprovada" — e eles NÃO deviam ter nascido de exemplo: a geração de criativo
+// já estava gravada em `ml_anuncio_criativo_kits` (`user_id`, `created_at`) e
+// a conferência em `pub_validacoes` desde a Fase 161/165. O usuário apontou
+// isso vendo a tela em produção. Hoje a "Atividade da equipe" é a linha do
+// tempo real das três fontes (`PainelVisaoGeralService::atividadeDaEquipe`),
+// e este arquivo não tem mais nada de atividade. NÃO recriar a constante.
 
 /**
  * A "Alavanca Recomendada" do mockup. O NÚMERO de anúncios dormentes é real

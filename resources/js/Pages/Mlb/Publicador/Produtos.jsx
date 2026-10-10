@@ -11,7 +11,7 @@ import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizar
 import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar';
 import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
-import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
+import DialogoVincularKit, { faseDoVinculo } from '@/Components/Mlb/Publicador/DialogoVincularKit';
 import LinhaDeProduto from '@/Components/Mlb/Publicador/LinhaDeProduto';
 import PainelDoProdutoLateral from '@/Components/Mlb/Publicador/PainelDoProdutoLateral';
 // 10/10/2026 — publicação em lote: os botões da seleção e o aviso da fila viva da conta.
@@ -761,9 +761,13 @@ export default function Produtos({
 
     // O texto da faixa de sugestões: um produto diz qual é, vários só contam.
     const primeiraSugestao = comSugestao.length > 0 ? sugestaoSegura(comSugestao[0]) : null;
-    const faseDaPrimeira = primeiraSugestao === null ? 2 : proximaFaseDaFamilia(lista, primeiraSugestao.base_id);
+    // A fase vem da QUANTIDADE da sugestão (Kit N é a Fase N); sem o N a faixa não
+    // afirma número nenhum — nem "Fase 1", nem o 2 fixo de antes.
+    const faseDaPrimeira = primeiraSugestao === null ? null : faseDoVinculo(primeiraSugestao.quantidade);
     const textoDaFaixa = comSugestao.length === 1 && primeiraSugestao !== null
-        ? `${textoSeguro(comSugestao[0].sku, 'Um produto')} parece kit de ${textoSeguro(primeiraSugestao.base_sku, 'outro produto')}. Confirme o vínculo para ele virar Fase ${faseDaPrimeira}.`
+        ? (faseDaPrimeira !== null
+            ? `${textoSeguro(comSugestao[0].sku, 'Um produto')} parece kit de ${textoSeguro(primeiraSugestao.base_sku, 'outro produto')}. Confirme o vínculo para ele virar Fase ${faseDaPrimeira}.`
+            : `${textoSeguro(comSugestao[0].sku, 'Um produto')} parece kit de ${textoSeguro(primeiraSugestao.base_sku, 'outro produto')}. Confirme o vínculo para ele virar uma fase desse produto base.`)
         : `${comSugestao.length} produtos parecem kits de outros. Confirme os vínculos para eles virarem fases.`;
 
     return (
@@ -1208,7 +1212,7 @@ export default function Produtos({
             <PainelDoProdutoLateral
                 produto={produtoDoPainel}
                 sugestao={sugestaoSegura(produtoDoPainel)}
-                proximaFase={proximaFaseDaFamilia(lista, sugestaoSegura(produtoDoPainel)?.base_id ?? null)}
+                proximaFase={faseDoVinculo(sugestaoSegura(produtoDoPainel)?.quantidade ?? null)}
                 acao={acaoPrincipal(produtoDoPainel?.status)}
                 onFechar={() => setDetalhe(null)}
                 onAbrirProduto={() => { if (produtoDoPainel) abrir(produtoDoPainel); }}
@@ -1234,7 +1238,6 @@ export default function Produtos({
                 conta={empresa.chave}
                 produto={vinculo?.produto ?? null}
                 sugestao={vinculo?.sugestao ?? null}
-                proximaFase={proximaFaseDaFamilia(lista, vinculo?.sugestao?.base_id ?? null)}
                 modo={vinculo?.modo ?? 'vincular'}
                 onConcluido={aoConcluirVinculo}
             />

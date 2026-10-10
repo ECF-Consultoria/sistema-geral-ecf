@@ -61,7 +61,8 @@ const TITULO_SECAO = 'text-[11px] font-bold uppercase tracking-[0.05em] text-whi
  * @param {Object}   props
  * @param {?Object}  props.produto     a linha da lista; `null` não renderiza nada
  * @param {?Object}  props.sugestao    `sugestao_kit` já validada pela página
- * @param {?number}  props.proximaFase o que `proximaFaseDaFamilia()` calculou
+ * @param {?number}  props.proximaFase a fase derivada da quantidade da sugestão
+ *   (`faseDoVinculo`), ou `null` quando a sugestão não traz o N
  * @param {?Object}  props.acao        `acaoPrincipal(status)`
  * @param {Function} props.onFechar
  * @param {Function} props.onAbrirProduto
@@ -105,7 +106,8 @@ export default function PainelDoProdutoLateral({
     const p = objetoSeguro(produto);
     const sug = objetoSeguro(sugestao);
     const temSugestao = typeof sug.base_id === 'number' && Number.isFinite(sug.base_id);
-    const fase = typeof proximaFase === 'number' && Number.isFinite(proximaFase) ? proximaFase : 2;
+    // Sem fase não existe número honesto: o rótulo sai sem número (nunca o 2 fixo de antes).
+    const fase = typeof proximaFase === 'number' && Number.isFinite(proximaFase) ? proximaFase : null;
 
     const nome = textoSeguro(p.nome, '—');
     const sku = textoSeguro(p.sku, '—');
@@ -179,11 +181,11 @@ export default function PainelDoProdutoLateral({
                                 {textoSeguro(sug.base_nome, '') !== '' && (
                                     <span className="text-white/55">{` (${textoSeguro(sug.base_nome, '')})`}</span>
                                 )}
-                                . Confirme o vínculo para ele virar Fase {fase}.
+                                {fase !== null ? `. Confirme o vínculo para ele virar Fase ${fase}.` : '. Confirme o vínculo para ele virar uma fase deste produto base.'}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 <button type="button" onClick={() => onVincular?.()} className={cn(BOTAO, PRIMARIO)}>
-                                    {`Vincular como Fase ${fase}`}
+                                    {fase !== null ? `Vincular como Fase ${fase}` : 'Vincular como kit'}
                                 </button>
                                 <button type="button" onClick={() => onRecusar?.()} className={cn(BOTAO, SECUNDARIO)}>
                                     Não é kit

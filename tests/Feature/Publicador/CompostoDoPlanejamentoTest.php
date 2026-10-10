@@ -9,6 +9,7 @@ use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PlanejamentoDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\VinculoDeKitService;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +59,13 @@ class CompostoDoPlanejamentoTest extends TestCase
         }
 
         return $p->fresh();
+    }
+
+    /** Um produto do Publicador sem oferta nenhuma: candidato legítimo a ser vinculado como kit. */
+    private function avulso(string $sku = 'CAD-AVULSO'): PubProduto
+    {
+        return PubProduto::create(['company_id' => $this->empresaP->id, 'mlb_empresa_id' => $this->mlbP->id, 'oferta_id' => null,
+            'sku' => $sku, 'nome' => $sku, 'origem' => PubProduto::ORIGEM_PUBLICADOR])->fresh();
     }
 
     /** @return array<int, array> a lista de Produtos indexada pelo id */
@@ -156,6 +164,74 @@ class CompostoDoPlanejamentoTest extends TestCase
                 ->assertStatus(422)->assertJsonPath('regra', 'KIT-06');
         }
         $this->assertSame(0, PubProduto::whereNotNull('produto_base_id')->count(), 'nenhum kit nasce de um composto');
+    }
+
+    // ═══ KIT-06 no VÍNCULO: composto não é base de fase nenhuma ══════════════
+
+    public function test_vincular_a_um_composto_como_base_e_recusado_com_kit06_nos_tres_tipos(): void
+    {
+        foreach (['combo', 'kit', 'combit'] as $tipo) {
+            $composto = $this->composto($tipo, 'CAD-'.mb_strtoupper($tipo), PubRascunho::PUBLISHED);
+            $avulso = $this->avulso('CAD-AV-'.mb_strtoupper($tipo));
+
+            try {
+                app(VinculoDeKitService::class)->vincular($avulso, $composto, 2);
+                $this->fail('devia recusar com KIT-06');
+            } catch (RegraViolada $e) {
+                $this->assertSame('KIT-06', $e->regra, "tipo {$tipo}: é a MESMA regra do CriarFaseService, não um código novo");
+                // A mensagem vem de `motivoKit06`, não é texto novo desta classe.
+                $this->assertSame(PlanejamentoDaFaseService::motivoKit06($tipo), $e->getMessage());
+            }
+        }
+    }
+
+    public function test_vinculo_recusado_no_composto_nao_grava_nada(): void
+    {
+        $combo = $this->composto('combo', 'CAD-PT-CB2', PubRascunho::PUBLISHED);
+        $avulso = $this->avulso();
+
+        try {
+            app(VinculoDeKitService::class)->vincular($avulso, $combo, 2);
+            $this->fail('devia recusar com KIT-06');
+        } catch (RegraViolada $e) {
+            $this->assertSame('KIT-06', $e->regra);
+        }
+
+        $this->assertNull($avulso->fresh()->produto_base_id);
+        $this->assertSame(1, (int) $avulso->fresh()->quantidade_kit);
+        $this->assertSame(0, PubProduto::whereNotNull('produto_base_id')->count(), 'a recusa roda ANTES de qualquer escrita');
+    }
+
+    public function test_endpoint_do_vinculo_recusa_o_composto_como_base_com_422_e_a_regra(): void
+    {
+        $combo = $this->composto('combo', 'CAD-PT-CB2', PubRascunho::PUBLISHED);
+        $avulso = $this->avulso();
+
+        $this->actingAs($this->equipeP)
+            ->putJson("/mlb/anuncios/publicador/empresas/empresa-{$this->mlbP->id}/produtos/{$avulso->id}/vinculo",
+                ['base_id' => $combo->id, 'quantidade' => 2])
+            ->assertStatus(422)->assertJsonPath('regra', 'KIT-06');
+
+        $this->assertNull($avulso->fresh()->produto_base_id);
+        $this->assertSame(0, PubProduto::whereNotNull('produto_base_id')->count(), 'esconder o botão não bastava: `base_id` vem do corpo (D-13)');
+    }
+
+    /**
+     * O outro lado da regra, que NÃO existe e não pode ser inventado: o composto do
+     * Planejamento segue podendo ser o produto VINCULADO (o kit). KIT-06 afirma só que ele
+     * não é a BASE de uma família — é exatamente a pergunta do outro dev na coordenação.
+     */
+    public function test_composto_do_planejamento_continua_aceito_como_o_kit_vinculado(): void
+    {
+        $grupo = $this->grupoComRascunho();
+        $combo = $this->composto('combo', 'CAD-PT-CB2', PubRascunho::PUBLISHED);
+
+        app(VinculoDeKitService::class)->vincular($combo, $grupo, 2);
+
+        $this->assertSame($grupo->id, (int) $combo->fresh()->produto_base_id);
+        $this->assertSame(2, (int) $combo->fresh()->quantidade_kit);
+        $this->assertSame(2, (int) $combo->fresh()->fase);
+        $this->assertNull(PlanejamentoDaFaseService::tipoComposto($combo->fresh()), 'virou fase da família: deixa de ser lido como composto');
     }
 
     public function test_tela_do_produto_desabilita_criar_fase_no_composto_com_o_motivo(): void

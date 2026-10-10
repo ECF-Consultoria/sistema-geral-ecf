@@ -204,7 +204,7 @@ class CriarFaseService
                     $dados['seller_skus'] = array_replace((array) ($dados['seller_skus'] ?? []), $doPlanejamento);
                 }
 
-                $kit = $this->criarProdutoDoKit($base, $dados, $quantidade, $familia->pluck('fase')->all());
+                $kit = $this->criarProdutoDoKit($base, $dados, $quantidade);
                 $rk = $this->criarRascunhoDoKit($rb, $kit, $dados);
 
                 $mapaDeAlvos = $this->copiarAlvos($rb, $rk, $dados);
@@ -281,8 +281,7 @@ class CriarFaseService
         }
     }
 
-    /** @param  list<int>  $fasesDaFamilia */
-    private function criarProdutoDoKit(PubProduto $base, array $dados, int $quantidade, array $fasesDaFamilia): PubProduto
+    private function criarProdutoDoKit(PubProduto $base, array $dados, int $quantidade): PubProduto
     {
         $sku = trim((string) ($dados['sku'] ?? ''));
 
@@ -297,7 +296,8 @@ class CriarFaseService
             'origem' => PubProduto::ORIGEM_PUBLICADOR,
             'produto_base_id' => $base->id,
             'quantidade_kit' => $quantidade,
-            'fase' => PubProduto::proximaFase($fasesDaFamilia),
+            // Kit N é a Fase N: o degrau vem da quantidade, não da ordem de criação.
+            'fase' => PubProduto::faseDaQuantidade($quantidade),
             // O estoque do kit é derivado do base (floor ÷ N), nunca digitado.
             'estoque_calculado' => true,
         ]);
