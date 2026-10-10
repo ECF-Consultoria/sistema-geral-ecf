@@ -890,3 +890,56 @@ se deduz do código:
   sugestão; composto nunca é base na heurística. `estruturaProduto` entrou no eager load (era N+1 por grupo no
   `skuExibido()`).
 - **Deploy:** sem migration; `queue:restart` (o Job de preencher passa a receber kits); `npm run build`.
+
+## 19. Promoção automática pós-publicação, preço sem frete e título igual (10/10/2026)
+
+Decisões do usuário de 09/10. O que não se deduz do código:
+
+- **A D-04 da 166 (prévia assinada + confirmação humana) foi superada SÓ aqui.** Publicou → cada anúncio CRIADO ganha
+  sozinho o PRICE_DISCOUNT de 14 dias (o máximo do ML, contando as duas pontas; doc relida em 09/10). A escrita continua
+  pelo `EscritorAlavancas` (trava das Alavancas, `/users/me`, linha do histórico antes do HTTP, 5xx/rede = INCERTO e
+  nunca reenvia); o serviço mora em `Services/Publicador/Alavancas/` de propósito, para o `UnicoCaminhoDeEscritaTest`
+  varrê-lo (o Job e o comando entraram na lista do teste).
+- **O preço:** `anunciado` = publicar, `minimo` = promoção (ADR PORTAL-02). Publicado pelo anunciado → o mínimo
+  (207,19 → 172,66, −16,67%); preço digitado → o MESMO percentual (mínimo ÷ anunciado) sobre ele, nunca abaixo do mínimo;
+  desconto fora de 5% ≤ d < 80% ou Portal sem frete → sem promoção (o mínimo sem frete está subestimado). A conta é
+  `PrecoDaPromocao` (PHP) e `promocaoAutomatica.js` (tela); os dois testes usam os MESMOS números — mudou um, mude o
+  outro. Com acréscimo 20% o percentual é sempre ~16,67% (1 − 1/1,2): o frete não muda o percentual, só o mínimo.
+- **Tabela `pub_promocoes_automaticas`, uma linha por CICLO** (só CREATE; docblock da `2026_10_10_090000`). Unique
+  (ml_item_id, ciclo) é a idempotência; `inicio`/`fim` são DATE sem cast (texto `Y-m-d`, como o `prazo` de `pub_tarefas`).
+  Status: agendada → enviando → ativa | recusada (tarefa orienta) | cancelada (já tinha desconto/anúncio encerrado);
+  ativa → encerrada (renovou, ou preço mudou/anúncio fechou).
+- **Job `CriarPromocaoAutomaticaJob`**: fila `high`, `tries=1`, 3 min depois de publicar. Anúncio ainda não `active` →
+  Job NOVO com espera crescente (`publicador.promocao_automatica.esperas_min`, até `tentativas_max` = 8, ~8 h), nunca
+  `release()`. Fila `sync` não despacha (rodaria dentro da publicação): a varredura do comando pega. Trava por anúncio
+  (`publicador:promocao-automatica:{MLB}`); o Job do ciclo seguinte sai DEPOIS de soltar a trava (no `sync` ele roda na
+  hora e precisaria dela).
+- **Nunca em anúncio de outra conta:** a escrita exige a âncora com token = `conta_chave` e o vendedor = o do clique em
+  Publicar (`pub_publicacoes.ator.conta`); sem isso recusa ANTES de qualquer leitura. O multiget das Alavancas já descarta
+  anúncio de outro vendedor. Prova de mutação: tirar a checagem derruba 2 testes.
+- **Ator:** quem publicou (da equipe e ativo); senão `configuracoes.publicador_usuario_sistema` (id). Nenhum → recusada.
+- **Tarefa:** conta fora das Alavancas = ciclo nasce `recusada`, nada vai ao ML, e a fila mostra "Crie a promoção de
+  R$ X para R$ Y (−Z%) até dd/mm no Seller Center." (a frase sai do ciclo, `orientacao()`, não é gravada na tarefa). Recusa
+  do 1º ciclo põe a Central de Promoções pendente, mas nunca desfaz o que uma PESSOA marcou; recusa de RENOVAÇÃO reabre a
+  tarefa concluída com prazo novo e toca o sino ("Promoção não renovada"). A baixa automática não marca "feito" enquanto
+  OUTRO anúncio da tarefa tem o último ciclo recusado (mutação: derruba o teste da ordem).
+- **Renovação** `publicador:promocoes-renovar`, 00:05 de São Paulo: ativo cujo `fim < hoje` + anúncio ativo + mesmo preço
+  (`price` OU `original_price` = publicado) → ciclo seguinte de hoje a hoje+13; preço mudou / anúncio fechou / sumiu da
+  conta → `encerrada` e nada mais. O preço do ciclo novo é o mesmo, a não ser que o MÍNIMO do Portal de agora tenha subido
+  acima dele (aí refaz a conta; sem desconto possível, não renova e a tarefa avisa). A mesma rodada reenvia o Job agendado
+  perdido (> 15 min) e fecha `enviando` preso há mais de 1 h como recusa ("confira no Seller Center").
+- **[ASSUMED]** os textos de recusa do ML para reputação/vendas/campanha (`motivoDoMl` só acrescenta uma explicação em
+  pt-BR à mensagem do `MapeadorErroAlavanca`): a #459 não tinha anúncio ativo para provar. Primeira prova real: publicar na
+  #459 com um anúncio NOVO e ativo e conferir o ciclo e a linha em `pub_alavanca_escritas`.
+- **V-SAL-08** (preço do Portal calculado sem frete bloqueia; o digitado passa) e **V-TIT-04** (título igual no Clássico e
+  no Premium bloqueia, critério `RegrasDoTitulo::mesmo`: caixa, acento e plural simples) — os ids que o pedido sugeria
+  (V-SAL-03, V-TIT-03) já eram da spec `08` (faixa de preço; título curto, erro 3715). O V-TIT-04 substitui o D1 de títulos
+  (`ChaveCanonica` não pegava plural). A marca do V-SAL-08 só existe no snapshot montado por `comEfetivosDe` (conferência,
+  publicação e estado do editor); `comEfetivos` com 3 argumentos devolve o de antes.
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_10_090000`): up → rollback → up, DONE ×3, `Ran` no lote 142;
+  nomes `pubpromo_*` no `SHOW CREATE TABLE`, FKs `ON DELETE SET NULL`; unique repetido = 1062; FK inexistente (publicação e
+  escrita) = 1452; `fim` volta `'2026-10-22'` (texto) e o escopo do último ciclo roda no MariaDB. DML em transação desfeita:
+  0 linhas. A tabela fica criada no local.
+- **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (Job novo na fila `high`, e o gatilho roda dentro do
+  `PublicarRascunhoJob`); `npm run build`; o cron do `schedule:run` já existe (só confirmar que roda); opcional:
+  `configuracoes.publicador_usuario_sistema` = id de um usuário ativo (sem ele, só quem publicou assina).
