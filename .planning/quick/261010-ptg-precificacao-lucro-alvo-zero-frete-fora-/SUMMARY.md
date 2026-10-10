@@ -225,3 +225,27 @@ Nada aqui foi visto renderizado — a conferência é sua:
    preço sobe, os avisos devem mudar e a linha do desconto automático deve passar a mostrar o preço e
    o percentual.
 7. Decidir a pergunta em aberto do item 8.1.
+
+## 10. Como os gates foram medidos (armadilha)
+
+Com tudo commitado, `git diff --stat -- <dir>` sai vazio **por construção** — ele compara a árvore de
+trabalho, não o que mudou. O gate honesto é contra o commit de partida (`f2a6cf42`, o último antes
+desta tarefa):
+
+```
+$ git diff --stat f2a6cf42..HEAD -- database app/Models app/Services/Portal/Estrutura app/Support/Publicador
+(vazio — 0 linhas)
+
+$ git diff --name-only f2a6cf42..HEAD
+.planning/quick/261010-ptg-.../PLAN.md
+.planning/quick/261010-ptg-.../SUMMARY.md
+app/Services/Publicador/DadosEfetivosService.php
+app/Services/Publicador/EditorRascunhoService.php
+resources/js/Components/Publicador/Mesa/EtapaCondicoes.jsx
+tests/Feature/Publicador/Concerns/CenarioCadeira.php
+tests/Feature/Publicador/RecebimentoAbaixoDoCustoTest.php
+tests/js/publicador-quanto-recebo.test.js
+```
+
+Oito arquivos, e nenhum deles em `database/`, `app/Models/`, `app/Services/Portal/Estrutura/` ou
+`app/Support/Publicador/`. É esta a prova de que o preço, os `PADROES` e a fórmula não se moveram.
