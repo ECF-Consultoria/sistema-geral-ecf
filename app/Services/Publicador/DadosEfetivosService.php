@@ -29,12 +29,26 @@ class DadosEfetivosService
      * — SKU normalizado de cada cor → [listing_type_id => preço anunciado da SUA oferta]. Não agrupado
      * não traz a chave (quem consome usa `?? []`).
      *
+     * Planejamento × Fase N (09/10/2026): o kit da Fase N (sem oferta própria) cujo base é agrupado
+     * ganha `precos_por_variante` com o preço da Precificação da oferta Combo N de cada COR — a chave é
+     * o SKU que a variante tem hoje (`-CB{N}` da oferta, ou o `-KIT{N}` de antes), casado pela cor
+     * (`PlanejamentoDaFaseService::combosDoKit`). Sem Combo no Portal, nada muda: continua vazio. O
+     * preço nunca é gravado no rascunho (é lido na hora, como o resto).
+     *
      * @return array{titulos: array<string, ?string>, precos: array<string, ?float>, mlbs: list<string>, precos_por_variante?: array<string, array<string, ?float>>}
      */
     public function daProduto(PubProduto $produto): array
     {
         if ($produto->oferta_id === null) {
-            return ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []];
+            $vazio = ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []];
+            if ($produto->ehKit()) {
+                $doKit = $this->precosDoKit($produto);
+                if ($doKit !== []) {
+                    $vazio['precos_por_variante'] = $doKit;
+                }
+            }
+
+            return $vazio;
         }
 
         $efetivos = $this->daOferta($produto->oferta);
@@ -82,8 +96,40 @@ class DadosEfetivosService
         return $mapa;
     }
 
-    /** @return array<string, ?float> listing_type_id → preço anunciado */
-    private function precosAnunciados(?array $preco): array
+    /**
+     * O preço de cada cor do kit da Fase N, pela Precificação da oferta Combo N daquela cor, numa só
+     * chamada. A cor sem SKU na variante fica de fora (o `comEfetivos` casa pelo SKU).
+     *
+     * @return array<string, array<string, ?float>> SKU normalizado da variante → listing_type_id → preço
+     */
+    private function precosDoKit(PubProduto $kit): array
+    {
+        $combos = app(PlanejamentoDaFaseService::class)->combosDoKit($kit);
+        if ($combos === [] || $kit->company === null) {
+            return [];
+        }
+
+        $ids = array_values(array_unique(array_map(fn (array $c) => (int) $c['oferta_id'], $combos)));
+        $porOferta = $this->precificacao->pagina($kit->company, $ids)['por_oferta'] ?? [];
+
+        $mapa = [];
+        foreach ($combos as $combo) {
+            $sku = EstruturaOferta::normalizarSku($combo['sku_da_variante']);
+            if ($sku !== null) {
+                $mapa[$sku] ??= self::precosAnunciados($porOferta[$combo['oferta_id']] ?? null);
+            }
+        }
+
+        return $mapa;
+    }
+
+    /**
+     * `listing_type_id → preço anunciado` de uma linha da Precificação (`por_oferta[id]`); sem linha,
+     * os dois tipos nulos. Estático para o `PlanejamentoDaFaseService` usar a MESMA leitura na prévia.
+     *
+     * @return array<string, ?float> listing_type_id → preço anunciado
+     */
+    public static function precosAnunciados(?array $preco): array
     {
         $precos = [];
         foreach (EstruturaPublicacao::LISTING_TYPES as $tipo => $listingType) {
