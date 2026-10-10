@@ -943,3 +943,57 @@ Decisões do usuário de 09/10. O que não se deduz do código:
 - **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (Job novo na fila `high`, e o gatilho roda dentro do
   `PublicarRascunhoJob`); `npm run build`; o cron do `schedule:run` já existe (só confirmar que roda); opcional:
   `configuracoes.publicador_usuario_sistema` = id de um usuário ativo (sem ele, só quem publicou assina).
+
+## 20. Publicação em lote — visão rápida, conferir selecionados e fila com intervalo (10/10/2026)
+
+Pedido do usuário (09/10): publicar EM MASSA "de primeira" o que o cliente preencheu no Portal, com intervalo entre
+produtos para não arriscar restrição do ML. Decisão: 1 produto (Clássico + Premium, todas as cores) a cada 10 min,
+ajustável; pausar/retomar/cancelar. O que não se deduz do código:
+
+- **Visão rápida com número FIXO de consultas** (`Fila/ResumoRapidoService`, ~30 para 3 ou 12 produtos — o
+  `VisaoRapidaDoLoteTest` mede, com kit da Fase N no meio). O rascunho é remontado em memória (só alvos, variantes,
+  SKU, preço, estoque, valores de eixo) a partir do eager load; a última conferência vem SEM `respostas_ml` (a coluna
+  pesada que a lista do Publicador carrega inteira). Os efetivos saem de `Fila/EfetivosEmLote`, o `daProduto()` em lote
+  (uma `pagina()` por empresa); o `VisaoRapidaDoLoteTest::test_efetivos_em_lote_iguais_*` compara `titulos/precos/mlbs/precos_por_variante` com o `DadosEfetivosService` produto a produto (simples, agrupado,
+  kit, sem oferta). Mudou a regra de lá → este teste quebra; as chaves novas da promoção (§19) NÃO estão espelhadas.
+- **Margem estimada** = preço − custo − frete − (comissão% + imposto%) × preço, por cor e por tipo, com a comissão e o
+  imposto da linha da Precificação (exceção do produto ou padrão da empresa). Sem custo não há margem; sem frete a
+  margem sai marcada `sem_frete` (frete esquecido não some calado). Custo/frete da cor = a oferta casada pelo SKU da
+  variante (como o preço); sem casamento, a oferta do produto.
+- **Fila: o BANCO garante 1 viva por conta e 1 produto numa fila** — colunas-sombra `conta_ativa`/`produto_ativo` com
+  unique (NULL repete nos dois bancos; nem MariaDB 10.4 nem SQLite têm índice parcial em comum). Toda transição que
+  tira o item/fila de "vivo" zera a sombra; esquecer isso trava o produto para sempre. `janela_*` é `time` gravado
+  `HH:MM:00` (o MariaDB devolve com segundos; o model corta em `HH:MM`).
+- **Intervalo conta do INÍCIO** do produto anterior (`proximo_em` = início + intervalo) e nunca começa outro com um
+  `publicando` na mesma fila. Teto GLOBAL de 2 inícios por minuto (contador em cache por minuto, todas as contas).
+- **Erro de CONTA pausa sem enviar nada** (sem token, fora de `contas_liberadas`, token de outro vendedor que o da
+  conferência); **erro do ITEM vira `precisa_revisar` e a fila segue NA MESMA passada** (revisão ou plano diferentes do
+  agendado, conferência vencida, avisos sem "Estou ciente", conferência sem `sellerId`). Editor do produto aberto = o
+  item espera a próxima passada e a fila tenta o seguinte. O `iniciar()` confere tudo de novo (defesa dupla).
+- **`digital` no agendamento** (`resumo.digital`: título efetivo de cada tipo + preço efetivo de cada cor): o preço da
+  Precificação mudou no Portal depois da conferência → `precisa_revisar` ANTES de publicar. Sem isso o `prepararItens`
+  pegaria o plano diferente e a publicação nasceria e morreria FAILED (sem POST, mas suja o histórico).
+- **Fechar o item `publicando` roda em TODA fila** (viva, pausada ou cancelada): a publicação termina sozinha. Passou de
+  40 min ainda RUNNING → a fila PAUSA com aviso, o item fica `publicando` até a publicação de fato terminar.
+- **Quem agendou é o ATOR** (`AtorDoPortal::daEquipe`, vai para `pub_publicacoes.ator` e para a tarefa das alavancas).
+  `User` usa SoftDeletes: apagado não zera `criada_por`; `FilaPublicacaoService::autorValido` confere existência e
+  `active`, e quem retoma assume.
+- **Não mexer no produto enquanto agendado:** `NaFilaDePublicacao` (irmão do `EditorEmUso`) faz o preparo pela IA
+  adiar (o preparo inteiro e a escrita de cada etapa) e o Sincronizar tirar o produto do `para_preencher`. Se mesmo
+  assim algo escrever (Job que já tinha passado da checagem), o item vira `precisa_revisar` — nunca publica diferente.
+- **"Conferir selecionados" ESCREVE** quando a faixa de preço exige frete grátis (a regra do editor, no servidor:
+  `envio.frete_gratis = true`, revisão sobe). Por isso produto na fila não confere de novo. A marca "conferindo…" é
+  cache (`publicador:lote:conferindo:{produto}`), apagada no `finally` e no `failed()` do Job.
+- **Imagens por IA automáticas: pronto e DESLIGADO** (`publicador.criativos_auto.ativo=false`). Condições e o que o dono
+  do Creative Engine precisa decidir em `.planning/coordenacao/261010-criativos-automaticos.md`; o elo entra na cadeia
+  do preparo SÓ com a chave ligada (a cadeia de 3 Jobs do `PreparoIaAoSalvarNoPortalTest` continua a mesma).
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_10_100000`): up → rollback → up, DONE ×3, lote 141; nomes
+  `pubfila_*`/`pubfilai_*` no `SHOW CREATE TABLE`; 2ª fila viva na conta e mesmo produto vivo = 1062; terminadas (NULL)
+  repetem; FK inexistente = 1452; `resumo` não-JSON = 4025; `time` volta `'08:00:00'`; CASCADE da fila apaga os itens.
+  DML em transação desfeita (0 linhas). As tabelas ficam criadas no local.
+- **Deploy:** `migrate --force` (1 migration, 2 CREATE); `queue:restart` (`ConferirEmLoteJob` na `high`; os de imagem na
+  `creative`); `npm run build`; **o cron `* * * * * php artisan schedule:run` precisa rodar na VPS** — sem ele a fila
+  nunca anda (o `onOneServer` usa a trava do cache: Redis em produção). Antes de agendar de verdade, só a #459.
+- Testes que dependem de `Storage::fake` (`MlbPublicadorAcessoTest`, `CapaDoKitTest`) falharam UMA vez rodando ao lado de
+  outro phpunit e passaram sozinhos. JS: `estrutura-grade-glide` "Características secundárias nasce recolhido" é falha
+  antiga (o `bbb67657` abriu as secundárias e o teste não acompanhou), não desta entrega.
