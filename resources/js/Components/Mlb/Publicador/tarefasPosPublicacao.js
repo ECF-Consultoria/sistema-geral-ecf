@@ -66,6 +66,45 @@ export function fmtQuando(valor) {
     }).replace(',', '');
 }
 
+// ─── Promoção automática de cada anúncio (10/10/2026) ───
+// Espelha `PubPromocaoAutomatica::STATUS` (o teste de gate confere).
+export const ROTULO_PROMOCAO = {
+    agendada: 'Programada',
+    enviando: 'Criando agora',
+    ativa: 'Ativa',
+    recusada: 'Não criada',
+    encerrada: 'Encerrada',
+    cancelada: 'Cancelada',
+};
+
+const reais = (n) => (typeof n === 'number' && Number.isFinite(n) ? `R$ ${n.toFixed(2).replace('.', ',')}` : '—');
+
+/**
+ * A linha de um anúncio no bloco "Promoção automática": `{ rotulo, texto, orientacao }`, tudo texto
+ * pronto. Prop fora da forma vira texto de reserva, nunca "[object Object]".
+ */
+export function linhaDaPromocao(p) {
+    const x = comoObjeto(p);
+    const status = textoSeguro(x.status, '');
+    const valores = `${reais(x.preco_publicado)} → ${reais(x.preco_promocao)} (−${typeof x.percentual === 'number' ? x.percentual.toFixed(2).replace('.', ',') : '—'}%)`;
+    const motivo = textoSeguro(x.motivo, '');
+    const ciclo = numeroSeguro(x.ciclo) ?? 1;
+    const texto = {
+        ativa: `até ${fmtPrazo(x.fim)}: ${valores}${ciclo > 1 ? ' · renovada' : ''}`,
+        agendada: `${valores}${motivo ? ` · ${motivo}` : ''}`,
+        enviando: `${valores} · enviando ao Mercado Livre`,
+        recusada: motivo || 'O sistema não conseguiu criar.',
+        encerrada: motivo || `terminou em ${fmtPrazo(x.fim)}`,
+        cancelada: motivo || 'cancelada',
+    }[status] ?? motivo;
+
+    return {
+        rotulo: ROTULO_PROMOCAO[status] ?? textoSeguro(x.status),
+        texto,
+        orientacao: status === 'recusada' ? textoSeguro(x.orientacao, '') : '',
+    };
+}
+
 /** A query da fila sem o que é padrão (a URL fica limpa: `?escopo=minhas`, não `?escopo=minhas&status=abertas`). */
 export function queryDosFiltros({ escopo = 'todas', status = 'abertas', conta = null, pagina = 1 } = {}) {
     const q = {};

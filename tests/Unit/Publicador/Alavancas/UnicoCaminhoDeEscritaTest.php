@@ -92,6 +92,13 @@ class UnicoCaminhoDeEscritaTest extends TestCase
         if (is_file($job = app_path('Jobs/Publicador/ExecutarLoteAlavancaJob.php'))) {
             $arquivos[] = $job;
         }
+        // 10/10/2026: a promoção automática pós-publicação escreve SÓ pelo EscritorAlavancas (o serviço já
+        // mora na pasta varrida; o Job e o comando de renovação entram aqui).
+        foreach (['Jobs/Publicador/CriarPromocaoAutomaticaJob.php', 'Console/Commands/PublicadorPromocoesRenovar.php'] as $relativo) {
+            if (is_file($caminho = app_path($relativo))) {
+                $arquivos[] = $caminho;
+            }
+        }
 
         return $arquivos;
     }

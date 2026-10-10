@@ -13,6 +13,7 @@ use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
+use App\Services\Publicador\Alavancas\PromocaoAutomaticaService;
 use App\Services\Publicador\Tarefas\TarefasPosPublicacao;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\ContasLiberadas;
@@ -614,6 +615,14 @@ class PublicacaoService
             app(TarefasPosPublicacao::class)->abrir($p->fresh());
         } catch (\Throwable $e) {
             Log::error("[Publicador] publicação {$p->id} concluída, mas a tarefa pós-publicação não abriu: {$e->getMessage()}");
+        }
+
+        // 10/10/2026: cada anúncio criado ganha a promoção automática de 14 dias (depois da tarefa, que
+        // recebe a orientação quando a conta não escreve). Falhar aqui também nunca desfaz a publicação.
+        try {
+            app(PromocaoAutomaticaService::class)->agendar($p->fresh());
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas a promoção automática não foi agendada: {$e->getMessage()}");
         }
     }
 

@@ -149,6 +149,19 @@ return [
         'prazo_dias_uteis' => 1,
     ],
 
+    // ═══ Promoção automática pós-publicação (10/10/2026) ═══
+    // Cada anúncio criado ganha o desconto individual de 14 dias com o preço de promoção do Portal, e ele
+    // se renova sozinho (`publicador:promocoes-renovar`, 00:05). Só nas contas das Alavancas
+    // (`alavancas.contas_liberadas`); nas outras, a tarefa orienta a fazer à mão (learnings publicador-ml §19).
+    // Quem assina a escrita quando quem publicou não está ativo: `configuracoes.publicador_usuario_sistema`.
+    'promocao_automatica' => [
+        // Espera depois de publicar até a 1ª tentativa (o anúncio costuma nascer em revisão).
+        'atraso_min' => 3,
+        // Anúncio ainda não ativo: espera entre as tentativas, crescente; esgotadas, a tarefa orienta.
+        'esperas_min' => [5, 10, 20, 40, 60, 120, 240],
+        'tentativas_max' => 8,
+    ],
+
     // ═══ Publicação em lote — a fila com intervalo (10/10/2026) ═══
     // "Conferir selecionados" + "Agendar publicação" da conta; quem anda a fila é o `publicador:fila-publicacao`
     // (todo minuto, routes/console.php). Um produto (Clássico + Premium, todas as cores) por vez em cada fila,

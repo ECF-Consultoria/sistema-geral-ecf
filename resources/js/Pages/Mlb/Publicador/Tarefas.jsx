@@ -7,7 +7,7 @@ import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { AREA, CAMPO, LINK, SELECT } from '@/Components/Publicador/Mesa/comum';
 import {
     ESCOPOS, FILTROS_STATUS, ROTULO_ESTADO_ITEM, ROTULO_SELO, ROTULO_STATUS,
-    comoLista, comoObjeto, fmtPrazo, fmtQuando, numeroSeguro, queryDosFiltros, textoSeguro,
+    comoLista, comoObjeto, fmtPrazo, fmtQuando, linhaDaPromocao, numeroSeguro, queryDosFiltros, textoSeguro,
 } from '@/Components/Mlb/Publicador/tarefasPosPublicacao';
 
 // Fila "Publicados aguardando alavancas" (09/10/2026). Tela GLOBAL do Publicador:
@@ -194,6 +194,45 @@ function Observacao({ tarefaId, texto, onErro }) {
     );
 }
 
+const COR_PROMOCAO = {
+    ativa: 'text-emerald-300',
+    recusada: 'text-amber-300',
+    agendada: 'text-sky-200',
+    enviando: 'text-sky-200',
+};
+
+/**
+ * A promoção automática de cada anúncio (10/10/2026), embaixo do checklist — é o estado da Central de
+ * Promoções: ativa até quando, programada, ou não criada com o motivo e o que fazer à mão.
+ */
+function PromocoesAutomaticas({ promocoes }) {
+    const lista = comoLista(promocoes);
+    if (lista.length === 0) return null;
+
+    return (
+        <div className="mt-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3" data-promocoes-automaticas>
+            <p className="text-[11px] font-bold text-white/55">Central de Promoções · promoção automática de 14 dias</p>
+            <ul className="mt-1.5 space-y-1.5">
+                {lista.map((p) => {
+                    // Tudo derivado AQUI dentro (armadilha do Rollup deste projeto com variáveis de fora do .map()).
+                    const x = comoObjeto(p);
+                    const linha = linhaDaPromocao(x);
+
+                    return (
+                        <li key={`${textoSeguro(x.ml_item_id, '')}-${textoSeguro(x.ciclo, '')}`} className="text-[13px] font-normal text-white/70" data-promocao={textoSeguro(x.status, '')}>
+                            <span className="font-bold text-white/55">{textoSeguro(x.tipo, '')}</span>{' '}
+                            <span className="font-mono text-white/85">{textoSeguro(x.ml_item_id)}</span>{' '}
+                            <span className={cn('font-bold', COR_PROMOCAO[x.status] ?? 'text-white/55')}>{linha.rotulo}</span>{' '}
+                            {linha.texto}
+                            {linha.orientacao ? <span className="block text-[13px] font-normal text-amber-200/90">{linha.orientacao}</span> : null}
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+}
+
 /** Um produto publicado e o que falta fazer nele. */
 function CartaoTarefa({ tarefa, destacada, podeEscrever }) {
     const t = comoObjeto(tarefa);
@@ -304,6 +343,8 @@ function CartaoTarefa({ tarefa, destacada, podeEscrever }) {
                     );
                 })}
             </div>
+
+            <PromocoesAutomaticas promocoes={t.promocoes} />
 
             {itemAberto && aberta && (
                 <EditorDoItem key={itemAberto.chave} tarefaId={t.id} item={comoObjeto(itemAberto)} onFechar={() => setAberto(null)} onErro={setErro} />

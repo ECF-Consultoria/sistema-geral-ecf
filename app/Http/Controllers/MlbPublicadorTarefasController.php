@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PubTarefa;
 use App\Models\User;
+use App\Services\Publicador\Alavancas\PromocaoAutomaticaService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\Tarefas\TarefasPosPublicacao;
 use App\Support\Publicador\AlavancasLiberadas;
@@ -69,14 +70,17 @@ class MlbPublicadorTarefasController extends Controller
         $pagina = min(max(1, (int) $request->query('pagina', 1)), $ultima);
 
         // Abertas primeiro (o prazo mais curto em cima); depois as concluídas, a mais recente em cima.
-        $linhas = $consulta
+        $daPagina = $consulta
             ->with(['produto.oferta', 'produto.estruturaProduto', 'responsavel:id,name', 'publicadoPor:id,name',
                 'publicacao:id,ator', 'company:id,name', 'mlbEmpresa:id,nome'])
             ->orderByRaw("case when status in ('".PubTarefa::PENDENTE."', '".PubTarefa::EM_ANDAMENTO."') then 0 else 1 end")
             ->orderBy('prazo')->orderBy('publicado_em')->orderByDesc('id')
             ->forPage($pagina, self::POR_PAGINA)
-            ->get()
-            ->map(fn (PubTarefa $t) => $this->linha($t, $u, $hoje))
+            ->get();
+        // A promoção automática de cada anúncio (10/10/2026), numa consulta só para a página.
+        $promocoes = PromocaoAutomaticaService::dasTarefas($daPagina);
+        $linhas = $daPagina
+            ->map(fn (PubTarefa $t) => [...$this->linha($t, $u, $hoje), 'promocoes' => $promocoes[$t->id] ?? []])
             ->values();
 
         $responsavelGravado = $this->tarefas->responsavelPadraoGravado();

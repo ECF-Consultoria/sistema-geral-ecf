@@ -5,6 +5,7 @@ namespace App\Services\Publicador\Tarefas;
 use App\Models\Configuracao;
 use App\Models\PubAlavancaEscrita;
 use App\Models\PubProduto;
+use App\Models\PubPromocaoAutomatica;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
@@ -30,6 +31,8 @@ use Illuminate\Support\Facades\Notification;
  *    MLBs CRIADOS naquela publicação. Idempotente (unique `tipo` + `publicacao_id`). Republicar o mesmo
  *    rascunho com a tarefa ainda aberta junta os MLBs novos nela (Clássico e Premium juntos).
  *  - `baixaPorEscrita()` — escrita OK das Alavancas num MLB de tarefa aberta marca o item do checklist.
+ *  - `orientarPromocao()` — 10/10/2026: a promoção automática de um anúncio não saiu (ou não renovou);
+ *    a Central de Promoções volta a pendente e a fila mostra o que fazer à mão (renovação reabre).
  *  - as ações da fila (pegar, marcar, concluir, observação), todas sob trava da linha da tarefa.
  *
  * Nada aqui fala com o Mercado Livre. Conta não liberada para as Alavancas também ganha tarefa: a equipe
@@ -317,6 +320,13 @@ class TarefasPosPublicacao
                 if ($checklist[$chave]['estado'] === PubTarefa::ITEM_FEITO) {
                     return $travada;
                 }
+                // 10/10/2026: outro anúncio do produto ficou sem a promoção automática (o sistema não
+                // conseguiu e a fila orienta fazer à mão): o item continua pendente até alguém resolver.
+                if ($chave === 'central_promocao' && self::outroAnuncioSemPromocao($travada, (string) $linha->item_id)) {
+                    Log::info("[Publicador] tarefa pós-publicação {$travada->id}: escrita {$linha->id} em {$linha->item_id} OK, mas outro anúncio ainda espera a promoção à mão; Central de Promoções segue pendente.");
+
+                    return $travada;
+                }
                 $checklist[$chave] = [
                     'estado' => PubTarefa::ITEM_FEITO,
                     'motivo' => null,
@@ -335,6 +345,112 @@ class TarefasPosPublicacao
         }
 
         return $ultima;
+    }
+
+    // ═══ Promoção automática (10/10/2026) ═════════════════════════════════
+
+    /**
+     * Algum OUTRO anúncio da tarefa tem a promoção automática (o último ciclo) recusada — o colaborador
+     * ainda precisa criá-la à mão. Sem a tabela (entre o deploy e o `migrate`), não.
+     */
+    private static function outroAnuncioSemPromocao(PubTarefa $t, string $exceto): bool
+    {
+        $outros = array_values(array_diff($t->idsDosItens(), [$exceto]));
+        if ($outros === []) {
+            return false;
+        }
+
+        try {
+            return PubPromocaoAutomatica::query()->ultimoCicloDe($outros)->where('status', PubPromocaoAutomatica::RECUSADA)->exists();
+        } catch (\Throwable $e) {
+            Log::warning('[Publicador] promoções automáticas indisponíveis na baixa da tarefa: '.$e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * O sistema não criou (ou não renovou) a promoção de um anúncio: a Central de Promoções da tarefa volta
+     * a pendente, e a fila mostra o que fazer à mão (a frase vem do próprio ciclo, `orientacao()`).
+     *
+     * - 1º ciclo: só mexe em tarefa ABERTA, e nunca desfaz o que uma PESSOA marcou (ela resolveu ou
+     *   decidiu que não se aplica);
+     * - renovação: é trabalho novo — reabre a tarefa já concluída, com prazo novo (D+1 útil de hoje), e
+     *   avisa no sino.
+     */
+    public function orientarPromocao(PubPromocaoAutomatica $promocao, bool $renovacao): ?PubTarefa
+    {
+        $tarefa = PubTarefa::query()->alavancas()
+            ->where(function ($q) use ($promocao) {
+                $q->where('rascunho_id', $promocao->rascunho_id);
+                if ($promocao->publicacao_id !== null) {
+                    $q->orWhere('publicacao_id', $promocao->publicacao_id);
+                }
+            })
+            ->orderByDesc('id')->get()
+            ->first(fn (PubTarefa $t) => in_array($promocao->ml_item_id, $t->idsDosItens(), true));
+        if ($tarefa === null) {
+            Log::warning("[Publicador] promoção automática {$promocao->id} ({$promocao->ml_item_id}) sem tarefa pós-publicação para orientar.");
+
+            return null;
+        }
+
+        $reaberta = false;
+        $travada = $this->sobTrava($tarefa, function (PubTarefa $t) use ($promocao, $renovacao, &$reaberta) {
+            if (! $t->aberta() && ! $renovacao) {
+                return $t;
+            }
+            $checklist = $t->checklistCompleto();
+            $item = $checklist['central_promocao'];
+            $porPessoa = $item['estado'] !== PubTarefa::ITEM_PENDENTE && $item['escrita_id'] === null && $item['por'] !== null;
+            if (! $renovacao && $porPessoa) {
+                return $t;
+            }
+
+            $checklist['central_promocao'] = ['estado' => PubTarefa::ITEM_PENDENTE, 'motivo' => null, 'por' => null, 'em' => now()->toIso8601String(), 'escrita_id' => null];
+            $campos = ['checklist' => $checklist];
+            if (! $t->aberta()) {
+                $reaberta = true;
+                $campos += ['status' => PubTarefa::PENDENTE, 'concluida_em' => null, 'prazo' => $this->prazoPara(now())];
+            }
+            $t->update($campos);
+            Log::info("[Publicador] tarefa pós-publicação {$t->id}: Central de Promoções pendente — promoção automática {$promocao->id} ({$promocao->ml_item_id}, ciclo {$promocao->ciclo}) {$promocao->status}"
+                .($reaberta ? '; tarefa reaberta.' : '.'));
+
+            return $t;
+        });
+
+        if ($reaberta) {
+            DB::afterCommit(fn () => $this->avisarRenovacao($travada, $promocao));
+        }
+
+        return $travada;
+    }
+
+    /** O sino da tarefa reaberta: o responsável dela; sem responsável, quem vê a fila. */
+    private function avisarRenovacao(PubTarefa $t, PubPromocaoAutomatica $promocao): void
+    {
+        try {
+            $destino = $t->responsavel_id !== null
+                ? User::query()->where('active', true)->whereKey($t->responsavel_id)->get()
+                : $this->usuariosDaFila();
+            if ($destino->isEmpty()) {
+                return;
+            }
+            $produto = $t->produto()->with(['mlbEmpresa', 'company'])->first();
+            $nome = $produto?->nomeExibido() ?? ($t->itens[0]['titulo'] ?? 'Produto');
+            $empresa = $produto?->mlbEmpresa?->nome ?? $produto?->company?->name ?? $t->conta_chave;
+
+            Notification::send($destino, new TarefaAlavancasNotification(
+                'Promoção não renovada',
+                mb_substr("{$nome} — {$empresa}. {$promocao->ml_item_id}: crie a promoção à mão; prazo ".($t->prazoData()?->format('d/m') ?? '—').'.', 0, 200),
+                route('mlb.anuncios.publicador.tarefas.index', ['tarefa' => $t->id], false),
+                null,
+                ['tarefa_id' => $t->id, 'promocao_id' => $promocao->id],
+            ));
+        } catch (\Throwable $e) {
+            Log::warning("[Publicador] tarefa pós-publicação {$t->id} reaberta, mas o aviso no sino falhou: {$e->getMessage()}");
+        }
     }
 
     // ═══ Ações da fila ═════════════════════════════════════════════════════
