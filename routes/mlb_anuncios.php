@@ -60,6 +60,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('publicador/empresas/{conta}/produtos', [MlbPublicadorEntradaController::class, 'criarProduto'])
             ->where('conta', '(empresa|company)-[0-9]+')
             ->middleware('throttle:60,1,publicador.produtos.criar')->name('publicador.produtos.criar');
+        // 10/10/2026 — excluir produtos que nunca foram publicados: a prévia (só leitura) e a exclusão.
+        Route::post('publicador/empresas/{conta}/produtos/exclusao/previa', [MlbPublicadorEntradaController::class, 'previaDaExclusao'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:60,1,publicador.produtos.exclusao.previa')->name('publicador.produtos.exclusao.previa');
+        Route::post('publicador/empresas/{conta}/produtos/exclusao', [MlbPublicadorEntradaController::class, 'excluirProdutos'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:30,1,publicador.produtos.exclusao')->name('publicador.produtos.exclusao');
         Route::get('publicador/produtos/{produto}/editor', [MlbPublicadorEntradaController::class, 'editor'])
             ->whereNumber('produto')->name('publicador.editor');
 

@@ -28,7 +28,7 @@ const objetoSeguro = (valor) => (valor && typeof valor === 'object' && !Array.is
  *
  * @param {unknown} produto  a linha de `produtosParaTela`
  * @param {unknown} sugestao a `sugestao_kit` já validada pela página (ou null)
- * @returns {Array<{chave: string, rotulo: string, destaque: boolean, href?: string}>}
+ * @returns {Array<{chave: string, rotulo: string, destaque: boolean, href?: string, perigo?: boolean}>}
  */
 export function itensDoMenu(produto, sugestao) {
     const p = objetoSeguro(produto);
@@ -63,8 +63,18 @@ export function itensDoMenu(produto, sugestao) {
         itens.push({ chave: 'vincular', rotulo: 'Vincular como kit…', destaque: true });
     }
 
+    // "Excluir produto…" (10/10/2026) só no que NUNCA foi ao ar: lista fechada de status e nenhum
+    // anúncio. O motivo de um bloqueio que a linha não mostra (ainda no Portal do Cliente, na fila,
+    // editor aberto) vem da prévia do servidor, dentro do diálogo.
+    if (typeof p.id === 'number' && Number.isFinite(p.id) && SEM_ANUNCIO.includes(chave) && anuncios.length === 0) {
+        itens.push({ chave: 'excluir', rotulo: 'Excluir produto…', destaque: false, perigo: true });
+    }
+
     return itens;
 }
+
+/** Os status de quem nunca foi ao ar (`EditorRascunhoService`): só eles ganham o "Excluir produto…". */
+const SEM_ANUNCIO = ['rascunho', 'conferir', 'pronto', 'erro'];
 
 const ITEM = 'flex w-full items-center whitespace-nowrap px-3 py-2 text-left text-[13px] font-normal hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow';
 
@@ -134,7 +144,7 @@ export default function MenuDeAcoesDoProduto({
                         // ⚠️ Rollup: tudo o que a linha do menu usa é lido do
                         // PRÓPRIO item, nunca de variável do escopo do componente.
                         const ehLink = typeof item.href === 'string' && item.href !== '';
-                        const cor = item.destaque === true ? 'text-ecf-yellow' : 'text-white/85';
+                        const cor = item.perigo === true ? 'text-red-300' : (item.destaque === true ? 'text-ecf-yellow' : 'text-white/85');
 
                         if (ehLink) {
                             return (

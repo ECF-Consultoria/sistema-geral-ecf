@@ -12,6 +12,7 @@ import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar
 import { criarAcompanhamento } from '@/Components/Mlb/Publicador/acompanhamentoDoSincronizar.js';
 import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { faseDoVinculo } from '@/Components/Mlb/Publicador/DialogoVincularKit';
+import DialogoExcluirProdutos from '@/Components/Mlb/Publicador/DialogoExcluirProdutos';
 import LinhaDeProduto from '@/Components/Mlb/Publicador/LinhaDeProduto';
 import PainelDoProdutoLateral from '@/Components/Mlb/Publicador/PainelDoProdutoLateral';
 // 10/10/2026 — publicação em lote: os botões da seleção e o aviso da fila viva da conta.
@@ -462,6 +463,8 @@ export default function Produtos({
     const [erroAbrir, setErroAbrir] = useState(false);
     // A sugestão de kit em confirmação: { produto, sugestao, modo: 'vincular' | 'recusar' }.
     const [vinculo, setVinculo] = useState(null);
+    // 10/10/2026: os produtos na confirmação de exclusão (`{ ids }`), ou null com o diálogo fechado.
+    const [exclusao, setExclusao] = useState(null);
 
     // ─── Layout v2 (quick 261009-prd) ───
     // Ordenação do CLIENTE; o default é Situação, com "precisa de ação" primeiro.
@@ -642,6 +645,12 @@ export default function Produtos({
 
             return;
         }
+        // Ramo próprio, ANTES do `abrir(p)` do fim: chave sem ramo cai lá e navegaria.
+        if (chave === 'excluir') {
+            if (typeof p?.id === 'number') setExclusao({ ids: [p.id] });
+
+            return;
+        }
         // 'fase2' leva à tela do Produto, que é onde o painel "Criar Fase N"
         // mora (Fase 175, plano 05) — nenhuma rota nova foi criada para isto.
         abrir(p);
@@ -750,6 +759,26 @@ export default function Produtos({
      */
     function aoConcluirVinculo(resultado) {
         setVinculo(null);
+        setStatus({ tipo: 'ok', texto: resultado?.texto ?? 'Pronto.' });
+        router.reload({ only: ['produtos', 'contagens'] });
+        clearTimeout(esperaStatus.current);
+        esperaStatus.current = setTimeout(() => setStatus(null), 6000);
+    }
+
+    /**
+     * A exclusão terminou (10/10/2026): fecha, tira os excluídos da seleção, fecha o painel lateral se o
+     * produto aberto saiu, avisa e recarrega SÓ a lista e as contagens.
+     */
+    function aoConcluirExclusao(resultado) {
+        const excluidos = Array.isArray(resultado?.excluidos) ? resultado.excluidos : [];
+        setExclusao(null);
+        setSelecao((atual) => {
+            const proxima = new Set(atual);
+            excluidos.forEach((id) => proxima.delete(id));
+
+            return proxima;
+        });
+        setDetalhe((aberto) => (excluidos.includes(aberto) ? null : aberto));
         setStatus({ tipo: 'ok', texto: resultado?.texto ?? 'Pronto.' });
         router.reload({ only: ['produtos', 'contagens'] });
         clearTimeout(esperaStatus.current);
@@ -957,6 +986,7 @@ export default function Produtos({
                                     totalDoFiltro={idsDoFiltro.length}
                                     onPublicarEmLote={() => router.get(destinoDoLote(empresa.chave, selecao))}
                                     onSelecionarTodos={() => setSelecao(new Set(idsDoFiltro))}
+                                    onExcluir={() => setExclusao({ ids: Array.from(selecao) })}
                                 />
                                 <button type="button" onClick={() => setSelecao(new Set())} className={BOTAO_SUGESTAO}>
                                     Limpar seleção
@@ -1240,6 +1270,15 @@ export default function Produtos({
                 sugestao={vinculo?.sugestao ?? null}
                 modo={vinculo?.modo ?? 'vincular'}
                 onConcluido={aoConcluirVinculo}
+            />
+
+            {/* 10/10/2026: excluir o que nunca foi publicado — um pelo menu ⋯, vários pela seleção. */}
+            <DialogoExcluirProdutos
+                aberto={exclusao !== null}
+                onFechar={() => setExclusao(null)}
+                conta={empresa.chave}
+                ids={exclusao?.ids ?? []}
+                onConcluido={aoConcluirExclusao}
             />
         </AppLayout>
     );

@@ -10,6 +10,7 @@ use App\Models\PubTarefa;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\ExcluirProdutoService;
 use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -307,6 +308,58 @@ class MlbPublicadorEntradaController extends Controller
             'url' => route('mlb.anuncios.publicador.editor', ['produto' => $produto->id]),
             'aviso' => $repetido ? 'Já existe um produto com este SKU nesta empresa.' : null,
         ], 201);
+    }
+
+    // ═══ Excluir produtos que nunca foram publicados (10/10/2026) ═══════════
+
+    /** O que pode sair e por que o resto fica (só leitura). A regra é do `ExcluirProdutoService`. */
+    public function previaDaExclusao(Request $request, string $conta, ExcluirProdutoService $exclusao): JsonResponse
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        return response()->json($exclusao->previa($alvo, $this->produtosDaExclusao($request)));
+    }
+
+    /**
+     * Exclui o que pode ser excluído (um por um, cada qual na sua transação) e devolve os motivos do que ficou.
+     * Nenhum saiu: 422, com a mensagem e os motivos, e o diálogo continua aberto.
+     */
+    public function excluirProdutos(Request $request, string $conta, ExcluirProdutoService $exclusao): JsonResponse
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        $r = $exclusao->excluir($alvo, $this->produtosDaExclusao($request), $request->user());
+        $saiu = count($r['excluidos']);
+        $ficou = count($r['recusados']);
+
+        if ($saiu === 0) {
+            return response()->json([
+                ...$r,
+                'message' => $ficou > 0 ? 'Nenhum produto pôde ser excluído.' : 'Estes produtos não existem mais.',
+            ], 422);
+        }
+
+        $mensagem = $saiu === 1 ? '1 produto excluído.' : "{$saiu} produtos excluídos.";
+        if ($ficou > 0) {
+            $mensagem .= $ficou === 1 ? ' 1 não pôde ser excluído.' : " {$ficou} não puderam ser excluídos.";
+        }
+
+        return response()->json([...$r, 'mensagem' => $mensagem]);
+    }
+
+    /** @return list<int> os ids pedidos; a conta vem sempre da rota, nunca do corpo */
+    private function produtosDaExclusao(Request $request): array
+    {
+        return $request->validate([
+            'produtos'   => ['required', 'array', 'min:1', 'max:'.ExcluirProdutoService::MAXIMO],
+            'produtos.*' => ['integer', 'min:1'],
+        ], [
+            'produtos.required' => 'Escolha ao menos um produto.',
+            'produtos.min'      => 'Escolha ao menos um produto.',
+            'produtos.max'      => 'Dá para excluir até '.ExcluirProdutoService::MAXIMO.' produtos de uma vez.',
+        ])['produtos'];
     }
 
     /** Casca do editor: produto, empresa, faixa de produtos e se a publicação está liberada. */

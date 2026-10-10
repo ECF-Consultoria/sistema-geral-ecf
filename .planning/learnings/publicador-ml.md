@@ -1159,3 +1159,52 @@ produto: o "IA em ~7 min" do teste da §21.
   A config do supervisor vive só na VPS (`/etc/supervisor/conf.d/`); ela não está no repositório.
 - **A `creative` (3 workers, quase ociosa: 0 jobs em 10/10, 53 no dia mais cheio da semana) não serve.** Ela é do
   estúdio de imagens, que é interativo, e a fila é FIFO: o kit de 7 imagens esperaria atrás da IA de texto.
+
+## 23. Excluir produto do Publicador: só o que nunca foi publicado e já está solto do Portal (10/10/2026)
+
+Pedido do usuário para limpar os produtos de teste. O serviço é o `ExcluirProdutoService`, com as rotas
+`publicador.produtos.exclusao.previa` e `publicador.produtos.exclusao`. Na lista de Produtos entram "Excluir produto…"
+no menu ⋯ e "Excluir selecionados" na barra da seleção.
+
+**O que só se descobre lendo o módulo inteiro:**
+
+- **Produto ligado ao Portal VOLTA.** Quem cria `pub_produtos` é o `PublicadorSincronizaPortalService::sincronizar`,
+  para toda oferta e todo grupo sem produto. Ele roda no botão e, sozinho, a cada save do cliente (~15 s, pelo
+  `SincronizarProdutoDoPortalJob`).
+  - Não existe "ignorado" pronto.
+  - Por isso a regra é só o SOLTO (`oferta_id` e `estrutura_produto_id` nulos), e a ordem de uso é excluir no Portal
+    primeiro (lá o item fica solto, D27) e depois aqui.
+- **"Nunca publicado" se decide pelo FATO, não pelo status.** Timeout ou 5xx vira item `UNKNOWN` e, depois de 2
+  tentativas, `FAILED`, com o rascunho de volta a `DRAFT`. O anúncio pode ter nascido. A regra está em
+  `itemPodeEstarNoMl`:
+  - pode estar no ML: `ml_item_id` preenchido, `CREATED`, `SENT`, `UNKNOWN`, ou `FAILED` já tentado sem resposta
+    4xx;
+  - não está: `FAILED` com 4xx, que é recusa certa.
+  - O `IaParaRascunhoService::intocavel` NÃO cobre `SENT`, `UNKNOWN` nem o `FAILED` incerto.
+- **Publicado nunca pode sair.** A cascata de `pub_rascunhos` leva `pub_publicacoes` e `pub_publicacao_itens`, que são
+  o único registro do que foi enviado (MLB, payload, resposta).
+- **Os arquivos das fotos não caem na cascata.** `pub_imagens` cai, mas o arquivo em
+  `storage/app/private/publicador/{rascunho}/…` só some por `Storage::delete`. O serviço coleta os caminhos antes do
+  DELETE e apaga depois do commit.
+- **`pub_fila_publicacao_itens.produto_ativo` não tem FK.** É a coluna-sombra do item vivo. Excluir um produto na fila
+  deixaria o item "vivo" apontando para id morto, então o DELETE é condicional (`whereNotExists` nessa coluna). Item
+  já terminado fica, com `produto_id` nulo.
+- **A base de kit da Fase N só sai junto com os kits.** `pubprod_base_fk` é SET NULL e soltaria o kit calado. Por
+  isso os kits são processados primeiro.
+  - O "é base" vai num SELECT à parte: como subconsulta no DELETE da própria `pub_produtos`, o MariaDB dá o erro
+    1093.
+- **Ordem das travas:** rascunho e depois produto (`lockForUpdate`), a mesma de `PublicacaoService::iniciar`. O
+  SQLite ignora a trava.
+- **Cada produto na sua transação.** A falha de um não desfaz os outros. A resposta traz `excluidos` e `recusados`
+  com a regra (`EXC-01` a `EXC-08`).
+
+**Provado no MariaDB local (10.4), em transação desfeita:**
+- o DELETE condicional;
+- a cascata completa;
+- a base recusada sozinha (`EXC-06`) e excluída junto com o kit.
+
+**Sobre o banco local:** ele estava sem `2026_10_08_120000_add_fases_to_pub_produtos` e tem outras migrations do outro
+dev pendentes. Para provar algo ali, rode só a migration necessária, com `--path`.
+
+**`deploy.sh` recusa árvore suja.** "Há mudanças não commitadas" sai com exit 1 antes de tocar no servidor. Com
+trabalho pela metade na mesma árvore, ou termina e commita, ou não deploya.
