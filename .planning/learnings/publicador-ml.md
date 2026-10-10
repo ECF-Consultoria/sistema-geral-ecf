@@ -806,3 +806,48 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   bloco FATOS do título (vai como proibição, regra 7). `valorPronto` do título é JSON; texto puro = Job adiado de antes.
   O Modelo NÃO mudou. "Copiar do Clássico/Premium" na tela ainda copia igual — é escolha explícita da pessoa.
 - **Deploy**: sem migration. `queue:restart` (Jobs novos na fila `default`); `npm run build` (selo + sinal).
+
+## 17. Tarefas pós-publicação — "Publicados aguardando alavancas" (09/10/2026)
+
+Pedido do usuário: publicou pelo Publicador → a tarefa chega a outro colaborador, que usa as alavancas (Central de
+Promoções, ADS de lançamento, atacado, cupom, afiliados, lista de transmissão — o checklist da aba Cronograma da
+planilha da ECF). Tabela `pub_tarefas` (só CREATE, decisão de schema na migration `2026_10_09_180000`). O que não se
+deduz do código:
+
+- **Gatilho em DOIS lugares de `PublicacaoService`:** o fim do `concluir()` (PUBLISHED/PARTIALLY) e o fim do
+  `encerrar()` — publicação interrompida DEPOIS de criar um item (conta tirada da lista no meio, Job morto) tem MLB no
+  ar e precisa da alavanca; sem item criado, `abrir()` não faz nada (é o "nada em FAILED"). Só entram os itens CREATED
+  da própria publicação. Falha do gatilho só loga `[Publicador] … tarefa pós-publicação não abriu` — a publicação nunca
+  é desfeita nem repetida; recuperar com `publicador:tarefas-retroativas --desde=AAAA-MM-DD` (sem sino; `--dry-run`).
+- **Uma tarefa por PRODUTO:** o unique `(tipo, publicacao_id)` é a idempotência; republicar o mesmo rascunho com a
+  tarefa ABERTA junta os MLBs novos nela (sem sino de novo); com a tarefa já concluída, nasce outra só com o MLB novo.
+  MLB que já está em qualquer tarefa do rascunho nunca entra de novo (o retroativo rodado duas vezes não duplica).
+- **Responsável padrão = `configuracoes.publicador_alavancas_responsavel`** (id), escolhido pelo admin na própria fila;
+  vale para as PRÓXIMAS. Usuário inativo ou sem a chave da fila = fila comum, e o sino vai para TODOS que veem a fila
+  (todos os admins + setores com `mlb.alavancas`) — sem responsável configurado, cada publicação toca o sino de todo
+  admin. O sino sai em `DB::afterCommit`.
+- **Acesso: chave NOVA `mlb.alavancas`** (registro `App\Support\Permissions`, "Pub · Alavancas pós-publicação"), e não
+  `mlb.anunciar`: quem usa a alavanca não é quem publica, e o dia em que o Publicador abrir para `permission:mlb.anunciar`
+  (cabeçalho de `routes/mlb_anuncios.php`) não pode dar a fila a quem publica nem a publicação a quem usa a alavanca. A
+  fila é o ÚNICO grupo fora do `role:admin` em `routes/mlb_anuncios.php`; escrever no ML pelas Alavancas continua admin
+  (o "Abrir Alavancas" nem aparece para quem não é admin). Para o "Caio" não admin: Setores → dar a chave ao setor dele.
+- **Prazo D+1 útil no fuso de São Paulo** (`DiasUteis`): fixos nacionais no código (inclui 20/11, nacional desde 2024),
+  móveis em `publicador.feriados` (2026–2028 já escritos; outros anos lá ou em `PUBLICADOR_FERIADOS`). Carnaval entrou
+  por ser folga da ECF (é ponto facultativo) — decisão de config, não de código. `prazo` fica SEM cast `date` (texto
+  `Y-m-d`): o cast gravaria `Y-m-d 00:00:00` no SQLite e a comparação por texto divergiria do DATE do MariaDB.
+- **Baixa automática só pelo que APLICA a alavanca** (`TarefasPosPublicacao::chaveDaEscrita`): `convite.inscrever`/
+  `convite.alterar` (→ `cupom` quando o tipo é `SELLER_COUPON_CAMPAIGN`), `desconto.criar`, `atacado.gravar` com faixas.
+  Tirar, remover, excluir e gravar o atacado VAZIO não contam; `cupom.criar` e `campanha.*` são da conta (sem `item_id`)
+  e ficam para marcar à mão. Casa por âncora (company/mlb_empresa) e pelo MLB em PHP — de propósito, sem JSON no SQL
+  (o `json_each` do SQLite e o `JSON_CONTAINS` do MariaDB divergem). Item já marcado à mão não é sobrescrito.
+- **O link da fila abre `company-N`** (sempre resolve) e o redirect para a chave canônica das Alavancas passou a
+  preservar `aba` e `item` — antes ele descartava a query.
+- **MariaDB 10.4 local, `--path` só da migration:** up → rollback → up, DONE ×3, `Ran` no lote 140; nomes `pubtar_*`
+  conferidos no `SHOW CREATE TABLE`; unique dá 1062 em (tipo, publicacao_id) repetido e NULL repete; FK dá 1452. O
+  `json` vira `longtext … CHECK (json_valid(…))`: texto não-JSON dá **4025** no MariaDB e passa no SQLite. Linhas de prova
+  apagadas; a tabela fica criada no local.
+- Cosmético conhecido: na própria fila o item "Publicador" do menu acende junto com "Aguardando alavancas" (o `page`
+  `'Mlb/Publicador/'` daquele item casa por prefixo).
+- **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (o gatilho roda dentro do `PublicarRascunhoJob`, fila `high`,
+  e a baixa dentro do lote das Alavancas — worker velho não conhece a classe nova); `npm run build`; depois, na fila,
+  escolher o responsável padrão e dar `mlb.alavancas` ao setor de quem usa as alavancas.
