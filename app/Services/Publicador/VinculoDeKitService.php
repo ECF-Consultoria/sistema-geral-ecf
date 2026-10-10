@@ -54,6 +54,7 @@ use Illuminate\Support\Facades\DB;
  *
  * | regra    | motivo                                                      |
  * |----------|-------------------------------------------------------------|
+ * | KIT-06   | a base escolhida é um composto do Planejamento (regra do CriarFaseService) |
  * | VINC-01  | o base escolhido é o próprio produto                        |
  * | VINC-02  | o base escolhido já é kit de alguém (não existe cadeia)     |
  * | VINC-03  | quantidade < 2 (um "kit" de 1 unidade é o próprio produto)   |
@@ -69,10 +70,22 @@ class VinculoDeKitService
     /**
      * Registra que `$produto` é o kit de `$quantidade` unidades de `$base`.
      *
-     * @throws RegraViolada VINC-01..VINC-06
+     * @throws RegraViolada KIT-06, VINC-01..VINC-06
      */
     public function vincular(PubProduto $produto, PubProduto $base, int $quantidade): void
     {
+        // KIT-06, a MESMA regra do `CriarFaseService::recusarComposto()` aplicada no outro
+        // caminho (não é regra nova, por isso o código é o mesmo): o composto do Planejamento
+        // é uma composição pronta do Portal, não a Fase 1 de um produto. A sugestão automática
+        // já não propõe composto como base, mas `base_id` é o ÚNICO id de entidade que vem do
+        // corpo da requisição nesta fase (D-13) — esconder não é impedir.
+        //
+        // ⚠️ Vale SÓ para a base: o composto pode perfeitamente ser o produto VINCULADO (o
+        // kit da família), e é isso que o `CompostoDoPlanejamentoTest` prova.
+        $tipoDaBase = PlanejamentoDaFaseService::tipoComposto($base);
+        if ($tipoDaBase !== null) {
+            throw new RegraViolada('KIT-06', PlanejamentoDaFaseService::motivoKit06($tipoDaBase));
+        }
         if ((int) $base->id === (int) $produto->id) {
             throw new RegraViolada('VINC-01', 'Um produto não pode ser kit de si mesmo. Escolha o produto de 1 unidade.');
         }
