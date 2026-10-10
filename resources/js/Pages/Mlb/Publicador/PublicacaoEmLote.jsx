@@ -10,6 +10,7 @@ import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import LinhaDoLote, { COLUNAS_DO_LOTE } from '@/Components/Mlb/Publicador/Lote/LinhaDoLote';
 import PainelDaFila from '@/Components/Mlb/Publicador/Lote/PainelDaFila';
 import DialogoAgendar from '@/Components/Mlb/Publicador/Lote/DialogoAgendar';
+import GarantiaPadraoDaConta from '@/Components/Mlb/Publicador/Lote/GarantiaPadraoDaConta';
 import {
     FILTROS, comoLista, comoObjeto, conferiveisDaSelecao, contagensDoLote, filtrarLinhas, numeroSeguro,
     precisaAcompanhar, prontosDaSelecao, selecaoInicial, textoSeguro,
@@ -22,10 +23,12 @@ import { BASE_BOTAO, PRIMARIO, SECUNDARIO } from '@/Components/Publicador/Mesa/b
 // "De primeira": o que o cliente preencheu no Portal vira anúncio sem abrir
 // produto por produto. Na mesma tela: a VISÃO RÁPIDA (títulos, preço, custo,
 // frete, margem, pendências), "Conferir selecionados" (o servidor confere um a
-// um, 10 s entre eles) e "Agendar publicação" — uma FILA que publica um produto
-// (Clássico + Premium, todas as cores) a cada N minutos, com pausar, retomar e
-// cancelar. Quem anda a fila é o servidor, todo minuto; esta tela acompanha por
-// polling (10 s) enquanto há conferência rodando ou fila viva.
+// um, 10 s entre eles) e "Agendar publicação" — uma FILA que publica em RODADAS
+// (alguns produtos de cada vez, Clássico + Premium, todas as cores; a rodada
+// seguinte depois do intervalo), com pausar, retomar e cancelar. Quem anda a
+// fila é o servidor, todo minuto; esta tela acompanha por polling (10 s)
+// enquanto há conferência rodando ou fila viva. A garantia padrão da conta
+// (10/10/2026) mora aqui também: sem ela, todo produto do Portal trava.
 //
 // Um só amarelo sólido por tela (regra do editor): "Agendar publicação".
 
@@ -52,10 +55,12 @@ export default function PublicacaoEmLote({
     abas = { company_id: null },
     linhas: linhasIniciais = [],
     fila: filaInicial = null,
+    garantia_padrao: garantiaInicial = null,
     selecionados = [],
     config = {},
 }) {
     const [linhas, setLinhas] = useState(() => comoLista(linhasIniciais));
+    const [garantia, setGarantia] = useState(() => (garantiaInicial && typeof garantiaInicial === 'object' ? garantiaInicial : null));
     const [fila, setFila] = useState(() => (filaInicial && typeof filaInicial === 'object' ? filaInicial : null));
     const [selecao, setSelecao] = useState(() => selecaoInicial(linhasIniciais, selecionados));
     const [filtro, setFiltro] = useState('todos');
@@ -138,6 +143,21 @@ export default function PublicacaoEmLote({
         }
     }
 
+    async function salvarGarantia(dados) {
+        setOcupado(true);
+        setAviso(null);
+        try {
+            const { data } = await axios.put(route(`${ROTA}.garantia`, { conta: contaRef.current }), dados);
+            aplicar(data);
+            if (data?.garantia_padrao && typeof data.garantia_padrao === 'object') setGarantia(data.garantia_padrao);
+            setAviso({ tipo: 'ok', texto: textoSeguro(data?.mensagem, 'Garantia padrão salva.'), detalhes: [] });
+        } catch (e) {
+            setAviso({ tipo: 'erro', texto: mensagemDe(e), detalhes: [] });
+        } finally {
+            setOcupado(false);
+        }
+    }
+
     async function naFila(acao, metodo = 'post', extra = {}) {
         setOcupado(true);
         setAviso(null);
@@ -181,6 +201,8 @@ export default function PublicacaoEmLote({
                         em rodadas: alguns produtos de cada vez, com intervalo entre uma rodada e a próxima, para não arriscar restrição na conta.
                     </p>
                 </header>
+
+                <GarantiaPadraoDaConta garantia={garantia} ocupado={ocupado} aoSalvar={salvarGarantia} />
 
                 <PainelDaFila
                     fila={fila}

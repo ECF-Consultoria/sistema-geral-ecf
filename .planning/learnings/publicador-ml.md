@@ -1047,3 +1047,35 @@ pausar/retomar/cancelar. O que não se deduz do código:
 - Testes que dependem de `Storage::fake` (`MlbPublicadorAcessoTest`, `CapaDoKitTest`) falharam UMA vez rodando ao lado de
   outro phpunit e passaram sozinhos. JS: `estrutura-grade-glide` "Características secundárias nasce recolhido" é falha
   antiga (o `bbb67657` abriu as secundárias e o teste não acompanhou), não desta entrega.
+
+## 21. Teste de ponta a ponta em produção na #459 — o que só apareceu lá (10/10/2026)
+
+Rodado depois do deploy `827d5a96`: o cliente cadastra pelo Portal (HTTP com o link de equipe, mesmas rotas JSON da
+ficha), Planejamento, Precificação, IA, conferência. O que não se deduz do código:
+
+- **A #459 publica na MGSTOREL, loja REAL** (`ml_user_id` 1555596317, `5_green`, 52 vendas). Os 7 anúncios de teste de
+  03–07/10 nunca foram fechados e estavam `under_review [waiting_for_patch]`: 6 por infração `DOMAIN` ("título e/ou
+  fotos não correspondem ao produto" — fotos/dados de teste) e 1 por `LENGUAJE` ("criado-mudo" no título que a IA
+  escreveu). Ler o motivo: `GET /moderations/infractions/{user_id}?related_item_id={MLB}`. Fechar (`PUT /items/{id}
+  {"status":"closed"}`) item moderado responde 200 mas ele vira **`inactive`** (segue `waiting_for_patch`), não `closed`.
+  Publicar com foto gerada/placeholder nessa conta = infração nova quase certa: só com foto real, e fechar no fim.
+- **Modalidade de envio da conta = `drop_off` (Correios)**, lida SÓ pela cotação real ("Cotar agora"; antes disso o
+  padrão também é o dos Correios). Limites 30 kg / soma 200 / maior lado 100 → mesa de 165 cm, escrivaninha de 125 cm
+  e todo combo/kit empilhado viram ME1: sem cotação do ML e sem frete sugerido, e o V-SAL-08 trava até digitarem o
+  frete. Numa conta com coleta (`cross_docking`, 50/300/200) os mesmos produtos seriam ME2. Não é defeito.
+- **Modelo "user products"**: cada COR vira um anúncio próprio (família por `family_name`). A cadeira com 2 cores = 4
+  anúncios (2 cores × Clássico/Premium), não 2 — "5 produtos por rodada" pode significar 20 POSTs.
+- **Garantia bloqueava tudo que vinha do Portal** (V-SAL-05: o Portal não pergunta e não existia padrão). Agora há a
+  garantia padrão da conta (`GarantiaPadrao`, tela de Publicação em lote): `configuracoes`
+  `publicador_garantia_padrao:{empresa-N|company-N}` — gravada nas DUAS âncoras da conta, lida pela do produto —,
+  aplicada no `PortalParaRascunhoService::concluir` e, ao salvar, nos rascunhos que já existem (pula editor aberto e
+  produto na fila de publicação). Só entra onde NÃO há garantia; sobe a revisão. Tipos do ML iguais em todas as
+  categorias sondadas: 2230280 vendedor, 2230279 fábrica, 6150835 sem garantia; unidades dias/meses/anos.
+- **Termos vetados pelo ML** (`TermosVetados`; lista em `PADRAO` + `publicador.termos_vetados`): a IA troca
+  (`RegrasDoTitulo::limpar`, `PalavrasChaveService::filtrarModelo`, `DescricaoIaService::gerar`,
+  `IaParaRascunhoService`) e o digitado trava — V-TIT-05 (título) e V-DES-05 (descrição), também no
+  `bloqueiosSemSchema` (o `BloqueiosSemSchemaTest` cobra a paridade). Fora do Laravel (teste de unidade puro) a lista
+  é a `PADRAO`. Termo novo descoberto numa infração entra na config.
+- **Marca em lista fechada**: em Escrivaninhas (MLB193946) e Mesas para PC (MLB439418) o BRAND vem com `values` (5
+  marcas) e o Portal só oferece lista onde há opções — o cliente não consegue informar a marca dele. Decisão pendente.
+- Fila: ver §16 (a `default` travada pelo Adman/Acervo atrasou o produto e a IA; Jobs do fluxo foram para a `high`).

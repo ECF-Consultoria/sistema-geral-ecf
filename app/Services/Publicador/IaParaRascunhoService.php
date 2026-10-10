@@ -12,6 +12,7 @@ use App\Support\Publicador\Schema\AtributoClassificado;
 use App\Support\Publicador\Schema\ClassificadorAtributos;
 use App\Support\Publicador\Schema\ContextoClassificacao;
 use App\Support\Publicador\Schema\SchemaClassificado;
+use App\Support\Publicador\TermosVetados;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
@@ -151,8 +152,9 @@ class IaParaRascunhoService
 
         // ─── (b) Características, (c) pacote, (d) títulos, (e) descrição, (f) garantia — uma escrita ───
         $idsDeVariacao = $this->idsDeVariacao($ficha);
-        $titulo = trim((string) ($ficha['titulo'] ?? ($a->titulos()[0]['texto'] ?? '')));
-        $descricao = $this->limparDescricao($a->descricao());
+        // Termo que o ML veta ("criado-mudo", 10/10/2026) vira o aceito no título e na descrição da IA.
+        $titulo = TermosVetados::trocar(trim((string) ($ficha['titulo'] ?? ($a->titulos()[0]['texto'] ?? ''))));
+        $descricao = TermosVetados::trocar($this->limparDescricao($a->descricao()));
         $textoGarantia = trim((string) ($ficha['garantia'] ?? ''));
 
         $vivo = $this->sobTrava($r->id, function (PubRascunho $r, bool $sobrescrever) use ($schema, $ficha, $idsDeVariacao, $titulo, $descricao, $textoGarantia, &$secoes, &$avisos) {

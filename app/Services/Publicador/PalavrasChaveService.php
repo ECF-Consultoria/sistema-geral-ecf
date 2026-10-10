@@ -11,6 +11,7 @@ use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\CategorySchema;
 use App\Support\Publicador\Schema\ValorAtributo;
+use App\Support\Publicador\TermosVetados;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -157,7 +158,8 @@ class PalavrasChaveService
      */
     public static function filtrarModelo(string $bruto, int $limite = self::LIMITE_MODELO, string $titulo = '', ?FatosDoProduto $fatos = null): array
     {
-        $partes = preg_split('/[,;\n|]+/', Str::lower(Str::ascii($bruto))) ?: [];
+        // Termo que o ML veta ("criado-mudo", 10/10/2026) vira o aceito antes de tudo.
+        $partes = preg_split('/[,;\n|]+/', Str::lower(Str::ascii(TermosVetados::trocar($bruto)))) ?: [];
         $doTitulo = self::palavrasDoTitulo($titulo);
         $vistos = [];
         $descartados = [];

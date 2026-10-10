@@ -11,6 +11,7 @@ use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\Schema\AtributoClassificado as A;
 use App\Support\Publicador\Schema\SchemaClassificado;
 use App\Support\Publicador\Schema\ValorAtributo;
+use App\Support\Publicador\TermosVetados;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\Variante;
@@ -375,6 +376,9 @@ final class ValidadorRascunho
             if ($termo = $this->termoProibido($titulo, $ctx)) {
                 $this->p[] = Problema::aviso('V-TIT-02', "O título do {$nome} tem «{$termo}». O Mercado Livre não permite contato, frete, parcelamento ou condição no título.", $onde, 'L1');
             }
+            if ($vetado = self::termoVetadoNoTitulo($nome, $titulo, $onde)) {
+                $this->p[] = $vetado;
+            }
 
             if ($repetido = self::tituloRepetido($nome, $titulo, $vistos, $onde)) {
                 $this->p[] = $repetido;
@@ -403,11 +407,38 @@ final class ValidadorRascunho
     }
 
     /**
-     * Os bloqueios que se sabem SEM o schema da categoria e SEM a conta — títulos iguais (V-TIT-04) e preço do
-     * Portal calculado sem frete (V-SAL-08) —, com as MESMAS regras, mensagens e alvos de `validar()`, na mesma
-     * ordem (títulos, depois tipo × variante). Para a visão rápida da publicação em lote (10/10/2026), que os
-     * mostra ANTES de conferir e não agenda quem os tem. `$r` tem de vir do `comEfetivosDe` (é ele que grava as
-     * marcas que o V-SAL-08 lê).
+     * V-TIT-05 (10/10/2026, decisão do usuário): termo que o Mercado Livre VETA no título (linguagem — o ML pausou
+     * um anúncio de teste da #459 por "criado-mudo"). Trava: a IA já escreve o aceito (`TermosVetados::trocar`), então
+     * só cai aqui o que alguém digitou. Pública e estática para `bloqueiosSemSchema()`.
+     */
+    public static function termoVetadoNoTitulo(string $nome, string $titulo, array $onde): ?Problema
+    {
+        $vetados = TermosVetados::encontrar($titulo);
+        if ($vetados === []) {
+            return null;
+        }
+
+        return Problema::bloqueio('V-TIT-05', "O título do {$nome} tem «{$vetados[0]}», termo que o Mercado Livre não aceita (o anúncio é pausado por linguagem): troque por «".TermosVetados::troca($vetados[0]).'».', $onde, 'L1');
+    }
+
+    /** V-DES-05: o mesmo do V-TIT-05, na descrição. */
+    public static function termoVetadoNaDescricao(?string $descricao): ?Problema
+    {
+        $vetados = TermosVetados::encontrar(strip_tags((string) $descricao));
+        if ($vetados === []) {
+            return null;
+        }
+
+        return Problema::bloqueio('V-DES-05', "A descrição tem «{$vetados[0]}», termo que o Mercado Livre não aceita (o anúncio é pausado por linguagem): troque por «".TermosVetados::troca($vetados[0]).'».', ['etapa' => 'E9', 'campo' => 'descricao'], 'L1');
+    }
+
+    /**
+     * Os bloqueios que se sabem SEM o schema da categoria e SEM a conta — termo vetado pelo ML no título (V-TIT-05),
+     * títulos iguais (V-TIT-04), termo vetado na descrição (V-DES-05) e preço do Portal calculado sem frete
+     * (V-SAL-08) —, com as MESMAS regras, mensagens e alvos de `validar()`, na mesma ordem (títulos, descrição,
+     * depois tipo × variante). Para a visão rápida da publicação em lote (10/10/2026), que os mostra ANTES de
+     * conferir e não agenda quem os tem. `$r` tem de vir do `comEfetivosDe` (é ele que grava as marcas que o
+     * V-SAL-08 lê).
      *
      * @return list<Problema>
      */
@@ -421,10 +452,17 @@ final class ValidadorRascunho
                 continue; // é o V-TIT-01, que precisa do schema para o limite: fica para a conferência
             }
             $nome = self::nomeDoTipo($alvo);
-            if ($repetido = self::tituloRepetido($nome, $titulo, $vistos, ['etapa' => 'E7', 'alvo' => $alvo->listingTypeId])) {
+            $onde = ['etapa' => 'E7', 'alvo' => $alvo->listingTypeId];
+            if ($vetado = self::termoVetadoNoTitulo($nome, $titulo, $onde)) {
+                $saida[] = $vetado;
+            }
+            if ($repetido = self::tituloRepetido($nome, $titulo, $vistos, $onde)) {
                 $saida[] = $repetido;
             }
             $vistos[$nome] = $titulo;
+        }
+        if ($r->descricao !== null && trim($r->descricao) !== '' && ($vetado = self::termoVetadoNaDescricao($r->descricao))) {
+            $saida[] = $vetado;
         }
         foreach ($r->alvosAtivos() as $alvo) {
             foreach ($r->variantesAtivas() as $v) {
@@ -472,6 +510,9 @@ final class ValidadorRascunho
         }
         if ($texto !== $r->descricao) {
             $this->p[] = Problema::aviso('V-DES-01', 'A descrição tem formatação (HTML), que o Mercado Livre não aceita: vai como texto simples.', $onde, 'L1');
+        }
+        if ($vetado = self::termoVetadoNaDescricao($r->descricao)) {
+            $this->p[] = $vetado;
         }
     }
 
@@ -532,7 +573,7 @@ final class ValidadorRascunho
         }
 
         if ($tipo === null) {
-            $this->p[] = Problema::bloqueio('V-SAL-05', 'Escolha a garantia.', $onde);
+            $this->p[] = Problema::bloqueio('V-SAL-05', 'Escolha a garantia (ou defina a garantia padrão da conta na Publicação em lote: ela entra em todo produto sem garantia).', $onde);
 
             return;
         }

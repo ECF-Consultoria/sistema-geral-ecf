@@ -11,9 +11,11 @@ use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\GarantiaPadrao;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 /**
@@ -59,6 +61,7 @@ class MlbPublicadorLoteController extends Controller
                 'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
             ],
             ...$this->dadosDaTela($alvo),
+            'garantia_padrao' => $this->garantiaParaTela($alvo),
             'selecionados' => $pedidos,
             'config' => [
                 'por_rodada_padrao' => max(1, (int) config('publicador.fila_publicacao.produtos_por_rodada', 5)),
@@ -152,6 +155,46 @@ class MlbPublicadorLoteController extends Controller
         ], 201);
     }
 
+    /**
+     * A garantia padrão da conta (10/10/2026): grava e já aplica nos rascunhos da conta que não têm garantia
+     * (`GarantiaPadrao::aplicarNaConta` — nunca troca a escolhida). `tipo` vazio remove o padrão (o que já foi
+     * aplicado fica nos rascunhos).
+     */
+    public function garantia(Request $request, string $conta): JsonResponse
+    {
+        $alvo = $this->alvo($conta);
+        $sem = GarantiaPadrao::SEM_GARANTIA;
+        $dados = $request->validate([
+            'tipo' => ['nullable', 'string', Rule::in(array_keys(GarantiaPadrao::TIPOS))],
+            'tempo' => ['nullable', 'integer', 'min:1', 'max:'.GarantiaPadrao::TEMPO_MAXIMO, "required_unless:tipo,{$sem},null"],
+            'unidade' => ['nullable', 'string', Rule::in(GarantiaPadrao::UNIDADES), "required_unless:tipo,{$sem},null"],
+        ], [
+            'tipo.in' => 'Escolha o tipo da garantia.',
+            'tempo.required_unless' => 'Informe o tempo da garantia.',
+            'tempo.min' => 'O tempo da garantia precisa ser de pelo menos 1.',
+            'tempo.max' => 'O tempo da garantia pode ser de no máximo '.GarantiaPadrao::TEMPO_MAXIMO.'.',
+            'unidade.required_unless' => 'Escolha dias, meses ou anos.',
+            'unidade.in' => 'Escolha dias, meses ou anos.',
+        ]);
+
+        $tipo = (string) ($dados['tipo'] ?? '');
+        $g = GarantiaPadrao::salvar($alvo, $tipo === '' ? null : $dados, $request->user());
+        $n = $g === null ? 0 : GarantiaPadrao::aplicarNaConta(
+            $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])->pluck('id'),
+            $g,
+        );
+        $mensagem = $g === null
+            ? 'Garantia padrão removida. O que já foi aplicado continua nos produtos.'
+            : 'Garantia padrão salva: '.GarantiaPadrao::texto($g).'. '.($n === 0 ? 'Nenhum produto estava sem garantia.' : ($n === 1 ? 'Aplicada em 1 produto sem garantia.' : "Aplicada em {$n} produtos sem garantia."));
+
+        return response()->json([
+            'garantia_padrao' => $this->garantiaParaTela($alvo),
+            'aplicados' => $n,
+            'mensagem' => $mensagem,
+            ...$this->dadosDaTela($alvo),
+        ]);
+    }
+
     public function pausar(Request $request, string $conta): JsonResponse
     {
         return $this->naFila($conta, fn (PubFilaPublicacao $f) => $this->filas->pausar($f, $request->user()));
@@ -226,5 +269,20 @@ class MlbPublicadorLoteController extends Controller
     private function porRodadaMaximo(): int
     {
         return max(1, (int) config('publicador.fila_publicacao.produtos_por_rodada_max', 10));
+    }
+
+    /** A garantia padrão da conta e as opções do formulário. */
+    private function garantiaParaTela(array $alvo): array
+    {
+        $g = GarantiaPadrao::daConta($alvo);
+
+        return [
+            'atual' => $g,
+            'texto' => GarantiaPadrao::texto($g),
+            'tipos' => array_map(fn ($id, $nome) => ['id' => (string) $id, 'nome' => $nome], array_keys(GarantiaPadrao::TIPOS), GarantiaPadrao::TIPOS),
+            'unidades' => GarantiaPadrao::UNIDADES,
+            'sem_garantia' => GarantiaPadrao::SEM_GARANTIA,
+            'tempo_maximo' => GarantiaPadrao::TEMPO_MAXIMO,
+        ];
     }
 }

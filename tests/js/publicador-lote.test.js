@@ -27,6 +27,7 @@ const DIALOGO = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/Lote/
 const PAGINA = path.resolve(RAIZ, 'resources/js/Pages/Mlb/Publicador/PublicacaoEmLote.jsx');
 const ACOES = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/AcoesDaSelecaoEmLote.jsx');
 const AVISO = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/AvisoDaFila.jsx');
+const GARANTIA = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/Lote/GarantiaPadraoDaConta.jsx');
 const PRODUTOS = path.resolve(RAIZ, 'resources/js/Pages/Mlb/Publicador/Produtos.jsx');
 
 global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
@@ -75,6 +76,7 @@ const { default: DialogoAgendar } = await montar(DIALOGO, 'lote-dialogo');
 const paginaLote = await montar(PAGINA, 'lote-pagina');
 const { default: AcoesDaSelecaoEmLote, destinoDoLote } = await montar(ACOES, 'lote-acoes');
 const { default: AvisoDaFila } = await montar(AVISO, 'lote-aviso');
+const { default: GarantiaPadraoDaConta } = await montar(GARANTIA, 'lote-garantia');
 const { default: Produtos } = await montar(PRODUTOS, 'lote-produtos');
 
 // ─── O contrato de `ResumoRapidoService::linhas` ────────────────────────────
@@ -516,4 +518,50 @@ test('Produtos — botão "Publicação em lote" na barra e o aviso da fila viva
     assert.match(andando, /próximo às /, 'um por vez: o horário é do próximo produto');
     const emRodadas = renderToStaticMarkup(React.createElement(AvisoDaFila, { fila: { ...filaBase({ produtos_por_rodada: 5 }), url: '/lote' } }));
     assert.match(emRodadas, /próxima rodada às /);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6 — Garantia padrão da conta e o selo do termo vetado (10/10/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const garantiaBase = (o = {}) => ({
+    atual: null,
+    texto: null,
+    tipos: [{ id: '2230280', nome: 'Garantia do vendedor' }, { id: '2230279', nome: 'Garantia de fábrica' }, { id: '6150835', nome: 'Sem garantia' }],
+    unidades: ['dias', 'meses', 'anos'],
+    sem_garantia: '6150835',
+    tempo_maximo: 999,
+    ...o,
+});
+
+test('garantia padrão — sem padrão abre o formulário; com padrão mostra o texto e "Alterar"', () => {
+    const sem = renderToStaticMarkup(React.createElement(GarantiaPadraoDaConta, { garantia: garantiaBase() }));
+    assert.match(sem, /Garantia padrão/);
+    assert.match(sem, /Entra sozinha em todo produto desta conta sem garantia/);
+    assert.match(sem, /<option value="2230280"[^>]*>Garantia do vendedor<\/option>/);
+    assert.match(sem, /aria-label="Tempo da garantia"[^>]*value="90"/);
+    assert.match(sem, />Salvar e aplicar</);
+    assert.doesNotMatch(sem, />Alterar</);
+
+    const com = renderToStaticMarkup(React.createElement(GarantiaPadraoDaConta, {
+        garantia: garantiaBase({ atual: { tipo: '2230280', tempo: 90, unidade: 'dias' }, texto: 'Garantia do vendedor, 90 dias' }),
+    }));
+    assert.match(com, /· Garantia do vendedor, 90 dias/);
+    assert.match(com, />Alterar</);
+    assert.doesNotMatch(com, /Salvar e aplicar/);
+
+    assert.doesNotThrow(() => renderToStaticMarkup(React.createElement(GarantiaPadraoDaConta, { garantia: { tipos: 'x', atual: 'y', unidades: {} } })));
+});
+
+test('tela — o cartão da garantia padrão aparece com o padrão da conta', () => {
+    const html = renderToStaticMarkup(React.createElement(paginaLote.default, propsDaTela({
+        garantia_padrao: garantiaBase({ atual: { tipo: '2230280', tempo: 90, unidade: 'dias' }, texto: 'Garantia do vendedor, 90 dias' }),
+    })));
+    assert.match(html, /aria-label="Garantia padrão da conta"/);
+    assert.match(html, /Garantia do vendedor, 90 dias/);
+});
+
+test('regras — "Termo vetado" para V-TIT-05 e V-DES-05 vira UM selo', () => {
+    const linha = { bloqueios: [{ regra: 'V-TIT-05', mensagem: 'a' }, { regra: 'V-DES-05', mensagem: 'b' }, { regra: 'V-TIT-04', mensagem: 'c' }] };
+    assert.deepEqual(regras.selosDosBloqueios(linha), ['Termo vetado', 'Títulos iguais']);
 });
