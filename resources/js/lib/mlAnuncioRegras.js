@@ -37,7 +37,13 @@ export const FOTOS_RECOMENDADAS_MIN = 3;   // abaixo disso, aviso de qualidade
 export const FOTOS_MAX_PADRAO       = 12;  // fallback quando settings não trouxer
 
 // ─── Frete grátis obrigatório (ME2) ───
+// O corte de verdade vem do SERVIDOR (config `estrutura_produtos.frete.gratis_obrigatorio_a_partir`,
+// prop `frete_gratis_a_partir` do wizard) e entra em `analisarAnuncio` como `precoFreteGratis`.
+// Este número é só a reserva para quando a prop não chega — o mesmo do config hoje.
 export const PRECO_FRETE_GRATIS_OBRIGATORIO = 79; // R$ — a partir daqui o ME2 exige frete grátis
+
+/** O corte do frete grátis obrigatório: o do servidor, ou a reserva. */
+export const corteFreteGratis = (doServidor) => (Number(doServidor) > 0 ? Number(doServidor) : PRECO_FRETE_GRATIS_OBRIGATORIO);
 
 // ─── Modalidades de frete que o vendedor DEFINE na publicação ───
 // Flex (self_service) e Full (fulfillment) NÃO entram aqui: o logistic_type é
@@ -168,6 +174,7 @@ export function completudeFicha(obrigatorios, opcionais, preenchido) {
  * @param {string|number} p.pesoG,p.comprimentoCm,p.larguraCm,p.alturaCm
  * @param {string} p.shippingMode        'me2' | 'me1' | 'not_specified'
  * @param {boolean} p.freteGratis
+ * @param {number} [p.precoFreteGratis]  corte do frete grátis obrigatório (do config, via prop); sem ele, a reserva
  * @returns {{erros: Array, avisos: Array, ficha: object, score: number}}
  *   erros/avisos: [{ campo, mensagem }]
  */
@@ -247,9 +254,10 @@ export function analisarAnuncio(p) {
         avisos.push({ campo: 'descrição', mensagem: 'Descrição vazia ou muito curta — descreva benefícios, medidas e conteúdo da embalagem.' });
     }
 
-    // Frete grátis obrigatório (ME2) a partir de R$79
-    if (p.shippingMode === 'me2' && precoNum != null && precoNum >= PRECO_FRETE_GRATIS_OBRIGATORIO && !p.freteGratis) {
-        avisos.push({ campo: 'frete', mensagem: `Acima de R$ ${PRECO_FRETE_GRATIS_OBRIGATORIO} o Mercado Envios costuma exigir frete grátis — ative para evitar recusa/pausa.` });
+    // Frete grátis obrigatório (ME2) a partir do corte do config (hoje R$ 79)
+    const corte = corteFreteGratis(p.precoFreteGratis);
+    if (p.shippingMode === 'me2' && precoNum != null && precoNum >= corte && !p.freteGratis) {
+        avisos.push({ campo: 'frete', mensagem: `Acima de R$ ${corte} o Mercado Envios costuma exigir frete grátis — ative para evitar recusa/pausa.` });
     }
 
     return { erros, avisos, ficha, score: calcularScore({ ...p, temVars, ficha, precoNum, settings: s }) };

@@ -152,6 +152,9 @@ class MlbAnuncioController extends Controller
             // Fase 172-02: prop nova — shape completo de empresaParaTela() (chave,
             // programa, programa_rotulo, token, portal, etc.), para a Wave 2.
             'conta' => $conta,
+            // Corte do frete grátis obrigatório do ME2 (R$): do config, o mesmo da IA do rascunho
+            // e da cotação do Portal — o wizard não guarda mais um 79 próprio (09/10/2026).
+            'frete_gratis_a_partir' => (float) config('estrutura_produtos.frete.gratis_obrigatorio_a_partir'),
             // Sobrevive ao F5. A análise leva minutos e mora no banco; sem
             // isto, recarregar a página no meio da geração dava a impressão
             // de que o trabalho tinha sido perdido — ele seguia rodando,
@@ -2817,12 +2820,17 @@ class MlbAnuncioController extends Controller
         // MlFreteService retorna null em falha — não propaga exceção (SHIP-02)
         $resultado = $this->frete->cotar($rascunho->company, $dados);
 
+        // O custo de /users/{id}/shipping_options/free vem em `coverage.all_country.list_cost`
+        // (respostas reais da #459, tests/fixtures-ml/sondagem/conta). `shipping_options[0]` é de
+        // outro endpoint e nunca existiu nesta resposta: a estimativa saía sempre vazia (09/10/2026).
+        $cobertura = data_get($resultado, 'coverage.all_country');
+
         // Resposta sempre 200: estimativa_frete é float quando ML responde, null em falha
         // O front exibe o campo vazio em vez de bloquear a publicação (degradação graciosa)
         return response()->json([
             'ok'               => true,
-            'estimativa_frete' => data_get($resultado, 'shipping_options.0.list_cost'),
-            'opcoes'           => $resultado['shipping_options'] ?? [],
+            'estimativa_frete' => is_array($cobertura) && is_numeric($cobertura['list_cost'] ?? null) ? (float) $cobertura['list_cost'] : null,
+            'opcoes'           => is_array($cobertura) ? [$cobertura] : [],
         ]);
     }
 

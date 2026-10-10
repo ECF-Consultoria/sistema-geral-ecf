@@ -360,6 +360,46 @@ class AnuncioIaRascunhoTest extends TestCase
         $this->assertTrue($p['shipping']['free_shipping']);
     }
 
+    /** O corte do frete grátis obrigatório vem do config (era um 79 fixo aqui e no wizard; 09/10/2026). */
+    public function test_frete_gratis_do_rascunho_segue_o_corte_do_config(): void
+    {
+        config(['estrutura_produtos.frete.gratis_obrigatorio_a_partir' => 500]);
+        $company = $this->companyConectada();
+        $mlb     = MlbEmpresa::create(['nome' => 'Casa Conforto', 'tipo' => 'ASSESSORIA', 'company_id' => $company->id]);
+        MlbImplementacao::create([
+            'empresa_id' => $mlb->id,
+            'token'      => 'tok_' . uniqid(),
+            'dados'      => ['itens' => [
+                'planilha_produtos' => ['produtos' => [[
+                    'sku' => 'CG-01', 'produto' => 'Cadeira Gamer', 'altura' => '95', 'largura' => '55',
+                    'profundidade' => '60', 'peso_kg' => '2.5', 'estoque' => '8',
+                ]]],
+                'precificacao' => [
+                    'classico' => ['comissao' => 0.115, 'imposto' => 0.19],
+                    'premium'  => ['comissao' => 0.165, 'imposto' => 0.19],
+                    'margem_contribuicao' => 0, 'lucro_liquido' => 0, 'acrescimo' => 0.20,
+                    'produtos' => [['sku' => 'CG-01', 'custo' => '200', 'frete_classico' => '30', 'frete_premium' => '40']],
+                ],
+            ]],
+        ]);
+
+        \Illuminate\Support\Facades\Queue::fake();
+        $id = $this->actingAs($this->admin())->postJson(route('mlb.anuncios.ia.analise.store'), [
+            'company_id' => $company->id,
+            'produto'    => 'Cadeira Gamer Reclinável',
+            'sku'        => 'CG-01',
+        ])->assertStatus(202)->json('id');
+
+        $this->fakes($this->fichaCompleta());
+        $this->rodar(MlAnuncioIaAnalise::findOrFail($id));
+
+        $p = MlAnuncioRascunho::findOrFail(MlAnuncioIaAnalise::findOrFail($id)->rascunhoId())->payload;
+
+        // R$ 397,12 fica abaixo do corte de R$ 500: sem frete grátis.
+        $this->assertEqualsWithDelta(397.12, $p['price'], 0.001);
+        $this->assertFalse($p['shipping']['free_shipping']);
+    }
+
     public function test_sku_que_nao_esta_na_planilha_e_recusado(): void
     {
         $this->actingAs($this->admin())->postJson(route('mlb.anuncios.ia.analise.store'), [

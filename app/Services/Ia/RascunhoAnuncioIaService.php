@@ -39,9 +39,6 @@ class RascunhoAnuncioIaService
 
     private const MAX_VARIACOES = 20;
 
-    /** Mesmo corte do aviso do wizard (PRECO_FRETE_GRATIS_OBRIGATORIO em mlAnuncioRegras.js). */
-    private const PRECO_FRETE_GRATIS = 79;
-
     /** Garantia padrão do wizard quando ninguém informou outra. */
     private const GARANTIA_PADRAO = '30 dias';
 
@@ -613,8 +610,9 @@ class RascunhoAnuncioIaService
             $attributes = array_values(array_filter($attributes, fn ($a) => ! isset($nasVariacoes[$a['id']])));
         }
 
-        // Acima do corte o ME2 exige frete grátis — ligar evita a recusa.
-        $freteGratis = $preco !== null && $preco >= self::PRECO_FRETE_GRATIS;
+        // Acima do corte o ME2 exige frete grátis — ligar evita a recusa. O corte é o do config
+        // (`estrutura_produtos.frete.gratis_obrigatorio_a_partir`), o mesmo do aviso do wizard.
+        $freteGratis = $preco !== null && $preco >= (float) config('estrutura_produtos.frete.gratis_obrigatorio_a_partir');
         $shipping    = ['mode' => 'me2', 'local_pick_up' => false, 'free_shipping' => $freteGratis];
         if ($freteGratis) {
             $shipping['free_methods'] = [];

@@ -16,11 +16,11 @@ use Tests\TestCase;
  * Suíte de testes do MlFreteService e do endpoint de cotação de frete (Phase 78, Plan 01).
  *
  * Cobre SHIP-02:
- *  - cotar() retorna estimativa quando ML responde com sucesso (shipping_options[0].list_cost)
+ *  - cotar() retorna estimativa quando ML responde com sucesso (coverage.all_country.list_cost)
  *  - cotar() retorna null graciosamente em falha HTTP 500 (sem lançar exceção)
  *  - cotar() retorna null quando a empresa não tem token ML (ensureValidToken retorna null)
  *  - cotar() monta a string dimensions como "{altura}x{largura}x{comprimento},{peso_g}"
- *  - GET /rascunho/{id}/frete → 200 com estimativa_frete=12.50 (sucesso)
+ *  - GET /rascunho/{id}/frete → 200 com estimativa_frete=14.45 (sucesso, resposta real da #459)
  *  - GET /rascunho/{id}/frete → 200 com estimativa_frete=null (falha ML — degradação graciosa)
  *  - GET /rascunho/{id}/frete sem params obrigatórios → 422 (T-78-02)
  *  - GET /rascunho/{id}/frete por consultor (sem role:admin) → != 200 (middleware bloqueia)
@@ -35,23 +35,14 @@ class FreteServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    // ─── Fake de resposta do GET /users/*/shipping_options/free (sucesso) ───
-    private const FAKE_FRETE = [
-        'shipping_options' => [
-            [
-                'id'           => 1,
-                'name'         => 'Mercado Envios',
-                'currency_id'  => 'BRL',
-                'list_cost'    => 12.50,
-                'cost'         => 0.0,
-                'estimated_delivery_time' => [
-                    'type'   => 'known_frame',
-                    'unit'   => 'business_day',
-                    'offset' => ['date' => '2026-07-15', 'shipping' => 1],
-                ],
-            ],
-        ],
-    ];
+    // ─── Resposta do GET /users/*/shipping_options/free (sucesso) ───
+    // A RESPOSTA REAL capturada na conta #459 (sondagem de 01/10/2026, R$ 79): o custo vem em
+    // `coverage.all_country.list_cost`. O fake antigo inventava um `shipping_options[0].list_cost`
+    // que esta resposta não tem — e o teste passava com o controller lendo o caminho errado.
+    private static function fakeFrete(): array
+    {
+        return json_decode(file_get_contents(base_path('tests/fixtures-ml/sondagem/conta/shipping_options_free_79.json')), true)['resposta'];
+    }
 
     // ─── Helpers de fixture ──────────────────────────────────────────────────
 
@@ -116,7 +107,7 @@ class FreteServiceTest extends TestCase
     private function fakeFreteOk(): void
     {
         Http::fake([
-            '*/shipping_options/free*' => Http::response(self::FAKE_FRETE, 200),
+            '*/shipping_options/free*' => Http::response(self::fakeFrete(), 200),
             '*' => Http::response([], 200),
         ]);
     }
@@ -154,11 +145,10 @@ class FreteServiceTest extends TestCase
             'listing_type_id' => 'gold_special',
         ]);
 
-        // Deve retornar o array com shipping_options (SHIP-02: estimativa presente)
+        // Deve retornar a resposta do ML com o custo em coverage.all_country (SHIP-02: estimativa presente)
         $this->assertIsArray($resultado);
-        $this->assertArrayHasKey('shipping_options', $resultado);
-        $this->assertCount(1, $resultado['shipping_options']);
-        $this->assertEquals(12.50, $resultado['shipping_options'][0]['list_cost']);
+        $this->assertEquals(14.45, $resultado['coverage']['all_country']['list_cost']);
+        $this->assertArrayNotHasKey('shipping_options', $resultado, 'a resposta real não tem shipping_options');
     }
 
     /** @test */
@@ -269,7 +259,7 @@ class FreteServiceTest extends TestCase
 
         $json = $response->json();
         $this->assertTrue($json['ok']);
-        $this->assertEquals(12.50, $json['estimativa_frete']);
+        $this->assertEquals(14.45, $json['estimativa_frete'], 'lido de coverage.all_country.list_cost');
         $this->assertNotEmpty($json['opcoes']);
     }
 
@@ -375,5 +365,20 @@ class FreteServiceTest extends TestCase
         $rascunhoId = 1;
         $url = route('mlb.anuncios.rascunho.frete', ['rascunho' => $rascunhoId]);
         $this->assertStringContainsString("/mlb/anuncios/rascunho/{$rascunhoId}/frete", $url);
+    }
+
+    /** O wizard recebe o corte do frete grátis obrigatório do config — sem 79 fixo no JS (09/10/2026). */
+    public function test_wizard_recebe_o_corte_do_frete_gratis_do_config(): void
+    {
+        [, $company, $admin] = $this->criarFixture();
+        config(['estrutura_produtos.frete.gratis_obrigatorio_a_partir' => 99]);
+
+        $this->withoutVite()->actingAs($admin)
+            ->get("/mlb/anuncios/wizard/{$company->id}")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Mlb/AnunciarML')
+                ->where('frete_gratis_a_partir', fn ($v) => (float) $v === 99.0)
+            );
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Services\Publicador\Alavancas;
 
+use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
 use App\Services\Publicador\ClienteMlPublicador;
 use App\Support\Publicador\Validacao\SimuladorVoceRecebe;
 use Illuminate\Support\Facades\Cache;
@@ -9,8 +11,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * D-11/D-12 — números para decidir, nunca ranking. Tarifa e frete vêm da API (RN-85);
- * sem frete conhecido, calcula sem ele e diz. Cofinanciada e boost são linha separada
+ * D-11/D-12 — números para decidir, nunca ranking. Tarifa e frete vêm da API (RN-85); o
+ * custo do envio conta SEMPRE no ME2, com ou sem frete grátis (09/10/2026), e se a leitura
+ * falhar vale a tabela pública do ML, avisada; sem dimensões, calcula sem ele e diz. Cofinanciada e boost são linha separada
  * marcada "estimativa" até a validação na #459 (A3 do RESEARCH; orientação 5): nunca
  * entram na soma do "recebe".
  *
@@ -180,9 +183,9 @@ class AnaliseAlavancasService
             return null;
         }
 
-        $frete = $this->frete($c, $item, $preco);
+        $frete = $this->frete($c, $item, $preco, $avisos);
         if ($frete === null) {
-            $avisos[] = 'Sem o frete do Mercado Livre (faltam as dimensões do pacote ou a leitura falhou): calculado sem frete.';
+            $avisos[] = 'Sem o frete do Mercado Livre (faltam as dimensões do pacote): calculado sem frete.';
         }
 
         return SimuladorVoceRecebe::calcular($preco, $tarifa, $frete);
@@ -227,10 +230,20 @@ class AnaliseAlavancasService
         return isset($corpo['sale_fee_amount']) && is_numeric($corpo['sale_fee_amount']) ? (float) $corpo['sale_fee_amount'] : null;
     }
 
-    /** Frete que o vendedor paga: 0 sem frete grátis; sem dimensões, desconhecido (null, sem chamada). */
-    private function frete(ContaAlavanca $c, array $item, float $preco): ?float
+    /**
+     * O custo do envio que o vendedor paga. No Mercado Envios ele é cobrado SEMPRE: "o custo dos
+     * Envios no Mercado Livre é um custo operacional [...] que se aplica a todos os casos, mesmo
+     * quando o envio é pago pelo comprador" (Central de Vendedores, tabela de 24/08/2026). Até
+     * 09/10/2026 o anúncio sem frete grátis entrava com frete ZERO, e o "recebe" saía inflado.
+     * Fora do ME2 (ME1, a combinar) o ML não cobra envio. Sem dimensões, desconhecido (null, sem
+     * chamada); a leitura falhou, a tabela de custos do ML pelas dimensões do anúncio, avisada.
+     *
+     * @param  list<string>  $avisos
+     */
+    private function frete(ContaAlavanca $c, array $item, float $preco, array &$avisos): ?float
     {
-        if (($item['frete']['free_shipping'] ?? false) === false) {
+        $modo = $item['frete']['mode'] ?? null;
+        if ($modo !== null && $modo !== 'me2') {
             return 0.0;
         }
 
@@ -240,12 +253,14 @@ class AnaliseAlavancasService
         }
 
         $lt = (string) ($item['listing_type_id'] ?? '');
-        $chave = "alavancas:frete:{$c->sellerId}:{$item['id']}:{$lt}:".(int) round($preco * 100);
+        $gratis = (bool) ($item['frete']['free_shipping'] ?? false);
+        $chave = "alavancas:frete:{$c->sellerId}:{$item['id']}:{$lt}:".(int) round($preco * 100).':'.(int) $gratis;
 
-        return $this->comLimite($c, $chave, (int) config('publicador.alavancas.cache.frete', 3600), function () use ($c, $item, $preco, $lt, $dimensoes) {
+        $cotado = $this->comLimite($c, $chave, (int) config('publicador.alavancas.cache.frete', 3600), function () use ($c, $item, $preco, $lt, $dimensoes, $gratis) {
             $query = array_filter([
-                'item_price' => $preco, 'listing_type_id' => $lt, 'mode' => $item['frete']['mode'] ?? 'me2',
+                'item_price' => $preco, 'listing_type_id' => $lt, 'mode' => 'me2',
                 'condition' => $item['condicao'] ?? 'new', 'logistic_type' => $item['frete']['logistic_type'] ?? null,
+                'free_shipping' => $gratis ? 'true' : 'false',
                 'dimensions' => $dimensoes, 'verbose' => 'true',
             ], fn ($v) => $v !== null && $v !== '');
             $r = $this->cliente->daConta($c->conta, 'GET', "/users/{$c->sellerId}/shipping_options/free", $query);
@@ -253,6 +268,29 @@ class AnaliseAlavancasService
 
             return $r->ok() && is_numeric($custo) ? (float) $custo : null;
         });
+        if ($cotado !== null) {
+            return $cotado;
+        }
+
+        // A leitura falhou: a tabela pública do ML (reputação verde) — não fica em cache, a próxima análise tenta a API.
+        $tabela = $this->freteDaTabela($dimensoes, $preco);
+        if ($tabela !== null) {
+            $avisos[] = 'Frete estimado pela tabela de custos do Mercado Livre (reputação verde): a leitura da conta falhou.';
+        }
+
+        return $tabela;
+    }
+
+    /** "AxLxC,peso" (cm e g) → o custo da tabela do ML pelo peso faturado (o maior entre real e cubado). */
+    private function freteDaTabela(string $dimensoes, float $preco): ?float
+    {
+        if (! preg_match('/^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/', $dimensoes, $m)) {
+            return null;
+        }
+        $pacote = ['a' => (float) $m[1], 'l' => (float) $m[2], 'c' => (float) $m[3], 'peso_real' => (float) $m[4] / 1000];
+        $faturado = LogisticaProduto::avaliar($pacote)['peso_faturado'];
+
+        return $faturado === null ? null : TabelaFreteEcf::valor($faturado, $preco);
     }
 
     /** `AxLxH,peso` em cm e g: do `shipping.dimensions` do anúncio ou da embalagem do vendedor. */
