@@ -58,6 +58,7 @@ class DecisoesDasSugestoes
             $jaExistiam = [];
             $erros = [];
             $skus = [];
+            $componentesCriados = [];
 
             foreach ($pedidos as $pedido) {
                 $chave = (string) ($pedido['chave'] ?? '');
@@ -82,7 +83,7 @@ class DecisoesDasSugestoes
                             fn ($i) => ['id' => $i['oferta_id'], 'quantidade' => $i['quantidade']],
                             $s['itens']
                         ),
-                    ], $ator, varrerEspera: false);
+                    ], $ator, varrerEspera: false, prepararNoPublicador: false);
                 } catch (ValidationException $e) {
                     $erros[] = ['chave' => $chave, 'mensagem' => (string) collect($e->errors())->flatten()->first()];
                     continue;
@@ -90,10 +91,16 @@ class DecisoesDasSugestoes
 
                 $skus[] = $oferta->sku;
                 $criadas[] = ['chave' => $chave, 'sku' => $oferta->sku, 'oferta_id' => $oferta->id];
+                foreach ($s['itens'] as $i) {
+                    $componentesCriados[] = (int) $i['oferta_id'];
+                }
             }
 
             if ($skus !== []) {
                 $this->ofertas->varrerEspera($empresa, $skus);
+                // A aceita vai SOZINHA ao Publicador (09/10/2026): uma agenda só, com os produtos
+                // dos componentes de todas as criadas (depois do commit; ver EstruturaOfertaService).
+                $this->ofertas->prepararNoPublicador($empresa, $componentesCriados);
             }
 
             RegistroEstrutura::registrar($ator, $empresa, null, 'sugestoes_aceitas',

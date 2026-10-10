@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\SoltarProdutoDaOfertaService;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
@@ -42,16 +43,21 @@ class EstruturaOfertaService
      * espera uma vez no fim, com todos os SKUs (o cadastro de Produtos, BE-WR-05).
      * O padrão — e a Lista SKUs — continua varrendo aqui, a cada oferta.
      *
+     * Oferta composta nasce indo SOZINHA ao Publicador (09/10/2026): os produtos dos
+     * componentes são agendados no preparo ({@see self::prepararNoPublicador}).
+     * `$prepararNoPublicador = false` é para quem cria várias num lote e agenda uma vez no
+     * fim, com todos os componentes (o "Aceitar" das sugestões, os combos em lote).
+     *
      * @param  array{sku: string, fase: string, nome?: ?string, logistica?: ?string, observacoes?: ?string, componentes?: array<int, array{id: int, quantidade: int}>}  $dados
      * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu (0 sem varredura)
      */
-    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true): array
+    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true, bool $prepararNoPublicador = true): array
     {
         $campos = $this->campos($dados);
         $componentes = $this->composicao($empresa, $campos['fase'], $dados['componentes'] ?? []);
         $variacaoId = $this->variacaoLigada($empresa, $dados, $campos['fase'], $componentes);
 
-        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera) {
+        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera, $prepararNoPublicador) {
             $oferta = EstruturaOferta::create([...$campos, 'company_id' => $empresa->id, 'variacao_id' => $variacaoId]);
             $this->gravarComposicao($oferta, $componentes);
 
@@ -60,8 +66,51 @@ class EstruturaOfertaService
             RegistroEstrutura::registrar($ator, $empresa, $oferta, 'oferta_criada',
                 "Oferta {$oferta->sku} criada ({$oferta->fase})", ['absorvidos_da_espera' => $absorvidos]);
 
+            if ($prepararNoPublicador) {
+                $this->prepararNoPublicador($empresa, array_keys($componentes));
+            }
+
             return [$oferta, $absorvidos];
         });
+    }
+
+    /**
+     * Gancho do Publicador (09/10/2026, "o fluxo tem de chegar ao Publicador completo e
+     * sozinho"): a oferta composta recém-criada entra no preparo pelos PRODUTOS dos seus
+     * componentes — `PreparoIaAgenda::aoSalvar`, com a espera de sempre. A sincronização
+     * por produto já leva as compostas que o têm como componente
+     * (`PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)`), então o kit
+     * chega lá sem ninguém clicar em Sincronizar.
+     *
+     * Só depois do commit (rollback não agenda nada) e só para componente ligado a produto
+     * (a oferta importada, sem produto, segue pelo Sincronizar). Nada disso aparece para o
+     * cliente, e uma falha aqui nunca derruba a criação (o `aoSalvar` só loga).
+     *
+     * @param  array<int, int>  $componentesOfertaIds  ids das ofertas simples componentes
+     */
+    public function prepararNoPublicador(Company $empresa, array $componentesOfertaIds): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $componentesOfertaIds))));
+        if ($ids === []) {
+            return;
+        }
+
+        $produtos = DB::table('estrutura_ofertas as o')
+            ->join('estrutura_produto_variacoes as v', 'v.id', '=', 'o.variacao_id')
+            ->where('o.company_id', $empresa->id)
+            ->where('v.company_id', $empresa->id)
+            ->whereIn('o.id', $ids)
+            ->distinct()
+            ->pluck('v.produto_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($produtos === []) {
+            return;
+        }
+
+        $empresaId = (int) $empresa->id;
+        DB::afterCommit(fn () => app(PreparoIaAgenda::class)->aoSalvar($empresaId, $produtos));
     }
 
     /**
@@ -120,10 +169,15 @@ class EstruturaOfertaService
                     'logistica'   => $logistica,
                     'observacoes' => $observacoes,
                     'componentes' => [['id' => $base->id, 'quantidade' => $n]],
-                ], $ator);
+                ], $ator, prepararNoPublicador: false);
 
                 $r['criados'][] = $oferta->sku;
                 $r['absorvidos'] += $absorvidos;
+            }
+
+            // Os combos vão ao Publicador numa agenda só, pelo produto da base.
+            if ($r['criados'] !== []) {
+                $this->prepararNoPublicador($empresa, [$base->id]);
             }
 
             return $r;

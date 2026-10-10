@@ -68,8 +68,9 @@ class AcessoAosProdutosTest extends TestCase
 
     public function test_o_menu_do_mapeamento_comeca_por_produtos(): void
     {
+        // 09/10/2026: o Planejamento (chave `sugestoes`) vem logo depois de Produtos.
         $this->assertSame(
-            ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
+            ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
             array_keys((new \ReflectionClass(ModulosPortal::class))->getConstant('SUBMODULOS')[ModulosPortal::ESTRUTURA]),
         );
     }

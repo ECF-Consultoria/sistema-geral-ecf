@@ -131,6 +131,8 @@ class RetratoDoCatalogo
                         ->values()
                         ->all(),
                     'custo' => $v->custo,
+                    // "Terá estoque?" do Montar kit (09/10/2026): o estoque do Portal; null = não informado.
+                    'estoque' => $v->estoque,
                 ];
             }
 
@@ -161,13 +163,20 @@ class RetratoDoCatalogo
         }
 
         // ─── Composições que já existem (D-03) ───
+        // `existentesSku` diz QUAL é (o SKU), para o "Montar kit" responder "já existe: SKU X"; o
+        // gerador só olha `existentes`. A oferta do Portal vence o kit da Fase N com a mesma chave.
         $existentes = [];
-        foreach ($this->composicoesExistentes($empresaId) as $itens) {
-            $existentes[ChaveDeComposicao::de($itens)] = true;
+        $existentesSku = [];
+        foreach ($this->composicoesExistentes($empresaId) as ['itens' => $itens, 'sku' => $sku]) {
+            $chave = ChaveDeComposicao::de($itens);
+            $existentes[$chave] = true;
+            $existentesSku[$chave] ??= $sku;
         }
         // Planejamento × Fase N (09/10/2026): o kit de N unidades do Publicador já é o Combo N de cada cor.
-        foreach ($this->fasesDoPublicador($empresaId, $produtos) as $itens) {
-            $existentes[ChaveDeComposicao::de($itens)] = true;
+        foreach ($this->fasesDoPublicador($empresaId, $produtos) as ['itens' => $itens, 'sku' => $sku]) {
+            $chave = ChaveDeComposicao::de($itens);
+            $existentes[$chave] = true;
+            $existentesSku[$chave] ??= $sku;
         }
 
         // ─── Descartadas ───
@@ -187,20 +196,21 @@ class RetratoDoCatalogo
                 'max_sku'    => (int) config('estrutura_geracao.max_sku', 120),
             ],
             'detalhes' => [
-                'variacoes'    => $detalhesVariacao,
-                'produtos'     => $detalhesProduto,
-                'tipos'        => $detalhesTipos,
-                'tem_produtos' => $produtosDb->isNotEmpty(),
+                'variacoes'      => $detalhesVariacao,
+                'produtos'       => $detalhesProduto,
+                'tipos'          => $detalhesTipos,
+                'tem_produtos'   => $produtosDb->isNotEmpty(),
+                'existentes_sku' => $existentesSku,
             ],
         ];
     }
 
     /**
-     * Combo/Kit/Combit da empresa, como variacao_id => quantidade. Composição com
-     * algum componente sem variação (oferta antiga, sem produto) não é comparável
-     * e fica de fora. Uma consulta só, com a empresa nas DUAS pontas do join.
+     * Combo/Kit/Combit da empresa, como variacao_id => quantidade, com o SKU da oferta.
+     * Composição com algum componente sem variação (oferta antiga, sem produto) não é
+     * comparável e fica de fora. Uma consulta só, com a empresa nas DUAS pontas do join.
      *
-     * @return array<int, array<int,int>>
+     * @return list<array{itens: array<int,int>, sku: string}>
      */
     private function composicoesExistentes(int $empresaId): array
     {
@@ -210,19 +220,27 @@ class RetratoDoCatalogo
             ->where('o.company_id', $empresaId)
             ->where('k.company_id', $empresaId)
             ->whereIn('o.fase', [EstruturaOferta::FASE_COMBO, EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT])
-            ->get(['c.oferta_id', 'k.variacao_id', 'c.quantidade']);
+            ->orderBy('c.oferta_id')
+            ->get(['c.oferta_id', 'o.sku', 'k.variacao_id', 'c.quantidade']);
 
         $porOferta = [];
+        $skus = [];
         $invalidas = [];
         foreach ($linhas as $l) {
             if ($l->variacao_id === null) {
                 $invalidas[$l->oferta_id] = true;
                 continue;
             }
+            $skus[$l->oferta_id] = (string) $l->sku;
             $porOferta[$l->oferta_id][(int) $l->variacao_id] = ($porOferta[$l->oferta_id][(int) $l->variacao_id] ?? 0) + (int) $l->quantidade;
         }
 
-        return array_diff_key($porOferta, $invalidas);
+        $saida = [];
+        foreach (array_diff_key($porOferta, $invalidas) as $ofertaId => $itens) {
+            $saida[] = ['itens' => $itens, 'sku' => $skus[$ofertaId]];
+        }
+
+        return $saida;
     }
 
     /**
@@ -236,7 +254,7 @@ class RetratoDoCatalogo
      * separado no Publicador não é cor do kit e continua sugerida.
      *
      * @param  list<array<string,mixed>>  $produtos  os produtos do retrato (com `variacoes`)
-     * @return list<array<int,int>>
+     * @return list<array{itens: array<int,int>, sku: string}>
      */
     private function fasesDoPublicador(int $empresaId, array $produtos): array
     {
@@ -246,7 +264,8 @@ class RetratoDoCatalogo
             ->where('b.company_id', $empresaId)
             ->whereNotNull('b.estrutura_produto_id')
             ->where('k.quantidade_kit', '>=', 2)
-            ->get(['b.estrutura_produto_id', 'k.quantidade_kit']);
+            ->orderBy('k.id')
+            ->get(['b.estrutura_produto_id', 'k.quantidade_kit', 'k.sku']);
         if ($kits->isEmpty()) {
             return [];
         }
@@ -268,7 +287,7 @@ class RetratoDoCatalogo
                 'id' => (int) $v['id'], 'eixo' => $v['eixo'], 'valor' => $v['valor'], 'codigo' => $v['sku'],
             ], $comOferta))['agrupaveis'];
             foreach ($cores as $variacaoId) {
-                $saida[] = [(int) $variacaoId => (int) $k->quantidade_kit];
+                $saida[] = ['itens' => [(int) $variacaoId => (int) $k->quantidade_kit], 'sku' => (string) $k->sku];
             }
         }
 

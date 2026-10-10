@@ -20,6 +20,19 @@ class AcessoAoModuloEstruturaTest extends TestCase
     use GabaritoDaPlanilhaEstrutural;
     use RefreshDatabase;
 
+    /** A sessão de equipe no portal (ticket de 60 s emitido pelo admin). */
+    private function entrarComoEquipe(\App\Models\Company $empresa): static
+    {
+        $membro = \App\Models\User::create([
+            'name' => 'Admin '.uniqid(), 'email' => 'admin.'.uniqid().'@ecf.test',
+            'password' => bcrypt('senha'), 'role' => 'admin', 'active' => true,
+        ]);
+        $ticket = app(\App\Services\Portal\PortalEquipeService::class)->emitir($membro, $empresa, '127.0.0.1');
+        $this->withoutVite()->get(route('portal.equipe.entrar', ['t' => $ticket]));
+
+        return $this;
+    }
+
     public function test_o_modulo_aparece_no_menu_de_toda_empresa_e_a_pagina_abre_vazia(): void
     {
         $empresa = $this->empresaDoGabarito();
@@ -53,6 +66,9 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $sessao->get(route('portal.auth.estrutura', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]))
             ->assertRedirect(route('portal.auth.estrutura.mapeamento', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]));
 
+        // O CLIENTE (09/10/2026): os 4 do dia a dia (Produtos, Planejamento, Precificação, Mapeamento) e,
+        // como esta empresa tem oferta simples sem produto (a lista do gabarito), também Lista SKUs e
+        // Anúncios. O Cronograma (chave `planejamento`, a agenda) fica escondido.
         $sessao->get(route('portal.auth.estrutura.lista'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
@@ -61,16 +77,16 @@ class AcessoAoModuloEstruturaTest extends TestCase
                     $estrutura = collect($modulos)->firstWhere('chave', 'estrutura');
 
                     return $estrutura['ativo']
-                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento']
+                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'mapeamento']
                         && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
-                        // 08/10: a agenda se chama "Cronograma"; "Planejamento" ficou para a tela de sugestões.
-                        && collect($estrutura['submodulos'])->pluck('rotulo')->all() === ['Produtos', 'Lista SKUs', 'Precificação', 'Anúncios', 'Cronograma', 'Mapeamento']
-                        // 02/10 (D18): o Anunciar saiu do Portal — são 6 submódulos (Produtos primeiro), todos abertos.
-                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null);
+                        // 08/10: a agenda se chama "Cronograma"; "Planejamento" é a tela de sugestões (chave `sugestoes`).
+                        && collect($estrutura['submodulos'])->pluck('rotulo')->all() === ['Produtos', 'Planejamento', 'Lista SKUs', 'Precificação', 'Anúncios', 'Mapeamento']
+                        // 02/10 (D18): o Anunciar saiu do Portal — todos abertos.
+                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null && ! $s['oculto']);
                 })
             );
 
-        // Cada submódulo marca a si mesmo como ativo.
+        // Cada submódulo marca a si mesmo como ativo — o escondido também, quando a pessoa está nele (`oculto`).
         foreach (['anuncios' => 'Portal/EstruturaAnuncios', 'agenda' => 'Portal/EstruturaAgenda', 'mapeamento' => 'Portal/EstruturaMapeamento'] as $rota => $componente) {
             $sub = $rota === 'agenda' ? 'planejamento' : $rota;
             $sessao->get(route("portal.auth.estrutura.{$rota}"))
@@ -78,6 +94,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
                 ->assertInertia(fn ($page) => $page
                     ->component($componente)
                     ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['chave'] === $sub)
+                    ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['oculto'] === ($sub === 'planejamento'))
                 );
         }
 
@@ -85,6 +102,21 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $sessao->get(route('portal.auth.estrutura.lista'))
             ->assertInertia(fn ($page) => $page
                 ->where('modulos', fn ($m) => collect($m)->where('chave', '!=', 'estrutura')->every(fn ($x) => $x['submodulos'] === []))
+            );
+    }
+
+    /** A EQUIPE (entrada de equipe no portal) vê os 7 submódulos, na ordem de quem começa do zero. */
+    public function test_a_equipe_ve_os_sete_submodulos(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+
+        $this->entrarComoEquipe($empresa)
+            ->get(route('portal.auth.estrutura.produtos'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('modulos', fn ($modulos) => collect(collect($modulos)->firstWhere('chave', 'estrutura')['submodulos'])->pluck('rotulo')->all()
+                    === ['Produtos', 'Planejamento', 'Lista SKUs', 'Precificação', 'Anúncios', 'Cronograma', 'Mapeamento'])
+                ->where('modulos', fn ($modulos) => collect(collect($modulos)->firstWhere('chave', 'estrutura')['submodulos'])->every(fn ($s) => ! $s['oculto']))
             );
     }
 

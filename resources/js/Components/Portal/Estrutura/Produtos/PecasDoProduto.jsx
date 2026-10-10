@@ -1,9 +1,10 @@
 import { ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import Explicacao from '@/Components/Explicacao';
 import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
+import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
 // ─── Peças pequenas da ficha do produto (167-19), reaproveitadas pela lista ──
@@ -200,9 +201,16 @@ export function PilulaFalta({ variacoes, rotulos, nome }) {
     );
 }
 
-/** Menu ⋮ (D-30): só ações que existem — abrir a ficha e ver a oferta de cada variação na Lista SKUs. */
+/**
+ * Menu ⋮ (D-30): só ações que existem — abrir a ficha, ver a oferta de cada variação na Lista SKUs
+ * e montar um kit com o produto. Quem não vê a Lista SKUs (o cliente, desde 09/10/2026) vê o SKU
+ * na Precificação; o "Montar kit" abre o Planejamento com o produto já escolhido.
+ */
 export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }) {
     const comOferta = (variacoes ?? []).filter((v) => v.oferta?.sku);
+    const { modulos = [] } = usePage().props;
+    const listaVisivel = submoduloVisivel(modulos, 'lista');
+    const planejamentoVisivel = submoduloVisivel(modulos, 'sugestoes');
 
     return (
         <DropdownMenu>
@@ -214,11 +222,20 @@ export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" data-nao-abrir className="border-white/[0.08] bg-ecf-card text-white">
                 <DropdownMenuItem onSelect={() => onAbrir(produtoId)}>Abrir a ficha</DropdownMenuItem>
-                {comOferta.map((v) => (
+                {planejamentoVisivel && comOferta.length > 0 && (
+                    <DropdownMenuItem onSelect={() => router.visit(route('portal.auth.estrutura.sugestoes', { montar: produtoId }))} data-acao="montar-kit-do-produto">
+                        Montar kit com este produto
+                    </DropdownMenuItem>
+                )}
+                {comOferta.map((v) => (listaVisivel ? (
                     <DropdownMenuItem key={v.id} onSelect={() => router.visit(route('portal.auth.estrutura.lista', { q: v.oferta.sku }))}>
                         Ver {v.oferta.sku} na Lista SKUs
                     </DropdownMenuItem>
-                ))}
+                ) : (
+                    <DropdownMenuItem key={v.id} onSelect={() => router.visit(route('portal.auth.estrutura.precificacao', { q: v.oferta.sku }))}>
+                        Ver {v.oferta.sku} na Precificação
+                    </DropdownMenuItem>
+                )))}
             </DropdownMenuContent>
         </DropdownMenu>
     );

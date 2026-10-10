@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { router } from '@inertiajs/react';
 import { Plus, Search, Trash2, X } from 'lucide-react';
 import Janela from './Janela';
@@ -25,9 +26,12 @@ import { cn } from '@/lib/utils';
 // dos SKUs — o resultado das linhas CAD-01 / CAD-01-CB2…CB6 da planilha sem
 // digitar seis linhas.
 //
-// SKU e nome vêm sugeridos no padrão da aula (CAD-01-CB2, MSA-MR+CAD-01-KIT,
-// MSA-MR+CAD-01-CBT4) e continuam editáveis — "o padrão de SKU é livre".
-// Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever.
+// SKU e nome vêm sugeridos e continuam editáveis — "o padrão de SKU é livre".
+// Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever. O combo segue o
+// padrão da aula (CAD-01-CB2, "Combo 2 …", o mesmo dos combos em lote). Kit e Combit,
+// desde 09/10/2026, vêm do SERVIDOR no padrão do Planejamento ("Mesa + Cadeira",
+// KT-…, CT{n}-…; a mesma `NomesSugeridos` das sugestões e do "Montar kit"), pela prévia
+// do Montar kit — antes eram "MSA-MR+CAD-01-KIT" e "-CBT4", outro padrão para a mesma oferta.
 
 const faseDoKit = (itens) => {
     if (itens.length < 2) return null;
@@ -47,18 +51,10 @@ const lerQuantidades = (texto) => [...new Set(String(texto)
 /** As quantidades mais comuns de combo, em botões — o resto vai no campo "outras". */
 const COMBOS_RAPIDOS = [2, 3, 4, 5, 6];
 
-function sugestaoKit(itens, porId) {
-    const fase = faseDoKit(itens);
-    if (! fase) return { sku: '', nome: '' };
-
-    const comps = itens.map((i) => ({ ...porId[i.id], quantidade: Number(i.quantidade) }));
-    const maxQtd = Math.max(...comps.map((c) => c.quantidade));
-    const sku = comps.map((c) => c.sku).join('+') + (fase === 'kit' ? '-KIT' : `-CBT${maxQtd}`);
-    const nome = (fase === 'kit' ? 'Kit ' : 'Combit ')
-        + comps.map((c, i) => (i === 0 && c.quantidade === 1 ? nomeDe(c) : `${c.quantidade} ${nomeDe(c)}`)).join(' + ');
-
-    return { sku, nome };
-}
+/** O corpo da prévia do Montar kit a partir dos itens do kit (ofertas simples, pelo id). */
+const corpoDaSugestaoKit = (itens) => ({
+    componentes: itens.map((i) => ({ oferta_id: i.id, quantidade: Math.min(999, Math.max(1, Math.trunc(Number(i.quantidade) || 1))) })),
+});
 
 /**
  * @param modo 'produto' | 'combo' | 'kit' | 'editar'
@@ -151,7 +147,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const novas = editando ? qtds : qtds.filter((n) => ! existentes.includes(n));
     const repetidas = editando ? [] : qtds.filter((n) => existentes.includes(n));
 
-    // Sugestões no padrão da aula, enquanto a pessoa não mexeu no campo.
+    // Combo: sugestão no padrão da aula, enquanto a pessoa não mexeu no campo.
     useEffect(() => {
         if (! aberta || editando) return;
 
@@ -159,12 +155,33 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             if (! skuMexido) setSku(`${base.sku}-CB${qtds[0]}`);
             if (! nomeMexido) setNome(`Combo ${qtds[0]} ${nomeDe(base)}`);
         }
-        if (ehKit && opcoes) {
-            const s = sugestaoKit(itens, porId);
-            if (! skuMexido) setSku(s.sku);
-            if (! nomeMexido) setNome(s.nome);
+    }, [qtdCombo, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Kit e Combit: nome e SKU do servidor, no padrão do Planejamento (a prévia do Montar kit só
+    // calcula). Com respiro; a resposta que chega depois de a pessoa mexer no campo não o pisa.
+    useEffect(() => {
+        if (! aberta || editando || ! ehKit) return undefined;
+        if (! faseDoKit(itens)) {
+            if (! skuMexido) setSku('');
+            if (! nomeMexido) setNome('');
+
+            return undefined;
         }
-    }, [qtdCombo, itens, opcoes, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (skuMexido && nomeMexido) return undefined;
+        let vivo = true;
+        const t = setTimeout(async () => {
+            try {
+                const { data } = await axios.post(route('portal.auth.estrutura.sugestoes.montar.previa'), corpoDaSugestaoKit(itens));
+                if (! vivo || ! data?.sugerido) return;
+                if (! skuMexido) setSku(data.sugerido.sku);
+                if (! nomeMexido) setNome(data.sugerido.nome);
+            } catch {
+                // Sem sugestão agora: os campos ficam como estão e continuam editáveis.
+            }
+        }, 400);
+
+        return () => { vivo = false; clearTimeout(t); };
+    }, [itens, aberta, skuMexido, nomeMexido]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Os que casam com a busca, sem os já escolhidos. A lista mostra no máximo
     // 120 — com 2.700 ofertas, o resto se acha refinando a busca.

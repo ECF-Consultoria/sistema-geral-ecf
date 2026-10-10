@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, router } from '@inertiajs/react';
+import { Deferred, Link, router } from '@inertiajs/react';
 import { AlertTriangle, ArrowRight, CalendarPlus, ChevronRight, Maximize2, Plus, Search, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import {
@@ -12,6 +12,8 @@ import FormAnuncio from '@/Components/Portal/Estrutura/FormAnuncio';
 import AgendarDialog from '@/Components/Portal/Estrutura/AgendarDialog';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import AgendaLateral from '@/Components/Portal/Estrutura/AgendaLateral';
+import FunilDoMapeamento, { FunilCarregando } from '@/Components/Portal/Estrutura/FunilDoMapeamento';
+import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — submódulo Mapeamento (o pós-publicação) ────────
@@ -46,6 +48,12 @@ import { cn } from '@/lib/utils';
 // lista pagina SEMPRE no servidor (25 blocos), porque o maior seller da
 // carteira tem milhares de anúncios — e filtro de navegador sobre página
 // recortada mente (`portal-do-cliente.md` §25).
+//
+// ### O que falta (09/10/2026)
+// No topo, o funil (`FunilDoMapeamento`, prop adiada `funil`): produtos a completar,
+// combinações para revisar, ofertas sem preço fechado e o que já está à venda, cada um com
+// o link da tela que resolve. Quem não vê a Lista SKUs nem o Cronograma (o cliente, por
+// padrão) não ganha link para eles: o vazio leva a Produtos e a agenda fica sem atalho.
 
 const FILTROS = [
     { chave: 'todas',     rotulo: 'Todas' },
@@ -75,7 +83,7 @@ const LADO_QUE_FALTA = { falta_classico: 'classico', falta_premium: 'premium' };
  * Uma oferta dentro do produto aberto: o que é, os dois lados, o estado e a
  * ação. A linha inteira abre a estação do produto.
  */
-function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodape = null }) {
+function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodape = null, agendaVisivel = true }) {
     const publicacao = oferta.agenda.find((i) => i.acao === 'publicacao' && ! i.feita);
     const pendente = oferta.situacao !== 'ok';
 
@@ -125,12 +133,14 @@ function LinhaOferta({ oferta, onAbrir, onAnuncio, onAgendar, vocabulario, rodap
                             {oferta.situacao === 'publicar' ? 'Publicar' : 'Completar'}
                         </Botao>
                     )}
-                    {pendente && (publicacao ? (
+                    {pendente && (publicacao ? (agendaVisivel ? (
                         <Link href={route('portal.auth.estrutura.agenda')} onClick={(e) => e.stopPropagation()}
                             className="whitespace-nowrap text-[11.5px] text-white/45 underline decoration-dotted underline-offset-2 hover:text-white" data-agendada>
                             agendada {fmtData(publicacao.data)}
                         </Link>
                     ) : (
+                        <span className="whitespace-nowrap text-[11.5px] text-white/45" data-agendada>agendada {fmtData(publicacao.data)}</span>
+                    )) : (
                         <button type="button" onClick={(e) => acao(e, () => onAgendar(oferta))} title="Agendar a publicação"
                             className="rounded-lg p-1.5 text-white/40 hover:bg-white/[0.05] hover:text-white" aria-label="Agendar a publicação" data-acao="agendar">
                             <CalendarPlus size={15} />
@@ -175,12 +185,12 @@ function Composicao({ bloco }) {
  * lados e a ação). Nasce RECOLHIDO — com centenas de produtos, aberto vira um
  * rolo —, salvo com filtro/busca ativos ou com poucos produtos.
  */
-function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onVariacao, vocabulario }) {
+function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onVariacao, vocabulario, agendaVisivel = true }) {
     const [aberto, setAberto] = useState(abertoInicial);
     const principalCompleto = bloco.ofertas.find((o) => o.id === bloco.principal.id) ?? bloco.principal;
     const simples = bloco.ofertas.filter((o) => o.fase === 'simples');
     const combos = bloco.ofertas.filter((o) => o.fase !== 'simples');
-    const props = { onAbrir, onAnuncio, onAgendar, vocabulario };
+    const props = { onAbrir, onAnuncio, onAgendar, vocabulario, agendaVisivel };
 
     return (
         <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card" data-bloco={bloco.chave} data-aberto={aberto ? '1' : '0'}>
@@ -241,7 +251,7 @@ function BlocoProduto({ bloco, abertoInicial, onAbrir, onAnuncio, onAgendar, onV
 }
 
 /** Kits e combits: uma seção só, também recolhida, com o resumo de TODOS. */
-function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAnuncio, onAgendar, vocabulario }) {
+function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAnuncio, onAgendar, vocabulario, agendaVisivel = true }) {
     const [aberto, setAberto] = useState(abertoInicial);
     const pendentes = resumo.falta + resumo.publicar;
 
@@ -264,7 +274,7 @@ function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAnuncio,
                 <ul className="border-t border-white/[0.06] px-1 py-2 sm:px-2">
                     {blocos.flatMap((b) => b.ofertas).map((o) => (
                         <LinhaOferta key={o.id} oferta={o} onAbrir={onAbrir} onAnuncio={onAnuncio} onAgendar={onAgendar} vocabulario={vocabulario}
-                            rodape={o.componentes.map((c) => `${c.nome ?? c.sku} ×${c.quantidade}`).join(' + ')} />
+                            agendaVisivel={agendaVisivel} rodape={o.componentes.map((c) => `${c.nome ?? c.sku} ×${c.quantidade}`).join(' + ')} />
                     ))}
                 </ul>
             )}
@@ -272,22 +282,36 @@ function SecaoKits({ blocos, resumo, porFase, abertoInicial, onAbrir, onAnuncio,
     );
 }
 
-/** Nada cadastrado ainda: o Mapeamento é o pós-publicação — o começo é a Lista SKUs. */
-function EstadoVazio() {
+/**
+ * Nada cadastrado ainda: o Mapeamento é o pós-publicação — o começo é a Lista SKUs para quem
+ * a vê; quem não a vê (o cliente, desde 09/10/2026) começa por Produtos.
+ */
+function EstadoVazio({ listaVisivel = true }) {
+    const classe = 'inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90';
+
     return (
         <section className="rounded-2xl border border-dashed border-white/[0.12] p-6 text-center space-y-3" data-vazio>
             <p className="text-white text-[15px] font-semibold">Nada para acompanhar ainda</p>
             <p className="text-white/50 text-[13px] max-w-lg mx-auto leading-relaxed">
                 O Mapeamento mostra a situação de cada oferta depois de publicada. Comece listando os seus produtos.
             </p>
-            <Link href={route('portal.auth.estrutura.lista')} className="inline-flex items-center gap-1.5 rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90" data-acao="ir-lista">
-                Ir para a Lista SKUs <ArrowRight size={14} />
-            </Link>
+            {listaVisivel ? (
+                <Link href={route('portal.auth.estrutura.lista')} className={classe} data-acao="ir-lista">
+                    Ir para a Lista SKUs <ArrowRight size={14} />
+                </Link>
+            ) : (
+                <Link href={route('portal.auth.estrutura.produtos')} className={classe} data-acao="ir-produtos">
+                    Ir para Produtos <ArrowRight size={14} />
+                </Link>
+            )}
         </section>
     );
 }
 
-export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, opcoes_ofertas }) {
+export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, filtros, vocabulario, ml_conectado = false, opcoes_ofertas, funil }) {
+    // Links internos só para as telas que a pessoa vê (o servidor decide; `portalSubmodulos`).
+    const listaVisivel = submoduloVisivel(modulos, 'lista');
+    const agendaVisivel = submoduloVisivel(modulos, 'planejamento');
     const [estacaoId, setEstacaoId] = useState(null);       // a oferta que abre a estação do produto
     const [formOferta, setFormOferta] = useState(null);     // { modo, base, inicial }
     const [formAnuncio, setFormAnuncio] = useState(null);   // { oferta, anuncio, tipoFixo, viaAgenda }
@@ -353,6 +377,7 @@ export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, 
 
     const acoes = {
         vocabulario,
+        agendaVisivel,
         onAbrir: setEstacaoId,
         onAgendar: setAgendar,
         onAnuncio: (oferta, tipoFixo) => setFormAnuncio({ oferta, tipoFixo }),
@@ -364,14 +389,19 @@ export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, 
                 <CabecalhoEstrutura etapa="mapeamento" onComoFunciona={() => setAula(true)}
                     descricao="Depois de publicar: a situação de cada oferta, as métricas de cada anúncio e a Jardinagem." />
 
-                <ResumoOperacional painel={painel} contagem={estrutura.agenda.contagem} />
+                {/* O que falta, em números do servidor; chega depois da página (prop adiada). */}
+                <Deferred data="funil" fallback={<FunilCarregando />}>
+                    <FunilDoMapeamento funil={funil} />
+                </Deferred>
+
+                <ResumoOperacional painel={painel} contagem={estrutura.agenda.contagem} agendaVisivel={agendaVisivel} />
 
                 {painel.ofertas === 0 ? (
-                    <EstadoVazio />
+                    <EstadoVazio listaVisivel={listaVisivel} />
                 ) : (
                     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
                         <div className="min-w-0 space-y-4">
-                            <ProximoPasso passo={estrutura.proximo_passo} />
+                            <ProximoPasso passo={estrutura.proximo_passo} agendaVisivel={agendaVisivel} />
 
                             <div className="flex flex-wrap items-center gap-2">
                                 <div className="hidden flex-wrap gap-2 sm:flex" role="tablist" aria-label="Situação">
@@ -426,7 +456,7 @@ export default function EstruturaMapeamento({ empresa, modulos = [], estrutura, 
                         </div>
 
                         <div className="hidden lg:sticky lg:top-4 lg:block">
-                            <AgendaLateral agenda={estrutura.agenda} aPublicar={painel.a_publicar} vocabulario={vocabulario}
+                            <AgendaLateral agenda={estrutura.agenda} aPublicar={painel.a_publicar} vocabulario={vocabulario} agendaVisivel={agendaVisivel}
                                 onConcluir={(oferta, tipo) => setFormAnuncio({ oferta, tipoFixo: tipo, viaAgenda: true })} />
                         </div>
                     </div>

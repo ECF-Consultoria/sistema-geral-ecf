@@ -289,6 +289,12 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.sugestoes.geracao')->name('portal.auth.estrutura.sugestoes.geracao');
     Route::post('/estrutura/sugestoes/frete', [PortalEstruturaSugestoesController::class, 'cotarFrete'])
         ->middleware('throttle:10,1,estrutura.sugestoes.frete')->name('portal.auth.estrutura.sugestoes.frete');
+    // 09/10/2026 — "Montar kit" no Planejamento: a prévia ao vivo (só calcula) e a gravação.
+    // Cada uma com a sua linha na allowlist e o seu prefixo de throttle.
+    Route::post('/estrutura/sugestoes/montar/previa', [PortalEstruturaSugestoesController::class, 'previaDaMontagem'])
+        ->middleware('throttle:120,1,estrutura.sugestoes.montar.previa')->name('portal.auth.estrutura.sugestoes.montar.previa');
+    Route::post('/estrutura/sugestoes/montar', [PortalEstruturaSugestoesController::class, 'montar'])
+        ->middleware('throttle:30,1,estrutura.sugestoes.montar')->name('portal.auth.estrutura.sugestoes.montar');
     Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
     Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
     Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])

@@ -16,6 +16,7 @@ use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\EstruturaVisaoService;
+use App\Services\Portal\Estrutura\FunilDoMapeamento;
 use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
@@ -64,7 +65,8 @@ class PortalEstruturaController extends Controller
      * A porta do módulo (D-21). Sem nada na URL, abre Produtos — o primeiro
      * passo de quem começa do zero — para a empresa que já tem produto ou que
      * ainda não tem oferta nenhuma; quem já trabalha só com ofertas (as 500
-     * importadas da #131) segue entrando pela Lista SKUs. Os links antigos (`?abrir=ID` da agenda,
+     * importadas da #131) segue entrando pela Lista SKUs — se a vê no menu (09/10/2026,
+     * `VisibilidadeDoMapeamento`); senão, Produtos. Os links antigos (`?abrir=ID` da agenda,
      * `?abrir=ID&metricas=1` da Jardinagem, `?q=`/`?situacao=`/`?pagina=`)
      * eram da página que hoje é o Mapeamento: vão para ela, com a query intacta.
      */
@@ -72,8 +74,12 @@ class PortalEstruturaController extends Controller
     {
         $daVisaoAntiga = $request->hasAny(['abrir', 'q', 'situacao', 'pagina', 'metricas']);
 
-        $id = PortalContexto::empresa()->id;
-        $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists();
+        $empresa = PortalContexto::empresa();
+        $id = $empresa->id;
+        // Só vai para a Lista SKUs quem a vê (09/10/2026): o cliente vê Produtos, Planejamento,
+        // Precificação e Mapeamento; a empresa que importou ofertas continua vendo a Lista.
+        $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists()
+            || ! ModulosPortal::submoduloVisivel($empresa, PortalContexto::ator(), 'lista');
 
         return redirect()->route(
             $daVisaoAntiga ? 'portal.auth.estrutura.mapeamento' : ($abreProdutos ? 'portal.auth.estrutura.produtos' : 'portal.auth.estrutura.lista'),
@@ -199,6 +205,9 @@ class PortalEstruturaController extends Controller
             // Só quando o diálogo pede — a lista de ofertas pode ter milhares
             // de linhas, e a maioria das visitas não a abre.
             'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
+            // O que falta (09/10/2026): produtos, Planejamento, Precificação e o que está à venda. Adiado:
+            // a página abre sem esperar a geração das sugestões e o resumo da Precificação.
+            'funil' => Inertia::defer(fn () => app(FunilDoMapeamento::class)->daEmpresa($empresa)),
         ]);
     }
 

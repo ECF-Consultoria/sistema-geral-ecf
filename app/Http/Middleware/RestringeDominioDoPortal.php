@@ -158,6 +158,9 @@ class RestringeDominioDoPortal
         'portal/estrutura/sugestoes/descartar',
         'portal/estrutura/sugestoes/restaurar',
         'portal/estrutura/sugestoes/frete',
+        // 09/10/2026 — "Montar kit": a prévia ao vivo e a gravação. Uma linha por rota, sem curinga.
+        'portal/estrutura/sugestoes/montar/previa',
+        'portal/estrutura/sugestoes/montar',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',

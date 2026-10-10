@@ -17,8 +17,12 @@ export const msgSkuLongo = (max) => `O código passa de ${max} caracteres. Encur
 export const textoTituloLongo = (n, max) => `O título passa de ${max} caracteres (${n}). O Mercado Livre pode cortar.`;
 
 
-/** Resultado do aceite: criadas, já existiam e erros, cada parte só quando há. */
-export function textoResultadoAceite(resultado) {
+/**
+ * Resultado do aceite: criadas, já existiam e erros, cada parte só quando há. `ondeFica` diz
+ * onde a pessoa acha as criadas (09/10/2026): "na Lista SKUs" para quem a vê; quem não a vê
+ * (o cliente, por padrão) lê "na Precificação" — ver `destinoDaOfertaCriada`.
+ */
+export function textoResultadoAceite(resultado, ondeFica = 'na Lista SKUs') {
     const criadas = resultado?.criadas?.length ?? 0;
     const existiam = resultado?.ja_existiam?.length ?? 0;
     const erros = resultado?.erros?.length ?? 0;
@@ -26,8 +30,8 @@ export function textoResultadoAceite(resultado) {
 
     if (criadas > 0) {
         partes.push(criadas === 1
-            ? '1 oferta criada. Ela já está na Lista SKUs.'
-            : `${criadas} ofertas criadas. Elas já estão na Lista SKUs.`);
+            ? `1 oferta criada. Ela já está ${ondeFica}.`
+            : `${criadas} ofertas criadas. Elas já estão ${ondeFica}.`);
     }
     if (existiam > 0) {
         partes.push(existiam === 1
