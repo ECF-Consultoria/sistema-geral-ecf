@@ -1139,6 +1139,10 @@ produto: o "IA em ~7 min" do teste da §21.
   - Entrou com `supervisorctl reread` e depois `supervisorctl update ecf-worker-ia`, **com o nome do grupo**: o
     `update` sem argumento aplicaria TODA mudança pendente em disco e reiniciaria outros grupos.
   - Provado antes do deploy: um preparo de produto inexistente, posto à mão em `publicador-ia`, saiu `DONE` em 2 s.
+- **Provado em produção depois do deploy `de4fe589`** (save de descrição na E2E-MJ da #459, pelo Portal, 16:07:39):
+  Sincronizar na `high` às 16:07:54 (245 ms); `PrepararProdutoNoPublicadorJob` na `publicador-ia` às 16:09:40; 6
+  `GerarPreparoIaJob` em duas cadeias paralelas (o produto tem 2 produtos no Publicador), de 12 s a 1 min 14 s,
+  fechando às 16:12:34. Nenhum Job de IA passou pela `high`, e ela ficou vazia o tempo todo.
 - **O `deploy.sh` só reinicia `ecf-worker:*`.** O `queue:restart` depois dele pega também o `ecf-worker-ia`.
 - **Válvula de emergência:** se o programa sumir (servidor refeito, conf perdida), o preparo para calado.
   `PUBLICADOR_PREPARO_IA_FILA=high` + `config:cache` devolve o que for despachado a partir daí; o que já estiver em
