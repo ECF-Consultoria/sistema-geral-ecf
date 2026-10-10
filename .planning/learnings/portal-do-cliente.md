@@ -1435,8 +1435,7 @@ pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não s
   para item sem variação) e a chave de variação do `RetratoDoCatalogo` (pega os kits da Fase N); o retrato agora
   leva `detalhes.existentes_sku` para dizer "já existe: SKU X". `ChaveDeComposicao` aceita até 6 componentes.
 - **Um padrão de nome/SKU**: a Lista SKUs (`FormOferta`) passou a pedir Kit/Combit à mesma prévia (antes
-  "A+B-KIT"/"-CBT4"). O Combo da Lista ficou "Combo N nome"/`-CBn` porque o lote é do `criarCombos` (fora do
-  escopo) — o Planejamento diz "Kit N Cadeiras …". Divergência conhecida, de propósito.
+  "A+B-KIT"/"-CBT4"). O Combo também, em seguida (ver §41.1).
 - **Vai sozinho ao Publicador**: `EstruturaOfertaService::criar` de oferta COMPOSTA chama
   `PreparoIaAgenda::aoSalvar` pelos produtos dos componentes, em `DB::afterCommit` (rollback não agenda); o
   "Aceitar" em lote e os combos em lote passam `prepararNoPublicador: false` e agendam UMA vez. Componente sem
@@ -1447,7 +1446,24 @@ pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não s
 - **Teste**: trocar de empresa no mesmo teste pede `$this->app['auth']->forgetGuards()` (o guard guarda o
   usuário da requisição anterior e a página sai com o menu da outra empresa). Render no Node (esbuild): deixar
   `@radix-ui/*`, `react-remove-scroll` & cia. em `external`, senão "Dynamic require of react".
-- **Pendente em arquivo de outro agente**: o vazio da `EstruturaPrecificacao.jsx` ("Os produtos vêm da Lista
-  SKUs" / "Ir para a Lista SKUs") deveria apontar para Produtos/Planejamento quando a Lista não é visível; a
-  copy "Cada variação vira uma oferta na Lista SKUs" (Produtos e ficha) e os exemplos do `ComoFunciona` citam a
-  Lista e o padrão antigo.
+- **Textos que citavam a Lista para o cliente** (resolvido, ver §41.1): o vazio da Precificação, a frase "Cada
+  variação vira uma oferta na Lista SKUs" (Produtos e ficha) e os exemplos do `ComoFunciona`.
+
+### 41.1 O Combo com um nome só, e os textos de quem não vê a Lista (10/10/2026)
+
+- **Combo da Lista = padrão do Planejamento** (`NomesSugeridos::combo`): o lote (`criarCombos`) monta o nome
+  pelo produto da variação, o valor e o tipo efetivo (escolhido no Planejamento > inferido) — "Kit 4 Cadeiras
+  Polo — Natural"; o combo de UMA quantidade do `FormOferta` pede a prévia do Montar kit com a oferta como item
+  e mostra "Combo N …" só até a resposta (o campo nunca fica com a quantidade errada). **Oferta sem produto
+  (importada) continua "Combo N {nome}", sem tipo — de propósito**: o Montar kit trata o avulso assim
+  (`itemAvulso`); inferir o tipo pelo nome criaria a divergência de volta. Por isso `ComposicaoDaOfertaTest` e
+  `AcessoAoModuloEstruturaTest` ("Combo 2/4 Cadeira 01", ofertas sem produto) não mudaram.
+- **Nada foi renomeado**: os combos criados antes seguem com "Combo N …" no banco; só o padrão de criação mudou.
+- **A leitura do tipo de UM produto agora existe em dois privados** (`PlanejamentoDaFaseService::tipoParaNome`
+  e `EstruturaOfertaService::tipoParaNome`) além do retrato em lote; quem mexer na regra do tipo efetivo mexe
+  nos três. O `CombosDaListaNoPadraoDoPlanejamentoTest` cruza o nome gravado com a sugestão do gerador.
+- **Textos por visibilidade**: `portalSubmodulos.js::textoDaVariacao(modulos)` dá a frase de Produtos/ficha;
+  o vazio da Precificação leva o cliente a Produtos. Os exemplos do `ComoFunciona` são conferidos contra o
+  `NomesSugeridos` (`NomesSugeridosTest`, que lê o .jsx).
+- **Ainda citam a Lista para o cliente (não mexido)**: `JanelaExcluirVariacao.jsx` ("também será excluída da
+  Lista SKUs", na ficha) e `MSG_SKU_REPETIDO` de `sugestoesEstrutura.js` ("…na Lista SKUs", no Planejamento).
