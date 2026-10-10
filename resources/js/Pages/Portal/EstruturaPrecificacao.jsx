@@ -6,6 +6,7 @@ import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, 
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import { deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
+import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
 // ─── Mapeamento Estrutural — submódulo Precificação ─────────────────────────
@@ -377,7 +378,39 @@ function Numero({ valor, rotulo, classe }) {
     );
 }
 
+/**
+ * Nada para precificar ainda: as ofertas vêm da Lista SKUs para quem a vê; quem não a vê (o
+ * cliente, desde 09/10/2026) cadastra em Produtos e monta os kits no Planejamento.
+ */
+function EstadoVazio({ listaVisivel = true }) {
+    const classe = 'inline-flex rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90';
+
+    return (
+        <section className="space-y-3 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-vazio>
+            {listaVisivel ? (
+                <>
+                    <p className="text-[15px] font-semibold text-white">Os produtos vêm da Lista SKUs</p>
+                    <p className="mx-auto max-w-lg text-[13px] text-white/50">Liste os produtos primeiro; cada um aparece aqui para você informar custo e frete.</p>
+                    <a href={route('portal.auth.estrutura.lista')} className={classe} data-acao="ir-lista">
+                        Ir para a Lista SKUs
+                    </a>
+                </>
+            ) : (
+                <>
+                    <p className="text-[15px] font-semibold text-white">Os produtos vêm de Produtos e do Planejamento</p>
+                    <p className="mx-auto max-w-lg text-[13px] text-white/50">Cadastre os produtos e monte os kits no Planejamento; cada oferta aparece aqui para você informar custo e frete.</p>
+                    <a href={route('portal.auth.estrutura.produtos')} className={classe} data-acao="ir-produtos">
+                        Ir para Produtos
+                    </a>
+                </>
+            )}
+        </section>
+    );
+}
+
 export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura, precificacao, filtros, ml_conectado = false, frete_tabela = null }) {
+    // O vazio só aponta para a Lista SKUs para quem a vê (o servidor decide; `portalSubmodulos`).
+    const listaVisivel = submoduloVisivel(modulos, 'lista');
     const [ajustar, setAjustar] = useState(null);   // { oferta, calculo }
     const [aula, setAula] = useState(false);
     const [busca, setBusca] = useState(filtros.q ?? '');
@@ -436,13 +469,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                 <ParametrosEmpresa parametros={parametros} padroes={padroes} />
 
                 {painel.ofertas === 0 ? (
-                    <section className="space-y-3 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-vazio>
-                        <p className="text-[15px] font-semibold text-white">Os produtos vêm da Lista SKUs</p>
-                        <p className="mx-auto max-w-lg text-[13px] text-white/50">Liste os produtos primeiro; cada um aparece aqui para você informar custo e frete.</p>
-                        <a href={route('portal.auth.estrutura.lista')} className="inline-flex rounded-xl bg-ecf-yellow px-4 py-2.5 text-[13px] font-semibold text-black hover:bg-ecf-yellow/90">
-                            Ir para a Lista SKUs
-                        </a>
-                    </section>
+                    <EstadoVazio listaVisivel={listaVisivel} />
                 ) : (
                     <>
                         <section className="grid grid-cols-2 gap-4 rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-4 sm:grid-cols-4 sm:px-5" data-resumo-precificacao>

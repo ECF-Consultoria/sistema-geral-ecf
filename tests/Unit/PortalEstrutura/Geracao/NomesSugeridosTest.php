@@ -62,6 +62,26 @@ class NomesSugeridosTest extends TestCase
         );
     }
 
+    /**
+     * Os exemplos do "Como funciona" do Portal (`ComoFunciona.jsx`, 10/10/2026) são o nome e o
+     * SKU que esta classe dá às ofertas da aula (cadeira + mesa): se o padrão mudar aqui, o
+     * exemplo da tela acusa — antes ele mostrava "MSA-MR+CAD-01-KIT" e "-CBT4".
+     */
+    public function test_os_exemplos_do_como_funciona_sao_os_desta_classe(): void
+    {
+        $jsx = (string) file_get_contents(resource_path('js/Components/Portal/Estrutura/ComoFunciona.jsx'));
+        $cadeira = ['produto_nome' => 'Cadeira 01', 'sku' => 'CAD-01', 'valor' => null];
+        $mesa = ['produto_nome' => 'Mesa Marfim', 'sku' => 'MSA-MR', 'valor' => null];
+
+        foreach ([
+            NomesSugeridos::combo('Cadeira 01', 'CAD-01', null, 2, self::CADEIRA),
+            NomesSugeridos::kit($mesa, $cadeira),
+            NomesSugeridos::combit($mesa, $cadeira, 4, self::CADEIRA),
+        ] as $oferta) {
+            $this->assertStringContainsString("'{$oferta['nome']}', '{$oferta['sku']}'", $jsx);
+        }
+    }
+
     public function test_avisos(): void
     {
         $lim = ['max_titulo' => 60, 'max_sku' => 120];

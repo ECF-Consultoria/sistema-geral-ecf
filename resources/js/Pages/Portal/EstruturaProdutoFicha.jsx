@@ -12,6 +12,7 @@ import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/Janela
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
+import { textoDaVariacao } from '@/lib/portalSubmodulos';
 import {
     entradaAtual, esquecerAbertura, fichaAbertaPelaLista, marcarUltimoProduto, passosAte, podeVoltarNoHistorico, urlDeVolta,
     voltarParaLista, voltarPeloHistorico,
@@ -46,6 +47,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
     const primeira = ficha.primeira;
     const nome = primeira.nome || 'Novo produto';
+    // "Cada variação vira uma oferta…": na Lista SKUs só para quem a vê (10/10/2026).
+    const variacaoVira = textoDaVariacao(modulos);
 
     // ─── Proteção do que foi digitado (padrão do usePublicador) ─────────────
 
@@ -236,7 +239,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                         <span className="truncate text-white">{nome}</span>
                     </nav>
                     <h1 className="mt-4 font-display text-[32px] font-bold leading-tight text-white lg:mt-2.5 lg:text-[42px]">{nome}</h1>
-                    <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. Cada variação vira uma oferta na Lista SKUs.</p>
+                    <p className="mt-2 text-[15px] text-white/70 lg:mt-0 lg:text-[17px]">Preencha o produto uma vez. {variacaoVira.frase}</p>
                 </div>
 
                 {ficha.rascunho && (
@@ -269,7 +272,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     <div className="flex items-center justify-between gap-3">
                         <h2 className="text-[20px] font-bold text-white">Variações</h2>
                         <p className="flex items-center gap-2 text-[14px] text-white/70">
-                            <span className="hidden sm:inline">Cada variação vira uma oferta na Lista SKUs.</span>
+                            <span className="hidden sm:inline">{variacaoVira.frase}</span>
                             {/* No <svg> o `title` não vira dica: ela mora no span (FE-IN-05). */}
                             <span className="inline-flex" title="Nova variação já vem com eixo, volumes e custo da primeira; mude só o que for diferente.">
                                 <Info size={16} aria-hidden="true" />
