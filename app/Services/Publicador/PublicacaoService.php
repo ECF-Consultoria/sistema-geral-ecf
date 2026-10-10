@@ -3,6 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
+use App\Jobs\Publicador\SincronizarAcervoDoPublicadoJob;
 use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
 use App\Models\PortalUsuario;
@@ -601,6 +602,7 @@ class PublicacaoService
         Log::info("[Publicador] publicação {$p->id} do rascunho {$r->id}: {$status} ({$criados->count()} de {$itens->count()} item(ns) criados).");
 
         $this->abrirTarefaPosPublicacao($p);
+        $this->sincronizarAcervoDoPublicado($p, $r);
     }
 
     /**
@@ -623,6 +625,46 @@ class PublicacaoService
             app(PromocaoAutomaticaService::class)->agendar($p->fresh());
         } catch (\Throwable $e) {
             Log::error("[Publicador] publicação {$p->id} concluída, mas a promoção automática não foi agendada: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * 10/10/2026 — publicou: o MLB criado entra no acervo AGORA, para a aba Publicações poder mostrá-lo.
+     *
+     * A tela `/mlb/anuncios/meus/{company}` lê EXCLUSIVAMENTE `ml_acervo_itens` (D-05) e a publicação grava
+     * em `pub_publicacao_itens`: nada ligava as duas coisas, então o anúncio recém-publicado só aparecia na
+     * varredura do dia seguinte. Medido em produção com `MLB5366398961` e `MLB5366495199` (Poltrona Beny),
+     * que existiam no Mercado Livre e não existiam no acervo.
+     *
+     * Decisão do usuário: FONTE ÚNICA. Aqui só se DISPARA o sync — nada neste arquivo escreve no acervo.
+     * Chamado de `concluir()` E de `encerrar()`, que é por onde passam os DOIS caminhos de publicação (o
+     * avulso e a fila em rodadas, os dois via `executarFatia()`); por isso o `AgendadorDaFila` não dispara
+     * nada — ali duplicaria.
+     *
+     * Falhar aqui NUNCA desfaz nem repete a publicação: o anúncio já está no ML. Mesmo molde fail-open de
+     * `abrirTarefaPosPublicacao()`.
+     */
+    private function sincronizarAcervoDoPublicado(PubPublicacao $p, PubRascunho $r): void
+    {
+        try {
+            $mlItemIds = $p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')
+                ->pluck('ml_item_id')->all();
+            if ($mlItemIds === []) {
+                return;
+            }
+
+            // A Company cuja TELA o usuário abre — não a âncora que PUBLICA. `contaOuNula()`/`contaFixada()`
+            // preferem a MlbEmpresa, e o acervo é indexado por `companies.id`.
+            $companyId = PubProduto::whereKey($r->produto_id)->value('company_id');
+            if ($companyId === null) {
+                Log::info("[Publicador] publicação {$p->id}: conta ancorada em MlbEmpresa sem Company — não há aba Publicações para sincronizar.");
+
+                return;
+            }
+
+            SincronizarAcervoDoPublicadoJob::dispatch((int) $companyId, $mlItemIds);
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas o sync do acervo não foi disparado: {$e->getMessage()}");
         }
     }
 
@@ -682,6 +724,7 @@ class PublicacaoService
         // Interrompida DEPOIS de criar algum item (conta tirada da lista ou Job morto no meio): o que
         // foi criado está no ar e precisa das alavancas. Sem item criado, o `abrir()` não faz nada.
         $this->abrirTarefaPosPublicacao($p);
+        $this->sincronizarAcervoDoPublicado($p, $r);
     }
 
     private function concluirParcialSeHouver(PubPublicacao $p, PubRascunho $r): void

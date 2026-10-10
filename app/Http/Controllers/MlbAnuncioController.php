@@ -458,14 +458,19 @@ class MlbAnuncioController extends Controller
 
         // D-03: só ativos por padrão. Valor fora da lista fechada cai no default —
         // nunca interpolar querystring em SQL.
-        // Default 'acionaveis' = active + paused (decisão do usuário em
-        // 2026-08-10, emenda ao D-03 registrada no 134-CONTEXT.md). O D-03
-        // original dizia "só ativos por padrão", mas a justificativa dele era
-        // custo ("a primeira tela não paga por isso") — e o volume morto é
-        // encerrado/inativo, não pausado. Com só 'active' no default, o chip
-        // "Pausado" do D-09 ficava permanentemente em 0 e o topo da ordenação
-        // do D-12 (pausado primeiro) nunca tinha pausado: dois requisitos
-        // travados anulados por um default.
+        // Default 'acionaveis' = active + paused + under_review. A FONTE ÚNICA
+        // do mapeamento é o `match` de `AcervoTriagemService::escopo()` — o
+        // porquê de cada status está lá, não aqui.
+        //
+        // Histórico curto: `paused` entrou em 2026-08-10 (emenda ao D-03,
+        // 134-CONTEXT.md) porque com só 'active' no default o chip "Pausado" do
+        // D-09 ficava permanentemente em 0 e o topo da ordenação do D-12 nunca
+        // tinha pausado. `under_review` entrou em 2026-10-10 (quick 261010-nke)
+        // porque é o status em que o anúncio recém-publicado nasce: fora do
+        // default, ele não aparecia na tela nem na busca.
+        //
+        // A lista fechada de valores aceitos abaixo NÃO muda: o select da tela
+        // continua com as mesmas 5 opções e nada em `resources/` foi tocado.
         $statusFiltro = (string) $request->query('status', 'acionaveis');
         if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'encerrados', 'todos'], true)) {
             $statusFiltro = 'acionaveis';

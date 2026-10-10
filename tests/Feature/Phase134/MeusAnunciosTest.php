@@ -8,6 +8,7 @@ use App\Models\MlAcervoItem;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\User;
+use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -431,6 +432,155 @@ class MeusAnunciosTest extends TestCase
         $idsSemFiltro   = collect($propsSemFiltro['anuncios']['data'])->pluck('ml_item_id')->all();
         $this->assertEqualsCanonicalizing(['MLB1000000001', 'MLB1000000002'], $idsSemFiltro);
         $this->assertFalse($propsSemFiltro['filtros']['com_venda']);
+    }
+
+    // ═══ Quick 261010-nke — `under_review` entra em `acionaveis` ════════════
+    //
+    // O anúncio recém-publicado nasce `under_review [waiting_for_patch]` nessa
+    // conta (§21 dos learnings do Publicador). Com o default cobrindo só
+    // `active` + `paused`, ele continuava invisível MESMO depois de a linha
+    // passar a existir no acervo — e a busca, montada DENTRO do mesmo builder
+    // de `escopo()`, herdava o filtro de status e também não o achava. Era a
+    // queixa literal do usuário: "não aparece nem a busca acha".
+
+    /** @test */
+    public function default_da_tela_traz_under_review(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'status' => 'active']);
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB5366398961',
+            'title'      => 'Poltrona Beny Recém Publicada',
+            'status'     => 'under_review',
+            'sub_status' => ['waiting_for_patch'],
+        ]);
+
+        // Sem nenhum parâmetro de status — o default é o que está sob teste.
+        $props = $this->propsDaTela($admin, $company);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+
+        $this->assertContains(
+            'MLB5366398961',
+            $idsNaTela,
+            'o anúncio recém-publicado nasce under_review: fora do default, o usuário não o encontra'
+        );
+        $this->assertContains('MLB1000000001', $idsNaTela, 'ativo continua no default');
+    }
+
+    /** @test */
+    public function busca_acha_under_review_sem_trocar_o_filtro(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB5366398961',
+            'title'      => 'Poltrona Beny Verde Musgo',
+            'status'     => 'under_review',
+        ]);
+
+        // Busca SEM querystring de status: a busca mora dentro do mesmo builder
+        // que recebe o whereIn('status', ...), então herda o filtro padrão.
+        $props = $this->propsDaTela($admin, $company, ['busca' => 'Poltrona Beny']);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+
+        $this->assertSame(['MLB5366398961'], $idsNaTela, 'o critério de aceite do usuário: achar sem saber trocar filtro');
+    }
+
+    /** @test */
+    public function filtro_ativos_continua_sem_trazer_under_review(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'status' => 'active']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB5366398961', 'status' => 'under_review']);
+
+        $props = $this->propsDaTela($admin, $company, ['status' => 'ativos']);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+
+        $this->assertSame(['MLB1000000001'], $idsNaTela, 'os filtros estreitos recortam UM status só — não mudaram');
+    }
+
+    /**
+     * @test
+     *
+     * A emenda de 2026-08-10 ao D-03 (pausado no default) fica INTACTA: esta
+     * mudança só acrescenta.
+     */
+    public function pausado_segue_no_default_e_o_chip_segue_contando(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB1000000002',
+            'status'     => 'paused',
+            'motivos'    => [MlAcervoItem::MOTIVO_PAUSADO],
+            'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+        ]);
+        $this->criarItem($company, ['ml_item_id' => 'MLB5366398961', 'status' => 'under_review']);
+
+        $props = $this->propsDaTela($admin, $company);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+        $this->assertContains('MLB1000000002', $idsNaTela);
+
+        $chipsPorChave = collect($props['triagem']['chips'])->keyBy('chave');
+        $this->assertSame(
+            1,
+            $chipsPorChave[MlAcervoItem::MOTIVO_PAUSADO]['count'],
+            'o chip "Pausado" continua contando o pausado — under_review no default não o afeta'
+        );
+    }
+
+    /**
+     * @test
+     *
+     * Os chips do D-09 não passam a mentir: `AnuncioSaudeService::triagem()` só
+     * carimba `pausado` quando `status === 'paused'` e `sem_estoque` quando
+     * `status === 'active'`. Um `under_review` saudável entra no universo da
+     * triagem sem inflar nenhum chip crítico.
+     */
+    public function under_review_saudavel_nao_recebe_motivo_pausado_nem_sem_estoque(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $saude = app(AnuncioSaudeService::class);
+        $itemDoMl = [
+            'id'                 => 'MLB5366398961',
+            'title'              => 'Poltrona Beny Verde Musgo Base Giratória',
+            'status'             => 'under_review',
+            'sub_status'         => ['waiting_for_patch'],
+            'available_quantity' => 5,
+            'pictures'           => [['id' => 'P1'], ['id' => 'P2'], ['id' => 'P3'], ['id' => 'P4'], ['id' => 'P5'], ['id' => 'P6']],
+            'attributes'         => [],
+            'price'              => 1299.9,
+        ];
+        $avaliacao = $saude->avaliar($itemDoMl, []);
+        $triagem   = $saude->triagem($itemDoMl, $avaliacao['sinais'], null);
+
+        $this->assertNotContains(MlAcervoItem::MOTIVO_PAUSADO, $triagem['motivos']);
+        $this->assertNotContains(MlAcervoItem::MOTIVO_SEM_ESTOQUE, $triagem['motivos']);
+
+        // E na tela: aparece no default sem inflar os dois chips críticos.
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB5366398961',
+            'title'      => $itemDoMl['title'],
+            'status'     => 'under_review',
+            'motivos'    => $triagem['motivos'],
+            'severidade' => $triagem['severidade'],
+        ]);
+
+        $props = $this->propsDaTela($admin, $company);
+
+        $idsNaTela = collect($props['anuncios']['data'])->pluck('ml_item_id')->all();
+        $this->assertContains('MLB5366398961', $idsNaTela);
+
+        $chipsPorChave = collect($props['triagem']['chips'])->keyBy('chave');
+        $this->assertSame(0, $chipsPorChave[MlAcervoItem::MOTIVO_PAUSADO]['count']);
+        $this->assertSame(0, $chipsPorChave[MlAcervoItem::MOTIVO_SEM_ESTOQUE]['count']);
     }
 
     // ─── helpers ────────────────────────────────────────────────────────────

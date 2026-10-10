@@ -34,11 +34,37 @@ class AcervoTriagemService
      */
     public function escopo(Company $company, string $busca, string $statusFiltro): Builder
     {
-        // 'acionaveis' (default) cobre DOIS status — é o universo sobre o qual
+        // 'acionaveis' (default) cobre TRÊS status — é o universo sobre o qual
         // a triagem do D-09 conta e a ordenação do D-12 opera. Os demais
         // filtros recortam um status só; 'todos' não filtra.
+        //
+        // ─── 10/10/2026: `under_review` entrou no default (quick 261010-nke) ──
+        //
+        // POR QUÊ: `under_review` é o status em que o anúncio recém-criado nasce
+        // nessa conta (`under_review [waiting_for_patch]`, §21 dos learnings do
+        // Publicador), e é o MAIS ACIONÁVEL de todos — é exatamente o que exige
+        // alguém corrigir título/foto e repatchar. Deixá-lo fora do default era
+        // o que mantinha o anúncio recém-publicado invisível mesmo depois de o
+        // acervo passar a receber a linha; e a busca, montada DENTRO deste mesmo
+        // builder, herdava o filtro de status e também não o achava. Era a
+        // queixa literal do usuário: "não aparece e a busca não acha".
+        //
+        // A EMENDA DE 2026-08-10 AO D-03 SEGUE INTACTA: `paused` continua no
+        // default. Esta mudança só ACRESCENTA — nenhum status saiu.
+        //
+        // IMPACTO NOS CHIPS (D-09): o universo da triagem cresce pelos itens
+        // `under_review`. O chip "Pausado" NÃO muda —
+        // `AnuncioSaudeService::triagem()` só carimba `MOTIVO_PAUSADO` quando
+        // `status === 'paused'`, e `MOTIVO_SEM_ESTOQUE` só quando
+        // `status === 'active'`. Um `under_review` só pode entrar nos chips de
+        // ficha/catálogo/foto, que é o que ele realmente tem.
+        //
+        // IMPACTO NA ORDENAÇÃO (D-12): nenhum. A ordenação é por
+        // `severidade`/`nota_ecf`, agnóstica de status. Um `under_review` sem
+        // problema de ficha ordena no fim da lista, como qualquer item saudável
+        // — quem precisa achá-lo rápido usa a busca, que agora o alcança.
         $statusColunas = match ($statusFiltro) {
-            'acionaveis' => ['active', 'paused'],
+            'acionaveis' => ['active', 'paused', 'under_review'],
             'ativos'     => ['active'],
             'pausados'   => ['paused'],
             'encerrados' => ['closed'],

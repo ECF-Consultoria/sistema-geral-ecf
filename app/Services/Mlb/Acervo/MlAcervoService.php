@@ -272,6 +272,100 @@ class MlAcervoService
     }
 
     /**
+     * Caminho ESTREITO: coleta a camada barata de uma LISTA de MLB ids, sem
+     * varrer a conta (quick 261010-nke, 10/10/2026).
+     *
+     * ─── Por que este caminho existe ────────────────────────────────────────
+     *
+     * A publicação do Publicador grava em `pub_publicacao_itens`, e a aba
+     * Publicações lê EXCLUSIVAMENTE `ml_acervo_itens` (D-05). Quem criava
+     * linha ali era só a varredura diária ou o botão "Atualizar agora" — então
+     * o anúncio recém-publicado ficava invisível na tela até o dia seguinte.
+     * Medido em produção em 10/10/2026: `MLB5366398961` e `MLB5366495199`
+     * (Poltrona Beny) existiam no Mercado Livre e NÃO existiam no acervo.
+     *
+     * A camada CARA não resolve: `MlAcervoDetalheService` só faz `update()` de
+     * linha existente e NUNCA cria. E despachar `SyncMlAcervoCompanyJob` seria
+     * pior que não fazer nada nas contas grandes: ele é `ShouldBeUnique` por
+     * empresa com `uniqueFor()` de 3600s, então com a varredura diária em
+     * curso (até 1800s de timeout) o dispatch da publicação seria DESCARTADO
+     * EM SILÊNCIO — além de varrer a conta inteira por `scroll_id` (~3.340
+     * chamadas na maior conta) para mostrar um anúncio só.
+     *
+     * ─── Por que reusa `processarLote()` ────────────────────────────────────
+     *
+     * Para NÃO existir caminho de escrita novo. Fonte única: o `upsert()` com
+     * o 3º argumento literal (`COLUNAS_CAMADA_BARATA`, sem o qual a camada
+     * CARA seria apagada — T-134-26) e a serialização por
+     * `AcervoEscritaLock::naEmpresa()` vêm de graça. Nunca chama
+     * `enumerarIds()`/`scroll()`.
+     *
+     * ─── Por que o tratamento de erro é DIFERENTE do de cima ───────────────
+     *
+     * Aqui NÃO há `update(['coleta_erro' => ...])` — nem de faixa, nem dos ids
+     * pedidos. O carimbo de faixa inteira da coleta completa (a) mentia na
+     * tela, marcando 136.432 itens como falhos por algumas dezenas de eventos,
+     * e (b) realimentava o próprio deadlock ao segurar lock exclusivo na faixa
+     * toda (`.planning/debug/resolved/acervo-deadlock-upsert.md`, E6). Um lote
+     * de 1 a ~20 ids não tem nada a carimbar: a exceção sobe e o job retenta.
+     *
+     * @param  string[] $mlItemIds  MLB ids recém-criados pela publicação
+     * @return array{itens:int, lotes:int, falhas:int}
+     */
+    public function coletarItens(Company $company, array $mlItemIds): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(fn ($id) => trim((string) $id), $mlItemIds),
+            fn (string $id) => $id !== ''
+        )));
+
+        // Lista vazia é no-op TOTAL: nem HTTP, nem banco. Publicação que não
+        // criou item nenhum não tem o que sincronizar.
+        if ($ids === []) {
+            return ['itens' => 0, 'lotes' => 0, 'falhas' => 0];
+        }
+
+        $loteSize = max(1, (int) config('mlb_acervo.lote_multiget'));
+
+        $itens = 0;
+        $lotes = 0;
+        $falhas = 0;
+
+        try {
+            $rascunhoPorMlItemId = $this->mapaRascunhos($company);
+            $publicacaoPorMlbCode = $this->mapaPublicacoes($company);
+
+            // Buy box da camada CARA — LEITURA ESTRITA, só para alimentar
+            // triagem(). Restrito aos ids pedidos: na coleta completa este
+            // pluck é da empresa inteira, o que para 2 ids puxaria até 66 mil
+            // strings sem motivo nenhum.
+            $buyboxPorMlItemId = MlAcervoItem::where('company_id', $company->id)
+                ->whereIn('ml_item_id', $ids)
+                ->pluck('buybox_status', 'ml_item_id')
+                ->all();
+
+            foreach (array_chunk($ids, $loteSize) as $chunk) {
+                $lotes++;
+                [$processados, $falhasLote] = $this->processarLote(
+                    $company, $chunk, $rascunhoPorMlItemId, $publicacaoPorMlbCode, $buyboxPorMlItemId
+                );
+                $itens += $processados;
+                $falhas += $falhasLote;
+            }
+        } catch (\Throwable $e) {
+            Log::error(
+                "[MlAcervo] falha na coleta estreita da empresa {$company->id} ({$company->name}): {$e->getMessage()}"
+            );
+
+            // Sem carimbo de `coleta_erro` — ver o docblock acima (E6). Quem
+            // decide retry é o job (SincronizarAcervoDoPublicadoJob, tries=3).
+            throw $e;
+        }
+
+        return ['itens' => $itens, 'lotes' => $lotes, 'falhas' => $falhas];
+    }
+
+    /**
      * Processa um lote de até 20 ids: multiget, nota/triagem, selo de
      * origem, upsert da linha corrente e série diária.
      *

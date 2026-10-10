@@ -47,6 +47,37 @@ class AcervoTriagemServiceTest extends TestCase
         );
     }
 
+    /**
+     * @test
+     *
+     * Quick 261010-nke — `acionaveis` (o default da tela) cobre TRÊS status.
+     * `under_review` entrou em 10/10/2026: é o status em que o anúncio
+     * recém-publicado nasce nessa conta (§21 dos learnings do Publicador) e o
+     * mais acionável de todos — é exatamente o que pede alguém corrigir
+     * título/foto e repatchar. Os filtros estreitos e `todos` não mudaram.
+     */
+    public function acionaveis_cobre_ativo_pausado_e_under_review(): void
+    {
+        $company = Company::factory()->create();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB-ATIVO', 'status' => 'active']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB-PAUSADO', 'status' => 'paused']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB-REVISAO', 'status' => 'under_review']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB-ENCERRADO', 'status' => 'closed']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB-INATIVO', 'status' => 'inactive']);
+
+        $acionaveis = $this->service->escopo($company, '', 'acionaveis')->pluck('ml_item_id')->all();
+
+        $this->assertEqualsCanonicalizing(['MLB-ATIVO', 'MLB-PAUSADO', 'MLB-REVISAO'], $acionaveis);
+        $this->assertContains('MLB-REVISAO', $acionaveis, 'sem under_review no default, o anúncio recém-publicado fica invisível');
+
+        // Os braços estreitos recortam UM status só — intactos.
+        $this->assertSame(['MLB-ATIVO'], $this->service->escopo($company, '', 'ativos')->pluck('ml_item_id')->all());
+        $this->assertSame(['MLB-PAUSADO'], $this->service->escopo($company, '', 'pausados')->pluck('ml_item_id')->all());
+        $this->assertSame(['MLB-ENCERRADO'], $this->service->escopo($company, '', 'encerrados')->pluck('ml_item_id')->all());
+        $this->assertCount(5, $this->service->escopo($company, '', 'todos')->get(), "'todos' não filtra status");
+    }
+
     /** @test */
     public function triagem_conta_total_distinto_e_cada_chip_bate_com_query_manual(): void
     {
