@@ -76,8 +76,8 @@ class PortalEstruturaController extends Controller
 
         $empresa = PortalContexto::empresa();
         $id = $empresa->id;
-        // Só vai para a Lista SKUs quem a vê (09/10/2026): o cliente vê Produtos, Planejamento,
-        // Precificação e Mapeamento; a empresa que importou ofertas continua vendo a Lista.
+        // Só vai para a Lista SKUs quem a vê: desde 10/10/2026 ninguém a vê por padrão (cliente e equipe
+        // ficam com Produtos, Planejamento, Precificação e Mapeamento), só a empresa configurada para vê-la.
         $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists()
             || ! ModulosPortal::submoduloVisivel($empresa, PortalContexto::ator(), 'lista');
 

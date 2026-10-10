@@ -7,9 +7,10 @@ import { comoLista, comoObjeto, numeroSeguro, textoSeguro } from './regrasDoLote
 // ─── Garantia padrão da conta (10/10/2026) ──────────────────────────────────
 //
 // Decisão do usuário: o Portal não pergunta garantia e o Mercado Livre não
-// publica sem ela (V-SAL-05). Definida uma vez aqui, entra sozinha em todo
-// produto da conta SEM garantia — a que alguém escolheu no editor não muda.
-// O servidor aplica ao salvar e a cada produto que chega do Portal.
+// publica sem ela (V-SAL-05). Uma por empresa ("uma tem 7 dias, outra 90"):
+// entra sozinha em todo produto da conta SEM garantia e acompanha o padrão
+// quando ele muda — a que alguém escolheu no editor não muda. O servidor
+// aplica ao salvar e a cada produto que chega do Portal.
 
 const CAMPO = 'h-10 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] font-normal text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
@@ -56,7 +57,7 @@ export default function GarantiaPadraoDaConta({ garantia, ocupado = false, aoSal
                         {! editando && textoSeguro(g.texto, '') !== '' && <span className="font-normal text-white/80">· {textoSeguro(g.texto)}</span>}
                     </h2>
                     <p className="mt-1 text-[12px] font-normal text-white/50">
-                        Entra sozinha em todo produto desta conta sem garantia. A que alguém escolheu no editor não muda.
+                        Vale para todos os produtos desta conta: entra nos que não têm garantia e, se você mudar o padrão, muda junto. A que alguém escolheu no editor não muda.
                     </p>
                 </div>
                 {! editando && (

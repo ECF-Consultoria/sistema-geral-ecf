@@ -1071,6 +1071,15 @@ ficha), Planejamento, Precificação, IA, conferência. O que não se deduz do c
   aplicada no `PortalParaRascunhoService::concluir` e, ao salvar, nos rascunhos que já existem (pula editor aberto e
   produto na fila de publicação). Só entra onde NÃO há garantia; sobe a revisão. Tipos do ML iguais em todas as
   categorias sondadas: 2230280 vendedor, 2230279 fábrica, 6150835 sem garantia; unidades dias/meses/anos.
+- **A garantia padrão ACOMPANHA o padrão** (pedido do usuário, 10/10: "uma empresa tem 7 dias, outra 90 — todos os
+  anúncios dela vão ser assim"): `GarantiaPadrao::aplicar` troca a garantia que ainda é a do padrão — marca
+  `step_state.garantia_padrao` (o que o padrão gravou) — ou, sem marca, a que é EXATAMENTE o padrão anterior (os 24
+  rascunhos da #459 receberam o padrão antes da marca). A escolhida no editor fica. Anúncio já publicado não muda (o
+  ML guardou o `sale_terms` dele).
+- **Permissão só por setor**: `User::hasPermission` = admin ou `SetorPermissao` dos setores — não há permissão por
+  pessoa. O responsável padrão das alavancas precisa de `mlb.alavancas` (`definirResponsavelPadrao` recusa sem), então
+  pôr o Kaio (#5, setor "Publicação") exige dar a chave ao setor inteiro ou criar um setor só para ele — decisão de
+  visibilidade que o usuário disse ainda não ter (10/10).
 - **Termos vetados pelo ML** (`TermosVetados`; lista em `PADRAO` + `publicador.termos_vetados`): a IA troca
   (`RegrasDoTitulo::limpar`, `PalavrasChaveService::filtrarModelo`, `DescricaoIaService::gerar`,
   `IaParaRascunhoService`) e o digitado trava — V-TIT-05 (título) e V-DES-05 (descrição), também no

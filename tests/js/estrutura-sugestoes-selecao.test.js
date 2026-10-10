@@ -235,14 +235,14 @@ test('textos: selecionadas e rótulo do botão, singular e plural', () => {
 });
 
 test('textos: resultado do aceite só com criadas', () => {
-    assert.equal(T.textoResultadoAceite({ criadas: lista(3), ja_existiam: [], erros: [] }), '3 ofertas criadas. Elas já estão na Lista SKUs.');
-    assert.equal(T.textoResultadoAceite({ criadas: lista(1), ja_existiam: [], erros: [] }), '1 oferta criada. Ela já está na Lista SKUs.');
+    assert.equal(T.textoResultadoAceite({ criadas: lista(3), ja_existiam: [], erros: [] }), '3 ofertas criadas. Elas já estão na Precificação.');
+    assert.equal(T.textoResultadoAceite({ criadas: lista(1), ja_existiam: [], erros: [] }), '1 oferta criada. Ela já está na Precificação.');
 });
 
 test('textos: resultado do aceite misto', () => {
     assert.equal(
         T.textoResultadoAceite({ criadas: lista(2), ja_existiam: ['a'], erros: lista(2) }),
-        '2 ofertas criadas. Elas já estão na Lista SKUs. 1 já existia e saiu da lista. 2 não puderam ser criadas. Veja os cartões que continuam marcados.',
+        '2 ofertas criadas. Elas já estão na Precificação. 1 já existia e saiu da lista. 2 não puderam ser criadas. Veja os cartões que continuam marcados.',
     );
 });
 
@@ -276,6 +276,6 @@ test('textos: avisos com limite vindo do servidor', () => {
 test('textos: constantes fixas e rótulos de fase', () => {
     assert.equal(T.MSG_GUARDA, 'Há nomes ou códigos editados que ainda não foram aceitos. Sair sem aceitar?');
     assert.equal(T.MSG_FALHA_REDE, 'Não foi possível salvar agora. Suas edições continuam na tela. Tente de novo.');
-    assert.equal(T.MSG_SKU_REPETIDO, 'Já existe uma oferta com este código na Lista SKUs. Você pode aceitar assim mesmo.');
+    assert.equal(T.MSG_SKU_REPETIDO, 'Já existe uma oferta com este código. Você pode aceitar assim mesmo.', '10/10/2026: ninguém mais vê a Lista SKUs');
     assert.deepEqual(T.ROTULO_FASE, { combo: 'Combo', kit: 'Kit', combit: 'Combit' });
 });

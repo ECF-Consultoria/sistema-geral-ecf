@@ -65,7 +65,7 @@ export default function JanelaExcluirVariacao({ linha, ultima = false, novasNaoS
                                 {oferta && <> A oferta {oferta.sku} também será excluída.</>}
                             </p>
                         ) : (
-                            oferta && <p>A oferta {oferta.sku} também será excluída da Lista SKUs.</p>
+                            oferta && <p>A oferta {oferta.sku} também será excluída.</p>
                         )}
                         {ultima && <p>É a última variação, então o produto {linha.nome} também será excluído.</p>}
                     </>

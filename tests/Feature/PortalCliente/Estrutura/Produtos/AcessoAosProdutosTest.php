@@ -3,11 +3,13 @@
 namespace Tests\Feature\PortalCliente\Estrutura\Produtos;
 
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\EstruturaProduto;
 use App\Models\User;
 use App\Services\Portal\PortalEquipeService;
 use App\Support\Permissions;
 use App\Support\Portal\ModulosPortal;
+use App\Support\Portal\VisibilidadeDoMapeamento;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -128,13 +130,20 @@ class AcessoAosProdutosTest extends TestCase
             ->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
     }
 
-    public function test_entrada_empresa_so_com_ofertas_abre_a_lista_skus(): void
+    public function test_entrada_empresa_so_com_ofertas_abre_produtos_e_so_vai_a_lista_se_configurada(): void
     {
         // As ofertas importadas da #131: oferta sem produto (gabarito grava só ofertas).
         $empresa = $this->empresaDoGabarito();
         $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
         $this->assertSame(0, EstruturaProduto::where('company_id', $empresa->id)->count());
 
+        // 10/10/2026: ninguém vê a Lista SKUs por padrão — a entrada vai para Produtos.
+        $this->withoutVite()->entrarNoPortal($empresa)
+            ->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
+
+        // A ECF devolveu a Lista a esta empresa: aí ela entra por lá.
+        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$empresa->id, 'todos');
+        $this->app['auth']->forgetGuards();
         $this->withoutVite()->entrarNoPortal($empresa)
             ->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
     }

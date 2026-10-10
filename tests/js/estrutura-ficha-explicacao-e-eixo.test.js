@@ -181,3 +181,15 @@ test('Sigilo: o componente compartilhado e a lib não citam a origem dos campos 
         assert.equal(cru.match(proibidas), null, `${caminho} cita "${cru.match(proibidas)?.[0]}"`);
     }
 });
+
+test('Marca é texto livre: as marcas sugeridas vão num datalist, o cliente pode digitar a dele (10/10/2026)', async () => {
+    const { default: CampoFichaTecnica } = await montar(`${DIR}/CampoFichaTecnica.jsx`);
+    const comSugestoes = { ...MARCA, sugestoes: ['VEKKAHOME', 'Casaideas'] };
+    const html = renderToStaticMarkup(React.createElement(CampoFichaTecnica, { campo: comSugestoes, atual: { valor: 'Minha Marca' }, onMudar: () => {} }));
+    assert.match(html, /<input id="([^"]+)"[^>]*list="\1-sugestoes"[^>]*value="Minha Marca"/);
+    assert.match(html, /<datalist id="[^"]+-sugestoes" data-sugestoes="true"><option value="VEKKAHOME"><\/option><option value="Casaideas"><\/option><\/datalist>/);
+    assert.doesNotMatch(html, /<select/, 'não é mais lista fechada');
+
+    const semSugestoes = renderToStaticMarkup(React.createElement(CampoFichaTecnica, { campo: MARCA, onMudar: () => {} }));
+    assert.doesNotMatch(semSugestoes, /datalist|list="/);
+});

@@ -45,7 +45,7 @@ class GarantiaPadraoTest extends TestCase
         $r = $this->salvar(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'])->assertOk()->json();
 
         $this->assertSame(2, $r['aplicados']);
-        $this->assertSame('Garantia padrão salva: Garantia do vendedor, 90 dias. Aplicada em 2 produtos sem garantia.', $r['mensagem']);
+        $this->assertSame('Garantia padrão salva: Garantia do vendedor, 90 dias. Aplicada em 2 produtos.', $r['mensagem']);
         $this->assertSame('Garantia do vendedor, 90 dias', $r['garantia_padrao']['texto']);
         $this->assertSame(['tipo' => '2230280', 'tempo' => 30, 'unidade' => 'dias'], $this->rascunhoDe($a)->garantia, 'a escolhida pela equipe fica');
         $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $this->rascunhoDe($b)->garantia);
@@ -62,6 +62,42 @@ class GarantiaPadraoTest extends TestCase
                 ->has('garantia_padrao.tipos', 3));
     }
 
+    public function test_trocar_o_padrao_troca_quem_esta_com_o_antigo_e_nao_a_escolhida_pela_equipe(): void
+    {
+        // "Uma empresa tem 7 dias, outra 90" (10/10/2026): a conta muda de 90 para 7 e os produtos acompanham.
+        [$a, $b, $c] = $this->cadeiras;
+        $this->rascunhoDe($b)->update(['garantia' => null]);
+        $this->rascunhoDe($c)->update(['garantia' => null]);
+        $this->salvar(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'])->assertOk();
+        // Depois do padrão, a equipe mudou o C no editor para 60 dias: essa é escolha dela.
+        $this->rascunhoDe($c)->update(['garantia' => ['tipo' => '2230280', 'tempo' => 60, 'unidade' => 'dias']]);
+        $revB = $this->rascunhoDe($b)->revisao;
+
+        $r = $this->salvar(['tipo' => '2230280', 'tempo' => 7, 'unidade' => 'dias'])->assertOk()->json();
+
+        $this->assertSame(1, $r['aplicados']);
+        $this->assertSame('Garantia padrão salva: Garantia do vendedor, 7 dias. Aplicada em 1 produto.', $r['mensagem']);
+        $this->assertSame(['tipo' => '2230280', 'tempo' => 7, 'unidade' => 'dias'], $this->rascunhoDe($b)->garantia, 'estava com o padrão: acompanha');
+        $this->assertSame($revB + 1, $this->rascunhoDe($b)->revisao);
+        $this->assertSame(60, $this->rascunhoDe($c)->garantia['tempo'], 'a escolhida no editor fica');
+        $this->assertSame(30, $this->rascunhoDe($a)->garantia['tempo'], 'a que já existia antes do padrão fica');
+    }
+
+    public function test_rascunho_de_antes_da_marca_com_o_padrao_anterior_tambem_acompanha(): void
+    {
+        // A #459 recebeu o padrão no 1º deploy (sem a marca): quem tem EXATAMENTE o padrão anterior acompanha.
+        [$a] = $this->cadeiras;
+        GarantiaPadrao::salvar(['mlb_empresa' => null, 'company' => $this->empresa, 'chave' => $this->conta()],
+            ['tipo' => '2230280', 'tempo' => 30, 'unidade' => 'dias'], $this->admin);
+        $this->assertNull($this->rascunhoDe($a)->step_state[GarantiaPadrao::MARCA] ?? null, 'a garantia do A não tem marca');
+
+        // As 3 cadeiras do cenário têm exatamente o padrão anterior e nenhuma marca: as 3 acompanham.
+        $this->salvar(['tipo' => '2230279', 'tempo' => 3, 'unidade' => 'meses'])->assertOk()->assertJsonPath('aplicados', 3);
+
+        $this->assertSame(['tipo' => '2230279', 'tempo' => 3, 'unidade' => 'meses'], $this->rascunhoDe($a)->garantia);
+        $this->assertSame(['tipo' => '2230279', 'tempo' => 3, 'unidade' => 'meses'], $this->rascunhoDe($a)->step_state[GarantiaPadrao::MARCA]);
+    }
+
     public function test_editor_aberto_fica_para_o_proximo_sincronizar(): void
     {
         [, $b] = $this->cadeiras;
@@ -71,7 +107,7 @@ class GarantiaPadraoTest extends TestCase
         $r = $this->salvar(['tipo' => '2230279', 'tempo' => 1, 'unidade' => 'anos'])->assertOk()->json();
 
         $this->assertSame(0, $r['aplicados']);
-        $this->assertSame('Garantia padrão salva: Garantia de fábrica, 1 anos. Nenhum produto estava sem garantia.', $r['mensagem']);
+        $this->assertSame('Garantia padrão salva: Garantia de fábrica, 1 anos. Nenhum produto precisou mudar.', $r['mensagem']);
         $this->assertNull($this->rascunhoDe($b)->garantia, 'não grava por baixo de quem está editando');
     }
 

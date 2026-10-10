@@ -537,7 +537,7 @@ const garantiaBase = (o = {}) => ({
 test('garantia padrão — sem padrão abre o formulário; com padrão mostra o texto e "Alterar"', () => {
     const sem = renderToStaticMarkup(React.createElement(GarantiaPadraoDaConta, { garantia: garantiaBase() }));
     assert.match(sem, /Garantia padrão/);
-    assert.match(sem, /Entra sozinha em todo produto desta conta sem garantia/);
+    assert.match(sem, /Vale para todos os produtos desta conta: entra nos que não têm garantia e, se você mudar o padrão, muda junto/);
     assert.match(sem, /<option value="2230280"[^>]*>Garantia do vendedor<\/option>/);
     assert.match(sem, /aria-label="Tempo da garantia"[^>]*value="90"/);
     assert.match(sem, />Salvar e aplicar</);

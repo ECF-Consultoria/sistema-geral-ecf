@@ -15,10 +15,10 @@ use Tests\Concerns\GabaritoDaPlanilhaEstrutural;
 use Tests\TestCase;
 
 /**
- * Quem vê quais submódulos do Mapeamento (09/10/2026): o cliente vê Produtos, Planejamento,
- * Precificação e Mapeamento; a equipe vê os 7; a empresa que importou ofertas (oferta simples
- * sem produto, como a #131) continua vendo Lista SKUs e Anúncios; `configuracoes` troca a lista
- * padrão e dá a lista exata de uma empresa, sem deploy. Esconder não remove: a página abre.
+ * Quem vê quais submódulos do Mapeamento: desde 10/10/2026 TODOS — cliente, equipe e a empresa
+ * que importou ofertas (como a #131) — veem Produtos, Planejamento, Precificação e Mapeamento
+ * ("Lista SKUs e Anúncios eu não vou usar, pode tirar"); `configuracoes` troca a lista padrão e dá
+ * a lista exata de uma empresa (`todos` = os 7), sem deploy. Esconder não remove: a página abre.
  */
 class VisibilidadeDoMapeamentoTest extends TestCase
 {
@@ -66,21 +66,27 @@ class VisibilidadeDoMapeamentoTest extends TestCase
         $this->assertSame(['produtos', 'sugestoes', 'precificacao', 'mapeamento'], $this->doMenu($comProdutos));
     }
 
-    public function test_quem_importou_ofertas_continua_vendo_lista_skus_e_anuncios(): void
+    public function test_quem_importou_ofertas_tambem_ve_so_os_quatro(): void
     {
         $importou = $this->empresaDoGabarito();
         $this->ofertaImportada($importou);
 
-        $this->assertSame(['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'mapeamento'], $this->doMenu($importou));
+        // Até 10/10/2026 ela via também Lista SKUs e Anúncios; o usuário tirou os dois de todo mundo.
+        $this->assertSame(['produtos', 'sugestoes', 'precificacao', 'mapeamento'], $this->doMenu($importou));
         $this->assertTrue(VisibilidadeDoMapeamento::importouOfertas($importou));
         $this->assertFalse(VisibilidadeDoMapeamento::importouOfertas($this->empresaDoGabarito()));
     }
 
-    public function test_a_equipe_ve_todos(): void
+    public function test_a_equipe_ve_os_mesmos_quatro_e_segue_a_configuracao_da_empresa(): void
     {
         $empresa = $this->empresaDoGabarito();
-        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$empresa->id, 'produtos');
 
+        $this->assertSame(['produtos', 'sugestoes', 'precificacao', 'mapeamento'], $this->doMenu($empresa, equipe: true));
+
+        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$empresa->id, 'produtos,lista');
+        $this->assertSame(['produtos', 'lista'], $this->doMenu($empresa, equipe: true));
+
+        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$empresa->id, 'todos');
         $this->assertSame(self::TODOS, $this->doMenu($empresa, equipe: true));
     }
 
@@ -90,12 +96,13 @@ class VisibilidadeDoMapeamentoTest extends TestCase
         $b = $this->empresaDoGabarito();
         $this->ofertaImportada($b);
 
-        // Padrão novo para todos os clientes (lixo e espaço ignorados); a exceção automática soma por cima.
+        // Padrão novo para todos (lixo e espaço ignorados); desde 10/10/2026 não há mais exceção automática
+        // para quem importou ofertas — a $b segue o mesmo padrão.
         Configuracao::set(VisibilidadeDoMapeamento::CHAVE_PADRAO, ' produtos , MAPEAMENTO, inexistente,');
         $this->assertSame(['produtos', 'mapeamento'], $this->doMenu($a));
-        $this->assertSame(['produtos', 'lista', 'anuncios', 'mapeamento'], $this->doMenu($b));
+        $this->assertSame(['produtos', 'mapeamento'], $this->doMenu($b));
 
-        // A lista da empresa é EXATA: vence o padrão e a exceção automática.
+        // A lista da empresa é EXATA: vence o padrão.
         Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$b->id, 'sugestoes,precificacao');
         $this->assertSame(['sugestoes', 'precificacao'], $this->doMenu($b, 'portal.auth.estrutura.sugestoes'));
         $this->assertSame(['produtos', 'mapeamento'], $this->doMenu($a), 'a configuração de uma empresa não mexe na outra');
@@ -131,19 +138,20 @@ class VisibilidadeDoMapeamentoTest extends TestCase
         $importou = $this->empresaDoGabarito();
         $this->ofertaImportada($importou);
 
-        $this->app['auth']->forgetGuards();
-        $this->entrarNoPortal($importou)->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
-
-        // A ECF tirou a Lista SKUs desta empresa: a entrada vai para Produtos (a Lista continua abrindo por link).
-        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$importou->id, 'produtos,sugestoes,precificacao,mapeamento');
+        // Desde 10/10/2026 ninguém vê a Lista SKUs por padrão: a entrada vai para Produtos (a Lista abre por link).
         $this->app['auth']->forgetGuards();
         $sessao = $this->withoutVite()->entrarNoPortal($importou);
         $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
         $sessao->get(route('portal.auth.estrutura.lista'))->assertOk();
 
-        // A equipe vê tudo: segue entrando pela Lista.
+        // A equipe também.
         $this->app['auth']->forgetGuards();
-        $this->comoEquipe($importou)->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
+        $this->comoEquipe($importou)->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
+
+        // A ECF devolveu a Lista SKUs a esta empresa (`todos`): quem só tem ofertas importadas entra por ela.
+        Configuracao::set(VisibilidadeDoMapeamento::PREFIXO_EMPRESA.$importou->id, 'todos');
+        $this->app['auth']->forgetGuards();
+        $this->entrarNoPortal($importou)->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
     }
 
     public function test_os_outros_modulos_nao_mudam(): void

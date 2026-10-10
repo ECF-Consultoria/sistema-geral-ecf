@@ -115,6 +115,9 @@ class FichaTecnicaDaCategoria
      */
     public const ID_MODELO = 'MODEL';
 
+    /** A Marca: sempre texto livre no portal, mesmo onde o catálogo traz marcas como opção (10/10/2026). */
+    public const ID_MARCA = 'BRAND';
+
     /** Atributos que a ficha já cobre em outro lugar (código do produto, volumes) ou que são de grade. */
     private const IDS_FORA = [
         'SELLER_SKU', 'CATALOG_PRODUCT_ID', 'SIZE_GRID_ID',
@@ -469,6 +472,17 @@ class FichaTecnicaDaCategoria
             $valores = $tipo === self::TIPO_LISTA ? $valores : [];
         }
 
+        // A MARCA É LIVRE (decisão do usuário, 10/10/2026: "a marca tem que ser o que o cliente quiser colocar").
+        // Em Escrivaninhas e Mesas para PC o catálogo traz 5 marcas como opção (o `value_type` é `string`: a
+        // plataforma aceita outra) e a regra de cima fechava o campo nelas — o cliente não conseguia pôr a dele.
+        // Fica texto; as opções viram só sugestão enquanto digita.
+        $sugestoes = [];
+        if ($id === self::ID_MARCA && $tipo === self::TIPO_LISTA) {
+            $sugestoes = array_values(array_column($valores, 'nome'));
+            $valores = [];
+            $tipo = self::TIPO_TEXTO;
+        }
+
         // Só lista escolhe mais de um. O catálogo marca com a tag `multivalued` (ex.: Materiais).
         $multivalor = $tipo === self::TIPO_LISTA && self::temTag($tags, 'multivalued');
 
@@ -512,6 +526,8 @@ class FichaTecnicaDaCategoria
             // Chave do eixo do portal que este atributo É (ex.: 'material'), ou null. Interna: a tela
             // usa só para esconder o campo no produto que varia por ele; nunca é mostrada.
             'eixo_do_portal' => $eixoDoPortal,
+            // Só na Marca (texto livre): as marcas do catálogo, para a tela sugerir enquanto o cliente digita.
+            'sugestoes'     => $sugestoes,
         ];
     }
 

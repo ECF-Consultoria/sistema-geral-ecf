@@ -7,7 +7,8 @@
 
 export const ROTULO_FASE = { combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
-export const MSG_SKU_REPETIDO = 'Já existe uma oferta com este código na Lista SKUs. Você pode aceitar assim mesmo.';
+// 10/10/2026: ninguém mais vê a Lista SKUs no portal — o aviso não aponta para ela.
+export const MSG_SKU_REPETIDO = 'Já existe uma oferta com este código. Você pode aceitar assim mesmo.';
 export const MSG_FALHA_REDE = 'Não foi possível salvar agora. Suas edições continuam na tela. Tente de novo.';
 export const MSG_GUARDA = 'Há nomes ou códigos editados que ainda não foram aceitos. Sair sem aceitar?';
 
@@ -20,9 +21,10 @@ export const textoTituloLongo = (n, max) => `O título passa de ${max} caractere
 /**
  * Resultado do aceite: criadas, já existiam e erros, cada parte só quando há. `ondeFica` diz
  * onde a pessoa acha as criadas (09/10/2026): "na Lista SKUs" para quem a vê; quem não a vê
- * (o cliente, por padrão) lê "na Precificação" — ver `destinoDaOfertaCriada`.
+ * (todos, desde 10/10/2026, salvo configuração da empresa) lê "na Precificação" — ver
+ * `destinoDaOfertaCriada`.
  */
-export function textoResultadoAceite(resultado, ondeFica = 'na Lista SKUs') {
+export function textoResultadoAceite(resultado, ondeFica = 'na Precificação') {
     const criadas = resultado?.criadas?.length ?? 0;
     const existiam = resultado?.ja_existiam?.length ?? 0;
     const erros = resultado?.erros?.length ?? 0;

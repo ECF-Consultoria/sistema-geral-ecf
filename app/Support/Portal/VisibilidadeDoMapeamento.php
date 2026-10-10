@@ -7,22 +7,22 @@ use App\Models\Configuracao;
 use App\Models\EstruturaOferta;
 
 /**
- * Quais submódulos do Mapeamento Estrutural aparecem no menu (09/10/2026).
+ * Quais submódulos do Mapeamento Estrutural aparecem no menu.
  *
- * Pedido do usuário: "vou usar realmente produtos, planejamento e precificação — e
- * mapeamento para saber o que está pendente; o resto vai ser meio inútil". Por isso:
+ * Pedido do usuário (09/10/2026): "vou usar realmente produtos, planejamento e precificação — e
+ * mapeamento para saber o que está pendente; o resto vai ser meio inútil". E em 10/10/2026, vendo
+ * o portal como equipe: "Lista SKUs e Anúncios eu não vou usar, pode tirar — fica Produtos,
+ * Planejamento, Precificação e Mapeamento". Por isso:
  *
- * - O CLIENTE vê, por padrão, Produtos, Planejamento, Precificação e Mapeamento
- *   ({@see self::PADRAO_CLIENTE}).
- * - A EQUIPE (entrada de equipe no portal, `AtorDoPortal->equipe`) vê todos, sempre.
- * - Exceção automática: empresa com oferta simples SEM produto ligado (importou as
- *   ofertas, como a #131) continua vendo Lista SKUs e Anúncios — é por lá que ela
- *   trabalha essas ofertas.
+ * - TODOS — cliente e equipe (`AtorDoPortal->equipe`) — veem Produtos, Planejamento, Precificação e
+ *   Mapeamento ({@see self::PADRAO_CLIENTE}). Até 10/10 a equipe via os 7 e a empresa que importou
+ *   ofertas (como a #131) via também Lista SKUs e Anúncios; as duas exceções saíram. O Cronograma
+ *   (`planejamento`) também fica fora: não está na lista do usuário.
  * - Sem deploy, em `configuracoes` (o mesmo padrão de `creative_engine_usuarios`: lista
  *   em texto, separada por vírgula):
- *   - `portal_estrutura_submodulos_cliente` troca a lista padrão do cliente;
+ *   - `portal_estrutura_submodulos_cliente` troca a lista padrão (vale para todos);
  *   - `portal_estrutura_submodulos_empresa_{id}` dá a lista EXATA daquela empresa (vence a
- *     padrão e a exceção automática); `todos` = todos.
+ *     padrão); `todos` = todos.
  *   Chave desconhecida é ignorada; uma lista que fica vazia vale como ausente.
  *
  * Esconder NÃO remove: rotas, allowlist e controllers continuam. A página escondida abre
@@ -35,21 +35,19 @@ final class VisibilidadeDoMapeamento
 
     public const PREFIXO_EMPRESA = 'portal_estrutura_submodulos_empresa_';
 
-    /** O que o cliente vê sem nenhuma configuração. */
+    /** O que todos (cliente e equipe) veem sem nenhuma configuração. */
     public const PADRAO_CLIENTE = ['produtos', 'sugestoes', 'precificacao', 'mapeamento'];
 
-    /** O que a empresa que importou ofertas (sem produto) continua vendo. */
-    public const DA_IMPORTACAO = ['lista', 'anuncios'];
-
     /**
-     * Os submódulos visíveis para quem está no portal; null = todos (equipe ou sem ator).
+     * Os submódulos visíveis para quem está no portal; null = todos (sem ator, ou `todos` na
+     * configuração da empresa). Cliente e equipe seguem a MESMA régua (10/10/2026).
      *
      * @param  list<string>  $existentes  as chaves que o módulo tem (para descartar lixo da configuração)
      * @return list<string>|null
      */
     public static function visiveis(Company $company, ?AtorDoPortal $ator, array $existentes): ?array
     {
-        if ($ator === null || $ator->equipe) {
+        if ($ator === null) {
             return null;
         }
 
@@ -63,13 +61,8 @@ final class VisibilidadeDoMapeamento
         }
 
         $padrao = self::ler((string) Configuracao::get(self::CHAVE_PADRAO, ''), $existentes);
-        $lista = $padrao !== [] ? $padrao : array_values(array_intersect(self::PADRAO_CLIENTE, $existentes));
 
-        if (self::importouOfertas($company)) {
-            $lista = array_values(array_unique([...$lista, ...array_intersect(self::DA_IMPORTACAO, $existentes)]));
-        }
-
-        return $lista;
+        return $padrao !== [] ? $padrao : array_values(array_intersect(self::PADRAO_CLIENTE, $existentes));
     }
 
     /** Tem oferta simples sem produto ligado (as importadas, como as 500 da #131)? */

@@ -137,12 +137,24 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
                 </select>
             );
             break;
-        default:
+        default: {
+            // Texto livre. Na Marca (10/10/2026) o servidor manda algumas marcas como SUGESTÃO: o cliente
+            // escolhe uma ou digita a dele.
+            const sugestoes = Array.isArray(campo.sugestoes) ? campo.sugestoes.filter((s) => typeof s === 'string' && s !== '') : [];
+            const listaId = sugestoes.length > 0 ? `${id}-sugestoes` : undefined;
             controle = (
-                <input id={id} className={classe} value={valor} maxLength={campo.max || undefined} autoComplete="off"
-                    aria-invalid={invalido || undefined} aria-describedby={descricao}
-                    onChange={(e) => onMudar(campo.id, { valor: e.target.value })} />
+                <>
+                    <input id={id} className={classe} value={valor} maxLength={campo.max || undefined} autoComplete="off" list={listaId}
+                        aria-invalid={invalido || undefined} aria-describedby={descricao}
+                        onChange={(e) => onMudar(campo.id, { valor: e.target.value })} />
+                    {listaId && (
+                        <datalist id={listaId} data-sugestoes>
+                            {sugestoes.map((s) => <option key={s} value={s} />)}
+                        </datalist>
+                    )}
+                </>
             );
+        }
     }
 
     return (

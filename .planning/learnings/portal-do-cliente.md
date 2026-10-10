@@ -1467,3 +1467,18 @@ pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não s
   `NomesSugeridos` (`NomesSugeridosTest`, que lê o .jsx).
 - **Ainda citam a Lista para o cliente (não mexido)**: `JanelaExcluirVariacao.jsx` ("também será excluída da
   Lista SKUs", na ficha) e `MSG_SKU_REPETIDO` de `sugestoesEstrutura.js` ("…na Lista SKUs", no Planejamento).
+
+## 42. Todos veem só os 4 submódulos e a Marca é livre (10/10/2026)
+
+- **Equipe também fica com os 4.** O usuário, vendo o portal como equipe: "Lista SKUs e Anúncios eu não vou usar,
+  pode tirar — fica Produtos, Planejamento, Precificação e Mapeamento". `VisibilidadeDoMapeamento::visiveis` deixou de
+  dar `null` (todos) para `AtorDoPortal->equipe` e perdeu a exceção de quem importou ofertas (#131 via Lista SKUs e
+  Anúncios). O Cronograma (chave `planejamento`, rótulo "Cronograma") também saiu: não está na lista dele. Válvula sem
+  deploy: `configuracoes.portal_estrutura_submodulos_empresa_{id}` (`todos` = os 7) e
+  `portal_estrutura_submodulos_cliente` (padrão de todos). As páginas escondidas continuam abrindo por link; os textos
+  que dependiam de quem vê a Lista já usavam `submoduloVisivel` — agora todos leem a versão "sem Lista". Os fixos que
+  citavam a Lista (excluir variação, SKU repetido, padrão do `textoResultadoAceite`, aviso do "Criar Fase N") mudaram.
+- **Marca é texto livre.** A regra "quem tem opção vira lista" (§35) fechava a Marca em Escrivaninhas (MLB193946) e
+  Mesas para PC (MLB439418), onde o catálogo traz 5 marcas — com `value_type: string` (a plataforma aceita outra).
+  `FichaTecnicaDaCategoria::ID_MARCA` vira `texto` sempre; as opções vão em `sugestoes` (um `<datalist>` no
+  `CampoFichaTecnica`). Os outros campos com opção continuam "só escolhe da lista".

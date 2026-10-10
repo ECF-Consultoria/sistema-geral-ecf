@@ -15,8 +15,12 @@ use Illuminate\Support\Facades\Log;
  *
  * O Portal não pergunta garantia e o Mercado Livre não publica sem ela (V-SAL-05): sem um padrão, todo produto que
  * chega do Portal travava na conferência e a publicação em massa não saía "de primeira" (achado do teste de ponta a
- * ponta na #459). A equipe define UMA vez por conta, na tela de Publicação em lote; ela entra sozinha em todo
- * rascunho SEM garantia — nunca troca a que alguém escolheu:
+ * ponta na #459). A equipe define UMA vez por conta, na tela de Publicação em lote ("uma empresa tem 7 dias de
+ * garantia, outra 90"); ela entra sozinha em todo rascunho SEM garantia e ACOMPANHA o padrão — trocar de 90 para
+ * 7 dias troca os rascunhos que ainda estão com o padrão antigo (pedido do usuário, 10/10/2026). Nunca troca a que
+ * alguém escolheu no editor. Quem diz "veio do padrão" é a marca `step_state.garantia_padrao` (a mesma régua do
+ * "campo com origem=portal acompanha o Portal"); rascunho de antes da marca vale como do padrão se tiver EXATAMENTE
+ * o padrão anterior. Aplica:
  * - no Sincronizar/preparo do Portal (`PortalParaRascunhoService`), a cada produto que chega;
  * - ao salvar o padrão, nos rascunhos da conta que já existem (`aplicarNaConta`).
  *
@@ -40,6 +44,9 @@ final class GarantiaPadrao
     public const UNIDADES = ['dias', 'meses', 'anos'];
 
     public const TEMPO_MAXIMO = 999;
+
+    /** A marca, em `step_state`, da garantia que o PADRÃO gravou no rascunho (o que a equipe escolheu não tem). */
+    public const MARCA = 'garantia_padrao';
 
     /** A garantia no formato do rascunho (`tipo`, `tempo`, `unidade`), ou null se não for válida. */
     public static function normalizar(mixed $g): ?array
@@ -124,30 +131,60 @@ final class GarantiaPadrao
     // ═══ Aplicar ═════════════════════════════════════════════════════════════
 
     /**
-     * Põe a garantia no rascunho SE ele não tem nenhuma (sobe a revisão: uma conferência de antes não vale mais).
-     * Quem chama segura a trava do rascunho. true = gravou.
+     * O padrão pode escrever neste rascunho? Sim quando ele não tem garantia, ou quando a que tem ainda é a que o
+     * padrão gravou (a marca) — ou, sem marca, quando é exatamente o padrão `$anterior`. A escolhida pela equipe, não.
      */
-    public static function aplicar(PubRascunho $r, array $garantia): bool
+    public static function podeAplicar(PubRascunho $r, ?array $anterior = null): bool
     {
-        $g = self::normalizar($garantia);
-        if ($g === null || self::temGarantia($r) || IaParaRascunhoService::intocavel($r)) {
+        if (IaParaRascunhoService::intocavel($r)) {
             return false;
         }
-        $r->forceFill(['garantia' => $g])->save();
-        $r->increment('revisao');
+        if (! self::temGarantia($r)) {
+            return true;
+        }
+        $atual = self::normalizar($r->garantia);
+        $marca = self::normalizar($r->step_state[self::MARCA] ?? null);
+        if ($atual === null) {
+            return false;
+        }
 
-        return true;
+        return $marca !== null ? $atual == $marca : ($anterior !== null && $atual == self::normalizar($anterior));
     }
 
     /**
-     * A garantia padrão nos rascunhos da conta que ainda não têm garantia. Pula quem não pode ser mexido agora:
-     * publicado/publicando, editor aberto (o save da tela gravaria por cima) e produto na fila de publicação (foi
-     * conferido como está) — esses recebem no próximo Sincronizar.
+     * Põe o padrão no rascunho quando `podeAplicar` (sobe a revisão: uma conferência de antes não vale mais) e marca
+     * que veio do padrão. Quem chama segura a trava do rascunho. true = a garantia mudou.
+     */
+    public static function aplicar(PubRascunho $r, array $garantia, ?array $anterior = null): bool
+    {
+        $g = self::normalizar($garantia);
+        if ($g === null || ! self::podeAplicar($r, $anterior)) {
+            return false;
+        }
+        $estado = (array) ($r->step_state ?? []);
+        $mudou = self::normalizar($r->garantia) != $g;
+        if (! $mudou && self::normalizar($estado[self::MARCA] ?? null) == $g) {
+            return false;
+        }
+        $estado[self::MARCA] = $g;
+        $r->forceFill(['garantia' => $g, 'step_state' => $estado])->save();
+        if ($mudou) {
+            $r->increment('revisao');
+        }
+
+        return $mudou;
+    }
+
+    /**
+     * A garantia padrão nos rascunhos da conta que ainda não têm garantia ou que estão com o padrão anterior
+     * (`$anterior`, o que valia antes deste save). Pula quem não pode ser mexido agora: publicado/publicando, editor
+     * aberto (o save da tela gravaria por cima) e produto na fila de publicação (foi conferido como está) — esses
+     * recebem no próximo Sincronizar.
      *
      * @param  iterable<int>  $produtoIds  os produtos da conta
-     * @return int quantos rascunhos receberam
+     * @return int quantos rascunhos tiveram a garantia trocada
      */
-    public static function aplicarNaConta(iterable $produtoIds, array $garantia): int
+    public static function aplicarNaConta(iterable $produtoIds, array $garantia, ?array $anterior = null): int
     {
         $n = 0;
         foreach ($produtoIds as $produtoId) {
@@ -155,10 +192,10 @@ final class GarantiaPadrao
             if (EditorEmUso::emUso($produtoId) || NaFilaDePublicacao::emUso($produtoId)) {
                 continue;
             }
-            $n += (int) DB::transaction(function () use ($produtoId, $garantia) {
+            $n += (int) DB::transaction(function () use ($produtoId, $garantia, $anterior) {
                 $r = PubRascunho::query()->where('produto_id', $produtoId)->lockForUpdate()->first();
 
-                return $r !== null && self::aplicar($r, $garantia);
+                return $r !== null && self::aplicar($r, $garantia, $anterior);
             });
         }
 

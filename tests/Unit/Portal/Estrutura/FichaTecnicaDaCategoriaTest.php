@@ -118,6 +118,25 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertFalse(self::campo($grupos, 'SEAT_HEIGHT')['obrigatorio']);
     }
 
+    public function test_a_marca_e_sempre_texto_livre_e_as_marcas_do_catalogo_viram_sugestao(): void
+    {
+        // Decisão do usuário (10/10/2026). Como em Escrivaninhas (MLB193946): BRAND `string` com 5 marcas.
+        $grupos = F::daAtributos([
+            ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => ['required' => true],
+                'values' => [['id' => '36549451', 'name' => 'VEKKAHOME'], ['id' => '16831989', 'name' => 'Casaideas']]],
+            ['id' => 'SHAPE', 'name' => 'Forma', 'value_type' => 'string', 'values' => [['id' => '1163800', 'name' => 'Retangular']]],
+        ]);
+
+        $marca = self::campo($grupos, 'BRAND');
+        $this->assertSame(F::TIPO_TEXTO, $marca['tipo'], 'o cliente digita a marca dele');
+        $this->assertSame([], $marca['valores']);
+        $this->assertSame(['VEKKAHOME', 'Casaideas'], $marca['sugestoes']);
+        $this->assertTrue($marca['obrigatorio']);
+        // Os outros campos com opção continuam lista (só escolhe).
+        $this->assertSame(F::TIPO_LISTA, self::campo($grupos, 'SHAPE')['tipo']);
+        $this->assertSame([], self::campo($grupos, 'SHAPE')['sugestoes']);
+    }
+
     public function test_lista_sem_opcoes_vira_texto_e_unidade_padrao_desconhecida_vira_a_primeira(): void
     {
         $grupos = F::daAtributos([

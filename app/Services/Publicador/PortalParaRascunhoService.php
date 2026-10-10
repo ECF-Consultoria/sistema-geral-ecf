@@ -260,9 +260,9 @@ class PortalParaRascunhoService
     private function concluir(array $resumo, PubProduto $produto, PubRascunho $r): array
     {
         // 10/10/2026 — o Portal não pergunta garantia e o ML não publica sem ela (V-SAL-05): a garantia padrão da
-        // conta entra no rascunho que ainda não tem nenhuma (a escolhida pela equipe nunca é trocada).
+        // conta entra no rascunho sem garantia e acompanha o padrão se ele mudar (a escolhida pela equipe fica).
         $padrao = GarantiaPadrao::doProduto($produto);
-        if ($padrao !== null && ! GarantiaPadrao::temGarantia($r->fresh())) {
+        if ($padrao !== null && GarantiaPadrao::podeAplicar($r->fresh())) {
             $this->sobTrava($r->id, function (PubRascunho $r) use ($padrao, &$resumo) {
                 if (GarantiaPadrao::aplicar($r, $padrao)) {
                     $resumo['campos_preenchidos']++;

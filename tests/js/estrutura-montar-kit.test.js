@@ -110,7 +110,7 @@ test('a oferta criada leva à Lista SKUs para quem a vê e à Precificação par
     assert.deepEqual(cliente, { rotulo: 'Precificar agora', href: '/portal.auth.estrutura.precificacao', ondeFica: 'na Precificação' });
 
     assert.equal(textoResultadoAceite({ criadas: [{}], ja_existiam: [], erros: [] }, cliente.ondeFica), '1 oferta criada. Ela já está na Precificação.');
-    assert.equal(textoResultadoAceite({ criadas: [{}, {}], ja_existiam: [], erros: [] }), '2 ofertas criadas. Elas já estão na Lista SKUs.', 'o padrão de antes');
+    assert.equal(textoResultadoAceite({ criadas: [{}, {}], ja_existiam: [], erros: [] }), '2 ofertas criadas. Elas já estão na Precificação.', 'o padrão desde 10/10/2026 (ninguém vê a Lista SKUs)');
 });
 
 // ─── Gates das telas ────────────────────────────────────────────────────

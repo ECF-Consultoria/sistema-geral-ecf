@@ -59,16 +59,17 @@ class AcessoAoModuloEstruturaTest extends TestCase
         $empresa = $this->empresaDoGabarito();
         $sessao = $this->withoutVite()->entrarNoPortal($empresa);
 
-        // Empresa vazia vai para Produtos (D-21); com a lista do gabarito (só ofertas), para a Lista SKUs.
+        // Empresa vazia vai para Produtos (D-21); com a lista do gabarito (só ofertas) também, desde 10/10/2026:
+        // ninguém vê a Lista SKUs por padrão (o usuário tirou Lista SKUs e Anúncios do portal).
         $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
         $this->listaDoGabarito($empresa, $this->atorCliente($empresa));
-        $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.lista'));
+        $sessao->get(route('portal.auth.estrutura'))->assertRedirect(route('portal.auth.estrutura.produtos'));
         $sessao->get(route('portal.auth.estrutura', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]))
             ->assertRedirect(route('portal.auth.estrutura.mapeamento', ['q' => 'CAD-01', 'abrir' => 7, 'metricas' => 1]));
 
-        // O CLIENTE (09/10/2026): os 4 do dia a dia (Produtos, Planejamento, Precificação, Mapeamento) e,
-        // como esta empresa tem oferta simples sem produto (a lista do gabarito), também Lista SKUs e
-        // Anúncios. O Cronograma (chave `planejamento`, a agenda) fica escondido.
+        // TODOS (10/10/2026): os 4 do dia a dia (Produtos, Planejamento, Precificação, Mapeamento) — nem a
+        // empresa com oferta simples sem produto vê mais Lista SKUs e Anúncios; o Cronograma (chave
+        // `planejamento`, a agenda) também fica escondido. A Lista, aberta por link, aparece marcada (`oculto`).
         $sessao->get(route('portal.auth.estrutura.lista'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
@@ -77,12 +78,13 @@ class AcessoAoModuloEstruturaTest extends TestCase
                     $estrutura = collect($modulos)->firstWhere('chave', 'estrutura');
 
                     return $estrutura['ativo']
-                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'mapeamento']
+                        && collect($estrutura['submodulos'])->pluck('chave')->all() === ['produtos', 'sugestoes', 'lista', 'precificacao', 'mapeamento']
                         && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['ativo']
+                        && collect($estrutura['submodulos'])->firstWhere('chave', 'lista')['oculto']
                         // 08/10: a agenda se chama "Cronograma"; "Planejamento" é a tela de sugestões (chave `sugestoes`).
-                        && collect($estrutura['submodulos'])->pluck('rotulo')->all() === ['Produtos', 'Planejamento', 'Lista SKUs', 'Precificação', 'Anúncios', 'Mapeamento']
-                        // 02/10 (D18): o Anunciar saiu do Portal — todos abertos.
-                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null && ! $s['oculto']);
+                        && collect($estrutura['submodulos'])->pluck('rotulo')->all() === ['Produtos', 'Planejamento', 'Lista SKUs', 'Precificação', 'Mapeamento']
+                        // 02/10 (D18): o Anunciar saiu do Portal — todos abertos; só a Lista (onde a pessoa está) vem marcada.
+                        && collect($estrutura['submodulos'])->every(fn ($s) => ! $s['em_breve'] && $s['url'] !== null && $s['oculto'] === ($s['chave'] === 'lista'));
                 })
             );
 
@@ -94,7 +96,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
                 ->assertInertia(fn ($page) => $page
                     ->component($componente)
                     ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['chave'] === $sub)
-                    ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['oculto'] === ($sub === 'planejamento'))
+                    ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['oculto'] === in_array($sub, ['planejamento', 'anuncios'], true))
                 );
         }
 
@@ -105,8 +107,8 @@ class AcessoAoModuloEstruturaTest extends TestCase
             );
     }
 
-    /** A EQUIPE (entrada de equipe no portal) vê os 7 submódulos, na ordem de quem começa do zero. */
-    public function test_a_equipe_ve_os_sete_submodulos(): void
+    /** A EQUIPE (entrada de equipe no portal) vê os mesmos 4 do cliente desde 10/10/2026 (antes via os 7). */
+    public function test_a_equipe_ve_os_quatro_submodulos(): void
     {
         $empresa = $this->empresaDoGabarito();
 
@@ -115,7 +117,7 @@ class AcessoAoModuloEstruturaTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('modulos', fn ($modulos) => collect(collect($modulos)->firstWhere('chave', 'estrutura')['submodulos'])->pluck('rotulo')->all()
-                    === ['Produtos', 'Planejamento', 'Lista SKUs', 'Precificação', 'Anúncios', 'Cronograma', 'Mapeamento'])
+                    === ['Produtos', 'Planejamento', 'Precificação', 'Mapeamento'])
                 ->where('modulos', fn ($modulos) => collect(collect($modulos)->firstWhere('chave', 'estrutura')['submodulos'])->every(fn ($s) => ! $s['oculto']))
             );
     }

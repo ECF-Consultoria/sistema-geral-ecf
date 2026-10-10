@@ -343,7 +343,7 @@ class PreviaDaFaseService
 
         if ($novas !== []) {
             $avisos[] = self::aviso('ofertas_novas_no_portal', 'Ao confirmar, o Portal ganha '.count($novas)." oferta(s) Combo {$n}, uma por cor ("
-                .implode(', ', $novas).'), na Lista SKUs e na Precificação. O preço do kit sai de lá: confira o custo e o frete delas na Precificação.');
+                .implode(', ', $novas).'), na Precificação do Portal. O preço do kit sai de lá: confira o custo e o frete delas.');
         }
         if ($comPreco > 0) {
             $avisos[] = self::aviso('preco_do_planejamento', "O preço de cada cor vem da Precificação do Portal (Combo {$n}). Ele não é copiado para o kit: se mudar lá, muda aqui.");

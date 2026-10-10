@@ -156,9 +156,9 @@ class MlbPublicadorLoteController extends Controller
     }
 
     /**
-     * A garantia padrão da conta (10/10/2026): grava e já aplica nos rascunhos da conta que não têm garantia
-     * (`GarantiaPadrao::aplicarNaConta` — nunca troca a escolhida). `tipo` vazio remove o padrão (o que já foi
-     * aplicado fica nos rascunhos).
+     * A garantia padrão da conta (10/10/2026): grava e já aplica nos rascunhos da conta sem garantia e nos que
+     * estão com o padrão anterior (`GarantiaPadrao::aplicarNaConta` — a escolhida no editor nunca muda). `tipo`
+     * vazio remove o padrão (o que já foi aplicado fica nos rascunhos).
      */
     public function garantia(Request $request, string $conta): JsonResponse
     {
@@ -178,14 +178,16 @@ class MlbPublicadorLoteController extends Controller
         ]);
 
         $tipo = (string) ($dados['tipo'] ?? '');
+        $anterior = GarantiaPadrao::daConta($alvo); // quem ainda está com ela muda junto
         $g = GarantiaPadrao::salvar($alvo, $tipo === '' ? null : $dados, $request->user());
         $n = $g === null ? 0 : GarantiaPadrao::aplicarNaConta(
             $this->programas->produtosQuery($alvo['mlb_empresa'], $alvo['company'])->pluck('id'),
             $g,
+            $anterior,
         );
         $mensagem = $g === null
             ? 'Garantia padrão removida. O que já foi aplicado continua nos produtos.'
-            : 'Garantia padrão salva: '.GarantiaPadrao::texto($g).'. '.($n === 0 ? 'Nenhum produto estava sem garantia.' : ($n === 1 ? 'Aplicada em 1 produto sem garantia.' : "Aplicada em {$n} produtos sem garantia."));
+            : 'Garantia padrão salva: '.GarantiaPadrao::texto($g).'. '.($n === 0 ? 'Nenhum produto precisou mudar.' : ($n === 1 ? 'Aplicada em 1 produto.' : "Aplicada em {$n} produtos."));
 
         return response()->json([
             'garantia_padrao' => $this->garantiaParaTela($alvo),
