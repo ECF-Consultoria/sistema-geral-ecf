@@ -14,6 +14,23 @@ export const LIMITE_DA_LISTA = 120;
 
 export const ROTULO_FASE_MONTAGEM = { combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
+/**
+ * A metodologia das ofertas montadas, sempre à vista na janela (10/10/2026): os três tipos, com as
+ * MESMAS palavras do "Como funciona" do Planejamento, e como se monta cada um. Quem decide o tipo é
+ * o servidor, pela composição (`RegrasDaMontagem::fase`, a regra da Lista SKUs); aqui só se explica.
+ */
+export const METODOLOGIA = [
+    { fase: 'combo', numero: 2, oQueE: 'Mesmo produto, mais unidades', comoMontar: '1 produto, com quantidade 2 ou mais' },
+    { fase: 'kit', numero: 3, oQueE: 'Produtos diferentes juntos', comoMontar: '2 ou mais produtos, 1 unidade de cada' },
+    { fase: 'combit', numero: 4, oQueE: 'Kit com mais unidades de um item', comoMontar: '2 ou mais produtos, algum com 2 ou mais unidades' },
+];
+
+/** O botão de criar diz o que nasce: "Criar Combit"; sem tipo ainda, "Criar oferta". */
+export const textoDoCriar = (fase) => (ROTULO_FASE_MONTAGEM[fase] ? `Criar ${ROTULO_FASE_MONTAGEM[fase]}` : 'Criar oferta');
+
+/** "Combit criado"; sem o tipo na resposta, "Oferta criada". */
+export const textoDaCriada = (fase) => (ROTULO_FASE_MONTAGEM[fase] ? `${ROTULO_FASE_MONTAGEM[fase]} criado` : 'Oferta criada');
+
 /** Chave estável de um item escolhido: a variação ('v12') ou a oferta sem produto ('o55'). */
 export const chaveDoItem = (item) => (item.variacao_id ? `v${item.variacao_id}` : `o${item.oferta_id}`);
 

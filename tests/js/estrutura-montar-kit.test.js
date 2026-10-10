@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { lerSemComentarios } from './_fonte.js';
 import {
-    MAX_COMPONENTES_PADRAO, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo, itemInicialDoProduto,
-    mudarQuantidade, removerItem, rotuloDaVariacao, textoDoEstoque,
+    MAX_COMPONENTES_PADRAO, METODOLOGIA, ROTULO_FASE_MONTAGEM, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo,
+    itemInicialDoProduto, mudarQuantidade, removerItem, rotuloDaVariacao, textoDaCriada, textoDoCriar, textoDoEstoque,
 } from '../../resources/js/lib/montarKit.js';
 import { destinoDaOfertaCriada, submoduloVisivel } from '../../resources/js/lib/portalSubmodulos.js';
 import { textoResultadoAceite } from '../../resources/js/lib/sugestoesEstrutura.js';
@@ -52,6 +52,22 @@ test('o pedido leva só variação ou oferta e quantidade; nome e SKU só quando
     assert.deepEqual(corpoDaMontagem(itens, { nome: '  Conjunto  ', sku: '' }).nome, 'Conjunto');
     assert.equal('sku' in corpoDaMontagem(itens, { nome: null, sku: '   ' }), false);
     assert.equal(JSON.stringify(corpoDaMontagem(itens)).includes('nome'), false, 'o nome do item não vai: o servidor resolve');
+});
+
+test('a metodologia fica à vista: Combo, Kit e Combit, nessa ordem, e o botão diz o que nasce', () => {
+    // Pedido do usuário (10/10/2026): a janela se chamava "Montar kit" e escondia os outros dois tipos.
+    assert.deepEqual(METODOLOGIA.map((m) => [m.fase, m.numero]), [['combo', 2], ['kit', 3], ['combit', 4]]);
+    for (const m of METODOLOGIA) {
+        assert.ok(ROTULO_FASE_MONTAGEM[m.fase], `rótulo de ${m.fase}`);
+        assert.ok(m.oQueE.length > 10 && m.comoMontar.length > 10, `${m.fase} explica o que é e como se monta`);
+    }
+    // As mesmas condições da regra do servidor (`RegrasDaMontagem::fase`), em português.
+    assert.match(METODOLOGIA[0].comoMontar, /^1 produto.*2 ou mais/);
+    assert.match(METODOLOGIA[1].comoMontar, /^2 ou mais produtos.*1 unidade de cada/);
+    assert.match(METODOLOGIA[2].comoMontar, /^2 ou mais produtos.*algum com 2 ou mais/);
+
+    assert.deepEqual(['combo', 'kit', 'combit', null, 'simples'].map(textoDoCriar), ['Criar Combo', 'Criar Kit', 'Criar Combit', 'Criar oferta', 'Criar oferta']);
+    assert.deepEqual(['combo', 'kit', 'combit', undefined].map(textoDaCriada), ['Combo criado', 'Kit criado', 'Combit criado', 'Oferta criada']);
 });
 
 test('"Terá estoque?" em português, do resumo do servidor', () => {
@@ -126,6 +142,10 @@ test('a janela só liga a lib às rotas: a regra fica no servidor', () => {
     for (const nome of ['corpoDaMontagem(', 'adicionarItem(', 'filtrarCatalogo', 'textoDoEstoque(', 'mudarQuantidade(', 'removerItem(']) {
         assert.ok(janela.includes(nome), `a janela usa ${nome}`);
     }
+    // A legenda acende pelo tipo que o SERVIDOR devolveu, e o botão e o aviso de criada dizem o tipo.
+    assert.ok(janela.includes('<LegendaDaMetodologia fase={faseAtual} />') && janela.includes('previa.fase'));
+    assert.ok(janela.includes('textoDoCriar(faseAtual)') && janela.includes('textoDaCriada(criada.oferta.fase)'));
+    assert.ok(janela.includes('titulo="Montar combo, kit ou combit"'));
     // Nada de deduzir fase, montar nome/SKU ou somar volumes no navegador.
     assert.doesNotMatch(janela, />= 2 \? 'combit'|faseDoKit|KT-|CT\$\{|-CB\$\{|daVolumes|fator_cubagem/);
     assert.doesNotMatch(janela, /v\d+\*/);
@@ -142,6 +162,7 @@ test('a página do Planejamento abre o Montar kit (botão, vazio e ?montar=) e p
         "router.reload({ only: ['montagem']", 'destinoDaOfertaCriada(', 'textoResultadoAceite(r.resultado, destino.ondeFica)']) {
         assert.ok(pagina.includes(trecho), `a página deve conter ${trecho}`);
     }
+    assert.ok(pagina.includes('Montar combo, kit ou combit') && ! pagina.includes('> Montar kit<') && ! pagina.includes('>Montar kit<'), 'o botão diz os três tipos');
     assert.ok(! pagina.includes("acao: criadas > 0 ? { rotulo: 'Ver na Lista SKUs'"), 'o link fixo para a Lista SKUs saiu');
 });
 
@@ -151,7 +172,7 @@ test('Produtos: a variação e o menu ⋮ só apontam para a Lista SKUs para que
     assert.ok(variacao.includes('Ver na Precificação') && variacao.includes("route('portal.auth.estrutura.precificacao', { q: oferta.sku })"));
     const pecas = lerSemComentarios('resources/js/Components/Portal/Estrutura/Produtos/PecasDoProduto.jsx');
     assert.ok(pecas.includes("submoduloVisivel(modulos, 'lista')") && pecas.includes('na Precificação'));
-    assert.ok(pecas.includes('Montar kit com este produto') && pecas.includes("route('portal.auth.estrutura.sugestoes', { montar: produtoId })"));
+    assert.ok(pecas.includes('Montar combo, kit ou combit com este produto') && pecas.includes("route('portal.auth.estrutura.sugestoes', { montar: produtoId })"));
 });
 
 test('Mapeamento: funil adiado no topo e nenhum atalho para Lista SKUs ou Cronograma escondidos', () => {

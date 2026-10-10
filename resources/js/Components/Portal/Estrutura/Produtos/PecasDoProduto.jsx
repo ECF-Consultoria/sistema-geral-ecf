@@ -224,7 +224,7 @@ export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }
                 <DropdownMenuItem onSelect={() => onAbrir(produtoId)}>Abrir a ficha</DropdownMenuItem>
                 {planejamentoVisivel && comOferta.length > 0 && (
                     <DropdownMenuItem onSelect={() => router.visit(route('portal.auth.estrutura.sugestoes', { montar: produtoId }))} data-acao="montar-kit-do-produto">
-                        Montar kit com este produto
+                        Montar combo, kit ou combit com este produto
                     </DropdownMenuItem>
                 )}
                 {comOferta.map((v) => (listaVisivel ? (

@@ -7,12 +7,17 @@ import { Botao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import { PilulaLogistica, QuadroFotoProduto } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { SeloFase } from './PecasDaSugestao';
 import {
-    MAX_COMPONENTES_PADRAO, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo, itemInicialDoProduto,
-    mudarQuantidade, removerItem, rotuloDaVariacao, textoDoEstoque,
+    MAX_COMPONENTES_PADRAO, METODOLOGIA, ROTULO_FASE_MONTAGEM, adicionarItem, chaveDoItem, corpoDaMontagem, filtrarCatalogo,
+    itemInicialDoProduto, mudarQuantidade, removerItem, rotuloDaVariacao, textoDaCriada, textoDoCriar, textoDoEstoque,
 } from '@/lib/montarKit';
 import { cn } from '@/lib/utils';
 
-// ─── "Montar kit" à mão no Planejamento (09/10/2026) ────────────────────────
+// ─── Montar combo, kit ou combit à mão no Planejamento (09/10/2026) ─────────
+//
+// 10/10/2026: a janela nasceu "Montar kit" e escondia a metodologia — o tipo só aparecia num selo
+// pequeno da prévia. Agora os três tipos ficam sempre à vista (`LegendaDaMetodologia`), o da
+// composição de agora aceso, e o botão diz o que nasce ("Criar Combit"). O tipo continua saindo
+// da composição, no servidor.
 //
 // Em reunião com o cliente ("faz sentido esse kit? vai ter estoque?"), a pessoa pega um
 // produto, pega o outro e define as quantidades. A prévia ao vivo vem do servidor
@@ -61,6 +66,33 @@ function Quantidade({ valor, rotulo, onMudar }) {
                 <Plus size={14} aria-hidden="true" />
             </button>
         </div>
+    );
+}
+
+/**
+ * A metodologia sempre à vista: Combo, Kit e Combit, com o que cada um é e como se monta. O tipo que
+ * a composição de agora dá vem aceso (`fase` da prévia do servidor; null = ainda não é uma oferta).
+ */
+export function LegendaDaMetodologia({ fase = null }) {
+    return (
+        <ul className="grid gap-2 sm:grid-cols-3" data-metodologia aria-label="Tipos de oferta que dá para montar">
+            {METODOLOGIA.map((m) => {
+                const atual = m.fase === fase;
+
+                return (
+                    <li key={m.fase} data-tipo={m.fase} data-atual={atual ? 'sim' : undefined} aria-current={atual ? 'true' : undefined}
+                        className={cn('rounded-xl border px-3 py-2', atual ? 'border-ecf-yellow/60 bg-ecf-yellow/[0.07]' : 'border-white/[0.07] bg-white/[0.02]')}>
+                        <p className="flex flex-wrap items-baseline gap-x-2">
+                            <span className={cn('text-[13.5px] font-semibold', atual ? 'text-ecf-yellow' : 'text-white/90')}>{ROTULO_FASE_MONTAGEM[m.fase]}</span>
+                            <span className="text-[11.5px] text-white/45">Fase {m.numero}</span>
+                            {atual && <span className="text-[11.5px] font-medium text-ecf-yellow/90">é o que você está montando</span>}
+                        </p>
+                        <p className="mt-0.5 text-[12.5px] leading-snug text-white/70">{m.oQueE}</p>
+                        <p className="mt-0.5 text-[12px] leading-snug text-white/45">{m.comoMontar}</p>
+                    </li>
+                );
+            })}
+        </ul>
     );
 }
 
@@ -306,6 +338,8 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
         setItens(removerItem(itens, chave));
     };
 
+    // O tipo que a composição de agora dá (do servidor); sem oferta ainda, nenhum.
+    const faseAtual = previa?.pronto ? (previa.fase ?? null) : null;
     const skuLongo = (previa?.avisos ?? []).some((a) => a.codigo === 'sku_longo');
     const campoVazio = (v) => v !== null && String(v).trim() === '';
     const podeCriar = Boolean(previa?.pronto) && ! previa?.ja_existe && ! skuLongo && ! campoVazio(nome) && ! campoVazio(sku)
@@ -331,13 +365,13 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
     };
 
     return (
-        <Janela aberta={aberta} onFechar={onFechar} titulo="Montar kit" largura="max-w-5xl"
-            descricao="Escolha os produtos que vão juntos e as quantidades. A prévia mostra o tipo da oferta, o nome, o SKU, o frete estimado e se o estoque dá para montar.">
+        <Janela aberta={aberta} onFechar={onFechar} titulo="Montar combo, kit ou combit" largura="max-w-5xl"
+            descricao="Escolha os produtos e as quantidades: o tipo sai do que você escolher. A prévia mostra o nome, o SKU, o frete estimado e se o estoque dá para montar.">
             {criada ? (
                 <section className="space-y-4 py-2 text-center" data-montagem-criada>
                     <CheckCircle2 size={36} className="mx-auto text-emerald-300" aria-hidden="true" />
                     <div>
-                        <p className="text-[16px] font-semibold text-white">Oferta criada: <span className="font-mono">{criada.oferta.sku}</span></p>
+                        <p className="text-[16px] font-semibold text-white" data-criada-tipo={criada.oferta.fase ?? undefined}>{textoDaCriada(criada.oferta.fase)}: <span className="font-mono">{criada.oferta.sku}</span></p>
                         {criada.oferta.nome && <p className="mt-1 text-[13px] text-white/60">{criada.oferta.nome}</p>}
                         <p className="mt-2 text-[13px] text-white/60">O próximo passo é o preço.</p>
                     </div>
@@ -350,7 +384,9 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
                     </div>
                 </section>
             ) : (
-                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" data-montar-kit>
+                <>
+                <LegendaDaMetodologia fase={faseAtual} />
+                <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" data-montar-kit>
                     <section aria-label="Produtos para escolher" data-montar-escolha>
                         <label className="relative block">
                             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/35" aria-hidden="true" />
@@ -363,7 +399,7 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
                     <section aria-label="Composição" data-montar-composicao>
                         <p className="text-[14px] font-semibold text-white">Composição</p>
                         {itens.length === 0 ? (
-                            <p className="mt-2 text-[13px] text-white/55">Escolha ao lado os produtos que vão juntos. Para um combo, escolha um produto e aumente a quantidade.</p>
+                            <p className="mt-2 text-[13px] text-white/55">Escolha ao lado os produtos que vão juntos e ajuste as quantidades. O tipo acende acima conforme você monta.</p>
                         ) : (
                             <ul className="mt-2 space-y-2" data-itens-escolhidos>
                                 {itens.map((i) => {
@@ -386,7 +422,7 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
                                 })}
                             </ul>
                         )}
-                        {avisoTeto && <Aviso>Um kit pode juntar até {max} produtos.</Aviso>}
+                        {avisoTeto && <Aviso>Uma oferta pode juntar até {max} produtos diferentes.</Aviso>}
 
                         <PreviaDoKit previa={previa} calculando={calculando} nome={nome} sku={sku} onNome={setNome} onSku={setSku} vocabulario={vocabulario} />
 
@@ -396,11 +432,12 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
                             <Botao variante="secundario" onClick={onFechar} className="h-11">Cancelar</Botao>
                             <Botao variante="primario" onClick={criar} disabled={! podeCriar} className="h-11" data-acao="criar-oferta-montada">
                                 {gravando && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-                                {gravando ? 'Criando…' : 'Criar oferta'}
+                                {gravando ? 'Criando…' : textoDoCriar(faseAtual)}
                             </Botao>
                         </div>
                     </section>
                 </div>
+                </>
             )}
         </Janela>
     );
