@@ -3,6 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Models\EstruturaAnuncio;
+use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
 use App\Models\MlAcervoItem;
 use App\Models\PubImagem;
@@ -353,17 +354,53 @@ class EditorRascunhoService
 
     // ═══ Simulador "Você recebe" (E10, H-14) ════════════════════════════════
 
-    /** @return array<string, array> listing_type_id → simulação do preço da 1ª variante ativa */
+    /**
+     * O card "Quanto você recebe", por tipo de anúncio, sobre a 1ª variante ativa.
+     *
+     * Além das 6 chaves do {@see SimuladorVoceRecebe} (preço, tarifa, frete, recebimento, percentual
+     * e se o frete é conhecido), leva o que faltava para a pessoa perceber prejuízo — quick 261010-ptg,
+     * caso da Poltrona Beny de 10/10/2026:
+     *
+     *  - `custo` e `custo_origem`: o custo da Precificação do Portal da variante que está sendo
+     *    simulada (pelo SKU dela, não o da âncora — mostrar o custo de outra cor seria número errado);
+     *  - `lucro`: recebimento − custo, **ANTES do imposto**, porque o Mercado Livre NÃO desconta
+     *    imposto. O que o preço do Portal reserva para o imposto é o `imposto_reservado`, e ele ainda
+     *    é devido: comparar o recebimento direto com o custo SUBESTIMA o prejuízo;
+     *  - `lucro_depois_do_imposto` e `margem_pct`: a conta honesta. A margem aqui é com tarifa e frete
+     *    REAIS respondidos pela API agora — diferente DE PROPÓSITO da "margem estimada" por
+     *    percentuais planejados da visão rápida do lote (`Fila/ResumoRapidoService::dinheiro`). São
+     *    perguntas diferentes; não unificar;
+     *  - `abaixo_do_custo` e `prejuizo_com_imposto`: os dois avisos da tela. O primeiro NÃO depende da
+     *    procedência do preço — um preço digitado pode ser byte a byte igual à sugestão sem frete, e
+     *    nenhuma regra de origem separa os dois;
+     *  - `promocao`: a que preço o desconto automático de 14 dias leva o anúncio (acréscimo pedido
+     *    pelo usuário em 10/10). A conta é a do {@see PrecoDaPromocao} e NENHUMA outra — o espelho em
+     *    JS (`promocaoAutomatica.js`) e esta chamada compartilham a mesma função pura.
+     *
+     * A fórmula do PREÇO não muda por nada disto: o imposto no divisor é provisionamento intencional,
+     * e MC/LL em zero é o padrão deliberado do sistema (o `minimo` é o ponto de equilíbrio e o
+     * `anunciado` é `minimo × 1,2`, ~16,7% da receita).
+     *
+     * @return array<string, array> listing_type_id → simulação do preço da 1ª variante ativa
+     */
     public function simular(PubRascunho $r): array
     {
         if (! $r->categoria_id) {
             return [];
         }
         $e = $this->efetivos->daProduto($r->produto);
-        $s = $this->repo->snapshot($r)->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
+        // `comEfetivosDe` (quick 261010-ptg): o mesmo caminho do `estado()`. É o único jeito de a
+        // simulação saber se o preço VEIO do Portal e se ele foi calculado sem frete.
+        $s = $this->repo->snapshot($r)->comEfetivosDe($e);
         $primeira = $s->variantesAtivas()[0] ?? null;
         $conta = (array) ($r->step_state['conta'] ?? []);
         $pacote = $this->dimensoes($s->atributos);
+
+        // UMA leitura da Precificação por clique em "Calcular", fora do loop dos tipos.
+        $custos = $this->efetivos->custosDoProduto($r->produto);
+        $sku = EstruturaOferta::normalizarSku($primeira?->dados['atributos']['SELLER_SKU']['value_name']
+            ?? $s->atributos['SELLER_SKU']['value_name'] ?? null);
+        $custo = ($sku === null ? null : ($custos['por_variante'][$sku] ?? null)) ?? $custos['custo'];
 
         $saida = [];
         foreach ($s->alvosAtivos() as $alvo) {
@@ -386,10 +423,58 @@ class EditorRascunhoService
                 $frete = $f->ok() && isset($f->corpo['coverage']['all_country']['list_cost']) ? (float) $f->corpo['coverage']['all_country']['list_cost'] : null;
             }
 
-            $saida[$alvo->listingTypeId] = SimuladorVoceRecebe::calcular($preco, (float) $tarifa->corpo['sale_fee_amount'], $frete);
+            $simulacao = SimuladorVoceRecebe::calcular($preco, (float) $tarifa->corpo['sale_fee_amount'], $frete);
+            $portal = $primeira?->dados['portal'][$alvo->listingTypeId] ?? null;
+            $promocao = PrecoDaPromocao::calcular($preco, $portal);
+
+            $saida[$alvo->listingTypeId] = [
+                ...$simulacao,
+                ...$this->recebimentoVsCusto($preco, $simulacao['voce_recebe'], $custo, $custos['origem'], $custos['imposto']),
+                'preco_do_portal' => (bool) ($primeira?->dados['preco_do_portal'][$alvo->listingTypeId] ?? false),
+                'portal_sem_frete' => (bool) ($portal['sem_frete'] ?? false),
+                'promocao' => [
+                    ...$promocao,
+                    'motivo_texto' => $promocao['motivo'] === null ? null : (PrecoDaPromocao::MOTIVOS[$promocao['motivo']] ?? null),
+                    'dias' => PrecoDaPromocao::DIAS,
+                ],
+            ];
         }
 
         return $saida;
+    }
+
+    /**
+     * O recebimento contra o custo, num só lugar (nada disto mora em `App\Support\Publicador`: o
+     * `SimuladorVoceRecebe` segue com as 6 chaves dele, intocado).
+     *
+     * `lucro` é ANTES do imposto de propósito: é o que o ML efetivamente deixa na conta. O
+     * `imposto_reservado` é a parte do PREÇO que o Portal provisiona para o imposto — o ML não a
+     * desconta, e ela ainda é devida; por isso a margem honesta desconta os dois.
+     *
+     * Sem custo não se inventa prejuízo: tudo o que depende dele fica nulo e os avisos ficam falsos.
+     *
+     * @return array{custo: ?float, custo_origem: ?string, imposto_pct: ?float, imposto_reservado: ?float, lucro: ?float, lucro_depois_do_imposto: ?float, margem_pct: ?float, abaixo_do_custo: bool, prejuizo_com_imposto: bool}
+     */
+    private function recebimentoVsCusto(float $preco, float $recebe, ?float $custo, ?string $origem, ?float $impostoPct): array
+    {
+        $reservado = $impostoPct === null ? null : round($preco * $impostoPct / 100, 2);
+        $lucro = $custo === null ? null : round($recebe - $custo, 2);
+        $depois = ($lucro === null || $reservado === null) ? null : round($lucro - $reservado, 2);
+        $margem = ($depois === null || $preco <= 0) ? null : round($depois / $preco * 100, 2);
+        $abaixo = $custo !== null && $recebe < $custo;
+
+        return [
+            'custo' => $custo,
+            'custo_origem' => $custo === null ? null : $origem,
+            'imposto_pct' => $impostoPct,
+            'imposto_reservado' => $reservado,
+            'lucro' => $lucro,
+            'lucro_depois_do_imposto' => $depois,
+            'margem_pct' => $margem,
+            'abaixo_do_custo' => $abaixo,
+            // Só o segundo aviso quando o primeiro já falou — a tela não repete o mesmo prejuízo.
+            'prejuizo_com_imposto' => ! $abaixo && $depois !== null && $depois < 0,
+        ];
     }
 
     /**

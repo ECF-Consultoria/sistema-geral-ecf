@@ -70,6 +70,9 @@ trait CenarioCadeira
 
     protected array $efetivos = ['titulos' => [], 'precos' => [], 'mlbs' => []];
 
+    /** O que a Precificação do Portal sabe de custo e imposto (quick 261010-ptg), fora dos efetivos. */
+    protected array $custos = ['custo' => null, 'origem' => null, 'imposto' => null, 'por_variante' => []];
+
     /** O `/users/me` agora; nulo = a conta #459 real (UP, sem depósitos). */
     protected ?array $usuario = null;
 
@@ -101,6 +104,10 @@ trait CenarioCadeira
             $m->shouldReceive('daProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
                 ? ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []]
                 : $this->efetivos);
+            // Custo e imposto saem por método SEPARADO (fora do array que o lote compara inteiro).
+            $m->shouldReceive('custosDoProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
+                ? ['custo' => null, 'origem' => null, 'imposto' => null, 'por_variante' => []]
+                : $this->custos);
         });
 
         // O schema já guardado (24h): nenhuma chamada pública no teste.

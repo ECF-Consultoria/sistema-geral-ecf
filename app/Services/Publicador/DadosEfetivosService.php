@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaPrecificacaoParametros;
 use App\Models\EstruturaPublicacao;
 use App\Models\PubProduto;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
@@ -77,11 +78,14 @@ class DadosEfetivosService
      * Preço de cada cor do grupo, numa só chamada à Precificação. Só ofertas Simples da MESMA
      * Company do produto cuja variação pertence ao produto do Portal (T-172-19).
      *
-     * @return array{precos: array<string, array<string, ?float>>, promocoes: array<string, array<string, ?float>>, sem_frete: array<string, array<string, bool>>}
+     * O mapa `custos` (SKU → custo da Precificação) sai SÓ por {@see self::custosDoProduto()}: ele não
+     * pode entrar no retorno de `daProduto()`, que o `VisaoRapidaDoLoteTest` compara inteiro.
+     *
+     * @return array{precos: array<string, array<string, ?float>>, promocoes: array<string, array<string, ?float>>, sem_frete: array<string, array<string, bool>>, custos: array<string, ?float>}
      */
     private function precosPorVariante(PubProduto $produto): array
     {
-        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => []];
+        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => []];
         $ofertas = EstruturaOferta::query()
             ->where('company_id', $produto->company_id)
             ->where('fase', EstruturaOferta::FASE_SIMPLES)
@@ -107,6 +111,7 @@ class DadosEfetivosService
             $mapas['precos'][$sku] = self::precosAnunciados($linha);
             $mapas['promocoes'][$sku] = self::precosDePromocao($linha);
             $mapas['sem_frete'][$sku] = self::semFrete($linha);
+            $mapas['custos'][$sku] = self::custoDaLinha($linha);
         }
 
         return $mapas;
@@ -116,11 +121,11 @@ class DadosEfetivosService
      * O preço de cada cor do kit da Fase N, pela Precificação da oferta Combo N daquela cor, numa só
      * chamada. A cor sem SKU na variante fica de fora (o `comEfetivos` casa pelo SKU).
      *
-     * @return array{precos: array<string, array<string, ?float>>, promocoes: array<string, array<string, ?float>>, sem_frete: array<string, array<string, bool>>} SKU normalizado da variante → listing_type_id → valor
+     * @return array{precos: array<string, array<string, ?float>>, promocoes: array<string, array<string, ?float>>, sem_frete: array<string, array<string, bool>>, custos: array<string, ?float>} SKU normalizado da variante → listing_type_id → valor (o `custos` é só ?float, e sai só por `custosDoProduto`)
      */
     private function precosDoKit(PubProduto $kit): array
     {
-        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => []];
+        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => []];
         $combos = app(PlanejamentoDaFaseService::class)->combosDoKit($kit);
         if ($combos === [] || $kit->company === null) {
             return $mapas;
@@ -137,6 +142,7 @@ class DadosEfetivosService
                 $mapas['precos'][$sku] = self::precosAnunciados($linha);
                 $mapas['promocoes'][$sku] = self::precosDePromocao($linha);
                 $mapas['sem_frete'][$sku] = self::semFrete($linha);
+                $mapas['custos'][$sku] = self::custoDaLinha($linha);
             }
         }
 
@@ -178,6 +184,52 @@ class DadosEfetivosService
         }
 
         return $saida;
+    }
+
+    /** O custo de uma linha da Precificação (`por_oferta[id]['custo']['valor']`); sem linha, nulo. */
+    private static function custoDaLinha(?array $linha): ?float
+    {
+        return isset($linha['custo']['valor']) ? (float) $linha['custo']['valor'] : null;
+    }
+
+    /**
+     * Custo e imposto da Precificação do Portal — o que o card "Quanto você recebe" do editor precisa
+     * para dizer se o preço dá lucro (quick 261010-ptg, caso da Poltrona Beny).
+     *
+     * Por que isto NÃO entra no `daProduto()`/`daOferta()`: aquele array é comparado INTEIRO (chaves,
+     * valores e ORDEM) contra o `Fila/EfetivosEmLote` pelo `VisaoRapidaDoLoteTest` — chave nova ali
+     * obrigaria a espelhar no lote e quebraria a paridade até lá. Método separado, array separado.
+     *
+     * O custo é dado do CLIENTE: sai só para a tela interna da equipe, atrás da mesma permissão de
+     * publicação que já mostra custo e margem na visão rápida do lote. Nunca para o portal do cliente.
+     *
+     * `imposto`: a exceção da oferta vence o parâmetro da empresa — a MESMA precedência do lote.
+     *
+     * @return array{custo: ?float, origem: ?string, imposto: ?float, por_variante: array<string, ?float>}
+     */
+    public function custosDoProduto(PubProduto $produto): array
+    {
+        $daEmpresa = fn (): ?float => $produto->company_id === null
+            ? null
+            : (float) EstruturaPrecificacaoParametros::daEmpresa((int) $produto->company_id)['imposto'];
+
+        if ($produto->oferta_id === null) {
+            // Sem oferta não há custo; o imposto ainda é o da empresa (o kit da Fase N traz o das cores).
+            return ['custo' => null, 'origem' => null, 'imposto' => $daEmpresa(),
+                'por_variante' => $produto->ehKit() ? $this->precosDoKit($produto)['custos'] : []];
+        }
+
+        $empresa = $produto->oferta->company;
+        $pagina = $empresa === null ? [] : $this->precificacao->pagina($empresa, [$produto->oferta_id]);
+        $linha = $pagina['por_oferta'][$produto->oferta_id] ?? null;
+        $imposto = $linha['excecoes']['imposto'] ?? $pagina['parametros']['imposto'] ?? null;
+
+        return [
+            'custo' => self::custoDaLinha($linha),
+            'origem' => $linha['custo']['origem'] ?? null,
+            'imposto' => $imposto === null ? $daEmpresa() : (float) $imposto,
+            'por_variante' => $produto->estrutura_produto_id === null ? [] : $this->precosPorVariante($produto)['custos'],
+        ];
     }
 
     /** @return array<string, ?float> */
