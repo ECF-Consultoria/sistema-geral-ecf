@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { router } from '@inertiajs/react';
 import { Loader2, Plus, X } from 'lucide-react';
@@ -9,9 +9,12 @@ import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/Jan
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
 import JanelaFotosEmLote from '@/Components/Portal/Estrutura/Produtos/JanelaFotosEmLote';
+import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
 import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
+import BarraDeSelecao, { SelecionarPagina } from '@/Components/Portal/Estrutura/Produtos/BarraDeSelecao';
 import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
+import { alternarSelecao, idsDosProdutos, paginaToda, somarASelecao, tirarDaSelecao } from '@/lib/exclusaoDeProdutos';
 import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { avisoDosFretes, consultarFretesEmBlocos } from '@/lib/produtosFretes';
 import { gravarModo, guardarRetorno, lerModo, mostrarCartao, pegarUltimoProduto, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
@@ -35,6 +38,10 @@ import { textoDaVariacao } from '@/lib/portalSubmodulos';
 // Logística, peso cubado, frete e "Falta" são calculados no SERVIDOR (D-15) e
 // aqui só se exibem — a página não tem conta nenhuma. Família é "linha de
 // design" (D-07), um cadastro por empresa, não a cor do produto.
+//
+// 10/10/2026: excluir produtos inteiros. Um só pelo menu ⋮ do cartão; vários marcando os
+// cartões (a seleção atravessa busca e página) e "Excluir selecionados". A janela mostra o que
+// sai junto antes de confirmar (`JanelaExcluirProdutos`); a regra é do servidor.
 
 const LOTE_SUGESTOES = 10;
 
@@ -61,6 +68,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
     const [voltouDe, setVoltouDe] = useState(null);        // D-32: produto de onde a pessoa acabou de voltar
     const [destaqueForte, setDestaqueForte] = useState(true);
+    const [selecionados, setSelecionados] = useState(() => new Set());   // ids de produto marcados para a ação em lote
+    const [excluindo, setExcluindo] = useState(null);      // ids dos produtos na janela de exclusão (null = fechada)
 
     // Listas da empresa (família e ambiente): criar um nome na ficha atualiza as duas.
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
@@ -187,6 +196,23 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         router.reload({ only: ['produtos', 'listas'], preserveScroll: true });
     };
 
+    // ─── Excluir produtos (10/10/2026): um pelo menu ⋮, vários pela seleção ──
+
+    const idsDaPagina = useMemo(() => idsDosProdutos(linhas), [linhas]);
+    const paginaMarcada = paginaToda(selecionados, idsDaPagina);
+
+    const alternarProduto = (produtoId) => setSelecionados((s) => alternarSelecao(s, produtoId));
+    const alternarPagina = () => setSelecionados((s) => (paginaToda(s, idsDaPagina) ? tirarDaSelecao(s, idsDaPagina) : somarASelecao(s, idsDaPagina)));
+
+    /** Excluídos: saem da seleção (os que nem existiam mais também), o aviso diz o que saiu e a lista se recarrega. */
+    const aoExcluidos = (data) => {
+        const pedidos = excluindo ?? [];
+        setExcluindo(null);
+        setSelecionados((s) => tirarDaSelecao(s, pedidos));
+        setAviso(data?.mensagem ?? null);
+        recarregarProdutos();
+    };
+
     // ─── Categoria sugerida em lote (D-06): nada é aceito sozinho ───────────
 
     const haPendenteDeCategoria = linhas.some((r) => r.id && r.categoria_estado !== 'confirmada');
@@ -275,7 +301,10 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
                 {temProdutos && (
                     <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                        <SeletorVisualizacao modo={modo} onModo={trocarModo} />
+                        <div className="flex flex-wrap items-center gap-4">
+                            <SeletorVisualizacao modo={modo} onModo={trocarModo} />
+                            {idsDaPagina.length > 0 && <SelecionarPagina marcada={paginaMarcada} onAlternar={alternarPagina} />}
+                        </div>
                         {ml_conectado && linhasMe2.length > 0 && (
                             <Botao variante="fantasma" onClick={consultarFretes} disabled={consultando.size > 0} data-acao="consultar-fretes">
                                 {consultando.size > 0 ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -291,6 +320,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                         <button type="button" onClick={() => setAviso(null)} className="text-white/35 hover:text-white" aria-label="Dispensar aviso"><X size={13} /></button>
                     </div>
                 )}
+
+                <BarraDeSelecao quantidade={selecionados.size} onLimpar={() => setSelecionados(new Set())} onExcluir={() => setExcluindo([...selecionados])} />
 
                 {! temProdutos && (
                     <section className="mt-6 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-estado-vazio>
@@ -316,7 +347,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
 
                 <div className="mt-5">
                     <ListaProdutos linhas={linhas} vocabulario={vocabulario} consultando={consultando} modo={modo} onAbrir={abrirFicha}
-                        voltouDe={voltouDe} destaqueForte={destaqueForte} />
+                        voltouDe={voltouDe} destaqueForte={destaqueForte}
+                        selecionados={selecionados} onSelecionar={alternarProduto} onExcluir={(produtoId) => setExcluindo([produtoId])} />
                 </div>
 
                 {! ml_conectado && (
@@ -334,6 +366,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
             <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} onFichaGravada={recarregarProdutos} />
             <JanelaFotosEmLote aberta={enviandoFotos} onFechar={() => setEnviandoFotos(false)} onConcluir={recarregarProdutos} />
+            <JanelaExcluirProdutos aberta={!! excluindo} ids={excluindo ?? []} onFechar={() => setExcluindo(null)} onExcluidos={aoExcluidos} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[

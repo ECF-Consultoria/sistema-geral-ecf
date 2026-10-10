@@ -1,5 +1,5 @@
 import { Tag } from 'lucide-react';
-import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { CaixaDeSelecao, CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
@@ -7,18 +7,20 @@ import { cn } from '@/lib/utils';
 //
 // O mesmo conteúdo do Visual grande em um cartão HORIZONTAL (não é tabela):
 // foto e nome à esquerda; categoria e "Falta" no meio; variações empilhadas à
-// direita; ⋮ no fim. No celular empilha. Só exibe o que o servidor mandou.
+// direita; a caixa de seleção e o ⋮ no fim. No celular empilha. Só exibe o que o servidor mandou.
 
-export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null }) {
+export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null, selecionado = false, onSelecionar = null, onExcluir = null }) {
     const primeira = variacoes[0];
     const apoio = [primeira.familia, primeira.ambientes_texto].filter(Boolean).join(' · ');
 
     return (
-        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
-            className={cn('relative grid cursor-pointer grid-cols-1 rounded-[12px] border border-white/[0.08] bg-ecf-card transition-[border-color,box-shadow] duration-700 hover:border-white/[0.16] lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_56px] lg:items-center',
-                classeDestaque(destaque))}>
+        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} data-selecionado={selecionado ? 'sim' : undefined}
+            onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
+            className={cn('relative grid cursor-pointer grid-cols-1 rounded-[12px] border border-white/[0.08] bg-ecf-card transition-[border-color,box-shadow] duration-700 hover:border-white/[0.16] lg:items-center',
+                onSelecionar ? 'lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_88px]' : 'lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)_minmax(0,1.21fr)_56px]',
+                classeDestaque(destaque), selecionado && 'border-ecf-yellow/50 hover:border-ecf-yellow/60')}>
             <EtiquetaUltimoAberto destaque={destaque} />
-            <div className="flex items-center gap-7 py-0.5 pl-4 pr-6">
+            <div className={cn('flex items-center gap-7 py-0.5 pl-4', onSelecionar ? 'pr-[84px] lg:pr-6' : 'pr-6')}>
                 <QuadroFotoProduto nome={primeira.nome} foto={capaDoProduto(variacoes)} tamanho="linha" />
                 <div className="min-w-0">
                     <a href={route('portal.auth.estrutura.produtos.ficha', produtoId)}
@@ -43,8 +45,9 @@ export default function CartaoProdutoLinha({ produtoId, variacoes, vocabulario, 
                 </ul>
             </div>
 
-            <div className="absolute right-2 top-2 lg:static lg:flex lg:justify-center">
-                <MenuDoProduto produtoId={produtoId} nome={primeira.nome} variacoes={variacoes} onAbrir={onAbrir} />
+            <div className="absolute right-2 top-2 flex items-center lg:static lg:justify-center">
+                {onSelecionar && <CaixaDeSelecao marcado={selecionado} nome={primeira.nome} onMudar={() => onSelecionar(produtoId)} />}
+                <MenuDoProduto produtoId={produtoId} nome={primeira.nome} variacoes={variacoes} onAbrir={onAbrir} onExcluir={onExcluir} />
             </div>
         </article>
     );

@@ -1,5 +1,5 @@
 import { Tag } from 'lucide-react';
-import { CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { CaixaDeSelecao, CaminhoCategoria, EtiquetaUltimoAberto, LinhaVariacao, MenuDoProduto, PilulaFalta, QuadroFotoProduto, aoClicarNoCartao, classeDestaque } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { capaDoProduto } from '@/lib/imagensVariacao';
 import { cn } from '@/lib/utils';
 
@@ -8,20 +8,21 @@ import { cn } from '@/lib/utils';
 // Foto (quadro com iniciais, D-29), nome, "Família · Ambientes", categoria com a
 // pílula "Falta" e TODAS as variações embaixo (D-28). Clicar abre a ficha pela
 // URL; o nome é um link de verdade (Ctrl+clique abre em outra aba). Só exibe o
-// que o servidor mandou.
+// que o servidor mandou. No canto, a caixa de seleção (ação em lote) e o menu ⋮.
 
-export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null }) {
+export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario, consultando, onAbrir, destaque = null, selecionado = false, onSelecionar = null, onExcluir = null }) {
     const primeira = variacoes[0];
     const apoio = [primeira.familia, primeira.ambientes_texto].filter(Boolean).join(' · ');
 
     return (
-        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
+        <article data-cartao-produto data-produto-id={produtoId} data-destaque={destaque ?? undefined} data-selecionado={selecionado ? 'sim' : undefined}
+            onClick={(e) => aoClicarNoCartao(e, () => onAbrir(produtoId))}
             className={cn('relative flex cursor-pointer flex-col rounded-[14px] border border-white/[0.08] bg-ecf-card px-5 pb-2 pt-5 transition-[border-color,box-shadow] duration-700 hover:border-white/[0.16]',
-                classeDestaque(destaque))}>
+                classeDestaque(destaque), selecionado && 'border-ecf-yellow/50 hover:border-ecf-yellow/60')}>
             <EtiquetaUltimoAberto destaque={destaque} />
             <div className="flex gap-5">
                 <QuadroFotoProduto nome={primeira.nome} foto={capaDoProduto(variacoes)} tamanho="cartao" />
-                <div className="min-w-0 flex-1 pr-8">
+                <div className={cn('min-w-0 flex-1', onSelecionar ? 'pr-[68px]' : 'pr-8')}>
                     <a href={route('portal.auth.estrutura.produtos.ficha', produtoId)}
                         className="block truncate text-[20px] font-semibold leading-7 text-white hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40">
                         {primeira.nome}
@@ -36,7 +37,10 @@ export default function CartaoProdutoGrande({ produtoId, variacoes, vocabulario,
                     </div>
                 </div>
             </div>
-            <MenuDoProduto produtoId={produtoId} nome={primeira.nome} variacoes={variacoes} onAbrir={onAbrir} className="absolute right-3 top-4" />
+            <div className="absolute right-3 top-4 flex items-center">
+                {onSelecionar && <CaixaDeSelecao marcado={selecionado} nome={primeira.nome} onMudar={() => onSelecionar(produtoId)} />}
+                <MenuDoProduto produtoId={produtoId} nome={primeira.nome} variacoes={variacoes} onAbrir={onAbrir} onExcluir={onExcluir} />
+            </div>
 
             <ul className="mt-6 divide-y divide-white/[0.06] border-t border-white/[0.08]">
                 {variacoes.map((v) => (

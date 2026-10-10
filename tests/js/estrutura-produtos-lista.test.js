@@ -24,7 +24,8 @@ const lib = lerSemComentarios('resources/js/lib/produtosEstrutura.js');
 
 test('Arquivos: o componente antigo do celular saiu e a lista tem a assinatura nova', () => {
     assert.ok(! existsSync(resolve(raiz, `${dir}/CartoesProdutosMobile.jsx`)));
-    assert.match(lista, /export default function ListaProdutos\(\{ linhas, vocabulario, consultando, modo = 'grande', onAbrir, voltouDe = null, destaqueForte = false \}\)/);
+    // 10/10/2026: a lista também repassa a seleção e o "Excluir produto" do menu ⋮ aos cartões.
+    assert.match(lista, /export default function ListaProdutos\(\{ linhas, vocabulario, consultando, modo = 'grande', onAbrir, voltouDe = null, destaqueForte = false,\s*selecionados = null, onSelecionar = null, onExcluir = null \}\)/);
     assert.match(lista, /export function agruparPorProduto/);
 });
 
