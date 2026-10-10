@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\DB;
  * O `daProduto()` chamado N vezes custaria ~10 consultas por produto.
  *
  * ⚠️ Não substitui o serviço de origem: conferir e publicar continuam lendo `DadosEfetivosService` (é o que vai
- * ao Mercado Livre). Isto é leitura de TELA, e o `EfetivosEmLoteTest` compara os dois produto a produto — quem
+ * ao Mercado Livre). Isto é leitura de TELA, e o `VisaoRapidaDoLoteTest` (paridade) compara os dois produto a produto — quem
  * mudar a regra de lá vê aquele teste quebrar. As regras espelhadas:
  * - produto sem oferta não herda nada (D16), exceto o kit da Fase N, que herda o preço do Combo N de cada cor;
  * - produto agrupado (`estrutura_produto_id`) ganha `precos_por_variante` pelas ofertas Simples das cores da

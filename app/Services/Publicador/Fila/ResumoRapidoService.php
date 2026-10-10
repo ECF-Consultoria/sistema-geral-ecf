@@ -82,21 +82,24 @@ final class ResumoRapidoService
             return [];
         }
 
-        $rascunhos = PubRascunho::query()->whereIn('produto_id', $daConta->keys()->all())
-            ->with(['alvos', 'atributos', 'eixos', 'variantes.valoresDosEixos', 'variantes.atributos', 'variantes.precos'])
-            ->orderBy('id')->get()->keyBy('produto_id');
-
+        // Primeiro só o status (barato): o rascunho INTEIRO, com as relações, só dos que a visão mostra — a conta
+        // pode ter centenas de publicados que ninguém vai ver aqui.
+        $statusDoRascunho = PubRascunho::query()->whereIn('produto_id', $daConta->keys()->all())->pluck('status', 'produto_id');
         $filtro = $soEstes === null ? null : array_flip(array_map('intval', $soEstes));
-        $mostrados = $daConta->filter(function (PubProduto $p) use ($rascunhos, $filtro, $comPublicados) {
+        $mostrados = $daConta->filter(function (PubProduto $p) use ($statusDoRascunho, $filtro, $comPublicados) {
             if ($filtro !== null && ! isset($filtro[(int) $p->id])) {
                 return false;
             }
 
-            return $comPublicados || ($rascunhos->get($p->id)?->status !== PubRascunho::PUBLISHED);
+            return $comPublicados || ($statusDoRascunho[$p->id] ?? null) !== PubRascunho::PUBLISHED;
         });
         if ($mostrados->isEmpty()) {
             return [];
         }
+
+        $rascunhos = PubRascunho::query()->whereIn('produto_id', $mostrados->keys()->all())
+            ->with(['alvos', 'atributos', 'eixos', 'variantes.valoresDosEixos', 'variantes.atributos', 'variantes.precos'])
+            ->orderBy('id')->get()->keyBy('produto_id');
 
         $snapshots = [];
         foreach ($mostrados as $p) {
@@ -107,7 +110,7 @@ final class ResumoRapidoService
         }
 
         $ef = $this->efetivos->carregar($mostrados->values(), $daConta, $snapshots);
-        $rascunhoIds = $rascunhos->only($mostrados->keys()->all())->pluck('id')->all();
+        $rascunhoIds = $rascunhos->pluck('id')->values()->all();
 
         // A última conferência de cada rascunho, SEM a coluna pesada.
         $validacoes = $rascunhoIds === [] ? collect() : PubValidacao::query()
@@ -123,7 +126,7 @@ final class ResumoRapidoService
         $marcas = Cache::many($mostrados->keys()->map(fn ($id) => self::chaveConferindo((int) $id))->all());
 
         $kitsAuto = [];
-        foreach ($rascunhos->only($mostrados->keys()->all()) as $r) {
+        foreach ($rascunhos as $r) {
             $kitId = (int) ($r->step_state['criativos_auto']['kit_id'] ?? 0);
             if ($kitId > 0) {
                 $kitsAuto[$kitId] = (int) $r->id;
