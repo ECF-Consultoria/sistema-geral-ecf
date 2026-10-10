@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠️ Não substitui o serviço de origem: conferir e publicar continuam lendo `DadosEfetivosService` (é o que vai
  * ao Mercado Livre). Isto é leitura de TELA, e o `VisaoRapidaDoLoteTest` (paridade) compara os dois produto a produto — quem
- * mudar a regra de lá vê aquele teste quebrar. As regras espelhadas:
+ * mudar a regra de lá vê aquele teste quebrar. O array é o MESMO, chave a chave e na mesma ordem — inclusive `promocoes`
+ * (o mínimo da Central), `sem_frete` (a marca do V-SAL-08) e os `_por_variante` deles (10/10/2026). As regras espelhadas:
  * - produto sem oferta não herda nada (D16), exceto o kit da Fase N, que herda o preço do Combo N de cada cor;
  * - produto agrupado (`estrutura_produto_id`) ganha `precos_por_variante` pelas ofertas Simples das cores da
  *   MESMA Company;
@@ -54,7 +55,7 @@ final class EfetivosEmLote
      * @param  Collection<int, PubProduto>  $daConta  todos os produtos da conta, por id (o base de cada kit mora aqui)
      * @param  array<int, RascunhoSnapshot>  $snapshots  produto_id → o rascunho como foi digitado (para casar a cor do kit)
      * @return array{
-     *     efetivos: array<int, array{titulos: array<string, ?string>, precos: array<string, ?float>, mlbs: list<string>, precos_por_variante?: array<string, array<string, ?float>>}>,
+     *     efetivos: array<int, array{titulos: array<string, ?string>, precos: array<string, ?float>, promocoes: array<string, ?float>, sem_frete: array<string, bool>, mlbs: list<string>, precos_por_variante?: array<string, array<string, ?float>>, promocoes_por_variante?: array<string, array<string, ?float>>, sem_frete_por_variante?: array<string, array<string, bool>>}>,
      *     ofertas_por_sku: array<int, array<string, int>>,
      *     oferta_ancora: array<int, ?int>,
      *     company_do_produto: array<int, ?int>,
@@ -236,13 +237,17 @@ final class EfetivosEmLote
             $companyId = (int) $p->oferta->company_id;
             $porOferta = $saida['precificacao'][$companyId]['por_oferta'] ?? [];
             $o = isset($conjuntos[$companyId]) ? ($conjuntos[$companyId]->oferta((int) $p->oferta_id) ?? ['anuncios' => []]) : ['anuncios' => []];
+            $linha = $porOferta[(int) $p->oferta_id] ?? null;
+            // A ordem das chaves é a do `daOferta()` (o teste de paridade compara o array inteiro).
             $efetivos = [
                 'titulos' => self::titulosPlanejados((array) $o['anuncios']),
-                'precos' => DadosEfetivosService::precosAnunciados($porOferta[(int) $p->oferta_id] ?? null),
+                'precos' => DadosEfetivosService::precosAnunciados($linha),
+                'promocoes' => DadosEfetivosService::precosDePromocao($linha),
+                'sem_frete' => DadosEfetivosService::semFrete($linha),
                 'mlbs' => array_values(array_unique(array_filter(array_map(fn ($a) => $a['codigo_mlb'] ?? null, (array) $o['anuncios'])))),
             ];
             if ($p->estrutura_produto_id !== null) {
-                $mapa = [];
+                $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => []];
                 foreach ($simples as $s) {
                     if ((int) $s->produto_id !== (int) $p->estrutura_produto_id || (int) $s->company_id !== (int) $p->company_id) {
                         continue;
@@ -251,10 +256,15 @@ final class EfetivosEmLote
                     if ($sku === null) {
                         continue;
                     }
-                    $mapa[$sku] = DadosEfetivosService::precosAnunciados($porOferta[(int) $s->oferta_id] ?? null);
+                    $daCor = $porOferta[(int) $s->oferta_id] ?? null;
+                    $mapas['precos'][$sku] = DadosEfetivosService::precosAnunciados($daCor);
+                    $mapas['promocoes'][$sku] = DadosEfetivosService::precosDePromocao($daCor);
+                    $mapas['sem_frete'][$sku] = DadosEfetivosService::semFrete($daCor);
                     $saida['ofertas_por_sku'][$p->id][$sku] = (int) $s->oferta_id;
                 }
-                $efetivos['precos_por_variante'] = $mapa;
+                $efetivos['precos_por_variante'] = $mapas['precos'];
+                $efetivos['promocoes_por_variante'] = $mapas['promocoes'];
+                $efetivos['sem_frete_por_variante'] = $mapas['sem_frete'];
             }
             $saida['efetivos'][$p->id] = $efetivos;
         }
@@ -265,16 +275,22 @@ final class EfetivosEmLote
                 continue; // sem a Company não há Precificação (a origem também devolve vazio)
             }
             $porOferta = $saida['precificacao'][$companyId]['por_oferta'];
-            $mapa = [];
+            $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => []];
             foreach ($porVariante as $c) {
                 $sku = EstruturaOferta::normalizarSku($c['sku_da_variante']);
-                if ($sku !== null) {
-                    $mapa[$sku] ??= DadosEfetivosService::precosAnunciados($porOferta[$c['oferta_id']] ?? null);
-                    $saida['ofertas_por_sku'][$kitId][$sku] ??= $c['oferta_id'];
+                // O primeiro Combo de cada SKU vence nos três mapas juntos (como o `precosDoKit()` da origem).
+                if ($sku !== null && ! array_key_exists($sku, $mapas['precos'])) {
+                    $daCor = $porOferta[$c['oferta_id']] ?? null;
+                    $mapas['precos'][$sku] = DadosEfetivosService::precosAnunciados($daCor);
+                    $mapas['promocoes'][$sku] = DadosEfetivosService::precosDePromocao($daCor);
+                    $mapas['sem_frete'][$sku] = DadosEfetivosService::semFrete($daCor);
+                    $saida['ofertas_por_sku'][$kitId][$sku] = $c['oferta_id'];
                 }
             }
-            if ($mapa !== []) {
-                $saida['efetivos'][$kitId]['precos_por_variante'] = $mapa;
+            if ($mapas['precos'] !== []) {
+                $saida['efetivos'][$kitId]['precos_por_variante'] = $mapas['precos'];
+                $saida['efetivos'][$kitId]['promocoes_por_variante'] = $mapas['promocoes'];
+                $saida['efetivos'][$kitId]['sem_frete_por_variante'] = $mapas['sem_frete'];
                 $saida['company_do_produto'][$kitId] = $companyId;
             }
         }
@@ -282,10 +298,16 @@ final class EfetivosEmLote
         return $saida;
     }
 
-    /** O "sem efetivos" do `daProduto()`: produto sem oferta não herda nada (D16). */
+    /** O "sem efetivos" do `daProduto()`: produto sem oferta não herda nada (D16) — nem preço, nem promoção, nem marca. */
     public static function vazio(): array
     {
-        return ['titulos' => ['gold_special' => null, 'gold_pro' => null], 'precos' => ['gold_special' => null, 'gold_pro' => null], 'mlbs' => []];
+        return [
+            'titulos' => ['gold_special' => null, 'gold_pro' => null],
+            'precos' => ['gold_special' => null, 'gold_pro' => null],
+            'promocoes' => DadosEfetivosService::precosDePromocao(null),
+            'sem_frete' => DadosEfetivosService::semFrete(null),
+            'mlbs' => [],
+        ];
     }
 
     /**

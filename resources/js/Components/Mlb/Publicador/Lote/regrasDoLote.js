@@ -128,12 +128,65 @@ export function situacaoDaConferencia(linha) {
     return { chave: 'sem', rotulo: 'Não conferido' };
 }
 
-/** A linha tem algo a corrigir antes de publicar? (conferência barrou, não terminou, venceu ou há bloqueios locais) */
+/** A linha tem algo a corrigir antes de publicar? (bloqueio visto antes de conferir, conferência barrou/não terminou/venceu, ou bloqueios locais) */
 export function temPendencia(linha) {
     const l = comoObjeto(linha);
     const s = situacaoDaConferencia(l).chave;
 
-    return ['bloqueado', 'erro', 'vencida'].includes(s) || (numeroSeguro(l.faltam) ?? 0) > 0;
+    return bloqueiosDaLinha(l).length > 0 || ['bloqueado', 'erro', 'vencida'].includes(s) || (numeroSeguro(l.faltam) ?? 0) > 0;
+}
+
+// ─── Bloqueios vistos ANTES de conferir e a promoção automática (10/10/2026) ───
+// Os bloqueios são os do `ValidadorRascunho::bloqueiosSemSchema` (V-TIT-04 títulos iguais, V-SAL-08 preço do
+// Portal sem frete): o servidor manda prontos, a tela só nomeia. A promoção é a conta do `PrecoDaPromocao`.
+
+export const ROTULO_BLOQUEIO = { 'V-TIT-04': 'Títulos iguais', 'V-SAL-08': 'Preço sem frete' };
+
+/** Os bloqueios da linha (lista segura). */
+export function bloqueiosDaLinha(linha) {
+    return comoLista(comoObjeto(linha).bloqueios).filter((b) => b && typeof b === 'object');
+}
+
+/** Os selos dos bloqueios, um por regra, na ordem em que apareceram ("Títulos iguais", "Preço sem frete"). */
+export function selosDosBloqueios(linha) {
+    const vistos = [];
+    for (const b of bloqueiosDaLinha(linha)) {
+        const rotulo = ROTULO_BLOQUEIO[b.regra];
+        if (rotulo && ! vistos.includes(rotulo)) vistos.push(rotulo);
+    }
+
+    return vistos;
+}
+
+/** "R$ 172,66 (−16,67%)" / faixa entre as cores; sem promoção, o motivo; sem Portal, "—". */
+export function textoDaPromocaoDoTipo(promocao) {
+    const p = comoObjeto(promocao);
+    if (p.calculavel !== true) {
+        const motivo = textoSeguro(p.motivo, '');
+
+        return motivo === '' ? '—' : `sem promoção: ${motivo}`;
+    }
+    // Duas casas, como o editor (`promocaoAutomatica.pct`): "−16,67%".
+    const pct2 = (n) => `${Number(n).toFixed(2).replace('.', ',')}%`;
+    const a = numeroSeguro(p.pct_min);
+    const b = numeroSeguro(p.pct_max);
+    if (a === null) return faixaBRL(p);
+    const faixa = b === null || Math.abs(a - b) < 0.005 ? `−${pct2(a)}` : `−${pct2(a)} a −${pct2(b)}`;
+
+    return `${faixaBRL(p)} (${faixa})`;
+}
+
+/** A frase da linha sobre a promoção pós-publicação: automática por N dias, ou "não será criada" (conta fora das Alavancas). */
+export function fraseDaPromocao(linha) {
+    const l = comoObjeto(linha);
+    const algumaPromocao = Object.values(comoObjeto(l.promocao)).some((p) => p && p.calculavel === true);
+    if (! algumaPromocao) return null;
+    const auto = comoObjeto(l.promocao_automatica);
+    const dias = numeroSeguro(auto.dias) ?? 14;
+
+    return auto.automatica === true
+        ? `Promoção automática por ${dias} dias depois de publicar.`
+        : 'Promoção não será criada: conta não liberada para as Alavancas (a tarefa pós-publicação orienta a criar no Seller Center).';
 }
 
 /** Para onde o "Corrigir" de uma pendência leva: o editor do produto, na etapa onde ela se resolve. */

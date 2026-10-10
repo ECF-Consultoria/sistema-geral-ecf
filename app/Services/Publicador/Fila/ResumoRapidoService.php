@@ -3,7 +3,6 @@
 namespace App\Services\Publicador\Fila;
 
 use App\Models\EstruturaOferta;
-use App\Models\EstruturaPublicacao;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubFilaPublicacaoItem;
 use App\Models\PubImagem;
@@ -14,14 +13,16 @@ use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\PlanejamentoDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
+use App\Support\Publicador\PrecoDaPromocao;
 use App\Support\Publicador\RascunhoSnapshot;
-use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\Validacao\Problema;
+use App\Support\Publicador\Validacao\ValidadorRascunho;
 use App\Support\Publicador\Variacao\ChaveCanonica;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\ValorEixo;
@@ -161,9 +162,13 @@ final class ResumoRapidoService
      */
     public function digitalDe(array $alvo, int $produtoId): ?string
     {
-        $linha = $this->linhas($alvo, [$produtoId], comPublicados: true)[0] ?? null;
+        return $this->linhaDe($alvo, $produtoId)['digital'] ?? null;
+    }
 
-        return $linha['digital'] ?? null;
+    /** A linha da visão rápida de UM produto, qualquer status (o agendador relê na hora de publicar). */
+    public function linhaDe(array $alvo, int $produtoId): ?array
+    {
+        return $this->linhas($alvo, [$produtoId], comPublicados: true)[0] ?? null;
     }
 
     // ═══ Uma linha ═══════════════════════════════════════════════════════════
@@ -193,17 +198,28 @@ final class ResumoRapidoService
             'criativos_ia_prontos' => in_array($statusKitAuto, [MlAnuncioCriativoKit::STATUS_PRONTO, MlAnuncioCriativoKit::STATUS_PARCIAL], true),
         ];
 
+        // A promoção automática pós-publicação só é criada onde as Alavancas escrevem (a mesma régua do editor).
+        $base['promocao_automatica'] = ['automatica' => AlavancasLiberadas::libera($conta), 'dias' => PrecoDaPromocao::DIAS];
+
         if ($r === null || $digitado === null) {
             return $base + [
-                'titulos' => [], 'titulos_iguais' => false, 'precos' => [], 'custo' => null, 'frete' => [], 'margem' => [],
+                'titulos' => [], 'titulos_iguais' => false, 'preco_sem_frete' => false, 'precos' => [], 'promocao' => [],
+                'custo' => null, 'frete' => [], 'margem' => [],
                 'estoque' => ['total' => 0, 'sem_estoque' => 0], 'variacoes' => 0, 'anuncios' => 0,
-                'conferencia' => null, 'digital' => null,
-                ...$this->prontidaoDoLote($r, $v, $liberada, $conta !== null, $naFila),
+                'bloqueios' => [], 'conferencia' => null, 'digital' => null,
+                ...$this->prontidaoDoLote($r, $v, $liberada, $conta !== null, $naFila, []),
             ];
         }
 
         $e = $ef['efetivos'][$id] ?? EfetivosEmLote::vazio();
-        $efetivo = $digitado->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
+        // `comEfetivosDe`, o caminho de quem valida: grava em cada cor o `portal` (anunciado, mínimo, sem frete) e o
+        // `preco_do_portal` — é o que o V-SAL-08 e a promoção automática leem.
+        $efetivo = $digitado->comEfetivosDe($e);
+        // Os bloqueios que se sabem ANTES de conferir (títulos iguais, preço do Portal sem frete): as MESMAS regras do
+        // `ValidadorRascunho`, sem o schema da categoria — e quem os tem não entra na fila.
+        $bloqueios = array_map(fn (Problema $x) => [
+            'regra' => $x->regra, 'severidade' => $x->severidade, 'mensagem' => $x->mensagem, 'alvo' => $x->alvo,
+        ], ValidadorRascunho::bloqueiosSemSchema($efetivo));
         $ativasDigitadas = $digitado->variantesAtivas();
         $ativasEfetivas = $efetivo->variantesAtivas();
         $alvosAtivos = $efetivo->alvosAtivos();
@@ -225,11 +241,10 @@ final class ResumoRapidoService
                 'origem' => $digitadoAqui ? (($daIa[$a->listingTypeId] ?? false) ? 'ia' : 'digitado') : ($ef1->titulo !== null ? 'portal' : null),
             ];
         }
-        $c = $titulos['gold_special'] ?? null;
-        $pr = $titulos['gold_pro'] ?? null;
-        $iguais = $c !== null && $pr !== null && $c['ativo'] && $pr['ativo'] && $c['texto'] && $pr['texto'] && RegrasDoTitulo::mesmo($c['texto'], $pr['texto']);
+        $regras = array_column($bloqueios, 'regra');
 
         [$precos, $custo, $frete, $margem] = $this->dinheiro($p, $id, $ef, $digitado, $ativasDigitadas, $ativasEfetivas, $alvosAtivos);
+        $promocao = self::promocoes($ativasEfetivas, $alvosAtivos);
 
         $estoque = ['total' => 0, 'sem_estoque' => 0];
         foreach ($ativasDigitadas as $va) {
@@ -243,8 +258,10 @@ final class ResumoRapidoService
 
         return $base + [
             'titulos' => $titulos,
-            'titulos_iguais' => (bool) $iguais,
+            'titulos_iguais' => in_array('V-TIT-04', $regras, true),
+            'preco_sem_frete' => in_array('V-SAL-08', $regras, true),
             'precos' => $precos,
+            'promocao' => $promocao,
             'custo' => $custo,
             'frete' => $frete,
             'margem' => $margem,
@@ -252,10 +269,58 @@ final class ResumoRapidoService
             'variacoes' => count($ativasEfetivas),
             'rotulos_variacoes' => array_slice(array_map(fn (Variante $va) => $va->rotulo($digitado->eixos), $ativasDigitadas), 0, 12),
             'anuncios' => $up ? count($alvosAtivos) * count($ativasEfetivas) : count($alvosAtivos),
+            'bloqueios' => $bloqueios,
             'conferencia' => $this->conferencia($r, $v),
             'digital' => self::digital($efetivo),
-            ...$this->prontidaoDoLote($r, $v, $liberada, $conta !== null, $naFila),
+            ...$this->prontidaoDoLote($r, $v, $liberada, $conta !== null, $naFila, $bloqueios),
         ];
+    }
+
+    /**
+     * A promoção automática pós-publicação de cada tipo, entre as cores ativas — a conta do `PrecoDaPromocao` (a mesma
+     * do editor e do gatilho pós-publicação) sobre o preço que vai ao ML e o `portal` da cor. Sem promoção em
+     * nenhuma cor, o motivo da primeira (o texto de `PrecoDaPromocao::MOTIVOS`); produto sem Portal não diz nada.
+     *
+     * @param  list<Variante>  $ativas  as cores ativas do snapshot EFETIVO (`comEfetivosDe`)
+     * @param  list<Alvo>  $alvos
+     * @return array<string, array{calculavel: bool, min: ?float, max: ?float, pct_min: ?float, pct_max: ?float, sem_promocao: int, motivo: ?string, ajustada_ao_minimo: bool}>
+     */
+    private static function promocoes(array $ativas, array $alvos): array
+    {
+        $saida = [];
+        foreach ($alvos as $alvo) {
+            $lt = $alvo->listingTypeId;
+            $ok = [];
+            $motivos = [];
+            foreach ($ativas as $va) {
+                $preco = $va->dados['precos'][$lt] ?? null;
+                $calc = PrecoDaPromocao::calcular($preco === null ? null : (float) $preco, $va->dados['portal'][$lt] ?? null);
+                if ($calc['calculavel']) {
+                    $ok[] = $calc;
+                } else {
+                    $motivos[] = (string) $calc['motivo'];
+                }
+            }
+            if ($ok === []) {
+                $motivo = $motivos[0] ?? PrecoDaPromocao::SEM_PRECO;
+                $saida[$lt] = ['calculavel' => false, 'min' => null, 'max' => null, 'pct_min' => null, 'pct_max' => null, 'sem_promocao' => count($motivos),
+                    // Sem Portal (ou sem preço) não há o que dizer; os outros motivos a equipe precisa ver.
+                    'motivo' => in_array($motivo, [PrecoDaPromocao::SEM_PORTAL, PrecoDaPromocao::SEM_PRECO], true) ? null : PrecoDaPromocao::MOTIVOS[$motivo] ?? null,
+                    'ajustada_ao_minimo' => false];
+
+                continue;
+            }
+            $saida[$lt] = [
+                'calculavel' => true,
+                'min' => min(array_column($ok, 'preco')), 'max' => max(array_column($ok, 'preco')),
+                'pct_min' => min(array_column($ok, 'percentual')), 'pct_max' => max(array_column($ok, 'percentual')),
+                'sem_promocao' => count($motivos),
+                'motivo' => $motivos === [] ? null : PrecoDaPromocao::MOTIVOS[$motivos[0]] ?? null,
+                'ajustada_ao_minimo' => in_array(true, array_column($ok, 'ajustada_ao_minimo'), true),
+            ];
+        }
+
+        return $saida;
     }
 
     /**
@@ -390,9 +455,13 @@ final class ResumoRapidoService
      * Pode entrar na fila? Só o que o `iniciar()` aceitaria AGORA: conta liberada, conferência com o ML (L3) OK ou
      * com avisos, da versão atual, com plano — e fora de outra fila.
      *
+     * 10/10/2026: com bloqueio que se sabe ANTES de conferir (títulos iguais, preço do Portal sem frete — o
+     * `ValidadorRascunho::bloqueiosSemSchema`), não agenda, mesmo com uma conferência OK de antes dessas regras.
+     *
+     * @param  list<array{regra: string, mensagem: string}>  $bloqueios
      * @return array{pronto: bool, motivo: ?string, pode_conferir: bool, avisos_ml: bool}
      */
-    private function prontidaoDoLote(?PubRascunho $r, ?PubValidacao $v, bool $liberada, bool $temToken, ?array $naFila): array
+    private function prontidaoDoLote(?PubRascunho $r, ?PubValidacao $v, bool $liberada, bool $temToken, ?array $naFila, array $bloqueios): array
     {
         $publicando = $r?->status === PubRascunho::PUBLISHING;
         $podeConferir = $naFila === null && ! $publicando && $r?->status !== PubRascunho::PUBLISHED;
@@ -415,6 +484,9 @@ final class ResumoRapidoService
         }
         if (! $liberada) {
             return $nao('A publicação ainda não foi liberada para esta conta.');
+        }
+        if ($bloqueios !== []) {
+            return $nao((string) $bloqueios[0]['mensagem']);
         }
         if ($v === null) {
             return $nao('Confira no Mercado Livre antes de agendar.');

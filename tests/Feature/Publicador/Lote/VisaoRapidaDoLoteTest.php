@@ -7,6 +7,7 @@ use App\Models\EstruturaOferta;
 use App\Models\EstruturaPrecificacao;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\PubFilaPublicacaoItem;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
@@ -14,10 +15,12 @@ use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\PrecificacaoEstrutura;
 use App\Services\Publicador\DadosEfetivosService;
 use App\Services\Publicador\Fila\EfetivosEmLote;
+use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\Fila\ResumoRapidoService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\Payload\Alvo;
+use App\Support\Publicador\PrecoDaPromocao;
 use App\Support\Publicador\Variacao\Eixo;
 use App\Support\Publicador\Variacao\RegeneradorVariantes;
 use App\Support\Publicador\Variacao\ValorEixo;
@@ -155,9 +158,84 @@ class VisaoRapidaDoLoteTest extends TestCase
         $this->assertSame(1, $l['conferencia']['avisos'], 'o 4053 é ruído e sai');
         $this->assertSame('Frete grátis obrigatório nesta faixa.', $l['conferencia']['pendencias'][0]['mensagem']);
         $this->assertSame('E10', $l['conferencia']['pendencias'][0]['alvo']['etapa'], 'o "Corrigir" sabe a etapa do editor');
+        $this->assertStringNotContainsString(str_repeat('x', 100), json_encode($l), 'as respostas cruas do ML não vêm');
+
+        // O Branco não tem frete no Portal e o preço dele VEIO de lá: o V-SAL-08 bloqueia ANTES de conferir — nos dois
+        // tipos (o Premium do Azul é digitado e passa) —, com a mensagem e o alvo do `ValidadorRascunho`.
+        $this->assertTrue($l['preco_sem_frete']);
+        $this->assertSame(['V-SAL-08', 'V-SAL-08'], array_column($l['bloqueios'], 'regra'));
+        $this->assertSame('O preço do Clássico de Branco veio da Precificação do Portal calculado sem frete. Informe ou aceite o frete na Precificação do Portal, ou digite o preço aqui.', $l['bloqueios'][0]['mensagem']);
+        $this->assertSame(['etapa' => 'E10', 'alvo' => 'gold_special', 'variante' => 'COLOR=id:52055', 'campo' => 'preco'], $l['bloqueios'][0]['alvo']);
+        $this->assertFalse($l['pronto'], 'conferência OK de antes da regra não basta para agendar');
+        $this->assertSame($l['bloqueios'][0]['mensagem'], $l['motivo']);
+
+        // Com o frete no Portal, o bloqueio some e o produto fica pronto.
+        EstruturaPrecificacao::create(['oferta_id' => $this->simplesP['Branco']->id, 'frete_classico' => 18, 'frete_premium' => 18]);
+        $l = $this->linhaDe($grupo);
+        $this->assertSame([], $l['bloqueios']);
+        $this->assertFalse($l['preco_sem_frete']);
         $this->assertTrue($l['pronto']);
         $this->assertTrue($l['avisos_ml']);
-        $this->assertStringNotContainsString(str_repeat('x', 100), json_encode($l), 'as respostas cruas do ML não vêm');
+    }
+
+    public function test_promocao_automatica_por_tipo_e_conta_fora_das_alavancas(): void
+    {
+        $grupo = $this->grupoComRascunho(PubRascunho::DRAFT, 4);
+        $r = PubRascunho::where('produto_id', $grupo->id)->first();
+        $repo = new RascunhoRepository();
+        // Premium do Azul digitado: a promoção é o MESMO percentual do Portal sobre ele, nunca abaixo do mínimo.
+        $s = $repo->snapshot($r->fresh());
+        $repo->gravarVariacao($r->fresh(), $s->eixos, array_map(fn (Variante $v) => $v->valores['COLOR']->valueName === 'Azul'
+            ? $v->comDados([...$v->dados, 'precos' => ['gold_pro' => 299.9]]) : $v, $s->variantes));
+        $preco = fn (float $custo, float $frete, string $tipo) => PrecificacaoEstrutura::preco($custo, $frete, $tipo === 'classico' ? 11.5 : 16.5, 19.0, 0.0, 0.0, 20.0);
+
+        config(['publicador.alavancas.contas_liberadas' => ['companies' => [], 'mlb_empresas' => []]]);
+        $l = $this->linhaDe($grupo);
+
+        // Clássico: Preto e Azul publicam pelo anunciado → a promoção é o mínimo (−16,67% com acréscimo de 20%); o
+        // Branco (Portal sem frete) fica sem promoção e diz por quê.
+        $c = $l['promocao']['gold_special'];
+        $this->assertTrue($c['calculavel']);
+        $this->assertEqualsWithDelta(min($preco(100, 20, 'classico')['minimo'], $preco(120, 25, 'classico')['minimo']), $c['min'], 0.001);
+        $this->assertEqualsWithDelta(max($preco(100, 20, 'classico')['minimo'], $preco(120, 25, 'classico')['minimo']), $c['max'], 0.001);
+        $this->assertEqualsWithDelta(16.67, $c['pct_min'], 0.01);
+        $this->assertSame(1, $c['sem_promocao']);
+        $this->assertSame('o preço do Portal foi calculado sem frete', $c['motivo']);
+
+        // Premium do Azul digitado (299,90): mínimo ÷ anunciado do Portal sobre ele — a conta do `PrecoDaPromocao`.
+        $azul = $preco(120, 25, 'premium');
+        $esperado = PrecoDaPromocao::calcular(299.9, ['anunciado' => $azul['anunciado'], 'minimo' => $azul['minimo'], 'sem_frete' => false]);
+        $this->assertEqualsWithDelta($esperado['preco'], $l['promocao']['gold_pro']['max'], 0.001);
+
+        $this->assertSame(['automatica' => false, 'dias' => 14], $l['promocao_automatica'], 'as Alavancas não escrevem nesta conta: não será criada');
+        config(['publicador.alavancas.contas_liberadas' => ['companies' => [$this->empresaP->id], 'mlb_empresas' => []]]);
+        $this->assertTrue($this->linhaDe($grupo)['promocao_automatica']['automatica']);
+
+        // Produto sem Portal: nada a dizer (nem promoção, nem motivo).
+        $solto = PubProduto::create(['company_id' => $this->empresaP->id, 'sku' => 'S', 'nome' => 'Solto', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $rs = $repo->criar($solto, [new Alvo('gold_special', 'Solto')]);
+        $unica = $repo->snapshot($rs)->variantes[0];
+        $repo->gravarVariacao($rs->fresh(), [], [$unica->comDados(['estoque' => 1, 'precos' => ['gold_special' => 50.0]])]);
+        $this->assertSame(['calculavel' => false, 'min' => null, 'max' => null, 'pct_min' => null, 'pct_max' => null, 'sem_promocao' => 1, 'motivo' => null, 'ajustada_ao_minimo' => false],
+            $this->linhaDe($solto)['promocao']['gold_special']);
+    }
+
+    public function test_agendar_recusa_quem_tem_bloqueio_mesmo_com_conferencia_ok(): void
+    {
+        $solto = PubProduto::create(['company_id' => $this->empresaP->id, 'mlb_empresa_id' => $this->mlbP->id, 'sku' => 'SOLTO', 'nome' => 'Banqueta', 'origem' => PubProduto::ORIGEM_PUBLICADOR]);
+        $repo = new RascunhoRepository();
+        $r = $repo->criar($solto, [new Alvo('gold_special', 'Banqueta Alta Cozinha'), new Alvo('gold_pro', 'Banquetas Altas Cozinha')]);
+        $unica = $repo->snapshot($r)->variantes[0];
+        $repo->gravarVariacao($r->fresh(), [], [$unica->comDados(['estoque' => 2, 'precos' => ['gold_special' => 89.9, 'gold_pro' => 99.9]])]);
+        // Uma conferência OK de antes do V-TIT-04 (a regra é de 10/10): a fila não confia nela.
+        PubValidacao::create(['rascunho_id' => $r->id, 'revisao' => $r->fresh()->revisao, 'camada' => 'L3', 'resultado' => 'OK', 'plano_hash' => str_repeat('e', 64),
+            'issues' => [], 'respostas_ml' => ['conta' => ['sellerId' => '1555596317']]]);
+
+        $res = app(FilaPublicacaoService::class)->agendar($this->alvo(), [$solto->id], $this->equipeP, ['ciente' => true]);
+
+        $this->assertSame([], $res['agendados']);
+        $this->assertStringStartsWith('O título do Premium é igual ao do Clássico', $res['recusados'][$solto->id], 'plural simples é o mesmo título para o ML');
+        $this->assertSame(0, PubFilaPublicacaoItem::query()->count());
     }
 
     public function test_titulos_iguais_sem_oferta_sem_custo_e_os_motivos_de_nao_estar_pronto(): void
@@ -174,12 +252,21 @@ class VisaoRapidaDoLoteTest extends TestCase
         $l = $this->linhaDe($solto, $linhas);
 
         $this->assertTrue($l['titulos_iguais'], 'mesmas palavras, sem caixa nem espaço a mais: o ML barra');
+        $this->assertSame(['V-TIT-04'], array_column($l['bloqueios'], 'regra'), 'é bloqueio ANTES de conferir (a regra do Validador)');
+        $this->assertSame(['etapa' => 'E7', 'alvo' => 'gold_pro'], $l['bloqueios'][0]['alvo']);
         $this->assertSame(['min' => 89.9, 'max' => 89.9, 'origem' => 'digitado', 'sem_preco' => 0], $l['precos']['gold_special']);
         $this->assertNull($l['custo'], 'sem oferta do Portal não há custo');
         $this->assertNull($l['margem']['gold_special']);
         $this->assertFalse($l['pronto']);
-        $this->assertSame('Confira no Mercado Livre antes de agendar.', $l['motivo']);
+        $this->assertStringStartsWith('O título do Premium é igual ao do Clássico', $l['motivo'], 'o bloqueio vem antes do "confira"');
         $this->assertTrue($l['pode_conferir']);
+
+        // Títulos diferentes: sem bloqueio, o motivo volta a ser a conferência.
+        $repo->gravarAlvos($r->fresh(), [new Alvo('gold_special', 'Banqueta Alta Cozinha'), new Alvo('gold_pro', 'Banqueta Cozinha Alta')]);
+        $l = $this->linhaDe($solto);
+        $this->assertFalse($l['titulos_iguais']);
+        $this->assertSame([], $l['bloqueios']);
+        $this->assertSame('Confira no Mercado Livre antes de agendar.', $l['motivo']);
 
         $n = $this->linhaDe($semRascunho, $linhas);
         $this->assertNull($n['rascunho_id']);
@@ -279,19 +366,23 @@ class VisaoRapidaDoLoteTest extends TestCase
         }
         $lote = app(EfetivosEmLote::class)->carregar($daConta->values(), $daConta, $snapshots)['efetivos'];
 
-        $chaves = ['titulos', 'precos', 'mlbs', 'precos_por_variante'];
+        // Paridade TOTAL: o array inteiro, chave a chave e na mesma ordem — preço, mínimo da promoção, marca sem
+        // frete e os `_por_variante` (10/10/2026). Mudou a regra de lá, este teste quebra.
         foreach ([$grupo, $kit, $simples, $semOferta] as $p) {
             $origem = app(DadosEfetivosService::class)->daProduto(PubProduto::find($p->id));
-            $this->assertSame(
-                array_intersect_key($origem, array_flip($chaves)),
-                array_intersect_key($lote[$p->id], array_flip($chaves)),
-                "produto {$p->id} ({$p->nome}) diverge do DadosEfetivosService",
-            );
+            $this->assertSame($origem, $lote[$p->id], "produto {$p->id} ({$p->nome}) diverge do DadosEfetivosService");
         }
-        // O que importa no kit: cada cor com o preço do Combo 2 dela (custo 2 × 100), não vazio.
+        // O que importa no kit: cada cor com o preço e o mínimo do Combo 2 dela (custo 2 × 100), não vazio.
         $this->assertCount(3, $lote[$kit->id]['precos_por_variante']);
         $this->assertNotNull(array_values($lote[$kit->id]['precos_por_variante'])[0]['gold_special']);
+        $this->assertNotNull(array_values($lote[$kit->id]['promocoes_por_variante'])[0]['gold_special']);
+        $this->assertTrue(array_values($lote[$kit->id]['sem_frete_por_variante'])[0]['gold_special'], 'o Combo não tem frete no Portal');
         $this->assertSame(['MLB123'], $lote[$grupo->id]['mlbs']);
         $this->assertSame('Cadeira Planejada', $lote[$grupo->id]['titulos']['gold_special']);
+        // A cor sem frete no Portal (Branco) marca; a com frete (Preto) não — em `sem_frete_por_variante`.
+        $this->assertTrue($lote[$grupo->id]['sem_frete_por_variante'][EstruturaOferta::normalizarSku($this->simplesP['Branco']->sku)]['gold_special']);
+        $this->assertFalse($lote[$grupo->id]['sem_frete_por_variante'][EstruturaOferta::normalizarSku($this->simplesP['Preto']->sku)]['gold_special']);
+        $this->assertSame(['gold_special' => null, 'gold_pro' => null], $lote[$semOferta->id]['promocoes']);
+        $this->assertSame(['gold_special' => false, 'gold_pro' => false], $lote[$semOferta->id]['sem_frete']);
     }
 }

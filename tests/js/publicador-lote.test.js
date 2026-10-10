@@ -104,6 +104,12 @@ const linhaBase = (o = {}) => ({
         pendencias: [{ regra: 'V-REM-01', severidade: 'WARNING', mensagem: 'Frete grátis obrigatório nesta faixa.', alvo: { etapa: 'E10', campo: 'frete' } }],
         mais_pendencias: 0,
     },
+    promocao: {
+        gold_special: { calculavel: true, min: 86.33, max: 100, pct_min: 16.67, pct_max: 16.67, sem_promocao: 0, motivo: null, ajustada_ao_minimo: false },
+        gold_pro: { calculavel: false, min: null, max: null, pct_min: null, pct_max: null, sem_promocao: 3, motivo: 'o preço do Portal foi calculado sem frete', ajustada_ao_minimo: false },
+    },
+    promocao_automatica: { automatica: true, dias: 14 },
+    bloqueios: [], preco_sem_frete: false,
     digital: 'abc', pronto: true, motivo: null, pode_conferir: true, avisos_ml: true,
     ...o,
 });
@@ -220,6 +226,59 @@ test('linha — títulos iguais avisam; imagens de IA prontas e o que está na f
     assert.match(html, /Imagens de IA prontas para revisar/);
     assert.match(html, /Na fila · Publicando/);
     assert.doesNotMatch(html, /Pronto para agendar/);
+});
+
+test('regras — promoção do tipo, frase da promoção e selos dos bloqueios', () => {
+    assert.equal(regras.textoDaPromocaoDoTipo({ calculavel: true, min: 172.66, max: 172.66, pct_min: 16.67, pct_max: 16.67 }), 'R$ 172,66 (−16,67%)');
+    assert.equal(regras.textoDaPromocaoDoTipo({ calculavel: true, min: 86.33, max: 100, pct_min: 16.6, pct_max: 16.67 }), 'R$ 86,33 – R$ 100,00 (−16,60% a −16,67%)');
+    assert.equal(regras.textoDaPromocaoDoTipo({ calculavel: false, motivo: 'o desconto ficaria abaixo de 5%' }), 'sem promoção: o desconto ficaria abaixo de 5%');
+    assert.equal(regras.textoDaPromocaoDoTipo({ calculavel: false, motivo: null }), '—', 'sem Portal não há o que dizer');
+    assert.equal(regras.textoDaPromocaoDoTipo(null), '—');
+
+    assert.equal(regras.fraseDaPromocao(linhaBase()), 'Promoção automática por 14 dias depois de publicar.');
+    assert.match(regras.fraseDaPromocao(linhaBase({ promocao_automatica: { automatica: false, dias: 14 } })), /^Promoção não será criada: conta não liberada para as Alavancas/);
+    assert.equal(regras.fraseDaPromocao(linhaBase({ promocao: { gold_special: { calculavel: false } } })), null, 'nenhuma promoção, nenhuma frase');
+
+    const comBloqueios = linhaBase({ bloqueios: [
+        { regra: 'V-TIT-04', severidade: 'BLOCKER', mensagem: 'O título do Premium é igual ao do Clássico…', alvo: { etapa: 'E7', alvo: 'gold_pro' } },
+        { regra: 'V-SAL-08', severidade: 'BLOCKER', mensagem: 'O preço do Clássico de Branco veio…', alvo: { etapa: 'E10', alvo: 'gold_special', campo: 'preco' } },
+        { regra: 'V-SAL-08', severidade: 'BLOCKER', mensagem: 'O preço do Premium de Branco veio…', alvo: { etapa: 'E10', alvo: 'gold_pro', campo: 'preco' } },
+    ] });
+    assert.deepEqual(regras.selosDosBloqueios(comBloqueios), ['Títulos iguais', 'Preço sem frete'], 'um selo por regra');
+    assert.equal(regras.temPendencia(comBloqueios), true, 'bloqueio visto antes de conferir é pendência');
+    assert.deepEqual(regras.contagensDoLote([comBloqueios, linhaBase({ produto_id: 9 })]).pendencias, 1);
+    assert.deepEqual(regras.selosDosBloqueios(linhaBase({ bloqueios: 'x' })), []);
+});
+
+test('linha — coluna da promoção, frase "automática por 14 dias" e os bloqueios com "Corrigir" na etapa certa', () => {
+    const html = renderToStaticMarkup(React.createElement(LinhaDoLote, {
+        linha: linhaBase({
+            pronto: false, preco_sem_frete: true, titulos_iguais: true, motivo: 'O título do Premium é igual ao do Clássico…',
+            bloqueios: [
+                { regra: 'V-TIT-04', severidade: 'BLOCKER', mensagem: 'O título do Premium é igual ao do Clássico: o Mercado Livre não aceita dois anúncios com o mesmo título.', alvo: { etapa: 'E7', alvo: 'gold_pro' } },
+                { regra: 'V-SAL-08', severidade: 'BLOCKER', mensagem: 'O preço do Clássico de Branco veio da Precificação do Portal calculado sem frete.', alvo: { etapa: 'E10', alvo: 'gold_special', variante: 'COLOR=id:52055', campo: 'preco' } },
+            ],
+        }),
+    }));
+    assert.match(html, /R\$ 86,33 – R\$ 100,00 \(−16,67%\)/, 'a promoção do Clássico, faixa entre as cores');
+    assert.match(html, /sem promoção: o preço do Portal foi calculado sem frete/);
+    assert.match(html, /Promoção automática por 14 dias depois de publicar\./);
+    assert.match(html, />Títulos iguais</);
+    assert.match(html, />Preço sem frete</);
+    assert.match(html, /aria-label="Bloqueios antes de conferir"/);
+    assert.match(html, /href="[^"]*\?etapa=produto"[^>]*>Corrigir/, 'título se corrige na etapa Produto');
+    assert.match(html, /href="[^"]*\?etapa=condicoes"[^>]*>Corrigir/, 'preço na etapa Condições de venda');
+    assert.doesNotMatch(html, /Pronto para agendar/);
+    assert.equal((html.match(/O título do Premium é igual ao do Clássico/g) ?? []).length, 1, 'o motivo não repete o bloqueio');
+
+    const cinco = Array.from({ length: 5 }, (_, i) => ({ regra: 'V-SAL-08', severidade: 'BLOCKER', mensagem: `O preço da cor ${i} veio sem frete.`, alvo: { etapa: 'E10', alvo: 'gold_special', campo: 'preco' } }));
+    const muitos = renderToStaticMarkup(React.createElement(LinhaDoLote, { linha: linhaBase({ pronto: false, bloqueios: cinco }) }));
+    assert.equal((muitos.match(/veio sem frete\./g) ?? []).length, 3, 'só os 3 primeiros');
+    assert.match(muitos, /mais 2 no editor/);
+
+    const fora = renderToStaticMarkup(React.createElement(LinhaDoLote, { linha: linhaBase({ promocao_automatica: { automatica: false, dias: 14 } }) }));
+    assert.match(fora, /Promoção não será criada: conta não liberada para as Alavancas/);
+    assert.doesNotMatch(fora, /\[object Object\]/);
 });
 
 test('linha — dado adverso (objeto no lugar de texto, nulos) não derruba nem vira [object Object]', () => {

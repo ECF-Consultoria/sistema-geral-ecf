@@ -286,7 +286,7 @@ export default function PublicacaoEmLote({
                                     />
                                 </div>
                                 <div className={CABECALHO}>Produto</div>
-                                <div className={CABECALHO}>Clássico e Premium · título · preço · margem estimada</div>
+                                <div className={CABECALHO}>Clássico e Premium · título · preço · margem estimada · promoção</div>
                                 <div className={CABECALHO}>Conferência</div>
                             </div>
                         )}

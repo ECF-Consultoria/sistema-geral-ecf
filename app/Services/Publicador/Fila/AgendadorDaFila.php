@@ -283,9 +283,16 @@ final class AgendadorDaFila
             return ['tipo' => 'conta', 'motivo' => 'A conexão desta empresa agora é de outro vendedor do Mercado Livre. A fila parou sem enviar nada: confira os produtos de novo.'];
         }
 
-        // O que vem do Portal (preço da Precificação, título planejado) não pode ter mudado desde o agendamento.
+        // A visão rápida do produto AGORA: os bloqueios que se sabem sem o ML (títulos iguais, preço do Portal sem
+        // frete — `ValidadorRascunho::bloqueiosSemSchema`) e o que vem do Portal (preço da Precificação, título
+        // planejado), que não pode ter mudado desde o agendamento.
+        $agora = $this->resumo->linhaDe($alvo, (int) $p->id);
+        $bloqueios = (array) ($agora['bloqueios'] ?? []);
+        if ($bloqueios !== []) {
+            return $item(PubFilaPublicacaoItem::PRECISA_REVISAR, (string) ($bloqueios[0]['mensagem'] ?? 'O produto tem um bloqueio: confira de novo e agende outra vez.'));
+        }
         $guardado = $itemFila->resumo['digital'] ?? null;
-        if (is_string($guardado) && $guardado !== '' && $this->resumo->digitalDe($alvo, (int) $p->id) !== $guardado) {
+        if (is_string($guardado) && $guardado !== '' && ($agora['digital'] ?? null) !== $guardado) {
             return $item(PubFilaPublicacaoItem::PRECISA_REVISAR, 'O preço ou o título que vem do Portal mudou depois da conferência: confira de novo e agende outra vez.');
         }
 

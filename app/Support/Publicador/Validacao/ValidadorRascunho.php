@@ -376,19 +376,69 @@ final class ValidadorRascunho
                 $this->p[] = Problema::aviso('V-TIT-02', "O título do {$nome} tem «{$termo}». O Mercado Livre não permite contato, frete, parcelamento ou condição no título.", $onde, 'L1');
             }
 
-            // V-TIT-04 (10/10/2026, decisão do usuário; era o D1 "mesmo SKU, títulos diferentes"): o ML
-            // barra dois anúncios com o mesmo nome. "Igual" é o critério do preparo pela IA
-            // (`RegrasDoTitulo::mesmo`): mesmas palavras na mesma ordem, sem caixa, acento nem plural
-            // simples — "Puffs Redondos" é igual a "puff redondo"; a ordem trocada já é outro título.
-            foreach ($vistos as $outroTipo => $outroTitulo) {
-                if (RegrasDoTitulo::mesmo($titulo, $outroTitulo)) {
-                    $this->p[] = Problema::bloqueio('V-TIT-04', "O título do {$nome} é igual ao do {$outroTipo}: o Mercado Livre não aceita dois anúncios com o mesmo título. Mude ao menos uma palavra (ou a ordem delas) em um dos dois.", $onde);
-
-                    break;
-                }
+            if ($repetido = self::tituloRepetido($nome, $titulo, $vistos, $onde)) {
+                $this->p[] = $repetido;
             }
             $vistos[$nome] = $titulo;
         }
+    }
+
+    /**
+     * V-TIT-04 (10/10/2026, decisão do usuário; era o D1 "mesmo SKU, títulos diferentes"): o ML barra dois
+     * anúncios com o mesmo nome. "Igual" é o critério do preparo pela IA (`RegrasDoTitulo::mesmo`): mesmas
+     * palavras na mesma ordem, sem caixa, acento nem plural simples — "Puffs Redondos" é igual a "puff
+     * redondo"; a ordem trocada já é outro título. Pública e estática para `bloqueiosSemSchema()`.
+     *
+     * @param  array<string, string>  $vistos  nome do tipo → título já visto
+     */
+    public static function tituloRepetido(string $nome, string $titulo, array $vistos, array $onde): ?Problema
+    {
+        foreach ($vistos as $outroTipo => $outroTitulo) {
+            if (RegrasDoTitulo::mesmo($titulo, $outroTitulo)) {
+                return Problema::bloqueio('V-TIT-04', "O título do {$nome} é igual ao do {$outroTipo}: o Mercado Livre não aceita dois anúncios com o mesmo título. Mude ao menos uma palavra (ou a ordem delas) em um dos dois.", $onde);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Os bloqueios que se sabem SEM o schema da categoria e SEM a conta — títulos iguais (V-TIT-04) e preço do
+     * Portal calculado sem frete (V-SAL-08) —, com as MESMAS regras, mensagens e alvos de `validar()`, na mesma
+     * ordem (títulos, depois tipo × variante). Para a visão rápida da publicação em lote (10/10/2026), que os
+     * mostra ANTES de conferir e não agenda quem os tem. `$r` tem de vir do `comEfetivosDe` (é ele que grava as
+     * marcas que o V-SAL-08 lê).
+     *
+     * @return list<Problema>
+     */
+    public static function bloqueiosSemSchema(RascunhoSnapshot $r): array
+    {
+        $saida = [];
+        $vistos = [];
+        foreach ($r->alvosAtivos() as $alvo) {
+            $titulo = trim((string) $alvo->titulo);
+            if ($titulo === '') {
+                continue; // é o V-TIT-01, que precisa do schema para o limite: fica para a conferência
+            }
+            $nome = self::nomeDoTipo($alvo);
+            if ($repetido = self::tituloRepetido($nome, $titulo, $vistos, ['etapa' => 'E7', 'alvo' => $alvo->listingTypeId])) {
+                $saida[] = $repetido;
+            }
+            $vistos[$nome] = $titulo;
+        }
+        foreach ($r->alvosAtivos() as $alvo) {
+            foreach ($r->variantesAtivas() as $v) {
+                if (self::precoInvalido($v->dados['precos'][$alvo->listingTypeId] ?? null)) {
+                    continue; // é o V-SAL-02: sem preço válido o V-SAL-08 nem é avaliado (como em `validar()`)
+                }
+                $onde = ['etapa' => 'E10', 'alvo' => $alvo->listingTypeId, 'variante' => $v->chave, 'campo' => 'preco'];
+                if ($semFrete = self::precoDoPortalSemFrete($v, $alvo->listingTypeId, self::rotuloDoPreco($alvo, $v, $r), $onde)) {
+                    $saida[] = $semFrete;
+                }
+            }
+        }
+
+        return $saida;
     }
 
     private function termoProibido(string $titulo, ContextoValidacao $ctx): ?string
@@ -436,9 +486,9 @@ final class ValidadorRascunho
             foreach ($r->variantesAtivas() as $v) {
                 $onde = ['etapa' => 'E10', 'alvo' => $alvo->listingTypeId, 'variante' => $v->chave, 'campo' => 'preco'];
                 $preco = $v->dados['precos'][$alvo->listingTypeId] ?? null;
-                $rotulo = self::nomeDoTipo($alvo).($v->valores === [] ? '' : ' de '.$v->rotulo($r->eixos));
+                $rotulo = self::rotuloDoPreco($alvo, $v, $r);
 
-                if (! is_numeric($preco) || (float) $preco <= 0 || round((float) $preco, 2) != (float) $preco) {
+                if (self::precoInvalido($preco)) {
                     $this->p[] = Problema::bloqueio('V-SAL-02', "Informe o preço do {$rotulo} (maior que zero, com até 2 casas).", $onde, 'L1');
 
                     continue;
@@ -446,12 +496,8 @@ final class ValidadorRascunho
                 if (($minimo !== null && $preco < $minimo) || ($maximo !== null && $preco > $maximo)) {
                     $this->p[] = Problema::bloqueio('V-SAL-03', "O preço do {$rotulo} está fora da faixa desta categoria (mínimo R$ ".number_format((float) $minimo, 2, ',', '.').').', $onde);
                 }
-                // V-SAL-08 (10/10/2026, decisão do usuário): o preço que VEIO do Portal (não digitado)
-                // calculado sem frete — a Precificação conta frete zero e só marca — não vai ao ML calado.
-                // O digitado é decisão da equipe e passa. Vale para a conferência e para publicar, porque
-                // as duas validam pelo `comEfetivosDe` (é ele que grava as marcas lidas aqui).
-                if (! empty($v->dados['preco_do_portal'][$alvo->listingTypeId]) && ! empty($v->dados['portal'][$alvo->listingTypeId]['sem_frete'])) {
-                    $this->p[] = Problema::bloqueio('V-SAL-08', "O preço do {$rotulo} veio da Precificação do Portal calculado sem frete. Informe ou aceite o frete na Precificação do Portal, ou digite o preço aqui.", $onde);
+                if ($semFrete = self::precoDoPortalSemFrete($v, $alvo->listingTypeId, $rotulo, $onde)) {
+                    $this->p[] = $semFrete;
                 }
             }
         }
@@ -531,5 +577,32 @@ final class ValidadorRascunho
     private static function nomeDoTipo(Alvo $alvo): string
     {
         return ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'][$alvo->listingTypeId] ?? $alvo->listingTypeId;
+    }
+
+    /**
+     * V-SAL-08 (10/10/2026, decisão do usuário): o preço que VEIO do Portal (não digitado) calculado sem frete — a
+     * Precificação conta frete zero e só marca — não vai ao ML calado. O digitado é decisão da equipe e passa. Vale
+     * para a conferência e para publicar, porque as duas validam pelo `comEfetivosDe` (é ele que grava as marcas lidas
+     * aqui). Pública e estática para `bloqueiosSemSchema()`.
+     */
+    public static function precoDoPortalSemFrete(Variante $v, string $listingTypeId, string $rotulo, array $onde): ?Problema
+    {
+        if (! empty($v->dados['preco_do_portal'][$listingTypeId]) && ! empty($v->dados['portal'][$listingTypeId]['sem_frete'])) {
+            return Problema::bloqueio('V-SAL-08', "O preço do {$rotulo} veio da Precificação do Portal calculado sem frete. Informe ou aceite o frete na Precificação do Portal, ou digite o preço aqui.", $onde);
+        }
+
+        return null;
+    }
+
+    /** O V-SAL-02: preço que não é número, é zero/negativo ou tem mais de 2 casas. */
+    private static function precoInvalido(mixed $preco): bool
+    {
+        return ! is_numeric($preco) || (float) $preco <= 0 || round((float) $preco, 2) != (float) $preco;
+    }
+
+    /** "Clássico" ou "Clássico de Azul / P": como as mensagens de preço chamam o item. */
+    private static function rotuloDoPreco(Alvo $alvo, Variante $v, RascunhoSnapshot $r): string
+    {
+        return self::nomeDoTipo($alvo).($v->valores === [] ? '' : ' de '.$v->rotulo($r->eixos));
     }
 }

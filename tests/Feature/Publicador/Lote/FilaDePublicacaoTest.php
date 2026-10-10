@@ -16,6 +16,7 @@ use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Publicador\DadosEfetivosService;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\NaFilaDePublicacao;
+use App\Support\Publicador\Payload\Alvo;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -226,6 +227,24 @@ class FilaDePublicacaoTest extends TestCase
         $this->assertSame(PubFilaPublicacaoItem::PRECISA_REVISAR, $this->itemDe($a)->status);
         $this->assertStringContainsString('vem do Portal mudou', $this->itemDe($a)->motivo);
         $this->assertSame(PubFilaPublicacaoItem::PUBLICANDO, $this->itemDe($b)->status);
+    }
+
+    public function test_bloqueio_que_surge_depois_de_agendado_vira_precisa_revisar_na_hora_de_publicar(): void
+    {
+        [$a, $b] = $this->cadeiras;
+        $this->conferirTodas([$a, $b]);
+        $this->agendar([$a, $b])->assertCreated();
+        // Uma escrita que não subiu a revisão (não deveria existir, mas a fila não confia): o Premium do A ganhou o
+        // MESMO título do Clássico — o V-TIT-04 do `ValidadorRascunho`, visto antes de publicar.
+        $titulo = $this->rascunhoDe($a)->alvos()->value('titulo');
+        $this->repo->gravarAlvos($this->rascunhoDe($a), [new Alvo('gold_special', $titulo), new Alvo('gold_pro', $titulo)]);
+
+        $this->passada();
+
+        $this->assertSame(PubFilaPublicacaoItem::PRECISA_REVISAR, $this->itemDe($a)->status);
+        $this->assertStringStartsWith('O título do Premium é igual ao do Clássico', $this->itemDe($a)->motivo);
+        $this->assertSame(PubFilaPublicacaoItem::PUBLICANDO, $this->itemDe($b)->status, 'a fila segue na mesma passada');
+        $this->assertSame(1, $this->publicacoes());
     }
 
     public function test_publicacao_que_passa_de_40_minutos_pausa_a_fila(): void
