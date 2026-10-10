@@ -45,6 +45,8 @@ final class RegrasDoTitulo
      */
     public static function limpar(string $bruto, array $marcas, string $referencia): string
     {
+        // 0. Termo que o ML veta ("criado-mudo"; infração de linguagem, 10/10/2026) vira o aceito.
+        $bruto = TermosVetados::trocar($bruto);
         $unidadesEspec = self::UNIDADES_DE_ESPECIFICACAO;
         $unidadesMedida = self::UNIDADES_DE_MEDIDA;
         $antes = '(?<![\p{L}\p{N}])';

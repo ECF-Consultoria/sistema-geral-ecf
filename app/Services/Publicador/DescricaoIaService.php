@@ -6,6 +6,7 @@ use App\Jobs\Publicador\GerarDescricaoIaJob;
 use App\Models\MlCategoriaSchema;
 use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
+use App\Support\Publicador\TermosVetados;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -112,7 +113,8 @@ class DescricaoIaService
 
         $analise = $ia->analise($nome, $loja, $specs)['dados'];
         // A saída passa pela mesma limpeza: o que escapou do prompt não chega à tela (o ML proíbe contato e link).
-        $texto = self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados']));
+        // Sem contato e sem termo que o ML veta ("criado-mudo" vira "mesa de cabeceira", 10/10/2026).
+        $texto = TermosVetados::trocar(self::semContato($this->limparDescricao($ia->descricao($nome, $loja, $specs, $analise)['dados'])));
         if ($texto === '') {
             throw new \RuntimeException(self::ERRO_VAZIA);
         }

@@ -6,6 +6,7 @@ use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
 use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoAtributo;
@@ -24,6 +25,7 @@ use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\EditorEmUso;
+use App\Support\Publicador\GarantiaPadrao;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\RegrasDoTitulo;
@@ -247,7 +249,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->salvarNoPortal($p);
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
-        Queue::assertPushedOn('default', PrepararProdutoNoPublicadorJob::class);
+        Queue::assertPushedOn('high', PrepararProdutoNoPublicadorJob::class);
         // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
         $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
@@ -270,7 +272,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->salvarNoPortal($p);
 
-        Queue::assertPushedOn('default', SincronizarProdutoDoPortalJob::class);
+        Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
             && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
@@ -303,6 +305,22 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         // O Job apagou a marca ao começar: o save seguinte agenda outro.
         $this->salvarNoPortal($p);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 2);
+    }
+
+    public function test_garantia_padrao_da_conta_entra_no_rascunho_que_chega_do_portal_e_nao_troca_a_escolhida(): void
+    {
+        // 10/10/2026: o Portal não pergunta garantia e o ML não publica sem ela (V-SAL-05).
+        Configuracao::set(GarantiaPadrao::PREFIXO.'company-'.$this->empresa->id, json_encode(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias']));
+        $p = $this->produtoDoPortal();
+
+        $this->assertSame('sincronizado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
+        $this->assertSame(['tipo' => '2230280', 'tempo' => 90, 'unidade' => 'dias'], $this->rascunhoDo($p)->garantia);
+
+        // A equipe escolheu outra no editor: o Sincronizar seguinte não troca.
+        $this->rascunhoDo($p)->update(['garantia' => ['tipo' => '2230279', 'tempo' => 1, 'unidade' => 'anos']]);
+        $this->noPortal($p, 'BRAND', 'Outra Marca');
+        $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id);
+        $this->assertSame(['tipo' => '2230279', 'tempo' => 1, 'unidade' => 'anos'], $this->rascunhoDo($p)->fresh()->garantia);
     }
 
     public function test_editor_aberto_nao_e_sincronizado_logo_e_o_preparo_cobre_depois(): void
@@ -345,7 +363,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
-        Queue::assertPushedOn('default', GerarPreparoIaJob::class);
+        Queue::assertPushedOn('high', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
         $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa], $this->titulos($r),

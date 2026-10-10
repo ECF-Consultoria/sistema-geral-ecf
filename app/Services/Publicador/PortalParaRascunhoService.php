@@ -8,6 +8,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Support\Publicador\GarantiaPadrao;
 use App\Support\Publicador\Imagem\ConversorParaJpg;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\Portal\ComposicaoDoPortal;
@@ -258,6 +259,17 @@ class PortalParaRascunhoService
     /** Fecha o resumo: conta as variantes vivas, tira aviso repetido e registra no log. */
     private function concluir(array $resumo, PubProduto $produto, PubRascunho $r): array
     {
+        // 10/10/2026 — o Portal não pergunta garantia e o ML não publica sem ela (V-SAL-05): a garantia padrão da
+        // conta entra no rascunho que ainda não tem nenhuma (a escolhida pela equipe nunca é trocada).
+        $padrao = GarantiaPadrao::doProduto($produto);
+        if ($padrao !== null && ! GarantiaPadrao::temGarantia($r->fresh())) {
+            $this->sobTrava($r->id, function (PubRascunho $r) use ($padrao, &$resumo) {
+                if (GarantiaPadrao::aplicar($r, $padrao)) {
+                    $resumo['campos_preenchidos']++;
+                }
+            });
+        }
+
         $resumo['variantes'] = count(array_filter($this->repo->snapshot($r->fresh())->variantes, fn (Variante $v) => ! $v->orfa));
         $resumo['avisos'] = array_values(array_unique($resumo['avisos']));
 

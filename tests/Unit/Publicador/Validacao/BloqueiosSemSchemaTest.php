@@ -20,15 +20,17 @@ use Tests\Unit\Publicador\Concerns\CarregaSchemas;
 
 /**
  * `ValidadorRascunho::bloqueiosSemSchema` (10/10/2026) — os bloqueios que a visão rápida da publicação em lote
- * mostra ANTES de conferir (V-TIT-04, títulos iguais; V-SAL-08, preço do Portal sem frete) são EXATAMENTE os que o
- * `validar()` completo dá para as mesmas regras: mesma mensagem, mesmo alvo, mesma ordem. Uma regra só, dois
- * caminhos de leitura.
+ * mostra ANTES de conferir (V-TIT-05, termo que o ML veta no título; V-TIT-04, títulos iguais; V-DES-05, termo vetado
+ * na descrição; V-SAL-08, preço do Portal sem frete) são EXATAMENTE os que o `validar()` completo dá para as mesmas
+ * regras: mesma mensagem, mesmo alvo, mesma ordem. Uma regra só, dois caminhos de leitura.
  */
 class BloqueiosSemSchemaTest extends TestCase
 {
     use CarregaSchemas;
 
-    private static function cadeira(array $alvos, array $variantes, array $eixos = []): RascunhoSnapshot
+    private const REGRAS_SEM_SCHEMA = ['V-TIT-05', 'V-TIT-04', 'V-DES-05', 'V-SAL-08'];
+
+    private static function cadeira(array $alvos, array $variantes, array $eixos = [], string $descricao = 'Cadeira executiva giratória.'): RascunhoSnapshot
     {
         return new RascunhoSnapshot(...[
             'categoriaId' => self::CADEIRA,
@@ -44,7 +46,7 @@ class BloqueiosSemSchemaTest extends TestCase
             'variantes' => $variantes,
             'alvos' => $alvos,
             'imagens' => [['imagem' => 'a1', 'grupo' => R::GERAL, 'posicao' => 0]],
-            'descricao' => 'Cadeira executiva giratória.',
+            'descricao' => $descricao,
             'envio' => ['modo' => 'me2', 'frete_gratis' => true, 'retirada' => false],
             'garantia' => ['tipo' => '2230280', 'tempo' => 30, 'unidade' => 'dias'],
         ]);
@@ -61,7 +63,7 @@ class BloqueiosSemSchemaTest extends TestCase
             modosEnvio: ['me2']);
         $problemas = (new ValidadorRascunho())->validar($r, $schema, $ctx)->problemas;
 
-        return self::comoArray(array_values(array_filter($problemas, fn (Problema $p) => in_array($p->regra, ['V-TIT-04', 'V-SAL-08'], true))));
+        return self::comoArray(array_values(array_filter($problemas, fn (Problema $p) => in_array($p->regra, self::REGRAS_SEM_SCHEMA, true))));
     }
 
     /** @param list<Problema> $problemas */
@@ -115,6 +117,24 @@ class BloqueiosSemSchemaTest extends TestCase
 
         $this->assertSame([], ValidadorRascunho::bloqueiosSemSchema($r));
         $this->assertSame([], self::daValidacao($r));
+    }
+
+    public function test_termo_vetado_pelo_ml_no_titulo_e_na_descricao_trava_nos_dois_caminhos(): void
+    {
+        // O que derrubou o anúncio de teste da #459 (infração de linguagem, 10/10/2026): "criado-mudo".
+        $r = self::cadeira([new Alvo('gold_special', 'Mesa Cabeceira Criado Mudo Madeira'), new Alvo('gold_pro', 'Mesa de Cabeceira Madeira Gaveta')], [
+            new Variante(ChaveCanonica::UNICA, [], dados: ['estoque' => 3, 'precos' => [], 'atributos' => ['SELLER_SKU' => ['value_name' => 'MC'], 'GTIN' => ['value_name' => '7896553367645']]]),
+        ], descricao: 'Lindo CRIADO-MUDO de madeira maciça.')->comEfetivosDe(['titulos' => [], 'precos' => ['gold_special' => 150.0, 'gold_pro' => 165.0], 'mlbs' => [],
+            'promocoes' => ['gold_special' => 125.0, 'gold_pro' => 137.5], 'sem_frete' => ['gold_special' => false, 'gold_pro' => false]]);
+
+        $semSchema = self::comoArray(ValidadorRascunho::bloqueiosSemSchema($r));
+
+        $this->assertSame(self::daValidacao($r), $semSchema, 'mesma regra, mesma mensagem, mesmo alvo e mesma ordem');
+        $this->assertSame(['V-TIT-05', 'V-DES-05'], array_column($semSchema, 'regra'));
+        $this->assertSame([Problema::BLOQUEIO, Problema::BLOQUEIO], array_column($semSchema, 'severidade'));
+        $this->assertSame('O título do Clássico tem «criado-mudo», termo que o Mercado Livre não aceita (o anúncio é pausado por linguagem): troque por «mesa de cabeceira».', $semSchema[0]['mensagem']);
+        $this->assertSame('gold_special', $semSchema[0]['alvo']['alvo']);
+        $this->assertSame(['etapa' => 'E9', 'campo' => 'descricao'], $semSchema[1]['alvo']);
     }
 
     public function test_preco_invalido_e_titulo_vazio_ficam_para_a_conferencia(): void

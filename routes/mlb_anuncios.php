@@ -335,6 +335,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                     ->middleware('throttle:30,1,publicador.lote.fila')->name('cancelar');
                 Route::delete('itens/{item}', [MlbPublicadorLoteController::class, 'removerItem'])
                     ->whereNumber('item')->middleware('throttle:60,1,publicador.lote.fila')->name('itens.remover');
+                // 10/10/2026 — garantia padrão da conta (o Portal não pergunta; o ML não publica sem).
+                Route::put('garantia', [MlbPublicadorLoteController::class, 'garantia'])
+                    ->middleware('throttle:20,1,publicador.lote.garantia')->name('garantia');
             });
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───

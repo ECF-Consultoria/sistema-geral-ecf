@@ -168,6 +168,15 @@ return [
         'tentativas_max' => 8,
     ],
 
+    // ═══ Termos que o Mercado Livre VETA em título e descrição (10/10/2026) ═══
+    // O ML pausou um anúncio de teste da #459 por "criado-mudo" no título (infração LENGUAJE, política 1020).
+    // A IA troca pelo termo aceito e a conferência trava se alguém digitar (V-TIT-05 / V-DES-05; TermosVetados).
+    // Chave = o termo vetado, escrito sem acento (caixa, acento e hífen × espaço não importam); valor = a troca.
+    // Os conhecidos moram em `TermosVetados::PADRAO`; termo novo entra aqui, depois deles.
+    'termos_vetados' => [
+        ...App\Support\Publicador\TermosVetados::PADRAO,
+    ],
+
     // ═══ Publicação em lote — a fila em rodadas (10/10/2026) ═══
     // "Conferir selecionados" + "Agendar publicação" da conta; quem anda a fila é o `publicador:fila-publicacao`
     // (todo minuto, routes/console.php). A fila anda em RODADAS: alguns produtos (Clássico + Premium, todas as

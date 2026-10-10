@@ -140,7 +140,8 @@ export function temPendencia(linha) {
 // Os bloqueios são os do `ValidadorRascunho::bloqueiosSemSchema` (V-TIT-04 títulos iguais, V-SAL-08 preço do
 // Portal sem frete): o servidor manda prontos, a tela só nomeia. A promoção é a conta do `PrecoDaPromocao`.
 
-export const ROTULO_BLOQUEIO = { 'V-TIT-04': 'Títulos iguais', 'V-SAL-08': 'Preço sem frete' };
+// V-TIT-05 / V-DES-05 (10/10/2026): termo que o Mercado Livre veta ("criado-mudo") no título ou na descrição.
+export const ROTULO_BLOQUEIO = { 'V-TIT-04': 'Títulos iguais', 'V-TIT-05': 'Termo vetado', 'V-DES-05': 'Termo vetado', 'V-SAL-08': 'Preço sem frete' };
 
 /** Os bloqueios da linha (lista segura). */
 export function bloqueiosDaLinha(linha) {
