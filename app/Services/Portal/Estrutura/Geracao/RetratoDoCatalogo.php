@@ -9,6 +9,7 @@ use App\Models\EstruturaProdutoGeracao;
 use App\Models\EstruturaSugestaoDescartada;
 use App\Models\EstruturaTipoPar;
 use App\Models\EstruturaTipoProduto;
+use App\Support\Publicador\Portal\CoresDoGrupo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -164,6 +165,10 @@ class RetratoDoCatalogo
         foreach ($this->composicoesExistentes($empresaId) as $itens) {
             $existentes[ChaveDeComposicao::de($itens)] = true;
         }
+        // Planejamento × Fase N (09/10/2026): o kit de N unidades do Publicador já é o Combo N de cada cor.
+        foreach ($this->fasesDoPublicador($empresaId, $produtos) as $itens) {
+            $existentes[ChaveDeComposicao::de($itens)] = true;
+        }
 
         // ─── Descartadas ───
         $descartadas = [];
@@ -218,6 +223,56 @@ class RetratoDoCatalogo
         }
 
         return array_diff_key($porOferta, $invalidas);
+    }
+
+    /**
+     * Os kits da Fase N do Publicador como composições `v{cor}*N` (Planejamento × Fase N, decisões do
+     * usuário de 09/10/2026): o kit de N unidades de um produto agrupado é UM anúncio com todas as cores
+     * como variação — ele já É o Combo N de cada cor do grupo. Sem isto o Planejamento sugeriria de novo o
+     * Combo que virou Fase 2.
+     *
+     * Só leitura de `pub_produtos`, numa consulta (com a empresa nas duas pontas: kit e base); as cores são
+     * as que entram no grupo pela mesma regra do Sincronizar (`CoresDoGrupo`) — a variação que vira produto
+     * separado no Publicador não é cor do kit e continua sugerida.
+     *
+     * @param  list<array<string,mixed>>  $produtos  os produtos do retrato (com `variacoes`)
+     * @return list<array<int,int>>
+     */
+    private function fasesDoPublicador(int $empresaId, array $produtos): array
+    {
+        $kits = DB::table('pub_produtos as k')
+            ->join('pub_produtos as b', 'b.id', '=', 'k.produto_base_id')
+            ->where('k.company_id', $empresaId)
+            ->where('b.company_id', $empresaId)
+            ->whereNotNull('b.estrutura_produto_id')
+            ->where('k.quantidade_kit', '>=', 2)
+            ->get(['b.estrutura_produto_id', 'k.quantidade_kit']);
+        if ($kits->isEmpty()) {
+            return [];
+        }
+
+        $porProduto = [];
+        foreach ($produtos as $p) {
+            $porProduto[(int) $p['id']] = $p;
+        }
+
+        $saida = [];
+        foreach ($kits as $k) {
+            $produto = $porProduto[(int) $k->estrutura_produto_id] ?? null;
+            if ($produto === null) {
+                continue;
+            }
+            $comOferta = array_values(array_filter($produto['variacoes'], fn (array $v) => ! empty($v['oferta_id'])));
+            usort($comOferta, fn (array $x, array $y) => [(int) $x['ordem'], (int) $x['id']] <=> [(int) $y['ordem'], (int) $y['id']]);
+            $cores = CoresDoGrupo::separar(array_map(fn (array $v) => [
+                'id' => (int) $v['id'], 'eixo' => $v['eixo'], 'valor' => $v['valor'], 'codigo' => $v['sku'],
+            ], $comOferta))['agrupaveis'];
+            foreach ($cores as $variacaoId) {
+                $saida[] = [(int) $variacaoId => (int) $k->quantidade_kit];
+            }
+        }
+
+        return $saida;
     }
 
     /** Quantidades do tipo; texto inválido no banco vale "nenhuma", nunca derruba a tela. */
