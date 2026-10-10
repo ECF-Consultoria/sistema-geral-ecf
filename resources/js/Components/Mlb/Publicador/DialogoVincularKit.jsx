@@ -91,29 +91,45 @@ export function erroDeRecusa(dados) {
 }
 
 /**
- * A fase que vai nascer do vínculo, calculada com a família que a própria
- * lista já tem em mão — espelho fiel de `PubProduto::proximaFase()`
- * (max + 1, nunca menos que 2). É só RÓTULO: quem decide a fase é o servidor.
- *
- * O kit herda as âncoras do base, então a família inteira sempre vem na mesma
- * lista de produtos da tela (decisão do 175-08).
- *
- * @param {Array} produtos  a lista crua da tela
- * @param {?number} baseId  o base que a sugestão apontou
+ * A quantidade digitada em forma de número, ou `null` quando não há número nenhum
+ * ali. O campo é de texto (`inputMode="numeric"`), então tudo chega string.
  */
-export function proximaFaseDaFamilia(produtos, baseId) {
-    const base = numeroSeguro(baseId);
-    if (base === null) return 2;
+const quantidadeSegura = (valor) => numeroSeguro(valor)
+    ?? numeroSeguro(Number(String(valor ?? '').trim()));
 
-    const fases = (Array.isArray(produtos) ? produtos : [])
-        .filter((item) => {
-            const p = objetoSeguro(item);
+/**
+ * O degrau da família: **Kit N é a Fase N** — espelho fiel de
+ * `PubProduto::faseDaQuantidade()` (mesmo nome de propósito). Quantidade inválida
+ * cai em 1, porque fase nenhuma é menor que a do base.
+ *
+ * É só RÓTULO: quem grava a fase é o servidor. Deixou de depender da família — a
+ * função que ela substitui somava `max + 1` sobre as fases da lista — porque a fase
+ * do vínculo depende só da QUANTIDADE que está sendo vinculada, nem da lista nem do
+ * base.
+ *
+ * @param {*} quantidade  o que estiver no campo de unidades
+ */
+export function faseDaQuantidade(quantidade) {
+    const n = quantidadeSegura(quantidade);
 
-            return numeroSeguro(p.id) === base || numeroSeguro(p.produto_base_id) === base;
-        })
-        .map((item) => numeroSeguro(objetoSeguro(item).fase) ?? 1);
+    return n === null ? 1 : Math.max(1, Math.trunc(n));
+}
 
-    return Math.max(1, ...fases, 1) + 1;
+/**
+ * O número que a TELA pode afirmar: a fase do vínculo, ou `null`.
+ *
+ * Devolve `null` de propósito quando a quantidade não é um inteiro >= 2: nesse
+ * estado não existe número honesto. A derivação crua diria "Fase 1" (pior que o
+ * `2` fixo de antes, porque Fase 1 é o base), e a regra do projeto é não mostrar
+ * número que a tela não pode garantir. O rótulo sai sem número e o botão já fica
+ * desabilitado com a explicação que `erroLocalDaQuantidade` dá.
+ *
+ * @returns {?number}
+ */
+export function faseDoVinculo(quantidade) {
+    const n = quantidadeSegura(quantidade);
+
+    return n !== null && Number.isInteger(n) && n >= 2 ? faseDaQuantidade(n) : null;
 }
 
 /**
@@ -131,11 +147,11 @@ export function quantidadeInicial(sugestao) {
  * O diálogo de confirmação do vínculo de combo (§6).
  *
  * @param {{aberto?: boolean, onFechar?: Function, conta?: ?string, produto?: Object,
- *   sugestao?: Object, proximaFase?: ?number, modo?: 'vincular'|'recusar',
- *   onConcluido?: Function}} props
- *   `modo` e `proximaFase` são acréscimos ao contrato do PLAN: o modo carrega a
- *   confirmação do "Não é kit" (em vez de um `window.confirm` cru) e a fase é
- *   calculada pela lista, que é quem tem a família em mão.
+ *   sugestao?: Object, modo?: 'vincular'|'recusar', onConcluido?: Function}} props
+ *   `modo` é acréscimo ao contrato do PLAN: ele carrega a confirmação do "Não é
+ *   kit" (em vez de um `window.confirm` cru). A fase NÃO é prop: ela é derivada do
+ *   campo de unidades, ao vivo — número que não acompanha o que a pessoa digitou é
+ *   a mesma mentira em versão lenta.
  */
 export default function DialogoVincularKit({
     aberto = false,
@@ -143,7 +159,6 @@ export default function DialogoVincularKit({
     conta = null,
     produto = null,
     sugestao = null,
-    proximaFase = null,
     modo = 'vincular',
     onConcluido,
 }) {
@@ -157,7 +172,7 @@ export default function DialogoVincularKit({
     const produtoId = numeroSeguro(alvo.id);
     const baseId = numeroSeguro(dica.base_id);
     const contaSegura = typeof conta === 'string' && conta !== '' ? conta : null;
-    const fase = numeroSeguro(proximaFase) ?? 2;
+    const fase = faseDoVinculo(quantidade);
     const recusando = modo === 'recusar';
     const erroQuantidade = errosCampo.quantidade ?? erroLocalDaQuantidade(quantidade);
     const podeEnviar = !enviando && contaSegura !== null && produtoId !== null
@@ -207,7 +222,7 @@ export default function DialogoVincularKit({
                 produto: objetoSeguro(data).produto ?? null,
                 texto: recusando
                     ? `Pronto: ${textoSeguro(alvo.sku, 'o produto')} não é mais sugerido como kit.`
-                    : `${textoSeguro(alvo.sku, 'O combo')} agora é a Fase ${numeroSeguro(objetoSeguro(objetoSeguro(data).produto).fase) ?? fase} de ${textoSeguro(dica.base_sku, 'o produto base')}.`,
+                    : `${textoSeguro(alvo.sku, 'O combo')} agora é a Fase ${numeroSeguro(objetoSeguro(objetoSeguro(data).produto).fase) ?? faseDaQuantidade(quantidade)} de ${textoSeguro(dica.base_sku, 'o produto base')}.`,
             });
         } catch (e) {
             // 422 mantém o diálogo ABERTO com a mensagem no campo indicado.
@@ -301,7 +316,7 @@ export default function DialogoVincularKit({
 
                         <p className="text-[13px] font-normal text-white/55">
                             Vincular não altera o rascunho, o SKU, o estoque nem os anúncios deste combo
-                            que já estão no ar. Só registra que ele é a Fase {fase} deste produto base.
+                            que já estão no ar. Só registra que ele é {fase !== null ? `a Fase ${fase}` : 'uma fase'} deste produto base.
                         </p>
                     </>
                 )}
@@ -323,7 +338,7 @@ export default function DialogoVincularKit({
                         className={cn(BASE_BOTAO, PRIMARIO)}
                     >
                         {enviando && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                        {recusando ? 'Não é kit, descartar' : `Vincular como Fase ${fase}`}
+                        {recusando ? 'Não é kit, descartar' : (fase !== null ? `Vincular como Fase ${fase}` : 'Vincular como kit')}
                     </button>
                 </div>
             </div>

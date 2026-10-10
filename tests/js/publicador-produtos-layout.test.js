@@ -1007,6 +1007,19 @@ test('PainelDoProdutoLateral — render real: os blocos da spec, 440px e acessí
         const semSugestao = render({ sugestao: null });
         assert.doesNotMatch(semSugestao, /Vincular como Fase/);
         assert.doesNotMatch(semSugestao, /Não é kit/);
+
+        // ⚠️ A prop passou a ser `?number`: `null` significa "a sugestão não traz o N".
+        // Aí a tela não afirma número nenhum — nem o 2 fixo de antes, nem "Fase 1"
+        // (que é o BASE). Os casos adversos de `proximaFase` logo abaixo usam
+        // `sugestao: null` e nem chegam ao rótulo, então não provam este caminho.
+        const semNumero = render({
+            produto: produtoBase({ id: 40, sku: 'CAD-CB2' }),
+            sugestao: { base_id: 1, base_sku: 'CAD-01' },
+            proximaFase: null,
+        });
+        assert.match(semNumero, /Vincular como kit/);
+        assert.doesNotMatch(semNumero, /Vincular como Fase/, 'o botão não pode afirmar número');
+        assert.doesNotMatch(semNumero, /virar Fase/, 'nem a frase acima dele');
     });
 
     await contexto.test('anuncios vazio diz que não há anúncio no ar, sem lista vazia', () => {

@@ -672,7 +672,7 @@ const DIALOGO = path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/Dialo
 
 test('DialogoVincularKit — as funções puras (quantidade, recusa do servidor e fase que vai nascer)', async (contexto) => {
     const mod = await montar(DIALOGO, 'dialogo-vinculo-puras');
-    const { erroLocalDaQuantidade, erroDeRecusa, proximaFaseDaFamilia, quantidadeInicial } = mod;
+    const { erroLocalDaQuantidade, erroDeRecusa, faseDaQuantidade, faseDoVinculo, quantidadeInicial } = mod;
 
     await contexto.test('erroLocalDaQuantidade: vazia, 1 e não numérica bloqueiam; 2 passa', () => {
         assert.equal(typeof erroLocalDaQuantidade, 'function');
@@ -708,23 +708,28 @@ test('DialogoVincularKit — as funções puras (quantidade, recusa do servidor 
         assert.match(erroDeRecusa('nao-e-objeto').geral, /Não foi possível/);
     });
 
-    await contexto.test('proximaFaseDaFamilia: espelha PubProduto::proximaFase (max + 1, mínimo 2)', () => {
-        const base = produtoBase();
-        const kit2 = kitDe(base, 2);
-        const kit3 = kitDe(base, 3);
+    await contexto.test('faseDaQuantidade / faseDoVinculo: espelham PubProduto::faseDaQuantidade (Kit N é a Fase N)', () => {
+        // Espelho fiel do PHP: o degrau é a própria quantidade, NUNCA max+1. Se a regra
+        // voltasse a ser cronológica, um primeiro kit de 5 daria 2 e estas três falhariam.
+        assert.equal(faseDaQuantidade(1), 1);
+        assert.equal(faseDaQuantidade(2), 2);
+        assert.equal(faseDaQuantidade(5), 5);
+        assert.equal(faseDaQuantidade('5'), 5);
+        // Quantidade inválida cai em 1: fase nenhuma é menor que a do base.
+        assert.equal(faseDaQuantidade(0), 1);
+        assert.equal(faseDaQuantidade(-3), 1);
+        for (const adverso of [null, undefined, '', 'abc', {}, [], '2,5']) {
+            assert.equal(faseDaQuantidade(adverso), 1, JSON.stringify(adverso) + ' devia cair em 1');
+        }
 
-        // Base sem kit nenhum: a fase que vai nascer é a 2.
-        assert.equal(proximaFaseDaFamilia([base], 1), 2);
-        // Com Kit 2: a 3.
-        assert.equal(proximaFaseDaFamilia([base, kit2], 1), 3);
-        // Com Kit 2 e Kit 3: a 4 (o buraco de quantidade é outro assunto).
-        assert.equal(proximaFaseDaFamilia([base, kit2, kit3], 1), 4);
-        // Base fora da lista ou lista inválida: 2, nunca menos.
-        assert.equal(proximaFaseDaFamilia([], 1), 2);
-        assert.equal(proximaFaseDaFamilia('nao-e-array', 1), 2);
-        assert.equal(proximaFaseDaFamilia([base], null), 2);
-        // Fase em formato inesperado não derruba a conta.
-        assert.equal(proximaFaseDaFamilia([produtoBase({ fase: 'um' })], 1), 2);
+        // `faseDoVinculo` é a outra pergunta: o número que a TELA pode afirmar. Sem
+        // quantidade válida não existe número honesto — a derivação crua diria "Fase 1".
+        assert.equal(faseDoVinculo(2), 2);
+        assert.equal(faseDoVinculo(5), 5);
+        assert.equal(faseDoVinculo(' 12 '), 12);
+        for (const semNumero of ['', '1', 0, null, undefined, {}, 'abc']) {
+            assert.equal(faseDoVinculo(semNumero), null, JSON.stringify(semNumero) + ' não pode afirmar fase nenhuma');
+        }
     });
 
     await contexto.test('quantidadeInicial: o N da sugestão, ou campo VAZIO quando o servidor não sabe (§6)', () => {
@@ -758,7 +763,6 @@ test('DialogoVincularKit — render real: confirma o vínculo e explica o que N�
         conta: 'company-459',
         produto: produtoBase({ id: 40, sku: 'CAD-CB2', nome: 'Combo 2 Cadeiras Executivas' }),
         sugestao: sugestaoBase(),
-        proximaFase: 2,
         modo: 'vincular',
         onConcluido: () => {},
         ...overrides,
@@ -781,9 +785,15 @@ test('DialogoVincularKit — render real: confirma o vínculo e explica o que N�
         assert.doesNotMatch(html, /\[object Object\]/);
     });
 
-    await contexto.test('o botão diz a fase que vai nascer', () => {
+    await contexto.test('o botão diz a fase que vai nascer, derivada da QUANTIDADE', () => {
+        // O número que a tela afirma é o mesmo que o servidor grava: Kit N é a Fase N.
         assert.match(render(), /Vincular como Fase 2/);
-        assert.match(render({ proximaFase: 3 }), /Vincular como Fase 3/);
+        assert.match(render({ sugestao: sugestaoBase({ quantidade: 5 }) }), /Vincular como Fase 5/);
+        // Sem o N na sugestão o campo abre vazio: a tela não afirma número nenhum —
+        // nem o 2 fixo de antes, nem o "Fase 1" da derivação crua.
+        const semN = render({ sugestao: sugestaoBase({ quantidade: null }) });
+        assert.match(semN, /Vincular como kit/);
+        assert.doesNotMatch(semN, /Fase 1/);
     });
 
     await contexto.test('texto explícito do que vincular NÃO altera (§6)', () => {
@@ -798,7 +808,7 @@ test('DialogoVincularKit — render real: confirma o vínculo e explica o que N�
         const html = render({ sugestao: sugestaoBase({ quantidade: null }) });
         assert.match(html, /value=""/);
         assert.match(html, /Informe quantas unidades/);
-        const botao = html.lastIndexOf('<button', html.indexOf('Vincular como Fase'));
+        const botao = html.lastIndexOf('<button', html.indexOf('Vincular como'));
         assert.match(html.slice(botao, html.indexOf('>', botao) + 1), /disabled=/);
     });
 
@@ -813,13 +823,13 @@ test('DialogoVincularKit — render real: confirma o vínculo e explica o que N�
         const html = render({ modo: 'recusar' });
         assert.match(html, /não volta a aparecer/i);
         assert.match(html, /Não é kit/);
-        // Nada de campo de quantidade nem de "Vincular como Fase" nesse modo.
-        assert.doesNotMatch(html, /Vincular como Fase/);
+        // Nada de campo de quantidade nem de "Vincular como" nesse modo.
+        assert.doesNotMatch(html, /Vincular como/);
     });
 
     await contexto.test('sugestão nula ou em formato inesperado nunca derruba a tela', () => {
         assert.doesNotThrow(() => {
-            const html = render({ sugestao: null, proximaFase: null });
+            const html = render({ sugestao: null });
             assert.doesNotMatch(html, /\[object Object\]/);
         });
         assert.doesNotThrow(() => {
@@ -827,7 +837,6 @@ test('DialogoVincularKit — render real: confirma o vínculo e explica o que N�
                 sugestao: { base_id: 1, base_sku: { foo: 'bar' }, base_nome: [], quantidade: {}, conflito_heuristica: 'talvez' },
                 produto: null,
                 conta: null,
-                proximaFase: 'duas',
             });
             assert.doesNotMatch(html, /\[object Object\]/);
             assert.doesNotMatch(html, /foo/);
@@ -866,8 +875,8 @@ test('Tela B — monta o diálogo de vínculo e recarrega só produtos/contagens
 
     assert.match(fonte, /import DialogoVincularKit(, \{[^}]*\})? from '@\/Components\/Mlb\/Publicador\/DialogoVincularKit'/);
     assert.match(fonte, /<DialogoVincularKit/);
-    // A fase que vai nascer é calculada com a família que a própria lista já tem.
-    assert.match(fonte, /proximaFaseDaFamilia/);
+    // A fase que vai nascer vem da QUANTIDADE da sugestão, não da família nem da ordem.
+    assert.match(fonte, /faseDoVinculo/);
     // ⚠️ Literal do gate de publicador-entrada.test.js: a recarga é exatamente esta.
     assert.ok((fonte.match(/only: \['produtos', 'contagens'\]/g) ?? []).length >= 2);
     // A tela não pergunta nada pelo navegador: a confirmação é do próprio diálogo.
