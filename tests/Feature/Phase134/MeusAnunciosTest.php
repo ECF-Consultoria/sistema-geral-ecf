@@ -583,6 +583,150 @@ class MeusAnunciosTest extends TestCase
         $this->assertSame(0, $chipsPorChave[MlAcervoItem::MOTIVO_SEM_ESTOQUE]['count']);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Quick 261010-rie — a tela: busca por SKU, filtro "Em revisão" e o vazio
+    // honesto quando o SKU ainda não foi coletado.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** @test T28 */
+    public function busca_por_sku_acha_o_under_review_sem_trocar_o_filtro(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB5366398961',
+            'title'      => 'Poltrona Beny Verde Musgo',
+            'status'     => 'under_review',
+            'skus'       => ['POLT-BENY-VM'],
+        ]);
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'skus' => ['OUTRO-SKU']]);
+
+        // Sem querystring de status: coluna + busca + filtro padrão juntos —
+        // o caminho completo do pedido do usuário.
+        $props = $this->propsDaTela($admin, $company, ['busca' => 'POLT-BENY-VM']);
+
+        $this->assertSame(
+            ['MLB5366398961'],
+            collect($props['anuncios']['data'])->pluck('ml_item_id')->all(),
+            'RIE-01: achar pelo SKU da planilha, sem saber trocar filtro'
+        );
+    }
+
+    /** @test T29 */
+    public function filtro_em_revisao_lista_so_under_review_e_valor_invalido_cai_no_default(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'status' => 'active']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB5366398961', 'status' => 'under_review']);
+
+        $props = $this->propsDaTela($admin, $company, ['status' => 'em_revisao']);
+
+        $this->assertSame(['MLB5366398961'], collect($props['anuncios']['data'])->pluck('ml_item_id')->all());
+        $this->assertSame('em_revisao', $props['filtros']['status']);
+
+        // Valor fora da lista fechada continua caindo no default — nunca
+        // interpolado em SQL.
+        $propsInvalido = $this->propsDaTela($admin, $company, ['status' => 'xpto']);
+
+        $this->assertSame('acionaveis', $propsInvalido['filtros']['status']);
+        $this->assertCount(2, $propsInvalido['anuncios']['data'], 'acionaveis segue o default e segue cobrindo os três status');
+    }
+
+    /** @test T30 */
+    public function prop_skus_de_cada_linha_e_sempre_array(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB-COM', 'skus' => ['A-1', 'A-2']]);
+        $this->criarItem($company, ['ml_item_id' => 'MLB-SEM']); // skus NULL no banco
+
+        $props     = $this->propsDaTela($admin, $company);
+        $porItemId = collect($props['anuncios']['data'])->keyBy('ml_item_id');
+
+        $this->assertSame(['A-1', 'A-2'], $porItemId['MLB-COM']['skus']);
+        $this->assertSame(
+            [],
+            $porItemId['MLB-SEM']['skus'],
+            'a tela recebe array sempre — o aviso de cobertura é prop separada, não null na linha'
+        );
+    }
+
+    /** @test T31 */
+    public function ordenacao_nao_muda_com_o_filtro_em_revisao(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB-REVISAO-SAUDAVEL',
+            'status'     => 'under_review',
+            'severidade' => MlAcervoItem::SEVERIDADE_SAUDAVEL,
+            'nota_ecf'   => 80,
+        ]);
+        $this->criarItem($company, [
+            'ml_item_id' => 'MLB-REVISAO-CRITICA',
+            'status'     => 'under_review',
+            'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+            'nota_ecf'   => 20,
+        ]);
+
+        $props = $this->propsDaTela($admin, $company, ['status' => 'em_revisao']);
+
+        $this->assertSame(
+            ['MLB-REVISAO-CRITICA', 'MLB-REVISAO-SAUDAVEL'],
+            collect($props['anuncios']['data'])->pluck('ml_item_id')->all(),
+            'D-12: severidade desc, depois nota_ecf — nenhum critério olha status, então a opção nova não muda nada'
+        );
+    }
+
+    /** @test T32 */
+    public function busca_sem_resultado_em_acervo_sem_sku_avisa_que_o_sku_nao_foi_coletado(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        // Linhas gravadas antes desta mudança: skus NULL em TODAS.
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001']);
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000002']);
+
+        $props = $this->propsDaTela($admin, $company, ['busca' => 'ABC-1']);
+
+        $this->assertCount(0, $props['anuncios']['data']);
+        $this->assertTrue(
+            $props['skuNaoColetado'],
+            'RIE-04: sem isso a tela responde "não achei" como se o anúncio não existisse — mentira por omissão'
+        );
+    }
+
+    /** @test T33 */
+    public function busca_sem_resultado_com_sku_ja_coletado_nao_avisa(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'skus' => []]); // coletado, anúncio sem SKU
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000002']);
+
+        $props = $this->propsDaTela($admin, $company, ['busca' => 'NAO-EXISTE-MESMO']);
+
+        $this->assertCount(0, $props['anuncios']['data']);
+        $this->assertFalse(
+            $props['skuNaoColetado'],
+            'com ao menos uma linha coletada, o "não achei" é verdade — nada a ressalvar'
+        );
+    }
+
+    /** @test T34 */
+    public function busca_que_acha_nao_avisa_nada(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarItem($company, ['ml_item_id' => 'MLB1000000001', 'title' => 'Poltrona Beny']);
+
+        $props = $this->propsDaTela($admin, $company, ['busca' => 'Poltrona']);
+
+        $this->assertCount(1, $props['anuncios']['data']);
+        $this->assertFalse($props['skuNaoColetado']);
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────────
 
     /**

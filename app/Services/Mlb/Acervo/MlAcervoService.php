@@ -42,7 +42,15 @@ class MlAcervoService
         'title', 'category_id', 'status', 'sub_status', 'listing_type_id', 'price',
         'available_quantity', 'sold_quantity', 'permalink', 'thumbnail', 'fotos_count',
         'has_variations', 'variations', 'catalog_listing', 'catalog_product_id',
-        'shipping', 'tags', 'health_ml', 'nota_ecf', 'nota_sinais', 'motivos', 'severidade',
+        'shipping', 'tags', 'health_ml',
+        // `skus` (quick 261010-rie) é OBRIGATÓRIO estar aqui: o 3º argumento é
+        // a lista do que o upsert() atualiza em CONFLITO. Sem ele a coluna só
+        // seria preenchida em linha NOVA, e as mais de 1 milhão de linhas já
+        // existentes nunca receberiam SKU — a busca por SKU ficaria
+        // permanentemente quebrada para o acervo inteiro, em silêncio, e o
+        // "sem backfill" do D-RIE-04 cairia junto.
+        'skus',
+        'nota_ecf', 'nota_sinais', 'motivos', 'severidade',
         'origem', 'rascunho_id', 'publicacao_vendas_qty', 'publicacao_desconsiderado',
         'coletado_em', 'coleta_erro', 'updated_at',
     ];
@@ -52,10 +60,17 @@ class MlAcervoService
      * produção (134-RESEARCH.md §"Code Examples"). `health` entra por causa
      * do D-21 (veredicto DISPONÍVEL da sondagem 134-01): vem de graça no
      * mesmo payload, sem custo extra.
+     *
+     * `seller_custom_field` entrou na quick 261010-rie: é o FALLBACK do SKU do
+     * anúncio (o caminho principal é o atributo `SELLER_SKU`, que já vem em
+     * `attributes`, e o SKU por variação vem em `variations` — as duas já eram
+     * pedidas). Mesmo payload, mesma chamada, custo zero — precedente:
+     * `ProdutosDaContaService::ATRIBUTOS`.
      */
     private const ATRIBUTOS_MULTIGET = 'id,status,sub_status,available_quantity,sold_quantity,'
         . 'shipping,listing_type_id,tags,catalog_listing,catalog_product_id,'
-        . 'variations,title,price,permalink,thumbnail,category_id,attributes,pictures,health';
+        . 'variations,title,price,permalink,thumbnail,category_id,attributes,pictures,health,'
+        . 'seller_custom_field';
 
     public function __construct(
         private MercadoLivreService $ml,
@@ -404,6 +419,11 @@ class MlAcervoService
                 $variations = is_array($item['variations'] ?? null) ? $item['variations'] : [];
                 $pictures = is_array($item['pictures'] ?? null) ? $item['pictures'] : [];
 
+                // Quick 261010-rie — SKUs distintos do anúncio (pai +
+                // variações). Lista vazia é dado: "coletado e sem SKU"
+                // (D-RIE-02), diferente do NULL de linha nunca coletada.
+                $skus = SkusDoAnuncio::extrair($item);
+
                 $linhas[] = [
                     'company_id' => $company->id,
                     'ml_item_id' => $mlItemId,
@@ -424,6 +444,10 @@ class MlAcervoService
                     'fotos_count' => count($pictures),
                     'has_variations' => $variations !== [],
                     'variations' => json_encode($variations),
+                    // json_encode à MÃO: upsert() não aplica casts (mesma
+                    // disciplina de `variations`/`tags`/`shipping` acima). O
+                    // cast 'skus' => 'array' do model serve para a LEITURA.
+                    'skus' => json_encode($skus),
                     'catalog_listing' => (bool) ($item['catalog_listing'] ?? false),
                     'catalog_product_id' => $item['catalog_product_id'] ?? null,
                     'shipping' => json_encode(is_array($item['shipping'] ?? null) ? $item['shipping'] : []),

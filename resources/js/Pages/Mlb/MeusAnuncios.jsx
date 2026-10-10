@@ -33,13 +33,21 @@ const SUBABAS = [
     { chave: 'rascunhos',  label: 'Rascunhos' },
 ];
 
-// Emenda 2026-08-10 ao D-03: default virou "acionaveis" (ativos + pausados) —
-// sob "só ativos", o chip "Pausado" da triagem nunca contava. 5 opções,
-// mesma whitelist fechada do backend (MlbAnuncioController::meus()).
+// Default "acionaveis" = ativos + pausados + EM REVISÃO, por duas emendas ao
+// D-03: 2026-08-10 trouxe `paused` (sob "só ativos", o chip "Pausado" da
+// triagem nunca contava) e 2026-10-10 trouxe `under_review`, o status em que o
+// anúncio recém-publicado nasce (quick 261010-nke) — fora do default, ele não
+// aparecia na tela nem na busca.
+//
+// 6 opções, mesma whitelist fechada do backend (MlbAnuncioController::meus()):
+// `em_revisao` entrou em 10/10/2026 (quick 261010-rie) a pedido do usuário,
+// para ISOLAR o que o Mercado Livre está revisando. Rótulos em pt-BR —
+// `under_review` nunca aparece na tela.
 const STATUS_OPCOES = [
     { valor: 'acionaveis', label: 'Acionáveis' },
     { valor: 'ativos',     label: 'Ativos' },
     { valor: 'pausados',   label: 'Pausados' },
+    { valor: 'em_revisao', label: 'Em revisão' },
     { valor: 'encerrados', label: 'Encerrados' },
     { valor: 'todos',      label: 'Todos' },
 ];
@@ -109,6 +117,77 @@ function SeloOrigem({ origem }) {
         <span title={info.title} className={cn('mt-1 inline-flex items-center gap-1 rounded-full border px-1 py-1 text-[11px] font-semibold uppercase tracking-wide', info.className)}>
             {info.label}
         </span>
+    );
+}
+
+// ─── SKU na linha do anúncio (quick 261010-rie) ───────────────────────────
+//
+// PODE HAVER MAIS DE UM: a linha é do ANÚNCIO, e em anúncio com variações o
+// SKU é POR VARIAÇÃO. Mostrar só o primeiro sem dizer que há outros faria um
+// SKU de variação passar por "o" SKU do anúncio — por isso o "+N".
+//
+// O filtro é DEFENSIVO de propósito: a lista vem do servidor e pode chegar em
+// formato inesperado (nula, ausente, objeto, item numérico). Render de tela
+// nunca pode virar "[object Object]" nem derrubar a página.
+export function CelulaSku({ skus }) {
+    const lista = (Array.isArray(skus) ? skus : [])
+        .filter((s) => typeof s === 'string' && s.trim() !== '')
+        .map((s) => s.trim());
+
+    if (lista.length === 0) return null;
+
+    const outros = lista.length - 1;
+
+    return (
+        <span
+            title={outros > 0
+                ? `${lista.length} SKUs (um por variação): ${lista.join(', ')}`
+                : `SKU ${lista[0]}`}
+            className="mt-1 block text-[11px] text-white/40"
+        >
+            SKU {lista[0]}{outros > 0 ? ` +${outros}` : ''}
+        </span>
+    );
+}
+
+// ─── Estado vazio da listagem (quick 261010-rie, RIE-04) ──────────────────
+//
+// SEM busca: o texto de sempre, literal — coleta existe, nada bate com o
+// filtro atual.
+//
+// COM busca: diz O QUE foi procurado e ONDE a busca procura, em vez de afirmar
+// que o anúncio não existe. E quando NENHUMA linha da empresa tem SKU coletado
+// ainda, acrescenta a ressalva: uma busca por SKU não acharia nada mesmo que o
+// anúncio exista. Sem essa linha a tela mentiria por omissão exatamente na
+// janela em que a varredura diária ainda não passou.
+export function VazioDaListagem({ busca, skuNaoColetado, acao }) {
+    const termo = typeof busca === 'string' ? busca.trim() : '';
+
+    if (termo === '') {
+        return (
+            <div className="card-ecf rounded-2xl p-10 text-center">
+                <p className="text-base font-semibold text-white">Esta empresa não tem anúncios ativos no Mercado Livre.</p>
+                <p className="mt-2 text-sm text-white/40">
+                    Publique um anúncio nas abas Individual ou Em massa, ou veja os pausados/encerrados no filtro de status.
+                </p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="card-ecf rounded-2xl p-10 text-center">
+            <p className="text-base font-semibold text-white">Nada encontrado para “{termo}”.</p>
+            <p className="mt-2 text-sm text-white/40">
+                A busca procura no título do anúncio, no código MLB e no SKU. Tente outro termo, ou troque o filtro de status.
+            </p>
+            {skuNaoColetado && (
+                <p className="mt-2 text-sm text-ecf-yellow/80">
+                    O SKU dos anúncios desta empresa ainda não foi coletado — por isso uma busca por SKU não acharia nada
+                    mesmo que o anúncio exista. Clique em Atualizar agora e busque de novo.
+                </p>
+            )}
+            {acao ? <div className="mt-4 flex justify-center">{acao}</div> : null}
+        </div>
     );
 }
 
@@ -194,6 +273,7 @@ function decodificarRotuloPaginacao(label) {
 
 export default function MeusAnuncios({
     empresa, conta, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
+    skuNaoColetado = false,
 }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [atualizando, setAtualizando] = useState(false);
@@ -389,7 +469,7 @@ export default function MeusAnuncios({
                                         <input
                                             value={busca}
                                             onChange={(e) => setBusca(e.target.value)}
-                                            placeholder="Buscar por título ou id…"
+                                            placeholder="Buscar por SKU, título ou código MLB…"
                                             className="w-full bg-transparent text-sm text-white placeholder-white/30 focus:outline-none"
                                         />
                                     </form>
@@ -409,13 +489,14 @@ export default function MeusAnuncios({
                                 </div>
 
                                 {itens.length === 0 ? (
-                                    // Estado vazio — coleta existe, mas nada bate com o filtro atual.
-                                    <div className="card-ecf rounded-2xl p-10 text-center">
-                                        <p className="text-base font-semibold text-white">Esta empresa não tem anúncios ativos no Mercado Livre.</p>
-                                        <p className="mt-2 text-sm text-white/40">
-                                            Publique um anúncio nas abas Individual ou Em massa, ou veja os pausados/encerrados no filtro de status.
-                                        </p>
-                                    </div>
+                                    // Estado vazio — coleta existe, mas nada bate com o filtro/busca
+                                    // atual. Com busca o texto explica em vez de dizer que o anúncio
+                                    // não existe (quick 261010-rie, RIE-04).
+                                    <VazioDaListagem
+                                        busca={filtros.busca}
+                                        skuNaoColetado={skuNaoColetado}
+                                        acao={<BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />}
+                                    />
                                 ) : (
                                     <>
                                         {/* Tabela de anúncios (D-01/D-04/D-12) — 8 colunas, ordenação
@@ -455,6 +536,7 @@ export default function MeusAnuncios({
                                                                         </span>
                                                                         <span className="min-w-0">
                                                                             <span className="line-clamp-2 block text-sm text-white" title={item.titulo}>{item.titulo}</span>
+                                                                            <CelulaSku skus={item.skus} />
                                                                             <SeloOrigem origem={item.origem} />
                                                                         </span>
                                                                     </button>

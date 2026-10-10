@@ -60,6 +60,9 @@ class MlAcervoItem extends Model
         'catalog_product_id',
         'shipping',
         'tags',
+        // Quick 261010-rie: lista dos SKUs distintos do anúncio (pai +
+        // variações). NULL = ainda não coletado; [] = coletado e sem SKU.
+        'skus',
         'nota_ecf',
         'nota_sinais',
         'motivos',
@@ -84,6 +87,11 @@ class MlAcervoItem extends Model
         'variations'                => 'array',
         'shipping'                  => 'array',
         'tags'                      => 'array',
+        // D-RIE-02: o cast serve para a LEITURA. NULL fica NULL (ainda não
+        // coletado) e [] fica [] (coletado, anúncio sem SKU) — os dois são
+        // estados diferentes e a tela diz coisas diferentes. Na ESCRITA do
+        // upsert() o cast não se aplica: lá o json_encode é à mão.
+        'skus'                      => 'array',
         'motivos'                   => 'array',
         'nota_sinais'               => 'array',
         'performance_acoes'         => 'array',

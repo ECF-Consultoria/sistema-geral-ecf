@@ -31,6 +31,10 @@ class AcervoTriagemService
      * agrupada dentro de where(function...): um orWhere solto sobe ao topo
      * do WHERE e anula o escopo por empresa (mesma pegadinha travada em
      * historico(), Fase 86).
+     *
+     * A busca cobre TRÊS campos desde 10/10/2026 (quick 261010-rie): o nome
+     * do anúncio (`title`), o código MLB (`ml_item_id`) e o SKU (`skus`) —
+     * os três identificadores que o usuário tem na mão.
      */
     public function escopo(Company $company, string $busca, string $statusFiltro): Builder
     {
@@ -63,19 +67,59 @@ class AcervoTriagemService
         // `severidade`/`nota_ecf`, agnóstica de status. Um `under_review` sem
         // problema de ficha ordena no fim da lista, como qualquer item saudável
         // — quem precisa achá-lo rápido usa a busca, que agora o alcança.
+        //
+        // ─── 10/10/2026: `em_revisao` ACRESCENTADO (quick 261010-rie) ─────────
+        //
+        // POR QUÊ: fala literal do usuário — *"Em revisão quero poder isolar"*.
+        // Desde a quick 261010-nke o `under_review` só aparecia DILUÍDO dentro
+        // de `acionaveis`, misturado com ativos e pausados; não havia como ver
+        // só o que o Mercado Livre está revisando.
+        //
+        // É EMENDA ADITIVA: `acionaveis` segue sendo o default e segue cobrindo
+        // os TRÊS status. As emendas de 10/08/2026 (`paused`) e de 10/10/2026
+        // (`under_review`) ficam INTACTAS — desfazer qualquer uma delas deixaria
+        // o chip correspondente permanentemente em 0.
+        //
+        // IMPACTO NOS CHIPS (D-09): com `em_revisao` selecionado, o universo da
+        // triagem são só os `under_review`. `AnuncioSaudeService::triagem()` só
+        // carimba `MOTIVO_PAUSADO` quando `status === 'paused'` e
+        // `MOTIVO_SEM_ESTOQUE` quando `status === 'active'` — logo esses dois
+        // chips ficam NECESSARIAMENTE em 0 neste filtro, e isso é a VERDADE
+        // daquele universo, não um bug. Ficha/foto/catálogo continuam contando.
+        // A contagem dos outros filtros não muda: o arm novo não altera nenhum
+        // existente.
+        //
+        // IMPACTO NA ORDENAÇÃO (D-12): nenhum. A ordenação é por
+        // `severidade`/`nota_ecf`/`ml_item_id`, agnóstica de status.
         $statusColunas = match ($statusFiltro) {
             'acionaveis' => ['active', 'paused', 'under_review'],
             'ativos'     => ['active'],
             'pausados'   => ['paused'],
+            'em_revisao' => ['under_review'],
             'encerrados' => ['closed'],
             default      => null, // 'todos' não filtra
         };
 
+        // `skus` é texto JSON (`["ABC-1","XYZ"]`) lido pelo cast `array` do
+        // model. Um termo que contenha a PONTUAÇÃO do próprio JSON (`"`, `[`,
+        // `]`) casaria com TODA linha já coletada e devolveria o acervo inteiro
+        // como se fosse resultado de busca. Nesses casos o ramo do SKU é
+        // pulado; título e código MLB seguem valendo normalmente.
+        $buscaCabeNoJson = $busca !== '' && ! preg_match('/["\[\]]/', $busca);
+
         return MlAcervoItem::where('company_id', $company->id)
-            ->when($busca !== '', function ($q) use ($busca) {
-                $q->where(function ($s) use ($busca) {
+            ->when($busca !== '', function ($q) use ($busca, $buscaCabeNoJson) {
+                // Os três identificadores que o usuário tem na mão: nome do
+                // anúncio, código MLB e SKU (quick 261010-rie). O AGRUPAMENTO
+                // é o que preserva o escopo por empresa — um orWhere solto
+                // sobe ao topo do WHERE e anula o company_id (T-134-01).
+                $q->where(function ($s) use ($busca, $buscaCabeNoJson) {
                     $s->where('title', 'like', "%{$busca}%")
                       ->orWhere('ml_item_id', 'like', "%{$busca}%");
+
+                    if ($buscaCabeNoJson) {
+                        $s->orWhere('skus', 'like', "%{$busca}%");
+                    }
                 });
             })
             ->when($statusColunas !== null, fn ($q) => $q->whereIn('status', $statusColunas));

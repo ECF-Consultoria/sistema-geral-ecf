@@ -471,8 +471,16 @@ class MlbAnuncioController extends Controller
         //
         // A lista fechada de valores aceitos abaixo NÃO muda: o select da tela
         // continua com as mesmas 5 opções e nada em `resources/` foi tocado.
+        //
+        // ─── Emenda de 2026-10-10 (quick 261010-rie) ──────────────────────
+        // `em_revisao` é opção NOVA na lista fechada, a pedido do usuário
+        // (*"Em revisão quero poder isolar"*): isola `under_review`, que desde
+        // a quick 261010-nke só aparecia diluído dentro de `acionaveis`. A
+        // lista passa a ter 6 valores; `acionaveis` SEGUE sendo o default e
+        // segue cobrindo `active` + `paused` + `under_review`. O rótulo na tela
+        // é "Em revisão" — `under_review` nunca aparece para o usuário.
         $statusFiltro = (string) $request->query('status', 'acionaveis');
-        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'encerrados', 'todos'], true)) {
+        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'em_revisao', 'encerrados', 'todos'], true)) {
             $statusFiltro = 'acionaveis';
         }
 
@@ -516,6 +524,11 @@ class MlbAnuncioController extends Controller
             'origem'              => $item->origem,
             'rascunho_id'         => $item->rascunho_id,
             'listing_tier'        => $item->listing_type_id,
+            // Quick 261010-rie: os SKUs do anúncio (pai + variações). Array
+            // SEMPRE, nunca null — a linha da tabela só precisa mostrar, e o
+            // aviso de "SKU ainda não coletado" é a prop `skuNaoColetado`
+            // abaixo, calculada uma vez para a empresa inteira.
+            'skus'                => $item->skus ?? [],
             'status'              => $item->status,
             'estoque'             => $item->available_quantity,
             'vendas'              => $item->sold_quantity,
@@ -550,6 +563,21 @@ class MlbAnuncioController extends Controller
         // Visão geral, mesmos números de antes. ───
         $triagem   = $acervoTriagem->triagem($company, $busca, $statusFiltro);
         $defasagem = $acervoTriagem->defasagem($company);
+
+        // ─── RIE-04 (quick 261010-rie): o vazio da busca explica, não mente ──
+        //
+        // POR QUE EXISTE: a busca passou a cobrir SKU, mas a coluna `skus` só é
+        // preenchida pela varredura diária (D-RIE-04, sem backfill). Na janela
+        // em que a empresa ainda não foi varrida, buscar por SKU devolveria
+        // "não achei" — como se o anúncio não existisse. É mentira por omissão.
+        // Com esta prop a tela diz que o SKU ainda não foi coletado e oferece
+        // o "Atualizar agora", que já existe e cobre a empresa na hora.
+        //
+        // POR QUE É BARATA: `$anuncios->total()` vem do `count` que o
+        // `paginate()` já fez (de graça), e o `exists()` só roda quando a busca
+        // não achou NADA — nunca no caminho normal da tela.
+        $skuNaoColetado = $busca !== '' && $anuncios->total() === 0
+            && ! MlAcervoItem::where('company_id', $company->id)->whereNotNull('skus')->exists();
 
         // Fase 134 Plano 09: sub-aba Rascunhos — a tela oficial de rascunhos, com
         // TODOS os registros da empresa (não só os 50 mais recentes do wizard).
@@ -588,6 +616,7 @@ class MlbAnuncioController extends Controller
             'rascunhos'         => $rascunhosProp,
             'triagem'           => $triagem,
             'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo, 'com_venda' => $comVenda],
+            'skuNaoColetado'    => $skuNaoColetado,
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
