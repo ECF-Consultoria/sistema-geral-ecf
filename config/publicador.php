@@ -131,8 +131,10 @@ return [
         // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
         // dentro da espera viram uma sincronização só.
         'sincronizar_atraso_s' => (int) env('PUBLICADOR_SINCRONIZAR_ATRASO_S', 15),
-        // Espera da IA depois do último save do produto; um save novo dentro dela adia (debounce).
-        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 10),
+        // Espera da IA depois do último save do produto; um save novo dentro dela adia (debounce). Decisão do
+        // usuário (10/10/2026): 2 minutos — "se não mexer lá novamente, espera dois minutos e já pode ir gerando
+        // tudo" (era 10; 10 perdia eficiência).
+        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 2),
         // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
         // Passou disso, o produto só é sincronizado e o log diz por quê.
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_PREPARO_IA_LIMITE_DIARIO', 60),

@@ -57,7 +57,7 @@ class PreparoIaAgenda
                 return;
             }
 
-            $atraso = max(0, (int) config('publicador.preparo_ia.atraso_min', 10));
+            $atraso = max(0, (int) config('publicador.preparo_ia.atraso_min', 2));
             $atrasoSincronizar = max(0, (int) config('publicador.preparo_ia.sincronizar_atraso_s', 15));
             $ids = [];
             foreach ($produtoIds as $id) {

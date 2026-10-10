@@ -16,12 +16,12 @@ use Illuminate\Support\Facades\Log;
  * O cliente salvou o produto no Portal e o produto chega ao Publicador LOGO (decisão do usuário, 10/10/2026: "o
  * Publicador ou vai instantâneo ou na hora de sincronizar"): segundos depois do save, um Sincronizar SÓ deste
  * produto, com as regras do botão "Sincronizar do Portal" e SEM IA — título, Modelo e descrição continuam
- * esperando o cliente parar de mexer (`PrepararProdutoNoPublicadorJob`, 10 minutos). Quem decide é o
+ * esperando o cliente parar de mexer (`PrepararProdutoNoPublicadorJob`, 2 minutos sem save). Quem decide é o
  * `PreparoIaDoRascunhoService::sincronizarAgora`.
  *
  * Apaga a marca de "já agendado" (`PreparoIaAgenda::chaveDoSincronizar`) ANTES de sincronizar: um save que chegar
  * durante a sincronização agenda outra, e nenhum save fica de fora. Fila `default` (não é clique de pessoa no
- * Publicador), sem nova tentativa: o preparo dos 10 minutos sincroniza de novo.
+ * Publicador), sem nova tentativa: o preparo da IA sincroniza de novo antes de gerar.
  */
 class SincronizarProdutoDoPortalJob implements ShouldQueue
 {

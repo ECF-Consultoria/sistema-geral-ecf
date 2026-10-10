@@ -739,7 +739,11 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
 - **Gatilho e debounce.** `PreparoIaAgenda::aoSalvar` é chamado por gravar linhas (só produto criado/mudado — a
   importação da planilha passa por `ProdutoCadastroService::gravarLinhas`), ficha técnica, descrição e imagens
   (enviar/excluir/ordenar) no `PortalEstruturaProdutosController`. Cada save grava `publicador:preparo:marca:{produto}`
-  (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` (10). O Job que acorda com marca diferente
+  (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` — **2 minutos** desde 10/10/2026 (era 10;
+  o usuário: "se não mexer lá novamente, espera dois minutos e já pode ir gerando tudo", 10 perdia eficiência). Com a
+  espera curta, quem pausa no meio da ficha pode ganhar uma geração antes de terminar: a IA só roda com categoria +
+  obrigatórios, regera quando os fatos mudam (hash) e só escreve onde ainda é dela; o teto diário por empresa (60)
+  segura o custo. O Job que acorda com marca diferente
   sai (`superado`): numa rajada de saves só o último age. Fila `sync` NÃO agenda (rodaria dentro do save do cliente).
   Exclusão de variação não agenda (o Sincronizar nunca remove cor).
 - **O produto chega ao Publicador LOGO; só a IA espera (10/10/2026).** O usuário corrigiu: os "10 minutos" que ele
@@ -749,8 +753,9 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   aberto, na fila de publicação, "Anunciar por IA" → `ocupado`, não toca), um por empresa de cada vez (`Cache::lock`
   com `block(120)`: a planilha agenda dezenas; dois Sincronizar do mesmo Combo esbarram nos uniques). Saves seguidos
   viram UM Job: `Cache::add` de `publicador:preparo:sincronizar:{produto}` (5 min) e o Job a APAGA ao começar — save
-  que chega durante a sincronização agenda outra, nenhum fica de fora. O preparo dos 10 minutos continua igual e
-  sincroniza de novo antes da IA (idempotente). Não confundir as duas esperas ao explicar o fluxo.
+  que chega durante a sincronização agenda outra, nenhum fica de fora. O preparo da IA (2 min sem save) continua igual
+  e sincroniza de novo antes de gerar (idempotente). Não confundir as esperas ao explicar o fluxo: ~15 s até o
+  Publicador, 2 min sem save até a IA, e as rodadas da fila (§20) só na publicação.
 - **Sincroniza SÓ o produto**: `PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)` filtra as ofertas
   Simples das variações dele + as compostas que o têm como componente; as regras são as mesmas do botão (D-05
   refinado). Não grava o "sincronizado em" da empresa. O preenchimento usa a MESMA trava do Job do botão

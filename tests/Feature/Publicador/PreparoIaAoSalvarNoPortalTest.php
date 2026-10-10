@@ -248,8 +248,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
         Queue::assertPushedOn('default', PrepararProdutoNoPublicadorJob::class);
+        // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
+        $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
-            && now()->diffInMinutes($j->delay, true) >= 9);
+            && now()->diffInSeconds($j->delay, true) > 90 && now()->diffInSeconds($j->delay, true) <= 120);
 
         $jobs = Queue::pushed(PrepararProdutoNoPublicadorJob::class)->values();
         $this->rodados->attach($jobs[0]);
@@ -271,7 +273,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushedOn('default', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
             && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
-        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInMinutes($j->delay, true) >= 9);
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
 
         Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
 

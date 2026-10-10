@@ -158,7 +158,7 @@ class PreparoIaDoRascunhoService
      * O produto salvo no Portal chega ao Publicador LOGO (10/10/2026, `SincronizarProdutoDoPortalJob`): as MESMAS
      * travas e o MESMO Sincronizar do `preparar`, sem o debounce e sem a IA (que segue esperando o cliente parar de
      * mexer). Produto com o editor aberto, agendado na fila de publicação ou com "Anunciar por IA" rodando NÃO é
-     * tocado agora: o preparo dos 10 minutos espera e tenta de novo.
+     * tocado agora: o preparo (2 minutos depois do último save) espera e tenta de novo.
      *
      * Um destes por empresa de cada vez (`block`): a planilha que salva 70 produtos agenda 70 deles, e dois
      * Sincronizar do mesmo Combo/Kit ao mesmo tempo esbarrariam nos uniques.
