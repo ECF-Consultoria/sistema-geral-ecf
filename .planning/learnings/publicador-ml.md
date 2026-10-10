@@ -954,8 +954,16 @@ ajustável; pausar/retomar/cancelar. O que não se deduz do código:
   `VisaoRapidaDoLoteTest` mede, com kit da Fase N no meio). O rascunho é remontado em memória (só alvos, variantes,
   SKU, preço, estoque, valores de eixo) a partir do eager load; a última conferência vem SEM `respostas_ml` (a coluna
   pesada que a lista do Publicador carrega inteira). Os efetivos saem de `Fila/EfetivosEmLote`, o `daProduto()` em lote
-  (uma `pagina()` por empresa); o `VisaoRapidaDoLoteTest::test_efetivos_em_lote_iguais_*` compara `titulos/precos/mlbs/precos_por_variante` com o `DadosEfetivosService` produto a produto (simples, agrupado,
-  kit, sem oferta). Mudou a regra de lá → este teste quebra; as chaves novas da promoção (§19) NÃO estão espelhadas.
+  (uma `pagina()` por empresa); o `VisaoRapidaDoLoteTest::test_efetivos_em_lote_iguais_*` compara o ARRAY INTEIRO
+  (`assertSame`: chaves, valores e ORDEM — `promocoes`, `sem_frete` e os `_por_variante` da §19 inclusive) com o
+  `DadosEfetivosService` produto a produto (simples, agrupado, kit, sem oferta). Chave nova no `daOferta()` → este
+  teste quebra até o `EfetivosEmLote` espelhar; no kit, o 1º Combo de cada SKU vence nos três mapas juntos.
+- **Bloqueios ANTES de conferir** (V-TIT-04 títulos iguais, V-SAL-08 preço do Portal sem frete): a visão rápida lê
+  `ValidadorRascunho::bloqueiosSemSchema` (as MESMAS funções do `validar()`, sem schema nem conta — o
+  `BloqueiosSemSchemaTest` compara os dois), sobre o snapshot do `comEfetivosDe` (é ele que grava o `portal` e o
+  `preco_do_portal` que o V-SAL-08 lê). Quem tem bloqueio não agenda, mesmo com conferência OK de antes da regra, e o
+  agendador relê na hora de publicar (`ResumoRapidoService::linhaDe`) — bloqueio que surgiu depois vira `precisa_revisar`.
+  Regra nova que se sabe sem o ML entra ali, não numa cópia na tela.
 - **Margem estimada** = preço − custo − frete − (comissão% + imposto%) × preço, por cor e por tipo, com a comissão e o
   imposto da linha da Precificação (exceção do produto ou padrão da empresa). Sem custo não há margem; sem frete a
   margem sai marcada `sem_frete` (frete esquecido não some calado). Custo/frete da cor = a oferta casada pelo SKU da
