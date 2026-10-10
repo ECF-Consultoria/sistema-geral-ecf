@@ -1032,6 +1032,10 @@ pausar/retomar/cancelar. O que não se deduz do código:
 - **Deploy:** `migrate --force` (2 migrations: 2 CREATE + 1 ALTER aditivo na tabela que acabou de nascer); `queue:restart` (`ConferirEmLoteJob` na `high`; os de imagem na
   `creative`); `npm run build`; **o cron `* * * * * php artisan schedule:run` precisa rodar na VPS** — sem ele a fila
   nunca anda (o `onOneServer` usa a trava do cache: Redis em produção). Antes de agendar de verdade, só a #459.
+  **Deployado 10/10/2026 `827d5a96`** (4 migrations, lote 175). Um `production.ERROR` 1146 "pub_fila_publicacao_itens
+  doesn't exist" + "Scheduled command publicador:fila-publicacao failed" às 11:14 é da JANELA do deploy: o `deploy.sh`
+  troca o código antes do `migrate`, e o `schedule:run` daquele minuto já viu o comando novo sem a tabela. Uma vez só;
+  depois do `migrate` roda com exit 0. Não é regressão — só investigar se repetir depois do deploy.
 - Testes que dependem de `Storage::fake` (`MlbPublicadorAcessoTest`, `CapaDoKitTest`) falharam UMA vez rodando ao lado de
   outro phpunit e passaram sozinhos. JS: `estrutura-grade-glide` "Características secundárias nasce recolhido" é falha
   antiga (o `bbb67657` abriu as secundárias e o teste não acompanhou), não desta entrega.
