@@ -60,7 +60,7 @@ class RegrasDaMontagemTest extends TestCase
 
         // Combo, Kit e Combit de 2: as MESMAS funções das sugestões.
         $this->assertSame(NomesSugeridos::combo('Cadeira Polo', 'CAD', 'Natural', 4, ['nome' => 'Cadeira', 'plural' => 'Cadeiras']), RegrasDaMontagem::nomeado([$cadeira(4)]));
-        $this->assertSame(['nome' => 'Kit 4 Cadeiras Polo — Natural', 'sku' => 'CAD-CB4'], RegrasDaMontagem::nomeado([$cadeira(4)]));
+        $this->assertSame(['nome' => 'Combo 4 Cadeiras Polo — Natural', 'sku' => 'CAD-CB4'], RegrasDaMontagem::nomeado([$cadeira(4)]));
         $this->assertSame(['nome' => 'Mesa Polo + Cadeira Polo — Natural', 'sku' => 'KT-MESA-CAD'], RegrasDaMontagem::nomeado([$mesa, $cadeira(1)]));
         $this->assertSame(['nome' => 'Mesa Polo + 4 Cadeiras — Natural', 'sku' => 'CT4-MESA-CAD'], RegrasDaMontagem::nomeado([$mesa, $cadeira(4)]));
         $this->assertSame(['nome' => 'Mesa Polo + 4 Cadeiras — Natural', 'sku' => 'CT4-MESA-CAD'], RegrasDaMontagem::nomeado([$cadeira(4), $mesa]), 'o fixo vem antes no nome');

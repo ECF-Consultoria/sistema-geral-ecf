@@ -16,7 +16,7 @@ import { DialogTitle } from '@radix-ui/react-dialog';
 
 const FASES = [
     ['Fase 1 · Simples', '1 unidade do produto', '1 Cadeira 01', 'CAD-01'],
-    ['Fase 2 · Combo', 'Mesmo produto, mais unidades', 'Kit 2 Cadeiras 01', 'CAD-01-CB2'],
+    ['Fase 2 · Combo', 'Mesmo produto, mais unidades', 'Combo 2 Cadeiras 01', 'CAD-01-CB2'],
     ['Fase 3 · Kit', 'Produtos diferentes juntos', 'Mesa Marfim + Cadeira 01', 'KT-MSA-MR-CAD-01'],
     ['Fase 4 · Combit', 'Kit com mais unidades de um item', 'Mesa Marfim + 4 Cadeiras', 'CT4-MSA-MR-CAD-01'],
 ];

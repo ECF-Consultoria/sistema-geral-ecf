@@ -222,7 +222,7 @@ test('o "Como funciona" mostra os exemplos no padrão do Planejamento, não no d
     assert.doesNotMatch(aula, /\+CAD-01-KIT|-KIT'|-CBT\d|\bCBT\b/);
     // Combo `-CB{n}`, Kit `KT-…`, Combit `CT{n}-…` (o NomesSugeridosTest confere contra a função).
     for (const [nome, sku] of [
-        ['Kit 2 Cadeiras 01', 'CAD-01-CB2'],
+        ['Combo 2 Cadeiras 01', 'CAD-01-CB2'],
         ['Mesa Marfim + Cadeira 01', 'KT-MSA-MR-CAD-01'],
         ['Mesa Marfim + 4 Cadeiras', 'CT4-MSA-MR-CAD-01'],
     ]) {
