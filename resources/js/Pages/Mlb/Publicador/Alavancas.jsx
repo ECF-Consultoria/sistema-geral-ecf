@@ -8,6 +8,7 @@ import AbaCupons from '@/Components/Mlb/Alavancas/AbaCupons';
 import AbaPublicidade from '@/Components/Mlb/Alavancas/AbaPublicidade';
 import AbaAtacado from '@/Components/Mlb/Alavancas/AbaAtacado';
 import Historico from '@/Components/Mlb/Alavancas/Historico';
+import PainelDoAnuncio from '@/Components/Mlb/Alavancas/PainelDoAnuncio';
 import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
 import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
@@ -30,10 +31,13 @@ const ABA_INICIAL = () => {
 /**
  * A área Alavancas da empresa: promoções, cupons, publicidade e atacado da conta do Mercado Livre.
  * Conta sem token não monta nenhum leitor; conta não liberada só vê e analisa.
+ * Vinda da fila de publicados (`?item=MLB…`, 09/10/2026), o anúncio aparece num painel no topo.
  */
 export default function Alavancas({ empresa, alavancas }) {
     const [aba, setAba] = useState(ABA_INICIAL);
     const [verHistorico, setVerHistorico] = useState(false);
+    // O servidor só devolve `item` no formato MLB…; fechar o painel tira o anúncio da URL.
+    const [item, setItem] = useState(typeof alavancas.item === 'string' ? alavancas.item : null);
 
     const conta = empresa.chave;
 
@@ -45,6 +49,13 @@ export default function Alavancas({ empresa, alavancas }) {
         window.history.replaceState(window.history.state, '', url);
     }
 
+    function fecharAnuncio() {
+        setItem(null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('item');
+        window.history.replaceState(window.history.state, '', url);
+    }
+
     return (
         <AppLayout title={`Alavancas — ${empresa.nome}`}>
             <div className="mx-auto max-w-[1240px] px-8 py-8">
@@ -52,7 +63,7 @@ export default function Alavancas({ empresa, alavancas }) {
                 <BarraDaConta empresa={empresa} liberada={alavancas.liberada} />
 
                 <div className="mb-6">
-                    <AbasDaConta aba="alavancas" conta={conta} companyId={empresa.company_id} />
+                    <AbasDaConta aba="alavancas" conta={conta} companyId={empresa.company_id} contagemAlavancas={alavancas.tarefas_abertas ?? null} />
                 </div>
 
                 {! alavancas.tem_conta ? (
@@ -67,6 +78,12 @@ export default function Alavancas({ empresa, alavancas }) {
                     <>
                         {! alavancas.liberada && (
                             <AvisoAlavancasTravadas variante="faixa" className="mb-6" />
+                        )}
+
+                        {item && (
+                            <div className="mb-6">
+                                <PainelDoAnuncio key={item} conta={conta} item={item} onAbrirAba={trocarAba} onFechar={fecharAnuncio} />
+                            </div>
                         )}
 
                         <div className="mb-6">

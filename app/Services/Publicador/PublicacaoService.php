@@ -13,6 +13,7 @@ use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaAnuncioService;
+use App\Services\Publicador\Tarefas\TarefasPosPublicacao;
 use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
@@ -597,6 +598,23 @@ class PublicacaoService
         $p->update(['status' => $status, 'concluida_em' => now()]);
         $r->update(['status' => [PubPublicacao::PUBLISHED => PubRascunho::PUBLISHED, PubPublicacao::PARTIALLY_PUBLISHED => PubRascunho::PARTIALLY_PUBLISHED, PubPublicacao::FAILED => PubRascunho::FAILED][$status]]);
         Log::info("[Publicador] publicação {$p->id} do rascunho {$r->id}: {$status} ({$criados->count()} de {$itens->count()} item(ns) criados).");
+
+        $this->abrirTarefaPosPublicacao($p);
+    }
+
+    /**
+     * 09/10/2026 — publicou: nasce a tarefa das alavancas para o colaborador que as usa (só com os
+     * itens CRIADOS nesta publicação; sem item criado, nada). O anúncio já está no ML: falhar aqui
+     * NUNCA desfaz nem repete a publicação — só fica no log, e o `publicador:tarefas-retroativas`
+     * abre depois.
+     */
+    private function abrirTarefaPosPublicacao(PubPublicacao $p): void
+    {
+        try {
+            app(TarefasPosPublicacao::class)->abrir($p->fresh());
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas a tarefa pós-publicação não abriu: {$e->getMessage()}");
+        }
     }
 
     /** O MLB volta para a linha dele na aba Anúncios: o 1º item criado de cada tipo completa o planejado. */
@@ -651,6 +669,10 @@ class PublicacaoService
         $p->update(['status' => PubPublicacao::FAILED, 'concluida_em' => now(), 'conta_snapshot' => [...(array) $p->conta_snapshot, 'motivo' => $motivo]]);
         $this->concluirParcialSeHouver($p, $r);
         Log::warning("[Publicador] publicação {$p->id} do rascunho {$r->id} interrompida: {$motivo}");
+
+        // Interrompida DEPOIS de criar algum item (conta tirada da lista ou Job morto no meio): o que
+        // foi criado está no ar e precisa das alavancas. Sem item criado, o `abrir()` não faz nada.
+        $this->abrirTarefaPosPublicacao($p);
     }
 
     private function concluirParcialSeHouver(PubPublicacao $p, PubRascunho $r): void

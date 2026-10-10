@@ -8,6 +8,7 @@ use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
+use App\Models\PubTarefa;
 use App\Models\User;
 use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\ContasLiberadas;
@@ -490,6 +491,18 @@ class PainelVisaoGeralService
                     'destino' => ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $companyId, 'motivo' => $motivo]],
                 ];
             }
+        }
+
+        // 09/10/2026 — tarefas pós-publicação: o que já foi publicado e ainda espera as alavancas
+        // (Central de Promoções, ADS, atacado, cupom, afiliados, lista de transmissão). Acrescentada
+        // no FIM de propósito: a ordem fixa das linhas acima é a do handoff e tem teste.
+        $aguardando = PubTarefa::abertasDaConta($alvo['mlb_empresa'] ?? null, $alvo['company'] ?? null);
+        if ($aguardando > 0) {
+            $linhas[] = [
+                'texto' => 'Publicados aguardando alavancas',
+                'numero' => $aguardando,
+                'destino' => ['rota' => 'mlb.anuncios.publicador.tarefas.index', 'params' => ['conta' => $alvo['chave']]],
+            ];
         }
 
         return $linhas;

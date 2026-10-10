@@ -14,7 +14,7 @@ const TITLE_SEM_COMPANY = 'Disponível só para empresas cadastradas no sistema'
  * Configurações NUNCA passam por D23 (ficam sempre habilitadas, mesmo sem
  * Company — tratam "sem Company" por dentro, não aqui).
  */
-export default function AbasDaConta({ aba, conta, companyId = null, contagemProdutos = null, subPublicacoes = null }) {
+export default function AbasDaConta({ aba, conta, companyId = null, contagemProdutos = null, subPublicacoes = null, contagemAlavancas = null }) {
     const contaSegura = conta ?? null;
     const companyIdSeguro = companyId ?? null;
 
@@ -59,6 +59,16 @@ export default function AbasDaConta({ aba, conta, companyId = null, contagemProd
                 {item.rotulo}
                 {item.chave === 'produtos' && contagemProdutos !== null && (
                     <span className="font-mono text-[11px] tabular-nums">{contagemProdutos}</span>
+                )}
+                {/* 09/10/2026 — publicados desta conta aguardando as alavancas (tarefas pós-publicação).
+                    Opcional: só aparece com número > 0 vindo da página. */}
+                {item.chave === 'alavancas' && typeof contagemAlavancas === 'number' && contagemAlavancas > 0 && (
+                    <span
+                        title={contagemAlavancas === 1 ? '1 publicado aguardando alavancas' : `${contagemAlavancas} publicados aguardando alavancas`}
+                        className="rounded-md border border-amber-400/40 bg-amber-400/10 px-1.5 font-mono text-[11px] tabular-nums text-amber-300"
+                    >
+                        {contagemAlavancas}
+                    </span>
                 )}
             </button>
         );

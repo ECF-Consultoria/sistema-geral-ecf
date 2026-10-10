@@ -39,4 +39,7 @@ enum Categoria: string
 
     /** Movimento em um chamado para o time dev: novo, transferido, respondido, resolvido (Chamados, 23/09/2026). */
     case CHAMADO        = 'chamado';
+
+    /** Produto publicado pelo Publicador aguardando as alavancas — a tarefa pós-publicação (09/10/2026). */
+    case TAREFA_ALAVANCAS = 'tarefa_alavancas';
 }

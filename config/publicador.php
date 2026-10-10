@@ -140,6 +140,25 @@ return [
         'max_adiamentos' => 24,
     ],
 
+    // ═══ Tarefas pós-publicação (09/10/2026) ═══
+    // Publicou pelo Publicador → nasce a tarefa das alavancas para outro colaborador (learnings
+    // publicador-ml §17). O responsável padrão NÃO mora aqui: é `configuracoes.publicador_alavancas_responsavel`
+    // (o admin escolhe na própria fila, sem deploy).
+    'tarefas' => [
+        // "O ideal é D+0, no máximo D+1" (reunião de 09/10): o prazo é D+1 útil.
+        'prazo_dias_uteis' => 1,
+    ],
+
+    // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.
+    // Carnaval é ponto facultativo nacional: entra porque a ECF não trabalha (tirar daqui se mudar).
+    // Datas de outros anos: acrescentar aqui ou em PUBLICADOR_FERIADOS (separadas por vírgula).
+    'feriados' => array_values(array_unique(array_filter(array_map('trim', [
+        '2026-02-16', '2026-02-17', '2026-04-03', '2026-06-04', // Carnaval, Sexta-feira Santa, Corpus Christi
+        '2027-02-08', '2027-02-09', '2027-03-26', '2027-05-27',
+        '2028-02-28', '2028-02-29', '2028-04-14', '2028-06-15',
+        ...explode(',', (string) env('PUBLICADOR_FERIADOS', '')),
+    ])))),
+
     // Só a conferência visual local (plano 166-16) aponta para um servidor de mentira;
     // em produção o cliente IGNORA este valor e usa o host oficial (plano 166-02).
     'ml_api_base' => env('PUBLICADOR_ML_API_BASE', 'https://api.mercadolibre.com'),

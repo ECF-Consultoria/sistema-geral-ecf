@@ -6,6 +6,7 @@ use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
 use App\Models\CreativeIdentidade;
 use App\Models\MlAnuncioRascunho;
 use App\Models\PubProduto;
+use App\Models\PubTarefa;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\AcervoTriagemService;
@@ -174,7 +175,11 @@ class MlbPublicadorEntradaController extends Controller
                     ? route('mlb.anuncios.wizard', ['company' => $companyId])
                     : null,
             ],
-            'abas' => ['company_id' => $companyId],
+            'abas' => [
+                'company_id' => $companyId,
+                // 09/10/2026 — contagem da aba Alavancas: publicados desta conta aguardando as alavancas.
+                'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
+            ],
         ]);
     }
 
@@ -356,7 +361,11 @@ class MlbPublicadorEntradaController extends Controller
                 'cliente' => $publicados['cliente'],
                 'origem_antiga' => $publicados['origem_antiga'],
             ],
-            'abas' => ['company_id' => $company?->id],
+            'abas' => [
+                'company_id' => $company?->id,
+                // 09/10/2026 — contagem da aba Alavancas (tarefas pós-publicação abertas da conta).
+                'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $company),
+            ],
         ]);
     }
 

@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router, usePage } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpDown, BookOpenCheck, ChevronLeft, ChevronRight, History, PlugZap, Plus, Rocket, Search, Boxes } from 'lucide-react';
+import { ArrowUpDown, BookOpenCheck, ChevronLeft, ChevronRight, History, PlugZap, Plus, Rocket, Search, Boxes, Zap } from 'lucide-react';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
@@ -147,8 +147,10 @@ export default function AnunciosEmpresas({
     paginacao = { pagina: 1, por_pagina: 50, total: 0, de: 0, ate: 0 },
     filtros = { busca: '', filtro: 'todos' },
 }) {
-    const { auth } = usePage().props;
+    const { auth, tarefas_alavancas: tarefasAlavancasBruto } = usePage().props;
     const userId = auth?.user?.id ?? null;
+    // Badge do botão "Aguardando alavancas" (prop compartilhada; ausente = 0).
+    const tarefasAlavancas = numeroSeguro(tarefasAlavancasBruto) ?? 0;
 
     // ⚠️ `= []` / `= {}` na assinatura só cobrem `undefined`. O servidor pode
     // mandar `null` (e um payload estranho pode mandar string). Normalizar ANTES
@@ -279,25 +281,44 @@ export default function AnunciosEmpresas({
                         </div>
                     </div>
 
-                    {/*
-                      Decisão 3 do plano: há DOIS destinos possíveis no sistema
-                      (cadastrar a empresa no Comercial e conectar o OAuth de uma já
-                      cadastrada) e o usuário ainda não escolheu qual é este botão.
-                      Desabilitado com "Em breve" — o mesmo vocabulário que o próprio
-                      mockup usa — em vez de escolher por ele.
-                    */}
-                    <button
-                        type="button"
-                        disabled
-                        title="Ainda não definido por onde esta tela conecta uma empresa nova."
-                        className={cn(BOTAO_SECUNDARIO, 'cursor-not-allowed opacity-60')}
-                    >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                        Conectar nova empresa
-                        <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/40">
-                            Em breve
-                        </span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* 09/10/2026 — a fila das tarefas pós-publicação ("Publicados
+                            aguardando alavancas"); o número é o mesmo do menu: abertas
+                            minhas ou de ninguém. */}
+                        <button
+                            type="button"
+                            onClick={() => router.get(route('mlb.anuncios.publicador.tarefas.index'))}
+                            className={BOTAO_SECUNDARIO}
+                        >
+                            <Zap className="h-4 w-4" aria-hidden="true" />
+                            Aguardando alavancas
+                            {tarefasAlavancas > 0 && (
+                                <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-amber-300">
+                                    {tarefasAlavancas}
+                                </span>
+                            )}
+                        </button>
+
+                        {/*
+                          Decisão 3 do plano: há DOIS destinos possíveis no sistema
+                          (cadastrar a empresa no Comercial e conectar o OAuth de uma já
+                          cadastrada) e o usuário ainda não escolheu qual é este botão.
+                          Desabilitado com "Em breve" — o mesmo vocabulário que o próprio
+                          mockup usa — em vez de escolher por ele.
+                        */}
+                        <button
+                            type="button"
+                            disabled
+                            title="Ainda não definido por onde esta tela conecta uma empresa nova."
+                            className={cn(BOTAO_SECUNDARIO, 'cursor-not-allowed opacity-60')}
+                        >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Conectar nova empresa
+                            <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-bold text-white/40">
+                                Em breve
+                            </span>
+                        </button>
+                    </div>
                 </div>
 
                 {erroCarga ? (

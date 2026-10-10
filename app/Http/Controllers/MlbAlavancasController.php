@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PubAlavancaEscrita;
 use App\Models\PubProduto;
+use App\Models\PubTarefa;
 use App\Services\Publicador\Alavancas\AlertasAlavancas;
 use App\Services\Publicador\Alavancas\AnaliseAlavancasService;
 use App\Services\Publicador\Alavancas\AtacadoLeitura;
@@ -44,11 +45,17 @@ class MlbAlavancasController extends Controller
 
     // ═══ Página ═══
 
-    public function index(string $conta)
+    public function index(Request $request, string $conta)
     {
+        // 09/10/2026 — a tarefa pós-publicação abre aqui com `?aba=promocoes&item=MLB…`: o anúncio vira o
+        // painel do topo. Só o formato é conferido; a leitura do item segue pelas rotas por item (da conta).
+        $item = preg_match('/^MLB\d{1,17}$/D', (string) $request->query('item', '')) === 1 ? (string) $request->query('item') : null;
+        $aba = in_array($request->query('aba'), ['promocoes', 'cupons', 'publicidade', 'atacado'], true) ? (string) $request->query('aba') : null;
+
         $alvo = $this->alvo($conta);
         if ($alvo['chave'] !== $conta) {
-            return redirect()->route('mlb.anuncios.publicador.alavancas.index', ['conta' => $alvo['chave']]);
+            // A chave canônica não perde o anúncio nem a aba pedidos (o link da fila usa `company-N`).
+            return redirect()->route('mlb.anuncios.publicador.alavancas.index', array_filter(['conta' => $alvo['chave'], 'aba' => $aba, 'item' => $item]));
         }
 
         $ancora = PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company']);
@@ -66,6 +73,9 @@ class MlbAlavancasController extends Controller
                     'itens_por_analise' => (int) config('publicador.alavancas.limites.itens_por_analise', 10),
                 ],
                 'alertas' => (array) config('publicador.alavancas.alertas', []),
+                'item' => $item,
+                // Contagem da aba Alavancas: publicados desta conta aguardando as alavancas.
+                'tarefas_abertas' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
             ],
         ]);
     }

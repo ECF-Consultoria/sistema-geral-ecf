@@ -6,6 +6,7 @@ use App\Models\PubAlavancaEscrita;
 use App\Models\User;
 use App\Services\Publicador\Alavancas\Acoes\AcaoAlavanca;
 use App\Services\Publicador\ClienteMlPublicador;
+use App\Services\Publicador\Tarefas\TarefasPosPublicacao;
 use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\Erros\RespostaMl;
 use App\Support\Publicador\RegraViolada;
@@ -110,6 +111,7 @@ class EscritorAlavancas
                 }
                 $linha->marcar(PubAlavancaEscrita::OK, $campos);
                 $this->cache->invalidar($conta);
+                $this->darBaixaNaTarefa($linha);
 
                 return $linha->fresh();
             }
@@ -169,6 +171,20 @@ class EscritorAlavancas
         } while ($repetir);
 
         return $r;
+    }
+
+    /**
+     * 09/10/2026 — escrita OK num MLB de tarefa pós-publicação aberta: o item do checklist ganha a baixa
+     * (`TarefasPosPublicacao::baixaPorEscrita`). A escrita JÁ saiu e está OK no histórico: falhar aqui
+     * só fica no log, nunca muda o resultado da linha nem repete nada.
+     */
+    private function darBaixaNaTarefa(PubAlavancaEscrita $linha): void
+    {
+        try {
+            app(TarefasPosPublicacao::class)->baixaPorEscrita($linha->fresh());
+        } catch (\Throwable $e) {
+            Log::warning("[Alavancas] escrita {$linha->id} OK, mas a baixa da tarefa pós-publicação falhou: {$e->getMessage()}");
+        }
     }
 
     /** O token gravado precisa ser do vendedor da âncora (V-ACC-03). */
