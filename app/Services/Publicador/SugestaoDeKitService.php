@@ -4,9 +4,12 @@ namespace App\Services\Publicador;
 
 use App\Models\Company;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaProdutoVariacao;
 use App\Models\MlbEmpresa;
 use App\Models\PubProduto;
+use App\Support\Publicador\Portal\CoresDoGrupo;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -30,6 +33,14 @@ use Illuminate\Support\Str;
  * - oferta com **exatamente 1** componente de quantidade ≥ 2 → base e N exatos.
  *
  * A heurística de texto continua valendo, intacta, para produto **sem oferta**.
+ *
+ * ### Planejamento × Fase N (decisões do usuário de 09/10/2026)
+ * - O base do Combo se acha também pela VARIAÇÃO do componente → produto do Portal → grupo
+ *   (`pub_produtos.estrutura_produto_id`), e não só pela oferta âncora do grupo, que é UMA cor.
+ * - Combo de UMA cor NÃO é sugerido como kit de um base de VÁRIAS cores: a Fase N da família é um
+ *   anúncio com todas as cores (o Sincronizar e o "Criar Fase N" cuidam dele).
+ * - Composto do Planejamento (Combo/Kit/Combit do Portal) nunca é base na heurística: não é a
+ *   Fase 1 de ninguém.
  *
  * ⚠️ Armadilha de nome: `estrutura_ofertas.fase` é o TIPO da oferta no Portal
  * (string), enquanto `pub_produtos.fase` é o NÚMERO da fase do Publicador. Por isso
@@ -224,11 +235,14 @@ class SugestaoDeKitService
      * T-175-09: os produtos saem SEMPRE de `ProgramasPublicadorService::produtosQuery()`
      * — é esse escopo que impede sugerir (e portanto exibir) o SKU/nome de outra conta.
      *
-     * @return array{produtos: Collection<int, PubProduto>, bases: Collection<int, PubProduto>, base_de_alguem: array<int, true>, ofertas: Collection<int, EstruturaOferta>, produto_por_oferta: Collection<int, PubProduto>}
+     * @return array{produtos: Collection<int, PubProduto>, bases: Collection<int, PubProduto>, base_de_alguem: array<int, true>, ofertas: Collection<int, EstruturaOferta>, produto_por_oferta: Collection<int, PubProduto>,
+     *     grupo_por_produto: Collection<int, PubProduto>, produto_da_componente: array<int, int>, cores_por_produto: array<int, int>}
      */
     private function contexto(?MlbEmpresa $e, ?Company $c): array
     {
-        $produtos = $this->programas->produtosQuery($e, $c)->with('oferta')->get();
+        // `estruturaProduto` no eager load: `skuExibido()`/`nomeExibido()` do produto agrupado o leem, e sem
+        // isto cada grupo da conta custava uma consulta (Planejamento × Fase N, 09/10/2026).
+        $produtos = $this->programas->produtosQuery($e, $c)->with(['oferta', 'estruturaProduto'])->get();
 
         $baseDeAlguem = [];
         foreach ($produtos as $q) {
@@ -242,14 +256,70 @@ class SugestaoDeKitService
             ? collect()
             : EstruturaOferta::query()->whereIn('id', $ofertaIds)->with('componentes')->get()->keyBy('id');
 
+        // Planejamento × Fase N: o grupo de cada produto do Portal e, só quando há Combo do Portal e
+        // grupo na conta, a variação de cada componente e quantas cores cada grupo tem — duas ou três
+        // consultas para a conta inteira, nunca uma por produto (T-175-34).
+        $grupos = $produtos->filter(fn (PubProduto $q) => $q->estrutura_produto_id !== null && $q->produto_base_id === null)->keyBy('estrutura_produto_id');
+        $componentes = $ofertas->filter(fn (EstruturaOferta $o) => $o->fase === EstruturaOferta::FASE_COMBO)
+            ->flatMap(fn (EstruturaOferta $o) => $o->componentes->pluck('componente_id'))->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $comPlanejamento = $componentes !== [] && $grupos->isNotEmpty();
+
         return [
             'produtos' => $produtos,
-            // Base possível: produto da conta que NÃO é kit (não existe cadeia de kits).
-            'bases' => $produtos->filter(fn (PubProduto $q) => $q->produto_base_id === null)->values(),
+            // Base possível: produto da conta que NÃO é kit (não existe cadeia de kits) nem composto do
+            // Planejamento (Combo/Kit/Combit do Portal não é a Fase 1 de ninguém).
+            'bases' => $produtos->filter(fn (PubProduto $q) => $q->produto_base_id === null && PlanejamentoDaFaseService::tipoComposto($q) === null)->values(),
             'base_de_alguem' => $baseDeAlguem,
             'ofertas' => $ofertas,
             'produto_por_oferta' => $produtos->filter(fn (PubProduto $q) => $q->oferta_id !== null)->keyBy('oferta_id'),
+            'grupo_por_produto' => $grupos,
+            'produto_da_componente' => $comPlanejamento ? $this->produtoDasComponentes($componentes) : [],
+            'cores_por_produto' => $comPlanejamento ? $this->coresPorProduto($grupos) : [],
         ];
+    }
+
+    /**
+     * Oferta Simples (componente de um Combo) → produto do Portal da variação dela, com a variação da
+     * MESMA empresa da oferta.
+     *
+     * @param  list<int>  $componentes
+     * @return array<int, int>
+     */
+    private function produtoDasComponentes(array $componentes): array
+    {
+        return DB::table('estrutura_ofertas as k')
+            ->join('estrutura_produto_variacoes as v', 'v.id', '=', 'k.variacao_id')
+            ->whereIn('k.id', $componentes)
+            ->whereColumn('v.company_id', 'k.company_id')
+            ->pluck('v.produto_id', 'k.id')
+            ->mapWithKeys(fn ($produtoId, $ofertaId) => [(int) $ofertaId => (int) $produtoId])
+            ->all();
+    }
+
+    /**
+     * Quantas cores entram em cada grupo da conta (a regra do Sincronizar, `CoresDoGrupo`): as variações
+     * da MESMA empresa do grupo que têm oferta Simples.
+     *
+     * @param  Collection<int, PubProduto>  $grupos  por `estrutura_produto_id`
+     * @return array<int, int> produto do Portal → número de cores do grupo
+     */
+    private function coresPorProduto(Collection $grupos): array
+    {
+        $variacoes = EstruturaProdutoVariacao::query()->whereIn('produto_id', $grupos->keys()->all())
+            ->orderBy('ordem')->orderBy('id')->get(['id', 'produto_id', 'company_id', 'eixo', 'valor', 'codigo']);
+        $comSimples = $variacoes->isEmpty() ? collect() : EstruturaOferta::query()->where('fase', EstruturaOferta::FASE_SIMPLES)
+            ->whereIn('variacao_id', $variacoes->pluck('id'))->pluck('variacao_id')->flip();
+
+        $saida = [];
+        foreach ($variacoes->groupBy('produto_id') as $produtoId => $lista) {
+            $grupo = $grupos->get($produtoId);
+            $cores = $lista->filter(fn (EstruturaProdutoVariacao $v) => (int) $v->company_id === (int) $grupo?->company_id && $comSimples->has($v->id))
+                ->map(fn (EstruturaProdutoVariacao $v) => ['id' => (int) $v->id, 'eixo' => $v->eixo, 'valor' => $v->valor, 'codigo' => $v->codigo])
+                ->values()->all();
+            $saida[(int) $produtoId] = count(CoresDoGrupo::separar($cores)['agrupaveis']);
+        }
+
+        return $saida;
     }
 
     /** @param  array<string, mixed>  $ctx */
@@ -304,7 +374,17 @@ class SugestaoDeKitService
 
         /** @var ?PubProduto $base */
         $base = $ctx['produto_por_oferta'][$componente->componente_id] ?? null;
+        // Planejamento × Fase N (09/10/2026): a oferta do componente pode ser de uma cor que não é a âncora
+        // do grupo — acha o base pela variação dela → produto do Portal → grupo.
+        if ($base === null) {
+            $produtoDoPortal = $ctx['produto_da_componente'][(int) $componente->componente_id] ?? null;
+            $base = $produtoDoPortal !== null ? ($ctx['grupo_por_produto'][$produtoDoPortal] ?? null) : null;
+        }
         if ($base === null || $base->produto_base_id !== null || (int) $base->id === (int) $p->id) {
+            return null;
+        }
+        // O Combo é de UMA cor: o kit dele não é a Fase N de um produto de VÁRIAS cores.
+        if ($base->estrutura_produto_id !== null && ($ctx['cores_por_produto'][(int) $base->estrutura_produto_id] ?? 1) > 1) {
             return null;
         }
 
