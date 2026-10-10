@@ -7,7 +7,6 @@ import CartaoKpi from './CartaoKpi';
 import SeloExemplo from './SeloExemplo';
 import {
     ALERTAS_ML_EXEMPLO,
-    ATIVIDADE_EXEMPLO,
     CATALOGO_EXEMPLO,
     CONTA_EXEMPLO,
     CONVERSAO_EXEMPLO,
@@ -72,33 +71,63 @@ const PONTOS_CONVERSAO = CONVERSAO_EXEMPLO.pontos
 const AREA_CONVERSAO = `${PONTOS_CONVERSAO} 320,48 0,48`;
 
 /**
- * As linhas REAIS da "Atividade da equipe": as últimas publicações desta conta,
- * no formato de evento do mockup (quem, quando, o quê e a fase).
+ * O verbo e a cor do ponto de cada tipo de evento da "Atividade da equipe".
+ *
+ * As três chaves são as do servidor (`PainelVisaoGeralService::atividadeDaEquipe`).
+ * Tipo desconhecido cai no fallback e nunca derruba a tela.
+ */
+const EVENTO_POR_TIPO = {
+    publicou: { verbo: 'Publicou', cor: 'bg-ecf-yellow/70' },
+    criativos: { verbo: 'Gerou criativos para', cor: 'bg-sky-400' },
+    conferiu: { verbo: 'Conferência de', cor: 'bg-emerald-400' },
+};
+
+const EVENTO_PADRAO = { verbo: 'Atividade em', cor: 'bg-white/30' };
+
+/**
+ * As linhas REAIS da "Atividade da equipe" — a linha do tempo das três fontes
+ * que o servidor manda em `atividadeEquipe`: publicou, gerou criativos e
+ * conferiu.
+ *
+ * ⚠️ Era MOCKADA (`ATIVIDADE_EXEMPLO`) até 10/10/2026. O usuário apontou que
+ * *"já existem dados dinâmicos para esse widget"* e estava certo: as três
+ * fontes já estavam gravadas no banco. A pilha de exemplo SAIU daqui.
  *
  * Fica no escopo do MÓDULO de propósito — assim o `.map()` do JSX consome um
  * array pronto e não lê nada do escopo do componente, que é como o Rollup já
  * eliminou variável no bundle de produção (feedback_rollup_map_scope_bug.md).
  *
  * Nenhum campo vira texto sem passar por `textoSeguro`: a tela preta de 07/10
- * nasceu de um campo que chegou como objeto.
+ * nasceu de um campo que chegou como objeto. O servidor já manda tudo escalar,
+ * mas a tela não confia na forma — é a defesa que custou aquele incidente.
  */
-export function eventosDasPublicacoes(itens, limite = 3) {
-    if (!Array.isArray(itens)) return [];
+export function eventosDaAtividade(atividade, limite = 6) {
+    const bloco = atividade && typeof atividade === 'object' && !Array.isArray(atividade) ? atividade : {};
+    const itens = Array.isArray(bloco.itens) ? bloco.itens : [];
 
     return itens.slice(0, limite).map((bruto, indice) => {
         const linha = bruto && typeof bruto === 'object' && !Array.isArray(bruto) ? bruto : {};
-        const quem = linha.quem && typeof linha.quem === 'object' && !Array.isArray(linha.quem) ? linha.quem : {};
-        const autor = quem.tipo === 'cliente'
-            ? 'Cliente'
-            : (quem.tipo === 'origem_antiga' ? 'Origem antiga' : textoSeguro(quem.nome, '—'));
-        const titulo = textoSeguro(linha.titulo, '—');
-        const fase = textoSeguro(linha.rotulo_fase, null);
+        const tipo = textoSeguro(linha.tipo, null);
+        // Desenho do tipo resolvido DENTRO do callback (nada de variável do
+        // escopo externo aqui dentro — armadilha do Rollup deste projeto).
+        const desenho = (tipo !== null && Object.prototype.hasOwnProperty.call(EVENTO_POR_TIPO, tipo))
+            ? EVENTO_POR_TIPO[tipo]
+            : EVENTO_PADRAO;
+        // `quem` já chega pronto do servidor ("Cliente", "Origem antiga",
+        // "Conferência automática"...) — a tela nunca inventa nome.
+        const autor = textoSeguro(linha.quem, '—');
+        const titulo = textoSeguro(linha.titulo, 'produto sem nome');
+        const detalhe = textoSeguro(linha.detalhe, null);
+        const texto = detalhe !== null
+            ? `${desenho.verbo} ${titulo} — ${detalhe}`
+            : `${desenho.verbo} ${titulo}`;
 
         return {
-            chave: `publicacao-${indice}`,
+            chave: `atividade-${indice}-${tipo ?? 'outro'}`,
             quem: autor,
-            quando: haQuanto(typeof linha.quando === 'string' ? linha.quando : null) ?? '—',
-            texto: fase !== null ? `Publicou ${titulo} — ${fase}` : `Publicou ${titulo}`,
+            quando: haQuanto(typeof linha.quando_iso === 'string' ? linha.quando_iso : null) ?? '—',
+            texto,
+            cor: desenho.cor,
         };
     });
 }
@@ -260,6 +289,8 @@ export default function PainelVisaoGeral({
     situacaoProdutos = {},
     produtosPorFase = null,
     ultimasPublicacoes = { disponivel: false, itens: [] },
+    // Quick 261010-hdr: a linha do tempo REAL da "Atividade da equipe".
+    atividadeEquipe = { disponivel: false, itens: [] },
     integracoes = {},
     identidadeResumo = { tem_identidade: false, texto_resumo: null },
     quemPublicou = { equipe: [], cliente: { quantidade: 0 }, origem_antiga: { quantidade: 0 } },
@@ -325,8 +356,9 @@ export default function PainelVisaoGeral({
     const ultimasSeguras = ultimasPublicacoes && typeof ultimasPublicacoes === 'object' ? ultimasPublicacoes : {};
     const ultimasDisponiveis = ultimasSeguras.disponivel === true;
     const itensUltimas = Array.isArray(ultimasSeguras.itens) ? ultimasSeguras.itens : [];
-    // As primeiras linhas da "Atividade da equipe" — dado REAL desta conta.
-    const atividadeReal = eventosDasPublicacoes(itensUltimas);
+    // A linha do tempo da "Atividade da equipe" — dado REAL das três fontes
+    // (publicou / gerou criativos / conferiu), sem pilha de exemplo nenhuma.
+    const atividadeReal = eventosDaAtividade(atividadeEquipe);
 
     const integracoesSeguras = integracoes && typeof integracoes === 'object' ? integracoes : {};
 
@@ -982,13 +1014,20 @@ export default function PainelVisaoGeral({
                 {/* 4c — Lateral: Atividade da equipe (tela 02).
 
                     A linha do tempo do mockup, nesta ordem:
-                    1. as publicações REAIS desta conta (quem, quando, o quê e a
-                       fase — tudo de `ultimasPublicacoes`);
-                    2. os dois eventos do mockup que não existem como registro
-                       ("gerou 5 imagens IA", "revisão aprovada"), de EXEMPLO;
-                    3. o "Quem publicou" que a tela já tinha, intacto — é o
+                    1. os eventos REAIS desta conta, das TRÊS fontes que o
+                       servidor junta em `atividadeEquipe`: publicou
+                       (`pub_publicacoes`), gerou criativos
+                       (`ml_anuncio_criativo_kits`) e conferiu
+                       (`pub_validacoes`);
+                    2. o "Quem publicou" que a tela já tinha, intacto — é o
                        agregado real dos últimos 30 dias, e ele não se joga fora
-                       só porque o mockup não o desenhou. */}
+                       só porque o mockup não o desenhou.
+
+                    ⚠️ A pilha "exemplo" SAIU daqui em 10/10/2026: os dois
+                    eventos do mockup ("Gerou 5 imagens IA", "revisão
+                    aprovada") existiam como registro no banco e o usuário
+                    apontou isso. Nenhum `SeloExemplo` neste bloco — tudo
+                    aqui é desta conta. */}
                 <section className="rounded-xl bg-ecf-card p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.05em] text-white/40">
@@ -999,38 +1038,20 @@ export default function PainelVisaoGeral({
                     </div>
 
                     <div className="mt-3 flex flex-col gap-3">
-                        {atividadeReal.map((evento) => {
+                        {atividadeReal.length === 0 ? (
+                            // Lista vazia: o servidor manda `disponivel: false` tanto para
+                            // "sem Company, não há o que ler" quanto para "nenhuma das três
+                            // fontes tem linha". A tela não finge atividade nem afirma zero.
+                            <p className="text-[13px] font-normal text-white/55">Nenhuma atividade registrada nesta conta ainda.</p>
+                        ) : atividadeReal.map((evento) => {
                             // Flags calculadas DENTRO do callback — variável de escopo do
                             // componente lida só dentro do .map() já foi eliminada pelo
                             // Rollup no bundle de produção (feedback_rollup_map_scope_bug.md).
                             const chaveDoEvento = evento.chave;
-
-                            return (
-                                <div key={chaveDoEvento} className="flex items-start gap-2">
-                                    <span aria-hidden="true" className="mt-1.5 h-[6px] w-[6px] shrink-0 rounded-full bg-ecf-yellow/70" />
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="truncate text-[13px] font-bold text-white">{evento.quem}</span>
-                                            <span className="shrink-0 font-mono text-[11px] text-white/40">{evento.quando}</span>
-                                        </div>
-                                        <p className="text-[11px] font-normal text-white/55">{evento.texto}</p>
-                                    </div>
-                                </div>
-                            );
-                        })}
-
-                        <div className="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3">
-                            <span className="text-[11px] font-normal uppercase tracking-[0.05em] text-white/40">Do mockup, ainda sem registro</span>
-                            <SeloExemplo title="Os dois eventos abaixo são de exemplo: não existe log de geração de imagens por IA nem etapa de revisão de qualidade. As publicações acima e o “Quem publicou” são desta conta." />
-                        </div>
-
-                        {ATIVIDADE_EXEMPLO.map((evento) => {
-                            // Flags calculadas DENTRO do callback (mesma armadilha do Rollup).
-                            const chaveDoExemplo = evento.chave;
                             const corDoPonto = evento.cor;
 
                             return (
-                                <div key={chaveDoExemplo} className="flex items-start gap-2">
+                                <div key={chaveDoEvento} className="flex items-start gap-2">
                                     <span aria-hidden="true" className={cn('mt-1.5 h-[6px] w-[6px] shrink-0 rounded-full', corDoPonto)} />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center justify-between gap-2">

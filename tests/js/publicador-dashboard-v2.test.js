@@ -224,9 +224,13 @@ test('dadosDeExemplo — tem o comentário de topo dizendo o que é e quando sai
 });
 
 test('dadosDeExemplo — as constantes dos blocos do mockup existem', () => {
-    for (const chave of ['CONTA_EXEMPLO', 'ERP_EXEMPLO', 'PERIODOS_EXEMPLO', 'ALERTAS_ML_EXEMPLO', 'ATIVIDADE_EXEMPLO', 'TRACAO_EXEMPLO', 'CONVERSAO_EXEMPLO']) {
+    for (const chave of ['CONTA_EXEMPLO', 'ERP_EXEMPLO', 'PERIODOS_EXEMPLO', 'ALERTAS_ML_EXEMPLO', 'TRACAO_EXEMPLO', 'CONVERSAO_EXEMPLO']) {
         assert.ok(chave in dadosModulo, `constante ausente: ${chave}`);
     }
+    // Quick 261010-hdr: `ATIVIDADE_EXEMPLO` SAIU — a "Atividade da equipe" é
+    // dado real das três fontes. O gate foi ATUALIZADO para cobrar a ausência,
+    // não afrouxado: recriar a constante reprova aqui.
+    assert.ok(!('ATIVIDADE_EXEMPLO' in dadosModulo), 'ATIVIDADE_EXEMPLO voltou — a Atividade da equipe é dado real');
     assert.ok(Array.isArray(dadosModulo.CONVERSAO_EXEMPLO.pontos), 'o sparkline precisa de uma série');
     assert.ok(dadosModulo.CONVERSAO_EXEMPLO.pontos.every((n) => typeof n === 'number'));
 });
@@ -408,6 +412,14 @@ const propsPainel = (over = {}) => ({
         disponivel: true,
         itens: [{ titulo: 'Caneca azul 300ml', ml_item_id: 'MLB123456', tipo: 'classico', quem: { tipo: 'equipe', nome: 'Fulano' }, quando: '2026-10-08T10:00:00Z', vendas: 7, situacao: 'PUBLISHED', fase: 1, rotulo_fase: '1 unidade' }],
     },
+    atividadeEquipe: {
+        disponivel: true,
+        itens: [
+            { tipo: 'publicou', quem: 'Fulano', quando_iso: '2026-10-10T12:00:00Z', titulo: 'Caneca azul 300ml', detalhe: '1 unidade' },
+            { tipo: 'criativos', quem: 'Beltrana', quando_iso: '2026-10-10T11:00:00Z', titulo: 'Teclado Mecânico Pro', detalhe: '2 imagens geradas' },
+            { tipo: 'conferiu', quem: 'Conferência automática', quando_iso: '2026-10-10T10:00:00Z', titulo: 'Headset 7.1', detalhe: 'Revisão 2 passou sem problemas' },
+        ],
+    },
     integracoes: {
         mercado_livre: { token: 'ativo' },
         publicacao_liberada: true,
@@ -496,13 +508,19 @@ test('Painel — a régua nova: o que é exemplo aparece, mas sempre marcado', (
     // Os blocos do mockup que não têm dado real agora existem na tela.
     assert.match(html, /Conta Líder Platinum/);
     assert.match(html, /Estoque Baixo no Bling/);
-    assert.match(html, /Gerou 5 imagens IA/);
     assert.match(html, /Atributo Obrigatório Pendente/);
     assert.match(html, /Reotimizar com IA/);
     assert.match(html, /Ritmo de conversão diária/);
 
     // E cada um deles está num bloco com a pilha.
-    for (const titulo of ['Alertas Meli', 'Atividade da equipe', 'Desempenho rápido das publicações']) {
+    //
+    // ⚠️ "Atividade da equipe" SAIU desta lista em 10/10 (quick 261010-hdr):
+    // o bloco deixou de ter conteúdo de exemplo — passou a ser a linha do
+    // tempo real das três fontes — e por isso NÃO carrega mais pilha. A régua
+    // é "dado de exemplo sempre marcado", não "este bloco é de exemplo para
+    // sempre"; o gate foi atualizado, não afrouxado (ver o teste dedicado
+    // "Atividade da equipe: as três fontes REAIS, sem pilha de exemplo").
+    for (const titulo of ['Alertas Meli', 'Desempenho rápido das publicações']) {
         assert.match(secaoDe(html, titulo), />exemplo</, `bloco sem a pilha: ${titulo}`);
     }
     semLixoNoHtml(html, 'régua nova');
@@ -511,7 +529,7 @@ test('Painel — a régua nova: o que é exemplo aparece, mas sempre marcado', (
 test('Painel — o bloco de dado REAL nunca leva a pilha de exemplo', () => {
     const html = desenharPainel(propsPainel());
 
-    for (const titulo of ['O que fazer agora', 'Situação dos produtos', 'Produtos por fase', 'Últimas publicações', 'Integrações', 'Identidade visual']) {
+    for (const titulo of ['O que fazer agora', 'Situação dos produtos', 'Produtos por fase', 'Últimas publicações', 'Integrações', 'Identidade visual', 'Atividade da equipe']) {
         assert.doesNotMatch(secaoDe(html, titulo), />exemplo</, `bloco real marcado como exemplo: ${titulo}`);
     }
 });
@@ -717,34 +735,72 @@ test('Painel — Alertas: os do acervo são reais, os dois do mockup são exempl
     assert.match(bloco, /vêm do acervo do Mercado Livre/);
 });
 
-test('Painel — Atividade da equipe: as primeiras linhas são as publicações REAIS', () => {
+test('Painel — Atividade da equipe: as três fontes REAIS, sem pilha de exemplo', () => {
     const html = desenharPainel(propsPainel());
     const bloco = secaoDe(html, 'Atividade da equipe');
 
     assert.match(bloco, /Tempo real/);
-    // Real: sai de `ultimasPublicacoes` (quem + quando + título + fase).
+    // Quick 261010-hdr: as três fontes de `atividadeEquipe` — publicou, gerou
+    // criativos e conferiu — todas com autor, produto e detalhe REAIS.
     assert.match(bloco, /Fulano/);
-    assert.match(bloco, /Caneca azul 300ml/);
-    // Exemplo: os eventos que não existem como registro.
-    assert.match(bloco, /Gerou 5 imagens IA/);
-    assert.match(bloco, /aprovada para disparo/);
-    assert.match(bloco, />exemplo</);
+    assert.match(semTags(bloco), /Publicou Caneca azul 300ml — 1 unidade/);
+    assert.match(bloco, /Beltrana/);
+    assert.match(semTags(bloco), /Gerou criativos para Teclado Mecânico Pro — 2 imagens geradas/);
+    assert.match(bloco, /Conferência automática/);
+    assert.match(semTags(bloco), /Conferência de Headset 7\.1 — Revisão 2 passou sem problemas/);
+
+    // ⚠️ A pilha "exemplo" SAIU deste bloco: nada aqui é inventado.
+    assert.doesNotMatch(bloco, />exemplo</, 'a Atividade da equipe é dado real — nenhum SeloExemplo');
+    assert.doesNotMatch(bloco, /Gerou 5 imagens IA/, 'o evento mockado de IA saiu');
+    assert.doesNotMatch(bloco, /aprovada para disparo/, 'o evento mockado de revisão saiu');
+    assert.doesNotMatch(bloco, /Do mockup, ainda sem registro/);
+
     // E o "Quem publicou" (real) continua inteiro dentro do bloco.
     assert.match(bloco, /Quem publicou/);
     assert.match(bloco, /responsável/);
     assert.match(bloco, /Ver histórico completo/);
 });
 
-test('Painel — sem publicação real a Atividade não finge: só as linhas de exemplo', () => {
+test('Painel — sem atividade real o bloco não finge nem afirma zero', () => {
     const html = desenharPainel(propsPainel({
+        atividadeEquipe: { disponivel: false, itens: [] },
         ultimasPublicacoes: { disponivel: true, itens: [] },
         quemPublicou: { equipe: [], cliente: { quantidade: 0 }, origem_antiga: { quantidade: 0 } },
     }));
     const bloco = secaoDe(html, 'Atividade da equipe');
 
+    assert.match(bloco, /Nenhuma atividade registrada nesta conta ainda\./);
     assert.match(bloco, /Nenhuma publicação nos últimos 30 dias\./);
-    assert.match(bloco, /Gerou 5 imagens IA/, 'as linhas de exemplo seguem desenhando o bloco');
     assert.doesNotMatch(bloco, /Caneca azul/);
+    assert.doesNotMatch(bloco, /Gerou 5 imagens IA/, 'sem atividade o bloco não cai em exemplo');
+    semLixoNoHtml(html, 'atividade vazia');
+});
+
+test('Painel — eventosDaAtividade recusa toda forma adversa de `atividadeEquipe`', () => {
+    // Formas que não são lista nenhuma: sempre array vazio, nunca exceção.
+    for (const forma of [null, undefined, 'texto', 7, [], { itens: null }, { itens: 'x' }, { itens: {} }]) {
+        assert.deepEqual(painelModulo.eventosDaAtividade(forma), [], JSON.stringify(forma ?? null));
+    }
+
+    // Item adverso: campos como objeto, lista e nulo — nada vira "undefined".
+    const [evento] = painelModulo.eventosDaAtividade({
+        itens: [{ tipo: { t: 'publicou' }, quem: ['Fulano'], quando_iso: { d: 1 }, titulo: null, detalhe: { x: 1 } }],
+    });
+    assert.equal(typeof evento.quem, 'string');
+    assert.equal(typeof evento.texto, 'string');
+    assert.equal(typeof evento.cor, 'string');
+    assert.doesNotMatch(evento.texto, /undefined|\[object Object\]/);
+    assert.doesNotMatch(evento.quem, /undefined|\[object Object\]/);
+    assert.equal(evento.quando, '—', 'data que não é string não vira data');
+
+    // Tipo desconhecido do servidor cai no fallback, nunca quebra.
+    const [outro] = painelModulo.eventosDaAtividade({ itens: [{ tipo: 'tipo_que_nao_existe', quem: 'X', titulo: 'Y' }] });
+    assert.equal(typeof outro.cor, 'string');
+    assert.doesNotMatch(outro.texto, /undefined/);
+
+    // O limite é respeitado.
+    const muitos = painelModulo.eventosDaAtividade({ itens: Array.from({ length: 30 }, () => ({ tipo: 'publicou', quem: 'A', titulo: 'B' })) });
+    assert.equal(muitos.length, 6);
 });
 
 test('Painel — Desempenho: o número de dormentes é REAL, a recomendação é exemplo', () => {
@@ -788,7 +844,7 @@ test('Painel — nenhuma flag de escopo do componente entra nos .map() novos', (
     const fonte = lerSemComentarios(REL_PAINEL);
     const proibidas = ['acervoIndisponivel', 'nuncaColetado', 'semAcervoOuNuncaColetado', 'identidadeTemTexto', 'ultimasDisponiveis', 'aguardandoAcao', 'tracaoPct', 'semVenda', 'companyIdAbas', 'contaChave', 'periodoEscolhido', 'catalogoTexto', 'mlConectado'];
 
-    for (const marcador of ['PERIODOS_EXEMPLO.opcoes.map(', 'ALERTAS_ML_EXEMPLO.map(', 'ATIVIDADE_EXEMPLO.map(', 'atividadeReal.map(']) {
+    for (const marcador of ['PERIODOS_EXEMPLO.opcoes.map(', 'ALERTAS_ML_EXEMPLO.map(', 'atividadeReal.map(']) {
         const inicio = fonte.indexOf(marcador);
         assert.ok(inicio > -1, `.map() não encontrado: ${marcador}`);
         const trecho = fonte.slice(inicio, fonte.indexOf('})}', inicio));
@@ -810,6 +866,12 @@ test('Painel — TELA PRETA: os campos novos do cabeçalho como objeto, nulos e 
         { situacaoProdutos: { a: { numero: { n: 1 } }, b: 'x', c: null } },
         { situacaoProdutos: [] },
         { ultimasPublicacoes: { disponivel: true, itens: [{ titulo: { t: 'x' }, quem: 'texto', quando: { d: 1 }, rotulo_fase: ['a'] }] } },
+        { atividadeEquipe: { disponivel: true, itens: [{ tipo: { t: 'publicou' }, quem: { nome: 'x' }, quando_iso: { d: 1 }, titulo: ['a'], detalhe: { d: 2 } }] } },
+        { atividadeEquipe: { disponivel: true, itens: [null, 'texto', 7] } },
+        { atividadeEquipe: { disponivel: true, itens: 'não é lista' } },
+        { atividadeEquipe: null },
+        { atividadeEquipe: 'x' },
+        { atividadeEquipe: [] },
     ];
 
     for (const forma of formas) {
