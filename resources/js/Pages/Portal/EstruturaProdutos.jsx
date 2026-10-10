@@ -329,7 +329,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             </div>
 
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
-            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} />
+            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} onFichaGravada={recarregarProdutos} />
             <JanelaFotosEmLote aberta={enviandoFotos} onFechar={() => setEnviandoFotos(false)} onConcluir={recarregarProdutos} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />

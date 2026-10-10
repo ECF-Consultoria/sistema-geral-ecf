@@ -170,6 +170,122 @@ class FichaTecnicaDoProduto
         return $this->salvos($produto);
     }
 
+    // ═══ Gravação PARCIAL (planilha da ficha técnica, 09/10/2026) ════════════
+    //
+    // A planilha não traz a ficha inteira: traz os campos que a pessoa preencheu. Aqui gravar é
+    // MESCLAR — campo que veio e é válido grava ou atualiza; campo que não veio fica como está
+    // (vazio não apaga); campo inválido não grava e volta com a mensagem; obrigatório que continua
+    // vazio não impede o resto, só volta em `faltam`. A validação de cada campo é a MESMA do
+    // `gravar()` (`normalizar`), contra a definição da categoria como vale para ESTE produto.
+
+    /**
+     * O que a gravação parcial faria, sem gravar nada (a prévia da planilha usa isto).
+     *
+     * @param  array<string, array>  $entradas  id do campo => entrada no formato da tela ({valor, unidade, nao_se_aplica})
+     * @return array{validos: array<string, array>, erros: array<string, string>, faltam: list<string>, ignorados: list<string>}
+     *
+     * @throws ValidationException quando o produto ainda não tem categoria ou a definição não respondeu
+     */
+    public function planejarParcial(EstruturaProduto $produto, array $entradas): array
+    {
+        $campos = $this->camposDoProduto($produto);
+
+        $validos = [];
+        $erros = [];
+        $ignorados = [];
+        foreach ($entradas as $id => $entrada) {
+            $id = (string) $id;
+            if (! isset($campos[$id])) {
+                // Campo que não vale para este produto (é o eixo de uma variação, ou saiu da categoria).
+                $ignorados[] = $id;
+                continue;
+            }
+            try {
+                $normal = $this->normalizar($campos[$id], is_array($entrada) ? $entrada : []);
+            } catch (InvalidArgumentException $e) {
+                $erros[$id] = $e->getMessage();
+                continue;
+            }
+            if ($normal !== null) {
+                $validos[$id] = ['campo' => $campos[$id]] + $normal;
+            }
+        }
+
+        $jaPreenchidos = EstruturaProdutoAtributo::query()
+            ->where('company_id', $produto->company_id)->where('produto_id', $produto->id)
+            ->where(fn ($q) => $q->whereNotNull('valor')->where('valor', '<>', '')->orWhereNotNull('valor_id'))
+            ->pluck('atributo_id')->map(fn ($i) => (string) $i)->all();
+
+        $faltam = [];
+        foreach ($campos as $id => $campo) {
+            if ($campo['obrigatorio'] && ! isset($validos[$id]) && ! in_array($id, $jaPreenchidos, true)) {
+                $faltam[] = $campo['nome'];
+            }
+        }
+
+        return ['validos' => $validos, 'erros' => $erros, 'faltam' => $faltam, 'ignorados' => $ignorados];
+    }
+
+    /**
+     * Grava só os campos válidos de `$entradas`, mesclando com o que já está salvo.
+     *
+     * @param  array<string, array>  $entradas  id do campo => entrada
+     * @return array{gravados: int, erros: array<string, string>, faltam: list<string>}
+     *
+     * @throws ValidationException quando o produto ainda não tem categoria ou a definição não respondeu
+     */
+    public function gravarParcial(Company $empresa, EstruturaProduto $produto, array $entradas, AtorDoPortal $ator): array
+    {
+        $plano = $this->planejarParcial($produto, $entradas);
+
+        $mudou = 0;
+        DB::transaction(function () use ($empresa, $produto, $plano, &$mudou) {
+            foreach ($plano['validos'] as $id => $p) {
+                $linha = EstruturaProdutoAtributo::updateOrCreate(
+                    ['company_id' => $empresa->id, 'produto_id' => $produto->id, 'atributo_id' => (string) $id],
+                    [
+                        'atributo_nome' => mb_substr($p['campo']['nome'], 0, 160),
+                        'valor'         => $p['valor'],
+                        'valor_id'      => $p['valor_id'],
+                        'unidade'       => $p['unidade'],
+                    ],
+                );
+                if ($linha->wasRecentlyCreated || $linha->wasChanged()) {
+                    $mudou++;
+                }
+            }
+        });
+
+        if ($mudou > 0) {
+            RegistroEstrutura::registrar($ator, $empresa, $produto, 'ficha_tecnica_gravada',
+                "Ficha técnica de “{$produto->nome}” gravada pela planilha", ['produto_id' => (int) $produto->id, 'campos' => $mudou, 'origem_planilha' => true]);
+        }
+
+        return ['gravados' => $mudou, 'erros' => $plano['erros'], 'faltam' => $plano['faltam']];
+    }
+
+    /**
+     * Os campos da categoria do produto como valem para ele (sem o eixo das variações dele).
+     *
+     * @return array<string, array>
+     *
+     * @throws ValidationException
+     */
+    private function camposDoProduto(EstruturaProduto $produto): array
+    {
+        $categoria = trim((string) $produto->categoria_ml_id);
+        if ($categoria === '') {
+            throw ValidationException::withMessages(['atributos' => 'Escolha a categoria do produto antes de preencher a ficha técnica.']);
+        }
+
+        $definicao = $this->definicao->definicao($categoria);
+        if ($definicao === []) {
+            throw ValidationException::withMessages(['atributos' => 'A ficha técnica desta categoria não está disponível agora. Tente novamente em instantes.']);
+        }
+
+        return FichaTecnicaDaCategoria::camposPorId(FichaTecnicaDaCategoria::doProduto($definicao, self::eixosDoProduto($produto)));
+    }
+
     /**
      * Os eixos (chaves de {@see EstruturaProdutoVariacao::EIXOS}) usados em alguma variação do produto.
      *

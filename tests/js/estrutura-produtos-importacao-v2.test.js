@@ -126,7 +126,7 @@ test('Baixar meus produtos na planilha: link de download (não axios), só com p
     assert.ok(barra.includes('Baixar meus produtos na planilha'));
     assert.match(janela, /\{temProdutos && \(\s*<a href=\{route\('portal\.auth\.estrutura\.produtos\.exportar'\)\} download/);
     assert.ok(janela.includes('Baixar meus produtos na planilha'));
-    assert.match(pagina, /<JanelaImportacao aberta=\{importando\}[^\n]*temProdutos=\{temProdutos\} \/>/);
+    assert.match(pagina, /<JanelaImportacao aberta=\{importando\}[^\n]*temProdutos=\{temProdutos\}[^\n]*\/>/);
     assert.ok(! /axios\.get\(route\('portal\.auth\.estrutura\.produtos\.exportar'/.test(pagina + janela + barra));
 });
 

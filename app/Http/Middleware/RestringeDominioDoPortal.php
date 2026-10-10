@@ -143,6 +143,10 @@ class RestringeDominioDoPortal
         // 09/10/2026 — fotos em lote pelo nome do arquivo: a prévia (só nomes) e as remessas.
         'portal/estrutura/produtos/fotos',
         'portal/estrutura/produtos/fotos/previa',
+        // 09/10/2026 — ficha técnica pela planilha: baixar, prévia e aplicar.
+        'portal/estrutura/produtos/fichas/modelo',
+        'portal/estrutura/produtos/fichas/previa',
+        'portal/estrutura/produtos/fichas/importacao',
         'portal/estrutura/produtos/fretes',
         // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/campos-categoria',

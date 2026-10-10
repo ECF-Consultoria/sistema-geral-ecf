@@ -255,6 +255,13 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.descricao')->name('portal.auth.estrutura.produtos.descricao');
     // Imagens por variação (a galeria da cor). Disco privado; a empresa vem sempre da sessão.
     // O GET é o `<img src>` da tela (várias por página), por isso o throttle é folgado.
+    // 09/10/2026 — ficha técnica pela planilha (o 2º arquivo): baixar, prévia e aplicar.
+    Route::get('/estrutura/produtos/fichas/modelo', [PortalEstruturaProdutosController::class, 'modeloFichas'])
+        ->middleware('throttle:20,1,estrutura.produtos.fichas.modelo')->name('portal.auth.estrutura.produtos.fichas.modelo');
+    Route::post('/estrutura/produtos/fichas/previa', [PortalEstruturaProdutosController::class, 'previaFichas'])
+        ->middleware('throttle:10,1,estrutura.produtos.fichas.previa')->name('portal.auth.estrutura.produtos.fichas.previa');
+    Route::post('/estrutura/produtos/fichas/importacao', [PortalEstruturaProdutosController::class, 'aplicarFichas'])
+        ->middleware('throttle:6,1,estrutura.produtos.fichas.importacao')->name('portal.auth.estrutura.produtos.fichas.importacao');
     // 09/10/2026 — fotos em lote pelo nome do arquivo (Ref_número.jpg): prévia só com os nomes, depois remessas.
     Route::post('/estrutura/produtos/fotos/previa', [PortalEstruturaProdutosController::class, 'previaFotosEmLote'])
         ->middleware('throttle:30,1,estrutura.produtos.fotos.previa')->name('portal.auth.estrutura.produtos.fotos.previa');

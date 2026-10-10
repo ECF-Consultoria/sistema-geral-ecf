@@ -12,10 +12,12 @@ use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
+use App\Services\Portal\Estrutura\Produtos\ImportadorFichasTecnicas;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
+use App\Services\Portal\Estrutura\Produtos\PlanilhaDasFichasTecnicas;
 use App\Services\Portal\Estrutura\Produtos\PlanilhaDosProdutos;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
@@ -62,6 +64,14 @@ class PortalEstruturaProdutosController extends Controller
      */
     private const MAX_OPCOES_MULTIVALOR = 60;
 
+    /** O que a pessoa lê quando o arquivo da importação não passa (sem isso chegava "validation.mimes"). */
+    private const MENSAGENS_DO_ARQUIVO = [
+        'arquivo.required' => 'Escolha a planilha (.xlsx).',
+        'arquivo.file'     => 'Não foi possível receber o arquivo. Tente de novo.',
+        'arquivo.max'      => 'O arquivo passa de 2 MB. Divida em arquivos menores.',
+        'arquivo.mimes'    => 'Envie a planilha no formato .xlsx.',
+    ];
+
     public function __construct(
         private PortalClienteService $portal,
         private ProdutoLinhas $linhas,
@@ -78,6 +88,8 @@ class PortalEstruturaProdutosController extends Controller
         private PlanilhaDosProdutos $planilha,
         private SugestaoDeCategoriaPorNome $sugestaoPorNome,
         private FotosEmLoteService $fotosEmLote,
+        private PlanilhaDasFichasTecnicas $planilhaDasFichas,
+        private ImportadorFichasTecnicas $importadorDeFichas,
     ) {
     }
 
@@ -244,7 +256,7 @@ class PortalEstruturaProdutosController extends Controller
     /** Lê o arquivo e mostra o que mudaria — nada é gravado. */
     public function previaImportacao(Request $request)
     {
-        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx']);
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
         $caminho = $this->caminhoDoUpload($request);
 
         return response()->json($this->importador->previa(PortalContexto::empresa(), $caminho));
@@ -263,7 +275,7 @@ class PortalEstruturaProdutosController extends Controller
             'categorias.*'       => 'array',
             'categorias.*.texto' => 'required|string|max:255',
             'categorias.*.id'    => ['required', 'string', 'regex:/^MLB\d{1,17}$/i'],
-        ], [
+        ], self::MENSAGENS_DO_ARQUIVO + [
             'categorias.max'              => 'Confirme no máximo '.ImportadorProdutos::CATEGORIAS_MAXIMO.' categorias por vez.',
             'categorias.*.texto.required' => 'Categoria inválida. Escolha de novo.',
             'categorias.*.id.required'    => 'Categoria inválida. Escolha de novo.',
@@ -587,6 +599,38 @@ class PortalEstruturaProdutosController extends Controller
             'imagens'  => $galeria,
             'mensagem' => 'Ordem das imagens salva.',
         ]);
+    }
+
+    // ═══ Ficha técnica pela planilha (o 2º arquivo) ═════════════════════════
+
+    /**
+     * A planilha da ficha técnica da empresa da sessão: uma aba por categoria confirmada, já com o
+     * que cada produto tem salvo ({@see PlanilhaDasFichasTecnicas}).
+     */
+    public function modeloFichas()
+    {
+        return $this->baixarPlanilha($this->planilhaDasFichas->gerar(PortalContexto::empresa())['planilha'], 'ficha-tecnica.xlsx');
+    }
+
+    /** Lê a planilha da ficha e mostra o que cada produto ganharia — nada é gravado. */
+    public function previaFichas(Request $request)
+    {
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
+
+        return response()->json($this->importadorDeFichas->previa(PortalContexto::empresa(), $this->caminhoDoUpload($request)));
+    }
+
+    /** Grava a ficha pela planilha, mesclando com o que está salvo. Falha geral volta como erro em `arquivo`. */
+    public function aplicarFichas(Request $request)
+    {
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
+
+        $r = $this->importadorDeFichas->aplicar(PortalContexto::empresa(), $this->caminhoDoUpload($request), PortalContexto::ator());
+        if (isset($r['erro_geral'])) {
+            throw ValidationException::withMessages(['arquivo' => $r['erro_geral']]);
+        }
+
+        return response()->json($r);
     }
 
     // ═══ Fotos em lote pelo nome do arquivo ═════════════════════════════════

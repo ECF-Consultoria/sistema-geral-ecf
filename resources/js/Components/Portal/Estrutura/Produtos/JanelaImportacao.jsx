@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import CategoriasAConfirmar from '@/Components/Portal/Estrutura/Produtos/CategoriasAConfirmar';
+import ImportacaoDaFichaTecnica from '@/Components/Portal/Estrutura/Produtos/ImportacaoDaFichaTecnica';
 import { buscarSugestoesEmLotes, confirmadasParaEnvio, nomesParaSugerir } from '@/lib/categoriasDaImportacao';
 import { cn } from '@/lib/utils';
 
@@ -94,7 +95,9 @@ function Previa({ previa }) {
     );
 }
 
-export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false }) {
+export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada }) {
+    // Duas planilhas: a dos produtos e, com produtos, a da ficha técnica (o 2º arquivo).
+    const [aba, setAba] = useState('produtos');
     const [arquivo, setArquivo] = useState(null);
     const [previa, setPrevia] = useState(null);
     const [erro, setErro] = useState(null);
@@ -122,7 +125,7 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
     };
 
     useEffect(() => {
-        if (aberta) { setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
+        if (aberta) { setAba('produtos'); setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
         limparCategorias();
     }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -204,6 +207,20 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
     return (
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-3xl" titulo="Importar planilha">
             <div className="space-y-3" data-janela-importacao>
+                {temProdutos && (
+                    <div className="flex gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" role="tablist" data-abas-importacao>
+                        {[['produtos', 'Produtos'], ['ficha', 'Ficha técnica']].map(([chave, rotulo]) => (
+                            <button key={chave} type="button" role="tab" aria-selected={aba === chave} disabled={importando}
+                                onClick={() => setAba(chave)} data-aba-importacao={chave}
+                                className={cn('flex-1 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
+                                    aba === chave ? 'bg-white/[0.08] text-white' : 'text-white/55 hover:text-white')}>
+                                {rotulo}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {aba === 'ficha' && <ImportacaoDaFichaTecnica onConcluir={onFichaGravada} />}
+                {aba === 'produtos' && (<>
                 {! previa && (
                     <>
                         <div
@@ -247,6 +264,7 @@ export default function JanelaImportacao({ aberta, onFechar, limites, temProduto
                         </Botao>
                     </div>
                 </div>
+                </>)}
             </div>
         </Janela>
     );
