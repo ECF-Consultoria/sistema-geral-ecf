@@ -851,3 +851,42 @@ deduz do código:
 - **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (o gatilho roda dentro do `PublicarRascunhoJob`, fila `high`,
   e a baixa dentro do lote das Alavancas — worker velho não conhece a classe nova); `npm run build`; depois, na fila,
   escolher o responsável padrão e dar `mlb.alavancas` ao setor de quem usa as alavancas.
+
+## 18. Planejamento × Fase N (09/10/2026)
+
+Decisões do usuário: (1) o combo vai ao ML como UM anúncio com as cores como variação — o kit da Fase N
+(`produto_base_id` + `quantidade_kit`); o Planejamento continua gerando a oferta de CADA cor e elas viram as variantes
+do kit; (2) o Planejamento do Portal é a fonte de QUAIS composições existem — o "Criar Fase N" puxa dali e cria lá o que
+falta (cai a "decisão 5" do `175-DECISOES` para o base AGRUPADO); (3) Kit e Combit (produtos diferentes) seguem um
+`pub_produto` por oferta composta. Nota ao outro dev: `.planning/coordenacao/261009-planejamento-x-fase2.md`. O que não
+se deduz do código:
+
+- **O vínculo oferta Combo ↔ variante do kit é DERIVADO pela cor, sem tabela** (`PlanejamentoDaFaseService` +
+  `VariantesPorCor`: `ChaveCanonica::texto` do valor do eixo × `valor` da variação, só nas cores do grupo, `CoresDoGrupo`).
+  Variante de 2+ eixos não casa; produto de uma cor casa a `__single__`. Cor renomeada no editor perde o casamento: fica
+  sem SKU/preço do Portal (vazio, nunca o de outra cor).
+- **Sincronizar:** Combo de UMA cor de produto agrupado não vira `pub_produto`. Com o Kit N, o kit entra em
+  `para_preencher` e `preencherKitDaFase` leva o SKU da oferta à variante (D-05 refinado, `portal_escrito[chave].sku`). O
+  `-KIT{N}` de kit antigo é da equipe e FICA; o preço chega assim mesmo, porque o mapa é pelo SKU ATUAL da variante. Cor
+  cujo Combo foi publicado como avulso não recebe o mesmo SKU. Sem o Kit N: `combos_aguardando_fase` (resumo + log).
+  `ofertasCobertas` conta esses Combos como cobertos — sem isso a empresa mostraria "ofertas novas" para sempre.
+- **Absorção endureceu (cores e combos):** nunca apaga o que é kit nem o que é BASE de kit (`pubprod_base_fk` é SET NULL
+  e soltaria o kit calado). A checagem "é base" fica no SELECT, fora do DELETE: subconsulta na própria `pub_produtos`
+  dentro do DELETE é o **erro 1093 do MariaDB**, e o SQLite dos testes passa.
+- **Preço do kit:** `daProduto` dá `precos_por_variante` ao kit sem oferta de base agrupado; `precos` (âncora) fica nulo
+  de propósito — a cor sem Combo não herda o preço de outra. Variante sem SELLER_SKU não recebe preço (`comEfetivos`
+  casa pelo SKU). Nada é gravado: "a criação grava o preço" foi lido como "vem da Precificação", nunca congelado.
+- **Composto do Planejamento** = `pub_produto` NÃO-kit ligado a oferta `combo|kit|combit`, lido pela relação `oferta`
+  (consulta só de `estrutura_ofertas`; nunca `fase` num JOIN). Chave `composto` na lista, `contagens.compostos` à parte
+  dos 5 buckets de `por_fase` (a Visão geral desenha 5 numa ordem fixa e o `ListaPorFaseTest` pina os 5). KIT-06 vem
+  ANTES do KIT-05/KIT-01 no endpoint (o conselho deles seria o errado). Combo antigo VINCULADO como kit é kit.
+- **Criar Fase N:** `garantirOfertas` roda DENTRO da transação do `CriarFaseService` (savepoint): kit que não nasce leva
+  as ofertas do Portal junto. Trava a Company (a mesma trava do "Aceitar") e relê os Combos sob ela; a cor aceita pelo
+  cliente entre a prévia e o Confirmar é usada como está. Nome/SKU = `NomesSugeridos::combo` com o tipo inferido como no
+  `RetratoDoCatalogo` (o teste compara com a sugestão da tela). Sem `user` (chamada direta) não cria nada.
+- **Planejamento (E):** `RetratoDoCatalogo` conta `v{cor}*N` de cada cor do grupo de todo kit da Fase N (uma consulta, só
+  leitura). Cor acrescentada ao Portal depois do kit também conta como existente — o kit não ganha cor sozinho.
+- **Vínculo (F):** o base se acha pela variação do componente → grupo; combo de UMA cor para base de VÁRIAS cores = sem
+  sugestão; composto nunca é base na heurística. `estruturaProduto` entrou no eager load (era N+1 por grupo no
+  `skuExibido()`).
+- **Deploy:** sem migration; `queue:restart` (o Job de preencher passa a receber kits); `npm run build`.
