@@ -48,7 +48,15 @@ use Illuminate\Validation\ValidationException;
  * Em MODO_GRADE o `grupo` só junta linhas de produto criado no MESMO lote; grupo
  * que bate no código de um produto que já existia é erro da linha (o produto
  * existente se edita pelo `produto_id`). Em MODO_IMPORTACAO o grupo casa com o
- * produto existente — reimportar acrescenta variações a ele.
+ * produto existente — reimportar acrescenta variações a ele. Sem produto com
+ * aquele código, o grupo ainda pode ser a Ref de uma variação já cadastrada: é o
+ * que a planilha baixada (`PlanilhaDosProdutos`) escreve para o produto que ficou
+ * sem código próprio, e a linha nova entra no produto dela.
+ *
+ * ### Descrição (planilha de 09/10/2026)
+ * A `descricao` da linha é do produto e só a 1ª linha dele a aplica, pelo MESMO
+ * `DescricaoDoProduto` da ficha (apara, vazio = nada, só grava e audita se mudou).
+ * Descrição que muda sozinha conta como variação atualizada e agenda o preparo.
  *
  * ### Oferta ligada (D-08, D-09)
  * Cada variação gravada tem UMA oferta simples na Lista SKUs (`variacao_id`), com
@@ -82,6 +90,7 @@ class ProdutoCadastroService
         private CategoriaSugestaoService $categorias,
         private ProdutoLinhas $linhas,
         private EstruturaOfertaService $ofertas,
+        private DescricaoDoProduto $descricao,
     ) {}
 
     /** Forma usada para comparar códigos: sem caixa, acento nem espaço nas pontas. */
@@ -476,6 +485,13 @@ class ProdutoCadastroService
         if ($produto === null && $campos['grupo'] !== null) {
             $idDoGrupo = $estado['produtos_codigo'][self::chaveCodigo($campos['grupo'])] ?? null;
 
+            // Importação: sem produto com esse código, o grupo pode ser a Ref de uma variação já
+            // cadastrada (a planilha baixada escreve assim o produto sem código próprio).
+            if ($idDoGrupo === null && $modo === self::MODO_IMPORTACAO) {
+                $daVariacao = $estado['variacoes_codigo'][self::chaveCodigo($campos['grupo'])] ?? null;
+                $idDoGrupo = $daVariacao !== null ? (int) $estado['variacoes'][$daVariacao]->produto_id : null;
+            }
+
             // BE-CR-01: na ficha (MODO_GRADE) o grupo só junta as linhas DESTE lote. Produto que já
             // existia antes do lote se edita pelo `produto_id`; casar pelo código renomeava o produto
             // de outra pessoa e apagava a categoria dele (o `codigo` do produto fica "órfão" quando a
@@ -575,6 +591,15 @@ class ProdutoCadastroService
             }
         }
 
+        // ─── Descrição do produto: só a 1ª linha dele, pelo mesmo serviço da ficha ───
+        // Separada de `mudouProduto` de propósito: a descrição não muda o nome das ofertas.
+        $mudouDescricao = false;
+        if ($primeiraDoProduto && in_array('descricao', $presentes, true)) {
+            $antes = $produto->descricao;
+            $this->descricao->gravar($empresa, $produto, $campos['descricao'], $ator);
+            $mudouDescricao = $produto->descricao !== $antes;
+        }
+
         // ─── Variação ───
         $variacaoNova = $variacao === null;
         $mudouVariacao = false;
@@ -668,7 +693,7 @@ class ProdutoCadastroService
             $this->sincronizarOferta($empresa, $produto, $variacao, $ator, $skus);
         }
 
-        $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao) ? 'atualizadas' : 'sem_mudanca');
+        $resultado = $variacaoNova ? 'criadas' : (($mudouProduto || $mudouVariacao || $mudouDescricao) ? 'atualizadas' : 'sem_mudanca');
 
         return [
             'resultado'          => $resultado,
@@ -682,6 +707,7 @@ class ProdutoCadastroService
                 'familia'   => in_array('familia', $presentes, true) ? $campos['familia'] : null,
                 'ambientes' => in_array('ambientes', $presentes, true) ? $campos['ambientes'] : null,
                 'categoria' => in_array('categoria', $presentes, true) ? ($campos['categoria_ml_id'] ?? $campos['categoria_texto'] ?? '') : null,
+                'descricao' => in_array('descricao', $presentes, true) ? $campos['descricao'] : null,
             ],
             'categorias'         => $categorias,
             // Mapas das listas com o que esta linha criou: só passam a valer se a linha gravar.
@@ -774,6 +800,10 @@ class ProdutoCadastroService
         if (in_array('categoria', $presentes, true) && $primeira['categoria'] !== null
             && (string) ($campos['categoria_ml_id'] ?? $campos['categoria_texto'] ?? '') !== (string) $primeira['categoria']) {
             $diverge('a categoria');
+        }
+        if (in_array('descricao', $presentes, true) && ($primeira['descricao'] ?? null) !== null
+            && (string) $campos['descricao'] !== (string) $primeira['descricao']) {
+            $diverge('a descrição');
         }
 
         return $avisos;

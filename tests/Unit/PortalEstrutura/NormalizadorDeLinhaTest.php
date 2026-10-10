@@ -55,6 +55,31 @@ class NormalizadorDeLinhaTest extends TestCase
         $this->assertSame('tamanho', $r['campos']['eixo']);
     }
 
+    /** 09/10/2026: a descrição do produto vem da planilha; as quebras de linha ficam e o teto é o da ficha. */
+    public function test_descricao_apara_mantem_quebras_tem_teto_e_vazio_nao_mexe(): void
+    {
+        $r = $this->ler(['descricao' => "  Linha 1\r\nLinha 2  "]);
+        $this->assertSame("Linha 1\nLinha 2", $r['campos']['descricao']);
+        $this->assertContains('descricao', $r['presentes']);
+
+        $this->assertNotContains('descricao', $this->ler(['descricao' => '   '])['presentes'], 'vazio não mexe');
+        $this->assertNotContains('descricao', $this->ler()['presentes'], 'ausente não mexe');
+
+        $nulo = $this->ler(['descricao' => null]);
+        $this->assertContains('descricao', $nulo['presentes'], 'null explícito limpa');
+        $this->assertNull($nulo['campos']['descricao']);
+
+        $this->assertSame('A descrição pode ter até 5.000 caracteres.', $this->ler(['descricao' => str_repeat('a', 5001)])['erros']['descricao']);
+        $this->assertSame([], $this->ler(['descricao' => str_repeat('a', 5000)])['erros']);
+    }
+
+    public function test_eixo_publico_le_o_tipo_de_variacao_pelo_rotulo_ou_pela_chave(): void
+    {
+        $this->assertSame('voltagem', NormalizadorDeLinha::eixo('Voltagem'));
+        $this->assertSame('cor', NormalizadorDeLinha::eixo(' cor '));
+        $this->assertNull(NormalizadorDeLinha::eixo('Estampa'));
+    }
+
     public function test_eixo_por_rotulo_e_lista_fechada(): void
     {
         $this->assertSame('tamanho', $this->ler(['eixo' => 'Tamanho'])['campos']['eixo']);

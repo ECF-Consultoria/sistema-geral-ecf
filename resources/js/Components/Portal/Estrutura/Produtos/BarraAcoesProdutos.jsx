@@ -1,11 +1,12 @@
 import { Link } from '@inertiajs/react';
-import { Download, Folder, Lightbulb, Loader2, Plus, Search, Sparkles, Upload, X } from 'lucide-react';
+import { Download, FileSpreadsheet, Folder, Lightbulb, Loader2, Plus, Search, Sparkles, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Produtos: linha de ações + busca (167-20, D-25) ────────────────────────
 //
-// A linha da REF-1/REF-3: seis ações com o nome do que fazem (D-24: a planilha
-// só existe como arquivo — baixar o modelo e importar) e a busca à direita.
+// A linha da REF-1/REF-3: as ações com o nome do que fazem (D-24: a planilha
+// só existe como arquivo — baixar o modelo e importar; desde 09/10/2026, com
+// produtos, também baixar os produtos já preenchidos) e a busca à direita.
 // "Adicionar produto" só é amarelo quando já há produtos: sem produtos o
 // amarelo é o "Cadastrar o primeiro produto" do estado vazio (um amarelo por
 // vista). Só apresentação: nada é calculado aqui.
@@ -32,6 +33,12 @@ export default function BarraAcoesProdutos({ temProdutos, busca, onBusca, onAdic
                     title="Planilha-modelo em .xlsx">
                     <Download size={18} /> Baixar modelo
                 </a>
+                {temProdutos && (
+                    <a href={route('portal.auth.estrutura.produtos.exportar')} download data-acao="baixar-meus-produtos" className={cn(ACAO, SECUNDARIA)}
+                        title="Seus produtos no modelo .xlsx, para editar e enviar de novo pelo Importar planilha.">
+                        <FileSpreadsheet size={18} /> Baixar meus produtos na planilha
+                    </a>
+                )}
                 <button type="button" onClick={onSugerir} disabled={! podeSugerir || sugerindo} data-acao="sugerir-categorias"
                     className={cn(ACAO, SECUNDARIA)} title={! podeSugerir && ! sugerindo ? 'Todos os produtos já têm categoria.' : undefined}>
                     {sugerindo ? <Loader2 size={18} className="animate-spin" /> : <Lightbulb size={18} />}

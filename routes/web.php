@@ -211,6 +211,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:120,1,estrutura.produtos.novo')->name('portal.auth.estrutura.produtos.novo');
     Route::get('/estrutura/produtos/modelo', [PortalEstruturaProdutosController::class, 'modelo'])
         ->middleware('throttle:30,1,estrutura.produtos.modelo')->name('portal.auth.estrutura.produtos.modelo');
+    // 09/10/2026 — "Baixar meus produtos na planilha": o modelo já preenchido, para editar e enviar de novo.
+    Route::get('/estrutura/produtos/exportar', [PortalEstruturaProdutosController::class, 'exportar'])
+        ->middleware('throttle:20,1,estrutura.produtos.exportar')->name('portal.auth.estrutura.produtos.exportar');
     Route::post('/estrutura/produtos/linhas', [PortalEstruturaProdutosController::class, 'gravarLinhas'])
         ->middleware('throttle:120,1,estrutura.produtos.linhas')->name('portal.auth.estrutura.produtos.linhas');
     Route::delete('/estrutura/produtos/variacoes/{variacao}', [PortalEstruturaProdutosController::class, 'excluirVariacao'])
@@ -235,6 +238,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.categorias')->name('portal.auth.estrutura.produtos.categorias');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
+    // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.
+    Route::post('/estrutura/produtos/categorias/sugerir-nomes', [PortalEstruturaProdutosController::class, 'sugerirCategoriasPorNome'])
+        ->middleware('throttle:60,1,estrutura.produtos.categorias.sugerir_nomes')->name('portal.auth.estrutura.produtos.categorias.sugerir_nomes');
     Route::post('/estrutura/produtos/categorias/sugerir', [PortalEstruturaProdutosController::class, 'sugerirCategorias'])
         ->middleware('throttle:30,1,estrutura.produtos.categorias.sugerir')->name('portal.auth.estrutura.produtos.categorias.sugerir');
     Route::post('/estrutura/produtos/fretes', [PortalEstruturaProdutosController::class, 'cotarFretes'])

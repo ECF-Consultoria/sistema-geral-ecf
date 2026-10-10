@@ -14,10 +14,11 @@ use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
-use App\Services\Portal\Estrutura\Produtos\ModeloProdutosXlsx;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
+use App\Services\Portal\Estrutura\Produtos\PlanilhaDosProdutos;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
+use App\Services\Portal\Estrutura\Produtos\SugestaoDeCategoriaPorNome;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
 use App\Services\Publicador\PreparoIaAgenda;
@@ -73,6 +74,8 @@ class PortalEstruturaProdutosController extends Controller
         private DescricaoDoProduto $descricao,
         private VariacaoImagensService $imagens,
         private ExplicacaoDeAtributos $explicacoes,
+        private PlanilhaDosProdutos $planilha,
+        private SugestaoDeCategoriaPorNome $sugestaoPorNome,
     ) {
     }
 
@@ -209,12 +212,29 @@ class PortalEstruturaProdutosController extends Controller
 
     // ═══ Planilha: modelo e importação ══════════════════════════════════════
 
-    /** Baixa a planilha-modelo (D-13): os 11 cabeçalhos e uma linha de exemplo. */
+    /**
+     * Baixa a planilha-modelo (D-13), versão de 09/10/2026: abas Produtos, Instruções e Listas
+     * (oculta, com as famílias e ambientes que a empresa da sessão já cadastrou).
+     */
     public function modelo()
     {
+        return $this->baixarPlanilha($this->planilha->modelo(PortalContexto::empresa()), 'modelo-produtos.xlsx');
+    }
+
+    /**
+     * "Baixar meus produtos na planilha": o mesmo modelo, já preenchido com os produtos e as
+     * variações da empresa da SESSÃO, para editar fora e enviar de novo pela importação.
+     */
+    public function exportar()
+    {
+        return $this->baixarPlanilha($this->planilha->exportar(PortalContexto::empresa()), 'meus-produtos-'.now()->format('Y-m-d').'.xlsx');
+    }
+
+    private function baixarPlanilha(\PhpOffice\PhpSpreadsheet\Spreadsheet $planilha, string $nome)
+    {
         return response()->streamDownload(
-            fn () => (new Xlsx(ModeloProdutosXlsx::gerar()))->save('php://output'),
-            'modelo-produtos.xlsx',
+            fn () => (new Xlsx($planilha))->save('php://output'),
+            $nome,
             ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
         );
     }
@@ -228,24 +248,50 @@ class PortalEstruturaProdutosController extends Controller
         return response()->json($this->importador->previa(PortalContexto::empresa(), $caminho));
     }
 
-    /** Grava de verdade. Falha geral volta como erro em `arquivo`; sucesso, como flash `success`. */
+    /**
+     * Grava de verdade. Falha geral volta como erro em `arquivo`; sucesso, como flash `success`.
+     * `categorias` são as que a pessoa confirmou na prévia, por nome digitado (`texto` + `id`):
+     * o servidor confere cada uma de novo e só as aplica a produto ainda sem categoria escolhida.
+     */
     public function aplicarImportacao(Request $request)
     {
-        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx']);
+        $dados = $request->validate([
+            'arquivo'            => 'required|file|max:2048|mimes:xlsx',
+            'categorias'         => 'sometimes|array|max:'.ImportadorProdutos::CATEGORIAS_MAXIMO,
+            'categorias.*'       => 'array',
+            'categorias.*.texto' => 'required|string|max:255',
+            'categorias.*.id'    => ['required', 'string', 'regex:/^MLB\d{1,17}$/i'],
+        ], [
+            'categorias.max'              => 'Confirme no máximo '.ImportadorProdutos::CATEGORIAS_MAXIMO.' categorias por vez.',
+            'categorias.*.texto.required' => 'Categoria inválida. Escolha de novo.',
+            'categorias.*.id.required'    => 'Categoria inválida. Escolha de novo.',
+            'categorias.*.id.regex'       => 'Categoria inválida. Escolha de novo.',
+        ]);
         $caminho = $this->caminhoDoUpload($request);
 
-        $r = $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator());
+        $r = $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? []);
 
         if (isset($r['erro_geral'])) {
             return back()->withErrors(['arquivo' => $r['erro_geral']]);
         }
 
         $mensagem = "Importação concluída: {$r['novos']} novos, {$r['atualizados']} atualizados.";
+        if ($r['categorias_confirmadas'] > 0) {
+            $mensagem .= ' Categoria confirmada em '.self::produtos($r['categorias_confirmadas']).'.';
+        }
+        if ($r['categorias_a_confirmar'] > 0) {
+            $mensagem .= ' '.ucfirst(self::produtos($r['categorias_a_confirmar'])).' com a categoria a confirmar.';
+        }
         if ($r['nao_entraram'] !== []) {
             $mensagem .= ' '.self::resumoDoQueNaoEntrou($r['nao_entraram']);
         }
 
         return back()->with('success', $mensagem);
+    }
+
+    private static function produtos(int $n): string
+    {
+        return $n === 1 ? '1 produto' : "{$n} produtos";
     }
 
     /** Mostra quantas e quais linhas ficaram de fora (até 5; o resto vira "e mais N"). BE-WR-04. */
@@ -338,6 +384,25 @@ class PortalEstruturaProdutosController extends Controller
             'sugestoes'    => $sugestoes,
             'indisponivel' => $falhou || ($sugestoes !== [] && collect($sugestoes)->every(fn ($s) => $s['sugestao'] === null)),
         ]);
+    }
+
+    /**
+     * Sugere a categoria de até 10 NOMES de categoria digitados na planilha (a prévia da
+     * importação os agrupa). Mesma regra e mesmo app token de `sugerirCategorias`, com cache
+     * por nome. NÃO grava nada: a pessoa confirma na prévia e a confirmação vai com o arquivo.
+     */
+    public function sugerirCategoriasPorNome(Request $request)
+    {
+        $max = SugestaoDeCategoriaPorNome::MAX_POR_PEDIDO;
+        $dados = $request->validate([
+            'nomes'   => "required|array|min:1|max:{$max}",
+            'nomes.*' => 'required|string|max:255',
+        ], [
+            'nomes.required' => 'Informe os nomes.',
+            'nomes.max'      => "Envie no máximo {$max} nomes por vez.",
+        ]);
+
+        return response()->json($this->sugestaoPorNome->sugerir($dados['nomes']));
     }
 
     // ═══ Ficha técnica ══════════════════════════════════════════════════════

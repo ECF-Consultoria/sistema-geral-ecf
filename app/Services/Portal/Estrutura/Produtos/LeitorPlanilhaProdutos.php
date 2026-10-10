@@ -39,13 +39,16 @@ use ZipArchive;
  *
  * As colunas são casadas pelo nome normalizado (sem caixa/acento), então a
  * ordem não importa e a planilha original do Planejamento entra como está.
+ * O modelo de 09/10/2026 (`ModeloProdutosXlsx`, 14 colunas) e o de antes (as 11
+ * da aba Produtos da 3Planejamento: "Grupo (anúncio)", "Categoria ML", Variação
+ * ordinal) são lidos pela MESMA regra — o arquivo antigo do cliente não quebra.
  */
 final class LeitorPlanilhaProdutos
 {
     public const MAX_LINHAS = 1000;
     public const MAX_BYTES  = 2 * 1024 * 1024;
 
-    /** Colunas lidas: o modelo tem 11; colunas além disso não são importadas. */
+    /** Colunas lidas: o modelo tem 14; colunas além disso não são importadas. */
     public const MAX_COLUNAS = 60;
 
     /** Soma do descompactado do zip (a planilha real do Planejamento, 6 abas, dá ~3 MB). */
@@ -65,8 +68,12 @@ final class LeitorPlanilhaProdutos
     private const MSG_MUITAS   = 'A planilha tem mais de 1.000 linhas. Divida em arquivos menores.';
     private const MSG_GRANDE   = 'O arquivo é grande demais para importar. Divida a planilha em arquivos menores.';
 
-    /** Campos cujo valor numérico da célula deve virar texto (código "1014" vem como número). */
-    private const TEXTUAIS = ['codigo', 'grupo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria', 'volumes_texto'];
+    /**
+     * Campos cujo valor numérico da célula deve virar texto (código "1014" vem como número). O
+     * estoque também: o Excel guarda 10 como 10.0, e o normalizador só aceita o inteiro em texto
+     * ("10"); 2,5 vira "2.5" e cai na mensagem de unidades inteiras.
+     */
+    private const TEXTUAIS = ['codigo', 'grupo', 'eixo', 'variacao', 'nome', 'familia', 'ambientes', 'categoria', 'volumes_texto', 'estoque', 'descricao'];
 
     /** Chaves da célula com fórmula na matriz: o texto da fórmula e o valor em cache. */
     private const FORMULA = 'f';
@@ -189,7 +196,8 @@ final class LeitorPlanilhaProdutos
             $campo = self::campoDoCabecalho($titulo);
             if ($campo !== null && ! in_array($campo, $mapa, true)) {
                 $mapa[$i] = $campo;
-                $titulos[$i] = $titulo;
+                // O "*" do obrigatório não entra na mensagem ("Ref com fórmula…", não "Ref* com…").
+                $titulos[$i] = rtrim($titulo, " *");
             }
         }
 
@@ -377,7 +385,13 @@ final class LeitorPlanilhaProdutos
 
     // ═══ Cabeçalho e valores ════════════════════════════════════════════════
 
-    /** Campo lógico a partir do nome da coluna; null para colunas que não importamos. */
+    /**
+     * Campo lógico a partir do nome da coluna; null para colunas que não importamos.
+     *
+     * A ORDEM dos casos importa: "Produto (grupo)" (modelo de 09/10) é o grupo e tem de vir antes
+     * de "Produto …" (o nome, como na 3Planejamento); "Tipo de variação" é o eixo e vem antes de
+     * "Variação". "Categoria ML" e "Grupo (anúncio)" (arquivo antigo) caem nos mesmos campos.
+     */
     private static function campoDoCabecalho(string $titulo): ?string
     {
         $t = Str::lower(Str::ascii($titulo));
@@ -386,9 +400,10 @@ final class LeitorPlanilhaProdutos
         return match (true) {
             $t === '' => null,
             $t === 'ref', $t === 'codigo', $t === 'sku', str_starts_with($t, 'ref ') => 'codigo',
-            str_starts_with($t, 'grupo') => 'grupo',
+            str_starts_with($t, 'produto grupo'), str_starts_with($t, 'grupo') => 'grupo',
+            str_starts_with($t, 'tipo de variacao'), str_starts_with($t, 'tipo da variacao'), $t === 'tipo variacao', $t === 'tipo' => 'eixo',
             str_starts_with($t, 'variacao') => 'variacao',
-            $t === 'produto', $t === 'nome', str_starts_with($t, 'produto ') => 'nome',
+            $t === 'produto', $t === 'nome', str_starts_with($t, 'nome do produto'), str_starts_with($t, 'produto ') => 'nome',
             str_starts_with($t, 'familia') => 'familia',
             str_starts_with($t, 'ambiente') => 'ambientes',
             str_starts_with($t, 'categoria') => 'categoria',
@@ -396,6 +411,8 @@ final class LeitorPlanilhaProdutos
             str_starts_with($t, 'volumes') => 'volumes_texto',
             str_starts_with($t, 'peso total') => 'peso_total',
             str_starts_with($t, 'custo') => 'custo',
+            str_starts_with($t, 'estoque') => 'estoque',
+            str_starts_with($t, 'descricao') => 'descricao',
             default => null,
         };
     }

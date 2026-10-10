@@ -31,7 +31,9 @@ test('JanelaImportacao: textos do UI-SPEC', () => {
 test('JanelaImportacao: prévia por axios, confirmação reenvia o arquivo por router.post', () => {
     assert.match(importacao, /axios\.post\(route\('portal\.auth\.estrutura\.produtos\.importacao\.previa'\), dados\)/);
     assert.match(importacao, /new FormData\(\)/);
-    assert.match(importacao, /router\.post\(route\('portal\.auth\.estrutura\.produtos\.importacao'\), \{ arquivo \}/);
+    // 09/10/2026: além do arquivo, só as categorias que a pessoa confirmou (nunca o que a prévia mostrou).
+    assert.match(importacao, /router\.post\(route\('portal\.auth\.estrutura\.produtos\.importacao'\), \{ arquivo, categorias \}/);
+    assert.match(importacao, /const categorias = confirmadasParaEnvio\(previa\.categorias_a_confirmar\?\.nomes \?\? \[\], escolhas\);/);
     assert.match(importacao, /forceFormData: true/);
     assert.match(importacao, /disabled=\{! podeConfirmar \|\| importando\}/);
     assert.match(importacao, /novos \?\? 0\) \+ \(previa\.totais\?\.atualizados \?\? 0\)\) > 0/);

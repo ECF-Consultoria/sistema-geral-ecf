@@ -353,7 +353,7 @@ class GravarLinhasTest extends TestCase
         return new UploadedFile($caminho, "produtos.{$extensao}", null, null, true);
     }
 
-    public function test_modelo_baixa_o_xlsx_com_os_11_cabecalhos(): void
+    public function test_modelo_baixa_o_xlsx_com_os_14_cabecalhos(): void
     {
         $r = $this->entrarNoPortal($this->empresaDoGabarito())
             ->get(route('portal.auth.estrutura.produtos.modelo'))
@@ -366,7 +366,7 @@ class GravarLinhasTest extends TestCase
 
         $folha = IOFactory::load($caminho)->getSheet(0);
         $cabecalhos = [];
-        for ($c = 1; $c <= 11; $c++) {
+        for ($c = 1; $c <= count(ModeloProdutosXlsx::CABECALHOS); $c++) {
             $cabecalhos[] = (string) $folha->getCell([$c, 1])->getValue();
         }
         $this->assertSame(ModeloProdutosXlsx::CABECALHOS, $cabecalhos);
@@ -375,7 +375,8 @@ class GravarLinhasTest extends TestCase
     public function test_previa_da_importacao_nao_grava_nada(): void
     {
         $empresa = $this->empresaDoGabarito();
-        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, 'Novo Um'], ['N2', null, null, 'Novo Dois']]);
+        // Posições do modelo de 09/10: Ref, Produto (grupo), Tipo de variação, Variação, Nome do produto…
+        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, null, 'Novo Um'], ['N2', null, null, null, 'Novo Dois']]);
 
         $r = $this->entrarNoPortal($empresa)
             ->post(route('portal.auth.estrutura.produtos.importacao.previa'), ['arquivo' => $arquivo], ['Accept' => 'application/json'])
@@ -403,7 +404,7 @@ class GravarLinhasTest extends TestCase
     public function test_aplicar_a_importacao_grava_e_avisa_pelo_flash_success(): void
     {
         $empresa = $this->empresaDoGabarito();
-        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, 'Novo Um'], ['N2', null, null, 'Novo Dois']]);
+        $arquivo = $this->planilha([ModeloProdutosXlsx::CABECALHOS, ['N1', null, null, null, 'Novo Um'], ['N2', null, null, null, 'Novo Dois']]);
 
         $this->entrarNoPortal($empresa)
             ->post(route('portal.auth.estrutura.produtos.importacao'), ['arquivo' => $arquivo])
@@ -419,9 +420,9 @@ class GravarLinhasTest extends TestCase
         $empresa = $this->empresaDoGabarito();
         $arquivo = $this->planilha([
             ModeloProdutosXlsx::CABECALHOS,
-            ['N1', null, null, 'Novo Um'],
-            ['X9', null, null, 'Custo ruim', null, null, null, null, null, null, 'abc'],
-            ['n1', null, null, 'Repetido'],
+            ['N1', null, null, null, 'Novo Um'],
+            ['X9', null, null, null, 'Custo ruim', null, null, null, null, null, null, 'abc'],
+            ['n1', null, null, null, 'Repetido'],
         ]);
 
         $this->entrarNoPortal($empresa)

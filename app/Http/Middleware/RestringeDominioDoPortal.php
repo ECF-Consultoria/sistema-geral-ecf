@@ -137,6 +137,9 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/ambientes/*',
         'portal/estrutura/produtos/categorias',
         'portal/estrutura/produtos/categorias/sugerir',
+        // 09/10/2026 — planilha de produtos: baixar preenchida e sugestão por nome de categoria na prévia.
+        'portal/estrutura/produtos/exportar',
+        'portal/estrutura/produtos/categorias/sugerir-nomes',
         'portal/estrutura/produtos/fretes',
         // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/campos-categoria',
