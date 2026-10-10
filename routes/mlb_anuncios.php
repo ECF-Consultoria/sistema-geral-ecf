@@ -10,6 +10,10 @@ use App\Http\Controllers\MlbPublicadorDescricaoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
 use App\Http\Controllers\MlbPublicadorFaseController;
 use App\Http\Controllers\MlbPublicadorIdentidadeController;
+use App\Http\Controllers\MlbPublicadorLoteController;
+use App\Http\Controllers\MlbPublicadorTarefasController;
+use App\Models\PubTarefa;
+use App\Support\Permissions;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -309,6 +313,30 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
             ->middleware('throttle:60,1,publicador.vinculo')->name('publicador.vinculo.estoque-calculado');
 
+        // ─── 10/10/2026 — Publicação em lote: visão rápida, "Conferir selecionados" e a fila com intervalo ───
+        // A conta vem da rota (resolver), nunca do corpo; produto de outra conta é ignorado e item de outra
+        // conta é 404. Quem anda a fila é o `publicador:fila-publicacao` (routes/console.php), não o request.
+        Route::prefix('publicador/empresas/{conta}/lote')
+            ->where(['conta' => '(empresa|company)-[0-9]+'])
+            ->name('publicador.lote.')
+            ->group(function () {
+                Route::get('/', [MlbPublicadorLoteController::class, 'index'])->name('index');
+                Route::get('dados', [MlbPublicadorLoteController::class, 'dados'])
+                    ->middleware('throttle:120,1,publicador.lote.dados')->name('dados');
+                Route::post('conferir', [MlbPublicadorLoteController::class, 'conferir'])
+                    ->middleware('throttle:10,1,publicador.lote.conferir')->name('conferir');
+                Route::post('agendar', [MlbPublicadorLoteController::class, 'agendar'])
+                    ->middleware('throttle:20,1,publicador.lote.agendar')->name('agendar');
+                Route::post('pausar', [MlbPublicadorLoteController::class, 'pausar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('pausar');
+                Route::post('retomar', [MlbPublicadorLoteController::class, 'retomar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('retomar');
+                Route::post('cancelar', [MlbPublicadorLoteController::class, 'cancelar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('cancelar');
+                Route::delete('itens/{item}', [MlbPublicadorLoteController::class, 'removerItem'])
+                    ->whereNumber('item')->middleware('throttle:60,1,publicador.lote.fila')->name('itens.remover');
+            });
+
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
         // cliente). D-05: leitura 100% do banco, zero chamada síncrona ao ML
@@ -495,4 +523,35 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('kit', '[A-Za-z0-9]{32}')
             ->middleware('throttle:12,1')
             ->name('criativo.kit.aprovar');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Tarefas pós-publicação — "Publicados aguardando alavancas" (09/10/2026)
+|--------------------------------------------------------------------------
+|
+| A ÚNICA parte deste arquivo FORA do `role:admin`, de propósito: quem usa as
+| alavancas (o "Caio" da reunião) pode não ser admin. A chave própria
+| `mlb.alavancas` (liberada por setor) dá VER e OPERAR a fila — pegar, marcar o
+| checklist, concluir, observação. Nada aqui fala com o Mercado Livre; escrever
+| nas Alavancas continua no grupo admin acima, e o responsável padrão só o
+| admin escolhe. Admin passa por qualquer chave (`User::hasPermission`).
+|
+*/
+Route::middleware(['auth', 'verified', 'permission:'.Permissions::MLB_ALAVANCAS])
+    ->prefix('mlb/anuncios/publicador/tarefas')
+    ->name('mlb.anuncios.publicador.tarefas.')
+    ->group(function () {
+        Route::get('/', [MlbPublicadorTarefasController::class, 'index'])->name('index');
+        Route::put('responsavel-padrao', [MlbPublicadorTarefasController::class, 'responsavelPadrao'])
+            ->middleware(['role:admin', 'throttle:30,1,publicador.tarefas.responsavel'])->name('responsavel-padrao');
+        Route::post('{tarefa}/pegar', [MlbPublicadorTarefasController::class, 'pegar'])
+            ->whereNumber('tarefa')->middleware('throttle:120,1,publicador.tarefas.acao')->name('pegar');
+        Route::put('{tarefa}/itens/{chave}', [MlbPublicadorTarefasController::class, 'marcar'])
+            ->whereNumber('tarefa')->whereIn('chave', array_keys(PubTarefa::CHECKLIST_ALAVANCAS))
+            ->middleware('throttle:120,1,publicador.tarefas.acao')->name('marcar');
+        Route::post('{tarefa}/concluir', [MlbPublicadorTarefasController::class, 'concluir'])
+            ->whereNumber('tarefa')->middleware('throttle:120,1,publicador.tarefas.acao')->name('concluir');
+        Route::put('{tarefa}/observacao', [MlbPublicadorTarefasController::class, 'observacao'])
+            ->whereNumber('tarefa')->middleware('throttle:120,1,publicador.tarefas.acao')->name('observacao');
     });

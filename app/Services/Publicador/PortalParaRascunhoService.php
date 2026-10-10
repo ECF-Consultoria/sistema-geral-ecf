@@ -120,7 +120,12 @@ class PortalParaRascunhoService
         ];
 
         if ($produto->estrutura_produto_id === null) {
-            return $produto->oferta_id !== null ? $this->preencherComposta($produto, $resumo) : $resumo;
+            if ($produto->oferta_id !== null) {
+                return $this->preencherComposta($produto, $resumo);
+            }
+
+            // Planejamento × Fase N (09/10/2026): o kit da Fase N recebe o SKU do Combo de cada cor.
+            return $produto->ehKit() ? $this->preencherKitDaFase($produto, $resumo) : $resumo;
         }
         $grupo = $this->leitor->doGrupo($produto);
         if ($grupo === null) {
@@ -356,6 +361,115 @@ class PortalParaRascunhoService
         }
 
         return $this->concluir($resumo, $produto, $r);
+    }
+
+    // ═══ Kit da Fase N (Planejamento × Fase N, 09/10/2026) ═══════════════════
+
+    /**
+     * O kit da Fase N de um base agrupado: a variante de cada cor cuja oferta Combo N existe no Portal
+     * recebe o SKU da oferta — o Planejamento é a fonte do SKU (decisões do usuário de 09/10/2026). O
+     * vínculo é derivado pela cor (`PlanejamentoDaFaseService::combosDoKit`).
+     *
+     * D-05 refinado, igual ao SKU das cores do grupo: preenche o vazio; atualiza só onde o rascunho
+     * ainda tem o último SKU que o Portal escreveu (`step_state.portal_escrito[chave].sku`); sem memória,
+     * SKU igual ao do Portal passa a segui-lo; qualquer outro — o `-KIT{N}` de antes de 09/10 inclusive —
+     * é da equipe e fica. A cor cujo Combo já foi publicado como produto avulso NÃO recebe o mesmo SKU
+     * (nunca o mesmo SKU em dois anúncios). Estoque não (o do kit é calculado do base), e categoria,
+     * ficha e fotos também não: o kit nasce clonado do base.
+     */
+    private function preencherKitDaFase(PubProduto $kit, array $resumo): array
+    {
+        $r = PubRascunho::where('produto_id', $kit->id)->first();
+        if ($r === null) {
+            return $resumo;
+        }
+        $resumo['rascunho_id'] = (int) $r->id;
+        if (IaParaRascunhoService::intocavel($r)) {
+            $resumo['intocavel'] = true;
+            $resumo['avisos'][] = self::AVISO_INTOCAVEL;
+
+            return $resumo;
+        }
+
+        $vivo = $this->sobTrava($r->id, function (PubRascunho $r) use ($kit, &$resumo) {
+            $snap = $this->repo->snapshot($r);
+            $combos = $this->planejamento()->combosDoKit($kit, $snap);
+            if ($combos === []) {
+                return true;
+            }
+            $publicados = $this->combosPublicadosAvulsos($kit, $combos);
+            $escrito = $this->escritoPeloPortal($r);
+            $porChave = [];
+            $lembrar = [];
+
+            foreach ($snap->variantes as $v) {
+                $combo = $combos[$v->chave] ?? null;
+                if ($combo === null || $v->orfa) {
+                    continue;
+                }
+                if (isset($publicados[$combo['oferta_id']])) {
+                    $resumo['avisos'][] = "O Combo {$kit->quantidade_kit} da cor \"{$combo['cor']}\" (SKU {$combo['sku']}) já foi publicado como o produto #{$publicados[$combo['oferta_id']]}; "
+                        .'o kit não recebeu o mesmo SKU para não publicá-lo duas vezes.';
+                    $resumo['campos_mantidos']++;
+
+                    continue;
+                }
+
+                $codigo = trim((string) $combo['sku']);
+                $atual = trim((string) ($v->dados['atributos']['SELLER_SKU']['value_name'] ?? ''));
+                $memoria = (array) ($escrito[$v->chave] ?? []);
+                $seguePortal = $atual !== '' && array_key_exists('sku', $memoria) && (string) $memoria['sku'] === $atual;
+                if ($codigo !== '' && $codigo !== $atual && ($atual === '' || $seguePortal)) {
+                    $atributos = (array) ($v->dados['atributos'] ?? []);
+                    $atributos['SELLER_SKU'] = ['value_name' => $codigo];
+                    $porChave[$v->chave] = ['atributos' => $atributos];
+                    $lembrar[$v->chave] = ['sku' => $codigo];
+                    $resumo[$atual === '' ? 'campos_preenchidos' : 'campos_atualizados']++;
+
+                    continue;
+                }
+                if (! array_key_exists('sku', $memoria) && $codigo !== '' && $codigo === $atual) {
+                    $lembrar[$v->chave] = ['sku' => $codigo];
+                }
+                $resumo['campos_mantidos']++;
+            }
+
+            $this->gravarVariantes($r, $porChave);
+            $this->lembrarEscrito($r, $lembrar);
+
+            return true;
+        });
+        if (! $vivo) {
+            return $this->parou($resumo);
+        }
+
+        return $this->concluir($resumo, $kit, $r);
+    }
+
+    /**
+     * Ofertas Combo do kit que já têm um produto AVULSO publicado (ou em publicação) — o do Sincronizar
+     * de antes de 09/10: oferta_id → id desse produto. Mesma Company; o combo vinculado como kit não conta.
+     *
+     * @param  array<string, array{oferta_id: int}>  $combos
+     * @return array<int, int>
+     */
+    private function combosPublicadosAvulsos(PubProduto $kit, array $combos): array
+    {
+        $saida = [];
+        PubProduto::query()->with('rascunho')->where('company_id', $kit->company_id)->whereNull('produto_base_id')
+            ->whereIn('oferta_id', array_values(array_unique(array_column($combos, 'oferta_id'))))->orderBy('id')->get()
+            ->filter(fn (PubProduto $p) => $p->rascunho !== null && IaParaRascunhoService::intocavel($p->rascunho))
+            ->each(function (PubProduto $p) use (&$saida) {
+                $saida[(int) $p->oferta_id] ??= (int) $p->id;
+            });
+
+        return $saida;
+    }
+
+    /** Resolvido sob demanda: o módulo tem ciclos conhecidos no container (ver o `EditorRascunhoService`). */
+    private function planejamento(): PlanejamentoDaFaseService
+    {
+        return app(PlanejamentoDaFaseService::class);
     }
 
     // ═══ Categoria e ficha (o mesmo código para grupo e composta) ════════════

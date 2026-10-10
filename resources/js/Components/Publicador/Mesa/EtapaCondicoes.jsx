@@ -78,9 +78,13 @@ function PrecoDaVariante({ m, v, a, rotulo, comPortal, semRotulo = false }) {
     const id = `preco-${lt}-${v.chave}`;
     const valor = v.precos?.[lt] ?? null;
     const efetivo = v.precos_efetivos?.[lt] ?? null;
+    // {anunciado, minimo, sem_frete} do Portal e se a conta cria a promoção sozinha (10/10/2026).
+    const portal = v.portal?.[lt] ?? null;
+    const automatica = m.estado?.promocao_automatica?.automatica;
     const erro = useErroDoCampo((x) => x.campo === 'preco' && x.variante === v.chave && x.alvo === lt, { vazio: valor === null && efetivo === null });
     const campo = (
         <CampoPreco id={id} valor={valor} efetivo={efetivo} invalido={!! erro} disabled={m.disabled || v.publicada} chave={v.chave} tipo={lt} comPortal={comPortal} rotulo={rotulo}
+            portal={portal} promocaoAutomatica={typeof automatica === 'boolean' ? automatica : null}
             onMudar={(num) => m.mudarVar(v.chave, { precos: { ...(v.precos ?? {}), [lt]: num } })} />
     );
 

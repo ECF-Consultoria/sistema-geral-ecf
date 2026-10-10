@@ -7,12 +7,18 @@ import { DialogTitle } from '@radix-ui/react-dialog';
 // consultor dá; aqui ela fica à mão como consulta, não como tela de grade. As
 // 4 fases, os exemplos (cadeira + mesa) e as regras de ouro são literais; o
 // passo a passo fala das telas do módulo em vez das abas da planilha.
+//
+// Nome e SKU dos exemplos (10/10/2026) são os que o sistema dá a essas ofertas —
+// o padrão do Planejamento (`NomesSugeridos`), o mesmo das sugestões, do "Montar
+// kit" e da Lista SKUs: Combo `-CB{n}`, Kit `KT-…`, Combit `CT{n}-…`. Antes eram
+// os da planilha ("…-KIT", "…-CBT4"), que o sistema não gera mais. O
+// `NomesSugeridosTest` confere estes exemplos contra a função.
 
 const FASES = [
     ['Fase 1 · Simples', '1 unidade do produto', '1 Cadeira 01', 'CAD-01'],
-    ['Fase 2 · Combo', 'Mesmo produto, mais unidades', 'Combo 2 Cadeiras 01', 'CAD-01-CB2'],
-    ['Fase 3 · Kit', 'Produtos diferentes juntos', 'Mesa Marfim + 1 Cadeira 01', 'MSA-MR+CAD-01-KIT'],
-    ['Fase 4 · Combit', 'Kit com mais unidades de um item', 'Mesa Marfim + 4 Cadeiras 01', 'MSA-MR+CAD-01-CBT4'],
+    ['Fase 2 · Combo', 'Mesmo produto, mais unidades', 'Kit 2 Cadeiras 01', 'CAD-01-CB2'],
+    ['Fase 3 · Kit', 'Produtos diferentes juntos', 'Mesa Marfim + Cadeira 01', 'KT-MSA-MR-CAD-01'],
+    ['Fase 4 · Combit', 'Kit com mais unidades de um item', 'Mesa Marfim + 4 Cadeiras', 'CT4-MSA-MR-CAD-01'],
 ];
 
 const PASSOS = [

@@ -34,6 +34,19 @@ use Illuminate\Support\Facades\Schema;
  * grupo (criado pelo Sincronizar de antes do agrupamento, um por oferta) que NADA referencia — sem
  * rascunho (e, portanto, sem publicação nem análise de IA) — é removido: a cor já está no grupo como
  * variante. Com rascunho ou qualquer outra referência, nunca é tocado (fica separado e o resumo avisa).
+ *
+ * Planejamento × Fase N (09/10/2026, decisões do usuário): o combo vai ao ML como UM anúncio com as
+ * cores como variação — o kit da Fase N da família (`produto_base_id` + `quantidade_kit`). Então a
+ * oferta Combo de UMA cor de um produto agrupado deixa de virar `pub_produto` avulso:
+ * - a família já tem o Kit N → a oferta é a variante daquela cor no kit (vínculo derivado pela cor,
+ *   `PlanejamentoDaFaseService`); o kit entra em `para_preencher` e o preenchimento leva o SKU da
+ *   oferta à variante (só no vazio ou no que o Portal escreveu — D-05 refinado);
+ * - não tem → fica aguardando o "Criar Fase N" (log e `combos_aguardando_fase`);
+ * - o avulso que o Sincronizar de antes criou para ela: sem rascunho, sem vínculo de kit e sem kits
+ *   apontando para ele, é absorvido (`combos_absorvidos`, mesma regra das cores); com rascunho, fica —
+ *   é um composto do Planejamento (`PlanejamentoDaFaseService::tipoComposto`) — e o log avisa.
+ * Kit e Combit (produtos diferentes juntos) e o combo da variação que vira produto separado seguem
+ * um produto por oferta, como sempre.
  */
 class PublicadorSincronizaPortalService
 {
@@ -46,11 +59,17 @@ class PublicadorSincronizaPortalService
      *     absorvidos: int,
      *     absorvidos_ids: list<int>,
      *     avisos: list<string>,
-     *     para_preencher: list<int>
+     *     para_preencher: list<int>,
+     *     combos_na_fase: int,
+     *     combos_aguardando_fase: int,
+     *     combos_absorvidos: int,
+     *     combos_absorvidos_ids: list<int>
      * } `criados`/`ids` contam só os pub_produtos NOVOS; `adotados` são os legados que viraram grupo;
      *   `duplicados` lista os legados de outras cores que ficaram como estão; `absorvidos` conta os
-     *   legados sem rascunho removidos porque a cor já está no grupo; `para_preencher` são os grupos
-     *   e os produtos de ofertas compostas, que a ficha do Portal vai preencher.
+     *   legados sem rascunho removidos porque a cor já está no grupo; `para_preencher` são os grupos,
+     *   os produtos de ofertas compostas e os kits da Fase N com Combo no Portal, que a ficha do Portal
+     *   vai preencher. `combos_*` (Planejamento × Fase N): Combos de uma cor que já são variante do Kit
+     *   N da família, os que aguardam o "Criar Fase N" e os avulsos antigos absorvidos.
      */
     public function sincronizar(?MlbEmpresa $empresa, Company $company, ?int $soDoProduto = null): array
     {
@@ -68,6 +87,7 @@ class PublicadorSincronizaPortalService
         $absorvidos = [];
         $avisos = [];
         $grupos = [];
+        $gruposPorProduto = [];
 
         // Variações e produtos SEMPRE da Company recebida (T-172-08).
         $variacoes = $this->variacoesDaCompany($ofertas, $company);
@@ -109,6 +129,9 @@ class PublicadorSincronizaPortalService
                 unset($agrupaveis[$produtoId]);
             }
         }
+
+        // Planejamento × Fase N: o Combo de UMA cor do grupo não é produto avulso — é variante do Kit N.
+        [$avulsas, $combosDaFamilia] = $this->separarCombosDaFamilia($avulsas, $agrupaveis);
 
         // ── Ofertas sem agrupamento: um produto por oferta, como sempre foi ──
         $jaTem = $ofertas->isEmpty() ? collect() : PubProduto::query()
@@ -161,6 +184,7 @@ class PublicadorSincronizaPortalService
 
             if ($grupo !== null) {
                 $grupos[] = $grupo->id;
+                $gruposPorProduto[$produtoId] = $grupo;
                 // A cor já é variante do grupo: o legado dela que nada referencia sai da lista do Publicador.
                 $removidos = $this->absorver($legados, $company, $grupo);
                 if ($removidos !== []) {
@@ -187,10 +211,15 @@ class PublicadorSincronizaPortalService
             }
         }
 
+        // ── Planejamento × Fase N: o Combo de cada cor é a variante dela no Kit N da família ──
+        $fase = $this->combosNaFase($combosDaFamilia, $gruposPorProduto, $company, $empresa, $jaTem, $produtos);
+        $ids = [...$ids, ...$fase['criados']];
+        $avisos = [...$avisos, ...$fase['avisos']];
+
         $compostos = $ofertas->where('fase', '!=', EstruturaOferta::FASE_SIMPLES)->pluck('id');
         $doPortalComposto = $compostos->isEmpty() ? [] : PubProduto::query()->where('company_id', $company->id)
             ->whereIn('oferta_id', $compostos)->orderBy('id')->pluck('id')->all();
-        $paraPreencher = array_values(array_unique(array_merge($grupos, $doPortalComposto)));
+        $paraPreencher = array_values(array_unique(array_merge($grupos, $doPortalComposto, $fase['kits'])));
 
         // "Sincronizado em" é do clique da empresa inteira; o de um produto só não o representa.
         if ($soDoProduto === null) {
@@ -202,7 +231,9 @@ class PublicadorSincronizaPortalService
         $escopo = $soDoProduto === null ? '' : " (só o produto {$soDoProduto} do Portal, salvo pelo cliente)";
         Log::info("[Publicador] Sincronizar do Portal{$escopo}: empresa {$company->id} ({$company->name}) — {$criados} produto(s) novo(s), {$nAdotados} adotado(s), "
             ."{$nAbsorvidos} linha(s) antiga(s) de cor absorvida(s)".($absorvidos !== [] ? ' (#'.implode(', #', $absorvidos).')' : '').', '
-            .count($duplicados).' produto(s) com cores avulsas.');
+            .count($duplicados).' produto(s) com cores avulsas; Combos de uma cor: '
+            ."{$fase['na_fase']} já na Fase N, {$fase['aguardando']} aguardando a Fase N, ".count($fase['absorvidos']).' avulso(s) antigo(s) absorvido(s)'
+            .($fase['absorvidos'] !== [] ? ' (#'.implode(', #', $fase['absorvidos']).')' : '').'.');
         // Os avisos do clique vão para o log, não para a tela (09/10/2026: o painel mostra uma linha só).
         if ($avisos !== []) {
             Log::info('[Publicador] Sincronizar avisos', ['company_id' => (int) $company->id, 'rascunho_id' => null, 'avisos' => array_values(array_unique($avisos))]);
@@ -217,7 +248,120 @@ class PublicadorSincronizaPortalService
             'absorvidos_ids' => $absorvidos,
             'avisos' => $avisos,
             'para_preencher' => $paraPreencher,
+            'combos_na_fase' => $fase['na_fase'],
+            'combos_aguardando_fase' => $fase['aguardando'],
+            'combos_absorvidos' => count($fase['absorvidos']),
+            'combos_absorvidos_ids' => $fase['absorvidos'],
         ];
+    }
+
+    /**
+     * Separa das avulsas as ofertas Combo de UMA cor de um produto agrupado: Combo com exatamente um
+     * componente, de quantidade 2 ou mais, que é a oferta Simples de uma cor que entra no grupo
+     * (`$agrupaveis`, já filtrado pelo `CoresDoGrupo`). Uma consulta para os componentes de todas.
+     *
+     * @param  list<EstruturaOferta>  $avulsas
+     * @param  array<int, list<EstruturaOferta>>  $agrupaveis  produto do Portal → as ofertas Simples das cores do grupo
+     * @return array{0: list<EstruturaOferta>, 1: array<int, list<array{oferta: EstruturaOferta, componente_id: int, n: int}>>}
+     *                                                                                                                        as avulsas que sobram e os Combos por produto do Portal
+     */
+    private function separarCombosDaFamilia(array $avulsas, array $agrupaveis): array
+    {
+        $produtoDaCor = [];
+        foreach ($agrupaveis as $produtoId => $lista) {
+            foreach ($lista as $o) {
+                $produtoDaCor[(int) $o->id] = (int) $produtoId;
+            }
+        }
+        $comboIds = array_map(fn (EstruturaOferta $o) => (int) $o->id, array_filter($avulsas, fn (EstruturaOferta $o) => $o->fase === EstruturaOferta::FASE_COMBO));
+        if ($produtoDaCor === [] || $comboIds === []) {
+            return [$avulsas, []];
+        }
+
+        $componentes = EstruturaOfertaComponente::query()->whereIn('oferta_id', $comboIds)
+            ->get(['oferta_id', 'componente_id', 'quantidade'])->groupBy('oferta_id');
+
+        $restam = [];
+        $daFamilia = [];
+        foreach ($avulsas as $oferta) {
+            $lista = $oferta->fase === EstruturaOferta::FASE_COMBO ? ($componentes->get($oferta->id) ?? collect()) : collect();
+            $unico = $lista->count() === 1 ? $lista->first() : null;
+            $produtoId = $unico !== null ? ($produtoDaCor[(int) $unico->componente_id] ?? null) : null;
+            if ($produtoId === null || (int) $unico->quantidade < 2) {
+                $restam[] = $oferta;
+
+                continue;
+            }
+            $daFamilia[$produtoId][] = ['oferta' => $oferta, 'componente_id' => (int) $unico->componente_id, 'n' => (int) $unico->quantidade];
+        }
+
+        return [$restam, $daFamilia];
+    }
+
+    /**
+     * Os Combos de uma cor de cada produto agrupado diante da família no Publicador.
+     *
+     * - Sem grupo (todas as cores já publicadas avulsas, nada agrupado): o Combo segue um produto por
+     *   oferta, como antes.
+     * - O avulso antigo do Combo: absorvido quando nada o referencia e ele não é kit de ninguém; com
+     *   rascunho, fica (composto do Planejamento) e o log avisa.
+     * - Com o Kit N (`produto_base_id` = grupo, `quantidade_kit` = N): conta como "na Fase N" e o kit
+     *   vai para `kits` (o preenchimento leva o SKU da oferta à variante da cor). Sem: "aguardando".
+     *
+     * @param  array<int, list<array{oferta: EstruturaOferta, componente_id: int, n: int}>>  $combosDaFamilia
+     * @param  array<int, PubProduto>  $gruposPorProduto
+     * @param  Collection<int, mixed>  $jaTem  oferta_id que já tem pub_produto (flip)
+     * @param  Collection<int, EstruturaProduto>  $produtos
+     * @return array{criados: list<int>, kits: list<int>, na_fase: int, aguardando: int, absorvidos: list<int>, avisos: list<string>}
+     */
+    private function combosNaFase(array $combosDaFamilia, array $gruposPorProduto, Company $company, ?MlbEmpresa $empresa, Collection $jaTem, Collection $produtos): array
+    {
+        $saida = ['criados' => [], 'kits' => [], 'na_fase' => 0, 'aguardando' => 0, 'absorvidos' => [], 'avisos' => []];
+
+        foreach ($combosDaFamilia as $produtoId => $lista) {
+            $nome = (string) $produtos->get($produtoId)?->nome;
+            $grupo = $gruposPorProduto[$produtoId] ?? null;
+            if ($grupo === null) {
+                foreach ($lista as $c) {
+                    if (! $jaTem->has($c['oferta']->id) && ($novo = $this->criar($c['oferta'], $company, $empresa, $c['oferta']->sku, $c['oferta']->nome ?: $c['oferta']->sku, null)) !== null) {
+                        $saida['criados'][] = (int) $novo->id;
+                    }
+                }
+
+                continue;
+            }
+
+            $ofertaIds = array_map(fn (array $c) => (int) $c['oferta']->id, $lista);
+            $legados = PubProduto::query()->with('rascunho')->where('company_id', $company->id)
+                ->whereIn('oferta_id', $ofertaIds)->orderBy('id')->get()->keyBy('oferta_id');
+            $removidos = $this->absorver($legados->filter(fn (PubProduto $l) => $l->produto_base_id === null && $l->rascunho === null)->values(), $company, $grupo);
+            $saida['absorvidos'] = [...$saida['absorvidos'], ...$removidos];
+
+            $kits = PubProduto::query()->where('produto_base_id', $grupo->id)->orderBy('id')->get()->keyBy(fn (PubProduto $k) => (int) $k->quantidade_kit);
+            $aguardando = [];
+            foreach ($lista as $c) {
+                $legado = $legados->get($c['oferta']->id);
+                if ($legado !== null && $legado->produto_base_id === null && ! in_array((int) $legado->id, $removidos, true)) {
+                    $saida['avisos'][] = "{$nome}: o Combo {$c['n']} (SKU {$c['oferta']->sku}) também existe como produto avulso #{$legado->id}, de antes da Fase N; "
+                        ."ele segue separado, como Combo do Planejamento. Publique esse combo pela Fase {$c['n']} do produto #{$grupo->id}, nunca pelos dois.";
+                }
+                $kit = $kits->get($c['n']);
+                if ($kit !== null) {
+                    $saida['kits'][] = (int) $kit->id;
+                    $saida['na_fase']++;
+
+                    continue;
+                }
+                $saida['aguardando']++;
+                $aguardando[$c['n']][] = (string) $c['oferta']->sku;
+            }
+            foreach ($aguardando as $n => $skus) {
+                $saida['avisos'][] = "{$nome}: o Combo {$n} de ".count($skus).' cor(es) ('.implode(', ', $skus).") está aguardando a Fase N — crie o Kit {$n} pelo \"Criar Fase\" do produto #{$grupo->id}.";
+            }
+        }
+        $saida['kits'] = array_values(array_unique($saida['kits']));
+
+        return $saida;
     }
 
     /**
@@ -228,6 +372,12 @@ class PublicadorSincronizaPortalService
      * de IA (ela nasce do rascunho aberto), nem kit de criativos. A FK de `pub_rascunhos.produto_id` é
      * CASCADE: por isso a condição "sem rascunho" mora no PRÓPRIO `DELETE` (uma subconsulta), e não só
      * numa leitura anterior — um rascunho aberto entre a leitura e a remoção salva o legado.
+     *
+     * Fase N (Fase 175 + Planejamento × Fase N, 09/10/2026): também nunca sai o que é kit de alguém
+     * (`produto_base_id`, o vínculo é decisão da equipe) nem o que é base de um kit (`pubprod_base_fk` é
+     * SET NULL: apagá-lo soltaria o kit em silêncio). A 2ª condição lê a MESMA tabela, então fica na
+     * leitura e não no `DELETE`: subconsulta sobre a tabela do `DELETE` é o erro 1093 do MariaDB, que o
+     * SQLite dos testes não pega.
      *
      * @param  Collection<int, PubProduto>  $legados
      * @return list<int>
@@ -243,9 +393,12 @@ class PublicadorSincronizaPortalService
             ->where('company_id', $company->id)
             ->where('origem', PubProduto::ORIGEM_PORTAL)
             ->whereNull('estrutura_produto_id')
+            ->whereNull('produto_base_id')
             ->whereIn('id', $candidatos));
 
         $ids = $escopo()->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $bases = $ids === [] ? [] : DB::table('pub_produtos')->whereIn('produto_base_id', $ids)->pluck('produto_base_id')->map(fn ($id) => (int) $id)->all();
+        $ids = array_values(array_diff($ids, $bases));
         if ($ids === []) {
             return [];
         }

@@ -7,10 +7,11 @@ namespace App\Services\Portal\Estrutura\Geracao;
  *
  * Classe pura: não lê config; os limites chegam por parâmetro. Os SKUs de Kit
  * ("KT-{a}-{b}") e Combit ("CT{n}-{fixo}-{repetido}") são suposição da pesquisa
- * (A1) e são editáveis; o do Combo segue o padrão "-CB{n}" que o
- * EstruturaOfertaService::criarCombos já usa. Título acima de 60 caracteres só
- * avisa; SKU acima de 120 bloqueia o aceite (a regra de bloqueio mora em
- * EstruturaOfertaService::campos).
+ * (A1) e são editáveis; o do Combo segue o padrão "-CB{n}" da aula. Desde
+ * 10/10/2026 os combos em lote da Lista SKUs (EstruturaOfertaService::criarCombos)
+ * também nascem por {@see self::combo()} — um nome só para o mesmo combo. Título
+ * acima de 60 caracteres só avisa; SKU acima de 120 bloqueia o aceite (a regra de
+ * bloqueio mora em EstruturaOfertaService::campos).
  */
 final class NomesSugeridos
 {
@@ -76,6 +77,33 @@ final class NomesSugeridos
         return [
             'nome' => "{$fixo['produto_nome']} + {$n} {$tipoRepetido['plural']}" . self::sufixo([$fixo['valor'] ?? null, $repetido['valor'] ?? null]),
             'sku'  => "CT{$n}-{$fixo['sku']}-{$repetido['sku']}",
+        ];
+    }
+
+    /**
+     * Combit com 3 ou mais itens, ou com mais de um item repetido (09/10/2026, "Montar kit"
+     * do Planejamento). O de 2 itens com UM repetido usa {@see self::combit()}; este segue o
+     * mesmo espírito: o item de uma unidade pelo nome, o repetido como "{N} {plural}" (sem
+     * tipo, o nome do produto). SKU: `CT-` e os SKUs na ordem, o repetido com `x{N}`
+     * ("CT-MESA-CADx4-BANCOx2").
+     *
+     * @param  list<array{produto_nome: string, sku: string, valor: ?string, quantidade: int, plural?: ?string}>  $itens
+     * @return array{nome: string, sku: string}
+     */
+    public static function combitDeVarios(array $itens): array
+    {
+        $nomes = [];
+        $skus  = [];
+        foreach ($itens as $i) {
+            $n = (int) $i['quantidade'];
+            $plural = trim((string) ($i['plural'] ?? ''));
+            $nomes[] = $n > 1 ? "{$n} ".($plural !== '' ? $plural : $i['produto_nome']) : $i['produto_nome'];
+            $skus[]  = $n > 1 ? "{$i['sku']}x{$n}" : $i['sku'];
+        }
+
+        return [
+            'nome' => implode(' + ', $nomes) . self::sufixo(array_map(fn ($i) => $i['valor'] ?? null, $itens)),
+            'sku'  => 'CT-' . implode('-', $skus),
         ];
     }
 

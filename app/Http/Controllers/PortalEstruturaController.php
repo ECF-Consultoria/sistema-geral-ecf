@@ -16,10 +16,12 @@ use App\Services\Portal\Estrutura\EstruturaAnuncioService;
 use App\Services\Portal\Estrutura\EstruturaOfertaService;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
 use App\Services\Portal\Estrutura\EstruturaVisaoService;
+use App\Services\Portal\Estrutura\FunilDoMapeamento;
 use App\Services\Portal\PortalClienteService;
 use App\Support\Portal\ModulosPortal;
 use App\Support\Portal\PortalContexto;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -42,6 +44,9 @@ use Inertia\Inertia;
  */
 class PortalEstruturaController extends Controller
 {
+    /** "Cotar agora" da Precificação: rodadas por minuto, por empresa (a tela repete sozinha enquanto sobra pendência). */
+    private const COTACOES_POR_MINUTO = 20;
+
     public function __construct(
         private PortalClienteService $portal,
         private EstruturaVisaoService $visao,
@@ -60,7 +65,8 @@ class PortalEstruturaController extends Controller
      * A porta do módulo (D-21). Sem nada na URL, abre Produtos — o primeiro
      * passo de quem começa do zero — para a empresa que já tem produto ou que
      * ainda não tem oferta nenhuma; quem já trabalha só com ofertas (as 500
-     * importadas da #131) segue entrando pela Lista SKUs. Os links antigos (`?abrir=ID` da agenda,
+     * importadas da #131) segue entrando pela Lista SKUs — se a vê no menu (09/10/2026,
+     * `VisibilidadeDoMapeamento`); senão, Produtos. Os links antigos (`?abrir=ID` da agenda,
      * `?abrir=ID&metricas=1` da Jardinagem, `?q=`/`?situacao=`/`?pagina=`)
      * eram da página que hoje é o Mapeamento: vão para ela, com a query intacta.
      */
@@ -68,8 +74,12 @@ class PortalEstruturaController extends Controller
     {
         $daVisaoAntiga = $request->hasAny(['abrir', 'q', 'situacao', 'pagina', 'metricas']);
 
-        $id = PortalContexto::empresa()->id;
-        $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists();
+        $empresa = PortalContexto::empresa();
+        $id = $empresa->id;
+        // Só vai para a Lista SKUs quem a vê (09/10/2026): o cliente vê Produtos, Planejamento,
+        // Precificação e Mapeamento; a empresa que importou ofertas continua vendo a Lista.
+        $abreProdutos = EstruturaProduto::where('company_id', $id)->exists() || ! EstruturaOferta::where('company_id', $id)->exists()
+            || ! ModulosPortal::submoduloVisivel($empresa, PortalContexto::ator(), 'lista');
 
         return redirect()->route(
             $daVisaoAntiga ? 'portal.auth.estrutura.mapeamento' : ($abreProdutos ? 'portal.auth.estrutura.produtos' : 'portal.auth.estrutura.lista'),
@@ -114,6 +124,11 @@ class PortalEstruturaController extends Controller
      * Precificação: os produtos da Lista SKUs com custo, fretes e o preço de
      * Clássico e Premium — a conta da Calculadora de Custo, feita no PHP
      * (ADR PORTAL-02). O resumo é da empresa inteira; o detalhe, da página.
+     *
+     * `?cotar=1` é o botão "Cotar agora" (09/10/2026): antes de montar a página, cota na
+     * conta do cliente o frete das ofertas DESTA página e devolve o resumo em `cotacao`.
+     * A tela visita com `preserveUrl`, então o parâmetro não fica no endereço. O resto do
+     * tempo a página não faz nenhuma requisição ao ML (frete sugerido = cache ou tabela).
      */
     public function precificacaoIndex(Request $request)
     {
@@ -122,12 +137,30 @@ class PortalEstruturaController extends Controller
         $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1));
         $ids = array_merge(...array_map(fn ($b) => array_column($b['ofertas'], 'id'), $estrutura['blocos'] ?: [['ofertas' => []]]));
 
+        $cotacao = null;
+        if ($request->boolean('cotar')) {
+            // Teto por empresa: cada clique gasta até `max_por_requisicao` cotações na conta do cliente.
+            $cotou = RateLimiter::attempt("estrutura.precificacao.cotar:{$empresa->id}", self::COTACOES_POR_MINUTO,
+                function () use (&$cotacao, $empresa, $ids) {
+                    $cotacao = $this->precificacao->cotarFretes($empresa, $ids);
+                }, 60);
+            if (! $cotou) {
+                $cotacao = ['limitado' => true];
+            }
+        }
+
         return Inertia::render('Portal/EstruturaPrecificacao', [
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.precificacao', PortalContexto::ator()),
             'estrutura'    => $estrutura,
             'precificacao' => $this->precificacao->pagina($empresa, $ids),
             'filtros'      => ['q' => $busca],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
+            'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
+            'frete_tabela' => [
+                'vigente_desde' => config('estrutura_produtos.frete.vigente_desde'),
+                'reputacao'     => config('estrutura_produtos.frete.reputacao'),
+            ],
+            'cotacao'      => $cotacao,
         ]);
     }
 
@@ -172,6 +205,9 @@ class PortalEstruturaController extends Controller
             // Só quando o diálogo pede — a lista de ofertas pode ter milhares
             // de linhas, e a maioria das visitas não a abre.
             'opcoes_ofertas' => Inertia::optional(fn () => $this->visao->opcoesDeOfertas($empresa)),
+            // O que falta (09/10/2026): produtos, Planejamento, Precificação e o que está à venda. Adiado:
+            // a página abre sem esperar a geração das sugestões e o resumo da Precificação.
+            'funil' => Inertia::defer(fn () => app(FunilDoMapeamento::class)->daEmpresa($empresa)),
         ]);
     }
 

@@ -72,6 +72,14 @@ class Permissions
      * `permission:mlb.anunciar`, esta key passa a valer por si só.
      */
     public const MLB_CRIATIVOS_IA          = 'mlb.criativos_ia';
+    /**
+     * 09/10/2026 — ver e operar a fila "Publicados aguardando alavancas" (tarefas pós-publicação do
+     * Publicador): pegar, marcar o checklist, concluir. Chave PRÓPRIA, independente de `MLB_ANUNCIAR`:
+     * quem usa as alavancas (o "Caio" da reunião) não é quem publica, e o dia em que o Publicador abrir
+     * para `permission:mlb.anunciar` não pode dar a fila a quem publica nem a publicação a quem usa a
+     * alavanca. ESCREVER no Mercado Livre pelas Alavancas continua só para admin (grupo `role:admin`).
+     */
+    public const MLB_ALAVANCAS             = 'mlb.alavancas';
     /** Ver o Faturamento Polos (dados financeiros por polo). Escopado ao setor Polos — não vaza via mlb.projetos. */
     public const MLB_FATURAMENTO_POLOS     = 'mlb.faturamento_polos';
 
@@ -196,6 +204,7 @@ class Permissions
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
                 ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
                 ['key' => self::MLB_CRIATIVOS_IA,  'label' => 'Pub · Criativos por IA', 'description' => 'Planejar, gerar, regenerar e aprovar criativos de imagem por IA (consome cota paga)'],
+                ['key' => self::MLB_ALAVANCAS,     'label' => 'Pub · Alavancas pós-publicação', 'description' => 'Ver e operar a fila de publicados aguardando alavancas (pegar, marcar o checklist, concluir); escrever no Mercado Livre segue só para admin'],
                 ['key' => self::MLB_FATURAMENTO_POLOS, 'label' => 'Pub · Faturamento Polos', 'description' => 'Ver a página Faturamento Polos (financeiro por polo) — libera o setor Polos sem depender de admin'],
             ],
             'Shopee' => [

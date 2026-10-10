@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link, router } from '@inertiajs/react';
-import { ChevronDown, ChevronRight, ChevronUp, Loader2, Tag, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Loader2, Plus, Tag, Truck } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, Paginacao } from '@/Components/Portal/Estrutura/comum';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
@@ -16,6 +16,8 @@ import PainelSemTipo from '@/Components/Portal/Estrutura/Sugestoes/PainelSemTipo
 import JanelaTipo from '@/Components/Portal/Estrutura/Sugestoes/JanelaTipo';
 import ListaDescartadas from '@/Components/Portal/Estrutura/Sugestoes/ListaDescartadas';
 import AvisoSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AvisoSugestoes';
+import MontarKitAMao from '@/Components/Portal/Estrutura/Sugestoes/MontarKitAMao';
+import { destinoDaOfertaCriada } from '@/lib/portalSubmodulos';
 import {
     aceitarMarcadas, alternarMarca, desfazerEdicao, descartarChaves, desmarcarVarias, editarCampo,
     deveSegurarVisita, estadoInicial, haEdicaoPendente, limparMarcacao, marcarVarias, podeAceitar,
@@ -35,7 +37,8 @@ import { cn } from '@/lib/utils';
 // D-01: a pessoa aceita uma ou várias e descarta; nada é criado sozinho.
 // D-08: cada cartão mostra composição, o porquê, logística e frete estimado.
 // D-19: nome e código editáveis só no navegador até Aceitar (limites 60/120 do servidor).
-// D-20: nenhum submódulo novo; a tela entra por Produtos e pela Lista SKUs.
+// D-20 (revisto em 09/10/2026): a tela virou o submódulo "Planejamento" do menu, logo depois de
+// Produtos; continua entrando também por Produtos e pela Lista SKUs.
 //
 // SEM PLANILHA NA TELA (D-23 da 167): cartões, listas e janelas. Filtros, abas e páginas
 // vão ao servidor (learnings §25/§27). A marcação e as edições ficam em `estado`, que
@@ -58,6 +61,10 @@ import { cn } from '@/lib/utils';
 // tipo da linha e o "Ajustar quantidades" abrem a mesma JanelaTipo (D-07). A aba
 // "Descartadas" tem marcação PRÓPRIA (outra instância de estadoInicial) e a barra sem
 // amarelo: restaurar não cria nada, só devolve à lista (D-01).
+//
+// 09/10/2026: "Montar kit" (MontarKitAMao) — a pessoa junta os produtos à mão, com a prévia do
+// servidor; `?montar=<produto>` abre a janela com o produto já escolhido (vindo de Produtos).
+// O "ver a oferta criada" leva à Lista SKUs só para quem a vê; o cliente vai à Precificação.
 
 /** Cartão tracejado dos estados vazios (mesmo desenho do estado vazio de Produtos). */
 function EstadoVazio({ titulo, corpo, children }) {
@@ -103,8 +110,10 @@ function BlocoDeCombos({ chave, bloco, ocupado, onAlternar, children }) {
     );
 }
 
-export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, filtros, ml_conectado = false, vocabulario }) {
+export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
     const limites = sugestoes.limites;
+    const [montarAberto, setMontarAberto] = useState(false);
+    const [produtoMontar, setProdutoMontar] = useState(null);     // `?montar=<produto>`: entra já escolhido
     const [estado, setEstado] = useState(estadoInicial);
     const [errosPorChave, setErrosPorChave] = useState({});
     const [aceitando, setAceitando] = useState(() => new Set());   // chaves em aceite individual
@@ -266,9 +275,11 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
         if (r.resultado) {
             const criadas = r.resultado.criadas.length;
             if (criadas > 0) setAceitouNaSessao(true);
+            // A Lista SKUs só para quem a vê; o cliente vai à Precificação (com o SKU, se for uma só).
+            const destino = destinoDaOfertaCriada(modulos, criadas === 1 ? r.resultado.criadas[0].sku : null);
             setAviso({
-                texto: textoResultadoAceite(r.resultado),
-                acao: criadas > 0 ? { rotulo: 'Ver na Lista SKUs', href: route('portal.auth.estrutura.lista') } : null,
+                texto: textoResultadoAceite(r.resultado, destino.ondeFica),
+                acao: criadas > 0 ? { rotulo: destino.rotulo, href: destino.href } : null,
             });
             recarregar();
         }
@@ -497,6 +508,34 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
         return () => window.removeEventListener('pageshow', aoMostrar);
     }, []);
 
+    // ─── Montar kit à mão (09/10/2026) ──────────────────────────────────────
+
+    // `?montar=<produto>` (o atalho de Produtos): abre a janela com o produto já escolhido. O
+    // parâmetro sai da URL depois de o Inertia gravar o estado inicial, para um F5 não reabrir.
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        const id = Number(url.searchParams.get('montar'));
+        if (! id) return;
+        setProdutoMontar(id);
+        setMontarAberto(true);
+        url.searchParams.delete('montar');
+        setTimeout(() => window.history.replaceState(window.history.state, '', url), 100);
+    }, []);
+
+    const abrirMontagem = () => {
+        setProdutoMontar(null);
+        setMontarAberto(true);
+    };
+
+    // O catálogo da janela só vem quando ela pede (pode ter milhares de linhas).
+    const carregarCatalogo = () => router.reload({ only: ['montagem'], preserveScroll: true });
+
+    const montagemCriada = () => {
+        setAceitouNaSessao(true);
+        // A combinação pode ter sido uma sugestão pendente: ela sai da lista. O catálogo segue igual.
+        recarregar();
+    };
+
     const sairSemAceitar = () => {
         const pedido = saida;
         liberado.current = true;
@@ -564,7 +603,12 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                                 </p>
                             </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-4">
+                        <div className="flex shrink-0 flex-wrap items-center gap-4">
+                            {(sugestoes.tem_produtos || montar_disponivel) && (
+                                <Botao variante="secundario" onClick={abrirMontagem} data-acao="montar-kit" className="h-11 lg:h-9">
+                                    <Plus size={15} aria-hidden="true" /> Montar kit
+                                </Botao>
+                            )}
                             <Botao variante="fantasma" onClick={() => setAula(true)} data-acao="como-funciona" className="h-9">Como funciona</Botao>
                             {textoDeAtualizacao && (
                                 <span data-atualizado title={horaExata} className="inline-flex items-center gap-2 text-[13px] text-white/70">
@@ -580,6 +624,10 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                     <EstadoVazio titulo="Cadastre seus produtos primeiro"
                         corpo="As sugestões nascem dos produtos que você cadastrou. Cadastre ao menos um produto com família, ambiente e medidas.">
                         <Link href={route('portal.auth.estrutura.produtos')} className={LINK_PRIMARIO} data-acao="ir-para-produtos">Ir para Produtos</Link>
+                        {/* Ofertas sem produto cadastrado (importadas) também se juntam à mão. */}
+                        {montar_disponivel && (
+                            <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
+                        )}
                     </EstadoVazio>
                 )}
 
@@ -673,17 +721,24 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         )}
                         {vazio === 'sem_sugestoes' && (
                             <EstadoVazio titulo="Ainda não há sugestões novas"
-                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Veja a aba Sem tipo ou cadastre mais produtos.">
+                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Veja a aba Sem tipo, cadastre mais produtos ou monte o kit você mesmo.">
                                 {(sugestoes.contagens?.sem_tipo ?? 0) > 0 && (
                                     <Link href={hrefAba('sem_tipo')} className={LINK_SECUNDARIO} data-acao="ver-sem-tipo">Ver Sem tipo</Link>
                                 )}
+                                <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
                             </EstadoVazio>
                         )}
-                        {vazio === 'tudo_revisado' && (
-                            <EstadoVazio titulo="Você revisou todas as sugestões" corpo="As ofertas aceitas já estão na Lista SKUs.">
-                                <Link href={route('portal.auth.estrutura.lista')} className={LINK_SECUNDARIO} data-acao="ver-lista-skus">Ver na Lista SKUs</Link>
-                            </EstadoVazio>
-                        )}
+                        {vazio === 'tudo_revisado' && (() => {
+                            // Só leva à Lista SKUs quem a vê; o cliente segue para a Precificação.
+                            const destino = destinoDaOfertaCriada(modulos);
+
+                            return (
+                                <EstadoVazio titulo="Você revisou todas as sugestões" corpo={`As ofertas aceitas já estão ${destino.ondeFica}.`}>
+                                    <Link href={destino.href} className={LINK_SECUNDARIO} data-acao="ver-ofertas-aceitas">{destino.rotulo}</Link>
+                                    <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
+                                </EstadoVazio>
+                            );
+                        })()}
 
                         {sugestoes.paginacao.paginas > 1 && (
                             <div className="mt-6">
@@ -722,6 +777,9 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
             )}
 
             <JanelaTipo produto={tipoAberto} tipos={sugestoes.tipos ?? []} onFechar={() => setTipoAberto(null)} onSalvo={tipoSalvo} />
+
+            <MontarKitAMao aberta={montarAberto} onFechar={() => setMontarAberto(false)} catalogo={montagem}
+                onCarregar={carregarCatalogo} produtoInicial={produtoMontar} vocabulario={vocabulario} onCriada={montagemCriada} />
 
             <Janela aberta={confirmaDescarte} onFechar={() => setConfirmaDescarte(false)} titulo={`Descartar ${marcadas.length} sugestões?`}
                 descricao="Elas saem da lista e não voltam sozinhas. Você pode restaurá-las na aba Descartadas.">

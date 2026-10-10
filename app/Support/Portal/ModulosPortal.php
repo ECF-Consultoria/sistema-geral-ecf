@@ -93,10 +93,17 @@ class ModulosPortal
 
     /**
      * Os submódulos, na ordem do caminho de quem começa do zero (29/09; Fase 167
-     * em 05/10): cadastrar os produtos → listar as ofertas → precificar →
+     * em 05/10): cadastrar os produtos → planejar as ofertas → listar → precificar →
      * montar os anúncios → agendar → acompanhar o que foi publicado. É também a
      * ordem das abas da planilha (Produtos, Lista SKUs, Anúncios, Planejamento,
      * Mapeamento), com a Precificação entre elas.
+     *
+     * `sugestoes` (09/10/2026) é a tela "Planejamento" (Combo/Kit/Combit sugeridos e o
+     * "Montar kit"), logo depois de Produtos. NÃO confundir com a chave `planejamento`,
+     * que é a AGENDA (rótulo "Cronograma" desde 08/10).
+     *
+     * Quem vê cada um decide {@see VisibilidadeDoMapeamento}: o cliente, por padrão, só
+     * Produtos, Planejamento, Precificação e Mapeamento; a equipe, todos.
      *
      * `rota_auth` nulo = "Em breve": o item aparece apagado, sem link. Assim o
      * cliente vê para onde o módulo vai sem clicar numa página vazia.
@@ -107,6 +114,7 @@ class ModulosPortal
     private const SUBMODULOS = [
         self::ESTRUTURA => [
             'produtos'     => ['rotulo' => 'Produtos',     'rota_auth' => 'portal.auth.estrutura.produtos'],
+            'sugestoes'    => ['rotulo' => 'Planejamento', 'rota_auth' => 'portal.auth.estrutura.sugestoes'],
             'lista'        => ['rotulo' => 'Lista SKUs',   'rota_auth' => 'portal.auth.estrutura.lista'],
             'precificacao' => ['rotulo' => 'Precificação', 'rota_auth' => 'portal.auth.estrutura.precificacao'],
             'anuncios'     => ['rotulo' => 'Anúncios',     'rota_auth' => 'portal.auth.estrutura.anuncios'],
@@ -124,11 +132,14 @@ class ModulosPortal
      * token, saem das rotas legadas — os dois convivem enquanto os clientes
      * existentes migram.
      *
+     * `$ator` decide os submódulos visíveis ({@see VisibilidadeDoMapeamento}); sem ator
+     * (portal por token), todos.
+     *
      * @param  string  $ativo   chave do módulo da página atual
      * @param  array<string, ?int>  $badges  contagem por chave; `null` ou 0 não desenha badge
      * @return array<int, array{chave: string, rotulo: string, descricao: string, icone: string, url: string, ativo: bool, badge: ?int}>
      */
-    public static function paraEmpresa(Company $company, ?string $token, string $ativo, array $badges = []): array
+    public static function paraEmpresa(Company $company, ?string $token, string $ativo, array $badges = [], ?AtorDoPortal $ator = null): array
     {
         [$ativo, $subAtivo] = array_pad(explode('.', $ativo, 2), 2, null);
         $modulos = [];
@@ -155,7 +166,11 @@ class ModulosPortal
                     : route($def['rota'], $token),
                 'ativo'     => $chave === $ativo,
                 'badge'     => $badge > 0 ? (int) $badge : null,
-                'submodulos' => self::submodulos($chave, $chave === $ativo ? $subAtivo : null),
+                'submodulos' => self::submodulos(
+                    $chave,
+                    $chave === $ativo ? $subAtivo : null,
+                    isset(self::SUBMODULOS[$chave]) ? VisibilidadeDoMapeamento::visiveis($company, $ator, array_keys(self::SUBMODULOS[$chave])) : null,
+                ),
             ];
         }
 
@@ -166,23 +181,48 @@ class ModulosPortal
      * Os submódulos de um módulo, prontos para o menu. Só o portal autenticado
      * os tem — o Mapeamento Estrutural não existe no modo por token.
      *
-     * @return array<int, array{chave: string, rotulo: string, url: ?string, ativo: bool, em_breve: bool}>
+     * `$visiveis` nulo = todos. Escondido não some da página em que a pessoa está: o
+     * ativo continua no menu, marcado `oculto` (abriu por link direto).
+     *
+     * @param  list<string>|null  $visiveis
+     * @return array<int, array{chave: string, rotulo: string, url: ?string, ativo: bool, em_breve: bool, oculto: bool}>
      */
-    public static function submodulos(string $modulo, ?string $ativo = null): array
+    public static function submodulos(string $modulo, ?string $ativo = null, ?array $visiveis = null): array
     {
         $subs = [];
 
         foreach (self::SUBMODULOS[$modulo] ?? [] as $chave => $def) {
+            $visivel = $visiveis === null || in_array($chave, $visiveis, true);
+            if (! $visivel && $chave !== $ativo) {
+                continue;
+            }
+
             $subs[] = [
                 'chave'    => $chave,
                 'rotulo'   => $def['rotulo'],
                 'url'      => $def['rota_auth'] ? route($def['rota_auth']) : null,
                 'ativo'    => $chave === $ativo,
                 'em_breve' => $def['rota_auth'] === null,
+                'oculto'   => ! $visivel,
             ];
         }
 
         return $subs;
+    }
+
+    /**
+     * O submódulo aparece no menu desta pessoa? Para quem redireciona ou monta link no servidor
+     * (a entrada do módulo) seguir a mesma régua do menu ({@see VisibilidadeDoMapeamento}).
+     */
+    public static function submoduloVisivel(Company $company, ?AtorDoPortal $ator, string $chave, string $modulo = self::ESTRUTURA): bool
+    {
+        $existentes = array_keys(self::SUBMODULOS[$modulo] ?? []);
+        if (! in_array($chave, $existentes, true)) {
+            return false;
+        }
+        $visiveis = VisibilidadeDoMapeamento::visiveis($company, $ator, $existentes);
+
+        return $visiveis === null || in_array($chave, $visiveis, true);
     }
 
     /**

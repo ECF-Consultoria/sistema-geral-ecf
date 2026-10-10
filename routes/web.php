@@ -211,6 +211,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:120,1,estrutura.produtos.novo')->name('portal.auth.estrutura.produtos.novo');
     Route::get('/estrutura/produtos/modelo', [PortalEstruturaProdutosController::class, 'modelo'])
         ->middleware('throttle:30,1,estrutura.produtos.modelo')->name('portal.auth.estrutura.produtos.modelo');
+    // 09/10/2026 — "Baixar meus produtos na planilha": o modelo já preenchido, para editar e enviar de novo.
+    Route::get('/estrutura/produtos/exportar', [PortalEstruturaProdutosController::class, 'exportar'])
+        ->middleware('throttle:20,1,estrutura.produtos.exportar')->name('portal.auth.estrutura.produtos.exportar');
     Route::post('/estrutura/produtos/linhas', [PortalEstruturaProdutosController::class, 'gravarLinhas'])
         ->middleware('throttle:120,1,estrutura.produtos.linhas')->name('portal.auth.estrutura.produtos.linhas');
     Route::delete('/estrutura/produtos/variacoes/{variacao}', [PortalEstruturaProdutosController::class, 'excluirVariacao'])
@@ -235,6 +238,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:60,1,estrutura.produtos.categorias')->name('portal.auth.estrutura.produtos.categorias');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
+    // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.
+    Route::post('/estrutura/produtos/categorias/sugerir-nomes', [PortalEstruturaProdutosController::class, 'sugerirCategoriasPorNome'])
+        ->middleware('throttle:60,1,estrutura.produtos.categorias.sugerir_nomes')->name('portal.auth.estrutura.produtos.categorias.sugerir_nomes');
     Route::post('/estrutura/produtos/categorias/sugerir', [PortalEstruturaProdutosController::class, 'sugerirCategorias'])
         ->middleware('throttle:30,1,estrutura.produtos.categorias.sugerir')->name('portal.auth.estrutura.produtos.categorias.sugerir');
     Route::post('/estrutura/produtos/fretes', [PortalEstruturaProdutosController::class, 'cotarFretes'])
@@ -249,6 +255,18 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.produtos.descricao')->name('portal.auth.estrutura.produtos.descricao');
     // Imagens por variação (a galeria da cor). Disco privado; a empresa vem sempre da sessão.
     // O GET é o `<img src>` da tela (várias por página), por isso o throttle é folgado.
+    // 09/10/2026 — ficha técnica pela planilha (o 2º arquivo): baixar, prévia e aplicar.
+    Route::get('/estrutura/produtos/fichas/modelo', [PortalEstruturaProdutosController::class, 'modeloFichas'])
+        ->middleware('throttle:20,1,estrutura.produtos.fichas.modelo')->name('portal.auth.estrutura.produtos.fichas.modelo');
+    Route::post('/estrutura/produtos/fichas/previa', [PortalEstruturaProdutosController::class, 'previaFichas'])
+        ->middleware('throttle:10,1,estrutura.produtos.fichas.previa')->name('portal.auth.estrutura.produtos.fichas.previa');
+    Route::post('/estrutura/produtos/fichas/importacao', [PortalEstruturaProdutosController::class, 'aplicarFichas'])
+        ->middleware('throttle:6,1,estrutura.produtos.fichas.importacao')->name('portal.auth.estrutura.produtos.fichas.importacao');
+    // 09/10/2026 — fotos em lote pelo nome do arquivo (Ref_número.jpg): prévia só com os nomes, depois remessas.
+    Route::post('/estrutura/produtos/fotos/previa', [PortalEstruturaProdutosController::class, 'previaFotosEmLote'])
+        ->middleware('throttle:30,1,estrutura.produtos.fotos.previa')->name('portal.auth.estrutura.produtos.fotos.previa');
+    Route::post('/estrutura/produtos/fotos', [PortalEstruturaProdutosController::class, 'enviarFotosEmLote'])
+        ->middleware('throttle:60,1,estrutura.produtos.fotos.enviar')->name('portal.auth.estrutura.produtos.fotos.enviar');
     Route::post('/estrutura/produtos/variacao/{variacao}/imagens', [PortalEstruturaProdutosController::class, 'enviarImagens'])
         ->whereNumber('variacao')->middleware('throttle:30,1,estrutura.produtos.imagens.enviar')->name('portal.auth.estrutura.produtos.imagens.enviar');
     Route::put('/estrutura/produtos/variacao/{variacao}/imagens/ordem', [PortalEstruturaProdutosController::class, 'ordenarImagens'])
@@ -271,6 +289,12 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('produto')->middleware('throttle:60,1,estrutura.sugestoes.geracao')->name('portal.auth.estrutura.sugestoes.geracao');
     Route::post('/estrutura/sugestoes/frete', [PortalEstruturaSugestoesController::class, 'cotarFrete'])
         ->middleware('throttle:10,1,estrutura.sugestoes.frete')->name('portal.auth.estrutura.sugestoes.frete');
+    // 09/10/2026 — "Montar kit" no Planejamento: a prévia ao vivo (só calcula) e a gravação.
+    // Cada uma com a sua linha na allowlist e o seu prefixo de throttle.
+    Route::post('/estrutura/sugestoes/montar/previa', [PortalEstruturaSugestoesController::class, 'previaDaMontagem'])
+        ->middleware('throttle:120,1,estrutura.sugestoes.montar.previa')->name('portal.auth.estrutura.sugestoes.montar.previa');
+    Route::post('/estrutura/sugestoes/montar', [PortalEstruturaSugestoesController::class, 'montar'])
+        ->middleware('throttle:30,1,estrutura.sugestoes.montar')->name('portal.auth.estrutura.sugestoes.montar');
     Route::get('/estrutura/anuncios', [PortalEstruturaController::class, 'anunciosIndex'])->name('portal.auth.estrutura.anuncios');
     Route::get('/estrutura/precificacao', [PortalEstruturaController::class, 'precificacaoIndex'])->name('portal.auth.estrutura.precificacao');
     Route::put('/estrutura/precificacao/parametros', [PortalEstruturaController::class, 'salvarParametrosPreco'])

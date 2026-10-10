@@ -64,6 +64,20 @@ const objetoSeguro = (valor) => (valor && typeof valor === 'object' && !Array.is
 /** Texto do servidor em forma segura; objeto/array/número viram `''`. */
 const stringSegura = (valor) => (typeof valor === 'string' ? valor : '');
 
+/**
+ * O produto é um composto do Planejamento (Combo, Kit ou Combit do Portal — a chave `composto`
+ * do servidor, 09/10/2026)? Ele NÃO é base de Fase 1: não entra em "Só base" nem ganha "Criar
+ * Fase N". Total: qualquer forma que não seja texto não vazio é "não".
+ *
+ * @param {unknown} produto
+ * @returns {boolean}
+ */
+export function ehComposto(produto) {
+    const composto = objetoSeguro(produto).composto;
+
+    return typeof composto === 'string' && composto !== '';
+}
+
 /** A largura em número; ausente ou lixo cai no 1400 que a referência usa de default. */
 const larguraSegura = (largura) => (typeof largura === 'number' && Number.isFinite(largura) ? largura : 1400);
 
@@ -240,6 +254,12 @@ export function textoDaFase(produto) {
     const fase = typeof p.fase === 'number' && Number.isFinite(p.fase) ? p.fase : 1;
     const rotulo = stringSegura(p.rotulo_fase);
     const ehKit = p.eh_kit === true;
+
+    // Planejamento × Fase N (09/10/2026): o composto do Planejamento (Combo/Kit/Combit do
+    // Portal) não é a Fase 1 de ninguém — a célula mostra o rótulo dele, sem "Fase N".
+    if (!ehKit && ehComposto(p)) {
+        return { texto: rotulo !== '' ? rotulo : 'Composto do Planejamento', titulo: rotulo, ehKit: false };
+    }
 
     if (!ehKit) {
         return { texto: `Fase ${fase}`, titulo: rotulo, ehKit: false };

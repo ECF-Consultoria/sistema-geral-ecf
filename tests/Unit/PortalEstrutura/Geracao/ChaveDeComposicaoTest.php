@@ -19,8 +19,12 @@ class ChaveDeComposicaoTest extends TestCase
     {
         return [
             'duas variações'             => ['v12*1+v30*4', true],
-            'três variações (teto)'      => ['v1*1+v2*1+v3*1', true],
-            'quatro variações'           => ['v1*1+v2*1+v3*1+v4*1', false],
+            'três variações'             => ['v1*1+v2*1+v3*1', true],
+            // 09/10/2026: o "Montar kit" aceita até 6 produtos; o teto da chave subiu de 3 para 6.
+            'quatro variações'           => ['v1*1+v2*1+v3*1+v4*1', true],
+            'seis variações (teto)'      => ['v1*1+v2*1+v3*1+v4*1+v5*2+v6*1', true],
+            'sete variações'             => ['v1*1+v2*1+v3*1+v4*1+v5*1+v6*1+v7*1', false],
+            'seis com ids de 8 dígitos'  => ['v12345678*999+v12345679*1+v12345680*1+v12345681*1+v12345682*1+v12345683*1', true],
             'prefixo errado'             => ['x12*1', false],
             'termina em mais'            => ['v12*1+', false],
             'vazia'                      => ['', false],
@@ -40,5 +44,17 @@ class ChaveDeComposicaoTest extends TestCase
         $this->assertSame([12 => 1, 30 => 4], ChaveDeComposicao::itens('v12*1+v30*4'));
         $this->assertSame([], ChaveDeComposicao::itens('lixo'));
         $this->assertSame([5 => 3], ChaveDeComposicao::itens(ChaveDeComposicao::de([5 => 3])));
+
+        $seis = [9 => 1, 3 => 4, 7 => 1, 1 => 2, 5 => 1, 11 => 1];
+        $chave = ChaveDeComposicao::de($seis);
+        ksort($seis);
+        $this->assertSame($seis, ChaveDeComposicao::itens($chave));
+        $this->assertSame([], ChaveDeComposicao::itens(ChaveDeComposicao::de([1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 1])));
+    }
+
+    public function test_a_expressao_da_rota_e_a_mesma_da_classe(): void
+    {
+        $this->assertSame('/^v\d+\*\d+(\+v\d+\*\d+){0,5}$/D', ChaveDeComposicao::expressao());
+        $this->assertSame(6, ChaveDeComposicao::MAXIMO_COMPONENTES);
     }
 }

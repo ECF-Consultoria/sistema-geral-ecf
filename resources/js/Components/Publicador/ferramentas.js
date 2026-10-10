@@ -226,6 +226,15 @@ export const tituloParaModelo = (alvos) => [...new Set((alvos ?? [])
     .map((a) => String(a.titulo || a.titulo_efetivo || '').trim())
     .filter(Boolean))].join(' / ').slice(0, 255);
 
+/**
+ * O título do OUTRO tipo de anúncio ativo (o digitado ou o herdado), para o "Sugerir com IA" de um tipo não
+ * repeti-lo: o Mercado Livre barra dois anúncios com o mesmo nome (09/10/2026). Quem garante é o servidor.
+ */
+export const tituloDoOutroTipo = (alvos, lt) => String((alvos ?? [])
+    .filter((a) => a.ativo && a.listing_type_id !== lt)
+    .map((a) => String(a.titulo || a.titulo_efetivo || '').trim())
+    .find(Boolean) ?? '').slice(0, 255);
+
 /** A IA pode (re)preencher o Modelo sozinha? Só vazio ou ainda como a IA deixou — nunca o que a pessoa escreveu. */
 export const modeloLivreParaIa = (valor) => valorVazio(valor) || valor?.origem === 'ia';
 

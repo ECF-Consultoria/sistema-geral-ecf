@@ -11,7 +11,9 @@ use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
  * LogisticaProduto::daVolumes (única implementação; nada reimplementado aqui).
  * Medido 194/194 classes iguais às digitadas pela equipe; a altura pode ser
  * superestimada em conjuntos grandes, por isso a tela diz "estimado".
- * Nada daqui é gravado como preço (D-19 da 167).
+ * Nada daqui é gravado. Desde 09/10/2026 (D-19 revogada) o pacote somado também é o
+ * da oferta composta na Precificação, para o frete sugerido — provisório por decisão
+ * do usuário ("por enquanto deixa somando").
  */
 final class ConjuntoLogistico
 {
@@ -38,14 +40,15 @@ final class ConjuntoLogistico
 
     /**
      * @param  list<array{produto_id: int, produto_nome: string, quantidade: int, volumes: list<array>, custo: ?float}>  $itens
+     * @param  ?string  $modalidade  modalidade de envio da conta (limites do ME2); null = a padrão
      * @return array<string, mixed>  retorno de LogisticaProduto::daVolumes + sem_medida
      */
-    public static function avaliar(array $itens): array
+    public static function avaliar(array $itens, ?string $modalidade = null): array
     {
         $semMedida = self::semMedida($itens);
 
         $base = $semMedida === []
-            ? LogisticaProduto::daVolumes(self::volumes($itens))
+            ? LogisticaProduto::daVolumes(self::volumes($itens), $modalidade)
             : LogisticaProduto::avaliar(null);
 
         return $base + ['sem_medida' => $semMedida];

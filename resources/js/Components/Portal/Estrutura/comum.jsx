@@ -458,10 +458,11 @@ function Numero({ valor, rotulo, detalhe, cor, href, ...dados }) {
  * vêm somados sobre TODAS as ofertas, nunca sobre a página; os da agenda vêm
  * contados no servidor (`EstruturaVisaoService::agenda()['contagem']`).
  */
-export function ResumoOperacional({ painel, contagem }) {
+export function ResumoOperacional({ painel, contagem, agendaVisivel = true }) {
     const pct = Math.round((painel.percentual ?? 0) * 1000) / 10;
     const paraHoje = (contagem?.hoje ?? 0) + (contagem?.atrasadas ?? 0);
-    const agenda = route('portal.auth.estrutura.agenda');
+    // Quem não vê o Cronograma (o cliente, desde 09/10/2026) não ganha link para ele.
+    const agenda = agendaVisivel ? route('portal.auth.estrutura.agenda') : null;
 
     return (
         <section className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-ecf-card px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:gap-6" data-painel>
@@ -499,8 +500,10 @@ export function ResumoOperacional({ painel, contagem }) {
  * se escreve em português. Não esconde nada da tela — só aponta. O analista
  * ensina o método uma vez; depois, é esta faixa que lembra o cliente dele.
  */
-export function ProximoPasso({ passo, onCadastrar }) {
+export function ProximoPasso({ passo, onCadastrar, agendaVisivel = true }) {
     if (! passo || passo.tipo === 'cadastrar') return null;
+    // Os passos da agenda (hoje, agendar, em dia) só existem para quem vê o Cronograma (09/10/2026).
+    if (! agendaVisivel && passo.tipo !== 'variacoes') return null;
 
     const nome = (o) => o?.nome || o?.sku;
     const textos = {

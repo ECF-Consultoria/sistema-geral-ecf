@@ -68,8 +68,9 @@ class AcessoAosProdutosTest extends TestCase
 
     public function test_o_menu_do_mapeamento_comeca_por_produtos(): void
     {
+        // 09/10/2026: o Planejamento (chave `sugestoes`) vem logo depois de Produtos.
         $this->assertSame(
-            ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
+            ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
             array_keys((new \ReflectionClass(ModulosPortal::class))->getConstant('SUBMODULOS')[ModulosPortal::ESTRUTURA]),
         );
     }
@@ -164,14 +165,21 @@ class AcessoAosProdutosTest extends TestCase
             $this->assertStringContainsString(',estrutura.produtos', $throttle, "{$nome} sem prefixo próprio");
             $this->assertContains('portal.auth', $rota->gatherMiddleware(), "{$nome} fora do grupo portal.auth");
         }
-        $this->assertSame(23, $achadas); // 172-05: + descricao
+        $this->assertSame(30, $achadas); // 172-05: + descricao; 09/10: + exportar, categorias.sugerir_nomes, fotos.previa, fotos.enviar e fichas.modelo/previa/importacao
     }
 
     public function test_a_allowlist_tem_uma_linha_por_rota_e_nenhum_curinga_generico(): void
     {
         $permitido = (new \ReflectionClass(\App\Http\Middleware\RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/produtos/*', $permitido);
-        $this->assertCount(15, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        $this->assertCount(22, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/produtos')));
+        foreach (['modelo', 'previa', 'importacao'] as $f) {
+            $this->assertContains("portal/estrutura/produtos/fichas/{$f}", $permitido);
+        }
+        $this->assertContains('portal/estrutura/produtos/fotos', $permitido);
+        $this->assertContains('portal/estrutura/produtos/fotos/previa', $permitido);
+        $this->assertContains('portal/estrutura/produtos/exportar', $permitido);
+        $this->assertContains('portal/estrutura/produtos/categorias/sugerir-nomes', $permitido);
         // 167-19: o id numérico da ficha entra por uma lista própria, nunca por curinga.
         $this->assertSame(
             [

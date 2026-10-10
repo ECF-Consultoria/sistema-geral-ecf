@@ -10,11 +10,11 @@ import { linhaDoResumo } from './regrasDoResumoDoSincronizar';
  * ("vai poluir muito"): o servidor os registra no log (`[Publicador] Sincronizar avisos`). O campo
  * que não pôde ser preenchido aparece pendente no editor, que é onde a equipe age.
  */
-export default function ResumoDoSincronizar({ resumo, absorvidos = 0, onFechar, className }) {
+export default function ResumoDoSincronizar({ resumo, absorvidos = 0, aguardando = 0, onFechar, className }) {
     if (!resumo) return null;
     const pronto = resumo.status === 'pronto';
     const expirou = resumo.status === 'expirou';
-    const linha = pronto ? linhaDoResumo(resumo, absorvidos) : '';
+    const linha = pronto ? linhaDoResumo(resumo, absorvidos, aguardando) : '';
 
     return (
         <section className={cn('mb-6 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3', className)}>

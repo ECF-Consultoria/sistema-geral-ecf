@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
 use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
@@ -15,10 +16,14 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
+use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -27,17 +32,19 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * A IA prepara o rascunho ANTES de a equipe precisar dele (pedido do usuário, 09/10/2026): o
- * cliente salva o produto no Portal → depois da espera (`PreparoIaAgenda`) este serviço
- * sincroniza SÓ aquele produto (as regras do "Sincronizar do Portal", D-05 refinado) e, com a
- * ficha completa, gera título → Modelo → descrição, cada um no seu Job encadeado.
+ * cliente salva o produto no Portal → segundos depois o produto já está no Publicador
+ * (`sincronizarAgora`, 10/10/2026, sem IA) → depois da espera (`PreparoIaAgenda`) este serviço
+ * sincroniza SÓ aquele produto de novo (as regras do "Sincronizar do Portal", D-05 refinado) e,
+ * com a ficha completa, gera título → Modelo → descrição, cada um no seu Job encadeado.
  *
  * É a EXCEÇÃO consciente do learnings §10 ("a IA deixa no cache e a tela aplica"): aqui não há
  * tela aberta, então a automação grava no rascunho. Por isso as travas:
  * - grava sob a trava do rascunho (`lockForUpdate`), relendo tudo lá dentro;
  * - só num campo VAZIO ou que ainda tem EXATAMENTE o último valor que ela escreveu
  *   (`step_state.ia_escrito`, `MemoriaDoPreparoIa::podeEscrever`) — o que a equipe editou fica;
- * - nunca em rascunho intocável (publicado/publicando), com "Anunciar por IA" rodando, nem com o
- *   editor do produto em uso (`EditorEmUso`): aí espera e tenta de novo, com o valor já gerado;
+ * - nunca em rascunho intocável (publicado/publicando), com "Anunciar por IA" rodando, com o
+ *   editor do produto em uso (`EditorEmUso`) nem com o produto agendado na fila de publicação
+ *   (`NaFilaDePublicacao`, 10/10/2026): aí espera e tenta de novo, com o valor já gerado;
  * - kit/fase criado pelo Publicador (`produto_base_id`) não é preparado (é o fluxo da Fase 175);
  * - nunca escreve estoque (o kit com `estoque_calculado` fica como está).
  *
@@ -116,11 +123,12 @@ class PreparoIaDoRascunhoService
             return 'sem_produto';
         }
 
-        // Antes de QUALQUER escrita (o Sincronizar também escreve): editor aberto ou "Anunciar por
-        // IA" rodando num rascunho deste produto → tudo espera.
+        // Antes de QUALQUER escrita (o Sincronizar também escreve): editor aberto, "Anunciar por IA" rodando
+        // ou produto agendado/publicando na fila de publicação (10/10/2026: foi conferido e vai ao ML como
+        // está) num rascunho deste produto → tudo espera.
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id);
             }
         }
@@ -139,10 +147,88 @@ class PreparoIaDoRascunhoService
             if ($pub !== null) {
                 $situacao = $this->avaliarIa($pub);
                 Log::info("[Publicador] Preparo pela IA: produto {$pub->id} ({$pub->nome}) da empresa {$company->id} — {$situacao}.");
+                $this->criativosSemCadeia($pub, $situacao);
             }
         }
 
         return 'pronto';
+    }
+
+    /**
+     * O produto salvo no Portal chega ao Publicador LOGO (10/10/2026, `SincronizarProdutoDoPortalJob`): as MESMAS
+     * travas e o MESMO Sincronizar do `preparar`, sem o debounce e sem a IA (que segue esperando o cliente parar de
+     * mexer). Produto com o editor aberto, agendado na fila de publicação ou com "Anunciar por IA" rodando NÃO é
+     * tocado agora: o preparo (2 minutos depois do último save) espera e tenta de novo.
+     *
+     * Um destes por empresa de cada vez (`block`): a planilha que salva 70 produtos agenda 70 deles, e dois
+     * Sincronizar do mesmo Combo/Kit ao mesmo tempo esbarrariam nos uniques.
+     *
+     * @return string desligado, sem_produto, ocupado, em_andamento, sincronizado
+     */
+    public function sincronizarAgora(int $companyId, int $estruturaProdutoId): string
+    {
+        if (! $this->ativo()) {
+            return 'desligado';
+        }
+        $company = Company::find($companyId);
+        $produto = $company === null ? null : EstruturaProduto::query()->where('company_id', $company->id)->find($estruturaProdutoId);
+        if ($produto === null) {
+            return 'sem_produto';
+        }
+        foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
+            $r = PubRascunho::where('produto_id', $pub->id)->first();
+            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+                Log::info("[Publicador] Produto {$produto->id} do Portal não foi sincronizado logo após o save: o produto {$pub->id} está em uso no Publicador (o preparo tenta de novo).");
+
+                return 'ocupado';
+            }
+        }
+
+        $trava = Cache::lock("publicador:sincronizar-agora:company:{$company->id}", 300);
+        try {
+            $trava->block(120);
+        } catch (LockTimeoutException) {
+            Log::info("[Publicador] Produto {$produto->id} do Portal: outro Sincronizar da empresa {$company->id} seguiu ocupado; o preparo sincroniza depois.");
+
+            return 'em_andamento';
+        }
+        try {
+            $alvo = $this->programas->resolver('company-'.$company->id);
+            $r = $this->sincroniza->sincronizar($alvo['mlb_empresa'] ?? null, $company, (int) $produto->id);
+            foreach ($r['para_preencher'] as $id) {
+                $pub = PubProduto::find($id);
+                if ($pub !== null) {
+                    $this->preencher($pub);
+                }
+            }
+        } finally {
+            $trava->release();
+        }
+        Log::info("[Publicador] Produto {$produto->id} ({$produto->nome}) do Portal sincronizado com o Publicador logo após o save (empresa {$company->id}).");
+
+        return 'sincronizado';
+    }
+
+    /**
+     * 10/10/2026 — imagens por IA automáticas sem cadeia de texto: o texto já estava em dia (ou a cota de texto
+     * acabou), mas as fotos podem ter chegado agora. Só com o gatilho ligado para a empresa; o Job confere TUDO de
+     * novo (`CriativosAutomaticosService::avaliar`). Incompleto, intocável e kit da Fase N nem entram.
+     */
+    private function criativosSemCadeia(PubProduto $pub, string $situacao): void
+    {
+        if (! in_array($situacao, ['em_dia', 'limite'], true) || ! $this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
+            return;
+        }
+        $rascunhoId = PubRascunho::where('produto_id', $pub->id)->value('id');
+        if ($rascunhoId !== null) {
+            AvaliarCriativosAutomaticosJob::dispatch((int) $rascunhoId);
+        }
+    }
+
+    /** Resolvido só quando precisa: o serviço de imagens lê a `fichaCompleta` DAQUI (sem ciclo no construtor). */
+    private function criativos(): CriativosAutomaticosService
+    {
+        return app(CriativosAutomaticosService::class);
     }
 
     /**
@@ -203,6 +289,10 @@ class PreparoIaDoRascunhoService
         foreach ($etapas as $i => $e) {
             $jobs[] = new GerarPreparoIaJob((int) $r->id, $e, $hash, restantes: array_values(array_slice($etapas, $i + 1)));
         }
+        // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): com o texto pronto, o último elo avalia.
+        if ($this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
+            $jobs[] = new AvaliarCriativosAutomaticosJob((int) $r->id);
+        }
         Bus::chain($jobs)->onQueue('default')->dispatch();
 
         return 'gerando ('.implode(', ', $etapas).')';
@@ -257,10 +347,11 @@ class PreparoIaDoRascunhoService
                 return self::PULADO;
             }
             if ($etapa === self::TITULO) {
-                // O Modelo usa o título GERADO, mesmo que a escrita dele espere o editor fechar.
-                $this->comEstado($r->id, function (array $estado) use ($hash, $valor) {
+                // O Modelo usa os títulos GERADOS, mesmo que a escrita deles espere o editor fechar.
+                $gerados = self::titulosDoValor($valor);
+                $this->comEstado($r->id, function (array $estado) use ($hash, $gerados) {
                     if (($estado[Memoria::PREPARO]['hash'] ?? null) === $hash) {
-                        $estado[Memoria::PREPARO]['titulo_gerado'] = $valor;
+                        $estado[Memoria::PREPARO]['titulo_gerado'] = $gerados;
                     }
 
                     return $estado;
@@ -268,8 +359,9 @@ class PreparoIaDoRascunhoService
             }
         }
 
-        // Nunca por trás de gente: editor do produto em uso ou "Anunciar por IA" gravando → espera.
-        if (EditorEmUso::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
+        // Nunca por trás de gente: editor do produto em uso, "Anunciar por IA" gravando ou o produto na fila de
+        // publicação (conferido; uma escrita agora o tiraria da fila como `precisa_revisar`) → espera.
+        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
             if ($adiamentos >= $this->maxAdiamentos()) {
                 Log::info("[Publicador] Preparo pela IA ({$etapa}): o rascunho {$r->id} seguiu em uso; a escrita desistiu depois de {$adiamentos} espera(s).");
                 $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);
@@ -308,23 +400,29 @@ class PreparoIaDoRascunhoService
     {
         // Custo: campo que a equipe já preencheu não recebe nada — então nem se chama a IA. A decisão
         // que vale é a da escrita, sob a trava; esta é só a economia.
-        if ($this->livres($r, $etapa, $this->lerEstado($r->id), $this->planejados($r, $etapa)) === []) {
+        $planejados = $this->planejados($r, $etapa);
+        $livres = $this->livres($r, $etapa, $this->lerEstado($r->id), $planejados);
+        if ($livres === []) {
             return null;
         }
         $prazo = microtime(true) + self::PRAZO_S;
 
         switch ($etapa) {
             case self::TITULO:
-                $titulo = $this->palavras->gerarTitulo($r, $prazo);
-                if (trim($titulo) === '') {
+                // Dois títulos DIFERENTES (09/10/2026: o ML barra dois anúncios com o mesmo nome), e
+                // nenhum igual ao título que a equipe já deu ao outro tipo.
+                $titulos = $this->palavras->gerarTitulos($r, $prazo, $this->titulosFixos($r, $livres, $planejados));
+                if (array_filter($titulos) === []) {
                     throw new \RuntimeException('A IA não devolveu um título aproveitável.');
                 }
 
-                return $titulo;
+                return json_encode($titulos, JSON_UNESCAPED_UNICODE);
 
             case self::MODELO:
-                // O Modelo depende do título: o gerado agora, ou o que o rascunho já tem.
-                $gerado = is_string($preparo['titulo_gerado'] ?? null) ? $preparo['titulo_gerado'] : null;
+                // O Modelo depende do título: os gerados agora, ou o que o rascunho já tem.
+                $gerado = $preparo['titulo_gerado'] ?? null;
+                $gerado = is_array($gerado) ? array_values(array_unique(array_filter(array_map('strval', $gerado)))) : (is_string($gerado) ? $gerado : null);
+                $gerado = $gerado === [] ? null : $gerado;
                 $temTitulo = $gerado !== null || $r->alvos()->where('ativo', true)->whereNotNull('titulo')->where('titulo', '<>', '')->exists();
                 if (! $temTitulo) {
                     return null;
@@ -373,11 +471,22 @@ class PreparoIaDoRascunhoService
             if ($etapa === self::TITULO) {
                 $titulos = [];
                 $atuais = collect($snap->alvos)->mapWithKeys(fn ($a) => [$a->listingTypeId => (string) ($a->titulo ?? '')]);
+                // Última guarda antes de gravar (a equipe pode ter escrito o outro tipo depois da IA):
+                // nunca dois iguais — o que não dá para diferenciar fica sem escrever.
+                $gerados = self::titulosDoValor($valor);
+                $finais = RegrasDoTitulo::semRepetir(
+                    array_intersect_key(array_merge(array_fill_keys(self::TIPOS_TITULO, ''), $gerados), array_flip($livres)),
+                    $this->titulosFixos($r, $livres, $planejados, $snap), [], 255,
+                );
                 foreach ($livres as $tipo) {
-                    if ($atuais[$tipo] !== $valor) {
-                        $titulos[$tipo] = $valor;
+                    $novo = $finais[$tipo] ?? '';
+                    if ($novo === '') {
+                        continue;
                     }
-                    $escrito[Memoria::chaveDoTitulo($tipo)] = $valor;
+                    if ($atuais[$tipo] !== $novo) {
+                        $titulos[$tipo] = $novo;
+                    }
+                    $escrito[Memoria::chaveDoTitulo($tipo)] = $novo;
                 }
                 if ($titulos !== []) {
                     $this->repo->gravarTitulos($r, $titulos);
@@ -455,6 +564,47 @@ class PreparoIaDoRascunhoService
         }
 
         return $tipos;
+    }
+
+    /**
+     * Os títulos dos tipos ativos que a automação NÃO vai escrever (da equipe, ou o planejado na aba
+     * Anúncios): o título gerado não pode repetir nenhum deles.
+     *
+     * @param  list<string>  $livres
+     * @param  array<string, ?string>  $planejados
+     * @return array<string, string> listing_type_id → título
+     */
+    private function titulosFixos(PubRascunho $r, array $livres, array $planejados, ?RascunhoSnapshot $snap = null): array
+    {
+        $snap ??= $this->repo->snapshot($r);
+        $fixos = [];
+        foreach ($snap->alvos as $alvo) {
+            if (! $alvo->ativo || ! in_array($alvo->listingTypeId, self::TIPOS_TITULO, true) || in_array($alvo->listingTypeId, $livres, true)) {
+                continue;
+            }
+            $titulo = trim((string) ($alvo->titulo ?? '')) ?: trim((string) ($planejados[$alvo->listingTypeId] ?? ''));
+            if ($titulo !== '') {
+                $fixos[$alvo->listingTypeId] = $titulo;
+            }
+        }
+
+        return $fixos;
+    }
+
+    /**
+     * O valor da etapa do título → listing_type_id → título. É JSON (`gerarTitulos`); texto puro é
+     * de um Job adiado antes de 09/10/2026, quando havia um título só para os dois tipos.
+     *
+     * @return array<string, string>
+     */
+    private static function titulosDoValor(string $valor): array
+    {
+        $mapa = json_decode($valor, true);
+        if (is_array($mapa)) {
+            return array_map(fn ($t) => trim((string) $t), array_intersect_key($mapa, array_flip(self::TIPOS_TITULO)));
+        }
+
+        return array_fill_keys(self::TIPOS_TITULO, trim($valor));
     }
 
     /** @return array<string, ?string> os títulos planejados na aba Anúncios (só para o título) */

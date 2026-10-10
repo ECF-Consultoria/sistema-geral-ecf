@@ -4,6 +4,7 @@ namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
+use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
@@ -25,6 +26,7 @@ use App\Services\Publicador\RascunhoRepository;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\Payload\Alvo;
+use App\Support\Publicador\RegrasDoTitulo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -54,7 +56,11 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
     /** @var array<string, list<array>> as chamadas à IA, por etapa */
     private array $chamadas = ['titulo' => [], 'modelo' => [], 'descricao' => []];
 
-    private string $tituloIa = 'Cadeira Escritório Giratória Ergonômica ECF';
+    /** O Clássico que a IA devolve (09/10/2026: dois títulos numa chamada, `titulosPorTermos`). */
+    private string $tituloIa = 'Cadeira Escritório Giratória Ergonômica';
+
+    /** O Premium que a IA devolve; nulo = a IA repete o Clássico (o servidor diferencia). */
+    private ?string $tituloPremiumIa = 'Cadeira Giratória Escritório Ergonômica';
 
     private string $modeloIa = 'cadeira home office, cadeira ergonomica, cadeira para escritorio em casa';
 
@@ -82,13 +88,13 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->mock(AnaliseAnuncioService::class, function ($m) {
             $m->shouldReceive('comPrazo')->andReturnSelf();
-            $m->shouldReceive('tituloPorTermos')->andReturnUsing(function (...$args) {
+            $m->shouldReceive('titulosPorTermos')->andReturnUsing(function (...$args) {
                 $this->chamadas['titulo'][] = $args;
                 if ($this->falhaTitulo) {
                     throw new \RuntimeException('A IA não respondeu.');
                 }
 
-                return ['dados' => $this->tituloIa, 'meta' => []];
+                return ['dados' => ['classico' => $this->tituloIa, 'premium' => $this->tituloPremiumIa ?? $this->tituloIa], 'meta' => []];
             });
             $m->shouldReceive('modeloPorTermos')->andReturnUsing(function (...$args) {
                 $this->chamadas['modelo'][] = $args;
@@ -242,8 +248,10 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
         Queue::assertPushedOn('default', PrepararProdutoNoPublicadorJob::class);
+        // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
+        $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
-            && now()->diffInMinutes($j->delay, true) >= 9);
+            && now()->diffInSeconds($j->delay, true) > 90 && now()->diffInSeconds($j->delay, true) <= 120);
 
         $jobs = Queue::pushed(PrepararProdutoNoPublicadorJob::class)->values();
         $this->rodados->attach($jobs[0]);
@@ -252,6 +260,64 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
         $this->assertSame(1, PubProduto::where('estrutura_produto_id', $p->id)->count());
+    }
+
+    // ═══ O produto chega ao Publicador logo (10/10/2026) ═════════════════════
+
+    public function test_salvar_leva_o_produto_ao_publicador_em_segundos_e_a_ia_continua_esperando(): void
+    {
+        $p = $this->produtoDoPortal();
+
+        $this->salvarNoPortal($p);
+
+        Queue::assertPushedOn('default', SincronizarProdutoDoPortalJob::class);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
+            && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
+
+        Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
+
+        $r = $this->rascunhoDo($p);
+        $this->assertSame(self::CADEIRA, $r->categoria_id, 'o produto já está no Publicador, com a ficha do Portal');
+        Queue::assertNotPushed(GerarPreparoIaJob::class);
+        $this->assertSame([], array_merge(...array_values($this->chamadas)), 'a IA não foi chamada');
+        $this->assertSame([], array_filter($this->titulos($r)));
+
+        // Passada a espera, o preparo sincroniza de novo (no MESMO produto) e só então chama a IA.
+        $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        Queue::assertPushed(GerarPreparoIaJob::class);
+        $this->assertSame(1, PubProduto::where('estrutura_produto_id', $p->id)->count());
+    }
+
+    public function test_saves_seguidos_viram_uma_sincronizacao_so_e_nenhum_save_fica_de_fora(): void
+    {
+        $p = $this->produtoDoPortal();
+
+        $this->salvarNoPortal($p);
+        $this->salvarNoPortal($p);
+        $this->salvarNoPortal($p);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 1);
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 3);
+
+        Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
+        // O Job apagou a marca ao começar: o save seguinte agenda outro.
+        $this->salvarNoPortal($p);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 2);
+    }
+
+    public function test_editor_aberto_nao_e_sincronizado_logo_e_o_preparo_cobre_depois(): void
+    {
+        $p = $this->produtoDoPortal();
+        $this->assertSame('sincronizado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
+        $marca = fn () => (new RascunhoRepository())->snapshot($this->rascunhoDo($p)->fresh())->atributos['BRAND'] ?? null;
+        $antes = $marca();
+        $this->assertNotNull($antes);
+
+        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        $this->noPortal($p, 'BRAND', 'Outra Marca');
+
+        $this->assertSame('ocupado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
+        $this->assertSame($antes, $marca(), 'nada foi escrito por baixo de quem está editando');
     }
 
     // ═══ Ficha incompleta × completa ═════════════════════════════════════════
@@ -282,22 +348,63 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertPushedOn('default', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
-        $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloIa], $this->titulos($r));
-        // O Modelo recebeu o título gerado; o filtro do servidor tirou o termo que só repete o título.
-        $this->assertSame($this->tituloIa, $this->chamadas['modelo'][0][4]);
+        $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa], $this->titulos($r),
+            'dois títulos diferentes, um por tipo');
+        // O Modelo recebeu os títulos gerados; o filtro do servidor tirou o termo que só repete o título.
+        $this->assertSame("{$this->tituloIa} / {$this->tituloPremiumIa}", $this->chamadas['modelo'][0][4]);
         $this->assertSame(['value_name' => 'cadeira home office, cadeira para escritorio em casa', 'origem' => 'ia'],
             array_intersect_key($this->modelo($r), array_flip(['value_id', 'value_name', 'origem'])));
         $this->assertSame($this->descricaoIa, $r->descricao);
 
         $this->assertSame([
             'titulo_gold_special' => $this->tituloIa,
-            'titulo_gold_pro' => $this->tituloIa,
+            'titulo_gold_pro' => $this->tituloPremiumIa,
             'modelo' => 'cadeira home office, cadeira para escritorio em casa',
             'descricao' => $this->descricaoIa,
         ], $r->step_state['ia_escrito']);
         $this->assertSame(['titulo' => 'ok', 'modelo' => 'ok', 'descricao' => 'ok'], $this->etapas($r));
         // O texto do cliente entrou na descrição (MAG T8, só a entrada).
         $this->assertStringContainsString('encosto em tela', $this->chamadas['descricao'][0][2]);
+    }
+
+    // ═══ Dois títulos diferentes, sem marca nem peso (relato de 09/10/2026) ══
+
+    public function test_ia_repete_o_titulo_com_ecf_e_peso_e_o_servidor_grava_dois_diferentes_e_limpos(): void
+    {
+        // O caso do usuário: a IA devolveu o MESMO título, com a marca e o peso suportado, para os dois tipos.
+        $this->tituloIa = 'Cadeira Escritório Giratória Ergonômica ECF 130 kg';
+        $this->tituloPremiumIa = null;
+        $p = $this->produtoDoPortal();
+
+        [, $ia] = $this->salvarERodar($p);
+
+        $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
+        $titulos = $this->titulos($this->rascunhoDo($p));
+        $this->assertSame([
+            'gold_special' => 'Cadeira Escritório Giratória Ergonômica',
+            'gold_pro' => 'Cadeira Escritório Ergonômica Giratória',
+        ], $titulos, 'sem ECF e sem "130 kg"; o Premium troca a ordem das duas últimas palavras');
+        $this->assertFalse(RegrasDoTitulo::mesmo($titulos['gold_special'], $titulos['gold_pro']));
+    }
+
+    public function test_premium_da_equipe_igual_ao_que_a_ia_gera_para_o_classico_nao_se_repete(): void
+    {
+        $p = $this->produtoDoPortal();
+        $this->salvarNoPortal($p);
+        $this->rodar(PrepararProdutoNoPublicadorJob::class);
+        // Antes de a IA rodar, a equipe escreve no Premium exatamente o que a IA vai sugerir ao Clássico.
+        $r = $this->rascunhoDo($p);
+        $this->editarComoEquipe($r, ['alvos' => [
+            ['listing_type_id' => 'gold_special', 'titulo' => '', 'ativo' => true],
+            ['listing_type_id' => 'gold_pro', 'titulo' => 'cadeira escritorio giratoria ergonomicas', 'ativo' => true],
+        ]]);
+
+        $this->rodar(GerarPreparoIaJob::class);
+
+        $titulos = $this->titulos($r->fresh());
+        $this->assertSame('cadeira escritorio giratoria ergonomicas', $titulos['gold_pro'], 'o Premium é da equipe');
+        $this->assertSame('Cadeira Escritório Ergonômica Giratória', $titulos['gold_special'], 'o Clássico não repete o Premium (nem por caixa, acento ou plural)');
+        $this->assertStringContainsString('cadeira escritorio giratoria ergonomicas', $this->chamadas['titulo'][0][7], 'o prompt recebe o título a evitar');
     }
 
     // ═══ Hash dos fatos ══════════════════════════════════════════════════════
@@ -324,13 +431,14 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $p->update(['descricao' => 'Cadeira com encosto em tela e apoio de braço regulável.']);
         $this->tituloIa = 'Cadeira Escritório Giratória Apoio Braço Regulável';
+        $this->tituloPremiumIa = 'Cadeira Giratória Escritório Braço Regulável';
         $this->modeloIa = 'cadeira home office, cadeira presidente';
         $this->descricaoIa = 'Nova descrição com o apoio de braço.';
         [, $ia] = $this->salvarERodar($p);
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         $r = $this->rascunhoDo($p);
-        $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloIa], $this->titulos($r));
+        $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa], $this->titulos($r));
         $this->assertSame('cadeira home office, cadeira presidente', $this->modelo($r)['value_name']);
         $this->assertSame('Nova descrição com o apoio de braço.', $r->descricao);
         $this->assertSame('Nova descrição com o apoio de braço.', $r->step_state['ia_escrito']['descricao']);
@@ -481,7 +589,8 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $r = $this->rascunhoDo($p);
         $this->assertSame([], array_filter($this->titulos($r)));
         $this->assertSame(['titulo' => 'adiado', 'modelo' => 'adiado', 'descricao' => 'adiado'], $this->etapas($r));
-        Queue::assertPushed(GerarPreparoIaJob::class, fn ($j) => $j->etapa === 'titulo' && $j->valorPronto === $this->tituloIa && $j->adiamentos === 1);
+        Queue::assertPushed(GerarPreparoIaJob::class, fn ($j) => $j->etapa === 'titulo' && $j->adiamentos === 1
+            && json_decode((string) $j->valorPronto, true) === ['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa]);
 
         Cache::forget(EditorEmUso::chave((int) $pub->id));
         $this->assertSame(['escrito', 'escrito', 'escrito'], $this->rodar(GerarPreparoIaJob::class));
@@ -527,6 +636,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertNothingPushed();
 
         $this->assertSame('desligado', $this->servico()->preparar((int) $this->empresa->id, (int) $p->id, 'qualquer'));
+        $this->assertSame('desligado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
         $this->assertSame(0, PubProduto::count());
     }
 
@@ -564,7 +674,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         [, $ia] = $this->salvarERodar($p);
         $this->assertSame(['escrito', 'escrito'], $ia);
         $this->assertCount(1, $this->chamadas['descricao']);
-        $this->assertSame($this->tituloIa, $this->titulos($r->fresh())['gold_pro']);
+        $this->assertSame($this->tituloPremiumIa, $this->titulos($r->fresh())['gold_pro']);
     }
 
     public function test_falha_que_derruba_o_job_do_titulo_ainda_poe_a_descricao_na_fila(): void
@@ -584,6 +694,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         app(PreparoIaAgenda::class)->aoSalvar((int) $this->empresa->id, [$alheio->id]);
         $this->assertSame(['sem_produto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        $this->assertSame('sem_produto', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $alheio->id));
         $this->assertSame(0, PubProduto::count());
     }
 

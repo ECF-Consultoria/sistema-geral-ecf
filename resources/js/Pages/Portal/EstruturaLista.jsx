@@ -219,8 +219,9 @@ function EstadoVazio({ onProduto, onImportar }) {
                 {[
                     ['Fase 1 · Simples', 'CAD-01', 'Cadeira 01'],
                     ['Fase 2 · Combo', 'CAD-01-CB2', 'Combo 2 Cadeiras 01'],
-                    ['Fase 3 · Kit', 'MSA-MR+CAD-01-KIT', 'Mesa Marfim + 1 Cadeira 01'],
-                    ['Fase 4 · Combit', 'MSA-MR+CAD-01-CBT4', 'Mesa Marfim + 4 Cadeiras 01'],
+                    // 09/10/2026: o mesmo padrão de SKU do Planejamento e do Montar kit (KT-…, CT{n}-…).
+                    ['Fase 3 · Kit', 'KT-MSA-MR-CAD-01', 'Mesa Marfim + Cadeira 01'],
+                    ['Fase 4 · Combit', 'CT4-MSA-MR-CAD-01', 'Mesa Marfim + 4 Cadeiras 01'],
                 ].map(([f, s, e]) => (
                     <div key={f} className="rounded-xl border border-white/[0.08] p-3">
                         <p className="text-[12.5px] font-semibold text-white/85">{f}</p>

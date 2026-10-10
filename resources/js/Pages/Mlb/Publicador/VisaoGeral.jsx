@@ -26,7 +26,7 @@ export default function VisaoGeral(props) {
                 <BarraDaConta empresa={empresa} liberada={liberada} />
 
                 <div className="mb-6">
-                    <AbasDaConta aba="visao-geral" conta={empresa?.chave} companyId={abas?.company_id ?? null} />
+                    <AbasDaConta aba="visao-geral" conta={empresa?.chave} companyId={abas?.company_id ?? null} contagemAlavancas={abas?.alavancas_pendentes ?? null} />
                 </div>
 
                 <PainelVisaoGeral {...props} />

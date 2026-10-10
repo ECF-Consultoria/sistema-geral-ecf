@@ -31,14 +31,16 @@ class AcessoAsSugestoesTest extends TestCase
     use GabaritoDaPlanilhaEstrutural;
     use RefreshDatabase;
 
-    /** As 6 rotas do contrato (nome => [método, prefixo do throttle]). */
+    /** As 8 rotas do contrato (nome => [método, prefixo do throttle]); as 2 últimas são o "Montar kit" (09/10/2026). */
     private const ROTAS = [
-        'portal.auth.estrutura.sugestoes'           => ['GET', 'estrutura.sugestoes'],
-        'portal.auth.estrutura.sugestoes.aceitar'   => ['POST', 'estrutura.sugestoes.aceitar'],
-        'portal.auth.estrutura.sugestoes.descartar' => ['POST', 'estrutura.sugestoes.descartar'],
-        'portal.auth.estrutura.sugestoes.restaurar' => ['POST', 'estrutura.sugestoes.restaurar'],
-        'portal.auth.estrutura.sugestoes.geracao'   => ['PUT', 'estrutura.sugestoes.geracao'],
-        'portal.auth.estrutura.sugestoes.frete'     => ['POST', 'estrutura.sugestoes.frete'],
+        'portal.auth.estrutura.sugestoes'               => ['GET', 'estrutura.sugestoes'],
+        'portal.auth.estrutura.sugestoes.aceitar'       => ['POST', 'estrutura.sugestoes.aceitar'],
+        'portal.auth.estrutura.sugestoes.descartar'     => ['POST', 'estrutura.sugestoes.descartar'],
+        'portal.auth.estrutura.sugestoes.restaurar'     => ['POST', 'estrutura.sugestoes.restaurar'],
+        'portal.auth.estrutura.sugestoes.geracao'       => ['PUT', 'estrutura.sugestoes.geracao'],
+        'portal.auth.estrutura.sugestoes.frete'         => ['POST', 'estrutura.sugestoes.frete'],
+        'portal.auth.estrutura.sugestoes.montar.previa' => ['POST', 'estrutura.sugestoes.montar.previa'],
+        'portal.auth.estrutura.sugestoes.montar'        => ['POST', 'estrutura.sugestoes.montar'],
     ];
 
     private function admin(): User
@@ -105,7 +107,10 @@ class AcessoAsSugestoesTest extends TestCase
                 ->has('frete_tabela')
                 ->where('vocabulario.fases.combit', 'Combit')
                 ->has('vocabulario.logisticas')
-                ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['chave'] === 'produtos')
+                // 09/10/2026: o Planejamento virou submódulo do menu (chave `sugestoes`) e marca a si mesmo.
+                ->where('modulos', fn ($m) => collect(collect($m)->firstWhere('chave', 'estrutura')['submodulos'])->firstWhere('ativo', true)['chave'] === 'sugestoes')
+                // O catálogo do "Montar kit" só vem quando a janela pede.
+                ->missing('montagem')
             );
     }
 
@@ -260,7 +265,9 @@ class AcessoAsSugestoesTest extends TestCase
         $sessao->postJson($rota, ['sugestoes' => $cento_e_uma])->assertStatus(422)->assertJsonValidationErrors('sugestoes');
         $sessao->postJson($rota, ['sugestoes' => []])->assertStatus(422);
         $sessao->postJson($rota, ['sugestoes' => [['chave' => 'abc']]])->assertStatus(422)->assertJsonValidationErrors('sugestoes.0.chave');
-        $sessao->postJson($rota, ['sugestoes' => [['chave' => $chave.'+v9*1+v8*1']]])->assertStatus(422);
+        // O teto da chave é 6 componentes (09/10/2026): 7 é recusado; 4 passa e só "já existia".
+        $sessao->postJson($rota, ['sugestoes' => [['chave' => $chave.'+v9*1+v8*1+v7*1+v6*1+v5*1']]])->assertStatus(422);
+        $sessao->postJson($rota, ['sugestoes' => [['chave' => $chave.'+v9*1+v8*1']]])->assertOk()->assertJsonCount(1, 'ja_existiam');
         $sessao->postJson($rota, ['sugestoes' => [['chave' => $chave, 'nome' => str_repeat('n', 256)]]])->assertStatus(422)->assertJsonValidationErrors('sugestoes.0.nome');
         $sessao->postJson($rota, ['sugestoes' => [['chave' => $chave, 'sku' => str_repeat('s', 256)]]])->assertStatus(422)->assertJsonValidationErrors('sugestoes.0.sku');
         $this->assertSame(0, EstruturaOferta::where('company_id', $minha->id)->where('fase', 'combit')->count());
@@ -328,7 +335,7 @@ class AcessoAsSugestoesTest extends TestCase
 
     // ─── Rotas, throttle e allowlist ────────────────────────────────────────
 
-    public function test_as_6_rotas_estao_no_portal_auth_com_throttle_de_prefixo_proprio(): void
+    public function test_as_8_rotas_estao_no_portal_auth_com_throttle_de_prefixo_proprio(): void
     {
         $contagemDePrefixos = [];
         foreach (Route::getRoutes() as $rota) {
@@ -357,6 +364,7 @@ class AcessoAsSugestoesTest extends TestCase
             'portal/estrutura/sugestoes', 'portal/estrutura/sugestoes/aceitar', 'portal/estrutura/sugestoes/descartar',
             'portal/estrutura/sugestoes/restaurar', 'portal/estrutura/sugestoes/frete',
             'portal/estrutura/sugestoes/produtos/12/geracao',
+            'portal/estrutura/sugestoes/montar/previa', 'portal/estrutura/sugestoes/montar',
         ] as $caminho) {
             $this->assertTrue(RestringeDominioDoPortal::liberado($caminho), "{$caminho} deveria estar liberado");
         }
@@ -365,6 +373,7 @@ class AcessoAsSugestoesTest extends TestCase
             'portal/estrutura/sugestoes/qualquer', 'portal/estrutura/sugestoes/produtos/abc/geracao',
             'portal/estrutura/sugestoes/produtos/1/2/geracao', 'portal/estrutura/sugestoes/produtos/12',
             'portal/estrutura/sugestoes/produtos/12/geracao/x', 'portal/estrutura/sugestoes/aceitar/x',
+            'portal/estrutura/sugestoes/montar/x', 'portal/estrutura/sugestoes/montar/previa/x', 'portal/estrutura/sugestoes/montar/12',
         ] as $caminho) {
             $this->assertFalse(RestringeDominioDoPortal::liberado($caminho), "{$caminho} deveria estar barrado");
         }
@@ -374,7 +383,9 @@ class AcessoAsSugestoesTest extends TestCase
     {
         $permitido = (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO');
         $this->assertNotContains('portal/estrutura/sugestoes/*', $permitido);
-        $this->assertCount(5, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/sugestoes')));
+        $this->assertNotContains('portal/estrutura/sugestoes/montar/*', $permitido);
+        // 5 da Fase 168 + as 2 do "Montar kit" (09/10/2026).
+        $this->assertCount(7, array_filter($permitido, fn ($p) => str_starts_with($p, 'portal/estrutura/sugestoes')));
         $this->assertContains(
             'portal/estrutura/sugestoes/produtos/{id}/geracao',
             (new \ReflectionClass(RestringeDominioDoPortal::class))->getConstant('PERMITIDO_COM_ID')

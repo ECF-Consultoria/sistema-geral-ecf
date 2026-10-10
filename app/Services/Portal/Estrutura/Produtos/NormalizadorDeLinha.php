@@ -28,7 +28,11 @@ use InvalidArgumentException;
  * "SEM MEDIDAS" em `volumes_texto` é célula em branco, não "limpar" (BE-CR-02).
  *
  * Nomes lógicos em `presentes`: grupo, nome, eixo, valor, ordem, familia,
- * ambientes, categoria, volumes, custo.
+ * ambientes, categoria, volumes, custo, estoque, descricao.
+ *
+ * `descricao` é do PRODUTO (a planilha de 09/10/2026 a traz; a ficha grava a
+ * descrição pela rota própria e nunca a manda aqui). As quebras de linha do
+ * texto ficam; só as pontas são aparadas.
  */
 final class NormalizadorDeLinha
 {
@@ -43,6 +47,8 @@ final class NormalizadorDeLinha
     private const MIN_PESO      = 0.001; // decimal(8,3)
     private const MAX_CUSTO     = 9999999999;
     private const MAX_ESTOQUE   = 99999999;
+    /** O mesmo teto da rota da descrição na ficha (`gravarDescricao`, max:5000). */
+    public const MAX_DESCRICAO  = 5000;
     public const MAX_ORDEM      = 65535; // SMALLINT UNSIGNED
     private const MSG_SEPARADOR = 'Não use / , | no nome. Escolha um nome simples.';
 
@@ -68,6 +74,7 @@ final class NormalizadorDeLinha
             'volumes'         => [],
             'custo'           => null,
             'estoque'         => null,
+            'descricao'       => null,
         ];
         $presentes = [];
         $erros     = [];
@@ -124,7 +131,7 @@ final class NormalizadorDeLinha
                 $eixo = self::eixo($rotulo);
                 if ($eixo === null) {
                     $eixo = 'outro';
-                    $avisos[] = "Variação “{$variacao}”: o eixo “{$rotulo}” não está na lista, usamos “Outro”.";
+                    $avisos[] = "Variação “{$variacao}”: o tipo de variação “{$rotulo}” não está na lista, usamos “Outro”.";
                 }
                 $eixoDaColuna  = $eixo;
                 $valorDaColuna = $resto;
@@ -283,6 +290,24 @@ final class NormalizadorDeLinha
             }
         }
 
+        // ─── Descrição do produto (texto livre; null explícito = limpar; ausente/'' = não mexi) ───
+        if (array_key_exists('descricao', $bruta)) {
+            $descricaoBruta = $bruta['descricao'];
+            if ($descricaoBruta === null) {
+                $presentes[] = 'descricao';
+            } elseif (is_scalar($descricaoBruta)) {
+                $descricao = trim(str_replace(["\r\n", "\r"], "\n", (string) $descricaoBruta));
+                if ($descricao !== '') {
+                    if (mb_strlen($descricao) > self::MAX_DESCRICAO) {
+                        $erros['descricao'] = 'A descrição pode ter até 5.000 caracteres.';
+                    } else {
+                        $campos['descricao'] = $descricao;
+                        $presentes[] = 'descricao';
+                    }
+                }
+            }
+        }
+
         // ─── Volumes ───
         if (isset($bruta['volumes']) && is_array($bruta['volumes'])) {
             [$volumes, $erroVol] = self::volumes($bruta['volumes']);
@@ -346,8 +371,11 @@ final class NormalizadorDeLinha
         return null;
     }
 
-    /** Chave de EIXOS a partir da chave ou do rótulo ("Tamanho" → 'tamanho'). */
-    private static function eixo(string $texto): ?string
+    /**
+     * Chave de EIXOS a partir da chave ou do rótulo ("Tamanho" → 'tamanho'); null fora da lista.
+     * Pública para a importação ler a coluna "Tipo de variação" pela mesma regra.
+     */
+    public static function eixo(string $texto): ?string
     {
         $t = Str::lower(Str::ascii(trim($texto)));
         foreach (EstruturaProdutoVariacao::EIXOS as $chave => $rotulo) {

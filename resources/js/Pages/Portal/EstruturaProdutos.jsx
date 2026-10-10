@@ -8,12 +8,14 @@ import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
 import JanelaSugestoesCategoria from '@/Components/Portal/Estrutura/Produtos/JanelaSugestoesCategoria';
 import JanelaListas from '@/Components/Portal/Estrutura/Produtos/JanelaListas';
 import JanelaImportacao from '@/Components/Portal/Estrutura/Produtos/JanelaImportacao';
+import JanelaFotosEmLote from '@/Components/Portal/Estrutura/Produtos/JanelaFotosEmLote';
 import ListaProdutos from '@/Components/Portal/Estrutura/Produtos/ListaProdutos';
 import BarraAcoesProdutos from '@/Components/Portal/Estrutura/Produtos/BarraAcoesProdutos';
 import SeletorVisualizacao from '@/Components/Portal/Estrutura/Produtos/SeletorVisualizacao';
 import { linhaDoServidor, linhaParaServidor, textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { avisoDosFretes, consultarFretesEmBlocos } from '@/lib/produtosFretes';
 import { gravarModo, guardarRetorno, lerModo, mostrarCartao, pegarUltimoProduto, pegarVolta, rolarParaVolta } from '@/lib/produtosNavegacao';
+import { textoDaVariacao } from '@/lib/portalSubmodulos';
 
 // ─── Mapeamento Estrutural — submódulo Produtos ─────────────────────────────
 //
@@ -55,6 +57,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [consultando, setConsultando] = useState(() => new Set());   // ids de variação em consulta de frete
     const [gerindoListas, setGerindoListas] = useState(false);   // janela Famílias e ambientes
     const [importando, setImportando] = useState(false);   // janela de importação da planilha
+    const [enviandoFotos, setEnviandoFotos] = useState(false);   // janela das fotos em lote pelo nome do arquivo
     const [sugestoes, setSugestoes] = useState(null);      // { itens, indisponivel } enquanto a janela de revisão está aberta
     const [voltouDe, setVoltouDe] = useState(null);        // D-32: produto de onde a pessoa acabou de voltar
     const [destaqueForte, setDestaqueForte] = useState(true);
@@ -63,6 +66,8 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
 
     const temProdutos = produtos.tem_produtos || linhas.length > 0;
+    // "Cada variação vira uma oferta…": na Lista SKUs só para quem a vê (10/10/2026).
+    const variacaoVira = textoDaVariacao(modulos);
 
     const trocarModo = (m) => {
         setModo(m);
@@ -260,11 +265,11 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
         <PortalClienteLayout empresa={empresa} modulos={modulos} titulo="Produtos">
             <div className="mx-auto w-full max-w-[1600px] px-4 pb-10 pt-6 sm:px-6 lg:pl-10 lg:pr-8 lg:pt-11">
                 <CabecalhoEstrutura etapa="produtos" amplo onComoFunciona={() => setAula(true)}
-                    descricao="Cadastre cada produto uma vez, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs." />
+                    descricao={`Cadastre cada produto uma vez, com medidas, peso e custo. ${variacaoVira.frase}`} />
 
                 <div className="mt-8">
                     <BarraAcoesProdutos temProdutos={temProdutos} busca={busca} onBusca={setBusca}
-                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)}
+                        onAdicionar={() => abrirFicha(null)} onListas={() => setGerindoListas(true)} onImportar={() => setImportando(true)} onFotosEmLote={() => setEnviandoFotos(true)}
                         onSugerir={sugerirCategorias} sugerindo={sugerindo} podeSugerir={haPendenteDeCategoria} />
                 </div>
 
@@ -291,7 +296,7 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
                     <section className="mt-6 rounded-2xl border border-dashed border-white/[0.12] p-6 text-center" data-estado-vazio>
                         <h2 className="text-[15px] font-semibold text-white">Cadastre seus produtos uma vez</h2>
                         <p className="mx-auto mt-2 max-w-lg text-[13px] text-white/50">
-                            Aqui ficam os produtos que você vende, com medidas, peso e custo. Cada variação vira uma oferta na Lista SKUs. Cadastre um produto por vez aqui ou importe a planilha-modelo preenchida.
+                            Aqui ficam os produtos que você vende, com medidas, peso e custo. {variacaoVira.frase} Cadastre um produto por vez aqui ou importe a planilha-modelo preenchida.
                         </p>
                         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                             <Botao variante="primario" onClick={() => abrirFicha(null)} data-acao="primeiro-produto">
@@ -327,13 +332,14 @@ export default function EstruturaProdutos({ empresa, modulos = [], produtos, fil
             </div>
 
             <JanelaListas aberta={gerindoListas} onFechar={() => setGerindoListas(false)} listas={listas} onListas={setListas} onRecarregar={recarregarProdutos} />
-            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} />
+            <JanelaImportacao aberta={importando} onFechar={() => setImportando(false)} limites={limites} temProdutos={temProdutos} onFichaGravada={recarregarProdutos} />
+            <JanelaFotosEmLote aberta={enviandoFotos} onFechar={() => setEnviandoFotos(false)} onConcluir={recarregarProdutos} />
             <JanelaSugestoesCategoria aberta={!! sugestoes} sugestoes={sugestoes?.itens ?? []} indisponivel={sugestoes?.indisponivel ?? false}
                 onAceitar={aceitarSugestoes} onFechar={() => setSugestoes(null)} />
             <ComoFunciona aberta={aula} onFechar={() => setAula(false)} passos={[
                 '1. Cadastre o produto e as variações (cor, tamanho…).',
                 '2. Informe medidas, peso e custo — o sistema mostra o tipo de envio e o frete.',
-                '3. Cada variação já vira uma oferta na Lista SKUs.',
+                `3. ${variacaoVira.passo}`,
             ]} />
             <AvisoFlash />
         </PortalClienteLayout>

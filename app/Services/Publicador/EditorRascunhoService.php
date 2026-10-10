@@ -12,12 +12,14 @@ use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
+use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\MemoriaDoPreparoIa;
 use App\Support\Publicador\Payload\Alvo;
 use App\Support\Publicador\Payload\MontadorDePlano;
+use App\Support\Publicador\PrecoDaPromocao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\AtributoClassificado;
@@ -482,7 +484,9 @@ class EditorRascunhoService
         $r = $r->fresh(['produto.oferta']);
         $e = $this->efetivos->daProduto($r->produto);
         $digitado = $this->repo->snapshot($r);
-        $snapshot = $digitado->comEfetivos($e['titulos'], $e['precos'], $e['precos_por_variante'] ?? []);
+        // `comEfetivosDe` (10/10/2026): o V-SAL-08 (preço do Portal sem frete) e o `portal` de cada
+        // variante, que a tela usa para mostrar a promoção automática embaixo do preço.
+        $snapshot = $digitado->comEfetivosDe($e);
 
         [$schema, $erroSchema] = $this->schemaDe($r, $snapshot);
         $conta = (array) ($r->step_state['conta'] ?? []);
@@ -554,6 +558,8 @@ class EditorRascunhoService
                 'valores' => array_map(fn (ValorEixo $val) => ['id' => $val->valueId, 'nome' => $val->valueName], $vd->valores),
                 'estoque' => $vd->dados['estoque'] ?? null, 'estoque_depositos' => $vd->dados['estoque_depositos'] ?? null,
                 'precos' => (array) ($vd->dados['precos'] ?? []), 'precos_efetivos' => (array) ($ve->dados['precos'] ?? []),
+                // listing_type_id → {anunciado, minimo, sem_frete} do Portal: a promoção automática da tela.
+                'portal' => (array) ($ve->dados['portal'] ?? []),
                 'atributos' => (array) ($vd->dados['atributos'] ?? []),
             ], $digitado->variantes, $snapshot->variantes),
             'imagens' => $r->imagens()->orderBy('id')->get()->map(fn (PubImagem $i) => [
@@ -606,6 +612,12 @@ class EditorRascunhoService
                 $digitado->atributos['MODEL'] ?? null,
                 $r->descricao,
             ),
+            // 10/10/2026: depois de publicar, o anúncio ganha a promoção de 14 dias SOZINHO só onde as
+            // Alavancas escrevem; nas outras contas a tarefa pós-publicação orienta a fazer à mão.
+            'promocao_automatica' => [
+                'automatica' => AlavancasLiberadas::libera($r->produto->contaOuNula()),
+                'dias' => PrecoDaPromocao::DIAS,
+            ],
         ];
     }
 

@@ -8,6 +8,7 @@ use App\Models\MlAcervoItem;
 use App\Models\MlAnuncioCriativoKit;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
+use App\Models\PubTarefa;
 use App\Models\PubValidacao;
 use App\Models\User;
 use App\Support\Publicador\AlavancasLiberadas;
@@ -349,6 +350,10 @@ class PainelVisaoGeralService
             if (! $noAr) {
                 continue;
             }
+            // Composto do Planejamento (Combo/Kit/Combit do Portal, 09/10/2026): nem Fase 1 nem kit da família.
+            if (ProgramasPublicadorService::ehComposto($p)) {
+                continue;
+            }
 
             // "kit" é quantidade_kit >= 2 — o que inclui o kit de 3 (Fase 3).
             if (($p['eh_kit'] ?? false) === true || (int) ($p['quantidade_kit'] ?? 1) >= 2) {
@@ -543,6 +548,18 @@ class PainelVisaoGeralService
             }
         }
 
+        // 09/10/2026 — tarefas pós-publicação: o que já foi publicado e ainda espera as alavancas
+        // (Central de Promoções, ADS, atacado, cupom, afiliados, lista de transmissão). Acrescentada
+        // no FIM de propósito: a ordem fixa das linhas acima é a do handoff e tem teste.
+        $aguardando = PubTarefa::abertasDaConta($alvo['mlb_empresa'] ?? null, $alvo['company'] ?? null);
+        if ($aguardando > 0) {
+            $linhas[] = [
+                'texto' => 'Publicados aguardando alavancas',
+                'numero' => $aguardando,
+                'destino' => ['rota' => 'mlb.anuncios.publicador.tarefas.index', 'params' => ['conta' => $alvo['chave']]],
+            ];
+        }
+
         return $linhas;
     }
 
@@ -583,7 +600,9 @@ class PainelVisaoGeralService
             }
             $cienteDeFase = true;
 
+            // O composto do Planejamento não espera Fase 2 nenhuma (KIT-06, 09/10/2026).
             if ($p['eh_kit'] === false
+                && ! ProgramasPublicadorService::ehComposto($p)
                 && in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
                 && ($p['kits'] ?? []) === []) {
                 $total++;
@@ -692,6 +711,8 @@ class PainelVisaoGeralService
         $tipoPorListing = array_flip(EstruturaPublicacao::LISTING_TYPES);
 
         $linhas = $this->baseQuery($alvo, comJanela: false)
+            // Planejamento × Fase N (09/10/2026): o TIPO da oferta do Portal, para o rótulo do composto.
+            ->leftJoin('estrutura_ofertas as eo_tipo', 'eo_tipo.id', '=', 'pub_produtos.oferta_id')
             ->select([
                 'pub_publicacao_itens.ml_item_id',
                 'pub_publicacao_itens.listing_type_id',
@@ -706,6 +727,9 @@ class PainelVisaoGeralService
                 // e errado. Apelidado para não colidir com nada do payload.
                 'pub_produtos.fase as produto_fase',
                 'pub_produtos.quantidade_kit as produto_quantidade_kit',
+                // ⚠️ `eo_tipo.fase` é o TIPO da oferta (qualificado e apelidado — a mesma colisão acima).
+                'pub_produtos.produto_base_id as produto_base_id',
+                'eo_tipo.fase as oferta_tipo',
             ])
             ->orderByDesc('pub_publicacoes.concluida_em')
             ->limit(5)
@@ -731,7 +755,8 @@ class PainelVisaoGeralService
                 // objeto (a "tela preta" de 07/10). O rótulo sai da fonte única
                 // `ProgramasPublicadorService::rotuloFase()`.
                 'fase' => (int) $linha->produto_fase,
-                'rotulo_fase' => ProgramasPublicadorService::rotuloFase((int) $linha->produto_quantidade_kit),
+                'rotulo_fase' => ProgramasPublicadorService::rotuloFase((int) $linha->produto_quantidade_kit,
+                    $linha->produto_base_id === null && in_array($linha->oferta_tipo, PlanejamentoDaFaseService::TIPOS_COMPOSTOS, true) ? $linha->oferta_tipo : null),
             ];
         })->values()->all();
 

@@ -1277,6 +1277,7 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
 - **Descrição do produto** (`estrutura_produtos.descricao`) segue o sigilo da 167: nenhum texto do campo fala de Mercado
   Livre, anúncio ou publicar (o Publicador a lê, o cliente não sabe).
 - **Sem coluna na planilha-modelo (D-14):** estoque e descrição só entram pela ficha na tela, não pela importação XLSX.
+  **Superado em 09/10/2026** — o modelo v2 tem as duas colunas; ver §39.
 
 ## 38. Ficha do Portal = régua do editor do Publicador, e "Não se aplica" (08/10/2026)
 
@@ -1347,3 +1348,122 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
     A escolha na tela (`vinculos` no `useFichaProduto`) vence o derivado; marcada, trava C/L/A e acompanha as mudanças do
     produto (`seguirMedidasDoProduto`, puro). O peso do volume continua obrigatório e editável: marcar copia o peso do
     produto se houver; depois só acompanha enquanto ele ainda for a cópia. Recarregar a página volta ao derivado.
+
+## 39. Planilha de produtos v2: o modelo, a planilha baixada e as categorias em lote (09/10/2026)
+
+Trabalho direto (sem GSD), decisões do usuário de 09/10: o cliente baixa e sobe SÓ o modelo de produtos, sem nenhum
+termo da plataforma; a 3Planejamento inteira continua sendo entregável da ECF. O que não se deduz do código:
+
+- **A planilha real, medida (só contagens):** 70 variações / 56 produtos / 0 erros; Variação ordinal ("1" 48, "2" 14,
+  "3" 1, "única" 7) → 14 produtos com mais de uma variação e NENHUMA com nome; 24 nomes de categoria para 56 produtos.
+  Sem nome, `CoresDoGrupo` (régua do Sincronizar) tira as 2ªs cores do produto. A prévia agora diz isso num aviso só,
+  neutro ("dê nome a cada variação (ex.: a cor) para elas ficarem juntas no mesmo produto"), calculado pela MESMA
+  `CoresDoGrupo::separar` sobre como o produto vai ficar (arquivo + o que já está gravado).
+- **Modelo v2 (`ModeloProdutosXlsx`, 14 colunas):** Ref* | Produto (grupo)* | Tipo de variação | Variação (nome) | Nome do
+  produto* | Família | Ambiente(s) | Categoria | Nº volumes | Volumes | Peso total | Custo | Estoque | Descrição; abas
+  Produtos, Instruções e Listas (oculta). **O leitor casa pelo NOME e a ordem dos casos importa:** "Produto (grupo)"
+  tem de vir antes de "Produto …" (o nome na 3Planejamento) e "Tipo de variação" antes de "Variação". O arquivo antigo
+  ("Grupo (anúncio)", "Categoria ML", ordinal) entra pela mesma regra — `ModeloEImportacaoTest` monta os arquivos com os
+  11 cabeçalhos ANTIGOS de propósito, é a prova de compatibilidade. A linha de exemplo do modelo antigo também é ignorada.
+- **Com o Tipo preenchido, a Variação é o nome ao pé da letra.** Sem isso "220" de Voltagem virava `ordem` 220. Sem o
+  Tipo vale a regra antiga (1/2/única = posição). Tipo fora da lista vira "Outro" com aviso, nunca erro.
+- **Estoque do Excel chega como double (10.0):** o normalizador só aceita inteiro em texto; por isso `estoque` está nos
+  `TEXTUAIS` do leitor (10.0 → "10"; 2,5 → "2.5" → erro de unidades inteiras). 0 continua ≠ vazio.
+- **Descrição é do produto:** grava pelo MESMO `DescricaoDoProduto` da ficha, dentro do `gravarLinhas` (só a 1ª linha do
+  produto). O importador leva para a 1ª linha a primeira descrição que aparecer nas linhas do produto — quem escreveu na
+  2ª não perde. Descrição que muda sozinha conta como "atualizada" e agenda o `PreparoIaAgenda`.
+- **Baixar meus produtos (`/produtos/exportar`) faz ida e volta sem mudança:** medido na planilha real (importar →
+  baixar → prévia = 70 "sem mudança"). A categoria sai pelo NOME (o id nunca sai, e nome não rebaixa id — BE-CR-02);
+  produto sem código próprio sai com a Ref da 1ª variação no grupo, e o cadastro em MODO_IMPORTACAO aceita grupo = Ref
+  de uma variação cadastrada (só se nenhum produto tiver aquele código).
+- **Categorias em lote:** a prévia agrupa pelo nome digitado (sem caixa/acento) por PRODUTO, fora os que já têm id; a
+  tela pede as sugestões por `/categorias/sugerir-nomes` (10 por pedido, 50 nomes por prévia, cache de 7 dias por nome
+  só quando ACHA). A confirmação vai junto do arquivo (`categorias[{texto,id}]`) e o servidor descarta id que não é folha.
+  O seletor é o `PickerCategoria` dentro de um Popover do Radix DENTRO do Dialog: provado no navegador que o clique não
+  fecha a janela e que o Esc fecha só o seletor (as escolhas ficam).
+- **Validação por intervalo some ao reler com o PhpSpreadsheet:** ele espalha `C2:C1001` em mil validações por célula.
+  O arquivo está certo; teste de validação lê o XML da aba (`PlanilhaDeProdutosV2Test::validacoesDoArquivo`).
+- **Fotos em lote (`FotosEmLoteService`, rotas `fotos/previa` e `fotos`):** `Ref_número.jpg`. Quem decide a variação é o
+  SERVIDOR (a prévia recebe só os nomes): o nome inteiro que já é Ref vence ("MESA_2.jpg" é da Ref MESA_2 se ela existe),
+  senão a Ref antes do ÚLTIMO "_". Grava pelo `VariacaoImagensService::enviar` de sempre, por variação, na ordem do número e
+  DEPOIS das fotos que ela já tem, cortando no teto (12). O MIME é conferido arquivo por arquivo ANTES do `enviar`, que é
+  tudo-ou-nada por variação: sem isso um .jpg falso derrubava as outras fotos da mesma cor. A tela manda remessas de 8
+  arquivos / 8 MB e espera no 429 (`Retry-After`). O 413 do `bootstrap/app.php` só cobre a rota por variação; aqui a tela
+  trata o 413 pelo `avisosDoErro`.
+- **Ficha técnica pela planilha (`PlanilhaDasFichasTecnicas` + `ImportadorFichasTecnicas`, aba "Ficha técnica" da janela
+  Importar planilha):** uma aba por categoria confirmada, colunas = campos da categoria ("*" no obrigatório, unidade no
+  cabeçalho), listas na aba oculta. Volta casando a LINHA pelo "Produto (grupo)" (código ou Ref) e a COLUNA pelo NOME do
+  campo na definição ATUAL (o nome da aba não importa). O `gravar()` da ficha SUBSTITUI e recusa a ficha inteira quando
+  falta obrigatório — por isso a planilha usa `gravarParcial` (mesma `normalizar`, nunca apaga, o inválido volta listado,
+  o obrigatório que falta vai em `faltam`). O campo-eixo do produto (a Cor de quem tem cores) é ignorado em silêncio.
+- **Mensagens do arquivo:** `mimes:xlsx` sem mensagem própria mostrava a chave crua `validation.mimes` ao cliente nas
+  importações; agora é `MENSAGENS_DO_ARQUIVO` no controller.
+- **Ainda fala da plataforma (fora deste trabalho):** a página da lista diz "Consultar fretes no Mercado Livre" e
+  "Conectando sua conta do Mercado Livre" (copy da 167, §34). Mudar pede decisão do usuário.
+
+## 40. Frete do Mercado Envios segue o ML: tabela de 24/08, cubado sem corte, modalidade e frete sugerido (09/10/2026)
+
+Tudo em `frete-mercado-envios.md` — leia antes de mexer em frete, cubagem, ME1/ME2/Full ou no frete da
+Precificação. Em uma linha cada:
+- a tabela de custos do ML mudou em **24/08/2026** (30 faixas, ganhou "9 a 10 kg"); o sistema seguia na de
+  02/03 — provado pela cotação real da #459 (8,45 · 14,45 · 21,35) e pela página oficial, célula a célula;
+- peso faturado = max(real, cubado), **sem** o mínimo de 5 kg da planilha;
+- limites do ME2 pela **modalidade** da conta (Correios × Agências/Coleta × Full), lida de
+  `shipping_preferences` na cotação real e guardada 7 dias; sem ela, Correios;
+- **frete sugerido** na Precificação (D-19 revogada, ADR PORTAL-02): digitado → sugerido do próprio tipo →
+  outro tipo (só sem sugestão) → nada; "Cotar agora" é a própria rota com `?cotar=1`;
+- o ML trocou a tabela **2× em 2026**: falta uma checagem periódica (sugestão no §1 do arquivo).
+
+## 41. Montar kit no Planejamento, o kit vai sozinho ao Publicador e o cliente vê só 4 submódulos (09/10/2026)
+
+Pedido do usuário: "produtos, planejamento e precificação muito conectados; mapeamento para saber o que está
+pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não se deduz do código:
+
+- **Menu: chave `sugestoes` = "Planejamento"**, logo depois de Produtos (o D-20 caiu). A chave `planejamento`
+  continua sendo a AGENDA ("Cronograma", §36). Quem vê o quê: `VisibilidadeDoMapeamento` — cliente vê Produtos,
+  Planejamento, Precificação e Mapeamento; equipe vê os 7; empresa com oferta simples SEM produto (importou, #131)
+  ganha Lista SKUs e Anúncios. Sem deploy, em `configuracoes` (CSV, padrão do `creative_engine_usuarios`):
+  `portal_estrutura_submodulos_cliente` troca a lista padrão; `portal_estrutura_submodulos_empresa_{id}` é a lista
+  EXATA da empresa (vence a exceção automática; `todos` = os 7). **Esconder não remove**: rota, allowlist e
+  controller ficam; a página escondida aberta por link aparece no menu marcada `oculto: true`, e o front
+  (`portalSubmodulos.js::submoduloVisivel`) NÃO a conta como visível — é assim que os links internos (Lista SKUs,
+  Cronograma) somem para quem não vê. A entrada do módulo usa a mesma régua (`ModulosPortal::submoduloVisivel`).
+- **Montar kit** (`Geracao/MontagemManualDeOferta` + `RegrasDaMontagem`, rotas `sugestoes/montar/previa` e
+  `sugestoes/montar`): item pela variação, ou pela oferta quando ela não tem variação (importada). A fase
+  repete a regra de `EstruturaOfertaService::composicao` (privada, fora do escopo) — a gravação passa por ela de
+  novo e um teste cruza as duas. Duplicata em DUAS réguas: as ofertas (mesmos componentes e quantidades, vale
+  para item sem variação) e a chave de variação do `RetratoDoCatalogo` (pega os kits da Fase N); o retrato agora
+  leva `detalhes.existentes_sku` para dizer "já existe: SKU X". `ChaveDeComposicao` aceita até 6 componentes.
+- **Um padrão de nome/SKU**: a Lista SKUs (`FormOferta`) passou a pedir Kit/Combit à mesma prévia (antes
+  "A+B-KIT"/"-CBT4"). O Combo também, em seguida (ver §41.1).
+- **Vai sozinho ao Publicador**: `EstruturaOfertaService::criar` de oferta COMPOSTA chama
+  `PreparoIaAgenda::aoSalvar` pelos produtos dos componentes, em `DB::afterCommit` (rollback não agenda); o
+  "Aceitar" em lote e os combos em lote passam `prepararNoPublicador: false` e agendam UMA vez. Componente sem
+  produto não agenda (segue pelo Sincronizar). Na fila `sync` nada agenda: o teste usa `Queue::fake()`.
+- **Funil do Mapeamento** (`FunilDoMapeamento`, prop ADIADA `funil` — `Inertia::defer`): a ficha técnica só é
+  conferida com a definição JÁ guardada (`ml_categoria_schemas` ou o cache `ml_meta_atributos_{cat}`), para o
+  Mapeamento nunca buscar fora; os números do Planejamento e da Precificação são os das próprias telas (teste).
+- **Teste**: trocar de empresa no mesmo teste pede `$this->app['auth']->forgetGuards()` (o guard guarda o
+  usuário da requisição anterior e a página sai com o menu da outra empresa). Render no Node (esbuild): deixar
+  `@radix-ui/*`, `react-remove-scroll` & cia. em `external`, senão "Dynamic require of react".
+- **Textos que citavam a Lista para o cliente** (resolvido, ver §41.1): o vazio da Precificação, a frase "Cada
+  variação vira uma oferta na Lista SKUs" (Produtos e ficha) e os exemplos do `ComoFunciona`.
+
+### 41.1 O Combo com um nome só, e os textos de quem não vê a Lista (10/10/2026)
+
+- **Combo da Lista = padrão do Planejamento** (`NomesSugeridos::combo`): o lote (`criarCombos`) monta o nome
+  pelo produto da variação, o valor e o tipo efetivo (escolhido no Planejamento > inferido) — "Kit 4 Cadeiras
+  Polo — Natural"; o combo de UMA quantidade do `FormOferta` pede a prévia do Montar kit com a oferta como item
+  e mostra "Combo N …" só até a resposta (o campo nunca fica com a quantidade errada). **Oferta sem produto
+  (importada) continua "Combo N {nome}", sem tipo — de propósito**: o Montar kit trata o avulso assim
+  (`itemAvulso`); inferir o tipo pelo nome criaria a divergência de volta. Por isso `ComposicaoDaOfertaTest` e
+  `AcessoAoModuloEstruturaTest` ("Combo 2/4 Cadeira 01", ofertas sem produto) não mudaram.
+- **Nada foi renomeado**: os combos criados antes seguem com "Combo N …" no banco; só o padrão de criação mudou.
+- **A leitura do tipo de UM produto agora existe em dois privados** (`PlanejamentoDaFaseService::tipoParaNome`
+  e `EstruturaOfertaService::tipoParaNome`) além do retrato em lote; quem mexer na regra do tipo efetivo mexe
+  nos três. O `CombosDaListaNoPadraoDoPlanejamentoTest` cruza o nome gravado com a sugestão do gerador.
+- **Textos por visibilidade**: `portalSubmodulos.js::textoDaVariacao(modulos)` dá a frase de Produtos/ficha;
+  o vazio da Precificação leva o cliente a Produtos. Os exemplos do `ComoFunciona` são conferidos contra o
+  `NomesSugeridos` (`NomesSugeridosTest`, que lê o .jsx).
+- **Ainda citam a Lista para o cliente (não mexido)**: `JanelaExcluirVariacao.jsx` ("também será excluída da
+  Lista SKUs", na ficha) e `MSG_SKU_REPETIDO` de `sugestoesEstrutura.js` ("…na Lista SKUs", no Planejamento).

@@ -104,7 +104,28 @@ class HandleInertiaRequests extends Middleware
             // Phase 23 — Contador de alertas críticos não-ackeados para badge da sidebar.
             // Lazy closure + cache 5min + try/catch retorna null em erro (falha silenciosa).
             'alertas_criticos_count' => fn() => $this->countAlertasCriticos(),
+            // 09/10/2026 — badge "Aguardando alavancas": tarefas pós-publicação abertas que são
+            // minhas ou de ninguém. Só para quem vê a fila (`mlb.alavancas`; admin tem todas).
+            'tarefas_alavancas' => fn() => $this->countTarefasAlavancas($request),
         ];
+    }
+
+    /**
+     * Contador do item "Aguardando alavancas". try/catch: na janela do deploy, antes do
+     * migrate, `pub_tarefas` ainda não existe — o menu não pode derrubar a página.
+     */
+    private function countTarefasAlavancas(Request $request): int
+    {
+        $user = $request->user('web');
+        if (! $user || ! $user->hasPermission(Permissions::MLB_ALAVANCAS)) {
+            return 0;
+        }
+
+        try {
+            return app(\App\Services\Publicador\Tarefas\TarefasPosPublicacao::class)->pendentesPara($user);
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**

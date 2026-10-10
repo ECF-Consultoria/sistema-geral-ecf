@@ -137,6 +137,16 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/ambientes/*',
         'portal/estrutura/produtos/categorias',
         'portal/estrutura/produtos/categorias/sugerir',
+        // 09/10/2026 — planilha de produtos: baixar preenchida e sugestão por nome de categoria na prévia.
+        'portal/estrutura/produtos/exportar',
+        'portal/estrutura/produtos/categorias/sugerir-nomes',
+        // 09/10/2026 — fotos em lote pelo nome do arquivo: a prévia (só nomes) e as remessas.
+        'portal/estrutura/produtos/fotos',
+        'portal/estrutura/produtos/fotos/previa',
+        // 09/10/2026 — ficha técnica pela planilha: baixar, prévia e aplicar.
+        'portal/estrutura/produtos/fichas/modelo',
+        'portal/estrutura/produtos/fichas/previa',
+        'portal/estrutura/produtos/fichas/importacao',
         'portal/estrutura/produtos/fretes',
         // Ficha técnica: os campos da categoria (categoria na query). A gravação, com id no meio, vai por PERMITIDO_COM_ID.
         'portal/estrutura/produtos/campos-categoria',
@@ -148,6 +158,9 @@ class RestringeDominioDoPortal
         'portal/estrutura/sugestoes/descartar',
         'portal/estrutura/sugestoes/restaurar',
         'portal/estrutura/sugestoes/frete',
+        // 09/10/2026 — "Montar kit": a prévia ao vivo e a gravação. Uma linha por rota, sem curinga.
+        'portal/estrutura/sugestoes/montar/previa',
+        'portal/estrutura/sugestoes/montar',
         'portal/estrutura/anuncios',
         'portal/estrutura/precificacao',
         'portal/estrutura/precificacao/parametros',

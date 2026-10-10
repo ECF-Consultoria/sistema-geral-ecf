@@ -121,14 +121,20 @@ return [
     ],
 
     // ═══ IA prepara o rascunho ao salvar no Portal (09/10/2026) ═══
-    // Cada save do produto no Portal agenda, com espera, a sincronização SÓ daquele produto e, com a
-    // ficha completa, a geração de título, Modelo e descrição pela IA — gravados no rascunho sem tela
-    // aberta, nunca por cima do que a equipe editou (learnings publicador-ml §16).
+    // Cada save do produto no Portal leva SÓ aquele produto ao Publicador em segundos (10/10/2026) e
+    // agenda, com espera, a geração de título, Modelo e descrição pela IA — gravados no rascunho sem
+    // tela aberta, nunca por cima do que a equipe editou (learnings publicador-ml §16).
     'preparo_ia' => [
         // Chave de segurança: false desliga TUDO (nem sincroniza nem gera).
         'ativo' => (bool) env('PUBLICADOR_PREPARO_IA_ATIVO', true),
-        // Espera depois do último save do produto; um save novo dentro dela adia (debounce).
-        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 10),
+        // O produto chega ao Publicador logo (decisão do usuário, 10/10/2026: "ou vai instantâneo ou na hora
+        // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
+        // dentro da espera viram uma sincronização só.
+        'sincronizar_atraso_s' => (int) env('PUBLICADOR_SINCRONIZAR_ATRASO_S', 15),
+        // Espera da IA depois do último save do produto; um save novo dentro dela adia (debounce). Decisão do
+        // usuário (10/10/2026): 2 minutos — "se não mexer lá novamente, espera dois minutos e já pode ir gerando
+        // tudo" (era 10; 10 perdia eficiência).
+        'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 2),
         // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
         // Passou disso, o produto só é sincronizado e o log diz por quê.
         'limite_diario_por_empresa' => (int) env('PUBLICADOR_PREPARO_IA_LIMITE_DIARIO', 60),
@@ -139,6 +145,79 @@ return [
         'adiar_min' => 5,
         'max_adiamentos' => 24,
     ],
+
+    // ═══ Tarefas pós-publicação (09/10/2026) ═══
+    // Publicou pelo Publicador → nasce a tarefa das alavancas para outro colaborador (learnings
+    // publicador-ml §17). O responsável padrão NÃO mora aqui: é `configuracoes.publicador_alavancas_responsavel`
+    // (o admin escolhe na própria fila, sem deploy).
+    'tarefas' => [
+        // "O ideal é D+0, no máximo D+1" (reunião de 09/10): o prazo é D+1 útil.
+        'prazo_dias_uteis' => 1,
+    ],
+
+    // ═══ Promoção automática pós-publicação (10/10/2026) ═══
+    // Cada anúncio criado ganha o desconto individual de 14 dias com o preço de promoção do Portal, e ele
+    // se renova sozinho (`publicador:promocoes-renovar`, 00:05). Só nas contas das Alavancas
+    // (`alavancas.contas_liberadas`); nas outras, a tarefa orienta a fazer à mão (learnings publicador-ml §19).
+    // Quem assina a escrita quando quem publicou não está ativo: `configuracoes.publicador_usuario_sistema`.
+    'promocao_automatica' => [
+        // Espera depois de publicar até a 1ª tentativa (o anúncio costuma nascer em revisão).
+        'atraso_min' => 3,
+        // Anúncio ainda não ativo: espera entre as tentativas, crescente; esgotadas, a tarefa orienta.
+        'esperas_min' => [5, 10, 20, 40, 60, 120, 240],
+        'tentativas_max' => 8,
+    ],
+
+    // ═══ Publicação em lote — a fila em rodadas (10/10/2026) ═══
+    // "Conferir selecionados" + "Agendar publicação" da conta; quem anda a fila é o `publicador:fila-publicacao`
+    // (todo minuto, routes/console.php). A fila anda em RODADAS: alguns produtos (Clássico + Premium, todas as
+    // cores) começam juntos, e a rodada seguinte só vem depois do intervalo E depois de a anterior terminar —
+    // para não subir anúncio "na porrada" e arriscar restrição do Mercado Livre (learnings publicador-ml §20).
+    'fila_publicacao' => [
+        // Produtos que começam juntos numa rodada (decisão do usuário, 10/10: "cinco de uma vez", ajustável na tela).
+        'produtos_por_rodada' => (int) env('PUBLICADOR_FILA_POR_RODADA', 5),
+        // O máximo que a tela aceita por rodada (cada produto são 2 anúncios: Clássico e Premium).
+        'produtos_por_rodada_max' => 10,
+        // Minutos entre o INÍCIO de uma rodada e o da próxima (decisão do usuário, 10/10: "uns 20 minutos", ajustável).
+        'intervalo_minutos' => (int) env('PUBLICADOR_FILA_INTERVALO_MIN', 20),
+        // O menor intervalo que a tela aceita.
+        'intervalo_minimo' => 2,
+        // Inícios por minuto, somando TODAS as filas (contas diferentes também contam).
+        'teto_inicios_por_minuto' => (int) env('PUBLICADOR_FILA_TETO_POR_MINUTO', 2),
+        // Publicação ainda rodando depois disto: a fila pausa com aviso (o item espera a publicação terminar).
+        'publicando_max_min' => 40,
+        // Segundos entre uma conferência e a próxima no "Conferir selecionados" (fila `high`).
+        'conferir_espaco_s' => 10,
+        // A fila que terminou continua no painel por estes dias.
+        'mostrar_concluida_dias' => 3,
+    ],
+
+    // ═══ Imagens por IA automáticas (gatilho PRONTO e DESLIGADO, 10/10/2026) ═══
+    // Quando o produto chega do Portal com a ficha completa e as fotos do cliente, o Creative Engine pode gerar
+    // sozinho as imagens (2 por kit ≈ US$ 0,20). Fica DESLIGADO até o dono do Creative Engine ajustar o lado
+    // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
+    // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
+    // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
+    // (id) com a chave `mlb.criativos_ia`. A aprovação das imagens continua sendo de gente.
+    'criativos_auto' => [
+        'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
+        // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
+        'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
+        // Os tipos de imagem do kit automático, na ordem (os do catálogo do Creative Engine).
+        'slots' => ['lifestyle', 'hero'],
+        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores).
+        'todas_as_cores' => false,
+    ],
+
+    // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.
+    // Carnaval é ponto facultativo nacional: entra porque a ECF não trabalha (tirar daqui se mudar).
+    // Datas de outros anos: acrescentar aqui ou em PUBLICADOR_FERIADOS (separadas por vírgula).
+    'feriados' => array_values(array_unique(array_filter(array_map('trim', [
+        '2026-02-16', '2026-02-17', '2026-04-03', '2026-06-04', // Carnaval, Sexta-feira Santa, Corpus Christi
+        '2027-02-08', '2027-02-09', '2027-03-26', '2027-05-27',
+        '2028-02-28', '2028-02-29', '2028-04-14', '2028-06-15',
+        ...explode(',', (string) env('PUBLICADOR_FERIADOS', '')),
+    ])))),
 
     // Só a conferência visual local (plano 166-16) aponta para um servidor de mentira;
     // em produção o cliente IGNORA este valor e usa o host oficial (plano 166-02).

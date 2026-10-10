@@ -4,14 +4,23 @@ import { router } from '@inertiajs/react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Botao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
+import CategoriasAConfirmar from '@/Components/Portal/Estrutura/Produtos/CategoriasAConfirmar';
+import ImportacaoDaFichaTecnica from '@/Components/Portal/Estrutura/Produtos/ImportacaoDaFichaTecnica';
+import { buscarSugestoesEmLotes, confirmadasParaEnvio, nomesParaSugerir } from '@/lib/categoriasDaImportacao';
 import { cn } from '@/lib/utils';
 
 // ─── Importar planilha de Produtos (D-13/D-14) ──────────────────────────────
 //
 // Escolher o arquivo → prévia (nada é gravado) → confirmar. A prévia é só leitura:
 // ao confirmar, o ARQUIVO é reenviado e o servidor refaz o plano (T-167-60) —
-// nada que a prévia mostrou é mandado de volta como "o que gravar". A checagem de
-// extensão e tamanho aqui só avisa cedo; quem valida de verdade é o servidor.
+// nada que a prévia mostrou é mandado de volta como "o que gravar". A única coisa
+// que vai junto é a ESCOLHA da pessoa: as categorias que ela confirmou, por nome
+// digitado (o servidor confere cada uma). A checagem de extensão e tamanho aqui só
+// avisa cedo; quem valida de verdade é o servidor.
+//
+// 09/10/2026: a prévia agrupa as categorias "a confirmar" pelo nome digitado e
+// pede as sugestões em blocos enquanto a pessoa lê; e há o "Baixar meus produtos
+// na planilha", o modelo já preenchido para editar e enviar de novo.
 
 const GRUPOS = [
     { chave: 'novos',       rotulo: 'novos',                              cor: 'text-emerald-300', aberto: false },
@@ -26,7 +35,7 @@ function ItemPrevia({ grupo, item }) {
     if (grupo === 'erros') {
         return (
             <li className="text-[12px]">
-                <span className="text-white/40">linha {item.linha}:</span> <span className="text-red-300">{item.mensagem}</span>
+                <span className="text-white/40">linha {item.linha}:</span> <span className="text-red-300">{item.motivo ?? item.mensagem}</span>
             </li>
         );
     }
@@ -86,30 +95,68 @@ function Previa({ previa }) {
     );
 }
 
-export default function JanelaImportacao({ aberta, onFechar, limites }) {
+export default function JanelaImportacao({ aberta, onFechar, limites, temProdutos = false, onFichaGravada }) {
+    // Duas planilhas: a dos produtos e, com produtos, a da ficha técnica (o 2º arquivo).
+    const [aba, setAba] = useState('produtos');
     const [arquivo, setArquivo] = useState(null);
     const [previa, setPrevia] = useState(null);
     const [erro, setErro] = useState(null);
     const [lendo, setLendo] = useState(false);
     const [importando, setImportando] = useState(false);
     const [arrastando, setArrastando] = useState(false);
+    // Categorias a confirmar: sugestão por chave do nome ({ estado, sugestao }), escolha da pessoa por chave e o seletor aberto.
+    const [sugestoes, setSugestoes] = useState({});
+    const [escolhas, setEscolhas] = useState({});
+    const [escolhendo, setEscolhendo] = useState(null);
+    const [semSugestoes, setSemSugestoes] = useState(false);
     const entrada = useRef(null);
+    // Cada prévia tem a sua rodada de sugestões; fechar, voltar ou outra prévia encerram a anterior.
+    const rodada = useRef(0);
 
     const mb = limites?.arquivo_mb ?? 2;
     const linhas = limites?.linhas_arquivo ?? 1000;
 
+    const limparCategorias = () => {
+        rodada.current += 1;
+        setSugestoes({});
+        setEscolhas({});
+        setEscolhendo(null);
+        setSemSugestoes(false);
+    };
+
     useEffect(() => {
-        if (aberta) { setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
-    }, [aberta]);
+        if (aberta) { setAba('produtos'); setArquivo(null); setPrevia(null); setErro(null); setLendo(false); setImportando(false); }
+        limparCategorias();
+    }, [aberta]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Depois de um erro, escolher o MESMO arquivo (já corrigido) tem de disparar o onChange de novo:
     // o campo volta a ficar vazio (revisão FE-IN-07).
     const limparEntrada = () => { if (entrada.current) entrada.current.value = ''; };
 
+    /** As sugestões dos nomes da prévia, em blocos, sem segurar a tela; a resposta de uma rodada velha é descartada. */
+    const pedirSugestoes = (dados) => {
+        const minha = rodada.current;
+        const nomes = nomesParaSugerir(dados?.categorias_a_confirmar?.nomes ?? []);
+        if (nomes.length === 0) return;
+        setSugestoes(Object.fromEntries(nomes.map((n) => [n.chave, { estado: 'buscando', sugestao: null }])));
+        buscarSugestoesEmLotes(nomes, {
+            enviar: async (bloco) => (await axios.post(route('portal.auth.estrutura.produtos.categorias.sugerir_nomes'), { nomes: bloco })).data,
+            aoReceber: (porChave, falhou) => {
+                setSugestoes((atuais) => ({
+                    ...atuais,
+                    ...Object.fromEntries(Object.entries(porChave).map(([chave, s]) => [chave, s ? { estado: 'pronta', sugestao: s } : { estado: 'sem', sugestao: null }])),
+                }));
+                if (falhou) setSemSugestoes(true);
+            },
+            vivo: () => rodada.current === minha,
+        });
+    };
+
     const escolher = async (f) => {
         if (! f) return;
         setErro(null);
         setPrevia(null);
+        limparCategorias();
         if (! /\.xlsx$/i.test(f.name)) { limparEntrada(); setErro('Envie um arquivo .xlsx. Baixe o modelo se precisar.'); return; }
         if (f.size > mb * 1024 * 1024) { limparEntrada(); setErro(`O arquivo passa de ${mb} MB. Divida a planilha e importe em partes.`); return; }
         setArquivo(f);
@@ -119,6 +166,7 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
         try {
             const { data } = await axios.post(route('portal.auth.estrutura.produtos.importacao.previa'), dados);
             setPrevia(data);
+            if (! data.erro_geral) pedirSugestoes(data);
         } catch (e) {
             setArquivo(null);
             limparEntrada();
@@ -128,7 +176,15 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
         }
     };
 
-    const voltar = () => { setArquivo(null); setPrevia(null); setErro(null); limparEntrada(); };
+    const voltar = () => { setArquivo(null); setPrevia(null); setErro(null); limparEntrada(); limparCategorias(); };
+
+    const escolherCategoria = (chave, categoria) => setEscolhas((atuais) => {
+        const proximas = { ...atuais };
+        if (categoria?.id) proximas[chave] = { id: categoria.id, nome: categoria.nome, caminho_texto: categoria.caminho_texto };
+        else delete proximas[chave];
+
+        return proximas;
+    });
 
     const podeConfirmar = !! previa && ! previa.erro_geral && ((previa.totais?.novos ?? 0) + (previa.totais?.atualizados ?? 0)) > 0;
 
@@ -137,11 +193,13 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
         setImportando(true);
         setErro(null);
         // Reenvia o arquivo: o servidor refaz o plano e grava (a prévia não é a fonte da gravação).
-        router.post(route('portal.auth.estrutura.produtos.importacao'), { arquivo }, {
+        // Junto, só as categorias que a pessoa confirmou, pelo nome digitado.
+        const categorias = confirmadasParaEnvio(previa.categorias_a_confirmar?.nomes ?? [], escolhas);
+        router.post(route('portal.auth.estrutura.produtos.importacao'), { arquivo, categorias }, {
             forceFormData: true,
             preserveScroll: true,
             onSuccess: () => onFechar(),
-            onError: (erros) => setErro(erros?.arquivo ?? 'Não foi possível importar agora. Tente de novo.'),
+            onError: (erros) => setErro(erros?.arquivo ?? Object.values(erros ?? {})[0] ?? 'Não foi possível importar agora. Tente de novo.'),
             onFinish: () => setImportando(false),
         });
     };
@@ -149,6 +207,20 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
     return (
         <Janela aberta={aberta} onFechar={onFechar} largura="max-w-3xl" titulo="Importar planilha">
             <div className="space-y-3" data-janela-importacao>
+                {temProdutos && (
+                    <div className="flex gap-1 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1" role="tablist" data-abas-importacao>
+                        {[['produtos', 'Produtos'], ['ficha', 'Ficha técnica']].map(([chave, rotulo]) => (
+                            <button key={chave} type="button" role="tab" aria-selected={aba === chave} disabled={importando}
+                                onClick={() => setAba(chave)} data-aba-importacao={chave}
+                                className={cn('flex-1 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
+                                    aba === chave ? 'bg-white/[0.08] text-white' : 'text-white/55 hover:text-white')}>
+                                {rotulo}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {aba === 'ficha' && <ImportacaoDaFichaTecnica onConcluir={onFichaGravada} />}
+                {aba === 'produtos' && (<>
                 {! previa && (
                     <>
                         <div
@@ -165,13 +237,24 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
                             <input ref={entrada} type="file" accept=".xlsx" className="sr-only" aria-label="Escolher planilha .xlsx"
                                 onChange={(e) => escolher(e.target.files?.[0])} />
                         </div>
-                        <a href={route('portal.auth.estrutura.produtos.modelo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline">
-                            Baixar o modelo
-                        </a>
+                        <div className="flex flex-wrap gap-x-5 gap-y-1">
+                            <a href={route('portal.auth.estrutura.produtos.modelo')} download className="inline-block text-[12px] text-ecf-yellow hover:underline">
+                                Baixar o modelo
+                            </a>
+                            {temProdutos && (
+                                <a href={route('portal.auth.estrutura.produtos.exportar')} download className="inline-block text-[12px] text-ecf-yellow hover:underline" data-acao="baixar-meus-produtos-janela">
+                                    Baixar meus produtos na planilha
+                                </a>
+                            )}
+                        </div>
                     </>
                 )}
                 {erro && <p role="alert" className="text-[13px] text-red-300" data-erro-arquivo>{erro}</p>}
                 {previa && <Previa previa={previa} />}
+                {previa && ! previa.erro_geral && (
+                    <CategoriasAConfirmar bloco={previa.categorias_a_confirmar} sugestoes={sugestoes} escolhas={escolhas} indisponivel={semSugestoes}
+                        escolhendo={escolhendo} onEscolhendo={setEscolhendo} onEscolher={escolherCategoria} desabilitado={importando} />
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <p className="text-[12px] text-white/45">Reimportar atualiza pelo código da variação. Nada é apagado.</p>
                     <div className="flex gap-2">
@@ -181,6 +264,7 @@ export default function JanelaImportacao({ aberta, onFechar, limites }) {
                         </Botao>
                     </div>
                 </div>
+                </>)}
             </div>
         </Janela>
     );

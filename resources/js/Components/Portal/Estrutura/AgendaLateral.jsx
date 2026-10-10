@@ -73,8 +73,9 @@ function Tarefa({ item, vocabulario, onConcluir }) {
     );
 }
 
-export default function AgendaLateral({ agenda, aPublicar, vocabulario, onConcluir }) {
-    const verTodas = route('portal.auth.estrutura.agenda');
+export default function AgendaLateral({ agenda, aPublicar, vocabulario, onConcluir, agendaVisivel = true }) {
+    // Quem não vê o Cronograma (o cliente, desde 09/10/2026): as tarefas ficam, os links para a tela dele não.
+    const verTodas = agendaVisivel ? route('portal.auth.estrutura.agenda') : null;
 
     return (
         <aside className="space-y-4" data-agenda-lateral>
@@ -83,22 +84,30 @@ export default function AgendaLateral({ agenda, aPublicar, vocabulario, onConclu
                     <h2 className="flex items-center gap-2 text-[15px] font-semibold text-white">
                         <CalendarDays size={17} className="text-white/60" /> Agenda
                     </h2>
-                    <Link href={verTodas} className="inline-flex items-center gap-1 text-[12px] text-white/50 hover:text-white">
-                        Ver todas <ArrowRight size={12} />
-                    </Link>
+                    {verTodas && (
+                        <Link href={verTodas} className="inline-flex items-center gap-1 text-[12px] text-white/50 hover:text-white">
+                            Ver todas <ArrowRight size={12} />
+                        </Link>
+                    )}
                 </header>
 
                 <div className="mt-3 grid grid-cols-4 gap-1.5">
-                    {SECOES.map((s) => (
-                        <Link key={s.chave} href={verTodas} data-contagem={s.chave}
-                            className={cn('rounded-lg border px-1 py-2 text-center hover:bg-white/[0.04]',
-                                s.chave === 'atrasadas' && agenda.totais.atrasadas > 0 ? 'border-red-500/30 bg-red-500/[0.06]' : 'border-white/[0.06]')}>
-                            <span className="block text-[10.5px] text-white/45">{s.rotulo}</span>
-                            <span className={cn('block text-[15px] font-semibold', agenda.totais[s.chave] > 0 ? s.cor : 'text-white/30')}>
-                                {agenda.totais[s.chave]}
-                            </span>
-                        </Link>
-                    ))}
+                    {SECOES.map((s) => {
+                        const classe = cn('rounded-lg border px-1 py-2 text-center', verTodas && 'hover:bg-white/[0.04]',
+                            s.chave === 'atrasadas' && agenda.totais.atrasadas > 0 ? 'border-red-500/30 bg-red-500/[0.06]' : 'border-white/[0.06]');
+                        const conteudo = (
+                            <>
+                                <span className="block text-[10.5px] text-white/45">{s.rotulo}</span>
+                                <span className={cn('block text-[15px] font-semibold', agenda.totais[s.chave] > 0 ? s.cor : 'text-white/30')}>
+                                    {agenda.totais[s.chave]}
+                                </span>
+                            </>
+                        );
+
+                        return verTodas
+                            ? <Link key={s.chave} href={verTodas} data-contagem={s.chave} className={classe}>{conteudo}</Link>
+                            : <div key={s.chave} data-contagem={s.chave} className={classe}>{conteudo}</div>;
+                    })}
                 </div>
 
                 {agenda.itens.length > 0 ? (
@@ -115,7 +124,7 @@ export default function AgendaLateral({ agenda, aPublicar, vocabulario, onConclu
                 <p className="mt-1 text-[12.5px] leading-relaxed text-white/50">
                     1 publicação por dia até zerar a lista. {vocabulario.dias_ate_jardinagem} dias depois, a Jardinagem.
                 </p>
-                {aPublicar > 0 && (
+                {aPublicar > 0 && verTodas && (
                     <Link href={`${verTodas}?proposta=1`} className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-ecf-yellow hover:underline" data-acao="agendar-o-que-falta">
                         <CalendarPlus size={14} /> Agendar o que falta
                     </Link>

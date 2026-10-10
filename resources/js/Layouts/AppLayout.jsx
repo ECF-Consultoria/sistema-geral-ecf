@@ -8,7 +8,7 @@ import {
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart, EyeOff,
     FileSignature, PencilLine,
-    MessageSquareText, UsersRound, Ticket, Megaphone,
+    MessageSquareText, UsersRound, Ticket, Megaphone, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { itemOcultoPorPapel } from '@/lib/visibilidadeMenu';
@@ -162,6 +162,20 @@ const NAV_TREE = [
         page: ['Mlb/AnunciosEmpresas', 'Mlb/Publicador/', 'Mlb/MeusAnuncios', 'Mlb/AnunciarMassa', 'Mlb/AnunciosHistorico', 'Mlb/AnunciarML'],
         icon: Megaphone,
         permission: 'mlb.anunciar',
+    },
+
+    // ── Item de topo: tarefas pós-publicação (09/10/2026) ─────────────────
+    // "Publicados aguardando alavancas": gate pela chave PRÓPRIA `mlb.alavancas`
+    // (admin tem todas) — quem usa as alavancas pode não ser admin nem ter o
+    // Publicador. O badge conta as abertas que são minhas ou de ninguém
+    // (`tarefas_alavancas`, HandleInertiaRequests).
+    {
+        label: 'Aguardando alavancas',
+        routeName: 'mlb.anuncios.publicador.tarefas.index',
+        page: 'Mlb/Publicador/Tarefas',
+        icon: Zap,
+        permission: 'mlb.alavancas',
+        showBadge: 'tarefas_alavancas',
     },
 
     // ── Stubs marketplaces em desenvolvimento (Phase 58 v13.0) ──────────────
@@ -433,10 +447,11 @@ const navMatches = (entry, pageComponent, pageUrl) => {
 };
 
 export default function AppLayout({ children, title }) {
-    const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count } = usePage().props;
+    const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count, tarefas_alavancas } = usePage().props;
     const badgeCounters = {
         sugadores_pendentes:    sugadores_pendentes    ?? 0,
         alertas_criticos_count: alertas_criticos_count ?? 0,  // null vira 0 → badge some
+        tarefas_alavancas:      tarefas_alavancas      ?? 0,  // publicados aguardando alavancas (minhas ou de ninguém)
     };
     const { component: pageComponent, url: pageUrl } = usePage();
     const logoSrc = `${asset_url}/images/logo.png`;

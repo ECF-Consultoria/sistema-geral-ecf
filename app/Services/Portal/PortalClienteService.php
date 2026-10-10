@@ -91,7 +91,9 @@ class PortalClienteService
         $usuario = $ator->equipe ? null : $ator->modelo;
 
         return [
-            ...$this->montarContexto($company, $modulo, null),
+            // O ator decide os submódulos do Mapeamento no menu: o cliente vê os 4 do dia a dia,
+            // a equipe vê todos (`VisibilidadeDoMapeamento`, 09/10/2026).
+            ...$this->montarContexto($company, $modulo, null, $ator),
             'usuario' => [
                 'nome'   => $ator->nome,
                 'email'  => $ator->email,
@@ -112,7 +114,7 @@ class PortalClienteService
     }
 
     /** O que os dois modos têm em comum. */
-    private function montarContexto(Company $company, string $modulo, ?string $token): array
+    private function montarContexto(Company $company, string $modulo, ?string $token, ?AtorDoPortal $ator = null): array
     {
         return [
             'token'   => $token,
@@ -121,7 +123,7 @@ class PortalClienteService
             'modulos' => ModulosPortal::paraEmpresa($company, $token, $modulo, [
                 ModulosPortal::ONBOARDING => $this->pendenciasOnboarding($company),
                 ModulosPortal::PPA        => $this->ppaService->pendentes($company),
-            ]),
+            ], $ator),
         ];
     }
 

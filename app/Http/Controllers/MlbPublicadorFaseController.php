@@ -8,6 +8,7 @@ use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
+use App\Services\Publicador\PlanejamentoDaFaseService;
 use App\Services\Publicador\PreviaDaFaseService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\SugestaoDeKitService;
@@ -202,6 +203,14 @@ class MlbPublicadorFaseController extends Controller
         ]);
 
         $quantidade = (int) $dados['quantidade'];
+
+        // KIT-06 (Planejamento × Fase N, 09/10/2026): composto do Planejamento não ganha fase — e a
+        // recusa vem antes do KIT-05, cujo "publique a Fase 1" seria o conselho errado para ele.
+        try {
+            $this->clone->recusarComposto($base);
+        } catch (RegraViolada $e) {
+            return $this->recusa($e);
+        }
 
         // Gate da §4 ("Abrir: só com base Publicado, inclui parcial") conferido no
         // SERVIDOR: o painel só ESCONDE o botão, e esconder não é impedir.
@@ -469,7 +478,9 @@ class MlbPublicadorFaseController extends Controller
             'fase' => (int) $p->fase,
             'eh_kit' => $p->ehKit(),
             'estoque_calculado' => (bool) $p->estoque_calculado,
-            'rotulo_fase' => ProgramasPublicadorService::rotuloFase($p->quantidade_kit),
+            // O mesmo par `rotulo_fase` + `composto` da lista (Planejamento × Fase N, 09/10/2026).
+            'rotulo_fase' => ProgramasPublicadorService::rotuloFase($p->quantidade_kit, PlanejamentoDaFaseService::tipoComposto($p)),
+            'composto' => PlanejamentoDaFaseService::tipoComposto($p),
             'kit_sugestao_recusada_em' => $p->kit_sugestao_recusada_em?->toIso8601String(),
             'sugestao_kit' => $this->sugestoesDeKit->sugerirPara($p),
         ];

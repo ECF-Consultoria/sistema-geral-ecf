@@ -66,6 +66,18 @@ use Illuminate\Support\Facades\Log;
  *    mapa, a variante do kit nasceria com estoque NULL. Mas estoque zero numa
  *    variante que o base não vende não é problema de ninguém.
  *
+ * 7. **Planejamento × Fase N (decisões do usuário de 09/10/2026).** Quando o
+ *    base é AGRUPADO (produto do Portal com cores), o Planejamento do Portal é a
+ *    fonte das composições: cada variante que é cor do Portal recebe o SKU da
+ *    oferta Combo N daquela cor (`-CB{N}`) — a que já existe, ou a que o Confirmar
+ *    vai criar no Portal (`PlanejamentoDaFaseService::garantirOfertas`) — e o preço
+ *    vem da Precificação dela (lido na hora pelo `DadosEfetivosService`, nunca
+ *    gravado). O SKU do kit passa a `{SKU do base}-CB{N}`. Isso SUBSTITUI a decisão
+ *    5 só para o base agrupado; o resto (produto do Publicador, base sem Portal)
+ *    segue `-KIT{N}` e o aviso `preco_vazio`, como antes. Cada linha de variante
+ *    ganha a chave `planejamento` (aditiva) e os avisos novos são
+ *    `preco_do_planejamento` e `ofertas_novas_no_portal`.
+ *
  * ⚠️ `pub_produtos.fase` é o NÚMERO da fase; `estrutura_ofertas.fase` é o TIPO
  * da oferta no Portal (`simples|combo|kit|combit`). Nada aqui faz JOIN entre as
  * duas, e nenhum SELECT desta classe usa a coluna `fase` sem qualificar.
@@ -91,10 +103,12 @@ class PreviaDaFaseService
     /**
      * `{sku base}-KIT{N}`, no teto de 120 da coluna. Corta o COMEÇO: o sufixo
      * é o que identifica o kit e nunca cai (decisão 5 do docblock).
+     *
+     * `$marca = 'CB'` dá o `{sku base}-CB{N}` do Planejamento (decisão 7).
      */
-    public static function skuSugerido(string $skuBase, int $n): string
+    public static function skuSugerido(string $skuBase, int $n, string $marca = 'KIT'): string
     {
-        $sufixo = "-KIT{$n}";
+        $sufixo = "-{$marca}{$n}";
         $limite = max(1, self::MAX_SKU - mb_strlen($sufixo));
 
         return mb_substr(trim($skuBase), 0, $limite).$sufixo;
@@ -204,7 +218,9 @@ class PreviaDaFaseService
     public function previa(PubProduto $base, int $quantidade): array
     {
         $avisos = [];
-        $sku = self::skuSugerido($base->skuExibido(), $quantidade);
+        // Decisão 7 (Planejamento × Fase N): base agrupado puxa SKU e preço do Planejamento do Portal.
+        $doPlanejamento = $this->planejamento()->daFase($base, $quantidade);
+        $sku = self::skuSugerido($base->skuExibido(), $quantidade, $doPlanejamento !== null ? 'CB' : 'KIT');
         $nome = $base->nomeExibido();
         $rascunho = $base->rascunho;
 
@@ -227,6 +243,9 @@ class PreviaDaFaseService
         }
 
         [$variantes, $lugaresEmZero, $temDesconhecido, $temZero] = $this->variantes($rascunho, $sku, $quantidade);
+        if ($doPlanejamento !== null) {
+            $variantes = self::comPlanejamento($variantes, $doPlanejamento);
+        }
         if ($temDesconhecido) {
             $avisos[] = self::aviso('estoque_desconhecido', 'O produto base ainda não tem estoque informado, então o kit nasce sem estoque. Informe o estoque no editor do kit antes de publicar.');
         }
@@ -240,7 +259,13 @@ class PreviaDaFaseService
 
         // Decisão do usuário em 2026-10-08 (`175-DECISOES.md` item 2): o kit nasce
         // sem preço e o painel avisa ANTES de confirmar. O aviso não bloqueia nada.
-        $avisos[] = self::aviso('preco_vazio', 'O kit vai nascer sem preço. Ele é criado normalmente, mas só vai para o ar depois que você informar o valor de cada tipo de anúncio no editor do kit.');
+        // Decisão 7 (09/10): com o Planejamento o preço vem da Precificação do Portal,
+        // e o `preco_vazio` fica só para as cores que ainda não têm preço lá.
+        if ($doPlanejamento === null) {
+            $avisos[] = self::aviso('preco_vazio', 'O kit vai nascer sem preço. Ele é criado normalmente, mas só vai para o ar depois que você informar o valor de cada tipo de anúncio no editor do kit.');
+        } else {
+            $avisos = [...$avisos, ...self::avisosDoPlanejamento($doPlanejamento, $variantes, $quantidade)];
+        }
 
         return $this->payload(
             $quantidade,
@@ -256,6 +281,93 @@ class PreviaDaFaseService
     }
 
     // ═══ Peças da orquestração ═══════════════════════════════════════════════
+
+    /**
+     * Decisão 7: a variante que é cor do Portal recebe o SKU da oferta Combo N daquela cor e a chave
+     * `planejamento` (oferta, se é nova, a cor e o preço da Precificação). A que não é cor do Portal
+     * (criada pela equipe no editor) fica com o `-KIT{N}` de sempre.
+     *
+     * @param  array<string, array>  $variantes
+     * @param  array{por_variante: array<string, array>}  $doPlanejamento
+     * @return array<string, array>
+     */
+    private static function comPlanejamento(array $variantes, array $doPlanejamento): array
+    {
+        foreach ($doPlanejamento['por_variante'] as $chave => $item) {
+            if (! isset($variantes[$chave])) {
+                continue;
+            }
+            $variantes[$chave]['seller_sku'] = mb_substr((string) $item['sku'], 0, self::MAX_SKU);
+            $variantes[$chave]['planejamento'] = [
+                'oferta_id' => $item['oferta_id'],
+                'nova' => (bool) $item['nova'],
+                'cor' => (string) $item['cor'],
+                'precos' => $item['precos'],
+            ];
+        }
+
+        return $variantes;
+    }
+
+    /**
+     * Os avisos de preço com o Planejamento (decisão 7), no lugar do `preco_vazio` fixo:
+     * - `ofertas_novas_no_portal`: as ofertas Combo N que o Confirmar vai criar no Portal;
+     * - `preco_do_planejamento`: o preço de cada cor vem da Precificação (nunca é copiado);
+     * - `preco_vazio`: só as cores ATIVAS sem preço lá, e as variações que não são cor do Portal.
+     *
+     * @param  array{por_variante: array<string, array>, sem_cor: list<string>}  $doPlanejamento
+     * @param  array<string, array>  $variantes
+     * @return list<array{chave: string, mensagem: string}>
+     */
+    private static function avisosDoPlanejamento(array $doPlanejamento, array $variantes, int $n): array
+    {
+        $avisos = [];
+        $novas = [];
+        $comPreco = 0;
+        $semPreco = [];
+        foreach ($doPlanejamento['por_variante'] as $chave => $item) {
+            if ($item['nova']) {
+                $novas[] = (string) $item['sku'];
+
+                continue;
+            }
+            if (($variantes[$chave]['ativa'] ?? true) === false) {
+                continue;
+            }
+            if (array_filter((array) $item['precos'], fn ($p) => $p !== null) !== []) {
+                $comPreco++;
+            } else {
+                $semPreco[] = (string) $item['cor'];
+            }
+        }
+
+        if ($novas !== []) {
+            $avisos[] = self::aviso('ofertas_novas_no_portal', 'Ao confirmar, o Portal ganha '.count($novas)." oferta(s) Combo {$n}, uma por cor ("
+                .implode(', ', $novas).'), na Lista SKUs e na Precificação. O preço do kit sai de lá: confira o custo e o frete delas na Precificação.');
+        }
+        if ($comPreco > 0) {
+            $avisos[] = self::aviso('preco_do_planejamento', "O preço de cada cor vem da Precificação do Portal (Combo {$n}). Ele não é copiado para o kit: se mudar lá, muda aqui.");
+        }
+        $semCor = array_values(array_filter($doPlanejamento['sem_cor'], fn (string $c) => ($variantes[$c]['ativa'] ?? true) !== false));
+        if ($semPreco !== [] || $semCor !== []) {
+            $partes = [];
+            if ($semPreco !== []) {
+                $partes[] = 'a Precificação do Portal ainda não tem preço para '.implode(', ', $semPreco);
+            }
+            if ($semCor !== []) {
+                $partes[] = count($semCor).' variação(ões) não são cor do Portal';
+            }
+            $avisos[] = self::aviso('preco_vazio', ucfirst(implode('; ', $partes)).'. O kit é criado normalmente, mas essas variações só vão para o ar depois que o preço for informado (na Precificação do Portal ou no editor do kit).');
+        }
+
+        return $avisos;
+    }
+
+    /** Resolvido sob demanda: nenhuma dependência nova no construtor (o módulo tem ciclos conhecidos no container). */
+    private function planejamento(): PlanejamentoDaFaseService
+    {
+        return app(PlanejamentoDaFaseService::class);
+    }
 
     /**
      * @param  array<string, string>  $titulos

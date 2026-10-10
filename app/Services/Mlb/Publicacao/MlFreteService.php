@@ -38,9 +38,10 @@ class MlFreteService
      * Monta a string dimensions como "{altura_cm}x{largura_cm}x{comprimento_cm},{peso_g}"
      * e chama GET /users/{seller_id}/shipping_options/free com os parâmetros fixos do ME2.
      *
-     * Retorna o array completo da resposta em sucesso (inclui shipping_options[].list_cost
-     * e shipping_options[].cost). Retorna null em qualquer falha — o controller exibe
-     * estimativa_frete=null e a publicação segue normalmente (SHIP-02).
+     * Retorna o array completo da resposta em sucesso — o custo vem em
+     * `coverage.all_country.list_cost` (não em `shipping_options[]`, que é de outro endpoint;
+     * respostas reais em tests/fixtures-ml/sondagem/conta). Retorna null em qualquer falha —
+     * o controller exibe estimativa_frete=null e a publicação segue normalmente (SHIP-02).
      *
      * @param  Company $company  Empresa com conta ML conectada
      * @param  array   $params   Parâmetros de cotação:

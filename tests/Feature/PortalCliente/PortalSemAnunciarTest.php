@@ -107,10 +107,11 @@ class PortalSemAnunciarTest extends TestCase
         $this->assertTrue(Route::has('mlb.anuncios.wizard'));
     }
 
-    public function test_o_mapeamento_estrutural_tem_seis_submodulos(): void
+    /** 09/10/2026: o Planejamento (chave `sugestoes`) entrou logo depois de Produtos — são sete, nenhum "anunciar". */
+    public function test_o_mapeamento_estrutural_tem_sete_submodulos(): void
     {
         $this->assertSame(
-            ['produtos', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
+            ['produtos', 'sugestoes', 'lista', 'precificacao', 'anuncios', 'planejamento', 'mapeamento'],
             array_keys((new \ReflectionClass(ModulosPortal::class))->getConstant('SUBMODULOS')[ModulosPortal::ESTRUTURA]),
         );
     }

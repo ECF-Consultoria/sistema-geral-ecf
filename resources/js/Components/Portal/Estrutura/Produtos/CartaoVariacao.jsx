@@ -1,10 +1,12 @@
 import { Trash2 } from 'lucide-react';
+import { usePage } from '@inertiajs/react';
 import CartaoVolume from '@/Components/Portal/Estrutura/Produtos/CartaoVolume';
 import FaixaCalculados from '@/Components/Portal/Estrutura/Produtos/FaixaCalculados';
 import GaleriaVariacao from '@/Components/Portal/Estrutura/Produtos/GaleriaVariacao';
 import Explicacao from '@/Components/Explicacao';
 import { Obrigatorio, PilulaLogistica, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { primeiraFoto } from '@/lib/imagensVariacao';
+import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
 // ─── Um bloco por variação (REF-2, 167-19) ──────────────────────────────────
@@ -24,6 +26,9 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
     const caixas = ficha.caixasEdit(variacao);
     const oferta = variacao.oferta;
     const explicacoes = ficha.explicacoes ?? {};
+    // A oferta da variação: na Lista SKUs para quem a vê; quem não a vê (o cliente) vai à Precificação (09/10/2026).
+    const { modulos = [] } = usePage().props;
+    const listaVisivel = submoduloVisivel(modulos, 'lista');
 
     return (
         <section id={`variacao-${k}`} className="rounded-[10px] border border-white/[0.06] bg-white/[0.02] p-4 lg:px-4 lg:pb-3 lg:pt-3" data-variacao-form>
@@ -39,7 +44,9 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                             <p className="mt-1 text-[12px] text-white/55">
                                 Oferta {oferta.sku}
                                 {' · '}
-                                <a href={route('portal.auth.estrutura.lista', { q: oferta.sku })} className="text-white/70 underline-offset-2 hover:text-white hover:underline">Ver na Lista SKUs</a>
+                                {listaVisivel
+                                    ? <a href={route('portal.auth.estrutura.lista', { q: oferta.sku })} className="text-white/70 underline-offset-2 hover:text-white hover:underline">Ver na Lista SKUs</a>
+                                    : <a href={route('portal.auth.estrutura.precificacao', { q: oferta.sku })} className="text-white/70 underline-offset-2 hover:text-white hover:underline" data-acao="precificar-variacao">Ver na Precificação</a>}
                             </p>
                         )}
                     </div>

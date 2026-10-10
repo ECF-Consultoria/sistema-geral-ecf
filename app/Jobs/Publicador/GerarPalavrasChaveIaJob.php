@@ -37,7 +37,8 @@ class GerarPalavrasChaveIaJob implements ShouldQueue
         public string $alvo,
         public string $pedido,
         public array $escolhidos = [],
-        // O título da tela no momento do pedido do Modelo (o serviço soma aos gravados).
+        // O título da tela no momento do pedido: no Modelo, o(s) ativo(s) (o serviço soma aos gravados);
+        // no título de um tipo, o do OUTRO tipo, que o resultado não pode repetir (09/10/2026).
         public ?string $titulo = null,
     ) {
         // Clique de pessoa: fila `high`. No construtor porque `Queueable` já declara `$queue`.

@@ -59,32 +59,68 @@ final class RascunhoSnapshot
      * Precificação no rascunho (`16` §1.6). Por isso o repositório só lê e grava
      * o que a pessoa digitou.
      *
+     * 10/10/2026 — `$portal` (o resto do que o `DadosEfetivosService::daProduto` devolve: `promocoes`,
+     * `sem_frete` e os `_por_variante`) acrescenta a cada variante, NA CÓPIA EFETIVA:
+     *  - `dados.portal[lt]` = `{anunciado, minimo, sem_frete}` da MESMA linha da Precificação que dá o
+     *    preço (a da cor quando ela tem preço, senão a da âncora) — mesmo com preço digitado: a promoção
+     *    automática aplica o percentual do Portal sobre o digitado (`PrecoDaPromocao`);
+     *  - `dados.preco_do_portal[lt] = true` quando o preço VEIO do Portal (não digitado) — é o que o
+     *    V-SAL-08 olha: preço do Portal calculado sem frete bloqueia; o digitado é decisão da equipe.
+     * Sem `$portal`, o resultado é exatamente o de antes (nenhuma chave nova).
+     *
      * @param  array<string, ?string>  $titulos  listing_type_id → título planejado
      * @param  array<string, ?float>  $precos  listing_type_id → preço anunciado da Precificação
      * @param  array<string, array<string, ?float>>  $porVariante  SKU normalizado → (listing_type_id → preço) da oferta daquela cor (produto agrupado); a variante sem casamento usa `$precos`
+     * @param  array{promocoes?: array<string, ?float>, sem_frete?: array<string, bool>, promocoes_por_variante?: array<string, array<string, ?float>>, sem_frete_por_variante?: array<string, array<string, bool>>}  $portal
      */
-    public function comEfetivos(array $titulos, array $precos, array $porVariante = []): self
+    public function comEfetivos(array $titulos, array $precos, array $porVariante = [], array $portal = []): self
     {
         $alvos = array_map(fn (Alvo $a) => trim((string) $a->titulo) !== ''
             ? $a
             : new Alvo($a->listingTypeId, $titulos[$a->listingTypeId] ?? null, $a->ativo), $this->alvos);
 
-        $variantes = array_map(function (Variante $v) use ($precos, $porVariante) {
+        $comPortal = $portal !== [];
+        $promocoes = (array) ($portal['promocoes'] ?? []);
+        $semFrete = (array) ($portal['sem_frete'] ?? []);
+        $promocoesPorVariante = (array) ($portal['promocoes_por_variante'] ?? []);
+        $semFretePorVariante = (array) ($portal['sem_frete_por_variante'] ?? []);
+
+        $variantes = array_map(function (Variante $v) use ($precos, $porVariante, $comPortal, $promocoes, $semFrete, $promocoesPorVariante, $semFretePorVariante) {
             $proprios = (array) ($v->dados['precos'] ?? []);
             $sku = EstruturaOferta::normalizarSku($v->dados['atributos']['SELLER_SKU']['value_name'] ?? $this->atributos['SELLER_SKU']['value_name'] ?? null);
             $daVariante = $sku !== null ? ($porVariante[$sku] ?? null) : null;
+            $doPortal = [];
+            $veioDoPortal = [];
             foreach ($this->alvos as $alvo) {
                 $lt = $alvo->listingTypeId;
+                $daCor = ($daVariante[$lt] ?? null) !== null;
+                $efetivo = $daCor ? $daVariante[$lt] : ($precos[$lt] ?? null);
+                if ($comPortal && $efetivo !== null) {
+                    $minimo = $daCor ? ($promocoesPorVariante[$sku][$lt] ?? null) : ($promocoes[$lt] ?? null);
+                    $doPortal[$lt] = [
+                        'anunciado' => (float) $efetivo,
+                        'minimo' => $minimo !== null ? (float) $minimo : null,
+                        'sem_frete' => (bool) ($daCor ? ($semFretePorVariante[$sku][$lt] ?? false) : ($semFrete[$lt] ?? false)),
+                    ];
+                }
                 if (($proprios[$lt] ?? null) !== null) {
                     continue;
                 }
-                $efetivo = $daVariante[$lt] ?? $precos[$lt] ?? null;
                 if ($efetivo !== null) {
                     $proprios[$lt] = (float) $efetivo;
+                    $veioDoPortal[$lt] = true;
                 }
             }
 
-            return $v->comDados([...$v->dados, 'precos' => $proprios]);
+            $dados = [...$v->dados, 'precos' => $proprios];
+            if ($doPortal !== []) {
+                $dados['portal'] = $doPortal;
+            }
+            if ($comPortal && $veioDoPortal !== []) {
+                $dados['preco_do_portal'] = $veioDoPortal;
+            }
+
+            return $v->comDados($dados);
         }, $this->variantes);
 
         // ⚠️ Argumentos POSICIONAIS: todo campo novo do construtor precisa ser
@@ -97,6 +133,23 @@ final class RascunhoSnapshot
             $this->fotosPorVariante, $this->incluirGeral, $this->descricao, $this->envio, $this->garantia,
             $this->unidadesPorOferta,
         );
+    }
+
+    /**
+     * O `comEfetivos` com TUDO o que o `DadosEfetivosService::daProduto` devolveu (preço, mínimo da
+     * promoção e a marca sem frete). É o caminho de quem VALIDA (conferência, publicação e o estado do
+     * editor): sem ele o V-SAL-08 não enxerga o preço do Portal calculado sem frete.
+     *
+     * @param  array<string, mixed>  $e
+     */
+    public function comEfetivosDe(array $e): self
+    {
+        return $this->comEfetivos((array) ($e['titulos'] ?? []), (array) ($e['precos'] ?? []), (array) ($e['precos_por_variante'] ?? []), [
+            'promocoes' => (array) ($e['promocoes'] ?? []),
+            'sem_frete' => (array) ($e['sem_frete'] ?? []),
+            'promocoes_por_variante' => (array) ($e['promocoes_por_variante'] ?? []),
+            'sem_frete_por_variante' => (array) ($e['sem_frete_por_variante'] ?? []),
+        ]);
     }
 
     /** As variantes que vão para o ML: ativas e não órfãs. */

@@ -6,14 +6,17 @@ use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
 use App\Models\CreativeIdentidade;
 use App\Models\MlAnuncioRascunho;
 use App\Models\PubProduto;
+use App\Models\PubTarefa;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
 use App\Services\Publicador\ResumoDoSincronizar;
 use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\NaFilaDePublicacao;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -128,7 +131,7 @@ class MlbPublicadorEntradaController extends Controller
     }
 
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */
-    public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao)
+    public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao, FilaPublicacaoService $filas)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -174,7 +177,13 @@ class MlbPublicadorEntradaController extends Controller
                     ? route('mlb.anuncios.wizard', ['company' => $companyId])
                     : null,
             ],
-            'abas' => ['company_id' => $companyId],
+            'abas' => [
+                'company_id' => $companyId,
+                // 09/10/2026 — contagem da aba Alavancas: publicados desta conta aguardando as alavancas.
+                'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
+            ],
+            // 10/10/2026 — a fila de publicação em lote VIVA da conta (o aviso acima da lista), ou null.
+            'fila_publicacao' => $filas->aviso($alvo['chave']),
         ]);
     }
 
@@ -190,6 +199,12 @@ class MlbPublicadorEntradaController extends Controller
         }
 
         $r = $sincroniza->sincronizar($alvo['mlb_empresa'], $company);
+
+        // 10/10/2026: produto agendado/publicando na fila de publicação foi CONFERIDO e vai ao ML como está — o
+        // Sincronizar não escreve no rascunho dele (como o preparo pela IA). Volta a valer depois que ele
+        // publicar ou sair da fila; se a equipe mudar algo, a fila manda para `precisa_revisar`.
+        $naFila = NaFilaDePublicacao::dentre($r['para_preencher']);
+        $r['para_preencher'] = array_values(array_filter($r['para_preencher'], fn ($id) => ! isset($naFila[(int) $id])));
 
         // Fase 172-12 (D-05/D-10): um Job por produto agrupado/composto preenche o rascunho com a ficha do
         // Portal. Sem trava de piloto: vale para qualquer empresa com Portal. Nada disso fala com o ML.
@@ -217,6 +232,19 @@ class MlbPublicadorEntradaController extends Controller
                 ? ' 1 linha antiga de cor foi juntada ao produto.'
                 : " {$absorvidos} linhas antigas de cor foram juntadas ao produto.";
         }
+        // Planejamento × Fase N (09/10/2026): o Combo de uma cor é variante do kit da Fase N da família;
+        // sem o kit, ele espera o "Criar Fase" do produto (não vira produto avulso).
+        $aguardando = (int) ($r['combos_aguardando_fase'] ?? 0);
+        if ($aguardando > 0) {
+            $mensagem .= $aguardando === 1
+                ? ' 1 combo do Planejamento aguarda o "Criar Fase" do produto.'
+                : " {$aguardando} combos do Planejamento aguardam o \"Criar Fase\" do produto.";
+        }
+        if ($naFila !== []) {
+            $mensagem .= count($naFila) === 1
+                ? ' 1 produto na fila de publicação ficou como estava.'
+                : ' '.count($naFila).' produtos na fila de publicação ficaram como estavam.';
+        }
 
         return response()->json([
             'criados' => $r['criados'],
@@ -227,6 +255,10 @@ class MlbPublicadorEntradaController extends Controller
             'avisos' => $r['avisos'],
             'duplicados' => $r['duplicados'],
             'absorvidos' => $absorvidos,
+            'combos_aguardando_fase' => $aguardando,
+            'combos_na_fase' => (int) ($r['combos_na_fase'] ?? 0),
+            'combos_absorvidos' => (int) ($r['combos_absorvidos'] ?? 0),
+            'na_fila_de_publicacao' => array_keys($naFila),
             'portal' => $this->programas->situacaoPortal($company),
         ]);
     }
@@ -360,7 +392,11 @@ class MlbPublicadorEntradaController extends Controller
                 'cliente' => $publicados['cliente'],
                 'origem_antiga' => $publicados['origem_antiga'],
             ],
-            'abas' => ['company_id' => $company?->id],
+            'abas' => [
+                'company_id' => $company?->id,
+                // 09/10/2026 — contagem da aba Alavancas (tarefas pós-publicação abertas da conta).
+                'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $company),
+            ],
         ]);
     }
 

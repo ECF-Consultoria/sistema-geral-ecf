@@ -9,7 +9,7 @@ import PainelAnunciarIa from '@/Pages/Mlb/components/PainelAnunciarIa';
 import PainelCriativosIa from '@/Pages/Mlb/components/PainelCriativosIa';
 import {
     analisarAnuncio, MODALIDADES_FRETE, DICAS_DESCRICAO, INFO_EXPOSICAO_TIER,
-    PRECO_FRETE_GRATIS_OBRIGATORIO, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
+    corteFreteGratis, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
 } from '@/lib/mlAnuncioRegras';
 
 const CONDICOES = [
@@ -1036,8 +1036,10 @@ function CompatibilidadeEditor({ veiculos, setVeiculos }) {
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null, creativeAtivo = false, conta = null }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null, iaAnalise = null, creativeAtivo = false, conta = null, frete_gratis_a_partir: freteGratisDoServidor = null }) {
     const [rascunhoId, setRascunhoId] = useState(null);
+    // Corte do frete grátis obrigatório: o do config do servidor (hoje R$ 79), nunca um número solto aqui.
+    const precoFreteGratis = corteFreteGratis(freteGratisDoServidor);
 
     // ─── Navegação do wizard (WIZ-01) ───
     const [etapa, setEtapa] = useState(0);
@@ -1962,11 +1964,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         obrigatorios, opcionais,
         preenchido: (a) => !!(valores[a.id]?.value_id || valores[a.id]?.value_name),
         pesoG, comprimentoCm, larguraCm, alturaCm,
-        shippingMode, freteGratis,
+        shippingMode, freteGratis, precoFreteGratis,
     }), [
         titulo, categoria, categoryId, preco, estoque, condicao, tipoAnuncio,
         imagemUrl, descricao, temVariacoes, variacoes, obrigatorios, opcionais, valores,
-        pesoG, comprimentoCm, larguraCm, alturaCm, shippingMode, freteGratis,
+        pesoG, comprimentoCm, larguraCm, alturaCm, shippingMode, freteGratis, precoFreteGratis,
     ]);
 
     // Guarda de rota: se empresa não foi passada, o usuário acessou o wizard diretamente
@@ -2645,10 +2647,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                         {MODALIDADES_FRETE.find(m => m.v === shippingMode)?.dica}
                                     </p>
 
-                                    {/* Aviso: frete grátis obrigatório acima de R$79 no ME2 */}
-                                    {shippingMode === 'me2' && preco && Number(preco) >= PRECO_FRETE_GRATIS_OBRIGATORIO && !freteGratis && (
+                                    {/* Aviso: frete grátis obrigatório acima do corte do config (hoje R$ 79) no ME2 */}
+                                    {shippingMode === 'me2' && preco && Number(preco) >= precoFreteGratis && !freteGratis && (
                                         <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-400/80">
-                                            <AlertTriangle size={12} /> Acima de R$ {PRECO_FRETE_GRATIS_OBRIGATORIO} o Mercado Envios costuma exigir frete grátis — ative para evitar recusa.
+                                            <AlertTriangle size={12} /> Acima de R$ {precoFreteGratis} o Mercado Envios costuma exigir frete grátis — ative para evitar recusa.
                                         </p>
                                     )}
 

@@ -151,16 +151,62 @@ class AnaliseRecebeTest extends TestCase
         $this->assertTrue($i['recebe_normal']['frete_conhecido']);
     }
 
-    public function test_sem_frete_gratis_o_frete_do_vendedor_e_zero_conhecido(): void
+    /**
+     * "O custo dos Envios no Mercado Livre [...] se aplica a todos os casos, mesmo quando o envio é
+     * pago pelo comprador" (tabela de 24/08/2026). Até 09/10/2026 o anúncio sem frete grátis entrava
+     * com frete ZERO e o "recebe" saía inflado.
+     */
+    public function test_sem_frete_gratis_o_custo_do_envio_continua_cobrado(): void
     {
         $this->montar();
         $this->anuncios['MLB1'] = $this->anuncio('MLB1', ['shipping' => ['free_shipping' => false]]);
 
         $i = $this->analisar([['item_id' => 'MLB1']])['itens'][0];
 
+        $this->assertSame(self::FRETE, $i['recebe_normal']['frete']);
+        $this->assertTrue($i['recebe_normal']['frete_conhecido']);
+        $this->assertSame(SimuladorVoceRecebe::calcular(100.0, 15.0, self::FRETE), $i['recebe_normal']);
+        $frete = $this->chamadasDe('#shipping_options/free#');
+        $this->assertCount(1, $frete);
+        $this->assertSame('false', $frete[0]['query']['free_shipping'], 'a cotação diz como o anúncio está');
+    }
+
+    public function test_com_frete_gratis_a_cotacao_vai_com_free_shipping(): void
+    {
+        $this->montar();
+        $this->com('MLB1');
+
+        $this->analisar([['item_id' => 'MLB1']]);
+
+        $this->assertSame('true', $this->chamadasDe('#shipping_options/free#')[0]['query']['free_shipping']);
+    }
+
+    /** Fora do Mercado Envios (ME1, a combinar) o ML não cobra envio: zero conhecido, sem chamada. */
+    public function test_fora_do_mercado_envios_nao_ha_custo_de_envio(): void
+    {
+        $this->montar();
+        $this->anuncios['MLB1'] = $this->anuncio('MLB1', ['shipping' => ['mode' => 'me1', 'free_shipping' => false]]);
+
+        $i = $this->analisar([['item_id' => 'MLB1']])['itens'][0];
+
         $this->assertSame(0.0, $i['recebe_normal']['frete']);
         $this->assertTrue($i['recebe_normal']['frete_conhecido']);
         $this->assertSame([], $this->chamadasDe('#shipping_options/free#'));
+    }
+
+    /** A leitura do frete falhou: vale a tabela pública do ML pelas dimensões do anúncio, avisada. */
+    public function test_leitura_do_frete_falhou_usa_a_tabela_do_ml_e_avisa(): void
+    {
+        $this->montar();
+        $this->com('MLB1');
+        $this->responder('GET', '#^/users/\d+/shipping_options/free$#', ['message' => 'not_found'], 404);
+
+        $i = $this->analisar([['item_id' => 'MLB1']])['itens'][0];
+
+        // 15×15×20 com 500 g fatura 750 g; a R$ 100, a faixa "100 a 119,99": R$ 16,85.
+        $this->assertSame(16.85, $i['recebe_normal']['frete']);
+        $this->assertTrue($i['recebe_normal']['frete_conhecido']);
+        $this->assertTrue(collect($i['avisos'])->contains(fn ($a) => str_contains($a, 'tabela de custos')));
     }
 
     public function test_cofinanciada_mostra_ml_banca_em_linha_separada_sem_somar_no_recebe(): void
@@ -247,7 +293,8 @@ class AnaliseRecebeTest extends TestCase
 
     public function test_limite_por_minuto_devolve_parcial_e_marca_o_resto_sem_calculo(): void
     {
-        config(['publicador.alavancas.limites.chamadas_analise_por_minuto' => 2]);
+        // Cada item gasta duas chamadas (tarifa e frete — o envio conta mesmo sem frete grátis): 4 = dois itens.
+        config(['publicador.alavancas.limites.chamadas_analise_por_minuto' => 4]);
         $this->montar();
         $this->anuncios['MLB1'] = $this->anuncio('MLB1', ['price' => 100, 'shipping' => ['free_shipping' => false]]);
         $this->anuncios['MLB2'] = $this->anuncio('MLB2', ['price' => 110, 'shipping' => ['free_shipping' => false]]);

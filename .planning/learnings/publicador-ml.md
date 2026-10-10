@@ -739,9 +739,23 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
 - **Gatilho e debounce.** `PreparoIaAgenda::aoSalvar` é chamado por gravar linhas (só produto criado/mudado — a
   importação da planilha passa por `ProdutoCadastroService::gravarLinhas`), ficha técnica, descrição e imagens
   (enviar/excluir/ordenar) no `PortalEstruturaProdutosController`. Cada save grava `publicador:preparo:marca:{produto}`
-  (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` (10). O Job que acorda com marca diferente
+  (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` — **2 minutos** desde 10/10/2026 (era 10;
+  o usuário: "se não mexer lá novamente, espera dois minutos e já pode ir gerando tudo", 10 perdia eficiência). Com a
+  espera curta, quem pausa no meio da ficha pode ganhar uma geração antes de terminar: a IA só roda com categoria +
+  obrigatórios, regera quando os fatos mudam (hash) e só escreve onde ainda é dela; o teto diário por empresa (60)
+  segura o custo. O Job que acorda com marca diferente
   sai (`superado`): numa rajada de saves só o último age. Fila `sync` NÃO agenda (rodaria dentro do save do cliente).
   Exclusão de variação não agenda (o Sincronizar nunca remove cor).
+- **O produto chega ao Publicador LOGO; só a IA espera (10/10/2026).** O usuário corrigiu: os "10 minutos" que ele
+  pediu eram o espaço entre PUBLICAÇÕES (§20), nunca entre o save e o Publicador ("ou vai instantâneo ou na hora de
+  sincronizar"). Por isso o `aoSalvar` agenda também `SincronizarProdutoDoPortalJob` (`sincronizar_atraso_s`, 15 s,
+  fila `default`, SEM IA) → `PreparoIaDoRascunhoService::sincronizarAgora`: as mesmas travas do `preparar` (editor
+  aberto, na fila de publicação, "Anunciar por IA" → `ocupado`, não toca), um por empresa de cada vez (`Cache::lock`
+  com `block(120)`: a planilha agenda dezenas; dois Sincronizar do mesmo Combo esbarram nos uniques). Saves seguidos
+  viram UM Job: `Cache::add` de `publicador:preparo:sincronizar:{produto}` (5 min) e o Job a APAGA ao começar — save
+  que chega durante a sincronização agenda outra, nenhum fica de fora. O preparo da IA (2 min sem save) continua igual
+  e sincroniza de novo antes de gerar (idempotente). Não confundir as esperas ao explicar o fluxo: ~15 s até o
+  Publicador, 2 min sem save até a IA, e as rodadas da fila (§20) só na publicação.
 - **Sincroniza SÓ o produto**: `PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)` filtra as ofertas
   Simples das variações dele + as compostas que o têm como componente; as regras são as mesmas do botão (D-05
   refinado). Não grava o "sincronizado em" da empresa. O preenchimento usa a MESMA trava do Job do botão
@@ -764,8 +778,9 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
 - **Cadeia**: `Bus::chain` de `GerarPreparoIaJob` (título → Modelo → descrição), fila `default`, `tries=1`,
   `timeout=300`, prazo da IA 240 s. A falha da IA NÃO lança (fica `erro` na etapa) para a cadeia seguir; o Modelo sem
   título nenhum é `pulado`. Quebra fora da IA para a cadeia — o `failed()` do título/Modelo põe a descrição na fila.
-  Título: UM, nos dois tipos ativos, cortado no `max_title_length`, com o bloco FATOS DO PRODUTO no prompt (vale também
-  para o botão "Sugerir com IA"). Modelo: `gerarModelo` com o título GERADO (`ia_preparo.titulo_gerado`), MODEL gravado
+  Título: DOIS, um por tipo (ver "dois títulos" abaixo), cortados no `max_title_length`, com o bloco FATOS DO PRODUTO no
+  prompt (vale também para o botão "Sugerir com IA"). Modelo: `gerarModelo` com os títulos GERADOS
+  (`ia_preparo.titulo_gerado`, listing_type_id → título), MODEL gravado
   `{value_id: null, value_name, origem: 'ia'}` como o editor. Descrição: `DescricaoIaService::gerar` (MAG T8 intocado) e
   gasta a chance do automático do editor (`chaveAuto`), então o D-11 não gera de novo.
 - **Editor aberto = não escreve.** O editor salva a chave de topo inteira da cópia local (`atributos`, `alvos` →
@@ -790,4 +805,237 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   `origem=portal` de rascunho antigo (para a IA poder gerá-lo); `user`/`ia` nunca. Única diferença de propósito entre
   a ficha do Portal e o editor: o teste da régua (`test_na_cadeira_a_ficha_tem_exatamente…`) tira o Modelo do lado
   do editor (43 campos, não 44).
+- **Dois títulos diferentes, sem marca nem peso (relato do usuário, 09/10/2026).** O preparo gerou "Puff Sala Redondo
+  Banqueta Moderno ECF 130 kg" e gravou o MESMO título no Clássico e no Premium — o ML barra dois anúncios com o mesmo
+  nome, e a marca/o peso vinham do bloco FATOS (BRAND e "Peso máximo suportado" estão na ficha). Agora o preparo faz UMA
+  chamada `titulosPorTermos` que devolve `{"classico","premium"}` (mesma intenção de busca, 1–2 palavras trocadas e/ou
+  ordem); o botão de um tipo manda o título do OUTRO (`tituloDoOutroTipo` → `titulo` do pedido) como "NÃO REPITA". A
+  garantia é do servidor (`RegrasDoTitulo`), porque a IA não obedece sempre: `limpar` tira a marca (BRAND, como frase
+  inteira, sem caixa/acento) e "ECF" sempre, número + kg/g/l/ml/W/V/mAh sempre, e medida/dimensão/quantidade/número
+  solto só fica se o nome do produto ou os termos de busca a têm ("Mesa 160x90"). `mesmo` = mesma sequência de palavras
+  ignorando caixa, acento e plural (ordem diferente É diferente). `diferenciar` não inventa: troca a ordem das duas
+  últimas palavras (3+ palavras; o produto principal fica no começo) e só então acrescenta/troca uma palavra de termo de
+  busca relacionado que passa nos fatos. Sem saída: o preparo NÃO escreve aquele tipo e o botão dá erro — nunca dois
+  iguais. A escrita confere de novo contra o título que a equipe deu ao outro tipo (`titulosFixos`). O BRAND sai do
+  bloco FATOS do título (vai como proibição, regra 7). `valorPronto` do título é JSON; texto puro = Job adiado de antes.
+  O Modelo NÃO mudou. "Copiar do Clássico/Premium" na tela ainda copia igual — é escolha explícita da pessoa.
 - **Deploy**: sem migration. `queue:restart` (Jobs novos na fila `default`); `npm run build` (selo + sinal).
+
+## 17. Tarefas pós-publicação — "Publicados aguardando alavancas" (09/10/2026)
+
+Pedido do usuário: publicou pelo Publicador → a tarefa chega a outro colaborador, que usa as alavancas (Central de
+Promoções, ADS de lançamento, atacado, cupom, afiliados, lista de transmissão — o checklist da aba Cronograma da
+planilha da ECF). Tabela `pub_tarefas` (só CREATE, decisão de schema na migration `2026_10_09_180000`). O que não se
+deduz do código:
+
+- **Gatilho em DOIS lugares de `PublicacaoService`:** o fim do `concluir()` (PUBLISHED/PARTIALLY) e o fim do
+  `encerrar()` — publicação interrompida DEPOIS de criar um item (conta tirada da lista no meio, Job morto) tem MLB no
+  ar e precisa da alavanca; sem item criado, `abrir()` não faz nada (é o "nada em FAILED"). Só entram os itens CREATED
+  da própria publicação. Falha do gatilho só loga `[Publicador] … tarefa pós-publicação não abriu` — a publicação nunca
+  é desfeita nem repetida; recuperar com `publicador:tarefas-retroativas --desde=AAAA-MM-DD` (sem sino; `--dry-run`).
+- **Uma tarefa por PRODUTO:** o unique `(tipo, publicacao_id)` é a idempotência; republicar o mesmo rascunho com a
+  tarefa ABERTA junta os MLBs novos nela (sem sino de novo); com a tarefa já concluída, nasce outra só com o MLB novo.
+  MLB que já está em qualquer tarefa do rascunho nunca entra de novo (o retroativo rodado duas vezes não duplica).
+- **Responsável padrão = `configuracoes.publicador_alavancas_responsavel`** (id), escolhido pelo admin na própria fila;
+  vale para as PRÓXIMAS. Usuário inativo ou sem a chave da fila = fila comum, e o sino vai para TODOS que veem a fila
+  (todos os admins + setores com `mlb.alavancas`) — sem responsável configurado, cada publicação toca o sino de todo
+  admin. O sino sai em `DB::afterCommit`.
+- **Acesso: chave NOVA `mlb.alavancas`** (registro `App\Support\Permissions`, "Pub · Alavancas pós-publicação"), e não
+  `mlb.anunciar`: quem usa a alavanca não é quem publica, e o dia em que o Publicador abrir para `permission:mlb.anunciar`
+  (cabeçalho de `routes/mlb_anuncios.php`) não pode dar a fila a quem publica nem a publicação a quem usa a alavanca. A
+  fila é o ÚNICO grupo fora do `role:admin` em `routes/mlb_anuncios.php`; escrever no ML pelas Alavancas continua admin
+  (o "Abrir Alavancas" nem aparece para quem não é admin). Para o "Caio" não admin: Setores → dar a chave ao setor dele.
+- **Prazo D+1 útil no fuso de São Paulo** (`DiasUteis`): fixos nacionais no código (inclui 20/11, nacional desde 2024),
+  móveis em `publicador.feriados` (2026–2028 já escritos; outros anos lá ou em `PUBLICADOR_FERIADOS`). Carnaval entrou
+  por ser folga da ECF (é ponto facultativo) — decisão de config, não de código. `prazo` fica SEM cast `date` (texto
+  `Y-m-d`): o cast gravaria `Y-m-d 00:00:00` no SQLite e a comparação por texto divergiria do DATE do MariaDB.
+- **Baixa automática só pelo que APLICA a alavanca** (`TarefasPosPublicacao::chaveDaEscrita`): `convite.inscrever`/
+  `convite.alterar` (→ `cupom` quando o tipo é `SELLER_COUPON_CAMPAIGN`), `desconto.criar`, `atacado.gravar` com faixas.
+  Tirar, remover, excluir e gravar o atacado VAZIO não contam; `cupom.criar` e `campanha.*` são da conta (sem `item_id`)
+  e ficam para marcar à mão. Casa por âncora (company/mlb_empresa) e pelo MLB em PHP — de propósito, sem JSON no SQL
+  (o `json_each` do SQLite e o `JSON_CONTAINS` do MariaDB divergem). Item já marcado à mão não é sobrescrito.
+- **O link da fila abre `company-N`** (sempre resolve) e o redirect para a chave canônica das Alavancas passou a
+  preservar `aba` e `item` — antes ele descartava a query.
+- **MariaDB 10.4 local, `--path` só da migration:** up → rollback → up, DONE ×3, `Ran` no lote 140; nomes `pubtar_*`
+  conferidos no `SHOW CREATE TABLE`; unique dá 1062 em (tipo, publicacao_id) repetido e NULL repete; FK dá 1452. O
+  `json` vira `longtext … CHECK (json_valid(…))`: texto não-JSON dá **4025** no MariaDB e passa no SQLite. Linhas de prova
+  apagadas; a tabela fica criada no local.
+- Cosmético conhecido: na própria fila o item "Publicador" do menu acende junto com "Aguardando alavancas" (o `page`
+  `'Mlb/Publicador/'` daquele item casa por prefixo).
+- **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (o gatilho roda dentro do `PublicarRascunhoJob`, fila `high`,
+  e a baixa dentro do lote das Alavancas — worker velho não conhece a classe nova); `npm run build`; depois, na fila,
+  escolher o responsável padrão e dar `mlb.alavancas` ao setor de quem usa as alavancas.
+
+## 18. Planejamento × Fase N (09/10/2026)
+
+Decisões do usuário: (1) o combo vai ao ML como UM anúncio com as cores como variação — o kit da Fase N
+(`produto_base_id` + `quantidade_kit`); o Planejamento continua gerando a oferta de CADA cor e elas viram as variantes
+do kit; (2) o Planejamento do Portal é a fonte de QUAIS composições existem — o "Criar Fase N" puxa dali e cria lá o que
+falta (cai a "decisão 5" do `175-DECISOES` para o base AGRUPADO); (3) Kit e Combit (produtos diferentes) seguem um
+`pub_produto` por oferta composta. Nota ao outro dev: `.planning/coordenacao/261009-planejamento-x-fase2.md`. O que não
+se deduz do código:
+
+- **O vínculo oferta Combo ↔ variante do kit é DERIVADO pela cor, sem tabela** (`PlanejamentoDaFaseService` +
+  `VariantesPorCor`: `ChaveCanonica::texto` do valor do eixo × `valor` da variação, só nas cores do grupo, `CoresDoGrupo`).
+  Variante de 2+ eixos não casa; produto de uma cor casa a `__single__`. Cor renomeada no editor perde o casamento: fica
+  sem SKU/preço do Portal (vazio, nunca o de outra cor).
+- **Sincronizar:** Combo de UMA cor de produto agrupado não vira `pub_produto`. Com o Kit N, o kit entra em
+  `para_preencher` e `preencherKitDaFase` leva o SKU da oferta à variante (D-05 refinado, `portal_escrito[chave].sku`). O
+  `-KIT{N}` de kit antigo é da equipe e FICA; o preço chega assim mesmo, porque o mapa é pelo SKU ATUAL da variante. Cor
+  cujo Combo foi publicado como avulso não recebe o mesmo SKU. Sem o Kit N: `combos_aguardando_fase` (resumo + log).
+  `ofertasCobertas` conta esses Combos como cobertos — sem isso a empresa mostraria "ofertas novas" para sempre.
+- **Absorção endureceu (cores e combos):** nunca apaga o que é kit nem o que é BASE de kit (`pubprod_base_fk` é SET NULL
+  e soltaria o kit calado). A checagem "é base" fica no SELECT, fora do DELETE: subconsulta na própria `pub_produtos`
+  dentro do DELETE é o **erro 1093 do MariaDB**, e o SQLite dos testes passa.
+- **Preço do kit:** `daProduto` dá `precos_por_variante` ao kit sem oferta de base agrupado; `precos` (âncora) fica nulo
+  de propósito — a cor sem Combo não herda o preço de outra. Variante sem SELLER_SKU não recebe preço (`comEfetivos`
+  casa pelo SKU). Nada é gravado: "a criação grava o preço" foi lido como "vem da Precificação", nunca congelado.
+- **Composto do Planejamento** = `pub_produto` NÃO-kit ligado a oferta `combo|kit|combit`, lido pela relação `oferta`
+  (consulta só de `estrutura_ofertas`; nunca `fase` num JOIN). Chave `composto` na lista, `contagens.compostos` à parte
+  dos 5 buckets de `por_fase` (a Visão geral desenha 5 numa ordem fixa e o `ListaPorFaseTest` pina os 5). KIT-06 vem
+  ANTES do KIT-05/KIT-01 no endpoint (o conselho deles seria o errado). Combo antigo VINCULADO como kit é kit.
+- **Criar Fase N:** `garantirOfertas` roda DENTRO da transação do `CriarFaseService` (savepoint): kit que não nasce leva
+  as ofertas do Portal junto. Trava a Company (a mesma trava do "Aceitar") e relê os Combos sob ela; a cor aceita pelo
+  cliente entre a prévia e o Confirmar é usada como está. Nome/SKU = `NomesSugeridos::combo` com o tipo inferido como no
+  `RetratoDoCatalogo` (o teste compara com a sugestão da tela). Sem `user` (chamada direta) não cria nada.
+- **Planejamento (E):** `RetratoDoCatalogo` conta `v{cor}*N` de cada cor do grupo de todo kit da Fase N (uma consulta, só
+  leitura). Cor acrescentada ao Portal depois do kit também conta como existente — o kit não ganha cor sozinho.
+- **Vínculo (F):** o base se acha pela variação do componente → grupo; combo de UMA cor para base de VÁRIAS cores = sem
+  sugestão; composto nunca é base na heurística. `estruturaProduto` entrou no eager load (era N+1 por grupo no
+  `skuExibido()`).
+- **Deploy:** sem migration; `queue:restart` (o Job de preencher passa a receber kits); `npm run build`.
+
+## 19. Promoção automática pós-publicação, preço sem frete e título igual (10/10/2026)
+
+Decisões do usuário de 09/10. O que não se deduz do código:
+
+- **A D-04 da 166 (prévia assinada + confirmação humana) foi superada SÓ aqui.** Publicou → cada anúncio CRIADO ganha
+  sozinho o PRICE_DISCOUNT de 14 dias (o máximo do ML, contando as duas pontas; doc relida em 09/10). A escrita continua
+  pelo `EscritorAlavancas` (trava das Alavancas, `/users/me`, linha do histórico antes do HTTP, 5xx/rede = INCERTO e
+  nunca reenvia); o serviço mora em `Services/Publicador/Alavancas/` de propósito, para o `UnicoCaminhoDeEscritaTest`
+  varrê-lo (o Job e o comando entraram na lista do teste).
+- **O preço:** `anunciado` = publicar, `minimo` = promoção (ADR PORTAL-02). Publicado pelo anunciado → o mínimo
+  (207,19 → 172,66, −16,67%); preço digitado → o MESMO percentual (mínimo ÷ anunciado) sobre ele, nunca abaixo do mínimo;
+  desconto fora de 5% ≤ d < 80% ou Portal sem frete → sem promoção (o mínimo sem frete está subestimado). A conta é
+  `PrecoDaPromocao` (PHP) e `promocaoAutomatica.js` (tela); os dois testes usam os MESMOS números — mudou um, mude o
+  outro. Com acréscimo 20% o percentual é sempre ~16,67% (1 − 1/1,2): o frete não muda o percentual, só o mínimo.
+- **Tabela `pub_promocoes_automaticas`, uma linha por CICLO** (só CREATE; docblock da `2026_10_10_090000`). Unique
+  (ml_item_id, ciclo) é a idempotência; `inicio`/`fim` são DATE sem cast (texto `Y-m-d`, como o `prazo` de `pub_tarefas`).
+  Status: agendada → enviando → ativa | recusada (tarefa orienta) | cancelada (já tinha desconto/anúncio encerrado);
+  ativa → encerrada (renovou, ou preço mudou/anúncio fechou).
+- **Job `CriarPromocaoAutomaticaJob`**: fila `high`, `tries=1`, 3 min depois de publicar. Anúncio ainda não `active` →
+  Job NOVO com espera crescente (`publicador.promocao_automatica.esperas_min`, até `tentativas_max` = 8, ~8 h), nunca
+  `release()`. Fila `sync` não despacha (rodaria dentro da publicação): a varredura do comando pega. Trava por anúncio
+  (`publicador:promocao-automatica:{MLB}`); o Job do ciclo seguinte sai DEPOIS de soltar a trava (no `sync` ele roda na
+  hora e precisaria dela).
+- **Nunca em anúncio de outra conta:** a escrita exige a âncora com token = `conta_chave` e o vendedor = o do clique em
+  Publicar (`pub_publicacoes.ator.conta`); sem isso recusa ANTES de qualquer leitura. O multiget das Alavancas já descarta
+  anúncio de outro vendedor. Prova de mutação: tirar a checagem derruba 2 testes.
+- **Ator:** quem publicou (da equipe e ativo); senão `configuracoes.publicador_usuario_sistema` (id). Nenhum → recusada.
+- **Tarefa:** conta fora das Alavancas = ciclo nasce `recusada`, nada vai ao ML, e a fila mostra "Crie a promoção de
+  R$ X para R$ Y (−Z%) até dd/mm no Seller Center." (a frase sai do ciclo, `orientacao()`, não é gravada na tarefa). Recusa
+  do 1º ciclo põe a Central de Promoções pendente, mas nunca desfaz o que uma PESSOA marcou; recusa de RENOVAÇÃO reabre a
+  tarefa concluída com prazo novo e toca o sino ("Promoção não renovada"). A baixa automática não marca "feito" enquanto
+  OUTRO anúncio da tarefa tem o último ciclo recusado (mutação: derruba o teste da ordem).
+- **Renovação** `publicador:promocoes-renovar`, 00:05 de São Paulo: ativo cujo `fim < hoje` + anúncio ativo + mesmo preço
+  (`price` OU `original_price` = publicado) → ciclo seguinte de hoje a hoje+13; preço mudou / anúncio fechou / sumiu da
+  conta → `encerrada` e nada mais. O preço do ciclo novo é o mesmo, a não ser que o MÍNIMO do Portal de agora tenha subido
+  acima dele (aí refaz a conta; sem desconto possível, não renova e a tarefa avisa). A mesma rodada reenvia o Job agendado
+  perdido (> 15 min) e fecha `enviando` preso há mais de 1 h como recusa ("confira no Seller Center").
+- **[ASSUMED]** os textos de recusa do ML para reputação/vendas/campanha (`motivoDoMl` só acrescenta uma explicação em
+  pt-BR à mensagem do `MapeadorErroAlavanca`): a #459 não tinha anúncio ativo para provar. Primeira prova real: publicar na
+  #459 com um anúncio NOVO e ativo e conferir o ciclo e a linha em `pub_alavanca_escritas`.
+- **V-SAL-08** (preço do Portal calculado sem frete bloqueia; o digitado passa) e **V-TIT-04** (título igual no Clássico e
+  no Premium bloqueia, critério `RegrasDoTitulo::mesmo`: caixa, acento e plural simples) — os ids que o pedido sugeria
+  (V-SAL-03, V-TIT-03) já eram da spec `08` (faixa de preço; título curto, erro 3715). O V-TIT-04 substitui o D1 de títulos
+  (`ChaveCanonica` não pegava plural). A marca do V-SAL-08 só existe no snapshot montado por `comEfetivosDe` (conferência,
+  publicação e estado do editor); `comEfetivos` com 3 argumentos devolve o de antes.
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_10_090000`): up → rollback → up, DONE ×3, `Ran` no lote 142;
+  nomes `pubpromo_*` no `SHOW CREATE TABLE`, FKs `ON DELETE SET NULL`; unique repetido = 1062; FK inexistente (publicação e
+  escrita) = 1452; `fim` volta `'2026-10-22'` (texto) e o escopo do último ciclo roda no MariaDB. DML em transação desfeita:
+  0 linhas. A tabela fica criada no local.
+- **Deploy:** `migrate --force` (1 CREATE); `queue:restart` (Job novo na fila `high`, e o gatilho roda dentro do
+  `PublicarRascunhoJob`); `npm run build`; o cron do `schedule:run` já existe (só confirmar que roda); opcional:
+  `configuracoes.publicador_usuario_sistema` = id de um usuário ativo (sem ele, só quem publicou assina).
+
+## 20. Publicação em lote — visão rápida, conferir selecionados e fila em rodadas (10/10/2026)
+
+Pedido do usuário (09/10): publicar EM MASSA "de primeira" o que o cliente preencheu no Portal, com intervalo entre
+produtos para não arriscar restrição do ML. Decisão de 09/10: 1 produto (Clássico + Premium, todas as cores) a cada
+10 min. **Revista em 10/10 pelo próprio usuário:** "sobe cinco de uma vez (Clássico e Premium), depois de uns 20
+minutos mais cinco" — RODADAS de 5 produtos a cada 20 min, os dois ajustáveis na tela (1–10 por rodada);
+pausar/retomar/cancelar. O que não se deduz do código:
+
+- **Visão rápida com número FIXO de consultas** (`Fila/ResumoRapidoService`, ~30 para 3 ou 12 produtos — o
+  `VisaoRapidaDoLoteTest` mede, com kit da Fase N no meio). O rascunho é remontado em memória (só alvos, variantes,
+  SKU, preço, estoque, valores de eixo) a partir do eager load; a última conferência vem SEM `respostas_ml` (a coluna
+  pesada que a lista do Publicador carrega inteira). Os efetivos saem de `Fila/EfetivosEmLote`, o `daProduto()` em lote
+  (uma `pagina()` por empresa); o `VisaoRapidaDoLoteTest::test_efetivos_em_lote_iguais_*` compara o ARRAY INTEIRO
+  (`assertSame`: chaves, valores e ORDEM — `promocoes`, `sem_frete` e os `_por_variante` da §19 inclusive) com o
+  `DadosEfetivosService` produto a produto (simples, agrupado, kit, sem oferta). Chave nova no `daOferta()` → este
+  teste quebra até o `EfetivosEmLote` espelhar; no kit, o 1º Combo de cada SKU vence nos três mapas juntos.
+- **Bloqueios ANTES de conferir** (V-TIT-04 títulos iguais, V-SAL-08 preço do Portal sem frete): a visão rápida lê
+  `ValidadorRascunho::bloqueiosSemSchema` (as MESMAS funções do `validar()`, sem schema nem conta — o
+  `BloqueiosSemSchemaTest` compara os dois), sobre o snapshot do `comEfetivosDe` (é ele que grava o `portal` e o
+  `preco_do_portal` que o V-SAL-08 lê). Quem tem bloqueio não agenda, mesmo com conferência OK de antes da regra, e o
+  agendador relê na hora de publicar (`ResumoRapidoService::linhaDe`) — bloqueio que surgiu depois vira `precisa_revisar`.
+  Regra nova que se sabe sem o ML entra ali, não numa cópia na tela.
+- **Margem estimada** = preço − custo − frete − (comissão% + imposto%) × preço, por cor e por tipo, com a comissão e o
+  imposto da linha da Precificação (exceção do produto ou padrão da empresa). Sem custo não há margem; sem frete a
+  margem sai marcada `sem_frete` (frete esquecido não some calado). Custo/frete da cor = a oferta casada pelo SKU da
+  variante (como o preço); sem casamento, a oferta do produto.
+- **Fila: o BANCO garante 1 viva por conta e 1 produto numa fila** — colunas-sombra `conta_ativa`/`produto_ativo` com
+  unique (NULL repete nos dois bancos; nem MariaDB 10.4 nem SQLite têm índice parcial em comum). Toda transição que
+  tira o item/fila de "vivo" zera a sombra; esquecer isso trava o produto para sempre. `janela_*` é `time` gravado
+  `HH:MM:00` (o MariaDB devolve com segundos; o model corta em `HH:MM`).
+- **Rodadas: o intervalo conta do INÍCIO da rodada** (`proximo_em` = início + intervalo) e a rodada nova nunca começa
+  com um `publicando` na fila (a anterior precisa terminar). Dentro da rodada, vários publicam juntos.
+  `rodada_iniciada_em`/`rodada_inicios` guardam a rodada em curso: enquanto `proximo_em` está no futuro, a rodada
+  recebe as vagas que faltam (as que o teto do minuto ou um editor aberto seguraram); passado o intervalo, ela acabou,
+  cheia ou não. Item que não chega a publicar (`precisa_revisar`, recusa do `iniciar()`) NÃO gasta vaga
+  (`devolverVaga`); se era ele quem abria a rodada, ela nem conta e o próximo abre outra na hora. Teto GLOBAL de 2
+  inícios por minuto (contador em cache por minuto, todas as contas): a rodada de 5 começa em ~3 min (2 + 2 + 1), e
+  isso é de propósito — 3 workers consomem `high` em produção, e 5 publicações juntas segurariam os cliques de gente.
+  `produtos_por_rodada = 1` é o passo antigo (o `FilaDePublicacaoTest` roda assim; as rodadas estão no
+  `FilaEmRodadasTest`). Os defaults do BANCO ficam no passo antigo (`produtos_por_rodada` 1, `intervalo_minutos` 10:
+  linha criada fora do serviço anda um por vez); quem vale é a config (5 e 20), gravada pelo serviço ao criar a fila.
+  As colunas vieram numa migration SEPARADA (`2026_10_10_140000`, aditiva) porque a de criação já tinha rodado no
+  MariaDB local — editar a criação deixaria o local sem as colunas (o `hasTable` pula).
+- **Erro de CONTA pausa sem enviar nada** (sem token, fora de `contas_liberadas`, token de outro vendedor que o da
+  conferência); **erro do ITEM vira `precisa_revisar` e a fila segue NA MESMA passada** (revisão ou plano diferentes do
+  agendado, conferência vencida, avisos sem "Estou ciente", conferência sem `sellerId`). Editor do produto aberto = o
+  item espera a próxima passada e a fila tenta o seguinte. O `iniciar()` confere tudo de novo (defesa dupla).
+- **`digital` no agendamento** (`resumo.digital`: título efetivo de cada tipo + preço efetivo de cada cor): o preço da
+  Precificação mudou no Portal depois da conferência → `precisa_revisar` ANTES de publicar. Sem isso o `prepararItens`
+  pegaria o plano diferente e a publicação nasceria e morreria FAILED (sem POST, mas suja o histórico).
+- **Fechar o item `publicando` roda em TODA fila** (viva, pausada ou cancelada): a publicação termina sozinha. Passou de
+  40 min ainda RUNNING → a fila PAUSA com aviso, o item fica `publicando` até a publicação de fato terminar.
+- **Quem agendou é o ATOR** (`AtorDoPortal::daEquipe`, vai para `pub_publicacoes.ator` e para a tarefa das alavancas).
+  `User` usa SoftDeletes: apagado não zera `criada_por`; `FilaPublicacaoService::autorValido` confere existência e
+  `active`, e quem retoma assume.
+- **Não mexer no produto enquanto agendado:** `NaFilaDePublicacao` (irmão do `EditorEmUso`) faz o preparo pela IA
+  adiar (o preparo inteiro e a escrita de cada etapa) e o Sincronizar tirar o produto do `para_preencher`. Se mesmo
+  assim algo escrever (Job que já tinha passado da checagem), o item vira `precisa_revisar` — nunca publica diferente.
+- **"Conferir selecionados" ESCREVE** quando a faixa de preço exige frete grátis (a regra do editor, no servidor:
+  `envio.frete_gratis = true`, revisão sobe). Por isso produto na fila não confere de novo. A marca "conferindo…" é
+  cache (`publicador:lote:conferindo:{produto}`), apagada no `finally` e no `failed()` do Job.
+- **Imagens por IA automáticas: pronto e DESLIGADO** (`publicador.criativos_auto.ativo=false`). Condições e o que o dono
+  do Creative Engine precisa decidir em `.planning/coordenacao/261010-criativos-automaticos.md`; o elo entra na cadeia
+  do preparo SÓ com a chave ligada (a cadeia de 3 Jobs do `PreparoIaAoSalvarNoPortalTest` continua a mesma).
+- **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_10_100000`): up → rollback → up, DONE ×3, lote 141; nomes
+  `pubfila_*`/`pubfilai_*` no `SHOW CREATE TABLE`; 2ª fila viva na conta e mesmo produto vivo = 1062; terminadas (NULL)
+  repetem; FK inexistente = 1452; `resumo` não-JSON = 4025; `time` volta `'08:00:00'`; CASCADE da fila apaga os itens.
+  DML em transação desfeita (0 linhas). As tabelas ficam criadas no local. A `2026_10_10_140000` (rodadas): up →
+  rollback → up no MariaDB local, lote 143; `SHOW CREATE TABLE` com `produtos_por_rodada` smallint DEFAULT 1 logo após
+  `intervalo_minutos`, `rodada_iniciada_em` datetime NULL e `rodada_inicios` DEFAULT 0 após `proximo_em` (o `after`
+  de coluna nascida no mesmo ALTER funciona); rollback tira as três.
+- **Deploy:** `migrate --force` (2 migrations: 2 CREATE + 1 ALTER aditivo na tabela que acabou de nascer); `queue:restart` (`ConferirEmLoteJob` na `high`; os de imagem na
+  `creative`); `npm run build`; **o cron `* * * * * php artisan schedule:run` precisa rodar na VPS** — sem ele a fila
+  nunca anda (o `onOneServer` usa a trava do cache: Redis em produção). Antes de agendar de verdade, só a #459.
+  **Deployado 10/10/2026 `827d5a96`** (4 migrations, lote 175). Um `production.ERROR` 1146 "pub_fila_publicacao_itens
+  doesn't exist" + "Scheduled command publicador:fila-publicacao failed" às 11:14 é da JANELA do deploy: o `deploy.sh`
+  troca o código antes do `migrate`, e o `schedule:run` daquele minuto já viu o comando novo sem a tabela. Uma vez só;
+  depois do `migrate` roda com exit 0. Não é regressão — só investigar se repetir depois do deploy.
+- Testes que dependem de `Storage::fake` (`MlbPublicadorAcessoTest`, `CapaDoKitTest`) falharam UMA vez rodando ao lado de
+  outro phpunit e passaram sozinhos. JS: `estrutura-grade-glide` "Características secundárias nasce recolhido" é falha
+  antiga (o `bbb67657` abriu as secundárias e o teste não acompanhou), não desta entrega.

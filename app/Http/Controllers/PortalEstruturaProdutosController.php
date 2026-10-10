@@ -10,14 +10,18 @@ use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
+use App\Services\Portal\Estrutura\Produtos\ImportadorFichasTecnicas;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
-use App\Services\Portal\Estrutura\Produtos\ModeloProdutosXlsx;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
+use App\Services\Portal\Estrutura\Produtos\PlanilhaDasFichasTecnicas;
+use App\Services\Portal\Estrutura\Produtos\PlanilhaDosProdutos;
 use App\Services\Portal\Estrutura\Produtos\ProdutoCadastroService;
 use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
+use App\Services\Portal\Estrutura\Produtos\SugestaoDeCategoriaPorNome;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
 use App\Services\Publicador\PreparoIaAgenda;
@@ -60,6 +64,14 @@ class PortalEstruturaProdutosController extends Controller
      */
     private const MAX_OPCOES_MULTIVALOR = 60;
 
+    /** O que a pessoa lê quando o arquivo da importação não passa (sem isso chegava "validation.mimes"). */
+    private const MENSAGENS_DO_ARQUIVO = [
+        'arquivo.required' => 'Escolha a planilha (.xlsx).',
+        'arquivo.file'     => 'Não foi possível receber o arquivo. Tente de novo.',
+        'arquivo.max'      => 'O arquivo passa de 2 MB. Divida em arquivos menores.',
+        'arquivo.mimes'    => 'Envie a planilha no formato .xlsx.',
+    ];
+
     public function __construct(
         private PortalClienteService $portal,
         private ProdutoLinhas $linhas,
@@ -73,6 +85,11 @@ class PortalEstruturaProdutosController extends Controller
         private DescricaoDoProduto $descricao,
         private VariacaoImagensService $imagens,
         private ExplicacaoDeAtributos $explicacoes,
+        private PlanilhaDosProdutos $planilha,
+        private SugestaoDeCategoriaPorNome $sugestaoPorNome,
+        private FotosEmLoteService $fotosEmLote,
+        private PlanilhaDasFichasTecnicas $planilhaDasFichas,
+        private ImportadorFichasTecnicas $importadorDeFichas,
     ) {
     }
 
@@ -209,12 +226,29 @@ class PortalEstruturaProdutosController extends Controller
 
     // ═══ Planilha: modelo e importação ══════════════════════════════════════
 
-    /** Baixa a planilha-modelo (D-13): os 11 cabeçalhos e uma linha de exemplo. */
+    /**
+     * Baixa a planilha-modelo (D-13), versão de 09/10/2026: abas Produtos, Instruções e Listas
+     * (oculta, com as famílias e ambientes que a empresa da sessão já cadastrou).
+     */
     public function modelo()
     {
+        return $this->baixarPlanilha($this->planilha->modelo(PortalContexto::empresa()), 'modelo-produtos.xlsx');
+    }
+
+    /**
+     * "Baixar meus produtos na planilha": o mesmo modelo, já preenchido com os produtos e as
+     * variações da empresa da SESSÃO, para editar fora e enviar de novo pela importação.
+     */
+    public function exportar()
+    {
+        return $this->baixarPlanilha($this->planilha->exportar(PortalContexto::empresa()), 'meus-produtos-'.now()->format('Y-m-d').'.xlsx');
+    }
+
+    private function baixarPlanilha(\PhpOffice\PhpSpreadsheet\Spreadsheet $planilha, string $nome)
+    {
         return response()->streamDownload(
-            fn () => (new Xlsx(ModeloProdutosXlsx::gerar()))->save('php://output'),
-            'modelo-produtos.xlsx',
+            fn () => (new Xlsx($planilha))->save('php://output'),
+            $nome,
             ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
         );
     }
@@ -222,30 +256,56 @@ class PortalEstruturaProdutosController extends Controller
     /** Lê o arquivo e mostra o que mudaria — nada é gravado. */
     public function previaImportacao(Request $request)
     {
-        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx']);
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
         $caminho = $this->caminhoDoUpload($request);
 
         return response()->json($this->importador->previa(PortalContexto::empresa(), $caminho));
     }
 
-    /** Grava de verdade. Falha geral volta como erro em `arquivo`; sucesso, como flash `success`. */
+    /**
+     * Grava de verdade. Falha geral volta como erro em `arquivo`; sucesso, como flash `success`.
+     * `categorias` são as que a pessoa confirmou na prévia, por nome digitado (`texto` + `id`):
+     * o servidor confere cada uma de novo e só as aplica a produto ainda sem categoria escolhida.
+     */
     public function aplicarImportacao(Request $request)
     {
-        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx']);
+        $dados = $request->validate([
+            'arquivo'            => 'required|file|max:2048|mimes:xlsx',
+            'categorias'         => 'sometimes|array|max:'.ImportadorProdutos::CATEGORIAS_MAXIMO,
+            'categorias.*'       => 'array',
+            'categorias.*.texto' => 'required|string|max:255',
+            'categorias.*.id'    => ['required', 'string', 'regex:/^MLB\d{1,17}$/i'],
+        ], self::MENSAGENS_DO_ARQUIVO + [
+            'categorias.max'              => 'Confirme no máximo '.ImportadorProdutos::CATEGORIAS_MAXIMO.' categorias por vez.',
+            'categorias.*.texto.required' => 'Categoria inválida. Escolha de novo.',
+            'categorias.*.id.required'    => 'Categoria inválida. Escolha de novo.',
+            'categorias.*.id.regex'       => 'Categoria inválida. Escolha de novo.',
+        ]);
         $caminho = $this->caminhoDoUpload($request);
 
-        $r = $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator());
+        $r = $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? []);
 
         if (isset($r['erro_geral'])) {
             return back()->withErrors(['arquivo' => $r['erro_geral']]);
         }
 
         $mensagem = "Importação concluída: {$r['novos']} novos, {$r['atualizados']} atualizados.";
+        if ($r['categorias_confirmadas'] > 0) {
+            $mensagem .= ' Categoria confirmada em '.self::produtos($r['categorias_confirmadas']).'.';
+        }
+        if ($r['categorias_a_confirmar'] > 0) {
+            $mensagem .= ' '.ucfirst(self::produtos($r['categorias_a_confirmar'])).' com a categoria a confirmar.';
+        }
         if ($r['nao_entraram'] !== []) {
             $mensagem .= ' '.self::resumoDoQueNaoEntrou($r['nao_entraram']);
         }
 
         return back()->with('success', $mensagem);
+    }
+
+    private static function produtos(int $n): string
+    {
+        return $n === 1 ? '1 produto' : "{$n} produtos";
     }
 
     /** Mostra quantas e quais linhas ficaram de fora (até 5; o resto vira "e mais N"). BE-WR-04. */
@@ -338,6 +398,25 @@ class PortalEstruturaProdutosController extends Controller
             'sugestoes'    => $sugestoes,
             'indisponivel' => $falhou || ($sugestoes !== [] && collect($sugestoes)->every(fn ($s) => $s['sugestao'] === null)),
         ]);
+    }
+
+    /**
+     * Sugere a categoria de até 10 NOMES de categoria digitados na planilha (a prévia da
+     * importação os agrupa). Mesma regra e mesmo app token de `sugerirCategorias`, com cache
+     * por nome. NÃO grava nada: a pessoa confirma na prévia e a confirmação vai com o arquivo.
+     */
+    public function sugerirCategoriasPorNome(Request $request)
+    {
+        $max = SugestaoDeCategoriaPorNome::MAX_POR_PEDIDO;
+        $dados = $request->validate([
+            'nomes'   => "required|array|min:1|max:{$max}",
+            'nomes.*' => 'required|string|max:255',
+        ], [
+            'nomes.required' => 'Informe os nomes.',
+            'nomes.max'      => "Envie no máximo {$max} nomes por vez.",
+        ]);
+
+        return response()->json($this->sugestaoPorNome->sugerir($dados['nomes']));
     }
 
     // ═══ Ficha técnica ══════════════════════════════════════════════════════
@@ -520,6 +599,86 @@ class PortalEstruturaProdutosController extends Controller
             'imagens'  => $galeria,
             'mensagem' => 'Ordem das imagens salva.',
         ]);
+    }
+
+    // ═══ Ficha técnica pela planilha (o 2º arquivo) ═════════════════════════
+
+    /**
+     * A planilha da ficha técnica da empresa da sessão: uma aba por categoria confirmada, já com o
+     * que cada produto tem salvo ({@see PlanilhaDasFichasTecnicas}).
+     */
+    public function modeloFichas()
+    {
+        return $this->baixarPlanilha($this->planilhaDasFichas->gerar(PortalContexto::empresa())['planilha'], 'ficha-tecnica.xlsx');
+    }
+
+    /** Lê a planilha da ficha e mostra o que cada produto ganharia — nada é gravado. */
+    public function previaFichas(Request $request)
+    {
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
+
+        return response()->json($this->importadorDeFichas->previa(PortalContexto::empresa(), $this->caminhoDoUpload($request)));
+    }
+
+    /** Grava a ficha pela planilha, mesclando com o que está salvo. Falha geral volta como erro em `arquivo`. */
+    public function aplicarFichas(Request $request)
+    {
+        $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
+
+        $r = $this->importadorDeFichas->aplicar(PortalContexto::empresa(), $this->caminhoDoUpload($request), PortalContexto::ator());
+        if (isset($r['erro_geral'])) {
+            throw ValidationException::withMessages(['arquivo' => $r['erro_geral']]);
+        }
+
+        return response()->json($r);
+    }
+
+    // ═══ Fotos em lote pelo nome do arquivo ═════════════════════════════════
+
+    /**
+     * A prévia das fotos em lote: só os NOMES dos arquivos (nada é enviado ainda). Diz em que
+     * variação cada foto entra, em que ordem, e o que fica de fora — pela regra do
+     * {@see FotosEmLoteService}, dentro da empresa da sessão.
+     */
+    public function previaFotosEmLote(Request $request)
+    {
+        $max = FotosEmLoteService::MAX_NOMES;
+        $dados = $request->validate([
+            'nomes'   => "required|array|min:1|max:{$max}",
+            'nomes.*' => 'required|string|max:255',
+        ], [
+            'nomes.required' => 'Escolha ao menos uma foto.',
+            'nomes.max'      => "Escolha no máximo {$max} fotos de uma vez.",
+        ]);
+
+        return response()->json($this->fotosEmLote->previa(PortalContexto::empresa(), $dados['nomes']));
+    }
+
+    /**
+     * Uma remessa das fotos em lote (`imagens[]`): cada foto vai para a variação que o NOME dela
+     * indica. O resultado é por arquivo — a foto que não entra não derruba as outras.
+     */
+    public function enviarFotosEmLote(Request $request)
+    {
+        $empresa = PortalContexto::empresa();
+        $this->recusarEnvioQueNaoChegou($request);
+
+        $max = FotosEmLoteService::MAX_POR_ENVIO;
+        $request->validate([
+            'imagens'   => ['required', 'array', 'min:1', "max:{$max}"],
+            'imagens.*' => ['file'],
+        ], [
+            'imagens.required' => 'Escolha ao menos uma foto.',
+            'imagens.array'    => 'Escolha ao menos uma foto.',
+            'imagens.min'      => 'Escolha ao menos uma foto.',
+            'imagens.max'      => "Envie no máximo {$max} fotos por vez.",
+            'imagens.*.file'   => 'Não foi possível receber a foto :position. Tente de novo.',
+        ]);
+
+        $r = $this->fotosEmLote->enviar($empresa, array_values((array) $request->file('imagens')), PortalContexto::ator());
+        $this->prepararNoPublicador($empresa, $r['produtos']);
+
+        return response()->json(['resultados' => $r['resultados'], 'enviadas' => $r['enviadas']]);
     }
 
     // ═══ Frete ══════════════════════════════════════════════════════════════

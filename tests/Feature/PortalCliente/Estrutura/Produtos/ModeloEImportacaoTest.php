@@ -30,11 +30,30 @@ use Tests\TestCase;
  * Fase 167-09: planilha-modelo, leitor seguro e importação com prévia.
  *
  * A fixture é SINTÉTICA, gerada aqui: o arquivo real do cliente nunca entra no teste.
+ *
+ * Desde 09/10/2026 o modelo tem 14 colunas (`PlanilhaV2Test`). Os testes daqui montam o
+ * arquivo com os 11 cabeçalhos ANTIGOS — os da aba Produtos da planilha do Planejamento —
+ * e por isso são também a prova de que o arquivo antigo do cliente continua entrando.
  */
 class ModeloEImportacaoTest extends TestCase
 {
     use GabaritoDaPlanilhaEstrutural;
     use RefreshDatabase;
+
+    /** Os cabeçalhos do modelo de antes de 09/10/2026, como estão na aba Produtos do Planejamento. */
+    public const CABECALHOS_ANTIGOS = [
+        'Ref',
+        'Grupo (anúncio)',
+        'Variação',
+        'Produto',
+        'Família',
+        'Ambiente',
+        'Categoria ML',
+        'Nº volumes',
+        "Volumes (C\u{00D7}L\u{00D7}A cm \u{00B7} kg)",
+        'Peso total (kg)',
+        'Custo (R$)',
+    ];
 
     /** @var list<string> */
     private array $temporarios = [];
@@ -117,34 +136,39 @@ class ModeloEImportacaoTest extends TestCase
         return $caminho;
     }
 
-    /** @return list<string> */
+    /** @return list<string> os cabeçalhos ANTIGOS: o arquivo de antes de 09/10/2026 continua entrando */
     private function cabecalho(): array
     {
-        return ModeloProdutosXlsx::CABECALHOS;
+        return self::CABECALHOS_ANTIGOS;
     }
 
     // ═══ Task 1: modelo e leitor ════════════════════════════════════════════
 
-    public function test_modelo_tem_as_11_colunas_na_ordem_exemplo_ficticio_e_aba_instrucoes_tudo_texto(): void
+    public function test_modelo_tem_as_14_colunas_na_ordem_exemplos_ficticios_e_tudo_texto(): void
     {
         $planilha = ModeloProdutosXlsx::gerar();
 
-        $this->assertSame(['Produtos', 'Instruções'], $planilha->getSheetNames());
+        $this->assertSame(['Produtos', 'Instruções', 'Listas'], $planilha->getSheetNames());
         $folha = $planilha->getSheetByName('Produtos');
 
-        $this->assertCount(11, ModeloProdutosXlsx::CABECALHOS);
-        $this->assertContains('Grupo (anúncio)', ModeloProdutosXlsx::CABECALHOS);
+        $this->assertCount(14, ModeloProdutosXlsx::CABECALHOS);
+        $this->assertCount(14, ModeloProdutosXlsx::CAMPOS);
         foreach (ModeloProdutosXlsx::CABECALHOS as $i => $titulo) {
             $this->assertSame($titulo, $folha->getCell(Coordinate::stringFromColumnIndex($i + 1).'1')->getValue());
         }
         $this->assertSame('EXEMPLO-1', $folha->getCell('A2')->getValue());
+        $this->assertSame('EXEMPLO-2', $folha->getCell('A3')->getValue());
 
-        foreach ([$folha, $planilha->getSheetByName('Instruções')] as $aba) {
+        foreach ($planilha->getAllSheets() as $aba) {
             foreach ($aba->getCellCollection()->getCoordinates() as $coord) {
-                $this->assertSame(DataType::TYPE_STRING, $aba->getCell($coord)->getDataType(), "célula {$coord} deveria ser texto");
+                $celula = $aba->getCell($coord);
+                if ($celula->getValue() === null) {
+                    continue; // célula só com formato (as colunas de código são texto até a linha 1.001)
+                }
+                $this->assertSame(DataType::TYPE_STRING, $celula->getDataType(), "{$aba->getTitle()}!{$coord} deveria ser texto");
             }
         }
-        $this->assertFalse($folha->getCellCollection()->has('A3'), 'só o cabeçalho e uma linha de exemplo');
+        $this->assertNull($folha->getCell('A4')->getValue(), 'só o cabeçalho e as duas linhas de exemplo');
     }
 
     public function test_modelo_baixado_volta_a_ser_lido_pelo_leitor(): void
@@ -154,9 +178,11 @@ class ModeloEImportacaoTest extends TestCase
         $r = (new LeitorPlanilhaProdutos())->ler($caminho);
 
         $this->assertNull($r['erro_geral']);
-        $this->assertCount(1, $r['linhas']);
+        $this->assertSame(ModeloProdutosXlsx::CAMPOS, $r['colunas']);
+        $this->assertCount(2, $r['linhas']);
         $this->assertSame('EXEMPLO-1', $r['linhas'][0]['bruta']['codigo']);
         $this->assertSame('Sala de Jantar / Sala de Estar', $r['linhas'][0]['bruta']['ambientes']);
+        $this->assertSame('Off White', $r['linhas'][1]['bruta']['variacao']);
     }
 
     public function test_leitor_le_a_aba_produtos_entre_varias_e_a_primeira_quando_nao_ha_produtos(): void
@@ -513,7 +539,8 @@ class ModeloEImportacaoTest extends TestCase
         $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
 
         $this->assertSame(['novos' => 3, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 1,
-            'nao_entraram' => [['linha' => 5, 'codigo' => null, 'motivo' => 'Informe o código (Ref).']]], $r);
+            'nao_entraram' => [['linha' => 5, 'codigo' => null, 'motivo' => 'Informe o código (Ref).']],
+            'categorias_confirmadas' => 0, 'categorias_a_confirmar' => 0], $r);
         $this->assertSame(2, EstruturaProduto::count());
         $this->assertSame(3, EstruturaProdutoVariacao::count());
         $this->assertSame(3, EstruturaOferta::whereNotNull('variacao_id')->count());
@@ -556,13 +583,13 @@ class ModeloEImportacaoTest extends TestCase
         $this->assertSame(0, EstruturaProdutoVariacao::where('codigo', 'PAI-1')->count());
     }
 
-    /** BE-IN-06: o modelo preenchido sem apagar a linha 2 não cria "Mesa de exemplo", família nem ambientes. */
+    /** BE-IN-06: o modelo preenchido sem apagar as linhas 2 e 3 não cria "Mesa de exemplo", família nem ambientes. */
     public function test_linha_de_exemplo_do_modelo_e_ignorada_com_aviso(): void
     {
         $empresa = $this->empresaDoGabarito();
         $planilha = ModeloProdutosXlsx::gerar();
-        $planilha->getSheetByName('Produtos')->setCellValueExplicit('A3', 'REAL-1', DataType::TYPE_STRING);
-        $planilha->getSheetByName('Produtos')->setCellValueExplicit('D3', 'Produto real', DataType::TYPE_STRING);
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('A4', 'REAL-1', DataType::TYPE_STRING);
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('E4', 'Produto real', DataType::TYPE_STRING);
         $caminho = $this->gravar($planilha);
 
         $this->assertSame(ModeloProdutosXlsx::CAMPOS, (new LeitorPlanilhaProdutos())->ler($caminho)['colunas'], 'CAMPOS é o que o leitor deduz dos cabeçalhos');
@@ -570,7 +597,9 @@ class ModeloEImportacaoTest extends TestCase
         $previa = $this->importador()->previa($empresa, $caminho);
         $this->assertSame(['novos' => 1, 'atualizados' => 0, 'sem_mudanca' => 0, 'erros' => 0], $previa['totais']);
         $this->assertContains('linha 2: é a linha de exemplo do modelo e foi ignorada.', $previa['avisos']);
+        $this->assertContains('linha 3: é a linha de exemplo do modelo e foi ignorada.', $previa['avisos']);
         $this->assertSame(['familias' => [], 'ambientes' => []], $previa['criar_listas']);
+        $this->assertSame([], $previa['categorias_a_confirmar']['nomes'], 'a categoria do exemplo não vira nome a confirmar');
 
         $r = $this->importador()->aplicar($empresa, $caminho, $this->ator($empresa));
         $this->assertSame(1, $r['novos']);
@@ -580,8 +609,19 @@ class ModeloEImportacaoTest extends TestCase
 
         // Mexeu na linha de exemplo (virou produto de verdade): entra.
         $planilha = ModeloProdutosXlsx::gerar();
-        $planilha->getSheetByName('Produtos')->setCellValueExplicit('D2', 'Mesa de verdade', DataType::TYPE_STRING);
+        $planilha->getSheetByName('Produtos')->setCellValueExplicit('E2', 'Mesa de verdade', DataType::TYPE_STRING);
         $this->assertSame(1, $this->importador()->previa($empresa, $this->gravar($planilha))['totais']['novos']);
+
+        // A linha de exemplo do modelo ANTIGO (quem baixou antes de 09/10 e não a apagou) também sai.
+        $antigo = $this->xlsx(['Produtos' => [
+            $this->cabecalho(),
+            ['EXEMPLO-1', 'EXEMPLO', 'Cor: Natural', 'Mesa de exemplo', 'Linha Exemplo', 'Sala de Jantar / Sala de Estar', null, '2',
+                "120\u{00D7}80\u{00D7}10 \u{00B7} 25,0 | 80\u{00D7}40\u{00D7}10 \u{00B7} 8,5", '33,5'],
+            ['REAL-2', null, null, 'Outro real'],
+        ]]);
+        $previa = $this->importador()->previa($empresa, $antigo);
+        $this->assertSame(1, $previa['totais']['novos']);
+        $this->assertContains('linha 2: é a linha de exemplo do modelo e foi ignorada.', $previa['avisos']);
     }
 
     public function test_aplicar_refaz_o_plano_variacao_criada_entre_a_previa_e_a_confirmacao_conta_como_atualizada(): void

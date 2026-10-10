@@ -33,6 +33,22 @@ final class AlavancasLiberadas
         return in_array((int) $conta->id, array_map('intval', $lista), true);
     }
 
+    /**
+     * A mesma regra pela chave da conta (`company-N` / `empresa-N`), para listas que só guardam a chave
+     * (a fila das tarefas pós-publicação). Chave em outro formato = não liberada.
+     */
+    public static function liberaChave(?string $chave): bool
+    {
+        if (preg_match('/^(company|empresa)-(\d+)$/D', (string) $chave, $m) !== 1) {
+            return false;
+        }
+        $lista = config($m[1] === 'company'
+            ? 'publicador.alavancas.contas_liberadas.companies'
+            : 'publicador.alavancas.contas_liberadas.mlb_empresas', []);
+
+        return in_array((int) $m[2], array_map('intval', (array) $lista), true);
+    }
+
     /** @throws RegraViolada quando a conta não está liberada para as Alavancas */
     public static function exigir(ContaMercadoLivre $conta): void
     {

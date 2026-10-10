@@ -285,11 +285,71 @@ class ValidadorRascunhoTest extends TestCase
         $this->assertContains('V-TIT-01', self::regras(self::validar($vazio)));
     }
 
-    public function test_d1_classico_e_premium_com_o_mesmo_titulo(): void
+    /**
+     * V-TIT-04 (10/10/2026, era o D1): o ML barra dois anúncios com o mesmo nome. Igual = mesmas palavras
+     * na mesma ordem, sem caixa, acento nem plural simples (`RegrasDoTitulo::mesmo`).
+     */
+    public function test_v_tit_04_classico_e_premium_com_o_mesmo_titulo_bloqueiam(): void
     {
         $r = self::completo(['alvos' => [new Alvo('gold_special', 'Cadeira Executiva ECF'), new Alvo('gold_pro', ' cadeira executiva ecf ')]]);
 
-        $this->assertContains('D1', self::regras(self::validar($r)));
+        $p = self::primeiro(self::validar($r), 'V-TIT-04');
+        $this->assertNotNull($p, 'mesmo título só com caixa e espaço diferentes');
+        $this->assertSame(Problema::BLOQUEIO, $p->severidade);
+        $this->assertSame(['etapa' => 'E7', 'alvo' => 'gold_pro'], $p->alvo, 'aponta o segundo título, onde a pessoa troca');
+        $this->assertSame('O título do Premium é igual ao do Clássico: o Mercado Livre não aceita dois anúncios com o mesmo título. Mude ao menos uma palavra (ou a ordem delas) em um dos dois.', $p->mensagem);
+        $this->assertNotContains('D1', self::regras(self::validar($r)), 'uma regra só para o mesmo caso');
+
+        // Plural simples e acento também são "o mesmo" para o ML (o D1 antigo deixava passar).
+        $plural = self::completo(['alvos' => [new Alvo('gold_special', 'Cadeiras Giratórias Executivas'), new Alvo('gold_pro', 'Cadeira Giratoria Executiva')]]);
+        $this->assertContains('V-TIT-04', self::regras(self::validar($plural)));
+
+        // Ordem trocada ou uma palavra diferente já é outro título.
+        $ordem = self::completo(['alvos' => [new Alvo('gold_special', 'Cadeira Executiva Giratória'), new Alvo('gold_pro', 'Cadeira Giratória Executiva')]]);
+        $this->assertNotContains('V-TIT-04', self::regras(self::validar($ordem)));
+        $this->assertSame([], self::regras(self::validar()), 'o rascunho completo tem títulos diferentes');
+
+        // Um tipo só ligado: não há com o que comparar.
+        $um = self::completo(['alvos' => [new Alvo('gold_special', 'Cadeira Executiva ECF'), new Alvo('gold_pro', 'Cadeira Executiva ECF', false)]]);
+        $this->assertNotContains('V-TIT-04', self::regras(self::validar($um)));
+    }
+
+    /**
+     * V-SAL-08 (10/10/2026): o preço que VEIO da Precificação do Portal calculado sem frete bloqueia;
+     * o digitado é decisão da equipe e passa. A marca chega pelo `comEfetivosDe` (o caminho da conferência,
+     * da publicação e do estado do editor).
+     */
+    public function test_v_sal_08_preco_do_portal_sem_frete_bloqueia_e_o_digitado_passa(): void
+    {
+        $semPreco = fn (array $precos) => self::completo(['variantes' => [new Variante(ChaveCanonica::UNICA, [], dados: [
+            'estoque' => 3, 'precos' => $precos,
+            'atributos' => ['SELLER_SKU' => ['value_name' => 'CAD'], 'GTIN' => ['value_name' => '7896553367645']],
+        ])]]);
+        $efetivos = fn (bool $semFrete) => [
+            'titulos' => [], 'precos' => ['gold_special' => 207.19, 'gold_pro' => 223.26],
+            'promocoes' => ['gold_special' => 172.66, 'gold_pro' => 186.05],
+            'sem_frete' => ['gold_special' => $semFrete, 'gold_pro' => false],
+        ];
+
+        $r = $semPreco(['gold_special' => null, 'gold_pro' => null])->comEfetivosDe($efetivos(true));
+        $p = self::primeiro(self::validar($r), 'V-SAL-08');
+        $this->assertNotNull($p, 'o Clássico veio do Portal sem frete');
+        $this->assertSame(['etapa' => 'E10', 'alvo' => 'gold_special', 'variante' => ChaveCanonica::UNICA, 'campo' => 'preco'], $p->alvo, 'cai no campo do preço');
+        $this->assertSame('O preço do Clássico veio da Precificação do Portal calculado sem frete. Informe ou aceite o frete na Precificação do Portal, ou digite o preço aqui.', $p->mensagem);
+        $this->assertCount(1, array_filter(self::validar($r), fn (Problema $x) => $x->regra === 'V-SAL-08'), 'o Premium tem frete: só um bloqueio');
+
+        // Digitado: a equipe decidiu o preço — passa, mesmo com o Portal sem frete.
+        $digitado = $semPreco(['gold_special' => 210.0, 'gold_pro' => null])->comEfetivosDe($efetivos(true));
+        $this->assertNotContains('V-SAL-08', self::regras(self::validar($digitado)));
+
+        // Com frete no Portal: nenhum bloqueio.
+        $comFrete = $semPreco(['gold_special' => null, 'gold_pro' => null])->comEfetivosDe($efetivos(false));
+        $this->assertSame([], self::regras(self::validar($comFrete)));
+
+        // O caminho antigo (`comEfetivos` com três argumentos) não traz a marca: nada muda para quem não valida.
+        $antigo = $semPreco(['gold_special' => null, 'gold_pro' => null])->comEfetivos([], $efetivos(true)['precos']);
+        $this->assertArrayNotHasKey('preco_do_portal', $antigo->variantes[0]->dados);
+        $this->assertArrayNotHasKey('portal', $antigo->variantes[0]->dados);
     }
 
     public function test_tc104_preco_abaixo_do_minimo_e_preco_invalido(): void

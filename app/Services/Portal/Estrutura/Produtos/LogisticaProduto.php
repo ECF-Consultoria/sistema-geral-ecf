@@ -9,9 +9,13 @@ namespace App\Services\Portal\Estrutura\Produtos;
  * (PORTAL-02: duas cópias da conta já publicaram preço 43% errado). Nunca
  * duplicar esta fórmula no JS.
  *
- * Regras (coluna AA da planilha de Planejamento; limites em config/estrutura_produtos.php):
+ * Regras (do ML desde 09/10/2026, "seguir o ML em tudo"; limites em config/estrutura_produtos.php):
  *  - pacote (D-17): maior comprimento, maior largura, alturas somadas, pesos somados;
- *  - cubado = C·L·A ÷ fator; faturado = cubado > mínimo ? max(real, cubado) : real;
+ *  - cubado = C·L·A ÷ fator; faturado = max(real, cubado), SEM o mínimo de 5 kg da
+ *    planilha antiga (o ML cobra 750 g por 15×15×20 com 500 g reais);
+ *  - ME2 pelos limites da MODALIDADE de envio da conta (Correios, Agências/Coleta ou
+ *    Full); sem modalidade conhecida, os dos Correios (os mais estreitos);
+ *  - Full dentro do ME2, pelos limites do centro de distribuição;
  *  - ME2 e Full usam o peso REAL (soma dos pesos), não o faturado;
  *  - fora do ME2 = ME1; sem medidas = pendente.
  */
@@ -45,9 +49,11 @@ final class LogisticaProduto
     /**
      * @param  array{c: float, l: float, a: float, peso_real: float}|null  $pacote
      * @param  array<string, mixed>|null  $regras  padrão: config('estrutura_produtos')
+     * @param  ?string  $modalidade  `logistic_type` da conta (drop_off, xd_drop_off, cross_docking,
+     *                               fulfillment); null ou desconhecida = a padrão (Correios)
      * @return array{logistica: string, pacote: ?array, peso_cubado: ?float, peso_faturado: ?float, cubado_cobrado: bool, maior_lado: ?float, soma_lados: ?float}
      */
-    public static function avaliar(?array $pacote, ?array $regras = null): array
+    public static function avaliar(?array $pacote, ?array $regras = null, ?string $modalidade = null): array
     {
         $regras ??= config('estrutura_produtos');
 
@@ -80,16 +86,15 @@ final class LogisticaProduto
         $soma   = $c + $l + $a;
         $cubado = ($c * $l * $a) / $regras['fator_cubagem'];
 
-        $cobrado  = $cubado > $regras['peso_cubado_minimo'] && $cubado > $real;
-        $faturado = $cubado > $regras['peso_cubado_minimo'] ? max($real, $cubado) : $real;
+        $cobrado  = $cubado > $real;
+        $faturado = max($real, $cubado);
 
-        $me2 = $real <= $regras['me2']['peso']
-            && $soma <= $regras['me2']['soma']
-            && $maior <= $regras['me2']['maior'];
+        $cabe = fn (array $limite) => $real <= $limite['peso'] && $soma <= $limite['soma'] && $maior <= $limite['maior'];
+        $full = $regras['modalidades'][$regras['modalidade_full']] ?? null;
 
-        if (! $me2) {
+        if (! $cabe(self::limites($modalidade, $regras))) {
             $logistica = self::ME1;
-        } elseif ($real <= $regras['full']['peso'] && $maior <= $regras['full']['maior']) {
+        } elseif ($full !== null && $cabe($full)) {
             $logistica = self::ME2_FULL;
         } else {
             $logistica = self::ME2;
@@ -109,8 +114,20 @@ final class LogisticaProduto
     /**
      * @param  list<array{c: float|int, l: float|int, a: float|int, kg: float|int}>  $volumes
      */
-    public static function daVolumes(array $volumes): array
+    public static function daVolumes(array $volumes, ?string $modalidade = null): array
     {
-        return self::avaliar(self::pacote($volumes));
+        return self::avaliar(self::pacote($volumes), null, $modalidade);
+    }
+
+    /**
+     * Os limites do ME2 da modalidade de envio; desconhecida = a padrão (Correios).
+     *
+     * @return array{peso: float|int, soma: float|int, maior: float|int}
+     */
+    public static function limites(?string $modalidade, ?array $regras = null): array
+    {
+        $regras ??= config('estrutura_produtos');
+
+        return $regras['modalidades'][$modalidade ?? ''] ?? $regras['modalidades'][$regras['modalidade_padrao']];
     }
 }

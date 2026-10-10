@@ -7,6 +7,7 @@ use App\Models\PubRascunho;
 use App\Services\Ia\AnaliseAnuncioService;
 use App\Services\Incubadora\Publicador\TermosMaisBuscadosService;
 use App\Support\Publicador\FatosDoProduto;
+use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Schema\CategorySchema;
 use App\Support\Publicador\Schema\ValorAtributo;
@@ -70,16 +71,17 @@ class PalavrasChaveService
     }
 
     /**
-     * Põe o pedido na fila e devolve o id dele. `escolhidos` só vale para título;
-     * `titulo` (o que está na tela, talvez ainda não salvo) só para o Modelo —
-     * ele se SOMA aos títulos ativos gravados, nunca os substitui.
+     * Põe o pedido na fila e devolve o id dele. `escolhidos` só vale para título.
+     * `titulo` = o que está na tela, talvez ainda não salvo: no Modelo, o(s) título(s)
+     * ativo(s) — ele se SOMA aos gravados, nunca os substitui; no título de um tipo, o
+     * título do OUTRO tipo, que o resultado não pode repetir (09/10/2026).
      */
     public function pedir(PubRascunho $r, string $alvo, array $escolhidos = [], ?string $titulo = null): string
     {
         $this->categoria($r);
         $pedido = (string) Str::uuid();
         Cache::put(self::chave($r->id, $alvo), ['pedido' => $pedido, 'status' => 'rodando', 'valor' => null, 'erro' => null], self::TTL_PEDIDO);
-        $titulo = $alvo === self::MODELO ? (trim((string) $titulo) ?: null) : null;
+        $titulo = trim((string) $titulo) ?: null;
         GerarPalavrasChaveIaJob::dispatch($r->id, $alvo, $pedido, array_values(array_slice($escolhidos, 0, 20)), $titulo);
 
         return $pedido;
@@ -103,7 +105,7 @@ class PalavrasChaveService
         try {
             ['valor' => $valor, 'descartados' => $descartados] = $alvo === self::MODELO
                 ? $this->modelo($r, $prazo, $tituloDaTela)
-                : ['valor' => $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo), 'descartados' => []];
+                : ['valor' => $this->titulo($r, substr($alvo, strlen('titulo_')), $escolhidos, $prazo, $tituloDaTela), 'descartados' => []];
             if ($valor === '') {
                 throw new \RuntimeException('A IA não devolveu nada aproveitável. Tente de novo.');
             }
@@ -257,8 +259,11 @@ class PalavrasChaveService
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════
 
-    /** @return array{valor: string, descartados: list<array{termo: string, motivo: string}>} */
-    private function modelo(PubRascunho $r, ?float $prazo, ?string $tituloDaTela): array
+    /**
+     * @param  string|list<string>|null  $tituloDaTela  o título da tela, ou os dois gerados pelo preparo
+     * @return array{valor: string, descartados: list<array{termo: string, motivo: string}>}
+     */
+    private function modelo(PubRascunho $r, ?float $prazo, string|array|null $tituloDaTela): array
     {
         [$categoria, $caminho] = $this->categoria($r);
         $termos = $this->termosParaIa($categoria, $r, $caminho);
@@ -298,8 +303,10 @@ class PalavrasChaveService
      * mais a Cor principal de cada variante; sem variação, a cor da ficha.
      * Vazio e "Não se aplica" ficam de fora.
      */
-    private function fatos(PubRascunho $r, CategorySchema $schema, string $produto, string $contexto): FatosDoProduto
+    private function fatos(PubRascunho $r, CategorySchema $schema, string $produto, string $contexto, bool $semMarca = false): FatosDoProduto
     {
+        // Título (09/10/2026): a marca não entra nele, então nem vai como fato — vai como proibição.
+        $fora = $semMarca ? [...self::FORA_DOS_FATOS, self::ID_MARCA] : self::FORA_DOS_FATOS;
         $nomes = [];
         $numericos = [];
         foreach ($schema->atributos as $a) {
@@ -318,7 +325,7 @@ class PalavrasChaveService
         foreach ($r->atributos()->orderBy('id')->get() as $a) {
             $id = (string) $a->attribute_id;
             $valor = self::valorDoAtributo($a->value_id, $a->value_name, $a->value_number, $a->value_unit, $a->values_multi);
-            if ($valor === '' || in_array($id, self::FORA_DOS_FATOS, true) || preg_match('/PACKAGE|DATA_SOURCE|SIZE_GRID/', $id)) {
+            if ($valor === '' || in_array($id, $fora, true) || preg_match('/PACKAGE|DATA_SOURCE|SIZE_GRID/', $id)) {
                 continue;
             }
             // Valor da ficha pode ter vindo do cliente (Portal): sem link nem e-mail.
@@ -401,36 +408,84 @@ class PalavrasChaveService
      * (Clássico e Premium) mais o da tela, sem repetir — lidos aqui, e não só
      * do navegador. Vazio = ainda não há título; o Modelo sai sem o filtro.
      */
-    private function tituloParaModelo(PubRascunho $r, ?string $tituloDaTela): string
+    private function tituloParaModelo(PubRascunho $r, string|array|null $tituloDaTela): string
     {
-        $titulos = $r->alvos()->where('ativo', true)->pluck('titulo')->push($tituloDaTela)
+        $titulos = $r->alvos()->where('ativo', true)->pluck('titulo')->push(...(array) $tituloDaTela)
             ->map(fn ($t) => trim((string) $t))->filter()->unique()->values();
 
         return $titulos->implode(' / ');
     }
 
+    /** O atributo da marca: ela nunca entra no título (09/10/2026). */
+    private const ID_MARCA = 'BRAND';
+
     /**
-     * O título pelos termos mais buscados, com os FATOS DO PRODUTO no prompt (09/10/2026, o mesmo
-     * bloco do Modelo) e cortado no `max_title_length` da categoria.
+     * O título de UM tipo pelos termos mais buscados (o botão "Sugerir com IA"), com os FATOS DO
+     * PRODUTO no prompt (09/10/2026, o mesmo bloco do Modelo), sem marca nem número de especificação
+     * (`RegrasDoTitulo::limpar`) e cortado no `max_title_length` da categoria.
+     *
+     * Nunca igual ao título do OUTRO tipo (o gravado e o da tela, `outroDaTela`): o ML barra dois
+     * anúncios com o mesmo nome. O prompt pede; se a IA repetir, a diferença sai daqui; sem saída,
+     * erro para a pessoa tentar de novo — nunca dois iguais.
      */
-    private function titulo(PubRascunho $r, string $listingType, array $escolhidos, ?float $prazo): string
+    private function titulo(PubRascunho $r, string $listingType, array $escolhidos, ?float $prazo, ?string $outroDaTela = null): string
+    {
+        $c = $this->contextoDoTitulo($r);
+        $outros = $r->alvos()->where('ativo', true)->where('listing_type_id', '<>', $listingType)->whereIn('listing_type_id', ['gold_special', 'gold_pro'])
+            ->pluck('titulo')->push($outroDaTela)
+            ->map(fn ($t) => trim((string) $t))->filter()->unique()->values()->all();
+        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+
+        $bruto = $ia->tituloPorTermos($c['produto'], $c['caminho'], $c['termos'], $escolhidos, $c['maximo'], $c['fatos']->paraPrompt(),
+            implode(', ', $c['marcas']), implode(' / ', $outros))['dados'];
+        $titulo = RegrasDoTitulo::semRepetir([$listingType => $this->finalizarTitulo($bruto, $c)], $outros, $c['candidatos'], $c['maximo'])[$listingType];
+        if ($titulo === '' && $this->finalizarTitulo($bruto, $c) !== '') {
+            throw new \RuntimeException('A IA sugeriu o mesmo título do outro tipo de anúncio. Tente de novo.');
+        }
+
+        return $titulo;
+    }
+
+    /** O bruto da IA sem marca/"ECF"/número de especificação e cortado no máximo da categoria. */
+    private function finalizarTitulo(string $bruto, array $c): string
+    {
+        return self::ajustarTitulo(RegrasDoTitulo::limpar($bruto, $c['marcas'], $c['referencia']), $c['maximo']);
+    }
+
+    /**
+     * Tudo o que o título precisa, lido do rascunho uma vez: categoria, limite, termos, fatos (sem a
+     * marca), a marca (BRAND), a referência das medidas (nome do produto + termos) e as palavras que
+     * podem diferenciar dois títulos.
+     *
+     * @return array{caminho: string, maximo: int, termos: list<string>, produto: string, fatos: FatosDoProduto, marcas: list<string>, referencia: string, candidatos: list<string>}
+     */
+    private function contextoDoTitulo(PubRascunho $r): array
     {
         [$categoria, $caminho] = $this->categoria($r);
         $schema = $this->schemas->obter($categoria);
-        $maximo = (int) ($schema->settings()['max_title_length'] ?? 60) ?: 60;
         $termos = $this->termosParaIa($categoria, $r, $caminho);
         $produto = $r->produto->nomeExibido();
-        $fatos = $this->fatos($r, $schema, $produto, implode(' > ', $caminho));
-        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+        $fatos = $this->fatos($r, $schema, $produto, implode(' > ', $caminho), semMarca: true);
+        $marca = $r->atributos()->where('attribute_id', self::ID_MARCA)->first();
+        $marca = $marca ? self::valorDoAtributo($marca->value_id, $marca->value_name, null, null, $marca->values_multi) : '';
+        $marcas = $marca === '' ? [] : [$marca];
 
-        return self::ajustarTitulo($ia->tituloPorTermos($produto, implode(' > ', $caminho), $termos, $escolhidos, $maximo, $fatos->paraPrompt())['dados'], $maximo);
+        return [
+            'caminho' => implode(' > ', $caminho),
+            'maximo' => (int) ($schema->settings()['max_title_length'] ?? 60) ?: 60,
+            'termos' => $termos,
+            'produto' => $produto,
+            'fatos' => $fatos,
+            'marcas' => $marcas,
+            'referencia' => $produto.' '.implode(' ', $termos),
+            'candidatos' => RegrasDoTitulo::candidatos($termos, $produto, $fatos, $marcas),
+        ];
     }
 
     // ═══ Geração direta (o preparo pelo Portal, sem pedido nem cache) ════════
 
     /**
-     * Um título para o rascunho, devolvido direto (sem pedido no cache): quem grava é o
-     * `PreparoIaDoRascunhoService`, sob a trava do rascunho. Mesmo prompt do botão da tela.
+     * Um título para o rascunho, devolvido direto (sem pedido no cache). Mesmo prompt do botão da tela.
      *
      * @throws RegraViolada sem categoria
      */
@@ -440,14 +495,44 @@ class PalavrasChaveService
     }
 
     /**
-     * O Modelo para o rascunho, devolvido direto. `titulo` = o título que acabou de ser gerado
-     * (soma-se aos ativos gravados, como o da tela).
+     * Os DOIS títulos do preparo pelo Portal (09/10/2026), numa chamada só à IA: Clássico e Premium
+     * do mesmo produto, nunca iguais entre si nem a um título que a equipe já escreveu (`evitar`,
+     * listing_type_id → título). Quem grava é o `PreparoIaDoRascunhoService`, sob a trava do rascunho.
+     * Um tipo que não deu para diferenciar volta VAZIO (não é escrito).
      *
+     * @param  array<string, string>  $evitar
+     * @return array{gold_special: string, gold_pro: string}
+     *
+     * @throws RegraViolada sem categoria
+     */
+    public function gerarTitulos(PubRascunho $r, ?float $prazo = null, array $evitar = []): array
+    {
+        $c = $this->contextoDoTitulo($r);
+        $evitar = array_filter(array_map(fn ($t) => trim((string) $t), $evitar));
+        $ia = $prazo !== null ? $this->ia->comPrazo($prazo) : $this->ia;
+
+        $dados = $ia->titulosPorTermos($c['produto'], $c['caminho'], $c['termos'], [], $c['maximo'], $c['fatos']->paraPrompt(),
+            implode(', ', $c['marcas']), implode(' / ', array_unique(array_values($evitar))))['dados'];
+        $classico = $this->finalizarTitulo((string) ($dados['classico'] ?? ''), $c);
+        $premium = $this->finalizarTitulo((string) ($dados['premium'] ?? ''), $c);
+
+        // Um só veio: ele vale para os dois e a diferença sai do servidor.
+        return RegrasDoTitulo::semRepetir(
+            ['gold_special' => $classico ?: $premium, 'gold_pro' => $premium ?: $classico],
+            $evitar, $c['candidatos'], $c['maximo'],
+        );
+    }
+
+    /**
+     * O Modelo para o rascunho, devolvido direto. `titulo` = o(s) título(s) que acabaram de ser
+     * gerados (somam-se aos ativos gravados, como o da tela).
+     *
+     * @param  string|list<string>|null  $titulo
      * @return array{valor: string, descartados: list<array{termo: string, motivo: string}>}
      *
      * @throws RegraViolada sem categoria
      */
-    public function gerarModelo(PubRascunho $r, ?float $prazo = null, ?string $titulo = null): array
+    public function gerarModelo(PubRascunho $r, ?float $prazo = null, string|array|null $titulo = null): array
     {
         return $this->modelo($r, $prazo, $titulo);
     }

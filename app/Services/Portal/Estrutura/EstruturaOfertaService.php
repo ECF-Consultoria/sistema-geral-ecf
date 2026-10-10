@@ -5,7 +5,13 @@ namespace App\Services\Portal\Estrutura;
 use App\Models\Company;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoGeracao;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaTipoProduto;
+use App\Services\Portal\Estrutura\Geracao\NomesSugeridos;
+use App\Services\Portal\Estrutura\Geracao\TipoDoProduto;
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\SoltarProdutoDaOfertaService;
 use App\Support\Portal\AtorDoPortal;
 use Illuminate\Support\Facades\DB;
@@ -42,16 +48,21 @@ class EstruturaOfertaService
      * espera uma vez no fim, com todos os SKUs (o cadastro de Produtos, BE-WR-05).
      * O padrão — e a Lista SKUs — continua varrendo aqui, a cada oferta.
      *
+     * Oferta composta nasce indo SOZINHA ao Publicador (09/10/2026): os produtos dos
+     * componentes são agendados no preparo ({@see self::prepararNoPublicador}).
+     * `$prepararNoPublicador = false` é para quem cria várias num lote e agenda uma vez no
+     * fim, com todos os componentes (o "Aceitar" das sugestões, os combos em lote).
+     *
      * @param  array{sku: string, fase: string, nome?: ?string, logistica?: ?string, observacoes?: ?string, componentes?: array<int, array{id: int, quantidade: int}>}  $dados
      * @return array{0: EstruturaOferta, 1: int} a oferta e quantos anúncios da espera ela absorveu (0 sem varredura)
      */
-    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true): array
+    public function criar(Company $empresa, array $dados, AtorDoPortal $ator, bool $varrerEspera = true, bool $prepararNoPublicador = true): array
     {
         $campos = $this->campos($dados);
         $componentes = $this->composicao($empresa, $campos['fase'], $dados['componentes'] ?? []);
         $variacaoId = $this->variacaoLigada($empresa, $dados, $campos['fase'], $componentes);
 
-        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera) {
+        return DB::transaction(function () use ($empresa, $campos, $componentes, $variacaoId, $ator, $varrerEspera, $prepararNoPublicador) {
             $oferta = EstruturaOferta::create([...$campos, 'company_id' => $empresa->id, 'variacao_id' => $variacaoId]);
             $this->gravarComposicao($oferta, $componentes);
 
@@ -60,8 +71,51 @@ class EstruturaOfertaService
             RegistroEstrutura::registrar($ator, $empresa, $oferta, 'oferta_criada',
                 "Oferta {$oferta->sku} criada ({$oferta->fase})", ['absorvidos_da_espera' => $absorvidos]);
 
+            if ($prepararNoPublicador) {
+                $this->prepararNoPublicador($empresa, array_keys($componentes));
+            }
+
             return [$oferta, $absorvidos];
         });
+    }
+
+    /**
+     * Gancho do Publicador (09/10/2026, "o fluxo tem de chegar ao Publicador completo e
+     * sozinho"): a oferta composta recém-criada entra no preparo pelos PRODUTOS dos seus
+     * componentes — `PreparoIaAgenda::aoSalvar`, com a espera de sempre. A sincronização
+     * por produto já leva as compostas que o têm como componente
+     * (`PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)`), então o kit
+     * chega lá sem ninguém clicar em Sincronizar.
+     *
+     * Só depois do commit (rollback não agenda nada) e só para componente ligado a produto
+     * (a oferta importada, sem produto, segue pelo Sincronizar). Nada disso aparece para o
+     * cliente, e uma falha aqui nunca derruba a criação (o `aoSalvar` só loga).
+     *
+     * @param  array<int, int>  $componentesOfertaIds  ids das ofertas simples componentes
+     */
+    public function prepararNoPublicador(Company $empresa, array $componentesOfertaIds): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $componentesOfertaIds))));
+        if ($ids === []) {
+            return;
+        }
+
+        $produtos = DB::table('estrutura_ofertas as o')
+            ->join('estrutura_produto_variacoes as v', 'v.id', '=', 'o.variacao_id')
+            ->where('o.company_id', $empresa->id)
+            ->where('v.company_id', $empresa->id)
+            ->whereIn('o.id', $ids)
+            ->distinct()
+            ->pluck('v.produto_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($produtos === []) {
+            return;
+        }
+
+        $empresaId = (int) $empresa->id;
+        DB::afterCommit(fn () => app(PreparoIaAgenda::class)->aoSalvar($empresaId, $produtos));
     }
 
     /**
@@ -69,11 +123,12 @@ class EstruturaOfertaService
      * combo? em quantas unidades?" é uma lista ("2, 3, 4, 5, 6"), não cinco
      * diálogos.
      *
-     * Cada quantidade vira `SKU-CBn` / "Combo n Nome", o padrão da aula, e
-     * passa pela MESMA criação (e pela mesma regra de composição) que o combo
-     * avulso. Quantidade que o produto JÁ tem como combo é pulada — a
-     * comparação é pela composição (produto + quantidade), não pelo SKU, que o
-     * cliente pode ter renomeado.
+     * Cada quantidade vira `SKU-CBn` com o nome do padrão do Planejamento
+     * ({@see NomesSugeridos::combo}; ver {@see self::paraONomeDoCombo}) e passa
+     * pela MESMA criação (e pela mesma regra de composição) que o combo avulso.
+     * Quantidade que o produto JÁ tem como combo é pulada — a comparação é pela
+     * composição (produto + quantidade), não pelo SKU, que o cliente pode ter
+     * renomeado. Combo que já existe nunca é renomeado.
      *
      * @param  array<int, int>  $quantidades
      * @return array{criados: array<int, string>, pulados: array<int, int>, absorvidos: int}
@@ -102,9 +157,9 @@ class EstruturaOfertaService
             ->all();
 
         $empresa = $base->company;
-        $nome = $base->nome ?: $base->sku;
+        [$produtoNome, $valor, $tipo] = $this->paraONomeDoCombo($base);
 
-        return DB::transaction(function () use ($empresa, $base, $quantidades, $existentes, $nome, $logistica, $observacoes, $ator) {
+        return DB::transaction(function () use ($empresa, $base, $quantidades, $existentes, $produtoNome, $valor, $tipo, $logistica, $observacoes, $ator) {
             $r = ['criados' => [], 'pulados' => [], 'absorvidos' => 0];
 
             foreach ($quantidades as $n) {
@@ -113,17 +168,24 @@ class EstruturaOfertaService
                     continue;
                 }
 
+                $nomeado = NomesSugeridos::combo($produtoNome, (string) $base->sku, $valor, $n, $tipo);
+
                 [$oferta, $absorvidos] = $this->criar($empresa, [
-                    'sku'         => "{$base->sku}-CB{$n}",
+                    'sku'         => $nomeado['sku'],
                     'fase'        => EstruturaOferta::FASE_COMBO,
-                    'nome'        => "Combo {$n} {$nome}",
+                    'nome'        => $nomeado['nome'],
                     'logistica'   => $logistica,
                     'observacoes' => $observacoes,
                     'componentes' => [['id' => $base->id, 'quantidade' => $n]],
-                ], $ator);
+                ], $ator, prepararNoPublicador: false);
 
                 $r['criados'][] = $oferta->sku;
                 $r['absorvidos'] += $absorvidos;
+            }
+
+            // Os combos vão ao Publicador numa agenda só, pelo produto da base.
+            if ($r['criados'] !== []) {
+                $this->prepararNoPublicador($empresa, [$base->id]);
             }
 
             return $r;
@@ -367,6 +429,65 @@ class EstruturaOfertaService
         }
 
         return $promovidos;
+    }
+
+    // ═══ Nome do combo ══════════════════════════════════════════════════════
+
+    /**
+     * O que entra no nome do combo, pelo padrão do Planejamento (10/10/2026): antes a Lista
+     * dizia "Combo 4 Cadeira Polo — Natural" e o Planejamento, para o MESMO combo, "Kit 4
+     * Cadeiras Polo — Natural".
+     *
+     * - Base ligada a variação: o nome do PRODUTO, o valor da variação e o tipo efetivo, como
+     *   as sugestões ({@see Geracao\RetratoDoCatalogo}) e o "Montar kit" o montam.
+     * - Base sem variação (oferta importada) ou sem produto: o nome da oferta, sem tipo — como
+     *   o "Montar kit" trata o item avulso ({@see Geracao\MontagemManualDeOferta}).
+     *
+     * @return array{0: string, 1: ?string, 2: ?array{nome: string, plural: string}}  nome do produto, valor e tipo
+     */
+    private function paraONomeDoCombo(EstruturaOferta $base): array
+    {
+        $semProduto = [(string) ($base->nome ?: $base->sku), null, null];
+        if ($base->variacao_id === null) {
+            return $semProduto;
+        }
+
+        $variacao = EstruturaProdutoVariacao::query()->where('company_id', $base->company_id)->find($base->variacao_id);
+        $produto = $variacao === null ? null
+            : EstruturaProduto::query()->where('company_id', $base->company_id)->find($variacao->produto_id);
+        if ($produto === null || trim((string) $produto->nome) === '') {
+            return $semProduto;
+        }
+
+        $valor = trim((string) $variacao->valor) !== '' ? (string) $variacao->valor : null;
+
+        return [(string) $produto->nome, $valor, $this->tipoParaNome($produto)];
+    }
+
+    /**
+     * O tipo do produto para o nome: o escolhido no Planejamento ou o inferido pela categoria e
+     * pelo nome ({@see TipoDoProduto::efetivo}). A MESMA leitura do
+     * {@see Geracao\RetratoDoCatalogo} e do `PlanejamentoDaFaseService::tipoParaNome`; o
+     * `CombosDaListaNoPadraoDoPlanejamentoTest` confere o nome contra a sugestão.
+     *
+     * @return array{nome: string, plural: string}|null
+     */
+    private function tipoParaNome(EstruturaProduto $produto): ?array
+    {
+        $tipos = [];
+        $paraInferir = [];
+        $slugPorId = [];
+        foreach (EstruturaTipoProduto::query()->orderBy('ordem')->orderBy('id')->get() as $t) {
+            $slugPorId[$t->id] = $t->slug;
+            $tipos[$t->slug] = ['nome' => (string) $t->nome, 'plural' => (string) $t->plural];
+            $paraInferir[$t->slug] = ['palavras' => TipoDoProduto::palavras((string) $t->palavras), 'ordem' => (int) $t->ordem];
+        }
+
+        $ajuste = EstruturaProdutoGeracao::query()->where('company_id', $produto->company_id)->where('produto_id', $produto->id)->first();
+        $escolhido = $ajuste && $ajuste->tipo_id !== null ? ($slugPorId[$ajuste->tipo_id] ?? null) : null;
+        $slug = TipoDoProduto::efetivo($escolhido, TipoDoProduto::inferir($produto->categoria_ml_nome, $produto->nome, $paraInferir), $tipos)['slug'];
+
+        return $slug !== null && isset($tipos[$slug]) ? $tipos[$slug] : null;
     }
 
     // ═══ Validação ══════════════════════════════════════════════════════════
