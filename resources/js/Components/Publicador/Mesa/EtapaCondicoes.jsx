@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { Calculator, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, Calculator, Info, Loader2 } from 'lucide-react';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
-import { NOME_TIPO, NOTA_TIPO, valorVazio } from '../apoio';
+import { NOME_TIPO, NOTA_TIPO, paraNumero, valorVazio } from '../apoio';
+import { DIAS_DA_PROMOCAO, pct as pctTexto } from '../promocaoAutomatica.js';
 import { MEDIDAS_DO_PRODUTO } from '../ferramentas';
 import CampoPreco from './CampoPreco';
 import { AvisoDoPacote, CamposDoPacote, DIMENSOES, PESO, atributosDoPacote, medidasDoProduto } from './MedidasDoPacote';
@@ -93,8 +94,94 @@ function PrecoDaVariante({ m, v, a, rotulo, comPortal, semRotulo = false }) {
     return <Campo rotulo={rotulo} htmlFor={id} erro={erro}>{campo}</Campo>;
 }
 
-/** "Quanto você recebe": preço − tarifa − frete, por tipo, na 1ª variação ativa (é assim que o servidor simula). */
-function QuantoRecebo({ m }) {
+// Todo número do servidor passa por `paraNumero`: campo que chega como objeto, texto ou ausente vira
+// nulo e sai como travessão, nunca como "R$ NaN" nem "[object Object]" (a tela preta de 07/10).
+const num = (v) => paraNumero(v);
+const brl = (v) => (num(v) === null ? '—' : formatCurrency(num(v)));
+const pctOuTraco = (v) => (num(v) === null ? '—' : `${pctTexto(num(v))}%`);
+
+// Quanto a margem estimada é: o `title` da linha, sem jargão. A conta é a do servidor.
+const EXPLICACAO_MARGEM = 'Margem estimada = (o que você recebe − custo − imposto reservado) ÷ preço. '
+    + 'Tarifa e frete são os que o Mercado Livre respondeu agora.';
+
+// O conserto que o caso da Poltrona Beny pediu (10/10/2026): o preço do Portal embute o imposto no
+// divisor para PROVISIONAR, mas o Mercado Livre não o desconta. Ler "Você recebe" como lucro
+// subestima o prejuízo — foi o que fez o Premium parecer sobrar R$ 1,75 estando R$ 97,22 no vermelho.
+const NOTA_DO_IMPOSTO = 'O Mercado Livre não desconta imposto: o que você recebe ainda tem imposto a pagar. '
+    + 'O preço do Portal já reserva uma parte para isso — é a linha "Imposto reservado".';
+
+/**
+ * Os avisos de um tipo de anúncio, em ordem de leitura. Cada frase é UMA string (sem interpolação
+ * dentro do JSX), para o HTML não sair picado por comentários entre nós de texto.
+ */
+function avisosDoRecebimento(s) {
+    const recebe = num(s.voce_recebe);
+    const custo = num(s.custo);
+    const lucro = num(s.lucro);
+    const reservado = num(s.imposto_reservado);
+    const depois = num(s.lucro_depois_do_imposto);
+    const avisos = [];
+
+    if (s.portal_sem_frete) {
+        avisos.push(['portal_sem_frete', 'alerta', 'O preço sugerido pela Precificação do Portal foi calculado SEM frete: '
+            + 'este número não é uma recomendação confiável. Informe o frete na Precificação do Portal ou digite o preço aqui.']);
+    }
+    if (s.frete_conhecido === false) {
+        avisos.push(['frete_conhecido', 'alerta', 'Sem as medidas do pacote o frete do Mercado Livre não entra nesta conta: '
+            + 'o que você recebe está otimista.']);
+    }
+
+    // O aviso NÃO depende da procedência do preço: um preço digitado pode ser byte a byte igual à
+    // sugestão calculada sem frete, e nenhuma regra de origem separa os dois.
+    const abaixo = !! s.abaixo_do_custo && recebe !== null && custo !== null && lucro !== null;
+    if (abaixo) {
+        avisos.push(['abaixo_do_custo', 'prejuizo', `Você recebe ${brl(recebe)} e o custo é ${brl(custo)}: `
+            + `prejuízo de ${brl(Math.abs(lucro))} já antes do imposto.`]);
+    }
+    if (! abaixo && s.prejuizo_com_imposto && reservado !== null && depois !== null) {
+        avisos.push(['prejuizo_com_imposto', 'prejuizo', `Depois do imposto que o preço reserva (${brl(reservado)}), `
+            + `sobra ${brl(depois)}: prejuízo.`]);
+    }
+    if (custo === null) {
+        avisos.push(['sem_custo', 'neutro', 'A Precificação do Portal não tem custo desta oferta: '
+            + 'sem custo não há lucro nem margem para mostrar.']);
+    }
+
+    return avisos;
+}
+
+/**
+ * A que preço o desconto automático leva o anúncio nos primeiros 14 dias (acréscimo pedido pelo
+ * usuário em 10/10/2026). O número vem PRONTO do servidor (`PrecoDaPromocao`, a mesma função pura do
+ * gatilho pós-publicação e do espelho em JS): aqui não se recalcula nada. Quando não há desconto, o
+ * motivo é informação valiosa — sem frete cadastrado, por exemplo, não há desconto automático nenhum.
+ */
+function textoDoDescontoAutomatico(promocao) {
+    if (! promocao || typeof promocao !== 'object' || Array.isArray(promocao)) return null;
+    const dias = num(promocao.dias) ?? DIAS_DA_PROMOCAO;
+    const preco = num(promocao.preco);
+    const percentual = num(promocao.percentual);
+
+    if (promocao.calculavel && preco !== null && percentual !== null) {
+        return `Desconto automático nos primeiros ${dias} dias: ${brl(preco)} (−${pctTexto(percentual)}%).`;
+    }
+
+    const motivo = typeof promocao.motivo_texto === 'string' && promocao.motivo_texto.trim() !== '' ? promocao.motivo_texto : null;
+
+    return `Sem desconto automático nos primeiros ${dias} dias${motivo ? `: ${motivo}` : ''}.`;
+}
+
+const COR_DO_AVISO = { alerta: 'text-amber-300', prejuizo: 'text-red-300', neutro: 'text-white/50' };
+
+/**
+ * "Quanto você recebe": preço − tarifa − frete, por tipo, na 1ª variação ativa (é assim que o
+ * servidor simula) — e, desde 10/10/2026, o custo ao lado, o lucro antes e depois do imposto que o
+ * preço reserva, a margem estimada e o preço do desconto automático dos primeiros 14 dias.
+ *
+ * A tela só FORMATA: toda conta é do `simular()`. A margem daqui usa tarifa e frete REAIS da API e é
+ * diferente, de propósito, da "margem estimada" por percentuais planejados da visão rápida do lote.
+ */
+export function QuantoRecebo({ m }) {
     const sim = m.simulacao ?? null;
     const entradas = sim ? Object.entries(sim) : [];
 
@@ -112,17 +199,41 @@ function QuantoRecebo({ m }) {
             {sim && entradas.length === 0 && <p className="mt-3 text-[13px] text-white/55">Sem preço para simular. Preencha o preço da primeira variação.</p>}
             {entradas.length > 0 && (
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    {entradas.map(([lt, s]) => (
-                        <dl key={lt} className="space-y-1.5 rounded-lg border border-white/[0.08] p-3 text-[13px] tabular-nums" data-simulacao={lt}>
-                            <div className="flex justify-between font-bold text-white"><dt>{NOME_TIPO[lt]}</dt><dd /></div>
-                            <div className="flex justify-between text-white/80"><dt>Preço de venda</dt><dd>{formatCurrency(s.preco)}</dd></div>
-                            <div className="flex justify-between text-white/55"><dt>Tarifa do Mercado Livre</dt><dd>− {formatCurrency(s.tarifa)}</dd></div>
-                            <div className="flex justify-between text-white/55"><dt>Frete</dt><dd>{s.frete_conhecido ? `− ${formatCurrency(s.frete)}` : 'informe o pacote'}</dd></div>
-                            <div className="flex items-baseline justify-between border-t border-white/[0.08] pt-1.5 text-white"><dt className="font-bold">Você recebe</dt><dd className="text-[15px] font-bold text-emerald-400">{formatCurrency(s.voce_recebe)}</dd></div>
-                        </dl>
-                    ))}
+                    {entradas.map(([lt, s]) => {
+                        const lucro = num(s.lucro);
+                        const depois = num(s.lucro_depois_do_imposto);
+                        const impostoPct = num(s.imposto_pct);
+                        const desconto = textoDoDescontoAutomatico(s.promocao);
+                        // Prejuízo em vermelho; o que sobra segue o tom do card.
+                        const tom = (v) => (v !== null && v < 0 ? 'text-red-300' : 'text-white');
+
+                        return (
+                            <div key={lt} className="rounded-lg border border-white/[0.08] p-3" data-simulacao={lt}>
+                                <dl className="space-y-1.5 text-[13px] tabular-nums">
+                                    <div className="flex justify-between font-bold text-white"><dt>{NOME_TIPO[lt]}</dt><dd /></div>
+                                    <div className="flex justify-between text-white/80"><dt>Preço de venda</dt><dd>{brl(s.preco)}</dd></div>
+                                    <div className="flex justify-between text-white/55"><dt>Tarifa do Mercado Livre</dt><dd>{`− ${brl(s.tarifa)}`}</dd></div>
+                                    <div className="flex justify-between text-white/55"><dt>Frete</dt><dd>{s.frete_conhecido ? `− ${brl(s.frete)}` : 'informe o pacote'}</dd></div>
+                                    <div className="flex items-baseline justify-between border-t border-white/[0.08] pt-1.5 text-white"><dt className="font-bold">Você recebe</dt><dd className="text-[15px] font-bold text-emerald-400">{brl(s.voce_recebe)}</dd></div>
+                                    <div className="flex justify-between text-white/55"><dt>Custo</dt><dd>{brl(s.custo)}</dd></div>
+                                    <div className={cn('flex justify-between', tom(lucro))}><dt className="text-white/55">Lucro antes do imposto</dt><dd>{brl(s.lucro)}</dd></div>
+                                    <div className="flex justify-between text-white/55"><dt>{impostoPct === null ? 'Imposto reservado' : `Imposto reservado (${pctTexto(impostoPct).replace(',00', '')}%)`}</dt><dd>{num(s.imposto_reservado) === null ? '—' : `− ${brl(s.imposto_reservado)}`}</dd></div>
+                                    <div className={cn('flex items-baseline justify-between border-t border-white/[0.08] pt-1.5', tom(depois))}><dt className="font-bold">Lucro depois do imposto</dt><dd className="font-bold">{brl(s.lucro_depois_do_imposto)}</dd></div>
+                                    <div className={cn('flex justify-between', tom(num(s.margem_pct)))} title={EXPLICACAO_MARGEM}><dt className="text-white/55">Margem estimada</dt><dd>{pctOuTraco(s.margem_pct)}</dd></div>
+                                </dl>
+                                {desconto && <p className="mt-2 text-[13px] text-white/50" data-promocao-do-card={lt}>{desconto}</p>}
+                                {avisosDoRecebimento(s).map(([chave, nivel, texto]) => (
+                                    <p key={chave} className={cn('mt-2 flex items-start gap-1.5 text-[13px]', COR_DO_AVISO[nivel])} data-aviso-recebimento={`${lt}|${chave}`}>
+                                        {nivel !== 'neutro' && <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+                                        {texto}
+                                    </p>
+                                ))}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
+            {entradas.length > 0 && <p className="mt-3 text-[11px] text-white/45">{NOTA_DO_IMPOSTO}</p>}
         </div>
     );
 }
