@@ -22,10 +22,18 @@ const COR_FILA = {
 
 const NOME_TIPO = { gold_special: 'Clássico', gold_pro: 'Premium' };
 
+/** O horário do próximo já passou (o servidor começa na próxima passada, a cada minuto)? */
+export function proximoJaPassou(iso, agora = new Date()) {
+    const d = new Date(String(iso ?? ''));
+
+    return ! Number.isNaN(d.getTime()) && d.getTime() <= agora.getTime();
+}
+
 /**
- * @param {{fila: ?object, ocupado?: boolean, aoPausar?: Function, aoRetomar?: Function, aoCancelar?: Function, aoRemover?: (itemId: number) => void}} props
+ * @param {{fila: ?object, ocupado?: boolean, aoPausar?: Function, aoRetomar?: Function, aoCancelar?: Function, aoRemover?: (itemId: number) => void, agora?: Date}} props
  */
-export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetomar, aoCancelar, aoRemover }) {
+export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetomar, aoCancelar, aoRemover, agora = null }) {
+    const instante = agora instanceof Date ? agora : new Date();
     if (! fila || typeof fila !== 'object') return null;
     const f = comoObjeto(fila);
     const progresso = comoObjeto(f.progresso);
@@ -89,8 +97,10 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                     <span className="font-bold text-white">{andados} de {total}</span> produtos
                     {' · '}{numeroSeguro(progresso.feitos) ?? 0} publicados
                     {revisar > 0 && <span className="text-amber-300">{' · '}{revisar === 1 ? '1 para revisar' : `${revisar} para revisar`}</span>}
-                    {ativa && f.proximo_em && <>{' · '}próximo às <span className="font-bold text-white">{fmtHora(f.proximo_em)}</span></>}
-                    {ativa && f.termina_em && <>{' · '}termina por volta de <span className="font-bold text-white">{fmtHora(f.termina_em)}</span></>}
+                    {ativa && f.proximo_em && (proximoJaPassou(f.proximo_em, instante)
+                        ? <>{' · '}o próximo começa em instantes</>
+                        : <>{' · '}próximo às <span className="font-bold text-white">{fmtHora(f.proximo_em, instante)}</span></>)}
+                    {ativa && f.termina_em && <>{' · '}termina por volta de <span className="font-bold text-white">{fmtHora(f.termina_em, instante)}</span></>}
                 </p>
             </div>
 
@@ -136,7 +146,7 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     {i.status === 'agendado' && filaAtiva && i.previsto_em && (
-                                        <span className="font-mono text-[11px] tabular-nums text-white/50" title="Previsão de início">{fmtHora(i.previsto_em)}</span>
+                                        <span className="font-mono text-[11px] tabular-nums text-white/50" title="Previsão de início">{fmtHora(i.previsto_em, instante)}</span>
                                     )}
                                     <span className={cn('rounded-md border px-1.5 py-0.5 text-[11px] font-bold', COR_ITEM_DA_FILA[i.status] ?? COR_ITEM_DA_FILA.agendado)}>
                                         {textoSeguro(ROTULO_STATUS_ITEM[i.status], textoSeguro(i.status))}

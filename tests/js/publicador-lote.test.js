@@ -239,14 +239,17 @@ test('linha — dado adverso (objeto no lugar de texto, nulos) não derruba nem 
 // ═══════════════════════════════════════════════════════════════════════════
 
 test('painel — andando: progresso, próximo horário, termina por volta de, MLB e alavancas, tirar da fila', () => {
-    const html = renderToStaticMarkup(React.createElement(PainelDaFila, { fila: filaBase() }));
+    const html = renderToStaticMarkup(React.createElement(PainelDaFila, { fila: filaBase(), agora: new Date('2026-10-12T13:00:00Z') }));
     assert.match(html, /Fila de publicação/);
     assert.match(html, /Andando/);
     assert.match(html, /a cada 10 minutos/);
     assert.match(html, /2 de 3<\/span> produtos/);
     assert.match(html, /1 para revisar/);
-    assert.match(html, /próximo às <span[^>]*>(12\/10 )?10:10/, 'fora de hoje a hora vem com a data');
-    assert.match(html, /termina por volta de <span[^>]*>(12\/10 )?10:12/);
+    assert.match(html, /próximo às <span[^>]*>10:10</);
+    assert.match(html, /termina por volta de <span[^>]*>10:12</);
+    // Horário que já passou: o servidor começa na próxima passada.
+    const depois = renderToStaticMarkup(React.createElement(PainelDaFila, { fila: filaBase(), agora: new Date('2026-10-12T13:30:00Z') }));
+    assert.match(depois, /o próximo começa em instantes/);
     assert.match(html, /href="https:\/\/produto\.mercadolivre\.com\.br\/MLB9000000001"/);
     assert.match(html, />Alavancas</);
     assert.match(html, /O produto mudou depois de agendado/);
@@ -295,6 +298,21 @@ test('agendar — 10 min por padrão, "Estou ciente" obrigatório com avisos, fi
     assert.match(semAviso, /os produtos entram no fim dela/);
 
     assert.equal(renderToStaticMarkup(React.createElement(DialogoAgendar, { aberto: false })), '');
+});
+
+test('agendar — com a fila andando, abre com o intervalo e o horário DELA (senão o 2º agendamento os apagaria)', () => {
+    const html = renderToStaticMarkup(React.createElement(DialogoAgendar, {
+        aberto: true, produtos: 2, anuncios: 4, comAvisos: 0, filaViva: true, intervaloPadrao: 10,
+        intervaloAtual: 15, janelaAtual: { inicio: '09:00', fim: '18:00' },
+    }));
+    assert.match(html, /id="intervalo-lote"[^>]*value="15"/);
+    assert.match(html, /<input type="checkbox"[^>]*checked=""[^>]*\/>Publicar só dentro de um horário/);
+    assert.match(html, /aria-label="Início do horário"[^>]*value="09:00"/);
+    assert.match(html, /aria-label="Fim do horário"[^>]*value="18:00"/);
+
+    const semJanela = renderToStaticMarkup(React.createElement(DialogoAgendar, { aberto: true, produtos: 1, filaViva: true, intervaloAtual: 12, janelaAtual: null }));
+    assert.match(semJanela, /value="12"/);
+    assert.doesNotMatch(semJanela, /Início do horário/);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -25,20 +25,27 @@ const ROTULO = 'mb-1 block text-[13px] font-normal text-white/70';
 export default function DialogoAgendar({
     aberto, produtos = 0, anuncios = 0, comAvisos = 0, filaViva = false,
     intervaloPadrao = 10, intervaloMinimo = 2, intervaloMaximo = 240, enviando = false, erro = null,
+    intervaloAtual = null, janelaAtual = null,
     onFechar, onConfirmar, agora = null,
 }) {
-    const [intervalo, setIntervalo] = useState(String(intervaloPadrao));
-    const [comJanela, setComJanela] = useState(false);
-    const [inicio, setInicio] = useState('08:00');
-    const [fim, setFim] = useState('20:00');
+    // Fila já andando: o diálogo abre com o intervalo e o horário DELA (agendar de novo os reaplica à fila).
+    const janelaDaFila = janelaAtual && typeof janelaAtual === 'object' && typeof janelaAtual.inicio === 'string' && typeof janelaAtual.fim === 'string' ? janelaAtual : null;
+    const intervaloInicial = String(numeroSeguro(intervaloAtual) ?? intervaloPadrao);
+    const [intervalo, setIntervalo] = useState(intervaloInicial);
+    const [comJanela, setComJanela] = useState(janelaDaFila !== null);
+    const [inicio, setInicio] = useState(janelaDaFila?.inicio ?? '08:00');
+    const [fim, setFim] = useState(janelaDaFila?.fim ?? '20:00');
     const [ciente, setCiente] = useState(false);
 
     useEffect(() => {
         if (aberto) {
-            setIntervalo(String(intervaloPadrao));
+            setIntervalo(intervaloInicial);
+            setComJanela(janelaDaFila !== null);
+            setInicio(janelaDaFila?.inicio ?? '08:00');
+            setFim(janelaDaFila?.fim ?? '20:00');
             setCiente(false);
         }
-    }, [aberto, intervaloPadrao]);
+    }, [aberto, intervaloInicial, janelaDaFila?.inicio, janelaDaFila?.fim]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (! aberto) return null;
 

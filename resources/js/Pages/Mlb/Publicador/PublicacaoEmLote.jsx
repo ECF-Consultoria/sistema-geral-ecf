@@ -329,6 +329,8 @@ export default function PublicacaoEmLote({
                 anuncios={prontos.anuncios}
                 comAvisos={prontos.comAvisos}
                 filaViva={filaViva}
+                intervaloAtual={filaViva ? comoObjeto(fila).intervalo_minutos : null}
+                janelaAtual={filaViva ? comoObjeto(fila).janela : null}
                 intervaloPadrao={numeroSeguro(cfg.intervalo_padrao) ?? 10}
                 intervaloMinimo={numeroSeguro(cfg.intervalo_minimo) ?? 2}
                 intervaloMaximo={numeroSeguro(cfg.intervalo_maximo) ?? 240}
