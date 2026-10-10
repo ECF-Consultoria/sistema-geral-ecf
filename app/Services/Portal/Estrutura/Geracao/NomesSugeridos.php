@@ -7,10 +7,11 @@ namespace App\Services\Portal\Estrutura\Geracao;
  *
  * Classe pura: não lê config; os limites chegam por parâmetro. Os SKUs de Kit
  * ("KT-{a}-{b}") e Combit ("CT{n}-{fixo}-{repetido}") são suposição da pesquisa
- * (A1) e são editáveis; o do Combo segue o padrão "-CB{n}" que o
- * EstruturaOfertaService::criarCombos já usa. Título acima de 60 caracteres só
- * avisa; SKU acima de 120 bloqueia o aceite (a regra de bloqueio mora em
- * EstruturaOfertaService::campos).
+ * (A1) e são editáveis; o do Combo segue o padrão "-CB{n}" da aula. Desde
+ * 10/10/2026 os combos em lote da Lista SKUs (EstruturaOfertaService::criarCombos)
+ * também nascem por {@see self::combo()} — um nome só para o mesmo combo. Título
+ * acima de 60 caracteres só avisa; SKU acima de 120 bloqueia o aceite (a regra de
+ * bloqueio mora em EstruturaOfertaService::campos).
  */
 final class NomesSugeridos
 {

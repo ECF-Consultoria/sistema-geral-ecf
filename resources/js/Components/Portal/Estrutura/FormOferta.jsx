@@ -27,11 +27,14 @@ import { cn } from '@/lib/utils';
 // digitar seis linhas.
 //
 // SKU e nome vêm sugeridos e continuam editáveis — "o padrão de SKU é livre".
-// Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever. O combo segue o
-// padrão da aula (CAD-01-CB2, "Combo 2 …", o mesmo dos combos em lote). Kit e Combit,
-// desde 09/10/2026, vêm do SERVIDOR no padrão do Planejamento ("Mesa + Cadeira",
-// KT-…, CT{n}-…; a mesma `NomesSugeridos` das sugestões e do "Montar kit"), pela prévia
-// do Montar kit — antes eram "MSA-MR+CAD-01-KIT" e "-CBT4", outro padrão para a mesma oferta.
+// Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever. Kit e Combit (desde
+// 09/10/2026) e o Combo (desde 10/10/2026) vêm do SERVIDOR no padrão do Planejamento
+// (CAD-01-CB2 e "Kit 2 Cadeiras …" quando o produto tem tipo; "Mesa + Cadeira", KT-…,
+// CT{n}-…; a mesma `NomesSugeridos` das sugestões, do "Montar kit" e dos combos em lote),
+// pela prévia do Montar kit — antes o combo era "Combo 2 …" montado aqui e o kit
+// "MSA-MR+CAD-01-KIT" / "-CBT4", outro padrão para a mesma oferta. O combo ainda mostra o
+// padrão antigo até a resposta chegar (ou se ela falhar), para o campo nunca ficar com a
+// quantidade errada.
 
 const faseDoKit = (itens) => {
     if (itens.length < 2) return null;
@@ -147,7 +150,8 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     const novas = editando ? qtds : qtds.filter((n) => ! existentes.includes(n));
     const repetidas = editando ? [] : qtds.filter((n) => existentes.includes(n));
 
-    // Combo: sugestão no padrão da aula, enquanto a pessoa não mexeu no campo.
+    // Combo: sugestão na hora, enquanto a pessoa não mexeu no campo — o SKU `-CB{n}` e, até o
+    // servidor responder (ou se ele falhar), o nome "Combo {n} …".
     useEffect(() => {
         if (! aberta || editando) return;
 
@@ -156,6 +160,28 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
             if (! nomeMexido) setNome(`Combo ${qtds[0]} ${nomeDe(base)}`);
         }
     }, [qtdCombo, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ... e o nome e o SKU do servidor, no padrão do Planejamento (10/10/2026): a mesma prévia do
+    // Kit e do Combit, com o produto como único item ("Kit 4 Cadeiras Polo — Natural" quando o
+    // produto tem tipo). É o mesmo nome dos combos em lote e das sugestões do Planejamento.
+    useEffect(() => {
+        if (! aberta || editando || ! ehCombo || ! base || qtds.length !== 1) return undefined;
+        if (skuMexido && nomeMexido) return undefined;
+        let vivo = true;
+        const t = setTimeout(async () => {
+            try {
+                const { data } = await axios.post(route('portal.auth.estrutura.sugestoes.montar.previa'),
+                    corpoDaSugestaoKit([{ id: base.id, quantidade: qtds[0] }]));
+                if (! vivo || ! data?.sugerido) return;
+                if (! skuMexido) setSku(data.sugerido.sku);
+                if (! nomeMexido) setNome(data.sugerido.nome);
+            } catch {
+                // Sem resposta: fica a sugestão da hora, editável.
+            }
+        }, 250);
+
+        return () => { vivo = false; clearTimeout(t); };
+    }, [qtdCombo, aberta, skuMexido, nomeMexido]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Kit e Combit: nome e SKU do servidor, no padrão do Planejamento (a prévia do Montar kit só
     // calcula). Com respiro; a resposta que chega depois de a pessoa mexer no campo não o pisa.

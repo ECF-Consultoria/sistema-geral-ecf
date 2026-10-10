@@ -5,7 +5,12 @@ namespace App\Services\Portal\Estrutura;
 use App\Models\Company;
 use App\Models\EstruturaAnuncioEspera;
 use App\Models\EstruturaOferta;
+use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoGeracao;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaTipoProduto;
+use App\Services\Portal\Estrutura\Geracao\NomesSugeridos;
+use App\Services\Portal\Estrutura\Geracao\TipoDoProduto;
 use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\SoltarProdutoDaOfertaService;
 use App\Support\Portal\AtorDoPortal;
@@ -118,11 +123,12 @@ class EstruturaOfertaService
      * combo? em quantas unidades?" é uma lista ("2, 3, 4, 5, 6"), não cinco
      * diálogos.
      *
-     * Cada quantidade vira `SKU-CBn` / "Combo n Nome", o padrão da aula, e
-     * passa pela MESMA criação (e pela mesma regra de composição) que o combo
-     * avulso. Quantidade que o produto JÁ tem como combo é pulada — a
-     * comparação é pela composição (produto + quantidade), não pelo SKU, que o
-     * cliente pode ter renomeado.
+     * Cada quantidade vira `SKU-CBn` com o nome do padrão do Planejamento
+     * ({@see NomesSugeridos::combo}; ver {@see self::paraONomeDoCombo}) e passa
+     * pela MESMA criação (e pela mesma regra de composição) que o combo avulso.
+     * Quantidade que o produto JÁ tem como combo é pulada — a comparação é pela
+     * composição (produto + quantidade), não pelo SKU, que o cliente pode ter
+     * renomeado. Combo que já existe nunca é renomeado.
      *
      * @param  array<int, int>  $quantidades
      * @return array{criados: array<int, string>, pulados: array<int, int>, absorvidos: int}
@@ -151,9 +157,9 @@ class EstruturaOfertaService
             ->all();
 
         $empresa = $base->company;
-        $nome = $base->nome ?: $base->sku;
+        [$produtoNome, $valor, $tipo] = $this->paraONomeDoCombo($base);
 
-        return DB::transaction(function () use ($empresa, $base, $quantidades, $existentes, $nome, $logistica, $observacoes, $ator) {
+        return DB::transaction(function () use ($empresa, $base, $quantidades, $existentes, $produtoNome, $valor, $tipo, $logistica, $observacoes, $ator) {
             $r = ['criados' => [], 'pulados' => [], 'absorvidos' => 0];
 
             foreach ($quantidades as $n) {
@@ -162,10 +168,12 @@ class EstruturaOfertaService
                     continue;
                 }
 
+                $nomeado = NomesSugeridos::combo($produtoNome, (string) $base->sku, $valor, $n, $tipo);
+
                 [$oferta, $absorvidos] = $this->criar($empresa, [
-                    'sku'         => "{$base->sku}-CB{$n}",
+                    'sku'         => $nomeado['sku'],
                     'fase'        => EstruturaOferta::FASE_COMBO,
-                    'nome'        => "Combo {$n} {$nome}",
+                    'nome'        => $nomeado['nome'],
                     'logistica'   => $logistica,
                     'observacoes' => $observacoes,
                     'componentes' => [['id' => $base->id, 'quantidade' => $n]],
@@ -421,6 +429,65 @@ class EstruturaOfertaService
         }
 
         return $promovidos;
+    }
+
+    // ═══ Nome do combo ══════════════════════════════════════════════════════
+
+    /**
+     * O que entra no nome do combo, pelo padrão do Planejamento (10/10/2026): antes a Lista
+     * dizia "Combo 4 Cadeira Polo — Natural" e o Planejamento, para o MESMO combo, "Kit 4
+     * Cadeiras Polo — Natural".
+     *
+     * - Base ligada a variação: o nome do PRODUTO, o valor da variação e o tipo efetivo, como
+     *   as sugestões ({@see Geracao\RetratoDoCatalogo}) e o "Montar kit" o montam.
+     * - Base sem variação (oferta importada) ou sem produto: o nome da oferta, sem tipo — como
+     *   o "Montar kit" trata o item avulso ({@see Geracao\MontagemManualDeOferta}).
+     *
+     * @return array{0: string, 1: ?string, 2: ?array{nome: string, plural: string}}  nome do produto, valor e tipo
+     */
+    private function paraONomeDoCombo(EstruturaOferta $base): array
+    {
+        $semProduto = [(string) ($base->nome ?: $base->sku), null, null];
+        if ($base->variacao_id === null) {
+            return $semProduto;
+        }
+
+        $variacao = EstruturaProdutoVariacao::query()->where('company_id', $base->company_id)->find($base->variacao_id);
+        $produto = $variacao === null ? null
+            : EstruturaProduto::query()->where('company_id', $base->company_id)->find($variacao->produto_id);
+        if ($produto === null || trim((string) $produto->nome) === '') {
+            return $semProduto;
+        }
+
+        $valor = trim((string) $variacao->valor) !== '' ? (string) $variacao->valor : null;
+
+        return [(string) $produto->nome, $valor, $this->tipoParaNome($produto)];
+    }
+
+    /**
+     * O tipo do produto para o nome: o escolhido no Planejamento ou o inferido pela categoria e
+     * pelo nome ({@see TipoDoProduto::efetivo}). A MESMA leitura do
+     * {@see Geracao\RetratoDoCatalogo} e do `PlanejamentoDaFaseService::tipoParaNome`; o
+     * `CombosDaListaNoPadraoDoPlanejamentoTest` confere o nome contra a sugestão.
+     *
+     * @return array{nome: string, plural: string}|null
+     */
+    private function tipoParaNome(EstruturaProduto $produto): ?array
+    {
+        $tipos = [];
+        $paraInferir = [];
+        $slugPorId = [];
+        foreach (EstruturaTipoProduto::query()->orderBy('ordem')->orderBy('id')->get() as $t) {
+            $slugPorId[$t->id] = $t->slug;
+            $tipos[$t->slug] = ['nome' => (string) $t->nome, 'plural' => (string) $t->plural];
+            $paraInferir[$t->slug] = ['palavras' => TipoDoProduto::palavras((string) $t->palavras), 'ordem' => (int) $t->ordem];
+        }
+
+        $ajuste = EstruturaProdutoGeracao::query()->where('company_id', $produto->company_id)->where('produto_id', $produto->id)->first();
+        $escolhido = $ajuste && $ajuste->tipo_id !== null ? ($slugPorId[$ajuste->tipo_id] ?? null) : null;
+        $slug = TipoDoProduto::efetivo($escolhido, TipoDoProduto::inferir($produto->categoria_ml_nome, $produto->nome, $paraInferir), $tipos)['slug'];
+
+        return $slug !== null && isset($tipos[$slug]) ? $tipos[$slug] : null;
     }
 
     // ═══ Validação ══════════════════════════════════════════════════════════

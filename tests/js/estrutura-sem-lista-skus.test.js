@@ -13,8 +13,8 @@ import { textoDaVariacao } from '../../resources/js/lib/portalSubmodulos.js';
 // POR QUE EXISTE: desde 09/10 o cliente vê só Produtos, Planejamento, Precificação e
 // Mapeamento (`VisibilidadeDoMapeamento`). Tela que manda o cliente "para a Lista SKUs"
 // aponta para um lugar que ele não tem — o vazio da Precificação, a frase "cada variação
-// vira uma oferta na Lista SKUs" de Produtos e da ficha. E o "Como funciona" mostrava o
-// padrão antigo de nome/SKU, diferente do que o Planejamento gera.
+// vira uma oferta na Lista SKUs" de Produtos e da ficha. E o "Como funciona" e o combo da
+// Lista mostravam o padrão antigo de nome/SKU, diferente do que o Planejamento gera.
 //
 // As páginas são desenhadas de verdade (React no servidor, imports reais): uma variável
 // sem declarar no caminho do render estoura aqui, não na tela preta (learnings §33).
@@ -228,4 +228,18 @@ test('o "Como funciona" mostra os exemplos no padrão do Planejamento, não no d
     ]) {
         assert.ok(aula.includes(`'${nome}', '${sku}'`), `faltou o exemplo ${nome} · ${sku}`);
     }
+});
+
+// ─── 4. O combo de uma quantidade da Lista pede o nome ao servidor ──────────
+
+test('Lista SKUs: o combo de uma quantidade pede nome e SKU à prévia do Planejamento', () => {
+    const form = lerSemComentarios('resources/js/Components/Portal/Estrutura/FormOferta.jsx');
+    // A mesma prévia do Kit/Combit, com o produto como único item (o servidor resolve a oferta).
+    assert.ok(form.includes('corpoDaSugestaoKit([{ id: base.id, quantidade: qtds[0] }])'));
+    assert.equal((form.match(/route\('portal\.auth\.estrutura\.sugestoes\.montar\.previa'\)/g) ?? []).length, 2, 'combo e kit pela mesma prévia');
+    assert.ok(form.includes('if (! nomeMexido) setNome(data.sugerido.nome);'));
+    // A resposta velha não pisa no que a pessoa digitou: o efeito reage ao "mexido" e se cancela.
+    assert.ok(form.includes('}, [qtdCombo, aberta, skuMexido, nomeMexido]);'));
+    // Até o servidor responder, o SKU `-CB{n}` já aparece (é o mesmo do servidor).
+    assert.ok(form.includes('setSku(`${base.sku}-CB${qtds[0]}`)'));
 });
