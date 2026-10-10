@@ -25,7 +25,7 @@ use Tests\TestCase;
  * Fase 175 Plano 175-02 (§5 da ETAPA-3) — `CriarFaseService` e os helpers de
  * família do `PubProduto`.
  *
- * As duas primeiras baterias são dos helpers PUROS (`proximaFase` /
+ * As duas primeiras baterias são dos helpers PUROS (`faseDaQuantidade` /
  * `proximaQuantidade`): é o que a §8 da spec pede ("funções puras com teste
  * unitário"). Elas não encostam no banco de propósito — a regra "menor N ≥ 2
  * que a família ainda não tem" é aritmética, e aritmética se prova sem fixture.
@@ -41,14 +41,14 @@ class CriarFaseServiceTest extends TestCase
 
     // ═══ Helpers puros do PubProduto (sem banco) ═════════════════════════════
 
-    /** `max(fases) + 1`; família só com a Fase 1 (ou lista vazia) → 2. */
-    public function test_proxima_fase_e_a_maior_mais_um(): void
+    /** Kit N é a Fase N: a fase é DERIVADA da quantidade, não da ordem de criação. */
+    public function test_fase_da_quantidade_e_a_propria_quantidade(): void
     {
-        $this->assertSame(2, PubProduto::proximaFase([]), 'família vazia: o base é a Fase 1, o próximo é 2');
-        $this->assertSame(2, PubProduto::proximaFase([1]), 'só o base: próximo é 2');
-        $this->assertSame(3, PubProduto::proximaFase([1, 2]));
-        $this->assertSame(4, PubProduto::proximaFase([3, 1, 2]), 'lista fora de ordem');
-        $this->assertSame(6, PubProduto::proximaFase([1, 2, 5]), 'buraco na sequência não é reaproveitado: fase é cronológica');
+        $this->assertSame(1, PubProduto::faseDaQuantidade(1), 'o base, de 1 unidade, é a Fase 1');
+        $this->assertSame(2, PubProduto::faseDaQuantidade(2), 'Kit 2 é a Fase 2');
+        $this->assertSame(5, PubProduto::faseDaQuantidade(5), 'Kit 5 é a Fase 5, não a 2ª fase criada');
+        $this->assertSame(1, PubProduto::faseDaQuantidade(0), 'fase nenhuma é menor que a do base');
+        $this->assertSame(1, PubProduto::faseDaQuantidade(-3), 'fase nenhuma é menor que a do base');
     }
 
     /** Menor inteiro ≥ 2 que a família ainda não tem — AQUI o buraco é reaproveitado. */
@@ -187,7 +187,7 @@ class CriarFaseServiceTest extends TestCase
 
     // ═══ CriarFaseService — o kit e o rascunho dele ══════════════════════════
 
-    public function test_kit_nasce_com_as_ancoras_do_base_e_a_proxima_fase(): void
+    public function test_kit_nasce_com_as_ancoras_do_base_e_a_fase_da_quantidade(): void
     {
         $base = $this->baseComRascunho();
 
@@ -195,7 +195,7 @@ class CriarFaseServiceTest extends TestCase
 
         $this->assertSame($base->id, $kit->produto_base_id);
         $this->assertSame(3, $kit->quantidade_kit);
-        $this->assertSame(2, $kit->fase, 'família só com a Fase 1: o kit é a Fase 2');
+        $this->assertSame(3, $kit->fase, 'Kit 3 é a Fase 3: a fase vem da quantidade, não da ordem de criação');
         $this->assertTrue($kit->estoque_calculado);
         $this->assertTrue($kit->ehKit());
         $this->assertSame('CAD-01-KIT3', $kit->sku);
@@ -206,8 +206,44 @@ class CriarFaseServiceTest extends TestCase
         $this->assertSame($base->mlb_empresa_id, $kit->mlb_empresa_id);
         $this->assertSame($base->company_id, $kit->company_id);
 
-        // E o segundo kit da mesma família pega a fase seguinte.
-        $this->assertSame(3, $this->servico()->criar($base->fresh(), $this->dados(4, sku: 'CAD-01-KIT4'))->fase);
+        // E o segundo kit da mesma família também é o degrau da quantidade DELE.
+        $this->assertSame(4, $this->servico()->criar($base->fresh(), $this->dados(4, sku: 'CAD-01-KIT4'))->fase, 'Kit 4 é a Fase 4');
+    }
+
+    /**
+     * O caso que prova o bug: com a fase cronológica este Kit 5 nascia "Fase 2" — o cartão
+     * diria "Kit 5" (via `rotuloFase`) e a Visão geral contaria o MESMO produto no bucket
+     * Fase 2, porque `ProgramasPublicadorService::bucketDaFase()` lê `fase`, não a quantidade.
+     */
+    public function test_primeiro_kit_de_cinco_unidades_nasce_na_fase_5(): void
+    {
+        $base = $this->baseComRascunho();
+
+        $kit = $this->servico()->criar($base, $this->dados(5, sku: 'CAD-01-KIT5'));
+
+        $this->assertSame(5, $kit->fase, 'primeiro kit da família, mas de 5 unidades: Fase 5');
+        $this->assertSame(5, $kit->quantidade_kit);
+    }
+
+    /**
+     * O caso do buraco: `proximaQuantidade` reaproveita o 3 (regra que já existia), e com a
+     * fase cronológica o Kit 3 nascia "Fase 4" — e, como `familia()` ordena por `fase`, ele
+     * apareceria DEPOIS do Kit 4 na tela.
+     */
+    public function test_familia_com_kit_2_e_kit_4_recebe_o_kit_3_na_fase_3_e_em_ordem(): void
+    {
+        $base = $this->baseComRascunho();
+        $this->servico()->criar($base, $this->dados(2));
+        $this->servico()->criar($base->fresh(), $this->dados(4));
+
+        $familia = $base->fresh()->familia();
+        $this->assertSame(3, PubProduto::proximaQuantidade($familia->pluck('quantidade_kit')->all()), 'o buraco de quantidade É reaproveitado');
+
+        $kit3 = $this->servico()->criar($base->fresh(), $this->dados(3));
+        $this->assertSame(3, $kit3->fase, 'Kit 3 é a Fase 3, não a 4ª fase criada');
+
+        $this->assertSame([1, 2, 3, 4], $base->fresh()->familia()->pluck('fase')->all(), 'familia() ordena por fase: o Kit 3 vem antes do Kit 4');
+        $this->assertSame([1, 2, 3, 4], $base->fresh()->familia()->pluck('quantidade_kit')->all(), 'fase e quantidade andam juntas');
     }
 
     public function test_rascunho_do_kit_copia_schema_e_condicoes_e_nasce_sem_historico(): void

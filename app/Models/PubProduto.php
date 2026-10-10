@@ -31,8 +31,8 @@ use Illuminate\Database\QueryException;
  *   Publicador e não vai para o Portal/Mapeamento (decisão 5 do `DECISOES.md`).
  *   Consequência medida: preço nulo do kit NÃO herda da Precificação (ela vem da
  *   oferta), fica realmente vazio e é exigido para conferir/publicar.
- * - `fase` do kit novo = `max(fase da família) + 1`; a coluna é própria para
- *   fases futuras que não sejam kit.
+ * - `fase` é DERIVADA da quantidade (`faseDaQuantidade`): Kit N é a Fase N. A coluna
+ *   existe à parte porque é própria para fases futuras que não sejam kit.
  * - `pubprod_base_fk` é SET NULL (mesma razão do CR-B02): apagar o base deixa o
  *   kit solto COM o histórico de publicação dele.
  *
@@ -129,19 +129,30 @@ class PubProduto extends Model
     }
 
     /**
-     * A fase do próximo produto da família: `max(fase) + 1`. Lista vazia ou família
-     * só com o base → 2. Buraco na sequência NÃO é reaproveitado: fase é cronológica
-     * (e o unique que impede repetição é de `quantidade_kit`, não de `fase`).
+     * O degrau da família: **Kit N é a Fase N**. O base, de 1 unidade, é a Fase 1, e
+     * quantidade inválida (0 ou negativa) cai em 1 — fase nenhuma é menor que a do base.
      *
-     * Pura de propósito (§8 da spec): quem chama passa `familia()->pluck('fase')`.
+     * ═══ Por que deixou de ser cronológica ══════════════════════════════════════
      *
-     * @param  list<int>  $fases
+     * Até 10/10/2026 havia um `proximaFase(array $fases)` que devolvia
+     * `max($fases) + 1` — a ordem de CRIAÇÃO. O resto do módulo nunca leu `fase`
+     * assim, e isso está medido no código, não deduzido:
+     *
+     * - `ProgramasPublicadorService::bucketDaFase()` manda `fase >= 3` para
+     *   `fase3_mais` e trata `fase 2` como o kit;
+     * - `PainelVisaoGeralService` traz o comentário literal *"Rotulado kits, nunca
+     *   Fase 2: `quantidade_kit >= 2` inclui o kit de 3, que é Fase 3"*.
+     *
+     * Com o cronológico, um Kit 5 criado como primeiro kit da família nascia "Fase 2":
+     * o cartão dizia "Kit 5" (via `rotuloFase`) e a Visão geral contava o MESMO produto
+     * no bucket Fase 2. Decisão do usuário em 10/10/2026: *"é metodologia e também
+     * ordem, temos que fazer seguindo a ordem de Fase 1, Fase 2 e assim por diante"*.
+     *
+     * Pura de propósito (§8 da spec): quem chama passa a quantidade do kit.
      */
-    public static function proximaFase(array $fases): int
+    public static function faseDaQuantidade(int $quantidadeKit): int
     {
-        $maior = empty($fases) ? 1 : max(array_map('intval', $fases));
-
-        return max($maior, 1) + 1;
+        return max(1, $quantidadeKit);
     }
 
     /**

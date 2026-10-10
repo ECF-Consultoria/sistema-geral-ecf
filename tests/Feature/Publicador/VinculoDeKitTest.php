@@ -250,7 +250,7 @@ class VinculoDeKitTest extends TestCase
         $combo->refresh();
         $this->assertSame($base->id, (int) $combo->produto_base_id);
         $this->assertSame(2, (int) $combo->quantidade_kit);
-        $this->assertSame(2, (int) $combo->fase, 'fase = max(fase da família) + 1');
+        $this->assertSame(2, (int) $combo->fase, 'fase = quantidade: Kit 2 é a Fase 2');
         $this->assertFalse((bool) $combo->estoque_calculado, '§6: o combo vinculado MANTÉM o próprio estoque');
 
         // Nada do que era do produto mudou (SKU, nome, origem, oferta, âncoras).
@@ -276,6 +276,28 @@ class VinculoDeKitTest extends TestCase
         // republicado algum dia. O anúncio que já está no ar NÃO é atualizado por
         // isso (§7 da ETAPA-3: atualizar o ML não é desta etapa).
         $this->assertSame(2, app(RascunhoRepository::class)->snapshot($rascunhoDoCombo->fresh())->unidadesPorOferta);
+    }
+
+    /**
+     * A fase vem da QUANTIDADE vinculada, não da ordem de criação: antes este vínculo de 5
+     * unidades devolvia `fase: 2` com `rotulo_fase: 'Kit 5'` — dois números do mesmo produto.
+     */
+    public function test_vincular_cinco_unidades_na_familia_sem_kit_nasce_na_fase_5(): void
+    {
+        [$e, $c] = $this->conta();
+        $base = $this->produto($e, $c, 'CAD');
+        $this->rascunhoCompleto($base, 25);
+        $combo = $this->produto($e, $c, 'CAD-CB5', ['sku' => 'CAD-CB5', 'nome' => 'Combo 5 Cadeiras']);
+        $this->rascunhoCompleto($combo, 7);
+
+        $this->actingAs($this->admin())
+            ->putJson($this->url($e, $combo), ['base_id' => $base->id, 'quantidade' => 5])
+            ->assertOk()
+            ->assertJsonPath('produto.fase', 5)
+            ->assertJsonPath('produto.quantidade_kit', 5)
+            ->assertJsonPath('produto.rotulo_fase', 'Kit 5');
+
+        $this->assertSame(5, (int) $combo->fresh()->fase, 'o banco confirma: Kit 5 é a Fase 5');
     }
 
     public function test_vincular_a_base_de_outra_conta_da_404_e_nao_grava(): void

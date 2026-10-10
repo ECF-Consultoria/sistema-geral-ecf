@@ -103,11 +103,13 @@ class VinculoDeKitService
             throw new RegraViolada('VINC-05', 'Este produto já é o base de outras fases. Um kit não pode ter kits.');
         }
 
-        // A família do BASE decide a fase (max + 1) e recusa a quantidade repetida.
+        // A família do BASE recusa a quantidade repetida; a fase vem da QUANTIDADE
+        // vinculada (Kit N é a Fase N), não da ordem de criação.
         $familia = $base->familia();
         $this->recusarQuantidadeRepetida($familia, $quantidade);
 
-        $fase = PubProduto::proximaFase($familia->pluck('fase')->all());
+        // `$quantidade` já passou pelo VINC-03 (>= 2) logo acima.
+        $fase = PubProduto::faseDaQuantidade($quantidade);
 
         try {
             DB::transaction(function () use ($produto, $base, $quantidade, $fase) {

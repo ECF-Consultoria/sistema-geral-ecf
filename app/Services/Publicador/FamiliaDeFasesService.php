@@ -490,6 +490,10 @@ class FamiliaDeFasesService
      * E a quantidade sugerida do base agrupado vem dos Combos aceitos no Planejamento (a menor
      * que a família ainda não tem); `quantidades_do_planejamento` (aditiva) lista as do Portal.
      *
+     * O `numero` é o DEGRAU da quantidade sugerida (`PubProduto::faseDaQuantidade`), nunca
+     * `max(fase) + 1`: numa família com Kit 2 e Kit 4 a sugestão é 3, e o botão tem de dizer
+     * "Criar Fase 3" — que é a fase com que o Kit 3 vai nascer.
+     *
      * @param  Collection<int, PubProduto>  $familia
      * @param  ?array  $estadoDoBase  retorno de `prontidao()` do base
      * @return array{numero:int, quantidade_sugerida:int, habilitado:bool, motivo:?string, quantidades_do_planejamento:list<int>}
@@ -500,9 +504,11 @@ class FamiliaDeFasesService
         $habilitado = $composto === null && in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
         $doPlanejamento = $base !== null && $composto === null ? app(PlanejamentoDaFaseService::class)->quantidadesDoPlanejamento($base) : [];
 
+        $quantidadeSugerida = PlanejamentoDaFaseService::quantidadeSugerida($doPlanejamento, $familia->pluck('quantidade_kit')->all());
+
         return [
-            'numero' => PubProduto::proximaFase($familia->pluck('fase')->all()),
-            'quantidade_sugerida' => PlanejamentoDaFaseService::quantidadeSugerida($doPlanejamento, $familia->pluck('quantidade_kit')->all()),
+            'numero' => PubProduto::faseDaQuantidade($quantidadeSugerida),
+            'quantidade_sugerida' => $quantidadeSugerida,
             'habilitado' => $habilitado,
             'motivo' => match (true) {
                 $composto !== null => PlanejamentoDaFaseService::motivoKit06($composto),

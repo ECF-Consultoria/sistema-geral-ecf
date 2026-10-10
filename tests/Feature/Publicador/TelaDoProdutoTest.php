@@ -266,6 +266,27 @@ class TelaDoProdutoTest extends TestCase
         $this->assertTrue($tela['proxima_fase']['habilitado']);
     }
 
+    /**
+     * O `numero` do botão "Criar Fase N" é o degrau da quantidade sugerida, não `max+1`:
+     * antes a tela oferecia "Criar Fase 5" e criava um Kit 3.
+     */
+    public function test_familia_com_kit_2_e_kit_4_sugere_fase_3_e_nao_5(): void
+    {
+        [$empresa] = $this->conta();
+        $base = $this->base($empresa);
+        $this->rascunho($base, PubRascunho::PUBLISHED);
+        $this->kit($base, 2, 2);
+        $this->kit($base, 4, 4);
+
+        $tela = $this->tela($base->fresh(), $empresa);
+
+        $this->assertSame(3, $tela['proxima_fase']['quantidade_sugerida'], 'o buraco de quantidade é reaproveitado');
+        $this->assertSame(3, $tela['proxima_fase']['numero'], 'o degrau acompanha a quantidade: Fase 3, não 5');
+        $this->assertTrue($tela['proxima_fase']['habilitado']);
+        $this->assertNull($tela['proxima_fase']['motivo']);
+        $this->assertSame([], $tela['proxima_fase']['quantidades_do_planejamento']);
+    }
+
     public function test_chamado_com_o_kit_devolve_a_familia_do_base_com_a_fase_destacada(): void
     {
         [$empresa] = $this->conta();
