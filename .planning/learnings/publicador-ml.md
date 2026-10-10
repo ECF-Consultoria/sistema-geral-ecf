@@ -1099,3 +1099,45 @@ ficha), Planejamento, Precificação, IA, conferência. O que não se deduz do c
   para a pessoa. Se a decisão for insistir, é retentar dias depois (não 3 min) — decisão do usuário.
 - Fechamento: os 3 ativos foram a `closed`; o moderado foi a `inactive` (ver acima). O responsável das alavancas foi
   #1 só durante o teste e voltou a NULL; a tarefa #1 ficou aberta para o usuário ver a tela.
+
+## 22. A fila `high` é de quem espera, e o preparo pela IA a ocupa por horas (10/10/2026)
+
+**Medido no `storage/logs/worker-high.log` da produção em 10/10:**
+
+| Job | Duração |
+|---|---|
+| `SincronizarProdutoDoPortalJob` | ~0,4 s |
+| `PrepararProdutoNoPublicadorJob` | ~0,3 s |
+| `GerarPreparoIaJob` | 53 s a 2 min 20 s |
+| `PublicarRascunhoJob` | ~3 s |
+
+O preparo de UM produto é uma cadeia de 3 a 4 `GerarPreparoIaJob` (título → Modelo → descrição…). Dá 5 a 7 min por
+produto: o "IA em ~7 min" do teste da §21.
+
+**Quem divide a `high`:**
+- São 3 consumidores: `ecf-worker` ×2 (`high,default`) e `ecf-worker-high` ×1 (só `high`).
+- Na mesma fila rodam o código de acesso do Portal (`PortalCodigoDeAcesso`, com o cliente parado esperando), a
+  publicação, o Sincronizar ao salvar, a Clicksign, o warm do Desempenho e o clique do Mapeamento.
+
+**Conta, para 60 produtos importados de uma vez** (60 é o teto do preparo por empresa por dia,
+`preparo_ia.limite_diario_por_empresa`):
+- 60 cadeias × ~5,5 min ≈ 330 min de worker. Divididos por 3, dão **quase 2 h de `high` ocupada**.
+- O que entra na fila nesse tempo espera até ~30 min: ~60 elos na frente × 1,5 min ÷ 3.
+- A cadeia põe o elo seguinte no **fim** da fila. Por isso ela fica com ~1 elo por produto pendente durante quase toda
+  a janela.
+- Duas empresas importando no mesmo dia dobram tudo isso.
+- Já acontece com a planilha. Com o Bling seria igual (seed `261010-integracao-bling-erp.md`, risco 5).
+
+**Proposta (PENDENTE de decisão do usuário, 10/10):** a cadeia do preparo vai para uma fila própria
+(`publicador-ia`), com um programa próprio no supervisor.
+- **Capacidade:** a VPS tem 16 GB (11,6 GB disponíveis) e 4 CPUs; os 6 workers de hoje somam 478 MB (~80 MB cada).
+
+**Ao fazer:**
+- **`Bus::chain(...)->onQueue()` NÃO move elo que declara fila.** `PendingChain` faz
+  `$firstJob->queue = $firstJob->queue ?: $this->queue`, e o `Queueable` faz `$next->queue ?: $this->chainQueue`. O
+  `GerarPreparoIaJob` declara `high` no construtor, e o `AvaliarCriativosAutomaticosJob`, `creative`. Trocar no
+  construtor.
+- **O programa novo do supervisor nasce ANTES do deploy do código.** Job numa fila sem consumidor fica parado, calado.
+  A config do supervisor vive só na VPS (`/etc/supervisor/conf.d/`); ela não está no repositório.
+- **A `creative` (3 workers, quase ociosa: 0 jobs em 10/10, 53 no dia mais cheio da semana) não serve.** Ela é do
+  estúdio de imagens, que é interativo, e a fila é FIFO: o kit de 7 imagens esperaria atrás da IA de texto.
