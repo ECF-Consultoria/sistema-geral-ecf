@@ -2,17 +2,29 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
+use App\Models\EstruturaProdutoGeracao;
 use App\Models\EstruturaProdutoVariacao;
+use App\Models\EstruturaTipoProduto;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
+use App\Models\User;
+use App\Services\Portal\Estrutura\EstruturaOfertaService;
+use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
+use App\Services\Portal\Estrutura\Geracao\NomesSugeridos;
+use App\Services\Portal\Estrutura\Geracao\TipoDoProduto;
+use App\Support\Portal\AtorDoPortal;
 use App\Support\Publicador\Portal\CoresDoGrupo;
 use App\Support\Publicador\Portal\VariantesPorCor;
 use App\Support\Publicador\RascunhoSnapshot;
+use App\Support\Publicador\RegraViolada;
 use App\Support\Publicador\Variacao\ValorEixo;
 use App\Support\Publicador\Variacao\Variante;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Planejamento do Portal × Fase N do Publicador (decisões do usuário de 09/10/2026).
@@ -41,6 +53,9 @@ class PlanejamentoDaFaseService
 {
     /** Os tipos de oferta do Planejamento que juntam unidades (o que não é Fase 1 de ninguém). */
     public const TIPOS_COMPOSTOS = [EstruturaOferta::FASE_COMBO, EstruturaOferta::FASE_KIT, EstruturaOferta::FASE_COMBIT];
+
+    /** `estrutura_ofertas.sku` e o SELLER_SKU das variantes são `string(120)`. */
+    private const MAX_SKU = 120;
 
     public function __construct(private RascunhoRepository $repo) {}
 
@@ -75,6 +90,40 @@ class PlanejamentoDaFaseService
 
         return "Este produto é um {$nome} do Planejamento do Portal, não a Fase 1 de um produto: não dá para criar fases a partir dele. "
             .'Para vender mais unidades, crie a fase no produto de 1 unidade.';
+    }
+
+    // ═══ Quantidade sugerida do "Criar Fase N" (item D) ══════════════════════
+
+    /**
+     * A menor quantidade dos Combos do Planejamento que a família ainda não tem; sem nenhuma, a regra de
+     * sempre (`PubProduto::proximaQuantidade`). Pura.
+     *
+     * @param  list<int>  $doPlanejamento  as quantidades dos Combos do Portal deste produto
+     * @param  list<int>  $daFamilia  `familia()->pluck('quantidade_kit')`
+     */
+    public static function quantidadeSugerida(array $doPlanejamento, array $daFamilia): int
+    {
+        $tomadas = array_map('intval', $daFamilia);
+        $livres = array_values(array_filter(array_map('intval', $doPlanejamento), fn (int $n) => $n >= 2 && ! in_array($n, $tomadas, true)));
+        sort($livres);
+
+        return $livres[0] ?? PubProduto::proximaQuantidade($tomadas);
+    }
+
+    /**
+     * As quantidades dos Combos do Planejamento para o produto do Portal deste base (qualquer cor),
+     * em ordem. Base que não é agrupado não tem Planejamento: lista vazia.
+     *
+     * @return list<int>
+     */
+    public function quantidadesDoPlanejamento(PubProduto $base): array
+    {
+        $produto = $this->produtoAgrupado($base);
+        if ($produto === null) {
+            return [];
+        }
+
+        return array_keys($this->combosPorQuantidade((int) $base->company_id, $this->coresDoProduto((int) $base->company_id, (int) $produto->id)));
     }
 
     // ═══ Leitura do Portal ═══════════════════════════════════════════════════
@@ -250,5 +299,218 @@ class PlanejamentoDaFaseService
         }
 
         return $saida;
+    }
+
+    // ═══ "Criar Fase N" (item D) ═════════════════════════════════════════════
+
+    /**
+     * O que o Planejamento diz sobre a Fase N deste base: para cada variante do rascunho do base que é
+     * uma cor do Portal, a oferta Combo N daquela cor — a que já existe (SKU e preço da Precificação) ou
+     * a que vai nascer no Portal ao confirmar (SKU e nome no padrão do Planejamento, `NomesSugeridos`).
+     *
+     * Null quando o base não é agrupado, não tem rascunho ou nenhuma variante dele é cor do Portal: aí o
+     * "Criar Fase N" segue a regra de antes (decisão 5 do outro dev — SKU `-KIT{N}` só no Publicador).
+     * Nada é gravado aqui.
+     *
+     * @return ?array{produto_id: int, quantidade: int,
+     *     por_variante: array<string, array{variacao_id: int, cor: string, oferta_id: ?int, sku: string, nome: string, componente_id: int, nova: bool, precos: array<string, ?float>}>,
+     *     sem_cor: list<string>}
+     */
+    public function daFase(PubProduto $base, int $n): ?array
+    {
+        $produto = $this->produtoAgrupado($base);
+        $r = $produto !== null ? $base->rascunho : null;
+        if ($produto === null || $r === null || $n < 2) {
+            return null;
+        }
+
+        $companyId = (int) $base->company_id;
+        $cores = $this->coresDoProduto($companyId, (int) $produto->id);
+        if ($cores === []) {
+            return null;
+        }
+        $combos = $this->combosPorQuantidade($companyId, $cores)[$n] ?? [];
+
+        $snap = $this->repo->snapshot($r);
+        $porChave = $this->casar($snap, $cores);
+        if ($porChave === []) {
+            return null;
+        }
+
+        $tipo = null;
+        $tipoLido = false;
+        $porVariante = [];
+        $semCor = [];
+        foreach ($snap->variantes as $v) {
+            if ($v->orfa) {
+                continue;
+            }
+            $variacaoId = $porChave[$v->chave] ?? null;
+            if ($variacaoId === null) {
+                $semCor[] = $v->chave;
+
+                continue;
+            }
+            $cor = $cores[$variacaoId];
+            $combo = $combos[$variacaoId] ?? null;
+            if ($combo !== null) {
+                $porVariante[$v->chave] = ['variacao_id' => $variacaoId, 'cor' => $cor['valor'], ...$combo, 'nova' => false];
+
+                continue;
+            }
+            if (! $tipoLido) {
+                $tipo = $this->tipoParaNome($produto);
+                $tipoLido = true;
+            }
+            $nomeado = NomesSugeridos::combo((string) $produto->nome, $cor['sku'], $cor['valor'] !== '' ? $cor['valor'] : null, $n, $tipo);
+            $porVariante[$v->chave] = [
+                'variacao_id' => $variacaoId, 'cor' => $cor['valor'], 'oferta_id' => null,
+                'sku' => self::skuNoTeto($nomeado['sku'], "-CB{$n}"), 'nome' => mb_substr($nomeado['nome'], 0, 255),
+                'componente_id' => $cor['oferta_id'], 'nova' => true,
+            ];
+        }
+
+        $precos = $this->precosDasOfertas($base, array_values(array_filter(array_column($porVariante, 'oferta_id'))));
+        foreach ($porVariante as $chave => $item) {
+            $porVariante[$chave]['precos'] = $precos[$item['oferta_id'] ?? 0] ?? DadosEfetivosService::precosAnunciados(null);
+        }
+
+        return ['produto_id' => (int) $produto->id, 'quantidade' => $n, 'por_variante' => $porVariante, 'sem_cor' => $semCor];
+    }
+
+    /**
+     * Garante no Portal as ofertas Combo N de cada cor do base e devolve o SKU de cada variante que é
+     * cor do Portal — o que a Fase N grava como SELLER_SKU (o Planejamento é a fonte do SKU).
+     *
+     * Roda DENTRO da transação do `CriarFaseService` (a mesma transação lógica do kit): se o kit não
+     * nascer, as ofertas também não. Idempotente: relê os Combos sob a trava da Company (a mesma do
+     * "Aceitar" do Planejamento, `DecisoesDasSugestoes`) e só cria a cor que ainda não tem — a que o
+     * cliente aceitou entre a prévia e o Confirmar é usada como está. Cria pelo caminho da Lista SKUs
+     * (`EstruturaOfertaService::criar`, regra de composição e registro no histórico do Portal, como
+     * equipe), e varre a espera de anúncios uma vez no fim, com os SKUs novos.
+     *
+     * Sem `$user` (chamada direta, sem pessoa) nada é criado: só as cores que já têm Combo N recebem o SKU.
+     *
+     * @return array<string, string> chave da variante do base → SKU da oferta Combo N daquela cor
+     *
+     * @throws RegraViolada KIT-07 quando o Portal recusa criar uma oferta
+     */
+    public function garantirOfertas(PubProduto $base, int $n, ?User $user): array
+    {
+        $plano = $this->daFase($base, $n);
+        if ($plano === null) {
+            return [];
+        }
+
+        $porVariante = $plano['por_variante'];
+        $novas = array_filter($porVariante, fn (array $i) => $i['nova']);
+        if ($novas !== [] && $user === null) {
+            Log::warning("[Publicador] Criar Fase {$n} do produto {$base->id} sem pessoa: as ofertas Combo {$n} que faltam no Portal não foram criadas.");
+        } elseif ($novas !== []) {
+            $empresa = Company::query()->whereKey($base->company_id)->lockForUpdate()->first();
+            if ($empresa === null) {
+                return [];
+            }
+            $agora = $this->combosPorQuantidade((int) $base->company_id, $this->coresDoProduto((int) $base->company_id, (int) $plano['produto_id']))[$n] ?? [];
+            $ator = AtorDoPortal::daEquipe($user);
+            $ofertas = app(EstruturaOfertaService::class);
+            $criados = [];
+
+            foreach ($novas as $chave => $item) {
+                $existente = $agora[$item['variacao_id']] ?? null;
+                if ($existente !== null) {
+                    $porVariante[$chave] = [...$item, ...$existente, 'nova' => false];
+
+                    continue;
+                }
+                try {
+                    [$oferta] = $ofertas->criar($empresa, [
+                        'sku' => $item['sku'],
+                        'fase' => EstruturaOferta::FASE_COMBO,
+                        'nome' => $item['nome'],
+                        'componentes' => [['id' => $item['componente_id'], 'quantidade' => $n]],
+                    ], $ator, varrerEspera: false);
+                } catch (ValidationException $e) {
+                    $motivo = (string) collect($e->errors())->flatten()->first();
+                    throw new RegraViolada('KIT-07', "O Portal não aceitou criar a oferta Combo {$n} da cor \"{$item['cor']}\" ({$item['sku']}): {$motivo}");
+                }
+                $porVariante[$chave] = [...$item, 'oferta_id' => (int) $oferta->id, 'sku' => (string) $oferta->sku, 'nova' => false];
+                $criados[] = (string) $oferta->sku;
+            }
+
+            if ($criados !== []) {
+                $ofertas->varrerEspera($empresa, $criados);
+                Log::info("[Publicador] Criar Fase {$n} do produto {$base->id}: ".count($criados)." oferta(s) Combo {$n} criada(s) no Portal da empresa {$empresa->id} ("
+                    .implode(', ', $criados).').');
+            }
+        }
+
+        $skus = [];
+        foreach ($porVariante as $chave => $item) {
+            if ($item['oferta_id'] !== null) {
+                $skus[$chave] = $item['sku'];
+            }
+        }
+
+        return $skus;
+    }
+
+    // ═══ Apoio ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Preço anunciado de cada oferta pela Precificação do Portal, numa chamada.
+     *
+     * @param  list<int>  $ofertaIds
+     * @return array<int, array<string, ?float>> oferta_id → listing_type_id → preço
+     */
+    private function precosDasOfertas(PubProduto $base, array $ofertaIds): array
+    {
+        $empresa = $ofertaIds === [] ? null : Company::find($base->company_id);
+        if ($empresa === null) {
+            return [];
+        }
+        $porOferta = app(EstruturaPrecificacaoService::class)->pagina($empresa, $ofertaIds)['por_oferta'] ?? [];
+
+        $saida = [];
+        foreach ($ofertaIds as $id) {
+            $saida[$id] = DadosEfetivosService::precosAnunciados($porOferta[$id] ?? null);
+        }
+
+        return $saida;
+    }
+
+    /**
+     * O tipo do produto (nome e plural) que o Planejamento usaria no nome do Combo: a escolha guardada
+     * vence a inferência pela categoria e pelo nome — a mesma régua do `RetratoDoCatalogo`.
+     *
+     * @return ?array{nome: string, plural: string}
+     */
+    private function tipoParaNome(EstruturaProduto $produto): ?array
+    {
+        $tipos = [];
+        $paraInferir = [];
+        $slugPorId = [];
+        foreach (EstruturaTipoProduto::query()->orderBy('ordem')->orderBy('id')->get() as $t) {
+            $slugPorId[$t->id] = $t->slug;
+            $tipos[$t->slug] = ['nome' => (string) $t->nome, 'plural' => (string) $t->plural];
+            $paraInferir[$t->slug] = ['palavras' => TipoDoProduto::palavras((string) $t->palavras), 'ordem' => (int) $t->ordem];
+        }
+
+        $ajuste = EstruturaProdutoGeracao::query()->where('company_id', $produto->company_id)->where('produto_id', $produto->id)->first();
+        $escolhido = $ajuste && $ajuste->tipo_id !== null ? ($slugPorId[$ajuste->tipo_id] ?? null) : null;
+        $slug = TipoDoProduto::efetivo($escolhido, TipoDoProduto::inferir($produto->categoria_ml_nome, $produto->nome, $paraInferir), $tipos)['slug'];
+
+        return $slug !== null && isset($tipos[$slug]) ? $tipos[$slug] : null;
+    }
+
+    /** SKU no teto da coluna, cortado pelo COMEÇO: o sufixo `-CB{N}` é o que identifica o combo. */
+    private static function skuNoTeto(string $sku, string $sufixo): string
+    {
+        if (mb_strlen($sku) <= self::MAX_SKU) {
+            return $sku;
+        }
+        $semSufixo = str_ends_with($sku, $sufixo) ? mb_substr($sku, 0, mb_strlen($sku) - mb_strlen($sufixo)) : $sku;
+
+        return mb_substr($semSufixo, 0, max(1, self::MAX_SKU - mb_strlen($sufixo))).$sufixo;
     }
 }

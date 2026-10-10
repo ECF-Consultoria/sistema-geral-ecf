@@ -487,25 +487,29 @@ class FamiliaDeFasesService
      * Planejamento × Fase N (09/10/2026): o composto do Planejamento (produto ligado a
      * Combo/Kit/Combit do Portal) nunca ganha fase — fica desabilitado com o motivo do KIT-06,
      * a MESMA recusa do `CriarFaseService` (esconder não é impedir: o servidor recusa também).
+     * E a quantidade sugerida do base agrupado vem dos Combos aceitos no Planejamento (a menor
+     * que a família ainda não tem); `quantidades_do_planejamento` (aditiva) lista as do Portal.
      *
      * @param  Collection<int, PubProduto>  $familia
      * @param  ?array  $estadoDoBase  retorno de `prontidao()` do base
-     * @return array{numero:int, quantidade_sugerida:int, habilitado:bool, motivo:?string}
+     * @return array{numero:int, quantidade_sugerida:int, habilitado:bool, motivo:?string, quantidades_do_planejamento:list<int>}
      */
     private function proximaFase(Collection $familia, ?array $estadoDoBase, ?PubProduto $base = null): array
     {
         $composto = $base !== null ? PlanejamentoDaFaseService::tipoComposto($base) : null;
         $habilitado = $composto === null && in_array($estadoDoBase['chave'] ?? '', ['publicado', 'parcial'], true);
+        $doPlanejamento = $base !== null && $composto === null ? app(PlanejamentoDaFaseService::class)->quantidadesDoPlanejamento($base) : [];
 
         return [
             'numero' => PubProduto::proximaFase($familia->pluck('fase')->all()),
-            'quantidade_sugerida' => PubProduto::proximaQuantidade($familia->pluck('quantidade_kit')->all()),
+            'quantidade_sugerida' => PlanejamentoDaFaseService::quantidadeSugerida($doPlanejamento, $familia->pluck('quantidade_kit')->all()),
             'habilitado' => $habilitado,
             'motivo' => match (true) {
                 $composto !== null => PlanejamentoDaFaseService::motivoKit06($composto),
                 $habilitado => null,
                 default => self::MOTIVO_FASE_1,
             },
+            'quantidades_do_planejamento' => $doPlanejamento,
         ];
     }
 
