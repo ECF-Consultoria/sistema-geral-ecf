@@ -162,7 +162,8 @@ class CriativosAutomaticosTest extends TestCase
         $this->assertSame('incompleto', $s(), 'ficha do Portal incompleta');
         $marca?->update(['valor' => 'ECF']);
 
-        Storage::disk('local')->deleteDirectory('publicador');
+        // Arquivo a arquivo (e não `deleteDirectory`): o disco falso é a mesma pasta para todo phpunit da máquina.
+        Storage::disk('local')->delete($r->imagens()->pluck('caminho')->all());
         $this->assertSame('sem_foto', $s(), 'foto sem arquivo no disco não serve de referência');
 
         $this->assertSame(0, MlAnuncioCriativoKit::query()->count(), 'nenhuma barreira deixou kit para trás');

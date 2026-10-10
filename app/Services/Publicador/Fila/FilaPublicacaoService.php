@@ -177,13 +177,16 @@ final class FilaPublicacaoService
     /** Tira UM produto agendado da fila (o que já começou não sai). */
     public function remover(PubFilaPublicacaoItem $item, User $quem): void
     {
-        if ($item->status !== PubFilaPublicacaoItem::AGENDADO) {
-            throw new RegraViolada('FILA-04', $item->status === PubFilaPublicacaoItem::PUBLICANDO
+        // UPDATE condicional: o agendador pode ter começado este produto agora há pouco.
+        $n = PubFilaPublicacaoItem::query()->whereKey($item->id)->where('status', PubFilaPublicacaoItem::AGENDADO)->update([
+            'status' => PubFilaPublicacaoItem::CANCELADO, 'produto_ativo' => null, 'concluido_em' => now(),
+            'motivo' => mb_substr("Tirado da fila por {$quem->name}.", 0, 500), 'updated_at' => now(),
+        ]);
+        if ($n !== 1) {
+            throw new RegraViolada('FILA-04', $item->fresh()?->status === PubFilaPublicacaoItem::PUBLICANDO
                 ? 'Este produto já está sendo publicado e não sai mais da fila.'
                 : 'Este produto já saiu da fila.');
         }
-        $item->update(['status' => PubFilaPublicacaoItem::CANCELADO, 'produto_ativo' => null, 'concluido_em' => now(),
-            'motivo' => mb_substr("Tirado da fila por {$quem->name}.", 0, 500)]);
         $this->concluirSeVazia($item->fila()->first());
     }
 

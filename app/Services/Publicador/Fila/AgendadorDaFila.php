@@ -300,10 +300,25 @@ final class AgendadorDaFila
     private function iniciar(PubFilaPublicacao $fila, PubFilaPublicacaoItem $item, PubRascunho $r, $quem, array &$conta): bool
     {
         $intervalo = max(1, (int) $fila->intervalo_minutos);
-        DB::transaction(function () use ($fila, $item, $intervalo) {
-            $item->update(['status' => PubFilaPublicacaoItem::PUBLICANDO, 'iniciado_em' => now(), 'motivo' => null]);
+        // Marca `publicando` ANTES do `iniciar()`, e só se a fila continua ativa e o item continua agendado: o
+        // "Cancelar"/"Tirar da fila" da tela pode ter chegado entre a checagem e aqui (UPDATE condicional).
+        $marcou = DB::transaction(function () use ($fila, $item, $intervalo) {
+            if (! PubFilaPublicacao::query()->whereKey($fila->id)->where('status', PubFilaPublicacao::ATIVA)->lockForUpdate()->exists()) {
+                return false;
+            }
+            $n = PubFilaPublicacaoItem::query()->whereKey($item->id)->where('status', PubFilaPublicacaoItem::AGENDADO)
+                ->update(['status' => PubFilaPublicacaoItem::PUBLICANDO, 'iniciado_em' => now(), 'motivo' => null, 'updated_at' => now()]);
+            if ($n !== 1) {
+                return false;
+            }
             $fila->update(['proximo_em' => now()->addMinutes($intervalo), 'iniciada_em' => $fila->iniciada_em ?? now()]);
+
+            return true;
         });
+        if (! $marcou) {
+            return false;
+        }
+        $item->refresh();
 
         try {
             $p = $this->publicacoes->iniciar($r, AtorDoPortal::daEquipe($quem), cienteDosAvisos: (bool) $item->ciente);
@@ -331,9 +346,18 @@ final class AgendadorDaFila
 
             return false;
         } catch (\Throwable $e) {
+            Log::error("[Publicador] Fila {$fila->id}: o início da publicação do produto {$item->produto_id} quebrou: {$e->getMessage()}");
+            // A publicação pode ter nascido antes da quebra (ex.: o despacho do Job falhou): o item a acompanha, e o
+            // fechamento (ou a pausa dos 40 min) resolve. Sem publicação, nada saiu: falhou e a fila segue.
+            $criada = $item->iniciado_em === null ? null : PubPublicacao::query()->where('rascunho_id', $r->id)
+                ->where('iniciada_em', '>=', $item->iniciado_em->copy()->subSeconds(5))->latest('id')->first();
+            if ($criada !== null) {
+                $item->update(['publicacao_id' => $criada->id]);
+
+                return true;
+            }
             $fila->update(['proximo_em' => now()]);
             $this->finalizar($item, PubFilaPublicacaoItem::FALHOU, 'Não foi possível começar a publicação: tente agendar de novo.');
-            Log::error("[Publicador] Fila {$fila->id}: o início da publicação do produto {$item->produto_id} quebrou: {$e->getMessage()}");
 
             return false;
         }

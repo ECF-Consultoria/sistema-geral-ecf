@@ -357,6 +357,36 @@ class FilaDePublicacaoTest extends TestCase
         $this->assertSame(PubFilaPublicacaoItem::PUBLICADO, PubFilaPublicacaoItem::query()->where('produto_id', $a->id)->sole()->status);
     }
 
+    public function test_corrida_entre_a_tela_e_o_agendador_nunca_publica_o_que_saiu_da_fila(): void
+    {
+        [$a, $b] = $this->cadeiras;
+        $this->conferirTodas([$a, $b]);
+        $this->agendar([$a, $b])->assertCreated();
+
+        // A tela leu o item AGENDADO; o agendador o começou antes do clique "Tirar da fila" chegar.
+        $lido = $this->itemDe($a);
+        PubFilaPublicacaoItem::query()->whereKey($lido->id)->update(['status' => PubFilaPublicacaoItem::PUBLICANDO]);
+        try {
+            app(\App\Services\Publicador\Fila\FilaPublicacaoService::class)->remover($lido, $this->admin);
+            $this->fail('tirou da fila um produto que já estava publicando');
+        } catch (\App\Support\Publicador\RegraViolada $e) {
+            $this->assertSame('Este produto já está sendo publicado e não sai mais da fila.', $e->getMessage());
+        }
+        $this->assertSame(PubFilaPublicacaoItem::PUBLICANDO, $lido->fresh()->status);
+        $this->assertSame($a->id, (int) $lido->fresh()->produto_ativo);
+
+        // O agendador checou o B; a fila foi cancelada antes de ele marcar `publicando`: não começa nada.
+        $fila = $this->fila();
+        $doB = $this->itemDe($b);
+        PubFilaPublicacao::query()->whereKey($fila->id)->update(['status' => PubFilaPublicacao::CANCELADA, 'conta_ativa' => null]);
+        $agendador = app(\App\Services\Publicador\Fila\AgendadorDaFila::class);
+        $iniciar = (new \ReflectionMethod($agendador, 'iniciar'))->getClosure($agendador);
+        $conta = ['fechados' => 0, 'iniciados' => 0, 'revisar' => 0, 'pausadas' => 0, 'concluidas' => 0];
+        $this->assertFalse($iniciar($fila, $doB, $this->rascunhoDe($b), $this->admin, $conta));
+        $this->assertSame(PubFilaPublicacaoItem::AGENDADO, $doB->fresh()->status);
+        $this->assertSame(0, $this->publicacoes());
+    }
+
     public function test_uma_fila_viva_por_conta_e_um_produto_numa_fila_so(): void
     {
         [$a, $b] = $this->cadeiras;
