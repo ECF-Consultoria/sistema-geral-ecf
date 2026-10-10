@@ -1482,3 +1482,38 @@ pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não s
   Mesas para PC (MLB439418), onde o catálogo traz 5 marcas — com `value_type: string` (a plataforma aceita outra).
   `FichaTecnicaDaCategoria::ID_MARCA` vira `texto` sempre; as opções vão em `sugestoes` (um `<datalist>` no
   `CampoFichaTecnica`). Os outros campos com opção continuam "só escolhe da lista".
+
+## 43. Excluir produtos inteiros e a metodologia à vista no "Montar à mão" (10/10/2026)
+
+**Excluir produtos (`ExclusaoDeProdutos`, rotas `produtos.exclusao.previa` e `produtos.exclusao`).** Pedido do
+usuário para limpar os produtos de teste. Antes só existia excluir variação por variação, dentro da ficha.
+
+- **Não há regra nova por baixo.** Cada variação sai por `ProdutoCadastroService::excluirVariacao`, e cada oferta
+  montada por `EstruturaOfertaService::excluir`, tudo numa transação só.
+- **A diferença para a variação é decisão do usuário.** A exclusão de variação (D-22) BLOQUEIA quem é componente de
+  combo ou kit. A de produto leva as ofertas montadas JUNTO. Componente é sempre oferta simples, então a cascata tem
+  um nível só; as montadas saem primeiro, porque a FK `eoc_componente_fk` é a única `restrict` do caminho.
+- **Dois passos, de propósito.** A prévia diz o que sai junto, e a exclusão só segue com as montadas que a pessoa
+  VIU (`montadas` no corpo). Apareceu outra no meio do caminho: 422 em `montadas`, e a janela mostra a lista de agora.
+- **O item que a equipe já tinha do outro lado continua lá, solto (D27).** O Portal não o apaga; isso é do
+  "Excluir" do Publicador (learnings publicador-ml §23).
+- **Id de outra empresa conta como id que não existe:** fica de fora e entra em `nao_encontrados`. Se nenhum é da
+  empresa, responde 404.
+- **`em_uso`** junta os dois sinais (anúncio do módulo antigo ligado à oferta, ou item do Publicador ligado à oferta
+  ou ao produto) numa frase que não revela nada: "já está em uso pela equipe da ECF".
+
+**Três gates de teste que pegam quem mexer nessas telas:**
+- **Sigilo barra classe de estilo.** O `PROIBIDO` dos testes de sigilo tem `\bMLB?\b` sem distinção de caixa, e
+  `className="ml-auto"` casa. Em arquivo novo do Portal, alinhe com `justify-between` ou `mr-auto`.
+- **"Nada vermelho" nos cartões** (`estrutura-produtos-lista.test.js`, T-167-79): `PecasDoProduto`, os dois cartões e
+  a `ListaProdutos` não podem ter classe `red-N`. O "Excluir produto" do menu ⋮ é neutro; o vermelho fica na janela
+  de confirmação e na barra da seleção.
+- **A ficha conta as saídas.** `estrutura-produtos-ficha.test.js` exige exatamente 3 `irParaLista(`. A exclusão do
+  produto e a da última variação saem pela mesma `sairComProdutoExcluido`.
+
+**"Montar à mão" (`MontarKitAMao`).** O usuário disse que a criação manual "não tinha a metodologia de combo, kit e
+combit". O servidor já classificava certo pela composição (`RegrasDaMontagem::fase`, a regra da Lista SKUs), e as 6
+ofertas montadas da #459 estavam com o tipo certo. O problema era só de tela: tudo se chamava "Montar kit" e o tipo
+aparecia num selo pequeno da prévia. Agora o título e os botões dizem "combo, kit ou combit", há uma legenda fixa dos
+três tipos (Fase 2, 3 e 4, com as palavras do "Como funciona") que acende o tipo da composição pela `fase` que o
+servidor devolve, e o botão diz o que nasce ("Criar Combit"). Nenhuma regra foi para o navegador.
