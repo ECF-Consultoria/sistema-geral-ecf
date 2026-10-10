@@ -1277,6 +1277,7 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
 - **Descrição do produto** (`estrutura_produtos.descricao`) segue o sigilo da 167: nenhum texto do campo fala de Mercado
   Livre, anúncio ou publicar (o Publicador a lê, o cliente não sabe).
 - **Sem coluna na planilha-modelo (D-14):** estoque e descrição só entram pela ficha na tela, não pela importação XLSX.
+  **Superado em 09/10/2026** — o modelo v2 tem as duas colunas; ver §39.
 
 ## 38. Ficha do Portal = régua do editor do Publicador, e "Não se aplica" (08/10/2026)
 
@@ -1347,3 +1348,55 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
     A escolha na tela (`vinculos` no `useFichaProduto`) vence o derivado; marcada, trava C/L/A e acompanha as mudanças do
     produto (`seguirMedidasDoProduto`, puro). O peso do volume continua obrigatório e editável: marcar copia o peso do
     produto se houver; depois só acompanha enquanto ele ainda for a cópia. Recarregar a página volta ao derivado.
+
+## 39. Planilha de produtos v2: o modelo, a planilha baixada e as categorias em lote (09/10/2026)
+
+Trabalho direto (sem GSD), decisões do usuário de 09/10: o cliente baixa e sobe SÓ o modelo de produtos, sem nenhum
+termo da plataforma; a 3Planejamento inteira continua sendo entregável da ECF. O que não se deduz do código:
+
+- **A planilha real, medida (só contagens):** 70 variações / 56 produtos / 0 erros; Variação ordinal ("1" 48, "2" 14,
+  "3" 1, "única" 7) → 14 produtos com mais de uma variação e NENHUMA com nome; 24 nomes de categoria para 56 produtos.
+  Sem nome, `CoresDoGrupo` (régua do Sincronizar) tira as 2ªs cores do produto. A prévia agora diz isso num aviso só,
+  neutro ("dê nome a cada variação (ex.: a cor) para elas ficarem juntas no mesmo produto"), calculado pela MESMA
+  `CoresDoGrupo::separar` sobre como o produto vai ficar (arquivo + o que já está gravado).
+- **Modelo v2 (`ModeloProdutosXlsx`, 14 colunas):** Ref* | Produto (grupo)* | Tipo de variação | Variação (nome) | Nome do
+  produto* | Família | Ambiente(s) | Categoria | Nº volumes | Volumes | Peso total | Custo | Estoque | Descrição; abas
+  Produtos, Instruções e Listas (oculta). **O leitor casa pelo NOME e a ordem dos casos importa:** "Produto (grupo)"
+  tem de vir antes de "Produto …" (o nome na 3Planejamento) e "Tipo de variação" antes de "Variação". O arquivo antigo
+  ("Grupo (anúncio)", "Categoria ML", ordinal) entra pela mesma regra — `ModeloEImportacaoTest` monta os arquivos com os
+  11 cabeçalhos ANTIGOS de propósito, é a prova de compatibilidade. A linha de exemplo do modelo antigo também é ignorada.
+- **Com o Tipo preenchido, a Variação é o nome ao pé da letra.** Sem isso "220" de Voltagem virava `ordem` 220. Sem o
+  Tipo vale a regra antiga (1/2/única = posição). Tipo fora da lista vira "Outro" com aviso, nunca erro.
+- **Estoque do Excel chega como double (10.0):** o normalizador só aceita inteiro em texto; por isso `estoque` está nos
+  `TEXTUAIS` do leitor (10.0 → "10"; 2,5 → "2.5" → erro de unidades inteiras). 0 continua ≠ vazio.
+- **Descrição é do produto:** grava pelo MESMO `DescricaoDoProduto` da ficha, dentro do `gravarLinhas` (só a 1ª linha do
+  produto). O importador leva para a 1ª linha a primeira descrição que aparecer nas linhas do produto — quem escreveu na
+  2ª não perde. Descrição que muda sozinha conta como "atualizada" e agenda o `PreparoIaAgenda`.
+- **Baixar meus produtos (`/produtos/exportar`) faz ida e volta sem mudança:** medido na planilha real (importar →
+  baixar → prévia = 70 "sem mudança"). A categoria sai pelo NOME (o id nunca sai, e nome não rebaixa id — BE-CR-02);
+  produto sem código próprio sai com a Ref da 1ª variação no grupo, e o cadastro em MODO_IMPORTACAO aceita grupo = Ref
+  de uma variação cadastrada (só se nenhum produto tiver aquele código).
+- **Categorias em lote:** a prévia agrupa pelo nome digitado (sem caixa/acento) por PRODUTO, fora os que já têm id; a
+  tela pede as sugestões por `/categorias/sugerir-nomes` (10 por pedido, 50 nomes por prévia, cache de 7 dias por nome
+  só quando ACHA). A confirmação vai junto do arquivo (`categorias[{texto,id}]`) e o servidor descarta id que não é folha.
+  O seletor é o `PickerCategoria` dentro de um Popover do Radix DENTRO do Dialog: provado no navegador que o clique não
+  fecha a janela e que o Esc fecha só o seletor (as escolhas ficam).
+- **Validação por intervalo some ao reler com o PhpSpreadsheet:** ele espalha `C2:C1001` em mil validações por célula.
+  O arquivo está certo; teste de validação lê o XML da aba (`PlanilhaDeProdutosV2Test::validacoesDoArquivo`).
+- **Fotos em lote (`FotosEmLoteService`, rotas `fotos/previa` e `fotos`):** `Ref_número.jpg`. Quem decide a variação é o
+  SERVIDOR (a prévia recebe só os nomes): o nome inteiro que já é Ref vence ("MESA_2.jpg" é da Ref MESA_2 se ela existe),
+  senão a Ref antes do ÚLTIMO "_". Grava pelo `VariacaoImagensService::enviar` de sempre, por variação, na ordem do número e
+  DEPOIS das fotos que ela já tem, cortando no teto (12). O MIME é conferido arquivo por arquivo ANTES do `enviar`, que é
+  tudo-ou-nada por variação: sem isso um .jpg falso derrubava as outras fotos da mesma cor. A tela manda remessas de 8
+  arquivos / 8 MB e espera no 429 (`Retry-After`). O 413 do `bootstrap/app.php` só cobre a rota por variação; aqui a tela
+  trata o 413 pelo `avisosDoErro`.
+- **Ficha técnica pela planilha (`PlanilhaDasFichasTecnicas` + `ImportadorFichasTecnicas`, aba "Ficha técnica" da janela
+  Importar planilha):** uma aba por categoria confirmada, colunas = campos da categoria ("*" no obrigatório, unidade no
+  cabeçalho), listas na aba oculta. Volta casando a LINHA pelo "Produto (grupo)" (código ou Ref) e a COLUNA pelo NOME do
+  campo na definição ATUAL (o nome da aba não importa). O `gravar()` da ficha SUBSTITUI e recusa a ficha inteira quando
+  falta obrigatório — por isso a planilha usa `gravarParcial` (mesma `normalizar`, nunca apaga, o inválido volta listado,
+  o obrigatório que falta vai em `faltam`). O campo-eixo do produto (a Cor de quem tem cores) é ignorado em silêncio.
+- **Mensagens do arquivo:** `mimes:xlsx` sem mensagem própria mostrava a chave crua `validation.mimes` ao cliente nas
+  importações; agora é `MENSAGENS_DO_ARQUIVO` no controller.
+- **Ainda fala da plataforma (fora deste trabalho):** a página da lista diz "Consultar fretes no Mercado Livre" e
+  "Conectando sua conta do Mercado Livre" (copy da 167, §34). Mudar pede decisão do usuário.
