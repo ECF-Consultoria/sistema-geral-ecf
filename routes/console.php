@@ -546,3 +546,13 @@ Schedule::command('demandas-dev:buscar-gravacoes')
     ->everyThirtyMinutes()
     ->name('demandas-dev-buscar-gravacoes')
     ->withoutOverlapping();
+
+// Publicador — promoção automática pós-publicação (10/10/2026, learnings publicador-ml §19). O
+// desconto individual dura no máximo 14 dias: o ciclo ativo cujo fim passou vira o seguinte (de hoje a
+// hoje+13) se o anúncio continua ativo e com o mesmo preço; preço mudado ou anúncio encerrado encerram.
+// 00:05 de São Paulo: o ciclo anterior acabou às 23:59:59 de ontem. Também reenvia Job perdido.
+Schedule::command('publicador:promocoes-renovar')
+    ->dailyAt('00:05')
+    ->timezone('America/Sao_Paulo')
+    ->name('publicador-promocoes-renovar')
+    ->withoutOverlapping();
