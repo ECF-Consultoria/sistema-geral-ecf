@@ -2,6 +2,7 @@
 
 namespace App\Services\Publicador;
 
+use App\Jobs\Publicador\AvaliarCriativosAutomaticosJob;
 use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
 use App\Jobs\Publicador\PreencherRascunhoDoPortalJob;
@@ -15,6 +16,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
+use App\Services\Publicador\Criativos\CriativosAutomaticosService;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
 use App\Support\Publicador\NaFilaDePublicacao;
@@ -143,10 +145,33 @@ class PreparoIaDoRascunhoService
             if ($pub !== null) {
                 $situacao = $this->avaliarIa($pub);
                 Log::info("[Publicador] Preparo pela IA: produto {$pub->id} ({$pub->nome}) da empresa {$company->id} — {$situacao}.");
+                $this->criativosSemCadeia($pub, $situacao);
             }
         }
 
         return 'pronto';
+    }
+
+    /**
+     * 10/10/2026 — imagens por IA automáticas sem cadeia de texto: o texto já estava em dia (ou a cota de texto
+     * acabou), mas as fotos podem ter chegado agora. Só com o gatilho ligado para a empresa; o Job confere TUDO de
+     * novo (`CriativosAutomaticosService::avaliar`). Incompleto, intocável e kit da Fase N nem entram.
+     */
+    private function criativosSemCadeia(PubProduto $pub, string $situacao): void
+    {
+        if (! in_array($situacao, ['em_dia', 'limite'], true) || ! $this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
+            return;
+        }
+        $rascunhoId = PubRascunho::where('produto_id', $pub->id)->value('id');
+        if ($rascunhoId !== null) {
+            AvaliarCriativosAutomaticosJob::dispatch((int) $rascunhoId);
+        }
+    }
+
+    /** Resolvido só quando precisa: o serviço de imagens lê a `fichaCompleta` DAQUI (sem ciclo no construtor). */
+    private function criativos(): CriativosAutomaticosService
+    {
+        return app(CriativosAutomaticosService::class);
     }
 
     /**
@@ -206,6 +231,10 @@ class PreparoIaDoRascunhoService
         $jobs = [];
         foreach ($etapas as $i => $e) {
             $jobs[] = new GerarPreparoIaJob((int) $r->id, $e, $hash, restantes: array_values(array_slice($etapas, $i + 1)));
+        }
+        // 10/10/2026 — imagens por IA automáticas (DESLIGADAS por padrão): com o texto pronto, o último elo avalia.
+        if ($this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
+            $jobs[] = new AvaliarCriativosAutomaticosJob((int) $r->id);
         }
         Bus::chain($jobs)->onQueue('default')->dispatch();
 
