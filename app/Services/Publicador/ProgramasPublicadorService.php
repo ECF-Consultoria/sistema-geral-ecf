@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Contracts\ContaMercadoLivre;
 use App\Models\Company;
+use App\Models\EstruturaOferta;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\PubProduto;
@@ -557,6 +558,10 @@ class ProgramasPublicadorService
      * agrupado entra no rascunho pelo preenchimento, não como produto novo. Uma regra só para a lista de
      * empresas e para a situação da empresa (review 172 WR-08), senão as duas telas se contradizem.
      *
+     * Planejamento × Fase N (09/10/2026): a oferta Combo cujo componente é a cor de um produto já
+     * agrupado também está coberta — ela é a variante daquela cor no Kit N da família, ou aguarda o
+     * "Criar Fase N"; o Sincronizar não a traria como produto, então não é "oferta nova".
+     *
      * @param  list<int>  $companyIds
      * @return Collection<int, int> company_id → ofertas cobertas
      */
@@ -576,6 +581,16 @@ class ProgramasPublicadorService
                         ->join('pub_produtos as pg', 'pg.estrutura_produto_id', '=', 'epv.produto_id')
                         ->whereColumn('epv.id', 'eo.variacao_id')
                         ->whereColumn('pg.company_id', 'eo.company_id');
+                })->orWhereExists(function ($s) {
+                    // ⚠️ `eo.fase` é o TIPO da oferta do Portal, qualificado (não é `pub_produtos.fase`).
+                    $s->select(DB::raw(1))->from('estrutura_oferta_componentes as eoc')
+                        ->join('estrutura_ofertas as ek', 'ek.id', '=', 'eoc.componente_id')
+                        ->join('estrutura_produto_variacoes as ekv', 'ekv.id', '=', 'ek.variacao_id')
+                        ->join('pub_produtos as pk', 'pk.estrutura_produto_id', '=', 'ekv.produto_id')
+                        ->whereColumn('eoc.oferta_id', 'eo.id')
+                        ->where('eo.fase', EstruturaOferta::FASE_COMBO)
+                        ->whereColumn('ek.company_id', 'eo.company_id')
+                        ->whereColumn('pk.company_id', 'eo.company_id');
                 });
             })
             ->selectRaw('eo.company_id as company_id, COUNT(*) as total')
