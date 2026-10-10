@@ -1079,3 +1079,14 @@ ficha), Planejamento, Precificação, IA, conferência. O que não se deduz do c
 - **Marca em lista fechada**: em Escrivaninhas (MLB193946) e Mesas para PC (MLB439418) o BRAND vem com `values` (5
   marcas) e o Portal só oferece lista onde há opções — o cliente não consegue informar a marca dele. Decisão pendente.
 - Fila: ver §16 (a `default` travada pelo Adman/Acervo atrasou o produto e a IA; Jobs do fluxo foram para a `high`).
+- **Publicação real (10/10, 13:28, autorizada pelo usuário, depois do deploy `b7c00ac5`):** cadeira E2E (rascunho 30)
+  com título de teste e estoque 1, pela FILA (rodada de 1): 4 anúncios criados em segundos (MLB7784252490/…311616
+  Clássico, …252514/…241448 Premium; o ML acrescenta a cor no fim do título), tarefa de alavancas #1 com prazo 13/10
+  (pulou o feriado de 12/10) e aviso no sino, 4 ciclos de promoção agendados para 3 min depois. O Premium Cinza caiu em
+  `DOMAIN` (foto desenhada) no 1º minuto; a promoção dele esperou e, com o anúncio encerrado, cancelou sozinha.
+- **Promoção automática em anúncio NOVO não pega:** os 3 ativos voltaram `recusada` — "No candidates found for item";
+  `GET /seller-promotions/items/{id}?app_version=v2` = `[]` e a conta não tinha nenhuma campanha. O ML não oferece
+  desconto para o anúncio recém-criado; hoje a recusa é final e o item "central_promocao" da tarefa fica pendente
+  para a pessoa. Se a decisão for insistir, é retentar dias depois (não 3 min) — decisão do usuário.
+- Fechamento: os 3 ativos foram a `closed`; o moderado foi a `inactive` (ver acima). O responsável das alavancas foi
+  #1 só durante o teste e voltou a NULL; a tarefa #1 ficou aberta para o usuário ver a tela.
