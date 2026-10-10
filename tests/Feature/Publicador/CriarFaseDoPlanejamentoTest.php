@@ -199,6 +199,20 @@ class CriarFaseDoPlanejamentoTest extends TestCase
         $this->assertSame($azul->id, EstruturaOferta::where('sku', 'AZUL-DO-CLIENTE')->value('id'));
     }
 
+    public function test_garantir_ofertas_nao_le_a_precificacao_com_as_travas_seguradas(): void
+    {
+        $grupo = $this->grupoComRascunho();
+        $this->aceitarCombos(2, ['Azul']);
+        $this->mock(\App\Services\Portal\Estrutura\EstruturaPrecificacaoService::class, fn ($m) => $m->shouldNotReceive('pagina'));
+
+        $skus = DB::transaction(fn () => app(PlanejamentoDaFaseService::class)->garantirOfertas($grupo->fresh(), 2, $this->equipeP));
+
+        $valores = array_values($skus);
+        sort($valores);
+        $this->assertSame(['CAD-AZ-CB2', 'CAD-BR-CB2', 'CAD-PT-CB2'], $valores);
+        $this->assertCount(3, $this->combos());
+    }
+
     public function test_segunda_criacao_do_mesmo_kit_e_recusada_e_nao_cria_oferta(): void
     {
         $grupo = $this->grupoComRascunho();

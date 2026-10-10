@@ -312,11 +312,15 @@ class PlanejamentoDaFaseService
      * "Criar Fase N" segue a regra de antes (decisão 5 do outro dev — SKU `-KIT{N}` só no Publicador).
      * Nada é gravado aqui.
      *
+     * `$comPrecos = false` pula a Precificação (os preços saem nulos): é o que `garantirOfertas` usa,
+     * dentro da transação do kit, para não segurar as travas do rascunho e da Company montando o
+     * conjunto da empresa inteira por um número que ninguém grava.
+     *
      * @return ?array{produto_id: int, quantidade: int,
      *     por_variante: array<string, array{variacao_id: int, cor: string, oferta_id: ?int, sku: string, nome: string, componente_id: int, nova: bool, precos: array<string, ?float>}>,
      *     sem_cor: list<string>}
      */
-    public function daFase(PubProduto $base, int $n): ?array
+    public function daFase(PubProduto $base, int $n, bool $comPrecos = true): ?array
     {
         $produto = $this->produtoAgrupado($base);
         $r = $produto !== null ? $base->rascunho : null;
@@ -370,7 +374,7 @@ class PlanejamentoDaFaseService
             ];
         }
 
-        $precos = $this->precosDasOfertas($base, array_values(array_filter(array_column($porVariante, 'oferta_id'))));
+        $precos = $comPrecos ? $this->precosDasOfertas($base, array_values(array_filter(array_column($porVariante, 'oferta_id')))) : [];
         foreach ($porVariante as $chave => $item) {
             $porVariante[$chave]['precos'] = $precos[$item['oferta_id'] ?? 0] ?? DadosEfetivosService::precosAnunciados(null);
         }
@@ -397,7 +401,7 @@ class PlanejamentoDaFaseService
      */
     public function garantirOfertas(PubProduto $base, int $n, ?User $user): array
     {
-        $plano = $this->daFase($base, $n);
+        $plano = $this->daFase($base, $n, comPrecos: false);
         if ($plano === null) {
             return [];
         }
