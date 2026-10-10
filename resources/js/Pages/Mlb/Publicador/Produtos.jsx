@@ -489,6 +489,7 @@ export default function Produtos({
     const [resumo, setResumo] = useState(null); // resumo do preenchimento dos rascunhos (172-12)
     const resumoPronto = useRef(false);
     const [absorvidosDoClique, setAbsorvidosDoClique] = useState(0); // linhas antigas de cor juntadas ao grupo
+    const [aguardandoDoClique, setAguardandoDoClique] = useState(0); // Combos do Planejamento sem o kit da Fase N (09/10)
     const aoLerRef = useRef(null);
     const [acompanhando, setAcompanhando] = useState(false);
     // O acompanhamento mora na PÁGINA (review 172 CR-01): o botão do estado vazio desmonta quando a
@@ -700,22 +701,26 @@ export default function Produtos({
         acompanhamento.current.cancelar();
         setResumo(null);
         setAbsorvidosDoClique(0);
+        setAguardandoDoClique(0);
     }
 
     function aoConcluirSync(json) {
         resumoPronto.current = false;
         // Os avisos do clique (`json.avisos`) não vão para a tela (09/10): o servidor os registra no log.
         const absorvidos = Number(json?.absorvidos ?? 0);
+        const aguardandoBruto = Number(json?.combos_aguardando_fase ?? 0);
+        const aguardando = Number.isFinite(aguardandoBruto) && aguardandoBruto > 0 ? Math.trunc(aguardandoBruto) : 0;
         setAbsorvidosDoClique(absorvidos);
+        setAguardandoDoClique(aguardando);
         if (json?.pedido) {
             setResumo({ status: 'preenchendo', total: json.preenchendo ?? 0, concluidos: 0 });
             acompanhamento.current.acompanhar(json.pedido);
         } else {
             acompanhamento.current.cancelar();
-            // Sem nada a preencher, só as linhas antigas juntadas ainda precisam aparecer.
-            setResumo(absorvidos > 0 ? { status: 'pronto', so_avisos: true } : null);
+            // Sem nada a preencher, só as linhas antigas juntadas (e os Combos aguardando) ainda precisam aparecer.
+            setResumo(absorvidos > 0 || aguardando > 0 ? { status: 'pronto', so_avisos: true } : null);
         }
-        const texto = json?.criados > 0 || absorvidos > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
+        const texto = json?.criados > 0 || absorvidos > 0 || aguardando > 0 ? json.mensagem : 'Nada novo: todos os produtos do Portal já estão aqui.';
         setStatus({ tipo: 'ok', texto });
         setNovos(new Set(json?.ids ?? []));
         setRecarregando(true);
@@ -786,7 +791,7 @@ export default function Produtos({
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
-                <ResumoDoSincronizar resumo={resumo} absorvidos={absorvidosDoClique} onFechar={fecharResumo} />
+                <ResumoDoSincronizar resumo={resumo} absorvidos={absorvidosDoClique} aguardando={aguardandoDoClique} onFechar={fecharResumo} />
 
                 {/* Faixa de sugestões de kit, acima do card: o × esconde até recarregar. */}
                 {faixaDeSugestoes && comSugestao.length > 0 && (

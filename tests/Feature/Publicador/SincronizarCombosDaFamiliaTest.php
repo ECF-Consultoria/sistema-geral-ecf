@@ -333,4 +333,18 @@ class SincronizarCombosDaFamiliaTest extends TestCase
         $this->assertSame(0, PubProduto::where('company_id', $b->id)->count());
         $this->assertSame(0, $r['combos_aguardando_fase']);
     }
+
+    public function test_o_clique_conta_no_resumo_os_combos_aguardando_a_fase_n(): void
+    {
+        $this->aceitarCombos(2);
+
+        $json = $this->actingAs($this->equipeP)
+            ->postJson('/mlb/anuncios/publicador/empresas/empresa-'.$this->mlbP->id.'/sincronizar')
+            ->assertOk()->json();
+
+        $this->assertSame(3, $json['combos_aguardando_fase']);
+        $this->assertSame(0, $json['combos_na_fase']);
+        $this->assertSame(0, $json['combos_absorvidos']);
+        $this->assertStringContainsString('3 combos do Planejamento aguardam o "Criar Fase" do produto.', $json['mensagem']);
+    }
 }

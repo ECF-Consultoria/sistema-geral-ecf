@@ -208,7 +208,8 @@ test('ResumoDoSincronizar — mostra as linhas juntadas; sem elas, nada muda', a
 test('Produtos.jsx — guarda os absorvidos do clique, abre o painel com eles e limpa ao fechar', () => {
     const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
     assert.match(fonte, /const absorvidos = Number\(json\?\.absorvidos \?\? 0\)/);
-    assert.match(fonte, /setResumo\(absorvidos > 0 \? \{ status: 'pronto', so_avisos: true \} : null\)/);
+    // Planejamento × Fase N (09/10): os Combos aguardando a Fase N também abrem o painel sem nada a preencher.
+    assert.match(fonte, /setResumo\(absorvidos > 0 \|\| aguardando > 0 \? \{ status: 'pronto', so_avisos: true \} : null\)/);
     // 09/10: os avisos do clique não vão para a tela.
     assert.doesNotMatch(fonte, /avisosDoClique/);
     assert.match(fonte, /absorvidos=\{absorvidosDoClique\}/);
@@ -264,4 +265,33 @@ test('ResumoDoSincronizar — enquanto preenche, o andamento como antes', async 
 test('ResumoDoSincronizar.jsx — a fonte não lê avisos nem lista', () => {
     const fonte = lerSemComentarios(DIR + 'ResumoDoSincronizar.jsx');
     assert.doesNotMatch(fonte, /\.avisos|avisosDoClique|<ul|<li/);
+});
+
+// ─── Planejamento × Fase N (09/10/2026): Combos de uma cor aguardando o "Criar Fase" ───
+
+test('textoDosCombosAguardando — singular, plural e nada quando zero', async () => {
+    const { textoDosCombosAguardando } = await import('../../resources/js/Components/Mlb/Publicador/regrasDoResumoDoSincronizar.js');
+    assert.equal(textoDosCombosAguardando(1), '1 combo do Planejamento aguarda o "Criar Fase" do produto.');
+    assert.equal(textoDosCombosAguardando(3), '3 combos do Planejamento aguardam o "Criar Fase" do produto.');
+    for (const n of [0, null, undefined, -2, 'x', {}, []]) assert.equal(textoDosCombosAguardando(n), null, JSON.stringify(n));
+});
+
+test('linhaDoResumo — os Combos aguardando entram na mesma linha, depois das linhas de cor; sem eles nada muda', () => {
+    assert.equal(
+        linhaDoResumo({ produtos: 1, variantes: 3, fotos_trazidas: 0 }, 0, 3),
+        'Sincronizado: 1 produto, 3 variações, 0 fotos. 3 combos do Planejamento aguardam o "Criar Fase" do produto.',
+    );
+    assert.equal(
+        linhaDoResumo({ so_avisos: true }, 2, 1),
+        '2 linhas antigas de cor foram juntadas ao produto. 1 combo do Planejamento aguarda o "Criar Fase" do produto.',
+    );
+    assert.equal(linhaDoResumo({ so_avisos: true }, 0, 0), 'Sincronizado.');
+    assert.equal(linhaDoResumo({ produtos: 2, variantes: 2, fotos_trazidas: 1 }), 'Sincronizado: 2 produtos, 2 variações, 1 foto.');
+});
+
+test('Produtos.jsx — guarda os Combos aguardando do clique, passa ao painel e limpa ao fechar', () => {
+    const fonte = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
+    assert.match(fonte, /json\?\.combos_aguardando_fase/);
+    assert.match(fonte, /aguardando=\{aguardandoDoClique\}/);
+    assert.match(fonte, /function fecharResumo\(\) \{[\s\S]*?setAguardandoDoClique\(0\);[\s\S]*?\}/);
 });

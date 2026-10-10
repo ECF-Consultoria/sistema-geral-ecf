@@ -15,10 +15,14 @@ const inteiro = (v) => {
  * avisos: o painel não é lugar de lista (os avisos vão para o log do servidor).
  *
  * `so_avisos` = o clique não tinha nada a preencher; sobra só o que foi juntado (ou "Sincronizado.").
+ *
+ * `aguardando` (Planejamento × Fase N, 09/10/2026): os Combos de uma cor do Planejamento que ainda
+ * esperam o "Criar Fase" do produto — também na mesma linha, só quando houver.
  */
-export function linhaDoResumo(resumo, absorvidos = 0) {
+export function linhaDoResumo(resumo, absorvidos = 0, aguardando = 0) {
     const r = resumo ?? {};
-    const juntadas = textoDosAbsorvidos(absorvidos);
+    const extras = [textoDosAbsorvidos(absorvidos), textoDosCombosAguardando(aguardando)].filter((t) => t !== null);
+    const juntadas = extras.length > 0 ? extras.join(' ') : null;
 
     if (r.so_avisos) return juntadas ?? 'Sincronizado.';
 
@@ -46,4 +50,18 @@ export function textoDosAbsorvidos(n) {
     return total === 1
         ? '1 linha antiga de cor foi juntada ao produto.'
         : `${total} linhas antigas de cor foram juntadas ao produto.`;
+}
+
+/**
+ * Combos de uma cor do Planejamento que não viraram produto avulso porque são variantes do kit da Fase
+ * N da família — e o kit ainda não existe (Planejamento × Fase N, 09/10/2026). Zero ou ausente = null.
+ */
+export function textoDosCombosAguardando(n) {
+    const total = Number(n ?? 0);
+    if (! Number.isFinite(total) || total <= 0) return null;
+    const inteiro = Math.trunc(total);
+
+    return inteiro === 1
+        ? '1 combo do Planejamento aguarda o "Criar Fase" do produto.'
+        : `${inteiro} combos do Planejamento aguardam o "Criar Fase" do produto.`;
 }

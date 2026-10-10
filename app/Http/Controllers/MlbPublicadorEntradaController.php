@@ -222,6 +222,14 @@ class MlbPublicadorEntradaController extends Controller
                 ? ' 1 linha antiga de cor foi juntada ao produto.'
                 : " {$absorvidos} linhas antigas de cor foram juntadas ao produto.";
         }
+        // Planejamento × Fase N (09/10/2026): o Combo de uma cor é variante do kit da Fase N da família;
+        // sem o kit, ele espera o "Criar Fase" do produto (não vira produto avulso).
+        $aguardando = (int) ($r['combos_aguardando_fase'] ?? 0);
+        if ($aguardando > 0) {
+            $mensagem .= $aguardando === 1
+                ? ' 1 combo do Planejamento aguarda o "Criar Fase" do produto.'
+                : " {$aguardando} combos do Planejamento aguardam o \"Criar Fase\" do produto.";
+        }
 
         return response()->json([
             'criados' => $r['criados'],
@@ -232,6 +240,9 @@ class MlbPublicadorEntradaController extends Controller
             'avisos' => $r['avisos'],
             'duplicados' => $r['duplicados'],
             'absorvidos' => $absorvidos,
+            'combos_aguardando_fase' => $aguardando,
+            'combos_na_fase' => (int) ($r['combos_na_fase'] ?? 0),
+            'combos_absorvidos' => (int) ($r['combos_absorvidos'] ?? 0),
             'portal' => $this->programas->situacaoPortal($company),
         ]);
     }
