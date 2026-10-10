@@ -559,11 +559,12 @@ Schedule::command('publicador:promocoes-renovar')
 
 // ═══ Publicador — fila de publicação em lote (10/10/2026, learnings publicador-ml §20) ═══
 //
-// Todo minuto: fecha o produto que terminou de publicar e começa o próximo de cada fila ativa — um produto
-// (Clássico + Premium, todas as cores) a cada `intervalo_minutos` (10, ajustável na tela), nunca dois ao
-// mesmo tempo na mesma fila, dentro da janela, no máximo 2 inícios por minuto somando todas as filas. Nada
-// aqui fala com o ML: a publicação roda no `PublicarRascunhoJob` (fila `high`). `withoutOverlapping(10)`:
-// uma passada lenta não se sobrepõe à seguinte; `onOneServer`: um servidor só anda a fila.
+// Todo minuto: fecha o produto que terminou de publicar e começa os próximos de cada fila ativa — em rodadas
+// de `produtos_por_rodada` produtos (Clássico + Premium, todas as cores; padrão 5), uma rodada a cada
+// `intervalo_minutos` (padrão 20, os dois ajustáveis na tela) e nunca por cima da anterior, dentro da janela,
+// no máximo 2 inícios por minuto somando todas as filas. Nada aqui fala com o ML: a publicação roda no
+// `PublicarRascunhoJob` (fila `high`). `withoutOverlapping(10)`: uma passada lenta não se sobrepõe à
+// seguinte; `onOneServer`: um servidor só anda a fila.
 Schedule::command('publicador:fila-publicacao')
     ->everyMinute()
     ->name('publicador-fila-publicacao')

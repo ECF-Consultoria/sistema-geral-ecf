@@ -3,6 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
+use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -10,11 +11,15 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 /**
- * O gatilho do preparo pela IA (09/10/2026): cada save do produto no Portal (linhas/variações,
- * ficha técnica, descrição, imagens) chama `aoSalvar`, que marca no cache o instante do último
- * save do produto e agenda `PrepararProdutoNoPublicadorJob` para daqui a
- * `publicador.preparo_ia.atraso_min`. O Job que acorda e acha uma marca mais nova sai sem fazer
- * nada (debounce): numa sequência de saves, só o último age.
+ * O gatilho do save no Portal (09/10/2026): cada save do produto (linhas/variações, ficha técnica,
+ * descrição, imagens) chama `aoSalvar`, que faz duas coisas:
+ *
+ * 1. leva o produto ao Publicador LOGO (10/10/2026): `SincronizarProdutoDoPortalJob` daqui a
+ *    `publicador.preparo_ia.sincronizar_atraso_s` segundos, sem IA. Saves seguidos dentro dessa
+ *    espera viram uma sincronização só (`chaveDoSincronizar`; o Job a apaga ao começar);
+ * 2. marca no cache o instante do último save e agenda `PrepararProdutoNoPublicadorJob` para daqui a
+ *    `publicador.preparo_ia.atraso_min` — a IA. O Job que acorda e acha uma marca mais nova sai sem
+ *    fazer nada (debounce): numa sequência de saves, só o último chama a IA.
  *
  * Nada aqui pode quebrar o save do cliente: qualquer erro vira log. E o cliente não vê nada
  * disso (sigilo do Portal): a resposta do save não muda.
@@ -24,6 +29,12 @@ class PreparoIaAgenda
     public static function chaveDaMarca(int $estruturaProdutoId): string
     {
         return "publicador:preparo:marca:{$estruturaProdutoId}";
+    }
+
+    /** Existe enquanto há um Sincronizar deste produto agendado e ainda não começado. */
+    public static function chaveDoSincronizar(int $estruturaProdutoId): string
+    {
+        return "publicador:preparo:sincronizar:{$estruturaProdutoId}";
     }
 
     public static function marcaAtual(int $estruturaProdutoId): ?string
@@ -47,6 +58,7 @@ class PreparoIaAgenda
             }
 
             $atraso = max(0, (int) config('publicador.preparo_ia.atraso_min', 10));
+            $atrasoSincronizar = max(0, (int) config('publicador.preparo_ia.sincronizar_atraso_s', 15));
             $ids = [];
             foreach ($produtoIds as $id) {
                 if ((int) $id > 0) {
@@ -54,6 +66,13 @@ class PreparoIaAgenda
                 }
             }
             foreach (array_keys($ids) as $id) {
+                // 1. O produto no Publicador já: um Sincronizar só dele, sem IA. A marca vence sozinha se o Job se
+                //    perder (o próximo save agenda outro; o preparo abaixo sincroniza de novo de qualquer jeito).
+                if (Cache::add(self::chaveDoSincronizar($id), 1, now()->addMinutes(5))) {
+                    SincronizarProdutoDoPortalJob::dispatch($companyId, $id)->delay(now()->addSeconds($atrasoSincronizar));
+                }
+
+                // 2. A IA, depois que o cliente parar de mexer.
                 $marca = (string) Str::uuid();
                 // Vale por um dia: cobre a espera e os adiamentos (editor em uso) do mesmo save.
                 Cache::put(self::chaveDaMarca($id), $marca, now()->addDay());

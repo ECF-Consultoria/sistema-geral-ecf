@@ -19,7 +19,8 @@ use Inertia\Inertia;
 /**
  * "Publicação em lote" da conta (10/10/2026, pedido do usuário; learnings publicador-ml §20): a visão rápida dos
  * rascunhos não publicados (títulos, preço, custo, frete, margem, pendências), "Conferir selecionados" e a fila
- * de publicação com intervalo (pausar, retomar, cancelar, tirar um produto).
+ * de publicação em RODADAS — alguns produtos de cada vez, com intervalo entre uma rodada e a próxima (pausar,
+ * retomar, cancelar, tirar um produto).
  *
  * Só admin (grupo `role:admin` de `routes/mlb_anuncios.php`, como as rotas vizinhas). A conta vem SEMPRE da rota
  * (`ProgramasPublicadorService::resolver`), nunca do corpo; todo id de produto ou de item é filtrado por ela —
@@ -60,7 +61,10 @@ class MlbPublicadorLoteController extends Controller
             ...$this->dadosDaTela($alvo),
             'selecionados' => $pedidos,
             'config' => [
-                'intervalo_padrao' => (int) config('publicador.fila_publicacao.intervalo_minutos', 10),
+                'por_rodada_padrao' => max(1, (int) config('publicador.fila_publicacao.produtos_por_rodada', 5)),
+                'por_rodada_maximo' => $this->porRodadaMaximo(),
+                'teto_por_minuto' => max(1, (int) config('publicador.fila_publicacao.teto_inicios_por_minuto', 2)),
+                'intervalo_padrao' => (int) config('publicador.fila_publicacao.intervalo_minutos', 20),
                 'intervalo_minimo' => $this->intervaloMinimo(),
                 'intervalo_maximo' => 240,
                 'conferir_max' => self::CONFERIR_MAX,
@@ -103,12 +107,15 @@ class MlbPublicadorLoteController extends Controller
         $dados = $request->validate([
             'produtos' => ['required', 'array', 'min:1', 'max:'.self::AGENDAR_MAX],
             'produtos.*' => ['integer', 'min:1'],
+            'produtos_por_rodada' => ['nullable', 'integer', 'min:1', 'max:'.$this->porRodadaMaximo()],
             'intervalo_minutos' => ['nullable', 'integer', 'min:'.$this->intervaloMinimo(), 'max:240'],
             'janela_inicio' => ['nullable', 'date_format:H:i', 'required_with:janela_fim'],
             'janela_fim' => ['nullable', 'date_format:H:i', 'required_with:janela_inicio', 'different:janela_inicio'],
             'ciente' => ['boolean'],
         ], [
-            'intervalo_minutos.min' => 'O intervalo mínimo entre produtos é de '.$this->intervaloMinimo().' minutos.',
+            'produtos_por_rodada.min' => 'Cada rodada precisa de pelo menos 1 produto.',
+            'produtos_por_rodada.max' => 'Cada rodada aceita no máximo '.$this->porRodadaMaximo().' produtos.',
+            'intervalo_minutos.min' => 'O intervalo mínimo entre as rodadas é de '.$this->intervaloMinimo().' minutos.',
             'janela_fim.different' => 'O fim da janela precisa ser diferente do início.',
         ]);
 
@@ -117,8 +124,10 @@ class MlbPublicadorLoteController extends Controller
         }
 
         $opcoes = ['ciente' => (bool) ($dados['ciente'] ?? false)];
-        if (array_key_exists('intervalo_minutos', $dados) && $dados['intervalo_minutos'] !== null) {
-            $opcoes['intervalo_minutos'] = (int) $dados['intervalo_minutos'];
+        foreach (['produtos_por_rodada', 'intervalo_minutos'] as $campo) {
+            if (array_key_exists($campo, $dados) && $dados[$campo] !== null) {
+                $opcoes[$campo] = (int) $dados[$campo];
+            }
         }
         if ($request->exists('janela_inicio') || $request->exists('janela_fim')) {
             $opcoes['janela_inicio'] = $dados['janela_inicio'] ?? null;
@@ -212,5 +221,10 @@ class MlbPublicadorLoteController extends Controller
     private function intervaloMinimo(): int
     {
         return max(1, (int) config('publicador.fila_publicacao.intervalo_minimo', 2));
+    }
+
+    private function porRodadaMaximo(): int
+    {
+        return max(1, (int) config('publicador.fila_publicacao.produtos_por_rodada_max', 10));
     }
 }

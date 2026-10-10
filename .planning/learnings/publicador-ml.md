@@ -742,6 +742,15 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   (uuid, 1 dia) e agenda `PrepararProdutoNoPublicadorJob` com `atraso_min` (10). O Job que acorda com marca diferente
   sai (`superado`): numa rajada de saves só o último age. Fila `sync` NÃO agenda (rodaria dentro do save do cliente).
   Exclusão de variação não agenda (o Sincronizar nunca remove cor).
+- **O produto chega ao Publicador LOGO; só a IA espera (10/10/2026).** O usuário corrigiu: os "10 minutos" que ele
+  pediu eram o espaço entre PUBLICAÇÕES (§20), nunca entre o save e o Publicador ("ou vai instantâneo ou na hora de
+  sincronizar"). Por isso o `aoSalvar` agenda também `SincronizarProdutoDoPortalJob` (`sincronizar_atraso_s`, 15 s,
+  fila `default`, SEM IA) → `PreparoIaDoRascunhoService::sincronizarAgora`: as mesmas travas do `preparar` (editor
+  aberto, na fila de publicação, "Anunciar por IA" → `ocupado`, não toca), um por empresa de cada vez (`Cache::lock`
+  com `block(120)`: a planilha agenda dezenas; dois Sincronizar do mesmo Combo esbarram nos uniques). Saves seguidos
+  viram UM Job: `Cache::add` de `publicador:preparo:sincronizar:{produto}` (5 min) e o Job a APAGA ao começar — save
+  que chega durante a sincronização agenda outra, nenhum fica de fora. O preparo dos 10 minutos continua igual e
+  sincroniza de novo antes da IA (idempotente). Não confundir as duas esperas ao explicar o fluxo.
 - **Sincroniza SÓ o produto**: `PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)` filtra as ofertas
   Simples das variações dele + as compostas que o têm como componente; as regras são as mesmas do botão (D-05
   refinado). Não grava o "sincronizado em" da empresa. O preenchimento usa a MESMA trava do Job do botão
@@ -944,11 +953,13 @@ Decisões do usuário de 09/10. O que não se deduz do código:
   `PublicarRascunhoJob`); `npm run build`; o cron do `schedule:run` já existe (só confirmar que roda); opcional:
   `configuracoes.publicador_usuario_sistema` = id de um usuário ativo (sem ele, só quem publicou assina).
 
-## 20. Publicação em lote — visão rápida, conferir selecionados e fila com intervalo (10/10/2026)
+## 20. Publicação em lote — visão rápida, conferir selecionados e fila em rodadas (10/10/2026)
 
 Pedido do usuário (09/10): publicar EM MASSA "de primeira" o que o cliente preencheu no Portal, com intervalo entre
-produtos para não arriscar restrição do ML. Decisão: 1 produto (Clássico + Premium, todas as cores) a cada 10 min,
-ajustável; pausar/retomar/cancelar. O que não se deduz do código:
+produtos para não arriscar restrição do ML. Decisão de 09/10: 1 produto (Clássico + Premium, todas as cores) a cada
+10 min. **Revista em 10/10 pelo próprio usuário:** "sobe cinco de uma vez (Clássico e Premium), depois de uns 20
+minutos mais cinco" — RODADAS de 5 produtos a cada 20 min, os dois ajustáveis na tela (1–10 por rodada);
+pausar/retomar/cancelar. O que não se deduz do código:
 
 - **Visão rápida com número FIXO de consultas** (`Fila/ResumoRapidoService`, ~30 para 3 ou 12 produtos — o
   `VisaoRapidaDoLoteTest` mede, com kit da Fase N no meio). O rascunho é remontado em memória (só alvos, variantes,
@@ -972,8 +983,19 @@ ajustável; pausar/retomar/cancelar. O que não se deduz do código:
   unique (NULL repete nos dois bancos; nem MariaDB 10.4 nem SQLite têm índice parcial em comum). Toda transição que
   tira o item/fila de "vivo" zera a sombra; esquecer isso trava o produto para sempre. `janela_*` é `time` gravado
   `HH:MM:00` (o MariaDB devolve com segundos; o model corta em `HH:MM`).
-- **Intervalo conta do INÍCIO** do produto anterior (`proximo_em` = início + intervalo) e nunca começa outro com um
-  `publicando` na mesma fila. Teto GLOBAL de 2 inícios por minuto (contador em cache por minuto, todas as contas).
+- **Rodadas: o intervalo conta do INÍCIO da rodada** (`proximo_em` = início + intervalo) e a rodada nova nunca começa
+  com um `publicando` na fila (a anterior precisa terminar). Dentro da rodada, vários publicam juntos.
+  `rodada_iniciada_em`/`rodada_inicios` guardam a rodada em curso: enquanto `proximo_em` está no futuro, a rodada
+  recebe as vagas que faltam (as que o teto do minuto ou um editor aberto seguraram); passado o intervalo, ela acabou,
+  cheia ou não. Item que não chega a publicar (`precisa_revisar`, recusa do `iniciar()`) NÃO gasta vaga
+  (`devolverVaga`); se era ele quem abria a rodada, ela nem conta e o próximo abre outra na hora. Teto GLOBAL de 2
+  inícios por minuto (contador em cache por minuto, todas as contas): a rodada de 5 começa em ~3 min (2 + 2 + 1), e
+  isso é de propósito — 3 workers consomem `high` em produção, e 5 publicações juntas segurariam os cliques de gente.
+  `produtos_por_rodada = 1` é o passo antigo (o `FilaDePublicacaoTest` roda assim; as rodadas estão no
+  `FilaEmRodadasTest`). Os defaults do BANCO ficam no passo antigo (`produtos_por_rodada` 1, `intervalo_minutos` 10:
+  linha criada fora do serviço anda um por vez); quem vale é a config (5 e 20), gravada pelo serviço ao criar a fila.
+  As colunas vieram numa migration SEPARADA (`2026_10_10_140000`, aditiva) porque a de criação já tinha rodado no
+  MariaDB local — editar a criação deixaria o local sem as colunas (o `hasTable` pula).
 - **Erro de CONTA pausa sem enviar nada** (sem token, fora de `contas_liberadas`, token de outro vendedor que o da
   conferência); **erro do ITEM vira `precisa_revisar` e a fila segue NA MESMA passada** (revisão ou plano diferentes do
   agendado, conferência vencida, avisos sem "Estou ciente", conferência sem `sellerId`). Editor do produto aberto = o
@@ -998,8 +1020,11 @@ ajustável; pausar/retomar/cancelar. O que não se deduz do código:
 - **Prova no MariaDB 10.4 local** (`--path` só da `2026_10_10_100000`): up → rollback → up, DONE ×3, lote 141; nomes
   `pubfila_*`/`pubfilai_*` no `SHOW CREATE TABLE`; 2ª fila viva na conta e mesmo produto vivo = 1062; terminadas (NULL)
   repetem; FK inexistente = 1452; `resumo` não-JSON = 4025; `time` volta `'08:00:00'`; CASCADE da fila apaga os itens.
-  DML em transação desfeita (0 linhas). As tabelas ficam criadas no local.
-- **Deploy:** `migrate --force` (1 migration, 2 CREATE); `queue:restart` (`ConferirEmLoteJob` na `high`; os de imagem na
+  DML em transação desfeita (0 linhas). As tabelas ficam criadas no local. A `2026_10_10_140000` (rodadas): up →
+  rollback → up no MariaDB local, lote 143; `SHOW CREATE TABLE` com `produtos_por_rodada` smallint DEFAULT 1 logo após
+  `intervalo_minutos`, `rodada_iniciada_em` datetime NULL e `rodada_inicios` DEFAULT 0 após `proximo_em` (o `after`
+  de coluna nascida no mesmo ALTER funciona); rollback tira as três.
+- **Deploy:** `migrate --force` (2 migrations: 2 CREATE + 1 ALTER aditivo na tabela que acabou de nascer); `queue:restart` (`ConferirEmLoteJob` na `high`; os de imagem na
   `creative`); `npm run build`; **o cron `* * * * * php artisan schedule:run` precisa rodar na VPS** — sem ele a fila
   nunca anda (o `onOneServer` usa a trava do cache: Redis em produção). Antes de agendar de verdade, só a #459.
 - Testes que dependem de `Storage::fake` (`MlbPublicadorAcessoTest`, `CapaDoKitTest`) falharam UMA vez rodando ao lado de

@@ -23,6 +23,7 @@ use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -31,9 +32,10 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * A IA prepara o rascunho ANTES de a equipe precisar dele (pedido do usuário, 09/10/2026): o
- * cliente salva o produto no Portal → depois da espera (`PreparoIaAgenda`) este serviço
- * sincroniza SÓ aquele produto (as regras do "Sincronizar do Portal", D-05 refinado) e, com a
- * ficha completa, gera título → Modelo → descrição, cada um no seu Job encadeado.
+ * cliente salva o produto no Portal → segundos depois o produto já está no Publicador
+ * (`sincronizarAgora`, 10/10/2026, sem IA) → depois da espera (`PreparoIaAgenda`) este serviço
+ * sincroniza SÓ aquele produto de novo (as regras do "Sincronizar do Portal", D-05 refinado) e,
+ * com a ficha completa, gera título → Modelo → descrição, cada um no seu Job encadeado.
  *
  * É a EXCEÇÃO consciente do learnings §10 ("a IA deixa no cache e a tela aplica"): aqui não há
  * tela aberta, então a automação grava no rascunho. Por isso as travas:
@@ -150,6 +152,61 @@ class PreparoIaDoRascunhoService
         }
 
         return 'pronto';
+    }
+
+    /**
+     * O produto salvo no Portal chega ao Publicador LOGO (10/10/2026, `SincronizarProdutoDoPortalJob`): as MESMAS
+     * travas e o MESMO Sincronizar do `preparar`, sem o debounce e sem a IA (que segue esperando o cliente parar de
+     * mexer). Produto com o editor aberto, agendado na fila de publicação ou com "Anunciar por IA" rodando NÃO é
+     * tocado agora: o preparo dos 10 minutos espera e tenta de novo.
+     *
+     * Um destes por empresa de cada vez (`block`): a planilha que salva 70 produtos agenda 70 deles, e dois
+     * Sincronizar do mesmo Combo/Kit ao mesmo tempo esbarrariam nos uniques.
+     *
+     * @return string desligado, sem_produto, ocupado, em_andamento, sincronizado
+     */
+    public function sincronizarAgora(int $companyId, int $estruturaProdutoId): string
+    {
+        if (! $this->ativo()) {
+            return 'desligado';
+        }
+        $company = Company::find($companyId);
+        $produto = $company === null ? null : EstruturaProduto::query()->where('company_id', $company->id)->find($estruturaProdutoId);
+        if ($produto === null) {
+            return 'sem_produto';
+        }
+        foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
+            $r = PubRascunho::where('produto_id', $pub->id)->first();
+            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+                Log::info("[Publicador] Produto {$produto->id} do Portal não foi sincronizado logo após o save: o produto {$pub->id} está em uso no Publicador (o preparo tenta de novo).");
+
+                return 'ocupado';
+            }
+        }
+
+        $trava = Cache::lock("publicador:sincronizar-agora:company:{$company->id}", 300);
+        try {
+            $trava->block(120);
+        } catch (LockTimeoutException) {
+            Log::info("[Publicador] Produto {$produto->id} do Portal: outro Sincronizar da empresa {$company->id} seguiu ocupado; o preparo sincroniza depois.");
+
+            return 'em_andamento';
+        }
+        try {
+            $alvo = $this->programas->resolver('company-'.$company->id);
+            $r = $this->sincroniza->sincronizar($alvo['mlb_empresa'] ?? null, $company, (int) $produto->id);
+            foreach ($r['para_preencher'] as $id) {
+                $pub = PubProduto::find($id);
+                if ($pub !== null) {
+                    $this->preencher($pub);
+                }
+            }
+        } finally {
+            $trava->release();
+        }
+        Log::info("[Publicador] Produto {$produto->id} ({$produto->nome}) do Portal sincronizado com o Publicador logo após o save (empresa {$company->id}).");
+
+        return 'sincronizado';
     }
 
     /**

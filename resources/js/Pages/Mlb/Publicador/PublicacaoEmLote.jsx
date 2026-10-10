@@ -177,8 +177,8 @@ export default function PublicacaoEmLote({
                 <header className="mb-6">
                     <h1 className="text-[24px] font-bold text-white">Publicação em lote</h1>
                     <p className="mt-1 max-w-[860px] text-[13px] font-normal text-white/60">
-                        Veja título, preço e margem de cada produto, confira com o Mercado Livre os que você escolher e agende a publicação:
-                        um produto por vez, com intervalo entre eles, para não arriscar restrição na conta.
+                        Veja título, preço e margem de cada produto, confira com o Mercado Livre os que você escolher e agende a publicação
+                        em rodadas: alguns produtos de cada vez, com intervalo entre uma rodada e a próxima, para não arriscar restrição na conta.
                     </p>
                 </header>
 
@@ -329,9 +329,13 @@ export default function PublicacaoEmLote({
                 anuncios={prontos.anuncios}
                 comAvisos={prontos.comAvisos}
                 filaViva={filaViva}
+                porRodadaAtual={filaViva ? comoObjeto(fila).produtos_por_rodada : null}
                 intervaloAtual={filaViva ? comoObjeto(fila).intervalo_minutos : null}
                 janelaAtual={filaViva ? comoObjeto(fila).janela : null}
-                intervaloPadrao={numeroSeguro(cfg.intervalo_padrao) ?? 10}
+                porRodadaPadrao={numeroSeguro(cfg.por_rodada_padrao) ?? 5}
+                porRodadaMaximo={numeroSeguro(cfg.por_rodada_maximo) ?? 10}
+                teto={numeroSeguro(cfg.teto_por_minuto) ?? 2}
+                intervaloPadrao={numeroSeguro(cfg.intervalo_padrao) ?? 20}
                 intervaloMinimo={numeroSeguro(cfg.intervalo_minimo) ?? 2}
                 intervaloMaximo={numeroSeguro(cfg.intervalo_maximo) ?? 240}
                 enviando={ocupado}

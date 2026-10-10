@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Log;
  * - o item guarda o que foi conferido (`validacao_id`, `plano_hash`, `revisao`, `ciente`) e o `digital` do que
  *   vem do Portal (título e preço efetivos) — a fila nunca publica coisa diferente;
  * - UMA fila viva por conta (`conta_ativa` unique) e um produto em UMA fila (`produto_ativo` unique): agendar
- *   de novo na mesma conta ACRESCENTA ao fim da fila viva (e o intervalo/janela novos valem para ela);
+ *   de novo na mesma conta ACRESCENTA ao fim da fila viva (e o tamanho da rodada, o intervalo e a janela novos
+ *   valem para ela);
  * - quem agenda é o ATOR das publicações (`criada_por` → `AtorDoPortal::daEquipe`).
  */
 final class FilaPublicacaoService
@@ -52,7 +53,7 @@ final class FilaPublicacaoService
      *
      * @param  array{mlb_empresa: ?\App\Models\MlbEmpresa, company: ?\App\Models\Company, chave: string}  $alvo
      * @param  list<int>  $produtoIds
-     * @param  array{intervalo_minutos?: ?int, janela_inicio?: ?string, janela_fim?: ?string, ciente?: bool}  $opcoes
+     * @param  array{intervalo_minutos?: ?int, produtos_por_rodada?: ?int, janela_inicio?: ?string, janela_fim?: ?string, ciente?: bool}  $opcoes
      * @return array{fila: ?PubFilaPublicacao, agendados: list<int>, recusados: array<int, string>}
      */
     public function agendar(array $alvo, array $produtoIds, User $quem, array $opcoes = []): array
@@ -246,6 +247,7 @@ final class FilaPublicacaoService
             'status' => $fila->status,
             'viva' => $fila->viva(),
             'intervalo_minutos' => (int) $fila->intervalo_minutos,
+            'produtos_por_rodada' => $fila->porRodada(),
             'janela' => $fila->janela(),
             'proximo_em' => $fila->status === PubFilaPublicacao::ATIVA ? $fila->proximo_em?->toIso8601String() : null,
             'motivo_pausa' => $fila->motivo_pausa,
@@ -280,8 +282,11 @@ final class FilaPublicacaoService
     }
 
     /**
-     * Quando cada produto agendado deve começar — o mesmo passo do agendador: um a cada `intervalo_minutos`, nunca
-     * dois ao mesmo tempo, só dentro da janela. Fila pausada não tem previsão.
+     * Quando cada produto agendado deve começar — o mesmo passo do agendador: as vagas que sobram na rodada em curso
+     * primeiro, depois rodadas de `produtos_por_rodada`, uma a cada `intervalo_minutos`, no máximo
+     * `teto_inicios_por_minuto` inícios por minuto, só dentro da janela. É estimativa: não sabe quanto cada publicação
+     * demora (a rodada nova espera a anterior terminar) nem quanto do teto as outras contas vão usar. Fila pausada não
+     * tem previsão.
      *
      * @return array<int, string> item_id → ISO
      */
@@ -291,15 +296,28 @@ final class FilaPublicacaoService
             return [];
         }
         $intervalo = max(1, (int) $fila->intervalo_minutos);
-        $t = CarbonImmutable::now();
-        if ($fila->proximo_em !== null && $fila->proximo_em->isFuture()) {
-            $t = CarbonImmutable::instance($fila->proximo_em);
-        }
+        $porRodada = $fila->porRodada();
+        $teto = max(1, (int) config('publicador.fila_publicacao.teto_inicios_por_minuto', 2));
+        $agora = CarbonImmutable::now();
+        $agendados = $itens->where('status', PubFilaPublicacaoItem::AGENDADO)->sortBy([['posicao', 'asc'], ['id', 'asc']])->values();
+        $total = $agendados->count();
+        $quando = fn (CarbonImmutable $inicioDaRodada, int $k) => AgendadorDaFila::proximoNaJanela($fila, $inicioDaRodada->addMinutes(intdiv($k, $teto)))->toIso8601String();
+
         $saida = [];
-        foreach ($itens->where('status', PubFilaPublicacaoItem::AGENDADO)->sortBy([['posicao', 'asc'], ['id', 'asc']]) as $i) {
-            $t = AgendadorDaFila::proximoNaJanela($fila, $t);
-            $saida[(int) $i->id] = $t->toIso8601String();
-            $t = $t->addMinutes($intervalo);
+        $i = 0;
+        if (AgendadorDaFila::rodadaEmCurso($fila, $agora)) {
+            $vagas = max(0, $porRodada - (int) $fila->rodada_inicios);
+            for ($k = 0; $k < $vagas && $i < $total; $k++, $i++) {
+                $saida[(int) $agendados[$i]->id] = $quando($agora, $k);
+            }
+        }
+        $inicio = $fila->proximo_em !== null && $fila->proximo_em->greaterThan($agora) ? CarbonImmutable::instance($fila->proximo_em) : $agora;
+        while ($i < $total) {
+            $rodada = AgendadorDaFila::proximoNaJanela($fila, $inicio);
+            for ($k = 0; $k < $porRodada && $i < $total; $k++, $i++) {
+                $saida[(int) $agendados[$i]->id] = $quando($rodada, $k);
+            }
+            $inicio = $rodada->addMinutes($intervalo);
         }
 
         return $saida;
@@ -323,6 +341,7 @@ final class FilaPublicacaoService
     {
         $config = array_filter([
             'intervalo_minutos' => isset($opcoes['intervalo_minutos']) ? (int) $opcoes['intervalo_minutos'] : null,
+            'produtos_por_rodada' => isset($opcoes['produtos_por_rodada']) ? max(1, (int) $opcoes['produtos_por_rodada']) : null,
         ], fn ($v) => $v !== null);
         if (array_key_exists('janela_inicio', $opcoes) || array_key_exists('janela_fim', $opcoes)) {
             $inicio = PubFilaPublicacao::horaCurta($opcoes['janela_inicio'] ?? null);
@@ -347,7 +366,8 @@ final class FilaPublicacaoService
                 'company_id' => $alvo['company']?->id,
                 'mlb_empresa_id' => $alvo['mlb_empresa']?->id,
                 'status' => PubFilaPublicacao::ATIVA,
-                'intervalo_minutos' => (int) config('publicador.fila_publicacao.intervalo_minutos', 10),
+                'intervalo_minutos' => (int) config('publicador.fila_publicacao.intervalo_minutos', 20),
+                'produtos_por_rodada' => max(1, (int) config('publicador.fila_publicacao.produtos_por_rodada', 5)),
                 'criada_por' => $quem->id,
                 'proximo_em' => now(),
                 ...$config,

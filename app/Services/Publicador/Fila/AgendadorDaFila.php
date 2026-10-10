@@ -28,17 +28,21 @@ use Illuminate\Support\Facades\Log;
  *  1. FECHA o item `publicando` de toda fila (viva ou não): a publicação terminou → `publicado`/`parcial`/
  *     `falhou`, com os MLBs criados e a tarefa das alavancas; passou de `publicando_max_min` (40) ainda
  *     rodando → PAUSA a fila com aviso (o item fica `publicando` até a publicação terminar de fato).
- *  2. Em cada fila ATIVA, sem item publicando, dentro da janela e com `proximo_em` vencido, pega o próximo
- *     agendado e faz no BANCO as checagens do `iniciar()` antes de chamá-lo:
+ *  2. Em cada fila ATIVA com vaga (ver abaixo) e dentro da janela, pega os próximos agendados e faz no BANCO as
+ *     checagens do `iniciar()` antes de chamá-lo:
  *     - erro de CONTA (sem token, fora da lista de liberadas, outro vendedor) → pausa a fila, nada sai;
  *     - erro do ITEM (conferência vencida, revisão ou plano diferentes do agendado, preço/título do Portal
- *       que mudou, avisos sem "Estou ciente") → `precisa_revisar` e SEGUE para o próximo sem esperar;
+ *       que mudou, avisos sem "Estou ciente") → `precisa_revisar` e SEGUE para o próximo sem esperar (não gasta
+ *       vaga da rodada: nada foi publicado);
  *     - editor do produto aberto → este espera a próxima passada e a fila tenta o seguinte;
  *     marca `publicando` ANTES e chama `PublicacaoService::iniciar($r, AtorDoPortal::daEquipe(quem agendou), ciente)`.
- *  3. Teto GLOBAL de `teto_inicios_por_minuto` (2) inícios por minuto, somando todas as filas.
+ *  3. Teto GLOBAL de `teto_inicios_por_minuto` (2) inícios por minuto, somando todas as filas: uma rodada de 5
+ *     começa em ~3 minutos (2 + 2 + 1), e a vaga que o teto segurou fica para a passada seguinte.
  *
- * Um produto por vez em cada fila, e o próximo só começa `intervalo_minutos` depois do INÍCIO do anterior (e
- * nunca antes de ele terminar). Nada aqui fala com o Mercado Livre: quem fala é o `PublicarRascunhoJob`.
+ * RODADAS (pedido do usuário, 10/10/2026: "sobe cinco de uma vez, depois de uns 20 minutos mais cinco"): até
+ * `produtos_por_rodada` produtos começam juntos; a rodada seguinte só começa `intervalo_minutos` depois do INÍCIO
+ * da anterior E com nenhum produto da fila ainda publicando. Com `produtos_por_rodada = 1` é o passo antigo: um
+ * produto por vez. Nada aqui fala com o Mercado Livre: quem fala é o `PublicarRascunhoJob`.
  */
 final class AgendadorDaFila
 {
@@ -152,19 +156,21 @@ final class AgendadorDaFila
         if ($fila->status !== PubFilaPublicacao::ATIVA) {
             return;
         }
-        if ($fila->itens()->where('status', PubFilaPublicacaoItem::PUBLICANDO)->exists()) {
-            return; // um produto por vez: espera este terminar
-        }
         if (! $fila->itens()->where('status', PubFilaPublicacaoItem::AGENDADO)->exists()) {
+            // Sem nada para começar; com um produto ainda publicando, `concluirSeVazia` espera ele terminar.
             $this->filas->concluirSeVazia($fila);
             $conta['concluidas'] += $fila->fresh()->status === PubFilaPublicacao::CONCLUIDA ? 1 : 0;
 
             return;
         }
-        if ($fila->proximo_em !== null && $fila->proximo_em->isFuture()) {
+        $agora = CarbonImmutable::now();
+        $vagas = $this->vagasAgora($fila, $agora);
+        if ($vagas === 0) {
             return;
         }
-        if (! self::naJanela($fila, CarbonImmutable::now())) {
+        // Sem rodada em curso, o primeiro produto que começar abre uma (e marca a hora da seguinte).
+        $novaRodada = ! self::rodadaEmCurso($fila, $agora);
+        if (! self::naJanela($fila, $agora)) {
             return;
         }
         $quem = FilaPublicacaoService::autorValido($fila);
@@ -215,17 +221,48 @@ final class AgendadorDaFila
             }
 
             if (! $this->reservarInicio()) {
-                return; // teto global do minuto: a próxima passada continua
+                return; // teto global do minuto: a rodada guarda a vaga e a próxima passada continua
             }
-            if ($this->iniciar($fila, $item, $checagem['rascunho'], $quem, $conta)) {
+            if ($this->iniciar($fila, $item, $checagem['rascunho'], $quem, $conta, $novaRodada)) {
                 $conta['iniciados']++;
+                $novaRodada = false;
+                if (--$vagas <= 0) {
+                    return; // a rodada encheu: a próxima vem depois do intervalo
+                }
 
-                return; // um produto por passada em cada fila
+                continue;
             }
             if ($fila->fresh()->status !== PubFilaPublicacao::ATIVA) {
                 return;
             }
         }
+    }
+
+    /**
+     * Quantos produtos desta fila podem começar agora: as vagas que sobram na rodada em curso; senão, uma rodada
+     * nova inteira — mas só com o intervalo vencido e com nenhum produto da fila ainda publicando (a rodada nova
+     * nunca começa por cima da anterior). 0 = esperar.
+     */
+    private function vagasAgora(PubFilaPublicacao $fila, CarbonImmutable $agora): int
+    {
+        if (self::rodadaEmCurso($fila, $agora)) {
+            return max(0, $fila->porRodada() - (int) $fila->rodada_inicios);
+        }
+        if ($fila->proximo_em !== null && $fila->proximo_em->greaterThan($agora)) {
+            return 0;
+        }
+
+        return $fila->itens()->where('status', PubFilaPublicacaoItem::PUBLICANDO)->exists() ? 0 : $fila->porRodada();
+    }
+
+    /**
+     * A rodada que começou ainda está dentro do intervalo dela (`proximo_em` = início da rodada + intervalo)? É nela
+     * que entram os produtos que o teto do minuto (ou um editor aberto) segurou. Passado o intervalo, a rodada acabou,
+     * cheia ou não.
+     */
+    public static function rodadaEmCurso(PubFilaPublicacao $fila, CarbonImmutable $agora): bool
+    {
+        return $fila->rodada_iniciada_em !== null && $fila->proximo_em !== null && $fila->proximo_em->greaterThan($agora);
     }
 
     /**
@@ -304,12 +341,16 @@ final class AgendadorDaFila
         return ['tipo' => 'ok', 'rascunho' => $r];
     }
 
-    private function iniciar(PubFilaPublicacao $fila, PubFilaPublicacaoItem $item, PubRascunho $r, $quem, array &$conta): bool
+    /**
+     * Começa UM produto. `$novaRodada`: este produto abre a rodada (a seguinte fica para daqui a `intervalo_minutos`);
+     * senão, ele ocupa mais uma vaga da rodada em curso.
+     */
+    private function iniciar(PubFilaPublicacao $fila, PubFilaPublicacaoItem $item, PubRascunho $r, $quem, array &$conta, bool $novaRodada = true): bool
     {
         $intervalo = max(1, (int) $fila->intervalo_minutos);
         // Marca `publicando` ANTES do `iniciar()`, e só se a fila continua ativa e o item continua agendado: o
         // "Cancelar"/"Tirar da fila" da tela pode ter chegado entre a checagem e aqui (UPDATE condicional).
-        $marcou = DB::transaction(function () use ($fila, $item, $intervalo) {
+        $marcou = DB::transaction(function () use ($fila, $item, $intervalo, $novaRodada) {
             if (! PubFilaPublicacao::query()->whereKey($fila->id)->where('status', PubFilaPublicacao::ATIVA)->lockForUpdate()->exists()) {
                 return false;
             }
@@ -318,13 +359,19 @@ final class AgendadorDaFila
             if ($n !== 1) {
                 return false;
             }
-            $fila->update(['proximo_em' => now()->addMinutes($intervalo), 'iniciada_em' => $fila->iniciada_em ?? now()]);
+            if ($novaRodada) {
+                $fila->update(['proximo_em' => now()->addMinutes($intervalo), 'rodada_iniciada_em' => now(), 'rodada_inicios' => 1,
+                    'iniciada_em' => $fila->iniciada_em ?? now()]);
+            } else {
+                PubFilaPublicacao::query()->whereKey($fila->id)->increment('rodada_inicios');
+            }
 
             return true;
         });
         if (! $marcou) {
             return false;
         }
+        $fila->refresh();
         $item->refresh();
 
         try {
@@ -334,8 +381,8 @@ final class AgendadorDaFila
 
             return true;
         } catch (RegraViolada $e) {
-            // Nada foi publicado: a fila não precisa esperar o intervalo por este.
-            $fila->update(['proximo_em' => now()]);
+            // Nada foi publicado: a vaga volta para a rodada (e a fila não espera o intervalo por este).
+            $this->devolverVaga($fila, $novaRodada);
             if (in_array($e->regra, self::REGRAS_DA_CONTA, true)) {
                 $item->update(['status' => PubFilaPublicacaoItem::AGENDADO, 'iniciado_em' => null]);
                 $this->pausar($fila, $e->getMessage());
@@ -363,11 +410,26 @@ final class AgendadorDaFila
 
                 return true;
             }
-            $fila->update(['proximo_em' => now()]);
+            $this->devolverVaga($fila, $novaRodada);
             $this->finalizar($item, PubFilaPublicacaoItem::FALHOU, 'Não foi possível começar a publicação: tente agendar de novo.');
 
             return false;
         }
+    }
+
+    /**
+     * O produto não chegou a publicar: a vaga volta para a rodada. Se era ele quem abria a rodada, a rodada nem
+     * começou — o próximo agendado abre outra na hora, sem esperar o intervalo.
+     */
+    private function devolverVaga(PubFilaPublicacao $fila, bool $novaRodada): void
+    {
+        if ($novaRodada) {
+            $fila->update(['proximo_em' => now(), 'rodada_iniciada_em' => null, 'rodada_inicios' => 0]);
+
+            return;
+        }
+        PubFilaPublicacao::query()->whereKey($fila->id)->where('rodada_inicios', '>', 0)->decrement('rodada_inicios');
+        $fila->refresh();
     }
 
     // ═══ Apoio ═══════════════════════════════════════════════════════════════

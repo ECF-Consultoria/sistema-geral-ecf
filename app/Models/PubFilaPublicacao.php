@@ -9,10 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * A fila de publicação em lote de UMA conta do Mercado Livre (10/10/2026, learnings publicador-ml §20).
  *
- * Um produto (Clássico + Premium, todas as cores) começa a cada `intervalo_minutos`, dentro da janela
- * opcional; quem anda a fila é o `publicador:fila-publicacao` (todo minuto). Viva = `ativa` ou
- * `pausada`, e só existe UMA viva por conta: a coluna-sombra `conta_ativa` (unique) vale `conta_chave`
- * enquanto ela vive e NULL depois — é o banco que garante, não o código.
+ * Anda em RODADAS: até `produtos_por_rodada` produtos (Clássico + Premium, todas as cores) começam juntos,
+ * e a rodada seguinte vem `intervalo_minutos` depois do início desta — nunca antes de ela terminar —,
+ * dentro da janela opcional. `rodada_iniciada_em`/`rodada_inicios` guardam a rodada em curso. Quem anda a
+ * fila é o `publicador:fila-publicacao` (todo minuto). Viva = `ativa` ou `pausada`, e só existe UMA viva
+ * por conta: a coluna-sombra `conta_ativa` (unique) vale `conta_chave` enquanto ela vive e NULL depois —
+ * é o banco que garante, não o código.
  *
  * `criada_por` é quem agendou e é o ATOR das publicações (`AtorDoPortal::daEquipe`): a tarefa
  * pós-publicação mostra essa pessoa como quem publicou.
@@ -33,10 +35,19 @@ class PubFilaPublicacao extends Model
 
     protected $casts = [
         'intervalo_minutos' => 'integer',
+        'produtos_por_rodada' => 'integer',
+        'rodada_inicios' => 'integer',
         'proximo_em' => 'datetime',
+        'rodada_iniciada_em' => 'datetime',
         'iniciada_em' => 'datetime',
         'concluida_em' => 'datetime',
     ];
+
+    /** Quantos produtos começam juntos numa rodada (nunca menos de 1). */
+    public function porRodada(): int
+    {
+        return max(1, (int) ($this->produtos_por_rodada ?? 1));
+    }
 
     public function itens(): HasMany
     {

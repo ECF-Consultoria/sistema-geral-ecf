@@ -24,9 +24,10 @@ use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
- * A fila de publicação em lote (10/10/2026): agenda só os prontos, publica UM produto a cada 10 minutos (nunca
- * dois ao mesmo tempo), pausa por erro de CONTA sem enviar nada, manda para `precisa_revisar` o produto que mudou
- * e segue sem esperar, respeita janela, editor aberto e o teto global, e isola tudo por conta.
+ * A fila de publicação em lote (10/10/2026) no passo de UM produto por rodada: agenda só os prontos, publica um
+ * produto a cada 10 minutos (nunca dois ao mesmo tempo), pausa por erro de CONTA sem enviar nada, manda para
+ * `precisa_revisar` o produto que mudou e segue sem esperar, respeita janela, editor aberto e o teto global, e
+ * isola tudo por conta. As rodadas de vários produtos (o padrão, 5 a cada 20 minutos) estão no `FilaEmRodadasTest`.
  *
  * O relógio é parado numa segunda-feira, 12/10/2026 10:00 (São Paulo), ANTES do cenário; o agendador roda pelo
  * comando de verdade (`artisan('publicador:fila-publicacao')`) a cada minuto simulado. A fila é `Queue::fake()`:
@@ -40,6 +41,8 @@ class FilaDePublicacaoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Rodada de 1 produto a cada 10 minutos: as regras de cada produto, uma de cada vez.
+        config(['publicador.fila_publicacao.produtos_por_rodada' => 1, 'publicador.fila_publicacao.intervalo_minutos' => 10]);
         $this->travelTo(CarbonImmutable::parse('2026-10-12 10:00:00', 'America/Sao_Paulo'));
         Queue::fake();
         Notification::fake();

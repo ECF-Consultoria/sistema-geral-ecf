@@ -121,13 +121,17 @@ return [
     ],
 
     // ═══ IA prepara o rascunho ao salvar no Portal (09/10/2026) ═══
-    // Cada save do produto no Portal agenda, com espera, a sincronização SÓ daquele produto e, com a
-    // ficha completa, a geração de título, Modelo e descrição pela IA — gravados no rascunho sem tela
-    // aberta, nunca por cima do que a equipe editou (learnings publicador-ml §16).
+    // Cada save do produto no Portal leva SÓ aquele produto ao Publicador em segundos (10/10/2026) e
+    // agenda, com espera, a geração de título, Modelo e descrição pela IA — gravados no rascunho sem
+    // tela aberta, nunca por cima do que a equipe editou (learnings publicador-ml §16).
     'preparo_ia' => [
         // Chave de segurança: false desliga TUDO (nem sincroniza nem gera).
         'ativo' => (bool) env('PUBLICADOR_PREPARO_IA_ATIVO', true),
-        // Espera depois do último save do produto; um save novo dentro dela adia (debounce).
+        // O produto chega ao Publicador logo (decisão do usuário, 10/10/2026: "ou vai instantâneo ou na hora
+        // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
+        // dentro da espera viram uma sincronização só.
+        'sincronizar_atraso_s' => (int) env('PUBLICADOR_SINCRONIZAR_ATRASO_S', 15),
+        // Espera da IA depois do último save do produto; um save novo dentro dela adia (debounce).
         'atraso_min' => (int) env('PUBLICADOR_PREPARO_IA_ATRASO_MIN', 10),
         // Preparações com IA por empresa por dia (cada uma = título + Modelo + descrição de UM produto).
         // Passou disso, o produto só é sincronizado e o log diz por quê.
@@ -162,13 +166,18 @@ return [
         'tentativas_max' => 8,
     ],
 
-    // ═══ Publicação em lote — a fila com intervalo (10/10/2026) ═══
+    // ═══ Publicação em lote — a fila em rodadas (10/10/2026) ═══
     // "Conferir selecionados" + "Agendar publicação" da conta; quem anda a fila é o `publicador:fila-publicacao`
-    // (todo minuto, routes/console.php). Um produto (Clássico + Premium, todas as cores) por vez em cada fila,
-    // para não arriscar restrição do Mercado Livre (learnings publicador-ml §20).
+    // (todo minuto, routes/console.php). A fila anda em RODADAS: alguns produtos (Clássico + Premium, todas as
+    // cores) começam juntos, e a rodada seguinte só vem depois do intervalo E depois de a anterior terminar —
+    // para não subir anúncio "na porrada" e arriscar restrição do Mercado Livre (learnings publicador-ml §20).
     'fila_publicacao' => [
-        // Minutos entre o INÍCIO de um produto e o do próximo (decisão do usuário: 10, ajustável na tela).
-        'intervalo_minutos' => (int) env('PUBLICADOR_FILA_INTERVALO_MIN', 10),
+        // Produtos que começam juntos numa rodada (decisão do usuário, 10/10: "cinco de uma vez", ajustável na tela).
+        'produtos_por_rodada' => (int) env('PUBLICADOR_FILA_POR_RODADA', 5),
+        // O máximo que a tela aceita por rodada (cada produto são 2 anúncios: Clássico e Premium).
+        'produtos_por_rodada_max' => 10,
+        // Minutos entre o INÍCIO de uma rodada e o da próxima (decisão do usuário, 10/10: "uns 20 minutos", ajustável).
+        'intervalo_minutos' => (int) env('PUBLICADOR_FILA_INTERVALO_MIN', 20),
         // O menor intervalo que a tela aceita.
         'intervalo_minimo' => 2,
         // Inícios por minuto, somando TODAS as filas (contas diferentes também contam).

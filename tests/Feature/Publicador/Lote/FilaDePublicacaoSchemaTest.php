@@ -40,12 +40,18 @@ class FilaDePublicacaoSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumns('pub_filas_publicacao', [
             'conta_chave', 'conta_ativa', 'company_id', 'mlb_empresa_id', 'status', 'intervalo_minutos', 'janela_inicio', 'janela_fim',
             'proximo_em', 'motivo_pausa', 'criada_por', 'iniciada_em', 'concluida_em',
+            'produtos_por_rodada', 'rodada_iniciada_em', 'rodada_inicios',
         ]));
         $this->assertTrue(Schema::hasColumns('pub_fila_publicacao_itens', [
             'fila_id', 'produto_id', 'rascunho_id', 'produto_ativo', 'posicao', 'status', 'validacao_id', 'plano_hash', 'revisao', 'ciente',
             'resumo', 'publicacao_id', 'iniciado_em', 'concluido_em', 'motivo',
         ]));
-        $this->assertSame(10, (int) PubFilaPublicacao::create(['conta_chave' => 'company-1'])->fresh()->intervalo_minutos, 'o intervalo padrão é 10 minutos');
+        $crua = PubFilaPublicacao::create(['conta_chave' => 'company-1'])->fresh();
+        // Os defaults do BANCO são o passo antigo (linha criada fora do serviço anda um por vez); o serviço grava os da config.
+        $this->assertSame(10, (int) $crua->intervalo_minutos);
+        $this->assertSame(1, $crua->porRodada());
+        $this->assertSame(0, (int) $crua->rodada_inicios);
+        $this->assertNull($crua->rodada_iniciada_em);
     }
 
     public function test_uma_fila_viva_por_conta_e_as_terminadas_nao_contam(): void
@@ -105,7 +111,10 @@ class FilaDePublicacaoSchemaTest extends TestCase
         $this->assertSame(['inicio' => '08:00', 'fim' => '20:30'], $f->fresh()->janela());
         $this->assertNull(PubFilaPublicacao::create(['conta_chave' => 'company-2'])->janela());
 
-        $this->assertSame(10, config('publicador.fila_publicacao.intervalo_minutos'));
+        // Decisão do usuário (10/10/2026): "cinco de uma vez, depois de uns 20 minutos mais cinco".
+        $this->assertSame(5, config('publicador.fila_publicacao.produtos_por_rodada'));
+        $this->assertSame(20, config('publicador.fila_publicacao.intervalo_minutos'));
+        $this->assertSame(10, config('publicador.fila_publicacao.produtos_por_rodada_max'));
         $this->assertSame(2, config('publicador.fila_publicacao.teto_inicios_por_minuto'));
         $this->assertFalse(config('publicador.criativos_auto.ativo'), 'as imagens por IA automáticas nascem DESLIGADAS');
     }

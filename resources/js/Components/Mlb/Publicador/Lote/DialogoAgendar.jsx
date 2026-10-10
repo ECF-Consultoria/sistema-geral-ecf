@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BASE_BOTAO, PRIMARIO, SECUNDARIO } from '@/Components/Publicador/Mesa/botoes';
-import { fmtHora, numeroSeguro, previsaoDoLote, textoSeguro } from './regrasDoLote.js';
+import { fmtHora, numeroSeguro, previsaoDoLote, rodadasDoLote, textoSeguro } from './regrasDoLote.js';
 
 // ─── "Agendar publicação" (10/10/2026) ──────────────────────────────────────
 //
-// Decisão do usuário: 1 produto (Clássico + Premium, todas as cores) a cada 10
-// minutos, ajustável — o intervalo protege a conta de restrição do Mercado
-// Livre. A janela é opcional. Com avisos do ML na conferência, o "Estou
-// ciente" é obrigatório (o mesmo do editor). Fila já andando: os produtos
-// entram no FIM dela, e o intervalo/janela daqui passam a valer para ela.
+// Decisão do usuário (10/10): a fila anda em RODADAS — "sobe cinco de uma vez
+// (Clássico e Premium), depois de uns 20 minutos mais cinco". Os dois números
+// são ajustáveis; o intervalo protege a conta de restrição do Mercado Livre.
+// A janela é opcional. Com avisos do ML na conferência, o "Estou ciente" é
+// obrigatório (o mesmo do editor). Fila já andando: os produtos entram no FIM
+// dela, e a rodada, o intervalo e a janela daqui passam a valer para ela.
 // Confirmação no próprio diálogo, nunca `window.confirm` (aparece em branco
 // numa tela dark e não explica nada).
 
@@ -19,18 +20,22 @@ const ROTULO = 'mb-1 block text-[13px] font-normal text-white/70';
 
 /**
  * @param {{aberto: boolean, produtos: number, anuncios: number, comAvisos: number, filaViva: boolean,
+ *   porRodadaPadrao: number, porRodadaMaximo: number, teto: number,
  *   intervaloPadrao: number, intervaloMinimo: number, intervaloMaximo: number, enviando: boolean, erro: ?string,
  *   onFechar: Function, onConfirmar: (opcoes: object) => void, agora?: Date}} props
  */
 export default function DialogoAgendar({
     aberto, produtos = 0, anuncios = 0, comAvisos = 0, filaViva = false,
-    intervaloPadrao = 10, intervaloMinimo = 2, intervaloMaximo = 240, enviando = false, erro = null,
-    intervaloAtual = null, janelaAtual = null,
+    porRodadaPadrao = 5, porRodadaMaximo = 10, teto = 2,
+    intervaloPadrao = 20, intervaloMinimo = 2, intervaloMaximo = 240, enviando = false, erro = null,
+    porRodadaAtual = null, intervaloAtual = null, janelaAtual = null,
     onFechar, onConfirmar, agora = null,
 }) {
-    // Fila já andando: o diálogo abre com o intervalo e o horário DELA (agendar de novo os reaplica à fila).
+    // Fila já andando: o diálogo abre com a rodada, o intervalo e o horário DELA (agendar de novo os reaplica à fila).
     const janelaDaFila = janelaAtual && typeof janelaAtual === 'object' && typeof janelaAtual.inicio === 'string' && typeof janelaAtual.fim === 'string' ? janelaAtual : null;
+    const porRodadaInicial = String(numeroSeguro(porRodadaAtual) ?? porRodadaPadrao);
     const intervaloInicial = String(numeroSeguro(intervaloAtual) ?? intervaloPadrao);
+    const [porRodada, setPorRodada] = useState(porRodadaInicial);
     const [intervalo, setIntervalo] = useState(intervaloInicial);
     const [comJanela, setComJanela] = useState(janelaDaFila !== null);
     const [inicio, setInicio] = useState(janelaDaFila?.inicio ?? '08:00');
@@ -39,26 +44,31 @@ export default function DialogoAgendar({
 
     useEffect(() => {
         if (aberto) {
+            setPorRodada(porRodadaInicial);
             setIntervalo(intervaloInicial);
             setComJanela(janelaDaFila !== null);
             setInicio(janelaDaFila?.inicio ?? '08:00');
             setFim(janelaDaFila?.fim ?? '20:00');
             setCiente(false);
         }
-    }, [aberto, intervaloInicial, janelaDaFila?.inicio, janelaDaFila?.fim]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [aberto, porRodadaInicial, intervaloInicial, janelaDaFila?.inicio, janelaDaFila?.fim]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (! aberto) return null;
 
+    const tamanho = Number(porRodada);
+    const porRodadaValido = Number.isInteger(tamanho) && tamanho >= 1 && tamanho <= porRodadaMaximo;
     const minutos = Number(intervalo);
     const intervaloValido = Number.isInteger(minutos) && minutos >= intervaloMinimo && minutos <= intervaloMaximo;
     const janelaValida = ! comJanela || (/^\d{2}:\d{2}$/.test(inicio) && /^\d{2}:\d{2}$/.test(fim) && inicio !== fim);
     const precisaCiente = comAvisos > 0;
-    const pode = produtos > 0 && intervaloValido && janelaValida && (! precisaCiente || ciente) && ! enviando;
-    const termina = intervaloValido ? previsaoDoLote(produtos, minutos, agora ?? new Date()) : null;
+    const pode = produtos > 0 && porRodadaValido && intervaloValido && janelaValida && (! precisaCiente || ciente) && ! enviando;
+    const rodadas = porRodadaValido ? rodadasDoLote(produtos, tamanho) : 0;
+    const termina = intervaloValido && porRodadaValido ? previsaoDoLote(produtos, minutos, agora ?? new Date(), tamanho, teto) : null;
 
     function confirmar() {
         if (! pode) return;
         onConfirmar?.({
+            produtos_por_rodada: tamanho,
             intervalo_minutos: minutos,
             janela_inicio: comJanela ? inicio : null,
             janela_fim: comJanela ? fim : null,
@@ -83,24 +93,42 @@ export default function DialogoAgendar({
                 </div>
 
                 <div className="mt-5 space-y-4">
-                    <div>
-                        <label htmlFor="intervalo-lote" className={ROTULO}>Intervalo entre um produto e o próximo</label>
-                        <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label htmlFor="por-rodada-lote" className={ROTULO}>Produtos por rodada</label>
                             <input
-                                id="intervalo-lote"
+                                id="por-rodada-lote"
                                 type="number"
                                 inputMode="numeric"
-                                min={intervaloMinimo}
-                                max={intervaloMaximo}
-                                value={intervalo}
-                                onChange={(ev) => setIntervalo(ev.target.value)}
-                                className={cn(CAMPO, 'w-24', ! intervaloValido && 'border-red-400')}
+                                min={1}
+                                max={porRodadaMaximo}
+                                value={porRodada}
+                                onChange={(ev) => setPorRodada(ev.target.value)}
+                                className={cn(CAMPO, 'w-24', ! porRodadaValido && 'border-red-400')}
                             />
-                            <span className="text-[13px] font-normal text-white/60">minutos</span>
+                            <p className="mt-1 text-[11px] font-normal text-white/40">
+                                Sobem juntos, cada um no Clássico e no Premium. Máximo de {porRodadaMaximo}.
+                            </p>
                         </div>
-                        <p className="mt-1 text-[11px] font-normal text-white/40">
-                            Um produto de cada vez, para não arriscar restrição na conta. Mínimo de {intervaloMinimo} minutos.
-                        </p>
+                        <div>
+                            <label htmlFor="intervalo-lote" className={ROTULO}>Intervalo entre as rodadas</label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    id="intervalo-lote"
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={intervaloMinimo}
+                                    max={intervaloMaximo}
+                                    value={intervalo}
+                                    onChange={(ev) => setIntervalo(ev.target.value)}
+                                    className={cn(CAMPO, 'w-24', ! intervaloValido && 'border-red-400')}
+                                />
+                                <span className="text-[13px] font-normal text-white/60">minutos</span>
+                            </div>
+                            <p className="mt-1 text-[11px] font-normal text-white/40">
+                                A próxima rodada só começa depois que a anterior termina. Mínimo de {intervaloMinimo} minutos.
+                            </p>
+                        </div>
                     </div>
 
                     <div>
@@ -129,8 +157,8 @@ export default function DialogoAgendar({
 
                     <p className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 text-[13px] font-normal text-white/70">
                         {filaViva
-                            ? 'A fila desta conta já existe: os produtos entram no fim dela, e o intervalo e o horário daqui passam a valer para a fila.'
-                            : 'Começa no próximo minuto.'}
+                            ? 'A fila desta conta já existe: os produtos entram no fim dela, e a rodada, o intervalo e o horário daqui passam a valer para a fila.'
+                            : `Começa no próximo minuto${rodadas > 1 ? `, em ${rodadas} rodadas` : ''}.`}
                         {! filaViva && termina && ! comJanela && <> Termina por volta de <span className="font-bold text-white">{fmtHora(termina)}</span>.</>}
                     </p>
 

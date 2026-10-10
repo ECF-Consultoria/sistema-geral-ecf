@@ -183,6 +183,15 @@ test('regras — filtros, seleção, previsão e acompanhamento', () => {
     assert.deepEqual(regras.conferiveisDaSelecao(linhas, new Set([7, 8, 10])), [7, 8], 'o que está na fila não confere de novo');
     assert.equal(regras.previsaoDoLote(3, 10, new Date('2026-10-12T13:00:00Z')), '2026-10-12T13:22:00.000Z', 'o último começa 20 min depois e leva ~2');
     assert.equal(regras.previsaoDoLote(0, 10), null);
+    // Rodadas (10/10/2026): 7 produtos, 5 por rodada, a cada 20 min → a 2ª rodada (2 produtos) começa 20 min depois.
+    assert.equal(regras.previsaoDoLote(7, 20, new Date('2026-10-12T13:00:00Z'), 5, 2), '2026-10-12T13:22:00.000Z');
+    assert.equal(regras.previsaoDoLote(5, 20, new Date('2026-10-12T13:00:00Z'), 5, 2), '2026-10-12T13:04:00.000Z', 'uma rodada só: 2 + 2 + 1 por minuto, o último leva ~2');
+    assert.equal(regras.rodadasDoLote(7, 5), 2);
+    assert.equal(regras.rodadasDoLote(5, 5), 1);
+    assert.equal(regras.rodadasDoLote(0, 5), 0);
+    assert.equal(regras.fraseDoRitmo(1, 10), 'Um produto (Clássico e Premium, todas as cores) a cada 10 minutos');
+    assert.equal(regras.fraseDoRitmo(5, 20), '5 produtos por rodada (Clássico e Premium, todas as cores), uma rodada a cada 20 minutos');
+    assert.equal(regras.fraseDoRitmo('x', null), 'Um produto (Clássico e Premium, todas as cores) a cada 10 minutos', 'dado adverso cai no passo de um');
     assert.equal(regras.precisaAcompanhar(linhas, null), false);
     assert.equal(regras.precisaAcompanhar([linhaBase({ conferindo: true })], null), true);
     assert.equal(regras.precisaAcompanhar([], { viva: true }), true);
@@ -317,6 +326,15 @@ test('painel — andando: progresso, próximo horário, termina por volta de, ML
     assert.match(html, />Pausar</);
     assert.doesNotMatch(html, />Retomar</);
     assert.match(html, /aria-valuenow="66"/);
+
+    // Em rodadas (10/10/2026): o ritmo da fila diz quantos sobem juntos e de quanto em quanto tempo, e o horário é o da
+    // próxima RODADA (não do próximo produto).
+    const fila5 = filaBase({ produtos_por_rodada: 5, intervalo_minutos: 20 });
+    const rodadas = renderToStaticMarkup(React.createElement(PainelDaFila, { fila: fila5, agora: new Date('2026-10-12T13:00:00Z') }));
+    assert.match(rodadas, /5 produtos por rodada \(Clássico e Premium, todas as cores\), uma rodada a cada 20 minutos/);
+    assert.match(rodadas, /próxima rodada às <span[^>]*>10:10</);
+    const rodadaJa = renderToStaticMarkup(React.createElement(PainelDaFila, { fila: fila5, agora: new Date('2026-10-12T13:30:00Z') }));
+    assert.match(rodadaJa, /a próxima rodada começa em instantes/);
 });
 
 test('painel — pausada mostra o motivo e Retomar; terminada não tem botões; sem fila, nada', () => {
@@ -372,6 +390,30 @@ test('agendar — com a fila andando, abre com o intervalo e o horário DELA (se
     const semJanela = renderToStaticMarkup(React.createElement(DialogoAgendar, { aberto: true, produtos: 1, filaViva: true, intervaloAtual: 12, janelaAtual: null }));
     assert.match(semJanela, /value="12"/);
     assert.doesNotMatch(semJanela, /Início do horário/);
+
+    const daFila = renderToStaticMarkup(React.createElement(DialogoAgendar, { aberto: true, produtos: 2, filaViva: true, porRodadaAtual: 3, intervaloAtual: 15 }));
+    assert.match(daFila, /id="por-rodada-lote"[^>]*value="3"/, 'a rodada da fila viva, não o padrão');
+    assert.match(daFila, /a rodada, o intervalo e o horário daqui passam a valer para a fila/);
+});
+
+test('agendar — rodadas: 5 produtos a cada 20 minutos por padrão, ajustáveis e validados', () => {
+    const html = renderToStaticMarkup(React.createElement(DialogoAgendar, {
+        aberto: true, produtos: 7, anuncios: 14, comAvisos: 0, filaViva: false, agora: new Date('2026-10-12T13:00:00Z'),
+    }));
+    assert.match(html, />Produtos por rodada</);
+    assert.match(html, /id="por-rodada-lote"[^>]*max="10"[^>]*value="5"/);
+    assert.match(html, />Intervalo entre as rodadas</);
+    assert.match(html, /id="intervalo-lote"[^>]*value="20"/);
+    assert.match(html, /Sobem juntos, cada um no Clássico e no Premium\. Máximo de 10\./);
+    assert.match(html, /A próxima rodada só começa depois que a anterior termina/);
+    assert.match(html, /Começa no próximo minuto, em 2 rodadas\./);
+    assert.match(html, /Termina por volta de <span[^>]*>(\d{2}\/\d{2} )?10:22</, 'a 2ª rodada começa 20 min depois e leva ~2 (a data aparece fora do dia de hoje)');
+    assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*>Agendar 7 produtos/);
+
+    // Rodada acima do máximo: o campo marca e o botão não liga.
+    const demais = renderToStaticMarkup(React.createElement(DialogoAgendar, { aberto: true, produtos: 7, filaViva: true, porRodadaAtual: 11 }));
+    assert.match(demais, /id="por-rodada-lote"[^>]*class="[^"]*border-red-400/);
+    assert.match(demais, /<button[^>]*disabled=""[^>]*>Agendar 7 produtos/);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -385,7 +427,7 @@ const propsDaTela = (o = {}) => ({
     linhas: [linhaBase(), linhaBase({ produto_id: 8, nome: 'Mesa', sku: 'MES', pronto: false, conferencia: null, motivo: 'Confira no Mercado Livre antes de agendar.', avisos_ml: false })],
     fila: filaBase(),
     selecionados: [],
-    config: { intervalo_padrao: 10, intervalo_minimo: 2, intervalo_maximo: 240, conferir_max: 100, polling_s: 10 },
+    config: { por_rodada_padrao: 5, por_rodada_maximo: 10, teto_por_minuto: 2, intervalo_padrao: 20, intervalo_minimo: 2, intervalo_maximo: 240, conferir_max: 100, polling_s: 10 },
     ...o,
 });
 
@@ -470,4 +512,8 @@ test('Produtos — botão "Publicação em lote" na barra e o aviso da fila viva
     assert.match(pausada, /Fila de publicação pausada/);
     assert.match(pausada, /Conta fora da lista\./);
     assert.equal(renderToStaticMarkup(React.createElement(AvisoDaFila, { fila: filaBase({ viva: false }) })), '', 'terminada não avisa');
+
+    assert.match(andando, /próximo às /, 'um por vez: o horário é do próximo produto');
+    const emRodadas = renderToStaticMarkup(React.createElement(AvisoDaFila, { fila: { ...filaBase({ produtos_por_rodada: 5 }), url: '/lote' } }));
+    assert.match(emRodadas, /próxima rodada às /);
 });

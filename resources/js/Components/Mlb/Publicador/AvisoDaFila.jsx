@@ -15,6 +15,8 @@ export default function AvisoDaFila({ fila }) {
     const progresso = comoObjeto(f.progresso);
     const pausada = f.status === 'pausada';
     const url = textoSeguro(f.url, '');
+    // Em rodadas (10/10/2026), `proximo_em` é a hora da PRÓXIMA RODADA, não do próximo produto.
+    const emRodadas = (numeroSeguro(f.produtos_por_rodada) ?? 1) > 1;
 
     return (
         <div
@@ -26,7 +28,7 @@ export default function AvisoDaFila({ fila }) {
             <p className={cn('min-w-0 flex-1 text-[13px] font-normal', pausada ? 'text-amber-200' : 'text-sky-100')}>
                 <span className="font-bold">{pausada ? 'Fila de publicação pausada' : 'Fila de publicação andando'}</span>
                 {' · '}{numeroSeguro(progresso.andados) ?? 0} de {numeroSeguro(progresso.total) ?? 0} produtos
-                {! pausada && f.proximo_em && <>{' · '}próximo às {fmtHora(f.proximo_em)}</>}
+                {! pausada && f.proximo_em && <>{' · '}{emRodadas ? 'próxima rodada às' : 'próximo às'} {fmtHora(f.proximo_em)}</>}
                 {! pausada && f.termina_em && <>{' · '}termina por volta de {fmtHora(f.termina_em)}</>}
                 {pausada && textoSeguro(f.motivo_pausa, '') !== '' && <>{' · '}{textoSeguro(f.motivo_pausa)}</>}
             </p>

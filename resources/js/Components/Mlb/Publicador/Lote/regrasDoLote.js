@@ -244,17 +244,41 @@ export function conferiveisDaSelecao(linhas, selecao) {
     return comoLista(linhas).filter((l) => l && l.pode_conferir === true && ids.has(l.produto_id)).map((l) => l.produto_id);
 }
 
+/** Um inteiro ≥ 1 a partir do valor (ou a reserva). */
+const inteiroPositivo = (valor, reserva) => Math.max(1, Math.trunc(numeroSeguro(valor) ?? reserva));
+
+/** Quantas rodadas `n` produtos levam, `porRodada` de cada vez. */
+export function rodadasDoLote(n, porRodada = 1) {
+    const qtd = Math.max(0, Math.trunc(numeroSeguro(n) ?? 0));
+
+    return qtd === 0 ? 0 : Math.ceil(qtd / inteiroPositivo(porRodada, 1));
+}
+
 /**
- * "Termina por volta de": o último de `n` produtos começa `(n − 1) × intervalo` depois do primeiro e leva ~2 min.
+ * "Termina por volta de" (o mesmo passo do agendador, 10/10/2026): `n` produtos em rodadas de `porRodada`, uma
+ * rodada a cada `intervalo` minutos; dentro da rodada começam no máximo `teto` por minuto; o último leva ~2 min.
  * Sem janela (a do servidor é a que vale; esta é só a estimativa do diálogo).
  */
-export function previsaoDoLote(n, intervaloMinutos, inicio = new Date()) {
+export function previsaoDoLote(n, intervaloMinutos, inicio = new Date(), porRodada = 1, teto = 2) {
     const qtd = Math.max(0, Math.trunc(numeroSeguro(n) ?? 0));
-    const intervalo = Math.max(1, Math.trunc(numeroSeguro(intervaloMinutos) ?? 10));
     if (qtd === 0) return null;
-    const fim = new Date(inicio.getTime() + ((qtd - 1) * intervalo + 2) * 60_000);
+    const intervalo = inteiroPositivo(intervaloMinutos, 10);
+    const tamanho = inteiroPositivo(porRodada, 1);
+    const rodadas = rodadasDoLote(qtd, tamanho);
+    const naUltima = qtd - (rodadas - 1) * tamanho;
+    const minutos = (rodadas - 1) * intervalo + Math.floor((naUltima - 1) / inteiroPositivo(teto, 2)) + 2;
 
-    return fim.toISOString();
+    return new Date(inicio.getTime() + minutos * 60_000).toISOString();
+}
+
+/** O ritmo da fila em uma frase: "Um produto (…) a cada 10 minutos" ou "5 produtos por rodada (…), uma rodada a cada 20 minutos". */
+export function fraseDoRitmo(porRodada, intervaloMinutos) {
+    const tamanho = inteiroPositivo(porRodada, 1);
+    const intervalo = inteiroPositivo(intervaloMinutos, 10);
+
+    return tamanho === 1
+        ? `Um produto (Clássico e Premium, todas as cores) a cada ${intervalo} minutos`
+        : `${tamanho} produtos por rodada (Clássico e Premium, todas as cores), uma rodada a cada ${intervalo} minutos`;
 }
 
 /** Há algo andando que justifique o polling de 10 s? */

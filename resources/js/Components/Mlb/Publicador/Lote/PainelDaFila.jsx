@@ -3,15 +3,15 @@ import { cn } from '@/lib/utils';
 import { BotaoAcao } from '@/Components/Publicador/Mesa/botoes';
 import { COR_ITEM_DA_FILA } from './LinhaDoLote';
 import {
-    ROTULO_STATUS_FILA, ROTULO_STATUS_ITEM, comoLista, comoObjeto, fmtHora, numeroSeguro, textoSeguro,
+    ROTULO_STATUS_FILA, ROTULO_STATUS_ITEM, comoLista, comoObjeto, fmtHora, fraseDoRitmo, numeroSeguro, textoSeguro,
 } from './regrasDoLote.js';
 
 // ─── O painel da fila de publicação da conta (10/10/2026) ───────────────────
 //
-// Um produto (Clássico + Premium, todas as cores) a cada N minutos — quem anda
-// a fila é o servidor (`publicador:fila-publicacao`, todo minuto), esta tela só
-// mostra e manda pausar, retomar, cancelar ou tirar um produto. Os horários são
-// a previsão do servidor (intervalo, janela, um por vez).
+// Rodadas de N produtos (Clássico + Premium, todas as cores), uma a cada X
+// minutos — quem anda a fila é o servidor (`publicador:fila-publicacao`, todo
+// minuto), esta tela só mostra e manda pausar, retomar, cancelar ou tirar um
+// produto. Os horários são a previsão do servidor (rodadas, intervalo, janela).
 
 const COR_FILA = {
     ativa: 'border-sky-400/30 bg-sky-400/10 text-sky-200',
@@ -46,6 +46,7 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
     const ativa = f.status === 'ativa';
     const pausada = f.status === 'pausada';
     const intervalo = numeroSeguro(f.intervalo_minutos) ?? 10;
+    const porRodada = numeroSeguro(f.produtos_por_rodada) ?? 1;
     const revisar = (numeroSeguro(contagens.precisa_revisar) ?? 0) + (numeroSeguro(contagens.falhou) ?? 0);
 
     return (
@@ -59,7 +60,7 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                         </span>
                     </div>
                     <p className="mt-1 text-[13px] font-normal text-white/60">
-                        Um produto (Clássico e Premium, todas as cores) a cada {intervalo} minutos
+                        {fraseDoRitmo(porRodada, intervalo)}
                         {janela ? `, só entre ${textoSeguro(janela.inicio)} e ${textoSeguro(janela.fim)}` : ''}
                         {textoSeguro(f.criada_por, '') !== '' ? ` · agendada por ${textoSeguro(f.criada_por)}` : ''}
                     </p>
@@ -98,8 +99,8 @@ export default function PainelDaFila({ fila, ocupado = false, aoPausar, aoRetoma
                     {' · '}{numeroSeguro(progresso.feitos) ?? 0} publicados
                     {revisar > 0 && <span className="text-amber-300">{' · '}{revisar === 1 ? '1 para revisar' : `${revisar} para revisar`}</span>}
                     {ativa && f.proximo_em && (proximoJaPassou(f.proximo_em, instante)
-                        ? <>{' · '}o próximo começa em instantes</>
-                        : <>{' · '}próximo às <span className="font-bold text-white">{fmtHora(f.proximo_em, instante)}</span></>)}
+                        ? <>{' · '}{porRodada > 1 ? 'a próxima rodada começa em instantes' : 'o próximo começa em instantes'}</>
+                        : <>{' · '}{porRodada > 1 ? 'próxima rodada às' : 'próximo às'} <span className="font-bold text-white">{fmtHora(f.proximo_em, instante)}</span></>)}
                     {ativa && f.termina_em && <>{' · '}termina por volta de <span className="font-bold text-white">{fmtHora(f.termina_em, instante)}</span></>}
                 </p>
             </div>

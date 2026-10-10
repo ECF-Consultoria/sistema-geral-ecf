@@ -4,6 +4,7 @@ namespace Tests\Feature\Publicador;
 
 use App\Jobs\Publicador\GerarPreparoIaJob;
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
+use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaProduto;
@@ -257,6 +258,64 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
         $this->assertSame(1, PubProduto::where('estrutura_produto_id', $p->id)->count());
+    }
+
+    // ═══ O produto chega ao Publicador logo (10/10/2026) ═════════════════════
+
+    public function test_salvar_leva_o_produto_ao_publicador_em_segundos_e_a_ia_continua_esperando(): void
+    {
+        $p = $this->produtoDoPortal();
+
+        $this->salvarNoPortal($p);
+
+        Queue::assertPushedOn('default', SincronizarProdutoDoPortalJob::class);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
+            && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInMinutes($j->delay, true) >= 9);
+
+        Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
+
+        $r = $this->rascunhoDo($p);
+        $this->assertSame(self::CADEIRA, $r->categoria_id, 'o produto já está no Publicador, com a ficha do Portal');
+        Queue::assertNotPushed(GerarPreparoIaJob::class);
+        $this->assertSame([], array_merge(...array_values($this->chamadas)), 'a IA não foi chamada');
+        $this->assertSame([], array_filter($this->titulos($r)));
+
+        // Passada a espera, o preparo sincroniza de novo (no MESMO produto) e só então chama a IA.
+        $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        Queue::assertPushed(GerarPreparoIaJob::class);
+        $this->assertSame(1, PubProduto::where('estrutura_produto_id', $p->id)->count());
+    }
+
+    public function test_saves_seguidos_viram_uma_sincronizacao_so_e_nenhum_save_fica_de_fora(): void
+    {
+        $p = $this->produtoDoPortal();
+
+        $this->salvarNoPortal($p);
+        $this->salvarNoPortal($p);
+        $this->salvarNoPortal($p);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 1);
+        Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 3);
+
+        Queue::pushed(SincronizarProdutoDoPortalJob::class)->sole()->handle($this->servico());
+        // O Job apagou a marca ao começar: o save seguinte agenda outro.
+        $this->salvarNoPortal($p);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 2);
+    }
+
+    public function test_editor_aberto_nao_e_sincronizado_logo_e_o_preparo_cobre_depois(): void
+    {
+        $p = $this->produtoDoPortal();
+        $this->assertSame('sincronizado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
+        $marca = fn () => (new RascunhoRepository())->snapshot($this->rascunhoDo($p)->fresh())->atributos['BRAND'] ?? null;
+        $antes = $marca();
+        $this->assertNotNull($antes);
+
+        EditorEmUso::marcar((int) $this->pubDo($p)->id);
+        $this->noPortal($p, 'BRAND', 'Outra Marca');
+
+        $this->assertSame('ocupado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
+        $this->assertSame($antes, $marca(), 'nada foi escrito por baixo de quem está editando');
     }
 
     // ═══ Ficha incompleta × completa ═════════════════════════════════════════
@@ -575,6 +634,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         Queue::assertNothingPushed();
 
         $this->assertSame('desligado', $this->servico()->preparar((int) $this->empresa->id, (int) $p->id, 'qualquer'));
+        $this->assertSame('desligado', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $p->id));
         $this->assertSame(0, PubProduto::count());
     }
 
@@ -632,6 +692,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         app(PreparoIaAgenda::class)->aoSalvar((int) $this->empresa->id, [$alheio->id]);
         $this->assertSame(['sem_produto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
+        $this->assertSame('sem_produto', $this->servico()->sincronizarAgora((int) $this->empresa->id, (int) $alheio->id));
         $this->assertSame(0, PubProduto::count());
     }
 

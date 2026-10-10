@@ -3,6 +3,7 @@
 namespace Tests\Feature\PortalCliente\Estrutura\Produtos;
 
 use App\Jobs\Publicador\PrepararProdutoNoPublicadorJob;
+use App\Jobs\Publicador\SincronizarProdutoDoPortalJob;
 use App\Models\EstruturaProduto;
 use App\Models\EstruturaProdutoVariacao;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,9 +61,12 @@ class SalvarPreparaNoPublicadorTest extends TestCase
         $this->assertSame(['descricao', 'mensagem'], array_keys($r->json()), 'a resposta ao cliente não muda');
         $this->semOrigem($r->getContent());
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 1);
+        // 10/10/2026: o produto vai ao Publicador em segundos (sem IA); a IA segue com a espera.
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $produto->id && $j->companyId === $empresa->id);
 
         $sessao->putJson(route('portal.auth.estrutura.produtos.imagens.ordem', $v->id), ['ordem' => [999]])->assertOk();
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
+        Queue::assertPushed(SincronizarProdutoDoPortalJob::class, 1, 'o 2º save dentro da espera vira a mesma sincronização');
     }
 
     public function test_chave_desligada_nao_agenda(): void
@@ -75,5 +79,6 @@ class SalvarPreparaNoPublicadorTest extends TestCase
             ->putJson(route('portal.auth.estrutura.produtos.descricao', $produto->id), ['descricao' => 'Mesa.'])->assertOk();
 
         Queue::assertNotPushed(PrepararProdutoNoPublicadorJob::class);
+        Queue::assertNotPushed(SincronizarProdutoDoPortalJob::class);
     }
 }
