@@ -20,8 +20,9 @@ use Illuminate\Support\Facades\Log;
  * `PreparoIaDoRascunhoService::sincronizarAgora`.
  *
  * Apaga a marca de "já agendado" (`PreparoIaAgenda::chaveDoSincronizar`) ANTES de sincronizar: um save que chegar
- * durante a sincronização agenda outra, e nenhum save fica de fora. Fila `default` (não é clique de pessoa no
- * Publicador), sem nova tentativa: o preparo da IA sincroniza de novo antes de gerar.
+ * durante a sincronização agenda outra, e nenhum save fica de fora. Fila `high` (10/10/2026): na `default` o
+ * "logo" virava meia hora atrás das sincronizações do Adman e do Acervo (ver `PrepararProdutoNoPublicadorJob`).
+ * Sem nova tentativa: o preparo da IA sincroniza de novo antes de gerar.
  */
 class SincronizarProdutoDoPortalJob implements ShouldQueue
 {
@@ -35,7 +36,7 @@ class SincronizarProdutoDoPortalJob implements ShouldQueue
 
     public function __construct(public int $companyId, public int $estruturaProdutoId)
     {
-        $this->onQueue('default');
+        $this->onQueue('high');
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void

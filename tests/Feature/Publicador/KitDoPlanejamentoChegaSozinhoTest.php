@@ -84,7 +84,7 @@ class KitDoPlanejamentoChegaSozinhoTest extends TestCase
 
         // Uma agenda por produto dos componentes (mesa e cadeira), com a espera de sempre, fila `default`.
         $this->assertSame($this->produtos('Mesa Polo', 'Cadeira Polo'), $this->produtosAgendados());
-        Queue::assertPushedOn('default', PrepararProdutoNoPublicadorJob::class);
+        Queue::assertPushedOn('high', PrepararProdutoNoPublicadorJob::class);
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && $j->companyId === $this->empresa->id);
         $this->assertSame(0, PubProduto::where('oferta_id', $ofertaId)->count(), 'nada no Publicador antes da espera');
 

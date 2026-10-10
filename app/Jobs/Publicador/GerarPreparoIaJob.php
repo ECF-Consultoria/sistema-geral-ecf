@@ -21,6 +21,9 @@ use Illuminate\Support\Facades\Log;
  *
  * `valorPronto` = valor já gerado de uma escrita adiada (editor em uso): ao acordar, só grava,
  * sem chamar a IA de novo.
+ *
+ * Fila `high` (10/10/2026), como os outros Jobs de IA do Publicador: na `default` a cadeia esperava
+ * as sincronizações do Adman e do Acervo (ver `PrepararProdutoNoPublicadorJob`).
  */
 class GerarPreparoIaJob implements ShouldQueue
 {
@@ -43,7 +46,7 @@ class GerarPreparoIaJob implements ShouldQueue
         public int $adiamentos = 0,
         public array $restantes = [],
     ) {
-        $this->onQueue('default');
+        $this->onQueue('high');
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void

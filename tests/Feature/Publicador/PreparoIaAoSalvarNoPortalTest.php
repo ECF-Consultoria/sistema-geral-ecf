@@ -247,7 +247,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->salvarNoPortal($p);
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
-        Queue::assertPushedOn('default', PrepararProdutoNoPublicadorJob::class);
+        Queue::assertPushedOn('high', PrepararProdutoNoPublicadorJob::class);
         // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
         $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
@@ -270,7 +270,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->salvarNoPortal($p);
 
-        Queue::assertPushedOn('default', SincronizarProdutoDoPortalJob::class);
+        Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
         Queue::assertPushed(SincronizarProdutoDoPortalJob::class, fn ($j) => $j->estruturaProdutoId === $p->id && $j->companyId === $this->empresa->id
             && $j->delay !== null && now()->diffInSeconds($j->delay, true) <= 60);
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && now()->diffInSeconds($j->delay, true) > 90);
@@ -345,7 +345,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
-        Queue::assertPushedOn('default', GerarPreparoIaJob::class);
+        Queue::assertPushedOn('high', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
         $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa], $this->titulos($r),

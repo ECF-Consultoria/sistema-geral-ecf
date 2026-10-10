@@ -756,6 +756,14 @@ aplica"): aqui não há tela, então a automação GRAVA no rascunho. O que não
   que chega durante a sincronização agenda outra, nenhum fica de fora. O preparo da IA (2 min sem save) continua igual
   e sincroniza de novo antes de gerar (idempotente). Não confundir as esperas ao explicar o fluxo: ~15 s até o
   Publicador, 2 min sem save até a IA, e as rodadas da fila (§20) só na publicação.
+- **Fila `high`, nunca `default` (10/10/2026, achado do teste E2E em produção).** O `SincronizarProdutoDoPortalJob`,
+  o `PrepararProdutoNoPublicadorJob` e a cadeia `GerarPreparoIaJob` nasceram na `default` ("não é clique de pessoa") e
+  ficaram presos: às 11:37 a `default` tinha 308 jobs + 220 atrasados (`SyncFaturamentoMensalJob`, depois
+  `SyncMlAcervoCompanyJob`/`SyncMlAcervoDetalheJob`) e os 2 workers `high,default` presos em Acervo — os 8 SKUs
+  salvos às 11:29 não tinham chegado ao Publicador 8 minutos depois. Workers de produção (só na VPS, fora do repo):
+  2× `--queue=high,default`, 1× `--queue=high` (dedicado, quase sempre ocioso), 3× `--queue=creative`. Na `high`
+  o worker dedicado pega o job na hora; os outros Jobs de IA do Publicador (descrição, palavras-chave, kit) já moram
+  lá. Job novo do fluxo Portal → Publicador que precisa ser rápido vai para a `high`.
 - **Sincroniza SÓ o produto**: `PublicadorSincronizaPortalService::sincronizar(..., soDoProduto)` filtra as ofertas
   Simples das variações dele + as compostas que o têm como componente; as regras são as mesmas do botão (D-05
   refinado). Não grava o "sincronizado em" da empresa. O preenchimento usa a MESMA trava do Job do botão
