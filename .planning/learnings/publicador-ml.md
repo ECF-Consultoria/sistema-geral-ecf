@@ -1208,3 +1208,40 @@ dev pendentes. Para provar algo ali, rode só a migration necessária, com `--pa
 
 **`deploy.sh` recusa árvore suja.** "Há mudanças não commitadas" sai com exit 1 antes de tocar no servidor. Com
 trabalho pela metade na mesma árvore, ou termina e commita, ou não deploya.
+
+## 24. A descrição por IA são DUAS chamadas, e um modelo ruim custava o prazo inteiro (10/10/2026, noite)
+
+**Sintoma (relato do usuário):** a descrição ficava "gerando" e não vinha nada, enquanto título e Modelo funcionavam.
+No log: `IA de descrição do rascunho 35 falhou: A geração passou do tempo limite`. No `worker-*.log`, toda tentativa
+de descrição durava exatamente 3 min 59 s.
+
+**Causa, medida em produção às 20:28 com o rascunho que falhou:**
+
+| Modelo | Resultado |
+|---|---|
+| `moonshotai/kimi-k3` (principal) | Falhou depois de 60 s: HTTP 200 com conteúdo vazio ("gastou o orçamento raciocinando") |
+| `google/gemma-4-31b-it` (reserva) | Análise em 28 s + descrição em 41 s, 1.036 caracteres |
+
+- `DescricaoIaService::gerar` faz **duas** chamadas ao LLM dentro dos mesmos 240 s (`PRAZO_S`): a análise MAG T8 e
+  depois a descrição. Título e Modelo são uma chamada cada.
+- A troca de modelo era por chamada e sem memória. O principal ruim era tentado nas DUAS chamadas, e cada tentativa
+  perdia de 1 a 3 min antes de cair no reserva. O prazo acabava.
+- Título e Modelo saíam porque uma chamada só cabe no prazo mesmo perdendo tempo com o principal.
+- Não foi o deploy do dia. É o provedor: no plano gratuito da NVIDIA, modelo mudo ou vazio é rotina.
+
+**Correção, em `AnaliseAnuncioService::chamar`:**
+- **Quarentena.** O modelo que falha com `FalhaTrocavel` vai para o fim da fila por `services.llm.quarentena_s`
+  (`LLM_QUARENTENA_S`, 600 s; 0 desliga), numa chave do cache compartilhado.
+  - A chamada seguinte, e as dos outros produtos e workers, já começam por quem responde.
+  - Castigo é ir para o fim, não sair: se o reserva também falhar, o modelo de castigo ainda é tentado.
+  - Sem reserva configurado, não há quarentena.
+- **Prazo dividido.** Havendo outro modelo depois, o atual usa no máximo 60 % do prazo que resta.
+
+**Para medir de novo:** `scratchpad/e2e/mede_ia_descricao.php <rascunho>`. O script roda análise e descrição em cada
+modelo, com tempo e tokens, e não grava nada no rascunho.
+
+**Atenção:** os avisos `[IA] Modelo … falhou` são `Log::warning` e NÃO aparecem no `laravel.log` de produção, que só
+registra erro. O que aparece é o erro final, sem dizer qual modelo falhou.
+
+**A tela** (`useDescricaoIa.js`) desiste em 5 min e o servidor em 4. O erro chega como mensagem, mas só depois de 4
+minutos de "gerando".

@@ -527,6 +527,125 @@ class AnuncioIaAnaliseTest extends TestCase
         $this->assertSame('Cadeira Gamer', $r['dados'][0]['texto']);
     }
 
+    // ═══ Quarentena do modelo que acabou de falhar (10/10/2026) ═════════════
+    //
+    // Medido em produção: o principal respondia vazio depois de 60 s+ e o reserva resolvia em 30 s. A descrição
+    // do Publicador são DUAS chamadas no mesmo prazo de 240 s; perdendo tempo com o modelo ruim nas duas, ela
+    // estourava ("gerando" sem fim, nenhuma descrição) enquanto título e Modelo, de uma chamada só, saíam.
+
+    /** O principal falha sempre; o reserva responde o que for pedido. Devolve a ordem dos modelos chamados. */
+    private function principalRuimReservaBom(array &$chamados, ?array &$timeouts = null): void
+    {
+        Http::fake(function ($req, $opcoes) use (&$chamados, &$timeouts) {
+            $chamados[] = $req['model'];
+            $timeouts[] = $opcoes['timeout'] ?? null;
+
+            return $req['model'] === 'modelo-de-teste'
+                ? Http::response(['choices' => [['message' => ['content' => '', 'reasoning_content' => 'pensando sem parar…']]]])
+                : Http::response(['model' => 'modelo-reserva', 'choices' => [['message' => ['content' => '{"analise":{"puv":"Conforto"},"descricao":"Olá!"}']]]]);
+        });
+    }
+
+    public function test_modelo_que_falhou_vai_para_o_fim_da_fila_e_a_chamada_seguinte_comeca_pelo_reserva(): void
+    {
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+        $chamados = [];
+        $this->principalRuimReservaBom($chamados);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+
+        // As duas chamadas da descrição do Publicador (`DescricaoIaService::gerar`): análise e depois descrição.
+        $analise = $ia->analise('Poltrona', 'Unity', '');
+        $descricao = $ia->descricao('Poltrona', 'Unity', '', $analise['dados']);
+
+        $this->assertSame('Conforto', $analise['dados']['puv']);
+        $this->assertSame('Olá!', $descricao['dados']);
+        $this->assertSame(['modelo-de-teste', 'modelo-reserva', 'modelo-reserva'], $chamados, 'o modelo ruim só custa tempo UMA vez');
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has(\App\Services\Ia\AnaliseAnuncioService::chaveDaQuarentena('modelo-de-teste')));
+
+        // A geração de OUTRO produto, noutro Job, também já começa por quem responde.
+        app(\App\Services\Ia\AnaliseAnuncioService::class)->analise('Cadeira', 'Unity', '');
+        $this->assertSame('modelo-reserva', end($chamados));
+        $this->assertCount(4, $chamados);
+    }
+
+    public function test_passada_a_quarentena_o_principal_ganha_outra_chance(): void
+    {
+        config(['services.llm.fallbacks' => 'modelo-reserva', 'services.llm.quarentena_s' => 600]);
+        $chamados = [];
+        $this->principalRuimReservaBom($chamados);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+
+        $ia->analise('Poltrona', 'Unity', '');
+        $this->travel(9)->minutes();
+        $ia->analise('Poltrona', 'Unity', '');
+        $this->assertSame(['modelo-de-teste', 'modelo-reserva', 'modelo-reserva'], $chamados, 'ainda de castigo');
+
+        $this->travel(2)->minutes();
+        $ia->analise('Poltrona', 'Unity', '');
+        $this->assertSame(['modelo-de-teste', 'modelo-reserva'], array_slice($chamados, 3), 'volta a ser o primeiro');
+    }
+
+    public function test_se_o_reserva_tambem_falhar_o_modelo_de_castigo_ainda_e_tentado(): void
+    {
+        config(['services.llm.fallbacks' => 'modelo-reserva']);
+        \Illuminate\Support\Facades\Cache::put(\App\Services\Ia\AnaliseAnuncioService::chaveDaQuarentena('modelo-de-teste'), true, 600);
+        $chamados = [];
+        Http::fake(function ($req) use (&$chamados) {
+            $chamados[] = $req['model'];
+
+            return $req['model'] === 'modelo-reserva'
+                ? Http::response(['error' => 'Service temporarily overloaded'], 503)
+                : Http::response(['choices' => [['message' => ['content' => '{"analise":{"puv":"Voltou"}}']]]]);
+        });
+
+        $r = app(\App\Services\Ia\AnaliseAnuncioService::class)->analise('Poltrona', 'Unity', '');
+
+        $this->assertSame('Voltou', $r['dados']['puv']);
+        $this->assertSame(['modelo-reserva', 'modelo-de-teste'], $chamados, 'castigo é ir para o fim, não sair da fila');
+    }
+
+    public function test_sem_reserva_nao_ha_quarentena(): void
+    {
+        // Um modelo só: não há para quem passar, então não há castigo.
+        Http::fake(['llm.teste/*' => Http::response(['error' => 'Service temporarily overloaded'], 503)]);
+        try {
+            app(\App\Services\Ia\AnaliseAnuncioService::class)->analise('Poltrona', 'Unity', '');
+            $this->fail('Deveria ter lançado.');
+        } catch (\RuntimeException) {
+            // esperado
+        }
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has(\App\Services\Ia\AnaliseAnuncioService::chaveDaQuarentena('modelo-de-teste')));
+    }
+
+    public function test_quarentena_desligada_por_config_deixa_o_principal_sempre_primeiro(): void
+    {
+        // `LLM_QUARENTENA_S=0`: como era antes. (Teste à parte: `Http::fake()` acumula e o 1º stub vence.)
+        config(['services.llm.fallbacks' => 'modelo-reserva', 'services.llm.quarentena_s' => 0]);
+        $chamados = [];
+        $this->principalRuimReservaBom($chamados);
+        $ia = app(\App\Services\Ia\AnaliseAnuncioService::class);
+        $ia->analise('Poltrona', 'Unity', '');
+        $ia->analise('Poltrona', 'Unity', '');
+        $this->assertSame(['modelo-de-teste', 'modelo-reserva', 'modelo-de-teste', 'modelo-reserva'], $chamados);
+    }
+
+    public function test_com_reserva_o_principal_nao_leva_o_prazo_inteiro(): void
+    {
+        // Prazo de 100 s e timeout de configuração folgado: o principal recebe 60 % do que resta, e o último da fila
+        // fica com tudo o que sobrar.
+        config(['services.llm.fallbacks' => 'modelo-reserva', 'services.llm.timeout' => 500]);
+        $chamados = [];
+        $timeouts = [];
+        $this->principalRuimReservaBom($chamados, $timeouts);
+
+        app(\App\Services\Ia\AnaliseAnuncioService::class)->comPrazo(microtime(true) + 100)->analise('Poltrona', 'Unity', '');
+
+        $this->assertSame(['modelo-de-teste', 'modelo-reserva'], $chamados);
+        $this->assertGreaterThanOrEqual(58, $timeouts[0]);
+        $this->assertLessThanOrEqual(60, $timeouts[0], 'o principal não passa de 60 % do prazo');
+        $this->assertGreaterThanOrEqual(97, $timeouts[1], 'o último usa o que sobrou');
+    }
+
     public function test_chave_recusada_nao_tenta_o_reserva(): void
     {
         // Chave errada é errada para todos os modelos: trocar só atrasaria o erro.

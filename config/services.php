@@ -374,6 +374,9 @@ return [
         'model'     => env('LLM_MODEL', 'moonshotai/kimi-k3'),
         'fallbacks' => env('LLM_MODEL_FALLBACK', 'google/gemma-4-31b-it'),
         'timeout'   => (int) env('LLM_TIMEOUT', 180),
+        // Modelo que acabou de falhar (mudo, vazio, sobrecarregado) vai para o fim da fila por este tempo, e as
+        // próximas chamadas começam pelo reserva (10/10/2026). 0 desliga.
+        'quarentena_s' => (int) env('LLM_QUARENTENA_S', 600),
         // Generoso porque modelo de raciocínio gasta orçamento "pensando" antes
         // de responder — com teto curto ele devolve conteúdo VAZIO com HTTP 200.
         'max_tokens' => (int) env('LLM_MAX_TOKENS', 16000),
