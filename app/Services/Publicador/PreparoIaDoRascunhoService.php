@@ -17,6 +17,7 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Support\Publicador\EditorEmUso;
 use App\Support\Publicador\MemoriaDoPreparoIa as Memoria;
+use App\Support\Publicador\NaFilaDePublicacao;
 use App\Support\Publicador\RascunhoSnapshot;
 use App\Support\Publicador\RegrasDoTitulo;
 use App\Support\Publicador\RegraViolada;
@@ -37,8 +38,9 @@ use Illuminate\Support\Facades\Log;
  * - grava sob a trava do rascunho (`lockForUpdate`), relendo tudo lá dentro;
  * - só num campo VAZIO ou que ainda tem EXATAMENTE o último valor que ela escreveu
  *   (`step_state.ia_escrito`, `MemoriaDoPreparoIa::podeEscrever`) — o que a equipe editou fica;
- * - nunca em rascunho intocável (publicado/publicando), com "Anunciar por IA" rodando, nem com o
- *   editor do produto em uso (`EditorEmUso`): aí espera e tenta de novo, com o valor já gerado;
+ * - nunca em rascunho intocável (publicado/publicando), com "Anunciar por IA" rodando, com o
+ *   editor do produto em uso (`EditorEmUso`) nem com o produto agendado na fila de publicação
+ *   (`NaFilaDePublicacao`, 10/10/2026): aí espera e tenta de novo, com o valor já gerado;
  * - kit/fase criado pelo Publicador (`produto_base_id`) não é preparado (é o fluxo da Fase 175);
  * - nunca escreve estoque (o kit com `estoque_calculado` fica como está).
  *
@@ -117,11 +119,12 @@ class PreparoIaDoRascunhoService
             return 'sem_produto';
         }
 
-        // Antes de QUALQUER escrita (o Sincronizar também escreve): editor aberto ou "Anunciar por
-        // IA" rodando num rascunho deste produto → tudo espera.
+        // Antes de QUALQUER escrita (o Sincronizar também escreve): editor aberto, "Anunciar por IA" rodando
+        // ou produto agendado/publicando na fila de publicação (10/10/2026: foi conferido e vai ao ML como
+        // está) num rascunho deste produto → tudo espera.
         foreach ($this->pubProdutosDoPortal($company, $produto) as $pub) {
             $r = PubRascunho::where('produto_id', $pub->id)->first();
-            if (EditorEmUso::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
+            if (EditorEmUso::emUso((int) $pub->id) || NaFilaDePublicacao::emUso((int) $pub->id) || ($r !== null && $this->anunciarPorIaRodando($r))) {
                 return $this->adiarPreparo($companyId, $estruturaProdutoId, $marca, $adiamentos, (int) $pub->id);
             }
         }
@@ -270,8 +273,9 @@ class PreparoIaDoRascunhoService
             }
         }
 
-        // Nunca por trás de gente: editor do produto em uso ou "Anunciar por IA" gravando → espera.
-        if (EditorEmUso::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
+        // Nunca por trás de gente: editor do produto em uso, "Anunciar por IA" gravando ou o produto na fila de
+        // publicação (conferido; uma escrita agora o tiraria da fila como `precisa_revisar`) → espera.
+        if (EditorEmUso::emUso((int) $r->produto_id) || NaFilaDePublicacao::emUso((int) $r->produto_id) || $this->anunciarPorIaRodando($r)) {
             if ($adiamentos >= $this->maxAdiamentos()) {
                 Log::info("[Publicador] Preparo pela IA ({$etapa}): o rascunho {$r->id} seguiu em uso; a escrita desistiu depois de {$adiamentos} espera(s).");
                 $this->marcarEtapa($r->id, $hash, $etapa, self::DESISTIU);

@@ -10,6 +10,7 @@ use App\Http\Controllers\MlbPublicadorDescricaoController;
 use App\Http\Controllers\MlbPublicadorEntradaController;
 use App\Http\Controllers\MlbPublicadorFaseController;
 use App\Http\Controllers\MlbPublicadorIdentidadeController;
+use App\Http\Controllers\MlbPublicadorLoteController;
 use App\Http\Controllers\MlbPublicadorTarefasController;
 use App\Models\PubTarefa;
 use App\Support\Permissions;
@@ -311,6 +312,30 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('publicador/empresas/{conta}/produtos/{produto}/estoque-calculado', [MlbPublicadorFaseController::class, 'usarEstoqueCalculado'])
             ->where('conta', '(empresa|company)-[0-9]+')->whereNumber('produto')
             ->middleware('throttle:60,1,publicador.vinculo')->name('publicador.vinculo.estoque-calculado');
+
+        // ─── 10/10/2026 — Publicação em lote: visão rápida, "Conferir selecionados" e a fila com intervalo ───
+        // A conta vem da rota (resolver), nunca do corpo; produto de outra conta é ignorado e item de outra
+        // conta é 404. Quem anda a fila é o `publicador:fila-publicacao` (routes/console.php), não o request.
+        Route::prefix('publicador/empresas/{conta}/lote')
+            ->where(['conta' => '(empresa|company)-[0-9]+'])
+            ->name('publicador.lote.')
+            ->group(function () {
+                Route::get('/', [MlbPublicadorLoteController::class, 'index'])->name('index');
+                Route::get('dados', [MlbPublicadorLoteController::class, 'dados'])
+                    ->middleware('throttle:120,1,publicador.lote.dados')->name('dados');
+                Route::post('conferir', [MlbPublicadorLoteController::class, 'conferir'])
+                    ->middleware('throttle:10,1,publicador.lote.conferir')->name('conferir');
+                Route::post('agendar', [MlbPublicadorLoteController::class, 'agendar'])
+                    ->middleware('throttle:20,1,publicador.lote.agendar')->name('agendar');
+                Route::post('pausar', [MlbPublicadorLoteController::class, 'pausar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('pausar');
+                Route::post('retomar', [MlbPublicadorLoteController::class, 'retomar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('retomar');
+                Route::post('cancelar', [MlbPublicadorLoteController::class, 'cancelar'])
+                    ->middleware('throttle:30,1,publicador.lote.fila')->name('cancelar');
+                Route::delete('itens/{item}', [MlbPublicadorLoteController::class, 'removerItem'])
+                    ->whereNumber('item')->middleware('throttle:60,1,publicador.lote.fila')->name('itens.remover');
+            });
 
         // ─── Fase 134: "Meus Anúncios" — saúde analítica do anúncio publicado ───
         // D-13: esta é a ABA INICIAL do módulo (acervo vivo da conta ML do
