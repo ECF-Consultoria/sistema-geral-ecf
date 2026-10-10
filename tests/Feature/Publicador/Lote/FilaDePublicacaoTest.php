@@ -447,6 +447,30 @@ class FilaDePublicacaoTest extends TestCase
         $this->assertSame('Caio', PubPublicacao::query()->sole()->ator['nome']);
     }
 
+    public function test_a_tela_abre_com_a_selecao_vinda_dos_produtos_e_a_lista_de_produtos_avisa_a_fila(): void
+    {
+        [$a, $b] = $this->cadeiras;
+
+        $this->actingAs($this->admin)->get($this->rotaLote('index', ['produtos' => "{$a->id},{$b->id},999999"]))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->component('Mlb/Publicador/PublicacaoEmLote')
+                ->where('selecionados', [$a->id, $b->id, 999999])
+                ->has('linhas', 3)
+                ->where('fila', null)
+                ->where('config.intervalo_padrao', 10)
+                ->where('config.intervalo_minimo', 2)
+                ->where('empresa.chave', $this->conta()));
+
+        $produtos = fn () => $this->actingAs($this->admin)->get(route('mlb.anuncios.publicador.produtos', ['conta' => $this->conta()]))->assertOk();
+        $produtos()->assertInertia(fn ($p) => $p->where('fila_publicacao', null));
+
+        $this->conferirTodas([$a]);
+        $this->agendar([$a])->assertCreated();
+        $produtos()->assertInertia(fn ($p) => $p->where('fila_publicacao.status', 'ativa')
+            ->where('fila_publicacao.url', $this->rotaLote('index'))
+            ->missing('fila_publicacao.itens'));
+    }
+
     public function test_sem_admin_nao_entra(): void
     {
         $consultor = \App\Models\User::factory()->create(['role' => 'consultor']);

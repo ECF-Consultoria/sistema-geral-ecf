@@ -14,6 +14,9 @@ import ModalNovoProduto from '@/Components/Mlb/Publicador/ModalNovoProduto';
 import DialogoVincularKit, { proximaFaseDaFamilia } from '@/Components/Mlb/Publicador/DialogoVincularKit';
 import LinhaDeProduto from '@/Components/Mlb/Publicador/LinhaDeProduto';
 import PainelDoProdutoLateral from '@/Components/Mlb/Publicador/PainelDoProdutoLateral';
+// 10/10/2026 — publicação em lote: os botões da seleção e o aviso da fila viva da conta.
+import AcoesDaSelecaoEmLote, { destinoDoLote } from '@/Components/Mlb/Publicador/AcoesDaSelecaoEmLote';
+import AvisoDaFila from '@/Components/Mlb/Publicador/AvisoDaFila';
 import PaginacaoDaLista, {
     achatarFamilias,
     chaveDaVista,
@@ -447,6 +450,7 @@ export default function Produtos({
     rascunhos_antigos = { total: 0, url: null },
     criativos_ia = { url: null },
     abas = { company_id: null },
+    fila_publicacao = null,
 }) {
     const [filtro, setFiltro] = useState(filtroInicial);
     const [fase, setFase] = useState(faseInicial);
@@ -570,6 +574,12 @@ export default function Produtos({
 
     // As linhas DESTA página, já achatadas de volta (base, kits, base, …).
     const linhas = useMemo(() => achatarFamilias(paginacao.itens), [paginacao]);
+
+    // 10/10/2026 — os ids do FILTRO inteiro (todas as páginas): o "Selecionar todos os N deste filtro".
+    const idsDoFiltro = useMemo(
+        () => achatarFamilias(familias).map((l) => l?.produto?.id).filter((id) => typeof id === 'number'),
+        [familias],
+    );
 
     // Há recorte em vigor? Só muda o rótulo da frase do rodapé: dizer "de N
     // produtos cadastrados" mostrando o resultado de um filtro seria mentira.
@@ -791,6 +801,9 @@ export default function Produtos({
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
+                {/* 10/10/2026 — a fila de publicação em lote viva da conta (andando ou pausada). */}
+                <AvisoDaFila fila={fila_publicacao} />
+
                 <ResumoDoSincronizar resumo={resumo} absorvidos={absorvidosDoClique} aguardando={aguardandoDoClique} onFechar={fecharResumo} />
 
                 {/* Faixa de sugestões de kit, acima do card: o × esconde até recarregar. */}
@@ -899,6 +912,15 @@ export default function Produtos({
                                     })}
                                 </div>
 
+                                {/* 10/10/2026 — a tela da publicação em lote da conta (visão rápida, conferir, fila). */}
+                                <button
+                                    type="button"
+                                    onClick={() => router.get(destinoDoLote(empresa.chave, []))}
+                                    className={BOTAO_SECUNDARIO}
+                                >
+                                    Publicação em lote
+                                </button>
+
                                 <button
                                     type="button"
                                     disabled={!abas?.company_id}
@@ -917,12 +939,21 @@ export default function Produtos({
                             uma SELEÇÃO de produtos do Publicador (o Anunciar em
                             massa lê `ml_anuncio_rascunhos` por empresa, não os
                             `pub_rascunhos` escolhidos). Pela regra do plano, o
-                            que não tem backend fica ESCONDIDO, não desabilitado. */}
+                            que não tem backend fica ESCONDIDO, não desabilitado.
+                            10/10/2026: a publicação em lote TEM backend — "Publicar
+                            em lote" e "Selecionar todos os N deste filtro" entraram
+                            aqui (`AcoesDaSelecaoEmLote`). */}
                         {selecao.size > 0 && (
                             <div className="flex flex-wrap items-center gap-3 border-t border-ecf-yellow/20 bg-ecf-yellow/[0.06] px-4 py-2">
                                 <p className="text-[13px] font-bold text-ecf-yellow">
                                     {selecao.size === 1 ? '1 selecionado' : `${selecao.size} selecionados`}
                                 </p>
+                                <AcoesDaSelecaoEmLote
+                                    selecionados={selecao.size}
+                                    totalDoFiltro={idsDoFiltro.length}
+                                    onPublicarEmLote={() => router.get(destinoDoLote(empresa.chave, selecao))}
+                                    onSelecionarTodos={() => setSelecao(new Set(idsDoFiltro))}
+                                />
                                 <button type="button" onClick={() => setSelecao(new Set())} className={BOTAO_SUGESTAO}>
                                     Limpar seleção
                                 </button>
