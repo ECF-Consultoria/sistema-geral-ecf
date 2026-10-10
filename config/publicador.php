@@ -149,6 +149,42 @@ return [
         'prazo_dias_uteis' => 1,
     ],
 
+    // ═══ Publicação em lote — a fila com intervalo (10/10/2026) ═══
+    // "Conferir selecionados" + "Agendar publicação" da conta; quem anda a fila é o `publicador:fila-publicacao`
+    // (todo minuto, routes/console.php). Um produto (Clássico + Premium, todas as cores) por vez em cada fila,
+    // para não arriscar restrição do Mercado Livre (learnings publicador-ml §20).
+    'fila_publicacao' => [
+        // Minutos entre o INÍCIO de um produto e o do próximo (decisão do usuário: 10, ajustável na tela).
+        'intervalo_minutos' => (int) env('PUBLICADOR_FILA_INTERVALO_MIN', 10),
+        // O menor intervalo que a tela aceita.
+        'intervalo_minimo' => 2,
+        // Inícios por minuto, somando TODAS as filas (contas diferentes também contam).
+        'teto_inicios_por_minuto' => (int) env('PUBLICADOR_FILA_TETO_POR_MINUTO', 2),
+        // Publicação ainda rodando depois disto: a fila pausa com aviso (o item espera a publicação terminar).
+        'publicando_max_min' => 40,
+        // Segundos entre uma conferência e a próxima no "Conferir selecionados" (fila `high`).
+        'conferir_espaco_s' => 10,
+        // A fila que terminou continua no painel por estes dias.
+        'mostrar_concluida_dias' => 3,
+    ],
+
+    // ═══ Imagens por IA automáticas (gatilho PRONTO e DESLIGADO, 10/10/2026) ═══
+    // Quando o produto chega do Portal com a ficha completa e as fotos do cliente, o Creative Engine pode gerar
+    // sozinho as imagens (2 por kit ≈ US$ 0,20). Fica DESLIGADO até o dono do Creative Engine ajustar o lado
+    // dele (`.planning/coordenacao/261010-criativos-automaticos.md`). Ligar exige TUDO: esta chave, a do Creative
+    // Engine (`configuracoes.creative_engine_ativo`), a empresa na lista `configuracoes.publicador_criativos_auto_companies`
+    // (ids separados por vírgula) e o usuário de sistema `configuracoes.publicador_criativos_auto_usuario`
+    // (id) com a chave `mlb.criativos_ia`. A aprovação das imagens continua sendo de gente.
+    'criativos_auto' => [
+        'ativo' => (bool) env('PUBLICADOR_CRIATIVOS_AUTO_ATIVO', false),
+        // Kits automáticos por empresa por dia (cada kit = `slots` imagens).
+        'limite_diario_por_empresa' => (int) env('PUBLICADOR_CRIATIVOS_AUTO_LIMITE_DIARIO', 10),
+        // Os tipos de imagem do kit automático, na ordem (os do catálogo do Creative Engine).
+        'slots' => ['lifestyle', 'hero'],
+        // false = só a galeria geral ou a 1ª cor; true = cada grupo de fotos das cores (custo × cores).
+        'todas_as_cores' => false,
+    ],
+
     // Feriados que NÃO são de data fixa (os fixos nacionais estão em `DiasUteis::FIXOS`), em `Y-m-d`.
     // Carnaval é ponto facultativo nacional: entra porque a ECF não trabalha (tirar daqui se mudar).
     // Datas de outros anos: acrescentar aqui ou em PUBLICADOR_FERIADOS (separadas por vírgula).
