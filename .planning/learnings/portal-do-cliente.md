@@ -1413,3 +1413,41 @@ Precificação. Em uma linha cada:
 - **frete sugerido** na Precificação (D-19 revogada, ADR PORTAL-02): digitado → sugerido do próprio tipo →
   outro tipo (só sem sugestão) → nada; "Cotar agora" é a própria rota com `?cotar=1`;
 - o ML trocou a tabela **2× em 2026**: falta uma checagem periódica (sugestão no §1 do arquivo).
+
+## 41. Montar kit no Planejamento, o kit vai sozinho ao Publicador e o cliente vê só 4 submódulos (09/10/2026)
+
+Pedido do usuário: "produtos, planejamento e precificação muito conectados; mapeamento para saber o que está
+pendente; o resto vai ser meio inútil". Trabalho direto (sem GSD). O que não se deduz do código:
+
+- **Menu: chave `sugestoes` = "Planejamento"**, logo depois de Produtos (o D-20 caiu). A chave `planejamento`
+  continua sendo a AGENDA ("Cronograma", §36). Quem vê o quê: `VisibilidadeDoMapeamento` — cliente vê Produtos,
+  Planejamento, Precificação e Mapeamento; equipe vê os 7; empresa com oferta simples SEM produto (importou, #131)
+  ganha Lista SKUs e Anúncios. Sem deploy, em `configuracoes` (CSV, padrão do `creative_engine_usuarios`):
+  `portal_estrutura_submodulos_cliente` troca a lista padrão; `portal_estrutura_submodulos_empresa_{id}` é a lista
+  EXATA da empresa (vence a exceção automática; `todos` = os 7). **Esconder não remove**: rota, allowlist e
+  controller ficam; a página escondida aberta por link aparece no menu marcada `oculto: true`, e o front
+  (`portalSubmodulos.js::submoduloVisivel`) NÃO a conta como visível — é assim que os links internos (Lista SKUs,
+  Cronograma) somem para quem não vê. A entrada do módulo usa a mesma régua (`ModulosPortal::submoduloVisivel`).
+- **Montar kit** (`Geracao/MontagemManualDeOferta` + `RegrasDaMontagem`, rotas `sugestoes/montar/previa` e
+  `sugestoes/montar`): item pela variação, ou pela oferta quando ela não tem variação (importada). A fase
+  repete a regra de `EstruturaOfertaService::composicao` (privada, fora do escopo) — a gravação passa por ela de
+  novo e um teste cruza as duas. Duplicata em DUAS réguas: as ofertas (mesmos componentes e quantidades, vale
+  para item sem variação) e a chave de variação do `RetratoDoCatalogo` (pega os kits da Fase N); o retrato agora
+  leva `detalhes.existentes_sku` para dizer "já existe: SKU X". `ChaveDeComposicao` aceita até 6 componentes.
+- **Um padrão de nome/SKU**: a Lista SKUs (`FormOferta`) passou a pedir Kit/Combit à mesma prévia (antes
+  "A+B-KIT"/"-CBT4"). O Combo da Lista ficou "Combo N nome"/`-CBn` porque o lote é do `criarCombos` (fora do
+  escopo) — o Planejamento diz "Kit N Cadeiras …". Divergência conhecida, de propósito.
+- **Vai sozinho ao Publicador**: `EstruturaOfertaService::criar` de oferta COMPOSTA chama
+  `PreparoIaAgenda::aoSalvar` pelos produtos dos componentes, em `DB::afterCommit` (rollback não agenda); o
+  "Aceitar" em lote e os combos em lote passam `prepararNoPublicador: false` e agendam UMA vez. Componente sem
+  produto não agenda (segue pelo Sincronizar). Na fila `sync` nada agenda: o teste usa `Queue::fake()`.
+- **Funil do Mapeamento** (`FunilDoMapeamento`, prop ADIADA `funil` — `Inertia::defer`): a ficha técnica só é
+  conferida com a definição JÁ guardada (`ml_categoria_schemas` ou o cache `ml_meta_atributos_{cat}`), para o
+  Mapeamento nunca buscar fora; os números do Planejamento e da Precificação são os das próprias telas (teste).
+- **Teste**: trocar de empresa no mesmo teste pede `$this->app['auth']->forgetGuards()` (o guard guarda o
+  usuário da requisição anterior e a página sai com o menu da outra empresa). Render no Node (esbuild): deixar
+  `@radix-ui/*`, `react-remove-scroll` & cia. em `external`, senão "Dynamic require of react".
+- **Pendente em arquivo de outro agente**: o vazio da `EstruturaPrecificacao.jsx` ("Os produtos vêm da Lista
+  SKUs" / "Ir para a Lista SKUs") deveria apontar para Produtos/Planejamento quando a Lista não é visível; a
+  copy "Cada variação vira uma oferta na Lista SKUs" (Produtos e ficha) e os exemplos do `ComoFunciona` citam a
+  Lista e o padrão antigo.
