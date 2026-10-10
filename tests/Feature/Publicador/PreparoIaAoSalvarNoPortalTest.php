@@ -249,7 +249,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
         $this->salvarNoPortal($p);
 
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, 2);
-        Queue::assertPushedOn('high', PrepararProdutoNoPublicadorJob::class);
+        Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
         // Decisão do usuário (10/10/2026): a IA espera 2 minutos sem save (era 10).
         $this->assertSame(2, config('publicador.preparo_ia.atraso_min'));
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null
@@ -262,6 +262,37 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['pronto'], $this->rodar(PrepararProdutoNoPublicadorJob::class));
         $this->assertSame(1, PubProduto::where('estrutura_produto_id', $p->id)->count());
+    }
+
+    // ═══ Fila própria do preparo (10/10/2026, learnings publicador-ml §22) ═══
+
+    public function test_o_preparo_tem_fila_propria_e_o_sincronizar_continua_na_high(): void
+    {
+        // A cadeia de 5–7 min por produto segurava a `high` (publicação, código de acesso do Portal) numa
+        // importação grande. O Sincronizar ao salvar fica na `high`: é ele que leva o produto "na hora".
+        $this->assertSame('publicador-ia', PreparoIaAgenda::fila());
+        $p = $this->produtoDoPortal();
+
+        [, $ia] = $this->salvarERodar($p);
+
+        $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
+        Queue::assertPushedOn('high', SincronizarProdutoDoPortalJob::class);
+        Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
+        $cadeia = Queue::pushed(GerarPreparoIaJob::class)->sole();
+        $this->assertSame('publicador-ia', $cadeia->queue);
+        $this->assertSame(['publicador-ia', 'publicador-ia'], array_map(fn ($s) => unserialize($s)->queue, $cadeia->chained),
+            'cada elo declara a fila: o onQueue do Bus::chain não move elo que já tem fila');
+    }
+
+    public function test_a_valvula_da_fila_devolve_o_preparo_a_high_e_vazio_volta_ao_padrao(): void
+    {
+        config(['publicador.preparo_ia.fila' => 'high']);
+        $this->assertSame('high', (new PrepararProdutoNoPublicadorJob(1, 1, 'marca'))->queue);
+        $this->assertSame('high', (new GerarPreparoIaJob(1, 'titulo', 'hash'))->queue);
+
+        config(['publicador.preparo_ia.fila' => '  ']);
+        $this->assertSame('publicador-ia', PreparoIaAgenda::fila());
+        $this->assertSame('publicador-ia', (new GerarPreparoIaJob(1, 'titulo', 'hash'))->queue);
     }
 
     // ═══ O produto chega ao Publicador logo (10/10/2026) ═════════════════════
@@ -363,7 +394,7 @@ class PreparoIaAoSalvarNoPortalTest extends TestCase
 
         $this->assertSame(['escrito', 'escrito', 'escrito'], $ia);
         Queue::assertPushedWithChain(GerarPreparoIaJob::class, [GerarPreparoIaJob::class, GerarPreparoIaJob::class]);
-        Queue::assertPushedOn('high', GerarPreparoIaJob::class);
+        Queue::assertPushedOn('publicador-ia', GerarPreparoIaJob::class);
 
         $r = $this->rascunhoDo($p);
         $this->assertSame(['gold_special' => $this->tituloIa, 'gold_pro' => $this->tituloPremiumIa], $this->titulos($r),

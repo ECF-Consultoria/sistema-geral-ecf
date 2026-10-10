@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Publicador;
 
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,8 +23,10 @@ use Illuminate\Support\Facades\Log;
  * `valorPronto` = valor já gerado de uma escrita adiada (editor em uso): ao acordar, só grava,
  * sem chamar a IA de novo.
  *
- * Fila `high` (10/10/2026), como os outros Jobs de IA do Publicador: na `default` a cadeia esperava
- * as sincronizações do Adman e do Acervo (ver `PrepararProdutoNoPublicadorJob`).
+ * Fila do preparo (`PreparoIaAgenda::fila()`, padrão `publicador-ia`, 10/10/2026), declarada AQUI e não só
+ * no `Bus::chain`: o elo que declara fila fica nela (`$next->queue ?: $this->chainQueue`). Na `default` a
+ * cadeia esperava o Adman e o Acervo; na `high` ela segurava a publicação e o código de acesso do Portal
+ * (ver `PrepararProdutoNoPublicadorJob`).
  */
 class GerarPreparoIaJob implements ShouldQueue
 {
@@ -46,7 +49,7 @@ class GerarPreparoIaJob implements ShouldQueue
         public int $adiamentos = 0,
         public array $restantes = [],
     ) {
-        $this->onQueue('high');
+        $this->onQueue(PreparoIaAgenda::fila());
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void

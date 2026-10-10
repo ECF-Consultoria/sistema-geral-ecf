@@ -37,6 +37,17 @@ class PreparoIaAgenda
         return "publicador:preparo:sincronizar:{$estruturaProdutoId}";
     }
 
+    /**
+     * A fila do preparo pela IA (`publicador.preparo_ia.fila`, padrão `publicador-ia`): a cadeia e quem a abre.
+     * O Sincronizar ao salvar continua na `high` — é ele que leva o produto ao Publicador "na hora".
+     */
+    public static function fila(): string
+    {
+        $fila = trim((string) config('publicador.preparo_ia.fila', 'publicador-ia'));
+
+        return $fila !== '' ? $fila : 'publicador-ia';
+    }
+
     public static function marcaAtual(int $estruturaProdutoId): ?string
     {
         $m = Cache::get(self::chaveDaMarca($estruturaProdutoId));

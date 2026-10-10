@@ -82,9 +82,9 @@ class KitDoPlanejamentoChegaSozinhoTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'criadas');
         $ofertaId = (int) $r->json('criadas.0.oferta_id');
 
-        // Uma agenda por produto dos componentes (mesa e cadeira), com a espera de sempre, fila `default`.
+        // Uma agenda por produto dos componentes (mesa e cadeira), com a espera de sempre, na fila do preparo.
         $this->assertSame($this->produtos('Mesa Polo', 'Cadeira Polo'), $this->produtosAgendados());
-        Queue::assertPushedOn('high', PrepararProdutoNoPublicadorJob::class);
+        Queue::assertPushedOn('publicador-ia', PrepararProdutoNoPublicadorJob::class);
         Queue::assertPushed(PrepararProdutoNoPublicadorJob::class, fn ($j) => $j->delay !== null && $j->companyId === $this->empresa->id);
         $this->assertSame(0, PubProduto::where('oferta_id', $ofertaId)->count(), 'nada no Publicador antes da espera');
 

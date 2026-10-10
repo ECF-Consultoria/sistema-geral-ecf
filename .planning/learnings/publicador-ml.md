@@ -1128,11 +1128,25 @@ produto: o "IA em ~7 min" do teste da §21.
 - Duas empresas importando no mesmo dia dobram tudo isso.
 - Já acontece com a planilha. Com o Bling seria igual (seed `261010-integracao-bling-erp.md`, risco 5).
 
-**Proposta (PENDENTE de decisão do usuário, 10/10):** a cadeia do preparo vai para uma fila própria
-(`publicador-ia`), com um programa próprio no supervisor.
-- **Capacidade:** a VPS tem 16 GB (11,6 GB disponíveis) e 4 CPUs; os 6 workers de hoje somam 478 MB (~80 MB cada).
+**Feito em 10/10 (autorizado pelo usuário: "pode subir sim, pode fazer"):**
+- **Fila própria:** `publicador.preparo_ia.fila` (`PreparoIaAgenda::fila()`, padrão `publicador-ia`) recebe o
+  `PrepararProdutoNoPublicadorJob` (a entrada, 2 min depois do save), cada `GerarPreparoIaJob` e o `Bus::chain`.
+- **Fica na `high`:** o `SincronizarProdutoDoPortalJob`, que leva o produto ao Publicador "na hora", e os botões de
+  IA em que alguém clica e espera (descrição, palavras-chave, sugestão de kit, análise do anúncio).
+- **Programa do supervisor:** `/etc/supervisor/conf.d/ecf-worker-ia.conf` (`ecf-worker-ia`, 3 processos,
+  `--queue=publicador-ia --timeout=600`, `www-data`, log `storage/logs/worker-ia.log`). É uma cópia do
+  `ecf-worker-high`.
+  - Entrou com `supervisorctl reread` e depois `supervisorctl update ecf-worker-ia`, **com o nome do grupo**: o
+    `update` sem argumento aplicaria TODA mudança pendente em disco e reiniciaria outros grupos.
+  - Provado antes do deploy: um preparo de produto inexistente, posto à mão em `publicador-ia`, saiu `DONE` em 2 s.
+- **O `deploy.sh` só reinicia `ecf-worker:*`.** O `queue:restart` depois dele pega também o `ecf-worker-ia`.
+- **Válvula de emergência:** se o programa sumir (servidor refeito, conf perdida), o preparo para calado.
+  `PUBLICADOR_PREPARO_IA_FILA=high` + `config:cache` devolve o que for despachado a partir daí; o que já estiver em
+  `publicador-ia` espera o programa voltar.
+- **Capacidade:** a VPS tem 16 GB (11,6 GB disponíveis) e 4 CPUs; os 6 workers de antes somavam 478 MB (~80 MB
+  cada).
 
-**Ao fazer:**
+**Lições:**
 - **`Bus::chain(...)->onQueue()` NÃO move elo que declara fila.** `PendingChain` faz
   `$firstJob->queue = $firstJob->queue ?: $this->queue`, e o `Queueable` faz `$next->queue ?: $this->chainQueue`. O
   `GerarPreparoIaJob` declara `high` no construtor, e o `AvaliarCriativosAutomaticosJob`, `creative`. Trocar no

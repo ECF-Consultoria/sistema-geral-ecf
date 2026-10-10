@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Publicador;
 
+use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\PreparoIaDoRascunhoService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,13 +16,12 @@ use Illuminate\Support\Facades\Log;
  * com o Publicador (as regras do "Sincronizar do Portal") e, com a ficha completa, encadeia a IA
  * (título → Modelo → descrição). Quem decide tudo é o `PreparoIaDoRascunhoService`.
  *
- * Fila `high` (10/10/2026; era `default`): é o resultado de um save do cliente, e a `default` de
- * produção fica dezenas de minutos atrás das sincronizações do Adman e do Acervo (no teste de 10/10,
- * 308 + 220 jobs com os 2 workers dela presos) — a espera de 2 minutos virava meia hora. A `high`
- * tem um worker só dela, e os outros Jobs de IA do Publicador já moram lá. Sem nova tentativa;
- * `timeout` igual ao dos irmãos do Publicador, abaixo do `retry_after` de produção. Adiar (editor em
- * uso) é um Job NOVO com espera, nunca `release()` — com `tries = 1` o `release` estouraria as
- * tentativas (learnings §6).
+ * Fila do preparo (`PreparoIaAgenda::fila()`, padrão `publicador-ia`, 10/10/2026): nem a `default` — que
+ * fica dezenas de minutos atrás das sincronizações do Adman e do Acervo (308 + 220 jobs no teste de 10/10)
+ * —, nem a `high` — onde a cadeia de 5–7 min por produto segurava a publicação e o código de acesso do
+ * Portal numa importação grande (learnings publicador-ml §22). Sem nova tentativa; `timeout` igual ao dos
+ * irmãos do Publicador, abaixo do `retry_after` de produção. Adiar (editor em uso) é um Job NOVO com
+ * espera, nunca `release()` — com `tries = 1` o `release` estouraria as tentativas (learnings §6).
  */
 class PrepararProdutoNoPublicadorJob implements ShouldQueue
 {
@@ -39,7 +39,7 @@ class PrepararProdutoNoPublicadorJob implements ShouldQueue
         public string $marca,
         public int $adiamentos = 0,
     ) {
-        $this->onQueue('high');
+        $this->onQueue(PreparoIaAgenda::fila());
     }
 
     public function handle(PreparoIaDoRascunhoService $servico): void

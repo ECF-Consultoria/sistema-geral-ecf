@@ -293,8 +293,9 @@ class PreparoIaDoRascunhoService
         if ($this->criativos()->ligadoPara($pub->company_id !== null ? (int) $pub->company_id : null)) {
             $jobs[] = new AvaliarCriativosAutomaticosJob((int) $r->id);
         }
-        // Fila `high` (10/10/2026): na `default` a cadeia esperava as sincronizações do Adman e do Acervo.
-        Bus::chain($jobs)->onQueue('high')->dispatch();
+        // Fila do preparo (10/10/2026, learnings publicador-ml §22): nem a `default` (Adman/Acervo) nem a `high`
+        // (publicação, código de acesso do Portal). Cada elo também a declara; o das imagens fica na `creative`.
+        Bus::chain($jobs)->onQueue(PreparoIaAgenda::fila())->dispatch();
 
         return 'gerando ('.implode(', ', $etapas).')';
     }

@@ -127,6 +127,12 @@ return [
     'preparo_ia' => [
         // Chave de segurança: false desliga TUDO (nem sincroniza nem gera).
         'ativo' => (bool) env('PUBLICADOR_PREPARO_IA_ATIVO', true),
+        // Fila do preparo pela IA (10/10/2026, learnings publicador-ml §22): a cadeia título → Modelo → descrição
+        // leva 5–7 min por produto e, na `high`, segurava a publicação, o Sincronizar ao salvar e o código de
+        // acesso do Portal por até ~30 min numa importação grande. Fila própria, atendida pelo programa
+        // `ecf-worker-ia` do supervisor (3 processos). Válvula de emergência: `high` (e `config:cache`) devolve a
+        // IA ao lugar antigo sem deploy.
+        'fila' => (string) env('PUBLICADOR_PREPARO_IA_FILA', 'publicador-ia'),
         // O produto chega ao Publicador logo (decisão do usuário, 10/10/2026: "ou vai instantâneo ou na hora
         // de sincronizar"): estes segundos depois do save, um Sincronizar SÓ dele, sem IA. Saves seguidos
         // dentro da espera viram uma sincronização só.
