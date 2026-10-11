@@ -954,12 +954,131 @@ test('PainelDoProdutoLateral — render real: os blocos da spec, 440px e acessí
         assert.match(html, /Premium/);
         assert.match(html, /data-link-ml="MLB7781120934"/);
         assert.match(html, /produto\.mercadolivre\.com\.br/);
-        // Rodapé: "Abrir produto" + a ação principal.
+        // Rodapé: UMA ação. Este produto é `publicado` — a ação da tabela é
+        // "Abrir"/`produto`, o MESMO destino de "Abrir produto", então o
+        // segundo botão não existe (quick 261010-wv1).
         assert.match(html, /Abrir produto/);
-        assert.match(html, />Abrir</);
+        assert.doesNotMatch(html, />Abrir</, 'o botão "Abrir" repetia o destino de "Abrir produto"');
         // Largura de 440px, à direita.
         assert.match(html, /width:440px/);
         assert.doesNotMatch(html, /\[object Object\]/);
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Rodapé: UMA ação principal (item 10 do Bloco B, quick 261010-wv1)
+    //
+    // ⚠️ O rodapé renderizava SEMPRE dois botões, e cruzando com a tabela
+    // `ACOES` isso dava três defeitos diferentes:
+    //   1. `publicado`: "Abrir"/`produto` é o MESMO destino de "Abrir produto";
+    //   2. `publicando`/`parcial`/`erro`: destino `painel` — o painel já É o
+    //      destino, então `onAcao` da página (`if (destino !== 'painel')`) não
+    //      fazia NADA ao ser clicado. Botão que mente;
+    //   3. chave desconhecida: `ACAO_PADRAO` tem o rótulo "Abrir produto" —
+    //      dois botões com o rótulo IDÊNTICO.
+    // O caso `editor` continua com os DOIS, porque aí são lugares diferentes.
+    //
+    // A tabela `ACOES`/`acaoPrincipal()` NÃO mudou: a linha da lista lê a mesma
+    // função e o botão dela está correto (ver o bloco 1 deste arquivo).
+    // ═══════════════════════════════════════════════════════════════════════
+    await contexto.test('rodapé: destino `produto` dá UM botão só, nunca dois para o mesmo lugar', () => {
+        const html = render({
+            produto: produtoBase({ status: { chave: 'publicado', rotulo: 'publicado', faltam: 0 } }),
+            acao: acaoPrincipal({ chave: 'publicado' }),
+        });
+        assert.equal((html.match(/data-rodape-abrir/g) ?? []).length, 1);
+        assert.equal((html.match(/data-rodape-acao/g) ?? []).length, 0, 'o segundo botão levava ao mesmo lugar');
+        assert.match(html, />Abrir produto</);
+        assert.doesNotMatch(html, />Abrir</);
+    });
+
+    await contexto.test('rodapé: destino `painel` NÃO renderiza botão — ele não disparava nada', () => {
+        for (const chave of ['publicando', 'parcial', 'erro']) {
+            const html = render({
+                produto: produtoBase({ status: { chave, rotulo: chave, faltam: 0 } }),
+                acao: acaoPrincipal({ chave }),
+            });
+            assert.equal((html.match(/data-rodape-acao/g) ?? []).length, 0, `${chave}: botão no-op continua no rodapé`);
+            assert.equal((html.match(/data-rodape-abrir/g) ?? []).length, 1, chave);
+            assert.doesNotMatch(html, />Acompanhar</, chave);
+            assert.doesNotMatch(html, />Ver erro</, chave);
+            // ⚠️ E a informação que o botão prometia continua no corpo: o selo
+            // de situação. Nenhum botão foi escondido deixando a pessoa sem dado.
+            assert.match(html, /Publicando|Parte publicada|Não publicado/, chave);
+        }
+
+        // O "N de M" do parcial e os MLBs no ar seguem na seção Anúncios.
+        const parcial = render({
+            produto: produtoBase({
+                status: { chave: 'parcial', rotulo: 'parcial', faltam: 0 },
+                parcial: { publicados: 1, total: 2 },
+                anuncios: [{ ml_item_id: 'MLB7781120934', listing_type_id: 'gold_special' }],
+            }),
+            acao: acaoPrincipal({ chave: 'parcial' }),
+        });
+        assert.match(parcial, /1 de 2/);
+        assert.match(parcial, /data-link-ml="MLB7781120934"/);
+    });
+
+    await contexto.test('rodapé: destino `editor` CONTINUA com os dois botões (caminho principal)', () => {
+        for (const [chave, rotulo] of [['rascunho', 'Começar rascunho'], ['conferir', 'Continuar'], ['pronto', 'Publicar']]) {
+            const html = render({
+                produto: produtoBase({ status: { chave, rotulo: chave, faltam: chave === 'conferir' ? 2 : 0 } }),
+                acao: acaoPrincipal({ chave }),
+            });
+            assert.equal((html.match(/data-rodape-abrir/g) ?? []).length, 1, chave);
+            assert.equal((html.match(/data-rodape-acao/g) ?? []).length, 1, `${chave}: o segundo botão vai a OUTRO lugar e não pode sair`);
+            assert.match(html, new RegExp(`>${rotulo}<`), chave);
+            assert.match(html, />Abrir produto</, chave);
+        }
+    });
+
+    await contexto.test('rodapé: chave desconhecida nunca produz dois rótulos iguais', () => {
+        // `ACAO_PADRAO` é "Abrir produto"/`produto` — era literalmente o mesmo
+        // rótulo duas vezes.
+        const html = render({
+            produto: produtoBase({ status: { chave: 'inventada-pelo-servidor', faltam: 0 } }),
+            acao: acaoPrincipal({ chave: 'inventada-pelo-servidor' }),
+        });
+        assert.equal((html.match(/>Abrir produto</g) ?? []).length, 1);
+        assert.equal((html.match(/data-rodape-acao/g) ?? []).length, 0);
+
+        // `acao` em formato inesperado (objeto, array, nulo, ausente) também cai
+        // no botão único: a whitelist é `destino === 'editor'`, nunca o inverso.
+        for (const acao of [null, undefined, 'nao-e-objeto', { rotulo: {}, destino: [], estilo: 7 }, { rotulo: 'X', destino: 'painel' }, { destino: 'produto' }]) {
+            let saida;
+            assert.doesNotThrow(() => { saida = render({ acao }); }, JSON.stringify(acao));
+            assert.equal((saida.match(/data-rodape-acao/g) ?? []).length, 0, JSON.stringify(acao));
+            assert.equal((saida.match(/>Abrir produto</g) ?? []).length, 1, JSON.stringify(acao));
+            assert.doesNotMatch(saida, /\[object Object\]/, JSON.stringify(acao));
+        }
+
+        // Destino 'editor' com rótulo lixo: o segundo botão existe, mas o
+        // fallback do rótulo NÃO pode repetir "Abrir produto".
+        const lixoNoEditor = render({ acao: { rotulo: {}, destino: 'editor', estilo: 'secundario' } });
+        assert.equal((lixoNoEditor.match(/data-rodape-acao/g) ?? []).length, 1);
+        assert.equal((lixoNoEditor.match(/>Abrir produto</g) ?? []).length, 1, 'o fallback do rótulo repetia o outro botão');
+        assert.doesNotMatch(lixoNoEditor, /\[object Object\]/);
+    });
+
+    await contexto.test('o drawer se sustenta: o rodapé encolheu, o CORPO não (§17)', () => {
+        // ⚠️ A pergunta do §17 era se o drawer adiciona valor. Ele hospeda o que
+        // NÃO está na linha: a sugestão de kit (os dois botões que saíram dela),
+        // a barra do que falta conferir e os links dos MLBs. Este gate impede que
+        // "tirar a redundância do rodapé" vire "esvaziar o drawer".
+        const html = render({
+            produto: produtoBase({
+                status: { chave: 'conferir', rotulo: 'em preenchimento', faltam: 3 },
+                anuncios: [{ ml_item_id: 'MLB7781120934', listing_type_id: 'gold_special' }],
+            }),
+            acao: acaoPrincipal({ chave: 'conferir' }),
+            sugestao: { base_id: 1, base_sku: 'CAD-01', base_nome: 'Cadeira Executiva ECF', quantidade: 2 },
+            proximaFase: 2,
+        });
+        assert.match(html, /Vincular como Fase 2/);
+        assert.match(html, /Não é kit/);
+        assert.match(html, /Falta para conferir/);
+        assert.match(html, /role="progressbar"/);
+        assert.match(html, /data-link-ml="MLB7781120934"/);
     });
 
     await contexto.test('⚠️ SEM preço: `anuncios[]` só traz ml_item_id e listing_type_id', () => {

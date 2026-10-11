@@ -66,7 +66,8 @@ const TITULO_SECAO = 'text-[11px] font-bold uppercase tracking-[0.05em] text-whi
  * @param {?Object}  props.acao        `acaoPrincipal(status)`
  * @param {Function} props.onFechar
  * @param {Function} props.onAbrirProduto
- * @param {Function} props.onAcao
+ * @param {Function} props.onAcao  só é chamado quando `acao.destino` é
+ *   'editor' — nos outros destinos o rodapé tem UM botão (ver `temAcaoPropria`)
  * @param {Function} props.onVincular   abre o DialogoVincularKit da página
  * @param {Function} props.onRecusar    abre o mesmo diálogo em modo "Não é kit"
  */
@@ -118,8 +119,37 @@ export default function PainelDoProdutoLateral({
     const atualizado = haQuanto(typeof p.atualizado_em === 'string' ? p.atualizado_em : null);
 
     const acaoSegura = objetoSeguro(acao);
-    const rotuloDaAcao = textoSeguro(acaoSegura.rotulo, '') || 'Abrir produto';
     const estiloDaAcao = Object.prototype.hasOwnProperty.call(ESTILOS, acaoSegura.estilo) ? acaoSegura.estilo : 'secundario';
+
+    // ⚠️ UMA ação principal no rodapé (item 10 do Bloco B do briefing,
+    // 10/10/2026). Antes vinham SEMPRE dois botões — "Abrir produto" e a ação
+    // de `acaoPrincipal()` — e isso dava TRÊS defeitos, não um:
+    //
+    // 1. `publicado`: a ação é "Abrir"/destino `produto` — o MESMO lugar de
+    //    "Abrir produto". Dois botões, um destino.
+    // 2. `publicando`/`parcial`/`erro`: destino `painel`. O painel já É esse
+    //    destino, então o `onAcao` da página (`if (destino !== 'painel')`) não
+    //    fazia NADA ao ser clicado: um botão que mente, contra o §29 do
+    //    briefing. O que ele prometia está no CORPO — o selo de situação, o
+    //    "N de M" e os MLBs no ar da seção Anúncios, o "atualizado há…" — e
+    //    `produtosParaTela()` não devolve mensagem de erro nenhuma nesta tela
+    //    (`status` é só `{chave, rotulo, faltam}`), então não havia dado
+    //    algum que a remoção pudesse esconder.
+    // 3. chave desconhecida: o `ACAO_PADRAO` tem rótulo "Abrir produto" —
+    //    dois botões com o rótulo IDÊNTICO.
+    //
+    // A regra é "o segundo botão só existe quando leva a outro lugar", e o
+    // único destino assim é o `editor` ("Começar rascunho"/"Continuar"/
+    // "Publicar"): esse caso CONTINUA com os dois, de propósito, porque é o
+    // caminho principal da Fase 1. Whitelist positiva: destino em formato
+    // inesperado cai no botão único, nunca em dois botões iguais.
+    //
+    // ⚠️ A tabela `ACOES`, o `ACAO_PADRAO` e `acaoPrincipal()` NÃO mudaram — a
+    // linha da lista lê a MESMA função e o botão dela está correto.
+    const temAcaoPropria = textoSeguro(acaoSegura.destino, '') === 'editor';
+    // Fallback do rótulo é do EDITOR (o único destino que ainda renderiza o
+    // segundo botão): "Abrir produto" aqui repetiria o botão ao lado.
+    const rotuloDaAcao = textoSeguro(acaoSegura.rotulo, '') || 'Abrir no editor';
 
     return (
         <div className="fixed inset-0 z-40">
@@ -248,14 +278,19 @@ export default function PainelDoProdutoLateral({
                     </section>
                 </div>
 
-                {/* ─── Rodapé: "Abrir produto" + a ação principal ─── */}
+                {/* ─── Rodapé: UMA ação principal (ver `temAcaoPropria` acima) ─── */}
                 <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/[0.06] p-5">
-                    <button type="button" onClick={() => onAbrirProduto?.()} className={cn(BOTAO, SECUNDARIO)}>
+                    <button type="button" data-rodape-abrir="" onClick={() => onAbrirProduto?.()} className={cn(BOTAO, SECUNDARIO)}>
                         Abrir produto
                     </button>
-                    <button type="button" onClick={() => onAcao?.()} className={cn(BOTAO, ESTILOS[estiloDaAcao])}>
-                        {rotuloDaAcao}
-                    </button>
+                    {/* O estilo da ação (que pode ser vermelho) é DESTE botão: sem
+                        ele não há botão vermelho, e o vermelho do erro segue no
+                        selo de situação, no corpo. */}
+                    {temAcaoPropria && (
+                        <button type="button" data-rodape-acao="" onClick={() => onAcao?.()} className={cn(BOTAO, ESTILOS[estiloDaAcao])}>
+                            {rotuloDaAcao}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

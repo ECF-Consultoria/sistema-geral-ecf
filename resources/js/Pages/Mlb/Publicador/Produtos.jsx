@@ -1249,7 +1249,10 @@ export default function Produtos({
                 onAcao={() => {
                     if (!produtoDoPainel) return;
                     const destino = acaoPrincipal(produtoDoPainel.status).destino;
-                    // O painel JÁ é o destino 'painel': ali a ação é só não fazer nada.
+                    // ⚠️ Desde a quick 261010-wv1 o rodapé só renderiza este botão
+                    // quando o destino é 'editor' — era este `if` que deixava o
+                    // clique sem efeito algum no destino 'painel' (o painel já É
+                    // ele). A guarda fica como defesa, não como comportamento.
                     if (destino !== 'painel') irPara(destino, produtoDoPainel);
                 }}
                 onVincular={() => {
