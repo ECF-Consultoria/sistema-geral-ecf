@@ -2031,6 +2031,18 @@ function SelectResponsavel({ e, usuarios, onTrocar }) {
     );
 }
 
+// Decola automático (TKT-0013): o Mercado Livre confirma o programa ativo na conta, e o
+// sistema marca "Sim" sozinho todo dia às 08:30. O select segue editável, mas um valor
+// diferente de "Sim" volta a "Sim" na leitura seguinte — o selo avisa quem for mexer.
+function SeloDecolaMl() {
+    return (
+        <span className="mt-1 block whitespace-nowrap text-[10px] font-medium text-emerald-300/80"
+            title='O Mercado Livre informa o Programa Decola ativo nesta conta. O sistema confere todo dia e marca "Sim" sozinho.'>
+            automático · Mercado Livre
+        </span>
+    );
+}
+
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
 // memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
 // célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
@@ -2107,7 +2119,7 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
         planilha_produtos: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         listagem: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         publicacao: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
-        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} />{e.decola_ml_ativo && <SeloDecolaMl />}</div></td>,
         campanha_criada: <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
         central_promocao: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         // Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como as

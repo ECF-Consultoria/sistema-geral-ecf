@@ -361,6 +361,7 @@ class PolosController extends Controller
         $empresas = MlbEmpresa::ativas()
             ->with([
                 'responsavel:id,name',
+                'decolaMl',
                 'implementacao',
                 'implementacao.responsavel:id,name',
                 'implementacao.linkEnviadoPor:id,name',
@@ -445,6 +446,9 @@ class PolosController extends Controller
                     'publicacao'               => $impl?->publicacao,
                     // decola é texto desde 2026-08-03 (Sim/Não/Mensagem Enviada/valor criado).
                     'decola'                   => $impl?->decola,
+                    // true = o Mercado Livre confirma o Decola ativo (leitura fresca do
+                    // polos:decola-status, TKT-0013): a tela mostra o selo "automático".
+                    'decola_ml_ativo'          => (bool) $e->decolaMl?->ativoEFresco(),
                     'campanha_criada'          => $impl ? (bool) $impl->campanha_criada : null,
                     'central_promocao'         => $impl?->central_promocao,
                     'contextos_logistica'      => $impl?->contextos_logistica,

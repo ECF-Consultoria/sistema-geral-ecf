@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PoloDecolaStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -389,6 +390,15 @@ class SyncPolosPlanilha extends Command
                     unset($fichaData[$campo]);
                     $this->rel['sentinelas_preservadas']++;
                 }
+            }
+
+            // Decola automático (TKT-0013): enquanto o Mercado Livre confirma o programa ativo
+            // na conta (leitura fresca), a planilha não rebaixa o 'Sim'. Sem isso o --apply
+            // devolvia a ficha ao valor antigo até o polos:decola-status do dia seguinte.
+            if (array_key_exists('decola', $fichaData) && $fichaData['decola'] !== 'Sim' && $ficha->decola === 'Sim'
+                && PoloDecolaStatus::where('mlb_empresa_id', $empresa->id)->first()?->ativoEFresco()) {
+                unset($fichaData['decola']);
+                $this->rel['sentinelas_preservadas']++;
             }
         }
 

@@ -190,6 +190,18 @@ Schedule::command('ml:refresh-tokens')
     ->name('refresh-ml-tokens')
     ->withoutOverlapping();
 
+// Decola automático (TKT-0013): pergunta ao ML, com o token de cada empresa dos polos que
+// conectou a conta, se o Programa Decola está ativo, e promove a ficha para "Sim" (nunca
+// rebaixa). Depois do ml:refresh-tokens das 08:00, para pegar os tokens já renovados. É uma
+// chamada por empresa conectada (dezenas), fora da cota da Adman. O resumo de cada dia vai
+// para o log abaixo (LOG_LEVEL=error em produção esconde os Log::info).
+Schedule::command('polos:decola-status --apply')
+    ->dailyAt('08:30')
+    ->timezone('America/Sao_Paulo')
+    ->name('polos-decola-status')
+    ->withoutOverlapping(60)
+    ->appendOutputTo(storage_path('logs/polos-decola.log'));
+
 // Sync direto ML (D-1) — roda às 11:05 logo após o adman:sync, enquanto migração está em curso
 // Só processa empresas com token OAuth ativo; as demais seguem via Adman
 Schedule::command('ml:sync')
