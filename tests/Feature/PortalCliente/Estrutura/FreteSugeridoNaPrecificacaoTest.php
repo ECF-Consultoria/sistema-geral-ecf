@@ -249,6 +249,35 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
         $this->assertSame($tela['premium']['anunciado'], $efetivos['precos']['gold_pro']);
     }
 
+    /**
+     * 11/10/2026 — a primeira das três conferências de frete: o frete que ENTROU no preço chega ao Publicador
+     * com o valor, a origem em palavras e a oferta onde ele mora (é dela que sai o "levar para a Precificação").
+     */
+    public function test_publicador_recebe_o_frete_que_entrou_no_preco_com_a_origem(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $o = $this->ligada($empresa, 'LIG-FRT', self::MEIO_QUILO, '45');
+        $produto = \App\Models\PubProduto::create(['company_id' => $empresa->id, 'oferta_id' => $o->id, 'sku' => 'LIG-FRT', 'nome' => 'Produto', 'origem' => 'portal']);
+        $efetivos = app(DadosEfetivosService::class);
+
+        // Sem nada digitado: vale o sugerido pela tabela, o mesmo número que a tela mostra.
+        $tela = $this->pagina($empresa, [$o->id])['por_oferta'][$o->id];
+        $fretes = $efetivos->fretesDoProduto($produto->fresh());
+        $this->assertSame(['valor' => (float) $tela['classico']['frete'], 'origem' => 'tabela', 'oferta_id' => $o->id], $fretes['por_tipo']['gold_special']);
+        $this->assertSame('tabela', $fretes['por_tipo']['gold_pro']['origem']);
+        $this->assertSame([], $fretes['por_variante'], 'produto não agrupado não tem frete por cor');
+
+        // Digitado no Clássico: vence o sugerido.
+        app(EstruturaPrecificacaoService::class)->salvarFrete($o, ['classico' => 33.3], $this->atorCliente($empresa));
+        $fretes = $efetivos->fretesDoProduto($produto->fresh());
+        $this->assertSame(['valor' => 33.3, 'origem' => 'digitado', 'oferta_id' => $o->id], $fretes['por_tipo']['gold_special']);
+        $this->assertNotSame('digitado', $fretes['por_tipo']['gold_pro']['origem'], 'salvarFrete mexe só no tipo que recebeu');
+
+        // Produto sem oferta no Portal: não há frete da Precificação.
+        $solto = \App\Models\PubProduto::create(['company_id' => $empresa->id, 'sku' => 'SOLTO', 'nome' => 'Solto', 'origem' => 'publicador']);
+        $this->assertNull($efetivos->fretesDoProduto($solto)['por_tipo']['gold_special']['valor']);
+    }
+
     // ═══ A tela e o "Cotar agora" ═══
 
     public function test_carregar_a_pagina_conectado_nao_chama_o_ml(): void

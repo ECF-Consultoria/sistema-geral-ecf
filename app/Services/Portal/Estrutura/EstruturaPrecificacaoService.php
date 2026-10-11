@@ -174,6 +174,35 @@ class EstruturaPrecificacaoService
         });
     }
 
+    /**
+     * Só o frete, de um ou dos dois tipos, sem tocar no custo nem nas exceções (11/10/2026). É por aqui que
+     * a equipe leva para cá o frete que o Mercado Livre respondeu na conferência (`FreteParaAPrecificacaoService`):
+     * o `salvarOferta` grava a linha inteira e apagaria o que não viesse.
+     *
+     * @param  array<string, float|int|string>  $fretes  `classico` e/ou `premium` → valor em reais
+     */
+    public function salvarFrete(EstruturaOferta $oferta, array $fretes, AtorDoPortal $ator): EstruturaPrecificacao
+    {
+        $valores = [];
+        foreach (FreteMe2Service::TIPOS as $tipo) {
+            if (array_key_exists($tipo, $fretes) && $fretes[$tipo] !== null && $fretes[$tipo] !== '') {
+                $valores["frete_{$tipo}"] = $this->dinheiro($fretes[$tipo], "frete_{$tipo}");
+            }
+        }
+        if ($valores === []) {
+            throw ValidationException::withMessages(['frete' => 'Informe o frete de pelo menos um tipo.']);
+        }
+
+        return DB::transaction(function () use ($oferta, $valores, $ator) {
+            $linha = EstruturaPrecificacao::updateOrCreate(['oferta_id' => $oferta->id], $valores);
+
+            RegistroEstrutura::registrar($ator, $oferta->company, $linha, 'precificacao_frete',
+                "Frete de {$oferta->sku} trazido da conferência", ['valores' => $valores]);
+
+            return $linha;
+        });
+    }
+
     // ═══ Internos ═══════════════════════════════════════════════════════════
 
     /**

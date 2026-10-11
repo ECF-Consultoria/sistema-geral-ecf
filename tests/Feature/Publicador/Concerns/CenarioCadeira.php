@@ -73,6 +73,9 @@ trait CenarioCadeira
     /** O que a Precificação do Portal sabe de custo e imposto (quick 261010-ptg), fora dos efetivos. */
     protected array $custos = ['custo' => null, 'origem' => null, 'imposto' => null, 'por_variante' => []];
 
+    /** O frete que a Precificação do Portal usou (11/10/2026); vazio = a conferência não compara frete. */
+    protected array $fretes = ['por_tipo' => [], 'por_variante' => []];
+
     /** O `/users/me` agora; nulo = a conta #459 real (UP, sem depósitos). */
     protected ?array $usuario = null;
 
@@ -108,6 +111,10 @@ trait CenarioCadeira
             $m->shouldReceive('custosDoProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
                 ? ['custo' => null, 'origem' => null, 'imposto' => null, 'por_variante' => []]
                 : $this->custos);
+            // O frete da Precificação também sai por método separado (a conferência de frete, 11/10/2026).
+            $m->shouldReceive('fretesDoProduto')->andReturnUsing(fn (PubProduto $p) => $p->oferta_id === null
+                ? ['por_tipo' => [], 'por_variante' => []]
+                : $this->fretes);
         });
 
         // O schema já guardado (24h): nenhuma chamada pública no teste.

@@ -14,6 +14,7 @@ use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Services\Portal\Estrutura\EstruturaConjunto;
 use App\Support\Publicador\AlavancasLiberadas;
+use App\Support\Publicador\ConferenciaDeFrete;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Imagem\OpcoesImagem;
 use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
@@ -551,15 +552,8 @@ class EditorRascunhoService
     /** "AxLxC,peso" dos SELLER_PACKAGE_* (cm e g), como o `shipping_options/free` pede. */
     private function dimensoes(array $atributos): ?string
     {
-        $n = function (string $id) use ($atributos): ?int {
-            $v = $atributos[$id] ?? null;
-            $num = $v['value_number'] ?? (preg_match('/^\s*(\d+(?:[.,]\d+)?)/', (string) ($v['value_name'] ?? ''), $m) ? (float) str_replace(',', '.', $m[1]) : null);
-
-            return $num !== null ? (int) round((float) $num) : null;
-        };
-        $partes = [$n('SELLER_PACKAGE_HEIGHT'), $n('SELLER_PACKAGE_WIDTH'), $n('SELLER_PACKAGE_LENGTH'), $n('SELLER_PACKAGE_WEIGHT')];
-
-        return in_array(null, $partes, true) ? null : "{$partes[0]}x{$partes[1]}x{$partes[2]},{$partes[3]}";
+        // Uma leitura só do pacote: a conferência de frete (11/10/2026) cota com o MESMO texto.
+        return ConferenciaDeFrete::dimensions($atributos);
     }
 
     // ═══ O estado para a tela ════════════════════════════════════════════════

@@ -9,6 +9,7 @@ use App\Models\PubRascunho;
 use App\Services\Publicador\CategoriaBuscaService;
 use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\FreteParaAPrecificacaoService;
 use App\Services\Publicador\ImagemAssetService;
 use App\Services\Publicador\PalavrasChaveService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -244,6 +245,20 @@ class MlbPublicadorController extends Controller
 
             return $r;
         }, 202);
+    }
+
+    /**
+     * 11/10/2026 — leva para a Precificação do Portal o frete que o Mercado Livre respondeu na última
+     * conferência (as linhas que divergiram). O valor sai do que está gravado, nunca do pedido.
+     */
+    public function freteParaAPrecificacao(Request $request, int $produto, FreteParaAPrecificacaoService $fretes): JsonResponse
+    {
+        return $this->responder(function () use ($produto, $request, $fretes) {
+            $r = $this->rascunho($produto);
+            $resumo = $fretes->aplicar($r, $request->user());
+
+            return [$r->fresh(), ['frete_levado' => $resumo]];
+        });
     }
 
     public function reenviarDescricao(int $produto, int $item): JsonResponse

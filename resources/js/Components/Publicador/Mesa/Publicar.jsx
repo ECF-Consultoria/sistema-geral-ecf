@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import axios from 'axios';
 import { AlertTriangle, CheckCircle2, ImageOff, Loader2, Lock } from 'lucide-react';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
@@ -111,6 +112,23 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         return null;
     };
 
+    // 11/10/2026 — a conferência compara o frete do Mercado Livre com o da Precificação (V-FRT-01). Quando
+    // diverge, este botão leva o do Mercado Livre para lá: o preço do Portal é refeito e pede conferir de novo.
+    const [levandoFrete, setLevandoFrete] = useState(false);
+    const levarFrete = async () => {
+        setLevandoFrete(true);
+        try {
+            const { data } = await axios.post(route('mlb.anuncios.publicador.frete-precificacao', { produto: produtoId }));
+            const n = data?.frete_levado?.aplicadas ?? 0;
+            pub.setAviso(`Frete do Mercado Livre levado para a Precificação (${n} ${n === 1 ? 'valor' : 'valores'}). O preço que vem do Portal foi refeito: confira de novo.`);
+            pub.recarregar();
+        } catch (e) {
+            pub.setErro(mensagemDe(e));
+        } finally {
+            setLevandoFrete(false);
+        }
+    };
+
     const reenviarDescricao = async (itemId) => {
         try {
             await axios.post(route('mlb.anuncios.publicador.descricao', { produto: produtoId, item: itemId }));
@@ -155,6 +173,14 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         ))}
                                         {e.itens.length > POR_ETAPA_A_VISTA && <li className="text-[13px] text-white/45">e mais {e.itens.length - POR_ETAPA_A_VISTA}.</li>}
                                     </ul>
+                                    {e.itens.some((p) => p.regra === 'V-FRT-01') && (
+                                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-3" data-frete-para-precificacao>
+                                            <button type="button" onClick={levarFrete} disabled={levandoFrete} className={LINK} data-acao="levar-frete">
+                                                {levandoFrete && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Levar o frete do Mercado Livre para a Precificação
+                                            </button>
+                                            <span className="text-[13px] text-white/45">O preço do Portal é refeito com ele; depois, confira de novo.</span>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>

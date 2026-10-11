@@ -158,6 +158,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->middleware('throttle:20,1,publicador.conferir')->name('conferir');
             Route::post('/publicar', [MlbPublicadorController::class, 'publicar'])
                 ->middleware('throttle:10,1,publicador.publicar')->name('publicar');
+            // 11/10/2026: o frete que o Mercado Livre respondeu na conferência vai para a Precificação do Portal.
+            Route::post('/frete-para-a-precificacao', [MlbPublicadorController::class, 'freteParaAPrecificacao'])
+                ->middleware('throttle:20,1,publicador.frete-precificacao')->name('frete-precificacao');
             Route::post('/itens/{item}/descricao', [MlbPublicadorController::class, 'reenviarDescricao'])
                 ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('descricao');
             Route::get('/simular', [MlbPublicadorController::class, 'simular'])
