@@ -134,7 +134,10 @@ class PortalEstruturaController extends Controller
     {
         $empresa = PortalContexto::empresa();
         $busca = (string) $request->query('q', '');
-        $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1));
+        // 11/10/2026: a lista vem agrupada por família, e `?tipo=` deixa passar um tipo só de oferta.
+        $tipo = (string) $request->query('tipo', '');
+        $tipo = array_key_exists($tipo, EstruturaOferta::FASES) ? $tipo : null;
+        $estrutura = $this->visao->paginaOfertas($empresa, 'todas', $busca, (int) $request->query('pagina', 1), ['por_familia' => true, 'fase' => $tipo]);
         $ids = array_merge(...array_map(fn ($b) => array_column($b['ofertas'], 'id'), $estrutura['blocos'] ?: [['ofertas' => []]]));
 
         $cotacao = null;
@@ -153,7 +156,7 @@ class PortalEstruturaController extends Controller
             ...$this->portal->contextoAutenticado($empresa, ModulosPortal::ESTRUTURA.'.precificacao', PortalContexto::ator()),
             'estrutura'    => $estrutura,
             'precificacao' => $this->precificacao->pagina($empresa, $ids),
-            'filtros'      => ['q' => $busca],
+            'filtros'      => ['q' => $busca, 'tipo' => $tipo],
             'vocabulario'  => EstruturaVisaoService::vocabulario(),
             'ml_conectado' => AnunciosMercadoLivreService::conectado($empresa),
             'frete_tabela' => [

@@ -1517,3 +1517,36 @@ ofertas montadas da #459 estavam com o tipo certo. O problema era só de tela: t
 aparecia num selo pequeno da prévia. Agora o título e os botões dizem "combo, kit ou combit", há uma legenda fixa dos
 três tipos (Fase 2, 3 e 4, com as palavras do "Como funciona") que acende o tipo da composição pela `fase` que o
 servidor devolve, e o botão diz o que nasce ("Criar Combit"). Nenhuma regra foi para o navegador.
+
+## 44. Precificação agrupada por família — quem agrupa é o servidor, antes de paginar (11/10/2026)
+
+**Pedido:** a Precificação era "uma lista inteira sem saber o que é". O usuário queria o produto unitário com as
+variações dele embaixo, e levantou o nó do kit: "vou pegar um produto de um e de outro", então o kit teria dois
+produtos-pai na tela.
+
+**O desenho aprovado** (artefato + pergunta com prévia, sim em 11/10):
+- grupos por família, que abrem e fecham;
+- cada produto UMA vez, com os combos dele pendurados;
+- kit e combit em "Conjuntos desta família", uma vez só;
+- o produto que entra num conjunto diz "Também entra em";
+- "Sem família" por último.
+
+**O que não é óbvio:**
+- A família já existia no cadastro de Produtos (`estrutura_produtos.familia_id`). A oferta chega a ela pela
+  variação (`estrutura_ofertas.variacao_id`). Combo, kit e combit NÃO têm variação própria: herdam a do componente
+  (`FamiliasDasOfertas::resolver`).
+- O conjunto fica na família do PRIMEIRO componente que tiver uma. Componente de outra família (ou sem família)
+  aponta para ele pelo `tambem_em`, que `paginaOfertas` já mandava para as outras telas.
+- **A ordem por família tem de vir ANTES da paginação.** A página é de 25 blocos na ordem de vendas; agrupar só o
+  que a página trouxe repetiria a mesma família em páginas distantes. `paginaOfertas(..., ['por_familia' => true])`
+  ordena e manda `familia` em cada bloco. Sem a opção, as outras três telas saem byte a byte como antes.
+- O filtro por tipo (`?tipo=combo`) é do servidor pelo mesmo motivo. A contagem dos tipos é a de `painel.por_fase`,
+  da empresa inteira; contar na página daria "Combo 2" sobre uma lista de 40 (o mesmo erro do §25).
+- Com filtro ou busca, o bloco pode vir SEM o produto principal (só os combos dele). A tela mostra o que casou,
+  raso, ainda na família do produto.
+- A coluna do produto tem ~220 px (a tabela usa quase toda a largura em preço e frete). Por isso o código quebra
+  de linha em vez de cortar, o nome mostra duas linhas, e o atalho "Também entra em" mostra tipo + código.
+- `EstruturaVisaoService.php` está em CRLF no disco. Script de edição que casa texto com `\n` não acha nada lá.
+
+**Prova sem servidor:** `scratchpad/prova_familia.mjs` desenha a página de verdade no Puppeteer com o CSS do build
+e props no formato do servidor, clica em recolher, fechar e no atalho, e fotografa.
