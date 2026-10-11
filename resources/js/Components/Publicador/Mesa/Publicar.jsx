@@ -234,7 +234,11 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         {i.mensagem && <span className="w-full text-amber-300">{i.mensagem}</span>}
                                         {/* 11/10/2026: o frete que o Mercado Livre cobra deste anúncio, contra o da Precificação. */}
                                         {i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
-                                        {i.frete?.aplicavel && i.frete.nivel === 'igual' && <span className="text-white/45" data-frete-do-anuncio="igual">· frete conferido com a Precificação</span>}
+                                        {i.frete?.aplicavel && i.frete.nivel === 'igual' && <span className="text-white/45" data-frete-do-anuncio="igual">· frete de {formatCurrency(i.frete.ml)} conferido com a Precificação</span>}
+                                        {/* Sem frete na Precificação não há com o que comparar, mas o que o ML cobra já é informação. */}
+                                        {i.frete?.aplicavel && i.frete.nivel === null && i.frete.ml !== null && (
+                                            <span className="text-white/45" data-frete-do-anuncio="sem-referencia">· o Mercado Livre cobra {formatCurrency(i.frete.ml)} de frete (a Precificação está sem frete para comparar)</span>
+                                        )}
                                         {i.frete?.mensagem && (
                                             <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-amber-300" data-frete-do-anuncio={i.frete.nivel}>
                                                 <span>{i.frete.mensagem}</span>

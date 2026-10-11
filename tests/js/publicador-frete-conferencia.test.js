@@ -53,7 +53,10 @@ test('o botão "levar para a Precificação" aparece só com o aviso de frete e 
 test('na lista de anúncios publicados, cada um diz o frete: conferido, "a combinar" ou a diferença com o botão', () => {
     const f = lerSemComentarios('resources/js/Components/Publicador/Mesa/Publicar.jsx');
     assert.match(f, /i\.frete\?\.aplicavel === false && <span[^>]*data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre \(a combinar\)<\/span>/);
-    assert.match(f, /i\.frete\?\.aplicavel && i\.frete\.nivel === 'igual' && <span[^>]*>· frete conferido com a Precificação<\/span>/);
+    assert.match(f, /i\.frete\?\.aplicavel && i\.frete\.nivel === 'igual' && <span[^>]*>· frete de \{formatCurrency\(i\.frete\.ml\)\} conferido com a Precificação<\/span>/);
+    // Medido em produção: na #459 a Precificação estava sem frete em todos os publicados. O valor do ML aparece mesmo assim.
+    assert.match(f, /i\.frete\?\.aplicavel && i\.frete\.nivel === null && i\.frete\.ml !== null && \(/);
+    assert.match(f, /o Mercado Livre cobra \{formatCurrency\(i\.frete\.ml\)\} de frete \(a Precificação está sem frete para comparar\)/);
     assert.match(f, /\{i\.frete\?\.mensagem && \(/);
     assert.match(f, /i\.frete\.pode_levar && \(\s*<button type="button" onClick=\{\(\) => levarFrete\(i\.id\)\}/);
     // Do anúncio publicado vai pela rota do ITEM, e o aviso manda atualizar o preço no Mercado Livre.
