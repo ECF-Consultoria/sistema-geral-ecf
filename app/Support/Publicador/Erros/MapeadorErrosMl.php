@@ -55,6 +55,35 @@ final class MapeadorErrosMl
         return isset(self::RUIDO[(string) ($causa['cause_id'] ?? '')]) || in_array((string) ($causa['code'] ?? ''), self::RUIDO, true);
     }
 
+    /**
+     * Um problema JÁ GRAVADO na conferência, com a tradução de hoje (10/10/2026).
+     *
+     * A mensagem fica gravada em `pub_validacoes.issues`. Código que entra no dicionário depois (o 4057 da
+     * Poltrona Opala) continuaria aparecendo cru, em inglês, até alguém conferir de novo — e anúncio já
+     * publicado não se confere de novo. Se o que está gravado é a mensagem crua do Mercado Livre e hoje existe
+     * tradução que não depende do item (sem `{atributos}` nem `{valor}`), a tela mostra a tradução. O que está
+     * gravado não muda.
+     *
+     * @param  array<string, mixed>  $issue
+     * @return array<string, mixed>
+     */
+    public static function comTraducaoDeHoje(array $issue, array $dicionario): array
+    {
+        $causa = (array) ($issue['ml_causa'] ?? []);
+        $crua = (string) ($causa['message'] ?? '');
+        if ($crua === '' || ($issue['mensagem'] ?? null) !== $crua) {
+            return $issue;
+        }
+
+        $id = isset($causa['cause_id']) ? (string) $causa['cause_id'] : '';
+        $modelo = ($id !== '' ? ($dicionario['por_codigo'][$id] ?? null) : null) ?? $dicionario['por_codigo'][(string) ($causa['code'] ?? '')] ?? null;
+        if (is_string($modelo) && ! str_contains($modelo, '{')) {
+            $issue['mensagem'] = $modelo;
+        }
+
+        return $issue;
+    }
+
     /** @param array{cause_id?: ?int, code?: string, type?: string, message?: string, references?: list<string>} $causa */
     public static function problema(array $causa, ?ItemPlano $item, ?SchemaClassificado $schema, array $dicionario): Problema
     {

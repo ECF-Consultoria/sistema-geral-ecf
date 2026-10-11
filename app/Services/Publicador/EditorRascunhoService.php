@@ -668,8 +668,12 @@ class EditorRascunhoService
             'conferencia' => $v ? [
                 'id' => $v->id, 'revisao' => $v->revisao, 'resultado' => $v->resultado, 'vale' => $v->revisao === $r->revisao,
                 'em' => $v->created_at?->toIso8601String(),
-                // Conferência gravada antes do filtro de ruído (03/10) ainda traz o 4053.
-                'issues' => array_values(array_filter((array) $v->issues, fn ($i) => ! MapeadorErrosMl::ehRuido((array) ($i['ml_causa'] ?? [])))),
+                // Conferência gravada antes do filtro de ruído (03/10) ainda traz o 4053; e a gravada antes de um
+                // código entrar no dicionário ainda traz a mensagem crua (`comTraducaoDeHoje`, 10/10).
+                'issues' => array_map(
+                    fn ($i) => MapeadorErrosMl::comTraducaoDeHoje((array) $i, (array) config('publicador_erros', [])),
+                    array_values(array_filter((array) $v->issues, fn ($i) => ! MapeadorErrosMl::ehRuido((array) ($i['ml_causa'] ?? [])))),
+                ),
                 'itens' => count((array) ($v->respostas_ml['itens'] ?? [])),
                 'local' => $v->camada === 'L2',
             ] : null,

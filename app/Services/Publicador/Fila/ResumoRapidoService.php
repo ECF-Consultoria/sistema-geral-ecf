@@ -427,6 +427,8 @@ final class ResumoRapidoService
         }
         // Conferência gravada antes do filtro de ruído (03/10) ainda traz o 4053 — como no `estado()`.
         $issues = array_values(array_filter((array) $v->issues, fn ($i) => ! MapeadorErrosMl::ehRuido((array) ($i['ml_causa'] ?? []))));
+        // E a mensagem que ficou crua porque o código só entrou no dicionário depois (10/10) — também como no `estado()`.
+        $issues = array_map(fn ($i) => MapeadorErrosMl::comTraducaoDeHoje((array) $i, (array) config('publicador_erros', [])), $issues);
         $bloqueios = count(array_filter($issues, fn ($i) => ($i['severidade'] ?? null) === Problema::BLOQUEIO));
         $avisos = count(array_filter($issues, fn ($i) => ($i['severidade'] ?? null) === Problema::AVISO));
         // Bloqueio primeiro: é o que impede publicar.

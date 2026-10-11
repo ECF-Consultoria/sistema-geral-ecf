@@ -46,7 +46,10 @@ export function seletoresDoProblema(p) {
     const v = a.variante ?? null;
     const cartao = v ? com('data-cartao-dados-variante', v) : null;
 
-    if (a.grupo || a.imagem || e === 'E6') return ate(a.grupo && com('data-grupo-foto', a.grupo), secao('fotos-variacoes'));
+    // A foto exata (a miniatura de `FotosDoPar`), em todos os grupos onde ela está; depois o grupo; depois a seção.
+    if (a.grupo || a.imagem || e === 'E6') {
+        return ate(a.imagem && com('data-foto', a.imagem), a.grupo && com('data-grupo-foto', a.grupo), secao('fotos-variacoes'));
+    }
     if (a.campo === 'preco') {
         return ate(tipo && v && com('id', `preco-${tipo}-${v}`), tipo && comeca('id', `preco-${tipo}-`), v && comeca('data-preco', `${v}|`), '[data-preco]', secao('preco'));
     }
@@ -114,10 +117,13 @@ export function piscar(el) {
     el.setAttribute(ACESO, '');
 }
 
-/** Rola até o elemento e, se for campo de digitar ou escolher, põe o cursor nele. */
+/**
+ * Rola até o elemento e, se for campo de digitar ou escolher, põe o cursor nele. Rolagem direta, de propósito:
+ * a suave depende dos quadros de animação e não anda com a aba fora de vista (medido em produção, 10/10/2026)
+ * — e "apertei e não aconteceu nada" era justamente a queixa. Quem chama a atenção é o pulso do campo.
+ */
 export function levarAte(el) {
-    const calmo = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: 'center', behavior: calmo ? 'auto' : 'smooth' });
+    el.scrollIntoView({ block: 'center' });
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) && ! el.disabled) el.focus?.({ preventScroll: true });
 }
 

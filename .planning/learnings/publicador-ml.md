@@ -1269,7 +1269,10 @@ categoria.
 - É **aviso**, não bloqueio: o Publicador deixa publicar com "Li os avisos".
 - O anúncio sai como "A combinar com o comprador". O frete grátis marcado no rascunho some sem erro.
 - O dicionário (`config/publicador_erros.php`) não tinha o 4057: código fora dele mostra a mensagem crua do ML.
-  A tradução vale para conferências NOVAS; a mensagem fica gravada em `pub_validacoes.issues`.
+- A mensagem fica GRAVADA em `pub_validacoes.issues`. Pôr o código no dicionário não muda o que já foi conferido,
+  e anúncio publicado não se confere de novo. Por isso `MapeadorErrosMl::comTraducaoDeHoje` traduz na leitura
+  (`estado()` do editor e `ResumoRapidoService`), só quando o gravado é a mensagem crua e a tradução não depende
+  do item (sem `{atributos}` nem `{valor}`).
 - Não confundir com o `4053` (`lost_me1_by_user`), que vem em toda conferência da conta e é tratado como ruído.
 
 **Lacuna que ficou aberta (decisão do usuário):** o Sincronizar não leva a logística do Portal ao `envio` do
@@ -1293,6 +1296,14 @@ mais de um. Antes o link só abria a etapa; aviso não pinta campo de vermelho, 
   o apagava.
 - Problema da conta, da conferência ou da publicação (E0, E11, E13) não tem campo. Aparece na lista do topo como
   "não é de um campo".
+- **Rolagem direta, não suave.** `scrollIntoView({ behavior: 'smooth' })` depende dos quadros de animação e não
+  anda com a aba fora de vista. Medido em produção: o campo acendia e a tela ficava parada.
+- Problema de foto traz `alvo.imagem` sem `alvo.grupo`. A miniatura de `FotosDoPar` já tem `data-foto={id}`: acende
+  a foto exata. Sem isso, três avisos de foto acendiam a seção inteira.
+
+**Como provar sem navegador logado:** `scratchpad/prova_aceso.mjs` monta uma etapa de mentira com as mesmas âncoras,
+chama `acender` no Puppeteer e fotografa. Em produção, a aba do Claude no Chrome fica `hidden`: captura de tela
+costuma estourar o tempo, mas `javascript_tool` lê o DOM normalmente.
 
 ## 27. A miniatura da lista usa a variação pequena da foto no CDN do ML (10/10/2026)
 

@@ -87,9 +87,21 @@ test('mais de uma coisa: o problema que cita vários atributos acende todos', ()
     assert.equal(s({ etapa: 'E8', atributo: 'BRAND', atributos: ['BRAND', 'MODEL'] })[0], '[data-atributo="BRAND"], [data-atributo="MODEL"]');
 });
 
-test('fotos: o grupo da foto, senão a seção de fotos', () => {
+test('fotos: a foto exata, depois o grupo dela, depois a seção de fotos', () => {
+    // Medido em produção (produto 41): 3 avisos "Foto pequena para zoom" acendiam a seção inteira, sem dizer quais.
+    assert.deepEqual(s({ etapa: 'E6', imagem: '89' }), ['[data-foto="89"]', '[data-secao="fotos-variacoes"]']);
+    assert.deepEqual(s({ etapa: 'E6', imagem: 89, grupo: 'GENERAL' }), ['[data-foto="89"]', '[data-grupo-foto="GENERAL"]', '[data-secao="fotos-variacoes"]']);
     assert.deepEqual(s({ grupo: 'COLOR=id:1' }), ['[data-grupo-foto="COLOR=id:1"]', '[data-secao="fotos-variacoes"]']);
-    assert.deepEqual(s({ etapa: 'E6', imagem: '89' }), ['[data-secao="fotos-variacoes"]']);
+    assert.deepEqual(s({ etapa: 'E6' }), ['[data-secao="fotos-variacoes"]']);
+});
+
+test('três fotos com aviso acendem as três fotos, não a seção', () => {
+    const [f87, f88, f89, secao] = [elemento('FIGURE'), elemento('FIGURE'), elemento('FIGURE'), elemento('SECTION')];
+    const raiz = tela({ '[data-foto="87"]': [f87], '[data-foto="88"]': [f88], '[data-foto="89"]': [f89], '[data-secao="fotos-variacoes"]': [secao] });
+    acender(raiz, ['87', '88', '89'].map((imagem) => ({ regra: 'V-IMG-10', mensagem: 'Foto pequena para zoom', alvo: { etapa: 'E6', imagem } })));
+
+    assert.ok(f87.hasAttribute(ACESO) && f88.hasAttribute(ACESO) && f89.hasAttribute(ACESO));
+    assert.ok(! secao.hasAttribute(ACESO));
 });
 
 test('o que é da conta, da conferência ou da publicação não tem campo', () => {
@@ -159,7 +171,8 @@ test('"Mostrar" leva ao campo do problema e põe o cursor nele; a seção só ro
 });
 
 test('os seletores existem de verdade nos campos do editor (âncora renomeada quebra aqui)', () => {
-    const tem = (arquivo, trecho) => assert.ok(lerSemComentarios(`${BASE}/${arquivo}`).includes(trecho), `${arquivo} perdeu ${trecho}`);
+    const tem = (arquivo, trecho) => assert.ok(lerSemComentarios(arquivo.startsWith('resources/') ? arquivo : `${BASE}/${arquivo}`).includes(trecho), `${arquivo} perdeu ${trecho}`);
+    tem('resources/js/Components/Portal/Estrutura/FotosDoPar.jsx', 'data-foto={foto.id}');
     tem('Mesa/EtapaCondicoes.jsx', 'data-campo="envio"');
     tem('Mesa/EtapaCondicoes.jsx', 'data-campo="garantia-tipo"');
     tem('Mesa/EtapaCondicoes.jsx', 'data-campo="garantia-tempo"');
@@ -211,6 +224,11 @@ test('a página liga tudo: o clique acende a etapa inteira, a linha clicada é o
     assert.match(hook, /new MutationObserver\(/, 'campo que nasce depois também acende');
     assert.match(hook, /observador\.observe\(raiz, \{ childList: true, subtree: true \}\)/);
     assert.match(hook, /else if \(listaId\) document\.getElementById\(listaId\)\?\.scrollIntoView/, 'sem campo na tela, o clique ainda leva à lista');
+
+    // Rolagem direta: a suave não anda com a aba fora de vista, e o clique pareceria não fazer nada.
+    const destaque = lerSemComentarios(`${BASE}/destaque.js`);
+    assert.match(destaque, /el\.scrollIntoView\(\{ block: 'center' \}\)/);
+    assert.doesNotMatch(destaque, /behavior: 'smooth'|behavior:/);
 
     const lista = lerSemComentarios(`${BASE}/Mesa/OQueCorrigir.jsx`);
     assert.match(lista, /sticky top-10/);

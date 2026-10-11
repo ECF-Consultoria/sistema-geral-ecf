@@ -181,6 +181,35 @@ class MapeadorErrosMlTest extends TestCase
         $this->assertFalse(MapeadorErrosMl::ehRuido($causa), 'não é o aviso de toda conferência (4053): este muda o anúncio');
     }
 
+    /**
+     * A conferência do produto 41 foi gravada ANTES de o 4057 entrar no dicionário, e ele já está publicado:
+     * não há "conferir de novo". A tela traduz na leitura; o que depende do item fica como foi gravado.
+     */
+    public function test_conferencia_gravada_com_a_mensagem_crua_aparece_com_a_traducao_de_hoje(): void
+    {
+        $gravado = ['regra' => 'V-REM-01', 'severidade' => 'WARNING', 'camada' => 'L3', 'alvo' => ['campo' => 'envio', 'etapa' => 'E10', 'itens' => [0, 1]],
+            'mensagem' => 'User/Catalog has not intersected me2 logistics',
+            'ml_causa' => ['cause_id' => 4057, 'code' => 'shipping.lost_me2_by_intersected_logistics', 'type' => 'warning', 'message' => 'User/Catalog has not intersected me2 logistics']];
+
+        $naTela = MapeadorErrosMl::comTraducaoDeHoje($gravado, self::$dicionario);
+
+        $this->assertStringContainsString('vai tirar o Mercado Envios deste anúncio', $naTela['mensagem']);
+        $this->assertSame($gravado['alvo'], $naTela['alvo']);
+        $this->assertSame($gravado['ml_causa'], $naTela['ml_causa'], 'a causa crua continua junto');
+
+        // Já estava traduzido (ou foi escrito por nós): não mexe.
+        $traduzido = ['mensagem' => 'Adicione pelo menos uma foto.', 'ml_causa' => ['cause_id' => 173, 'message' => 'Item pictures are mandatory']];
+        $this->assertSame($traduzido, MapeadorErrosMl::comTraducaoDeHoje($traduzido, self::$dicionario));
+        // Tradução que cita atributos precisa do item: sem ele, fica a mensagem gravada.
+        $comAtributos = ['mensagem' => 'The attributes [BRAND] are required', 'ml_causa' => ['cause_id' => 147, 'message' => 'The attributes [BRAND] are required']];
+        $this->assertSame($comAtributos, MapeadorErrosMl::comTraducaoDeHoje($comAtributos, self::$dicionario));
+        // Código que o dicionário não conhece, e problema local (sem causa do ML).
+        $desconhecido = ['mensagem' => 'Something new', 'ml_causa' => ['cause_id' => 999999, 'code' => 'x.y', 'message' => 'Something new']];
+        $this->assertSame($desconhecido, MapeadorErrosMl::comTraducaoDeHoje($desconhecido, self::$dicionario));
+        $local = ['mensagem' => 'Preencha o título.', 'ml_causa' => null];
+        $this->assertSame($local, MapeadorErrosMl::comTraducaoDeHoje($local, self::$dicionario));
+    }
+
     public function test_o_mesmo_erro_em_varios_itens_vira_um_so(): void
     {
         $causa = ['cause_id' => 147, 'code' => 'item.attributes.missing_required', 'type' => 'error', 'message' => 'The attributes [BRAND] are required', 'references' => ['item.attributes']];
