@@ -1245,3 +1245,89 @@ registra erro. O que aparece é o erro final, sem dizer qual modelo falhou.
 
 **A tela** (`useDescricaoIa.js`) desiste em 5 min e o servidor em 4. O erro chega como mensagem, mas só depois de 4
 minutos de "gerando".
+
+**Prova em produção depois do deploy (20:45, mesmo rascunho):** as duas gerações saíram em 67 s e 86 s, com o
+`kimi-k3` já de castigo por uso real. Antes estouravam os 240 s.
+
+## 25. O aviso 4057 do Mercado Livre tira o Mercado Envios do anúncio — e o anúncio publica mesmo assim (10/10/2026)
+
+**O que o usuário viu:** a conferência do produto 41 da #459 (Poltrona Opala) devolveu "User/Catalog has not
+intersected me2 logistics", em inglês, e "Corrigir em Condições de venda" não fazia nada.
+
+**O que é, medido:** causa `4057`, `shipping.lost_me2_by_intersected_logistics`, `type: warning`, referência
+`catalog.shipping_preferences.modes`. A forma de postagem que a conta tem no Mercado Envios não é aceita na
+categoria.
+
+| Fato | Onde foi medido |
+|---|---|
+| A conta #459 tem `me2` só com `drop_off` (padrão) e `fulfillment`; não tem ME1 | `/users/{id}/shipping_preferences` |
+| Categoria MLB458191 (poltronas), pacote 90 × 85 × 70 cm, 12 kg | rascunho 35 |
+| O Portal já classificava o produto como `me1` (pendência `frete_me1`) | `ProdutoLinhas` |
+| Publicado com `envio.modo = me2` e frete grátis marcado | rascunhos 35 e 36 |
+| No ML saiu `mode: not_specified`, `free_shipping: false`, sem dimensões | os 4 anúncios da Opala e os 2 da Poltrona Beny |
+
+- É **aviso**, não bloqueio: o Publicador deixa publicar com "Li os avisos".
+- O anúncio sai como "A combinar com o comprador". O frete grátis marcado no rascunho some sem erro.
+- O dicionário (`config/publicador_erros.php`) não tinha o 4057: código fora dele mostra a mensagem crua do ML.
+  A tradução vale para conferências NOVAS; a mensagem fica gravada em `pub_validacoes.issues`.
+- Não confundir com o `4053` (`lost_me1_by_user`), que vem em toda conferência da conta e é tratado como ruído.
+
+**Lacuna que ficou aberta (decisão do usuário):** o Sincronizar não leva a logística do Portal ao `envio` do
+rascunho, e o rascunho nasce em `me2`. Produto que o Portal diz ser ME1, em conta sem ME1, só descobre na
+conferência.
+
+## 26. "Corrigir em…" acende o campo: o alvo do problema vira seletor (10/10/2026)
+
+**Pedido:** ao apertar para corrigir, acender em amarelo o que corrigir, como no Portal, e mais de um quando for
+mais de um. Antes o link só abria a etapa; aviso não pinta campo de vermelho, então não havia o que ver.
+
+- `Components/Publicador/destaque.js` traduz o `alvo` de cada problema numa lista de seletores, do campo à seção.
+  Acende o primeiro que existir.
+- Acender é um atributo (`data-aceso`) posto no elemento, com o desenho em `app.css`. O React não conhece o
+  atributo e não o remove ao redesenhar. Nenhum campo do editor mudou.
+- Um `MutationObserver` reacende quando a etapa ganha elementos (variação ligada, parte que monta depois).
+- **As âncoras são contrato.** Os seletores dependem de `id` e `data-*` que já existiam nos campos
+  (`data-campo="envio"`, `id="preco-{tipo}-{variante}"`, `data-secao`, …). Renomear um deles apaga o destaque sem
+  erro. `tests/js/publicador-corrigir-acende.test.js` lista todos e quebra na renomeação.
+- O contorno usa `!important` de propósito: os campos têm `focus:outline-none`, e sem isso clicar no campo aceso
+  o apagava.
+- Problema da conta, da conferência ou da publicação (E0, E11, E13) não tem campo. Aparece na lista do topo como
+  "não é de um campo".
+
+## 27. A miniatura da lista usa a variação pequena da foto no CDN do ML (10/10/2026)
+
+- `pub_imagens.ml_url` guarda a primeira variação que o upload devolve: `…-F.jpg`, ~200 kB.
+- A mesma foto existe em `…-I.jpg` (~4 kB) e `…-N.jpg` (~14 kB). Medido em produção em 3 fotos da #459
+  (`scratchpad/e2e/capas459.php`).
+- `ProgramasPublicadorService::miniaturaDaFoto` troca só o sufixo e só em `mlstatic.com`. Sem isso a lista baixaria
+  ~200 kB por linha para um quadrado de 40 px.
+- Foto guardada só aqui (conta não liberada, D26) não tem `ml_url`: a linha fica com as iniciais.
+- A linha de `produtosParaTela` ganhou `capa` (texto ou null). Kit sem foto própria mostra a do base.
+
+## 28. O kit do "Criar fase" nascia com a caixa de UMA unidade (10/10/2026)
+
+**O que o usuário viu:** criou o Kit 2 da Poltrona Opala e o pacote veio igual ao do unitário. "Se o peso é 12 kg,
+deveria ir para 24; se a altura é 50, deveria ir para 100."
+
+**Causa:** `CriarFaseService::copiarAtributos` copiava os `SELLER_PACKAGE_*` do base e só os marcava com `revisar`.
+Na tela esse `revisar` é quase invisível (o campo padrão do pacote não mostra o selo). O kit 42 foi publicado
+com 90 × 85 × 70 cm e 12 kg.
+
+**A regra já existia no Portal** (D-17, `LogisticaProduto::pacote` sobre os volumes repetidos do
+`ConjuntoLogistico`): caixas empilhadas — altura somada, peso somado, maior comprimento e maior largura. Ela vale
+para Kit, Combit e Combo avulso vindos do Portal, e para o frete da Precificação.
+
+- Por isso o preço do Combo N já considerava N volumes e o anúncio ia com a caixa de 1.
+- `App\Support\Publicador\PacoteDoKit` aplica a mesma conta no clone: altura e peso × N.
+- Comprimento, largura e as medidas do PRODUTO (`HEIGHT`, `WEIGHT` da ficha) ficam as da unidade.
+- O `revisar` continua: empilhar é estimativa de como a pessoa embala.
+- `PacoteDoKitTest` compara o resultado com `LogisticaProduto::pacote` de N caixas. Se a regra do Portal mudar,
+  esse teste avisa que o kit ficou para trás.
+
+**O guia de envios para desenvolvedores do Mercado Pago** (a logística é a do Mercado Livre; página "Boas práticas
+para envios") lista três arrumações para vários itens: lado a lado no comprimento, na
+largura ou empilhado na altura. O volume, e com ele o peso cubado, é igual nas três. A escolha só muda o maior
+lado e a soma dos lados.
+
+**Não corrigido:** os dois kits que já estavam publicados (40 e 42, ambos na #459) seguem com a caixa de 1 no
+Mercado Livre. Não havia nenhum kit em rascunho em produção.
