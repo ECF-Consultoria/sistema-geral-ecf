@@ -3462,3 +3462,569 @@ v24.0 (Fases 160-163) em produção; nenhuma fase, decisão ou numeração anter
 *Roadmap atualizado: 2026-10-08 — Fase 175 anexada, terceira etapa do pacote `design_handoff_publicador/`, aprovada pelo usuário depois da conferência código×spec acima. Duas decisões de produto ficaram em aberto e só afetam o painel da capa: se a capa de kit em categoria de móveis deve sair **ambientada** (consequência do `categoriaMoveis` com 1 slot, em vez de fundo branco) e se o kit pode mesmo existir com preço vazio, estado em que não publica. Fases 1-174 preservadas.*
 
 *Fase 175 CONCLUÍDA em 2026-10-09 — 11 planos (os 6 passos aprovados pelo usuário, com 5 deles divididos por camada, mais o `175-11` de fechamento). Suíte do Publicador de 871 para **1141** verdes; JS 1573 pass / 2 falhas pré-existentes; `npm run build` verde com `Produto.jsx`, `Produtos.jsx` e `VisaoGeral.jsx` no manifest. Migration validada no MariaDB local (migrate → rollback → migrate, `up()` idempotente). **Decisões do usuário durante a execução** (em `175-DECISOES.md`): a capa do kit gera **DUAS** imagens — `lifestyle` + `hero` — e o operador escolhe (~R$ 1,10, não ~R$ 0,55), e o preço segue vazio mas **com aviso no painel** vindo do servidor. O gate de coordenação do Creative Engine foi mostrado ao usuário e liberado por ele ("já combinei, pode seguir"); ⚠️ a lista mostrada tinha 4 arquivos e a execução precisou de um 5º, `CreativePlanner` (3 linhas, 5º parâmetro com default vazio) — o ECF Dev precisa saber. **Dois furos achados só na execução e fechados pelo `175-11`:** a prop `criativos_ia` não chegava à tela do Produto (a caixa da capa nunca apareceria) e o prompt não pedia a composição de N unidades (entrou pela `cena` do plano do slot, sem tocar o `CreativePromptBuilder`). **NÃO entregue:** a ação "Usar estoque calculado" da §6 — exige endpoint que não existe, registrada em `deferred-items.md` item 4. **Não provado:** que o modelo obedece à composição — só uma geração real na conta #459 (~R$ 1,10) prova. Os IDs `FASE-01..FASE-12` foram cunhados no frontmatter dos planos e **não existem em nenhum `REQUIREMENTS*.md`** (o da raiz segue parado na v17.0). Fases 1-174 preservadas.*
+
+
+## Milestone v26.0 — Redesign do Publicador de Anúncios (Fases 177-182)
+
+**Plano canônico:** o pacote de design `new_layout_publicador/` (README de 245 linhas + 4 protótipos
+`.dc.html`) · **Requirements:** `.planning/REQUIREMENTS-v26.md` (139 REQ-IDs) · **Base:** Fases 164,
+165, 172, 173, 175 e 176 e as quicks de 10/10 (`261010-nke`, `261010-rie`, `261010-t02b`), todas em
+produção.
+
+**Goal:** as três telas centrais do Publicador — **header global**, **Visão Geral** e **Publicações**
+— passam a ser o layout novo **reproduzido com fidelidade de pixel**, não o layout atual maquiado: a
+fonte, os tamanhos, os pesos, as cores, os raios, as sombras, os espaçamentos, as alturas de controle
+e a posição dos CTAs são os do protótipo. A tela **Desempenho** fica registrada para depois, por
+bloqueio de dado medido.
+
+### ⚠️ Este requisito já fracassou uma vez — e a causa está documentada
+
+> *"Quero que reproduza fielmente o layout, **já tentei fazer um redesign e não saiu como eu esperava
+> porque vc adaptava muito o novo layout ao sistema atual**, e como falei quero que o layout mude
+> totalmente para algo novo, moderno que o novo layout que criamos. **Obedeça fontes, tamanhos de
+> fontes e etc...**"* — usuário, 2026-10-11
+
+Por isso **todo** critério de sucesso desta milestone é escrito para que *"adaptei ao que já
+existia"* seja **reprovação explícita**, não interpretação possível (FID-01, FID-02): cada fase
+entrega, no plano, uma **tabela de conferência item a item** contra o protótipo, nas 20 dimensões que
+o README exige, com o valor do protótipo e o valor implementado lado a lado. E as justificativas
+*"ficou mais parecido com o resto do sistema"*, *"mantive o token `ecf-*` por consistência"*, *"o
+componente que já existe faz parecido"* e *"o Tailwind não tem esse passo"* **não são aceitas**.
+
+### Decisões travadas (usuário, 2026-10-10/11 — D1 a D9 do REQUIREMENTS-v26.md, NÃO reabrir)
+
+**D1** reproduzir, não adaptar · **D2** o escopo do design novo é o **módulo** Publicador — o
+`AppLayout` (header `h-[60px] shrink-0` + sidebar) fica como está, e é dentro do `<main>`
+(`overflow-y-auto`) que o `sticky top-0` do header novo funciona · **D3** os tokens novos
+(`#0A0A0A`, `#111111`, `#FACC15`, Geist) **contrariam o `CLAUDE.md`** ("tokens `ecf-*` — manter
+consistência") **de propósito, por decisão do usuário** · **D4** sem barra lateral de módulo
+(recusada em 10/10: *"não concordo, e além disso não tem espaço"*) · **D5** funcional é o padrão,
+enfeite é exceção justificada item a item, reusando `SeloExemplo.jsx` + `dadosDeExemplo.js` que já
+existem · **D6** Desempenho por último e **nada nasce decorativo** · **D7** melhorar sem regredir ·
+**D8** gate de aparência velha sai, gate de comportamento fica, com justificativa **por asserção** ·
+**D9** o header vem primeiro.
+
+### Os cinco achados que moldam a divisão em fases
+
+1. **O header atinge 11 páginas.** `BarraDaConta`/`AbasDaConta` são consumidos por
+   `Mlb/AnunciarML`, `Mlb/AnunciarMassa`, `Mlb/AnunciosHistorico`, `Mlb/MeusAnuncios` e
+   `Mlb/Publicador/{Alavancas, Configuracoes, Produto, Produtos, PublicacaoEmLote, Tarefas,
+   VisaoGeral}` — é o item de maior alcance da milestone e o motivo de vir primeiro.
+2. **Um gate de teste codifica a aparência antiga e vai brigar.**
+   `tests/js/publicador-entrada.test.js` fecha a tipografia em **24/15/13/11px**, os pesos em **400 e
+   700** e **proíbe amarelo sólido** (`assert.doesNotMatch(fonte, /\bbg-ecf-yellow(?!\/)/)`, linha
+   55) sobre 17 arquivos. O layout novo usa 10.5 a 34px, pesos 400/500/600/700 e `#FACC15` cheio nos
+   CTAs — **são incompatíveis por construção**. O custo é baixo: só 12 arquivos de `tests/js/`
+   asseveram classe/tamanho (1 a 4 asserções cada); os 38 do módulo testam comportamento.
+3. **A tarifa do Mercado Livre não está no banco.** "Quanto você recebe" usa a tarifa e o frete que
+   o ML responde **agora** (`/sites/MLB/listing_prices` + `shipping_options/free`). Não há tarifa
+   persistida por anúncio — logo a coluna "Margem x%" de 50 linhas não pode ser calculada junto da
+   lista. O motor existe e é reaproveitável: `AnaliseAlavancasService` já monta
+   `margem {valor, percentual, custo, imposto_percentual}` com tarifa **cacheada** (1 h) e é exposto
+   por um endpoint **JSON lazy** (`MlbAlavancasController::analise`). É isso que separa a lista
+   (Fase 180) do painel de rentabilidade (Fase 181).
+4. **A metodologia da publicação é derivável sem coluna nova:**
+   `ml_acervo_itens.rascunho_id` → `pub_rascunhos.produto_id` → `pub_produtos`
+   (`fase`, `quantidade_kit`, `produto_base_id`); `rascunho_id` nulo = **Legado**. Tipo vem de
+   `listing_type_id` (`gold_special` = Clássico, `gold_pro` = Premium), Catálogo de
+   `catalog_listing`. **Nenhuma migration é prevista nesta milestone.**
+5. **Desempenho está sem dado, e isso foi medido.** `ml_acervo_metricas_diarias` tem **1.374.527
+   linhas**, mas `sold_quantity` é **acumulado da vida do anúncio** (44 em 23/08 → 45 em 10/10), a
+   série é **esparsa (média de 1,3 dias por anúncio, máximo 89)**, `visitas` é **NULL em 100%** das
+   linhas e **não existe tabela de pedidos** (`mlb_sync_vendas_logs`: 6 linhas). "Vendas por dia
+   empilhado por fase", "Visitas" e "Conversão" não têm fonte. Com D6 ("nada nasce decorativo"), a
+   fase **espera** em vez de nascer enfeite.
+
+### A divisão proposta — avaliação da sugestão original
+
+A sugestão era 4 fases (header · Visão Geral · Publicações · Desempenho registrada). **A ordem está
+certa e foi mantida**, com **duas subdivisões** e o header seguindo primeiro:
+
+- **Publicações virou duas fases (180 e 181).** Era, de longe, a maior: o protótipo
+  `Publicacoes v2.dc.html` tem 656 linhas, a tabela tem 9 colunas em duas visões, há 8 famílias de
+  filtro, um painel de 460px com rentabilidade, ações em lote e navegação por teclado — e, por cima
+  disso, a tela de hoje (`MeusAnuncios.jsx`, 668 linhas) entrega 8 colunas de triagem de saúde que
+  **não podem sumir** (D7). O corte natural não é por camada: é pelo **achado 3** — a lista inteira
+  se sustenta com leitura de banco; a rentabilidade e as escritas (pausar/reativar, lote) dependem de
+  chamada ao ML e são a única parte que escreve. Entregar a lista sem o painel já é uma tela
+  utilizável; entregar o painel sem a lista não é nada.
+- **O modal "Nova publicação" virou fase própria (178).** Não por tamanho, mas porque ele é a única
+  parte do header que precisa de **dado novo do servidor** (produtos agrupados por próximo passo:
+  prontos para Fase 2 / sem publicação / rascunhos) e porque ele é a **resposta nova para a "entrada
+  da Fase 2"**, que o usuário adiou em 10/10 esperando exatamente este redesenho — decisão de
+  produto, não só de aparência. Mantê-lo dentro da 177 faria a fase do header carregar uma decisão
+  de fluxo junto da troca de design em 11 páginas.
+- **Por que a 177 não fica com um CTA morto:** até a 178, o botão "Nova publicação" e a busca ⌘K do
+  header levam ao destino que o botão equivalente de hoje leva (a seleção de produtos da conta) — com
+  a aparência nova e o comportamento atual. Nenhum clique sem destino, em nenhuma fronteira de fase
+  (EXMP-03).
+
+1. **Fase 177 — Tokens, Geist e o `PublicadorHeader` global.** Primeiro porque as outras telas o
+   consomem e porque atinge as 11 páginas; é também onde a camada de tokens, os componentes de
+   identidade e a política de gates nascem, para as fases seguintes só consumirem.
+2. **Fase 178 — Modal "Nova publicação" (busca ⌘K e agrupamento por próximo passo).**
+3. **Fase 179 — Visão Geral.**
+4. **Fase 180 — Publicações: lista, busca, filtros e tabela agrupada.**
+5. **Fase 181 — Publicações: painel de inspeção, rentabilidade e ações em lote.**
+6. **Fase 182 — Desempenho.** ⚠️ **REGISTRADA, NÃO PLANEJADA.**
+
+### Phase 177: Tokens, fonte Geist e o `PublicadorHeader` global nas 11 páginas
+
+**Goal**: abrir qualquer tela do Publicador passa a mostrar o header do layout novo — marca, seletor
+de empresa com busca, pill e popover de conexão, abas-pílula com contadores reais, busca ⌘K,
+Configurações fora das abas e o CTA primário amarelo — sobre a camada de design nova (Geist + Geist
+Mono, `#0A0A0A`/`#111111`/`#FACC15`, raios, sombras, espaçamentos e alturas do README), sem que nada
+que as 11 páginas entregam hoje se perca.
+
+**Depends on**: Fases 172 e 173 (barra da conta e abas únicas, em produção desde 08/10). Nada mais.
+
+**Requirements**: FID-01..06, TOK-01..15, IDENT-01..08, HEAD-01..15, GATE-01..06, REND-01..05,
+REG-01..06
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Nas **11 páginas** que hoje consomem `BarraDaConta`/`AbasDaConta`, o topo é o header novo:
+     sticky dentro do `<main>`, linha 1 de 60px e nav de 48px, fundo `rgba(10,10,10,0.86)` com
+     `backdrop-filter: saturate(140%) blur(14px)` e borda inferior `#1C1C1C`; o `AppLayout` (header
+     de 60px e sidebar) não mudou em nada (HEAD-01, HEAD-14, D2)
+  2. O texto do módulo está em **Geist**, SKU/MLB/códigos/atalhos em **Geist Mono**, toda métrica com
+     `tabular-nums`, e nenhum arquivo redesenhado usa `ecf-bg`, `ecf-card`, `ecf-yellow`,
+     `font-display` nem `border-white/[0.08]` — conferível por gate de fonte (TOK-01, TOK-02,
+     FID-04)
+  3. Clicar no nome da empresa abre um dropdown de **360px** com busca por nome ou código, grupos
+     RECENTES/TODAS (RESULTADOS durante a busca), check amarelo na empresa atual e rodapé com a
+     contagem **real** de empresas; escolher outra empresa navega **preservando a aba atual**
+     (HEAD-04, HEAD-05)
+  4. Clicar na pill de conexão abre um popover de **320px** com Mercado Livre e ERP, cada um com meta
+     e status, e o rodapé "Última coleta há X · Atualizar agora" que **enfileira** a coleta — nunca
+     coleta em processo, nunca escreve no ML (HEAD-06, HEAD-07, REG-06)
+  5. As abas são pílulas de 34px — Visão geral · Produtos (N) · Publicações (N) · Desempenho ·
+     Alavancas — com contadores **reais** do servidor, dot vermelho na aba Publicações quando houver
+     publicação com erro, a ativa com fundo `#161616`, ícone e contador amarelos e barra amarela de
+     2px por baixo; Configurações saiu das abas e virou o ícone de 34px à direita (HEAD-08..HEAD-10)
+  6. Nenhuma capacidade de hoje se perdeu: nome e chave da conta, `SeloConta`, `SeloPortal`,
+     `AvisoContaTravada`, slot de ações por página, **D23** com o literal exato "Disponível só para
+     empresas cadastradas no sistema", contador de produtos e badge de alavancas pendentes (HEAD-11,
+     REG-01, REG-06).
+     ⚠️ **Exceção:** as sub-abas **No ar | Histórico** NÃO precisam sobreviver — o usuário autorizou
+     removê-las em 11/10/2026 (LIST-25). É a única capacidade de hoje que esta milestone descarta de
+     propósito. **O atalho sai, o dado não:** a Fase 180 tem de provar que o filtro de status alcança
+     o que "Histórico" alcançava, e **parar e perguntar** se não alcançar.
+  7. ⌘K/Ctrl+K e **N** fora de input abrem a busca, **Esc** fecha dropdown/popover e o clique fora
+     fecha por backdrop transparente; nenhum botão do header fica sem destino (HEAD-13, EXMP-03)
+  8. Os gates de **aparência antiga** saíram dos arquivos redesenhados com justificativa **por
+     asserção** e os de **comportamento** ficaram intactos — nominalmente: `@/Components/ui/select`,
+     `dangerouslySetInnerHTML`, **D-11** e **D-22** continuam gateados; e entrou um gate novo com o
+     vocabulário novo e fechado (GATE-01..03)
+  9. Todo campo novo que o header exibe tem teste de **render real** com o campo **objeto, nulo e
+     ausente**, e a saída não tem `[object Object]`, `NaN` nem `undefined` (REND-01, REND-02)
+  10. `npm run build` verde, manifest conferido pelo JSON, baselines respeitadas (PHP Publicador
+      1761/0; JS 2210 / 2209 pass / 1 fail pré-existente) (GATE-04)
+  11. O plano da fase traz a **tabela de conferência item a item** contra `PublicadorHeader.dc.html`
+      nas 20 dimensões, com valor do protótipo × valor implementado (FID-01)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 178: Modal "Nova publicação" — a entrada da Fase 2 por próximo passo
+
+**Goal**: apertar "Nova publicação" (ou ⌘K, ou N) abre um modal de 620px que pergunta "Qual produto
+você quer publicar?" e responde **pelo próximo passo de cada produto** — PRONTOS PARA FASE 2 com
+"Criar combo", SEM PUBLICAÇÃO com "Publicar Fase 1", RASCUNHOS com "Continuar" — com todo CTA levando
+ao destino real.
+
+**Depends on**: Fase 177 (o header que hospeda os dois botões de abertura) e Fase 175 (Criar fase /
+kit da Fase 2, em produção desde 09/10).
+
+**Requirements**: NOVA-01..10
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O modal tem **620px**, abre a `top: 110px` sobre backdrop `rgba(0,0,0,0.65)`, com cabeçalho de
+     60px, input de 16px, a tecla Esc em mono 11px e corpo com `max-height: 420px` (NOVA-01)
+  2. Os resultados vêm agrupados **nesta ordem** — PRONTOS PARA FASE 2 (CTA "Criar combo" em tint
+     amarelo), SEM PUBLICAÇÃO (CTA "Publicar Fase 1"), RASCUNHOS (CTA "Continuar") —, cada grupo com
+     o seu hint, e grupo sem item **não aparece** (NOVA-02, NOVA-03)
+  3. Digitar "espelho" acha "Espelho Redondo Bisotê" e digitar "esp-rd" acha pelo SKU: a busca ignora
+     acento e caixa e cobre nome e SKU (NOVA-04)
+  4. Os três grupos vêm do **servidor**, das fontes que já existem (`prontosParaFase2()`, situação e
+     fase dos produtos, rascunhos da conta) — nenhuma classificação feita no cliente, nenhum número
+     inventado (NOVA-08)
+  5. Cada CTA leva ao destino real: "Criar combo" ao fluxo de Criar fase, "Publicar Fase 1" ao editor
+     do produto, "Continuar" ao rascunho — **nenhum item de enfeite nesta lista** (NOVA-07)
+  6. O modal abre por ⌘K/Ctrl+K, por **N** fora de input e pelos **dois** botões do header, fecha com
+     Esc ou clique fora, e o input recebe foco ao abrir (NOVA-09)
+  7. O rodapé traz o glyph de Fase 2 e a frase literal "A Fase 2 usa o mesmo Publicador e reaproveita
+     categoria, atributos e ficha técnica da Fase 1." (NOVA-06)
+  8. Busca sem resultado mostra "Nenhum produto encontrado" — não um grupo vazio (NOVA-05)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 179: Visão Geral — o cockpit da conta
+
+**Goal**: a Visão Geral responde "o que devemos fazer agora nesta conta?" no layout novo: banner de
+integração só quando há problema, a Jornada dos produtos com anel de 176px e quatro estágios
+clicáveis que abrem um painel, "O que fazer agora" com severidade, expandir e adiar, Saúde da conta,
+Publicações no Mercado Livre, a faixa de Desempenho, Publicações recentes e a Atividade com chips.
+
+**Depends on**: Fase 177 (header, tokens e componentes de identidade) e Fase 178 (os CTAs de estágio
+e de ação reaproveitam os destinos do modal).
+
+**Requirements**: VG-01..20, EXMP-01..04
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. A página tem a ordem vertical do README com gap de 20px, conteúdo em `max-width: 1600px` e
+     `padding: 24px 36px 80px`; o seletor de período que a tela tem hoje **saiu**, e a UI diz que
+     Jornada, Saúde e Ações mostram o estado atual enquanto Recentes e Atividade mostram os últimos
+     30 dias (VG-01, VG-03)
+  2. A Jornada mostra o anel de **176px** (r=74, stroke 14, gaps de 3px) com os quatro segmentos na
+     ordem Fase 1+2 → Fase 1 → Em andamento → Sem publicação, o percentual de 34px no centro, os
+     quatro estágios numerados com pilha de até 4 tiles + "+N", e a barra segmentada de 8px com a
+     hachura no "Sem publicação" (VG-04, VG-05, VG-07)
+  3. O estágio "próximo passo" (Prontos para Fase 2 se > 0, senão Sem publicação) leva o badge
+     amarelo "PRÓXIMO PASSO" e o CTA amarelo; ao abrir a tela, "Prontos para Fase 2" já está aberto
+     (VG-06, VG-08)
+  4. Clicar num estágio seleciona ele (`#181818`, borda `#3F3F46`), derruba os outros segmentos do
+     anel e da barra para opacidade 0.3-0.35 e abre um painel com até 6 produtos — tile, nome, SKU,
+     mapa de cobertura F1/F2 × C/P, nota de contexto e CTA —, com "Ver todos os N →" para Produtos
+     filtrada; clicar de novo fecha (VG-08)
+  5. "O que fazer agora" ordena Crítico → Atenção → Oportunidade, filtra por severidade com
+     contagens, dá à primeira ação o badge "RECOMENDADO AGORA" com CTA amarelo cheio e fundo
+     `#131313`, e expande a sub-lista com motivo colorido, "Abrir →" e "Adiar até amanhã" (VG-09,
+     VG-10, VG-11)
+  6. O adiamento de uma ação **persiste por usuário até o dia seguinte** — recarregar a página não
+     traz a ação de volta (VG-11)
+  7. As ações que o sistema sustenta são reais (erro, prontos para Fase 2, sem publicação, rascunhos
+     parados, pausadas, reconectar ML/ERP) e a ação "publicação com prejuízo" **não aparece** até a
+     rentabilidade existir — nunca como enfeite (VG-12, EXMP-01)
+  8. Saúde da conta mostra o status geral no topo e as três linhas (ML, ERP, Sincronização), com
+     "Atualizar" e spinner na de Sincronização e fundo tint nas linhas com problema (VG-13)
+  9. "Publicações no Mercado Livre" mostra o total em 30px, a "% ativas", a barra empilhada e a
+     legenda **clicável** que leva a Publicações já filtrada, mais o bloco do acervo de imagens
+     (VG-14)
+  10. A faixa de Desempenho é um link inteiro para a tela Desempenho, com 4 mini-KPIs (valor 20px,
+      delta colorido, sparkline 64×26); os KPIs sem dado **não aparecem como número inventado**
+      (VG-15, EXMP-01)
+  11. Publicações recentes mostra 5 linhas com tile 40px, badge NOVA, glyph de fase, tipo, MLB,
+      status e quem/quando; a Atividade agrupa por HOJE/ONTEM/data com ícone circular de 30px por
+      tipo, ator + verbo + alvo, e miniaturas de 34px nos criativos (VG-16, VG-17)
+  12. Os **6 cenários** do protótipo funcionam: com pendências, conta saudável, ML desconectado, ERP
+      desconectado, produtos sem publicação (anel 0%) e sem produtos (empty state na Jornada com
+      "Cadastrar produto" e "Enviar link do Portal ao cliente") (VG-19)
+  13. **"Nunca medimos" continua diferente de "medimos e é zero"** em todo indicador, e nenhum bloco
+      que hoje é real regrediu a exemplo — a Atividade da equipe segue com as 3 fontes reais (VG-18,
+      VG-20)
+  14. Todo bloco sem dado real carrega **uma** pilha `SeloExemplo`, consome só `dadosDeExemplo.js` e
+      nunca mistura real e exemplo no mesmo número (EXMP-02)
+  15. O plano traz a tabela de conferência item a item contra `Visao Geral.dc.html` (FID-01)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 180: Publicações — lista, busca, filtros e tabela agrupada por produto
+
+**Goal**: a tela de Publicações passa a ser a lista operacional do layout novo: busca central de
+54px que acha por produto, título, SKU e MLB, abas de status, oito famílias de chips de filtro e a
+tabela agrupada por produto com o mapa de cobertura F1/F2 × C/P — sem perder nada do que a tela de
+hoje entrega.
+
+**Depends on**: Fase 177 (header, tokens, identidade) e Fase 179 (os links de "Publicações
+filtrada" da Visão Geral apontam para os filtros desta tela).
+
+**Requirements**: LIST-01..24
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O cabeçalho tem H1 "Publicações" com o subtítulo do README, "● Sincronizado há X" e "Atualizar"
+     com spinner que depois mostra "agora" (LIST-01)
+  2. Voltar do Publicador mostra a faixa de sucesso (`#14120A`, borda `rgba(250,204,21,0.35)`) com o
+     resumo do que foi criado e o botão **"Localizar na lista"**, que preenche a busca, limpa os
+     filtros, volta à visão Por produto e abre o painel da nova publicação (LIST-02)
+  3. A busca central tem **54px** e raio 14px, foco com borda amarela e ring
+     `rgba(250,204,21,0.18)`, ignora acento e caixa e acha o anúncio **pelo nome do produto**, pelo
+     título, pelo SKU e pelo MLB — no servidor (LIST-03, LIST-21)
+  4. As abas de status (Todas, Ativas, Pausadas, Com erro com dot, Em revisão) têm contagens
+     calculadas sobre os **demais** filtros, e os chips de Fase, Tipo, Em catálogo, Com vendas,
+     Responsável e Publicada funcionam com o visual de ativo em tint amarelo + borda
+     `rgba(250,204,21,0.55)`, com "Limpar filtros" quando houver filtro (LIST-05, LIST-07)
+  5. A tabela usa o grid literal do README
+     (`40px | minmax(300px,1fr) | 136 | 104 | 136 | 112 | 68 | 150 | 64`), linhas de 62px
+     (confortável) / 50px (compacta), com os cinco fundos de linha distintos (selecionada `#221D07`,
+     foco `#1C1C1C`, marcada `#18160C`, nova `#14120A`, padrão `#111111`) (LIST-08, LIST-15)
+  6. Na visão **Por produto** (default), a linha de grupo de 58px traz chevron, tile 38px, nome + tag
+     "PRODUTO", "SKU · Estoque", o mapa de cobertura F1/F2 × C/P, "N publicações" (ou "x de N"
+     quando filtrado), "Ver produto" e o link "Fase 2 não criada · Criar combo" quando não há F2; as
+     publicações aparecem abaixo com recuo de 30px e o grupo colapsa ao clicar, mas a busca ativa
+     força os grupos abertos (LIST-09)
+  7. Alternar para **Lista** mostra linhas planas com tile e o nome do produto no meta (LIST-10)
+  8. A **metodologia** de cada linha vem do dado real (`rascunho_id` → `pub_rascunhos.produto_id` →
+     `pub_produtos.fase`/`quantidade_kit`), sem rascunho mostra **Legado**, o tipo vem de
+     `listing_type_id` e Catálogo de `catalog_listing` — nada inferido do título (LIST-20)
+  9. Copiar o MLB vira check verde por **1,3 s**; a publicação nova leva o badge NOVA; a célula
+     Publicada mostra avatar com iniciais + data relativa + responsável, e diz quando o autor é
+     desconhecido em vez de inventar (LIST-11, LIST-13)
+  10. A célula Preço mostra "Margem x%" ou "▲ Prejuízo" quando o dado chega e **"—"** enquanto não
+      chega — nunca um número estimado nem zero (LIST-12)
+  11. Os atalhos funcionam: `/` foca a busca, ↑/↓ e j/k navegam, Enter abre, Esc fecha menu → sai da
+      busca → fecha o painel, e ↓/Enter dentro da busca vai ao primeiro resultado (LIST-18)
+  12. Recarregar a página com filtros aplicados devolve o mesmo estado — os filtros, a busca e a
+      publicação selecionada estão na URL (LIST-19)
+  13. **Nada regrediu:** banner de defasagem, "Ainda não coletamos os anúncios desta empresa", aviso
+      de SKU ainda não coletado, sub-abas Publicados|Rascunhos com contadores, sub-abas
+      No ar|Histórico, paginação de 50, ordenação por gravidade e **D-11** (a tela não escreve no
+      ML nesta fase) (LIST-16, LIST-17, LIST-23)
+  14. Os **chips de triagem** dos 5 motivos + "Não avaliado" seguem na tela, no vocabulário novo, com
+      o total vindo de `triagem.total` do servidor — nunca da soma dos chips (LIST-22)
+  15. A **Nota ECF continua aparecendo como "de 86"**, nunca renormalizada para 100 (LIST-24, D-22)
+  16. O plano traz a tabela de conferência item a item contra `Publicacoes v2.dc.html` (FID-01)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 181: Publicações — painel de inspeção, rentabilidade por venda e ações em lote
+
+**Goal**: clicar numa publicação abre o painel de 460px à direita com identificação, motivo
+explicado, as três ações (abrir no ML, editar no Publicador, pausar/reativar), a **Rentabilidade por
+venda** com repasse, custo, lucro, margem e preço de equilíbrio, os sinais de desempenho e saúde, a
+origem e as publicações irmãs do mesmo produto — e a barra de ações em lote embaixo.
+
+**Depends on**: Fase 180 (a lista que o painel inspeciona) e o endpoint lazy
+`MlbAlavancasController::analise` + `AnaliseAlavancasService` (em produção).
+
+**Requirements**: INSP-01..12
+
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. O painel tem **460px**, entra com `transform .28s cubic-bezier(.2,.8,.2,1)` e sombra
+     `-24px 0 64px rgba(0,0,0,0.6)`, fica acima do header e mostra "PUBLICAÇÃO · x de N" com ↑ ↓ e ×
+     (INSP-01, INSP-02)
+  2. A identificação traz tile de 84px, os chips de fase/tipo/catálogo/status, título de 17px e o MLB
+     em mono (INSP-03)
+  3. Publicação que não está ativa mostra a caixa do motivo com **texto de ajuda específico daquele
+     motivo**, usando os motivos reais do sistema (INSP-04)
+  4. "Pausar / Reativar" troca o status na hora e é a **única** escrita no ML que a tela ganha: com a
+     trava de conta do módulo, registro antes do HTTP e 5xx/rede tratados como incerto, sem reenvio
+     por conta própria (INSP-05)
+  5. A **Rentabilidade por venda** mostra Preço de venda, Tarifa e frete ML (negativo), Repasse
+     estimado, Custo do produto (× unidades na Fase 2), Lucro estimado + margem, com a linha de lucro
+     em tint verde ou vermelho; com prejuízo aparece "Este preço gera prejuízo" e o preço mínimo para
+     empatar (INSP-06, INSP-12)
+  6. Os números de rentabilidade vêm de `SimuladorVoceRecebe::calcular`,
+     `DadosEfetivosService::custosDoProduto` e da tarifa já cacheada de `AnaliseAlavancasService` —
+     **nenhum cálculo de margem novo foi escrito**, e o painel nunca discorda do card "Quanto você
+     recebe" do editor para o mesmo preço (INSP-06, REG-04)
+  7. "Vendas" é declarado como **acumulado da vida do anúncio**, e "Visitas"/"Conversão" dizem **"não
+     medido"** quando não há dado — nunca 0 nem estimativa (INSP-07)
+  8. Os sinais de saúde ECF que saíram das colunas estão aqui: Nota ECF "de 86", saúde do ML,
+     `performance_score`, buybox, o checklist de sinais e a série de até 90 dias, pelo endpoint lazy
+     que já existe (INSP-07, LIST-24)
+  9. "Publicações deste produto" lista **todas** as irmãs (F1/F2 × tipo, com Catálogo quando houver)
+     com status e preço, clicáveis, ordenadas fase → unidades → tipo, com a atual em destaque
+     (INSP-09)
+  10. Marcar linhas mostra a barra flutuante com "N selecionadas · Pausar · Reativar · ×" — **sem
+      "Exportar CSV", dispensado pelo usuário em 11/10/2026** —, e o checkbox do cabeçalho marca
+      **todas as visíveis**; sem escrita disponível para a conta, os botões ficam `disabled=` com
+      explicação (INSP-10, GATE-05)
+  11. Com o painel aberto, ↑/↓ e j/k movem a seleção e **o painel acompanha**; Esc fecha (INSP-11)
+  12. O plano traz a tabela de conferência item a item do painel e da barra de lote contra
+      `Publicacoes v2.dc.html` (FID-01)
+
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 182: Desempenho — REGISTRADA, NÃO PLANEJADA
+
+**Goal (quando a fase existir)**: vendas e produção de publicações por período, com faixa de 4 KPIs
+num único card com divisórias, gráfico de barras empilhadas de 300px por dia/hora separando Fase 1 e
+Fase 2, "Publicações que mais venderam" e o comparativo Fase 1 × Fase 2.
+
+**Depends on**: Fases 177 e 180 — **e uma decisão do usuário** sobre coletar vendas por dia pela API
+de pedidos do Mercado Livre (se coletar, qual janela, com que custo de chamada e onde persistir).
+
+**Requirements**: DESEMP-01..08 (**Deferred** — nenhuma plan será escrita até a decisão)
+
+**⚠️ Por que esta fase espera — o achado do dado, medido em 2026-10-10/11:**
+
+- `ml_acervo_metricas_diarias` tem **1.374.527 linhas** (`company_id, ml_item_id, data, visitas,
+  sold_quantity, nota_ecf, health_ml`).
+- **`sold_quantity` é ACUMULADO da vida do anúncio** — amostra real: 44 em 23/08 → 45 em 10/10. Não
+  é "vendas do dia".
+- **A série é ESPARSA: média de 1,3 dias por anúncio** (máximo 89). Não dá curva de 30 dias.
+- **`visitas` é NULL em 100%** das 1,37 milhão de linhas, e `visitas_30d` em `ml_acervo_itens` é
+  camada cara rotativa (null = não avaliado).
+- **Não existe tabela de pedidos** — só `mlb_sync_vendas_logs`, com **6 linhas**.
+- **Sem fonte:** "vendas por dia empilhado por fase", "Visitas", "Conversão".
+- **Já reais:** "Publicações criadas no período", "Criativos com IA (packs)", "Fase 1 × Fase 2 em
+  publicações criadas".
+
+Com a decisão do usuário **"Desempenho por último — nada nasce decorativo"** (D6), a tela **não nasce
+com série sintética** e a fase fica registrada. O que a destrava é a decisão de produto sobre coletar
+pedidos, não trabalho de UI.
+
+**Plans**: nenhuma — fase registrada, não planejada.
+**UI hint**: yes
+
+#### Dependências — Milestone v26.0 (Fases 177-182)
+
+```
+177 (tokens + header)
+ ├── 178 (modal Nova publicação)
+ │     └── 179 (Visão Geral — reusa os destinos dos CTAs do modal)
+ │           └── 180 (Publicações — lista; recebe os links filtrados da Visão Geral)
+ │                 └── 181 (Publicações — painel, rentabilidade, lote)
+ └── 182 (Desempenho) ── BLOQUEADA por decisão do usuário sobre coletar pedidos do ML
+```
+
+#### Coverage Map — Milestone v26.0 (REQ-ID × fase)
+
+| Requirement | Phase | Status |
+|---|---|---|
+| FID-01..FID-06 (6) | Phase 177 | Pending |
+| TOK-01..TOK-15 (15) | Phase 177 | Pending |
+| IDENT-01..IDENT-08 (8) | Phase 177 | Pending |
+| HEAD-01..HEAD-15 (15) | Phase 177 | Pending |
+| GATE-01..GATE-06 (6) | Phase 177 | Pending |
+| REND-01..REND-05 (5) | Phase 177 | Pending |
+| REG-01..REG-06 (6) | Phase 177 | Pending |
+| NOVA-01..NOVA-10 (10) | Phase 178 | Pending |
+| VG-01..VG-20 (20) | Phase 179 | Pending |
+| EXMP-01..EXMP-04 (4) | Phase 179 | Pending |
+| LIST-01..LIST-24 (24) | Phase 180 | Pending |
+| INSP-01..INSP-12 (12) | Phase 181 | Pending |
+| DESEMP-01..DESEMP-08 (8) | Phase 182 | **Deferred** (bloqueio de dado + decisão do usuário) |
+
+**Cobertura:** **139/139 REQ-IDs** do `REQUIREMENTS-v26.md` mapeados — FID(6) TOK(15) IDENT(8)
+HEAD(15) NOVA(10) VG(20) LIST(24) INSP(12) REG(6) GATE(6) REND(5) EXMP(4) DESEMP(8). Nenhum órfão,
+nenhuma duplicata.
+
+⚠️ **FID, TOK, IDENT, GATE, REND e REG são transversais:** estão mapeados na **Fase 177** porque é
+onde nascem, mas **valem e são conferidos em todas as fases** da milestone — cada fase repete a
+tabela de conferência (FID-01), o inventário de não-regressão (REG-01) e os testes de render real
+(REND-01).
+
+#### Coverage Map — item do README × fase
+
+| Item do `new_layout_publicador/README.md` | Fase |
+|---|---|
+| Fidelity · 1440px, min-width 1240, max-width 1600, padding 0 36px | 177 (FID-05) |
+| Design Tokens · Fonte (Geist, Geist Mono, tabular-nums, tracking, overlines) | 177 (TOK-01..03) |
+| Design Tokens · Cores (bg, border, text, accent, semânticas, fase1, tiles oklch) | 177 (TOK-04..07, TOK-13) |
+| Design Tokens · Raios · Sombras · Espaçamento · Alturas de controles | 177 (TOK-08..11) |
+| Interactions & Behavior · transições e spinner | 177 (TOK-12) |
+| Assets · ícones SVG/Lucide, fontes, tiles com iniciais | 177 (TOK-01, TOK-13, TOK-14) |
+| Componentes de identidade · glyph de metodologia, labels de fase | 177 (IDENT-01, IDENT-02) |
+| Componentes de identidade · Tipo (Clássico/Premium/Catálogo) | 177 (IDENT-03) |
+| Componentes de identidade · Status com forma | 177 (IDENT-04) |
+| Componentes de identidade · mapa de cobertura F1/F2 × C/P | 177 (IDENT-05) |
+| Componentes de identidade · badge NOVA | 177 (IDENT-06) |
+| Interactions · tooltips pelo componente do codebase | 177 (IDENT-07) |
+| 0. PublicadorHeader · linha 1 (marca, seletor, pill, busca 250px, gear, CTA) | 177 (HEAD-03..08) |
+| 0. PublicadorHeader · dropdown de empresa 360px | 177 (HEAD-05) |
+| 0. PublicadorHeader · popover de conexão 320px | 177 (HEAD-07) |
+| 0. PublicadorHeader · linha 2 (abas-pílula, contadores, dot de erro) | 177 (HEAD-09, HEAD-10) |
+| 0. PublicadorHeader · State Management (`companyMenuOpen`, `companyQuery`, `statusPopoverOpen`) | 177 (HEAD-05, HEAD-07, HEAD-13) |
+| 0. PublicadorHeader · modal "Nova publicação" 620px e `newPubModalOpen`/`newPubQuery` | **178** (NOVA-01..10) |
+| 1. Visão Geral · a. banner de integração | 179 (VG-02) |
+| 1. Visão Geral · b. Jornada (anel, 4 estágios, barra, painel do estágio) | 179 (VG-03..08) |
+| 1. Visão Geral · c. O que fazer agora (severidade, expandir, adiar) | 179 (VG-09..12) |
+| 1. Visão Geral · c. Saúde da conta | 179 (VG-13) |
+| 1. Visão Geral · c. Publicações no Mercado Livre + acervo de imagens | 179 (VG-14) |
+| 1. Visão Geral · d. faixa de Desempenho (4 mini-KPIs, sparkline 64×26) | 179 (VG-15) |
+| 1. Visão Geral · e. Publicações recentes | 179 (VG-16) |
+| 1. Visão Geral · e. Atividade recente (chips, timeline, ícones, miniaturas) | 179 (VG-17) |
+| 1. Visão Geral · os 6 `scenario` | 179 (VG-19) |
+| 1. Visão Geral · State Management (`selectedStage`, `severityFilter`, `expandedActions`, `snoozedActions`, `activityFilter`, `syncing`) | 179 (VG-08, VG-09, VG-11, VG-13) |
+| 1. Visão Geral · "o período só existe na tela Desempenho" | 179 (VG-03) |
+| 2. Publicações · cabeçalho + Sincronizado/Atualizar | 180 (LIST-01) |
+| 2. Publicações · faixa de sucesso pós-publicação + "Localizar na lista" | 180 (LIST-02) |
+| 2. Publicações · busca central 54px (+ a nota "a busca não achava pelo nome do produto") | 180 (LIST-03, LIST-04) |
+| 2. Publicações · abas de status + ordenação + toggle de visão | 180 (LIST-05, LIST-06) |
+| 2. Publicações · chips de filtro (fase, tipo, catálogo, vendas, responsável, data) | 180 (LIST-07) |
+| 2. Publicações · tabela (grid de 9 colunas, grupo, lista, células, fundos, rodapé) | 180 (LIST-08..16) |
+| 2. Publicações · célula Preço com margem/prejuízo | 180 (LIST-12) + 181 (INSP-06) |
+| 2. Publicações · empty state | 180 (LIST-17) |
+| 2. Publicações · teclado (`/`, ↑↓/jk, Enter, Esc) | 180 (LIST-18) + 181 (INSP-11) |
+| 2. Publicações · State Management + "refletir filtros e `selectedId` na URL" | 180 (LIST-19) |
+| 2. Publicações · painel de inspeção 460px (identificação, motivo, ações, rentabilidade, desempenho, origem, irmãs) | **181** (INSP-01..09) |
+| 2. Publicações · ações em lote | **181** (INSP-10) |
+| 2. Publicações · "avisos financeiros nunca dependem só de cor" | 181 (INSP-12) |
+| 3. Desempenho · cabeçalho + período global | **182** (DESEMP-01) |
+| 3. Desempenho · faixa de 4 KPIs num card | **182** (DESEMP-02) |
+| 3. Desempenho · vendas por dia/hora empilhado por fase | **182** (DESEMP-03, DESEMP-05 — sem fonte) |
+| 3. Desempenho · Publicações que mais venderam + Fase 1 × Fase 2 | **182** (DESEMP-04) |
+| 3. Desempenho · State Management (`period`, `hoveredBar`) | **182** (DESEMP-01, DESEMP-03) |
+
+**Explicitamente FORA de escopo, com motivo:**
+
+| Item | Motivo |
+|---|---|
+| `support.js` | O próprio README diz: runtime necessário só para abrir os protótipos no navegador, **não faz parte da implementação**. Não foi lido. |
+| Os SVGs inline dos protótipos, copiados crus | O README manda **usar a biblioteca de ícones do codebase** (TOK-14) — `lucide-react`. |
+| Os dados mock dos protótipos (empresas, produtos, publicações, vendas) | O README manda mapear cada número para a fonte real antes de implementar; o que não tem fonte vira `dadosDeExemplo.js` + `SeloExemplo` (EXMP-02) ou **não nasce** (EXMP-04). |
+| Os literais "48 empresas sob gestão", "128 imagens · 9 packs", "Conta ECFDEV02 · token renova em 4 h" | Viram contagem/meta reais do servidor (HEAD-05, HEAD-07, VG-14). |
+| O gráfico de vendas por dia e os blocos de conversão **na Visão Geral** | A `renderVals()` de `Visao Geral.dc.html` tem `bars`/`tops`/`yTicks`/`periods` como **código morto** — o template da Visão Geral só renderiza `kpis` + "Ver desempenho →". A faixa de KPIs é o que o README especifica (VG-15); o gráfico pertence à tela Desempenho (182). |
+| "Visitas" e "Conversão" como número | `visitas` é NULL em 100% das 1.374.527 linhas; o painel diz "não medido" (INSP-07). |
+| Barra lateral de módulo | Recusada pelo usuário em 10/10. |
+| Redesenhar o corpo de Produtos, Produto, Alavancas, Tarefas, Publicação em lote, Configurações, Em massa e o assistente antigo | Fora do pacote de design — só o header novo chega a elas (HEAD-15). O estado intermediário (header novo, corpo antigo) é aceito e declarado. |
+| Trocar os tokens `ecf-*` ou a fonte do resto do sistema | D2: o escopo é o módulo Publicador. |
+
+**Decisões do usuário — as quatro RESPONDIDAS em 11/10/2026** (registro completo no fim de
+`REQUIREMENTS-v26.md`; nenhuma segue pendente):
+
+1. **A aba "Desempenho" NÃO aparece por enquanto** (*"não mostre o link da tela desempenho por
+   enquanto"*) → **HEAD-09** passa a quatro abas: Visão geral · Produtos · Publicações · Alavancas.
+   ⚠️ **Desvio deliberado da fidelidade** — o README pede cinco. A aba volta com a Fase 182, e a 182
+   carrega esse gatilho. A recomendação era outra e ele decidiu diferente: não reabrir.
+2. **"No ar | Histórico" deixa de existir; "Rascunhos" entra no MESMO grupo segmentado das abas de
+   status**, abaixo da busca (*"'No ar e historico' não precisa existir, ja o rascunho adicione
+   integrado no mesmo grupo de botões que tem abaixo da barra de busca"*) → **LIST-25** (novo).
+   ⚠️ **Única remoção de funcionalidade existente autorizada nesta milestone**, contra a regra-mestra
+   "melhorar sem regredir". A guarda do LIST-25 é obrigatória: **o atalho sai, o dado não** — se
+   "Histórico" for o único caminho para algum dado, a Fase 180 **para e pergunta**.
+3. **"Exportar CSV" fica FORA** (*"pode desconsiderar"*) → **INSP-10** sem o botão; item movido para
+   a tabela de fora-de-escopo **por dispensa do usuário**, não por limitação técnica.
+4. **"Publicação com prejuízo" só depois da Fase 181** (ele concordou) → **VG-12** mantido: até lá a
+   ação **não aparece**. Dependência **179 → 181** marcada, para a Visão Geral não ser lida como
+   incompleta por isso.
+
+---
+
+*Roadmap atualizado: 2026-10-11 — **Milestone v26.0 (Redesign do Publicador de Anúncios)** anexada:
+6 fases (177-182) cobrindo os 139 REQ-IDs do `REQUIREMENTS-v26.md`, derivados do pacote
+`new_layout_publicador/` (README + 4 protótipos) e da instrução do usuário de 2026-10-11.
+**Numeração contínua a partir de 177** (maior fase existente: 176); `phases.clear` **NÃO** foi
+executado e **nada** anterior foi tocado — Fases 1-176 preservadas integralmente, incluindo a Fase
+174 planejada e adiada, a v25.0 (168-171) e o trabalho em aberto do outro dev. O `STATE.md` **não
+foi alterado** de propósito: o init devolve `current_milestone: v22.0`, que está desatualizado, e
+`state.advance-plan` já corrompeu o STATE multi-milestone deste projeto. **O que este roadmap tem de
+diferente de um redesign comum:** este requisito **já fracassou uma vez**, e a causa documentada foi
+adaptar o layout novo ao sistema atual — por isso FID-01/FID-02 transformam "adaptei ao que já
+existia" numa **reprovação explícita**, com tabela de conferência item a item nas 20 dimensões do
+README e uma lista fechada de justificativas **não** aceitas. **Avaliação da divisão sugerida pelo
+usuário** (header · Visão Geral · Publicações · Desempenho registrada): ordem mantida, com duas
+subdivisões justificadas — Publicações virou **duas** fases (180 lista / 181 painel+rentabilidade+lote)
+porque o protótipo tem 656 linhas, 9 colunas em 2 visões e 8 famílias de filtro, e porque o corte
+natural é o achado de que **a tarifa do ML não está no banco** (a lista se sustenta com leitura de
+banco; a rentabilidade e as escritas dependem de chamada ao ML, pelo endpoint lazy de
+`AnaliseAlavancasService`, cuja `margem {valor, percentual, custo, imposto_percentual}` é reusada em
+vez de recalculada); e o **modal "Nova publicação"** virou a Fase 178 porque é a única parte do
+header que precisa de dado novo do servidor e porque é a **resposta à "entrada da Fase 2" que o
+usuário adiou em 10/10 esperando este redesenho** — decisão de produto, não de aparência. O header
+seguiu **primeiro** (D9): atinge **11 páginas** conferidas. **Tensões declaradas, não escondidas:**
+(a) os tokens novos contrariam o `CLAUDE.md` por decisão do usuário (D3); (b)
+`publicador-entrada.test.js` **codifica a aparência antiga** — tipografia fechada em 24/15/13/11px,
+pesos só 400/700 e veto a amarelo sólido na linha 55 — e sai das telas redesenhadas com justificativa
+**por asserção**, enquanto os gates de comportamento (`ui/select`, `dangerouslySetInnerHTML`, D-11,
+D-22) ficam intactos (GATE-01..03); (c) a tela de hoje (`MeusAnuncios.jsx`) entrega **8 colunas de
+triagem de saúde** que o layout novo não tem — elas **não são apagadas**: migram para o painel de
+inspeção e para os chips, e a Nota ECF continua "de 86" (LIST-22, LIST-24, INSP-07); (d) as 11
+páginas ficam com **header novo e corpo antigo** até as fases seguintes, estado aceito e declarado
+que **não** autoriza harmonizar o header com o corpo antigo. **Nenhuma migration prevista** — a
+metodologia da publicação é derivável por `ml_acervo_itens.rascunho_id` → `pub_rascunhos.produto_id`
+→ `pub_produtos`. A **Fase 182 (Desempenho) fica registrada e não planejada** por bloqueio de dado
+medido: `sold_quantity` é acumulado da vida do anúncio, a série de `ml_acervo_metricas_diarias` é
+esparsa (1,3 dias por anúncio em média), `visitas` é NULL em 100% das 1.374.527 linhas e não existe
+tabela de pedidos — com a decisão do usuário "nada nasce decorativo" (D6), a fase espera a decisão de
+produto sobre coletar pedidos pela API do ML, não trabalho de UI.*
