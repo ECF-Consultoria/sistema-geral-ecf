@@ -161,6 +161,26 @@ class MapeadorErrosMlTest extends TestCase
         $this->assertSame('O Mercado Livre recusou campos do envio (title).', $p->mensagem);
     }
 
+    /**
+     * 10/10/2026, produto 41 da #459: o aviso chegava cru ("User/Catalog has not intersected me2 logistics") e
+     * ninguém entendia. A causa é a REAL da conferência; cai na Forma de envio e diz o que acontece ao publicar.
+     */
+    public function test_aviso_de_perda_do_mercado_envios_vem_em_portugues_e_aponta_a_forma_de_envio(): void
+    {
+        $causa = ['cause_id' => 4057, 'code' => 'shipping.lost_me2_by_intersected_logistics', 'type' => 'warning',
+            'message' => 'User/Catalog has not intersected me2 logistics', 'references' => ['catalog.shipping_preferences.modes']];
+
+        $p = MapeadorErrosMl::problema($causa, new ItemPlano(0, 'gold_special', 'COLOR=id:1', 'Preto', ['attributes' => []], []), self::cadeira(), self::$dicionario);
+
+        $this->assertSame(Problema::AVISO, $p->severidade, 'o Mercado Livre publica mesmo assim');
+        $this->assertSame(['etapa' => 'E10', 'campo' => 'envio', 'itens' => [0]], $p->alvo);
+        $this->assertStringContainsString('vai tirar o Mercado Envios deste anúncio', $p->mensagem);
+        $this->assertStringContainsString('A combinar com o comprador', $p->mensagem);
+        $this->assertStringNotContainsString('intersected', $p->mensagem);
+        $this->assertSame('shipping.lost_me2_by_intersected_logistics', $p->mlCausa['code'], 'a causa crua continua guardada');
+        $this->assertFalse(MapeadorErrosMl::ehRuido($causa), 'não é o aviso de toda conferência (4053): este muda o anúncio');
+    }
+
     public function test_o_mesmo_erro_em_varios_itens_vira_um_so(): void
     {
         $causa = ['cause_id' => 147, 'code' => 'item.attributes.missing_required', 'type' => 'error', 'message' => 'The attributes [BRAND] are required', 'references' => ['item.attributes']];

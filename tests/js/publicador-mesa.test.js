@@ -35,6 +35,8 @@ const CARDS = [
     `${BASE}/Mesa/AcoesDePublicacao.jsx`,
     `${BASE}/Mesa/TermosMaisBuscados.jsx`,
     `${BASE}/Mesa/PainelCriativos.jsx`,
+    // A lista do que "Corrigir em…" acendeu (10/10/2026).
+    `${BASE}/Mesa/OQueCorrigir.jsx`,
 ];
 // "Revisar e publicar" reenvia a descrição por rota própria: mesmas regras, menos a de rota.
 // EtapaImagens monta o link "Gerenciar em Configurações da conta" (Fase 173, plano 07):
