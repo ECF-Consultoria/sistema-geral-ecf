@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PubTarefa;
 use App\Models\User;
 use App\Services\Publicador\Alavancas\PromocaoAutomaticaService;
+use App\Services\Publicador\FreteDoPublicadoService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\Tarefas\TarefasPosPublicacao;
 use App\Support\Publicador\AlavancasLiberadas;
@@ -79,8 +80,10 @@ class MlbPublicadorTarefasController extends Controller
             ->get();
         // A promoção automática de cada anúncio (10/10/2026), numa consulta só para a página.
         $promocoes = PromocaoAutomaticaService::dasTarefas($daPagina);
+        // O frete que o Mercado Livre cobra de cada anúncio publicado (11/10/2026), também numa consulta só.
+        $fretes = FreteDoPublicadoService::dasTarefas($daPagina);
         $linhas = $daPagina
-            ->map(fn (PubTarefa $t) => [...$this->linha($t, $u, $hoje), 'promocoes' => $promocoes[$t->id] ?? []])
+            ->map(fn (PubTarefa $t) => [...$this->linha($t, $u, $hoje), 'promocoes' => $promocoes[$t->id] ?? [], 'fretes' => (object) ($fretes[$t->id] ?? [])])
             ->values();
 
         $responsavelGravado = $this->tarefas->responsavelPadraoGravado();

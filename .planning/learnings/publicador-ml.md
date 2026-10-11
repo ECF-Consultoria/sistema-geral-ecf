@@ -1347,7 +1347,8 @@ Mercado Livre. Não havia nenhum kit em rascunho em produção.
 
 **Pedido do usuário:** conferir o frete em três momentos — na Precificação do Portal, no "Conferir no Mercado
 Livre" e no anúncio já publicado — e avisar quando a diferença for grande ("a palavra final é a do Mercado Livre
-depois de publicado; senão teríamos de reprecificar"). Em 11/10 foi só análise; nada disso foi implementado.
+depois de publicado; senão teríamos de reprecificar"). A análise é esta seção; a implementação, no mesmo dia,
+está na §30.
 
 **Medido em produção, nos 20 anúncios publicados da #459** (`scratchpad/e2e/frete_tres_pontos459.php`):
 
@@ -1384,3 +1385,45 @@ acréscimo: os dois podem cair em faixas diferentes.
 `daProduto()`, que o teste do lote compara inteiro); passo novo em `ConferenciaService::conferir()` depois da
 linha dos SKUs repetidos, gravando em `pub_validacoes.respostas_ml`; e um job depois de `concluir()` gravando em
 `pub_publicacao_itens.avisos`. O aviso pós-publicação cabe na tarefa "Publicados aguardando alavancas".
+
+## 30. A conferência de frete em três momentos, como ficou (11/10/2026)
+
+**Decisões do usuário (11/10):** até R$ 1,00 de diferença não avisa; acima, avisa; acima de R$ 10 ou de 10% do
+frete do Mercado Livre, o aviso pede para refazer o preço. É sempre aviso, nunca trava. E um botão leva o frete
+do Mercado Livre para a Precificação. As faixas moram em `config/publicador.php` (`frete_conferencia`).
+
+| Momento | Onde está | O que grava |
+|---|---|---|
+| 1. Portal | `DadosEfetivosService::fretesDoProduto` leva ao Publicador o frete que ENTROU no preço, com a origem e a oferta | Nada novo (só o digitado continua coluna) |
+| 2. Conferir | Passo 9 de `ConferenciaService::conferir`, regra `V-FRT-01` | `pub_validacoes.respostas_ml.frete` (`linhas` por tipo e variante) |
+| 3. Publicado | `ConferirFreteDoPublicadoJob` → `FreteDoPublicadoService`, um minuto depois de `concluir()`/`encerrar()` | `pub_publicacao_itens.avisos.frete` |
+
+**O que custou descobrir:**
+
+- **A mesma base de preço nos três.** A cotação da conferência usa o preço da PROMOÇÃO (`portal[lt].minimo`), a
+  modalidade da conta e o frete grátis pela faixa — os parâmetros de `FreteMe2Service::consulta`. O pacote é o do
+  RASCUNHO de propósito: é o que vai ao anúncio, e pacote mexido aparece como diferença de frete.
+- **Preço cheio × promoção.** O anúncio é publicado no anunciado; a Precificação cotou no mínimo. Se os dois caem
+  em faixas diferentes (`TabelaFreteEcf::coluna`), o momento 3 cota de novo na faixa da promoção com a logística
+  e as medidas do próprio anúncio, e guarda o valor no preço cheio ao lado (`no_anuncio`). Sem isso, todo produto
+  abaixo de R$ 200 acusaria diferença falsa.
+- **"A combinar" não se aplica, nos dois momentos.** Na conferência, pelo aviso `shipping.lost_me2*` do validate
+  (por isso o passo do frete roda DEPOIS do validate). No publicado, por `shipping.mode ≠ me2`, lido antes de
+  pedir o custo: o custo por item de um anúncio "a combinar" vem das medidas padrão da categoria (§29).
+- **O número do botão nunca vem da tela.** Vale o que a conferência (ou o anúncio) gravou. `salvarFrete` existe
+  porque `salvarOferta` grava a linha inteira da Precificação e apagaria custo e exceções.
+- **Levar o frete da CONFERÊNCIA toca o rascunho** (o preço do Portal mudou; a conferência não vale mais). Levar o
+  do ANÚNCIO não toca: o anúncio já está no ar, e quem muda o preço dele é a pessoa, no Mercado Livre.
+- `CenarioCadeira` (o cenário de teste compartilhado) faz mock TOTAL do `DadosEfetivosService`: método novo no
+  serviço que a conferência chame precisa entrar lá, senão todo teste de conferência quebra.
+- JSON devolve `20.0` como `20`: comparar o que saiu de `respostas_ml`/`avisos` com `assertEquals`, não `assertSame`.
+
+**Medido em produção logo depois do deploy do passo 2** (`scratchpad/e2e/pos_deploy_frete1.php`, só GET): na
+Poltrona Opala, R$ 147,85 do Mercado Livre contra R$ 120,00 digitados no Portal — o aviso pede para refazer o
+preço. Na maioria dos produtos da #459 a Precificação está SEM frete (o V-SAL-08 já bloqueia), então não há o
+que comparar.
+
+**Na publicação em lote** o aviso de frete é um aviso como os outros: agendar na fila em rodadas exige o
+"Estou ciente" (`FilaPublicacaoService`, `AgendadorDaFila`). Não há teste da fila com o V-FRT-01 em particular.
+
+**Não feito:** o aviso do momento 3 não toca o sino nem reabre a tarefa — aparece no cartão dela e no editor.

@@ -39,8 +39,35 @@ test('o botão "levar para a Precificação" aparece só com o aviso de frete e 
     // O valor NUNCA sai da tela: o pedido vai sem corpo e o servidor usa o que a conferência gravou.
     assert.match(f, /axios\.post\(route\('mlb\.anuncios\.publicador\.frete-precificacao', \{ produto: produtoId \}\)\)/);
     // Depois de levar: avisa que o preço mudou e relê o rascunho (a conferência deixou de valer).
-    assert.match(f, /pub\.setAviso\(`Frete do Mercado Livre levado para a Precificação/);
-    assert.match(f, /confira de novo\.`\);\s*pub\.recarregar\(\);/);
+    assert.match(f, /\? `Frete do Mercado Livre levado para a Precificação \(\$\{n\}/);
+    assert.match(f, /confira de novo\.`/);
+    assert.match(f, /pub\.recarregar\(\);/);
     assert.match(f, /disabled=\{levandoFrete\}/);
     assert.match(f, /import \{ useState \} from 'react'/);
+    // O clique não pode virar o `itemId` (o evento do React entraria como argumento).
+    assert.match(f, /onClick=\{\(\) => levarFrete\(\)\} disabled=\{levandoFrete\} className=\{LINK\} data-acao="levar-frete"/);
+});
+
+// ─── A terceira conferência: o frete do anúncio JÁ publicado ───
+
+test('na lista de anúncios publicados, cada um diz o frete: conferido, "a combinar" ou a diferença com o botão', () => {
+    const f = lerSemComentarios('resources/js/Components/Publicador/Mesa/Publicar.jsx');
+    assert.match(f, /i\.frete\?\.aplicavel === false && <span[^>]*data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre \(a combinar\)<\/span>/);
+    assert.match(f, /i\.frete\?\.aplicavel && i\.frete\.nivel === 'igual' && <span[^>]*>· frete conferido com a Precificação<\/span>/);
+    assert.match(f, /\{i\.frete\?\.mensagem && \(/);
+    assert.match(f, /i\.frete\.pode_levar && \(\s*<button type="button" onClick=\{\(\) => levarFrete\(i\.id\)\}/);
+    // Do anúncio publicado vai pela rota do ITEM, e o aviso manda atualizar o preço no Mercado Livre.
+    assert.match(f, /axios\.post\(route\('mlb\.anuncios\.publicador\.itens\.frete-precificacao', \{ produto: produtoId, item: itemId \}\)\)/);
+    assert.match(f, /atualize o preço deste anúncio no Mercado Livre\./);
+});
+
+test('no cartão da tarefa pós-publicação, o anúncio com frete divergente mostra o aviso e o mesmo botão', () => {
+    const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Tarefas.jsx');
+    assert.match(f, /function FreteDoAnuncio\(\{ frete, produtoId, podeEscrever, onErro \}\)/);
+    assert.match(f, /if \(f\.aplicavel !== true \|\| typeof f\.mensagem !== 'string' \|\| f\.mensagem === ''\) return null;/, 'igual ou "a combinar": não ocupa o cartão');
+    assert.match(f, /<FreteDoAnuncio frete=\{comoObjeto\(t\.fretes\)\[textoSeguro\(i\?\.ml_item_id, ''\)\]\} produtoId=\{produto\.id\}/);
+    assert.match(f, /axios\.post\(route\('mlb\.anuncios\.publicador\.itens\.frete-precificacao', \{ produto: produtoId, item: f\.item_id \}\)\)/);
+    assert.match(f, /router\.reload\(\{ only: \['tarefas'\] \}\)/);
+    assert.match(f, /f\.pode_levar === true && podeEscrever && produtoId \?/);
+    assert.match(f, /import axios from 'axios'/);
 });

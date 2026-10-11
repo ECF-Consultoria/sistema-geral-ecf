@@ -4,6 +4,7 @@ namespace App\Services\Publicador;
 
 use App\Models\EstruturaOferta;
 use App\Models\EstruturaPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\User;
 use App\Services\Portal\Estrutura\EstruturaPrecificacaoService;
@@ -62,6 +63,38 @@ class FreteParaAPrecificacaoService
         });
 
         return ['aplicadas' => $aplicadas, 'ofertas' => $skus];
+    }
+
+    /**
+     * O mesmo, a partir de UM anúncio já publicado: leva o frete que o Mercado Livre cobra dele
+     * (`avisos.frete`, da terceira conferência) para a oferta e o tipo daquele anúncio.
+     *
+     * Aqui o rascunho não é tocado: o anúncio já está no ar com o preço antigo, e quem muda o preço dele é a
+     * pessoa, no Mercado Livre. O item guarda quando o frete foi levado, para o botão não se repetir.
+     *
+     * @return array{aplicadas: int, ofertas: list<string>}
+     */
+    public function aplicarDoItem(PubPublicacaoItem $item, PubRascunho $r, User $quem): array
+    {
+        $f = (array) ($item->avisos['frete'] ?? []);
+        $diverge = in_array($f['nivel'] ?? null, [ConferenciaDeFrete::DIFERENTE, ConferenciaDeFrete::REPRECIFICAR], true);
+        if (empty($f['aplicavel']) || ! $diverge || ! is_numeric($f['ml'] ?? null) || ! empty($f['levado_em'])) {
+            throw new RegraViolada('FRT-01', 'Não há frete do Mercado Livre para levar deste anúncio.');
+        }
+
+        $tipo = array_flip(EstruturaPublicacao::LISTING_TYPES)[$item->listing_type_id] ?? null;
+        $oferta = empty($f['oferta_id']) || $r->produto->company_id === null ? null
+            : EstruturaOferta::query()->where('company_id', $r->produto->company_id)->find((int) $f['oferta_id']);
+        if ($tipo === null || $oferta === null) {
+            throw new RegraViolada('FRT-02', 'Este anúncio não está ligado à Precificação do Portal.');
+        }
+
+        DB::transaction(function () use ($oferta, $tipo, $f, $item, $quem) {
+            $this->precificacao->salvarFrete($oferta, [$tipo => round((float) $f['ml'], 2)], AtorDoPortal::daEquipe($quem));
+            $item->update(['avisos' => [...(array) $item->fresh()->avisos, 'frete' => [...$f, 'levado_em' => now()->toIso8601String()]]]);
+        });
+
+        return ['aplicadas' => 1, 'ofertas' => [(string) $oferta->sku]];
     }
 
     /**

@@ -679,6 +679,8 @@ class EditorRascunhoService
                     'status' => $i->status, 'ml_item_id' => $i->ml_item_id, 'caminho' => $i->caminho, 'descricao_status' => $i->descricao_status,
                     'estado' => $i->avisos['estado'] ?? null, 'mensagem' => $i->avisos['mensagem'] ?? $i->avisos['regua'] ?? null,
                     'plano_b' => isset($i->avisos['plano_b']),
+                    // 11/10/2026: a terceira conferência de frete — o que o ML cobra do anúncio publicado.
+                    'frete' => is_array($i->avisos['frete'] ?? null) ? FreteDoPublicadoService::paraTela((int) $i->id, $i->avisos['frete']) : null,
                 ])->all(),
                 'problemas' => $p->status === PubPublicacao::RUNNING ? [] : array_map([self::class, 'problemaParaTela'], $this->publicacoes->problemas($p)),
             ] : null,

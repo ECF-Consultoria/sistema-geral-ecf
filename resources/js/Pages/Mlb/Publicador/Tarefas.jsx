@@ -1,5 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router } from '@inertiajs/react';
+import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, ExternalLink, MinusCircle, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -233,6 +234,38 @@ function PromocoesAutomaticas({ promocoes }) {
     );
 }
 
+/**
+ * 11/10/2026 — a terceira conferência de frete: o que o Mercado Livre cobra do anúncio publicado, contra o que
+ * a Precificação usou. Só aparece quando diverge; "Levar para a Precificação" grava lá o frete do anúncio.
+ */
+function FreteDoAnuncio({ frete, produtoId, podeEscrever, onErro }) {
+    const f = comoObjeto(frete);
+    const [levando, setLevando] = useState(false);
+    if (f.aplicavel !== true || typeof f.mensagem !== 'string' || f.mensagem === '') return null;
+
+    async function levar() {
+        setLevando(true);
+        try {
+            await axios.post(route('mlb.anuncios.publicador.itens.frete-precificacao', { produto: produtoId, item: f.item_id }));
+            router.reload({ only: ['tarefas'] });
+        } catch (e) {
+            onErro(textoSeguro(comoObjeto(comoObjeto(comoObjeto(e).response).data).message, 'Não deu para levar o frete. Tente de novo.'));
+        } finally {
+            setLevando(false);
+        }
+    }
+
+    return (
+        <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-normal text-amber-300" data-frete-do-anuncio={textoSeguro(f.nivel, '')}>
+            <span>{f.mensagem}</span>
+            {f.pode_levar === true && podeEscrever && produtoId ? (
+                <button type="button" onClick={levar} disabled={levando} className={LINK} data-acao="levar-frete-do-anuncio">Levar para a Precificação</button>
+            ) : null}
+            {typeof f.levado_em === 'string' ? <span className="text-white/45">já levado para a Precificação</span> : null}
+        </span>
+    );
+}
+
 /** Um produto publicado e o que falta fazer nele. */
 function CartaoTarefa({ tarefa, destacada, podeEscrever }) {
     const t = comoObjeto(tarefa);
@@ -294,6 +327,7 @@ function CartaoTarefa({ tarefa, destacada, podeEscrever }) {
                         {i?.url_alavancas ? (
                             <Link href={i.url_alavancas} className={LINK}>Abrir Alavancas</Link>
                         ) : null}
+                        <FreteDoAnuncio frete={comoObjeto(t.fretes)[textoSeguro(i?.ml_item_id, '')]} produtoId={produto.id} podeEscrever={podeEscrever} onErro={setErro} />
                     </li>
                 ))}
             </ul>

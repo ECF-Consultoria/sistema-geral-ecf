@@ -261,6 +261,18 @@ class MlbPublicadorController extends Controller
         });
     }
 
+    /** O mesmo, de UM anúncio já publicado: o frete que o Mercado Livre cobra dele vai para a Precificação. */
+    public function freteDoItemParaAPrecificacao(Request $request, int $produto, int $item, FreteParaAPrecificacaoService $fretes): JsonResponse
+    {
+        return $this->responder(function () use ($produto, $item, $request, $fretes) {
+            $r = $this->rascunho($produto);
+            $doRascunho = PubPublicacaoItem::whereIn('publicacao_id', $r->publicacoes()->select('id'))->findOrFail($item);
+            $resumo = $fretes->aplicarDoItem($doRascunho, $r, $request->user());
+
+            return [$r->fresh(), ['frete_levado' => $resumo]];
+        });
+    }
+
     public function reenviarDescricao(int $produto, int $item): JsonResponse
     {
         return $this->responder(function () use ($produto, $item) {
