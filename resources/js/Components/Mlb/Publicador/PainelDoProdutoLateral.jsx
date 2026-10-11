@@ -3,10 +3,10 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import { PilulaOrigem } from '@/Components/Mlb/Publicador/LinhaDeProduto';
+import MiniaturaDoProduto from '@/Components/Mlb/Publicador/MiniaturaDoProduto';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import {
-    iniciaisDoNome,
     resumoDosAnuncios,
     textoDaFase,
 } from '@/Components/Mlb/Publicador/layoutDaListaDeProdutos.js';
@@ -143,13 +143,7 @@ export default function PainelDoProdutoLateral({
             >
                 {/* ─── Identificação ─── */}
                 <div className="flex items-start gap-3 border-b border-white/[0.06] p-5">
-                    <span
-                        aria-hidden="true"
-                        data-miniatura={iniciaisDoNome(p.nome)}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-[11px] font-bold text-white/55"
-                    >
-                        {iniciaisDoNome(p.nome)}
-                    </span>
+                    <MiniaturaDoProduto nome={p.nome} capa={p.capa} className="h-10 w-10" />
                     <div className="min-w-0 flex-1">
                         <p className="text-[15px] font-bold text-white">{nome}</p>
                         <p className="mt-1 flex flex-wrap items-center gap-2">

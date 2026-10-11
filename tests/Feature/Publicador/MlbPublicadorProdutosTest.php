@@ -8,6 +8,8 @@ use App\Models\EstruturaOferta;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlToken;
+use App\Models\PubImagem;
+use App\Models\PubImagemAtribuicao;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
@@ -211,6 +213,78 @@ class MlbPublicadorProdutosTest extends TestCase
         $this->assertSame(2, $c['publicados']);
         $this->assertSame(1, $c['com_problema']);
         $this->assertSame($c['todos'], $c['rascunho'] + $c['conferidos'] + $c['publicados'] + $c['com_problema']);
+    }
+
+    /** Uma foto do rascunho num grupo (`null` = foto solta, em grupo nenhum). */
+    private function foto(PubRascunho $r, ?string $url, ?string $grupo = 'GENERAL', int $posicao = 0): PubImagem
+    {
+        $i = PubImagem::create(['rascunho_id' => $r->id, 'ml_url' => $url, 'upload_status' => $url ? PubImagem::ENVIADA : PubImagem::PENDENTE]);
+        if ($grupo !== null) {
+            PubImagemAtribuicao::create(['imagem_id' => $i->id, 'grupo_chave' => $grupo, 'grupo_hash' => ChaveCanonica::hash($grupo), 'posicao' => $posicao]);
+        }
+
+        return $i;
+    }
+
+    /**
+     * 10/10/2026 — a miniatura da lista é a foto do produto, não as duas letras. A capa é a 1ª da galeria
+     * geral que já está no Mercado Livre, na variação pequena da mesma foto.
+     */
+    public function test_a_linha_traz_a_capa_do_produto_na_variacao_pequena(): void
+    {
+        $e = $this->empresa();
+        $mk = fn (string $sku, array $mais = []) => PubProduto::create($mais + ['mlb_empresa_id' => $e->id, 'sku' => $sku, 'nome' => $sku, 'origem' => 'publicador']);
+        $cdn = 'https://http2.mlstatic.com/D_NQ_NP_';
+
+        $semRascunho = $mk('SEM');
+        $semFoto = $mk('VAZIO');
+        PubRascunho::create(['produto_id' => $semFoto->id, 'status' => PubRascunho::DRAFT]);
+
+        // A capa é a posição 0 da galeria geral, mesmo enviada depois; a de variação e a solta ficam atrás.
+        $comFotos = PubRascunho::create(['produto_id' => $mk('FOTOS')->id, 'status' => PubRascunho::DRAFT]);
+        $this->foto($comFotos, $cdn.'solta-F.jpg', null);
+        $this->foto($comFotos, $cdn.'da-cor-F.jpg', 'COLOR=id:1', 0);
+        $this->foto($comFotos, $cdn.'segunda-F.jpg', 'GENERAL', 1);
+        $this->foto($comFotos, $cdn.'capa-F.jpg', 'GENERAL', 0);
+
+        // Só fotos por variação: vale a 1ª delas. Foto guardada só aqui (sem endereço) não conta.
+        $porCor = PubRascunho::create(['produto_id' => $mk('COR')->id, 'status' => PubRascunho::DRAFT]);
+        $this->foto($porCor, null, 'GENERAL', 0);
+        $this->foto($porCor, $cdn.'azul-O.jpg', 'COLOR=id:2', 0);
+
+        // Kit sem foto própria mostra a do base; com foto própria, a dele.
+        $base = $mk('BASE');
+        $this->foto(PubRascunho::create(['produto_id' => $base->id, 'status' => PubRascunho::DRAFT]), $cdn.'base-F.jpg');
+        $kitSemFoto = $mk('BASE-CB2', ['produto_base_id' => $base->id, 'quantidade_kit' => 2, 'fase' => 2]);
+        PubRascunho::create(['produto_id' => $kitSemFoto->id, 'status' => PubRascunho::DRAFT]);
+        $kitComFoto = $mk('BASE-CB3', ['produto_base_id' => $base->id, 'quantidade_kit' => 3, 'fase' => 3]);
+        $this->foto(PubRascunho::create(['produto_id' => $kitComFoto->id, 'status' => PubRascunho::DRAFT]), $cdn.'kit3-F.jpg');
+
+        $por = collect($this->pagina(self::BASE.'/empresas/empresa-'.$e->id)['props']['produtos'])->keyBy('sku');
+
+        $this->assertNull($por['SEM']['capa']);
+        $this->assertNull($por['VAZIO']['capa']);
+        $this->assertSame($cdn.'capa-I.jpg', $por['FOTOS']['capa']);
+        $this->assertSame($cdn.'azul-I.jpg', $por['COR']['capa']);
+        $this->assertSame($cdn.'base-I.jpg', $por['BASE']['capa']);
+        $this->assertSame($cdn.'base-I.jpg', $por['BASE-CB2']['capa'], 'kit sem foto própria mostra a do base');
+        $this->assertSame($cdn.'kit3-I.jpg', $por['BASE-CB3']['capa']);
+        $this->assertSame($semRascunho->id, $por['SEM']['id']);
+    }
+
+    public function test_miniatura_da_foto_so_troca_a_variacao_no_cdn_do_mercado_livre(): void
+    {
+        $m = fn (?string $url) => ProgramasPublicadorService::miniaturaDaFoto($url);
+
+        $this->assertSame('https://http2.mlstatic.com/D_NQ_NP_811659-MLB117106279108_102026-I.jpg', $m('https://http2.mlstatic.com/D_NQ_NP_811659-MLB117106279108_102026-F.jpg'));
+        $this->assertSame('https://http2.mlstatic.com/D_1-I.jpg', $m('https://http2.mlstatic.com/D_1-O.webp'));
+        // Fora do formato conhecido: volta como veio.
+        $this->assertSame('https://http2.mlstatic.com/foto.jpg', $m('https://http2.mlstatic.com/foto.jpg'));
+        $this->assertSame('https://outro.cdn/a-F.jpg', $m('https://outro.cdn/a-F.jpg'));
+        // Só https vai para a tela.
+        $this->assertNull($m('http://http2.mlstatic.com/D_1-F.jpg'));
+        $this->assertNull($m('javascript:alert(1)'));
+        $this->assertNull($m(null));
     }
 
     /**
