@@ -331,6 +331,36 @@ class FichaTecnicaPelaPlanilhaTest extends TestCase
         $this->assertSame(0, $de_novo['campos']);
     }
 
+    /**
+     * 11/10/2026 — valor próprio pela planilha. No campo que aceita ("Materiais", "Cor": texto com
+     * opções), o nome que não é opção grava como a pessoa escreveu, junto das opções, e a planilha
+     * baixada depois o devolve na célula. Na lista fechada ("Material") continua sendo erro.
+     */
+    public function test_valor_proprio_pela_planilha_grava_onde_o_campo_aceita_e_volta_na_celula(): void
+    {
+        [$empresa, , $beta] = $this->cenario();
+        $planilha = app(PlanilhaDasFichasTecnicas::class)->gerar($empresa)['planilha'];
+        $aba = $planilha->getSheetByName('Cadeiras');
+        $this->escrever($aba, 'Marca*', 'CB', 'Bela Casa');
+        $this->escrever($aba, 'Material*', 'CB', 'Bambu');
+        $this->escrever($aba, 'Materiais', 'CB', 'couro | Sarja peletizada');
+        $this->escrever($aba, 'Cor', 'CB', 'Verde musgo');
+
+        Queue::fake();
+        $r = app(ImportadorFichasTecnicas::class)->aplicar($empresa, $this->gravar($planilha), $this->atorCliente($empresa));
+
+        $this->assertContains('CB: Escolha uma das opções de “Material”.', $r['nao_entraram']);
+        $this->assertSame(['Couro | Sarja peletizada', null, null], $this->valor($beta, 'MATERIALS'), 'a opção com o nome dela; o próprio, como foi escrito');
+        $this->assertSame(['Verde musgo', null, null], $this->valor($beta, 'COLOR'));
+        $this->assertNull($this->valor($beta, 'MATERIAL'), 'lista fechada: o que não é opção não grava');
+
+        // A planilha baixada de novo traz o valor próprio na célula (antes sairia em branco).
+        $nova = app(PlanilhaDasFichasTecnicas::class)->gerar($empresa)['planilha']->getSheetByName('Cadeiras');
+        $linha = $this->linhaDo($nova, 'CB');
+        $this->assertSame('Couro | Sarja peletizada', (string) $nova->getCell($this->coluna($nova, 'Materiais').$linha)->getValue());
+        $this->assertSame('Verde musgo', (string) $nova->getCell($this->coluna($nova, 'Cor').$linha)->getValue());
+    }
+
     public function test_arquivo_que_nao_e_a_planilha_da_ficha_volta_com_erro_claro(): void
     {
         [$empresa] = $this->cenario();

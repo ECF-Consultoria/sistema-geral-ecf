@@ -1327,6 +1327,8 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
   obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
   como preenchido (re-sincronizar não mexe).
+- **Superado em 11/10/2026 — o usuário pediu o valor próprio de volta, com outra regra; ver §46.** O que segue é o
+  registro de como estava.
 - **Campo com opção é SÓ lista, mesmo onde o editor interno aceita texto (09/10/2026, decisão do usuário).** O §35
   continua valendo: a ficha não oferece "Outro (digitar)" (foi aberto em `dc48b1b7` e desfeito no mesmo dia) e o
   servidor recusa com 422 neutro texto fora das opções. O texto ANTIGO gravado antes de 08/10 nesses campos (ex.:
@@ -1550,3 +1552,65 @@ produtos-pai na tela.
 
 **Prova sem servidor:** `scratchpad/prova_familia.mjs` desenha a página de verdade no Puppeteer com o CSS do build
 e props no formato do servidor, clica em recolher, fechar e no atalho, e fotografa.
+
+## 45. Categoria: navegar pela árvore, além da busca (11/10/2026)
+
+O usuário procurou a categoria de um anúncio cujo caminho no Mercado Livre era "Casa, Móveis e Decoração > Móveis
+para Casa > Cadeiras, Sofás e Banquetas > Sofás > Cadeira" e não achou. Pediu para entender por quê e para poder
+navegar nível a nível, "assim como é no Mercado Livre".
+
+- **A busca nunca foi a árvore: é o preditor** (`domain_discovery/search`, até 8 palpites). Com texto curto ele erra
+  feio — "cadeira" devolve Abraçadeiras e Chocadeiras. Para o texto do usuário devolveu "Sofás", que ERA a categoria
+  daquele anúncio.
+- **"Sofás" (`MLB1626`) é o último nível.** O "Cadeira" que a página do anúncio mostra depois dele não é categoria
+  (conferido: não é filha na árvore, nem opção de "Tipo de produto", que em Sofás e Poltronas tem Sofá, Divan, Futon,
+  Poltrona e Sillón). Quem cadastra escolhe "Sofás". Não adianta procurar um nível a mais.
+- **A árvore vem de dois endpoints públicos:** `/sites/MLB/categories` (32 raízes, cada uma com 4 a 40 filhas) e
+  `/categories/{id}` (`children_categories`, `path_from_root`, `settings.listing_allowed`). `children_categories`
+  NÃO diz se a filha é a última: para a tela saber quem "abre" e quem "se escolhe", `CategoriaBuscaService::nivel`
+  lê as filhas em paralelo e guarda no mesmo cache de 7 dias da busca (`ml_meta_categoria_{id}`). Filha que não
+  respondeu sai com `folha: null` e a tela descobre ao entrar.
+- **`MlCatalogoMetaService::categoria()` guarda o `[]` de uma queda por 7 dias** (`Cache::remember`). Na navegação
+  isso deixaria a categoria "fora do ar" até o cache vencer; `categoriasEmLote` solta a chave quando a leitura única
+  volta vazia. (O `CategoriaSugestaoService` do Portal já evitava o problema por outro caminho.)
+- **Um componente só para as duas telas:** `Components/Categorias/NavegadorDeCategorias.jsx` +
+  `useArvoreDeCategorias` + `lib/arvoreDeCategorias.js`. Cada tela passa a sua rota
+  (`portal.auth.estrutura.produtos.categorias.arvore` e `mlb.anuncios.publicador.categorias.arvore`). Como aparece
+  para o cliente, os três arquivos estão sob o teste de sigilo (nada de plataforma nem em comentário).
+- **Abrindo com categoria já escolhida, a navegação começa no nível de cima dela**, com a escolhida marcada entre as
+  vizinhas — recomeçar de "Todas as categorias" obrigava a refazer quatro cliques para trocar Poltronas por Sofás.
+- Rota nova do Portal = linha nova na allowlist de `RestringeDominioDoPortal` (§ da MAG); sem ela o domínio do
+  portal responde 404.
+
+**Prova sem servidor:** `scratchpad/nav/provar.mjs` monta o componente de verdade (hook com efeitos) no Puppeteer com
+uma árvore de mentira: desce três níveis, volta pela trilha sem ler de novo, escolhe, e abre numa categoria já
+escolhida. Teste estático não exercita o vai-e-volta.
+
+## 46. "Outro": valor próprio na lista, só onde o catálogo aceita (11/10/2026)
+
+**Reabre, a pedido do usuário, o que ele mandou fechar em 09/10** (§38, "campo com opção é SÓ lista"; o "Outro
+(digitar)" de `dc48b1b7` foi desfeito no mesmo dia). Em 11/10, replicando um produto, o "Material do estofamento"
+certo não estava entre as opções e a ficha obrigava a escolher uma: "além das opções, deixa também para colocar
+personalizado, os que aceitarem. Então verifica no Mercado Livre o que dá para aceitar".
+
+- **O que o catálogo aceita (medido em Poltronas e Sofás, `technical_specs/input`):** dos 12 atributos `string` com
+  opções, 11 trazem `allow_custom_value: true` (Material do estofamento, Material dos pés, Materiais da estrutura,
+  Desenho do tecido, Linha, Densidade da espuma, Acessórios…) e o 12º, a Cor, não traz o sinal; os 5 `list` trazem
+  `false` (Tipo de produto, Estilo, Formato, Orientação, Quantidade de lugares). A regra da ficha — `aceita_outro` =
+  lista cujo atributo é `string` com opções — é a mesma do classificador sem `ui_config`, e um teste confere que ela
+  bate com o que o editor decide pelo `allow_custom_value` nas quatro respostas reais guardadas.
+- **A diferença para a versão de 09/10:** a lista continua vindo primeiro e "Outro (escrever)" é a última opção, uma
+  escolha explícita; o texto que bate com o nome de uma opção vira a opção (não nasce "COURO" ao lado de "Couro");
+  lista fechada continua fechada; e o valor próprio vai MARCADO no corpo (`proprio: true`, ou `proprios: [...]` no
+  campo de várias opções). Sem a marca o servidor se comporta como antes: um id que saiu do catálogo, ou um texto
+  cru, continua 422 — não vira valor próprio por engano.
+- **Sem migration.** O texto vai em `valor` com `valor_id` nulo, o mesmo formato do texto antigo. "|" é recusado no
+  valor próprio porque é o separador das várias opções na linha gravada.
+- **Planilha da ficha:** nesses campos a lista suspensa passa a só sugerir (a validação estrita do Excel barraria o
+  valor próprio), a célula fora das opções entra marcada, e a planilha baixada devolve o texto (antes saía em branco).
+- **No rascunho da equipe:** valor único vai como `value_name` sem `value_id`. Com várias opções, opções e próprios
+  vão JUNTOS como texto separado por vírgula, com `revisar` — `values_multi` só guarda id de opção. Isto troca o D-13
+  ("com opção resolvida, o nome que não casa fica de fora"): quando ele foi escrito o nome fora da lista era lixo
+  antigo; agora é o que o cliente pediu. Se o schema do editor disser que o campo é fechado, o valor não vai e o
+  campo aparece pendente — a ficha nunca publica o que o catálogo recusa.
+- O editor da equipe (`CampoAtributo`) já aceitava texto nesses campos (caixa com sugestões); nada mudou lá.

@@ -14,8 +14,8 @@ use App\Support\Publicador\Variacao\ChaveCanonica;
  * Puro: sem banco, sem HTTP. Regra de ouro: nunca devolver valor fora de uma lista
  * fechada (o ML recusa com 3510) — o que não casa vira aviso, não valor. "Fechada" é
  * `! aceitaTextoLivre` do editor: onde o editor aceita texto, o texto do Portal vai como
- * `value_name`, sem `value_id`. Hoje a ficha do Portal só deixa ESCOLHER onde há opção
- * (decisão de 09/10/2026); texto ali é o legado gravado antes de 08/10, e é ele que isto salva.
+ * `value_name`, sem `value_id`. Texto num campo com opções é o valor PRÓPRIO que o cliente escreveu
+ * no "Outro" da ficha (11/10/2026, só onde o catálogo aceita) ou o legado gravado antes de 08/10.
  * Os avisos são para o log do servidor (09/10/2026: a tela não os mostra mais).
  * Todo valor traz `origem => 'portal'`. Campo de várias opções guarda a 1ª opção
  * resolvida em `value_id`/`value_name`, todas em `values_multi`, e liga `revisar`.
@@ -122,32 +122,39 @@ final class PortalValorDeAtributo
 
         $resolvidas = [];
         $perdidos = [];
+        $naOrdem = [];
         foreach ($nomes as $nome) {
             $opcao = self::opcao($def, count($nomes) === 1 ? $valorId : '', $nome);
             if ($opcao === null) {
                 $perdidos[] = $nome;
+                if ($nome !== '' && ! in_array($nome, $naOrdem, true)) {
+                    $naOrdem[] = $nome;
+                }
             } elseif (! in_array($opcao['id'], array_column($resolvidas, 'id'), true)) {
                 $resolvidas[] = $opcao;
+                $naOrdem[] = $opcao['name'];
             }
         }
 
-        if ($resolvidas === []) {
-            // Nada casou (texto antigo, de antes de 08/10). Onde o editor aceita texto livre, o que o
-            // Portal tem vai como texto, sem `value_id` — é o que a equipe digitaria. Mais de um nome
-            // vira um texto só, separado por vírgula, e pede revisão. Onde não aceita, fica vazio: o
-            // campo aparece pendente no editor (o aviso vai só para o log).
-            if ($def->aceitaTextoLivre && $perdidos !== [] && implode('', $perdidos) !== '') {
-                return [
-                    'valor' => [
-                        'value_id'   => null,
-                        'value_name' => mb_substr(implode(', ', $perdidos), 0, self::limite($def)),
-                        'origem'     => 'portal',
-                        'revisar'    => count($perdidos) > 1,
-                    ],
-                    'aviso' => null,
-                ];
-            }
+        // Há nome que não é opção: o valor PRÓPRIO que o cliente escreveu no "Outro" (11/10/2026) ou o
+        // texto antigo, de antes de 08/10. Onde o editor aceita texto livre, tudo o que o Portal tem
+        // vai como texto, sem `value_id` — é o que a equipe digitaria. Mais de um nome (opções e
+        // próprios juntos, na ordem escolhida) vira um texto só, separado por vírgula, e pede revisão:
+        // `values_multi` só guarda ids de opção, e descartar o próprio perderia o que o cliente pediu.
+        if ($def->aceitaTextoLivre && implode('', $perdidos) !== '') {
+            return [
+                'valor' => [
+                    'value_id'   => null,
+                    'value_name' => mb_substr(implode(', ', $naOrdem), 0, self::limite($def)),
+                    'origem'     => 'portal',
+                    'revisar'    => count($naOrdem) > 1,
+                ],
+                'aviso' => null,
+            ];
+        }
 
+        if ($resolvidas === []) {
+            // Lista fechada e nada casou: fica vazio, e o campo aparece pendente no editor (o aviso vai só para o log).
             return self::semValor("{$nomeCampo}: nenhuma das opções (\"{$texto}\") existe na lista do Mercado Livre; nada foi preenchido.");
         }
 

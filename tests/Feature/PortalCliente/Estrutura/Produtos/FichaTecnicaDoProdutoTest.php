@@ -671,6 +671,62 @@ class FichaTecnicaDoProdutoTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIALS']);
     }
 
+    // ─── "Outro": valor próprio onde o campo aceita (11/10/2026) ────────────
+
+    /**
+     * O usuário, replicando um produto: o "Material do estofamento" dele não estava entre as opções e a
+     * ficha obrigava a escolher uma. O campo cujo atributo é texto com opções aceita valor próprio; a
+     * lista fechada continua fechada. O valor próprio vem MARCADO (`proprio` / `proprios`): sem a marca
+     * nada muda — um id que saiu do catálogo não vira texto por engano.
+     */
+    public function test_campo_que_aceita_grava_o_valor_proprio_e_lista_fechada_continua_fechada(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $produto = $this->produto($empresa);
+        $sessao = $this->entrarNoPortal($empresa);
+        $url = route('portal.auth.estrutura.produtos.ficha_tecnica', $produto->id);
+        $linha = fn (string $id) => EstruturaProdutoAtributo::where('produto_id', $produto->id)->where('atributo_id', $id)->firstOrFail();
+
+        // A definição diz quem aceita.
+        $grupos = $sessao->getJson(route('portal.auth.estrutura.produtos.campos_categoria', ['categoria' => 'MLB1']))->assertOk()->json('grupos');
+        $campos = array_column(array_merge(...array_column($grupos, 'campos')), null, 'id');
+        $this->assertTrue($campos['UPHOLSTERY_MATERIAL']['aceita_outro'], 'texto com opções');
+        $this->assertTrue($campos['MATERIALS']['aceita_outro'], 'várias opções também');
+        $this->assertFalse($campos['MATERIAL']['aceita_outro'], 'lista fechada');
+        $this->assertFalse($campos['LUMBAR_SUPPORT_TYPE']['aceita_outro'], 'lista fechada');
+
+        $sessao->putJson($url, $this->ficha([
+            ['id' => 'UPHOLSTERY_MATERIAL', 'valor' => '  Bouclé   texturizado ', 'proprio' => true],
+            ['id' => 'MATERIALS', 'valor' => ['2', 'Sarja peletizada', 'algodao'], 'proprios' => ['Sarja peletizada', 'algodao']],
+        ]))->assertOk();
+
+        $this->assertSame('Bouclé texturizado', $linha('UPHOLSTERY_MATERIAL')->valor);
+        $this->assertNull($linha('UPHOLSTERY_MATERIAL')->valor_id, 'valor próprio não tem id de opção');
+        $this->assertSame('Couro | Sarja peletizada | Algodão', $linha('MATERIALS')->valor, 'na ordem escolhida; o que bate com opção vira a opção');
+
+        // O texto que bate com uma opção (sem acento nem caixa) vira a opção.
+        $sessao->putJson($url, $this->ficha([['id' => 'UPHOLSTERY_MATERIAL', 'valor' => 'COURO', 'proprio' => true]]))->assertOk();
+        $this->assertSame(['Couro', '7'], [$linha('UPHOLSTERY_MATERIAL')->valor, $linha('UPHOLSTERY_MATERIAL')->valor_id]);
+
+        // Marcado como próprio, "8" é o texto "8" — nunca o id da opção Tecido. Sem a marca, é a opção.
+        $sessao->putJson($url, $this->ficha([['id' => 'UPHOLSTERY_MATERIAL', 'valor' => '8', 'proprio' => true]]))->assertOk();
+        $this->assertSame(['8', null], [$linha('UPHOLSTERY_MATERIAL')->valor, $linha('UPHOLSTERY_MATERIAL')->valor_id]);
+        $sessao->putJson($url, $this->ficha([['id' => 'UPHOLSTERY_MATERIAL', 'valor' => '8']]))->assertOk();
+        $this->assertSame(['Tecido', '8'], [$linha('UPHOLSTERY_MATERIAL')->valor, $linha('UPHOLSTERY_MATERIAL')->valor_id]);
+
+        // Sem a marca, texto fora das opções continua recusado mesmo no campo que aceita.
+        $sessao->putJson($url, $this->ficha([['id' => 'UPHOLSTERY_MATERIAL', 'valor' => 'Bouclé']]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.UPHOLSTERY_MATERIAL']);
+        // Lista fechada: nem com a marca.
+        $sessao->putJson($url, ['atributos' => [['id' => 'BRAND', 'valor' => 'Bela Casa'], ['id' => 'MATERIAL', 'valor' => 'Bambu', 'proprio' => true]]])
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.MATERIAL']);
+        // "|" separa as várias opções na linha gravada: não entra num valor próprio.
+        $sessao->putJson($url, $this->ficha([['id' => 'UPHOLSTERY_MATERIAL', 'valor' => 'Linho | Seda', 'proprio' => true]]))
+            ->assertStatus(422)->assertJsonValidationErrors(['atributos.UPHOLSTERY_MATERIAL']);
+
+        $this->assertSemOrigem((string) json_encode($grupos, JSON_UNESCAPED_UNICODE), 'definição com "Outro"');
+    }
+
     // ─── "Não se aplica" (08/10/2026) ──────────────────────────────────────
 
     public function test_a_definicao_diz_quais_campos_aceitam_nao_se_aplica(): void

@@ -241,6 +241,9 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->whereNumber('lista')->middleware('throttle:60,1,estrutura.produtos.ambientes.excluir')->name('portal.auth.estrutura.produtos.ambientes.excluir');
     Route::get('/estrutura/produtos/categorias', [PortalEstruturaProdutosController::class, 'buscarCategorias'])
         ->middleware('throttle:60,1,estrutura.produtos.categorias')->name('portal.auth.estrutura.produtos.categorias');
+    // 11/10/2026 — navegar pela árvore de categorias, nível a nível (um clique = uma leitura).
+    Route::get('/estrutura/produtos/categorias/arvore', [PortalEstruturaProdutosController::class, 'navegarCategorias'])
+        ->middleware('throttle:180,1,estrutura.produtos.categorias.arvore')->name('portal.auth.estrutura.produtos.categorias.arvore');
     Route::get('/estrutura/produtos/{produto}', [PortalEstruturaProdutosController::class, 'ficha'])
         ->whereNumber('produto')->middleware('throttle:120,1,estrutura.produtos.ficha')->name('portal.auth.estrutura.produtos.ficha');
     // 09/10/2026 — a prévia da importação pede a sugestão por NOME de categoria digitado, em blocos de 10.

@@ -97,13 +97,40 @@ class PortalValorDeAtributoTest extends TestCase
         $this->assertTrue($r['valor']['revisar']);
     }
 
-    public function test_multivalor_que_aceita_texto_livre_leva_so_as_opcoes_que_casam_quando_alguma_casa(): void
+    /**
+     * 11/10/2026: a ficha do Portal passou a aceitar valor PRÓPRIO nesses campos ("Outro"). Até então o
+     * nome que não casava era lixo antigo e ficava de fora quando alguma opção casava (D-13); agora ele
+     * é o que o cliente pediu, e sumir com ele perderia o pedido. Opções e próprios vão juntos, como
+     * texto, na ordem escolhida — `values_multi` só guarda id de opção — e a equipe confere.
+     */
+    public function test_multivalor_que_aceita_texto_livre_leva_as_opcoes_e_o_valor_proprio_juntos(): void
     {
-        // D-13: com opção resolvida, o valor é a opção; o nome que não casa fica de fora (vai para o log).
-        $r = PortalValorDeAtributo::resolver($this->def('string', self::MATERIAIS, ['multi' => true, 'livre' => true]), ['valor' => 'Couro | Seda']);
+        $def = $this->def('string', self::MATERIAIS, ['multi' => true, 'livre' => true]);
+
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'couro | Seda']);
+        $this->assertNull($r['valor']['value_id']);
+        $this->assertSame('Couro, Seda', $r['valor']['value_name'], 'a opção sai com o nome dela; o próprio, como foi escrito');
+        $this->assertArrayNotHasKey('values_multi', $r['valor']);
+        $this->assertTrue($r['valor']['revisar']);
+        $this->assertNull($r['aviso']);
+
+        // Só opções: nada muda — a 1ª opção, todos os ids e revisar.
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'Couro | Linho']);
         $this->assertSame('2', $r['valor']['value_id']);
-        $this->assertSame(['2'], $r['valor']['values_multi']);
-        $this->assertStringContainsString('Seda', (string) $r['aviso']);
+        $this->assertSame(['2', '3'], $r['valor']['values_multi']);
+    }
+
+    public function test_valor_proprio_de_escolha_unica_vai_como_texto_e_o_que_bate_com_opcao_vira_a_opcao(): void
+    {
+        // "Material do estofamento": `string` com opções, `allow_custom_value: true` no catálogo.
+        $def = $this->def('string', self::MATERIAIS, ['livre' => true]);
+
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'Bouclé texturizado', 'valor_id' => null]);
+        $this->assertSame(['value_id' => null, 'value_name' => 'Bouclé texturizado', 'origem' => 'portal', 'revisar' => false], $r['valor']);
+
+        $r = PortalValorDeAtributo::resolver($def, ['valor' => 'COURO', 'valor_id' => null]);
+        $this->assertSame('2', $r['valor']['value_id']);
+        $this->assertSame('Couro', $r['valor']['value_name']);
     }
 
     public function test_multivalor_fechado_com_texto_livre_antigo_fica_vazio(): void

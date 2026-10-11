@@ -22,6 +22,7 @@ use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -53,6 +54,25 @@ class MlbPublicadorController extends Controller
         $dados = $request->validate(['q' => ['required', 'string', 'max:200']]);
 
         return response()->json($busca->categorias($dados['q']));
+    }
+
+    /**
+     * Um nível da árvore de categorias, para navegar como no Mercado Livre (11/10/2026): sem `pai`, as
+     * raízes; com `pai`, as filhas dele. O ML fora do ar responde 200 com `indisponivel`, nunca erro.
+     */
+    public function categoriasArvore(Request $request, CategoriaBuscaService $busca): JsonResponse
+    {
+        $dados = $request->validate(['pai' => ['nullable', 'string', 'regex:/^MLB[0-9]+$/']]);
+        try {
+            $nivel = $busca->nivel($dados['pai'] ?? null);
+        } catch (\Throwable $e) {
+            Log::warning('[Publicador] navegação de categorias falhou: '.$e->getMessage());
+            $nivel = null;
+        }
+
+        return response()->json($nivel === null
+            ? ['atual' => null, 'caminho' => [], 'filhas' => [], 'indisponivel' => true]
+            : $nivel + ['indisponivel' => false]);
     }
 
     public function abrir(int $produto): JsonResponse

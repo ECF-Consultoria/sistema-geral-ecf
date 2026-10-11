@@ -73,12 +73,22 @@ use Illuminate\Support\Facades\Log;
  * só no `list` jogava esses campos em texto livre e deixava o cliente digitar valor
  * que não existe na lista. Lista marcada `multivalued` aceita mais de uma opção.
  *
- * ### Campo com opção é SÓ lista, mesmo onde o editor interno aceita texto (decisão do usuário, 09/10/2026)
- * O editor da equipe aceita texto livre em `string` com opções (`allow_custom_value: true` nas
- * respostas reais: Materiais, Salas…). A ficha do cliente, não: aqui quem tem opção só escolhe entre
- * elas (§35 de 08/10, mantido). O texto ANTIGO gravado antes de 08/10 nesses campos não se perde no
- * caminho: o Sincronizar o leva ao rascunho como texto onde o editor aceita
- * ({@see \App\Support\Publicador\Portal\PortalValorDeAtributo}).
+ * ### Campo com opção: lista, e "Outro" onde o catálogo aceita valor próprio (11/10/2026)
+ * Em 09/10 a decisão foi "quem tem opção só escolhe entre elas". Em 11/10 o usuário, replicando um
+ * produto, precisou de um "Material do estofamento" que não estava entre as opções e pediu: além das
+ * opções, deixar escrever um personalizado NOS CAMPOS QUE ACEITAREM. A medição no catálogo (Poltronas e
+ * Sofás, `technical_specs/input`) bate com o tipo do atributo: dos 12 campos `string` com opções, 11
+ * dizem `allow_custom_value: true` (Material do estofamento, Material dos pés, Materiais da estrutura,
+ * Desenho do tecido, Linha, Densidade da espuma…) e o 12º, a Cor, não traz o sinal (e aceita nome
+ * próprio); os 5 `list` dizem `false` (Tipo de produto, Estilo, Formato, Orientação, Quantidade de
+ * lugares: fora da lista o catálogo recusa).
+ *
+ * Por isso o campo sai com `aceita_outro`: verdadeiro só na lista cujo atributo é `string` com opções
+ * ({@see AtributoClassificado::$aceitaTextoLivre}). A tela continua mostrando as opções primeiro — o
+ * "Outro" é uma escolha explícita, e o texto que bate com uma opção vira a opção (não nasce "REDONDO"
+ * ao lado de "Redonda" por descuido). O texto vai ao rascunho como o editor interno o gravaria
+ * ({@see \App\Support\Publicador\Portal\PortalValorDeAtributo}); se o schema de lá disser que o campo
+ * é fechado, o valor não vai e o campo aparece pendente para a equipe.
  *
  * A montagem ({@see self::daAtributos()}) é uma função PURA: sem HTTP, sem cache.
  */
@@ -528,6 +538,8 @@ class FichaTecnicaDaCategoria
             'eixo_do_portal' => $eixoDoPortal,
             // Só na Marca (texto livre): as marcas do catálogo, para a tela sugerir enquanto o cliente digita.
             'sugestoes'     => $sugestoes,
+            // Lista que aceita um valor escrito à mão além das opções ("Outro") — ver o bloco da classe.
+            'aceita_outro'  => $tipo === self::TIPO_LISTA && $valores !== [] && $classificado->aceitaTextoLivre,
         ];
     }
 

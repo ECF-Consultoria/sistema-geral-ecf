@@ -10,7 +10,7 @@
 //
 // O `id` do campo é interno: nunca aparece na tela, só o `nome`.
 //
-// Valores em memória: { [id]: { valor: string, unidade: string, naoSeAplica?: boolean } }
+// Valores em memória: { [id]: { valor: string, unidade: string, naoSeAplica?: boolean, outro?: boolean } }
 //
 // "Não se aplica": o campo marcado `nao_se_aplica` pelo servidor ganha a opção.
 // Marcada, o PUT manda `{ id, nao_se_aplica: true }` (nunca um valor), e o servidor
@@ -143,6 +143,68 @@ export function idsMultivalor(campo, bruto) {
 /** O campo aceita mais de uma opção? (só lista, e só quando o servidor marcou). */
 export const ehMultivalor = (campo) => campo?.tipo === 'lista' && !! campo?.multivalor;
 
+// ─── "Outro": o valor escrito à mão num campo de lista (11/10/2026) ─────────
+//
+// Algumas listas aceitam um valor próprio além das opções (o servidor marca `aceita_outro`): o
+// material que não está entre as opções, por exemplo. A lista continua vindo primeiro; "Outro" é
+// uma escolha explícita. Em memória o valor próprio é o TEXTO (as opções são guardadas pelo id), e
+// `outro: true` marca o gesto de ter escolhido "Outro" enquanto o texto ainda está vazio.
+
+/** O campo de lista aceita um valor escrito à mão além das opções? (só quando o servidor marcou). */
+export const aceitaOutro = (campo) => campo?.tipo === 'lista' && !! campo?.aceita_outro;
+
+/** O que o seletor usa como valor da opção "Outro" (nenhuma opção de verdade tem este id). */
+export const OPCAO_OUTRO = '__outro__';
+
+/**
+ * O valor próprio de uma lista de escolha única: o texto, ou null quando o campo está numa opção
+ * (ou vazio, sem "Outro" escolhido). Texto gravado que não bate em opção nenhuma É o valor próprio —
+ * inclusive o que foi escrito quando o campo ainda era de texto livre.
+ */
+export function valorProprio(campo, atual) {
+    if (! aceitaOutro(campo) || ehMultivalor(campo) || Array.isArray(atual?.valor)) return null;
+    const texto = String(atual?.valor ?? '');
+    if (atual?.outro) return texto;
+
+    return texto.trim() !== '' && idDeLista(campo, texto) === '' ? texto : null;
+}
+
+/**
+ * O que está escolhido num campo multivalor, na ordem e sem repetição: o id de cada opção e, onde o
+ * campo aceita, o texto de cada valor próprio. Sem `aceita_outro` é o mesmo que {@link idsMultivalor}.
+ */
+export function valoresMultivalor(campo, bruto) {
+    const pedacos = Array.isArray(bruto) ? bruto : String(bruto ?? '').split(SEPARADOR_MULTIVALOR);
+    const proprios = aceitaOutro(campo);
+    const out = [];
+    const vistos = new Set();
+    pedacos.forEach((p) => {
+        const id = idDeLista(campo, p);
+        const valor = id !== '' ? id : (proprios ? String(p ?? '').trim().replace(/\s+/g, ' ') : '');
+        const chave = id !== '' ? `id:${id}` : `texto:${valor.toLowerCase()}`;
+        if (valor === '' || vistos.has(chave)) return;
+        vistos.add(chave);
+        out.push(valor);
+    });
+
+    return out;
+}
+
+/** Dos escolhidos de um multivalor, os que são valor próprio (texto), e não id de opção. */
+export function propriosDoMultivalor(campo, escolhidos) {
+    const ids = new Set((Array.isArray(campo?.valores) ? campo.valores : []).map((o) => String(o.id)));
+
+    return (Array.isArray(escolhidos) ? escolhidos : []).map(String).filter((v) => ! ids.has(v));
+}
+
+/** O valor próprio pode ser somado aos escolhidos? Vazio, repetido ou com "|" (o separador) não pode. */
+export function podeSomarProprio(campo, escolhidos, texto) {
+    const limpo = String(texto ?? '').trim().replace(/\s+/g, ' ');
+    if (limpo === '' || limpo.includes('|')) return false;
+
+    return valoresMultivalor(campo, [...(Array.isArray(escolhidos) ? escolhidos : []), limpo]).length > (escolhidos?.length ?? 0);
+}
+
 /**
  * Corpo do PUT: um item para cada campo DA DEFINIÇÃO que a pessoa preencheu.
  * Campo vazio fica de fora (o servidor entende como "sem valor"); valor de um campo que a
@@ -164,14 +226,26 @@ export function montarAtributos(grupos, valores) {
         }
 
         if (ehMultivalor(campo)) {
-            const ids = idsMultivalor(campo, bruto);
-            if (ids.length) out.push({ id: campo.id, valor: ids });
+            // Ids das opções e, onde o campo aceita, o texto de cada valor próprio — estes vão
+            // também em `proprios`, para o servidor nunca ler texto como id (nem id velho como texto).
+            const escolhidos = valoresMultivalor(campo, bruto);
+            const proprios = propriosDoMultivalor(campo, escolhidos);
+            if (escolhidos.length) out.push({ id: campo.id, valor: escolhidos, ...(proprios.length ? { proprios } : {}) });
+
+            return;
+        }
+
+        // "Outro": o texto escrito à mão vai com `proprio`, para o servidor nunca o ler como id de opção.
+        const proprio = valorProprio(campo, atual);
+        if (proprio !== null) {
+            const texto = proprio.trim();
+            if (texto !== '') out.push({ id: campo.id, valor: texto, proprio: true });
 
             return;
         }
 
         // Lista de escolha única manda o ID da opção. Valor que não bate em nenhuma (texto
-        // livre antigo, de quando o campo não era lista) fica de fora: é o mesmo que vazio,
+        // livre antigo, num campo que NÃO aceita valor próprio) fica de fora: é o mesmo que vazio,
         // e a tela também o mostra vazio. Obrigatório assim volta como "Preencha …", que é
         // o pedido certo — mandar o texto cru só daria 422 travando a ficha inteira.
         if (campo.tipo === 'lista') {

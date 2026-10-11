@@ -106,7 +106,7 @@ class PlanilhaDasFichasTecnicas
 
     /**
      * O que está salvo, como a pessoa escreveria na célula. Valor que não é mais opção do campo
-     * sai em branco (a ficha na tela também não o mostra).
+     * sai em branco (a ficha na tela também não o mostra) — menos no campo que aceita valor próprio.
      */
     public static function textoDaCelula(array $campo, ?EstruturaProdutoAtributo $salvo): string
     {
@@ -123,8 +123,10 @@ class PlanilhaDasFichasTecnicas
             $nomes = [];
             foreach ($partes as $parte) {
                 $opcao = self::opcaoPorTexto($campo, (string) $parte);
-                if ($opcao && ! in_array($opcao['nome'], $nomes, true)) {
-                    $nomes[] = $opcao['nome'];
+                // No campo que aceita valor próprio (11/10/2026), o que a pessoa escreveu sai como está.
+                $nome = $opcao['nome'] ?? (($campo['aceita_outro'] ?? false) ? trim((string) $parte) : '');
+                if ($nome !== '' && ! in_array($nome, $nomes, true)) {
+                    $nomes[] = $nome;
                 }
             }
 
@@ -310,12 +312,14 @@ class PlanilhaDasFichasTecnicas
             $v->setFormula1("'".self::ABA_LISTAS."'!\${$col}\$2:\${$col}\$".(count($nomes) + 1));
             $v->setShowDropDown(true);
             $multivalor = (bool) ($campo['multivalor'] ?? false);
-            // Mais de uma opção numa célula não passa numa lista estrita: ali a lista só sugere.
-            $v->setShowErrorMessage(! $multivalor);
+            $aceitaOutro = (bool) ($campo['aceita_outro'] ?? false);
+            // Mais de uma opção numa célula não passa numa lista estrita, e o valor próprio (campo que
+            // aceita "Outro", 11/10/2026) também não: nos dois casos a lista só sugere.
+            $v->setShowErrorMessage(! $multivalor && ! $aceitaOutro);
             $v->setErrorStyle(DataValidation::STYLE_STOP);
             $v->setErrorTitle(mb_substr($campo['nome'], 0, 32));
             $v->setError('Escolha uma das opções da lista.');
-            $v->setPrompt($multivalor ? 'Escolha da lista. Pode mais de uma: separe com |.' : 'Escolha da lista.');
+            $v->setPrompt(($aceitaOutro ? 'Escolha da lista ou escreva o seu.' : 'Escolha da lista.').($multivalor ? ' Pode mais de uma: separe com |.' : ''));
 
             return $v;
         }

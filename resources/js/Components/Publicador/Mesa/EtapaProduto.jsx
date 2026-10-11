@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
+import NavegadorDeCategorias from '@/Components/Categorias/NavegadorDeCategorias';
 import { LinkMl } from '@/Components/Portal/Estrutura/comum';
 import { NOME_TIPO } from '../apoio';
 import { mostraSeloDaIa } from '../derivados.js';
@@ -30,12 +31,23 @@ function SeloOrigem({ produto }) {
     return <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-bold text-white/55" data-origem="publicador" title={apagada}>Cadastrado no Publicador</span>;
 }
 
-/** Busca de categoria: o texto vai para `m.buscarCategorias`, a escolha para `m.escolherCategoria`. */
+const MODOS_DE_CATEGORIA = [['buscar', 'Buscar pelo nome'], ['navegar', 'Navegar pelas categorias']];
+
+/**
+ * Busca de categoria: o texto vai para `m.buscarCategorias`, a escolha para `m.escolherCategoria`.
+ *
+ * Dois jeitos de achar (11/10/2026): a busca é o preditor do Mercado Livre (até 8 palpites para um
+ * texto; com texto curto erra — "cadeira" devolve Abraçadeiras); a navegação desce a árvore nível a
+ * nível, como na tela do próprio ML, e mostra onde ela acaba (`m.navegarCategorias`).
+ */
 function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
     const [busca, setBusca] = useState(textoInicial);
     const [sugestoes, setSugestoes] = useState([]);
     const [buscando, setBuscando] = useState(false);
     const [erro, setErro] = useState(null);
+    const [modo, setModo] = useState('buscar');     // buscar | navegar
+    const [buscou, setBuscou] = useState(false);
+    const escolher = async (id) => { await m.escolherCategoria(id); onFechar(); };
 
     const buscar = async () => {
         if (! busca.trim()) return;
@@ -47,6 +59,7 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
             setErro(e?.message ?? 'Não foi possível buscar agora. Tente de novo.');
         } finally {
             setBuscando(false);
+            setBuscou(true);
         }
     };
     // Sem categoria escolhida, a busca já nasce rodando com o nome do produto.
@@ -54,6 +67,23 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
 
     return (
         <div className="space-y-3" data-busca-categoria>
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Como achar a categoria">
+                {MODOS_DE_CATEGORIA.map(([chave, rotulo]) => (
+                    <button key={chave} type="button" role="tab" aria-selected={modo === chave} onClick={() => setModo(chave)} data-modo-categoria={chave}
+                        className={cn('h-9 rounded-lg border px-3 text-[13px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+                            modo === chave ? 'border-ecf-yellow/60 bg-ecf-yellow/10 text-white' : 'border-white/20 text-white/60 hover:bg-white/[0.06] hover:text-white')}>
+                        {rotulo}
+                    </button>
+                ))}
+                {atual && modo === 'navegar' && <button type="button" onClick={onFechar} className={cn(LINK, 'shrink-0 px-2')}>Cancelar</button>}
+            </div>
+
+            {modo === 'navegar' && (
+                <NavegadorDeCategorias buscarNivel={m.navegarCategorias} inicio={atual ?? null} selecionada={atual ?? null} alturaDaLista="max-h-96"
+                    onEscolher={(c) => escolher(c.id)} className="rounded-lg border border-white/20 bg-black/30 p-3" />
+            )}
+
+            {modo === 'buscar' && (<>
             <div className="flex gap-2">
                 <input id="campo-categoria" value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()}
                     placeholder="ex.: cadeira de escritório giratória" className={cn(CAMPO, invalido && INVALIDO)} aria-invalid={invalido || undefined}
@@ -72,7 +102,7 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
                         const folha = cam.length ? cam[cam.length - 1] : c.nome;
 
                         return (
-                            <button key={c.id} type="button" role="radio" aria-checked={c.id === atual} onClick={async () => { await m.escolherCategoria(c.id); onFechar(); }} data-sugestao={c.id}
+                            <button key={c.id} type="button" role="radio" aria-checked={c.id === atual} onClick={() => escolher(c.id)} data-sugestao={c.id}
                                 className="flex w-full items-center gap-3 border-b border-white/[0.08] px-4 py-3 text-left last:border-b-0 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ecf-yellow">
                                 <span className={cn('grid h-4 w-4 shrink-0 place-items-center rounded-full border', c.id === atual ? 'border-ecf-yellow' : 'border-white/40')} aria-hidden="true">
                                     {c.id === atual && <span className="h-2 w-2 rounded-full bg-ecf-yellow/90" />}
@@ -86,6 +116,13 @@ function BuscaCategoria({ m, textoInicial, atual, invalido, onFechar }) {
                     })}
                 </div>
             )}
+            {buscou && ! buscando && (
+                <p className="text-[13px] text-white/55" data-dica-navegar>
+                    {sugestoes.length === 0 ? 'A busca não achou nada para esse texto. ' : 'Não é nenhuma dessas? '}
+                    <button type="button" onClick={() => setModo('navegar')} className={LINK} data-acao="navegar-pelas-categorias">Navegue pelas categorias</button>, nível a nível.
+                </p>
+            )}
+            </>)}
         </div>
     );
 }

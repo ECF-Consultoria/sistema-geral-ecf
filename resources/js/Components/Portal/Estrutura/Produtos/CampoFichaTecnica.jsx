@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Obrigatorio, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
-import { aceitaNaoSeAplica, ehMultivalor, idDeLista, idDoElemento, idsMultivalor, numeroParaTela } from '@/lib/fichaTecnica';
+import {
+    OPCAO_OUTRO, aceitaNaoSeAplica, aceitaOutro, ehMultivalor, idDeLista, idDoElemento, numeroParaTela, podeSomarProprio, valorProprio, valoresMultivalor,
+} from '@/lib/fichaTecnica';
 import { cn } from '@/lib/utils';
 
 // ─── Um campo da ficha técnica ──────────────────────────────────────────────
@@ -16,6 +19,11 @@ import { cn } from '@/lib/utils';
 //
 // "Não se aplica": no campo que o servidor marca, uma caixa abaixo do controle.
 // Marcada, o controle fica travado e o que estava digitado não vai no salvar.
+//
+// "Outro" (11/10/2026): a lista que o servidor marca com `aceita_outro` ganha a opção de
+// escrever um valor próprio, além das opções. As opções continuam vindo primeiro; quem
+// precisa de um valor que não está nelas escolhe "Outro" e escreve. Lista sem a marca
+// continua fechada.
 
 const CAMPO = 'h-11 lg:h-9 w-full min-w-0 rounded-lg border border-white/20 bg-black/40 px-3 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0';
 const ROTULO = 'block text-[13px] font-medium text-white/80';
@@ -25,16 +33,30 @@ const BOTAO_OPCAO = 'h-11 min-w-[64px] flex-1 px-3 text-[14px] lg:h-9 lg:flex-no
  * Lista que aceita mais de uma opção: cada escolha vira um chip com X, e o que ainda
  * não foi escolhido continua à mão para somar. Mesmo visual dos chips de Ambientes.
  *
- * Escolher é por lista fechada de propósito: as opções são as da categoria, e valor
- * digitado fora delas é justamente o que a plataforma recusa.
+ * As opções são as da categoria. Onde o campo aceita (`aceita_outro`), "Outro" abre uma
+ * caixa para escrever um valor próprio, que vira um chip como os demais; onde não
+ * aceita, a lista continua fechada.
  */
 function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido }) {
     const opcoes = Array.isArray(campo.valores) ? campo.valores : [];
     const nomePorId = new Map(opcoes.map((o) => [String(o.id), o.nome]));
     const restantes = opcoes.filter((o) => ! escolhidos.includes(String(o.id)));
+    const comOutro = aceitaOutro(campo);
+    const [escrevendo, setEscrevendo] = useState(false);
+    const [texto, setTexto] = useState('');
 
-    const somar = (valor) => { if (valor) onChange([...escolhidos, valor]); };
+    const somar = (valor) => {
+        if (valor === OPCAO_OUTRO) { setEscrevendo(true); return; }
+        if (valor) onChange([...escolhidos, valor]);
+    };
     const tirar = (valor) => onChange(escolhidos.filter((x) => x !== valor));
+    const somarProprio = () => {
+        if (! podeSomarProprio(campo, escolhidos, texto)) return;
+        // Passa pela mesma regra dos demais: o texto igual a uma opção vira a opção.
+        onChange(valoresMultivalor(campo, [...escolhidos, texto]));
+        setTexto('');
+        setEscrevendo(false);
+    };
 
     return (
         <div data-multivalor className={cn('min-w-0 rounded-lg border bg-black/40 p-1.5', invalido ? 'border-red-400/50' : 'border-white/20')}>
@@ -53,16 +75,62 @@ function ListaMultipla({ id, campo, escolhidos, onChange, descricao, invalido })
                 </ul>
             )}
             {/* `value` fixo em "": o select é só o gesto de somar, quem guarda a escolha são os chips. */}
-            <select id={id} value="" disabled={restantes.length === 0}
+            <select id={id} value="" disabled={restantes.length === 0 && ! comOutro}
                 aria-invalid={invalido || undefined} aria-describedby={descricao}
                 onChange={(e) => somar(e.target.value)}
                 className="h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-1.5 text-[14px] text-white focus:outline-none focus:ring-0 disabled:text-white/30 lg:h-7">
                 <option value="">
-                    {restantes.length === 0 ? 'Todas as opções já escolhidas' : (escolhidos.length ? 'Adicionar outra…' : 'Selecione')}
+                    {restantes.length === 0 && ! comOutro ? 'Todas as opções já escolhidas' : (escolhidos.length ? 'Adicionar outra…' : 'Selecione')}
                 </option>
                 {restantes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                {comOutro && <option value={OPCAO_OUTRO}>Outro (escrever)</option>}
             </select>
+            {comOutro && escrevendo && (
+                <div className="mt-1.5 flex gap-1.5" data-valor-proprio>
+                    <input autoFocus value={texto} maxLength={campo.max || undefined} autoComplete="off" placeholder="Escreva o valor"
+                        aria-label={`Outro valor de ${campo.nome}`}
+                        onChange={(e) => setTexto(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); somarProprio(); }
+                            if (e.key === 'Escape') { setTexto(''); setEscrevendo(false); }
+                        }}
+                        className="h-9 min-w-0 flex-1 rounded-md border border-white/20 bg-black/40 px-2.5 text-[14px] text-white placeholder:text-white/30 focus:border-ecf-yellow/40 focus:outline-none focus:ring-0 lg:h-8" />
+                    <button type="button" onClick={somarProprio} disabled={! podeSomarProprio(campo, escolhidos, texto)} data-acao="somar-valor-proprio"
+                        className="h-9 shrink-0 rounded-md border border-white/20 px-3 text-[13px] font-medium text-white hover:bg-white/[0.07] disabled:opacity-40 lg:h-8">
+                        Adicionar
+                    </button>
+                </div>
+            )}
         </div>
+    );
+}
+
+/**
+ * Lista de escolha única. Onde o campo aceita (`aceita_outro`), a última opção é "Outro":
+ * escolhida, abre a caixa para escrever o valor próprio logo abaixo.
+ */
+function ListaUnica({ id, campo, atual, classe, descricao, invalido, onMudar }) {
+    const valor = atual?.valor ?? '';
+    const proprio = valorProprio(campo, atual);
+    const comOutro = aceitaOutro(campo);
+
+    return (
+        <>
+            {/* `idDeLista` casa por nome também: o nome pode estar gravado como texto, sem o id da opção. */}
+            <select id={id} className={classe} value={proprio !== null ? OPCAO_OUTRO : idDeLista(campo, valor)}
+                aria-invalid={invalido || undefined} aria-describedby={descricao}
+                onChange={(e) => onMudar(campo.id, e.target.value === OPCAO_OUTRO ? { valor: '', outro: true } : { valor: e.target.value, outro: false })}>
+                <option value="">Selecione</option>
+                {(campo.valores ?? []).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                {comOutro && <option value={OPCAO_OUTRO}>Outro (escrever)</option>}
+            </select>
+            {proprio !== null && (
+                <input className={cn(classe, 'mt-1.5')} value={proprio} maxLength={campo.max || undefined} autoComplete="off"
+                    autoFocus={!! atual?.outro && proprio === ''} placeholder="Escreva o valor" data-valor-proprio
+                    aria-label={`Outro valor de ${campo.nome}`} aria-invalid={invalido || undefined}
+                    onChange={(e) => onMudar(campo.id, { valor: e.target.value, outro: true })} />
+            )}
+        </>
     );
 }
 
@@ -125,16 +193,10 @@ export default function CampoFichaTecnica({ campo, atual, erro, onMudar, explica
             break;
         case 'lista':
             controle = ehMultivalor(campo) ? (
-                <ListaMultipla id={id} campo={campo} escolhidos={idsMultivalor(campo, valor)} descricao={descricao} invalido={invalido}
-                    onChange={(ids) => onMudar(campo.id, { valor: ids })} />
+                <ListaMultipla id={id} campo={campo} escolhidos={valoresMultivalor(campo, valor)} descricao={descricao} invalido={invalido}
+                    onChange={(escolhidos) => onMudar(campo.id, { valor: escolhidos })} />
             ) : (
-                // `idDeLista` casa por nome também: campo que hoje é lista pode ter o nome
-                // gravado como texto livre de antes — sem isso ele apareceria vazio.
-                <select id={id} className={classe} value={idDeLista(campo, valor)} aria-invalid={invalido || undefined} aria-describedby={descricao}
-                    onChange={(e) => onMudar(campo.id, { valor: e.target.value })}>
-                    <option value="">Selecione</option>
-                    {(campo.valores ?? []).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
-                </select>
+                <ListaUnica id={id} campo={campo} atual={atual} classe={classe} descricao={descricao} invalido={invalido} onMudar={onMudar} />
             );
             break;
         default: {

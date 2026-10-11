@@ -440,6 +440,12 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
 
         return data;
     };
+    /** Um nível da árvore de categorias (sem `pai`, as raízes): a navegação nível a nível, além da busca. */
+    const navegarCategorias = async (pai = null) => {
+        const { data } = await axios.get(route('mlb.anuncios.publicador.categorias.arvore'), { params: pai ? { pai } : {} });
+
+        return data;
+    };
     /** Devolve o estado novo (ou nulo, se o servidor recusou): quem cria variação confere o que nasceu. */
     const salvarEixos = async (eixos) => {
         const data = await estruturar(() => axios.put(rota('eixos', produtoId), { eixos }));
@@ -708,7 +714,7 @@ export default function usePublicador({ produtoId, onPublicou, pausado = false }
         estado, rasc, variantes, alvos, schema, disabled,
         problemasDaSecao, problemasDoAtributo,
         mudarRasc, mudarVar, mudarAtributo,
-        escolherCategoria, buscarCategorias, salvarEixos,
+        escolherCategoria, buscarCategorias, navegarCategorias, salvarEixos,
         enviarFotos, atribuirFotos, removerFoto, reenviarFoto, enviandoFoto,
         aviso, simular, simulacao, simulando, copiarTituloDo,
         termos, carregarTermos, palavrasIa, pedirPalavrasIa, frete, consultarFrete,

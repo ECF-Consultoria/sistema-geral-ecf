@@ -130,6 +130,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Espelha o piloto do Portal (routes/web.php), com os mesmos throttles. Nomes: mlb.anuncios.publicador.<sufixo>.
         Route::get('publicador/categorias', [MlbPublicadorController::class, 'categorias'])
             ->middleware('throttle:60,1,publicador.categorias')->name('publicador.categorias');
+        // 11/10/2026 — navegar pela árvore de categorias, nível a nível (um clique = uma leitura).
+        Route::get('publicador/categorias/arvore', [MlbPublicadorController::class, 'categoriasArvore'])
+            ->middleware('throttle:180,1,publicador.categorias.arvore')->name('publicador.categorias.arvore');
         Route::prefix('publicador/produtos/{produto}')->whereNumber('produto')->name('publicador.')->group(function () {
             Route::get('/', [MlbPublicadorController::class, 'abrir'])
                 ->middleware('throttle:120,1,publicador.abrir')->name('abrir');
