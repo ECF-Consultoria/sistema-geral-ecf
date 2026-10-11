@@ -2,11 +2,13 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\MlCategoriaSchema;
 use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
 use App\Support\Publicador\PacoteDoKit;
+use App\Support\Publicador\QuantidadesDoKit;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -373,27 +375,71 @@ class CriarFaseService
     /**
      * Atributos do PRODUTO: todos, menos o GTIN. As medidas do pacote vão marcadas para revisão, e a altura
      * e o peso dele já no tamanho de `$quantidade` unidades (`PacoteDoKit`); o que não der para ler fica igual.
+     *
+     * 11/10/2026 — os quatro campos de QUANTIDADE que o comprador vê (embalagens, caixas, peças e lugares)
+     * também saem do tamanho do kit (`QuantidadesDoKit`): eram copiados da unidade, e o Kit 2 dizia "1 peça,
+     * 1 lugar". O que a categoria tem e a unidade nunca preencheu nasce com N; o que não der para calcular
+     * (lista sem a opção do total) fica como o da unidade, marcado para revisão.
      */
     protected function copiarAtributos(PubRascunho $base, PubRascunho $kit, int $quantidade = 1): void
     {
+        $deQuantidade = $quantidade >= 2 ? $this->camposDeQuantidadeDaCategoria($base->categoria_id) : [];
+        $copiados = [];
+
         foreach ($base->atributos as $a) {
             if ($a->attribute_id === self::GTIN) {
                 continue;
             }
 
             $cresce = PacoteDoKit::cresce($a->attribute_id);
+            $ehQuantidade = $quantidade >= 2 && QuantidadesDoKit::ehCampo($a->attribute_id);
+            $doKit = $ehQuantidade
+                ? QuantidadesDoKit::doKit(['value_id' => $a->value_id, 'value_name' => $a->value_name, 'value_number' => $a->value_number],
+                    $quantidade, $deQuantidade[$a->attribute_id] ?? null)
+                : null;
+            $copiados[$a->attribute_id] = true;
 
             $kit->atributos()->create([
                 'attribute_id' => $a->attribute_id,
-                'value_id' => $a->value_id,
-                'value_name' => $cresce ? PacoteDoKit::texto($a->value_name, $quantidade) : $a->value_name,
-                'value_number' => $cresce ? PacoteDoKit::numero($a->value_number, $quantidade) : $a->value_number,
+                'value_id' => $doKit !== null ? $doKit['value_id'] : $a->value_id,
+                'value_name' => $doKit !== null ? $doKit['value_name'] : ($cresce ? PacoteDoKit::texto($a->value_name, $quantidade) : $a->value_name),
+                'value_number' => $doKit !== null ? $doKit['value_number'] : ($cresce ? PacoteDoKit::numero($a->value_number, $quantidade) : $a->value_number),
                 'value_unit' => $a->value_unit,
-                'values_multi' => $a->values_multi,
+                'values_multi' => $doKit !== null ? null : $a->values_multi,
                 'origem' => $a->origem,
-                'revisar' => $a->revisar || in_array($a->attribute_id, self::MEDIDAS_DO_PACOTE, true),
+                'revisar' => $a->revisar || in_array($a->attribute_id, self::MEDIDAS_DO_PACOTE, true) || ($ehQuantidade && $doKit === null),
             ]);
         }
+
+        // O campo de quantidade que a categoria tem e a unidade nunca preencheu: no kit ele é N.
+        foreach ($deQuantidade as $id => $definicao) {
+            $doKit = isset($copiados[$id]) ? null : QuantidadesDoKit::doKit([], $quantidade, $definicao);
+            if ($doKit !== null) {
+                $kit->atributos()->create(['attribute_id' => $id, ...$doKit, 'origem' => 'user', 'revisar' => false]);
+            }
+        }
+    }
+
+    /**
+     * Os campos de quantidade (`QuantidadesDoKit::CAMPOS`) que a categoria do rascunho tem, como o Mercado
+     * Livre os define — do schema já guardado; sem ele, nada (só os campos que a unidade já tem são tratados).
+     *
+     * @return array<string, array> id do atributo → definição (`value_type`, `values`)
+     */
+    protected function camposDeQuantidadeDaCategoria(?string $categoriaId): array
+    {
+        if ($categoriaId === null || $categoriaId === '') {
+            return [];
+        }
+
+        $saida = [];
+        foreach ((array) (MlCategoriaSchema::find($categoriaId)?->atributos ?? []) as $a) {
+            if (is_array($a) && QuantidadesDoKit::ehCampo((string) ($a['id'] ?? ''))) {
+                $saida[(string) $a['id']] = $a;
+            }
+        }
+
+        return $saida;
     }
 
     /**

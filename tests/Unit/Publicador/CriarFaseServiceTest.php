@@ -3,6 +3,7 @@
 namespace Tests\Unit\Publicador;
 
 use App\Models\MlbEmpresa;
+use App\Models\MlCategoriaSchema;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubRascunho;
@@ -313,6 +314,72 @@ class CriarFaseServiceTest extends TestCase
         $this->assertTrue($atributos['SELLER_PACKAGE_WEIGHT']->revisar, 'e marcada para revisão: a conta estima como a pessoa embala');
         $this->assertTrue($atributos['SELLER_PACKAGE_HEIGHT']->revisar);
         $this->assertSame('17055160', $atributos['EMPTY_GTIN_REASON']->value_id ?? null, 'o motivo de não ter GTIN é copiado');
+    }
+
+    /**
+     * 11/10/2026 — os quatro campos de quantidade que o comprador vê (embalagens, caixas, peças e lugares)
+     * saem do tamanho do kit. O Kit 2 da Poltrona Opala foi publicado dizendo "1 peça, 1 lugar".
+     */
+    public function test_os_campos_de_quantidade_do_kit_sao_os_da_unidade_vezes_n(): void
+    {
+        $base = $this->baseComRascunho();
+        // A categoria como o Mercado Livre a define (Poltronas): três números e uma lista de lugares.
+        MlCategoriaSchema::create(['category_id' => $base->rascunho->categoria_id, 'domain_id' => 'MLB-ARMCHAIRS', 'categoria' => ['id' => 'MLB1234'],
+            'technical_specs' => [], 'sale_terms' => [], 'schema_hash' => str_repeat('b', 64), 'fetched_at' => now(), 'atributos' => [
+                ['id' => 'PIECES_NUMBER', 'value_type' => 'number'], ['id' => 'UNITS_PER_PACK', 'value_type' => 'number'],
+                ['id' => 'PACKAGING_BOXES_NUMBER', 'value_type' => 'number'], ['id' => 'DRAWERS_NUMBER', 'value_type' => 'number'],
+                ['id' => 'SEATERS_NUMBER', 'value_type' => 'list', 'values' => [['id' => '4485163', 'name' => '1'], ['id' => '4501850', 'name' => '2'], ['id' => '4412704', 'name' => '3']]],
+            ]]);
+        // A unidade: 1 peça, 1 lugar, embalagens em "não se aplica" (-1) e caixas nunca preenchidas.
+        (new RascunhoRepository())->gravarAtributos($base->rascunho, [
+            'BRAND' => ['value_name' => 'ECF'],
+            'PIECES_NUMBER' => ['value_name' => '1', 'origem' => 'portal'],
+            'SEATERS_NUMBER' => ['value_id' => '4485163', 'value_name' => '1', 'origem' => 'portal'],
+            'UNITS_PER_PACK' => ['value_id' => '-1'],
+            'DRAWERS_NUMBER' => ['value_name' => '2'],
+        ]);
+
+        $kit2 = $this->servico()->criar($base->fresh(), $this->dados(2));
+        $a = $kit2->rascunho->atributos()->get()->keyBy('attribute_id');
+
+        $this->assertSame([null, '2'], [$a['PIECES_NUMBER']->value_id, $a['PIECES_NUMBER']->value_name]);
+        $this->assertSame(['4501850', '2'], [$a['SEATERS_NUMBER']->value_id, $a['SEATERS_NUMBER']->value_name], 'a OPÇÃO "2" da lista, pelo id da categoria');
+        $this->assertSame([null, '2'], [$a['UNITS_PER_PACK']->value_id, $a['UNITS_PER_PACK']->value_name], 'saiu do "não se aplica"');
+        $this->assertSame('2', $a['PACKAGING_BOXES_NUMBER']->value_name, 'a categoria tem o campo e a unidade nunca preencheu: nasce com N');
+        $this->assertSame('2', $a['DRAWERS_NUMBER']->value_name, 'gavetas são de cada unidade: não multiplicam');
+        $this->assertSame('portal', $a['PIECES_NUMBER']->origem, 'a origem do campo copiado não muda');
+        foreach (['PIECES_NUMBER', 'SEATERS_NUMBER', 'UNITS_PER_PACK', 'PACKAGING_BOXES_NUMBER'] as $id) {
+            $this->assertFalse($a[$id]->revisar, "{$id}: conta exata, não é pendência");
+        }
+
+        // Kit de 3 do mesmo produto; a lista de lugares de exemplo vai só até 3.
+        $kit3 = $this->servico()->criar($base->fresh(), $this->dados(3, 'CAD-01-KIT3'));
+        $b = $kit3->rascunho->atributos()->get()->keyBy('attribute_id');
+        $this->assertSame(['3', '4412704', '3', '3'], [$b['PIECES_NUMBER']->value_name, $b['SEATERS_NUMBER']->value_id, $b['UNITS_PER_PACK']->value_name, $b['PACKAGING_BOXES_NUMBER']->value_name]);
+
+        // A unidade não muda.
+        $u = $base->rascunho->fresh()->atributos()->get()->keyBy('attribute_id');
+        $this->assertSame(['1', '4485163', '-1'], [$u['PIECES_NUMBER']->value_name, $u['SEATERS_NUMBER']->value_id, $u['UNITS_PER_PACK']->value_id]);
+        $this->assertFalse($u->has('PACKAGING_BOXES_NUMBER'));
+    }
+
+    public function test_quantidade_que_nao_da_para_calcular_fica_a_da_unidade_marcada_para_revisao(): void
+    {
+        $base = $this->baseComRascunho();
+        MlCategoriaSchema::create(['category_id' => $base->rascunho->categoria_id, 'domain_id' => 'MLB-ARMCHAIRS', 'categoria' => ['id' => 'MLB1234'],
+            'technical_specs' => [], 'sale_terms' => [], 'schema_hash' => str_repeat('b', 64), 'fetched_at' => now(), 'atributos' => [
+                ['id' => 'SEATERS_NUMBER', 'value_type' => 'list', 'values' => [['id' => '4485163', 'name' => '1'], ['id' => '4501850', 'name' => '2']]],
+            ]]);
+        (new RascunhoRepository())->gravarAtributos($base->rascunho, ['SEATERS_NUMBER' => ['value_id' => '4501850', 'value_name' => '2']]);
+
+        // 2 lugares × 2 = 4, e a lista só vai até 2.
+        $a = $this->servico()->criar($base->fresh(), $this->dados(2))->rascunho->atributos()->get()->keyBy('attribute_id');
+
+        $this->assertSame(['4501850', '2'], [$a['SEATERS_NUMBER']->value_id, $a['SEATERS_NUMBER']->value_name]);
+        $this->assertTrue($a['SEATERS_NUMBER']->revisar);
+        // A categoria não tem os outros três campos: nada é inventado.
+        $this->assertFalse($a->has('UNITS_PER_PACK'));
+        $this->assertFalse($a->has('PIECES_NUMBER'));
     }
 
     /**

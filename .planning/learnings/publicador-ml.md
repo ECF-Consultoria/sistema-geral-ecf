@@ -1427,3 +1427,36 @@ que comparar.
 "Estou ciente" (`FilaPublicacaoService`, `AgendadorDaFila`). Não há teste da fila com o V-FRT-01 em particular.
 
 **Não feito:** o aviso do momento 3 não toca o sino nem reabre a tarefa — aparece no cartão dela e no editor.
+
+## 31. No kit, três grupos de campos: medidas do produto, pacote oculto e quantidades (11/10/2026)
+
+**A dúvida do usuário:** viu no Mercado Livre um kit de 2 com as medidas iguais às da unidade e, na ficha,
+"Quantidade de caixas de embalagem: 2 · Quantidade de peças: 2 · Quantidade de lugares: 2 · Quantidade de
+embalagens: 2". Perguntou se o nosso deveria ser assim em vez de somar as dimensões (§28).
+
+**As duas coisas convivem.** Na ficha da categoria Poltronas (MLB458191), como o Mercado Livre a entrega:
+
+| Grupo | Atributos | Quem vê | No kit de N |
+|---|---|---|---|
+| Medidas do produto | `HEIGHT`, `WIDTH`, `DEPTH`, `WEIGHT` | O comprador | As da unidade |
+| Pacote do vendedor | `SELLER_PACKAGE_*` (tag `hidden`) | Ninguém | Altura e peso × N (`PacoteDoKit`) |
+| Quantidades | `UNITS_PER_PACK`, `PACKAGING_BOXES_NUMBER`, `PIECES_NUMBER`, `SEATERS_NUMBER` | O comprador | As da unidade × N (`QuantidadesDoKit`) |
+
+- O que o usuário viu igual à unidade eram as medidas do PRODUTO. O pacote daquele vendedor não dá para ver:
+  `SELLER_PACKAGE_*` é oculto em todo anúncio.
+- As quantidades eram copiadas da unidade: o Kit 2 da Opala foi publicado com "1 peça, 1 lugar" e com
+  embalagens e caixas em "não se aplica".
+- **`UNITS_PER_PACK` chama "Quantidade de embalagens"** nesta categoria. O nome engana: não é "unidades por kit".
+- "Não se aplica" no rascunho é `value_id = -1` com `value_name` nulo. No kit conta como 1 e vira N.
+- **`SEATERS_NUMBER` é LISTA** (opções "1" a "12", cada uma com id). O kit precisa do id da opção do total, que
+  sai do schema guardado (`ml_categoria_schemas.atributos`). Sem a opção (ou sem o schema), fica o da unidade,
+  marcado para revisão — id de opção não se inventa.
+- Só esses quatro multiplicam. Outros campos de quantidade da ficha (gavetas, posições de reclinado, "quantidade
+  de mesas de cabeceira") são de cada unidade.
+- A categoria Mesas de Cabeceira (MLB33393) não tem nenhum dos quatro: lá nada muda.
+
+**Não confirmado:** se o Mercado Livre usa as quantidades no frete. Não achei regra oficial; a cotação
+(`shipping_options/free`) recebe as medidas de UM pacote e não tem campo de número de caixas. Guias de terceiros
+dizem que o pacote é medido nos centros de distribuição e a diferença é cobrada depois.
+
+**Não corrigido:** os dois kits já publicados (40 e 42) seguem com as quantidades da unidade no Mercado Livre.
