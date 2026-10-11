@@ -1,5 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as esbuild from 'esbuild';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { lerSemComentarios } from './_fonte.js';
 import {
     ACESO, acender, apagar, chaveDoProblema, elementosDoProblema, mostrarNaTela, problemasParaCorrigir, seletoresDoProblema,
@@ -218,4 +224,46 @@ test('o desenho do aceso: contorno amarelo que o foco não apaga, pulso, e sem a
     assert.match(css, /animation: aceso-pulso 1\.1s ease-in-out 3;/);
     assert.match(css, /@keyframes aceso-pulso/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\[data-aceso\] \{ animation: none; \}/);
+});
+
+// ─── A lista do topo, montada de verdade (esbuild + react-dom/server) ───
+
+test('OQueCorrigir — render real: um ponto por linha, "Mostrar" só no que tem campo, e nada quando não há problema', async () => {
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const RAIZ = path.resolve(__dirname, '../..');
+    const resultado = await esbuild.build({
+        entryPoints: [path.resolve(RAIZ, `${BASE}/Mesa/OQueCorrigir.jsx`)],
+        bundle: true, format: 'esm', platform: 'node', jsx: 'automatic', write: false, logLevel: 'silent',
+        alias: { '@': path.resolve(RAIZ, 'resources/js') },
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/react-popover', '@radix-ui/react-dialog'],
+    });
+    const arquivo = path.join(__dirname, `.o-que-corrigir-${process.pid}-${Date.now()}.mjs`);
+    fs.writeFileSync(arquivo, resultado.outputFiles[0].text, 'utf8');
+    let OQueCorrigir;
+    try {
+        ({ default: OQueCorrigir } = await import(pathToFileURL(arquivo).href));
+    } finally {
+        fs.rmSync(arquivo, { force: true });
+    }
+    const render = (problemas) => renderToStaticMarkup(React.createElement(OQueCorrigir, { etapa: 'condicoes', problemas, onMostrar: () => {}, onFechar: () => {} }));
+
+    assert.equal(render([]), '', 'sem problema, a lista some');
+
+    const html = render([
+        { regra: 'V-SAL-03', severidade: 'BLOCKER', mensagem: 'Preço abaixo do mínimo.', alvo: { etapa: 'E10', campo: 'preco' } },
+        { regra: 'V-REM-01', severidade: 'WARNING', mensagem: 'O Mercado Livre vai tirar o Mercado Envios deste anúncio.', alvo: { etapa: 'E10', campo: 'envio' } },
+        { regra: 'V-CTA-01', severidade: 'BLOCKER', mensagem: 'A conta precisa ser reconectada.', alvo: { etapa: 'E0' } },
+    ]);
+    assert.match(html, /id="o-que-corrigir"/);
+    assert.match(html, /3 pontos para corrigir em Condições de venda/);
+    assert.match(html, /O que está aceso em amarelo é onde corrigir\./);
+    assert.match(html, /O Mercado Livre vai tirar o Mercado Envios deste anúncio\.<span[^>]*> · aviso<\/span>/);
+    assert.match(html, /Preço abaixo do mínimo\.<span[^>]*> · impede a publicação<\/span>/);
+    assert.equal((html.match(/data-acao="mostrar-ponto"/g) ?? []).length, 2, 'os dois que têm campo');
+    assert.equal((html.match(/não é de um campo/g) ?? []).length, 1, 'o da conta');
+    assert.doesNotMatch(html, /\[object Object\]/);
+
+    const um = render([{ regra: 'V-CTA-01', severidade: 'BLOCKER', mensagem: 'A conta precisa ser reconectada.', alvo: { etapa: 'E0' } }]);
+    assert.match(um, /Um ponto para corrigir em Condições de venda/);
+    assert.doesNotMatch(um, /aceso em amarelo/, 'sem campo nenhum, não promete campo aceso');
 });
