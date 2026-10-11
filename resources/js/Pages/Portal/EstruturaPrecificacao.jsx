@@ -5,6 +5,7 @@ import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import { avisoSemSugestao, resumoDoEnvio } from '@/lib/precificacaoEnvio';
 import { deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
 import { filtrosDeTipo, linhasDaFamilia, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia } from '@/lib/precificacaoPorFamilia';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
@@ -233,6 +234,34 @@ function OrigemDoFrete({ calculo, de, freteTabela }) {
     );
 }
 
+const TOM_DO_ENVIO = { ok: 'text-white/55', neutro: 'text-white/60', alerta: 'text-amber-300' };
+
+/**
+ * O envio da oferta, sob o nome: o que ela é (Mercado Envios, fora dele, faltam medidas), o pacote —
+ * o SOMADO, quando é combo ou kit — e, fora do Mercado Envios, por quê. Sem isto a oferta sem frete
+ * sugerido ficava com o campo em branco e nenhuma explicação (11/10/2026).
+ */
+function EnvioDaOferta({ envio }) {
+    const r = resumoDoEnvio(envio);
+    if (! r) return null;
+
+    return (
+        <span className="mt-1 block text-[10.5px] leading-snug text-white/40" data-envio={r.chave} title={r.dica ?? undefined}>
+            <span className={cn('font-semibold', TOM_DO_ENVIO[r.tom])}>{r.rotulo}</span>
+            {r.pacote && <span className="block" data-envio-pacote>{r.pacote}</span>}
+            {r.motivo && r.tom === 'alerta' && <span className="block text-amber-200/70" data-envio-motivo>{r.motivo}</span>}
+        </span>
+    );
+}
+
+/** Sob o campo de frete em branco e sem nada a sugerir: por que não há valor ali. */
+function SemSugestaoDeFrete({ envio, tipo }) {
+    const texto = avisoSemSugestao(envio, tipo);
+    if (! texto) return null;
+
+    return <span className="mt-0.5 block text-right text-[10.5px] text-amber-200/60" title={resumoDoEnvio(envio)?.dica ?? undefined} data-frete-sem-sugestao>{texto}</span>;
+}
+
 /** Um atalho para outra oferta da lista. Fora desta página (ou do filtro) é só o texto. */
 function Atalho({ alvo, rotulo, onIrPara }) {
     const classe = 'max-w-full truncate rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10.5px] text-white/60';
@@ -355,6 +384,7 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, al
                                 {itens.map((c) => <Atalho key={c.id} alvo={c} rotulo={`${c.quantidade}× ${c.nome ?? c.sku}`} onIrPara={onIrPara} />)}
                             </span>
                         )}
+                        <EnvioDaOferta envio={calculo.envio} />
                         {tambemEm.length > 0 && (
                             <span className="mt-1 flex flex-wrap items-center gap-1" data-tambem-em>
                                 <span className="text-[10.5px] text-white/35">Também entra em</span>
@@ -394,11 +424,13 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, al
                 <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.classico)} className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
                 <OrigemDoFrete calculo={calculo.classico} de="Premium" freteTabela={freteTabela} />
+                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.classico} />
             </td>
             <td className="px-1.5 py-1.5">
                 <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.premium)} className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
                 <OrigemDoFrete calculo={calculo.premium} de="Clássico" freteTabela={freteTabela} />
+                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.premium} />
             </td>
             <td className="px-3 py-2"><Preco calculo={calculo.classico} tipo="classico" /></td>
             <td className="px-3 py-2"><Preco calculo={calculo.premium} tipo="premium" /></td>

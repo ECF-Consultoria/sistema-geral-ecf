@@ -190,6 +190,69 @@ class FreteSugeridoNaPrecificacaoTest extends TestCase
         $this->assertNull($r['pendencia']);
     }
 
+    /**
+     * 11/10/2026 — o caso da #459: a poltrona (53×60×80, 8 kg) cabe no Mercado Envios e mostra o frete; o
+     * Combo 2 dela soma as duas caixas (53×60×160, 16 kg), passa do limite dos Correios e vira ME1. A tela
+     * ficava com o frete em branco e nada dizia — "nem sei se é ME1". Agora cada oferta leva o `envio`: o
+     * que ela é, o pacote (somado, no conjunto) e cada limite que estourou.
+     */
+    public function test_cada_oferta_diz_o_envio_o_pacote_e_por_que_ficou_fora_do_mercado_envios(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $unidade = $this->ligada($empresa, 'NINA', ['c' => 53, 'l' => 60, 'a' => 80, 'kg' => 8], '100');
+        [$combo] = app(EstruturaOfertaService::class)->criar($empresa, [
+            'sku' => 'NINA-CB2', 'fase' => 'combo', 'nome' => 'Combo 2', 'componentes' => [['id' => $unidade->id, 'quantidade' => 2]],
+        ], $this->atorCliente($empresa));
+        $declarada = $this->ligada($empresa, 'DECL', self::MEIO_QUILO, '45');
+        $declarada->update(['logistica' => 'combinar']);
+        // Oferta sem produto (a Lista SKUs antiga): não há pacote nem logística a calcular.
+        [$solta] = app(EstruturaOfertaService::class)->criar($empresa, ['sku' => 'SOLTA', 'fase' => 'simples', 'nome' => 'Solta'], $this->atorCliente($empresa));
+
+        $p = $this->pagina($empresa, [$unidade->id, $combo->id, $declarada->id, $solta->id])['por_oferta'];
+
+        // A unidade: dentro do Mercado Envios, com o pacote dela e nada estourado.
+        $this->assertContains($p[$unidade->id]['envio']['chave'], [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL]);
+        $this->assertSame(['c' => 53.0, 'l' => 60.0, 'a' => 80.0, 'peso' => 8.0], $p[$unidade->id]['envio']['pacote']);
+        $this->assertFalse($p[$unidade->id]['envio']['somado']);
+        $this->assertSame([], $p[$unidade->id]['envio']['estouros']);
+        $this->assertNotNull($p[$unidade->id]['classico']['frete_sugerido']);
+
+        // O combo: as duas caixas somadas, fora do Mercado Envios, com os dois limites que passou.
+        $envio = $p[$combo->id]['envio'];
+        $this->assertSame(LogisticaProduto::ME1, $envio['chave']);
+        $this->assertSame(['c' => 53.0, 'l' => 60.0, 'a' => 160.0, 'peso' => 16.0], $envio['pacote']);
+        $this->assertTrue($envio['somado']);
+        $this->assertSame(2, $envio['volumes']);
+        $this->assertSame([
+            ['medida' => 'maior', 'valor' => 160.0, 'limite' => 100.0],
+            ['medida' => 'soma', 'valor' => 273.0, 'limite' => 200.0],
+        ], $envio['estouros'], 'o peso (16 kg) cabe: não entra');
+        $this->assertNull($p[$combo->id]['classico']['frete_sugerido'], 'ME1 não tem frete do Mercado Livre a sugerir');
+
+        // A logística declarada fora do Mercado Envios também se explica; a oferta sem produto não tem o que dizer.
+        $this->assertSame('combinar', $p[$declarada->id]['envio']['declarada']);
+        $this->assertNull($p[$unidade->id]['envio']['declarada']);
+        $this->assertNull($p[$solta->id]['envio']['chave']);
+        $this->assertNull($p[$solta->id]['envio']['pacote']);
+    }
+
+    public function test_os_limites_do_envio_seguem_a_modalidade_da_conta(): void
+    {
+        // Pacote do Combo 2 da #459: fora dos Correios (100 / 200) e dentro das Agências (200 / 300).
+        $pacote = ['c' => 53.0, 'l' => 60.0, 'a' => 160.0, 'peso_real' => 16.0];
+
+        $correios = LogisticaProduto::avaliar($pacote, null, 'drop_off');
+        $this->assertSame(['maior', 'soma'], array_column(LogisticaProduto::estouros($correios, 'drop_off'), 'medida'));
+
+        $agencias = LogisticaProduto::avaliar($pacote, null, 'xd_drop_off');
+        $this->assertSame(LogisticaProduto::ME2, $agencias['logistica']);
+        $this->assertSame([], LogisticaProduto::estouros($agencias, 'xd_drop_off'));
+
+        // Só o peso passa: 40 kg numa caixa pequena.
+        $pesado = LogisticaProduto::avaliar(['c' => 30.0, 'l' => 30.0, 'a' => 30.0, 'peso_real' => 40.0], null, 'drop_off');
+        $this->assertSame([['medida' => 'peso', 'valor' => 40.0, 'limite' => 30.0]], LogisticaProduto::estouros($pesado, 'drop_off'));
+    }
+
     public function test_me1_e_logistica_declarada_fora_do_me2_nao_tem_sugestao(): void
     {
         $empresa = $this->empresaDoGabarito();

@@ -222,4 +222,38 @@ class ProdutoLinhasTest extends TestCase
         $this->assertSame(1, $com['oferta']['anuncios']);
         $this->assertSame(['A-1-CB2'], $com['oferta']['usada_em']);
     }
+
+    /**
+     * 11/10/2026 — o usuário montou um combo e não o achou em lugar nenhum: o conjunto é uma oferta, não
+     * um produto, e a aba Produtos não dizia que ele existia. Cada variação leva os conjuntos em que entra
+     * (tipo, código, nome e quantas unidades dela), para a tela mostrar e levar até a Precificação.
+     */
+    public function test_a_variacao_diz_em_que_combos_e_kits_ela_entra(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $ator = $this->atorCliente($empresa);
+        $p = $this->produto($empresa, 'A');
+        $q = $this->produto($empresa, 'B');
+        $v1 = $this->variacao($p, 'A-1', 1);
+        $v2 = $this->variacao($q, 'B-1', 1);
+
+        $ofertas = app(EstruturaOfertaService::class);
+        [$a] = $ofertas->criar($empresa, ['sku' => 'A-1', 'fase' => 'simples', 'nome' => 'A 1', 'variacao_id' => $v1->id], $ator);
+        [$b] = $ofertas->criar($empresa, ['sku' => 'B-1', 'fase' => 'simples', 'nome' => 'B 1', 'variacao_id' => $v2->id], $ator);
+        [$kit] = $ofertas->criar($empresa, ['sku' => 'A+B-KIT', 'fase' => 'kit', 'nome' => 'Kit A e B',
+            'componentes' => [['id' => $a->id, 'quantidade' => 1], ['id' => $b->id, 'quantidade' => 1]]], $ator);
+        [$cb4] = $ofertas->criar($empresa, ['sku' => 'A-1-CB4', 'fase' => 'combo', 'nome' => 'Combo 4', 'componentes' => [['id' => $a->id, 'quantidade' => 4]]], $ator);
+        [$cb2] = $ofertas->criar($empresa, ['sku' => 'A-1-CB2', 'fase' => 'combo', 'nome' => 'Combo 2', 'componentes' => [['id' => $a->id, 'quantidade' => 2]]], $ator);
+
+        [$doA] = $this->linhas()->paraProdutos($empresa, [$p->id]);
+        [$doB] = $this->linhas()->paraProdutos($empresa, [$q->id]);
+
+        // Combos antes dos kits, do menor para o maior.
+        $this->assertSame([
+            ['id' => $cb2->id, 'sku' => 'A-1-CB2', 'fase' => 'combo', 'nome' => 'Combo 2', 'quantidade' => 2],
+            ['id' => $cb4->id, 'sku' => 'A-1-CB4', 'fase' => 'combo', 'nome' => 'Combo 4', 'quantidade' => 4],
+            ['id' => $kit->id, 'sku' => 'A+B-KIT', 'fase' => 'kit', 'nome' => 'Kit A e B', 'quantidade' => 1],
+        ], $doA['oferta']['conjuntos']);
+        $this->assertSame(['A+B-KIT'], array_column($doB['oferta']['conjuntos'], 'sku'), 'o outro produto do kit também o mostra');
+    }
 }

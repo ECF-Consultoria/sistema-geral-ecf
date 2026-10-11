@@ -124,6 +124,38 @@ final class LogisticaProduto
      *
      * @return array{peso: float|int, soma: float|int, maior: float|int}
      */
+    /**
+     * Por que o pacote ficou FORA do Mercado Envios: cada limite da modalidade que ele passa, com o
+     * valor do pacote e o do limite (11/10/2026). O usuário montou um Combo 2 de poltrona (duas caixas
+     * de 80 cm empilhadas = 160 cm) e a Precificação ficou sem frete e sem dizer nada: a oferta tinha
+     * virado ME1 por 60 cm no maior lado, e isso não aparecia em lugar nenhum.
+     *
+     * @param  array{logistica: string, pacote: ?array, maior_lado: ?float, soma_lados: ?float}  $avaliacao  retorno de {@see self::avaliar()}
+     * @return list<array{medida: 'maior'|'soma'|'peso', valor: float, limite: float}>  vazio quando cabe (ou sem medidas)
+     */
+    public static function estouros(array $avaliacao, ?string $modalidade = null, ?array $regras = null): array
+    {
+        if (($avaliacao['logistica'] ?? null) !== self::ME1 || empty($avaliacao['pacote'])) {
+            return [];
+        }
+
+        $limite = self::limites($modalidade, $regras);
+        $medidas = [
+            'maior' => [(float) $avaliacao['maior_lado'], (float) $limite['maior']],
+            'soma'  => [(float) $avaliacao['soma_lados'], (float) $limite['soma']],
+            'peso'  => [(float) $avaliacao['pacote']['peso_real'], (float) $limite['peso']],
+        ];
+
+        $saida = [];
+        foreach ($medidas as $medida => [$valor, $max]) {
+            if ($valor > $max) {
+                $saida[] = ['medida' => $medida, 'valor' => $valor, 'limite' => $max];
+            }
+        }
+
+        return $saida;
+    }
+
     public static function limites(?string $modalidade, ?array $regras = null): array
     {
         $regras ??= config('estrutura_produtos');

@@ -97,7 +97,8 @@ export function linhasDaFamilia(familia, { recolhidos = {}, filtrando = false } 
     for (const p of familia.produtos) {
         if (filtrando || ! p.principal) {
             if (p.principal) linhas.push(oferta(p.principal));
-            p.combos.forEach((c) => linhas.push(oferta(c)));
+            // Sem o produto logo acima (busca pelo código do combo, filtro por tipo), o combo diz do que é feito.
+            p.combos.forEach((c) => linhas.push(oferta(c, { itens: p.principal ? [] : lista(c.componentes) })));
             continue;
         }
 

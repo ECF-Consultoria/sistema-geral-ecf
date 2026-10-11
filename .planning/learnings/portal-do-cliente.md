@@ -1614,3 +1614,33 @@ personalizado, os que aceitarem. Então verifica no Mercado Livre o que dá para
   antigo; agora é o que o cliente pediu. Se o schema do editor disser que o campo é fechado, o valor não vai e o
   campo aparece pendente — a ficha nunca publica o que o catálogo recusa.
 - O editor da equipe (`CampoAtributo`) já aceitava texto nesses campos (caixa com sugestões); nada mudou lá.
+
+## 47. O combo que "sumiu" e ficou sem frete: ele é oferta, e o pacote somado vira ME1 (11/10/2026)
+
+O usuário montou combos no Planejamento e relatou: "não aparece para onde ele vai… talvez seria bom ele ir para
+Produtos, e saber que esse produto é um combo de outro"; e "no kit mostrou o ME2, deu o valor; no combo não mostrou
+nada de frete. Nem sei se é ME1".
+
+- **Combo, kit e combit são OFERTAS, não produtos.** Gravam em `estrutura_ofertas` + `estrutura_oferta_componentes`
+  (`EstruturaOfertaService::criar`); nada nasce em `estrutura_produtos`. A aba Produtos lista só produtos, e o único
+  retorno do Planejamento era um aviso de 6 s ou a tela "criado" da janela — fechou, sumiu o rastro.
+- **Não há tratamento por tipo no frete: a diferença é a conta.** `ConjuntoLogistico::volumes` repete as caixas de
+  cada unidade e `LogisticaProduto::pacote` soma alturas e pesos. Medido na #459: a poltrona (53×60×80, 8 kg) cabe no
+  Mercado Envios (Correios: 100 cm no maior lado, 200 na soma) e mostra frete; o Combo 2 dela vira 53×60×160, 16 kg,
+  passa nos DOIS limites e é ME1. ME1 nunca tem frete do ML a sugerir. Os 7 combos da conta estão assim; em
+  Agências/Coleta (200 / 300) cinco deles caberiam. Não é "a conta não tem ME1": é o tamanho.
+- **A Precificação ficava muda:** campo de frete em branco, só o selo "Sem frete". Agora cada oferta leva `envio`
+  (`EstruturaPrecificacaoService::envio`): a logística, o pacote (dito "somado", com o nº de caixas, no conjunto), os
+  limites que passou (`LogisticaProduto::estouros`), quem está sem medida e a logística declarada. A tela mostra isso
+  sob o nome e "sem tabela: digite" sob o frete em branco; a explicação inteira vai no balão.
+- **Produtos passou a apontar para os conjuntos:** `oferta.conjuntos` em `ProdutoLinhas` (tipo, código, nome,
+  quantidade) vira "Também vendido em [Combo 2 · SKU]" na lista e na ficha, com atalho para a Precificação.
+  `oferta.usada_em` (só SKUs) continua como estava: é o contrato da janela de exclusão.
+- **O combo aberto sozinho diz do que é feito.** "Precificar agora" abre `?q=<SKU do combo>`, e a busca tira o
+  produto pai da página; sem ele por perto, a linha mostra "2× produto".
+- **Em aberto (decisão do usuário):** as medidas do conjunto não são editáveis — são a soma. Dar pacote próprio ao
+  combo (as duas poltronas numa embalagem menor) exige guardar medidas por oferta e levar a mesma regra ao
+  `PacoteDoKit` do Publicador, senão a Precificação e o anúncio discordam. A soma segue provisória
+  ("por enquanto deixa somando", [[frete-mercado-envios]]).
+- Lido e NÃO conferido rodando: com "Ver N combos" aberto, a página do Planejamento pode mandar mais de 20 chaves
+  para `sugestoes.frete`, cuja validação é `max:20` (422). Conferir antes de dar como defeito.

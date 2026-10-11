@@ -4,7 +4,7 @@ import CartaoVolume from '@/Components/Portal/Estrutura/Produtos/CartaoVolume';
 import FaixaCalculados from '@/Components/Portal/Estrutura/Produtos/FaixaCalculados';
 import GaleriaVariacao from '@/Components/Portal/Estrutura/Produtos/GaleriaVariacao';
 import Explicacao from '@/Components/Explicacao';
-import { Obrigatorio, PilulaLogistica, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
+import { ConjuntosDoProduto, Obrigatorio, PilulaLogistica, QuadroFotoProduto, RotuloComExplicacao } from '@/Components/Portal/Estrutura/Produtos/PecasDoProduto';
 import { primeiraFoto } from '@/lib/imagensVariacao';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
@@ -49,6 +49,7 @@ export default function CartaoVariacao({ variacao, ficha, vocabulario, podeExclu
                                     : <a href={route('portal.auth.estrutura.precificacao', { q: oferta.sku })} className="text-white/70 underline-offset-2 hover:text-white hover:underline" data-acao="precificar-variacao">Ver na Precificação</a>}
                             </p>
                         )}
+                        <ConjuntosDoProduto conjuntos={oferta?.conjuntos} className="mt-1.5" />
                     </div>
                 </div>
 
