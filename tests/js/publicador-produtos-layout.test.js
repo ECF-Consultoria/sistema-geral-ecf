@@ -498,15 +498,31 @@ test('layout — resumoDosAnuncios: quadradinhos C/P, "2 no ar" e "1 de 2"', asy
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2 — MenuDeAcoesDoProduto: os 5 itens, cada um só quando faz sentido
+// 2 — MenuDeAcoesDoProduto: os 6 itens, cada um só quando faz sentido
 // ═══════════════════════════════════════════════════════════════════════════
 
-test('MenuDeAcoesDoProduto — itensDoMenu: os 5 itens do handoff, condicionais', async (contexto) => {
+test('MenuDeAcoesDoProduto — itensDoMenu: os 5 itens do handoff e o "Excluir produto…", condicionais', async (contexto) => {
     const { itensDoMenu } = await montar(MENU, 'menu-acoes-puras');
     const chaves = (produto, sugestao = null) => itensDoMenu(produto, sugestao).map((i) => i.chave);
 
-    await contexto.test('produto pelado: só "Abrir produto" e "Abrir no editor"', () => {
-        assert.deepEqual(chaves(produtoBase({ status: { chave: 'rascunho' }, anuncios: [] })), ['produto', 'editor']);
+    await contexto.test('produto pelado: "Abrir produto", "Abrir no editor" e, por nunca ter ido ao ar, "Excluir produto…"', () => {
+        assert.deepEqual(chaves(produtoBase({ status: { chave: 'rascunho' }, anuncios: [] })), ['produto', 'editor', 'excluir']);
+    });
+
+    await contexto.test('"Excluir produto…" (10/10/2026) só no que nunca foi ao ar, e marcado como perigo', () => {
+        for (const chave of ['rascunho', 'conferir', 'pronto', 'erro']) {
+            const item = itensDoMenu(produtoBase({ status: { chave }, anuncios: [] })).find((i) => i.chave === 'excluir');
+            assert.ok(item, chave);
+            assert.equal(item.perigo, true);
+            assert.equal(item.destaque, false);
+        }
+        for (const chave of ['publicando', 'publicado', 'parcial', 'outro', undefined]) {
+            assert.ok(!chaves(produtoBase({ status: { chave }, anuncios: [] })).includes('excluir'), String(chave));
+        }
+        // Com anúncio na linha, nunca — mesmo que o status diga rascunho.
+        assert.ok(!chaves(produtoBase({ status: { chave: 'erro' }, anuncios: [{ ml_item_id: 'MLB1', listing_type_id: 'gold_pro' }] })).includes('excluir'));
+        // Sem id numérico não há o que excluir.
+        assert.ok(!chaves({ ...produtoBase({ status: { chave: 'rascunho' }, anuncios: [] }), id: '12' }).includes('excluir'));
     });
 
     await contexto.test('com anúncio entra "Ver no Mercado Livre", com o href do MLB', () => {

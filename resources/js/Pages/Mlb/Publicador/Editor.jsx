@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Info, Loader2, Spark
 import AppLayout from '@/Layouts/AppLayout';
 import usePublicador from '@/Components/Publicador/usePublicador';
 import useDescricaoIa from '@/Components/Publicador/useDescricaoIa';
+import useAcender from '@/Components/Publicador/useAcender';
 import useIaDoPublicador from '@/Components/Publicador/useIaDoPublicador';
 import useCriativosDoPublicador, { CriativosDoPublicador } from '@/Components/Publicador/useCriativosDoPublicador';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
@@ -15,10 +16,12 @@ import EtapaImagens from '@/Components/Publicador/Mesa/EtapaImagens';
 import EtapaCondicoes, { useEfeitosDoEnvio } from '@/Components/Publicador/Mesa/EtapaCondicoes';
 import { useEfeitosDasVariacoes } from '@/Components/Publicador/Mesa/FotosEVariacoes';
 import Publicar from '@/Components/Publicador/Mesa/Publicar';
+import OQueCorrigir, { ID_DA_LISTA } from '@/Components/Publicador/Mesa/OQueCorrigir';
 import { ErrosDaEtapa } from '@/Components/Publicador/Mesa/comum';
 import { BASE_BOTAO, BotaoAcao, SECUNDARIO } from '@/Components/Publicador/Mesa/botoes';
 import { conclusaoDaIa } from '@/Components/Publicador/derivados';
 import { ETAPA_INICIAL, bloqueiosDaEtapa, etapaAnterior, etapaValida, proximaEtapa, tituloDaEtapa } from '@/Components/Publicador/apoio';
+import { chaveDoProblema, mostrarNaTela, problemasParaCorrigir } from '@/Components/Publicador/destaque';
 import { cn } from '@/lib/utils';
 
 // ─── Editor interno do Publicador: 4 etapas, como no Mercado Livre ──────────
@@ -55,6 +58,14 @@ import { cn } from '@/lib/utils';
 // composição e o estado de tela. Os efeitos que valem para o anúncio inteiro
 // (EAN automático, "fotos por variação", regra do frete) rodam em hooks
 // chamados aqui, sempre, seja qual for a etapa aberta.
+//
+// 10/10/2026 — "Corrigir em…" acende o que corrigir. O usuário: "só volta para
+// detalhes ou ficha técnica, não dá para saber o que é" e, de dentro da
+// própria etapa, "não dá em nada". Agora o clique acende em amarelo (como o
+// Portal) TODOS os campos que os problemas daquela etapa apontam, avisos
+// inclusive, leva ao primeiro e deixa no topo a lista do que corrigir
+// (`OQueCorrigir`, `destaque.js`). Sai ao trocar de etapa pelos nomes, pelo
+// Voltar/Continuar, ao fechar a lista ou quando não sobra problema.
 //
 // A etapa sobrevive ao F5 e à troca de produto: vai para `?etapa=` na URL
 // (`history.replaceState`, sem mexer no estado do Inertia) e para o
@@ -181,6 +192,8 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     const [etapa, setEtapa] = useState(() => etapaLembrada(produto.id));
     // Etapas em que já houve "Continuar" (ou "Corrigir em…"): só nelas os campos ficam vermelhos.
     const [tentou, setTentou] = useState({});
+    // "Corrigir em…": a etapa cujos problemas estão acesos. `vez` reacende a cada clique; `foco` = a linha clicada.
+    const [corrigindo, setCorrigindo] = useState(null);
     const [avancando, setAvancando] = useState(false);
     const [verificar, setVerificar] = useState(0);
     const [iaFechada, setIaFechada] = useState(false);
@@ -189,6 +202,7 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     useEffect(() => {
         setEtapa(etapaLembrada(produto.id));
         setTentou({});
+        setCorrigindo(null);
     }, [produto.id]);
 
     // Uma análise nova reabre a faixa da IA que o usuário tinha dispensado.
@@ -197,20 +211,24 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
     const temCategoria = Boolean(estado?.rascunho?.categoria_id);
     const bloqueios = estado ? bloqueiosDaEtapa(etapa, pub.problemas, { temCategoria }) : [];
 
-    /** Abre a etapa. `marcar` = já com os campos que faltam em vermelho (vindo de "Corrigir em…"). */
-    const irPara = useCallback((chave, { marcar = false } = {}) => {
+    /**
+     * Abre a etapa. `marcar` = vindo de "Corrigir em…": os campos que faltam ficam vermelhos e tudo o que os
+     * problemas da etapa apontam acende em amarelo (`useAcender` leva ao campo de `foco`, ou ao primeiro).
+     */
+    const irPara = useCallback((chave, { marcar = false, foco = null } = {}) => {
         setEtapa(chave);
         guardarEtapa(produto.id, chave);
-        if (marcar) setTentou((t) => ({ ...t, [chave]: true }));
-        setTimeout(() => {
-            if (marcar) {
-                focarPrimeiroErro();
+        setCorrigindo((c) => (marcar ? { etapa: chave, vez: (c?.vez ?? 0) + 1, foco: foco ? chaveDoProblema(foco) : null } : null));
+        if (marcar) {
+            setTentou((t) => ({ ...t, [chave]: true }));
 
-                return;
-            }
-            document.getElementById('topo-do-editor')?.scrollIntoView({ block: 'start' });
-        }, 50);
+            return;
+        }
+        setTimeout(() => document.getElementById('topo-do-editor')?.scrollIntoView({ block: 'start' }), 50);
     }, [produto.id]);
+
+    const paraCorrigir = estado && corrigindo?.etapa === etapa ? problemasParaCorrigir(pub.problemas, etapa) : [];
+    useAcender({ problemas: paraCorrigir, vez: corrigindo?.vez ?? 0, foco: corrigindo?.foco ?? null, listaId: ID_DA_LISTA });
 
     // "Continuar": salva o pendente; com o estado novo do servidor na tela, confere a etapa.
     const continuar = async () => {
@@ -323,13 +341,16 @@ export default function Editor({ produto, empresa, produtos = [], criativos_ia =
 
                             <ErrosDaEtapa value={{ mostrar, problemas: pub.problemas }}>
                                 <div id="conteudo-etapa" className="space-y-6" data-etapa-aberta={etapa}>
-                                    {mostrar && <ResumoDosErros bloqueios={bloqueios} />}
+                                    <OQueCorrigir etapa={etapa} problemas={paraCorrigir} onFechar={() => setCorrigindo(null)}
+                                        onMostrar={(p) => mostrarNaTela(document.getElementById('conteudo-etapa'), p)} />
+                                    {/* A lista amarela já traz os bloqueios: o resumo vermelho só aparece sem ela. */}
+                                    {mostrar && paraCorrigir.length === 0 && <ResumoDosErros bloqueios={bloqueios} />}
                                     {etapa === 'produto' && <EtapaProduto m={m} />}
                                     {etapa === 'detalhes' && <EtapaDetalhes m={m} descricaoIa={descricaoIa} />}
                                     {etapa === 'imagens' && <EtapaImagens m={m} produtoId={produto.id} empresa={empresa} />}
                                     {etapa === 'condicoes' && (
                                         <EtapaCondicoes m={m}>
-                                            <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave) => irPara(chave, { marcar: true })} />
+                                            <Publicar pub={pub} empresa={empresa} produtoId={produto.id} onIrPara={(chave, problema = null) => irPara(chave, { marcar: true, foco: problema })} />
                                         </EtapaCondicoes>
                                     )}
                                 </div>

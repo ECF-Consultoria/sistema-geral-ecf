@@ -173,7 +173,7 @@ class GabaritoDaGeracaoTest extends TestCase
     {
         $por = array_column(GeradorDeSugestoes::gerar($this->retrato()), null, 'chave');
 
-        $this->assertSame('Kit 4 Cadeiras Polo — Natural', $por['v201*4']['nome']);
+        $this->assertSame('Combo 4 Cadeiras Polo — Natural', $por['v201*4']['nome']);
         $this->assertSame('Mesa Polo + 4 Cadeiras — Natural', $por['v101*1+v201*4']['nome']);
         $this->assertSame('Mesa Polo + Banco Polo — Natural', $por['v101*1+v301*1']['nome']);
     }

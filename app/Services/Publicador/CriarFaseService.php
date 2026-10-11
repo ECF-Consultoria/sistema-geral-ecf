@@ -6,6 +6,7 @@ use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Models\PubVariante;
+use App\Support\Publicador\PacoteDoKit;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,9 @@ use Illuminate\Support\Facades\Storage;
  * SKU, SELLER_SKU por variante, título por tipo, descrição e estoque calculado
  * são de quem chama (a prévia do 175-05): aqui se **grava o que se recebeu**. O
  * serviço decide sozinho só duas coisas — a `fase` (`max(fase da família) + 1`)
- * e as quatro recusas (`KIT-01` a `KIT-04`).
+ * e as quatro recusas (`KIT-01` a `KIT-04`). Desde 10/10/2026 também calcula o
+ * pacote do kit a partir do da unidade (`PacoteDoKit`), para que TODO caminho
+ * que cria fase (o painel, o Planejamento) saia com a caixa de N unidades.
  *
  * As âncoras (`mlb_empresa_id`, `company_id`) são copiadas do BASE e nunca lidas
  * de `$dados` (T-175-05): é o que impede criar kit numa conta alheia mandando a
@@ -111,8 +114,13 @@ class CriarFaseService
     private const SELLER_SKU = 'SELLER_SKU';
 
     /**
-     * Medidas e peso do pacote: copiados e MARCADOS PARA REVISÃO (§5) — N unidades
-     * mudam a caixa, e publicar com a medida da unidade erra o frete.
+     * Medidas e peso do pacote: MARCADOS PARA REVISÃO (§5) — N unidades mudam a
+     * caixa, e publicar com a medida da unidade erra o frete.
+     *
+     * Desde 10/10/2026 o kit já nasce com o pacote de N unidades (`PacoteDoKit`,
+     * a regra de empilhar do Portal: altura e peso × N). Só copiar e marcar não
+     * bastou: o Kit 2 da Poltrona Opala foi publicado com a caixa de 1. A marca
+     * de revisão fica — a conta estima como a pessoa embala.
      *
      * Lista explícita, nunca regex sobre nome de atributo. Os `SELLER_PACKAGE_*`
      * são os que o Publicador grava (seção EMBALAGEM do `ClassificadorAtributos`);
@@ -208,7 +216,7 @@ class CriarFaseService
                 $rk = $this->criarRascunhoDoKit($rb, $kit, $dados);
 
                 $mapaDeAlvos = $this->copiarAlvos($rb, $rk, $dados);
-                $this->copiarAtributos($rb, $rk);
+                $this->copiarAtributos($rb, $rk, $quantidade);
                 $mapaDeEixos = $this->copiarEixos($rb, $rk);
                 $this->copiarVariantes($rb, $rk, $dados, $mapaDeEixos, $mapaDeAlvos);
                 $this->copiarImagens($rb, $rk, $escritos);
@@ -362,19 +370,24 @@ class CriarFaseService
         return $mapa;
     }
 
-    /** Atributos do PRODUTO: todos, menos o GTIN; medidas do pacote vão marcadas para revisão. */
-    protected function copiarAtributos(PubRascunho $base, PubRascunho $kit): void
+    /**
+     * Atributos do PRODUTO: todos, menos o GTIN. As medidas do pacote vão marcadas para revisão, e a altura
+     * e o peso dele já no tamanho de `$quantidade` unidades (`PacoteDoKit`); o que não der para ler fica igual.
+     */
+    protected function copiarAtributos(PubRascunho $base, PubRascunho $kit, int $quantidade = 1): void
     {
         foreach ($base->atributos as $a) {
             if ($a->attribute_id === self::GTIN) {
                 continue;
             }
 
+            $cresce = PacoteDoKit::cresce($a->attribute_id);
+
             $kit->atributos()->create([
                 'attribute_id' => $a->attribute_id,
                 'value_id' => $a->value_id,
-                'value_name' => $a->value_name,
-                'value_number' => $a->value_number,
+                'value_name' => $cresce ? PacoteDoKit::texto($a->value_name, $quantidade) : $a->value_name,
+                'value_number' => $cresce ? PacoteDoKit::numero($a->value_number, $quantidade) : $a->value_number,
                 'value_unit' => $a->value_unit,
                 'values_multi' => $a->values_multi,
                 'origem' => $a->origem,

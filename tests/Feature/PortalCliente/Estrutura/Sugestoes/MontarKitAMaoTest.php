@@ -87,7 +87,7 @@ class MontarKitAMaoTest extends TestCase
     {
         $combo = $this->previa(['componentes' => $this->componentes(['V201' => 4])])->assertOk();
         $combo->assertJson(['pronto' => true, 'fase' => 'combo', 'ja_existe' => null,
-            'sugerido' => ['nome' => 'Kit 4 Cadeiras Polo — Natural', 'sku' => 'V201-CB4']]);
+            'sugerido' => ['nome' => 'Combo 4 Cadeiras Polo — Natural', 'sku' => 'V201-CB4']]);
 
         $kit = $this->previa(['componentes' => $this->componentes(['V201' => 1, 'V101' => 1])])->assertOk();
         // A ordem da escolha não importa: a mesa (tipo de ordem menor) vem primeiro, como no gerador.
@@ -315,7 +315,7 @@ class MontarKitAMaoTest extends TestCase
         $this->get(route('portal.equipe.entrar', ['t' => $ticket]));
 
         $this->postJson(route('portal.auth.estrutura.sugestoes.montar'), ['componentes' => $this->componentes(['V201' => 4])])
-            ->assertOk()->assertJson(['oferta' => ['sku' => 'V201-CB4', 'nome' => 'Kit 4 Cadeiras Polo — Natural', 'fase' => 'combo']]);
+            ->assertOk()->assertJson(['oferta' => ['sku' => 'V201-CB4', 'nome' => 'Combo 4 Cadeiras Polo — Natural', 'fase' => 'combo']]);
 
         $log = Activity::query()->where('properties->evento', 'oferta_montada')->latest('id')->firstOrFail();
         $this->assertSame('interno', $log->properties['origem']);

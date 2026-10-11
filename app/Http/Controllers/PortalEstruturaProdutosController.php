@@ -9,6 +9,7 @@ use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use App\Services\Portal\Estrutura\AnunciosMercadoLivreService;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDaCategoria;
 use App\Services\Portal\Estrutura\Produtos\DescricaoDoProduto;
+use App\Services\Portal\Estrutura\Produtos\ExclusaoDeProdutos;
 use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
@@ -90,6 +91,7 @@ class PortalEstruturaProdutosController extends Controller
         private FotosEmLoteService $fotosEmLote,
         private PlanilhaDasFichasTecnicas $planilhaDasFichas,
         private ImportadorFichasTecnicas $importadorDeFichas,
+        private ExclusaoDeProdutos $exclusao,
     ) {
     }
 
@@ -191,6 +193,46 @@ class PortalEstruturaProdutosController extends Controller
             'produto_excluido'     => $res['produto_excluido'],
             'anuncios_para_espera' => $res['anuncios_para_espera'],
             'mensagem'             => $mensagem,
+        ]);
+    }
+
+    // ═══ Excluir produtos inteiros (10/10/2026) ═════════════════════════════
+
+    /** O que sai junto com os produtos escolhidos (só leitura): variações e ofertas montadas que os usam. */
+    public function previaDaExclusao(Request $request)
+    {
+        return response()->json($this->exclusao->previa(PortalContexto::empresa(), $this->dadosDaExclusao($request)['produtos']));
+    }
+
+    /**
+     * Exclui um ou vários produtos, com as ofertas montadas que os usam. Só segue se a pessoa confirmou as
+     * montadas que a prévia mostrou (`montadas`); mudou no meio do caminho, responde 422 e a tela mostra de novo.
+     */
+    public function excluirProdutos(Request $request)
+    {
+        $dados = $this->dadosDaExclusao($request);
+        $r = $this->exclusao->excluir(PortalContexto::empresa(), $dados['produtos'], $dados['montadas'] ?? [], PortalContexto::ator());
+
+        $mensagem = $r['produtos'] === 1 ? '1 produto excluído.' : "{$r['produtos']} produtos excluídos.";
+        if ($r['montadas'] > 0) {
+            $mensagem .= $r['montadas'] === 1 ? ' 1 oferta montada saiu junto.' : " {$r['montadas']} ofertas montadas saíram junto.";
+        }
+
+        return response()->json([...$r, 'mensagem' => $mensagem]);
+    }
+
+    /** @return array{produtos: list<int>, montadas?: list<int>} */
+    private function dadosDaExclusao(Request $request): array
+    {
+        return $request->validate([
+            'produtos'   => ['required', 'array', 'min:1', 'max:'.ExclusaoDeProdutos::MAXIMO],
+            'produtos.*' => ['integer', 'min:1'],
+            'montadas'   => ['nullable', 'array', 'max:2000'],
+            'montadas.*' => ['integer', 'min:1'],
+        ], [
+            'produtos.required' => 'Escolha ao menos um produto.',
+            'produtos.min'      => 'Escolha ao menos um produto.',
+            'produtos.max'      => 'Dá para excluir até '.ExclusaoDeProdutos::MAXIMO.' produtos de uma vez.',
         ]);
     }
 

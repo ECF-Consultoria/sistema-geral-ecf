@@ -1,4 +1,4 @@
-import { Send } from 'lucide-react';
+import { Send, Trash2 } from 'lucide-react';
 
 // ─── O que a seleção em lote da lista de Produtos ganhou em 10/10/2026 ──────
 //
@@ -8,15 +8,18 @@ import { Send } from 'lucide-react';
 // - "Publicar em lote" leva os selecionados para a tela da publicação em lote
 //   da conta (visão rápida, conferir e agendar com intervalo);
 // - "Selecionar todos os N deste filtro" passa da página atual para o filtro
-//   inteiro (só aparece quando há mais do que o já selecionado).
+//   inteiro (só aparece quando há mais do que o já selecionado);
+// - "Excluir selecionados" abre a confirmação da página, que mostra o que pode sair
+//   (só o que nunca foi publicado e já está solto do Portal) e por que o resto fica.
 
 const BOTAO = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.10] bg-white/[0.03] px-3 text-[11px] font-bold text-white/80 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
+const BOTAO_EXCLUIR = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-3 text-[11px] font-bold text-red-200 hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 const BOTAO_LOTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-ecf-yellow/40 bg-ecf-yellow/10 px-3 text-[11px] font-bold text-ecf-yellow hover:bg-ecf-yellow/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow';
 
 /**
- * @param {{selecionados: number, totalDoFiltro: number, onPublicarEmLote?: Function, onSelecionarTodos?: Function}} props
+ * @param {{selecionados: number, totalDoFiltro: number, onPublicarEmLote?: Function, onSelecionarTodos?: Function, onExcluir?: Function}} props
  */
-export default function AcoesDaSelecaoEmLote({ selecionados = 0, totalDoFiltro = 0, onPublicarEmLote, onSelecionarTodos }) {
+export default function AcoesDaSelecaoEmLote({ selecionados = 0, totalDoFiltro = 0, onPublicarEmLote, onSelecionarTodos, onExcluir }) {
     const n = Number.isFinite(selecionados) ? selecionados : 0;
     const total = Number.isFinite(totalDoFiltro) ? totalDoFiltro : 0;
     if (n <= 0) return null;
@@ -32,6 +35,12 @@ export default function AcoesDaSelecaoEmLote({ selecionados = 0, totalDoFiltro =
             {onSelecionarTodos && total > n && (
                 <button type="button" onClick={() => onSelecionarTodos()} className={BOTAO}>
                     {`Selecionar todos os ${total} deste filtro`}
+                </button>
+            )}
+            {onExcluir && (
+                <button type="button" onClick={() => onExcluir()} className={BOTAO_EXCLUIR} data-acao="excluir-selecionados">
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Excluir selecionados
                 </button>
             )}
         </>

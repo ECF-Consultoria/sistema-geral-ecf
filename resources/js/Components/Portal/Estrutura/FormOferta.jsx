@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 // SKU e nome vêm sugeridos e continuam editáveis — "o padrão de SKU é livre".
 // Depois que a pessoa mexe no SKU, a sugestão para de sobrescrever. Kit e Combit (desde
 // 09/10/2026) e o Combo (desde 10/10/2026) vêm do SERVIDOR no padrão do Planejamento
-// (CAD-01-CB2 e "Kit 2 Cadeiras …" quando o produto tem tipo; "Mesa + Cadeira", KT-…,
+// (CAD-01-CB2 e "Combo 2 Cadeiras …" quando o produto tem tipo; "Mesa + Cadeira", KT-…,
 // CT{n}-…; a mesma `NomesSugeridos` das sugestões, do "Montar kit" e dos combos em lote),
 // pela prévia do Montar kit — antes o combo era "Combo 2 …" montado aqui e o kit
 // "MSA-MR+CAD-01-KIT" / "-CBT4", outro padrão para a mesma oferta. O combo ainda mostra o
@@ -162,7 +162,7 @@ export default function FormOferta({ aberta, onFechar, modo, base, opcoes, vocab
     }, [qtdCombo, aberta]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ... e o nome e o SKU do servidor, no padrão do Planejamento (10/10/2026): a mesma prévia do
-    // Kit e do Combit, com o produto como único item ("Kit 4 Cadeiras Polo — Natural" quando o
+    // Kit e do Combit, com o produto como único item ("Combo 4 Cadeiras Polo — Natural" quando o
     // produto tem tipo). É o mesmo nome dos combos em lote e das sugestões do Planejamento.
     useEffect(() => {
         if (! aberta || editando || ! ehCombo || ! base || qtds.length !== 1) return undefined;

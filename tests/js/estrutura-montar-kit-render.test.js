@@ -189,7 +189,7 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
 
     const carregando = html(h(MontarKitAMao, { aberta: true, catalogo: null, onFechar: () => {}, onCarregar: () => {}, vocabulario: VOCAB_SUG }));
     assert.match(carregando, /Carregando seus produtos/);
-    assert.match(carregando, /data-janela="Montar kit"/);
+    assert.match(carregando, /data-janela="Montar combo, kit ou combit"/);
 
     const comCatalogo = texto(html(h(MontarKitAMao, { aberta: true, catalogo: CATALOGO, onFechar: () => {}, vocabulario: VOCAB_SUG })));
     for (const t of ['Mesa Polo', 'Natural', 'V102', 'sem estoque informado', '10 em estoque', 'Outras ofertas, sem produto cadastrado', 'Banco Antigo', 'Composição', 'Criar oferta']) {
@@ -197,6 +197,22 @@ test('MontarKitAMao desenha a escolha, a prévia e o "já existe" sem falar da p
     }
     assert.equal(comCatalogo.match(PROIBIDO), null);
     assert.equal(html(h(MontarKitAMao, { aberta: false, catalogo: CATALOGO, onFechar: () => {} })), '');
+
+    // A metodologia sempre à vista (10/10/2026): os três tipos na janela, nenhum aceso antes de escolher…
+    for (const t of ['Combo', 'Fase 2', 'Mesmo produto, mais unidades', 'Kit', 'Fase 3', 'Produtos diferentes juntos', 'Combit', 'Fase 4', 'Kit com mais unidades de um item']) {
+        assert.ok(comCatalogo.includes(t), `a legenda deve dizer: ${t}`);
+    }
+    const semEscolha = html(h(MontarKitAMao, { aberta: true, catalogo: CATALOGO, onFechar: () => {}, vocabulario: VOCAB_SUG }));
+    assert.equal((semEscolha.match(/data-tipo="/g) ?? []).length, 3);
+    assert.ok(! semEscolha.includes('data-atual="sim"') && ! semEscolha.includes('é o que você está montando'));
+    // …e só o da composição de agora aceso.
+    for (const fase of ['combo', 'kit', 'combit']) {
+        const legenda = html(h(mod.LegendaDaMetodologia, { fase }));
+        assert.equal((legenda.match(/data-atual="sim"/g) ?? []).length, 1);
+        assert.match(legenda, new RegExp(`data-tipo="${fase}" data-atual="sim" aria-current="true"`));
+        assert.equal((texto(legenda).match(/é o que você está montando/g) ?? []).length, 1);
+        assert.equal(texto(legenda).match(PROIBIDO), null);
+    }
 
     const previa = texto(html(h(mod.PreviaDoKit, { previa: PREVIA, calculando: false, nome: null, sku: null, onNome: () => {}, onSku: () => {}, vocabulario: VOCAB_SUG })));
     for (const t of ['Combit', 'Nome sugerido', 'SKU sugerido', 'ME2', 'Frete estimado', 'R$', 'Custo do conjunto', 'Terá estoque: dá para montar 2 unidades', 'Quem limita: Cadeira Polo — Natural']) {

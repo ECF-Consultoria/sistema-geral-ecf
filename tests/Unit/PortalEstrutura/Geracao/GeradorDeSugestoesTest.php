@@ -208,7 +208,7 @@ class GeradorDeSugestoesTest extends TestCase
     {
         $por = array_column(GeradorDeSugestoes::gerar($this->basico()), null, 'chave');
 
-        $this->assertSame('Kit 4 Cadeiras Polo — Natural', $por['v201*4']['nome']);
+        $this->assertSame('Combo 4 Cadeiras Polo — Natural', $por['v201*4']['nome']);
         $this->assertSame('Mesa Polo + 4 Cadeiras — Natural', $por['v101*1+v201*4']['nome']);
     }
 }

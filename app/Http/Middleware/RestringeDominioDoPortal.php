@@ -129,6 +129,9 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/novo',
         'portal/estrutura/produtos/linhas',
         'portal/estrutura/produtos/variacoes/*',
+        // 10/10/2026 — excluir produtos inteiros: a prévia do que sai junto e a exclusão.
+        'portal/estrutura/produtos/exclusao',
+        'portal/estrutura/produtos/exclusao/previa',
         'portal/estrutura/produtos/importacao',
         'portal/estrutura/produtos/importacao/previa',
         'portal/estrutura/produtos/familias',

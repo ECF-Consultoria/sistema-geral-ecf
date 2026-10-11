@@ -13,7 +13,9 @@ import { cn, formatCurrency } from '@/lib/utils';
 //
 // 1. A situação da conferência (D26: local em tom calmo, com cadeado).
 // 2. O que ainda falta, por etapa, com "Corrigir em …" — que leva à etapa já
-//    com os campos marcados em vermelho. Sem contador de progresso.
+//    com os campos marcados em vermelho e ACESOS em amarelo (10/10/2026:
+//    aviso também, e mais de um de uma vez). Cada linha também é um atalho
+//    para o campo dela. Sem contador de progresso.
 // 3. Conferir e Publicar — o único amarelo desta etapa: Conferir até o Mercado
 //    Livre aprovar, Publicar depois; desabilitado, diz o motivo.
 // 4. Ao lado, a prévia do anúncio como o comprador vê — só com o que o
@@ -75,7 +77,8 @@ function Previa({ m }) {
 }
 
 /**
- * `onIrPara(etapa)` leva à etapa com os campos marcados. `produtoId` é para reenviar a descrição.
+ * `onIrPara(etapa, problema?)` leva à etapa com os campos marcados e acesos; com `problema`, direto ao campo dele.
+ * `produtoId` é para reenviar a descrição.
  */
 export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
     const { m } = pub;
@@ -143,7 +146,11 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                     <ul className="space-y-1.5">
                                         {e.itens.slice(0, POR_ETAPA_A_VISTA).map((p, i) => (
                                             <li key={`${p.regra}-${i}`} className={cn('flex items-start gap-2 text-[13px]', p.severidade === 'BLOCKER' ? 'text-red-300' : 'text-white/65')} data-aviso={p.regra}>
-                                                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> <span>{p.mensagem}</span>
+                                                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                                {onIrPara
+                                                    ? <button type="button" onClick={() => onIrPara(e.chave, p)} data-ir-para-ponto={p.regra}
+                                                        className="rounded text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow">{p.mensagem}</button>
+                                                    : <span>{p.mensagem}</span>}
                                             </li>
                                         ))}
                                         {e.itens.length > POR_ETAPA_A_VISTA && <li className="text-[13px] text-white/45">e mais {e.itens.length - POR_ETAPA_A_VISTA}.</li>}

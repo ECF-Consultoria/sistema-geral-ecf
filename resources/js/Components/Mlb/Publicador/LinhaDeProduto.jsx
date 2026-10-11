@@ -2,12 +2,12 @@ import { Link2, PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import SeloStatusProduto from '@/Components/Mlb/Publicador/SeloStatusProduto';
 import MenuDeAcoesDoProduto from '@/Components/Mlb/Publicador/MenuDeAcoesDoProduto';
+import MiniaturaDoProduto from '@/Components/Mlb/Publicador/MiniaturaDoProduto';
 import { haQuanto } from '@/Components/Mlb/Publicador/tempo';
 import {
     COLUNAS_ESTREITO,
     COLUNAS_LARGO,
     alturaDaLinha,
-    iniciaisDoNome,
     resumoDosAnuncios,
     tamanhoDaMiniatura,
     textoDaFase,
@@ -31,11 +31,9 @@ import {
 // · a pílula de sugestão de kit abre o PAINEL — "Vincular"/"Não é kit"
 //   saíram da linha (eram eles que empilhavam texto + 2 botões na célula).
 //
-// ⚠️ A miniatura são as INICIAIS do nome, não a foto: a linha de
-// `produtosParaTela` não traz imagem nenhuma e a referência do handoff
-// também desenha iniciais. Foto real exigiria um campo novo no servidor (a
-// capa do primeiro rascunho) — decisão do usuário em 09/10/2026, fora do
-// escopo desta tarefa de UI.
+// A miniatura é a FOTO de capa do produto (`produto.capa`, 10/10/2026 — o
+// usuário pediu a imagem no lugar das duas letras); sem foto, ou se ela não
+// carregar, ficam as iniciais do nome (`MiniaturaDoProduto`).
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** A classe base da linha. Exportada para o gate provar que ela nunca é avermelhada. */
@@ -186,16 +184,7 @@ export default function LinhaDeProduto({
                 className={cn('flex min-w-0 items-center gap-2', recuado === true && 'pl-8')}
             >
                 {recuado === true && <span aria-hidden="true" className="shrink-0 text-white/25">└</span>}
-                {mostraMiniatura && (
-                    <span
-                        aria-hidden="true"
-                        data-miniatura={iniciaisDoNome(p.nome)}
-                        style={{ width: `${lado}px`, height: `${lado}px` }}
-                        className="flex shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-[11px] font-bold text-white/55"
-                    >
-                        {iniciaisDoNome(p.nome)}
-                    </span>
-                )}
+                {mostraMiniatura && <MiniaturaDoProduto nome={p.nome} capa={p.capa} lado={lado} />}
                 <span className="flex min-w-0 flex-col">
                     <span className="truncate whitespace-nowrap text-[13px] font-normal text-white" title={nome}>
                         {nome}

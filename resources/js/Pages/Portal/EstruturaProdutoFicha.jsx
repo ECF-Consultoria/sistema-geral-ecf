@@ -9,6 +9,7 @@ import FichaTecnica from '@/Components/Portal/Estrutura/Produtos/FichaTecnica';
 import MedidasDoProduto from '@/Components/Portal/Estrutura/Produtos/MedidasDoProduto';
 import CartaoVariacao from '@/Components/Portal/Estrutura/Produtos/CartaoVariacao';
 import JanelaExcluirVariacao from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirVariacao';
+import JanelaExcluirProdutos from '@/Components/Portal/Estrutura/Produtos/JanelaExcluirProdutos';
 import useFichaProduto from '@/Components/Portal/Estrutura/Produtos/useFichaProduto';
 import { textoProdutoSalvo } from '@/lib/produtosEstrutura';
 import { definirGuardaDoVoltar } from '@/lib/guardaDoVoltar';
@@ -35,6 +36,7 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
     const ficha = useFichaProduto({ linhas, produto, vocabulario, limites, fichaTecnica, descricao, explicacoes });
     const [listas, setListas] = useState(listasIniciais ?? { familias: [], ambientes: [] });
     const [exclusao, setExclusao] = useState(null);   // { linha, ultima } | null
+    const [excluindoProduto, setExcluindoProduto] = useState(false);   // janela "Excluir produto" (o produto inteiro, 10/10/2026)
     const liberado = useRef(false);
     const alteradoRef = useRef(ficha.alterado);
     alteradoRef.current = ficha.alterado;
@@ -206,18 +208,29 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
         setExclusao(null);
         const sobraram = ficha.vars.filter((x) => x.id && x._k !== linha._k).length;
         if (resposta?.produto_excluido || sobraram === 0) {
-            liberado.current = true;
-            ultimoRef.current = null;   // o produto deixou de existir: nada a destacar
-            ficha.esquecerRascunho();
-            irParaLista({
-                aviso: resposta?.mensagem ?? null,
-                // A entrada à frente deixa de apontar para o produto excluído: o "avançar" abre uma ficha em branco.
-                entrada: { url: route('portal.auth.estrutura.produtos.novo', {}, false), props: (props) => ({ ...props, produto: null, linhas: [] }) },
-            });
+            sairComProdutoExcluido(resposta?.mensagem ?? null);
 
             return;
         }
         ficha.removerVariacao(linha._k);
+    };
+
+    /** O produto deixou de existir (a última variação o levou, ou "Excluir produto"): volta à lista sem nada a destacar. */
+    const sairComProdutoExcluido = (aviso) => {
+        liberado.current = true;
+        ultimoRef.current = null;
+        ficha.esquecerRascunho();
+        irParaLista({
+            aviso,
+            // A entrada à frente deixa de apontar para o produto excluído: o "avançar" abre uma ficha em branco.
+            entrada: { url: route('portal.auth.estrutura.produtos.novo', {}, false), props: (props) => ({ ...props, produto: null, linhas: [] }) },
+        });
+    };
+
+    /** O produto inteiro saiu (10/10/2026): a mesma saída de quando a última variação o leva. */
+    const aoExcluirProduto = (resposta) => {
+        setExcluindoProduto(false);
+        sairComProdutoExcluido(resposta?.mensagem ?? null);
     };
 
     const novaVariacao = () => {
@@ -302,6 +315,12 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
                     ali os botões ficariam no meio da página. As margens negativas acompanham o
                     padding da página (px-4 / sm:px-6) para a barra encostada do celular. */}
                 <div className="mt-2.5 flex justify-end gap-3 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:border-t max-lg:border-white/[0.08] max-lg:bg-ecf-bg/95 max-lg:px-4 max-lg:py-3 max-sm:-mx-4 sm:max-lg:-mx-6 sm:max-lg:px-6">
+                    {! ficha.novoProduto && (
+                        <button type="button" onClick={() => setExcluindoProduto(true)} disabled={ficha.salvando} data-acao="excluir-produto"
+                            className="mr-auto h-11 rounded-lg border border-red-500/30 px-4 text-[14px] text-red-300 hover:bg-red-500/10 disabled:opacity-60 lg:h-9">
+                            Excluir produto
+                        </button>
+                    )}
                     <button type="button" onClick={sair} data-acao="cancelar"
                         className="h-11 rounded-lg border border-white/[0.10] bg-white/[0.03] px-4 text-[14px] text-white hover:bg-white/[0.07] lg:h-9 lg:w-[151px]">
                         Cancelar
@@ -316,6 +335,8 @@ export default function EstruturaProdutoFicha({ empresa, modulos = [], produto, 
 
             <JanelaExcluirVariacao aberta={!! exclusao} linha={exclusao?.linha} ultima={exclusao?.ultima} novasNaoSalvas={exclusao?.novasNaoSalvas}
                 onFechar={() => setExclusao(null)} onExcluida={aoExcluida} />
+            <JanelaExcluirProdutos aberta={excluindoProduto} ids={ficha.primeira.produto_id ? [ficha.primeira.produto_id] : []}
+                onFechar={() => setExcluindoProduto(false)} onExcluidos={aoExcluirProduto} />
             <AvisoFlash />
         </PortalClienteLayout>
     );

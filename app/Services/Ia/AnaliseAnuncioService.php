@@ -3,6 +3,7 @@
 namespace App\Services\Ia;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -36,6 +37,12 @@ class AnaliseAnuncioService
 
     /** Abaixo disto de prazo restante nem vale abrir outra chamada. */
     private const PRAZO_MINIMO_S = 20;
+
+    /**
+     * Com reserva na fila, um modelo só usa esta parte do prazo que sobra: o que falhar devagar não pode
+     * comer o tempo de quem ainda responderia.
+     */
+    private const PARTE_DO_PRAZO_COM_RESERVA = 0.6;
 
     /**
      * Instante (microtime) em que TODA a geração tem que ter parado.
@@ -320,15 +327,30 @@ class AnaliseAnuncioService
             ->unique()
             ->values();
 
+        // Quarentena (10/10/2026). Medido em produção: o modelo principal respondia vazio depois de 60 s+
+        // "raciocinando" e o reserva resolvia em 30 s. A descrição são DUAS chamadas no mesmo prazo; perdendo
+        // tempo com o modelo ruim nas duas, estourava os 240 s ("gerando" sem fim, nenhuma descrição). Quem
+        // acabou de falhar vai para o FIM da fila por alguns minutos: a chamada seguinte, e as dos outros
+        // produtos, já começam por quem está respondendo. Passado o tempo, o principal ganha outra chance.
+        $quarentena = max(0, (int) ($cfg['quarentena_s'] ?? 600));
+        $comReserva = $modelos->count() > 1;
+        if ($comReserva && $quarentena > 0) {
+            [$sadios, $deCastigo] = $modelos->partition(fn (string $m) => ! Cache::has(self::chaveDaQuarentena($m)));
+            $modelos = $sadios->concat($deCastigo)->values();
+        }
+
         $erro = null;
 
-        foreach ($modelos as $modelo) {
+        foreach ($modelos as $i => $modelo) {
             try {
-                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens);
+                return $this->chamarModelo($cfg, $modelo, $prompt, $maxTokens, $i < $modelos->count() - 1);
             } catch (FalhaTrocavel $e) {
                 // Guarda o erro e tenta o próximo; se todos falharem, é esta a
                 // mensagem que chega ao publicador.
                 $erro = $e;
+                if ($comReserva && $quarentena > 0) {
+                    Cache::put(self::chaveDaQuarentena($modelo), true, $quarentena);
+                }
                 Log::warning("[IA] Modelo {$modelo} falhou, tentando o próximo: {$e->getMessage()}");
             }
         }
@@ -341,7 +363,7 @@ class AnaliseAnuncioService
      * resolver (sobrecarga, timeout, modelo indisponível) e `RuntimeException`
      * quando não adianta trocar (chave recusada, prazo acabou).
      */
-    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens): array
+    private function chamarModelo(array $cfg, string $modelo, string $prompt, int $maxTokens, bool $temReserva = false): array
     {
         $timeout = (int) $cfg['timeout'];
 
@@ -353,6 +375,10 @@ class AnaliseAnuncioService
             }
 
             $timeout = min($timeout, $resta);
+            // Ainda há reserva para tentar: este modelo não leva o prazo inteiro.
+            if ($temReserva) {
+                $timeout = min($timeout, max(self::PRAZO_MINIMO_S, (int) floor($resta * self::PARTE_DO_PRAZO_COM_RESERVA)));
+            }
         }
 
         $t0 = microtime(true);
@@ -424,6 +450,12 @@ class AnaliseAnuncioService
                 'duracao_ms'     => $duracaoMs,
             ],
         ];
+    }
+
+    /** Existe enquanto o modelo está no fim da fila por ter acabado de falhar. */
+    public static function chaveDaQuarentena(string $modelo): string
+    {
+        return 'ia:modelo-em-quarentena:'.sha1($modelo);
     }
 
     // ═══ Prompts (metodologia MAG T8) ═════════════════════════════════════════

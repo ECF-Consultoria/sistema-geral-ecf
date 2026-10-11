@@ -205,7 +205,7 @@ class PortalEstruturaSugestoesController extends Controller
             'nome'                      => ['nullable', 'string', 'max:255'],
             'sku'                       => ['nullable', 'string', 'max:255'],
         ], [
-            'componentes.max' => 'Um kit pode juntar até '.ChaveDeComposicao::MAXIMO_COMPONENTES.' produtos.',
+            'componentes.max' => 'Uma oferta pode juntar até '.ChaveDeComposicao::MAXIMO_COMPONENTES.' produtos diferentes.',
             'componentes.required' => 'Escolha os produtos que entram juntos.',
             'componentes.*.quantidade.*' => 'Cada item precisa de uma quantidade entre 1 e 999.',
             'componentes.*.variacao_id.*' => 'Escolha produtos da sua lista.',

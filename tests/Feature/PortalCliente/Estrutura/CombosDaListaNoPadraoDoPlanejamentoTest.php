@@ -22,6 +22,9 @@ use Tests\TestCase;
  * Planejamento, para o MESMO combo, "Kit 4 Cadeiras Polo — Natural". O combo de uma
  * quantidade da Lista (FormOferta) pede a prévia do "Montar kit" com a oferta como item —
  * e recebe o mesmo nome. Só o padrão de CRIAÇÃO muda: combo que já existe fica como está.
+ *
+ * No mesmo dia o usuário pediu que o Combo se chame "Combo" (e não "Kit N …", o exemplo da planilha): o nome
+ * único passou a ser "Combo 4 Cadeiras Polo — Natural".
  */
 class CombosDaListaNoPadraoDoPlanejamentoTest extends TestCase
 {
@@ -91,7 +94,7 @@ class CombosDaListaNoPadraoDoPlanejamentoTest extends TestCase
             ->assertSessionHasNoErrors()
             ->assertSessionHas('success', fn ($m) => str_contains($m, 'V202-CB2, V202-CB4'));
 
-        $this->assertSame([['Kit 2 Cadeiras Polo — Preto', 'V202-CB2'], ['Kit 4 Cadeiras Polo — Preto', 'V202-CB4']], $this->combosDe($base));
+        $this->assertSame([['Combo 2 Cadeiras Polo — Preto', 'V202-CB2'], ['Combo 4 Cadeiras Polo — Preto', 'V202-CB4']], $this->combosDe($base));
         $this->assertSame([$sugeridos[2], $sugeridos[4]], $this->combosDe($base), 'a Lista e o Planejamento dão o MESMO nome e SKU');
     }
 
@@ -103,7 +106,7 @@ class CombosDaListaNoPadraoDoPlanejamentoTest extends TestCase
         $svc = app(EstruturaOfertaService::class);
 
         $svc->criarCombos($base, [2], null, null, $ator);
-        $this->assertSame([['Kit 2 Cadeiras Avulsa', 'V1001-CB2']], $this->combosDe($base->id), 'pelo tipo inferido');
+        $this->assertSame([['Combo 2 Cadeiras Avulsa', 'V1001-CB2']], $this->combosDe($base->id), 'pelo tipo inferido');
 
         // A ECF escolhe Banco para o produto (e o Combo 3, para o Planejamento sugerir).
         EstruturaProdutoGeracao::create([
@@ -144,6 +147,6 @@ class CombosDaListaNoPadraoDoPlanejamentoTest extends TestCase
         $this->assertSame(['V202-CB4'], $r['criados']);
         $this->assertSame([2], $r['pulados']);
         $this->assertSame('Combo 2 Cadeira Polo — Preto', $antigo->fresh()->nome);
-        $this->assertSame([['Combo 2 Cadeira Polo — Preto', 'V202-CB2'], ['Kit 4 Cadeiras Polo — Preto', 'V202-CB4']], $this->combosDe($base->id));
+        $this->assertSame([['Combo 2 Cadeira Polo — Preto', 'V202-CB2'], ['Combo 4 Cadeiras Polo — Preto', 'V202-CB4']], $this->combosDe($base->id));
     }
 }

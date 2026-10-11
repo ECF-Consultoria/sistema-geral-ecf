@@ -1,7 +1,7 @@
-import { ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
+import { Check, ChevronRight, Info, MoreVertical, Package } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { router, usePage } from '@inertiajs/react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/Components/ui/dropdown-menu';
 import Explicacao from '@/Components/Explicacao';
 import { ESTILO_LOGISTICA, detalheDaVariacao, faltaDoProduto, iniciais, partesDaCategoria, renderFrete } from '@/lib/produtosEstrutura';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
@@ -202,11 +202,28 @@ export function PilulaFalta({ variacoes, rotulos, nome }) {
 }
 
 /**
- * Menu ⋮ (D-30): só ações que existem — abrir a ficha, ver a oferta de cada variação na Lista SKUs
- * e montar um kit com o produto. Quem não vê a Lista SKUs (o cliente, desde 09/10/2026) vê o SKU
- * na Precificação; o "Montar kit" abre o Planejamento com o produto já escolhido.
+ * Caixa de seleção do cartão (10/10/2026): marca o produto para a ação em lote da lista (excluir).
+ * Não abre a ficha (`data-nao-abrir`). É um botão com papel de caixa: a área de toque tem 36 px.
  */
-export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }) {
+export function CaixaDeSelecao({ marcado = false, nome, onMudar, className }) {
+    return (
+        <button type="button" role="checkbox" aria-checked={marcado} aria-label={`Selecionar ${nome}`} data-nao-abrir data-selecionar-produto
+            onClick={() => onMudar(! marcado)}
+            className={cn('grid h-9 w-9 place-items-center rounded-lg hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40', className)}>
+            <span className={cn('grid h-[18px] w-[18px] place-items-center rounded-[5px] border', marcado ? 'border-ecf-yellow bg-ecf-yellow text-black' : 'border-white/30 bg-black/30')}>
+                {marcado && <Check size={13} strokeWidth={3} aria-hidden="true" />}
+            </span>
+        </button>
+    );
+}
+
+/**
+ * Menu ⋮ (D-30): só ações que existem — abrir a ficha, ver a oferta de cada variação na Lista SKUs,
+ * montar um combo, kit ou combit com o produto e, desde 10/10/2026, excluir o produto (a confirmação é
+ * da página). Quem não vê a Lista SKUs (o cliente, desde 09/10/2026) vê o SKU na Precificação; o
+ * "Montar" abre o Planejamento com o produto já escolhido.
+ */
+export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, onExcluir = null, className }) {
     const comOferta = (variacoes ?? []).filter((v) => v.oferta?.sku);
     const { modulos = [] } = usePage().props;
     const listaVisivel = submoduloVisivel(modulos, 'lista');
@@ -224,7 +241,7 @@ export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }
                 <DropdownMenuItem onSelect={() => onAbrir(produtoId)}>Abrir a ficha</DropdownMenuItem>
                 {planejamentoVisivel && comOferta.length > 0 && (
                     <DropdownMenuItem onSelect={() => router.visit(route('portal.auth.estrutura.sugestoes', { montar: produtoId }))} data-acao="montar-kit-do-produto">
-                        Montar kit com este produto
+                        Montar combo, kit ou combit com este produto
                     </DropdownMenuItem>
                 )}
                 {comOferta.map((v) => (listaVisivel ? (
@@ -236,6 +253,14 @@ export function MenuDoProduto({ produtoId, nome, variacoes, onAbrir, className }
                         Ver {v.oferta.sku} na Precificação
                     </DropdownMenuItem>
                 )))}
+                {onExcluir && (
+                    <>
+                        <DropdownMenuSeparator className="bg-white/[0.08]" />
+                        <DropdownMenuItem onSelect={() => onExcluir(produtoId)} data-acao="excluir-produto">
+                            Excluir produto
+                        </DropdownMenuItem>
+                    </>
+                )}
             </DropdownMenuContent>
         </DropdownMenu>
     );

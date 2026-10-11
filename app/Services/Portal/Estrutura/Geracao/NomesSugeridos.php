@@ -19,6 +19,11 @@ final class NomesSugeridos
     public const SEPARADOR_VALOR = ' — ';
 
     /**
+     * O Combo se chama "Combo" (decisão do usuário, 10/10/2026: "como eu fiz um combo, seria Combo 2
+     * Poltronas, mas ficou Kit"). Antes, com tipo conhecido, o nome saía "Kit {n} {plural} …" — o exemplo da
+     * planilha — e contradizia o selo COMBO da mesma tela; "Kit" fica para a oferta de produtos diferentes.
+     * Com tipo, o plural do tipo ("Combo 2 Poltronas Decorativa Opala"); sem tipo, o nome do produto.
+     *
      * @param  array{nome: string, plural: string}|null  $tipo
      * @return array{nome: string, sku: string}
      */
@@ -29,7 +34,7 @@ final class NomesSugeridos
         if ($tipo !== null) {
             $resto = self::semPalavraDoTipo($produtoNome, $tipo);
             if ($resto !== null && $resto !== '') {
-                $nome = "Kit {$n} {$tipo['plural']} {$resto}";
+                $nome = "Combo {$n} {$tipo['plural']} {$resto}";
             }
         }
 

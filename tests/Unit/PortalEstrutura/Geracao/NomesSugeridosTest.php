@@ -13,12 +13,12 @@ class NomesSugeridosTest extends TestCase
     public static function combos(): array
     {
         return [
-            'nome começa pelo tipo'      => ['Cadeira Farmhouse Madeira', 'CF-1', 'Natural', 4, self::CADEIRA, 'Kit 4 Cadeiras Farmhouse Madeira — Natural', 'CF-1-CB4'],
-            'começa pelo plural'         => ['Cadeiras Nordic', 'CN-1', null, 2, self::CADEIRA, 'Kit 2 Cadeiras Nordic', 'CN-1-CB2'],
+            'nome começa pelo tipo'      => ['Cadeira Farmhouse Madeira', 'CF-1', 'Natural', 4, self::CADEIRA, 'Combo 4 Cadeiras Farmhouse Madeira — Natural', 'CF-1-CB4'],
+            'começa pelo plural'         => ['Cadeiras Nordic', 'CN-1', null, 2, self::CADEIRA, 'Combo 2 Cadeiras Nordic', 'CN-1-CB2'],
             'prefixo solto não conta'    => ['Cadeirinha Kids', 'CK-1', null, 2, self::CADEIRA, 'Combo 2 Cadeirinha Kids', 'CK-1-CB2'],
             'sem tipo'                   => ['Banqueta Alta', 'BA-1', null, 3, null, 'Combo 3 Banqueta Alta', 'BA-1-CB3'],
             'resto vazio'                => ['Cadeira', 'C-1', null, 2, self::CADEIRA, 'Combo 2 Cadeira', 'C-1-CB2'],
-            'sem acento e sem caixa'     => ['CADEIRA Polo', 'CP-1', null, 6, self::CADEIRA, 'Kit 6 Cadeiras Polo', 'CP-1-CB6'],
+            'sem acento e sem caixa'     => ['CADEIRA Polo', 'CP-1', null, 6, self::CADEIRA, 'Combo 6 Cadeiras Polo', 'CP-1-CB6'],
         ];
     }
 

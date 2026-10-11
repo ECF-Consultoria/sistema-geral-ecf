@@ -606,7 +606,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         <div className="flex shrink-0 flex-wrap items-center gap-4">
                             {(sugestoes.tem_produtos || montar_disponivel) && (
                                 <Botao variante="secundario" onClick={abrirMontagem} data-acao="montar-kit" className="h-11 lg:h-9">
-                                    <Plus size={15} aria-hidden="true" /> Montar kit
+                                    <Plus size={15} aria-hidden="true" /> Montar combo, kit ou combit
                                 </Botao>
                             )}
                             <Botao variante="fantasma" onClick={() => setAula(true)} data-acao="como-funciona" className="h-9">Como funciona</Botao>
@@ -626,7 +626,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         <Link href={route('portal.auth.estrutura.produtos')} className={LINK_PRIMARIO} data-acao="ir-para-produtos">Ir para Produtos</Link>
                         {/* Ofertas sem produto cadastrado (importadas) também se juntam à mão. */}
                         {montar_disponivel && (
-                            <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
+                            <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar combo, kit ou combit</button>
                         )}
                     </EstadoVazio>
                 )}
@@ -721,11 +721,11 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         )}
                         {vazio === 'sem_sugestoes' && (
                             <EstadoVazio titulo="Ainda não há sugestões novas"
-                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Veja a aba Sem tipo, cadastre mais produtos ou monte o kit você mesmo.">
+                                corpo="Para sugerir Kit e Combit, os produtos precisam de família, ambiente e tipo. Veja a aba Sem tipo, cadastre mais produtos ou monte você mesmo o combo, o kit ou o combit.">
                                 {(sugestoes.contagens?.sem_tipo ?? 0) > 0 && (
                                     <Link href={hrefAba('sem_tipo')} className={LINK_SECUNDARIO} data-acao="ver-sem-tipo">Ver Sem tipo</Link>
                                 )}
-                                <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
+                                <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar combo, kit ou combit</button>
                             </EstadoVazio>
                         )}
                         {vazio === 'tudo_revisado' && (() => {
@@ -735,7 +735,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                             return (
                                 <EstadoVazio titulo="Você revisou todas as sugestões" corpo={`As ofertas aceitas já estão ${destino.ondeFica}.`}>
                                     <Link href={destino.href} className={LINK_SECUNDARIO} data-acao="ver-ofertas-aceitas">{destino.rotulo}</Link>
-                                    <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar kit</button>
+                                    <button type="button" onClick={abrirMontagem} className={LINK_SECUNDARIO} data-acao="montar-kit-vazio">Montar combo, kit ou combit</button>
                                 </EstadoVazio>
                             );
                         })()}

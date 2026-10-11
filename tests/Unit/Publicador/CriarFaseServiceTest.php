@@ -305,10 +305,50 @@ class CriarFaseServiceTest extends TestCase
         $this->assertFalse($atributos->has('GTIN'), 'o EAN é da unidade, não do kit');
         $this->assertSame('ECF', $atributos['BRAND']->value_name);
         $this->assertFalse($atributos['BRAND']->revisar, 'atributo comum não vira pendência');
-        $this->assertSame('6000 g', $atributos['SELLER_PACKAGE_WEIGHT']->value_name, 'medida copiada');
-        $this->assertTrue($atributos['SELLER_PACKAGE_WEIGHT']->revisar, 'e marcada para revisão: N unidades mudam o pacote');
+        // 10/10/2026: o pacote já nasce no tamanho de 2 unidades (antes vinha '6000 g', o da unidade).
+        $this->assertSame('12000 g', $atributos['SELLER_PACKAGE_WEIGHT']->value_name, 'peso de 2 unidades');
+        $this->assertSame(12000.0, $atributos['SELLER_PACKAGE_WEIGHT']->value_number, 'a coluna numérica acompanha o texto');
+        $this->assertSame('g', $atributos['SELLER_PACKAGE_WEIGHT']->value_unit);
+        $this->assertSame('180 cm', $atributos['SELLER_PACKAGE_HEIGHT']->value_name, 'duas caixas empilhadas');
+        $this->assertTrue($atributos['SELLER_PACKAGE_WEIGHT']->revisar, 'e marcada para revisão: a conta estima como a pessoa embala');
         $this->assertTrue($atributos['SELLER_PACKAGE_HEIGHT']->revisar);
         $this->assertSame('17055160', $atributos['EMPTY_GTIN_REASON']->value_id ?? null, 'o motivo de não ter GTIN é copiado');
+    }
+
+    /**
+     * 10/10/2026 — o Kit 2 da Poltrona Opala foi publicado com a caixa de UMA poltrona. O kit de N unidades
+     * nasce com o pacote de N caixas empilhadas (a regra do Portal): altura e peso × N; comprimento, largura
+     * e as medidas do PRODUTO (a ficha) ficam as da unidade.
+     */
+    public function test_o_pacote_do_kit_de_3_empilha_tres_caixas_e_nao_mexe_no_resto(): void
+    {
+        $base = $this->baseComRascunho();
+        (new RascunhoRepository())->gravarAtributos($base->rascunho, [
+            'SELLER_PACKAGE_HEIGHT' => ['value_name' => '90 cm'],
+            'SELLER_PACKAGE_WIDTH' => ['value_name' => '85 cm'],
+            'SELLER_PACKAGE_LENGTH' => ['value_name' => '70 cm'],
+            'SELLER_PACKAGE_WEIGHT' => ['value_name' => '12000 g'],
+            'HEIGHT' => ['value_name' => '90 cm'],
+            'WEIGHT' => ['value_name' => '12 kg'],
+        ]);
+
+        $kit = $this->servico()->criar($base->fresh(), $this->dados(3));
+
+        $doKit = $kit->rascunho->atributos()->get()->keyBy('attribute_id');
+        $this->assertSame('270 cm', $doKit['SELLER_PACKAGE_HEIGHT']->value_name);
+        $this->assertSame('36000 g', $doKit['SELLER_PACKAGE_WEIGHT']->value_name);
+        $this->assertSame('85 cm', $doKit['SELLER_PACKAGE_WIDTH']->value_name, 'largura da unidade');
+        $this->assertSame('70 cm', $doKit['SELLER_PACKAGE_LENGTH']->value_name, 'comprimento da unidade');
+        $this->assertSame('90 cm', $doKit['HEIGHT']->value_name, 'a altura do PRODUTO é a de uma poltrona');
+        $this->assertSame('12 kg', $doKit['WEIGHT']->value_name);
+        foreach (['SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_WEIGHT', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_LENGTH'] as $id) {
+            $this->assertTrue($doKit[$id]->revisar, $id);
+        }
+
+        // O base não muda.
+        $doBase = $base->rascunho->fresh()->atributos()->get()->keyBy('attribute_id');
+        $this->assertSame('90 cm', $doBase['SELLER_PACKAGE_HEIGHT']->value_name);
+        $this->assertSame('12000 g', $doBase['SELLER_PACKAGE_WEIGHT']->value_name);
     }
 
     /**

@@ -643,8 +643,8 @@ test('Editor.jsx — 4 etapas: só os nomes no topo, uma coluna com as seções 
     assert.match(f, /setTentou\(\(t\) => \(\{ \.\.\.t, \[etapa\]: true \}\)\)/);
     assert.match(f, /querySelector\('\[aria-invalid="true"\]'\)/);
     assert.match(f, /<ErrosDaEtapa value=\{\{ mostrar, problemas: pub\.problemas \}\}>/);
-    // "Corrigir em…" leva à etapa já marcada.
-    assert.match(f, /onIrPara=\{\(chave\) => irPara\(chave, \{ marcar: true \}\)\}/);
+    // "Corrigir em…" leva à etapa já marcada; a linha clicada vira o foco (10/10/2026, publicador-corrigir-acende.test.js).
+    assert.match(f, /onIrPara=\{\(chave, problema = null\) => irPara\(chave, \{ marcar: true, foco: problema \}\)\}/);
     // Um amarelo por tela: "Continuar" nas etapas 1 e 2; na 3, Conferir/Publicar (em Publicar.jsx).
     assert.equal((f.match(/BotaoAcao primario/g) ?? []).length, 1);
     assert.match(f, /\{proxima && \(/);

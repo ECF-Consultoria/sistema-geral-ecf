@@ -218,6 +218,11 @@ Route::middleware('portal.auth')->prefix('portal')->group(function () {
         ->middleware('throttle:120,1,estrutura.produtos.linhas')->name('portal.auth.estrutura.produtos.linhas');
     Route::delete('/estrutura/produtos/variacoes/{variacao}', [PortalEstruturaProdutosController::class, 'excluirVariacao'])
         ->whereNumber('variacao')->middleware('throttle:60,1,estrutura.produtos.variacoes.excluir')->name('portal.auth.estrutura.produtos.variacoes.excluir');
+    // 10/10/2026 — excluir produtos inteiros, um ou vários: a prévia do que sai junto (só leitura) e a exclusão.
+    Route::post('/estrutura/produtos/exclusao/previa', [PortalEstruturaProdutosController::class, 'previaDaExclusao'])
+        ->middleware('throttle:60,1,estrutura.produtos.exclusao.previa')->name('portal.auth.estrutura.produtos.exclusao.previa');
+    Route::post('/estrutura/produtos/exclusao', [PortalEstruturaProdutosController::class, 'excluirProdutos'])
+        ->middleware('throttle:30,1,estrutura.produtos.exclusao')->name('portal.auth.estrutura.produtos.exclusao');
     Route::post('/estrutura/produtos/importacao/previa', [PortalEstruturaProdutosController::class, 'previaImportacao'])
         ->middleware('throttle:10,1,estrutura.produtos.importacao.previa')->name('portal.auth.estrutura.produtos.importacao.previa');
     Route::post('/estrutura/produtos/importacao', [PortalEstruturaProdutosController::class, 'aplicarImportacao'])

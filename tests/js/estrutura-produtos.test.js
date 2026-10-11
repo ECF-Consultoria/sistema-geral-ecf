@@ -56,7 +56,8 @@ test('casca (167-20, D-25): cabeçalho amplo, barra de ações, seletor e a list
 test('modo (D-26): lido do navegador no 1º render, gravado ao trocar, e o seletor não aparece sem produtos', () => {
     assert.ok(pagina.includes('useState(() => lerModo())'));
     assert.ok(pagina.includes('gravarModo('));
-    assert.match(pagina, /\{temProdutos && \(\s*<div[^>]*>\s*<SeletorVisualizacao/);
+    // 10/10/2026: o seletor divide a ponta esquerda da linha com o "Selecionar todos desta página".
+    assert.match(pagina, /\{temProdutos && \(\s*<div[^>]*>\s*(?:<div[^>]*>\s*)?<SeletorVisualizacao/);
 });
 
 test('fretes: o botão só aparece com conta conectada e variação ME2, na linha do seletor', () => {

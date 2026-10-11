@@ -7,11 +7,13 @@ use App\Models\Company;
 use App\Models\EstruturaOferta;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PubImagem;
 use App\Models\PubProduto;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
 use App\Support\Publicador\ContasLiberadas;
+use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -736,6 +738,24 @@ class ProgramasPublicadorService
      *
      * @return list<array>
      */
+    /**
+     * A variação pequena (~4 kB) da mesma foto no CDN do Mercado Livre. O rascunho guarda a maior (`-F.jpg`,
+     * ~200 kB): a lista não baixa uma dessas por linha para um quadrado de 40 px. Medido em produção em
+     * 10/10/2026: `-I.jpg` existe para as fotos enviadas pelo Publicador. Endereço fora desse formato volta
+     * como veio; só https vai para a tela.
+     */
+    public static function miniaturaDaFoto(?string $url): ?string
+    {
+        if ($url === null || ! str_starts_with($url, 'https://')) {
+            return null;
+        }
+        if (! str_contains((string) parse_url($url, PHP_URL_HOST), 'mlstatic.com')) {
+            return $url;
+        }
+
+        return preg_replace('/-[A-Z]\.(jpe?g|png|webp)$/i', '-I.jpg', $url) ?? $url;
+    }
+
     public function produtosParaTela(?MlbEmpresa $e, ?Company $c, ?string $chaveConta = null): array
     {
         // `oferta` entra no eager load porque `skuExibido()`/`nomeExibido()` a leem por
@@ -798,7 +818,26 @@ class ProgramasPublicadorService
                 });
         }
 
-        return $produtos->map(function (PubProduto $p) use ($rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta) {
+        // A capa de cada rascunho (10/10/2026, a miniatura da lista): a 1ª foto da galeria geral que já subiu
+        // ao Mercado Livre; sem galeria geral, a 1ª de outro grupo; foto solta, por último. Foto guardada só
+        // aqui (conta não liberada, D26) não tem endereço público e fica de fora. Uma consulta por lote.
+        $capas = [];
+        foreach (array_chunk($rascunhoIds, self::LOTE) as $lote) {
+            PubImagem::query()
+                ->leftJoin('pub_imagem_atribuicoes as a', 'a.imagem_id', '=', 'pub_imagens.id')
+                ->whereIn('pub_imagens.rascunho_id', $lote)
+                ->whereNotNull('pub_imagens.ml_url')
+                ->orderBy('pub_imagens.id')
+                ->get(['pub_imagens.rascunho_id as rascunho_id', 'pub_imagens.ml_url as ml_url', 'a.grupo_chave as grupo_chave', 'a.posicao as posicao'])
+                ->each(function ($i) use (&$capas) {
+                    $ordem = [$i->grupo_chave === ResolvedorGruposImagem::GERAL ? 0 : ($i->grupo_chave === null ? 2 : 1), (int) $i->posicao];
+                    if (! isset($capas[$i->rascunho_id]) || ($ordem <=> $capas[$i->rascunho_id]['ordem']) < 0) {
+                        $capas[$i->rascunho_id] = ['ordem' => $ordem, 'url' => (string) $i->ml_url];
+                    }
+                });
+        }
+
+        return $produtos->map(function (PubProduto $p) use ($capas, $rascunhos, $validacoes, $anuncios, $parciais, $chaveDaEmpresa, $porId, $kitsPorBase, $sugestoes, $chaveConta) {
             $r = $rascunhos[$p->id] ?? null;
             $conta = $p->contaOuNula();
             $status = EditorRascunhoService::prontidao($r, $r ? ($validacoes[$r->id] ?? null) : null);
@@ -818,6 +857,9 @@ class ProgramasPublicadorService
             // Planejamento × Fase N (09/10/2026): ligado a Combo/Kit/Combit do Portal = composto, não
             // base de Fase 1. A oferta já veio no eager load: nenhuma consulta nova.
             $composto = PlanejamentoDaFaseService::tipoComposto($p);
+            // A foto da miniatura: a do próprio rascunho; kit sem foto própria mostra a do base.
+            $rascunhoDoBase = $base !== null ? ($rascunhos[$base->id] ?? null) : null;
+            $capa = ($r ? ($capas[$r->id]['url'] ?? null) : null) ?? ($rascunhoDoBase ? ($capas[$rascunhoDoBase->id]['url'] ?? null) : null);
 
             return [
                 'id' => $p->id,
@@ -826,6 +868,8 @@ class ProgramasPublicadorService
                 'origem' => $p->origem,
                 'oferta_id' => $p->oferta_id,
                 'rascunho_id' => $r?->id,
+                // Texto ou null, nunca objeto.
+                'capa' => self::miniaturaDaFoto($capa),
                 'status' => $status,
                 'status_rascunho' => $r?->status,
                 'anuncios' => $r ? array_values($anuncios[$r->id] ?? []) : [],

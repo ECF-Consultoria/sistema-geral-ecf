@@ -131,6 +131,23 @@ select option {
     color: #e8eaee;
 }
 
+/* Publicador — "Corrigir em…": o campo que a conferência aponta acende em amarelo (10/10/2026).
+   Quem põe o atributo é `Components/Publicador/destaque.js`. Fica fora de @layer e com !important
+   no contorno para vencer o `focus:outline-none` dos campos: clicar no campo aceso não o apaga. */
+[data-aceso] {
+    outline: 2px solid #ffe600 !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 6px rgba(255, 230, 0, 0.12);
+    animation: aceso-pulso 1.1s ease-in-out 3;
+}
+@keyframes aceso-pulso {
+    0%, 100% { box-shadow: 0 0 0 6px rgba(255, 230, 0, 0.12); }
+    50%      { box-shadow: 0 0 0 9px rgba(255, 230, 0, 0.28), 0 0 26px 4px rgba(255, 230, 0, 0.30); }
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-aceso] { animation: none; }
+}
+
 /* ECF Gradient line utility */
 .ecf-gradient-line {
     background: var(--grad-ecf);
