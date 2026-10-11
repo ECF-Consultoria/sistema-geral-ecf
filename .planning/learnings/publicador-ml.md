@@ -1342,3 +1342,45 @@ lado e a soma dos lados.
 
 **Não corrigido:** os dois kits que já estavam publicados (40 e 42, ambos na #459) seguem com a caixa de 1 no
 Mercado Livre. Não havia nenhum kit em rascunho em produção.
+
+## 29. O frete que o vendedor paga, lido POR ANÚNCIO publicado (11/10/2026)
+
+**Pedido do usuário:** conferir o frete em três momentos — na Precificação do Portal, no "Conferir no Mercado
+Livre" e no anúncio já publicado — e avisar quando a diferença for grande ("a palavra final é a do Mercado Livre
+depois de publicado; senão teríamos de reprecificar"). Em 11/10 foi só análise; nada disso foi implementado.
+
+**Medido em produção, nos 20 anúncios publicados da #459** (`scratchpad/e2e/frete_tres_pontos459.php`):
+
+- `GET /users/{seller}/shipping_options/free?item_id={MLB}` funciona e responde por anúncio:
+  `coverage.all_country.{list_cost, currency_id, billable_weight, discount{rate, type, promoted_amount}}`.
+  `list_cost` é o que o vendedor paga; `billable_weight` é o peso faturado, em gramas.
+- Exemplos: Mesa Redonda a R$ 604,32 → R$ 106,85 (peso faturado 21.120 g); Combit a R$ 6.000 → R$ 79,35;
+  mesa de cabeceira a R$ 200 → R$ 45,25.
+- **Armadilha:** o endpoint devolve custo também para anúncio que saiu `not_specified` ("a combinar"), onde o
+  Mercado Livre não cobra frete nenhum (Poltrona Opala: R$ 240,90). A comparação só vale com
+  `shipping.mode = me2` no anúncio; fora disso é "não se aplica".
+- Responde para anúncio `paused`, `inactive` e `closed`.
+
+**O que existe hoje e o que não existe** (levantamento de 11/10):
+
+| Momento | Leitura que existe | O que NÃO existe |
+|---|---|---|
+| Portal | Cotação na conta (`FreteMe2Service::cotar`, mesmo endpoint sem `item_id`) ou tabela; cache de 6 h | O frete USADO no preço não é gravado. Só o digitado é coluna |
+| Conferir | `simular()` ("Quanto você recebe"), só no botão e só na 1ª variante | A conferência não consulta frete; o frete do Portal não chega ao rascunho (`campoPorTipo` descarta) |
+| Publicado | `AnaliseAlavancasService::frete()`, sob demanda, cache de 1 h | Nada gravado, nada comparado; `depoisDeCriar` descarta o `shipping` do anúncio |
+
+**Comparar as três leituras como estão daria aviso falso.** Cada uma cota com parâmetros diferentes:
+
+| | Portal | `simular()` | Alavancas |
+|---|---|---|---|
+| Preço da cotação | o MÍNIMO do tipo | o ANUNCIADO da 1ª variante | o do anúncio |
+| `logistic_type` | o da conta, ou `drop_off` | `drop_off` fixo | o do anúncio |
+| `free_shipping` | `true` se preço ≥ 79 | não envia | o do anúncio |
+
+O frete muda por faixa de preço (cortes em 19, 49, 79, 100, 120, 150 e 200), e o anunciado é o mínimo mais o
+acréscimo: os dois podem cair em faixas diferentes.
+
+**Onde encaixar, sem migration:** levar o frete do Portal por um método novo em `DadosEfetivosService` (não em
+`daProduto()`, que o teste do lote compara inteiro); passo novo em `ConferenciaService::conferir()` depois da
+linha dos SKUs repetidos, gravando em `pub_validacoes.respostas_ml`; e um job depois de `concluir()` gravando em
+`pub_publicacao_itens.avisos`. O aviso pós-publicação cabe na tarefa "Publicados aguardando alavancas".
