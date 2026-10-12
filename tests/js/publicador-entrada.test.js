@@ -262,10 +262,23 @@ test('Tela B — a linha é focável, abre com Enter, e as abas montam com a con
     // ⚠️ A ÚNICA mudança de comportamento do layout v2: o Enter/clique na
     // linha abre o PAINEL lateral; a navegação passou para os botões.
     assert.match(linha, /aoAbrirPainel\?\.\(\)/);
-    assert.match(pagina, /conta={empresa\.chave}/);
-    // `abas?.company_id`: o default `{ company_id: null }` só cobre
-    // `undefined`, e `abas: null` numa recarga parcial derrubava a tela.
-    assert.match(pagina, /companyId={abas\??\.company_id( \?\? null)?}/);
+    // ⚠️ Fase 177, plano 07 — REAPONTE, não remoção (GATE-01). As duas
+    // asserções abaixo liam as props que a página passava à mão para
+    // `AbasDaConta` (`conta={empresa.chave}` e `companyId={abas?.company_id ??
+    // null}`). O `PublicadorHeader` tomou o lugar de `AbasDaConta` e recebe as
+    // DUAS informações dentro de `cabecalho` (plano 177-03), que ele resolve por
+    // dentro. Mesma coisa provada — a lista de Produtos monta o cabeçalho da
+    // conta com a aba "produtos" ativa — no alvo novo.
+    //
+    // ⚠️ `conta={empresa.chave}` NÃO podia continuar: a página ainda tem essa
+    // string (o `BotaoSincronizarPortal` a usa), então a asserção passaria sem
+    // provar nada sobre as abas — asserção vazia é pior que asserção ausente.
+    assert.match(pagina, /<PublicadorHeader\s+aba="produtos"/);
+    // ⚠️ A LIÇÃO que a asserção antiga guardava continua valendo e por isso
+    // continua escrita: o default de parâmetro (`cabecalho = null`) só cobre
+    // `undefined`, e uma prop NULA numa recarga parcial do Inertia já derrubou
+    // tela neste projeto. Daí o `?? null` explícito no ponto de uso.
+    assert.match(pagina, /cabecalho={cabecalho \?\? null}/);
     assert.doesNotMatch(pagina, /mlb\.anuncios\.wizard/);
 });
 

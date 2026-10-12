@@ -104,7 +104,20 @@ test('Alavancas.jsx — aceita o item do servidor, monta o painel e passa a cont
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Alavancas.jsx');
     assert.match(f, /typeof alavancas\.item === 'string'/);
     assert.match(f, /<PainelDoAnuncio key=\{item\} conta=\{conta\} item=\{item\} onAbrirAba=\{trocarAba\} onFechar=\{fecharAnuncio\} \/>/);
-    assert.match(f, /contagemAlavancas=\{alavancas\.tarefas_abertas \?\? null\}/);
+    // ⚠️ Fase 177, plano 07 — REAPONTE, não remoção (GATE-01). A contagem da
+    // aba continua EXISTINDO; o que mudou é de onde ela vem. Antes a página
+    // passava `contagemAlavancas={alavancas.tarefas_abertas ?? null}` ao
+    // `AbasDaConta`; agora o `PublicadorHeader` lê o MESMO número de
+    // `cabecalho.contadores.alavancas` (o servidor calcula os dois com a mesma
+    // chamada, `PubTarefa::abertasDaConta($mlbEmpresa, $company)` — ver
+    // `CabecalhoPublicadorService::para()` e `MlbAlavancasController::index()`).
+    // A asserção prova o que importa: a página monta o cabeçalho da conta com a
+    // aba "alavancas" ativa e com a prop que carrega o contador.
+    assert.match(f, /<PublicadorHeader aba="alavancas" cabecalho=\{cabecalho \?\? null\}/);
+    // Quem prova que o número aparece na pílula é o gate do plano 177-05
+    // (`publicador-header-abas-render.test.js`, render real de
+    // `cabecalho.contadores.alavancas`); aqui só se prova que a página monta o
+    // header com a aba certa e entrega a prop que leva o contador.
     assert.match(f, /url\.searchParams\.delete\('item'\)/);
 });
 
@@ -118,8 +131,16 @@ test('entradas: item do menu pela chave mlb.alavancas com badge, botão na entra
     const entrada = lerSemComentarios('resources/js/Pages/Mlb/AnunciosEmpresas.jsx');
     assert.match(entrada, /route\('mlb\.anuncios\.publicador\.tarefas\.index'\)/);
 
+    // ⚠️ Fase 177, plano 07 — REAPONTE, não remoção (GATE-01). As duas páginas
+    // passavam `contagemAlavancas={abas?.alavancas_pendentes ?? null}` ao
+    // `AbasDaConta`; o `PublicadorHeader` tomou o lugar dele e lê o MESMO
+    // contador de `cabecalho.contadores.alavancas` (plano 177-03). O que a
+    // asserção garante continua sendo o mesmo: estas duas telas montam o
+    // cabeçalho da conta que carrega o badge de alavancas pendentes.
     for (const p of ['resources/js/Pages/Mlb/Publicador/VisaoGeral.jsx', 'resources/js/Pages/Mlb/Publicador/Produtos.jsx']) {
-        assert.match(lerSemComentarios(p), /contagemAlavancas=\{abas\?\.alavancas_pendentes \?\? null\}/, p);
+        const fonte = lerSemComentarios(p);
+        assert.match(fonte, /<PublicadorHeader\s+aba="(visao-geral|produtos)"/, p);
+        assert.match(fonte, /cabecalho=\{cabecalho \?\? null\}/, p);
     }
     assert.match(lerSemComentarios('resources/js/Pages/Notificacoes/Index.jsx'), /tarefa_alavancas:/);
 });

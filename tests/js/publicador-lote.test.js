@@ -433,6 +433,44 @@ const propsDaTela = (o = {}) => ({
     ...o,
 });
 
+/**
+ * O `<button>` da tela cujo conteúdo contém `rotulo` — a tag de abertura junto
+ * com o corpo, de um elemento só.
+ *
+ * ⚠️ Fase 177, plano 07 — por que isto passou a existir, e por que é
+ * ENDURECIMENTO e não afrouxamento. As três asserções abaixo casavam no HTML
+ * INTEIRO, com `.*?` e a flag `/s`: `<button ... disabled="" ...>.*?Agendar
+ * publicação`. Enquanto o único botão desabilitado da tela era o próprio
+ * "Agendar", isso bastava. Com o `PublicadorHeader` no topo da página, a busca
+ * de ⌘K e o CTA "Nova publicação" nascem `disabled` (nos testes não há conta),
+ * então o `.*?` passou a sair de um botão do HEADER e varrer dezenas de
+ * elementos até o texto do botão de agendar — asserção vazia nas duas positivas
+ * e FALSO NEGATIVO na negativa (que foi a que reprovou). Scoped no elemento, as
+ * três voltam a provar exatamente o que o nome delas diz.
+ */
+function botaoDe(html, rotulo) {
+    for (const achado of html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)) {
+        if (achado[0].includes(rotulo)) return achado[0];
+    }
+
+    return null;
+}
+
+/** O botão existe E está (ou não está) desabilitado — `disabled=`, nunca `disabled`. */
+function exigirBotao(html, rotulo, { desabilitado }) {
+    const botao = botaoDe(html, rotulo);
+    assert.ok(botao, `botão "${rotulo}" não encontrado na tela`);
+    // ⚠️ `/disabled=/` e não `/disabled/`: as classes destes botões têm
+    // `disabled:opacity-*` e casariam sempre.
+    if (desabilitado) {
+        assert.match(botao, /disabled=/, `"${rotulo}" deveria estar desabilitado`);
+    } else {
+        assert.doesNotMatch(botao, /disabled=/, `"${rotulo}" deveria estar habilitado`);
+    }
+
+    return botao;
+}
+
 test('tela — título, filtros com contagem, painel da fila, linhas e os dois botões', () => {
     const html = renderToStaticMarkup(React.createElement(paginaLote.default, propsDaTela()));
     assert.match(html, /<h1[^>]*>Publicação em lote<\/h1>/);
@@ -441,8 +479,8 @@ test('tela — título, filtros com contagem, painel da fila, linhas e os dois b
     assert.match(html, /Fila de publicação/);
     assert.match(html, /Puff Redondo/);
     assert.match(html, /Confira no Mercado Livre antes de agendar\./);
-    assert.match(html, /<button[^>]*disabled=""[^>]*>.*?Conferir selecionados/s, 'sem seleção, nada a conferir');
-    assert.match(html, /<button[^>]*disabled=""[^>]*>.*?Agendar publicação/s);
+    exigirBotao(html, 'Conferir selecionados', { desabilitado: true });   // sem seleção, nada a conferir
+    exigirBotao(html, 'Agendar publicação', { desabilitado: true });
     assert.doesNotMatch(html, /selecionados<span/);
     assert.doesNotMatch(html, /\[object Object\]/);
 });
@@ -453,7 +491,52 @@ test('tela — a seleção que veio dos Produtos liga Conferir e Agendar (só os
     assert.match(html, /1 pronto para agendar/);
     assert.match(html, /Conferir selecionados \(2\)/);
     assert.match(html, /Agendar publicação \(1\)/);
-    assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*>[^<]*<svg[^>]*>.*?Agendar publicação \(1\)/s);
+    exigirBotao(html, 'Agendar publicação (1)', { desabilitado: false });
+    exigirBotao(html, 'Conferir selecionados (2)', { desabilitado: false });
+});
+
+// ⚠️ Fase 177, plano 07 — ASSERÇÃO NOVA, e a razão é que esta tela ficou SEM
+// rede: o bloco de filtros + cabeçalho das colunas do lote tinha `sticky top-0`
+// e nenhum teste olhava para ele (medido por mutação: trocar por `top-0` não
+// reprovava nada aqui). Com o `PublicadorHeader` global ocupando 108px do topo
+// do mesmo scrollport (o `<main>` com `overflow-y-auto`: `h-[60px]` da linha 1
+// + `h-[48px]` da nav), `top-0` esconderia os filtros ATRÁS do header ao rolar
+// — regressão FUNCIONAL, não estética, e é a mesma conta da lista de Produtos.
+test('tela — o bloco de filtros cola ABAIXO do header global (108px), nunca atrás dele', () => {
+    const html = renderToStaticMarkup(React.createElement(paginaLote.default, propsDaTela()));
+
+    // ⚠️ Colchetes escapados: `[108px]` cru seria classe de caracteres.
+    assert.match(html, /sticky top-\[108px\] z-10 rounded-t-xl bg-ecf-card/);
+    assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1, 'esperava UM bloco colado abaixo do header');
+    // E `top-0` não volta NESTE bloco. O ` z-10` à direita é o que impede o
+    // casamento por prefixo (`top-0` casa dentro de `top-0.5`); o `class="` à
+    // esquerda impede casar o header, que é legitimamente `sticky top-0 z-50`.
+    assert.doesNotMatch(html, /class="sticky top-0 z-10/);
+    // O header global está no topo da tela e é ele que justifica o 108.
+    assert.match(html, /<header class="sticky top-0 z-50/);
+    assert.match(html, /class="flex h-\[60px\] items-center/);
+    assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
+});
+
+// ⚠️ Fase 177, plano 07 — o slot de ações da tela não pode se perder (HEAD-11).
+// O link "‹ Produtos" era `acoes` da `BarraDaConta` e passou para o `acoes` do
+// `PublicadorHeader`, com o MESMO conteúdo. Sem esta asserção, apagar o slot na
+// troca não reprovava nada.
+test('tela — o link de volta aos Produtos sobreviveu à troca do header (slot acoes)', () => {
+    const html = renderToStaticMarkup(React.createElement(paginaLote.default, propsDaTela()));
+    const volta = [...html.matchAll(/<a\b[^>]*>[\s\S]*?<\/a>/g)].filter((m) => m[0].includes('Produtos'));
+
+    assert.ok(
+        volta.some((m) => m[0].includes('/mlb.anuncios.publicador.produtos')),
+        'o link de volta para a lista de Produtos desapareceu do header',
+    );
+    // E ele mora DENTRO do header (é ação de página na linha 2), não no corpo.
+    const fimDoHeader = html.indexOf('</header>');
+    assert.ok(fimDoHeader !== -1, '<header> do PublicadorHeader não encontrado');
+    assert.ok(
+        html.indexOf('/mlb.anuncios.publicador.produtos') < fimDoHeader,
+        'o link de volta caiu fora do header',
+    );
 });
 
 test('tela — conta não liberada: aviso e Agendar desligado; lista vazia tem o seu estado', () => {

@@ -62,7 +62,8 @@ test('órfão — todo .jsx da pasta é importado por outro arquivo da pasta ou 
     const todos = ARQUIVOS.map((c) => [c, lerSemComentarios(c)]);
     // AreaTabs.jsx fica intencionalmente sem uso desde a Fase 172 (Publicador)
     // — remover depois de uma semana em produção sem regressão, junto com
-    // ModoAnuncioTabs.jsx. Produtos.jsx e Alavancas.jsx agora usam AbasDaConta.
+    // ModoAnuncioTabs.jsx. Produtos.jsx e Alavancas.jsx usam o
+    // `PublicadorHeader` global desde a Fase 177, plano 07 (antes: AbasDaConta).
     for (const [caminho] of todos.filter(([c]) => c.endsWith('.jsx') && c !== PAGINA && !c.endsWith('/AreaTabs.jsx'))) {
         const nome = caminho.split('/').pop().replace(/\.jsx$/, '');
         const importado = todos.some(([outro, fonte]) => outro !== caminho && new RegExp(`import[^;]*from '[^']*/${nome}'`).test(fonte));
@@ -78,10 +79,18 @@ test('AreaTabs — troca de rota entre as duas áreas e marca a atual', () => {
     assert.match(f, /aria-current/);
 });
 
-test('Produtos.jsx — adota AbasDaConta com a aba produtos', () => {
+// ⚠️ Fase 177, plano 07 — REAPONTE, não remoção (GATE-01). `BarraDaConta` +
+// `AbasDaConta` saíram das 6 páginas do Publicador e o `PublicadorHeader`
+// global entrou no lugar das duas. A asserção prova a MESMA coisa (a lista de
+// Produtos monta o cabeçalho da conta marcando a aba "produtos" como ativa), no
+// alvo novo. O nome do teste mudou junto, senão ele mentiria sobre o que lê.
+test('Produtos.jsx — adota PublicadorHeader com a aba produtos', () => {
     const f = lerSemComentarios('resources/js/Pages/Mlb/Publicador/Produtos.jsx');
-    assert.match(f, /import AbasDaConta /);
-    assert.match(f, /<AbasDaConta aba="produtos"/);
+    assert.match(f, /import PublicadorHeader /);
+    assert.match(f, /<PublicadorHeader\s+aba="produtos"/);
+    // E o header antigo não volta por engano nesta página.
+    assert.doesNotMatch(f, /import AbasDaConta /);
+    assert.doesNotMatch(f, /import BarraDaConta[ ,]/);
 });
 
 test('Alavancas.jsx — barra da área e estado sem conta', () => {

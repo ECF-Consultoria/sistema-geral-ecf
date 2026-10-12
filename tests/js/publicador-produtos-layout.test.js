@@ -1250,6 +1250,27 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
         rascunhos_antigos: { total: 0, url: null },
         criativos_ia: { url: null },
         abas: { company_id: 459 },
+        // ⚠️ Fase 177, plano 07 — a prop do header global (plano 177-03). Entra
+        // aqui com dado REAL (e não só ausente) porque é ela que alimenta nome e
+        // chave da conta, selos, abas e contadores agora que `BarraDaConta` e
+        // `AbasDaConta` saíram da página. `publicacoes: null` é de propósito: o
+        // acervo pode nunca ter sido coletado, e nesse caso a pílula não é
+        // desenhada — `null` NUNCA vira `0` na tela.
+        cabecalho: {
+            aba: 'produtos',
+            empresa: {
+                chave: 'company-459', nome: 'Dev 02 Testes API', identificador: '459',
+                programa: 'polos', programa_rotulo: 'Polos', token: 'ativo',
+                portal: { situacao: 'sincronizado', novas: 0 },
+            },
+            company_id: 459,
+            contadores: { produtos: 1, publicacoes: null, publicacoes_pedem_acao: null, alavancas: 0 },
+            integracoes: {
+                mercado_livre: { token: 'ativo' },
+                erp: { declarado: null },
+                portal: { situacao: 'sincronizado', novas: 0, sincronizado_em: null },
+            },
+        },
         ...overrides,
     });
 
@@ -1259,10 +1280,32 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
         return renderToStaticMarkup(React.createElement(Produtos, propsBase(overrides)));
     };
 
-    await contexto.test('UM bloco sticky top-0 com filtros + cabeçalho das colunas, sem overflow-x', () => {
+    await contexto.test('UM bloco sticky logo abaixo do header, com filtros + cabeçalho das colunas, sem overflow-x', () => {
         let html;
         assert.doesNotThrow(() => { html = render(); });
-        assert.match(html, /sticky top-0 z-10 rounded-t-xl bg-ecf-card/);
+        // ⚠️ Fase 177, plano 07 — REAPONTE (`top-0` → `top-[108px]`), e a razão
+        // é FUNCIONAL, não estética. O `PublicadorHeader` global passou a ser o
+        // primeiro filho desta página e é `sticky top-0` no MESMO scrollport (o
+        // `<main>` do `AppLayout`, que tem `overflow-y-auto`). Ele ocupa 108px
+        // do topo: `h-[60px]` na linha 1 + `h-[48px]` na nav. Com `top-0`, este
+        // bloco colaria em 0 e ficaria ATRÁS do header ao rolar — o usuário
+        // perderia os filtros e os nomes das colunas, que é exatamente o
+        // problema que este teste nasceu para impedir.
+        // ⚠️ Colchetes escapados: `[108px]` cru seria classe de caracteres.
+        assert.match(html, /sticky top-\[108px\] z-10 rounded-t-xl bg-ecf-card/);
+        // E `top-0` não volta NESTE bloco. ⚠️ O `z-10` à direita é o que impede
+        // o casamento por prefixo (`top-0` casa dentro de `top-0.5`); o
+        // `class="` à esquerda é o que impede casar o header, que é
+        // legitimamente `class="sticky top-0 z-50 ...`.
+        assert.doesNotMatch(html, /class="sticky top-0 z-10/);
+        // UM só: o header é `z-50`, o bloco de filtros é o único `z-10`.
+        assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1);
+        // E o header global, que é o que justifica o 108: linha 1 de 60px +
+        // nav de 48px. Se uma das duas medidas mudar, o `top-[108px]` acima
+        // passa a esconder (ou a sobrar) e esta asserção acusa.
+        assert.match(html, /<header class="sticky top-0 z-50/);
+        assert.match(html, /class="flex h-\[60px\] items-center/);
+        assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
         assert.doesNotMatch(html, /overflow-x-auto/);
         assert.doesNotMatch(html, /<table|<tbody|<thead/);
         // A grade entra com as colunas do breakpoint largo (default da referência).
@@ -1400,14 +1443,64 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
 
         // A página sempre recebe `empresa` do controller; o caso aqui é cada
         // uma das OUTRAS props faltando.
-        for (const faltando of ['liberada', 'produtos', 'contagens', 'rascunhos_antigos', 'criativos_ia', 'abas']) {
+        // ⚠️ `cabecalho` ACRESCENTADA à lista (Fase 177, plano 07): é a prop do
+        // header global, e a tela preta de 07/10/2026 nasceu exatamente de uma
+        // prop do servidor chegando em formato que ninguém tinha exercitado.
+        // Ausente e NULA são casos distintos — o default de parâmetro só cobre
+        // `undefined`, e por isso os dois entram.
+        for (const faltando of ['liberada', 'produtos', 'contagens', 'rascunhos_antigos', 'criativos_ia', 'abas', 'cabecalho']) {
             const props = propsBase();
             delete props[faltando];
+            // E o par NULO da mesma prop, que o default de parâmetro NÃO cobre.
+            assert.doesNotThrow(
+                () => renderToStaticMarkup(React.createElement(Produtos, { ...propsBase(), [faltando]: null })),
+                `prop NULA derrubou a tela: ${faltando}`,
+            );
             assert.doesNotThrow(
                 () => renderToStaticMarkup(React.createElement(Produtos, props)),
                 `prop ausente derrubou a tela: ${faltando}`,
             );
         }
+    });
+
+    // ⚠️ Fase 177, plano 07 — ASSERÇÃO NOVA (HEAD-11/REG-01). O slot de ações
+    // da lista (Sincronizar do Portal + "+ Produto") era `acoes` da
+    // `BarraDaConta` e passou para o `acoes` do `PublicadorHeader`, com o MESMO
+    // conteúdo. Medido: sem isto, apagar o slot inteiro na troca não reprovava
+    // nada na suíte — e é a capacidade mais visível da tela.
+    await contexto.test('o slot de ações sobreviveu à troca do header, DENTRO do header', () => {
+        // ⚠️ Só o trecho do `<header>`. Procurar "Sincronizar do Portal" no HTML
+        // inteiro NÃO serve: o painel "Como funciona" tem uma seção com esse
+        // título (`Produtos.jsx`, PASSOS) e ela aparece mesmo sem Portal — foi
+        // o que reprovou a primeira versão desta asserção e salvou um falso
+        // positivo de entrar no repositório.
+        const soOHeader = (completo) => {
+            const fim = completo.indexOf('</header>');
+            assert.ok(fim !== -1, '<header> do PublicadorHeader não encontrado');
+
+            return completo.slice(0, fim);
+        };
+
+        const header = soOHeader(render());
+
+        // Ação 1: Sincronizar do Portal, no header.
+        assert.match(header, /Sincronizar do Portal/);
+        // Ação 2: o "+ Produto", como BOTÃO (a palavra "Produtos" da aba
+        // casaria uma asserção de substring solta — aqui o alvo é a tag).
+        const botoesDoHeader = [...header.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map((m) => m[0]);
+        assert.ok(
+            botoesDoHeader.some((b) => /<\/svg>Produto<\/button>/.test(b)),
+            'o botão "+ Produto" desapareceu do slot de ações',
+        );
+
+        // Sem Portal (ou sem Company) o Sincronizar continua NÃO aparecendo no
+        // header — `podeSincronizar` segue mandando, igual a antes da troca.
+        const semPortal = soOHeader(render({
+            empresa: { ...propsBase().empresa, portal: { situacao: 'sem_portal', novas: 0 } },
+        }));
+        assert.doesNotMatch(semPortal, /Sincronizar do Portal/);
+        // E o "+ Produto" fica: ele não depende do Portal.
+        assert.match(semPortal, /<\/svg>Produto<\/button>/);
     });
 
     await contexto.test('CADA campo do produto como objeto/array/nulo/ausente na tela montada', () => {

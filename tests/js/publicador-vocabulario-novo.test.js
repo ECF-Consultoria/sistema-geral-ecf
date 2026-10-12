@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -211,4 +213,164 @@ test('GATE-03 — os literais de IDENT-02 e IDENT-05 estão byte a byte', async 
         assert.match(mapa, /title=\{descricao\}/);
         assert.match(mapa, /aria-label=\{descricao\}/);
     });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 177, plano 07 — o header antigo não volta por engano.
+//
+// ⚠️ AQUI A LISTA É UM GLOB, de propósito, e é o OPOSTO da constante
+// `ARQUIVOS_NOVOS` acima: lá a constante existe para que arquivo novo não entre
+// no gate sem alguém olhar; aqui o glob existe para que PÁGINA nova não escape
+// dele. Uma página criada amanhã dentro de `Pages/Mlb/Publicador/` que montasse
+// `BarraDaConta`/`AbasDaConta` passaria calada por uma lista fixa.
+//
+// `import { textoSeguro } from '.../BarraDaConta'` continua PERMITIDO: a função
+// mora naquele arquivo desde a Fase 172 e o header novo também a importa de lá
+// (uma regra, uma casa). O que está vetado é o COMPONENTE: o `default` de
+// `BarraDaConta` e qualquer import de `AbasDaConta`.
+//
+// ⚠️ ESCOPO: só `Pages/Mlb/Publicador/`. As três páginas de `/mlb/anuncios`
+// (`AnunciarMassa`, `AnunciosHistorico`, `MeusAnuncios`) são do plano 177-08 e
+// ainda montam o header antigo — incluí-las aqui reprovaria trabalho alheio em
+// andamento.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DIR_PAGINAS_PUBLICADOR = 'resources/js/Pages/Mlb/Publicador';
+
+const PAGINAS_DO_PUBLICADOR = readdirSync(resolve(import.meta.dirname, '../..', DIR_PAGINAS_PUBLICADOR))
+    .filter((nome) => nome.endsWith('.jsx'))
+    .map((nome) => `${DIR_PAGINAS_PUBLICADOR}/${nome}`);
+
+test('GATE-01 — nenhuma página do Publicador monta BarraDaConta nem AbasDaConta (o header é o PublicadorHeader)', async (contexto) => {
+    // Sem isto, um glob que não achasse nada passaria vazio e por omissão.
+    assert.ok(PAGINAS_DO_PUBLICADOR.length >= 7, `esperava ao menos 7 páginas, achei ${PAGINAS_DO_PUBLICADOR.length}`);
+
+    for (const caminho of PAGINAS_DO_PUBLICADOR) {
+        const fonte = lerSemComentarios(caminho);
+
+        await contexto.test(`${caminho} — zero import de AbasDaConta`, () => {
+            // Qualquer forma de import daquele módulo, inclusive com o default
+            // renomeado (`import Abas from '.../AbasDaConta'`).
+            assert.doesNotMatch(fonte, /import[^;]*from\s*'[^']*\/AbasDaConta'/);
+        });
+
+        await contexto.test(`${caminho} — de BarraDaConta só o named textoSeguro, nunca o default`, () => {
+            for (const m of fonte.matchAll(/import\s+([^;]*?)\s+from\s*'[^']*\/BarraDaConta'/g)) {
+                // `{ textoSeguro }` passa; `BarraDaConta`, `Barra` ou
+                // `BarraDaConta, { textoSeguro }` reprovam.
+                assert.ok(
+                    m[1].trimStart().startsWith('{'),
+                    `${caminho} importou o COMPONENTE de BarraDaConta: ${m[0]}`,
+                );
+            }
+        });
+
+        await contexto.test(`${caminho} — zero <BarraDaConta> e zero <AbasDaConta> no JSX`, () => {
+            assert.doesNotMatch(fonte, /<BarraDaConta[\s/>]/);
+            assert.doesNotMatch(fonte, /<AbasDaConta[\s/>]/);
+        });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 177, plano 07 — HEAD-14: o header existe e nasce no lugar certo.
+//
+// POR QUE ESTE GATE PRECISOU EXISTIR: o teste acima (GATE-01) prova que o
+// header ANTIGO não volta, e isso não é a mesma coisa que provar que o NOVO
+// está lá. Medido: apagar `<PublicadorHeader …>` de `Produto.jsx` não reprovava
+// NADA na suíte inteira — aquela página não tinha gate nenhum. E o
+// `PublicacaoEmLote` só era lido por testes que não olhavam o topo da tela.
+//
+// E não basta "está no arquivo": o header TEM de vir ANTES do container do
+// corpo (`mx-auto max-w-[1240px]`). É ele que carrega o `-mx-6 -mt-6` que
+// neutraliza o `p-6` do `<main>` (HEAD-14); dentro de um container com `px-8`
+// ele não encostaria nas bordas e FID-05 (conteúdo de 1600px com 36px de
+// padding) ficaria impossível.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * As 6 páginas por conta que montam o header global (plano 177-07), e a aba
+ * que CADA uma marca como ativa.
+ *
+ * ⚠️ O valor esperado está aqui porque "tem header" não bastava: a prova por
+ * mutação achou um FURO — trocar `aba="configuracoes"` por `aba="produtos"` na
+ * tela de Configurações passava calado, e a tela marcaria a aba Produtos como
+ * ativa estando em outro lugar.
+ *
+ * ⚠️ `Produto.jsx` é `produtos` de propósito: é o DETALHE de um produto, não
+ * uma aba nova. `PublicacaoEmLote.jsx` também. E `Configuracoes.jsx` é
+ * `configuracoes`, que NÃO é uma das quatro abas — Configurações virou o ícone
+ * de engrenagem da linha 1 (HEAD-08), e o valor serve para nenhuma das quatro
+ * ficar ativa.
+ */
+const ABA_POR_PAGINA = new Map([
+    ['VisaoGeral.jsx', 'visao-geral'],
+    ['Produtos.jsx', 'produtos'],
+    ['Produto.jsx', 'produtos'],
+    ['Alavancas.jsx', 'alavancas'],
+    ['Configuracoes.jsx', 'configuracoes'],
+    ['PublicacaoEmLote.jsx', 'produtos'],
+]);
+
+const PAGINAS_COM_HEADER = [...ABA_POR_PAGINA.keys()];
+
+/**
+ * As que NÃO têm header de conta, com o motivo escrito:
+ *  · `Editor.jsx` tem a própria casca de etapas (e é território de outro dev —
+ *    REG-03 proíbe tocá-la nesta fase);
+ *  · `Tarefas.jsx` é a fila de alavancas de TODAS as contas numa lista só, sem
+ *    conta aberta (está escrito no topo do arquivo desde a Fase 172).
+ */
+const PAGINAS_SEM_HEADER = ['Editor.jsx', 'Tarefas.jsx'];
+
+test('HEAD-14 — as 6 páginas por conta montam o PublicadorHeader antes do container do corpo', async (contexto) => {
+    // ⚠️ Esta primeira asserção é o que impede o gate de passar POR OMISSÃO:
+    // página nova em `Pages/Mlb/Publicador/` não entra calada em nenhuma das
+    // duas listas — alguém tem de decidir se ela tem header de conta ou não.
+    await contexto.test('as duas listas cobrem exatamente os .jsx da pasta', () => {
+        const declaradas = [...PAGINAS_COM_HEADER, ...PAGINAS_SEM_HEADER].sort();
+        const naPasta = PAGINAS_DO_PUBLICADOR.map((c) => c.split('/').pop()).sort();
+        assert.deepEqual(naPasta, declaradas);
+    });
+
+    for (const nome of PAGINAS_COM_HEADER) {
+        const fonte = lerSemComentarios(`${DIR_PAGINAS_PUBLICADOR}/${nome}`);
+
+        await contexto.test(`${nome} — importa e monta <PublicadorHeader>, uma vez só`, () => {
+            assert.match(fonte, /import PublicadorHeader from '@\/Components\/Mlb\/Publicador\/header\/PublicadorHeader'/);
+            assert.equal((fonte.match(/<PublicadorHeader\b/g) ?? []).length, 1);
+        });
+
+        await contexto.test(`${nome} — marca a aba ativa certa (aba="${ABA_POR_PAGINA.get(nome)}")`, () => {
+            // ⚠️ A prop `aba` é lida DA TAG, não procurada no arquivo inteiro:
+            // `aba="produtos"` solto apareceria em qualquer outro lugar da
+            // página e a asserção passaria pelo motivo errado.
+            const tag = fonte.match(/<PublicadorHeader\b[\s\S]*?(?:\/>|>)/);
+            assert.ok(tag, 'tag de <PublicadorHeader> não encontrada');
+            assert.match(tag[0], new RegExp(`aba="${ABA_POR_PAGINA.get(nome)}"`));
+            // E só UMA prop `aba` na tag (nunca duas, nunca a de outra tela).
+            assert.equal((tag[0].match(/\baba="/g) ?? []).length, 1);
+        });
+
+        await contexto.test(`${nome} — o header vem ANTES do container do corpo (HEAD-14)`, () => {
+            const header = fonte.indexOf('<PublicadorHeader');
+            const corpo = fonte.indexOf('mx-auto max-w-[1240px]');
+            assert.ok(header !== -1, 'header não encontrado');
+            assert.ok(corpo !== -1, 'container do corpo (max-w-[1240px]) não encontrado');
+            assert.ok(header < corpo, `${nome}: o header nasceu DENTRO do container do corpo — com o px-8 dele o -mx-6 não encosta nas bordas`);
+        });
+
+        await contexto.test(`${nome} — passa cabecalho com o ?? null explícito`, () => {
+            // O default de parâmetro só cobre `undefined`; prop NULA numa
+            // recarga parcial do Inertia já derrubou tela neste projeto.
+            assert.match(fonte, /cabecalho=\{cabecalho \?\? null\}/);
+        });
+    }
+
+    for (const nome of PAGINAS_SEM_HEADER) {
+        await contexto.test(`${nome} — segue SEM header de conta, de propósito`, () => {
+            const fonte = lerSemComentarios(`${DIR_PAGINAS_PUBLICADOR}/${nome}`);
+            assert.doesNotMatch(fonte, /<PublicadorHeader\b/);
+        });
+    }
 });

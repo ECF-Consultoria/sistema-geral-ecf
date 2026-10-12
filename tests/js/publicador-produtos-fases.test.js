@@ -385,7 +385,21 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         assert.doesNotMatch(html, /<table|<tbody|<thead|<td|<th[ >]/);
         assert.doesNotMatch(html, /overflow-x-auto/);
         // O bloco fixo (filtros + seleção + cabeçalho) existe e cola no topo.
-        assert.match(html, /sticky top-0 z-10/);
+        // ⚠️ Fase 177, plano 07 — REAPONTE (`top-0` → `top-[108px]`). O
+        // `PublicadorHeader` global é `sticky top-0` no MESMO scrollport (o
+        // `<main>` com `overflow-y-auto`) e ocupa 108px do topo (60px da linha 1
+        // + 48px da nav). Com `top-0` este bloco colaria em 0 e ficaria ATRÁS do
+        // header ao rolar — o usuário perderia os filtros e os nomes das
+        // colunas. A asserção prova a mesma coisa (o bloco cola), no valor novo.
+        // ⚠️ Escapes nos colchetes: `top-[108px]` é classe arbitrária do
+        // Tailwind, e `[108px]` cru seria uma CLASSE DE CARACTERES no regex.
+        assert.match(html, /sticky top-\[108px\] z-10/);
+        // E `top-0` não pode voltar neste bloco. ⚠️ O ` z-10` à direita não é
+        // enfeite: é ele que impede o casamento por PREFIXO (sem ele, `top-0`
+        // casaria dentro de `top-0.5` e a asserção passaria com a classe
+        // errada). O `class="` à esquerda impede casar o header, que é
+        // `class="sticky top-0 z-50`.
+        assert.doesNotMatch(html, /class="sticky top-0 z-10/);
         // E a grade usa as colunas do breakpoint largo (sem `innerWidth` no
         // stub do window, a tela cai no default largo da referência).
         assert.match(html, /grid-template-columns:44px minmax\(240px,1fr\) 132px 172px 120px 92px 152px/);
@@ -653,7 +667,12 @@ test('Tela B — gates de fonte: rota da tela do Produto, stopPropagation e tabe
     // horizontal e que impedia o cabeçalho de colar no topo. A grade é CSS, e
     // o recuo do kit continua sendo só visual (uma lista plana de linhas).
     assert.doesNotMatch(fonte, /<table|<tbody|<thead|overflow-x-auto/);
-    assert.match(fonte, /sticky top-0 z-10/);
+    // ⚠️ Fase 177, plano 07 — REAPONTE (`top-0` → `top-[108px]`): o
+    // `PublicadorHeader` global passou a ocupar 108px do topo do scrollport
+    // (60px da linha 1 + 48px da nav), e `top-0` esconderia este bloco atrás
+    // dele. Mesma prova, valor novo. Colchetes escapados de propósito.
+    assert.match(fonte, /sticky top-\[108px\] z-10/);
+    assert.doesNotMatch(fonte, /"sticky top-0 z-10/);
     assert.match(fonte, /colunasDaLargura\(largura\)/);
     // O card não pode ter overflow-hidden, senão o sticky morre.
     assert.doesNotMatch(fonte, /rounded-xl bg-ecf-card[^'"]*overflow-hidden/);

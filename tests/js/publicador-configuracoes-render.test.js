@@ -81,6 +81,13 @@ global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
 // incompatível com bundle ESM do esbuild) — mesmo stub inline de
 // `publicador-barra-abas-render.test.js`: só precisa de `Link` e `router.get`
 // (não chamado em render estático).
+//
+// ⚠️ Fase 177, plano 07 — `usePage` ACRESCENTADA ao stub (nenhuma asserção
+// mudou). A página passou a montar o `PublicadorHeader`, que lê o usuário logado
+// com `usePage()` para o dropdown de empresa (as contas recentes têm chave por
+// usuário). Sem este export o esbuild nem compila ("No matching export ... for
+// import usePage") e os dois testes abaixo morrem no BUILD, antes de qualquer
+// asserção — é correção do arnês do teste, não afrouxamento do gate.
 const STUB_INERTIA = path.join(__dirname, `.configuracoes-inertia-stub-${process.pid}.mjs`);
 fs.writeFileSync(STUB_INERTIA, `
 import React from 'react';
@@ -88,6 +95,7 @@ export function Link({ href, children, className, ...props }) {
     return React.createElement('a', { href, className, ...props }, children);
 }
 export const router = { get: () => {}, post: () => {}, reload: () => {} };
+export function usePage() { return { props: {} }; }
 `, 'utf8');
 
 // `AppLayout.jsx` é a casca inteira do app (sidebar, notificações, tema) —
