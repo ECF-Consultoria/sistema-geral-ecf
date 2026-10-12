@@ -334,7 +334,7 @@ booleano, o modal mostraria os produtos da **empresa anterior**. Dado errado é 
 | Gate | Comando | Resultado |
 |---|---|---|
 | 1 | `npm run test:js` | **3012 testes / 3011 pass / 1 fail** — o fail é o **pré-existente** `estrutura-grade-glide` ("Características secundárias nasce recolhido"), **não corrigido de propósito**. Baseline era 2966/2965/1 → **+46 casos**, nenhuma regressão |
-| 2 | `node --test` nos 6 arquivos do plano | modal: **127/127** · header-render: **79/79** · header-abas: **?/?** e header-conta: **181/181 juntos** · nas-paginas + vocabulário: **199/199** · configuracoes: **15/15** |
+| 2 | `node --test` nos 7 arquivos tocados ou citados, **um por um** | modal: **127/127** · header-render: **79/79** · header-abas: **72/72** · header-conta: **109/109** · nas-paginas: **37/37** · vocabulário: **168/168** · configuracoes: **15/15** — **607 casos, 0 falhas** |
 | 3 | `git diff --stat da54a9ee..HEAD -- …/atalhosDoHeader.js` | **vazio** |
 | 4 | `git diff --stat da54a9ee..HEAD -- …/AppLayout.jsx` | **vazio** |
 | 5 | `git diff --stat da54a9ee..HEAD -- resources/js/Pages` | **vazio** — nenhuma das 9 páginas mudou |
@@ -476,3 +476,16 @@ existia para pegar.
 ---
 *Fase: 178-modal-nova-publicacao · Plano 03*
 *Concluído: 2026-10-12*
+
+## Self-Check: PASSED
+
+- `resources/js/Components/Mlb/Publicador/header/ModalNovaPublicacao.jsx` — existe (293 linhas)
+- `.planning/phases/178-modal-nova-publicacao/178-03-SUMMARY.md` — existe
+- commits `04244330`, `daff4649`, `755419be`, `4b1255d4` — todos no histórico
+- `<ModalNovaPublicacao` montado em `PublicadorHeader.jsx` (4 menções: import, comentário e a tag)
+- `ModalNovaPublicacao.jsx` presente em `ARQUIVOS_NOVOS` de `tests/js/publicador-vocabulario-novo.test.js`
+- os 7 arquivos de teste rodados **um por um**: 607 casos, 0 falhas
+- `npm run build` verde e manifest conferido pelo JSON (480 entradas, `app.jsx` presente, as 8
+  páginas do Publicador presentes, `ModalNovaPublicacao` sem entrada própria — correto)
+- sha256 dos dois arquivos mutados idêntico ao de antes da campanha
+- `git status --short -- tests/js resources/js` limpo (nenhuma fixture órfã)
