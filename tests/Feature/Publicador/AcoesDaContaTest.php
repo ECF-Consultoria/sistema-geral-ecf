@@ -162,7 +162,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 1. Severidade e ordem (VG-09) ═══════════════════════════════════════
 
-    /** @test */
     public function test_cada_chave_tem_a_severidade_do_mapa(): void
     {
         $esperado = [
@@ -191,7 +190,6 @@ class AcoesDaContaTest extends TestCase
         }
     }
 
-    /** @test */
     public function test_as_acoes_saem_ordenadas_critico_atencao_oportunidade(): void
     {
         // Entrada EMBARALHADA de propósito: se o serviço só repassasse a ordem de
@@ -222,8 +220,6 @@ class AcoesDaContaTest extends TestCase
      * que `oQueFazerAgora()` já entrega — que é a ordem fixa do handoff, com teste
      * próprio desde a Fase 173. Um `usort` que desempatasse por nome de chave
      * reordenaria as três de `atencao` e desfaria aquela decisão sem avisar.
-     *
-     * @test
      */
     public function test_a_ordem_dentro_da_severidade_e_a_de_entrada(): void
     {
@@ -250,8 +246,6 @@ class AcoesDaContaTest extends TestCase
      * futura que acrescente linha em `oQueFazerAgora()` sem mexer no mapa não pode
      * fazer a ação desaparecer da tela em silêncio — isso seria regressão por
      * omissão, que é o pior tipo porque nada acusa.
-     *
-     * @test
      */
     public function test_chave_desconhecida_cai_em_atencao_e_aparece(): void
     {
@@ -265,7 +259,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame(2, $saida['contagens']['todas'], 'a desconhecida CONTA');
     }
 
-    /** @test */
     public function test_linha_sem_chave_usavel_nao_entra(): void
     {
         // Shape antigo (pré-Task 1) ou chave vazia: não há como endereçar o
@@ -283,7 +276,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 2. Contagens por severidade (VG-20) ═════════════════════════════════
 
-    /** @test */
     public function test_contagens_por_severidade_batem_com_a_lista(): void
     {
         $linhas = [
@@ -312,7 +304,6 @@ class AcoesDaContaTest extends TestCase
         }
     }
 
-    /** @test */
     public function test_linhas_vazias_devolvem_lista_vazia_e_contagens_em_zero(): void
     {
         $saida = $this->service->acoes($this->alvo(), [], $this->jornadaVazia(), [], null);
@@ -323,7 +314,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertIsString($saida['volta_em_iso']);
     }
 
-    /** @test */
     public function test_o_shape_do_retorno_e_fechado(): void
     {
         $saida = $this->service->acoes($this->alvo(), [$this->linha('com_problema')], $this->jornadaVazia(), [], null);
@@ -338,7 +328,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 3. A recomendada (VG-10) ════════════════════════════════════════════
 
-    /** @test */
     public function test_a_primeira_da_lista_completa_e_a_recomendada(): void
     {
         $linhas = [$this->linha('portal_novas'), $this->linha('com_problema'), $this->linha('pausados')];
@@ -356,8 +345,6 @@ class AcoesDaContaTest extends TestCase
      * servidor manda TUDO e as contagens — não existe parâmetro de severidade.
      * Por isso a `recomendada` já sai decidida e é estável sob qualquer filtro
      * que o cliente aplique: ela é a primeira da lista COMPLETA.
-     *
-     * @test
      */
     public function test_a_recomendada_e_estavel_sob_filtro_do_cliente(): void
     {
@@ -386,7 +373,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 4. A ação NOVA `sem_publicacao` (VG-12) ═════════════════════════════
 
-    /** @test */
     public function test_sem_publicacao_nasce_do_estagio_none_da_jornada(): void
     {
         $jornada = $this->jornada([
@@ -410,7 +396,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame('https://exemplo/produtos?estagio=none', $acao['destino']['url'] ?? $acao['destino']['href'] ?? null);
     }
 
-    /** @test */
     public function test_sem_publicacao_nao_aparece_com_estagio_none_zerado(): void
     {
         $jornada = $this->jornada(['ready' => ['total' => 4, 'itens' => []]], total: 4);
@@ -424,8 +409,6 @@ class AcoesDaContaTest extends TestCase
     /**
      * ⚠️ `sem_publicacao` entra no FIM da lista de oportunidades, depois das linhas
      * que `oQueFazerAgora()` já ordena — a ordem fixa do handoff não se mexe.
-     *
-     * @test
      */
     public function test_sem_publicacao_entra_depois_das_oportunidades_de_hoje(): void
     {
@@ -442,7 +425,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 5. Os sub-itens (VG-11) ═════════════════════════════════════════════
 
-    /** @test */
     public function test_com_problema_traz_ate_quatro_itens_dos_produtos_em_erro(): void
     {
         $produtos = [
@@ -476,7 +458,6 @@ class AcoesDaContaTest extends TestCase
         }
     }
 
-    /** @test */
     public function test_conferidos_traz_os_produtos_prontos(): void
     {
         $produtos = [
@@ -490,7 +471,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame(['Conferido A', 'Conferido B'], array_column($acao['itens'], 'nome'));
     }
 
-    /** @test */
     public function test_os_itens_dos_estagios_vem_da_jornada_com_a_nota_como_motivo(): void
     {
         $jornada = $this->jornada([
@@ -512,8 +492,6 @@ class AcoesDaContaTest extends TestCase
      * ⚠️ `pausados` e os três motivos de acervo vêm com `itens: []` de PROPÓSITO:
      * não existe lista por anúncio sem uma consulta nova, e este serviço faz ZERO
      * consulta. Item inventado aqui seria enfeite.
-     *
-     * @test
      */
     public function test_pausados_e_os_motivos_de_acervo_vem_sem_itens(): void
     {
@@ -535,7 +513,6 @@ class AcoesDaContaTest extends TestCase
         }
     }
 
-    /** @test */
     public function test_item_sem_nome_ou_sem_sku_nao_entra_na_sub_lista(): void
     {
         $produtos = [
@@ -552,7 +529,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 6. Título e descrição — do servidor, sem rótulo de tela ═════════════
 
-    /** @test */
     public function test_titulo_e_o_texto_real_da_linha_e_a_descricao_e_medida(): void
     {
         $linhas = [
@@ -580,8 +556,6 @@ class AcoesDaContaTest extends TestCase
      * ⚠️ O rótulo do CTA e o rótulo da severidade são do CLIENTE, por
      * `chave`/`severidade` — mesmo precedente da Fase 178-01 e do 179-01. Nenhuma
      * chave `cta` no payload, e nenhum literal de tela do protótipo.
-     *
-     * @test
      */
     public function test_nenhum_rotulo_de_tela_no_payload(): void
     {
@@ -615,8 +589,6 @@ class AcoesDaContaTest extends TestCase
      * ⚠️ O cenário está CHEIO de propósito — todas as doze chaves, jornada com os
      * quatro estágios povoados, produtos em todos os status. Asserção de ausência
      * rodada com dado VAZIO é vazia por construção.
-     *
-     * @test
      */
     public function test_nenhuma_acao_de_prejuizo_ou_rentabilidade_em_cenario_cheio(): void
     {
@@ -653,7 +625,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertStringNotContainsStringIgnoringCase('erp', $json);
     }
 
-    /** @test */
     public function test_o_payload_nao_vaza_segredo_da_conta(): void
     {
         $jornada = $this->jornada(['none' => ['total' => 1, 'itens' => [$this->itemDeEstagio(1, 'A', 'A-1', 'Recebido do Portal do Cliente')]]], total: 3);
@@ -667,7 +638,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 8. Escalares — a tela preta de 07/10 ════════════════════════════════
 
-    /** @test */
     public function test_nenhum_campo_da_acao_e_objeto_fora_de_itens_e_destino(): void
     {
         $jornada = $this->jornada(['none' => ['total' => 2, 'itens' => [$this->itemDeEstagio(1, 'A', 'A-1', 'Recebido do Portal do Cliente')]]], total: 6);
@@ -696,7 +666,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 9. O ADIAMENTO (VG-11) ══════════════════════════════════════════════
 
-    /** @test */
     public function test_adiar_guarda_por_usuario(): void
     {
         $this->adiamento->adiar(7, 'empresa-1', 'prontos_fase2');
@@ -705,7 +674,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame([], $this->adiamento->adiadas(8, 'empresa-1'), 'o adiamento de um usuário não atinge outro (T-179-06)');
     }
 
-    /** @test */
     public function test_adiar_guarda_por_conta(): void
     {
         $this->adiamento->adiar(7, 'empresa-1', 'prontos_fase2');
@@ -713,7 +681,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame([], $this->adiamento->adiadas(7, 'company-2'), 'o adiamento de uma conta não atinge outra (T-179-06)');
     }
 
-    /** @test */
     public function test_duas_chaves_coexistem_no_mesmo_saco_e_adiar_duas_vezes_nao_duplica(): void
     {
         $this->adiamento->adiar(7, 'empresa-1', 'prontos_fase2');
@@ -730,8 +697,6 @@ class AcoesDaContaTest extends TestCase
      * gravada — senão o cliente poderia inflar o saco do cache com chaves
      * arbitrárias (T-179-07). A validação dura `in_array` na borda é do plano
      * 179-04; aqui o serviço se recusa a gravar.
-     *
-     * @test
      */
     public function test_chave_fora_da_lista_fechada_nao_e_gravada(): void
     {
@@ -742,7 +707,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertCount(12, AcoesDaContaService::SEVERIDADE, 'a lista é fechada em 12: o saco não passa disso (T-179-07)');
     }
 
-    /** @test */
     public function test_expira_em_e_amanha_as_oito_no_fuso_da_aplicacao(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 12, 23, 30, 0, 'America/Sao_Paulo'));
@@ -759,8 +723,6 @@ class AcoesDaContaTest extends TestCase
      * calendário no fuso da APLICAÇÃO, não 24 horas a partir de agora. Com o
      * instante de teste em UTC caindo num dia diferente de São Paulo, a diferença
      * aparece: 13/10 em UTC é ainda 12/10 aqui.
-     *
-     * @test
      */
     public function test_expira_em_usa_o_dia_do_calendario_no_fuso_da_aplicacao(): void
     {
@@ -772,7 +734,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame('2026-10-13 08:00:00', $expira->format('Y-m-d H:i:s'), 'o dia seguinte é o de São Paulo, não o de UTC');
     }
 
-    /** @test */
     public function test_as_sete_e_cinquenta_e_nove_de_amanha_a_acao_ainda_esta_adiada(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 12, 15, 0, 0, 'America/Sao_Paulo'));
@@ -782,7 +743,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame(['pausados'], $this->adiamento->adiadas(7, 'empresa-1'));
     }
 
-    /** @test */
     public function test_as_oito_de_amanha_a_acao_voltou(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 12, 15, 0, 0, 'America/Sao_Paulo'));
@@ -792,7 +752,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame([], $this->adiamento->adiadas(7, 'empresa-1'), 'às 08:00 em ponto já voltou');
     }
 
-    /** @test */
     public function test_adiado_as_vinte_e_tres_volta_amanha_as_oito(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 10, 12, 23, 0, 0, 'America/Sao_Paulo'));
@@ -809,8 +768,6 @@ class AcoesDaContaTest extends TestCase
      * ter vencido enquanto o saco ainda está vivo no cache. Sem o filtro por
      * entrada em `adiadas()`, a ação adiada ontem às 23h continuaria escondida
      * depois das 8h de hoje — exatamente quando deveria voltar.
-     *
-     * @test
      */
     public function test_entrada_vencida_dentro_de_saco_ainda_vivo_nao_esconde_a_acao(): void
     {
@@ -850,7 +807,6 @@ class AcoesDaContaTest extends TestCase
         );
     }
 
-    /** @test */
     public function test_saco_corrompido_no_cache_devolve_vazio_sem_lancar(): void
     {
         foreach (['uma string solta', 12345, [['chave' => 'pausados']], [1, 2, 3], ['pausados' => ['nao' => 'iso']], ['pausados' => 'banana']] as $i => $lixo) {
@@ -865,7 +821,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame(['pausados'], $this->adiamento->adiadas(99, 'empresa-1'));
     }
 
-    /** @test */
     public function test_acao_adiada_nao_aparece_e_nao_conta(): void
     {
         $linhas = [$this->linha('com_problema'), $this->linha('pausados'), $this->linha('portal_novas')];
@@ -882,8 +837,6 @@ class AcoesDaContaTest extends TestCase
      * ⚠️ A `recomendada` é marcada DEPOIS do filtro de adiadas. Se fosse antes,
      * adiar a primeira deixaria a lista inteira sem recomendada — e o protótipo
      * sempre destaca uma (`acts[0]`, `Visao Geral.dc.html:514`).
-     *
-     * @test
      */
     public function test_adiar_a_recomendada_promove_a_proxima(): void
     {
@@ -901,7 +854,6 @@ class AcoesDaContaTest extends TestCase
         $this->assertSame(1, count(array_filter($depois['acoes'], fn (array $a) => $a['recomendada'] === true)));
     }
 
-    /** @test */
     public function test_user_id_nulo_nao_filtra_nada(): void
     {
         $this->adiamento->adiar(7, 'empresa-1', 'pausados');
@@ -916,8 +868,6 @@ class AcoesDaContaTest extends TestCase
      * O adiamento PONTA A PONTA: adiar → `acoes()` de novo não traz a ação (é isso
      * que "recarregar a página não traz a ação de volta" significa), outro usuário
      * continua vendo, e amanhã às 8h ela voltou para os dois.
-     *
-     * @test
      */
     public function test_adiamento_ponta_a_ponta_sobrevive_a_recarga_e_expira_as_oito(): void
     {
@@ -950,8 +900,6 @@ class AcoesDaContaTest extends TestCase
      *
      * ⚠️ Contagem EXATA (`count($linhas) + 1`, o `+1` é `sem_publicacao`), não
      * `assertContains`: uma ação engolida passaria por "contém".
-     *
-     * @test
      */
     public function test_toda_linha_de_hoje_virou_acao_com_contagem_exata(): void
     {
@@ -980,7 +928,6 @@ class AcoesDaContaTest extends TestCase
         }
     }
 
-    /** @test */
     public function test_a_linha_unica_de_reconexao_virou_a_acao_critica(): void
     {
         $painel = new PainelVisaoGeralService(new AcervoTriagemService());
@@ -1011,7 +958,6 @@ class AcoesDaContaTest extends TestCase
 
     // ═══ 11. CUSTO: zero consulta, com isca ══════════════════════════════════
 
-    /** @test */
     public function test_acoes_nao_faz_nenhuma_consulta_com_isca(): void
     {
         [$linhas, $alvo] = $this->linhasReaisDeHoje();
@@ -1045,8 +991,6 @@ class AcoesDaContaTest extends TestCase
      * O adiamento custa UMA leitura de cache por chamada, não uma por ação.
      * Varrer o Redis por prefixo em request de tela é o que o desenho de "um saco
      * por usuário + conta" existe para evitar.
-     *
-     * @test
      */
     public function test_o_adiamento_le_o_cache_uma_vez_por_chamada(): void
     {
@@ -1082,8 +1026,6 @@ class AcoesDaContaTest extends TestCase
      * produção; alinhar os dois faz um produto em `erro` entrar no grupo "PRONTOS
      * PARA FASE 2" do modal, contra a Exclusão 2 declarada dele ("erro de
      * publicação é triagem"). A decisão é do usuário — ver a SUMMARY do 179-02.
-     *
-     * @test
      */
     public function test_a_relacao_entre_o_anel_e_a_acao_de_prontos_para_fase_2_e_medida(): void
     {
