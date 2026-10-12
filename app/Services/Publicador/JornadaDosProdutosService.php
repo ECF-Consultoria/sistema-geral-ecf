@@ -169,17 +169,21 @@ class JornadaDosProdutosService
 
         $porEstagio = array_fill_keys(self::ESTAGIOS, []);
 
+        // ⚠️ `$total` é contado no UNIVERSO, não somando os quatro estágios.
+        // Somá-los faria o gate de totalidade do teste passar por CONSTRUÇÃO: um
+        // quinto caso que escapasse do if-else sairia dos dois lados da igualdade
+        // ao mesmo tempo e ninguém veria. Contado aqui, ele sobra no total e o
+        // teste reprova — que é o ponto deste plano.
+        $total = 0;
+
         foreach ($produtos as $p) {
             if (! $this->noUniverso($p)) {
                 continue;
             }
+            $total++;
             $porEstagio[$this->estagioDe($p)][] = $p;
         }
 
-        $total = 0;
-        foreach (self::ESTAGIOS as $chave) {
-            $total += count($porEstagio[$chave]);
-        }
         $publicados = count($porEstagio['ready']) + count($porEstagio['done']);
 
         $estagios = [];

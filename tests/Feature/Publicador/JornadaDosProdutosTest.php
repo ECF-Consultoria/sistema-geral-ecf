@@ -246,10 +246,13 @@ class JornadaDosProdutosTest extends TestCase
             array_sum(array_column($saida['estagios'], 'total')),
             'a soma dos quatro estágios deixou de ser o total — algum produto caiu fora do anel',
         );
+        // ⚠️ `publicados` é cobrado pelo OUTRO lado — `total` menos os dois
+        // estágios que não estão no ar. Comparar com `ready + done` seria
+        // comparar a fórmula do serviço com ela mesma: verdadeiro por construção.
         $this->assertSame(
-            $this->estagio($saida, 'ready')['total'] + $this->estagio($saida, 'done')['total'],
+            $saida['total'] - $this->estagio($saida, 'none')['total'] - $this->estagio($saida, 'draft')['total'],
             $saida['publicados'],
-            '`publicados` tem de ser ready + done, como no protótipo',
+            '`publicados` tem de ser o que está no ar (ready + done), como no protótipo',
         );
 
         $ids = [];
