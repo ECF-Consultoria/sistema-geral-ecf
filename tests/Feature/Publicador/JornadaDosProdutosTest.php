@@ -58,7 +58,7 @@ use Tests\TestCase;
  *
  * ═══ Este arquivo foi PROVADO POR MUTAÇÃO ════════════════════════════════════
  *
- * Em 12/10/2026 rodaram **11 mutações** no serviço real. **Todas as 11
+ * Em 12/10/2026 rodaram **12 mutações** no serviço real. **Todas as 12
  * reprovaram**, cada uma no caso que devia cair. Antes de cada mutação a
  * CONTAGEM de ocorrências do alvo foi travada (`grep -c`) e, depois, a linha
  * alterada foi conferida — na Fase 178 três mutações foram recusadas porque o
