@@ -26,6 +26,7 @@ import { lerSemComentarios } from './_fonte.js';
 // ═══════════════════════════════════════════════════════════════════════════
 
 const DIR = 'resources/js/Components/Mlb/Publicador/identidade';
+const DIR_HEADER = 'resources/js/Components/Mlb/Publicador/header';
 
 const ARQUIVOS_NOVOS = [
     `${DIR}/identidade.js`,
@@ -36,6 +37,9 @@ const ARQUIVOS_NOVOS = [
     `${DIR}/MapaDeCobertura.jsx`,
     `${DIR}/BadgeNova.jsx`,
     `${DIR}/TileDoProduto.jsx`,
+    // Fase 177, plano 04 — a casca do header global e os atalhos de teclado.
+    `${DIR_HEADER}/PublicadorHeader.jsx`,
+    `${DIR_HEADER}/atalhosDoHeader.js`,
 ];
 
 /**
