@@ -471,6 +471,62 @@ phase179`, a convenção de 75 arquivos deste projeto).
 **Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada** (não há navegador
 aqui) — a validação visual é do usuário, em produção, na conta 459.
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 179 · plano 02 de 10 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado**. `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos**.
+
+Wave 1 fechada. **179-02** entregou o contrato de servidor do bloco "O que fazer agora":
+`AcoesDaContaService` (severidade, ordem, contagens, sub-itens, filtro de adiadas),
+`AdiamentoDeAcoes` (adiar/adiadas/expiraEm, **sem migration**) e duas adições **aditivas** em
+`PainelVisaoGeralService` — a `chave` em cada linha e `produto_id`/`produto_nome` em
+`ultimasPublicacoes()`. Requirements: **VG-09, VG-10, VG-11, VG-12, VG-18, VG-20, EXMP-01**.
+Próximo: **179-03** (o resto do contrato de servidor) e **179-04** (controller + a action de adiar).
+
+Contrato (chaves exatas em `.planning/phases/179-visao-geral-cockpit/179-02-SUMMARY.md`):
+`{acoes: [{chave, severidade, titulo, descricao, numero, recomendada, itens[{nome,meta,motivo}], destino}], contagens{todas,critico,atencao,oportunidade}, adiadas, volta_em_iso}`.
+Lista **FECHADA** de 12 chaves em `AcoesDaContaService::SEVERIDADE` — é ela que o **179-04** valida
+por `in_array` na action de adiar (mitigação de T-179-05 é na borda).
+
+Decisões:
+
+1. **O adiamento vive no CACHE, não em tabela** (a milestone declarou nenhuma migration). UM saco por
+   usuário + conta: `publicador:adiar:{userId}:{contaChave}` → `chave => ISO`, TTL até a entrada mais
+   distante, expiração em `Carbon::tomorrow(tz)->setTime(8,0)`. ⚠️ Custo honesto: `cache:clear`
+   apagaria os adiamentos — tolerável porque duram horas, **e porque `cache:clear` já é operação
+   proibida aqui** (derrubou o site em 30/07/2026; o certo é `systemctl reload php8.2-fpm`).
+2. **O filtro por ENTRADA em `adiadas()` não é redundante com o TTL do saco** — o TTL é o da entrada
+   mais distante, então uma entrada pode vencer com o saco vivo. Armadilha do desenho, com teste.
+3. **Chave desconhecida cai em `atencao` e APARECE.** Fase futura que acrescente linha em
+   `oQueFazerAgora()` sem mexer no mapa não pode fazer a ação desaparecer em silêncio.
+4. ⚠️ **RULE 2 (achado na execução):** sem a guarda `temReconexaoPendente()`, a ação nova
+   `sem_publicacao` **furava** a regra do handoff de que token fora de `'ativo'` encerra a lista com
+   UMA linha só — ela aparecia ao lado de "Conta precisa de reconexão", oferecendo publicar numa conta
+   que o ML vai recusar.
+5. **Nada decorativo:** nenhuma ação de prejuízo/rentabilidade (não há fonte) e nenhuma de
+   "Reconectar ERP" (D-1 da 177-03). Asserções **negativas**, rodadas em cenário CHEIO.
+
+⚠️ **DECISÃO PENDENTE DO USUÁRIO — os dois números de "Prontos para a Fase 2".** A divergência que a
+wave 01 mediu **NÃO foi resolvida**, e não por omissão: o raio de impacto foi medido e as duas saídas
+mexem em comportamento aprovado em produção. `prontosParaFase2()` é `private` e só `oQueFazerAgora()`
+a chama, mas `NovaPublicacaoService` (Fase 178, no ar) tem uma **cópia** da regra e
+`NovaPublicacaoDoHeaderTest:335` compara as duas por reflexão. Alinhar só um lado cria divergência
+real em produção; alinhar os dois faz produto em `erro` entrar no grupo "PRONTOS PARA FASE 2" do modal,
+contra a **Exclusão 2** declarada dele. Medida a mais, descoberta aqui: a sub-lista de `prontos_fase2`
+vem do estágio `ready` (2 itens) e o número vem da linha (1) — abrir a ação mostra DOIS sob um
+cabeçalho que diz UM. Tudo travado por teste; detalhes e opções na SUMMARY do 179-02.
+
+Prova: **45 casos novos** (suíte do Publicador 1880 → **1925**, 11766 → **12275** asserções, 0
+falhas) e **20 mutações nominais, 19 reprovações**. A única sobrevivente (`tomorrow()` →
+`now()->addDay()`) é **equivalente por construção** — o `setTime()` normaliza a hora —, não defeito
+solto; substituída por duas com valor real (as 8h → meia-noite, e `HORA_DA_VOLTA` 8 → 9), ambas
+reprovam. **0 consultas** em `acoes()` com isca, e UMA leitura de cache por chamada (`->once()`).
+⚠️ Dois gates PRÓPRIOS foram pegos vazios por construção e consertados: a fronteira das 08:00 era
+provada pelo `>=` do `ArrayStore` do Laravel e não pelo filtro, e a 1ª versão da mutação da
+`recomendada` sobreviveu por erro do MEDIDOR (prependia o laço sem remover o original).
+Deprecations 48 → **51** (as 43 `@test` redundantes foram removidas: todos os métodos já são `test_*`).
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
+
 
 ---
 
