@@ -12,6 +12,11 @@ import SeletorPrograma from '@/Components/Mlb/Publicador/SeletorPrograma';
 import IndicadoresDoPrograma from '@/Components/Mlb/Publicador/IndicadoresDoPrograma';
 import PainelComoFunciona from '@/Components/Mlb/Publicador/PainelComoFunciona';
 import CartaoAcessoRapido, { iniciaisDe, numeroSeguro, textoSeguro } from '@/Components/Mlb/Publicador/CartaoAcessoRapido';
+// "Recentes" (Fase 173, plano 03) saiu deste arquivo e virou módulo no plano
+// 177-06: o dropdown de empresa do header global lê a MESMA chave de
+// `localStorage`, e duas implementações da mesma regra divergiriam com o tempo.
+// Nada do comportamento mudou — só a casa das funções.
+import { gravarRecente, lerRecentes } from '@/Components/Mlb/Publicador/recentesDoPublicador';
 
 const ROTULO_PROGRAMA = { polos: 'Polos', incubadora: 'Incubadora', gestao: 'Gestão' };
 
@@ -79,41 +84,6 @@ function CartaoDeRodape({ icone: Icone, titulo, destaque, texto, onClick, rotulo
             </div>
         </div>
     );
-}
-
-// ─── "Recentes" (Fase 173, plano 03) — até 4 contas abertas pelo usuário,
-// em localStorage do navegador, chave `publicador.recentes.{user_id}`.
-// Sem tabela nova: é dado do próprio usuário, no próprio navegador
-// (T-173-07). TODA leitura/escrita passa por try/catch — localStorage pode
-// falhar ou vir vazio (modo privado, quota, primeiro acesso, JSON
-// corrompido) e a tela precisa funcionar normalmente sem ele.
-const MAX_RECENTES = 4;
-const chaveRecentes = (userId) => `publicador.recentes.${userId}`;
-
-function lerRecentes(userId) {
-    try {
-        const bruto = window.localStorage.getItem(chaveRecentes(userId));
-        if (!bruto) return [];
-        const lista = JSON.parse(bruto);
-        if (!Array.isArray(lista)) return [];
-        // Descarta item sem `chave` string válida — forma inesperada (lixo
-        // gravado por versão antiga, edição manual do localStorage etc.)
-        // nunca derruba a tela nem quebra a navegação do clique.
-        return lista.filter((item) => item && typeof item.chave === 'string' && item.chave !== '').slice(0, MAX_RECENTES);
-    } catch {
-        return [];
-    }
-}
-
-function gravarRecente(userId, item) {
-    try {
-        const semDuplicata = lerRecentes(userId).filter((r) => r?.chave !== item.chave);
-        const novaLista = [item, ...semDuplicata].slice(0, MAX_RECENTES);
-        window.localStorage.setItem(chaveRecentes(userId), JSON.stringify(novaLista));
-        return novaLista;
-    } catch {
-        return null;
-    }
 }
 
 // Casca de esqueleto: 4 cards + 8 linhas de 56px enquanto a visita carrega.

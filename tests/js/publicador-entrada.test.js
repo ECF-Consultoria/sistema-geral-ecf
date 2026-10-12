@@ -141,8 +141,24 @@ test('Tela A — abrirConta é a ÚNICA função de abertura, usada pela linha e
     assert.doesNotMatch(fonte, /abrirProdutos/);
 });
 
-test('Tela A — grava em localStorage ANTES de navegar, tudo em try/catch', () => {
-    const fonte = lerSemComentarios(PAGINA_A);
+// ⚠️ Fase 177, plano 06 — REAPONTE, não remoção (GATE-01).
+//
+// As quatro funções de "Recentes" saíram de `AnunciosEmpresas.jsx` e viraram
+// `Components/Mlb/Publicador/recentesDoPublicador.js`, porque o dropdown de
+// empresa do header global (HEAD-05) lê a MESMA chave de `localStorage` e duas
+// implementações da mesma regra divergiriam com o tempo.
+//
+// NENHUMA asserção foi apagada: as que falavam do I/O e da regra "até 4, sem
+// duplicar, mais recente primeiro" passam a ler o arquivo onde o código passou
+// a morar. As que falam de RENDERIZAÇÃO e de MONTAGEM DO ITEM continuam lendo
+// `AnunciosEmpresas.jsx`, porque é lá que elas acontecem — a tabela completa do
+// reaponte está na SUMMARY do plano 177-06.
+const MODULO_RECENTES = 'resources/js/Components/Mlb/Publicador/recentesDoPublicador.js';
+
+test('Recentes — o I/O de localStorage mora no módulo, todo em try/catch', () => {
+    // Reaponte: a chave e as duas chamadas de localStorage passaram a ser
+    // declaradas em `recentesDoPublicador.js` (antes: AnunciosEmpresas.jsx).
+    const fonte = lerSemComentarios(MODULO_RECENTES);
     assert.match(fonte, /publicador\.recentes\.\$\{userId\}/);
     assert.match(fonte, /window\.localStorage\.getItem/);
     assert.match(fonte, /window\.localStorage\.setItem/);
@@ -151,18 +167,42 @@ test('Tela A — grava em localStorage ANTES de navegar, tudo em try/catch', () 
     const tentativas = fonte.match(/\btry\s*\{/g) ?? [];
     assert.ok(tentativas.length >= 2, `esperado pelo menos 2 blocos try, achou ${tentativas.length}`);
     assert.match(fonte, /catch\s*\{\s*return \[\];?\s*\}/);
+    // E a tela NÃO reimplementa: importa do módulo (uma regra, uma casa).
+    const tela = lerSemComentarios(PAGINA_A);
+    assert.match(tela, /from '@\/Components\/Mlb\/Publicador\/recentesDoPublicador'/);
+    assert.doesNotMatch(tela, /window\.localStorage/, 'a tela voltou a mexer no localStorage por conta própria');
+    assert.doesNotMatch(tela, /function (lerRecentes|gravarRecente)/, 'a tela redeclarou as funções do módulo');
 });
 
-test('Tela A — Recentes: até 4, sem duplicar, mais recente primeiro, nunca um estado vazio dedicado', () => {
-    const fonte = lerSemComentarios(PAGINA_A);
+test('Recentes — até 4, sem duplicar, mais recente primeiro (regra do módulo)', () => {
+    // Reaponte: a regra é do módulo agora. Mesmas quatro asserções.
+    const fonte = lerSemComentarios(MODULO_RECENTES);
     assert.match(fonte, /MAX_RECENTES = 4/);
     assert.match(fonte, /slice\(0, MAX_RECENTES\)/);
     // dedup: remove a entrada antiga da MESMA chave antes de colocar a nova no topo (índice 0)
     assert.match(fonte, /filter\(\(r\) => r\?\.chave !== item\.chave\)/);
     assert.match(fonte, /\[item, \.\.\.semDuplicata\]/);
+});
+
+test('Tela A — Recentes: nunca um estado vazio dedicado (renderização, FICA na tela)', () => {
+    const fonte = lerSemComentarios(PAGINA_A);
     // renderização condicional — sem "Nenhum recente ainda" (não é um estado vazio pedido pela spec)
     assert.match(fonte, /recentes\.length > 0 &&/);
     assert.doesNotMatch(fonte, /Nenhum recente ainda/);
+});
+
+test('Tela A — gravarRecente é chamado ANTES de navegar (ordem, não proximidade)', () => {
+    // ⚠️ ACRESCENTADA no plano 177-06. O teste antigo provava essa ordem pela
+    // PROXIMIDADE do código (as funções e a chamada estavam no mesmo arquivo,
+    // uma logo acima da outra). Depois do `import`, isso tem de ser DITO: a
+    // gravação precisa vir antes do `router.get` que abre a conta, senão a
+    // conta recém-aberta não entra em Recentes.
+    const fonte = lerSemComentarios(PAGINA_A);
+    const gravou = fonte.indexOf('gravarRecente(userId, item)');
+    const navegou = fonte.indexOf("router.get(route('mlb.anuncios.publicador.visao-geral'");
+    assert.ok(gravou !== -1, 'gravarRecente(userId, item) não foi encontrado');
+    assert.ok(navegou !== -1, 'a navegação para a Visão geral não foi encontrada');
+    assert.ok(gravou < navegou, 'gravarRecente deveria ser chamado ANTES de navegar');
 });
 
 test('Tela A — item de Recentes não guarda token (T-173-07, sem dado sensível)', () => {
