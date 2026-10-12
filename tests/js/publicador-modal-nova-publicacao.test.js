@@ -1,36 +1,104 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as esbuild from 'esbuild';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { lerSemComentarios } from './_fonte.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fase 178, plano 02 — o corpo do modal "Nova publicação".
 //
-// Esta primeira parte (plano 02, Task 1) cobra o MÓDULO PURO
-// `header/novaPublicacao.js`: os quatro literais de tela, a normalização do
-// payload da wave 1 e a busca local sem acento sobre nome e SKU.
+// Cobra o MÓDULO PURO `header/novaPublicacao.js` (os literais de tela, a
+// normalização do payload da wave 1 e a busca local sem acento sobre nome e
+// SKU) e o RENDER REAL de `header/PainelNovaPublicacao.jsx`, medida por medida.
 //
-// ⚠️ O módulo é importado DIRETO (sem esbuild, sem bundle) exatamente como
-// `identidade/identidade.js`: ele não tem JSX nem import de React de propósito.
-// A razão não é só de teste — é `feedback_rollup_map_scope_bug.md`: variável de
-// escopo do componente lida dentro de um `.map()` já foi ELIMINADA pelo Rollup
-// no bundle de produção deste projeto. A classificação e o filtro moram num
-// módulo puro para nunca dependerem disso.
+// ⚠️ `novaPublicacao.js` não tem JSX nem import de React de propósito, e a razão
+// não é de teste — é `feedback_rollup_map_scope_bug.md`: variável de escopo do
+// componente lida dentro de um `.map()` já foi ELIMINADA pelo Rollup no bundle
+// de produção DESTE projeto (ReferenceError em produção, com os testes
+// passando). O corpo do modal mapeia grupos E itens, então a classificação e o
+// filtro moram num módulo puro, que recebe tudo por argumento.
 //
 // ⚠️ Os literais são conferidos por `assert.equal` (igualdade de string
 // INTEIRA), nunca por `assert.match`: um `match` passaria com a frase do rodapé
 // truncada, que é justamente uma das mutações obrigatórias deste plano.
+//
+// ⚠️ REND-03: TODOS os bundles são montados aqui no topo, ANTES do primeiro
+// `test()`. O `after()` do `node --test` já apagou um arquivo temporário no meio
+// de uma suíte deste projeto e matou o arquivo inteiro sem nenhum teste falhar.
+//
+// ⚠️ Asserção de SUBSTRING em classe utilitária é quase sempre VAZIA: na Fase
+// 177 quatro mutações reais PASSARAM porque `html.includes('classe')` casa com
+// qualquer elemento do documento. Pior: substring casa com PREFIXO —
+// `text-[11px]` casa dentro de `text-[11.5px]` e `font-pub` casa dentro de
+// `font-pub-mono`, e este modal tem os quatro. A receita aqui é outra: partir o
+// HTML POR ELEMENTO, extrair a tag de abertura, e comparar a LISTA DE CLASSES
+// daquele elemento por igualdade exata de conjunto.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(__dirname, '../..');
 
-const MODULO = pathToFileURL(
-    path.resolve(RAIZ, 'resources/js/Components/Mlb/Publicador/header/novaPublicacao.js'),
-).href;
+// Stub de `route()` global: `BarraDaConta.jsx` (de onde vêm `textoSeguro` e
+// `textoUtil`) usa `route()` no corpo do módulo, e o helper Ziggy não existe no
+// node. Mesmo truque de `publicador-header-render.test.js`.
+global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
 
+// `@inertiajs/react` real traz `qs`/`object-inspect`, com `require('util')`
+// condicional incompatível com o bundle ESM do esbuild.
+const STUB_INERTIA = path.join(__dirname, `.modal-nova-inertia-stub-${process.pid}.mjs`);
+fs.writeFileSync(STUB_INERTIA, `
+import React from 'react';
+export function Link({ href, children, className, ...props }) {
+    return React.createElement('a', { href, className, ...props }, children);
+}
+export const router = { get: () => {}, post: () => {}, reload: () => {} };
+export const usePage = () => ({ props: { auth: { user: { id: 7 } } } });
+`, 'utf8');
+after(() => fs.rmSync(STUB_INERTIA, { force: true }));
+
+/**
+ * Compila o módulo de verdade (JSX + imports reais) e devolve os exports.
+ *
+ * ⚠️ `novaPublicacao.js` importa `normalizar` de `../identidade/identidade`
+ * SEM extensão (convenção do projeto, resolvida pelo Vite). O ESM do node não
+ * resolve extensionless, então mesmo o módulo puro passa por aqui.
+ */
+async function montarModulo(caminhoRelativo) {
+    const resultado = await esbuild.build({
+        entryPoints: [path.resolve(RAIZ, caminhoRelativo)],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        jsx: 'automatic',
+        write: false,
+        logLevel: 'silent',
+        alias: { '@': path.resolve(RAIZ, 'resources/js'), '@inertiajs/react': STUB_INERTIA },
+        // ⚠️ `@radix-ui/react-dialog` entra ALÉM do `react-popover`: o import de
+        // `textoSeguro` arrasta `BarraDaConta` → `SeletorEmpresaBusca` → Radix e
+        // axios pela árvore, e a wave 3 acrescenta o Dialog do modal.
+        external: [
+            'react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios',
+            '@radix-ui/react-popover', '@radix-ui/react-dialog',
+        ],
+    });
+
+    // Precisa viver DENTRO da árvore do projeto — import ESM fora dela não acha node_modules.
+    const outfile = path.join(__dirname, `.modal-nova-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+    fs.writeFileSync(outfile, resultado.outputFiles[0].text, 'utf8');
+    try {
+        return await import(pathToFileURL(outfile).href);
+    } finally {
+        fs.rmSync(outfile, { force: true });
+    }
+}
+
+// ─── REND-03: tudo montado aqui, no topo do módulo ───
 const { GRUPOS, VAZIO, RODAPE, PLACEHOLDER, CARREGANDO, ERRO, filtrarGrupos, normalizarPayload } =
-    await import(MODULO);
+    await montarModulo('resources/js/Components/Mlb/Publicador/header/novaPublicacao.js');
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fixtures no shape EXATO do contrato da wave 1 (178-01-SUMMARY):
