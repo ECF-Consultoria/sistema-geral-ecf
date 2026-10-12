@@ -103,9 +103,23 @@ asserções cada. Os 38 do módulo testam **comportamento**.
 
 ### Alcance do header
 
-`BarraDaConta.jsx` e `AbasDaConta.jsx` são consumidos por **11 páginas** (conferido):
-`Mlb/AnunciarML`, `Mlb/AnunciarMassa`, `Mlb/AnunciosHistorico`, `Mlb/MeusAnuncios`,
-`Mlb/Publicador/{Alavancas, Configuracoes, Produto, Produtos, PublicacaoEmLote, Tarefas, VisaoGeral}`.
+`BarraDaConta.jsx` e `AbasDaConta.jsx` são consumidos por **9 páginas** — medido na Fase 177 por
+`grep '<BarraDaConta\|<AbasDaConta'` (quem **MONTA**), e conferido página por página:
+`Mlb/AnunciarMassa`, `Mlb/AnunciosHistorico`, `Mlb/MeusAnuncios`,
+`Mlb/Publicador/{Alavancas, Configuracoes, Produto, Produtos, PublicacaoEmLote, VisaoGeral}`.
+
+> ⚠️ **CORREÇÃO (12/10/2026): este documento dizia "11 páginas" e estava ERRADO — o número era meu,
+> do orquestrador, e veio de um grep mal-feito.** Eu procurei por **menções** a `BarraDaConta` em vez
+> de por quem a **monta**, e duas das ocorrências eram **comentários dizendo que a página NÃO a usa**:
+> `AnunciarML.jsx:2015` ("wizard NÃO adota BarraDaConta/AbasDaConta") e `Tarefas.jsx:14` ("sem
+> BarraDaConta"). As duas **não montam nada** e ficaram **fora** da Fase 177, com diff vazio exigido
+> por gate.
+>
+> E faz sentido conceitual: **`Tarefas` é tela GLOBAL**, de todas as contas — não existe conta para o
+> header exibir. Pôr o header nela é decisão de produto nova, não parte desta milestone.
+>
+> As ocorrências de "11 páginas" que restam neste arquivo (D7, D9, HEAD-11, HEAD-15, REG-01) e no
+> `ROADMAP.md` **leiam-se 9**. O texto original fica como registro do erro.
 
 ### O que JÁ existe e deve ser reaproveitado, não refeito
 
