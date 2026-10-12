@@ -527,6 +527,83 @@ provada pelo `>=` do `ArrayStore` do Laravel e não pelo filtro, e a 1ª versão
 Deprecations 48 → **51** (as 43 `@test` redundantes foram removidas: todos os métodos já são `test_*`).
 **Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 179 · plano EXTRA 02B CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado**. `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos**.
+
+⚠️⚠️ **A DECISÃO PENDENTE DO BLOCO ANTERIOR FOI TOMADA PELO USUÁRIO EM 12/10/2026.**
+
+**Pergunta levada a ele:** *"Um produto cuja publicação falhou, mas que JÁ TEM anúncio vivo no ar e
+sem kit, conta como 'Pronto para Fase 2'?"* **Opções:** (1) alinhar os três lugares; (2) erro é erro
+e fica fora de todo lugar; (3) ver o número real de produção primeiro. Apresentada **com o aviso
+explícito** de que alinhar muda o modal da Fase 178 já aprovado e em produção.
+➡️ **Escolha dele: a opção 1 — alinhar os três lugares.**
+
+⚠️ **Isso SUPERA a "Exclusão 2" do `178-01-SUMMARY.md`** (*"erro de publicação é triagem"*), que
+sobrevive só para `erro` **SEM** anúncio vivo. **Nenhuma sessão futura deve "restaurar" a exclusão
+achando que foi regressão** — o registro está no docblock de `prontoParaFase2()`, no da exclusão
+reescrita e nas mensagens de asserção dos três gates (que nomeiam o valor antigo).
+
+**179-02B** entregou a **fonte única**: `ProgramasPublicadorService::prontoParaFase2()` e
+`ProgramasPublicadorService::noAr()`, ambas `public static` ao lado de `ehComposto()` — pelo
+precedente declarado no docblock dele e porque os dois ingredientes (`STATUS_NO_AR`, `ehComposto`)
+já moravam lá. ⚠️ **`App\Support\Publicador` nunca foi opção** (território proibido).
+
+Os **quatro** consumidores passaram a chamá-la (eram 3 cópias da regra **+ 4 cópias de `noAr`**, a
+quarta descoberta ao medir): `JornadaDosProdutosService::estagioDe()` (o estágio `ready` agora **É**
+a regra, por construção), `PainelVisaoGeralService::prontosParaFase2()` e `::noArPorFase()`,
+`NovaPublicacaoService::grupos()` e `bucketDaFase()`. O `private noAr()` da Jornada saiu. ⚠️ O
+**fallback de shape antigo** de `prontosParaFase2()` **FICA** — matá-lo faria a linha desaparecer por
+falta de dado; tem teste dedicado e a mutação M09 reprova nele.
+
+Decisões:
+
+1. ⚠️ **O gate `NovaPublicacaoDoHeaderTest:335` era VAZIO POR CONSTRUÇÃO e foi consertado.** O
+   cenário dele não tinha produto em `erro`, então passava com a regra antiga **E** com a nova — um
+   gate de paridade que não distingue as duas definições que existe para comparar. Ganhou
+   `ERRO-COM-ANUNCIO` (rascunho `FAILED` + anúncio `CREATED`) e prova que ele **ENTRA** no modal.
+   **Sem isso o alinhamento do modal não teria gate nenhum.**
+2. **Gate central compara CONJUNTO DE SKU, não contagem** — dois consumidores podem acertar o número
+   errando o produto. Em `tests/Feature/Publicador/ProntoParaFase2Test.php` (6 testes), com um caso
+   que **reimplementa a regra ANTIGA** ao lado da nova (2 × 3) provando que o cenário distingue as
+   duas.
+3. ⚠️ **O reaponte de `AcoesDaContaTest` exigiu uma ISCA.** Aquele teste é **sintético** e passaria
+   intacto depois do alinhamento (os números vêm cravados na entrada). Entregue com dois casos: o
+   **A** (alinhado) prova que o número do cabeçalho **é igual** à contagem da sub-lista; o **B**
+   (isca, com a divergência antiga cravada) prova que o serviço **não alinha nada por conta
+   própria** — é isto que faz a igualdade do A vir das REGRAS, e não de um conserto escondido.
+4. **A `nota` do item do modal NÃO ganhou marca de erro, de propósito:** o erro segue visível na
+   MESMA tela, na ação crítica "Produtos com problema na publicação". Pergunta em aberto na SUMMARY.
+5. ⚠️ **M12 SOBREVIVEU e NÃO era equivalência por construção — era lacuna de cobertura.** Devolver o
+   `noAr` de `bucketDaFase()` à expressão inline não reprovava em teste nenhum: a base em `erro` com
+   anúncio vivo passaria a contar como `sem_oferta` em vez de `fase1_publicada`, mudando o
+   "N Fase 1 · N kits" do topo da **tela de Produtos em silêncio**. Lacuna fechada (o teste de "no
+   ar" passou a medir os **quatro** consumidores, com isca em cada); M12b reprova.
+6. ⚠️ **O gate E3 pegou um gate MEU vazio por construção:** `app/Services/Mlb/MlPublicacaoService.php`
+   devolvia `diff=0` **por não existir nesse caminho** — o real é
+   `app/Services/Mlb/Publicacao/MlPublicacaoService.php`. **As tabelas de gate das waves 01 e 02
+   citam o caminho errado** e mediram nada ali; refeito no caminho certo (diff=0 nos dois ranges).
+   Vale uma nota no **179-10**.
+7. ⚠️ **O gate de asserções do 179-10 ("removidas = ZERO" por `grep '^-' | grep assert`) é
+   VAZIO-AO-CONTRÁRIO para reaponte de valor:** mudar `assertSame(1, …)` para `assertSame(2, …)`
+   produz `-assert` por construção. Medido aqui: **8 removidas × 39 acrescentadas**, as 8 enumeradas
+   uma a uma com o `+` correspondente no mesmo teste. **Refinamento proposto:** exigir par `-`/`+` no
+   mesmo teste **e** `+assert > -assert`.
+
+Prova: **13 mutações, 12 reprovações, 1 lacuna de cobertura achada e fechada**. M01 (a fonte volta à
+definição antiga) reprova nos **três** consumidores; M06/M07/M08 (cada consumidor volta à sua cópia)
+reprovam — é a prova de que unificar funcionou. Suíte do Publicador **1925 → 1931 testes**,
+**12275 → 12308 asserções, 0 falhas** (baseline medida **ANTES** de editar, em 5m18s). Deprecations
+51 → **52** (o `@group phase179` da classe nova, a convenção de 75 arquivos). `grep` com isca
+confirma **1** ocorrência da conjunção em `app/` — a própria fonte. **0 migrations, 0 pacotes,
+`resources/js` com diff vazio** (JS não remedido por isso; a falha pré-existente
+`estrutura-grade-glide:123` segue intocada).
+⚠️ **O número de produção da classe de fronteira NÃO foi medido** — leitura de produção bloqueada
+nesta sessão. O usuário escolheu a opção 1 informado de que esse número não existia.
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada.**
+
+
 
 ---
 
