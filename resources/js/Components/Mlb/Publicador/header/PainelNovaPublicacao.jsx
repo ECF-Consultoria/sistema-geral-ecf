@@ -163,7 +163,13 @@ export function PainelNovaPublicacao({
     aoEscolher = () => {},
     inputRef = null,
 }) {
-    const cheios = Array.isArray(grupos) ? grupos : [];
+    // ⚠️ Grupo nulo/não-objeto dentro do array NÃO pode chegar ao `.map()`:
+    // o gate pegou um `TypeError: Cannot read properties of null (reading
+    // 'itens')` derrubando o painel inteiro. É a família da tela preta de
+    // 07/10 — render que lança derruba a página, não só a linha.
+    const cheios = (Array.isArray(grupos) ? grupos : []).filter(
+        (grupo) => grupo !== null && typeof grupo === 'object',
+    );
 
     return (
         <>
@@ -202,20 +208,20 @@ export function PainelNovaPublicacao({
                 {/* ⚠️ NOVA-03: `cheios` já vem sem grupo vazio de `filtrarGrupos()`.
                     Grupo sem item não aparece — nem o título. */}
                 {!carregando && !erro && cheios.map((grupo) => (
-                    <div key={grupo.chave} className="flex flex-col">
+                    <div key={grupo?.chave} className="flex flex-col">
                         {/* título + hint (:143). O rótulo em caixa alta é o TEXTO,
                             não um `text-transform`. */}
                         <span className="flex items-center justify-between px-[10px] pb-[6px] pt-[10px] text-[11px] font-semibold tracking-[0.08em] text-pub-txt-4">
                             {textoSeguro(grupo?.rotulo, '')}
                             <span className="font-medium tracking-[0] text-pub-txt-off">{textoSeguro(grupo?.hint, '')}</span>
                         </span>
-                        {(Array.isArray(grupo.itens) ? grupo.itens : []).map((item, indice) => (
+                        {(Array.isArray(grupo?.itens) ? grupo.itens : []).map((item, indice) => (
                             <Item
                                 // ⚠️ Nunca o índice do `.map()` como `key`: o
                                 // `produto_id` quando for número finito, senão o
                                 // nome. O `indice` só entra como último recurso,
                                 // para item nulo/`{}` não colidir com outro.
-                                key={Number.isFinite(item?.produto_id) ? item.produto_id : (textoUtil(item?.nome) ?? `${grupo.chave}-${indice}`)}
+                                key={Number.isFinite(item?.produto_id) ? item.produto_id : (textoUtil(item?.nome) ?? `${textoSeguro(grupo?.chave, 'grupo')}-${indice}`)}
                                 item={item}
                                 grupo={grupo}
                                 aoEscolher={aoEscolher}

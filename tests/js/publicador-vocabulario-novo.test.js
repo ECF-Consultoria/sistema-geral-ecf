@@ -50,6 +50,10 @@ const ARQUIVOS_NOVOS = [
     `${DIR_HEADER}/SeletorDeEmpresaDoHeader.jsx`,
     `${DIR_HEADER}/ConexaoDoHeader.jsx`,
     'resources/js/Components/Mlb/Publicador/recentesDoPublicador.js',
+    // Fase 178, plano 02 — o corpo do modal "Nova publicação": os literais de
+    // tela (com a busca local) e o painel medida por medida.
+    `${DIR_HEADER}/novaPublicacao.js`,
+    `${DIR_HEADER}/PainelNovaPublicacao.jsx`,
 ];
 
 /**
