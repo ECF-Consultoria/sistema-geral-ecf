@@ -143,7 +143,7 @@ class AcoesDaContaTest extends TestCase
         return ['id' => random_int(1, 99999), 'nome' => $nome, 'sku' => $sku, 'status' => ['chave' => $chaveStatus, 'rotulo' => $rotulo, 'faltam' => 0]];
     }
 
-    /** @return list<array> */
+    /** @return list<string> */
     private function chavesDe(array $saida): array
     {
         return array_column($saida['acoes'], 'chave');
@@ -976,9 +976,19 @@ class AcoesDaContaTest extends TestCase
 
         // ⚠️ Jornada POVOADA de propósito: sem conta ativa, nem a ação nova pode
         // aparecer — a regra do handoff é UMA linha só, e ela não pode furar aqui.
-        $saida = $this->service->acoes($alvo, $linhas, $this->jornada(['none' => ['total' => 5, 'itens' => []]], total: 9), [], null);
+        // ⚠️ Asserção de ausência rodada com o dado que a PRODUZIRIA: com
+        // `none.total = 5`, `sem_publicacao` nasceria em qualquer outro cenário. Com
+        // `none.total = 0` este teste seria vazio por construção.
+        $jornadaPovoada = $this->jornada(['none' => ['total' => 5, 'itens' => []]], total: 9);
+        $this->assertNotNull(
+            $this->acao($this->service->acoes($this->alvo(), [], $jornadaPovoada, [], null), 'sem_publicacao'),
+            'a prova de que esta jornada PRODUZ `sem_publicacao` quando a conta está ativa'
+        );
+
+        $saida = $this->service->acoes($alvo, $linhas, $jornadaPovoada, [], null);
 
         $this->assertSame(['reconectar'], $this->chavesDe($saida));
+        $this->assertNull($this->acao($saida, 'sem_publicacao'), 'sem conta ativa nada mais aparece — nem a ação nova');
         $this->assertSame('critico', $saida['acoes'][0]['severidade']);
         $this->assertTrue($saida['acoes'][0]['recomendada']);
         $this->assertSame(['todas' => 1, 'critico' => 1, 'atencao' => 0, 'oportunidade' => 0], $saida['contagens']);
@@ -1088,7 +1098,26 @@ class AcoesDaContaTest extends TestCase
         // Trocar a fonte aqui "resolveria" a divergência escondendo-a do usuário e
         // deixando o modal da 178 discordando dos dois.
         $this->assertNotSame($doAnel, $daAcao, 'a ação respeita a fonte dela (a linha), não a do anel');
-        $this->assertCount(1, $acao['itens'], 'os itens vêm do estágio ready mas são cortados pelo teto, não pelo número da linha');
+
+        // ⚠️⚠️ A CONSEQUÊNCIA MEDIDA, descoberta na execução: a sub-lista de
+        // `prontos_fase2` vem do estágio `ready` da Jornada (2 itens) enquanto o
+        // número vem da linha (1). Abrir a ação mostra DOIS produtos sob um cabeçalho
+        // que diz UM. A divergência não fica só entre dois blocos da tela — ela
+        // aparece DENTRO da mesma ação.
+        //
+        // Isto NÃO foi "consertado" de propósito: cortar os itens no número da linha
+        // esconderia da tela um produto que está de fato no ar sem kit, e trocar a
+        // fonte do número mudaria o que `oQueFazerAgora()` entrega hoje. As duas
+        // saídas mexem em comportamento aprovado — ver o bloco de divergência da
+        // 179-02-SUMMARY.
+        $this->assertCount(2, $acao['itens'], 'os itens vêm do estágio `ready`, com o teto de 4 — não do número da linha');
+        $this->assertNotSame(
+            count($acao['itens']),
+            $acao['numero'],
+            'CONTRADIÇÃO MEDIDA: a sub-lista mostra 2 e o cabeçalho diz 1. Se este '
+            .'assertNotSame começar a falhar, alguém alinhou as duas fontes — ótimo, '
+            .'mas confira o modal da Fase 178 antes de comemorar.'
+        );
     }
 
     // ═══ Cenário real compartilhado ══════════════════════════════════════════
