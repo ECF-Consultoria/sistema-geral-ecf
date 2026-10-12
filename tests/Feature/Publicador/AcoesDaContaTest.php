@@ -833,6 +833,21 @@ class AcoesDaContaTest extends TestCase
             $this->adiamento->adiadas(7, 'empresa-1'),
             'o filtro por ENTRADA é obrigatório: o TTL do saco não serve de relógio para cada item'
         );
+
+        // ⚠️ E a FRONTEIRA, exatamente às 08:00 do dia 13, com o saco ainda vivo até
+        // o dia 14. Este é o único ponto do arquivo que mede o `>` do filtro por
+        // entrada: o teste "às 8h voltou" do saco de UMA entrada passa por mérito do
+        // próprio store (o `ArrayStore::get()` do Laravel compara com `>=` e esquece
+        // a chave no instante exato), então ele NÃO prova nada sobre esta comparação.
+        // Sem esta asserção, trocar `isAfter($agora)` por `! isBefore($agora)` —
+        // deixando a ação adiada no instante em que deveria voltar — sobreviveria
+        // calado. Medido: sobreviveu, até esta linha existir.
+        Carbon::setTestNow(Carbon::create(2026, 10, 13, 8, 0, 0, 'America/Sao_Paulo'));
+        $this->assertSame(
+            ['com_problema'],
+            $this->adiamento->adiadas(7, 'empresa-1'),
+            'às 08:00 EM PONTO a entrada já voltou: o instante da volta é inclusivo, não exclusivo'
+        );
     }
 
     /** @test */
