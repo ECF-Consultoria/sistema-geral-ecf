@@ -150,7 +150,25 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
     useAtalhosDoHeader({ aoAbrirBusca: abrirNovaPublicacao, aoFechar: fecharTudo });
 
     return (
-        <header className="sticky top-0 z-50 -mx-6 -mt-6 min-w-[1240px] border-b border-pub-line-subtle-2 bg-pub-page/[0.86] font-pub text-pub-txt backdrop-blur-[14px] backdrop-saturate-[1.4]">
+        // ⚠️ `z-30`, NÃO `z-50` (261012-mbw, 12/10/2026, relato do usuário em
+        // produção): o `<main>` do `AppLayout` é `flex-1 overflow-y-auto p-6`
+        // — sem `z-index` e sem `transform` — e `overflow-hidden` no pai NÃO
+        // cria contexto de empilhamento. Logo este z compara direto, na raiz,
+        // com o menu lateral do sistema (`AppLayout.jsx`, `z-40`) e com o
+        // `PainelDoProdutoLateral` (`z-40`), e em `z-50` ganhava dos DOIS: o
+        // menu expandido no hover ficava atrás, e o painel do produto também.
+        // `z-30` fica ACIMA do corpo das páginas (que vai até `z-20`: dropdown
+        // de `Produtos.jsx` e rodapé do `Editor.jsx`; o bloco de filtros
+        // `sticky top-[108px]` é `z-10`), então o header continua cobrindo o
+        // conteúdo ao rolar — e ABAIXO dos dois `z-40`, que é o pedido.
+        // ⚠️ O overlay `bg-black/50` do painel do produto passa a escurecer
+        // este header. É o comportamento CORRETO e pedido ("o sidebar deveria
+        // ficar por cima") — NÃO "conserte" isso subindo o z de volta.
+        // ⚠️ Os popovers do header (`z-[61]`) e o modal (`z-[80]`) portam para
+        // o `document.body`: vivem na raiz e NÃO dependem deste valor.
+        // ⚠️ HEAD-01 do `REQUIREMENTS-v26.md` ainda diz `z-index: 50` — foi
+        // SUPERADO por este conflito medido com o layout do sistema.
+        <header className="sticky top-0 z-30 -mx-6 -mt-6 min-w-[1240px] border-b border-pub-line-subtle-2 bg-pub-page/[0.86] font-pub text-pub-txt backdrop-blur-[14px] backdrop-saturate-[1.4]">
             <div className="mx-auto max-w-[1600px] px-[36px]">
                 {/* ─── Linha 1 (60px) ─── */}
                 <div className="flex h-[60px] items-center justify-between gap-5">

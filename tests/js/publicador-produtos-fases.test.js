@@ -398,7 +398,7 @@ test('Tela B — render real: coluna Fases, kits recuados, filtro de fase e aç�
         // enfeite: é ele que impede o casamento por PREFIXO (sem ele, `top-0`
         // casaria dentro de `top-0.5` e a asserção passaria com a classe
         // errada). O `class="` à esquerda impede casar o header, que é
-        // `class="sticky top-0 z-50`.
+        // `class="sticky top-0 z-30` (era `z-50` até 12/10/2026, 261012-mbw).
         assert.doesNotMatch(html, /class="sticky top-0 z-10/);
         // E a grade usa as colunas do breakpoint largo (sem `innerWidth` no
         // stub do window, a tela cai no default largo da referência).

@@ -185,7 +185,14 @@ test('PublicadorHeader — FID-05 e FID-01 travados no HTML, elemento por elemen
     await contexto.test('<header>: sticky, blur, borda, fonte e min-width de 1240px', () => {
         exigirClasses(
             tagDe(html, /<header[^>]*>/, '<header>'),
-            ['sticky', 'top-0', 'z-50', '-mx-6', '-mt-6', 'min-w-[1240px]', 'border-b', 'border-pub-line-subtle-2',
+            // ⚠️ `z-30` desde 12/10/2026 (261012-mbw), NÃO `z-50`: em `z-50` o
+            // header cobria o menu lateral do sistema (`AppLayout.jsx`, `z-40`)
+            // e o `PainelDoProdutoLateral` (`z-40`), porque os três disputam no
+            // MESMO contexto de empilhamento. A ORDEM entre os três é provada em
+            // `publicador-header-zindex-ordem.test.js`, lendo os valores do
+            // código — aqui a lista continua sendo IGUALDADE DE CONJUNTO (classe
+            // a mais reprova), o que mudou foi o valor, não o rigor do gate.
+            ['sticky', 'top-0', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]', 'border-b', 'border-pub-line-subtle-2',
                 'bg-pub-page/[0.86]', 'backdrop-blur-[14px]', 'backdrop-saturate-[1.4]', 'font-pub ', 'text-pub-txt'],
             '<header>',
         );

@@ -1296,14 +1296,17 @@ test('Tela B (página) — bloco fixo, grade, densidade, seleção e faixa de su
         // E `top-0` não volta NESTE bloco. ⚠️ O `z-10` à direita é o que impede
         // o casamento por prefixo (`top-0` casa dentro de `top-0.5`); o
         // `class="` à esquerda é o que impede casar o header, que é
-        // legitimamente `class="sticky top-0 z-50 ...`.
+        // legitimamente `class="sticky top-0 z-30 ...`.
         assert.doesNotMatch(html, /class="sticky top-0 z-10/);
-        // UM só: o header é `z-50`, o bloco de filtros é o único `z-10`.
+        // UM só: o header é `z-30`, o bloco de filtros é o único `z-10`.
+        // ⚠️ O header era `z-50` até 12/10/2026 (261012-mbw) — foi para `z-30`
+        // para deixar de cobrir o menu lateral do sistema e o painel do produto
+        // (ambos `z-40`). Segue ACIMA deste `z-10`, que é o que importa aqui.
         assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1);
         // E o header global, que é o que justifica o 108: linha 1 de 60px +
         // nav de 48px. Se uma das duas medidas mudar, o `top-[108px]` acima
         // passa a esconder (ou a sobrar) e esta asserção acusa.
-        assert.match(html, /<header class="sticky top-0 z-50/);
+        assert.match(html, /<header class="sticky top-0 z-30/);
         assert.match(html, /class="flex h-\[60px\] items-center/);
         assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
         assert.doesNotMatch(html, /overflow-x-auto/);

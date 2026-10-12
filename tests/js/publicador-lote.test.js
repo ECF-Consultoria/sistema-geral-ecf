@@ -510,10 +510,13 @@ test('tela — o bloco de filtros cola ABAIXO do header global (108px), nunca at
     assert.equal((html.match(/sticky top-\[108px\]/g) ?? []).length, 1, 'esperava UM bloco colado abaixo do header');
     // E `top-0` não volta NESTE bloco. O ` z-10` à direita é o que impede o
     // casamento por prefixo (`top-0` casa dentro de `top-0.5`); o `class="` à
-    // esquerda impede casar o header, que é legitimamente `sticky top-0 z-50`.
+    // esquerda impede casar o header, que é legitimamente `sticky top-0 z-30`.
     assert.doesNotMatch(html, /class="sticky top-0 z-10/);
     // O header global está no topo da tela e é ele que justifica o 108.
-    assert.match(html, /<header class="sticky top-0 z-50/);
+    // ⚠️ `z-30` desde 12/10/2026 (261012-mbw): em `z-50` ele cobria o menu
+    // lateral do sistema e o painel do produto (ambos `z-40`). A ordem entre os
+    // três é provada em `publicador-header-zindex-ordem.test.js`.
+    assert.match(html, /<header class="sticky top-0 z-30/);
     assert.match(html, /class="flex h-\[60px\] items-center/);
     assert.match(html, /<nav aria-label="Abas da conta" class="flex h-\[48px\]/);
 });

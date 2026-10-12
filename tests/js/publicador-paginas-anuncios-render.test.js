@@ -241,7 +241,9 @@ for (const { nome, Componente, props, titulo } of PAGINAS) {
 
         await contexto.test('as classes que neutralizam o `p-6` do <main> estão NA TAG do header', () => {
             const tag = tagDoHeader(html);
-            for (const classe of ['sticky', 'top-0', 'z-50', '-mx-6', '-mt-6', 'min-w-[1240px]']) {
+            // ⚠️ `z-30` desde 12/10/2026 (261012-mbw), NÃO `z-50` — ver
+            // `publicador-header-zindex-ordem.test.js`.
+            for (const classe of ['sticky', 'top-0', 'z-30', '-mx-6', '-mt-6', 'min-w-[1240px]']) {
                 // `\b` não serve: `top-0` é prefixo de `top-0.5`, e `-mx-6` de
                 // `-mx-6/5`. A classe tem de terminar em espaço ou em aspas.
                 assert.match(tag, new RegExp(classe.replace(/[[\]/\\^$*+?.()|{}]/g, '\\$&') + '[\\s"]'),
