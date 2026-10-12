@@ -476,3 +476,11 @@ teste provar o que diz provar.
 ---
 *Fase: 178-modal-nova-publicacao · Plano 01*
 *Concluído: 2026-10-12*
+
+## Self-Check: PASSED
+
+- `app/Services/Publicador/NovaPublicacaoService.php` — existe
+- `tests/Feature/Publicador/NovaPublicacaoDoHeaderTest.php` — existe
+- `.planning/phases/178-modal-nova-publicacao/178-01-SUMMARY.md` — existe
+- commits `78d2ef9c`, `9270fa41`, `aae3006b`, `f61a9ebe`, `1a607729` — todos no histórico
+- rota `mlb.anuncios.publicador.nova-publicacao` — registrada (`artisan route:list --name=nova-publicacao` devolve 1 rota)
