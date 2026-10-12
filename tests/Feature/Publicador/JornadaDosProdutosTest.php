@@ -343,7 +343,7 @@ class JornadaDosProdutosTest extends TestCase
 
     /**
      * O cenário do protótipo, número por número
-     * (`new_layout_publicador/Visao Geral.dc.html:391-422` → `none=6, draft=2,
+     * (`new_layout_publicador/Visao Geral.dc.html:391-423` → `none=6, draft=2,
      * ready=13, done=11`, 32 produtos, 24 publicados, 75%).
      *
      * ⚠️ Os 11 kits dos produtos `done` existem no banco e NÃO entram no total:
