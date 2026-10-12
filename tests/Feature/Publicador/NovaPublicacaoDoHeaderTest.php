@@ -561,7 +561,10 @@ class NovaPublicacaoDoHeaderTest extends TestCase
         [$e, $c] = $this->conta();
         $this->produto($e, $c, 'DO-PORTAL', ['origem' => PubProduto::ORIGEM_PORTAL]);
         $this->produto($e, $c, 'DO-PUBLICADOR', ['origem' => PubProduto::ORIGEM_PUBLICADOR]);
-        $this->produto($e, $c, 'SEM-ORIGEM', ['origem' => null]);
+        // `pub_produtos.origem` é `string(12)` NOT NULL sem enum nem CHECK: uma origem
+        // nova (de uma fase futura) chega aqui sem aviso. O ramo `default` existe para
+        // ela nunca virar nota vazia.
+        $this->produto($e, $c, 'SEM-ORIGEM', ['origem' => 'legado']);
 
         $notas = collect($this->itens($this->grupos($e), 'sem_publicacao'))->pluck('nota', 'sku')->all();
 
