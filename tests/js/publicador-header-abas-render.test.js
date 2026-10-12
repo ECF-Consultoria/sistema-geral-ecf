@@ -562,9 +562,17 @@ test('AbasDoHeader — FID-01/FID-03 travados no HTML, elemento por elemento', a
         assert.equal(contar(HTML_CHEIO, ' gap-2 '), 4, 'as 4 pílulas têm 8px entre ícone, label e contador');
     });
 
-    await contexto.test('ícone: 15px com traço 1,6, dentro de um grid centrado, amarelo só na ativa', () => {
+    await contexto.test('ícone: 15px com traço 2,4, dentro de um grid centrado, amarelo só na ativa', () => {
         assert.equal(contar(HTML_CHEIO, 'width="15"'), 4, 'os 4 ícones têm 15px');
-        assert.equal(contar(HTML_CHEIO, 'stroke-width="1.6"'), 4, 'os 4 ícones têm traço 1,6');
+        // ⚠️⚠️ Fase 177, plano 06 — o número mudou de 1.6 para 2.4 e é CORREÇÃO
+        // DE FIDELIDADE, não afrouxamento: o protótipo desenha com
+        // `viewBox="0 0 16 16"` e o Lucide com `0 0 24 24`, e o `stroke-width` é
+        // medido no sistema de coordenadas do viewBox. Com 1.6 o traço saía com
+        // 1,0 px onde o protótipo tem 1,5 px — dois terços da espessura. O
+        // fator é 24/16 = 1,5, logo 1.6 × 1,5 = 2.4. A contagem EXATA de 4
+        // continua: nenhuma pílula pode escapar.
+        assert.equal(contar(HTML_CHEIO, 'stroke-width="2.4"'), 4, 'os 4 ícones têm traço 2,4 (= 1,6 do protótipo, convertido do viewBox 16 para o 24 do Lucide)');
+        assert.equal(contar(HTML_CHEIO, 'stroke-width="1.6"'), 0, 'traço 1,6 no Lucide renderiza 1,0 px — dois terços do desenhado');
         assert.equal(contar(HTML_CHEIO, 'aria-hidden="true"'), 5, '4 ícones decorativos + a barra da ativa');
 
         const caixaAtiva = tagDe(produtos, /<span class="grid[^>]*>/, 'caixa do ícone ativo');

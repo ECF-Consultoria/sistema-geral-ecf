@@ -90,7 +90,14 @@ function idUtil(valor) {
  * Os ícones são os equivalentes diretos dos SVG do protótipo (TOK-14: não
  * copiar SVG cru quando o Lucide tem equivalente) — quatro retângulos = painel,
  * caixa 3D = pacote, retângulo com linhas = lista, raio = `Zap` (o mesmo que o
- * `AppLayout` deste projeto já usa). Todos a 15px com traço 1,6.
+ * `AppLayout` deste projeto já usa). Todos a 15px.
+ *
+ * ⚠️ `strokeWidth={2.4}` e NÃO 1.6 (correção de fidelidade, 12/10/2026): o
+ * protótipo desenha com `viewBox="0 0 16 16"` e o Lucide com `0 0 24 24`. Como
+ * o traço é medido no sistema de coordenadas do viewBox, 1.6 no Lucide
+ * renderizava 1,0 px onde o protótipo renderiza 1,5 px — dois terços da
+ * espessura. O fator é 24/16 = 1,5, logo 1.6 × 1,5 = 2.4. A conta inteira está
+ * escrita no topo de `PublicadorHeader.jsx`.
  */
 export const ABAS = [
     { chave: 'visao-geral', rotulo: 'Visão geral', rota: 'mlb.anuncios.publicador.visao-geral', icone: LayoutDashboard },
@@ -178,7 +185,7 @@ export default function AbasDoHeader({ aba, conta = null, companyId = null, cont
         const miolo = (
             <>
                 <span className={cn('grid flex-none place-items-center', ativa ? 'text-pub-accent' : 'text-pub-txt-4')}>
-                    <Icone size={15} strokeWidth={1.6} aria-hidden="true" />
+                    <Icone size={15} strokeWidth={2.4} aria-hidden="true" />
                 </span>
                 {item.rotulo}
                 {contador !== null && (
