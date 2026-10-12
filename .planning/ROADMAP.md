@@ -3658,7 +3658,7 @@ kit da Fase 2, em produção desde 09/10).
      categoria, atributos e ficha técnica da Fase 1." (NOVA-06)
   8. Busca sem resultado mostra "Nenhum produto encontrado" — não um grupo vazio (NOVA-05)
 
-**Plans**: TBD
+**Plans**: 4 planos em 4 waves (178-01 contrato do servidor, 178-02 corpo, 178-03 casca portada, 178-04 fechamento medido) — executados em 12/10/2026
 **UI hint**: yes
 
 ### Phase 179: Visão Geral — o cockpit da conta
