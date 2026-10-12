@@ -324,13 +324,33 @@ class NovaPublicacaoDoHeaderTest extends TestCase
     }
 
     /**
-     * ⚠️ GATE DE CONSISTÊNCIA. A regra de "pronto para a Fase 2" é copiada de
-     * `PainelVisaoGeralService::prontosParaFase2()` (app/Services/Publicador/
-     * PainelVisaoGeralService.php:592) com citação no docblock, porque lá ela é
-     * `private` e aquele arquivo não pode ser tocado nesta fase. Se as duas
-     * divergirem, a Visão geral e o modal discordariam sobre o MESMO produto —
-     * então aqui o número de itens é comparado contra a regra original, por
-     * reflexão, numa lista com os cinco casos de fronteira juntos.
+     * ⚠️ GATE DE CONSISTÊNCIA. A regra de "pronto para a Fase 2" é **delegada** à
+     * fonte única `ProgramasPublicadorService::prontoParaFase2()` desde o plano
+     * 179-02B (12/10/2026). Antes dela havia uma CÓPIA aqui, outra em
+     * `PainelVisaoGeralService::prontosParaFase2()` e uma terceira regra no
+     * estágio `ready` da Jornada — e foi a cópia que divergiu. Se qualquer um
+     * dos três deixar de chamar a fonte, a Visão geral e o modal discordariam
+     * sobre o MESMO produto, e este teste reprova.
+     *
+     * ⚠️⚠️ **ESTE GATE ERA VAZIO POR CONSTRUÇÃO — e foi consertado em 12/10/2026.**
+     * O cenário não tinha **nenhum produto em `erro`**, então ele passava com a
+     * regra antiga (só `STATUS_NO_AR`) E com a nova (status **ou** anúncio
+     * CREATED vivo): a 179-02 mediu que o alinhamento não o faria falhar. Um
+     * gate de paridade que não distingue as duas definições que ele existe para
+     * comparar não prova nada. `ERRO-COM-ANUNCIO` foi acrescentado ao cenário
+     * exatamente por isso. **Não remova esse produto.**
+     *
+     * ⚠️ **A DECISÃO DO USUÁRIO — 12/10/2026.** Pergunta levada a ele: *"Um
+     * produto cuja publicação falhou, mas que JÁ TEM anúncio vivo no ar e sem
+     * kit, conta como 'Pronto para Fase 2'?"* Opções: (1) alinhar os três
+     * lugares; (2) erro é erro e fica fora de todo lugar; (3) ver o número real
+     * de produção primeiro. **Escolha: a opção 1** — com o aviso explícito de
+     * que isso muda este modal, já aprovado em produção.
+     *
+     * ⚠️ Isso **SUPERA a "Exclusão 2"** declarada no `178-01-SUMMARY.md` e no
+     * docblock de `NovaPublicacaoService::grupos()` (*"erro de publicação é
+     * triagem"*). A exclusão sobrevive só para `erro` **sem** anúncio vivo.
+     * Não "restaure" a exclusão achando que isto é regressão.
      */
     public function test_regra_de_prontos_fase2_bate_com_a_da_visao_geral(): void
     {
@@ -338,6 +358,11 @@ class NovaPublicacaoDoHeaderTest extends TestCase
 
         $this->rascunho($this->produto($e, $c, 'PUB'), PubRascunho::PUBLISHED);            // entra
         $this->rascunho($this->produto($e, $c, 'PARC'), PubRascunho::PARTIALLY_PUBLISHED); // entra
+        // ⚠️ A CLASSE DE FRONTEIRA da decisão de 12/10/2026: a publicação FALHOU,
+        // mas o anúncio da Fase 1 segue CREATED e vivo, sem kit e não composta.
+        // ENTRA desde o alinhamento. Sem esta linha o gate volta a ser vazio.
+        $erro = $this->produto($e, $c, 'ERRO-COM-ANUNCIO');
+        $this->anuncios($this->rascunho($erro, PubRascunho::FAILED), 1);                   // entra (decisão 12/10)
         $comKit = $this->produto($e, $c, 'COM-KIT');
         $this->rascunho($comKit, PubRascunho::PUBLISHED);
         $this->rascunho($this->kit($comKit, 2), PubRascunho::PUBLISHED);                   // base sai (tem kit)
@@ -353,13 +378,19 @@ class NovaPublicacaoDoHeaderTest extends TestCase
 
         $saida = $this->grupos($e);
 
-        $this->assertSame(2, $daVisaoGeral, 'a regra original mudou — reler PainelVisaoGeralService:592');
+        $this->assertSame(3, $daVisaoGeral, 'ERA 2 antes do alinhamento de 12/10/2026, com o mesmo cenário mais a base em `erro` com anúncio vivo — se voltou a 2, alguém desfez a decisão do usuário');
         $this->assertCount(
             $daVisaoGeral,
             $this->itens($saida, 'prontos_fase2'),
             'o modal e a Visão geral discordam sobre quantos produtos esperam Fase 2',
         );
-        $this->assertEqualsCanonicalizing(['PUB', 'PARC'], $this->skus($saida, 'prontos_fase2'));
+        $this->assertEqualsCanonicalizing(['PUB', 'PARC', 'ERRO-COM-ANUNCIO'], $this->skus($saida, 'prontos_fase2'));
+        $this->assertContains(
+            'ERRO-COM-ANUNCIO',
+            $this->skus($saida, 'prontos_fase2'),
+            'a base cuja publicação falhou mas que TEM anúncio vivo saiu do grupo do modal — '
+            .'é a decisão do usuário de 12/10/2026 que está sendo desfeita, não um bug sendo consertado',
+        );
     }
 
     // ═══ 3. Os outros dois grupos, por status ════════════════════════════════

@@ -1005,32 +1005,49 @@ class AcoesDaContaTest extends TestCase
         $this->assertNotContains('pausados', $this->chavesDe($saida));
     }
 
-    // ═══ 12. A RELAÇÃO entre os dois números de "Prontos para a Fase 2" ══════
+    // ═══ 12. O cabeçalho da ação × a sub-lista de "Prontos para a Fase 2" ════
 
     /**
-     * ⚠️ DIVERGÊNCIA MEDIDA, NÃO RESOLVIDA — leia antes de "consertar".
+     * ⚠️ A DIVERGÊNCIA FOI RESOLVIDA EM 12/10/2026 — este teste REAPONTOU.
      *
-     * `PainelVisaoGeralService::prontosParaFase2()` olha **só o status**
-     * (`STATUS_NO_AR`). O estágio `ready` da Jornada (plano 179-01) usa os DOIS
-     * ramos de `bucketDaFase()` — status **ou** anúncio CREATED vivo. Então a base
-     * em `erro` **com anúncio vivo e sem kit** entra em `ready` e **não** entra na
-     * linha "Prontos para a Fase 2".
+     * Até o plano 179-02B, `PainelVisaoGeralService::prontosParaFase2()` olhava
+     * **só o status** (`STATUS_NO_AR`) e o estágio `ready` da Jornada usava os
+     * DOIS ramos de `bucketDaFase()` — status **ou** anúncio CREATED vivo. A base
+     * em `erro` **com anúncio vivo e sem kit** entrava em `ready` e **não** entrava
+     * na linha. Na MESMA tela o anel dizia um número e a ação dizia outro; e
+     * **dentro da mesma ação** a sub-lista mostrava 2 itens sob um cabeçalho que
+     * dizia 1.
      *
-     * Na MESMA tela, o anel diz um número e a ação diz outro. Este teste mede o
-     * tamanho exato da diferença para a próxima sessão não achar que é bug novo.
+     * **A DECISÃO DO USUÁRIO — 12/10/2026.** Pergunta levada a ele: *"Um produto
+     * cuja publicação falhou, mas que JÁ TEM anúncio vivo no ar e sem kit, conta
+     * como 'Pronto para Fase 2'?"* Opções: (1) alinhar os três lugares; (2) erro é
+     * erro e fica fora de todo lugar; (3) ver o número real de produção primeiro.
+     * **Escolha: a opção 1**, com o aviso explícito de que isso muda o modal da
+     * Fase 178 já aprovado em produção. A regra virou uma só —
+     * `ProgramasPublicadorService::prontoParaFase2()`.
      *
-     * ⚠️ **Alinhar os dois NÃO é mudança local**: `NovaPublicacaoService` (Fase
-     * 178, em produção e aprovada) tem uma CÓPIA da regra, e
-     * `NovaPublicacaoDoHeaderTest::test_regra_de_prontos_fase2_bate_com_a_da_visao_geral()`
-     * compara os dois por reflexão. Alinhar só um lado cria divergência real em
-     * produção; alinhar os dois faz um produto em `erro` entrar no grupo "PRONTOS
-     * PARA FASE 2" do modal, contra a Exclusão 2 declarada dele ("erro de
-     * publicação é triagem"). A decisão é do usuário — ver a SUMMARY do 179-02.
+     * ═══ ⚠️ POR QUE ESTE TESTE TEM DOIS CASOS ════════════════════════════════
+     *
+     * Este teste é **SINTÉTICO**: `$linhas` e `$jornada` são montados à mão. Então
+     * ele **não prova nada sobre o alinhamento** — os números vêm cravados na
+     * entrada. Reapontar só os valores deixaria o gate vazio por construção.
+     *
+     * - **Caso A (alinhado):** linha = 2 e `ready` = 2. Prova o que o usuário vai
+     *   ver: o número do cabeçalho **é igual** à contagem da sub-lista.
+     * - **Caso B (ISCA):** a divergência ANTIGA cravada (linha = 1, `ready` = 2).
+     *   ⚠️ O serviço **NÃO alinha nada por conta própria** — ele repassa o número
+     *   da linha e os itens do estágio, cada um da sua fonte. É isto que prova que
+     *   a igualdade do caso A vem das **REGRAS em `app/`**, e não de um alinhamento
+     *   escondido dentro de `AcoesDaContaService`. A mutação M10 (recontar o número
+     *   pelos itens do estágio) reprova exatamente aqui.
+     *
+     * O gate de verdade sobre as três regras está em `ProntoParaFase2Test`, que usa
+     * produtos reais e compara **conjuntos de SKU**.
      */
-    public function test_a_relacao_entre_o_anel_e_a_acao_de_prontos_para_fase_2_e_medida(): void
+    public function test_o_numero_da_acao_de_prontos_fase_2_bate_com_a_sub_lista(): void
     {
-        // O cenário da divergência, nos dois lados, em shape de payload.
-        $linhaDaAcao = $this->linha('prontos_fase2', 1);          // o que prontosParaFase2() conta
+        // ─── Caso A: o cenário ALINHADO (o que a tela mostra desde 12/10/2026) ───
+        $linhaDaAcao = $this->linha('prontos_fase2', 2);          // o que prontosParaFase2() conta HOJE
         $jornada = $this->jornada(['ready' => ['total' => 2, 'itens' => [    // o que o anel conta
             $this->itemDeEstagio(1, 'Base publicada', 'B-1', '1 unidade · 1 no ar'),
             $this->itemDeEstagio(2, 'Base em erro com anúncio vivo', 'B-2', '1 unidade · 1 no ar'),
@@ -1042,38 +1059,48 @@ class AcoesDaContaTest extends TestCase
         $doAnel = 2;
         $daAcao = $acao['numero'];
 
-        $this->assertSame(1, $daAcao, 'a ação conta pelo status: a base em erro fica fora');
+        $this->assertSame(2, $daAcao, 'ERA 1 antes do alinhamento de 12/10/2026, quando a ação contava só pelo status');
         $this->assertSame(
-            1,
+            0,
             $doAnel - $daAcao,
-            'A DIFERENÇA MEDIDA É EXATAMENTE 1 neste cenário. Se este número mudar, a '
-            .'divergência cresceu ou alguém alinhou um dos lados — reler o bloco de '
-            .'divergência da 179-02-SUMMARY antes de mexer.'
+            'A DIVERGÊNCIA ERA 1 e foi RESOLVIDA em 12/10/2026 por decisão do usuário. Se '
+            .'voltou a 1, alguém desfez o alinhamento — reler a 179-02B-SUMMARY antes de mexer.'
         );
 
-        // ⚠️ E a ação NÃO reconta a partir da jornada: ela repassa o número da linha.
-        // Trocar a fonte aqui "resolveria" a divergência escondendo-a do usuário e
-        // deixando o modal da 178 discordando dos dois.
-        $this->assertNotSame($doAnel, $daAcao, 'a ação respeita a fonte dela (a linha), não a do anel');
-
-        // ⚠️⚠️ A CONSEQUÊNCIA MEDIDA, descoberta na execução: a sub-lista de
-        // `prontos_fase2` vem do estágio `ready` da Jornada (2 itens) enquanto o
-        // número vem da linha (1). Abrir a ação mostra DOIS produtos sob um cabeçalho
-        // que diz UM. A divergência não fica só entre dois blocos da tela — ela
-        // aparece DENTRO da mesma ação.
-        //
-        // Isto NÃO foi "consertado" de propósito: cortar os itens no número da linha
-        // esconderia da tela um produto que está de fato no ar sem kit, e trocar a
-        // fonte do número mudaria o que `oQueFazerAgora()` entrega hoje. As duas
-        // saídas mexem em comportamento aprovado — ver o bloco de divergência da
-        // 179-02-SUMMARY.
-        $this->assertCount(2, $acao['itens'], 'os itens vêm do estágio `ready`, com o teto de 4 — não do número da linha');
-        $this->assertNotSame(
+        // ⚠️ O GATE DO CABEÇALHO: o número da linha e a contagem da sub-lista são
+        // o MESMO número. Antes do alinhamento abrir a ação mostrava DOIS produtos
+        // sob um cabeçalho que dizia UM — a divergência aparecia dentro da própria ação.
+        $this->assertCount(2, $acao['itens'], 'os itens vêm do estágio `ready`, com o teto de 4');
+        $this->assertSame(
             count($acao['itens']),
             $acao['numero'],
-            'CONTRADIÇÃO MEDIDA: a sub-lista mostra 2 e o cabeçalho diz 1. Se este '
-            .'assertNotSame começar a falhar, alguém alinhou as duas fontes — ótimo, '
-            .'mas confira o modal da Fase 178 antes de comemorar.'
+            'o cabeçalho da ação e a sub-lista dela discordam. ERA a contradição medida na '
+            .'179-02 (2 itens sob um cabeçalho dizendo 1); desde 12/10/2026 as duas fontes '
+            .'são a mesma regra e isto tem de bater.'
+        );
+
+        // ─── Caso B (ISCA): o serviço NÃO alinha nada por conta própria ──────────
+        // A divergência antiga, cravada na ENTRADA. O serviço tem de repassar as duas
+        // fontes fielmente: o `numero` da linha e os `itens` do estágio. Se ele
+        // "consertasse" aqui, a igualdade do caso A seria dele e não das regras — e o
+        // gate acima seria decorativo.
+        $divergente = $this->service->acoes(
+            $this->alvo(),
+            [$this->linha('prontos_fase2', 1)],
+            $jornada,
+            [],
+            null,
+        );
+        $daIsca = $this->acao($divergente, 'prontos_fase2');
+
+        $this->assertSame(1, $daIsca['numero'], 'ISCA: o número tem de vir da LINHA, intacto');
+        $this->assertCount(2, $daIsca['itens'], 'ISCA: os itens têm de vir do ESTÁGIO, intactos');
+        $this->assertNotSame(
+            count($daIsca['itens']),
+            $daIsca['numero'],
+            'ISCA QUEBRADA: o serviço passou a alinhar o número com os itens por conta '
+            .'própria. Isso esconderia do usuário uma divergência futura entre as regras e '
+            .'tornaria vazio o gate de igualdade do caso A acima.'
         );
     }
 

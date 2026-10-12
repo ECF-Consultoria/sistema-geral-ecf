@@ -554,16 +554,30 @@ class JornadaDosProdutosTest extends TestCase
     }
 
     /**
-     * ⚠️ A DIVERGÊNCIA CONHECIDA, medida em vez de escondida.
+     * ⚠️ A DIVERGÊNCIA FOI RESOLVIDA EM 12/10/2026 — este teste REAPONTOU.
      *
-     * "No ar" tem UMA definição (status em `STATUS_NO_AR` **ou** anúncio CREATED
-     * vivo) e `prontosParaFase2()` usa só o status. Então a base com
-     * `status.chave = 'erro'` e anúncio vivo, sem kit, entra em `ready` aqui e
-     * NÃO conta lá — diferença de exatamente 1 neste cenário. Se ela crescer
-     * (ou se alguém "consertar" o segundo ramo), este teste reprova e a
-     * divergência volta para a mesa.
+     * Até o plano 179-02B havia duas definições: "no ar" com os dois ramos
+     * (status em `STATUS_NO_AR` **ou** anúncio CREATED vivo) no estágio `ready`,
+     * e só o status em `prontosParaFase2()`. A base com `status.chave = 'erro'`
+     * e anúncio vivo, sem kit, entrava em `ready` aqui e **não** contava lá —
+     * diferença de exatamente **1** neste cenário.
+     *
+     * **A DECISÃO DO USUÁRIO — 12/10/2026.** Pergunta levada a ele: *"Um produto
+     * cuja publicação falhou, mas que JÁ TEM anúncio vivo no ar e sem kit, conta
+     * como 'Pronto para Fase 2'?"* Opções: (1) alinhar os três lugares; (2) erro
+     * é erro e fica fora de todo lugar; (3) ver o número real de produção
+     * primeiro. **Escolha: a opção 1**, com o aviso explícito de que isso muda o
+     * modal da Fase 178 já aprovado em produção.
+     *
+     * ➡️ Hoje há **uma** fonte — `ProgramasPublicadorService::prontoParaFase2()`
+     * — e este teste prova que os dois números são **IGUAIS**. ⚠️ Se a diferença
+     * voltar a ser 1, não é bug novo: alguém desfez a decisão do usuário.
+     *
+     * ⚠️ A definição que venceu é a do `bucketDaFase()` (status **ou** anúncio
+     * vivo), porque é a que a tela de Produtos usa — dizer "rascunho" sobre um
+     * produto que está vendendo seria pior. **Não reabrir.**
      */
-    public function test_divergencia_com_prontos_para_fase_2_e_medida_e_declarada(): void
+    public function test_prontos_para_fase_2_tem_uma_fonte_so_e_o_anel_concorda(): void
     {
         [$e, $c] = $this->conta();
 
@@ -575,12 +589,20 @@ class JornadaDosProdutosTest extends TestCase
         $daVisaoGeral = $this->prontosParaFase2($produtos);
         $saida = $this->servico()->jornada($this->alvo($e), $produtos);
 
-        $this->assertSame(1, $daVisaoGeral, 'prontosParaFase2() não vê o anúncio vivo: só o status');
+        $this->assertSame(2, $daVisaoGeral, 'ERA 1 antes do alinhamento de 12/10/2026, quando prontosParaFase2() não via o anúncio vivo. Voltou a 1 = a decisão do usuário foi desfeita');
         $this->assertSame(2, $this->estagio($saida, 'ready')['total'], 'a Jornada vê os dois ramos de "no ar"');
         $this->assertSame(
-            1,
+            0,
             $this->estagio($saida, 'ready')['total'] - $daVisaoGeral,
-            'o tamanho da divergência declarada mudou — reler o docblock de jornada()',
+            'A DIVERGÊNCIA ERA 1 e foi RESOLVIDA em 12/10/2026 por decisão do usuário. '
+            .'Se voltou a 1, uma das duas pontas deixou de chamar a fonte única '
+            .'`ProgramasPublicadorService::prontoParaFase2()` — reler a 179-02B-SUMMARY.',
+        );
+        // ⚠️ Conjunto, não contagem: dois lados podem acertar o número errando o produto.
+        $this->assertSame(
+            ['PUB', 'ERRO-COM-ANUNCIO'],
+            $this->skus($saida, 'ready'),
+            'a base cuja publicação falhou mas que TEM anúncio vivo saiu de `ready`',
         );
         $this->assertFecha($saida);
     }
