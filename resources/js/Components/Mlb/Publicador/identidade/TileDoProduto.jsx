@@ -26,6 +26,18 @@ import { iniciais, tomDoProduto } from './identidade';
 // grande, o conserto é no servidor, não aqui.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ─── Fase 178, plano 02 — a prop `letra` (ADIÇÃO PURA) ───
+//
+// O protótipo `PublicadorHeader.dc.html`:146 diz `font-size:11px` para o tile de
+// 34px do modal "Nova publicação", e a escada abaixo devolve `text-[10.5px]`
+// para `lado <= 34`. Os dois estão certos: a escada foi medida nas telas onde
+// foi medida (`Visao Geral.dc.html`:242 e vizinhas), e o modal mede outra coisa.
+// O protótipo :54 confirma o mesmo 11px no tile de 30px do dropdown de empresa.
+//
+// Em vez de mexer na escada (que mudaria silenciosamente 4 telas já conferidas),
+// `letra` deixa a TELA dizer o corpo quando precisa sair da escada — exatamente
+// como `raio` já faz. Prop AUSENTE = escada intacta, byte a byte.
+
 /** Raio e corpo da letra por lado do tile — a escada medida no protótipo. */
 function escala(lado) {
     if (lado <= 34) return { raio: 8, letra: 'text-[10.5px]' };
@@ -40,9 +52,12 @@ function escala(lado) {
  * @param {string|null} [props.foto]         URL da miniatura; só string vale
  * @param {number} [props.tamanho]           lado em px
  * @param {number|null} [props.raio]         raio em px, quando a tela precisar sair da escada
+ * @param {string|null} [props.letra]        classe de corpo de texto (`text-[11px]`),
+ *   quando a tela precisar sair da escada. Ausente, nula ou vazia = a escada de
+ *   sempre — nenhuma chamada existente muda de comportamento.
  * @param {string} [props.className]
  */
-export default function TileDoProduto({ id, nome, foto = null, tamanho = 34, raio = null, className }) {
+export default function TileDoProduto({ id, nome, foto = null, tamanho = 34, raio = null, letra = null, className }) {
     const lado = typeof tamanho === 'number' && Number.isFinite(tamanho) && tamanho > 0 ? tamanho : 34;
     const medida = escala(lado);
     const borderRadius = typeof raio === 'number' && Number.isFinite(raio) ? raio : medida.raio;
@@ -66,12 +81,14 @@ export default function TileDoProduto({ id, nome, foto = null, tamanho = 34, rai
 
     const letras = iniciais(nome);
     const tom = tomDoProduto(id);
+    // `letra` só vale como CLASSE: número, objeto e string vazia caem na escada.
+    const corpo = typeof letra === 'string' && letra.trim() !== '' ? letra : medida.letra;
 
     return (
         <span
             aria-hidden="true"
             style={{ width: lado, height: lado, borderRadius, background: tom.fundo, color: tom.texto }}
-            className={cn('grid flex-none place-items-center font-semibold', medida.letra, className)}
+            className={cn('grid flex-none place-items-center font-semibold', corpo, className)}
         >
             {letras !== '' ? letras : <Package strokeWidth={1.6} className="h-1/2 w-1/2 text-pub-txt-3" />}
         </span>

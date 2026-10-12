@@ -497,6 +497,43 @@ test('TileDoProduto — foto quando há, iniciais quando não há, caixa quando 
         assert.match(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 84 }), /text-\[20px\]/);
     });
 
+    // ─── Fase 178, plano 02 — a prop `letra` é ADIÇÃO PURA ───
+    //
+    // O protótipo `PublicadorHeader.dc.html`:146 mede `font-size:11px` no tile de
+    // 34px do modal "Nova publicação", contra os 10.5px que a escada devolve para
+    // `lado <= 34`. `letra` deixa a tela sair da escada SEM mexer nela.
+    //
+    // ⚠️ A conferência é por TOKEN de classe, nunca por substring: a lista é
+    // partida por espaço e comparada por igualdade. `includes('text-[11px]')`
+    // casaria a classe de qualquer elemento e seria asserção vazia.
+    await contexto.test('a prop `letra` troca só o corpo da letra — ausente, a escada fica intacta', () => {
+        const classesDe = (html) => ((/class="([^"]*)"/.exec(html) ?? [])[1] ?? '').split(/\s+/).filter(Boolean);
+
+        const semLetra = classesDe(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 34 }));
+        assert.ok(semLetra.includes('text-[10.5px]'), 'sem `letra`, o tile de 34px tem de ficar na escada (10.5px)');
+        assert.ok(!semLetra.includes('text-[11px]'));
+
+        const comLetra = classesDe(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 34, letra: 'text-[11px]' }));
+        assert.ok(comLetra.includes('text-[11px]'), '`letra` tem de chegar à classe do tile');
+        assert.ok(!comLetra.includes('text-[10.5px]'), '`letra` tem de SUBSTITUIR o corpo da escada, não somar');
+
+        // O resto do tile não muda: raio, lado, peso e o `flex-none`.
+        assert.match(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 34, letra: 'text-[11px]' }), /width:34px;height:34px/);
+        assert.match(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 34, letra: 'text-[11px]' }), /border-radius:8px/);
+        for (const classe of ['grid', 'flex-none', 'place-items-center', 'font-semibold']) {
+            assert.ok(comLetra.includes(classe), `a prop letra não pode tirar ${classe} do tile`);
+        }
+
+        // `letra` inválida cai na escada, sem lançar e sem classe fantasma.
+        for (const letra of [{}, 11, null, undefined, '', '   ', []]) {
+            const classes = classesDe(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 40, letra }));
+            assert.ok(
+                classes.includes('text-[11.5px]'),
+                `letra inválida (${JSON.stringify(letra)}) tinha de cair na escada do tile de 40px`,
+            );
+        }
+    });
+
     await contexto.test('tamanho e raio inválidos caem no default, sem lançar', () => {
         assert.match(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: {} }), /width:34px;height:34px/);
         assert.match(renderizar(TileDoProduto, { id: 1, nome: 'Caneca Azul', tamanho: 0 }), /width:34px;height:34px/);
