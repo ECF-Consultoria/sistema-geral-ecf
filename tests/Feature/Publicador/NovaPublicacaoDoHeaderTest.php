@@ -51,6 +51,26 @@ use Tests\TestCase;
  *    por `resolver()` nunca ser chamado, não por "deu 404" (um 404 do resolver
  *    passaria pelo motivo errado).
  *
+ * ═══ Este arquivo foi PROVADO POR MUTAÇÃO ════════════════════════════════════
+ *
+ * Em 12/10/2026 rodaram **14 mutações** no código real (o serviço, a action e a
+ * rota). **Todas as 14 reprovaram**, e cada uma caiu no caso que devia cair —
+ * não num caso qualquer. O relato completo está em `178-01-SUMMARY.md`. Os três
+ * arquivos foram restaurados de cópia pristina com conferência por `sha256`.
+ *
+ * Três gates deste arquivo existem porque o gate óbvio passaria pelo motivo
+ * errado — **não afrouxe nenhum dos três**:
+ *
+ * - `test_rota_recusa_conta_fora_do_padrao_antes_do_controller` cobra que
+ *   `resolver()` **nunca seja chamado**, não "deu 404": o resolver também
+ *   devolve 404 para chave desconhecida, então um teste de status passaria
+ *   mesmo SEM o `->where('conta', …)` na rota.
+ * - `test_a_consulta_pesada_roda_uma_vez_por_chamada` cobra `->once()`: duas
+ *   chamadas a `produtosParaTela()` ainda caberiam no teto do detector de N+1.
+ * - `test_base_publicada_que_ja_tem_kit_nao_entra_em_nenhum_grupo` dá ao kit um
+ *   rascunho PUBLICADO para poder cobrar `total === 0`; sem isso o kit cairia em
+ *   `sem_publicacao` e o total deixaria de ser uma asserção forte.
+ *
  * ⚠️ Nenhum teste aqui chama o Mercado Livre: `Http::fake()` sem handler
  * intercepta tudo (D-05 — este contrato só lê o que já está gravado).
  *
