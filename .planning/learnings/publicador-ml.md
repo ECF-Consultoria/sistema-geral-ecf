@@ -1460,3 +1460,36 @@ embalagens: 2". Perguntou se o nosso deveria ser assim em vez de somar as dimens
 dizem que o pacote é medido nos centros de distribuição e a diferença é cobrada depois.
 
 **Não corrigido:** os dois kits já publicados (40 e 42) seguem com as quantidades da unidade no Mercado Livre.
+
+## 32. O desconto de 16,67% nas contas dos clientes: o que o Mercado Livre aceita, medido (12/10/2026)
+
+Pergunta do usuário: o método da Precificação (anunciar por 609,57 e levar a 507,97 na Central de Promoções) funciona de
+verdade? A conta de teste não serve de prova (parada, sem Central). Medido em 63 contas de clientes, SÓ com GET e sem
+renovar token (scripts em `scratchpad/e2e/promocoes_leitura.php` e `analisar_promocoes*.py`): 177 anúncios, os 3 mais
+novos de cada conta.
+
+- **`GET /seller-promotions/items/{id}?app_version=v2` traz o desconto próprio como CANDIDATO**, com a faixa:
+  `{type: PRICE_DISCOUNT, status: candidate, original_price, min_discounted_price, max_discounted_price,
+  suggested_discounted_price}`. Em 139 de 145 candidatos a faixa é a da doc: de −5% a −80% do preço. O alvo de
+  −16,67% cabe em 141 de 145. No desconto próprio o preço é o que se digita: fecha no centavo.
+- **Anúncio novo vira candidato em menos de 2 horas.** Os 25 anúncios da amostra com 1 a 24 h de vida eram todos
+  candidatos (o mais novo tinha 1,2 h). Não havia nenhum com menos de 1 h: "em minutos" não está provado nem negado.
+  Na #459, a 3 min da criação, a resposta foi "No candidates" (§21) — o mais provável é cedo demais, não conta
+  limitada: contas pequenas parecidas (57 vendas, sem medalha) têm candidato. Hoje a promoção automática trata essa
+  recusa como final; os dados dizem que valeria tentar de novo horas depois.
+- **Quem NÃO tem:** reputação vermelha (conta 196: nenhuma linha em nenhum anúncio, 0 convites) e conta sem venda.
+  Uma conta verde (184) tinha os 3 anúncios mais novos sem linha nenhuma — sem explicação.
+- **A faixa encolhe em alguns anúncios (4 de 145):** o ML só aceitava a partir de −20,6% ou −38,1%. Os quatro tinham
+  preço cheio alto e outra promoção rodando. Hipótese (não confirmada): o teto do desconto segue o menor preço
+  praticado há pouco. Se for isso, subir o preço de um anúncio que já vendeu mais barato tira os 16,67% da faixa;
+  anúncio que NASCE no preço "anunciar" não tem esse histórico.
+- **Campanha do ML (convite) nem sempre fecha na meta.** Em 164 de 229 candidaturas a DEAL os −16,67% cabem; em 65
+  (28%) a campanha exige desconto MAIOR — entrar nela levaria o preço abaixo do piso. Só 2 dessas ficavam a R$ 1.
+  Relâmpago: 31 de 32 cabem. Campanha do vendedor: 37 de 40. `SMART` e `PRICE_MATCHING` vêm com preço fixo do ML
+  (sem faixa). A meta de R$ 1 só é garantida no desconto próprio.
+- **60 de 63 contas têm campanhas na Central** (`GET /seller-promotions/users/{id}`): DEAL em quase todas, depois
+  LIGHTNING, SMART, cupom e campanha do vendedor.
+- **Na amostra já rodam 26 descontos próprios, de 5% a 73%** (vários entre 18% e 25%): é prática corrente.
+- **Tokens: os das contas de Polos (`mlb_empresa_id`) só estão válidos das 08h às 14h** (um job os renova às 08:00;
+  valem 6 h). Leitura "sem renovar" nessas contas tem de rodar nessa janela; às 19h havia 1 válido de 44. As demais
+  ficam válidas ao longo do dia.
