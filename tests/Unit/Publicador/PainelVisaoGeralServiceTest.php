@@ -11,6 +11,7 @@ use App\Models\PubProduto;
 use App\Models\PubPublicacao;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Models\PubTarefa;
 use App\Models\User;
 use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\PainelVisaoGeralService;
@@ -30,6 +31,17 @@ use Tests\TestCase;
 class PainelVisaoGeralServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * A lista FECHADA de chaves de linha (Fase 179 Plano 02). É o contrato do
+     * adiamento: `AdiamentoDeAcoes` só grava chave desta lista, e a action de
+     * adiar (plano 179-04) valida `in_array` contra ela.
+     */
+    private const CHAVES_CONHECIDAS = [
+        'reconectar', 'pausados', 'com_problema', 'prontos_fase2', 'conferidos',
+        'rascunhos_pendencias', 'portal_novas', 'ficha_incompleta', 'perdendo_catalogo',
+        'foto_insuficiente', 'alavancas',
+    ];
 
     private PainelVisaoGeralService $service;
 
@@ -222,6 +234,9 @@ class PainelVisaoGeralServiceTest extends TestCase
         $this->assertCount(1, $linhas, 'nenhuma outra linha aparece, mesmo com produtos com problema/portal com novas');
         $this->assertSame('Conta precisa de reconexão', $linhas[0]['texto']);
         $this->assertSame('https://reconectar', $linhas[0]['destino']['url']);
+        // Fase 179-02: a linha única de reconexão também tem `chave` — é por ela que
+        // `AcoesDaContaService` a classifica como crítica e que o adiamento a endereça.
+        $this->assertSame('reconectar', $linhas[0]['chave']);
     }
 
     /** @test */
@@ -273,6 +288,22 @@ class PainelVisaoGeralServiceTest extends TestCase
             'Foto insuficiente',
         ], array_column($linhas, 'texto'), 'ordem fixa da seção 3 — linha 6 entra entre "conferidos" (5) e "Portal" (7); perdendo_catalogo (count=0) não entra');
 
+        // ─── Fase 179-02: a `chave` ESTÁVEL de cada linha, no MESMO cenário ───
+        // ⚠️ O texto muda com o número ("2 publicações com erro" → "3 publicações com
+        // erro"); a chave não. Sem ela o adiamento teria de casar por TEXTO e se
+        // perderia na primeira publicação corrigida. Travada por `assertSame` na
+        // mesma ordem do `texto` acima — chave e texto andam pareados, posição a posição.
+        $this->assertSame([
+            'pausados',
+            'com_problema',
+            'prontos_fase2',
+            'conferidos',
+            'rascunhos_pendencias',
+            'portal_novas',
+            'ficha_incompleta',
+            'foto_insuficiente',
+        ], array_column($linhas, 'chave'), 'a chave de cada linha é estável e pareada com o texto, na mesma ordem');
+
         $this->assertSame(3, $linhas[0]['numero'], 'pausados(2) + sem_estoque(1)');
         $this->assertSame(1, $linhas[0]['legado'], 'conta quantos dos pausados/sem estoque são legado');
         $porTexto = collect($linhas)->keyBy('texto');
@@ -318,6 +349,75 @@ class PainelVisaoGeralServiceTest extends TestCase
         ];
         $linhas = $this->service->oQueFazerAgora($alvo, $empresaParaTela, $contagens, ['chips' => []], [], ['situacao' => 'sincronizado', 'novas' => 0], $produtos);
         $this->assertSame([], $linhas);
+    }
+
+    /**
+     * Fase 179-02 — TODAS as linhas de uma vez, cada uma com sua `chave`.
+     *
+     * ⚠️ O cenário da `ordem_fixa` não cobre duas linhas: `perdendo_catalogo`
+     * (lá `count = 0`) e `alavancas` (lá não há `PubTarefa`). Sem este teste, a
+     * chave dessas duas poderia estar errada e nada acusaria — a classe de gate
+     * vazio por construção. Aqui as DEZ linhas do ramo ativo aparecem juntas.
+     *
+     * @test
+     */
+    public function test_o_que_fazer_agora_todas_as_linhas_tem_chave_unica_e_da_lista_fechada(): void
+    {
+        $company = Company::factory()->create();
+        $this->criarAcervo($company, 'MLBT1', 'paused', 0, ['motivos' => [MlAcervoItem::MOTIVO_PAUSADO], 'severidade' => MlAcervoItem::SEVERIDADE_CRITICA]);
+
+        // A tarefa pós-publicação aberta da conta — é ela que acende a linha `alavancas`.
+        PubTarefa::create([
+            'tipo' => PubTarefa::TIPO_ALAVANCAS,
+            'status' => PubTarefa::PENDENTE,
+            'company_id' => $company->id,
+            'conta_chave' => $company->chaveContaMl(),
+            'itens' => [['ml_item_id' => 'MLBT9', 'listing_type_id' => 'gold_special']],
+            'publicado_em' => now()->subDay(),
+            'prazo' => now()->addDays(3)->toDateString(),
+            'checklist' => PubTarefa::checklistInicial(),
+        ]);
+
+        $alvo = ['mlb_empresa' => null, 'company' => $company, 'programa' => 'gestao', 'chave' => $company->chaveContaMl()];
+        $empresaParaTela = ['token' => 'ativo', 'link_reconexao' => null, 'company_id' => $company->id, 'portal' => []];
+        $contagemProdutos = ['com_problema' => 3, 'publicados' => 2, 'conferidos' => 1];
+        $chips = ['chips' => [
+            ['chave' => MlAcervoItem::MOTIVO_PAUSADO, 'label' => 'Pausado', 'count' => 2, 'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_SEM_ESTOQUE, 'label' => 'Sem estoque', 'count' => 1, 'cor' => 'red'],
+            ['chave' => MlAcervoItem::MOTIVO_FICHA_INCOMPLETA, 'label' => 'Ficha incompleta', 'count' => 2, 'cor' => 'amber'],
+            // ⚠️ count > 0 aqui de propósito: é o que o outro cenário NÃO cobre.
+            ['chave' => MlAcervoItem::MOTIVO_PERDENDO_CATALOGO, 'label' => 'Perdendo catálogo', 'count' => 4, 'cor' => 'amber'],
+            ['chave' => MlAcervoItem::MOTIVO_FOTO_INSUFICIENTE, 'label' => 'Foto insuficiente', 'count' => 1, 'cor' => 'amber'],
+        ]];
+        $produtos = [['nome' => 'Quase pronto', 'status' => ['chave' => 'conferir', 'faltam' => 2]]];
+
+        $linhas = $this->service->oQueFazerAgora(
+            $alvo, $empresaParaTela, $contagemProdutos, $chips, [], ['situacao' => 'novas', 'novas' => 5], $produtos
+        );
+
+        $chaves = array_column($linhas, 'chave');
+
+        $this->assertSame([
+            'pausados', 'com_problema', 'prontos_fase2', 'conferidos', 'rascunhos_pendencias',
+            'portal_novas', 'ficha_incompleta', 'perdendo_catalogo', 'foto_insuficiente', 'alavancas',
+        ], $chaves, 'as dez linhas do ramo ativo, com chave pareada ao texto');
+
+        $this->assertCount(count($linhas), $chaves, 'nenhuma linha ficou sem `chave` (array_column pularia a que não tem)');
+        $this->assertSame($chaves, array_unique($chaves), 'duas linhas nunca compartilham a mesma chave');
+
+        foreach ($chaves as $chave) {
+            $this->assertIsString($chave);
+            $this->assertNotSame('', $chave, 'chave vazia não endereça adiamento nenhum');
+            $this->assertMatchesRegularExpression('/^[a-z][a-z0-9_]*$/', $chave, 'snake_case minúsculo');
+            $this->assertContains($chave, self::CHAVES_CONHECIDAS, "a chave '{$chave}' não está na lista fechada do adiamento");
+        }
+
+        // A lista fechada não tem chave a mais nem a menos: as 10 do ramo ativo + `reconectar`.
+        $this->assertSame(
+            self::CHAVES_CONHECIDAS,
+            array_merge(['reconectar'], $chaves),
+            'a lista fechada é exatamente reconectar + as dez linhas, nesta ordem'
+        );
     }
 
     // ═══ situacaoProdutos() ══════════════════════════════════════════════
@@ -427,5 +527,57 @@ class PainelVisaoGeralServiceTest extends TestCase
         $this->assertSame('classico', $r['itens'][0]['tipo'], 'gold_special mapeia para o tipo classico da régua');
         $this->assertSame('equipe', $r['itens'][1]['quem']['tipo']);
         $this->assertNull($r['itens'][1]['vendas'], 'sem linha correspondente em MlAcervoItem — null, nunca zero');
+
+        // ─── Fase 179-02: o produto por trás da publicação ───
+        // ⚠️ O tile de 40px do layout novo precisa dos DOIS: o `id` define o tom por
+        // hash e o `nome` define as iniciais. Nenhum dos dois é derivável do título
+        // do anúncio (`titulo` vem do payload do ML, não do cadastro).
+        $this->assertIsInt($r['itens'][0]['produto_id']);
+        $this->assertGreaterThan(0, $r['itens'][0]['produto_id']);
+        $this->assertSame('Produto', $r['itens'][0]['produto_nome']);
+        $this->assertNotSame(
+            $r['itens'][0]['produto_id'],
+            $r['itens'][1]['produto_id'],
+            'duas publicações nascem de produtos distintos — o id tem de distinguir, senão o tom repete'
+        );
+
+        // As chaves antigas continuam todas lá, com o MESMO tipo. Mudança aditiva.
+        foreach (['titulo', 'ml_item_id', 'tipo', 'quem', 'quando', 'vendas', 'situacao', 'fase', 'rotulo_fase'] as $antiga) {
+            $this->assertArrayHasKey($antiga, $r['itens'][0], "a chave antiga '{$antiga}' não pode sair");
+        }
+
+        // ⚠️ Escalares, menos `quem` (que já era array antes desta fase). A tela preta
+        // de 07/10 nasceu de um campo-objeto renderizado como texto.
+        foreach ($r['itens'] as $item) {
+            foreach ($item as $campo => $valor) {
+                if ($campo === 'quem') {
+                    continue;
+                }
+                $this->assertFalse(is_array($valor) || is_object($valor), "o campo '{$campo}' tem de ser escalar");
+            }
+        }
+    }
+
+    /**
+     * `produto_nome` vazio vira `null`, nunca `''` nem objeto — a mesma guarda de
+     * `textoOuNulo()` que o resto do serviço usa. Produto sem nome existe no banco
+     * (coluna `nome` chega vazia de importação antiga do Portal), e `''` renderizado
+     * no tile produziria um quadrado sem iniciais em vez do fallback.
+     *
+     * @test
+     */
+    public function test_ultimas_publicacoes_produto_sem_nome_devolve_null(): void
+    {
+        $company = Company::factory()->create();
+        $this->publicar(null, $company, ['equipe' => true, 'id' => 1, 'nome' => 'Dev'], now(), 'MLB777');
+
+        // O único produto do cenário, esvaziado direto na coluna: `ultimasPublicacoes()`
+        // lê `pub_produtos.nome` CRU no select, não `nomeExibido()`.
+        PubProduto::query()->update(['nome' => '']);
+
+        $r = $this->service->ultimasPublicacoes($this->alvoDaCompany($company));
+
+        $this->assertNull($r['itens'][0]['produto_nome'], 'nome vazio é null, nunca string vazia');
+        $this->assertIsInt($r['itens'][0]['produto_id'], 'o id continua real mesmo sem nome');
     }
 }
