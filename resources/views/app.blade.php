@@ -23,6 +23,15 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;700;800;900&display=swap" rel="stylesheet" />
 
+        {{-- Fontes do modulo Publicador (TOK-01, milestone v26.0, decisao do usuario de 11/10/2026).
+             Entram AO LADO de Inter/Manrope, nunca no lugar: o <body> segue com `font-sans`
+             (Inter) e o resto do sistema continua nos tokens `ecf-*`. A Geist e consumida
+             so pelas classes `font-pub`/`font-pub-mono` dos componentes do Publicador.
+             Geist 400/500/600/700 para UI; Geist Mono 400/500 para SKU, MLB, codigos e
+             atalhos de teclado. Mesmo host das fontes que ja carregavamos — nao acrescenta
+             origem de terceiro nova. `display=swap` evita texto invisivel se a rede falhar. --}}
+        <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
         <!-- Scripts -->
         @routes
         @viteReactRefresh
