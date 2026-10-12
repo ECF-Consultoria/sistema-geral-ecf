@@ -25,6 +25,7 @@ use App\Models\PolosReuniaoMes;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
+use App\Services\Polos\VinculoAdmanPolos;
 use App\Support\CustId;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -350,12 +351,17 @@ class PolosController extends Controller
             'Acesso restrito ao módulo de Polos.'
         );
 
+        // Vínculo com a Adman (TKT-0014): da última resposta da Adman por conta, que o sync
+        // já grava — uma consulta para a lista toda, nenhuma chamada nova à Adman.
+        $vinculoAdman = VinculoAdmanPolos::carregar();
+
         // Lista operacional ancorada em MlbEmpresa projeto=POLOS (só DB — sem ECF Drive).
         // ATIVAS apenas: empresas arquivadas (ausentes na planilha) saem daqui e NÃO
         // contam em nada — vão para a aba "Arquivados" (prop `arquivadas`, abaixo).
         $empresas = MlbEmpresa::ativas()
             ->with([
                 'responsavel:id,name',
+                'decolaMl',
                 'implementacao',
                 'implementacao.responsavel:id,name',
                 'implementacao.linkEnviadoPor:id,name',
@@ -364,7 +370,7 @@ class PolosController extends Controller
             ->get()
             // Projeto canônico: coluna `projeto`, com fallback por fase (empresas antigas).
             ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
-            ->map(function ($e) {
+            ->map(function ($e) use ($vinculoAdman) {
                 $impl  = $e->implementacao;
                 $prazo = $impl?->infoPrazo();
 
@@ -427,6 +433,11 @@ class PolosController extends Controller
                     // cliente não sabe em qual dos dois ele foi digitado.
                     'gmail'                    => $e->gmail,
                     'gmail_colaborador'        => $impl?->gmail_colaborador,
+                    // Coluna "Vínculo Adman" (TKT-0014): automática e só leitura, existe sem
+                    // ficha. 'Vinculado' | 'Não vinculado' | null (fase que o sync não lê ou
+                    // sem Cust ID). Regra em VinculoAdmanPolos.
+                    'adman_vinculo'            => $vinculoAdman->status($e->fase, $e->cust_id),
+                    'adman_lido_em'            => $vinculoAdman->lidoEm($e->cust_id),
                     'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
                     // Link do grupo de WhatsApp (coluna "Link do Whats"; quick 260810-dv6).
                     'link_whatsapp'            => $impl?->link_whatsapp,
@@ -435,6 +446,9 @@ class PolosController extends Controller
                     'publicacao'               => $impl?->publicacao,
                     // decola é texto desde 2026-08-03 (Sim/Não/Mensagem Enviada/valor criado).
                     'decola'                   => $impl?->decola,
+                    // true = o Mercado Livre confirma o Decola ativo (leitura fresca do
+                    // polos:decola-status, TKT-0013): a tela mostra o selo "automático".
+                    'decola_ml_ativo'          => (bool) $e->decolaMl?->ativoEFresco(),
                     'campanha_criada'          => $impl ? (bool) $impl->campanha_criada : null,
                     'central_promocao'         => $impl?->central_promocao,
                     'contextos_logistica'      => $impl?->contextos_logistica,
@@ -623,6 +637,8 @@ class PolosController extends Controller
             // ── Acessos ──
             ['key' => 'acesso_colaborador',  'label' => 'Acesso colaborador',  'tipo' => 'texto'],
             ['key' => 'gmail_colaborador',   'label' => 'Gmail colaborador',   'tipo' => 'texto'],
+            // Automático, da última resposta da Adman (TKT-0014) — ver VinculoAdmanPolos.
+            ['key' => 'adman_vinculo',       'label' => 'Vínculo Adman',       'tipo' => 'texto'],
             ['key' => 'grupo_whatsapp',      'label' => 'Grupo WhatsApp',      'tipo' => 'texto'],
             ['key' => 'link_whatsapp',       'label' => 'Link do Whats',       'tipo' => 'texto'],
             ['key' => 'reuniao_onboarding',  'label' => 'Reunião onboarding',  'tipo' => 'texto'],
@@ -818,7 +834,9 @@ class PolosController extends Controller
             }
         }
 
-        $linhas = $empresas->map(function ($e) use ($fin, $pctMoveis) {
+        $vinculoAdman = VinculoAdmanPolos::carregar();
+
+        $linhas = $empresas->map(function ($e) use ($fin, $pctMoveis, $vinculoAdman) {
             $impl  = $e->implementacao;
             $prazo = $impl?->infoPrazo();
             $f     = $fin[CustId::normaliza((string) ($e->cust_id ?? ''))] ?? [];
@@ -843,6 +861,7 @@ class PolosController extends Controller
                 'chance_entrada'      => $impl?->chance_entrada,
                 'acesso_colaborador'  => $impl?->acesso_colaborador,
                 'gmail_colaborador'   => $impl?->gmail_colaborador,
+                'adman_vinculo'       => $vinculoAdman->status($e->fase, $e->cust_id),
                 'grupo_whatsapp'      => $simNao($impl ? (bool) $impl->grupo_whatsapp : null),
                 'link_whatsapp'       => $impl?->link_whatsapp,
                 'reuniao_onboarding'  => $impl?->reuniao_onboarding,
@@ -1537,6 +1556,11 @@ class PolosController extends Controller
      * respondeu por aquela conta há menos de PoloAdsStatus::FRESCOR_HORAS. Para essas, a
      * leitura manda no `ads_desligado` da linha e a tela não oferece marcação manual.
      *
+     * Também anexa `ads_campanha` (TKT-0015), que alimenta o filtro "Campanhas": 'ativa',
+     * 'desligada', 'sem_campanha' ou null (não verificado). Regra em
+     * PoloAdsStatus::situacaoDaEmpresa(). Como este método só roda no mês corrente, mês
+     * fechado não traz a chave e a tela esconde o filtro.
+     *
      * @param  array<int, array<string,mixed>>  $empresas
      * @return array<int, array<string,mixed>>
      */
@@ -1557,6 +1581,8 @@ class PolosController extends Controller
             if ($l) {
                 $e['ads_desligado'] = $l->desligado();
             }
+            $manual = $e['ads_desligado'] ?? null;
+            $e['ads_campanha'] = PoloAdsStatus::situacaoDaEmpresa($l, $manual === null ? null : (bool) $manual);
         }
         unset($e);
 

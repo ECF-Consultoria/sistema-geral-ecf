@@ -25,6 +25,7 @@ use App\Services\Portal\Estrutura\Produtos\ProdutoLinhas;
 use App\Services\Portal\Estrutura\Produtos\SugestaoDeCategoriaPorNome;
 use App\Services\Portal\Estrutura\Produtos\VariacaoImagensService;
 use App\Services\Portal\PortalClienteService;
+use App\Services\Publicador\CategoriaBuscaService;
 use App\Services\Publicador\PreparoIaAgenda;
 use App\Services\Publicador\ExplicacaoDeAtributos;
 use App\Support\Portal\ModulosPortal;
@@ -396,6 +397,27 @@ class PortalEstruturaProdutosController extends Controller
     }
 
     /**
+     * Um nível da árvore de categorias, para a pessoa NAVEGAR em vez de buscar (11/10/2026): sem `pai`,
+     * o 1º nível; com `pai`, as filhas dele. Mesmo dado público da busca (APP token, nunca o do cliente)
+     * e a mesma regra: catálogo fora do ar responde 200 com `indisponivel`, nunca erro.
+     */
+    public function navegarCategorias(Request $request, CategoriaBuscaService $arvore)
+    {
+        $dados = $request->validate(['pai' => ['nullable', 'string', 'regex:/^MLB[0-9]+$/']]);
+
+        try {
+            $nivel = $arvore->nivel($dados['pai'] ?? null);
+        } catch (\Throwable $e) {
+            Log::warning('[Estrutura Produtos] navegação de categorias falhou', ['erro' => $e->getMessage()]);
+            $nivel = null;
+        }
+
+        return response()->json($nivel === null
+            ? ['atual' => null, 'caminho' => [], 'filhas' => [], 'indisponivel' => true]
+            : $nivel + ['indisponivel' => false]);
+    }
+
+    /**
      * Sugere a categoria de até 10 produtos pelo nome (D-06). NÃO grava nada:
      * aceitar é decisão da pessoa, pelo POST de linhas ("Aceitar marcadas").
      */
@@ -505,6 +527,11 @@ class PortalEstruturaProdutosController extends Controller
             'atributos.*.unidade' => 'nullable|string|max:20',
             // "Não se aplica" vem por marcador próprio, nunca pelo valor (ver FichaTecnicaDoProduto::NAO_SE_APLICA).
             'atributos.*.nao_se_aplica' => 'nullable|boolean',
+            // O valor veio do "Outro" de uma lista (11/10/2026): texto escrito à mão, nunca id de opção.
+            // Na lista de várias opções, `proprios` diz quais itens de `valor` são texto.
+            'atributos.*.proprio' => 'nullable|boolean',
+            'atributos.*.proprios' => 'nullable|array|max:50',
+            'atributos.*.proprios.*' => 'string|max:255',
             // Escalar, ou a LISTA de opções de um campo multivalor (os chips). Quem confere se
             // o campo aceita lista, e se cada opção existe, é o serviço — contra a definição
             // da categoria. Aqui só se barra o que não é nenhum dos dois (objeto, lista aninhada).

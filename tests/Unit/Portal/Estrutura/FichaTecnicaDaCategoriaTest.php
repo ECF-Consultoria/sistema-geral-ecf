@@ -477,39 +477,65 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/mercado|an[uú]ncio|publicar|mlb/iu', json_encode($grupos, JSON_UNESCAPED_UNICODE));
     }
 
-    // ═══ Com opção, só lista — mesmo onde o editor interno aceita texto (09/10/2026) ═══
+    // ═══ Com opção: lista, e "Outro" onde o catálogo aceita valor próprio (11/10/2026) ═══
 
     /**
-     * Decisão do usuário em 09/10 (mantém o §35 de 08/10): na ficha do cliente, campo que tem opção
-     * é SÓ lista. O editor da equipe aceita texto em `string` com opções (`allow_custom_value: true`);
-     * a ficha não abre essa porta. Nas quatro respostas reais guardadas: todo campo com opção é lista
-     * (ou número/Sim-Não com o controle deles), a definição não leva marca de "digitar", e há campos
-     * em que o editor aceitaria texto — é neles que o legado de antes de 08/10 vive, e quem o salva é
-     * o Sincronizar, não a ficha.
+     * Em 09/10 a ficha do cliente fechou todo campo com opção em lista pura. Em 11/10 o usuário,
+     * replicando um produto, precisou de um "Material do estofamento" fora das opções e pediu o
+     * personalizado "nos que aceitarem". A ficha decide pelo tipo do atributo (`string` com opções
+     * aceita, `list` não); o editor da equipe decide pelo `allow_custom_value` do catálogo. Nas quatro
+     * respostas reais guardadas as duas regras têm de dar o MESMO resultado em todo campo de lista —
+     * senão o cliente escreveria um valor que o Sincronizar não consegue levar ao rascunho.
      */
-    public function test_nas_respostas_reais_campo_com_opcao_e_so_lista_mesmo_onde_o_editor_aceita_texto(): void
+    public function test_nas_respostas_reais_o_outro_da_ficha_bate_com_o_que_o_editor_aceita(): void
     {
-        $listasQueOEditorAceitaTexto = 0;
+        $comOutro = 0;
+        $fechadas = 0;
         foreach ([self::CADEIRA, self::FURADEIRA, self::CAMISETA, self::PASTILHA] as $categoria) {
             $schema = self::schema($categoria);
             $editor = (new ClassificadorAtributos())->classificar($schema, new ContextoClassificacao('new', []))->atributos;
 
             foreach (F::camposPorId(F::daAtributos($schema->atributos)) as $id => $campo) {
-                $this->assertArrayNotHasKey('texto_livre', $campo, "{$categoria} {$id}: a ficha não oferece digitar fora das opções");
-                if ($campo['valores'] !== []) {
-                    $this->assertSame(F::TIPO_LISTA, $campo['tipo'], "{$categoria} {$id}");
-                    if ($editor[$id]->aceitaTextoLivre) {
-                        $listasQueOEditorAceitaTexto++;
-                    }
+                if ($campo['valores'] === []) {
+                    $this->assertFalse($campo['aceita_outro'], "{$categoria} {$id}: sem opção não há \"Outro\"");
+
+                    continue;
                 }
+                $this->assertSame(F::TIPO_LISTA, $campo['tipo'], "{$categoria} {$id}");
+                $this->assertSame($editor[$id]->aceitaTextoLivre, $campo['aceita_outro'], "{$categoria} {$id}: a ficha e o editor discordam");
+                $campo['aceita_outro'] ? $comOutro++ : $fechadas++;
             }
         }
 
-        $this->assertGreaterThan(5, $listasQueOEditorAceitaTexto, 'a prova cobre campos em que o editor aceitaria texto');
+        $this->assertGreaterThan(5, $comOutro, 'a prova cobre campos que aceitam valor próprio');
+        $this->assertGreaterThan(5, $fechadas, 'e campos de lista fechada');
     }
 
-    /** Os três campos do aviso de 09/10 (gabinete, espelho, lixeira): `string` com opções, multivalor — só chips. */
-    public function test_materiais_e_salas_sao_so_lista_de_varias_opcoes(): void
+    /** A medição de 11/10 em Poltronas: `string` com opções aceita; `list`, a Marca (texto) e o que não tem opção, não. */
+    public function test_aceita_outro_so_na_lista_cujo_atributo_e_texto_com_opcoes(): void
+    {
+        $campos = F::camposPorId(F::daAtributos([
+            ['id' => 'UPHOLSTERY_MATERIAL', 'name' => 'Material do estofamento', 'value_type' => 'string', 'tags' => [],
+                'values' => [['id' => '482783', 'name' => 'Couro'], ['id' => '1258168', 'name' => 'Oxford']]],
+            ['id' => 'STRUCTURE_MATERIALS', 'name' => 'Materiais da estrutura', 'value_type' => 'string', 'tags' => ['multivalued' => true],
+                'values' => [['id' => '2431881', 'name' => 'Madeira']]],
+            ['id' => 'STYLE', 'name' => 'Estilo', 'value_type' => 'list', 'tags' => [], 'values' => [['id' => '9', 'name' => 'Clássico']]],
+            ['id' => 'BRAND', 'name' => 'Marca', 'value_type' => 'string', 'tags' => [], 'values' => [['id' => '1', 'name' => 'Casaideas']]],
+            ['id' => 'LINE', 'name' => 'Linha', 'value_type' => 'string', 'tags' => []],
+            ['id' => 'IS_RECLINABLE', 'name' => 'É reclinável', 'value_type' => 'boolean', 'tags' => [],
+                'values' => [['id' => 's', 'name' => 'Sim'], ['id' => 'n', 'name' => 'Não']]],
+        ]));
+
+        $this->assertTrue($campos['UPHOLSTERY_MATERIAL']['aceita_outro']);
+        $this->assertTrue($campos['STRUCTURE_MATERIALS']['aceita_outro'], 'várias opções também');
+        $this->assertFalse($campos['STYLE']['aceita_outro'], 'lista fechada: fora dela o catálogo recusa');
+        $this->assertFalse($campos['BRAND']['aceita_outro'], 'a Marca já é texto com sugestões');
+        $this->assertFalse($campos['LINE']['aceita_outro'], 'texto livre não precisa de "Outro"');
+        $this->assertFalse($campos['IS_RECLINABLE']['aceita_outro']);
+    }
+
+    /** Os três campos do aviso de 09/10 (gabinete, espelho, lixeira): `string` com opções, multivalor — chips (e "Outro", desde 11/10). */
+    public function test_materiais_e_salas_sao_lista_de_varias_opcoes(): void
     {
         $grupos = F::daAtributos([
             ['id' => 'STRUCTURE_MATERIALS', 'name' => 'Materiais da estrutura', 'value_type' => 'string', 'tags' => ['multivalued' => true],
@@ -524,7 +550,7 @@ class FichaTecnicaDaCategoriaTest extends TestCase
         foreach (['STRUCTURE_MATERIALS', 'CABINET_MATERIALS', 'RECOMMENDED_INSTALLATION_ROOMS'] as $id) {
             $this->assertSame(F::TIPO_LISTA, $campos[$id]['tipo'], $id);
             $this->assertTrue($campos[$id]['multivalor'], $id);
-            $this->assertArrayNotHasKey('texto_livre', $campos[$id], $id);
+            $this->assertTrue($campos[$id]['aceita_outro'], $id);
         }
     }
 

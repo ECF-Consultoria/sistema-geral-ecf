@@ -139,6 +139,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Espelha o piloto do Portal (routes/web.php), com os mesmos throttles. Nomes: mlb.anuncios.publicador.<sufixo>.
         Route::get('publicador/categorias', [MlbPublicadorController::class, 'categorias'])
             ->middleware('throttle:60,1,publicador.categorias')->name('publicador.categorias');
+        // 11/10/2026 — navegar pela árvore de categorias, nível a nível (um clique = uma leitura).
+        Route::get('publicador/categorias/arvore', [MlbPublicadorController::class, 'categoriasArvore'])
+            ->middleware('throttle:180,1,publicador.categorias.arvore')->name('publicador.categorias.arvore');
         Route::prefix('publicador/produtos/{produto}')->whereNumber('produto')->name('publicador.')->group(function () {
             Route::get('/', [MlbPublicadorController::class, 'abrir'])
                 ->middleware('throttle:120,1,publicador.abrir')->name('abrir');
@@ -167,6 +170,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 ->middleware('throttle:20,1,publicador.conferir')->name('conferir');
             Route::post('/publicar', [MlbPublicadorController::class, 'publicar'])
                 ->middleware('throttle:10,1,publicador.publicar')->name('publicar');
+            // 11/10/2026: o frete que o Mercado Livre respondeu na conferência vai para a Precificação do Portal.
+            Route::post('/frete-para-a-precificacao', [MlbPublicadorController::class, 'freteParaAPrecificacao'])
+                ->middleware('throttle:20,1,publicador.frete-precificacao')->name('frete-precificacao');
+            Route::post('/itens/{item}/frete-para-a-precificacao', [MlbPublicadorController::class, 'freteDoItemParaAPrecificacao'])
+                ->whereNumber('item')->middleware('throttle:20,1,publicador.frete-precificacao.item')->name('itens.frete-precificacao');
             Route::post('/itens/{item}/descricao', [MlbPublicadorController::class, 'reenviarDescricao'])
                 ->whereNumber('item')->middleware('throttle:20,1,publicador.descricao')->name('descricao');
             Route::get('/simular', [MlbPublicadorController::class, 'simular'])

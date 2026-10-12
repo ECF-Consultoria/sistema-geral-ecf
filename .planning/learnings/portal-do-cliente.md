@@ -1327,6 +1327,8 @@ quatro causas somadas, e consertar uma só não muda a 1ª página:
   pelo valor — `'-1'` digitado num texto continua texto. Só onde `aceitaNaoSeAplica` (produto e não obrigatório), então
   obrigatório nunca recebe N/A, lá nem cá. O Sincronizar leva o N/A como N/A, só no vazio; no rascunho o `-1` conta
   como preenchido (re-sincronizar não mexe).
+- **Superado em 11/10/2026 — o usuário pediu o valor próprio de volta, com outra regra; ver §46.** O que segue é o
+  registro de como estava.
 - **Campo com opção é SÓ lista, mesmo onde o editor interno aceita texto (09/10/2026, decisão do usuário).** O §35
   continua valendo: a ficha não oferece "Outro (digitar)" (foi aberto em `dc48b1b7` e desfeito no mesmo dia) e o
   servidor recusa com 422 neutro texto fora das opções. O texto ANTIGO gravado antes de 08/10 nesses campos (ex.:
@@ -1517,3 +1519,128 @@ ofertas montadas da #459 estavam com o tipo certo. O problema era só de tela: t
 aparecia num selo pequeno da prévia. Agora o título e os botões dizem "combo, kit ou combit", há uma legenda fixa dos
 três tipos (Fase 2, 3 e 4, com as palavras do "Como funciona") que acende o tipo da composição pela `fase` que o
 servidor devolve, e o botão diz o que nasce ("Criar Combit"). Nenhuma regra foi para o navegador.
+
+## 44. Precificação agrupada por família — quem agrupa é o servidor, antes de paginar (11/10/2026)
+
+**Pedido:** a Precificação era "uma lista inteira sem saber o que é". O usuário queria o produto unitário com as
+variações dele embaixo, e levantou o nó do kit: "vou pegar um produto de um e de outro", então o kit teria dois
+produtos-pai na tela.
+
+**O desenho aprovado** (artefato + pergunta com prévia, sim em 11/10):
+- grupos por família, que abrem e fecham;
+- cada produto UMA vez, com os combos dele pendurados;
+- kit e combit em "Conjuntos desta família", uma vez só;
+- o produto que entra num conjunto diz "Também entra em";
+- "Sem família" por último.
+
+**O que não é óbvio:**
+- A família já existia no cadastro de Produtos (`estrutura_produtos.familia_id`). A oferta chega a ela pela
+  variação (`estrutura_ofertas.variacao_id`). Combo, kit e combit NÃO têm variação própria: herdam a do componente
+  (`FamiliasDasOfertas::resolver`).
+- O conjunto fica na família do PRIMEIRO componente que tiver uma. Componente de outra família (ou sem família)
+  aponta para ele pelo `tambem_em`, que `paginaOfertas` já mandava para as outras telas.
+- **A ordem por família tem de vir ANTES da paginação.** A página é de 25 blocos na ordem de vendas; agrupar só o
+  que a página trouxe repetiria a mesma família em páginas distantes. `paginaOfertas(..., ['por_familia' => true])`
+  ordena e manda `familia` em cada bloco. Sem a opção, as outras três telas saem byte a byte como antes.
+- O filtro por tipo (`?tipo=combo`) é do servidor pelo mesmo motivo. A contagem dos tipos é a de `painel.por_fase`,
+  da empresa inteira; contar na página daria "Combo 2" sobre uma lista de 40 (o mesmo erro do §25).
+- Com filtro ou busca, o bloco pode vir SEM o produto principal (só os combos dele). A tela mostra o que casou,
+  raso, ainda na família do produto.
+- A coluna do produto tem ~220 px (a tabela usa quase toda a largura em preço e frete). Por isso o código quebra
+  de linha em vez de cortar, o nome mostra duas linhas, e o atalho "Também entra em" mostra tipo + código.
+- `EstruturaVisaoService.php` está em CRLF no disco. Script de edição que casa texto com `\n` não acha nada lá.
+
+**Prova sem servidor:** `scratchpad/prova_familia.mjs` desenha a página de verdade no Puppeteer com o CSS do build
+e props no formato do servidor, clica em recolher, fechar e no atalho, e fotografa.
+
+## 45. Categoria: navegar pela árvore, além da busca (11/10/2026)
+
+O usuário procurou a categoria de um anúncio cujo caminho no Mercado Livre era "Casa, Móveis e Decoração > Móveis
+para Casa > Cadeiras, Sofás e Banquetas > Sofás > Cadeira" e não achou. Pediu para entender por quê e para poder
+navegar nível a nível, "assim como é no Mercado Livre".
+
+- **A busca nunca foi a árvore: é o preditor** (`domain_discovery/search`, até 8 palpites). Com texto curto ele erra
+  feio — "cadeira" devolve Abraçadeiras e Chocadeiras. Para o texto do usuário devolveu "Sofás", que ERA a categoria
+  daquele anúncio.
+- **"Sofás" (`MLB1626`) é o último nível.** O "Cadeira" que a página do anúncio mostra depois dele não é categoria
+  (conferido: não é filha na árvore, nem opção de "Tipo de produto", que em Sofás e Poltronas tem Sofá, Divan, Futon,
+  Poltrona e Sillón). Quem cadastra escolhe "Sofás". Não adianta procurar um nível a mais.
+- **A árvore vem de dois endpoints públicos:** `/sites/MLB/categories` (32 raízes, cada uma com 4 a 40 filhas) e
+  `/categories/{id}` (`children_categories`, `path_from_root`, `settings.listing_allowed`). `children_categories`
+  NÃO diz se a filha é a última: para a tela saber quem "abre" e quem "se escolhe", `CategoriaBuscaService::nivel`
+  lê as filhas em paralelo e guarda no mesmo cache de 7 dias da busca (`ml_meta_categoria_{id}`). Filha que não
+  respondeu sai com `folha: null` e a tela descobre ao entrar.
+- **`MlCatalogoMetaService::categoria()` guarda o `[]` de uma queda por 7 dias** (`Cache::remember`). Na navegação
+  isso deixaria a categoria "fora do ar" até o cache vencer; `categoriasEmLote` solta a chave quando a leitura única
+  volta vazia. (O `CategoriaSugestaoService` do Portal já evitava o problema por outro caminho.)
+- **Um componente só para as duas telas:** `Components/Categorias/NavegadorDeCategorias.jsx` +
+  `useArvoreDeCategorias` + `lib/arvoreDeCategorias.js`. Cada tela passa a sua rota
+  (`portal.auth.estrutura.produtos.categorias.arvore` e `mlb.anuncios.publicador.categorias.arvore`). Como aparece
+  para o cliente, os três arquivos estão sob o teste de sigilo (nada de plataforma nem em comentário).
+- **Abrindo com categoria já escolhida, a navegação começa no nível de cima dela**, com a escolhida marcada entre as
+  vizinhas — recomeçar de "Todas as categorias" obrigava a refazer quatro cliques para trocar Poltronas por Sofás.
+- Rota nova do Portal = linha nova na allowlist de `RestringeDominioDoPortal` (§ da MAG); sem ela o domínio do
+  portal responde 404.
+
+**Prova sem servidor:** `scratchpad/nav/provar.mjs` monta o componente de verdade (hook com efeitos) no Puppeteer com
+uma árvore de mentira: desce três níveis, volta pela trilha sem ler de novo, escolhe, e abre numa categoria já
+escolhida. Teste estático não exercita o vai-e-volta.
+
+## 46. "Outro": valor próprio na lista, só onde o catálogo aceita (11/10/2026)
+
+**Reabre, a pedido do usuário, o que ele mandou fechar em 09/10** (§38, "campo com opção é SÓ lista"; o "Outro
+(digitar)" de `dc48b1b7` foi desfeito no mesmo dia). Em 11/10, replicando um produto, o "Material do estofamento"
+certo não estava entre as opções e a ficha obrigava a escolher uma: "além das opções, deixa também para colocar
+personalizado, os que aceitarem. Então verifica no Mercado Livre o que dá para aceitar".
+
+- **O que o catálogo aceita (medido em Poltronas e Sofás, `technical_specs/input`):** dos 12 atributos `string` com
+  opções, 11 trazem `allow_custom_value: true` (Material do estofamento, Material dos pés, Materiais da estrutura,
+  Desenho do tecido, Linha, Densidade da espuma, Acessórios…) e o 12º, a Cor, não traz o sinal; os 5 `list` trazem
+  `false` (Tipo de produto, Estilo, Formato, Orientação, Quantidade de lugares). A regra da ficha — `aceita_outro` =
+  lista cujo atributo é `string` com opções — é a mesma do classificador sem `ui_config`, e um teste confere que ela
+  bate com o que o editor decide pelo `allow_custom_value` nas quatro respostas reais guardadas.
+- **A diferença para a versão de 09/10:** a lista continua vindo primeiro e "Outro (escrever)" é a última opção, uma
+  escolha explícita; o texto que bate com o nome de uma opção vira a opção (não nasce "COURO" ao lado de "Couro");
+  lista fechada continua fechada; e o valor próprio vai MARCADO no corpo (`proprio: true`, ou `proprios: [...]` no
+  campo de várias opções). Sem a marca o servidor se comporta como antes: um id que saiu do catálogo, ou um texto
+  cru, continua 422 — não vira valor próprio por engano.
+- **Sem migration.** O texto vai em `valor` com `valor_id` nulo, o mesmo formato do texto antigo. "|" é recusado no
+  valor próprio porque é o separador das várias opções na linha gravada.
+- **Planilha da ficha:** nesses campos a lista suspensa passa a só sugerir (a validação estrita do Excel barraria o
+  valor próprio), a célula fora das opções entra marcada, e a planilha baixada devolve o texto (antes saía em branco).
+- **No rascunho da equipe:** valor único vai como `value_name` sem `value_id`. Com várias opções, opções e próprios
+  vão JUNTOS como texto separado por vírgula, com `revisar` — `values_multi` só guarda id de opção. Isto troca o D-13
+  ("com opção resolvida, o nome que não casa fica de fora"): quando ele foi escrito o nome fora da lista era lixo
+  antigo; agora é o que o cliente pediu. Se o schema do editor disser que o campo é fechado, o valor não vai e o
+  campo aparece pendente — a ficha nunca publica o que o catálogo recusa.
+- O editor da equipe (`CampoAtributo`) já aceitava texto nesses campos (caixa com sugestões); nada mudou lá.
+
+## 47. O combo que "sumiu" e ficou sem frete: ele é oferta, e o pacote somado vira ME1 (11/10/2026)
+
+O usuário montou combos no Planejamento e relatou: "não aparece para onde ele vai… talvez seria bom ele ir para
+Produtos, e saber que esse produto é um combo de outro"; e "no kit mostrou o ME2, deu o valor; no combo não mostrou
+nada de frete. Nem sei se é ME1".
+
+- **Combo, kit e combit são OFERTAS, não produtos.** Gravam em `estrutura_ofertas` + `estrutura_oferta_componentes`
+  (`EstruturaOfertaService::criar`); nada nasce em `estrutura_produtos`. A aba Produtos lista só produtos, e o único
+  retorno do Planejamento era um aviso de 6 s ou a tela "criado" da janela — fechou, sumiu o rastro.
+- **Não há tratamento por tipo no frete: a diferença é a conta.** `ConjuntoLogistico::volumes` repete as caixas de
+  cada unidade e `LogisticaProduto::pacote` soma alturas e pesos. Medido na #459: a poltrona (53×60×80, 8 kg) cabe no
+  Mercado Envios (Correios: 100 cm no maior lado, 200 na soma) e mostra frete; o Combo 2 dela vira 53×60×160, 16 kg,
+  passa nos DOIS limites e é ME1. ME1 nunca tem frete do ML a sugerir. Os 7 combos da conta estão assim; em
+  Agências/Coleta (200 / 300) cinco deles caberiam. Não é "a conta não tem ME1": é o tamanho.
+- **A Precificação ficava muda:** campo de frete em branco, só o selo "Sem frete". Agora cada oferta leva `envio`
+  (`EstruturaPrecificacaoService::envio`): a logística, o pacote (dito "somado", com o nº de caixas, no conjunto), os
+  limites que passou (`LogisticaProduto::estouros`), quem está sem medida e a logística declarada. A tela mostra isso
+  sob o nome e "sem tabela: digite" sob o frete em branco; a explicação inteira vai no balão.
+- **Produtos passou a apontar para os conjuntos:** `oferta.conjuntos` em `ProdutoLinhas` (tipo, código, nome,
+  quantidade) vira "Também vendido em [Combo 2 · SKU]" na lista e na ficha, com atalho para a Precificação.
+  `oferta.usada_em` (só SKUs) continua como estava: é o contrato da janela de exclusão.
+- **O combo aberto sozinho diz do que é feito.** "Precificar agora" abre `?q=<SKU do combo>`, e a busca tira o
+  produto pai da página; sem ele por perto, a linha mostra "2× produto".
+- **Em aberto (decisão do usuário):** as medidas do conjunto não são editáveis — são a soma. Dar pacote próprio ao
+  combo (as duas poltronas numa embalagem menor) exige guardar medidas por oferta e levar a mesma regra ao
+  `PacoteDoKit` do Publicador, senão a Precificação e o anúncio discordam. A soma segue provisória
+  ("por enquanto deixa somando", [[frete-mercado-envios]]).
+- Lido e NÃO conferido rodando: com "Ver N combos" aberto, a página do Planejamento pode mandar mais de 20 chaves
+  para `sugestoes.frete`, cuja validação é `max:20` (422). Conferir antes de dar como defeito.

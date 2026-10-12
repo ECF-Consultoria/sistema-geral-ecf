@@ -224,18 +224,26 @@ class ImportadorFichasTecnicas
         if ($campo['tipo'] === FichaTecnicaDaCategoria::TIPO_LISTA) {
             if ($campo['multivalor'] ?? false) {
                 $ids = [];
+                $proprios = [];
                 foreach (explode('|', $texto) as $parte) {
                     if (trim($parte) === '') {
                         continue;
                     }
-                    // Nome que não é opção vai como veio: a validação devolve "Escolha uma das opções".
-                    $ids[] = PlanilhaDasFichasTecnicas::opcaoPorTexto($campo, $parte)['id'] ?? trim($parte);
+                    // Nome que não é opção vai como veio, marcado como valor próprio: a validação o aceita
+                    // onde o campo aceita (`aceita_outro`) e, onde não, devolve "Escolha uma das opções".
+                    $opcao = PlanilhaDasFichasTecnicas::opcaoPorTexto($campo, $parte);
+                    $ids[] = $opcao['id'] ?? trim($parte);
+                    if ($opcao === null) {
+                        $proprios[] = trim($parte);
+                    }
                 }
 
-                return ['valor' => $ids];
+                return ['valor' => $ids, 'proprios' => $proprios];
             }
 
-            return ['valor' => PlanilhaDasFichasTecnicas::opcaoPorTexto($campo, $texto)['id'] ?? $texto];
+            $opcao = PlanilhaDasFichasTecnicas::opcaoPorTexto($campo, $texto);
+
+            return $opcao ? ['valor' => $opcao['id']] : ['valor' => $texto, 'proprio' => true];
         }
 
         if ($campo['tipo'] === FichaTecnicaDaCategoria::TIPO_NUMERO_UNIDADE && is_string($bruto)

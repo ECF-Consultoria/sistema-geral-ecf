@@ -9,6 +9,7 @@ use App\Models\PubRascunho;
 use App\Services\Publicador\CategoriaBuscaService;
 use App\Services\Publicador\ConferenciaService;
 use App\Services\Publicador\EditorRascunhoService;
+use App\Services\Publicador\FreteParaAPrecificacaoService;
 use App\Services\Publicador\ImagemAssetService;
 use App\Services\Publicador\PalavrasChaveService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -21,6 +22,7 @@ use App\Support\Publicador\Imagem\ResolvedorGruposImagem;
 use App\Support\Publicador\RegraViolada;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -52,6 +54,25 @@ class MlbPublicadorController extends Controller
         $dados = $request->validate(['q' => ['required', 'string', 'max:200']]);
 
         return response()->json($busca->categorias($dados['q']));
+    }
+
+    /**
+     * Um nível da árvore de categorias, para navegar como no Mercado Livre (11/10/2026): sem `pai`, as
+     * raízes; com `pai`, as filhas dele. O ML fora do ar responde 200 com `indisponivel`, nunca erro.
+     */
+    public function categoriasArvore(Request $request, CategoriaBuscaService $busca): JsonResponse
+    {
+        $dados = $request->validate(['pai' => ['nullable', 'string', 'regex:/^MLB[0-9]+$/']]);
+        try {
+            $nivel = $busca->nivel($dados['pai'] ?? null);
+        } catch (\Throwable $e) {
+            Log::warning('[Publicador] navegação de categorias falhou: '.$e->getMessage());
+            $nivel = null;
+        }
+
+        return response()->json($nivel === null
+            ? ['atual' => null, 'caminho' => [], 'filhas' => [], 'indisponivel' => true]
+            : $nivel + ['indisponivel' => false]);
     }
 
     public function abrir(int $produto): JsonResponse
@@ -244,6 +265,32 @@ class MlbPublicadorController extends Controller
 
             return $r;
         }, 202);
+    }
+
+    /**
+     * 11/10/2026 — leva para a Precificação do Portal o frete que o Mercado Livre respondeu na última
+     * conferência (as linhas que divergiram). O valor sai do que está gravado, nunca do pedido.
+     */
+    public function freteParaAPrecificacao(Request $request, int $produto, FreteParaAPrecificacaoService $fretes): JsonResponse
+    {
+        return $this->responder(function () use ($produto, $request, $fretes) {
+            $r = $this->rascunho($produto);
+            $resumo = $fretes->aplicar($r, $request->user());
+
+            return [$r->fresh(), ['frete_levado' => $resumo]];
+        });
+    }
+
+    /** O mesmo, de UM anúncio já publicado: o frete que o Mercado Livre cobra dele vai para a Precificação. */
+    public function freteDoItemParaAPrecificacao(Request $request, int $produto, int $item, FreteParaAPrecificacaoService $fretes): JsonResponse
+    {
+        return $this->responder(function () use ($produto, $item, $request, $fretes) {
+            $r = $this->rascunho($produto);
+            $doRascunho = PubPublicacaoItem::whereIn('publicacao_id', $r->publicacoes()->select('id'))->findOrFail($item);
+            $resumo = $fretes->aplicarDoItem($doRascunho, $r, $request->user());
+
+            return [$r->fresh(), ['frete_levado' => $resumo]];
+        });
     }
 
     public function reenviarDescricao(int $produto, int $item): JsonResponse

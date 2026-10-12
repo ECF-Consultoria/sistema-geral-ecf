@@ -86,7 +86,7 @@ class ProdutoLinhas
             ->where('company_id', $empresa->id)
             ->whereIn('variacao_id', $variacaoIds)
             ->withCount('anuncios')
-            ->with('usadaEm.oferta:id,sku')
+            ->with('usadaEm.oferta:id,sku,fase,nome')
             ->get()
             ->keyBy('variacao_id');
 
@@ -211,6 +211,16 @@ class ProdutoLinhas
                 'sku'      => $oferta->sku,
                 'anuncios' => (int) $oferta->anuncios_count,
                 'usada_em' => $oferta->usadaEm->map(fn ($c) => $c->oferta?->sku)->filter()->values()->all(),
+                // Os combos, kits e combits em que este produto entra, para a aba Produtos mostrar e levar
+                // até eles (11/10/2026). O usuário montou um combo e não o achou em lugar nenhum: o conjunto
+                // é uma OFERTA (não vira produto), e Produtos não dizia que ele existia.
+                'conjuntos' => $oferta->usadaEm->filter(fn ($c) => $c->oferta !== null)->map(fn ($c) => [
+                    'id'         => (int) $c->oferta->id,
+                    'sku'        => $c->oferta->sku,
+                    'fase'       => $c->oferta->fase,
+                    'nome'       => $c->oferta->nome,
+                    'quantidade' => (int) $c->quantidade,
+                ])->sortBy([['fase', 'asc'], ['quantidade', 'asc'], ['sku', 'asc']])->values()->all(),
             ] : null,
         ];
     }

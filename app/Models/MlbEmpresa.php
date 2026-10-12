@@ -273,6 +273,12 @@ class MlbEmpresa extends Model implements ContaMercadoLivre
         return $this->hasOne(MlbImplementacao::class, 'empresa_id');
     }
 
+    /** Última resposta do Mercado Livre sobre o Programa Decola desta empresa (TKT-0013). */
+    public function decolaMl(): HasOne
+    {
+        return $this->hasOne(PoloDecolaStatus::class, 'mlb_empresa_id');
+    }
+
     /** Normaliza um array de SKUs — mantém apenas itens com sku preenchido. */
     public static function normalizaSkus(?array $raw): array
     {

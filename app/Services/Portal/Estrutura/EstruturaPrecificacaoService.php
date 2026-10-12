@@ -55,7 +55,9 @@ class EstruturaPrecificacaoService
 
         // O frete sugerido: da página, com a cotação já guardada; do resto da empresa, só a
         // tabela — o resumo só precisa saber SE há sugestão, e a tabela sempre responde.
-        ['pagina' => $itensDaPagina, 'resto' => $itensDoResto] = $this->itensDeFrete($empresa, $base, $daPagina);
+        $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
+        $modalidade = ModalidadeDeEnvio::emCache($empresa);
+        ['pagina' => $itensDaPagina, 'resto' => $itensDoResto] = $this->itensDeFrete($empresa, $base, $daPagina, logisticas: $logisticas);
         $sugeridos = ($itensDaPagina === [] ? [] : $this->frete->estimar($empresa, $itensDaPagina))
             + ($itensDoResto === [] ? [] : $this->frete->estimar($empresa, $itensDoResto, false));
 
@@ -74,7 +76,7 @@ class EstruturaPrecificacaoService
             };
 
             if (isset($daPagina[$o['id']])) {
-                $porOferta[$o['id']] = $calculo;
+                $porOferta[$o['id']] = $calculo + ['envio' => self::envio($o, $logisticas[$o['id']] ?? null, $modalidade)];
             }
         }
 
@@ -174,6 +176,35 @@ class EstruturaPrecificacaoService
         });
     }
 
+    /**
+     * Só o frete, de um ou dos dois tipos, sem tocar no custo nem nas exceções (11/10/2026). É por aqui que
+     * a equipe leva para cá o frete que o Mercado Livre respondeu na conferência (`FreteParaAPrecificacaoService`):
+     * o `salvarOferta` grava a linha inteira e apagaria o que não viesse.
+     *
+     * @param  array<string, float|int|string>  $fretes  `classico` e/ou `premium` → valor em reais
+     */
+    public function salvarFrete(EstruturaOferta $oferta, array $fretes, AtorDoPortal $ator): EstruturaPrecificacao
+    {
+        $valores = [];
+        foreach (FreteMe2Service::TIPOS as $tipo) {
+            if (array_key_exists($tipo, $fretes) && $fretes[$tipo] !== null && $fretes[$tipo] !== '') {
+                $valores["frete_{$tipo}"] = $this->dinheiro($fretes[$tipo], "frete_{$tipo}");
+            }
+        }
+        if ($valores === []) {
+            throw ValidationException::withMessages(['frete' => 'Informe o frete de pelo menos um tipo.']);
+        }
+
+        return DB::transaction(function () use ($oferta, $valores, $ator) {
+            $linha = EstruturaPrecificacao::updateOrCreate(['oferta_id' => $oferta->id], $valores);
+
+            RegistroEstrutura::registrar($ator, $oferta->company, $linha, 'precificacao_frete',
+                "Frete de {$oferta->sku} trazido da conferência", ['valores' => $valores]);
+
+            return $linha;
+        });
+    }
+
     // ═══ Internos ═══════════════════════════════════════════════════════════
 
     /**
@@ -237,9 +268,9 @@ class EstruturaPrecificacaoService
      *
      * @return array{pagina: array<int, array>, resto: array<int, array>}
      */
-    private function itensDeFrete(Company $empresa, array $base, array $daPagina, bool $comMe1 = false): array
+    private function itensDeFrete(Company $empresa, array $base, array $daPagina, bool $comMe1 = false, ?array $logisticas = null): array
     {
-        $logisticas = $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
+        $logisticas ??= $this->logisticas($empresa, $base['conjunto'], $base['ofertas']);
         $aceitas = [LogisticaProduto::ME2, LogisticaProduto::ME2_FULL, ...($comMe1 ? [LogisticaProduto::ME1] : [])];
         $saida = ['pagina' => [], 'resto' => []];
 
@@ -310,6 +341,37 @@ class EstruturaPrecificacaoService
         }
 
         return $saida;
+    }
+
+    /**
+     * O ENVIO de uma oferta, para a tela dizer o que ela é e por que há (ou não há) frete sugerido
+     * (11/10/2026). Até aqui a Precificação só mostrava o valor: a oferta fora do Mercado Envios —
+     * o Combo 2 cujo pacote somado passa do limite — ficava com o campo de frete em branco e mais
+     * nada, e o usuário não tinha como saber se era ME1, falta de medida ou defeito.
+     *
+     * @param  ?array  $log  retorno de {@see self::logisticas()} para a oferta
+     * @return array{chave: ?string, pacote: ?array{c: float, l: float, a: float, peso: float}, somado: bool, volumes: int, estouros: list<array>, sem_medida: list<string>, declarada: ?string, modalidade: ?string}
+     */
+    private static function envio(array $oferta, ?array $log, ?string $modalidade): array
+    {
+        $pacote = $log['pacote'] ?? null;
+        $volumes = 0;
+        foreach ($oferta['componentes'] as $c) {
+            $volumes += (int) $c['quantidade'];
+        }
+
+        return [
+            'chave'      => $log['logistica'] ?? null,
+            'pacote'     => $pacote ? ['c' => (float) $pacote['c'], 'l' => (float) $pacote['l'], 'a' => (float) $pacote['a'], 'peso' => (float) $pacote['peso_real']] : null,
+            // O pacote de uma oferta composta é a soma das caixas de cada unidade (`ConjuntoLogistico`).
+            'somado'     => $oferta['componentes'] !== [],
+            'volumes'    => $volumes,
+            'estouros'   => $log ? LogisticaProduto::estouros($log, $modalidade) : [],
+            'sem_medida' => array_values(array_column($log['sem_medida'] ?? [], 'nome')),
+            // Logística declarada na Lista SKUs que tira a oferta do Mercado Envios, se houver.
+            'declarada'  => in_array($oferta['logistica'], self::FORA_DO_ME2, true) ? $oferta['logistica'] : null,
+            'modalidade' => $modalidade,
+        ];
     }
 
     /**

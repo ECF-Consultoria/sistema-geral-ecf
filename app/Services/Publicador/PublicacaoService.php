@@ -3,6 +3,7 @@
 namespace App\Services\Publicador;
 
 use App\Jobs\Publicador\PublicarRascunhoJob;
+use App\Jobs\Publicador\ConferirFreteDoPublicadoJob;
 use App\Jobs\Publicador\SincronizarAcervoDoPublicadoJob;
 use App\Contracts\ContaMercadoLivre;
 use App\Models\EstruturaAnuncio;
@@ -603,6 +604,7 @@ class PublicacaoService
 
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
+        $this->conferirFreteDoPublicado($p);
     }
 
     /**
@@ -668,6 +670,23 @@ class PublicacaoService
         }
     }
 
+    /**
+     * 11/10/2026 — publicou: a terceira conferência de frete. O Mercado Livre diz quanto cobra de cada anúncio
+     * criado, e isso é comparado com o que a Precificação usou (`FreteDoPublicadoService`). Só DISPARA o job,
+     * com um minuto de folga para o anúncio assentar. Mesmo molde fail-open dos outros ganchos: falhar aqui
+     * nunca desfaz nem repete a publicação.
+     */
+    private function conferirFreteDoPublicado(PubPublicacao $p): void
+    {
+        try {
+            if ($p->itens()->where('status', PubPublicacaoItem::CREATED)->whereNotNull('ml_item_id')->exists()) {
+                ConferirFreteDoPublicadoJob::dispatch((int) $p->id)->delay(now()->addMinute());
+            }
+        } catch (\Throwable $e) {
+            Log::error("[Publicador] publicação {$p->id} concluída, mas a conferência de frete não foi disparada: {$e->getMessage()}");
+        }
+    }
+
     /** O MLB volta para a linha dele na aba Anúncios: o 1º item criado de cada tipo completa o planejado. */
     private function cadastrarNaRegua(PubPublicacao $p, PubRascunho $r, $criados): void
     {
@@ -725,6 +744,7 @@ class PublicacaoService
         // foi criado está no ar e precisa das alavancas. Sem item criado, o `abrir()` não faz nada.
         $this->abrirTarefaPosPublicacao($p);
         $this->sincronizarAcervoDoPublicado($p, $r);
+        $this->conferirFreteDoPublicado($p);
     }
 
     private function concluirParcialSeHouver(PubPublicacao $p, PubRascunho $r): void

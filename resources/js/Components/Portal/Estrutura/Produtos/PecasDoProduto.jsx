@@ -150,6 +150,34 @@ export function aoClicarNoCartao(e, abrir) {
     abrir();
 }
 
+const NOME_DO_CONJUNTO = { combo: 'Combo', kit: 'Kit', combit: 'Combit' };
+
+/** "Combo 2" para o combo (N unidades do mesmo produto); "Kit" e "Combit" levam só o tipo. */
+export const rotuloDoConjunto = (c) => (c?.fase === 'combo' ? `Combo ${c.quantidade}` : (NOME_DO_CONJUNTO[c?.fase] ?? 'Conjunto'));
+
+/**
+ * Os combos, kits e combits em que o produto entra, cada um com o atalho para a Precificação — onde
+ * ficam o preço, o pacote somado e o envio dele. O conjunto não vira produto: é uma oferta montada com
+ * este produto, e antes disto a aba Produtos não dizia que ele existia (11/10/2026).
+ */
+export function ConjuntosDoProduto({ conjuntos, className }) {
+    const lista = Array.isArray(conjuntos) ? conjuntos : [];
+    if (lista.length === 0) return null;
+
+    return (
+        <span className={cn('flex flex-wrap items-center gap-1.5 text-[12px] text-white/50', className)} data-conjuntos-do-produto>
+            <span>Também vendido em</span>
+            {lista.map((c) => (
+                <a key={c.id} href={route('portal.auth.estrutura.precificacao', { q: c.sku })} title={c.nome ? `${c.nome} (${c.sku}): ver preço, pacote e envio` : c.sku}
+                    onClick={(e) => e.stopPropagation()} data-conjunto={c.fase}
+                    className="max-w-full truncate rounded-md border border-white/[0.10] bg-white/[0.04] px-1.5 py-0.5 text-white/75 hover:border-ecf-yellow/40 hover:text-white">
+                    {rotuloDoConjunto(c)} · {c.sku}
+                </a>
+            ))}
+        </span>
+    );
+}
+
 /**
  * Uma variação: Ref, valor, selo de logística e frete. Medidas, peso cubado e custo ficam na dica.
  * Sem bolinha de cor (D-31): o palpite de cor pelo nome errava e poluía o cartão.
@@ -169,6 +197,7 @@ export function LinhaVariacao({ variacao, vocabulario, consultando, modo = 'gran
             <span className={cn('min-w-0', lista ? 'text-left' : 'text-right')}>
                 {renderFrete(variacao, { consultando: emConsulta }, 'pilha')}
             </span>
+            <ConjuntosDoProduto conjuntos={variacao.oferta?.conjuntos} className={cn('col-span-full', lista ? 'pb-1' : 'pt-2')} />
         </li>
     );
 }

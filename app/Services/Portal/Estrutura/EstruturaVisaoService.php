@@ -36,11 +36,20 @@ class EstruturaVisaoService
     /** Quantas tarefas a coluna "Agenda" da visão Ofertas mostra — o resto fica a um clique. */
     public const LIMITE_AGENDA_LATERAL = 5;
 
-    public function paginaOfertas(Company $empresa, string $filtro, string $busca, int $pagina): array
+    /**
+     * `$opcoes` (11/10/2026, só a Precificação usa): `fase` deixa passar um tipo só (simples, combo, kit ou
+     * combit) e `por_familia` ordena os blocos por família e diz a de cada um (`FamiliasDasOfertas`). Sem
+     * opções, a página sai exatamente como antes, na ordem de vendas.
+     *
+     * @param  array{fase?: ?string, por_familia?: bool}  $opcoes
+     */
+    public function paginaOfertas(Company $empresa, string $filtro, string $busca, int $pagina, array $opcoes = []): array
     {
         $conjunto = EstruturaConjunto::daEmpresa($empresa);
         $filtro = in_array($filtro, self::FILTROS, true) ? $filtro : 'todas';
         $busca = mb_strtolower(trim($busca));
+        $fase = array_key_exists((string) ($opcoes['fase'] ?? ''), EstruturaOferta::FASES) ? (string) $opcoes['fase'] : null;
+        $porFamilia = (bool) ($opcoes['por_familia'] ?? false);
 
         $repetidos = $conjunto->skusRepetidos();
         $usoEmKits = $conjunto->usoEmKits();
@@ -60,12 +69,20 @@ class EstruturaVisaoService
         foreach (OrdemPorVendas::blocos($conjunto, OrdemPorVendas::vendasPorOferta($empresa)) as $bloco) {
             $ofertas = array_values(array_filter(
                 array_map(fn ($id) => $conjunto->oferta($id), $bloco['ofertas']),
-                fn ($o) => $this->passaNoFiltro($o, $filtro) && $this->passaNaBusca($o, $busca),
+                fn ($o) => $this->passaNoFiltro($o, $filtro) && $this->passaNaBusca($o, $busca) && ($fase === null || $o['fase'] === $fase),
             ));
 
             if ($ofertas) {
                 $blocos[] = ['principal' => $conjunto->oferta($bloco['principal']), 'ofertas' => $ofertas, 'todas' => $bloco['ofertas'], 'vendas' => $bloco['vendas']];
             }
+        }
+
+        // Por família ANTES de paginar: a família que não cabe numa página continua na seguinte, inteira e em
+        // ordem — agrupar só o que a página trouxe repetiria o mesmo grupo em páginas distantes.
+        $familias = [];
+        if ($porFamilia) {
+            $familias = FamiliasDasOfertas::daEmpresa($empresa, $conjunto);
+            $blocos = FamiliasDasOfertas::ordenar($blocos, $familias);
         }
 
         $total = count($blocos);
@@ -116,6 +133,8 @@ class EstruturaVisaoService
             'espera'     => EstruturaAnuncioEspera::where('company_id', $empresa->id)->count(),
             'blocos'     => array_map(fn ($b) => [
                 'chave'     => $b['principal']['id'],
+                // Só a Precificação pede: {id, nome} da família do bloco, ou null = sem família.
+                ...($porFamilia ? ['familia' => $familias[$b['principal']['id']] ?? null] : []),
                 'foto'      => $fotos[$b['principal']['id']] ?? null,
                 // O estoque do PRODUTO (a oferta principal): é o que diz se dá
                 // para montar combo e kit.

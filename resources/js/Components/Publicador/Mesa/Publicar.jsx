@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import axios from 'axios';
 import { AlertTriangle, CheckCircle2, ImageOff, Loader2, Lock } from 'lucide-react';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
@@ -111,6 +112,28 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
         return null;
     };
 
+    // 11/10/2026 — a conferência compara o frete do Mercado Livre com o da Precificação (V-FRT-01). Quando
+    // diverge, este botão leva o do Mercado Livre para lá: o preço do Portal é refeito e pede conferir de novo.
+    const [levandoFrete, setLevandoFrete] = useState(false);
+    // Com `itemId`, é a terceira conferência: o frete que o Mercado Livre cobra de UM anúncio já publicado.
+    const levarFrete = async (itemId = null) => {
+        setLevandoFrete(true);
+        try {
+            const { data } = itemId === null
+                ? await axios.post(route('mlb.anuncios.publicador.frete-precificacao', { produto: produtoId }))
+                : await axios.post(route('mlb.anuncios.publicador.itens.frete-precificacao', { produto: produtoId, item: itemId }));
+            const n = data?.frete_levado?.aplicadas ?? 0;
+            pub.setAviso(itemId === null
+                ? `Frete do Mercado Livre levado para a Precificação (${n} ${n === 1 ? 'valor' : 'valores'}). O preço que vem do Portal foi refeito: confira de novo.`
+                : 'Frete do anúncio levado para a Precificação. O preço do Portal foi refeito: atualize o preço deste anúncio no Mercado Livre.');
+            pub.recarregar();
+        } catch (e) {
+            pub.setErro(mensagemDe(e));
+        } finally {
+            setLevandoFrete(false);
+        }
+    };
+
     const reenviarDescricao = async (itemId) => {
         try {
             await axios.post(route('mlb.anuncios.publicador.descricao', { produto: produtoId, item: itemId }));
@@ -155,6 +178,14 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         ))}
                                         {e.itens.length > POR_ETAPA_A_VISTA && <li className="text-[13px] text-white/45">e mais {e.itens.length - POR_ETAPA_A_VISTA}.</li>}
                                     </ul>
+                                    {e.itens.some((p) => p.regra === 'V-FRT-01') && (
+                                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/[0.08] pt-3" data-frete-para-precificacao>
+                                            <button type="button" onClick={() => levarFrete()} disabled={levandoFrete} className={LINK} data-acao="levar-frete">
+                                                {levandoFrete && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Levar o frete do Mercado Livre para a Precificação
+                                            </button>
+                                            <span className="text-[13px] text-white/45">O preço do Portal é refeito com ele; depois, confira de novo.</span>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -201,6 +232,24 @@ export default function Publicar({ pub, empresa, produtoId, onIrPara }) {
                                         )}
                                         {i.plano_b && <span className="text-sky-200">· confira o estoque por depósito no ML</span>}
                                         {i.mensagem && <span className="w-full text-amber-300">{i.mensagem}</span>}
+                                        {/* 11/10/2026: o frete que o Mercado Livre cobra deste anúncio, contra o da Precificação. */}
+                                        {i.frete?.aplicavel === false && <span className="text-white/45" data-frete-do-anuncio="nao-se-aplica">· sem frete do Mercado Livre (a combinar)</span>}
+                                        {i.frete?.aplicavel && i.frete.nivel === 'igual' && <span className="text-white/45" data-frete-do-anuncio="igual">· frete de {formatCurrency(i.frete.ml)} conferido com a Precificação</span>}
+                                        {/* Sem frete na Precificação não há com o que comparar, mas o que o ML cobra já é informação. */}
+                                        {i.frete?.aplicavel && i.frete.nivel === null && i.frete.ml !== null && (
+                                            <span className="text-white/45" data-frete-do-anuncio="sem-referencia">· o Mercado Livre cobra {formatCurrency(i.frete.ml)} de frete (a Precificação está sem frete para comparar)</span>
+                                        )}
+                                        {i.frete?.mensagem && (
+                                            <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-amber-300" data-frete-do-anuncio={i.frete.nivel}>
+                                                <span>{i.frete.mensagem}</span>
+                                                {i.frete.pode_levar && (
+                                                    <button type="button" onClick={() => levarFrete(i.id)} disabled={levandoFrete} className={LINK} data-acao="levar-frete-do-anuncio">
+                                                        Levar para a Precificação
+                                                    </button>
+                                                )}
+                                                {i.frete.levado_em && <span className="text-white/45">já levado para a Precificação</span>}
+                                            </span>
+                                        )}
                                     </li>
                                 ))}
                             </ul>

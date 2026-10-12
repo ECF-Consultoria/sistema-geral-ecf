@@ -21,6 +21,13 @@ use Illuminate\Support\Facades\DB;
  */
 class AdsCampanhasPolos
 {
+    /**
+     * Fases cujas empresas o sync lê na Adman (as que aparecem nas telas de faturamento).
+     * É também o que decide o "Não vinculado" do Painel Polos (VinculoAdmanPolos, TKT-0014):
+     * fora daqui o sistema não confere, então a empresa fica "não verificada".
+     */
+    public const FASES_LIDAS = ['M1', 'M2', 'M3', 'M4', 'Fechamento'];
+
     public function __construct(private AdmanService $adman) {}
 
     /**
@@ -62,7 +69,7 @@ class AdsCampanhasPolos
     public static function mapaIds(): array
     {
         $mapa = [];
-        MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4', 'Fechamento'])
+        MlbEmpresa::whereIn('fase', self::FASES_LIDAS)
             ->where('projeto', 'POLOS')
             ->whereNull('arquivado_em')
             ->get(['id', 'cust_id'])

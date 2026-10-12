@@ -373,6 +373,10 @@ export default function MontarKitAMao({ aberta, onFechar, catalogo = null, onCar
                     <div>
                         <p className="text-[16px] font-semibold text-white" data-criada-tipo={criada.oferta.fase ?? undefined}>{textoDaCriada(criada.oferta.fase)}: <span className="font-mono">{criada.oferta.sku}</span></p>
                         {criada.oferta.nome && <p className="mt-1 text-[13px] text-white/60">{criada.oferta.nome}</p>}
+                        {/* 11/10/2026: quem montou não sabia para onde o conjunto tinha ido. Ele é uma oferta, não um produto novo. */}
+                        <p className="mx-auto mt-2 max-w-md text-[13px] text-white/60" data-onde-fica>
+                            Ele fica na Precificação, com o preço, o pacote somado e o envio, e aparece nos produtos de que é feito, na aba Produtos.
+                        </p>
                         <p className="mt-2 text-[13px] text-white/60">O próximo passo é o preço.</p>
                     </div>
                     <div className="flex flex-col-reverse justify-center gap-2 sm:flex-row">

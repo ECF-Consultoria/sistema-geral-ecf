@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { router } from '@inertiajs/react';
-import { AlertTriangle, Check, Copy, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Copy, Loader2, Percent, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
 import PortalClienteLayout from '@/Layouts/PortalClienteLayout';
 import { AvisoFlash, Botao, CLASSE_INPUT, CabecalhoEstrutura, Campo, Paginacao, fmtReais } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import ComoFunciona from '@/Components/Portal/Estrutura/ComoFunciona';
+import { avisoSemSugestao, resumoDoEnvio } from '@/lib/precificacaoEnvio';
 import { deveCotarDeNovo, freteEmBranco, rotuloDoFrete, textoDaCotacao } from '@/lib/precificacaoFreteSugerido';
+import { filtrosDeTipo, linhasDaFamilia, montarFamilias, ondeEstaCadaOferta, pendentesDaFamilia, resumoDaFamilia } from '@/lib/precificacaoPorFamilia';
 import { submoduloVisivel } from '@/lib/portalSubmodulos';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +32,14 @@ import { cn } from '@/lib/utils';
 // preço daquele tipo — a cotação da conta do cliente, quando já cotada, ou a tabela de
 // custos do ML. O campo mostra o sugerido apagado, com a origem embaixo; digitar por
 // cima vence. "Cotar agora" pede a cotação real das ofertas desta página.
+//
+// ### Por família (11/10/2026)
+// A lista era corrida — "uma lista inteira sem saber o que é". Agora vem em grupos
+// por família (a do cadastro de Produtos): cada produto uma vez, com os combos dele
+// pendurados embaixo; kit e combit em "Conjuntos desta família", também uma vez
+// só, e o produto que entra neles diz "Também entra em". O que não tem família
+// fica no grupo "Sem família". Quem agrupa e ordena é o servidor, antes de
+// paginar; aqui é só desenho (`lib/precificacaoPorFamilia.js`).
 
 const FASE_CURTA = { simples: 'Simples', combo: 'Combo', kit: 'Kit', combit: 'Combit' };
 
@@ -224,8 +234,93 @@ function OrigemDoFrete({ calculo, de, freteTabela }) {
     );
 }
 
-/** Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços. */
-function LinhaPreco({ oferta, calculo, onAjustar, freteTabela }) {
+const TOM_DO_ENVIO = { ok: 'text-white/55', neutro: 'text-white/60', alerta: 'text-amber-300' };
+
+/**
+ * O envio da oferta, sob o nome: o que ela é (Mercado Envios, fora dele, faltam medidas), o pacote —
+ * o SOMADO, quando é combo ou kit — e, fora do Mercado Envios, por quê. Sem isto a oferta sem frete
+ * sugerido ficava com o campo em branco e nenhuma explicação (11/10/2026).
+ */
+function EnvioDaOferta({ envio }) {
+    const r = resumoDoEnvio(envio);
+    if (! r) return null;
+
+    return (
+        <span className="mt-1 block text-[10.5px] leading-snug text-white/40" data-envio={r.chave} title={r.dica ?? undefined}>
+            <span className={cn('font-semibold', TOM_DO_ENVIO[r.tom])}>{r.rotulo}</span>
+            {r.pacote && <span className="block" data-envio-pacote>{r.pacote}</span>}
+            {r.motivo && r.tom === 'alerta' && <span className="block text-amber-200/70" data-envio-motivo>{r.motivo}</span>}
+        </span>
+    );
+}
+
+/** Sob o campo de frete em branco e sem nada a sugerir: por que não há valor ali. */
+function SemSugestaoDeFrete({ envio, tipo }) {
+    const texto = avisoSemSugestao(envio, tipo);
+    if (! texto) return null;
+
+    return <span className="mt-0.5 block text-right text-[10.5px] text-amber-200/60" title={resumoDoEnvio(envio)?.dica ?? undefined} data-frete-sem-sugestao>{texto}</span>;
+}
+
+/** Um atalho para outra oferta da lista. Fora desta página (ou do filtro) é só o texto. */
+function Atalho({ alvo, rotulo, onIrPara }) {
+    const classe = 'max-w-full truncate rounded-md border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10.5px] text-white/60';
+    const dica = alvo.nome ? `${alvo.nome} (${alvo.sku})` : alvo.sku;
+    if (! onIrPara?.pode(alvo.id)) return <span className={classe} title={dica}>{rotulo}</span>;
+
+    return (
+        <button type="button" onClick={() => onIrPara.ir(alvo.id)} title={`Ir para ${dica}`} data-acao="ir-para-oferta"
+            className={cn(classe, 'hover:border-ecf-yellow/40 hover:text-white')}>
+            {rotulo}
+        </button>
+    );
+}
+
+/** O cabeçalho de uma família: abre e fecha o grupo e resume o que há nele. */
+function CabecalhoDaFamilia({ familia, aberta, pendentes, fixa, onAlternar }) {
+    const Seta = aberta ? ChevronDown : ChevronRight;
+
+    return (
+        <tr className="border-t border-white/[0.08] bg-white/[0.03]" data-familia-cabecalho={familia.chave}>
+            <td colSpan={8} className="px-3 py-2">
+                <button type="button" onClick={onAlternar} disabled={fixa} aria-expanded={aberta} data-acao="alternar-familia"
+                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-left disabled:cursor-default">
+                    <Seta size={15} className={cn('shrink-0', fixa ? 'text-white/20' : 'text-white/50')} />
+                    <span className={cn('text-[13.5px] font-semibold', familia.semFamilia ? 'text-white/60' : 'text-white')}>{familia.nome}</span>
+                    <span className="text-[12px] text-white/45">{resumoDaFamilia(familia)}</span>
+                    {familia.semFamilia && <span className="text-[12px] text-white/35">Defina a família na ficha do produto para agrupar.</span>}
+                    <span className="flex-1" />
+                    {pendentes > 0 && (
+                        <span className="whitespace-nowrap rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300" data-pendentes={pendentes}>
+                            {pendentes} {pendentes === 1 ? 'pendente' : 'pendentes'}
+                        </span>
+                    )}
+                </button>
+            </td>
+        </tr>
+    );
+}
+
+/** Onde começam os kits e combits da família. */
+function TituloConjuntos() {
+    return (
+        <tr className="border-t border-white/[0.06]" data-titulo-conjuntos>
+            <td colSpan={8} className="px-3 pb-1 pt-3">
+                <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[11.5px] font-semibold text-white/65">Conjuntos desta família</span>
+                    <span className="text-[11px] text-white/35">kits e combits, que juntam mais de um produto</span>
+                </span>
+            </td>
+        </tr>
+    );
+}
+
+/**
+ * Uma linha: a oferta, o custo (digitado ou dos componentes), os fretes e os dois preços.
+ * `filho` = combo pendurado no produto; `alternar` = o produto abre/fecha os combos dele; `tambemEm` e
+ * `itens` são os atalhos (em que conjuntos o produto entra / do que o conjunto é feito).
+ */
+function LinhaPreco({ oferta, calculo, onAjustar, freteTabela, filho = false, alternar = null, aberto = false, tambemEm = [], itens = [], onIrPara = null }) {
     // D-10: na oferta que veio do Produtos o custo mora no produto (167-08); a
     // tela mostra o valor e não manda custo no salvar (o servidor o recusaria).
     const doProduto = calculo.do_produto === true;
@@ -264,13 +359,41 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela }) {
     const ajustado = Object.values(calculo.excecoes).some((v) => v !== null);
 
     return (
-        <tr className="border-t border-white/[0.06] align-top" data-linha-preco={oferta.id} data-pendencia={calculo.pendencia ?? 'ok'}>
+        <tr id={`oferta-${oferta.id}`} className={cn('scroll-mt-24 border-t border-white/[0.06] align-top', filho && 'bg-white/[0.015]')}
+            data-linha-preco={oferta.id} data-pendencia={calculo.pendencia ?? 'ok'} data-nivel={filho ? 'combo' : 'produto'}>
             <td className="px-3 py-2.5">
-                <span className="flex items-center gap-2">
-                    <span className="truncate font-mono text-[12.5px] font-semibold text-white" title={oferta.sku}>{oferta.sku}</span>
-                    <span className="shrink-0 text-[10.5px] text-white/35">{FASE_CURTA[oferta.fase]}</span>
+                <span className={cn('flex items-start gap-1.5', filho && 'pl-4')}>
+                    {/* O combo pende do produto dele: um "L" liga os dois. */}
+                    {filho && <span aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 rounded-bl border-b border-l border-white/25" data-ligacao />}
+                    {alternar ? (
+                        <button type="button" onClick={alternar} aria-expanded={aberto} data-acao="alternar-combos"
+                            aria-label={`${aberto ? 'Esconder' : 'Mostrar'} os combos de ${oferta.sku}`}
+                            className="mt-px shrink-0 rounded p-0.5 text-white/45 hover:bg-white/[0.06] hover:text-white">
+                            {aberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                    ) : (! filho && <span aria-hidden="true" className="w-[18px] shrink-0" />)}
+                    <span className="min-w-0 flex-1">
+                        {/* O código nunca é cortado (é por ele que se acha o produto): quebra de linha. O nome mostra até duas. */}
+                        <span className="flex items-baseline gap-2">
+                            <span className="min-w-0 break-words font-mono text-[12.5px] font-semibold text-white">{oferta.sku}</span>
+                            <span className="shrink-0 text-[10.5px] text-white/35">{FASE_CURTA[oferta.fase]}</span>
+                        </span>
+                        <span className="line-clamp-2 text-[11.5px] text-white/40" title={oferta.nome ?? ''}>{oferta.nome}</span>
+                        {itens.length > 0 && (
+                            <span className="mt-1 flex flex-wrap gap-1" data-composicao>
+                                {itens.map((c) => <Atalho key={c.id} alvo={c} rotulo={`${c.quantidade}× ${c.nome ?? c.sku}`} onIrPara={onIrPara} />)}
+                            </span>
+                        )}
+                        <EnvioDaOferta envio={calculo.envio} />
+                        {tambemEm.length > 0 && (
+                            <span className="mt-1 flex flex-wrap items-center gap-1" data-tambem-em>
+                                <span className="text-[10.5px] text-white/35">Também entra em</span>
+                                {/* Tipo + código: o nome do conjunto é comprido demais para caber aqui (vai na dica). */}
+                                {tambemEm.map((k) => <Atalho key={k.id} alvo={k} rotulo={`${FASE_CURTA[k.fase] ?? ''} ${k.sku}`.trim()} onIrPara={onIrPara} />)}
+                            </span>
+                        )}
+                    </span>
                 </span>
-                <span className="block truncate text-[11.5px] text-white/40" title={oferta.nome ?? ''}>{oferta.nome}</span>
             </td>
             <td className="px-1.5 py-1.5">
                 {doProduto ? (
@@ -301,11 +424,13 @@ function LinhaPreco({ oferta, calculo, onAjustar, freteTabela }) {
                 <input value={freteC} onChange={(e) => setFreteC(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.classico)} className={CELULA} aria-label={`Frete do Clássico de ${oferta.sku}`} data-celula="frete-classico" />
                 <OrigemDoFrete calculo={calculo.classico} de="Premium" freteTabela={freteTabela} />
+                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.classico} />
             </td>
             <td className="px-1.5 py-1.5">
                 <input value={freteP} onChange={(e) => setFreteP(e.target.value)} onBlur={salvar} onKeyDown={enter} inputMode="decimal"
                     placeholder={placeholderFrete(calculo.premium)} className={CELULA} aria-label={`Frete do Premium de ${oferta.sku}`} data-celula="frete-premium" />
                 <OrigemDoFrete calculo={calculo.premium} de="Clássico" freteTabela={freteTabela} />
+                <SemSugestaoDeFrete envio={calculo.envio} tipo={calculo.premium} />
             </td>
             <td className="px-3 py-2"><Preco calculo={calculo.classico} tipo="classico" /></td>
             <td className="px-3 py-2"><Preco calculo={calculo.premium} tipo="premium" /></td>
@@ -416,10 +541,36 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const [busca, setBusca] = useState(filtros.q ?? '');
     const [cotando, setCotando] = useState(false);
     const [avisoCotacao, setAvisoCotacao] = useState(null);
+    const [fechadas, setFechadas] = useState({});     // família → fechada
+    const [recolhidos, setRecolhidos] = useState({}); // produto → combos escondidos
 
     const { painel, blocos, paginacao } = estrutura;
     const { parametros, padroes, resumo, por_oferta: porOferta } = precificacao;
-    const ofertas = blocos.flatMap((b) => b.ofertas);
+    const tipo = filtros.tipo ?? null;
+    const familias = montarFamilias(blocos, (id) => !! porOferta[id]);
+    const onde = ondeEstaCadaOferta(familias);
+    const nOfertas = Object.keys(onde).length;
+    // Com busca ou tipo escolhido a lista fica rasa e toda aberta: o que casou aparece direto.
+    const filtrando = !! (filtros.q || tipo);
+    const todasFechadas = familias.length > 0 && familias.every((f) => fechadas[f.chave]);
+
+    // O atalho de "Também entra em" e da composição: abre o que estiver fechado, rola e acende a linha.
+    const irParaOferta = {
+        pode: (id) => !! onde[id],
+        ir: (id) => {
+            const lugar = onde[id];
+            if (! lugar) return;
+            setFechadas((f) => ({ ...f, [lugar.familia]: false }));
+            if (lugar.produto !== null) setRecolhidos((r) => ({ ...r, [lugar.produto]: false }));
+            setTimeout(() => {
+                const linha = document.getElementById(`oferta-${id}`);
+                if (! linha) return;
+                linha.scrollIntoView({ block: 'center' });
+                linha.setAttribute('data-aceso', '');
+                setTimeout(() => linha.removeAttribute('data-aceso'), 3500);
+            }, 60);
+        },
+    };
 
     const visitar = (params) => router.get(route('portal.auth.estrutura.precificacao'), params, {
         preserveState: true, preserveScroll: false, replace: true, only: ['estrutura', 'precificacao', 'filtros'],
@@ -431,7 +582,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const visitarCotando = () => new Promise((resolve) => {
         let resultado = null;
         router.get(route('portal.auth.estrutura.precificacao'), {
-            q: filtros.q || undefined, pagina: paginacao.pagina > 1 ? paginacao.pagina : undefined, cotar: 1,
+            q: filtros.q || undefined, tipo: tipo || undefined, pagina: paginacao.pagina > 1 ? paginacao.pagina : undefined, cotar: 1,
         }, {
             preserveState: true, preserveScroll: true, preserveUrl: true, only: ['precificacao', 'cotacao'],
             onSuccess: (page) => { resultado = page.props.cotacao ?? null; },
@@ -455,7 +606,7 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
     const primeiraVez = useRef(true);
     useEffect(() => {
         if (primeiraVez.current) { primeiraVez.current = false; return; }
-        const t = setTimeout(() => visitar({ q: busca || undefined }), 350);
+        const t = setTimeout(() => visitar({ q: busca || undefined, tipo: tipo || undefined }), 350);
 
         return () => clearTimeout(t);
     }, [busca]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -509,6 +660,32 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                             )}
                         </div>
 
+                        <div className="flex flex-wrap items-center justify-between gap-3" data-filtros-de-tipo>
+                            <div className="flex flex-wrap gap-1.5">
+                                {filtrosDeTipo(painel, tipo).map((t) => (
+                                    <button key={t.chave ?? 'todos'} type="button" onClick={() => visitar({ q: busca || undefined, tipo: t.chave || undefined })}
+                                        aria-pressed={t.ativo} disabled={t.quantos === 0 && ! t.ativo} data-tipo={t.chave ?? 'todos'}
+                                        className={cn('rounded-full border px-3 py-1 text-[12px] disabled:opacity-40',
+                                            t.ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/10 font-semibold text-ecf-yellow' : 'border-white/[0.10] text-white/60 hover:border-white/25 hover:text-white')}>
+                                        {t.rotulo} <span className="tabular-nums opacity-70">{t.quantos}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {familias.length > 0 && (
+                                <div className="flex items-center gap-3 text-[12px] text-white/45">
+                                    <span data-resumo-da-pagina>
+                                        {nOfertas} {nOfertas === 1 ? 'oferta' : 'ofertas'} · {familias.length} {familias.length === 1 ? 'grupo' : 'grupos'}{paginacao.paginas > 1 ? ' nesta página' : ''}
+                                    </span>
+                                    {! filtrando && (
+                                        <button type="button" data-acao="recolher-tudo" className="text-white/60 underline-offset-4 hover:text-white hover:underline"
+                                            onClick={() => setFechadas(todasFechadas ? {} : Object.fromEntries(familias.map((f) => [f.chave, true])))}>
+                                            {todasFechadas ? 'Abrir tudo' : 'Recolher tudo'}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         <p className="text-[12px] leading-relaxed text-white/45" data-explica-frete>
                             Frete em branco vem sugerido para cada tipo, no preço dele: <span className="text-white/65">sugerido pela sua conta</span> quando
                             já cotado no Mercado Livre{ml_conectado ? '' : ' (conecte a sua conta para cotar)'}, ou <span className="text-white/65">estimado pela tabela</span> de
@@ -540,17 +717,30 @@ export default function EstruturaPrecificacao({ empresa, modulos = [], estrutura
                                         <th className="px-3 py-2.5" aria-label="Ajustes" />
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    {ofertas.filter((o) => porOferta[o.id]).map((o) => (
-                                        <LinhaPreco key={o.id} oferta={o} calculo={porOferta[o.id]} freteTabela={frete_tabela} onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
-                                    ))}
-                                </tbody>
+                                {familias.map((f) => {
+                                    const aberta = filtrando || ! fechadas[f.chave];
+
+                                    return (
+                                        <tbody key={f.chave} data-familia={f.chave} data-aberta={aberta ? 'sim' : 'nao'}>
+                                            <CabecalhoDaFamilia familia={f} aberta={aberta} fixa={filtrando} pendentes={pendentesDaFamilia(f, porOferta)}
+                                                onAlternar={() => setFechadas((x) => ({ ...x, [f.chave]: ! x[f.chave] }))} />
+                                            {aberta && linhasDaFamilia(f, { recolhidos, filtrando }).map((l, i) => (l.tipo === 'titulo'
+                                                ? <TituloConjuntos key={`titulo-${i}`} />
+                                                : (
+                                                    <LinhaPreco key={l.oferta.id} oferta={l.oferta} calculo={porOferta[l.oferta.id]} freteTabela={frete_tabela}
+                                                        filho={l.filho} aberto={l.aberto} tambemEm={l.tambemEm} itens={l.itens} onIrPara={irParaOferta}
+                                                        alternar={l.alternar !== null ? () => setRecolhidos((r) => ({ ...r, [l.alternar]: ! r[l.alternar] })) : null}
+                                                        onAjustar={(oferta, calculo) => setAjustar({ oferta, calculo })} />
+                                                )))}
+                                        </tbody>
+                                    );
+                                })}
                             </table>
-                            {ofertas.length === 0 && <p className="py-10 text-center text-[13px] text-white/45">Nenhum produto com essa busca.</p>}
+                            {familias.length === 0 && <p className="py-10 text-center text-[13px] text-white/45">Nenhuma oferta com esse filtro.</p>}
                         </div>
 
                         {paginacao.paginas > 1 && (
-                            <Paginacao paginacao={paginacao} onIr={(pagina) => visitar({ q: busca || undefined, pagina })} />
+                            <Paginacao paginacao={paginacao} onIr={(pagina) => visitar({ q: busca || undefined, tipo: tipo || undefined, pagina })} />
                         )}
                     </>
                 )}

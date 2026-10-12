@@ -802,6 +802,9 @@ export default function PolosPainel({
             chance_entrada:      { key: 'chance_entrada', label: 'Chance entrada', accessor: (e) => e.chance_entrada },
             acesso_colaborador:  { key: 'acesso_colaborador', label: 'Acesso colaborador', accessor: (e) => e.acesso_colaborador },
             gmail_colaborador:   { key: 'gmail_colaborador', label: 'Gmail colaborador', accessor: (e) => e.gmail_colaborador },
+            // Automático (TKT-0014): vem da última resposta da Adman pela conta. Vazio = fase
+            // que o sistema não confere na Adman (ex.: M0) ou empresa sem Cust ID.
+            adman_vinculo:       { key: 'adman_vinculo', label: 'Vínculo Adman', accessor: (e) => e.adman_vinculo, format: (v) => (v === VAZIO ? '(Não verificado)' : v) },
             grupo_whatsapp:      { key: 'grupo_whatsapp', label: 'Grupo WhatsApp', accessor: (e) => (e.grupo_whatsapp === true ? 'Sim' : e.grupo_whatsapp === false ? 'Não' : null) },
             // Filtrável de propósito: o uso real é isolar "(Sem link)" e cobrar quem falta.
             // O funil mostra o link encurtado (a URL inteira estouraria o dropdown).
@@ -1778,13 +1781,13 @@ const COLS_POR_LENTE = {
     geral: [
         'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
-        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
+        'acesso_colaborador', 'gmail_colaborador', 'adman_vinculo', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao',
         'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'central_promocao', 'obs_publicacao', 'jardinagem',
         'contextos_logistica', 'me1', 'integradora', 'produtos_perfil', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
-    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
+    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'adman_vinculo', 'grupo_whatsapp', 'link_whatsapp', 'reuniao_onboarding', 'canais_faturamento', 'data_solicitacao'],
     // 'obs_publicacao' fecha o bloco: é a resposta do CLIENTE sobre a publicação, ao lado
     // das colunas que a equipe preenche sobre o mesmo assunto.
     // 'jardinagem' também é resposta do cliente, marcada logo abaixo da Planilha de Produtos.
@@ -1905,6 +1908,34 @@ function CelObs({ valor, empresa, maxW = 'max-w-[260px]' }) {
     );
 }
 
+// "Vínculo Adman" (TKT-0014): automático e SÓ LEITURA — vem da última resposta da Adman
+// pela conta (o sistema confere M1–M4 às 13:00 e às 17:30). Nas demais fases (M0,
+// Encerrado…) e sem Cust ID não há conferência, e a célula fica "—" em vez de afirmar algo.
+function CelVinculoAdman({ e }) {
+    if (e.adman_vinculo === 'Vinculado') {
+        return (
+            <span className="whitespace-nowrap text-[12px] font-medium text-emerald-300"
+                title={`A Adman respondeu por esta conta${e.adman_lido_em ? ` em ${e.adman_lido_em}` : ''}`}>
+                Vinculado
+            </span>
+        );
+    }
+    if (e.adman_vinculo === 'Não vinculado') {
+        return (
+            <span className="whitespace-nowrap text-[12px] font-medium text-red-300"
+                title="A Adman não respondeu por esta conta nas últimas 72h: o seller ainda não deu acesso à ECF na Adman, ou o Cust ID está errado">
+                Não vinculado
+            </span>
+        );
+    }
+    return (
+        <span className="text-white/20 text-[12px]"
+            title={e.cust_id ? 'O sistema confere o vínculo com a Adman só nas fases M1 a M4' : 'Sem Cust ID'}>
+            —
+        </span>
+    );
+}
+
 // <th> com funil de filtro/ordenação. `alignRight` p/ colunas numéricas do financeiro.
 function ThFiltro({ col, af, alignRight = false }) {
     if (!col) return null;
@@ -2000,6 +2031,18 @@ function SelectResponsavel({ e, usuarios, onTrocar }) {
     );
 }
 
+// Decola automático (TKT-0013): o Mercado Livre confirma o programa ativo na conta, e o
+// sistema marca "Sim" sozinho todo dia às 08:30. O select segue editável, mas um valor
+// diferente de "Sim" volta a "Sim" na leitura seguinte — o selo avisa quem for mexer.
+function SeloDecolaMl() {
+    return (
+        <span className="mt-1 block whitespace-nowrap text-[10px] font-medium text-emerald-300/80"
+            title='O Mercado Livre informa o Programa Decola ativo nesta conta. O sistema confere todo dia e marca "Sim" sozinho.'>
+            automático · Mercado Livre
+        </span>
+    );
+}
+
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
 // memo(): sem ele, qualquer estado do painel (uma tecla na busca, uma caixa marcada, uma
 // célula salva) redesenhava as ~180 linhas x ~32 colunas. Com as props estáveis acima, só a
@@ -2065,6 +2108,7 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
         // ── Acessos ──
         acesso_colaborador: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         gmail_colaborador: <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>,
+        adman_vinculo: <td className={td}><CelVinculoAdman e={e} /></td>,
         grupo_whatsapp: <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
         link_whatsapp: <td className={td}><EditLink e={e} campo="link_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
         reuniao_onboarding: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
@@ -2075,7 +2119,7 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
         planilha_produtos: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         listagem: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="listagem" opcoes={opcoes.listagem} presentes={valoresPresentes.listagem} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         publicacao: <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="publicacao" opcoes={opcoes.publicacao} presentes={valoresPresentes.publicacao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
-        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
+        decola: <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="decola" opcoes={opcoes.decola} presentes={valoresPresentes.decola} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} />{e.decola_ml_ativo && <SeloDecolaMl />}</div></td>,
         campanha_criada: <td className={td}><EditToggle e={e} campo="campanha_criada" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>,
         central_promocao: <td className={td}><div className="min-w-[150px]"><EditSelect e={e} campo="central_promocao" opcoes={opcoes.central_promocao} presentes={valoresPresentes.central_promocao} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>,
         // Observação escrita pelo CLIENTE no link do Onboarding — somente leitura, como as
@@ -2187,8 +2231,8 @@ const LinhaPainel = memo(function LinhaPainel({ e, selecionada, onToggleSel, len
             {aberta && (
                 <tr className="bg-white/[0.02]">
                     {/* colSpan alto: o navegador limita ao total real de colunas (Geral, com
-                        as 2 congeladas, chega a ~33 desde a coluna "Link do Whats"). */}
-                    <td colSpan={40} className="p-0">
+                        as 2 congeladas, chega a 39 desde a coluna "Vínculo Adman"). */}
+                    <td colSpan={48} className="p-0">
                         {/* A célula tem a largura da tabela inteira; o conteúdo fica preso à
                             parte VISÍVEL da caixa rolável (sticky + largura medida em
                             refCaixaTabela), então a gaveta não rola para o lado com as colunas. */}

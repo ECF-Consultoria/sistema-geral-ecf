@@ -238,4 +238,26 @@ return [
     // em produção o cliente IGNORA este valor e usa o host oficial (plano 166-02).
     'ml_api_base' => env('PUBLICADOR_ML_API_BASE', 'https://api.mercadolibre.com'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Conferência de frete (11/10/2026)
+    |--------------------------------------------------------------------------
+    |
+    | O frete que a Precificação do Portal usou × o que o Mercado Livre cota ao
+    | conferir × o que ele cobra do anúncio publicado (`ConferenciaDeFrete`).
+    | Faixas aprovadas pelo usuário: até `tolerancia` não avisa; acima, avisa;
+    | acima de `reprecificar_valor` OU de `reprecificar_percentual` do frete do
+    | Mercado Livre, o aviso pede para refazer o preço. Sempre aviso, nunca trava.
+    |
+    | `max_cotacoes`: teto de cotações por conferência (uma por tipo de anúncio e
+    | preço distinto; variações com o mesmo preço dividem a resposta).
+    |
+    */
+    'frete_conferencia' => [
+        'tolerancia' => (float) env('PUBLICADOR_FRETE_TOLERANCIA', 1.00),
+        'reprecificar_valor' => (float) env('PUBLICADOR_FRETE_REPRECIFICAR_VALOR', 10.00),
+        'reprecificar_percentual' => (float) env('PUBLICADOR_FRETE_REPRECIFICAR_PERCENTUAL', 10.0),
+        'max_cotacoes' => (int) env('PUBLICADOR_FRETE_MAX_COTACOES', 6),
+    ],
+
 ];

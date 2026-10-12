@@ -8,6 +8,7 @@ use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Portal\Estrutura\RegistroEstrutura;
 use App\Support\Portal\AtorDoPortal;
+use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -86,7 +87,7 @@ class FichaTecnicaDoProduto
     }
 
     /**
-     * @param  array<int, mixed>  $recebidos  [{id, valor, unidade}, ...] como a tela mandou
+     * @param  array<int, mixed>  $recebidos  [{id, valor, unidade, nao_se_aplica, proprio}, ...] como a tela mandou
      * @return array<int, array{id: string, nome: string, valor: ?string, valor_id: ?string, unidade: ?string}>
      *
      * @throws ValidationException
@@ -328,8 +329,9 @@ class FichaTecnicaDoProduto
 
         // Lista multivalor: a tela manda uma lista de ids (os chips). Trilha própria, antes da
         // exigência de escalar lá embaixo — e uma lista vazia conta como campo não preenchido.
+        // `proprios`: quais itens da lista são valor escrito à mão ("Outro"), e não id de opção.
         if (($campo['multivalor'] ?? false) && is_array($bruto)) {
-            return $this->multivalor($campo, $bruto);
+            return $this->multivalor($campo, $bruto, is_array($entrada['proprios'] ?? null) ? $entrada['proprios'] : []);
         }
 
         if ($bruto === null || (is_string($bruto) && trim($bruto) === '')) {
@@ -355,7 +357,8 @@ class FichaTecnicaDoProduto
                 return ['valor' => $this->simNao($nome, $bruto), 'valor_id' => null, 'unidade' => null];
 
             case FichaTecnicaDaCategoria::TIPO_LISTA:
-                $opcao = $this->opcao($campo, (string) $bruto);
+                // `proprio`: o texto veio do "Outro" (valor escrito à mão). Sem a marca, só vale id de opção.
+                $opcao = $this->opcaoOuProprio($campo, (string) $bruto, filter_var($entrada['proprio'] ?? false, FILTER_VALIDATE_BOOLEAN));
 
                 return ['valor' => $opcao['nome'], 'valor_id' => $opcao['id'], 'unidade' => null];
 
@@ -429,23 +432,28 @@ class FichaTecnicaDoProduto
      * (company_id, produto_id, atributo_id) e `valor_id` é varchar(40) — nem cabe uma
      * linha por opção, nem os ids emendados. Como `valor` é `text`, o que se grava é a
      * lista de NOMES separada por {@see self::SEPARADOR}, na ordem em que foi escolhida,
-     * e `valor_id` fica nulo. Os nomes vêm da definição da categoria (nunca do que o
-     * cliente digitou), então quem publicar reencontra o id pelo nome na mesma definição.
+     * e `valor_id` fica nulo. Os nomes das opções vêm da definição da categoria, então quem
+     * publicar reencontra o id pelo nome na mesma definição. No campo que aceita valor próprio
+     * (`aceita_outro`, 11/10/2026) um nome pode ser o que o cliente escreveu — sem "|", que
+     * {@see self::opcaoOuProprio()} recusa para a lista dividir de volta sem ambiguidade.
      *
      * Dar coluna própria aos ids é ALTERAR tabela com dado em produção — fase GSD, não
      * trabalho direto. Vale a pena quando o publicador precisar dos ids; hoje não precisa.
      *
-     * @param  array<int, mixed>  $bruto  ids das opções escolhidas
+     * @param  array<int, mixed>  $bruto  ids das opções escolhidas e, no campo que aceita, os valores próprios
+     * @param  array<int, mixed>  $proprios  quais itens de `$bruto` são valor próprio (texto), e não id de opção
      * @return array{valor: string, valor_id: null, unidade: null}|null
      */
-    private function multivalor(array $campo, array $bruto): ?array
+    private function multivalor(array $campo, array $bruto, array $proprios = []): ?array
     {
+        $proprios = array_map(fn ($p) => is_scalar($p) ? trim((string) $p) : '', $proprios);
+
         $nomes = [];
         foreach ($bruto as $item) {
             if (! is_scalar($item) || trim((string) $item) === '') {
                 continue;
             }
-            $nome = $this->opcao($campo, (string) $item)['nome'];
+            $nome = $this->opcaoOuProprio($campo, (string) $item, in_array(trim((string) $item), $proprios, true))['nome'];
             // Escolher a mesma opção duas vezes não duplica o chip gravado.
             if (! in_array($nome, $nomes, true)) {
                 $nomes[] = $nome;
@@ -459,17 +467,52 @@ class FichaTecnicaDoProduto
         return ['valor' => implode(self::SEPARADOR, $nomes), 'valor_id' => null, 'unidade' => null];
     }
 
-    /** @return array{id: string, nome: string} */
-    private function opcao(array $campo, string $bruto): array
+    /**
+     * A opção escolhida (pelo id) ou, no campo que aceita, o valor PRÓPRIO que a pessoa escreveu
+     * (`aceita_outro`, 11/10/2026 — ver {@see FichaTecnicaDaCategoria}). Quem chama diz qual dos dois:
+     * sem `$proprio` só vale id de opção, como sempre (um id que saiu do catálogo não vira texto por
+     * engano); com `$proprio` o texto nunca é lido como id. A tela marca o que veio do "Outro"; a
+     * planilha marca a célula que não bateu em opção nenhuma.
+     *
+     * O texto que bate com o NOME de uma opção (sem acento nem caixa) vira a opção: "couro" escrito à
+     * mão grava "Couro" com o id dela. O que não bate grava como texto, sem `valor_id` — o mesmo
+     * formato do texto antigo, que o Sincronizar já leva ao rascunho onde o editor aceita.
+     *
+     * DECISÃO DE SCHEMA (CLAUDE.md, disciplina 2), sem migration: `valor` (text) guarda o texto e
+     * `valor_id` fica nulo, como já ficava. O "|" é recusado porque é o separador das várias opções.
+     *
+     * @return array{id: ?string, nome: string}
+     */
+    private function opcaoOuProprio(array $campo, string $bruto, bool $proprio = false): array
     {
         $texto = trim($bruto);
 
-        foreach ($campo['valores'] as $v) {
+        foreach ($proprio ? [] : $campo['valores'] as $v) {
             if ($v['id'] === $texto) {
                 return $v;
             }
         }
 
-        throw new InvalidArgumentException("Escolha uma das opções de “{$campo['nome']}”.");
+        if (! $proprio || ! ($campo['aceita_outro'] ?? false)) {
+            throw new InvalidArgumentException("Escolha uma das opções de “{$campo['nome']}”.");
+        }
+
+        $alvo = ChaveCanonica::texto($texto);
+        foreach ($campo['valores'] as $v) {
+            if ($alvo !== '' && ChaveCanonica::texto($v['nome']) === $alvo) {
+                return $v;
+            }
+        }
+
+        $texto = trim((string) preg_replace('/\s+/u', ' ', $texto));
+        $max = $campo['max'] ?? self::MAX_PADRAO;
+        if (mb_strlen($texto) > $max) {
+            throw new InvalidArgumentException("“{$campo['nome']}” aceita até {$max} caracteres.");
+        }
+        if (str_contains($texto, '|')) {
+            throw new InvalidArgumentException("“{$campo['nome']}” não aceita o caractere “|”.");
+        }
+
+        return ['id' => null, 'nome' => $texto];
     }
 }

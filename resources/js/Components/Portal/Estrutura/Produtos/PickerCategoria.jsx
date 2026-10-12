@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { Loader2 } from 'lucide-react';
+import NavegadorDeCategorias from '@/Components/Categorias/NavegadorDeCategorias';
 import { cn } from '@/lib/utils';
 
 // ─── Categoria real do Mercado Livre, escolhida na própria célula (D-06) ─────
@@ -10,8 +11,13 @@ import { cn } from '@/lib/utils';
 // Categoria que não é folha aparece apagada e não é selecionável. A busca usa só
 // o app token no servidor; lista vazia vem junto de `indisponivel`, e a tela não
 // afirma que o ML caiu (o preditor devolve [] nos dois casos).
+//
+// Dois jeitos de achar (11/10/2026): BUSCAR pelo nome, como sempre, ou NAVEGAR nível a
+// nível até a última categoria do ramo. A busca devolve poucos palpites e erra com texto
+// curto; navegando a pessoa vê tudo o que existe em cada nível. A escolha grava igual.
 
 const ESPERA_BUSCA_MS = 350;
+const MODOS = [['buscar', 'Buscar'], ['navegar', 'Navegar']];
 const MAXIMO_ITENS = 8;
 // O servidor busca com `q` de 2 a 120 caracteres (min:2|max:120); o nome do produto aceita 255. Fora
 // disso o 422 parecia "o Mercado Livre caiu" e "Tentar de novo" repetia o mesmo erro (revisão FE-WR-08).
@@ -24,9 +30,14 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
     const [estado, setEstado] = useState('buscando');     // buscando | pronto | curta | recusada | indisponivel
     const [ativo, setAtivo] = useState(0);
     const [tentativa, setTentativa] = useState(0);
+    const [modo, setModo] = useState('buscar');           // buscar | navegar
     const campo = useRef(null);
 
-    useEffect(() => { campo.current?.focus(); }, []);
+    useEffect(() => { if (modo === 'buscar') campo.current?.focus(); }, [modo]);
+
+    const buscarNivel = useCallback(async (pai) => (
+        await axios.get(route('portal.auth.estrutura.produtos.categorias.arvore'), { params: pai ? { pai } : {} })
+    ).data, []);
 
     // Busca ao abrir e a cada digitação, com debounce.
     useEffect(() => {
@@ -73,6 +84,20 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
 
     return (
         <div className="w-[420px] max-w-[92vw] rounded-xl border border-white/[0.08] bg-ecf-card p-2 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex gap-1" role="tablist" aria-label="Como achar a categoria">
+                {MODOS.map(([chave, rotulo]) => (
+                    <button key={chave} type="button" role="tab" aria-selected={modo === chave} onClick={() => setModo(chave)} data-modo={chave}
+                        className={cn('h-8 flex-1 rounded-lg text-[12.5px] font-semibold', modo === chave ? 'bg-white/[0.10] text-white' : 'text-white/55 hover:bg-white/[0.05] hover:text-white')}>
+                        {rotulo}
+                    </button>
+                ))}
+            </div>
+
+            {modo === 'navegar' && (
+                <NavegadorDeCategorias buscarNivel={buscarNivel} inicio={row?.categoria_ml_id ?? null} selecionada={row?.categoria_ml_id ?? null} onEscolher={escolher} />
+            )}
+
+            {modo === 'buscar' && (<>
             <input
                 ref={campo}
                 value={busca}
@@ -107,6 +132,12 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
             {estado === 'pronto' && itens.length === 0 && (
                 <p className="px-2 py-3 text-[12px] text-white/45">Nada encontrado. Tente outra palavra, como o tipo do produto.</p>
             )}
+            {(estado === 'pronto' || estado === 'indisponivel') && (
+                <button type="button" onClick={() => setModo('navegar')} data-acao="navegar-pelas-categorias"
+                    className="mt-1 w-full rounded-lg px-2 py-2 text-left text-[12px] text-white/60 hover:bg-white/[0.06] hover:text-white">
+                    Não achou? Navegue pelas categorias, nível a nível.
+                </button>
+            )}
 
             {estado === 'pronto' && itens.length > 0 && (
                 <ul role="listbox" className="mt-2 max-h-72 overflow-y-auto">
@@ -126,6 +157,7 @@ export default function PickerCategoria({ row, textoInicial, onCommit, onClose }
                     })}
                 </ul>
             )}
+            </>)}
         </div>
     );
 }

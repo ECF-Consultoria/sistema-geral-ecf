@@ -315,7 +315,8 @@ test('CampoFichaTecnica: lista multivalor vira chips com X; lista comum segue se
     const campo = bruto(`${DIR}CampoFichaTecnica.jsx`);
     assert.ok(campo.includes('function ListaMultipla'), 'existe o controle de chips');
     assert.ok(campo.includes('ehMultivalor(campo) ?'), 'o tipo lista escolhe entre chips e select');
-    assert.ok(campo.includes('idsMultivalor(campo, valor)'), 'os chips saem dos ids resolvidos');
+    // 11/10/2026: além dos ids das opções, o texto de cada valor próprio (só onde o campo aceita "Outro").
+    assert.ok(campo.includes('valoresMultivalor(campo, valor)'), 'os chips saem das opções resolvidas e dos valores próprios');
     assert.ok(campo.includes('data-chip='), 'cada escolha é um chip marcado na tela');
     assert.match(campo, /aria-label=\{`Tirar \$\{/, 'cada chip tem o X com rótulo acessível');
     // O select comum (uma escolha só) não pode ter sumido.

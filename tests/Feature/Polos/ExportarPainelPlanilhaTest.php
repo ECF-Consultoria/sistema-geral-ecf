@@ -4,6 +4,7 @@ namespace Tests\Feature\Polos;
 
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\PoloAdsStatus;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -286,6 +287,30 @@ class ExportarPainelPlanilhaTest extends TestCase
         $aba = $this->baixarEAbrir(User::factory()->create(['role' => 'admin']));
 
         $this->assertSame('Sem pendências', $aba->getCell('C2')->getValue());
+    }
+
+    /** TKT-0014: a planilha traz o mesmo "Vínculo Adman" da tela, logo depois do Gmail colaborador. */
+    public function test_vinculo_adman_sai_na_planilha(): void
+    {
+        $this->empresaPolos(['nome' => 'A Vinculada', 'cust_id' => '111']);
+        $this->empresaPolos(['nome' => 'B Sem vínculo', 'cust_id' => '222']);
+        $this->empresaPolos(['nome' => 'C Entrante', 'cust_id' => '333', 'fase' => 'M0']);
+        PoloAdsStatus::create([
+            'cust_id' => '111', 'campanhas_ativas' => 1, 'campanhas_total' => 1, 'verificado_em' => now()->subHour(),
+        ]);
+
+        $aba    = $this->baixarEAbrir(User::factory()->create(['role' => 'admin']));
+        $header = $this->cabecalhos($aba);
+        $indice = array_search('Vínculo Adman', $header, true);
+
+        $this->assertNotFalse($indice, "coluna 'Vínculo Adman' sumiu da planilha");
+        $this->assertSame('Gmail colaborador', $header[$indice - 1], 'mesma ordem da lente Geral');
+
+        $letra = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($indice + 1);
+        $this->assertSame('Vinculado', $aba->getCell($letra . '2')->getValue());
+        $this->assertSame('Não vinculado', $aba->getCell($letra . '3')->getValue());
+        // Fase que o sistema não confere na Adman: célula vazia, não "Não vinculado".
+        $this->assertNull($aba->getCell($letra . '4')->getValue());
     }
 
     // ─── Permissões ──────────────────────────────────────────────────────────

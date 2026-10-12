@@ -85,7 +85,7 @@ class DadosEfetivosService
      */
     private function precosPorVariante(PubProduto $produto): array
     {
-        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => []];
+        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => [], 'fretes' => []];
         $ofertas = EstruturaOferta::query()
             ->where('company_id', $produto->company_id)
             ->where('fase', EstruturaOferta::FASE_SIMPLES)
@@ -112,6 +112,7 @@ class DadosEfetivosService
             $mapas['promocoes'][$sku] = self::precosDePromocao($linha);
             $mapas['sem_frete'][$sku] = self::semFrete($linha);
             $mapas['custos'][$sku] = self::custoDaLinha($linha);
+            $mapas['fretes'][$sku] = self::fretesDaLinha($linha, (int) $oferta->id);
         }
 
         return $mapas;
@@ -125,7 +126,7 @@ class DadosEfetivosService
      */
     private function precosDoKit(PubProduto $kit): array
     {
-        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => []];
+        $mapas = ['precos' => [], 'promocoes' => [], 'sem_frete' => [], 'custos' => [], 'fretes' => []];
         $combos = app(PlanejamentoDaFaseService::class)->combosDoKit($kit);
         if ($combos === [] || $kit->company === null) {
             return $mapas;
@@ -143,6 +144,7 @@ class DadosEfetivosService
                 $mapas['promocoes'][$sku] = self::precosDePromocao($linha);
                 $mapas['sem_frete'][$sku] = self::semFrete($linha);
                 $mapas['custos'][$sku] = self::custoDaLinha($linha);
+                $mapas['fretes'][$sku] = self::fretesDaLinha($linha, (int) $combo['oferta_id']);
             }
         }
 
@@ -230,6 +232,57 @@ class DadosEfetivosService
             'imposto' => $imposto === null ? $daEmpresa() : (float) $imposto,
             'por_variante' => $produto->estrutura_produto_id === null ? [] : $this->precosPorVariante($produto)['custos'],
         ];
+    }
+
+    /**
+     * O frete que a Precificação do Portal USOU no preço, por tipo de anúncio — o lado "Portal" da conferência
+     * de frete (11/10/2026). Como o custo, sai por método SEPARADO: não pode entrar no `daProduto()`, que o
+     * `VisaoRapidaDoLoteTest` compara inteiro.
+     *
+     * `por_tipo` é o da oferta do produto; `por_variante` (SKU normalizado → tipo) é o de cada cor do agrupado
+     * ou de cada Combo N do kit. Cada entrada: `valor` (null = a Precificação está sem frete), `origem`
+     * (`digitado`, `conta`, `tabela` ou `outro_tipo`) e `oferta_id` (onde o frete mora no Portal).
+     *
+     * @return array{por_tipo: array<string, array{valor: ?float, origem: ?string, oferta_id: ?int}>, por_variante: array<string, array<string, array{valor: ?float, origem: ?string, oferta_id: ?int}>>}
+     */
+    public function fretesDoProduto(PubProduto $produto): array
+    {
+        if ($produto->oferta_id === null) {
+            return ['por_tipo' => self::fretesDaLinha(null, null), 'por_variante' => $produto->ehKit() ? $this->precosDoKit($produto)['fretes'] : []];
+        }
+
+        $empresa = $produto->oferta?->company;
+        $linha = $empresa === null ? null : ($this->precificacao->pagina($empresa, [$produto->oferta_id])['por_oferta'][$produto->oferta_id] ?? null);
+
+        return [
+            'por_tipo' => self::fretesDaLinha($linha, (int) $produto->oferta_id),
+            'por_variante' => $produto->estrutura_produto_id === null ? [] : $this->precosPorVariante($produto)['fretes'],
+        ];
+    }
+
+    /**
+     * `listing_type_id → {valor, origem, oferta_id}` de uma linha da Precificação. `origem` já vem em palavras
+     * da conferência: o `sugerido` vira `conta` (cotado na conta) ou `tabela` (estimado).
+     *
+     * @return array<string, array{valor: ?float, origem: ?string, oferta_id: ?int}>
+     */
+    public static function fretesDaLinha(?array $linha, ?int $ofertaId): array
+    {
+        $saida = [];
+        foreach (EstruturaPublicacao::LISTING_TYPES as $tipo => $listingType) {
+            $t = $linha[$tipo] ?? null;
+            $origem = $t['frete_origem'] ?? null;
+            if ($origem === 'sugerido') {
+                $origem = ($t['frete_sugerido']['fonte'] ?? null) === 'conta' ? 'conta' : 'tabela';
+            }
+            $saida[$listingType] = [
+                'valor' => isset($t['frete']) ? (float) $t['frete'] : null,
+                'origem' => isset($t['frete']) ? $origem : null,
+                'oferta_id' => $ofertaId,
+            ];
+        }
+
+        return $saida;
     }
 
     /** @return array<string, ?float> */

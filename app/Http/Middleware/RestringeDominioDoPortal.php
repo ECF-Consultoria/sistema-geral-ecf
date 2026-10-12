@@ -140,6 +140,8 @@ class RestringeDominioDoPortal
         'portal/estrutura/produtos/ambientes/*',
         'portal/estrutura/produtos/categorias',
         'portal/estrutura/produtos/categorias/sugerir',
+        // 11/10/2026 — navegar pela árvore de categorias (além da busca).
+        'portal/estrutura/produtos/categorias/arvore',
         // 09/10/2026 — planilha de produtos: baixar preenchida e sugestão por nome de categoria na prévia.
         'portal/estrutura/produtos/exportar',
         'portal/estrutura/produtos/categorias/sugerir-nomes',

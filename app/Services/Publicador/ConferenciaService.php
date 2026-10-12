@@ -2,9 +2,13 @@
 
 namespace App\Services\Publicador;
 
+use App\Models\EstruturaOferta;
 use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
 use App\Models\PubValidacao;
+use App\Services\Portal\Estrutura\Produtos\ModalidadeDeEnvio;
+use App\Services\Portal\Estrutura\Produtos\TabelaFreteEcf;
+use App\Support\Publicador\ConferenciaDeFrete;
 use App\Support\Publicador\ContasLiberadas;
 use App\Support\Publicador\Erros\MapeadorErrosMl;
 use App\Support\Publicador\Erros\RespostaMl;
@@ -35,7 +39,10 @@ use App\Support\Publicador\Variacao\Eixo;
  *      o que ele exigir e faltar vira V-ATT-08;
  *   6. tipos de anúncio disponíveis para a conta na categoria (V-SAL-01);
  *   7. SKU já usado em outro anúncio ativo da conta (V-REM-02, aviso);
- *   8. `POST /items/validate` para CADA item do PayloadPlan (V-REM-01).
+ *   8. `POST /items/validate` para CADA item do PayloadPlan (V-REM-01);
+ *   9. frete: o que o Mercado Livre cota AGORA × o que a Precificação do Portal usou no preço
+ *      (V-FRT-01, aviso — 11/10/2026). Só sem bloqueio, só no Mercado Envios e só se o validate
+ *      não avisou que o anúncio perde o ME2.
  *
  * Grava UM `pub_validacoes` por conferência, com a revisão, o `plano_hash`
  * (D6: a publicação exige o mesmo plano) e as respostas brutas do ML. Aprovado
@@ -155,6 +162,11 @@ class ConferenciaService
                 }
             }
             $problemas = [...$problemas, ...MapeadorErrosMl::agrupar($doMl)];
+
+            // 9. Frete contra a Precificação. Com bloqueio não se gasta cotação: há coisa mais séria a corrigir.
+            if (! (new ResultadoValidacao($problemas))->temBloqueio()) {
+                $problemas = [...$problemas, ...$this->freteContraAPrecificacao($r, $ancora, $conta, $prep['snapshot'], $doMl, $brutas)];
+            }
 
             $resultado = new ResultadoValidacao($problemas);
             $status = $resultado->temBloqueio() ? self::BLOQUEADO
@@ -408,6 +420,127 @@ class ConferenciaService
                 $problemas[] = Problema::aviso('V-REM-02', "O SKU «{$sku}» já está em outro anúncio ativo desta conta (".implode(', ', array_slice($outros, 0, 3)).'). Confira se não é o mesmo produto.',
                     ['etapa' => 'E5', 'campo' => 'sku', 'variante' => $variantes[0]], 'L3');
             }
+        }
+
+        return $problemas;
+    }
+
+    /**
+     * V-FRT-01 (11/10/2026) — a segunda das três conferências de frete: o que o Mercado Livre cota AGORA
+     * contra o que a Precificação do Portal usou para fazer o preço.
+     *
+     * O usuário: "na hora de conferir no Mercado Livre, vai ver se o que foi conferido via API pelo
+     * publicador é o mesmo que foi conferido no portal". Diferença de centavos não avisa; diferença grande
+     * pede para refazer o preço (`ConferenciaDeFrete`). É sempre aviso.
+     *
+     * Para as duas leituras serem comparáveis, a cotação daqui usa os MESMOS parâmetros da do Portal
+     * (`FreteMe2Service::consulta`): o preço da PROMOÇÃO do tipo (o `minimo`, não o anunciado — o frete muda
+     * por faixa de preço), a modalidade da conta e o frete grátis pela faixa. O que muda de propósito é o
+     * pacote: vale o do RASCUNHO, que é o que vai ao anúncio.
+     *
+     * Tudo o que foi medido fica em `respostas_ml.frete` (o botão "levar para a Precificação" e a conferência
+     * do anúncio publicado leem dali). Cotação que falha não derruba a conferência: só não compara.
+     *
+     * @param  list<Problema>  $doMl  o que o validate apontou (para saber se o anúncio perde o Mercado Envios)
+     * @return list<Problema>
+     */
+    private function freteContraAPrecificacao(PubRascunho $r, mixed $ancora, ContextoConta $conta, RascunhoSnapshot $s, array $doMl, array &$brutas): array
+    {
+        $modo = (string) ($s->envio['modo'] ?? 'me2');
+        if ($modo !== 'me2') {
+            $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'envio_'.$modo];
+
+            return [];
+        }
+        foreach ($doMl as $p) {
+            if (str_starts_with((string) ($p->mlCausa['code'] ?? ''), 'shipping.lost_me2')) {
+                // O ML vai publicar "a combinar": não há frete dele para conferir.
+                $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'sem_mercado_envios'];
+
+                return [];
+            }
+        }
+
+        $fretes = $this->efetivos->fretesDoProduto($r->produto);
+        $pacote = ConferenciaDeFrete::dimensions($s->atributos);
+        if ($pacote === null) {
+            $brutas['frete'] = ['aplicavel' => false, 'motivo' => 'sem_pacote'];
+
+            return [];
+        }
+
+        $empresa = $r->produto->company;
+        $logistica = ($empresa !== null ? ModalidadeDeEnvio::emCache($empresa) : null) ?? (string) config('estrutura_produtos.modalidade_padrao');
+        $teto = max(1, (int) config('publicador.frete_conferencia.max_cotacoes', 6));
+        $nomes = ['gold_special' => 'Clássico', 'gold_pro' => 'Premium'];
+
+        $cotacoes = [];
+        $linhas = [];
+        $naoCotadas = 0;
+        foreach ($s->variantesAtivas() as $v) {
+            $sku = EstruturaOferta::normalizarSku($v->dados['atributos']['SELLER_SKU']['value_name'] ?? $s->atributos['SELLER_SKU']['value_name'] ?? null);
+            foreach ($s->alvosAtivos() as $alvo) {
+                $lt = $alvo->listingTypeId;
+                $ref = ($sku !== null ? ($fretes['por_variante'][$sku][$lt] ?? null) : null) ?? ($fretes['por_tipo'][$lt] ?? null);
+                $minimo = $v->dados['portal'][$lt]['minimo'] ?? null;
+                if ($ref === null || $ref['valor'] === null || $minimo === null || $minimo <= 0) {
+                    continue;
+                }
+
+                $chave = $lt.'|'.number_format((float) $minimo, 2, '.', '');
+                if (! array_key_exists($chave, $cotacoes)) {
+                    if (count($cotacoes) >= $teto) {
+                        $naoCotadas++;
+
+                        continue;
+                    }
+                    $resp = $this->cliente->daConta($ancora, 'GET', "/users/{$conta->sellerId}/shipping_options/free", [
+                        'item_price' => round((float) $minimo, 2), 'listing_type_id' => $lt, 'mode' => 'me2',
+                        'condition' => $s->condicao === 'used' ? 'used' : 'new', 'logistic_type' => $logistica,
+                        'free_shipping' => TabelaFreteEcf::gratisObrigatorio((float) $minimo) ? 'true' : 'false',
+                        'dimensions' => $pacote, 'verbose' => 'true',
+                    ]);
+                    $cobertura = $resp->ok() && is_array($resp->corpo) ? ($resp->corpo['coverage']['all_country'] ?? null) : null;
+                    $cotacoes[$chave] = [
+                        'status' => $resp->status,
+                        'valor' => is_numeric($cobertura['list_cost'] ?? null) ? (float) $cobertura['list_cost'] : null,
+                        'peso_faturado' => is_numeric($cobertura['billable_weight'] ?? null) ? (int) $cobertura['billable_weight'] : null,
+                    ];
+                }
+                $ml = $cotacoes[$chave]['valor'];
+                if ($ml === null) {
+                    continue;
+                }
+
+                $linhas[] = [
+                    'listing_type' => $lt, 'variante' => $v->chave, 'sku' => $sku, 'preco' => round((float) $minimo, 2),
+                    'oferta_id' => $ref['oferta_id'], 'portal' => round((float) $ref['valor'], 2), 'origem' => $ref['origem'],
+                    'ml' => $ml, 'peso_faturado' => $cotacoes[$chave]['peso_faturado'],
+                    ...ConferenciaDeFrete::comparar((float) $ref['valor'], $ml),
+                ];
+            }
+        }
+
+        $brutas['frete'] = ['aplicavel' => true, 'em' => now()->toIso8601String(), 'logistic_type' => $logistica, 'dimensions' => $pacote,
+            'linhas' => $linhas, 'nao_cotadas' => $naoCotadas];
+
+        // Variações com os mesmos números viram UM aviso (12 cores com o mesmo frete não são 12 avisos).
+        $grupos = [];
+        foreach ($linhas as $l) {
+            if ($l['nivel'] === ConferenciaDeFrete::IGUAL) {
+                continue;
+            }
+            $grupos["{$l['listing_type']}|{$l['portal']}|{$l['ml']}"][] = $l;
+        }
+
+        $problemas = [];
+        foreach ($grupos as $grupo) {
+            $l = $grupo[0];
+            $onde = 'do '.($nomes[$l['listing_type']] ?? $l['listing_type']).(count($grupo) > 1 ? ' ('.count($grupo).' variações)' : '');
+            $problemas[] = Problema::aviso('V-FRT-01',
+                ConferenciaDeFrete::mensagem($onde, $l['portal'], $l['origem'], $l['ml'], $l['nivel']),
+                ['etapa' => 'E10', 'campo' => 'preco', 'alvo' => $l['listing_type'], 'variante' => $l['variante'],
+                    'frete' => ['portal' => $l['portal'], 'ml' => $l['ml'], 'nivel' => $l['nivel']]], 'L3');
         }
 
         return $problemas;
