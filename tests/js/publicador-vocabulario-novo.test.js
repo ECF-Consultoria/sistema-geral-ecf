@@ -54,6 +54,9 @@ const ARQUIVOS_NOVOS = [
     // tela (com a busca local) e o painel medida por medida.
     `${DIR_HEADER}/novaPublicacao.js`,
     `${DIR_HEADER}/PainelNovaPublicacao.jsx`,
+    // Fase 178, plano 03 — a casca portada (620px a `top:110px`, o backdrop, o
+    // fetch lazy e o foco no input).
+    `${DIR_HEADER}/ModalNovaPublicacao.jsx`,
 ];
 
 /**

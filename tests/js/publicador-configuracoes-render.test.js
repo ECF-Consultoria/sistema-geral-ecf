@@ -131,7 +131,14 @@ async function montarPagina() {
             '@inertiajs/react': STUB_INERTIA,
             '@/Layouts/AppLayout': STUB_APPLAYOUT,
         },
-        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/react-popover'],
+        // ⚠️ Fase 178, plano 03 — `@radix-ui/react-dialog` entrou ALÉM do
+        // popover: esta página monta o `PublicadorHeader`, que agora arrasta
+        // `ModalNovaPublicacao` pela árvore. Sem ele no `external`, o esbuild
+        // bundla `react-remove-scroll` (CJS, dependência do Dialog) e o import
+        // morre com "Dynamic require of "react" is not supported" — falha de
+        // harness, não do código. Medida aqui em 12/10/2026: a suíte completa
+        // acusou as 2 falhas deste arquivo antes da linha ser corrigida.
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/react-popover', '@radix-ui/react-dialog'],
     });
 
     const outfile = path.join(__dirname, `.configuracoes-render-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);

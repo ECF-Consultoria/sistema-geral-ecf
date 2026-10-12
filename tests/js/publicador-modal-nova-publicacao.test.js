@@ -109,8 +109,15 @@ const { GRUPOS, VAZIO, RODAPE, PLACEHOLDER, CARREGANDO, ERRO, filtrarGrupos, nor
 const { PainelNovaPublicacao, default: PainelDefault } =
     await montarModulo('resources/js/Components/Mlb/Publicador/header/PainelNovaPublicacao.jsx');
 
+// ⚠️ Fase 178, plano 03 — o TERCEIRO bundle (a casca) também vem AQUI, antes do
+// primeiro `test()`, pelo mesmo motivo de REND-03 descrito acima. Só ADIÇÃO:
+// nenhuma linha da wave 2 mudou neste arquivo.
+const { precisaBuscar, contaParaRota, CLASSES_FUNDO, CLASSES_CAIXA, ROTA_NOVA_PUBLICACAO } =
+    await montarModulo('resources/js/Components/Mlb/Publicador/header/ModalNovaPublicacao.jsx');
+
 const FONTE_PAINEL = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/PainelNovaPublicacao.jsx');
 const FONTE_MODULO = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/novaPublicacao.js');
+const FONTE_CASCA = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/ModalNovaPublicacao.jsx');
 
 const renderizar = (props = {}) => renderToStaticMarkup(React.createElement(PainelNovaPublicacao, props));
 
@@ -1012,5 +1019,285 @@ test('G — o painel REUSA os componentes de identidade e o textoSeguro', async 
 
     await contexto.test('a `key` do item nunca é o índice do .map()', () => {
         assert.match(FONTE_PAINEL, /key=\{Number\.isFinite\(item\?\.produto_id\)/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 178, plano 03 — A CASCA (`ModalNovaPublicacao.jsx`). SÓ ADIÇÃO: nenhuma
+// asserção da wave 2 foi alterada ou removida neste arquivo.
+//
+// ⚠️ POR QUE O GATE DA CASCA É SOBRE CONSTANTES EXPORTADAS, E NÃO SOBRE HTML:
+// o renderizador de servidor do React não suporta portal, e o `Portal` do Radix
+// devolve `null` no servidor de propósito (`@radix-ui/react-portal`:13 —
+// `mounted` só vira `true` num efeito). Então o conteúdo da casca NÃO EXISTE em
+// `renderToStaticMarkup`, em nenhuma combinação de props. A alternativa seria
+// leitura de fonte, que é o gate fraco que deixou 4 mutações passarem na Fase
+// 177. A saída: a geometria vive em `CLASSES_FUNDO`/`CLASSES_CAIXA`, conferidas
+// por igualdade da string INTEIRA e por TOKEN exato (nunca por substring —
+// `font-pub` casa dentro de `font-pub-mono` e `top-0` dentro de `top-0.5`), com
+// asserção de que o JSX usa as constantes.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os tokens de classe de uma string, como conjunto — comparação por TOKEN exato. */
+const tokens = (texto) => new Set(String(texto).split(/\s+/).filter(Boolean));
+
+const TOKENS_FUNDO = tokens(CLASSES_FUNDO);
+const TOKENS_CAIXA = tokens(CLASSES_CAIXA);
+
+test('178-03 — a casca: as duas listas de classe por igualdade da string INTEIRA', async (contexto) => {
+    await contexto.test('CLASSES_FUNDO é exatamente o backdrop de :133', () => {
+        // `position:fixed; inset:0; z-index:80; background:rgba(0,0,0,0.65)`.
+        // O `display:flex` e o `padding-top:110px` do protótipo NÃO vêm: no
+        // Radix o Content é IRMÃO do Overlay (divergência declarada 1).
+        assert.equal(CLASSES_FUNDO, 'fixed inset-0 z-[80] bg-black/[0.65]');
+    });
+
+    await contexto.test('CLASSES_CAIXA é exatamente a caixa de :134 + o alinhamento de :133', () => {
+        assert.equal(
+            CLASSES_CAIXA,
+            'fixed left-1/2 top-[110px] z-[80] w-[620px] -translate-x-1/2 overflow-hidden'
+            + ' rounded-pub-card border border-pub-line-strong bg-pub-surface font-pub text-pub-txt shadow-pub-modal',
+        );
+    });
+
+    await contexto.test('⚠️ o JSX USA as duas constantes — a constante não pode divergir do render', () => {
+        assert.match(FONTE_CASCA, /className=\{CLASSES_FUNDO\}/);
+        assert.match(FONTE_CASCA, /className=\{CLASSES_CAIXA\}/);
+        // E cada uma UMA vez: duas `Dialog.Overlay` empilhariam o preto.
+        assert.equal((FONTE_CASCA.match(/className=\{CLASSES_FUNDO\}/g) ?? []).length, 1);
+        assert.equal((FONTE_CASCA.match(/className=\{CLASSES_CAIXA\}/g) ?? []).length, 1);
+    });
+});
+
+test('178-03 — FID-01 da casca: cada medida DENTRO da constante certa', async (contexto) => {
+    await contexto.test('a caixa: 620px, 110px do topo, centrada, raio 16px e a sombra do modal (:134)', () => {
+        for (const medida of [
+            'w-[620px]',               // width:620px
+            'top-[110px]',             // o padding-top:110px do :133, virado posição
+            'left-1/2', '-translate-x-1/2', // justify-content:center de :133
+            'fixed',                   // position:fixed
+            'z-[80]',                  // z-index:80
+            'rounded-pub-card',        // border-radius:16px
+            'border', 'border-pub-line-strong', // 1px solid #2E2E2E
+            'bg-pub-surface',          // background:#111111
+            'shadow-pub-modal',        // box-shadow:0 30px 80px rgba(0,0,0,0.8)
+            'overflow-hidden',         // overflow:hidden
+            'text-pub-txt',            // #F4F4F5, como nos dois Popover.Content do 177-06
+        ]) {
+            assert.ok(TOKENS_CAIXA.has(medida), `a caixa perdeu \`${medida}\``);
+        }
+    });
+
+    await contexto.test('⚠️ a caixa declara `font-pub` — e a asserção NÃO casa `font-pub-mono`', () => {
+        // Sem isto o modal portado herda a Inter do `document.body` e perde a
+        // Geist EM SILÊNCIO. `includes('font-pub')` passaria com
+        // `font-pub-mono`, que é a mutação que furou um gate na Fase 177.
+        assert.ok(TOKENS_CAIXA.has('font-pub'), 'a caixa portada tem de declarar font-pub');
+        assert.ok(!TOKENS_CAIXA.has('font-pub-mono'), 'a caixa não é monoespaçada');
+        assert.equal((CLASSES_CAIXA.match(/font-pub(?![-\w])/g) ?? []).length, 1);
+    });
+
+    await contexto.test('o fundo: preto a 65% cobrindo a janela inteira (:133)', () => {
+        for (const medida of ['fixed', 'inset-0', 'z-[80]', 'bg-black/[0.65]']) {
+            assert.ok(TOKENS_FUNDO.has(medida), `o fundo perdeu \`${medida}\``);
+        }
+        // ⚠️ `bg-black/60` NÃO é o desenho: o protótipo mede
+        // `rgba(0,0,0,0.65)`. Igualdade de token pega a troca.
+        assert.ok(!TOKENS_FUNDO.has('bg-black/60'));
+        assert.ok(!TOKENS_FUNDO.has('bg-black/50'));
+        // O fundo não é caixa: nenhuma superfície, borda, raio ou sombra nele.
+        for (const naoDeveria of ['bg-pub-surface', 'border', 'rounded-pub-card', 'shadow-pub-modal', 'w-[620px]']) {
+            assert.ok(!TOKENS_FUNDO.has(naoDeveria), `o fundo não deveria ter \`${naoDeveria}\``);
+        }
+    });
+
+    await contexto.test('os dois ficam no MESMO z-80 — o Content é irmão e vem depois', () => {
+        // No protótipo a caixa é FILHA do fundo e não precisa de z próprio. No
+        // Radix são irmãos: mesmo `z-[80]`, e quem vem depois na ordem do
+        // documento é pintado em cima. Por isso os dois declaram 80, e não 80/81.
+        assert.ok(TOKENS_FUNDO.has('z-[80]') && TOKENS_CAIXA.has('z-[80]'));
+        assert.ok(FONTE_CASCA.indexOf('Dialog.Overlay') < FONTE_CASCA.indexOf('Dialog.Content'));
+    });
+
+    await contexto.test('FID-03/FID-04 na casca: nenhuma escala nomeada, nenhum hex, nada da camada antiga', () => {
+        assert.doesNotMatch(FONTE_CASCA, /\btext-(xs|sm|base|lg|xl|[2-9]xl)\b/);
+        assert.doesNotMatch(FONTE_CASCA, /#[0-9a-fA-F]{3,8}\b/);
+        assert.doesNotMatch(FONTE_CASCA, /\becf-(bg|card|yellow|line)\b/);
+        assert.doesNotMatch(FONTE_CASCA, /\bfont-display\b/);
+        // ⚠️ `w-[600px]`/`top-[100px]` são as mutações nominais do plano: a
+        // igualdade de string já as pega, mas o veto fica escrito.
+        assert.ok(!TOKENS_CAIXA.has('w-[600px]'));
+        assert.ok(!TOKENS_CAIXA.has('top-[100px]'));
+    });
+});
+
+test('178-03 — o comportamento que NÃO pode ser desligado (NOVA-09)', async (contexto) => {
+    await contexto.test('⚠️ Esc e clique fora são do Radix e não aparecem desabilitados', () => {
+        // Asserção NEGATIVA de propósito: `onEscapeKeyDown` e
+        // `onPointerDownOutside` só existiriam neste arquivo para CANCELAR o
+        // comportamento padrão do `DismissableLayer` — que é exatamente o que
+        // NOVA-09 exige. O `stop` do protótipo (:229) não tem equivalente aqui
+        // porque o fundo não é o pai da caixa.
+        assert.doesNotMatch(FONTE_CASCA, /onEscapeKeyDown/);
+        assert.doesNotMatch(FONTE_CASCA, /onPointerDownOutside/);
+        assert.doesNotMatch(FONTE_CASCA, /onInteractOutside/);
+        assert.doesNotMatch(FONTE_CASCA, /stopPropagation/);
+    });
+
+    await contexto.test('o foco vai para o input da busca, de forma determinística', () => {
+        assert.match(FONTE_CASCA, /onOpenAutoFocus=/);
+        assert.match(FONTE_CASCA, /evento\.preventDefault\(\)/);
+        assert.match(FONTE_CASCA, /inputRef\.current\?\.focus\(\)/);
+        // e o ref é o MESMO que desce para o painel (a prop `inputRef` da wave 2)
+        assert.match(FONTE_CASCA, /inputRef=\{inputRef\}/);
+        assert.doesNotMatch(FONTE_CASCA, /setTimeout/, 'o Radix já gerencia o foco; timer aqui corre contra a montagem');
+    });
+
+    await contexto.test('o conteúdo é PORTADO e não há Trigger: quem abre é o header', () => {
+        assert.match(FONTE_CASCA, /<Dialog\.Portal>/);
+        assert.match(FONTE_CASCA, /from '@radix-ui\/react-dialog'/);
+        assert.doesNotMatch(FONTE_CASCA, /Dialog\.Trigger/, 'os dois botões do header são os gatilhos');
+        // `open` é controlado pela prop, nunca por estado interno de abertura.
+        assert.match(FONTE_CASCA, /open=\{abertoDeVerdade\}/);
+        assert.match(FONTE_CASCA, /onOpenChange=/);
+    });
+
+    await contexto.test('título acessível sem pixel: sr-only + o escape documentado da descrição', () => {
+        assert.match(FONTE_CASCA, /<Dialog\.Title className="sr-only">/);
+        assert.match(FONTE_CASCA, /aria-describedby=\{undefined\}/);
+    });
+});
+
+test('178-03 — o fetch: uma vez por abertura, nunca por tecla (T-178-03)', async (contexto) => {
+    await contexto.test('a rota é a da wave 1, e é a ÚNICA ida à rede do arquivo', () => {
+        assert.equal(ROTA_NOVA_PUBLICACAO, 'mlb.anuncios.publicador.nova-publicacao');
+        assert.equal((FONTE_CASCA.match(/\.get\(route\(/g) ?? []).length, 1, 'exatamente UMA chamada');
+        assert.match(FONTE_CASCA, /route\(ROTA_NOVA_PUBLICACAO, \{ conta: contaUsavel \}\)/);
+        // Nenhum parâmetro de busca vai para o servidor: a busca é LOCAL.
+        assert.doesNotMatch(FONTE_CASCA, /params:/);
+    });
+
+    await contexto.test('a resposta passa por normalizarPayload ANTES de virar estado', () => {
+        assert.match(FONTE_CASCA, /from '\.\/novaPublicacao'/);
+        assert.match(FONTE_CASCA, /setDados\(normalizarPayload\(resposta\.data\)\)/);
+        // E nunca o cru: `setDados(resposta.data)` é a tela preta de 07/10.
+        assert.doesNotMatch(FONTE_CASCA, /setDados\(resposta\.data\)/);
+    });
+
+    await contexto.test('falha não vira lista vazia em silêncio', () => {
+        assert.match(FONTE_CASCA, /\.catch\(/);
+        assert.match(FONTE_CASCA, /setErro\(true\)/);
+        assert.match(FONTE_CASCA, /\.finally\(/);
+        assert.match(FONTE_CASCA, /setCarregando\(false\)/);
+        // as frases de carga e de erro são as da wave 2 — a casca só liga as props
+        assert.match(FONTE_CASCA, /carregando=\{carregando\}/);
+        assert.match(FONTE_CASCA, /erro=\{erro\}/);
+    });
+
+    await contexto.test('⚠️ EXERCITANDO precisaBuscar: fechado não vai à rede', () => {
+        assert.equal(precisaBuscar({ aberto: false, conta: 'company-459', contaJaPedida: null }), false);
+        assert.equal(precisaBuscar({ conta: 'company-459' }), false, 'sem `aberto` o default é fechado');
+        assert.equal(precisaBuscar(), false);
+        assert.equal(precisaBuscar({}), false);
+        // nada de "quase aberto": só o booleano `true` abre
+        for (const aberto of [1, 'true', {}, [], 'sim']) {
+            assert.equal(precisaBuscar({ aberto, conta: 'company-459' }), false, `aberto=${JSON.stringify(aberto)}`);
+        }
+    });
+
+    await contexto.test('⚠️ EXERCITANDO precisaBuscar: conta inútil não vai à rede (T-178-05)', () => {
+        for (const conta of [null, undefined, '', '   ', {}, [], 0, 7, true, { chave: 'company-459' }, ['company-459']]) {
+            assert.equal(
+                precisaBuscar({ aberto: true, conta, contaJaPedida: null }),
+                false,
+                `conta=${JSON.stringify(conta)} montaria um destino inventado`,
+            );
+        }
+        // e a conta boa vai
+        assert.equal(precisaBuscar({ aberto: true, conta: 'company-459', contaJaPedida: null }), true);
+        assert.equal(precisaBuscar({ aberto: true, conta: ' company-459 ', contaJaPedida: null }), true);
+    });
+
+    await contexto.test('⚠️ EXERCITANDO precisaBuscar: a MESMA conta não é pedida duas vezes', () => {
+        assert.equal(precisaBuscar({ aberto: true, conta: 'company-459', contaJaPedida: 'company-459' }), false);
+        // conta DIFERENTE pede de novo — sem isto o modal mostraria os produtos
+        // da empresa anterior depois de trocar de empresa pelo dropdown (o
+        // Inertia reconcilia o header em vez de remontá-lo).
+        assert.equal(precisaBuscar({ aberto: true, conta: 'empresa-12', contaJaPedida: 'company-459' }), true);
+        // `null` em `contaJaPedida` é o "a última tentativa falhou": pede de novo
+        assert.equal(precisaBuscar({ aberto: true, conta: 'company-459', contaJaPedida: null }), true);
+    });
+
+    await contexto.test('o componente guarda a CONTA pedida, não um booleano, e libera no erro', () => {
+        assert.match(FONTE_CASCA, /const contaJaPedida = useRef\(null\)/);
+        assert.match(FONTE_CASCA, /contaJaPedida\.current = contaUsavel/);
+        assert.match(FONTE_CASCA, /contaJaPedida\.current = null/);
+        assert.match(FONTE_CASCA, /precisaBuscar\(\{/);
+    });
+});
+
+test('178-03 — a navegação (NOVA-07): a URL vem do servidor', async (contexto) => {
+    await contexto.test('o destino é a `url` do item, passada ao router sem remontagem', () => {
+        assert.match(FONTE_CASCA, /router\.get\(destino\)/);
+        assert.match(FONTE_CASCA, /const destino = textoUtil\(item\?\.url\)/);
+        assert.match(FONTE_CASCA, /if \(destino === null\) return;/);
+        // fecha antes de navegar, como `closeModal` no protótipo (:145/:229)
+        assert.ok(FONTE_CASCA.indexOf('aoFechar();') < FONTE_CASCA.indexOf('router.get(destino)'));
+    });
+
+    await contexto.test('⚠️ VETO: o cliente NÃO monta rota de destino (T-178-05)', () => {
+        assert.doesNotMatch(FONTE_CASCA, /route\(\s*['"]mlb\.anuncios\.publicador\.(editor|produto|produtos)['"]/);
+        // a ÚNICA chamada de `route()` do arquivo é a do endpoint lazy
+        assert.equal((FONTE_CASCA.match(/\broute\(/g) ?? []).length, 1);
+    });
+
+    await contexto.test('o corpo é IMPORTADO da wave 2 — a casca não redesenha nada da lista', () => {
+        assert.match(FONTE_CASCA, /from '\.\/PainelNovaPublicacao'/);
+        assert.match(FONTE_CASCA, /<PainelNovaPublicacao/);
+        // Nenhuma medida do corpo pode ter sido copiada para cá: o corpo tem UMA casa.
+        for (const doCorpo of ['h-[60px]', 'max-h-[420px]', 'h-[50px]', 'p-[36px]', 'text-[13.5px]', 'text-[16px]', 'font-pub-mono']) {
+            assert.ok(!FONTE_CASCA.includes(doCorpo), `${doCorpo} é do corpo (wave 2), não da casca`);
+        }
+        assert.doesNotMatch(FONTE_CASCA, /<input/, 'o input é do painel');
+        // e o filtro da busca é o da wave 2, não um reimplementado
+        assert.match(FONTE_CASCA, /filtrarGrupos\(\{ grupos: dados\?\.grupos \?\? \[\], consulta \}\)/);
+        assert.doesNotMatch(FONTE_CASCA, /\bnormalizar\(/, 'a busca sem acento é de novaPublicacao.js');
+    });
+
+    await contexto.test('a consulta é zerada ao fechar — é o mq vazio do open() (:204)', () => {
+        assert.match(FONTE_CASCA, /setConsulta\(/);
+        assert.match(FONTE_CASCA, /consulta=\{consulta\}/);
+    });
+});
+
+test('178-03 — contaParaRota: a chave que vai para route() (T-178-05)', async (contexto) => {
+    await contexto.test('string usavel atravessa, com trim', () => {
+        assert.equal(contaParaRota('company-459'), 'company-459');
+        assert.equal(contaParaRota('empresa-12'), 'empresa-12');
+        assert.equal(contaParaRota('  company-459  '), 'company-459');
+    });
+
+    await contexto.test('⚠️ NÚMERO devolve null — `textoUtil(0)` devolveria a STRING "0"', () => {
+        // Esta asserção nasceu de um furo que o próprio gate pegou: com só
+        // `textoUtil`, `conta: 0` montava `route('…', { conta: '0' })`. A wave 2
+        // já tinha escrito que `textoUtil(0)` devolve `'0'`; o contrato da wave
+        // 1 diz que `chave` é string.
+        assert.equal(contaParaRota(0), null);
+        assert.equal(contaParaRota(7), null);
+        assert.equal(contaParaRota(459), null);
+        assert.equal(contaParaRota(NaN), null);
+    });
+
+    await contexto.test('vazio, espaço, nulo, booleano, objeto e array devolvem null', () => {
+        for (const entrada of ['', '   ', null, undefined, true, false, {}, [], { chave: 'company-459' }, ['company-459']]) {
+            assert.equal(contaParaRota(entrada), null, `contaParaRota(${JSON.stringify(entrada)})`);
+        }
+    });
+
+    await contexto.test('o FORMATO não é validado aqui — a trava da rota é a autoridade', () => {
+        // De propósito: repetir `(empresa|company)-[0-9]+` no cliente faria o
+        // modal se recusar a abrir em silêncio no dia em que o servidor aceitar
+        // um prefixo novo. Quem recusa chave de formato errado é a rota (404).
+        assert.equal(contaParaRota('prefixo-novo-99'), 'prefixo-novo-99');
     });
 });

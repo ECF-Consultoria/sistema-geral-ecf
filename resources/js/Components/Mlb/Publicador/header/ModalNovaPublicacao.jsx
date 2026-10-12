@@ -103,6 +103,72 @@ export const CLASSES_CAIXA = 'fixed left-1/2 top-[110px] z-[80] w-[620px] -trans
 /** O título acessível que não ocupa pixel nenhum (divergência 4). */
 const TITULO_ACESSIVEL = 'Nova publicação';
 
+/** A rota da wave 1. Aceita SÓ `{conta}` — a busca é local (T-178-09). */
+export const ROTA_NOVA_PUBLICACAO = 'mlb.anuncios.publicador.nova-publicacao';
+
+/**
+ * A chave da conta em forma de parâmetro de URL, ou `null` quando não houver
+ * chave usável.
+ *
+ * ⚠️ `typeof conta !== 'string'` ANTES do `textoUtil`, e isso NÃO é redundância:
+ * `textoUtil(0)` devolve `'0'` — a própria wave 2 mediu e escreveu isso ("o `0`
+ * não conta como ausência"). Com só `textoUtil`, um `conta` que chegasse como
+ * NÚMERO viraria `route('…', { conta: '0' })`: exatamente o destino inventado
+ * de T-178-05, com uma requisição desperdiçada contra um 404. O contrato da
+ * wave 1 diz que `chave` é string (`empresa-N` / `company-N`), então número,
+ * booleano, objeto e array são "não sabemos qual conta é" — e nesse caso a
+ * rede não é tocada.
+ *
+ * ⚠️ O FORMATO NÃO é validado aqui de propósito: a trava
+ * `(empresa|company)-[0-9]+` mora na rota (wave 1) e é a autoridade. Repetir o
+ * padrão no cliente faria o modal se recusar a abrir em silêncio no dia em que
+ * o servidor aceitar um prefixo novo.
+ *
+ * @param {unknown} conta
+ * @returns {string|null}
+ */
+export function contaParaRota(conta) {
+    if (typeof conta !== 'string') return null;
+    return textoUtil(conta);
+}
+
+/**
+ * A decisão de ir à rede, em função PURA e EXPORTADA.
+ *
+ * ⚠️ POR QUE EXPORTADA: o `node --test` deste projeto roda sem jsdom, e o
+ * `Portal` do Radix devolve `null` no renderizador de servidor
+ * (`@radix-ui/react-portal/dist/index.mjs:13` — `mounted` nunca vira `true`
+ * sem efeito). Ou seja: NÃO existe jeito de observar este `useEffect`
+ * rodando num gate deste projeto. Deixar a decisão solta dentro do efeito a
+ * tornaria conferível só por leitura de fonte — e gate de leitura de fonte é
+ * o que deixou 4 mutações passarem na Fase 177. Com ela aqui, o gate
+ * EXERCITA as três regras que custam dinheiro:
+ *
+ *   1. fechado não vai à rede (T-178-03: `produtosParaTela()` é a consulta
+ *      mais pesada do módulo);
+ *   2. conta inútil (`null`, `''`, espaço, objeto, array) não vai à rede —
+ *      `route()` com ela montaria um destino inventado (T-178-05);
+ *   3. a mesma conta não é pedida duas vezes, e conta DIFERENTE é pedida de
+ *      novo (sem isso o modal mostraria os produtos da empresa anterior).
+ *
+ * Mesmo precedente de `criarOuvinteDeAtalhos` (plano 177-04) e de
+ * `filtrarGrupos` (plano 178-02): a regra sai do componente para poder ser
+ * exercitada sem DOM.
+ *
+ * @param {{aberto?: boolean, conta?: unknown, contaJaPedida?: string|null}} [estado]
+ * @returns {boolean}
+ */
+export function precisaBuscar({ aberto = false, conta = null, contaJaPedida = null } = {}) {
+    if (aberto !== true) return false;
+
+    const usavel = contaParaRota(conta);
+    if (usavel === null) return false;
+
+    // `contaJaPedida` nulo é tanto "nunca pedi" quanto "a última tentativa
+    // falhou" — os dois casos devem pedir.
+    return usavel !== contaJaPedida;
+}
+
 /**
  * A casca do modal "Nova publicação".
  *
@@ -129,11 +195,11 @@ export default function ModalNovaPublicacao({ aberto = false, aoFechar = () => {
     // tentar de novo".
     const contaJaPedida = useRef(null);
 
-    // ⚠️ `textoUtil` e não `String(conta)`: a chave vai para `route()` como
-    // parâmetro de URL, e um objeto (ou `''`) montaria um destino inventado
-    // (T-178-05). O header já faz isso, e a guarda fica aqui TAMBÉM porque este
-    // componente é exportado e pode ganhar outro chamador amanhã.
-    const contaUsavel = textoUtil(conta);
+    // ⚠️ `contaParaRota` e não `String(conta)`: a chave vai para `route()`
+    // como parâmetro de URL, e um objeto, um número ou `''` montariam um destino
+    // inventado (T-178-05). O header já normaliza, e a guarda fica aqui TAMBÉM
+    // porque este componente é exportado e pode ganhar outro chamador amanhã.
+    const contaUsavel = contaParaRota(conta);
 
     // Sem conta usável não existe destino: o modal não abre e a rede não é
     // tocada. Quem já barra é o header (os dois botões ficam `disabled` com
@@ -151,13 +217,18 @@ export default function ModalNovaPublicacao({ aberto = false, aoFechar = () => {
         // UMA chamada por montagem e por conta (T-178-03): `produtosParaTela()`
         // é a consulta mais pesada do módulo. O dado volta fresco por
         // construção, porque escolher um item NAVEGA e remonta a página.
-        if (contaJaPedida.current === contaUsavel) return;
+        //
+        // ⚠️ A decisão está em `precisaBuscar` e não aqui dentro porque este
+        // efeito não é observável por gate nenhum neste projeto (sem jsdom, e o
+        // portal do Radix não renderiza no servidor). O `if` acima NÃO pode ser
+        // fundido com este: ele também zera a consulta ao fechar.
+        if (!precisaBuscar({ aberto: abertoDeVerdade, conta: contaUsavel, contaJaPedida: contaJaPedida.current })) return;
         contaJaPedida.current = contaUsavel;
 
         setCarregando(true);
         setErro(false);
         axios
-            .get(route('mlb.anuncios.publicador.nova-publicacao', { conta: contaUsavel }))
+            .get(route(ROTA_NOVA_PUBLICACAO, { conta: contaUsavel }))
             // ⚠️ `normalizarPayload` é a FRONTEIRA: nada do servidor entra em
             // estado (nem no JSX) sem passar por ela. É a lição de 07/10 —
             // campo não-escalar renderizado como texto derrubou a página.

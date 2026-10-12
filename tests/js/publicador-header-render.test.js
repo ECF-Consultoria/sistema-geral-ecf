@@ -62,7 +62,13 @@ async function montarModulo(caminhoRelativo) {
         // `textoSeguro` vem de `BarraDaConta.jsx`, que arrasta Radix e axios
         // pela árvore do `SeletorEmpresaBusca` — external para resolver via
         // node_modules real no import() dinâmico, sem bundlar.
-        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/react-popover'],
+        // ⚠️ `@radix-ui/react-dialog` entra ALÉM do popover a partir da Fase
+        // 178, plano 03: o header agora arrasta `ModalNovaPublicacao` pela
+        // árvore. Sem ele no `external`, o esbuild bundla `react-remove-scroll`
+        // (CJS, dependência do Dialog) e o import morre com "Dynamic require of
+        // "react" is not supported" — falha que NÃO é do código. Medido aqui em
+        // 12/10/2026, antes de acrescentar a linha.
+        external: ['react', 'react-dom', 'react/jsx-runtime', 'lucide-react', 'axios', '@radix-ui/react-popover', '@radix-ui/react-dialog'],
     });
 
     // Precisa viver DENTRO da árvore do projeto — import ESM fora dela não acha node_modules.
@@ -617,11 +623,57 @@ test('atalhosDoHeader — as três teclas do protótipo', async (contexto) => {
     });
 });
 
-test('PublicadorHeader — o CTA e o ⌘K têm destino REAL até a Fase 178 (EXMP-03)', async (contexto) => {
+// ⚠️⚠️ CIRURGIA DECLARADA (Fase 178, plano 03) — ESTE BLOCO FOI REAPONTADO,
+// NÃO REMOVIDO.
+//
+// Ele se chamava "o CTA e o ⌘K têm destino REAL até a Fase 178 (EXMP-03)" e
+// travava `router.get(route('mlb.anuncios.publicador.produtos'…))`. A Fase 178
+// é exatamente a fase que troca esse destino pelo modal, então a asserção
+// antiga não podia continuar — mas apagá-la deixaria de provar que o CTA não
+// nasce morto, que é o que EXMP-03 exige. Classificação (a) do vocabulário do
+// fechamento da 177: REAPONTADA, com VETO EXPLÍCITO do destino antigo escrito
+// no lugar (é a lição do item 1 da cirurgia da 177-09 — como o nome do teste
+// muda, sem o veto ninguém saberia que o destino antigo é proibido).
+//
+// A asserção dos DOIS `onClick={abrirNovaPublicacao}` não foi tocada: ela prova
+// que os dois botões compartilham a função, que é metade de NOVA-09.
+test('PublicadorHeader — o CTA, a busca e o ⌘K ABREM o modal (NOVA-09 / EXMP-03)', async (contexto) => {
     const fonte = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx');
 
-    await contexto.test('o destino é a seleção de produtos da conta, via router.get', () => {
-        assert.match(fonte, /router\.get\(route\('mlb\.anuncios\.publicador\.produtos'/);
+    await contexto.test('o destino é o modal: ele está montado e `abrirNovaPublicacao` o abre', () => {
+        assert.match(fonte, /<ModalNovaPublicacao/);
+        assert.match(fonte, /from '\.\/ModalNovaPublicacao'/);
+        assert.match(fonte, /setNovaPublicacaoAberta\(true\)/);
+        // A abertura mora DENTRO de `abrirNovaPublicacao`, depois da guarda de
+        // conta — não num `onClick` solto que pulasse a guarda.
+        assert.match(
+            fonte,
+            /function abrirNovaPublicacao\(\)\s*\{\s*if \(!temConta\) return;\s*setNovaPublicacaoAberta\(true\);\s*\}/,
+            'abrirNovaPublicacao tem de barrar sem conta ANTES de abrir',
+        );
+    });
+
+    await contexto.test('⚠️ VETO: o destino antigo (a seleção de produtos) não pode voltar', () => {
+        assert.doesNotMatch(
+            fonte,
+            /router\.get\(route\('mlb\.anuncios\.publicador\.produtos'/,
+            'o CTA voltou a NAVEGAR em vez de abrir o modal (NOVA-09)',
+        );
+        // `router` saiu do import nesta fase (era usado só no destino antigo).
+        // Conferido por grep ANTES de escrever a asserção: 2 ocorrências no
+        // arquivo velho, as duas no caminho trocado.
+        assert.doesNotMatch(fonte, /\brouter\b/, 'import morto: `router` não é mais usado neste arquivo');
+    });
+
+    await contexto.test('`fecharTudo` fecha o modal — o noop do 177-04 era o slot desta fase', () => {
+        assert.match(fonte, /function fecharTudo\(\)\s*\{\s*setNovaPublicacaoAberta\(false\);\s*\}/);
+        assert.match(fonte, /useAtalhosDoHeader\(\{[^}]*aoFechar:\s*fecharTudo/);
+    });
+
+    await contexto.test('o modal recebe a conta já normalizada e um fechador', () => {
+        assert.match(fonte, /aberto=\{novaPublicacaoAberta\}/);
+        assert.match(fonte, /aoFechar=\{\(\) => setNovaPublicacaoAberta\(false\)\}/);
+        assert.match(fonte, /conta=\{conta\}/);
     });
 
     await contexto.test('o mesmo `abrirNovaPublicacao` serve o CTA, a busca e o atalho', () => {
@@ -651,5 +703,63 @@ test('PublicadorHeader — o CTA e o ⌘K têm destino REAL até a Fase 178 (EXM
     await contexto.test('nenhuma linha do AppLayout é necessária: a neutralização do p-6 mora no header', () => {
         assert.match(fonte, /-mx-6/);
         assert.match(fonte, /-mt-6/);
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fase 178, plano 03 — o modal está montado e NÃO vaza nada enquanto fechado.
+//
+// ⚠️ Por que não há render com o modal ABERTO aqui: o renderizador de servidor
+// do React não suporta portal (ele LANÇA ao encontrar um), e a casca é um
+// `Dialog.Portal`. A geometria da casca é conferida em
+// `publicador-modal-nova-publicacao.test.js`, por igualdade da string INTEIRA
+// das constantes exportadas — e lá há asserção de que o JSX as usa.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('PublicadorHeader — com o modal FECHADO, o header renderiza igual (178-03)', async (contexto) => {
+    const html = renderizar({ aba: 'produtos', cabecalho: cabecalhoBase() });
+
+    await contexto.test('nada da casca nem do corpo do modal aparece no HTML do header', () => {
+        // Com `aberto=false` o Radix não renderiza o portal, então nenhuma
+        // medida do modal pode estar aqui. Se alguma estiver, o modal vazou
+        // para dentro da faixa de 109px do header — que é exatamente o que o
+        // `backdrop-filter` faria com um overlay escrito aqui dentro.
+        for (const medida of [
+            'w-[620px]', 'top-[110px]', 'z-[80]', 'bg-black/[0.65]',
+            'shadow-pub-modal', 'rounded-pub-card', 'max-h-[420px]',
+        ]) {
+            assert.ok(!html.includes(medida), `${medida} vazou para o HTML do header com o modal fechado`);
+        }
+        assert.doesNotMatch(html, /Qual produto voc[êe] quer publicar/);
+        assert.doesNotMatch(html, /Nenhum produto encontrado/);
+        assert.doesNotMatch(html, />Esc</);
+    });
+
+    await contexto.test('os dois botões que abrem o modal continuam lá, com as contagens da 177 INTACTAS', () => {
+        // ⚠️ Estas contagens são as MESMAS do bloco "render real com o
+        // cabeçalho completo" (plano 177-04/06), repetidas aqui de propósito:
+        // se a casca do modal vazasse para fora do portal, elas mudariam. Foram
+        // MEDIDAS depois da montagem do modal, não supostas.
+        assert.match(html, /Buscar produto ou MLB/);
+        assert.match(html, /Nova publica[çc][ãa]o/);
+        assert.equal(contar(html, 'h-[34px]'), 8, 'os 4 controles da linha 1 e as 4 pílulas da linha 2');
+        assert.equal(contar(html, 'font-pub-mono'), 4, 'as duas teclas, o badge N e o código da conta');
+        assert.equal(contar(html, 'text-[10.5px]'), 4, 'as duas teclas, o badge N e as iniciais do tile');
+        // ⚠️ `/font-pub[\s"]/` e não `includes('font-pub')`: substring casa com
+        // PREFIXO, e `font-pub` vive dentro de `font-pub-mono`. A família Geist
+        // é declarada UMA vez no `<header>`; a `Dialog.Content` do modal
+        // redeclara a dela, mas só quando aberta (Portal).
+        assert.equal((html.match(/font-pub[\s"]/g) ?? []).length, 1);
+    });
+
+    await contexto.test('sem conta usável os dois botões seguem disabled= e o modal recebe conta nula', () => {
+        const semConta = renderizar({ aba: 'publicacoes', cabecalho: null });
+        // ⚠️ GATE-05: com o `=`. `/disabled/` casaria dentro de
+        // `disabled:opacity-40` e seria asserção vazia.
+        assert.equal((semConta.match(/disabled=""/g) ?? []).length, 2, 'a busca e o CTA');
+        assert.match(semConta, /Abra uma empresa do Publicador/);
+        // E nada do modal, que também não abriria: `conta` nula barra nos dois
+        // lados (o header não chama o setter, e a casca não abre).
+        assert.ok(!semConta.includes('w-[620px]'));
     });
 });
