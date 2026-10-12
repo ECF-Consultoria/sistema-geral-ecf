@@ -415,6 +415,63 @@ dos filtros e a espessura dos traços dos ícones (`strokeWidth` × 1,5 na conve
 16 → 24). (6) produto com `status.chave = 'erro'` não aparece no modal, por decisão da wave 1 (a casa
 dele é a **Fase 179**).
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 179 · plano 01 de 10 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado** (os handlers `state.*` já corromperam este arquivo seis
+> vezes e não há bloco de milestone para a v26.0). `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos** —
+> `roadmap.update-plan-progress` reporta sucesso e não escreve nada nesta milestone (medido na 178).
+
+**Fase 179 — Visão Geral, o cockpit da conta (VG-01..19), 10 planos em 4 waves.**
+Wave 1 (**179-01**) entregue: o **contrato do servidor da "Jornada dos produtos"** — os quatro
+estágios do anel de 176px, exclusivos e totais, com cobertura F1/F2 × Clássico/Premium e destino
+real por item. Requirements desta wave: **VG-04, VG-05, VG-06, VG-08, VG-18, VG-19** (VG-07, a barra
+hachurada, é render e fica para a wave de cliente). Próximo: 179-02 (o `PainelVisaoGeralService` e o
+controller — **dono daquele arquivo**, que esta wave só leu).
+
+Contrato para as waves seguintes (nomes de chave exatos em
+`.planning/phases/179-visao-geral-cockpit/179-01-SUMMARY.md`):
+`{total, publicados, pct, tem_produtos, proximo_passo, estagios: [{chave, total, share_pct, itens, ver_todos_url}]}`,
+item com 8 campos `{produto_id, nome, sku, nota, capa, cobertura{4 bools}, cta_chave, url}`.
+
+Decisões desta wave:
+
+1. **O universo do anel são os produtos BASE não compostos.** O kit *é* a Fase 2 do base: contá-lo
+   somaria o mesmo produto duas vezes e o `N de M produtos` do meio do anel discordaria da tela de
+   Produtos. Composto do Portal fora por KIT-06.
+2. **`erro` cai em `draft`** — divergência DECLARADA do protótipo (que tem 4 estágios e nenhum caso
+   de erro). Restrição concreta: um quinto caso fora dos quatro faria o `N de M` mentir. O erro segue
+   tratado pela ação "Produtos com problema na publicação" de `oQueFazerAgora()`.
+3. **"No ar" tem UMA definição** (`STATUS_NO_AR` **ou** anúncio CREATED vivo), a de `bucketDaFase()`.
+   ⚠️ Isso DIVERGE de `prontosParaFase2()`, que olha só o status: a base com `erro` e anúncio vivo
+   entra em `ready` aqui e não conta lá. A divergência é **MEDIDA por teste** (o tamanho exato da
+   diferença), não escondida — se crescer, reprova. Alinhar é decisão do **179-02**, dono do arquivo.
+4. ⚠️ **O gate de totalidade estava vazio por construção e foi consertado** (`8bca79ab`): `$total`
+   somava os quatro baldes, então um quinto caso sairia dos DOIS lados da igualdade ao mesmo tempo e
+   `assertFecha()` passaria sempre — a mesma classe do `git diff --stat` sem range. Agora `$total` é
+   contado no universo e `publicados` é cobrado pelo outro lado (`total − none − draft`).
+5. **Nenhum rótulo de tela no payload** (precedente 177-06 / 178-01): nem `rotulo`, `sub`, `cta`,
+   `passo` ou cor. Asserção **negativa**, rodada com os 4 estágios PREENCHIDOS e com isca.
+6. **Duas notas prescritas pelo plano foram RECUSADAS, com motivo:** `Sem publicação ainda` contém o
+   rótulo de tela que o gate 8 do próprio plano nega (ficaram os 3 textos do 178-01, iguais aos do
+   modal); e os 2 ramos da nota de `draft` diriam *"conferido, pronto para publicar"* para uma
+   tentativa que FALHOU (ficaram 4 ramos, um por status).
+
+⚠️ **Para o 179-06 — armadilha medida no protótipo** (⚠️ o `<output>` do plano manda avisar "o
+179-05", mas o 179-05 é a ligação no controller e quem DESENHA a Jornada é o **179-06**)**:** o cartão mostra até **4** tiles e o `+N` é
+`list.length - 4` sobre a lista INTEIRA do estágio (`:478`), enquanto o painel mostra 6 linhas
+(`:488`). Como `itens` vem cortado em 6, **`+N` sai de `estagio.total - 4`, nunca de
+`itens.length - 4`** — senão um estágio de 13 produtos mostraria "+2" em vez de "+9".
+
+Prova: **32 casos novos** (suíte do Publicador 1848 → **1880**, 11421 → **11766** asserções, 0
+falhas) e **12 mutações, 12 reprovações**, cada uma no caso que devia cair, com contagem de
+ocorrências travada antes, linha alterada conferida depois e restauração por `sha256`. **0 consultas**
+dentro de `jornada()`, com isca provando que o contador funciona. Deprecations 47 → 48 (o `@group
+phase179`, a convenção de 75 arquivos deste projeto).
+**Nada deployado, nada empurrado, nada no VPS. Nenhuma tela foi vista renderizada** (não há navegador
+aqui) — a validação visual é do usuário, em produção, na conta 459.
+
+
 ---
 
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
