@@ -229,6 +229,99 @@ tiver navegador precisa conferir `cursor-pointer`, a cor do placeholder e o roda
 
 ---
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 178 · plano 03 de 4 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado** (mesmo motivo das waves 1 e 2: os handlers `state.*` já
+> corromperam este arquivo seis vezes e não há bloco de milestone para a v26.0).
+> `ROADMAP.md` e `REQUIREMENTS-v26.md` **não foram tocados** — território proibido neste plano.
+
+Wave 3 (**178-03**) entregue: a **casca** do modal "Nova publicação" — 620px a `top:110px` sobre
+`rgba(0,0,0,0.65)`, raio 16px e `shadow-pub-modal` (protótipo `PublicadorHeader.dc.html`:133-134) —,
+o fetch lazy do endpoint da wave 1, o foco no input, e o **header ligado**: os dois botões (a busca
+de 250px e o CTA amarelo), ⌘K/Ctrl+K e "N" fora de campo abrem; Esc e clique fora fecham.
+Requirements fechados nesta wave: **NOVA-01, NOVA-07, NOVA-09**. Próxima: wave 4 (fechamento).
+
+O que a wave 4 consome: `header/ModalNovaPublicacao.jsx` → `CLASSES_FUNDO`, `CLASSES_CAIXA`,
+`ROTA_NOVA_PUBLICACAO`, `contaParaRota(conta)`, `precisaBuscar({aberto, conta, contaJaPedida})` e o
+default `ModalNovaPublicacao({aberto, aoFechar, conta})`.
+
+Decisões desta wave:
+
+1. **O portal é RESTRIÇÃO, não preferência.** O `backdrop-filter` do header **cria containing block
+   para `position: fixed`**, então um overlay escrito dentro dele nasceria recortado na faixa de 109px
+   do topo. Com `Dialog.Portal` (`@radix-ui/react-dialog`, que **já era dependência** — nada
+   instalado) o conteúdo vai para o `document.body` — e **por isso a caixa tem de declarar `font-pub`
+   por conta própria**, senão o modal inteiro perde a Geist em silêncio. É a mesma armadilha dos dois
+   `Popover.Content` do 177-06.
+2. **A geometria da casca vive em constantes EXPORTADAS** (`CLASSES_FUNDO`/`CLASSES_CAIXA`),
+   conferidas por igualdade da **string inteira** e por **token exato de um `Set`**. Motivo medido: o
+   renderizador de servidor do React não atravessa portal **e** o `Portal` do Radix devolve `null` no
+   servidor de propósito (`@radix-ui/react-portal/dist/index.mjs:13` — `mounted` só vira `true` num
+   efeito), então o conteúdo da casca **não existe** em `renderToStaticMarkup` em NENHUMA combinação
+   de props. Sem as constantes só sobraria leitura de fonte, o gate fraco que deixou 4 mutações
+   passarem na Fase 177.
+3. **`precisaBuscar()` e `contaParaRota()` nasceram PURAS E EXPORTADAS** pelo mesmo motivo: sem jsdom
+   e sem portal no servidor, aquele `useEffect` **não é observável por gate nenhum** neste projeto. O
+   gate exercita as três regras que custam dinheiro (fechado não vai à rede; conta inútil não vai à
+   rede; a mesma conta não é pedida duas vezes, **mas conta diferente é**). Mesmo precedente de
+   `criarOuvinteDeAtalhos` (177-04) e `filtrarGrupos` (178-02).
+4. **O gate pegou um furo REAL:** `textoUtil(0)` devolve a **string `'0'`** (a wave 2 já tinha medido
+   isso), então `conta: 0` montava `route('…', { conta: '0' })` — destino inventado de T-178-05, com
+   requisição desperdiçada. Nasceu `contaParaRota()`, que recusa não-string **antes** do `textoUtil`.
+   Produção não muda (o header já manda string ou `null`).
+5. **O FORMATO da chave NÃO é validado no cliente de propósito:** a trava
+   `(empresa|company)-[0-9]+` mora na rota (wave 1) e é a autoridade. Repetir o padrão aqui faria o
+   modal se recusar a abrir **em silêncio** no dia em que o servidor aceitar um prefixo novo.
+6. **Esc fecha por DOIS caminhos** — o `DismissableLayer` do Radix e o ouvinte de `window` do hook de
+   atalhos. O setter é idempotente, a redundância é segura, e isso está escrito no comentário para
+   ninguém "limpar" um dos dois. `atalhosDoHeader.js` **não mudou** (diff vazio no intervalo).
+7. **Divergências de MECANISMO declaradas** (nenhuma de medida: as 12 medidas da casca bateram com a
+   tabela do plano): centralização por `left-1/2 -translate-x-1/2` em vez do contêiner flex do
+   protótipo (no Radix, `Overlay` e `Content` são IRMÃOS — resultado computado idêntico para largura
+   fixa); `onOpenAutoFocus` + `preventDefault()` + `focus()` em vez do `setTimeout(…, 30)` de `:204`
+   (alvo determinístico, sem timer correndo contra a montagem); `Dialog.Title` com `sr-only` +
+   `aria-describedby={undefined}` porque o Radix 1.1.15 avisa no console sem título e o protótipo não
+   tem título visível — **nenhum pixel acrescentado**; e nenhum `stopPropagation` (o `stop` de `:229`
+   só existe porque lá o backdrop é o PAI da caixa).
+8. **A cirurgia de gate, classificada: 1 REAPONTADA, 0 endurecidas, 0 removidas.** A asserção
+   `router.get(route('mlb.anuncios.publicador.produtos'…))` de `publicador-header-render.test.js`
+   virou **veto explícito** do mesmo destino + veto do `router` (que saiu do import) + a montagem do
+   modal + a regex da função inteira de `abrirNovaPublicacao` (provando que a abertura está DEPOIS da
+   guarda de conta). A asserção das **duas** ocorrências de `onClick={abrirNovaPublicacao}` não foi
+   tocada.
+
+Prova: **+46 casos** (`npm run test:js` 2966 → **3012**, com o mesmo único fail pré-existente
+`estrutura-grade-glide`, não corrigido de propósito) e **29 mutações, 29 reprovações**, cada uma com a
+LINHA alterada conferida e restauração por `sha256`. `npm run build` verde (38,55s), manifest
+conferido pelo JSON (480 entradas, as 8 páginas do Publicador presentes). **Nada deployado, nada
+empurrado, nada no VPS.** Nenhum `.php` tocado nesta wave.
+
+⚠️ **Três achados que a próxima pessoa precisa saber:**
+
+- **A PARTIR DAQUI, TODO HARNESS DE ESBUILD QUE BUNDLE O `PublicadorHeader` (ou qualquer página que o
+  monte) PRECISA DE `'@radix-ui/react-dialog'` NO `external`.** O sintoma é
+  `Error: Dynamic require of "react" is not supported` (o Dialog arrasta `react-remove-scroll`, que é
+  CJS) e **não é falha do código**. Pegou `publicador-header-render.test.js` (previsto no plano) e
+  **`publicador-configuracoes-render.test.js`, que o plano não previu** — só a suíte COMPLETA acusou,
+  com 2 blocos vermelhos. Os harnesses `-abas-render` e `-conta-render` **não** precisaram: foi
+  medido, eles só LEEM a fonte do header (`lerSemComentarios`), não o bundlam.
+- **O detector de mutação ruim da wave 2 pagou de novo:** `top-[110px]` e `-translate-x-1/2` têm **2
+  ocorrências** cada — a segunda no COMENTÁRIO que declara a divergência de centralização. As duas
+  mutações foram **recusadas antes de aplicar** e refeitas com alvo único; sem o detector, as duas
+  teriam "passado" e o relatório registraria dois furos inexistentes.
+- **`contaJaPedida` guarda a CHAVE DA CONTA, não um booleano** (o plano pedia um `jaPediu`). O header
+  vive nas 9 páginas e uma navegação do Inertia para outra empresa **reconcilia** o componente em vez
+  de remontá-lo — com um booleano, o modal mostraria os produtos da **empresa anterior**. `null`
+  continua sendo "nunca pedi" **e** "a última tentativa falhou, pode tentar de novo".
+
+⚠️ **Nenhuma tela foi renderizada em navegador nesta wave** — não há navegador no ambiente. O que
+mais precisa de olho humano na conta 459: o modal abrindo exatamente a **110px do topo da janela**
+(não centrado), o texto do modal em **Geist** (se vier em Inter, o `font-pub` da caixa não chegou), e
+o Esc/clique fora fechando.
+
+---
+
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
 ### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
