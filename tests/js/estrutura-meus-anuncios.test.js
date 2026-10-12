@@ -111,3 +111,101 @@ test('abas: ModoAnuncioTabs não aponta mais para mlb.anuncios.wizard (D22) e de
     assert.match(fonteAbas, /Disponível só para empresas cadastradas no sistema/);
     assert.match(fonteAbas, /aria-disabled/);
 });
+
+// ─── 7. Fase 177, plano 08 — o header novo e a sobrevivência das sub-abas ───
+//
+// POR QUE ESTAS ASSERÇÕES MORAM AQUI: este é o gate da tela de Publicações, o
+// mesmo que guarda D-11 e D-22. A troca do topo (BarraDaConta + AbasDaConta →
+// PublicadorHeader) tirou da tela o ÚNICO atalho para o Histórico de anúncios
+// publicados; o usuário autorizou removê-lo (LIST-25), mas **na Fase 180**, e
+// com uma guarda: *o atalho sai, o dado não* — a Fase 180 tem de provar que o
+// filtro de status alcança o que "Histórico" alcança, e parar e perguntar se
+// não alcançar. Até lá, estas asserções são o que impede a capacidade de ser
+// perdida em silêncio (HEAD-11/REG-05: nenhuma rota removida).
+
+const fonteSubAbas = lerSemComentarios('resources/js/Components/Mlb/Publicador/SubAbasDePublicacoes.jsx');
+const fonteHistorico = lerSemComentarios('resources/js/Pages/Mlb/AnunciosHistorico.jsx');
+
+test('177-08: a página monta o PublicadorHeader e não monta mais BarraDaConta/AbasDaConta', () => {
+    assert.match(fonte, /<PublicadorHeader\b/, 'o header novo não está montado');
+    assert.match(fonte, /aba="publicacoes"/, 'a aba ativa do header precisa ser "publicacoes"');
+    assert.match(fonte, /cabecalho=\{cabecalho \?\? null\}/,
+        '`cabecalho` chega NULO nesta página (Company fora de programa) — a passagem tem de ser defensiva');
+    assert.doesNotMatch(fonte, /<BarraDaConta\b/);
+    assert.doesNotMatch(fonte, /<AbasDaConta\b/);
+});
+
+test('177-08: "Atualizar agora" continua no slot de ações do header, com o MESMO estado de antes', () => {
+    // O slot é a única aparição do botão no cabeçalho. As outras três
+    // (banner de defasagem, vazio "nunca coletado", barra utilitária) seguem no
+    // corpo — todas chamando o MESMO atualizarAgora.
+    assert.match(
+        fonte,
+        /acoes=\{\(\s*<BotaoAtualizar atualizando=\{atualizando\} cooldown=\{cooldown\} onClick=\{atualizarAgora\} \/>\s*\)\}/,
+        'o conteúdo do slot de ações mudou — ele tem de ser o MESMO componente, com os MESMOS estados',
+    );
+});
+
+test('177-08: as sub-abas No ar | Histórico continuam montadas nas DUAS páginas (LIST-25)', () => {
+    assert.match(fonte, /<SubAbasDePublicacoes atual="meus" companyId=\{empresa\.id\} \/>/);
+    assert.match(fonteHistorico, /<SubAbasDePublicacoes atual="historico" companyId=\{empresa\.id\} \/>/);
+});
+
+test('177-08: SubAbasDePublicacoes mantém as DUAS rotas de hoje — nenhuma foi removida (REG-05)', () => {
+    assert.match(fonteSubAbas, /'mlb\.anuncios\.meus'/, 'a rota de "No ar" sumiu do componente');
+    assert.match(fonteSubAbas, /'mlb\.anuncios\.historico'/, 'a rota de "Histórico" sumiu do componente');
+    assert.match(fonteSubAbas, /role="radiogroup"/);
+    assert.equal((fonteSubAbas.match(/role="radio"/g) ?? []).length, 1,
+        'os dois radios saem do MESMO helper — se virarem dois blocos copiados, a aparência começa a divergir');
+    // Os rótulos chegam ao helper como argumento (`botao('meus', 'No ar', …)`),
+    // então a asserção é pela chamada, não por `>No ar<`: pelo texto solto ela
+    // passaria com o rótulo vindo de qualquer outro lugar. Quem confere o que
+    // de fato vai para a tela é o render real
+    // (`publicador-paginas-anuncios-render.test.js`).
+    assert.match(fonteSubAbas, /botao\('meus', 'No ar', 'mlb\.anuncios\.meus'\)/,
+        'o par rótulo↔rota de "No ar" mudou — é contrato até a Fase 180');
+    assert.match(fonteSubAbas, /botao\('historico', 'Histórico', 'mlb\.anuncios\.historico'\)/,
+        'o par rótulo↔rota de "Histórico" mudou — é contrato até a Fase 180');
+});
+
+test('177-08: SubAbasDePublicacoes continua com a APARÊNCIA DE HOJE — é movimento, não redesenho (FID-02)', () => {
+    // GATE-01 ao contrário: aqui o vocabulário ANTIGO é o obrigatório. Este
+    // componente é um pedaço do corpo antigo cuja remoção já está autorizada
+    // para a Fase 180 (LIST-25); redesenhá-lo seria trabalho para algo que vai
+    // ser apagado, e "harmonizar" com o header novo é exatamente o deslize que
+    // fez o redesenho anterior falhar (HEAD-15: header novo, corpo antigo).
+    // ⚠️ Lista de classes é gate FRACO: na prova por mutação deste plano,
+    // trocar `gap-1` por `gap-2` no trilho passou por uma checklist de classes
+    // (nenhuma das conferidas havia saído). Por isso a asserção é a STRING
+    // INTEIRA de cada um dos quatro `className` — copiada de
+    // `AbasDaConta.jsx` (bloco 88-123), menos o `mt-2`, que era espaçamento
+    // externo. Assim qualquer utilitário acrescentado, removido ou alterado
+    // reprova, não só os que alguém se lembrou de listar.
+    const CLASSES_DE_HOJE = [
+        // o trilho do segmentado
+        'inline-flex h-10 items-center gap-1 rounded-lg border border-white/[0.08] bg-ecf-card p-1',
+        // a base dos dois botões
+        'inline-flex h-8 items-center rounded-md border px-3 text-[13px] font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow',
+        // o estado marcado
+        'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow',
+        // o estado não marcado
+        'border-transparent text-white/70 hover:bg-white/[0.04]',
+    ];
+    for (const classes of CLASSES_DE_HOJE) {
+        assert.ok(fonteSubAbas.includes(classes),
+            `o className abaixo deixou de ser EXATAMENTE o de hoje — isso é redesenho, não movimento:\n  ${classes}`);
+    }
+    // E nenhum token do design system NOVO: se um aparecer aqui, alguém
+    // começou a harmonizar.
+    assert.doesNotMatch(fonteSubAbas, /\bfont-pub\b/, 'o corpo antigo segue em Inter — a Geist é opt-in do header');
+    assert.doesNotMatch(fonteSubAbas, /\b(?:bg|text|border|rounded|shadow)-pub-/, 'token `pub-*` neste arquivo é harmonização (FID-02)');
+});
+
+test('177-08: as sub-abas Publicados | Rascunhos (D-14) NÃO foram tocadas — são outras', () => {
+    // Confusão fácil e caríssima: são DOIS pares de sub-abas nesta tela. Este,
+    // que vive na própria página, não sai na Fase 180.
+    assert.match(fonte, /const SUBABAS = \[/);
+    assert.match(fonte, /chave: 'publicados'/);
+    assert.match(fonte, /chave: 'rascunhos'/);
+    assert.match(fonte, /trocarSubAba/);
+});

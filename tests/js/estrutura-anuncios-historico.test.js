@@ -53,6 +53,31 @@ test('o botão de massa também explica o motivo quando desabilitado pela fonte'
 
 test('busca, paginação e agrupamento continuam na página (nenhuma regressão de leitura)', () => {
     assert.match(fonte, /route\('mlb\.anuncios\.historico'/, 'rota de busca/paginação sumiu');
-    assert.match(fonte, /grupos\.links/, 'paginação por lote sumiu');
+    // `\b` no fim: sem ele, `grupos.linksQualquerCoisa` passaria e a asserção
+    // seria vazia — furo medido na prova por mutação do plano 177-08.
+    assert.match(fonte, /grupos\.links\b/, 'paginação por lote sumiu');
     assert.match(fonte, /g\.total > 1/, 'distinção lote×avulso sumiu');
+});
+
+// ─── Fase 177, plano 08: o header novo no lugar de BarraDaConta + AbasDaConta ───
+
+test('177-08: a página monta o PublicadorHeader na aba "publicacoes" e não monta mais os dois antigos', () => {
+    assert.match(fonte, /<PublicadorHeader aba="publicacoes" cabecalho=\{cabecalho \?\? null\} \/>/,
+        '`cabecalho` chega NULO nesta página (Company fora de programa) — a passagem tem de ser defensiva');
+    assert.doesNotMatch(fonte, /<BarraDaConta\b/);
+    assert.doesNotMatch(fonte, /<AbasDaConta\b/);
+});
+
+test('177-08: esta página continua SEM slot de ações (não tem ação de cabeçalho)', () => {
+    // O header só desenha o <div> do slot quando `acoes` chega; passar um slot
+    // vazio deixaria uma caixa órfã na linha 2.
+    assert.doesNotMatch(fonte, /acoes=/,
+        'esta tela não tem equivalente ao "Atualizar agora"; `acoes` fica no default (null)');
+});
+
+test('177-08: as sub-abas No ar | Histórico continuam montadas, com "historico" marcada (LIST-25)', () => {
+    // Este é o único caminho de volta para "No ar" nesta tela. A remoção está
+    // autorizada só na Fase 180, com a guarda de provar que o filtro de status
+    // alcança o mesmo dado.
+    assert.match(fonte, /<SubAbasDePublicacoes atual="historico" companyId=\{empresa\.id\} \/>/);
 });

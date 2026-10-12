@@ -134,3 +134,39 @@ test('teto de 50 ações no histórico', () => {
 test('uma ação nova invalida o redo (como no Excel)', () => {
     assert.match(fonte, /h\.redo = \[\]/);
 });
+
+// ─── Fase 177, plano 08: o header novo no lugar de BarraDaConta + AbasDaConta ───
+
+test('177-08: a página monta o PublicadorHeader com a aba "produtos" acesa', () => {
+    // "Em massa" deixou de ser aba própria na nav/172-05; quem acende é
+    // Produtos, e isso não muda com o header novo.
+    assert.match(fonte, /<PublicadorHeader\b/);
+    assert.match(fonte, /aba="produtos"/);
+    assert.match(fonte, /cabecalho=\{cabecalho \?\? null\}/,
+        '`cabecalho` pode chegar NULO (Company fora de programa) — a passagem tem de ser defensiva');
+    assert.doesNotMatch(fonte, /<BarraDaConta\b/);
+    assert.doesNotMatch(fonte, /<AbasDaConta\b/);
+});
+
+test('177-08: "‹ Voltar aos produtos" foi para o slot de ações, com o MESMO destino', () => {
+    // O link é o único caminho de volta desta tela; perdê-lo na troca do topo
+    // deixaria o publicador preso na grade.
+    const ini = fonte.indexOf('<PublicadorHeader');
+    assert.ok(ini > -1, 'o header não está montado');
+    const bloco = fonte.slice(ini, fonte.indexOf('/>', fonte.indexOf('</Link>', ini)) + 2);
+    assert.match(bloco, /acoes=\{\(/, 'o slot de ações não foi usado');
+    assert.match(bloco, /Voltar aos produtos/, 'o link saiu do slot de ações');
+    assert.match(bloco, /route\('mlb\.anuncios\.publicador\.produtos', \{ conta: conta\.chave \}\)/,
+        'o destino do "Voltar aos produtos" mudou');
+});
+
+test('177-08: a grade em canvas segue protegida do atalho "N" do header (T-177-31)', () => {
+    // A grade desenha num <canvas data-testid="data-grid-canvas" tabIndex={0}>
+    // e põe a árvore <table role="grid"> DENTRO dele. `closest` casa o próprio
+    // elemento, então os dois alvos possíveis de um keydown na grade caem na
+    // guarda. Este gate trava os dois seletores: sem eles, apertar "n" editando
+    // a grade navegaria para fora e o usuário perderia o que digitou.
+    const fonteAtalhos = lerSemComentarios('resources/js/Components/Mlb/Publicador/header/atalhosDoHeader.js');
+    assert.match(fonteAtalhos, /canvas/, 'o seletor `canvas` saiu da guarda do atalho');
+    assert.match(fonteAtalhos, /\[role="grid"\]/, 'o seletor `[role="grid"]` saiu da guarda do atalho');
+});
