@@ -1493,3 +1493,39 @@ novos de cada conta.
 - **Tokens: os das contas de Polos (`mlb_empresa_id`) só estão válidos das 08h às 14h** (um job os renova às 08:00;
   valem 6 h). Leitura "sem renovar" nessas contas tem de rodar nessa janela; às 19h havia 1 válido de 44. As demais
   ficam válidas ao longo do dia.
+
+## 33. Kit de produtos diferentes: o anúncio sai na categoria e com a ficha de UM componente (12/10/2026)
+
+Pergunta do usuário: "se for um kit, uma cadeira junto com uma mesa, como seria esse anúncio em ficha técnica? Não
+lembro de ter pensado nisso." Levantamento só de leitura (código, dados da #459 e catálogo do ML).
+
+- **Os três tipos seguem caminhos diferentes** (`PublicadorSincronizaPortalService`):
+  - Combo (N do mesmo produto) de produto cadastrado NÃO vira `pub_produto`: fica "aguardando a Fase N" até alguém
+    criar o Kit N pelo "Criar fase", que clona a ficha do base e multiplica pacote e quantidades. Na #459, em 12/10, os
+    5 combos montados em 11/10 (nina, denia) não tinham nada no Publicador; os 2 kits que existem nasceram do "Criar fase".
+  - Kit e Combit viram um `pub_produto` por oferta, sozinhos, e quem preenche é `PortalParaRascunhoService::preencherComposta`.
+- **No kit misto, categoria e ficha vêm só do PRINCIPAL** (`ComposicaoDoPortal::principal`: o lado que não repete no
+  par; em cadeira + mesa, a mesa). Nada da ficha do outro componente é usado; não há mescla. Fotos de todos, pacote
+  somado, estoque pelo menor, variante única SEM cor, preço da Precificação da oferta.
+- **No Mercado Livre o conjunto é OUTRO produto, em OUTRA categoria.** Existe o ramo "Jogos e Sets de Móveis"
+  (`MLB436392`): Salas de Jantar (`MLB1627`), Conjuntos para sala de estar, Jogos de Quarto, Jogos de Barras e
+  Banquetas, Jogos de Móveis de Jardim, Outros. A ficha de Salas de Jantar tem 22 campos; só 6 têm o mesmo id na
+  ficha da cadeira ou da mesa (Marca, Modelo, Estilo, Requer montagem, GTIN, Manual). Os outros 16 são do conjunto:
+  "Quantidade de cadeiras" (obrigatório), "Materiais das cadeiras", "Forma da mesa", "Materiais da mesa", medidas da
+  mesa e das cadeiras. Dá para DERIVAR vários deles dos componentes, mas é mapa entre ids diferentes
+  (`CHAIRS_MATERIALS` ← `STRUCTURE_MATERIALS` da cadeira), não cópia. Hoje o kit mesa + cadeiras sairia em "Mesas",
+  com a ficha da mesa e sem dizer quantas cadeiras tem.
+- **O preditor acha a categoria de conjunto só com o texto certo** ("jogo de mesa de jantar com cadeiras" → Salas de
+  Jantar; "conjunto mesa com 4 cadeiras escritório" → Escrivaninhas). Para escritório não achamos categoria de conjunto.
+- **Nenhum aviso diz que o kit misto precisa de revisão.** Os testes tratam o caso como coberto; o de mesa + cadeiras
+  só prova a categoria da mesa e a Marca.
+- **Campos de conjunto que o sistema não trata em caminho nenhum:** `IS_KIT` ("É kit", oculto, existe em todas as
+  categorias olhadas) nunca é marcado; `CHAIRS_NUMBER_BY_SET` ("Quantidade de cadeiras por conjunto", obrigatório em
+  Cadeiras de Jantar) não está em `QuantidadesDoKit::CAMPOS`. E `QuantidadesDoKit`/`PacoteDoKit` só rodam no "Criar
+  fase": no kit que vem do Portal as quantidades ficam as da unidade do principal.
+- **Editar a oferta composta existe, mas longe do Planejamento:** na estação do Mapeamento ("Editar" / "Excluir
+  oferta") e na Lista SKUs (oculta). `EstruturaOfertaService::atualizar` troca nome, SKU e a composição inteira e NÃO
+  agenda nada no Publicador (só `criar` agenda). O Planejamento não tem aba nem contagem de criadas; o servidor já
+  calcula `retrato['existentes']` e não manda para a tela.
+- **O único kit misto real da #459** (combit 4 cadeiras + 1 mesa, de 03/10) está publicado com 19 campos digitados
+  pela equipe, na categoria de Cadeiras para Escritório: nada veio dos componentes (eles não tinham produto).
