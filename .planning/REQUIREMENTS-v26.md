@@ -304,9 +304,15 @@ tarifa persistida por anúncio. Logo:
 
 ### HEAD — `PublicadorHeader` global
 
-- **HEAD-01** — Fixo no topo com `position: sticky; top: 0; z-index: 50` **dentro do `<main>` do
+- **HEAD-01** — Fixo no topo com `position: sticky; top: 0; z-index: 30` **dentro do `<main>` do
   `AppLayout`**; fundo `rgba(10,10,10,0.86)` + `backdrop-filter: saturate(140%) blur(14px)`; borda
   inferior `#1C1C1C`. Linha 1 = 60px; linha 2 (nav) = 48px.
+  ⚠️ O `z-index` era **50** na redação original e foi **corrigido para 30 em 12/10/2026** (quick
+  `261012-mbw`), por conflito medido com o `AppLayout`: o `<main>` não cria contexto de
+  empilhamento, então o header disputava na raiz com o menu lateral (`z-40`) e com o painel lateral
+  do produto (`z-40`) — e ganhava dos dois, sobrepondo ambos. **Não reverter para 50.** A ordem
+  correta (filtros 10 < header 30 < menu e painel 40) tem gate próprio em
+  `tests/js/publicador-header-zindex-ordem.test.js`.
 - **HEAD-02** — Props: `active` (`overview|products|publications|performance|levers`), `mlConnected`,
   `erpConnected`.
 - **HEAD-03** — Esquerda: marca "Publicador" (glyph de Fase 2 em amarelo, 24px + texto 14px/600) →
