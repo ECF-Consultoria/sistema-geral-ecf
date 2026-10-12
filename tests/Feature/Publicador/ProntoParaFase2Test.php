@@ -240,10 +240,18 @@ class ProntoParaFase2Test extends TestCase
     }
 
     /**
-     * "No ar" tem UMA definição, e os três lugares que a usam concordam.
+     * "No ar" tem UMA definição, e os QUATRO lugares que a usam concordam.
      *
-     * ⚠️ Com ISCA: o produto em `erro` **sem** anúncio é `false` nos três. Sem a
+     * ⚠️ Com ISCA: o produto em `erro` **sem** anúncio é `false` nos quatro. Sem a
      * isca, uma função que devolvesse `true` sempre passaria.
+     *
+     * ⚠️⚠️ **O 4º consumidor (`bucketDaFase()`, via `contagemProdutos()['por_fase']`)
+     * foi acrescentado porque a MUTAÇÃO M12 SOBREVIVEU.** Devolver o `noAr` de
+     * `bucketDaFase()` à expressão inline antiga (só `STATUS_NO_AR`) não reprovava
+     * em nenhum teste: a base em `erro` com anúncio vivo passaria a contar como
+     * `sem_oferta` em vez de `fase1_publicada`, mudando o "N Fase 1 · N kits" do
+     * topo da tela de Produtos **em silêncio**. Não era equivalência por
+     * construção — era lacuna de cobertura, e está fechada aqui.
      */
     public function test_no_ar_tem_uma_definicao_so(): void
     {
@@ -266,6 +274,18 @@ class ProntoParaFase2Test extends TestCase
         $metodo->setAccessible(true);
         $porFase = $metodo->invoke(app(PainelVisaoGeralService::class), [$comAnuncio, $semAnuncio]);
         $this->assertSame(['fase1' => 1, 'kits' => 0], $porFase, 'noArPorFase() deixou de usar a definição única de "no ar"');
+
+        // ⚠️ O 4º consumidor: `bucketDaFase()`, pelo `por_fase` de `contagemProdutos()`.
+        // É o "N Fase 1 · N kits" do topo da tela de Produtos. Esta asserção existe
+        // porque a MUTAÇÃO M12 sobreviveu sem ela — ver o docblock deste teste.
+        $contagem = $this->programas()->contagemProdutos([$comAnuncio, $semAnuncio]);
+        $this->assertSame(
+            1,
+            $contagem['por_fase']['fase1_publicada'],
+            'bucketDaFase() deixou de usar a definição única: a base em `erro` com anúncio vivo '
+            .'saiu de `fase1_publicada` e o topo da tela de Produtos mudou em silêncio',
+        );
+        $this->assertSame(1, $contagem['por_fase']['sem_oferta'], 'ISCA: a base em `erro` SEM anúncio tem de ficar em `sem_oferta`');
     }
 
     // ═══ 3. O que o alinhamento NÃO podia quebrar ════════════════════════════
@@ -353,6 +373,8 @@ class ProntoParaFase2Test extends TestCase
             'eh_kit' => false,
             'kits' => [],
             'anuncios' => [],
+            // `contagemProdutos()` exige esta chave (ela separa `sem_oferta` do resto).
+            'oferta_id' => null,
             'status' => ['chave' => 'rascunho'],
         ];
     }
