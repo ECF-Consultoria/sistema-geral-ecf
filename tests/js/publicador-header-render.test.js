@@ -34,7 +34,9 @@ global.route = (nome, params) => '/' + nome + JSON.stringify(params ?? {});
 
 // `@inertiajs/react` real traz `qs`/`object-inspect`, com `require('util')`
 // condicional incompatível com o bundle ESM do esbuild. Este teste só precisa
-// de `Link` (renderiza `<a>`) e de `router` (não é chamado em render estático).
+// de `Link` (renderiza `<a>`), de `router` (não é chamado em render estático) e
+// de `usePage` — o header lê `auth.user.id` dele para o dropdown de empresa
+// achar as contas recentes do `localStorage` (plano 177-06).
 const STUB_INERTIA = path.join(__dirname, `.header-inertia-stub-${process.pid}.mjs`);
 fs.writeFileSync(STUB_INERTIA, `
 import React from 'react';
@@ -42,6 +44,7 @@ export function Link({ href, children, className, ...props }) {
     return React.createElement('a', { href, className, ...props }, children);
 }
 export const router = { get: () => {}, post: () => {}, reload: () => {} };
+export const usePage = () => ({ props: { auth: { user: { id: 7 } } } });
 `, 'utf8');
 after(() => fs.rmSync(STUB_INERTIA, { force: true }));
 
@@ -251,13 +254,29 @@ test('PublicadorHeader — FID-05 e FID-01 travados no HTML, elemento por elemen
         );
     });
 
-    await contexto.test('ícones: busca 14/1.6 · Configurações 17/1.4 · "+" 14/2 (TOK-14, Lucide)', () => {
+    await contexto.test('ícones: busca 14/2.4 · Configurações 17/2.1 · "+" 14/3 (TOK-14, Lucide)', () => {
+        // ⚠️⚠️ Fase 177, plano 06 — ESTES TRÊS NÚMEROS MUDARAM, e é CORREÇÃO DE
+        // FIDELIDADE, não afrouxamento. O protótipo desenha com
+        // `viewBox="0 0 16 16"` e o Lucide com `0 0 24 24`; o `stroke-width` é
+        // medido NO SISTEMA DE COORDENADAS do viewBox, então o mesmo número não
+        // dá o mesmo traço:
+        //     protótipo 1.6 × (15/16) = 1,5 px  ·  Lucide 1.6 × (15/24) = 1,0 px
+        // Os ícones estavam saindo com DOIS TERÇOS da espessura desenhada. O
+        // fator é 24/16 = 1,5: 1.4 → 2.1 · 1.6 → 2.4 · 2 → 3. A asserção
+        // continua travando o traço por ELEMENTO — só com o valor certo.
         const busca = tagDe(html, /<svg[^>]*lucide-search[^>]*>/, 'ícone de busca');
-        exigirClasses(busca, ['width="14"', 'height="14"', 'stroke-width="1.6"'], 'ícone de busca');
+        exigirClasses(busca, ['width="14"', 'height="14"', 'stroke-width="2.4"'], 'ícone de busca');
         const engrenagem = tagDe(html, /<svg[^>]*lucide-settings[^>]*>/, 'ícone de Configurações');
-        exigirClasses(engrenagem, ['width="17"', 'height="17"', 'stroke-width="1.4"'], 'ícone de Configurações');
+        exigirClasses(engrenagem, ['width="17"', 'height="17"', 'stroke-width="2.1"'], 'ícone de Configurações');
         const mais = tagDe(html, /<svg[^>]*lucide-plus[^>]*>/, 'ícone "+"');
-        exigirClasses(mais, ['width="14"', 'height="14"', 'stroke-width="2"'], 'ícone "+"');
+        exigirClasses(mais, ['width="14"', 'height="14"', 'stroke-width="3"'], 'ícone "+"');
+
+        // ⚠️ O separador "/" é SVG INLINE com o viewBox do próprio protótipo
+        // (16×22), então o 1.4 dele NÃO entra na conta acima — e tem de
+        // continuar 1.4. Esta asserção existe para ninguém "uniformizar" os
+        // traços depois e estragar o separador.
+        const separador = tagDe(html, /<svg width="16" height="22"[^>]*>/, 'separador "/"');
+        exigirClasses(separador, ['viewBox="0 0 16 22"', 'stroke-width="1.4"'], 'separador "/"');
     });
 
     await contexto.test('linha 2 (nav): 48px e gap de 2px entre as pills', () => {
@@ -279,9 +298,19 @@ test('PublicadorHeader — FID-05 e FID-01 travados no HTML, elemento por elemen
         // gate próprio, por elemento, em `publicador-header-abas-render.test.js`.
         assert.equal(contar(html, 'rounded-pub-control'), 8, 'marca, busca, Configurações, CTA e as 4 pílulas têm raio de 9px');
         assert.equal(contar(html, 'h-[34px]'), 8, 'os 4 controles da linha 1 e as 4 pílulas da linha 2 têm 34px');
-        assert.equal(contar(html, 'font-pub-mono'), 3, 'as duas teclas e o badge N são mono');
-        assert.equal(contar(html, 'text-[10.5px]'), 3, 'as duas teclas e o badge N têm 10,5px');
-        assert.equal((html.match(/font-pub[\s"]/g) ?? []).length, 1, 'a família Geist é declarada UMA vez, no <header>');
+        // ⚠️ Fase 177, plano 06 — estes dois SUBIRAM de 3 para 4 quando o
+        // seletor de empresa entrou na linha 1: o código da conta é mono de 11px
+        // (`PublicadorHeader.dc.html:39`) e as iniciais do tile são 10,5px
+        // (:35). Continuam contagens EXATAS; a fidelidade de cada pedaço do
+        // seletor tem gate próprio, por elemento, em
+        // `publicador-header-conta-render.test.js`.
+        //
+        // ⚠️ O seletor NÃO mexeu em `h-[34px]` nem em `rounded-pub-control`: o
+        // botão dele tem 38px e raio de 10px (`rounded-pub-sub`), medidos no
+        // protótipo — o "header 34px" do README não vale para ele.
+        assert.equal(contar(html, 'font-pub-mono'), 4, 'as duas teclas, o badge N e o código da conta são mono');
+        assert.equal(contar(html, 'text-[10.5px]'), 4, 'as duas teclas, o badge N e as iniciais do tile têm 10,5px');
+        assert.equal((html.match(/font-pub[\s"]/g) ?? []).length, 1, 'a família Geist é declarada UMA vez no <header> — os dois popovers do Radix a redeclaram, mas só quando abertos (Portal)');
     });
 
     await contexto.test('FID-03/FID-04: nada de escala nomeada e nada da camada antiga', () => {
@@ -600,9 +629,17 @@ test('PublicadorHeader — o CTA e o ⌘K têm destino REAL até a Fase 178 (EXM
         assert.match(fonte, /useAtalhosDoHeader\(\{\s*aoAbrirBusca:\s*abrirNovaPublicacao/);
     });
 
-    await contexto.test('o texto do servidor passa por textoSeguro — importado, não recriado', () => {
+    await contexto.test('o texto do servidor passa pelo normalizador de BarraDaConta — importado, não recriado', () => {
         assert.match(fonte, /from '\.\.\/BarraDaConta'/);
-        assert.match(fonte, /textoSeguro\(/);
+        // ⚠️ Fase 177, plano 06 — a chave da conta passou de `textoSeguro(…,
+        // null)` para `textoUtil(…)`. NÃO é afrouxamento: `textoUtil` CHAMA
+        // `textoSeguro` e acrescenta o que faltava — `textoSeguro('', null)`
+        // devolve `''`, e `''` passa por todo `!== null`, o que montaria
+        // `route('…', { conta: '' })`: um destino inventado do mesmo jeito que
+        // um objeto montaria. A asserção continua travando que o texto do
+        // servidor NÃO vai cru para o JSX nem para o `route()`.
+        assert.match(fonte, /\btexto(Seguro|Util)\(/);
+        assert.doesNotMatch(fonte, /String\(cabecalho/, 'o texto do servidor não pode ir por String()');
     });
 
     await contexto.test('a marca REUSA o GlyphDaFase no tamanho `marca` (não reimplementa o glyph)', () => {

@@ -42,6 +42,12 @@ const ARQUIVOS_NOVOS = [
     `${DIR_HEADER}/atalhosDoHeader.js`,
     // Fase 177, plano 05 — as abas-pílula da linha 2.
     `${DIR_HEADER}/AbasDoHeader.jsx`,
+    // Fase 177, plano 06 — a identidade da conta na linha 1: o seletor de
+    // empresa (botão + dropdown de 360px) e a pill de conexão (+ popover de
+    // 320px), mais o módulo que virou a fonte única das contas recentes.
+    `${DIR_HEADER}/SeletorDeEmpresaDoHeader.jsx`,
+    `${DIR_HEADER}/ConexaoDoHeader.jsx`,
+    'resources/js/Components/Mlb/Publicador/recentesDoPublicador.js',
 ];
 
 /**

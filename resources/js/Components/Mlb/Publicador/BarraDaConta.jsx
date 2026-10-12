@@ -40,6 +40,38 @@ export function textoSeguro(valor, fallback = '—') {
     return (typeof valor === 'string' || typeof valor === 'number') ? String(valor) : fallback;
 }
 
+/**
+ * Irmão de `textoSeguro` para quando VAZIO não vale (Fase 177, plano 06).
+ *
+ * `textoSeguro('', null)` devolve `''` — e `''` é string, então passa por
+ * "tem valor" em todo `!== null`. Isso já produziu "Declarado: " na linha do
+ * ERP do header (nome declarado vazio virando um ERP declarado sem nome), e
+ * produziria `route('…', { conta: '' })` num destino inventado se a chave da
+ * conta chegasse vazia.
+ *
+ * Use esta quando a ausência tem de ser tratada como ausência: campo de texto
+ * que vira rótulo, e principalmente valor que vira PARÂMETRO DE URL. É a mesma
+ * disciplina do `idUtil` de `AbasDoHeader.jsx` (que barra `NaN` porque
+ * `typeof NaN === 'number'`).
+ *
+ * ⚠️ Devolve o texto APARADO, não o original. Para quem vira parâmetro de URL
+ * isso é requisito: `route('…', { conta: ' company-459 ' })` monta um destino
+ * que não existe. E para quem vira chave de comparação também —
+ * `'  company-459  '` tem de casar com `'company-459'`, senão o dropdown
+ * mostraria a conta em que o usuário ESTÁ como se fosse outra (sem o check,
+ * sem o tile amarelo). Foi uma mutação que apontou isso.
+ *
+ * @param {unknown} valor
+ * @returns {string|null} o texto aparado, ou `null` para vazio/só espaço/forma
+ *   inesperada
+ */
+export function textoUtil(valor) {
+    const texto = textoSeguro(valor, null);
+    if (texto === null) return null;
+    const aparado = texto.trim();
+    return aparado === '' ? null : aparado;
+}
+
 export default function BarraDaConta({ empresa, liberada = true, acoes = null }) {
     const [seletorAberto, setSeletorAberto] = useState(false);
     const nome = textoSeguro(empresa?.nome);

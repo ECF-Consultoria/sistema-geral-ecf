@@ -1,10 +1,12 @@
-import { Link, router } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import { Plus, Search, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AvisoContaTravada from '../AvisoContaTravada';
-import { textoSeguro } from '../BarraDaConta';
+import { textoUtil } from '../BarraDaConta';
 import GlyphDaFase from '../identidade/GlyphDaFase';
 import AbasDoHeader from './AbasDoHeader';
+import ConexaoDoHeader from './ConexaoDoHeader';
+import SeletorDeEmpresaDoHeader from './SeletorDeEmpresaDoHeader';
 import { useAtalhosDoHeader } from './atalhosDoHeader';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -24,13 +26,26 @@ import { useAtalhosDoHeader } from './atalhosDoHeader';
 // quem rola é o `<main>` (`overflow-y-auto`), não a janela.
 //
 // O QUE AINDA NÃO ESTÁ AQUI (cada slot tem o seu plano):
-//   · o seletor de empresa (tile + nome + código) e o dropdown de 360px,
-//     a pill de conexão e o popover de 320px                   → plano 177-06
 //   · o modal "Nova publicação" de 620px                       → Fase 178
 //
-// JÁ ENTREGUE: as abas-pílula da linha 2 vêm de `AbasDoHeader` (plano 177-05).
-// São QUATRO de propósito — "Desempenho" fica FORA por decisão do usuário
-// (HEAD-09); o porquê, por escrito, está no topo de `AbasDoHeader.jsx`.
+// JÁ ENTREGUE: as abas-pílula da linha 2 vêm de `AbasDoHeader` (plano 177-05)
+// — são QUATRO de propósito, "Desempenho" fica FORA por decisão do usuário
+// (HEAD-09) e o porquê está escrito no topo daquele arquivo. O seletor de
+// empresa com o dropdown de 360px e a pill de conexão com o popover de 320px
+// vêm de `SeletorDeEmpresaDoHeader` e `ConexaoDoHeader` (plano 177-06).
+//
+// ⚠️⚠️ A CONTA DO `strokeWidth` DOS ÍCONES (correção de fidelidade, 12/10/2026)
+//
+// Os SVG do protótipo usam `viewBox="0 0 16 16"`; o Lucide usa `0 0 24 24`. O
+// `stroke-width` é medido NO SISTEMA DE COORDENADAS do viewBox, então o MESMO
+// número não dá o mesmo traço na tela:
+//     protótipo: 1.6 × (15/16) = 1,5 px  ·  Lucide: 1.6 × (15/24) = 1,0 px
+// Repetir o número do protótipo deixava os ícones com DOIS TERÇOS da espessura
+// desenhada. O fator é 24/16 = 1,5 e vale para TODO ícone do Lucide neste
+// header: 1.4 → 2.1 · 1.6 → 2.4 · 1.7 → 2.55 · 2 → 3.
+//
+// ⚠️ O separador "/" abaixo NÃO entra na conta: ele é SVG inline com o viewBox
+// do próprio protótipo (16×22), então o 1.4 dele já é o traço certo.
 //
 // ⚠️ O CTA NÃO NASCE MORTO (EXMP-03): até a Fase 178, "Nova publicação" e o
 // ⌘K levam ao destino que o botão equivalente de hoje leva — a seleção de
@@ -81,12 +96,20 @@ const ROTULO_CONFIGURACOES_SEM_CONTA = `${ROTULO_CONFIGURACOES} — ${TITULO_SEM
  * @param {boolean} [props.liberada] conta liberada para publicar (D21/D26).
  */
 export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, liberada = true }) {
-    // `textoSeguro(..., null)` em vez de `String(...)`: a chave vai para
-    // `route()` como parâmetro de URL, e um objeto vindo no lugar dela montaria
-    // um destino inventado. Sem chave usável, `conta` é null e os dois botões
-    // ficam desabilitados com explicação.
-    const conta = textoSeguro(cabecalho?.empresa?.chave, null);
+    // `textoUtil` em vez de `String(...)`: a chave vai para `route()` como
+    // parâmetro de URL, e um objeto vindo no lugar dela montaria um destino
+    // inventado. Sem chave usável, `conta` é null e os dois botões ficam
+    // desabilitados com explicação.
+    // ⚠️ `textoUtil` e não `textoSeguro(..., null)` (plano 06): `textoSeguro`
+    // devolve `''` para string vazia, e `''` passa por todo `!== null` — daria
+    // `route('…', { conta: '' })`, um destino inventado do mesmo jeito.
+    const conta = textoUtil(cabecalho?.empresa?.chave);
     const temConta = conta !== null;
+
+    // O usuário logado, só para o dropdown ler as contas recentes do
+    // `localStorage` (a chave é por usuário). Vem de `usePage()` AQUI DENTRO,
+    // como `AnunciosEmpresas.jsx` já faz — nenhuma prop nova nas 9 páginas.
+    const userId = usePage().props?.auth?.user?.id ?? null;
 
     // ⚠️ Fase 178 troca o CORPO desta função pelo modal "Nova publicação"; a
     // assinatura e os dois chamadores (o CTA e o ⌘K) ficam como estão.
@@ -95,9 +118,11 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
         router.get(route('mlb.anuncios.publicador.produtos', { conta }));
     }
 
-    // Hoje não há nada aberto para fechar: o dropdown de empresa e o popover de
-    // conexão são do plano 177-06 e o modal é da Fase 178. O `noop` existe para
-    // o Esc já estar ligado no contrato do hook quando eles chegarem.
+    // ⚠️ NÃO PROCURE O ESTADO QUE NÃO EXISTE: o dropdown de empresa e o popover
+    // de conexão são dois `Popover` do Radix, e cada um se fecha no Esc por
+    // conta própria (`DismissableLayer`) — nenhum estado de abertura mora aqui.
+    // O `noop` continua porque o contrato do hook já liga o Esc, e o modal da
+    // Fase 178 vai ter estado próprio para fechar neste ponto.
     function fecharTudo() {}
 
     useAtalhosDoHeader({ aoAbrirBusca: abrirNovaPublicacao, aoFechar: fecharTudo });
@@ -132,9 +157,21 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                             <path d="M11 3L5 19" />
                         </svg>
 
-                        {/* SLOT: seletor de empresa (tile + nome + código + dropdown
-                            de 360px) e pill de conexão com o popover de 320px —
-                            plano 177-06. */}
+                        {/* Identidade da conta: o seletor (tile de 28px + nome +
+                            código + dropdown de 360px) e a pill de conexão com o
+                            popover de 320px (plano 177-06).
+                            ⚠️ `?? null` em TODOS os acessos: o default de parâmetro
+                            só cobre `undefined`, e `cabecalho: null` numa recarga
+                            parcial do Inertia já derrubou tela neste projeto. */}
+                        <SeletorDeEmpresaDoHeader
+                            empresa={cabecalho?.empresa ?? null}
+                            integracoes={cabecalho?.integracoes ?? null}
+                            userId={userId}
+                        />
+                        <ConexaoDoHeader
+                            integracoes={cabecalho?.integracoes ?? null}
+                            companyId={cabecalho?.company_id ?? null}
+                        />
 
                         {!liberada && <AvisoContaTravada variante="selo" />}
                     </div>
@@ -153,7 +190,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                                     : 'cursor-not-allowed opacity-50',
                             )}
                         >
-                            <Search size={14} strokeWidth={1.6} aria-hidden="true" className="flex-none" />
+                            <Search size={14} strokeWidth={2.4} aria-hidden="true" className="flex-none" />
                             <span className="flex-1 text-left">Buscar produto ou MLB</span>
                             <span className="flex flex-none gap-[3px]">
                                 <span className="grid h-[20px] min-w-[20px] place-items-center rounded-[5px] border border-pub-line-strong bg-pub-hover-2 font-pub-mono text-[10.5px] text-pub-txt-2">⌘</span>
@@ -171,7 +208,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                                 aria-label={ROTULO_CONFIGURACOES}
                                 className="grid h-[34px] w-[34px] flex-none place-items-center rounded-pub-control text-pub-txt-3 hover:bg-pub-hover-2 hover:text-pub-txt"
                             >
-                                <Settings size={17} strokeWidth={1.4} aria-hidden="true" />
+                                <Settings size={17} strokeWidth={2.1} aria-hidden="true" />
                             </Link>
                         ) : (
                             <span
@@ -180,7 +217,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                                 aria-label={ROTULO_CONFIGURACOES_SEM_CONTA}
                                 className="grid h-[34px] w-[34px] flex-none cursor-not-allowed place-items-center rounded-pub-control text-pub-txt-off opacity-50"
                             >
-                                <Settings size={17} strokeWidth={1.4} aria-hidden="true" />
+                                <Settings size={17} strokeWidth={2.1} aria-hidden="true" />
                             </span>
                         )}
 
@@ -196,7 +233,7 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                                 temConta ? 'hover:bg-pub-accent-hover' : 'cursor-not-allowed opacity-50',
                             )}
                         >
-                            <Plus size={14} strokeWidth={2} aria-hidden="true" className="flex-none" />
+                            <Plus size={14} strokeWidth={3} aria-hidden="true" className="flex-none" />
                             Nova publicação
                             <span className="ml-[2px] rounded-pub-badge bg-pub-page/[0.14] px-[5px] py-px font-pub-mono text-[10.5px]">N</span>
                         </button>
