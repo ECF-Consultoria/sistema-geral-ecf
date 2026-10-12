@@ -451,6 +451,34 @@ class PainelVisaoGeralService
      * Parâmetro opcional (default `[]`) para não quebrar chamadas antigas
      * que só tinham os agregados; sem produtos, a linha simplesmente não
      * aparece (mesma regra de "número > 0" das demais).
+     *
+     * ═══ POR QUE CADA LINHA TEM UMA `chave` (Fase 179, Plano 02) ════════════
+     *
+     * A `chave` é a **identidade do adiamento**. `AcoesDaContaService` enriquece
+     * estas linhas e `AdiamentoDeAcoes` guarda, por usuário e conta, quais ações
+     * o usuário mandou voltar amanhã — e o que ele guarda é a `chave`.
+     *
+     * Sem ela o cliente teria de casar o adiamento por **TEXTO**, e texto muda
+     * com o número: "2 publicações com erro" → "3 publicações com erro". O
+     * adiamento se perderia na primeira publicação corrigida, que é exatamente
+     * o momento em que ele ainda deveria valer. A `chave` nunca muda.
+     *
+     * Ela também é o que decide a **severidade** (`AcoesDaContaService::SEVERIDADE`)
+     * e o rótulo do CTA no cliente. Nenhum rótulo de tela sai daqui.
+     *
+     * ⚠️ **Chave nova exige entrada no mapa `AcoesDaContaService::SEVERIDADE`.**
+     * Chave fora do mapa não desaparece (cai em `atencao` e aparece), mas fica sem
+     * severidade própria — e **sem poder ser adiada**, porque `AdiamentoDeAcoes`
+     * só grava chave da lista fechada (T-179-05).
+     *
+     * ═══ ESTE ARQUIVO TEM UM DONO ═══════════════════════════════════════════
+     *
+     * A proibição de tocar `PainelVisaoGeralService` valeu nas Fases 177 e 178 e
+     * está **suspensa na Fase 179** — mas só para o **plano 179-02**. Os planos
+     * 179-01 (`JornadaDosProdutosService`), 179-03 e 179-04 criam serviços novos e
+     * **não** encostam aqui. Se uma sessão futura precisar de mais um campo nas
+     * linhas ou nas últimas publicações, o lugar é este método, não um serviço
+     * paralelo que recalcule a mesma coisa.
      */
     public function oQueFazerAgora(
         array $alvo,
@@ -466,6 +494,7 @@ class PainelVisaoGeralService
                 'texto' => 'Conta precisa de reconexão',
                 'numero' => null,
                 'destino' => ['acao' => 'reconectar', 'url' => $empresaParaTela['link_reconexao'] ?? null],
+                'chave' => 'reconectar',
             ]];
         }
 
@@ -484,11 +513,12 @@ class PainelVisaoGeralService
                     ? $this->acervoTriagem->legadoEntre($company, [MlAcervoItem::MOTIVO_PAUSADO, MlAcervoItem::MOTIVO_SEM_ESTOQUE])
                     : 0,
                 'destino' => ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $companyId]],
+                'chave' => 'pausados',
             ];
         }
 
         if ((int) ($contagemProdutos['com_problema'] ?? 0) > 0) {
-            $linhas[] = $this->linhaDeProdutos('Produtos com problema na publicação', (int) $contagemProdutos['com_problema'], $alvo['chave'], 'com_problema');
+            $linhas[] = $this->linhaDeProdutos('Produtos com problema na publicação', (int) $contagemProdutos['com_problema'], $alvo['chave'], 'com_problema', 'com_problema');
         }
 
         // §7 (plano 175-08): "Prontos para a Fase 2" = base publicado SEM NENHUM
@@ -497,11 +527,11 @@ class PainelVisaoGeralService
         if ($prontosParaFase2 > 0) {
             // `fase=so_base` casa com o filtro "Fase: todas / só base / só kits" da
             // lista (§7): a linha leva a quem ainda pode ganhar uma fase nova.
-            $linhas[] = $this->linhaDeProdutos('Prontos para a Fase 2', $prontosParaFase2, $alvo['chave'], 'publicados', 'so_base');
+            $linhas[] = $this->linhaDeProdutos('Prontos para a Fase 2', $prontosParaFase2, $alvo['chave'], 'publicados', 'prontos_fase2', 'so_base');
         }
 
         if ((int) ($contagemProdutos['conferidos'] ?? 0) > 0) {
-            $linhas[] = $this->linhaDeProdutos('Conferidos, prontos para publicar', (int) $contagemProdutos['conferidos'], $alvo['chave'], 'conferidos');
+            $linhas[] = $this->linhaDeProdutos('Conferidos, prontos para publicar', (int) $contagemProdutos['conferidos'], $alvo['chave'], 'conferidos', 'conferidos');
         }
 
         // Linha 6 — "Rascunhos com pendências" (handoff seção 3): status `conferir`
@@ -520,6 +550,7 @@ class PainelVisaoGeralService
                 'numero' => count($comPendencia),
                 'exemplo' => ['nome' => $maisProximo['nome'], 'faltam' => (int) $maisProximo['status']['faltam']],
                 'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => ['conta' => $alvo['chave'], 'filtro' => 'rascunho']],
+                'chave' => 'rascunhos_pendencias',
             ];
         }
 
@@ -528,6 +559,7 @@ class PainelVisaoGeralService
                 'texto' => 'Ofertas novas no Portal',
                 'numero' => $situacaoPortal['novas'],
                 'destino' => ['acao' => 'sincronizar'],
+                'chave' => 'portal_novas',
             ];
         }
 
@@ -544,6 +576,11 @@ class PainelVisaoGeralService
                     'texto' => $chips[$motivo]['label'] ?? $motivo,
                     'numero' => $count,
                     'destino' => ['rota' => 'mlb.anuncios.meus', 'params' => ['company' => $companyId, 'motivo' => $motivo]],
+                    // A `chave` É o próprio motivo — `ficha_incompleta`, `perdendo_catalogo`,
+                    // `foto_insuficiente` já são snake_case e já são as chaves dos chips.
+                    // Uma segunda nomenclatura aqui faria o adiamento e a triagem do acervo
+                    // falarem nomes diferentes do MESMO problema.
+                    'chave' => $motivo,
                 ];
             }
         }
@@ -557,14 +594,25 @@ class PainelVisaoGeralService
                 'texto' => 'Publicados aguardando alavancas',
                 'numero' => $aguardando,
                 'destino' => ['rota' => 'mlb.anuncios.publicador.tarefas.index', 'params' => ['conta' => $alvo['chave']]],
+                'chave' => 'alavancas',
             ];
         }
 
         return $linhas;
     }
 
-    /** `$fase` entra no destino só quando a linha filtra por fase (§7) — nunca nas antigas. */
-    private function linhaDeProdutos(string $texto, int $numero, string $chaveConta, string $filtro, ?string $fase = null): array
+    /**
+     * `$fase` entra no destino só quando a linha filtra por fase (§7) — nunca nas antigas.
+     *
+     * ⚠️ `$chave` (Fase 179-02) entra ANTES de `$fase`, não depois: `$fase` já era
+     * opcional, e um parâmetro obrigatório declarado depois de um opcional é
+     * deprecado no PHP 8 ("implicitly treated as a required parameter"). Dar a
+     * `$chave` um default `''` para empurrá-la para o fim resolveria a deprecation
+     * e abriria um buraco pior — chamador novo que esquecesse a chave produziria
+     * linha com chave vazia, que não endereça adiamento nenhum e passaria calada.
+     * Obrigatória e sem default: esquecer não compila.
+     */
+    private function linhaDeProdutos(string $texto, int $numero, string $chaveConta, string $filtro, string $chave, ?string $fase = null): array
     {
         $params = ['conta' => $chaveConta, 'filtro' => $filtro];
         if ($fase !== null) {
@@ -575,6 +623,7 @@ class PainelVisaoGeralService
             'texto' => $texto,
             'numero' => $numero,
             'destino' => ['rota' => 'mlb.anuncios.publicador.produtos', 'params' => $params],
+            'chave' => $chave,
         ];
     }
 
@@ -730,6 +779,13 @@ class PainelVisaoGeralService
                 // ⚠️ `eo_tipo.fase` é o TIPO da oferta (qualificado e apelidado — a mesma colisão acima).
                 'pub_produtos.produto_base_id as produto_base_id',
                 'eo_tipo.fase as oferta_tipo',
+                // Fase 179-02: o produto por trás da publicação, para o tile de 40px
+                // do layout novo. O `id` define o tom por hash e o `nome` as iniciais —
+                // nenhum dos dois sai do `titulo`, que vem do payload do ML e não do
+                // cadastro. ⚠️ Qualificados: `id` e `nome` existem em mais de uma
+                // tabela do join e sem qualificar o MariaDB resolveria calado e errado.
+                'pub_produtos.id as produto_id',
+                'pub_produtos.nome as produto_nome',
             ])
             ->orderByDesc('pub_publicacoes.concluida_em')
             ->limit(5)
@@ -757,6 +813,16 @@ class PainelVisaoGeralService
                 'fase' => (int) $linha->produto_fase,
                 'rotulo_fase' => ProgramasPublicadorService::rotuloFase((int) $linha->produto_quantidade_kit,
                     $linha->produto_base_id === null && in_array($linha->oferta_tipo, PlanejamentoDaFaseService::TIPOS_COMPOSTOS, true) ? $linha->oferta_tipo : null),
+                // Fase 179-02 — as DUAS chaves novas, no FIM do item (nenhuma antiga
+                // saiu nem mudou de posição). ⚠️ Nada de `capa` aqui: a foto já existe
+                // em `produtosParaTela()['capa']` e o plano 179-03 a encontra EM MEMÓRIA
+                // por `produto_id`. Uma consulta nova de imagem por publicação recente
+                // seria pagar duas vezes pelo mesmo dado.
+                'produto_id' => (int) $linha->produto_id,
+                // `textoOuNulo()`: nome vazio vira null, nunca `''` nem objeto. Produto
+                // sem nome existe (importação antiga do Portal) e `''` no tile daria um
+                // quadrado sem iniciais em vez do fallback.
+                'produto_nome' => $this->textoOuNulo($linha->produto_nome),
             ];
         })->values()->all();
 
