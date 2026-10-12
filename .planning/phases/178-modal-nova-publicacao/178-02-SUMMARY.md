@@ -521,3 +521,14 @@ existia para pegar.
 ---
 *Fase: 178-modal-nova-publicacao · Plano 02*
 *Concluído: 2026-10-12*
+
+## Self-Check: PASSED
+
+- `resources/js/Components/Mlb/Publicador/header/novaPublicacao.js` — existe
+- `resources/js/Components/Mlb/Publicador/header/PainelNovaPublicacao.jsx` — existe
+- `tests/js/publicador-modal-nova-publicacao.test.js` — existe
+- `.planning/phases/178-modal-nova-publicacao/178-02-SUMMARY.md` — existe
+- commits `e77d703f`, `71b76afb`, `64ff7f83`, `61703b8f`, `de4043c8` — todos no histórico
+- prop `letra` presente em `TileDoProduto.jsx` (16 menções entre docblock, escada e `cn()`)
+- os 2 arquivos novos presentes em `ARQUIVOS_NOVOS` de `tests/js/publicador-vocabulario-novo.test.js`
+- `npm run build` verde e manifest conferido pelo JSON (480 entradas, `app.jsx` presente)
