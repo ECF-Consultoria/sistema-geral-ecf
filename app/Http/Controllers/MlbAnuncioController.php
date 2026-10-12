@@ -27,6 +27,7 @@ use App\Services\Creative\CreativePermissao;
 use App\Services\Creative\CreativeSlotCatalog;
 use App\Services\Creative\ReferenciaEfemeraService;
 use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
@@ -205,7 +206,7 @@ class MlbAnuncioController extends Controller
      *                 category_id (o "lote" de uma aba = category_id + empresa).
      *   - produtos  : lista do cliente p/ pré-preenchimento por linha (SHEET-04).
      */
-    public function massa(Request $request, Company $company, ProgramasPublicadorService $programas)
+    public function massa(Request $request, Company $company, ProgramasPublicadorService $programas, CabecalhoPublicadorService $cabecalhos)
     {
         // Só empresas com conta ML conectada podem publicar (mesma trava do wizard)
         $company->loadMissing('mlToken');
@@ -230,6 +231,10 @@ class MlbAnuncioController extends Controller
             ],
             // Fase 172-02: prop nova — ver comentário em wizard().
             'conta' => $conta,
+            // Fase 177-03: prop ADITIVA do header global (HEAD-10). Pode ser `null`: aqui o
+            // `resolver()` devolve null quando a Company não cai em nenhum programa — o header
+            // tem de sobreviver a `cabecalho = null` (quem prova isso é o render do 177-04).
+            'cabecalho' => $alvo !== null ? $cabecalhos->para($alvo, $conta, 'produtos') : null,
             // Rascunhos abertos da empresa (por company_id) para a grade reconstruir
             // as linhas agrupadas por category_id. Inclui 'publicando' — a grade
             // mostra o estado assíncrono (BULK-04) por linha ao reabrir a página.
@@ -279,7 +284,7 @@ class MlbAnuncioController extends Controller
      * isso a tela desabilita (nunca esconde) "Anunciar semelhante"/"duplicar
      * lote" para estes itens.
      */
-    public function historico(Request $request, Company $company, ProgramasPublicadorService $programas)
+    public function historico(Request $request, Company $company, ProgramasPublicadorService $programas, CabecalhoPublicadorService $cabecalhos)
     {
         // Só empresas com conta ML conectada (mesma trava do wizard e da grade)
         $company->loadMissing('mlToken');
@@ -424,6 +429,9 @@ class MlbAnuncioController extends Controller
             ],
             // Fase 172-02: prop nova — ver comentário em wizard().
             'conta'    => $conta,
+            // Fase 177-03: prop ADITIVA do header global. Histórico é a sub-aba de Publicações
+            // (No ar | Histórico), por isso `aba = publicacoes`. Pode ser `null` — ver massa().
+            'cabecalho' => $alvo !== null ? $cabecalhos->para($alvo, $conta, 'publicacoes') : null,
             'grupos'   => $gruposPagina,
             'resumo'   => [
                 'total_anuncios' => $publicados->count(),
@@ -444,7 +452,7 @@ class MlbAnuncioController extends Controller
      * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
      * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
      */
-    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas, AcervoTriagemService $acervoTriagem)
+    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas, AcervoTriagemService $acervoTriagem, CabecalhoPublicadorService $cabecalhos)
     {
         // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
         $company->loadMissing('mlToken');
@@ -607,6 +615,10 @@ class MlbAnuncioController extends Controller
             'empresa'   => ['id' => $company->id, 'nome' => $company->name],
             // Fase 172-02: prop nova — ver comentário em wizard().
             'conta'     => $conta,
+            // Fase 177-03: prop ADITIVA do header global. `$defasagem` vai como 4º argumento —
+            // esta action JÁ o calculou acima, e repetir a consulta seria pagar duas vezes pelo
+            // mesmo número. Pode ser `null` — ver massa().
+            'cabecalho' => $alvo !== null ? $cabecalhos->para($alvo, $conta, 'publicacoes', $defasagem) : null,
             'sub'       => $sub,
             'subTotais' => [
                 'publicados' => MlAcervoItem::where('company_id', $company->id)->count(),

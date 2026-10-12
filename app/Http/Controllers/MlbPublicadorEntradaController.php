@@ -10,6 +10,7 @@ use App\Models\PubTarefa;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
 use App\Services\Publicador\AcervoTriagemService;
+use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ExcluirProdutoService;
 use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\PainelVisaoGeralService;
@@ -31,6 +32,14 @@ class MlbPublicadorEntradaController extends Controller
     private const POR_PAGINA = 50;
     private const FILTROS = ['todos', 'prontos', 'atencao', 'nunca'];
     private const BUSCA_LIMITE = 20;
+
+    /**
+     * Quantas contas o dropdown de empresa do header (HEAD-05) recebe de uma vez.
+     * Acima disso o cliente completa pela rota de busca que JÁ existe
+     * (`publicador.empresas-busca`) — o endpoint do header não ganha parâmetro de
+     * busca para não virar um segundo caminho para a mesma coisa.
+     */
+    private const HEADER_LIMITE = 200;
 
     private const PROGRAMA_ROTULO = ['polos' => 'Polos', 'incubadora' => 'Incubadora', 'gestao' => 'Gestão'];
 
@@ -131,8 +140,34 @@ class MlbPublicadorEntradaController extends Controller
         return response()->json($achadas);
     }
 
+    /**
+     * JSON do dropdown de empresa do header global (Fase 177, HEAD-05): as contas dos
+     * 3 programas no shape leve de `ProgramasPublicadorService::contasLeves()`, mais o
+     * TOTAL REAL — é o "N empresas sob gestão" do rodapé do dropdown.
+     *
+     * ⚠️ **Sem nenhum parâmetro de entrada, de propósito (T-177-08).** O escopo é o do
+     * usuário autenticado, resolvido no servidor, e a rota vive no grupo
+     * `['auth','verified','role:admin']`. Não aceitar `company`/`conta` é o que torna
+     * IDOR por parâmetro estruturalmente impossível aqui — não é promessa de
+     * comentário. Quem precisar filtrar usa `publicador.empresas-busca`.
+     *
+     * ⚠️ NUNCA devolve `access_token`/`refresh_token` nem o objeto `MlToken` — só a
+     * string de estado `token` (`ativo|expirado|sem_token`), o mesmo recorte de campos
+     * que `buscaEmpresas()` já usa em produção (T-177-07).
+     */
+    public function empresasDoHeader(): JsonResponse
+    {
+        $contas = $this->programas->contasLeves();
+
+        return response()->json([
+            'total' => $contas->count(),
+            'limite' => self::HEADER_LIMITE,
+            'empresas' => $contas->take(self::HEADER_LIMITE)->values(),
+        ]);
+    }
+
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */
-    public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao, FilaPublicacaoService $filas)
+    public function produtos(Request $request, string $conta, CreativeEngineAtivo $creativeAtivo, CreativePermissao $creativePermissao, FilaPublicacaoService $filas, CabecalhoPublicadorService $cabecalhos)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -183,6 +218,10 @@ class MlbPublicadorEntradaController extends Controller
                 // 09/10/2026 — contagem da aba Alavancas: publicados desta conta aguardando as alavancas.
                 'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
             ],
+            // Fase 177-03: prop ADITIVA do header global (HEAD-10 — contadores reais, nenhum
+            // número fixo no JSX). `abas` acima FICA: as páginas antigas e os gates de fonte a
+            // leem, e a troca de consumo é das plans 177-07/08.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'produtos'),
             // 10/10/2026 — a fila de publicação em lote VIVA da conta (o aviso acima da lista), ou null.
             'fila_publicacao' => $filas->aviso($alvo['chave']),
         ]);
@@ -396,7 +435,7 @@ class MlbPublicadorEntradaController extends Controller
      * de identidade e quem publicou. ZERO chamada ao Mercado Livre neste request —
      * só leitura do que já está gravado (design_handoff_publicador/ETAPA-2-visao-geral.md).
      */
-    public function visaoGeral(string $conta, AcervoTriagemService $acervoTriagem, PainelVisaoGeralService $painel)
+    public function visaoGeral(string $conta, AcervoTriagemService $acervoTriagem, PainelVisaoGeralService $painel, CabecalhoPublicadorService $cabecalhos)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -450,6 +489,10 @@ class MlbPublicadorEntradaController extends Controller
                 // 09/10/2026 — contagem da aba Alavancas (tarefas pós-publicação abertas da conta).
                 'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $company),
             ],
+            // Fase 177-03: prop ADITIVA do header global. `$defasagem` vai como 4º argumento —
+            // esta action JÁ o calculou acima, e repetir a consulta seria pagar duas vezes pelo
+            // mesmo número.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'visao-geral', $company !== null ? $defasagem : null),
         ]);
     }
 
@@ -458,7 +501,7 @@ class MlbPublicadorEntradaController extends Controller
      * (texto cru, sem resumo), conexões (somente leitura) e programa/responsável.
      * Nada novo no banco.
      */
-    public function configuracoes(string $conta, PainelVisaoGeralService $painel)
+    public function configuracoes(string $conta, PainelVisaoGeralService $painel, CabecalhoPublicadorService $cabecalhos)
     {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -476,6 +519,9 @@ class MlbPublicadorEntradaController extends Controller
             'conexoes' => $painel->integracoes($alvo, $empresa),
             'programa' => $alvo['programa'],
             'responsavel' => $alvo['mlb_empresa']?->responsavel?->name,
+            // Fase 177-03: prop ADITIVA do header global. Configurações sai das abas (HEAD-08),
+            // mas o header continua no topo — por isso a prop existe aqui também.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'configuracoes'),
         ]);
     }
 }

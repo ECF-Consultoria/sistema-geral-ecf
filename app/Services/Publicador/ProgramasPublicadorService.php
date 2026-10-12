@@ -483,6 +483,51 @@ class ProgramasPublicadorService
         return $saida;
     }
 
+    /**
+     * As contas dos 3 programas no shape LEVE do dropdown de empresa do header
+     * (Fase 177, HEAD-05): só identidade e estado do token, ordenadas por nome.
+     *
+     * Método ADITIVO — nenhum método existente mudou de assinatura, de retorno ou
+     * de ordem por causa dele.
+     *
+     * ⚠️ **Não usar `empresas()` aqui.** Ela varre produtos, rascunhos,
+     * publicações, ofertas do Portal e ERP de TODAS as contas do programa: é
+     * custo de TELA, não de dropdown. `base()` já traz a conta e o token com
+     * eager loading (`with(['mlToken','company.mlToken',…])`), então `token` sai
+     * da âncora em memória — nenhuma consulta por linha.
+     *
+     * O universo é o MESMO de `buscaEmpresas()` (que lê `empresas()`): entram
+     * também as contas sem token que passaram pelo OAuth ("autorizou, falta
+     * reconectar"), porque o dropdown precisa mostrá-las com o dot vermelho. Se
+     * o universo daqui fosse menor que o da busca, o rodapé "N empresas sob
+     * gestão" discordaria do que a busca acha.
+     *
+     * ⚠️ NUNCA devolve `access_token`/`refresh_token` nem o objeto `MlToken` —
+     * só a string de estado `token` (`ativo|expirado|sem_token`).
+     *
+     * @return Collection<int, array{chave: string, nome: string, identificador: string,
+     *     company_id: ?int, programa: string, token: string}>
+     */
+    public function contasLeves(): Collection
+    {
+        return collect(self::PROGRAMAS)
+            ->flatMap(fn (string $programa) => $this->base($programa)->map(function (array $l) use ($programa) {
+                $ancora = $l['ancora'];
+
+                return [
+                    'chave' => $l['chave'],
+                    'nome' => $l['nome'],
+                    'identificador' => $l['identificador'],
+                    'company_id' => $l['company_id'],
+                    'programa' => $programa,
+                    // Mesmo cálculo de `empresas()` e de `empresaParaTela()` — um só vocabulário de estado.
+                    'token' => $ancora === null ? 'sem_token' : ($ancora->mlToken?->isExpired() ? 'expirado' : 'ativo'),
+                ];
+            }))
+            ->sortBy('nome', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+    }
+
     /** Indicadores do programa selecionado a partir das linhas já montadas. */
     public function indicadores(string $programa, Collection $linhas): array
     {

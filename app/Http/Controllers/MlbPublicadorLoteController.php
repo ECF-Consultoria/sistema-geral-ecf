@@ -6,6 +6,7 @@ use App\Models\PubFilaPublicacao;
 use App\Models\PubFilaPublicacaoItem;
 use App\Models\PubProduto;
 use App\Models\PubTarefa;
+use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\Fila\ConferenciaEmLoteService;
 use App\Services\Publicador\Fila\FilaPublicacaoService;
 use App\Services\Publicador\Fila\ResumoRapidoService;
@@ -43,7 +44,7 @@ class MlbPublicadorLoteController extends Controller
         private ConferenciaEmLoteService $conferencias,
     ) {}
 
-    public function index(Request $request, string $conta)
+    public function index(Request $request, string $conta, CabecalhoPublicadorService $cabecalhos)
     {
         $alvo = $this->alvo($conta);
         if ($alvo['chave'] !== $conta) {
@@ -53,13 +54,21 @@ class MlbPublicadorLoteController extends Controller
         // `?produtos=1,2,3` = a seleção que veio da lista de Produtos (só ids desta conta valem; a tela marca os que vieram).
         $pedidos = array_slice(array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $request->query('produtos', '')))))), 0, 500);
 
+        // Fase 177-03: a identidade da conta sai para uma variável porque o header global
+        // precisa do MESMO array que a prop `empresa` entrega — montar duas vezes daria duas
+        // resoluções da conta no mesmo request.
+        $empresa = $this->programas->empresaParaTela($alvo);
+
         return Inertia::render('Mlb/Publicador/PublicacaoEmLote', [
-            'empresa' => $this->programas->empresaParaTela($alvo),
+            'empresa' => $empresa,
             'liberada' => ContasLiberadas::libera(PubProduto::ancoraComToken($alvo['mlb_empresa'], $alvo['company'])),
             'abas' => [
                 'company_id' => $alvo['company']?->id,
                 'alavancas_pendentes' => PubTarefa::abertasDaConta($alvo['mlb_empresa'], $alvo['company']),
             ],
+            // Fase 177-03: prop ADITIVA do header global. A publicação em lote é parte da
+            // aba Produtos (chega pela seleção da lista), por isso `aba = produtos`.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'produtos'),
             ...$this->dadosDaTela($alvo),
             'garantia_padrao' => $this->garantiaParaTela($alvo),
             'selecionados' => $pedidos,

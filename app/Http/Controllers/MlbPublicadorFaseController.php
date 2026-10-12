@@ -6,6 +6,7 @@ use App\Models\PubProduto;
 use App\Models\PubRascunho;
 use App\Services\Creative\CreativeEngineAtivo;
 use App\Services\Creative\CreativePermissao;
+use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\CriarFaseService;
 use App\Services\Publicador\FamiliaDeFasesService;
 use App\Services\Publicador\PlanejamentoDaFaseService;
@@ -98,6 +99,7 @@ class MlbPublicadorFaseController extends Controller
         int $produto,
         CreativeEngineAtivo $creativeAtivo,
         CreativePermissao $creativePermissao,
+        CabecalhoPublicadorService $cabecalhos,
     ) {
         $alvo = $this->programas->resolver($conta);
         abort_if($alvo === null, 404);
@@ -136,6 +138,10 @@ class MlbPublicadorFaseController extends Controller
             'criativos' => $payload['criativos'],
             'mapeamento' => $payload['mapeamento'],
             'abas' => ['company_id' => $alvo['company']?->id],
+            // Fase 177-03: prop ADITIVA do header global. A identidade passada é a do
+            // PRODUTO (`$empresa`, com `empresaParaTela($alvo, $p)`) — WR-B01: é a conta que
+            // confere e publica, a mesma que esta tela mostra na barra.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'produtos'),
             // Plano 175-11 (§5): a CAPACIDADE do servidor de gerar a capa do
             // kit — mesma chave e mesma permissão do `editor()`
             // (`MlbPublicadorEntradaController`). Sem isto aqui o

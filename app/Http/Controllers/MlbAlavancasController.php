@@ -17,6 +17,7 @@ use App\Services\Publicador\Alavancas\ProdutosDaContaService;
 use App\Services\Publicador\Alavancas\PromocoesLeitura;
 use App\Services\Publicador\Alavancas\PublicidadeLeitura;
 use App\Services\Publicador\Alavancas\TiposDePromocao;
+use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Support\Publicador\AlavancasLiberadas;
 use App\Support\Publicador\RegraViolada;
@@ -45,7 +46,7 @@ class MlbAlavancasController extends Controller
 
     // ═══ Página ═══
 
-    public function index(Request $request, string $conta)
+    public function index(Request $request, string $conta, CabecalhoPublicadorService $cabecalhos)
     {
         // 09/10/2026 — a tarefa pós-publicação abre aqui com `?aba=promocoes&item=MLB…`: o anúncio vira o
         // painel do topo. Só o formato é conferido; a leitura do item segue pelas rotas por item (da conta).
@@ -62,8 +63,16 @@ class MlbAlavancasController extends Controller
         $temConta = $this->contexto->daTela($alvo) !== null;
         $liberada = AlavancasLiberadas::libera($ancora);
 
+        // Fase 177-03: a identidade da conta sai para uma variável porque o header global
+        // precisa do MESMO array que a prop `empresa` entrega — montar duas vezes daria duas
+        // resoluções da conta no mesmo request.
+        $empresa = $this->programas->empresaParaTela($alvo);
+
         return Inertia::render('Mlb/Publicador/Alavancas', [
-            'empresa' => $this->programas->empresaParaTela($alvo),
+            'empresa' => $empresa,
+            // Fase 177-03: prop ADITIVA do header global (HEAD-10). `alavancas.tarefas_abertas`
+            // abaixo FICA como está — é o que a página lê hoje.
+            'cabecalho' => $cabecalhos->para($alvo, $empresa, 'alavancas'),
             'alavancas' => [
                 'liberada' => $liberada,
                 'motivo' => $liberada ? null : AlavancasLiberadas::MOTIVO,

@@ -47,6 +47,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('publicador/empresas-busca', [MlbPublicadorEntradaController::class, 'buscaEmpresas'])
             ->middleware('throttle:60,1,publicador.empresas-busca')->name('publicador.empresas-busca');
 
+        // 177-03 (HEAD-05): as contas do dropdown de empresa do header global, com o TOTAL
+        // real ("N empresas sob gestão"). Rota LITERAL, pelo mesmo motivo da de cima (não tem
+        // hífen seguido de dígitos, logo nunca casa o regex `(empresa|company)-[0-9]+` de
+        // `{conta}`), e fica ANTES dela por clareza de leitura. `120,1` porque o dropdown é
+        // aberto várias vezes por sessão e o payload é pequeno. Sem parâmetro de entrada: o
+        // escopo é do usuário autenticado (T-177-08).
+        Route::get('publicador/empresas-header', [MlbPublicadorEntradaController::class, 'empresasDoHeader'])
+            ->middleware('throttle:120,1,publicador.empresas-header')->name('publicador.empresas-header');
+
         // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
         // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
         Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])
