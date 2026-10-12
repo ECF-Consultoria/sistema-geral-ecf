@@ -56,6 +56,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('publicador/empresas-header', [MlbPublicadorEntradaController::class, 'empresasDoHeader'])
             ->middleware('throttle:120,1,publicador.empresas-header')->name('publicador.empresas-header');
 
+        // 178-01 (NOVA-08): os três grupos do modal "Nova publicação" — o próximo passo de
+        // cada produto da conta. Endpoint LAZY (só na abertura do modal): pendurar isto na
+        // prop `cabecalho` faria as 9 páginas pagarem `produtosParaTela()` em todo request.
+        // `nova-publicacao` NÃO colide com `publicador/empresas/{conta}/produtos/{produto}`
+        // nem com `publicador/empresas-header`: não casa `[0-9]+` e não tem hífen seguido de
+        // dígitos. O `where` da conta é a mesma trava das rotas vizinhas — `{conta}` fora do
+        // padrão morre na rota, antes do controller. Throttle nomeado, como todos os vizinhos.
+        Route::get('publicador/empresas/{conta}/nova-publicacao', [MlbPublicadorEntradaController::class, 'novaPublicacao'])
+            ->where('conta', '(empresa|company)-[0-9]+')
+            ->middleware('throttle:120,1,publicador.nova-publicacao')->name('publicador.nova-publicacao');
+
         // ─── Fase 164: Publicador interno — tela B (produtos da empresa) e casca do editor ───
         // {conta} = empresa-N | company-N; arquivada/sem programa dá 404 no resolver (T-164-23).
         Route::get('publicador/empresas/{conta}', [MlbPublicadorEntradaController::class, 'produtos'])

@@ -13,6 +13,7 @@ use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\ExcluirProdutoService;
 use App\Services\Publicador\Fila\FilaPublicacaoService;
+use App\Services\Publicador\NovaPublicacaoService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use App\Services\Publicador\PublicadorSincronizaPortalService;
@@ -164,6 +165,38 @@ class MlbPublicadorEntradaController extends Controller
             'limite' => self::HEADER_LIMITE,
             'empresas' => $contas->take(self::HEADER_LIMITE)->values(),
         ]);
+    }
+
+    /**
+     * JSON do modal "Nova publicação" (Fase 178, NOVA-08): os três grupos do
+     * próximo passo de cada produto da conta, montados por
+     * `NovaPublicacaoService::grupos()`.
+     *
+     * ⚠️ **Por que endpoint e não prop.** O header global vive nas 9 páginas do
+     * Publicador. Pendurar os três grupos na prop `cabecalho` faria TODA página
+     * pagar `produtosParaTela()` — a consulta mais pesada do módulo — em todo
+     * request, inclusive para quem nunca abre o modal. O padrão já estabelecido
+     * nesta milestone é o do seletor de empresa (177-03/177-06): **endpoint
+     * próprio, uma chamada por montagem, só quando o usuário abre**.
+     *
+     * ⚠️ **Nenhum parâmetro de entrada.** Sem `q`, sem `grupo`, sem `limite`: a
+     * busca é LOCAL no cliente (é assim no protótipo) e qualquer parâmetro a
+     * mais seria superfície nova sem necessidade — a mesma disciplina de
+     * T-177-08. O único dado de entrada é `{conta}`, e ele já morre na rota
+     * quando sai do padrão `(empresa|company)-[0-9]+`.
+     *
+     * ⚠️ **Sem redirect de normalização de chave.** `produtos()`/`visaoGeral()`
+     * redirecionam quando `$alvo['chave'] !== $conta`; aqui NÃO: isto é JSON
+     * consumido por `axios`, e um 302 viraria resposta estranha no cliente.
+     * Segue-se com `$alvo['chave']` (a canônica), que é o que o serviço usa para
+     * montar a `url` de cada item.
+     */
+    public function novaPublicacao(string $conta, NovaPublicacaoService $nova): JsonResponse
+    {
+        $alvo = $this->programas->resolver($conta);
+        abort_if($alvo === null, 404);
+
+        return response()->json($nova->grupos($alvo));
     }
 
     /** Tela B: produtos da empresa (do Portal e cadastrados aqui) + abas irmãs (D23). */

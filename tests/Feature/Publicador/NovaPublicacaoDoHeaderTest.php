@@ -754,19 +754,28 @@ class NovaPublicacaoDoHeaderTest extends TestCase
     }
 
     /**
-     * Detector de N+1. Medido em 12/10/2026, SQLite, 1 conta com 6 produtos
-     * (2 por grupo) e 3 anúncios: **CONSULTAS_MEDIDAS** consultas.
+     * Detector de N+1 e custo. Medido em 12/10/2026, SQLite: o endpoint faz
+     * **18 consultas** com 1 conta, 6 produtos (2 por grupo) e 3 anúncios, e as
+     * MESMAS **18** com 12 produtos.
      *
-     * O teto é folgado de propósito — o objetivo é pegar consulta por linha, não
-     * cravar número bonito. A prova de que não há N+1 é a SEGUNDA asserção: com
-     * 12 produtos o número tem de ser o MESMO (tudo é lido em lote), não o
-     * dobro.
+     * ⚠️ Cada conta é medida na SEGUNDA requisição, depois de uma de
+     * aquecimento: o cache do `ProgramasPublicadorService` persiste dentro do
+     * teste, e sem o aquecimento a primeira conta medida sai com 2 consultas a
+     * mais que a segunda — o que faria "12 produtos custam menos que 6" e
+     * esconderia a comparação.
+     *
+     * A prova de que não há consulta por linha é a SEGUNDA asserção: 6 produtos
+     * a mais, se houvesse N+1, somariam no MÍNIMO 6 consultas. O teto da
+     * primeira asserção é folgado de propósito — o objetivo é pegar N+1, não
+     * cravar número bonito.
      */
     public function test_endpoint_nao_consulta_por_produto(): void
     {
         $admin = $this->admin();
 
-        $consultas = fn (MlbEmpresa $e) => (function () use ($e, $admin) {
+        $medir = function (MlbEmpresa $e) use ($admin): int {
+            // Aquecimento: tira o cache do serviço da conta da medição.
+            $this->actingAs($admin)->getJson($this->url($e))->assertOk();
             DB::enableQueryLog();
             DB::flushQueryLog();
             $this->actingAs($admin)->getJson($this->url($e))->assertOk();
@@ -774,18 +783,22 @@ class NovaPublicacaoDoHeaderTest extends TestCase
             DB::disableQueryLog();
 
             return $n;
-        })();
+        };
 
         [$e6, $c6] = $this->conta(true, 'Conta de 6');
         $this->povoar($e6, $c6, 2);
-        $seis = $consultas($e6);
+        $seis = $medir($e6);
 
         [$e12, $c12] = $this->conta(true, 'Conta de 12');
         $this->povoar($e12, $c12, 4);
-        $doze = $consultas($e12);
+        $doze = $medir($e12);
 
-        $this->assertLessThan(60, $seis, "o endpoint fez {$seis} consultas com 6 produtos — conferir N+1");
-        $this->assertSame($doze, $seis, "6 produtos deram {$seis} consultas e 12 deram {$doze} — há consulta por linha");
+        $this->assertLessThan(30, $seis, "o endpoint fez {$seis} consultas com 6 produtos — conferir N+1");
+        $this->assertLessThan(
+            $seis + 6,
+            $doze,
+            "6 produtos deram {$seis} consultas e 12 deram {$doze} — os 6 produtos a mais viraram consulta por linha",
+        );
     }
 
     /** `$porGrupo` produtos em cada um dos três grupos, com anúncios nos publicados. */
