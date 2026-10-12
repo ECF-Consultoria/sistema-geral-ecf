@@ -322,6 +322,101 @@ o Esc/clique fora fechando.
 
 ---
 
+
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 178 · plano 04 de 4 CONCLUÍDO · **FASE 178 COMPLETA (4/4)**
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado** (mesmo motivo das waves 1, 2 e 3: os handlers `state.*`
+> já corromperam este arquivo seis vezes e não há bloco de milestone para a v26.0).
+> `ROADMAP.md` e `REQUIREMENTS-v26.md` **não foram tocados** — território proibido neste plano.
+
+Wave 4 (**178-04**) entregue: o **fechamento MEDIDO** da fase. Este plano **MEDE e não corrige** —
+**0 arquivos de código tocados**, e **nenhuma medida do código reprovou**. SUMMARY:
+`178-04-SUMMARY.md` (827 linhas). Commit: `da139cd8`.
+
+**Os números, todos re-medidos (12/10/2026), não copiados das waves:**
+
+| medida | resultado |
+|---|---|
+| `npm run build` | **verde, exit 0, 31,91s** |
+| manifest pelo JSON (`require()`, nunca grep) | **11 de 11** · 480 entradas · 0 fora · **0 entrada própria** para os 3 Components (correto) |
+| classes do modal no CSS construído (`app-Cg8qkwwN.css`) | **70 presentes, 0 faltando** · **5 iscas ausentes** · `font-pub` ≠ `font-pub-mono` |
+| **valores** de token no CSS × hex do protótipo | **0 falhas de 16** |
+| literais de tela × protótipo, byte a byte | **0 falhas de 12** |
+| `phpunit tests/Unit/Publicador tests/Feature/Publicador` | **1848 · 11.421 asserções · 0 falhas** (47 deprecations **pré-existentes**) |
+| `npm run test:js` | **3012 · 27 suítes · 3011 pass · 1 fail** — o pré-existente `estrutura-grade-glide`, de outro território, **NÃO corrigido** |
+| `phpunit tests/Feature/Phase134` / `Phase135` | **37 · 0 falhas** / **243 · 0 falhas** |
+| os **14 gates de diff** (`da54a9ee..HEAD`) | **14 VAZIOS**, com os **13 alvos conferidos existentes no disco** |
+| asserções **removidas** em `tests/` no range | **ZERO** — a única linha de `assert` que saiu é a **reapontada**, com 4 substitutas nomeadas |
+| mutações da fase (3 waves) | **69 mutações, 69 reprovações**, + **3 recusadas pelo detector antes de aplicar** |
+| REQ-IDs | **NOVA-01..NOVA-10: 10 de 10 entregues**, nenhum parcial |
+
+**O que esta wave acrescentou de método (vale para as Fases 179/180/181):**
+
+1. **Medir VALOR, não só presença.** As 3 waves provaram que a classe **existe** no CSS; esta wave
+   leu o **corpo da regra** e comparou com o hex do protótipo. **Classe presente com valor errado é a
+   falha silenciosa que a tabela FID-01 existe para pegar.** As 16 bateram (14 cores + 3 raios +
+   sombra), incluindo as duas com alfa (`bg-black/[0.65]` → `#000000a6`, `bg-pub-accent/[0.14]` →
+   `#facc1524`).
+2. **Sonda de CSS que DESESCAPA o arquivo inteiro** em vez de tentar reproduzir a regra de escape do
+   Tailwind. A sonda do 177-09 acusou 19 classes "FALTANDO" tentando reproduzir o escape, e o erro era
+   dela. Tira todas as barras invertidas e exige **fim de seletor** depois do nome (`{ , : > + ~` espaço
+   `)`) — o que também impede `.font-pub` de casar **dentro** de `.font-pub-mono`.
+3. **Isca e contra-prova em TODA sonda.** Gate só positivo não se distingue de gate decorativo. As 4
+   sondas desta wave carregam valor que precisa estar **ausente** (5 iscas no CSS, a frase sem acento
+   nos literais, `#112233` nos valores, `assert.match(tag, /disabled/)` na auditoria GATE-05) — e foi
+   com elas que eu descobri que **três de três vezes a medida errada era a MINHA**, não a do código.
+
+**⚠️ ACHADO que FECHA pergunta aberta da wave 2 — e é uma divergência REAL da Fase 177-06:**
+o protótipo `PublicadorHeader.dc.html` declara `cursor:pointer` **no `:145`** (item do modal, Fase
+178) **e também no `:53`** (item do dropdown de empresa, Fase 177-06). O item do modal tem
+`cursor-pointer` (`PainelNovaPublicacao.jsx:115`); **o do dropdown NÃO tem**
+(`SeletorDeEmpresaDoHeader.jsx:171`). `grep -rn "cursor-pointer"` no diretório `header/` devolve
+**uma única linha**, a do modal. O default do navegador para `<button>` é `cursor: default`, então o
+cursor sobre o item do dropdown de empresa **divergirá do desenho**. **NÃO consertado** — é território
+da Fase 177 e este plano não toca código. Conserto: 1 linha no `cn()` + atualizar o conjunto de
+classes do gate daquele arquivo. **Cabe numa quick task.**
+
+**⚠️ A divergência de contagem de páginas do manifest é de VOCABULÁRIO, não de fato** (medi as duas):
+*"11 entradas"* (plano e 177-09) = as **9 páginas que montam o header** (6 em `Pages/Mlb/Publicador/`
++ `MeusAnuncios` + `AnunciosHistorico` + `AnunciarMassa`) + `AnunciosEmpresas.jsx` + `app.jsx` →
+**11/11**. *"8 páginas"* (waves 2 e 3) = os **8 arquivos `.jsx` no diretório**
+`resources/js/Pages/Mlb/Publicador/` (inclui `Editor.jsx` e `Tarefas.jsx`, que **não** montam o
+header; exclui os três de `Pages/Mlb/`, que montam) → **8/8**. Nenhuma página fora do manifest em
+nenhuma das duas contagens. **Para as Fases 179/180/181: dizer sempre "as 9 páginas que montam o
+header"**, que é a definição de REG-01.
+
+**⚠️ PENDÊNCIAS DE FECHAMENTO — nenhuma executada, as duas por armadilha medida:**
+
+1. **Os 10 checkboxes `NOVA-01..NOVA-10` em `.planning/REQUIREMENTS-v26.md` precisam ser marcados À
+   MÃO.** `requirements.mark-complete` devolve `not_found` **em silêncio** para ID que só existe em
+   `REQUIREMENTS-vNN.md` (o `REQUIREMENTS.md` da raiz parou na v17.0).
+2. **O progresso da Fase 178 no `ROADMAP.md` precisa ser marcado À MÃO.** Medido pela wave 1:
+   `roadmap.update-plan-progress 178` respondeu `{"updated": true, "plan_count": 4, ...}` e **não
+   escreveu uma linha** — a Fase 178 **não tem linha na tabela de progresso**, então o handler não
+   tinha o que atualizar, **mas reportou sucesso**. Não re-executado nesta wave.
+
+**⚠️ O CHECKPOINT HUMANO DA TASK 3 ESTÁ ABERTO.** Nenhuma tela foi renderizada em **nenhuma das 4
+waves** (não há navegador no ambiente) e **o banco local não tem empresa com `ml_token`**, então a
+validação visual **só existe em produção**. O roteiro de 10 passos está no `178-04-PLAN.md` e na
+SUMMARY; precisa de **deploy, que é decisão do usuário** (a v26.0 tem outro dev ativo na mesma
+árvore). O ponto que mais importa: **o texto do modal tem de estar em Geist, igual ao do header** —
+se vier em Inter, o `font-pub` da `Dialog.Content` não chegou (o conteúdo é **portado** para fora do
+`<header>` e não herda nada). **Nenhum deploy, push ou comando no VPS em nenhuma das 4 waves.**
+
+**Perguntas em aberto para o usuário (nenhuma decidida):** (1) a nota de `PRONTOS PARA FASE 2` diz
+`"{n} no ar"` e o protótipo diz `"Clássico e Premium"` — **única divergência de CONTEÚDO da fase**;
+resolver muda o **contrato do servidor**, não o render (o dado existe em `anuncios[].listing_type_id`,
+mas a tradução é literal de UI e o contrato do item proíbe array); a **geometria** da nota está
+cumprida intacta. (2) o `cursor-pointer` da 177-06 acima. (3) a meta do item sem `truncate` (`:149`).
+(4) o modal a 110px do **topo da janela**, não centrado e não "logo abaixo do header" — é o que o
+protótipo desenha, mas vale perguntar se ele gosta. (5) herdadas da 177: o `top-[108px]` × `109px`
+dos filtros e a espessura dos traços dos ícones (`strokeWidth` × 1,5 na conversão de `viewBox`
+16 → 24). (6) produto com `status.chave = 'erro'` não aparece no modal, por decisão da wave 1 (a casa
+dele é a **Fase 179**).
+
+---
+
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
 ### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS
