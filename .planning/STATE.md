@@ -115,6 +115,51 @@ conectada à etapa — **COMPLETA (9/9)**, registro preservado abaixo em Current
 
 ## Current Position
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 178 · plano 01 de 4 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão. `state.advance-plan` **não foi executado** — este arquivo já
+> foi corrompido seis vezes seguidas pelos handlers `state.*` (ver o aviso no topo do frontmatter) e
+> não tem bloco de milestone para a v26.0. Nenhuma linha existente abaixo foi tocada; o registro da
+> v23.0 segue intacto.
+
+**Fase 178 — Modal "Nova publicação" (NOVA-01..10), 4 planos em 4 waves.**
+Wave 1 (**178-01**) entregue: o **contrato do servidor** dos três grupos do modal, o endpoint lazy
+`GET mlb/anuncios/publicador/empresas/{conta}/nova-publicacao` e o destino real por item.
+Requirements fechados nesta wave: **NOVA-07, NOVA-08, NOVA-10**. Próxima: wave 2 (corpo do modal, React).
+
+Contrato para as waves 2/3 (nomes de chave exatos em `.planning/phases/178-modal-nova-publicacao/178-01-SUMMARY.md`):
+`{total, grupos: [{chave: 'prontos_fase2'|'sem_publicacao'|'rascunhos', itens: [...]}]}`, item com
+seis campos escalares `{produto_id, nome, sku, nota, capa, url}`.
+
+Decisões desta wave:
+
+1. **Nenhum rótulo de UI no payload** — o servidor manda a `chave` do grupo; "PRONTOS PARA FASE 2",
+   os hints e os CTAs são literais de tela da wave 2 (padrão do 177-06).
+2. **Os três grupos vêm sempre, inclusive vazios** — "grupo sem item não aparece" (NOVA-03) é regra
+   de RENDER, não de payload. Dois testes reprovam quem filtrar no servidor.
+3. **A regra de "pronto para a Fase 2" foi COPIADA** de `PainelVisaoGeralService.php:592` (que é
+   `private` e não pode ser tocado) com citação no docblock **e gate de consistência por reflexão** —
+   duas definições fariam a Visão geral e o modal discordarem sobre o mesmo produto. **Sem** o
+   fallback por `contagemProdutos`: ali ele devolve um NÚMERO, e o modal precisa de ITENS.
+4. **Endpoint lazy, não prop** — o header vive nas 9 páginas; na prop `cabecalho` toda página pagaria
+   `produtosParaTela()` em todo request. Medido: **18 consultas**, estáveis entre 6 e 12 produtos.
+5. **As notas do protótipo são dados MOCK** ("Rascunho parado em Imagens", "Recebido hoje") — o
+   sistema não tem etapa em que o rascunho parou nem a data naquele formato. Divergência de
+   **conteúdo** declarada, com restrição concreta; a geometria da nota é da wave 2 e fica intacta.
+6. **Item sem destino usável não entra no grupo** (NOVA-07), em vez de ir para a tela sem CTA.
+
+Prova: **32 casos novos** (suíte do Publicador 1816 → **1848**, 0 falhas) e **14 mutações, 14
+reprovações**, cada uma no caso que devia cair, com restauração conferida por `sha256`.
+**Nada deployado, nada empurrado, nada no VPS.** Nenhuma migration nesta milestone.
+
+⚠️ **Achado de ferramenta:** `gsd-sdk query roadmap.update-plan-progress 178` respondeu
+`{"updated": true, "plan_count": 4, "summary_count": 1}` e **não escreveu uma linha** no
+`ROADMAP.md` (conferido por `diff` contra cópia prévia) — a Fase 178 não tem linha na tabela de
+progresso. Mesma classe do `requirements.mark-complete` devolvendo `not_found` em silêncio. Quem
+fechar a fase precisa marcar o progresso à mão.
+
+---
+
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
 ### 🏁 MILESTONE v23.0 — TODAS AS 7 FASES COMPLETAS

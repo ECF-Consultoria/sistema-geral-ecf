@@ -444,6 +444,19 @@ teste provar o que diz provar.
 - **47 `PHPUnit Deprecations`** na suíte completa do Publicador (1 só no arquivo novo). É
   **pré-existente**: `CabecalhoDoPublicadorTest` sozinho, sem nenhuma mudança, já reporta 1. Fora de
   escopo deste plano (não corrigido de propósito).
+- ⚠️ **`gsd-sdk query roadmap.update-plan-progress 178` respondeu `{"updated": true, "plan_count":
+  4, "summary_count": 1, "status": "In Progress"}` e NÃO escreveu uma linha no `ROADMAP.md`** —
+  conferido por `diff` contra cópia tirada antes de rodar, e por `git status --short --
+  .planning/ROADMAP.md` (vazio). A Fase 178 não tem linha na tabela de progresso do ROADMAP, então o
+  handler não tinha o que atualizar — mas reportou sucesso. É a mesma classe de armadilha do
+  `requirements.mark-complete` devolvendo `not_found` em silêncio (já registrada na memória do
+  projeto). **Quem fechar a fase precisa marcar o progresso à mão.** A entrada da fase no ROADMAP
+  **não foi editada** (território proibido neste plano).
+- `STATE.md` recebeu um bloco **aditivo escrito à mão** (45 linhas, **0 removidas**, conferido por
+  `git diff --numstat` antes do commit) com a posição, as 6 decisões desta wave e o achado acima.
+  `state.advance-plan` **não foi executado** — o arquivo já foi corrompido seis vezes seguidas pelos
+  handlers `state.*` (o próprio topo do frontmatter registra as seis), e não existe bloco de
+  milestone para a v26.0. `ROADMAP.md` e `REQUIREMENTS-v26.md` **não foram tocados**.
 - Nenhum item para `deferred-items.md`.
 
 ## Perguntas em aberto (nada aqui bloqueia a wave 2)
