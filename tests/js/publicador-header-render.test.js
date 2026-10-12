@@ -262,12 +262,23 @@ test('PublicadorHeader — FID-05 e FID-01 travados no HTML, elemento por elemen
 
     await contexto.test('linha 2 (nav): 48px e gap de 2px entre as pills', () => {
         exigirClasses(tagDe(html, /<nav[^>]*>/, '<nav>'), ['h-[48px]', 'items-center', 'justify-between', 'gap-[2px]'], '<nav>');
-        assert.equal(contar(html, 'gap-[2px]'), 2, 'nav e o ponto de montagem das abas (plano 177-05) usam o gap de 2px');
+        assert.equal(contar(html, 'gap-[2px]'), 2, 'a <nav> e o grupo das 4 abas (plano 177-05) usam o gap de 2px');
+        // As 4 abas-pílula estão montadas DENTRO da <nav> (plano 177-05).
+        const nav = html.slice(html.indexOf('<nav'));
+        for (const rotulo of ['Visão geral', 'Produtos', 'Publicações', 'Alavancas']) {
+            assert.ok(nav.includes(rotulo), `a aba "${rotulo}" deveria estar dentro da <nav>`);
+        }
+        assert.ok(!nav.includes('Desempenho'), 'HEAD-09: a aba Desempenho fica FORA, por decisão do usuário');
     });
 
     await contexto.test('contagens: a medida certa no lugar certo, não só "em algum lugar"', () => {
-        assert.equal(contar(html, 'rounded-pub-control'), 4, 'marca, busca, Configurações e CTA têm raio de 9px');
-        assert.equal(contar(html, 'h-[34px]'), 4, 'os quatro controles da linha 1 têm 34px');
+        // ⚠️ Fase 177, plano 05 — estes dois números SUBIRAM de 4 para 8 quando
+        // as abas-pílula entraram na linha 2. Não é afrouxamento: continuam
+        // sendo contagens EXATAS, e agora cobrem os 8 controles de 34px do
+        // header (4 na linha 1 + as 4 pílulas). A fidelidade de cada pílula tem
+        // gate próprio, por elemento, em `publicador-header-abas-render.test.js`.
+        assert.equal(contar(html, 'rounded-pub-control'), 8, 'marca, busca, Configurações, CTA e as 4 pílulas têm raio de 9px');
+        assert.equal(contar(html, 'h-[34px]'), 8, 'os 4 controles da linha 1 e as 4 pílulas da linha 2 têm 34px');
         assert.equal(contar(html, 'font-pub-mono'), 3, 'as duas teclas e o badge N são mono');
         assert.equal(contar(html, 'text-[10.5px]'), 3, 'as duas teclas e o badge N têm 10,5px');
         assert.equal((html.match(/font-pub[\s"]/g) ?? []).length, 1, 'a família Geist é declarada UMA vez, no <header>');

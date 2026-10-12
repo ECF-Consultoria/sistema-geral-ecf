@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import AvisoContaTravada from '../AvisoContaTravada';
 import { textoSeguro } from '../BarraDaConta';
 import GlyphDaFase from '../identidade/GlyphDaFase';
+import AbasDoHeader from './AbasDoHeader';
 import { useAtalhosDoHeader } from './atalhosDoHeader';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -23,10 +24,13 @@ import { useAtalhosDoHeader } from './atalhosDoHeader';
 // quem rola é o `<main>` (`overflow-y-auto`), não a janela.
 //
 // O QUE AINDA NÃO ESTÁ AQUI (cada slot tem o seu plano):
-//   · as 5 abas da linha 2, com ícone, contador e dot vermelho → plano 177-05
 //   · o seletor de empresa (tile + nome + código) e o dropdown de 360px,
 //     a pill de conexão e o popover de 320px                   → plano 177-06
 //   · o modal "Nova publicação" de 620px                       → Fase 178
+//
+// JÁ ENTREGUE: as abas-pílula da linha 2 vêm de `AbasDoHeader` (plano 177-05).
+// São QUATRO de propósito — "Desempenho" fica FORA por decisão do usuário
+// (HEAD-09); o porquê, por escrito, está no topo de `AbasDoHeader.jsx`.
 //
 // ⚠️ O CTA NÃO NASCE MORTO (EXMP-03): até a Fase 178, "Nova publicação" e o
 // ⌘K levam ao destino que o botão equivalente de hoje leva — a seleção de
@@ -67,8 +71,9 @@ const ROTULO_CONFIGURACOES_SEM_CONTA = `${ROTULO_CONFIGURACOES} — ${TITULO_SEM
 /**
  * @param {object} props
  * @param {'visao-geral'|'produtos'|'publicacoes'|'alavancas'|'configuracoes'} [props.aba]
- *   a aba ativa. Chega já neste plano porque a assinatura é contrato das 9
- *   páginas; quem a CONSOME são as abas da linha 2 (plano 177-05).
+ *   a aba ativa — consumida por `AbasDoHeader` na linha 2. `'configuracoes'`
+ *   continua sendo valor válido (é o ícone da linha 1, HEAD-08) e nesse caso
+ *   nenhuma das quatro abas fica marcada como ativa.
  * @param {object|null} [props.cabecalho] a prop do servidor (plano 177-03).
  *   Pode ser `null` — e isso não é caso raro.
  * @param {React.ReactNode} [props.acoes] ações da página (Sincronizar, "+
@@ -200,10 +205,18 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
 
                 {/* ─── Linha 2 (nav, 48px) ─── */}
                 <nav aria-label="Abas da conta" className="flex h-[48px] items-center justify-between gap-[2px]">
-                    {/* SLOT: as 5 abas como pills de 34px, com ícone, contador e o
-                        dot vermelho de Publicações — plano 177-05. O gap de 2px é
-                        o do protótipo (PublicadorHeader.dc.html:109). */}
-                    <div className="flex min-w-0 items-center gap-[2px]" />
+                    {/* As QUATRO abas-pílula (plano 177-05). São quatro de
+                        propósito: "Desempenho" não entra (HEAD-09) — o porquê
+                        está escrito em `AbasDoHeader.jsx`.
+                        ⚠️ `?? null` em TODOS os acessos: o default de parâmetro
+                        só cobre `undefined`, e `cabecalho: null` numa recarga
+                        parcial do Inertia já derrubou tela neste projeto. */}
+                    <AbasDoHeader
+                        aba={aba}
+                        conta={conta}
+                        companyId={cabecalho?.company_id ?? null}
+                        contadores={cabecalho?.contadores ?? null}
+                    />
 
                     {acoes !== null && <div className="flex flex-none items-center gap-2">{acoes}</div>}
                 </nav>

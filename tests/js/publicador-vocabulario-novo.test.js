@@ -40,6 +40,8 @@ const ARQUIVOS_NOVOS = [
     // Fase 177, plano 04 — a casca do header global e os atalhos de teclado.
     `${DIR_HEADER}/PublicadorHeader.jsx`,
     `${DIR_HEADER}/atalhosDoHeader.js`,
+    // Fase 177, plano 05 — as abas-pílula da linha 2.
+    `${DIR_HEADER}/AbasDoHeader.jsx`,
 ];
 
 /**
@@ -115,15 +117,33 @@ test('GATE-03 — IDENT-08: a identidade é compartilhada, não copiada', async 
     });
 
     await contexto.test('a geometria do retângulo do glyph aparece SÓ em GlyphDaFase.jsx', () => {
+        // ⚠️ Fase 177, plano 05 — a asserção passou a ser sobre o PAR de
+        // medidas, e isso é um ENDURECIMENTO, não um relaxamento.
+        //
+        // Antes conferia `w-[15px]` e `h-[18px]` cada um por conta própria, e
+        // `h-[18px]` solto NÃO é "o glyph": a pílula de contador das abas tem
+        // 18px de altura por medida do protótipo
+        // (`PublicadorHeader.dc.html:175`) e não redesenha glyph nenhum. O que
+        // identifica o retângulo da marca é a geometria INTEIRA —
+        // `h-[18px] w-[15px] rounded-[4px] border-[1.6px]` — mais a presença
+        // das duas medidas juntas em qualquer ordem. É a mesma lição dos 4
+        // furos do gate do plano 177-04: substring compartilhada não prova
+        // nada; o que prova é o conjunto no elemento certo.
+        const GEOMETRIA = 'h-[18px] w-[15px] rounded-[4px] border-[1.6px]';
+
         for (const [caminho, fonte] of FONTES) {
             const esperado = caminho.endsWith('GlyphDaFase.jsx');
-            for (const classe of ['w-[15px]', 'h-[18px]']) {
-                assert.equal(
-                    fonte.includes(classe),
-                    esperado,
-                    esperado
-                        ? `GlyphDaFase.jsx perdeu a medida ${classe} da marca`
-                        : `${caminho} redesenha o glyph (${classe}) — o glyph tem UMA casa`,
+            assert.equal(
+                fonte.includes(GEOMETRIA),
+                esperado,
+                esperado
+                    ? 'GlyphDaFase.jsx perdeu a geometria do retângulo da marca'
+                    : `${caminho} redesenha o glyph — o glyph tem UMA casa`,
+            );
+            if (!esperado) {
+                assert.ok(
+                    !(fonte.includes('w-[15px]') && fonte.includes('h-[18px]')),
+                    `${caminho} combina as duas medidas do retângulo do glyph — o glyph tem UMA casa`,
                 );
             }
         }
