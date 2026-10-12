@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
-import BarraDaConta, { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import SeloConta from '@/Components/Mlb/Publicador/SeloConta';
 import SeloPortal from '@/Components/Mlb/Publicador/SeloPortal';
 import { CampoIdentidade } from '@/Components/Publicador/Mesa/IdentidadeDaConta';
@@ -94,18 +94,27 @@ export function ConteudoConfiguracoes({ identidade, conexoes, programa, responsa
     );
 }
 
-export default function Configuracoes({ empresa, conexoes, programa, responsavel }) {
+/**
+ * ⚠️ Fase 177, plano 07: `BarraDaConta` + `AbasDaConta` → `PublicadorHeader`,
+ * primeiro filho do `AppLayout` e FORA do container do corpo (é o header que
+ * carrega o `-mx-6 -mt-6` que neutraliza o `p-6` do `<main>`, HEAD-14).
+ *
+ * ⚠️ `aba="configuracoes"` continua valendo, com outro papel: Configurações SAIU
+ * da linha das abas e virou o ícone de engrenagem da linha 1 do header
+ * (HEAD-08). O valor serve para NENHUMA das quatro abas ficar marcada como
+ * ativa enquanto esta tela está aberta.
+ *
+ * ⚠️ `cabecalho ?? null`: o default de parâmetro só cobre `undefined`, e
+ * `cabecalho: null` numa recarga parcial do Inertia já derrubou tela aqui.
+ */
+export default function Configuracoes({ empresa, conexoes, programa, responsavel, cabecalho = null }) {
     const idc = useIdentidadeDaContaPorConta({ conta: empresa.chave });
 
     return (
         <AppLayout title={`Configurações da conta — ${empresa.nome}`}>
+            <PublicadorHeader aba="configuracoes" cabecalho={cabecalho ?? null} liberada />
+
             <div className="mx-auto max-w-[1240px] px-8 py-8">
-                <BarraDaConta empresa={empresa} liberada />
-
-                <div className="mb-6">
-                    <AbasDaConta aba="configuracoes" conta={empresa.chave} companyId={empresa.company_id ?? null} />
-                </div>
-
                 <ConteudoConfiguracoes
                     identidade={{
                         texto: idc.texto,

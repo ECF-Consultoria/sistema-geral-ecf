@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { ChevronLeft, Loader2, Search, Send, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import LinhaDoLote, { COLUNAS_DO_LOTE } from '@/Components/Mlb/Publicador/Lote/LinhaDoLote';
 import PainelDaFila from '@/Components/Mlb/Publicador/Lote/PainelDaFila';
@@ -52,7 +51,12 @@ export function detalhesDosRecusados(recusados, linhas) {
 export default function PublicacaoEmLote({
     empresa,
     liberada = false,
-    abas = { company_id: null },
+    // ⚠️ Fase 177, plano 07: a prop `abas` continua CHEGANDO do servidor
+    // (`MlbPublicadorLoteController`), intocada — ela só deixou de ser lida
+    // aqui, porque quem montava as abas era o `AbasDaConta` que o
+    // `PublicadorHeader` substituiu. A mesma informação (company_id, contador
+    // de alavancas) chega agora dentro de `cabecalho`.
+    cabecalho = null,
     linhas: linhasIniciais = [],
     fila: filaInicial = null,
     garantia_padrao: garantiaInicial = null,
@@ -176,22 +180,23 @@ export default function PublicacaoEmLote({
 
     return (
         <AppLayout title={`Publicação em lote — ${textoSeguro(empresa?.nome, 'Conta')}`}>
+            {/* ⚠️ O header global é o PRIMEIRO filho do `AppLayout`, FORA do
+                container do corpo: é ele que carrega o `-mx-6 -mt-6` que
+                neutraliza o `p-6` do `<main>` (HEAD-14). O slot `acoes` leva o
+                MESMO Link de volta aos Produtos que ficava na `BarraDaConta`. */}
+            <PublicadorHeader
+                aba="produtos"
+                cabecalho={cabecalho ?? null}
+                liberada={liberada}
+                acoes={(
+                    <Link href={route('mlb.anuncios.publicador.produtos', { conta: empresa?.chave })} className={cn(BASE_BOTAO, SECUNDARIO, 'font-normal')}>
+                        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                        Produtos
+                    </Link>
+                )}
+            />
+
             <div className="mx-auto max-w-[1240px] px-8 py-8">
-                <BarraDaConta
-                    empresa={empresa}
-                    liberada={liberada}
-                    acoes={(
-                        <Link href={route('mlb.anuncios.publicador.produtos', { conta: empresa?.chave })} className={cn(BASE_BOTAO, SECUNDARIO, 'font-normal')}>
-                            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                            Produtos
-                        </Link>
-                    )}
-                />
-
-                <div className="mb-6">
-                    <AbasDaConta aba="produtos" conta={empresa?.chave} companyId={abas?.company_id ?? null} contagemAlavancas={abas?.alavancas_pendentes ?? null} />
-                </div>
-
                 {! liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
                 <header className="mb-6">
@@ -232,7 +237,14 @@ export default function PublicacaoEmLote({
                 </div>
 
                 <section className="rounded-xl bg-ecf-card">
-                    <div className="sticky top-0 z-10 rounded-t-xl bg-ecf-card">
+                    {/* ⚠️ `top-[108px]`, não `top-0` (Fase 177, plano 07). O
+                        `PublicadorHeader` é `sticky top-0` no MESMO scrollport
+                        (o `<main>` com `overflow-y-auto`) e ocupa 60px da linha
+                        1 + 48px da nav = 108px do topo. Com `top-0` este bloco
+                        colaria em 0 e ficaria ATRÁS do header ao rolar: o
+                        usuário perderia os filtros e os nomes das colunas.
+                        É regressão funcional evitada, não ajuste de gosto. */}
+                    <div className="sticky top-[108px] z-10 rounded-t-xl bg-ecf-card">
                         <div className="flex flex-wrap items-center gap-3 p-4">
                             <div className="inline-flex overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]" role="group" aria-label="Filtro">
                                 {FILTROS.map((f) => {

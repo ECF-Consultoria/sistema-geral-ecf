@@ -9,8 +9,7 @@ import AbaPublicidade from '@/Components/Mlb/Alavancas/AbaPublicidade';
 import AbaAtacado from '@/Components/Mlb/Alavancas/AbaAtacado';
 import Historico from '@/Components/Mlb/Alavancas/Historico';
 import PainelDoAnuncio from '@/Components/Mlb/Alavancas/PainelDoAnuncio';
-import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import LinkReconexao from '@/Components/Mlb/Publicador/LinkReconexao';
 import { LINK } from '@/Components/Publicador/Mesa/comum';
 
@@ -33,7 +32,22 @@ const ABA_INICIAL = () => {
  * Conta sem token não monta nenhum leitor; conta não liberada só vê e analisa.
  * Vinda da fila de publicados (`?item=MLB…`, 09/10/2026), o anúncio aparece num painel no topo.
  */
-export default function Alavancas({ empresa, alavancas }) {
+/**
+ * ⚠️ Fase 177, plano 07: `BarraDaConta` + `AbasDaConta` → `PublicadorHeader`,
+ * primeiro filho do `AppLayout` e FORA do container do corpo (é o header que
+ * carrega o `-mx-6 -mt-6` que neutraliza o `p-6` do `<main>`, HEAD-14).
+ *
+ * ⚠️ O contador da aba Alavancas NÃO se perdeu: ele deixou de ser passado à mão
+ * (`contagemAlavancas={alavancas.tarefas_abertas}`) e passou a vir dentro de
+ * `cabecalho.contadores.alavancas`, que o servidor calcula com a MESMA chamada
+ * (`PubTarefa::abertasDaConta($mlbEmpresa, $company)`, ver
+ * `CabecalhoPublicadorService::para()` e `MlbAlavancasController::index()`).
+ * Mesmo número, uma fonte só.
+ *
+ * ⚠️ `cabecalho ?? null`: o default de parâmetro só cobre `undefined`, e
+ * `cabecalho: null` numa recarga parcial do Inertia já derrubou tela aqui.
+ */
+export default function Alavancas({ empresa, alavancas, cabecalho = null }) {
     const [aba, setAba] = useState(ABA_INICIAL);
     const [verHistorico, setVerHistorico] = useState(false);
     // O servidor só devolve `item` no formato MLB…; fechar o painel tira o anúncio da URL.
@@ -58,13 +72,9 @@ export default function Alavancas({ empresa, alavancas }) {
 
     return (
         <AppLayout title={`Alavancas — ${empresa.nome}`}>
+            <PublicadorHeader aba="alavancas" cabecalho={cabecalho ?? null} liberada={alavancas.liberada} />
+
             <div className="mx-auto max-w-[1240px] px-8 py-8">
-
-                <BarraDaConta empresa={empresa} liberada={alavancas.liberada} />
-
-                <div className="mb-6">
-                    <AbasDaConta aba="alavancas" conta={conta} companyId={empresa.company_id} contagemAlavancas={alavancas.tarefas_abertas ?? null} />
-                </div>
 
                 {! alavancas.tem_conta ? (
                     <section className="rounded-xl bg-ecf-card p-6">

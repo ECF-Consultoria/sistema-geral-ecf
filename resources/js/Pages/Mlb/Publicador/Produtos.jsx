@@ -4,8 +4,8 @@ import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { ChevronDown, Layers, Plus, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
-import BarraDaConta, { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import { textoSeguro } from '@/Components/Mlb/Publicador/BarraDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import AvisoContaTravada from '@/Components/Mlb/Publicador/AvisoContaTravada';
 import BotaoSincronizarPortal from '@/Components/Mlb/Publicador/BotaoSincronizarPortal';
 import ResumoDoSincronizar from '@/Components/Mlb/Publicador/ResumoDoSincronizar';
@@ -450,7 +450,12 @@ export default function Produtos({
     contagens = {},
     rascunhos_antigos = { total: 0, url: null },
     criativos_ia = { url: null },
+    // ⚠️ `abas` CONTINUA sendo lida aqui (Fase 177, plano 07): o botão "Abrir no
+    // assistente antigo" usa `abas?.company_id` para o D23. O que saiu foi só o
+    // `contagemAlavancas`, que o `PublicadorHeader` lê de
+    // `cabecalho.contadores.alavancas`.
     abas = { company_id: null },
+    cabecalho = null,
     fila_publicacao = null,
 }) {
     const [filtro, setFiltro] = useState(filtroInicial);
@@ -801,36 +806,40 @@ export default function Produtos({
 
     return (
         <AppLayout title={`Publicador — ${empresa.nome}`}>
+            {/* Header único da conta (Fase 177, plano 07): tomou o lugar de
+                `BarraDaConta` (nome+selos, trocar empresa, slot de ações) e de
+                `AbasDaConta` (as abas com contador de produtos e badge de
+                alavancas) num bloco só. É o PRIMEIRO filho do `AppLayout`, FORA
+                do container do corpo: é ele que carrega o `-mx-6 -mt-6` que
+                neutraliza o `p-6` do `<main>` (HEAD-14).
+                ⚠️ O contador de produtos e o badge de alavancas NÃO se perderam:
+                deixaram de ser passados à mão e vêm de `cabecalho.contadores`,
+                que o servidor conta na mesma requisição.
+                ⚠️ O slot `acoes` leva os MESMOS dois botões de antes, byte a
+                byte — Sincronizar com o Portal e "+ Produto". */}
+            <PublicadorHeader
+                aba="produtos"
+                cabecalho={cabecalho ?? null}
+                liberada={liberada}
+                acoes={(
+                    <>
+                        {podeSincronizar && (
+                            <BotaoSincronizarPortal
+                                conta={empresa.chave}
+                                onConcluido={aoConcluirSync}
+                                desabilitado={acompanhando}
+                                onErro={(texto) => setStatus({ tipo: 'erro', texto })}
+                            />
+                        )}
+                        <button type="button" onClick={() => setModal(true)} className={BOTAO_SECUNDARIO}>
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Produto
+                        </button>
+                    </>
+                )}
+            />
+
             <div className="mx-auto max-w-[1240px] px-8 py-8">
-
-                {/* Cabeçalho único da conta (trilha, nome+selos, Trocar empresa) + abas unificadas (172-01/172-03) */}
-                <BarraDaConta
-                    empresa={empresa}
-                    liberada={liberada}
-                    acoes={(
-                        <>
-                            {podeSincronizar && (
-                                <BotaoSincronizarPortal
-                                    conta={empresa.chave}
-                                    onConcluido={aoConcluirSync}
-                                    desabilitado={acompanhando}
-                                    onErro={(texto) => setStatus({ tipo: 'erro', texto })}
-                                />
-                            )}
-                            <button type="button" onClick={() => setModal(true)} className={BOTAO_SECUNDARIO}>
-                                <Plus className="h-4 w-4" aria-hidden="true" />
-                                Produto
-                            </button>
-                        </>
-                    )}
-                />
-
-                <div className="mb-6">
-                    {/* `contagens?.todos`: o default `{}` só cobre `undefined`;
-                        `contagens: null` numa recarga parcial derrubava a tela
-                        inteira aqui (bug encontrado pelo teste de dado adverso). */}
-                    <AbasDaConta aba="produtos" conta={empresa.chave} companyId={abas?.company_id ?? null} contagemProdutos={contagens?.todos ?? null} contagemAlavancas={abas?.alavancas_pendentes ?? null} />
-                </div>
 
                 {!liberada && <AvisoContaTravada variante="faixa" className="mb-6" />}
 
@@ -866,11 +875,17 @@ export default function Produtos({
                 <section ref={area} className="rounded-xl bg-ecf-card">
 
                     {/* ─── O BLOCO FIXO: filtros + seleção + cabeçalho das colunas ───
-                        `top-0` é o valor certo: o header do AppLayout é
-                        `h-[60px] shrink-0` e NÃO rola (quem rola é o `<main>`
-                        com `overflow-y-auto`), então descontar 60px deixaria
-                        um buraco entre o header e este bloco. */}
-                    <div className="sticky top-0 z-10 rounded-t-xl bg-ecf-card">
+                        ⚠️ `top-[108px]`, não `top-0` (Fase 177, plano 07). O
+                        header do `AppLayout` (`h-[60px] shrink-0`) continua FORA
+                        do scrollport e segue não contando — o que mudou é que o
+                        `PublicadorHeader` agora é `sticky top-0` DENTRO do mesmo
+                        scrollport (o `<main>` com `overflow-y-auto`) e ocupa 60px
+                        da linha 1 + 48px da nav = 108px do topo. Com `top-0`
+                        este bloco colaria em 0 e ficaria ATRÁS do header ao
+                        rolar: o usuário perderia os filtros e os nomes das
+                        colunas. É regressão funcional evitada, não ajuste de
+                        gosto. */}
+                    <div className="sticky top-[108px] z-10 rounded-t-xl bg-ecf-card">
                         <div className="flex flex-wrap items-center gap-3 p-4">
                             {/* Grupo SEGMENTADO de situação: mesmos 5 filtros, mesmas
                                 contagens, mesmo `?filtro=`. */}
