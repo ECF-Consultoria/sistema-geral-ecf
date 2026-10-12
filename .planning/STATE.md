@@ -158,6 +158,75 @@ reprovações**, cada uma no caso que devia cair, com restauração conferida po
 progresso. Mesma classe do `requirements.mark-complete` devolvendo `not_found` em silêncio. Quem
 fechar a fase precisa marcar o progresso à mão.
 
+### 2026-10-12 — v26.0 (Redesign do Publicador) · Fase 178 · plano 02 de 4 CONCLUÍDO
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado** (mesmo motivo da wave 1: os handlers `state.*` já
+> corromperam este arquivo seis vezes e não há bloco de milestone para a v26.0).
+> `ROADMAP.md` e `REQUIREMENTS-v26.md` **não foram tocados** — território proibido neste plano.
+
+Wave 2 (**178-02**) entregue: o **corpo** do modal, medida por medida do protótipo
+(`new_layout_publicador/PublicadorHeader.dc.html`:135-160 e :213-214), a busca local sem acento sobre
+nome e SKU, e o rodapé. Requirements fechados nesta wave: **NOVA-01..NOVA-06** (os seis).
+Próxima: wave 3 (a casca do modal — `Dialog` de 620px, estado, fetch e atalhos).
+
+O que a wave 3 consome (assinaturas exatas em `.planning/phases/178-modal-nova-publicacao/178-02-SUMMARY.md`):
+`header/novaPublicacao.js` → `GRUPOS`, `VAZIO`, `RODAPE`, `PLACEHOLDER`, `CARREGANDO`, `ERRO`,
+`filtrarGrupos({grupos, consulta})`, `normalizarPayload(dados)`; `header/PainelNovaPublicacao.jsx` →
+export **nomeado** `PainelNovaPublicacao` (e default igual), props
+`{consulta, aoConsultar, grupos, carregando, erro, aoEscolher, inputRef}`.
+
+Decisões desta wave:
+
+1. **O PROTÓTIPO VENCEU a tabela FID-01 do plano em 3 medidas**, todas com `arquivo:linha`:
+   (a) `:146` mede `font-size:11px` no tile de 34px e a escada do `TileDoProduto` devolve 10.5px — por
+   isso nasceu a prop **opcional e aditiva** `letra` (ausente = escada intacta, 2 linhas trocadas, a
+   função `escala()` e todos os defaults idênticos); (b) `:145` declara `cursor:pointer`, que a tabela
+   não listava; (c) `:137` não declara `type`, então o input é `type="text"` e **não** `type="search"`
+   como no dropdown de empresa (`search` acrescenta o botão nativo de limpar, que o desenho não tem).
+2. **`normalizar()` aplicada CAMPO POR CAMPO**, nunca sobre template literal: com
+   `` normalizar(`${nome} ${sku}`) `` um campo-objeto viraria "[object Object]" e **buscar "object"
+   acharia o produto**. Mesmo motivo do lado da consulta: `normalizar(consulta).trim()` em vez de
+   `normalizar(String(consulta).trim())`.
+3. **Item sem destino usável APARECE, desabilitado** (`disabled` + `aria-disabled="true"` + `title` +
+   `opacity-40`). Esconder um produto de uma lista que se diz completa é pior que mostrá-lo dizendo
+   por que não clica. `textoUtil(0)` devolve `'0'`, que **é** texto — `0` não conta como ausência.
+4. **O gate compara classe por IGUALDADE DE CONJUNTO do elemento**, não `html.includes('classe')`:
+   parte o HTML por elemento, extrai a tag de abertura e compara a lista de classes. Classe a mais
+   reprova. ⚠️ **A wave 3 vai ter de atualizar a constante `FID` no mesmo commit em que mexer no
+   corpo** — atualizar não é afrouxar.
+5. **`carregando` e `erro` não existem no protótipo** (a lista dele é mock constante) e usam a MESMA
+   geometria do vazio (`:156`). Lista vazia em silêncio é proibida.
+6. **A nota de `PRONTOS PARA FASE 2` segue "{n} no ar"** e o protótipo diz "Clássico e Premium".
+   Divergência de **conteúdo** herdada da wave 1 — resolvê-la muda o CONTRATO do servidor, não o
+   render. **PERGUNTA EM ABERTO PARA O USUÁRIO.**
+
+Prova: **107 casos novos** (`npm run test:js` 2859 → **2966**, com o mesmo único fail pré-existente
+`estrutura-grade-glide`, não corrigido de propósito) e **26 mutações, 26 reprovações**, cada uma com a
+LINHA alterada conferida e restauração por `sha256`. `npm run build` verde, manifest conferido pelo
+JSON. **Nada deployado, nada empurrado, nada no VPS.** Nenhum `.php` tocado nesta wave.
+
+⚠️ **Três achados que a próxima pessoa precisa saber:**
+
+- **REND-03 é LITERAL:** não basta montar os bundles do esbuild "antes dos testes" — tem de ser antes
+  do **primeiro `test()`**. Com o segundo `await montarModulo()` mais abaixo no arquivo, o `after()` do
+  `node --test` disparava durante aquele `await` (as suítes registradas rodam nesse intervalo),
+  apagava o stub do Inertia e o esbuild morria com `Could not resolve "@inertiajs/react"`. Sintoma:
+  **37 testes em vez de 94**, com um `fail 1` genérico no nível do arquivo.
+- **Travar a CONTAGEM de ocorrências do alvo antes de aplicar a mutação é o que impede a prova por
+  mutação de mentir.** A mutação `strokeWidth={2.4}` → `{1.6}` foi **recusada** pelo detector: 2
+  ocorrências, porque o valor também vive no COMENTÁRIO que explica a conta `1.6 × 1,5`. Com
+  `sed`/`String.replace` a troca cairia no comentário e registraria um furo inexistente — é a origem
+  dos 3 "furos" da Fase 177.
+- **Grupo nulo dentro do array `grupos` derrubava o painel inteiro** (`TypeError: Cannot read
+  properties of null (reading 'itens')`) — a família da tela preta de 07/10. Só o render ADVERSO
+  pegou; gate de leitura de fonte jamais pegaria. Corrigido filtrando grupo não-objeto antes do
+  `.map()`.
+
+⚠️ **Nenhuma tela foi renderizada em navegador nesta wave** — não há navegador no ambiente. A prova
+de fidelidade é medida lida no `.dc.html` + classe conferida no HTML do `react-dom/server`. Quem
+tiver navegador precisa conferir `cursor-pointer`, a cor do placeholder e o rodapé.
+
 ---
 
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
