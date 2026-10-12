@@ -3,8 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { Rocket, Search, Plus, Loader2, Check, AlertTriangle, Copy, Trash2 } from 'lucide-react';
-import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
 import GradeAnuncioGlide from '@/Pages/Mlb/GradeAnuncioGlide';
 // Helpers puros da grade (validação/coerção) — moram fora daqui para a grade em
 // canvas poder importá-los sem criar ciclo de import página↔grade.
@@ -48,7 +47,10 @@ const iniciais = (nome) =>
 // ─── Aba temporária "Sem categoria" (rascunhos ainda sem category_id) ───
 const SEM_CATEGORIA = '__sem_categoria__';
 
-export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos = [], conta = {} }) {
+// `conta` continua chegando do servidor e continua na assinatura: além de ter
+// alimentado o BarraDaConta (que saiu daqui), `conta.chave` ainda é o parâmetro
+// do link "‹ Voltar aos produtos". `cabecalho` (plano 177-03) pode ser NULO.
+export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos = [], conta = {}, cabecalho = null }) {
     // Cada aba: { key, category_id, caminho:[], obrigatorios:[], max_title_length, catalog_required, linhas:[], carregando }
     const [abas, setAbas] = useState([]);
     const [abaAtiva, setAbaAtiva] = useState(0);
@@ -627,21 +629,48 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
 
     return (
         <AppLayout title="Anunciar em massa">
-            <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 pb-28">
+            {/* ═══ Header global do Publicador (Fase 177, plano 177-08) ═══
+                Toma o lugar de BarraDaConta + AbasDaConta. PRIMEIRO filho do
+                AppLayout, FORA do container do corpo: é ele que carrega o
+                `-mx-6 -mt-6` que neutraliza o `p-6` do <main> (HEAD-14).
 
-                {/* ─── Cabeçalho único da conta (BarraDaConta) — nav/172-05 ─── */}
-                <BarraDaConta empresa={conta} />
+                A aba acesa continua sendo "Produtos": "Em massa" deixou de ser
+                aba própria desde a nav/172-05, e isso não muda aqui.
 
-                {/* Abas da conta — Em massa deixou de ser aba própria, acende Produtos */}
-                <div className="mb-4">
-                    <AbasDaConta aba="produtos" conta={conta.chave} companyId={empresa.id} />
+                O link "‹ Voltar aos produtos" vai para o slot `acoes` com o
+                MESMO conteúdo e o MESMO destino — só perdeu o `mt-2`, que
+                existia para separá-lo da linha de abas logo acima dele. A
+                `<div className="mb-4">` que embrulhava abas + link saiu junto
+                com as abas.
+
+                ⚠️ O que SAIU: a trilha `Publicador › Programa › Nome`. Não
+                existe no protótipo; marca + seletor de empresa do header
+                cumprem a mesma função.
+
+                ⚠️ ATALHO "N" × GRADE EM CANVAS (T-177-31): a grade desta página
+                é `@glideapps/glide-data-grid`, que desenha num
+                `<canvas data-testid="data-grid-canvas" tabIndex={0}>` e põe a
+                árvore de acessibilidade (`<table role="grid">`) DENTRO desse
+                canvas. Os dois alvos possíveis de um keydown na grade — o
+                próprio canvas e um `<td>` da árvore — casam o seletor de
+                `ignoraAtalho()` (`canvas, [role="grid"], …`), porque `closest`
+                também casa o próprio elemento. Apertar "n" editando a grade
+                NÃO navega para fora. Conferido na fonte do pacote, não por
+                suposição. */}
+            <PublicadorHeader
+                aba="produtos"
+                cabecalho={cabecalho ?? null}
+                acoes={(
                     <Link
                         href={route('mlb.anuncios.publicador.produtos', { conta: conta.chave })}
-                        className="mt-2 inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
+                        className="inline-flex items-center gap-1 text-[13px] font-normal text-white/55 hover:text-ecf-yellow"
                     >
                         ‹ Voltar aos produtos
                     </Link>
-                </div>
+                )}
+            />
+
+            <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 pb-28">
 
                 {/* ─── Cápsulas de aba por categoria ─── */}
                 {/* SHEET-03: cada aba mostra nome curto + contador + código MLB. */}

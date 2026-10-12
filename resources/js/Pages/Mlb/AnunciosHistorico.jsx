@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { router, Link } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { Search, CopyPlus, ExternalLink, ImageOff, Loader2, ChevronRight, Layers } from 'lucide-react';
-import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
+import SubAbasDePublicacoes from '@/Components/Mlb/Publicador/SubAbasDePublicacoes';
 import { linkAnuncioMl, rotuloTier, precoBRL, dataPublicacao } from '@/Pages/Mlb/anuncioHistoricoUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -203,7 +203,11 @@ function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante, clonandoLo
     );
 }
 
-export default function AnunciosHistorico({ empresa = {}, conta = {}, grupos = {}, resumo = {}, filtros = {} }) {
+// `conta` continua chegando do servidor e continua na assinatura de propósito:
+// era lida só pelo BarraDaConta, que saiu daqui, e a MESMA informação chega
+// agora pelo `cabecalho`. `cabecalho` pode ser NULO (Company fora de todo
+// programa do Publicador) — o header sabe lidar com isso.
+export default function AnunciosHistorico({ empresa = {}, conta = {}, grupos = {}, resumo = {}, filtros = {}, cabecalho = null }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [clonando, setClonando] = useState(null);         // id do anúncio sendo clonado (individual)
     const [clonandoLote, setClonandoLote] = useState(null); // chave do lote sendo clonado (em massa)
@@ -263,22 +267,29 @@ export default function AnunciosHistorico({ empresa = {}, conta = {}, grupos = {
 
     return (
         <AppLayout title="Histórico de anúncios">
+            {/* ═══ Header global do Publicador (Fase 177, plano 177-08) ═══
+                Toma o lugar de BarraDaConta + AbasDaConta. PRIMEIRO filho do
+                AppLayout, FORA do container do corpo: é ele que carrega o
+                `-mx-6 -mt-6` que neutraliza o `p-6` do <main> (HEAD-14).
+
+                Esta página não tem ação de cabeçalho equivalente ao "Atualizar
+                agora" — `acoes` fica no valor padrão (null) e o header não
+                desenha nenhum <div> órfão nesse caso.
+
+                ⚠️ O que SAIU: a trilha `Publicador › Programa › Nome`. Não
+                existe no protótipo; marca + seletor de empresa do header
+                cumprem a mesma função. */}
+            <PublicadorHeader aba="publicacoes" cabecalho={cabecalho ?? null} />
+
             <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
 
-                {/* Cabeçalho único da conta (BarraDaConta) + abas da conta (AbasDaConta) —
-                    unifica com Produtos/Alavancas/Meus Anúncios (Fase 172, plano 172-04).
-                    O ícone, o h1 "Histórico de anúncios" e o parágrafo descritivo somem
-                    daqui de propósito: BarraDaConta não tem slot de subtítulo, só os
-                    elementos FUNCIONAIS (nome, chave, status do ML). Esta página não tem
-                    nenhuma ação de cabeçalho equivalente ao "Atualizar agora" -- acoes
-                    fica no valor padrão (null). */}
-                <BarraDaConta empresa={conta} />
-                <AbasDaConta
-                    aba="publicacoes"
-                    conta={conta?.chave}
-                    companyId={empresa.id}
-                    subPublicacoes="historico"
-                />
+                {/* Sub-abas No ar | Histórico — vinham do AbasDaConta, que saiu
+                    daqui. O header novo NÃO tem este par (não existe no
+                    protótipo), então ele desceu para o corpo com a aparência de
+                    hoje, em SubAbasDePublicacoes.jsx. É o único caminho de volta
+                    para "No ar" nesta tela.
+                    ⚠️ A remoção delas é da Fase 180 (LIST-25). */}
+                <SubAbasDePublicacoes atual="historico" companyId={empresa.id} />
 
                 {/* Busca por título ou SKU */}
                 <form onSubmit={buscar} className="mb-4 mt-4 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-ecf-bg px-3 py-2">

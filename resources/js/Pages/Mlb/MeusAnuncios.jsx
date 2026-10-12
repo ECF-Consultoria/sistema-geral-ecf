@@ -6,8 +6,8 @@ import {
     Search, Clock, RefreshCw, Loader2, AlertTriangle, CheckCircle2,
     ImageOff, ExternalLink, Pencil, Info, CircleDashed,
 } from 'lucide-react';
-import BarraDaConta from '@/Components/Mlb/Publicador/BarraDaConta';
-import AbasDaConta from '@/Components/Mlb/Publicador/AbasDaConta';
+import PublicadorHeader from '@/Components/Mlb/Publicador/header/PublicadorHeader';
+import SubAbasDePublicacoes from '@/Components/Mlb/Publicador/SubAbasDePublicacoes';
 import RascunhosPainel from '@/Pages/Mlb/components/RascunhosPainel';
 import ModalDetalheAnuncio from '@/Pages/Mlb/components/ModalDetalheAnuncio';
 import { rotuloTier } from '@/Pages/Mlb/anuncioHistoricoUtils';
@@ -272,8 +272,17 @@ function decodificarRotuloPaginacao(label) {
 }
 
 export default function MeusAnuncios({
+    // `conta` continua chegando do servidor (nada mudou no controller) e
+    // continua na assinatura de propósito: ela era lida só pelo BarraDaConta,
+    // que saiu daqui, e a MESMA informação agora chega pelo `cabecalho`. A
+    // prop fica declarada para o contrato não mudar em silêncio.
     empresa, conta, sub, subTotais, anuncios, rascunhos, triagem, filtros, defasagem, saudeMlDisponivel, rotacaoN,
     skuNaoColetado = false,
+    // `cabecalho` vem do CabecalhoPublicadorService (plano 177-03) e pode
+    // chegar NULO: esta página abre para Company que não cai em nenhum programa
+    // do Publicador. O header sabe lidar com isso (botões desabilitados com
+    // explicação); o default aqui só cobre `undefined`.
+    cabecalho = null,
 }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
     const [atualizando, setAtualizando] = useState(false);
@@ -332,27 +341,41 @@ export default function MeusAnuncios({
 
     return (
         <AppLayout title="Meus Anúncios">
+            {/* ═══ Header global do Publicador (Fase 177, plano 177-08) ═══
+                Toma o lugar de BarraDaConta + AbasDaConta, que montavam aqui
+                desde a Fase 172. É o PRIMEIRO filho do AppLayout, FORA do
+                container do corpo, porque é ele que carrega o `-mx-6 -mt-6` que
+                neutraliza o `p-6` do <main> (HEAD-14) — dentro do container do
+                corpo a margem negativa brigaria com o `px-4` dele.
+
+                O botão "Atualizar agora" continua o MESMO componente, com o
+                MESMO atualizando/cooldown/atualizarAgora: só mudou de slot
+                (acoes do BarraDaConta → acoes do header). Nenhum router.post
+                novo — `atualizarAgora` segue sendo o ÚNICO desta tela (D-11).
+
+                ⚠️ O que SAIU: a trilha `Publicador › Programa › Nome` que o
+                BarraDaConta desenhava. Ela não existe no protótipo; a marca
+                "Publicador" + o seletor de empresa do header cumprem a mesma
+                função (onde estou, como troco de conta). É a única remoção de
+                elemento deste plano. */}
+            <PublicadorHeader
+                aba="publicacoes"
+                cabecalho={cabecalho ?? null}
+                acoes={(
+                    <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
+                )}
+            />
+
             <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
 
-                {/* Cabeçalho único da conta (BarraDaConta) + abas da conta (AbasDaConta) —
-                    unifica com Produtos/Alavancas (Fase 172, plano 172-04). O ícone, o h1
-                    "Meus Anúncios" e o parágrafo descritivo somem daqui de propósito:
-                    BarraDaConta não tem slot de subtítulo, só os elementos FUNCIONAIS (nome,
-                    chave, status do ML, ações). O botão "Atualizar agora" vai para o slot
-                    acoes, reusando o MESMO atualizando/cooldown/atualizarAgora das outras 3
-                    aparições — nenhum router.post novo. */}
-                <BarraDaConta
-                    empresa={conta}
-                    acoes={(
-                        <BotaoAtualizar atualizando={atualizando} cooldown={cooldown} onClick={atualizarAgora} />
-                    )}
-                />
-                <AbasDaConta
-                    aba="publicacoes"
-                    conta={conta?.chave}
-                    companyId={empresa.id}
-                    subPublicacoes="meus"
-                />
+                {/* Sub-abas No ar | Histórico — vinham do AbasDaConta, que saiu
+                    daqui. O header novo NÃO tem este par (não existe no
+                    protótipo), então ele desceu para o corpo com a aparência de
+                    hoje, em SubAbasDePublicacoes.jsx.
+                    ⚠️ A remoção delas é da Fase 180 (LIST-25), com a guarda de
+                    provar que o filtro de status alcança o que "Histórico"
+                    alcança. Nesta fase elas têm de continuar funcionando. */}
+                <SubAbasDePublicacoes atual="meus" companyId={empresa.id} />
 
                 {/* Sub-abas Publicados | Rascunhos (D-14) — round-trip ao servidor,
                     nunca useState local: os dois estados exigem queries diferentes. */}
