@@ -63,15 +63,23 @@ class NovaPublicacaoService
      *
      * ═══ A regra de `prontos_fase2` ═════════════════════════════════════════
      *
-     * É **a mesma** de `PainelVisaoGeralService::prontosParaFase2()`
-     * (`app/Services/Publicador/PainelVisaoGeralService.php:592`), copiada
-     * condição por condição: base (`eh_kit === false`), não composta, com
-     * `status.chave` em `STATUS_NO_AR` (`publicado` **ou** `parcial`) e
-     * `kits === []`. Lá ela é `private` e aquele arquivo não é tocado nesta
-     * fase; duas definições diferentes de "pronto para a Fase 2" fariam a Visão
-     * geral e o modal discordarem sobre o MESMO produto, então
-     * `test_regra_de_prontos_fase2_bate_com_a_da_visao_geral()` compara os dois
-     * números por reflexão e reprova se divergirem.
+     * ⚠️ **A REGRA NÃO MORA AQUI.** Ela é **delegada** à fonte única
+     * `ProgramasPublicadorService::prontoParaFase2()` desde o plano **179-02B**
+     * (12/10/2026): base (`eh_kit === false`), não composta, **no ar** e
+     * `kits === []`.
+     *
+     * Até então havia aqui uma **CÓPIA** da regra — e foi exatamente a cópia que
+     * divergiu: ela usava só `STATUS_NO_AR`, enquanto o estágio `ready` da
+     * Jornada (Fase 179-01) usava os **dois** ramos de "no ar" (status **ou**
+     * anúncio CREATED vivo). Na mesma tela o anel dizia um número e a ação dizia
+     * outro. **Nunca reimplemente a conjunção aqui de novo.**
+     *
+     * `test_regra_de_prontos_fase2_bate_com_a_da_visao_geral()` compara este
+     * grupo contra `PainelVisaoGeralService::prontosParaFase2()` por reflexão —
+     * ⚠️ e desde 12/10/2026 o cenário dele **inclui a base em `erro` com anúncio
+     * vivo**, sem a qual o gate era vazio por construção (passava com as duas
+     * definições que existe para comparar). `ProntoParaFase2Test` compara os três
+     * consumidores por **conjunto de SKU**.
      *
      * ⚠️ **Sem o fallback por `contagemProdutos`.** Aquele método tem o ramo
      * `$cienteDeFase ? … : contagemProdutos['publicados']` porque recebe listas
@@ -86,10 +94,20 @@ class NovaPublicacaoService
      *
      * 1. `status.chave = 'publicando'` → está em voo. O próximo passo não é do
      *    usuário; mostrá-lo no modal convidaria a mexer no que está publicando.
-     * 2. `status.chave = 'erro'` (e `parcial` que não entrou em prontos_fase2)
-     *    → erro de publicação é **triagem**, e a casa dela é o bloco "O que
-     *    fazer agora" da Visão geral (Fase 179). Este modal é a ENTRADA de uma
-     *    publicação nova, não a fila de conserto.
+     * 2. ⚠️ **REESCRITA em 12/10/2026 — não a restaure para a forma antiga.**
+     *    `status.chave = 'erro'` **SEM anúncio CREATED vivo** → erro de
+     *    publicação é **triagem**, e a casa dela é o bloco "O que fazer agora" da
+     *    Visão geral (Fase 179). Este modal é a ENTRADA de uma publicação nova,
+     *    não a fila de conserto.
+     *
+     *    ⚠️ Mas o `erro` **COM anúncio vivo**, sem kit e não composto, **ENTRA em
+     *    `prontos_fase2`** por decisão do usuário de 12/10/2026 — ele está
+     *    vendendo a Fase 1 e o próximo passo dele é mesmo criar o combo. A
+     *    redação anterior desta exclusão (*"`status.chave = 'erro'` → erro de
+     *    publicação é triagem"*, sem a ressalva) excluía os dois casos e era a
+     *    origem da divergência com o anel da Visão geral. A pergunta levada ao
+     *    usuário, as opções e a escolha estão no docblock de
+     *    `ProgramasPublicadorService::prontoParaFase2()`.
      * 3. `status.chave = 'publicado'` (ou `parcial`) **com `kits` não vazio** →
      *    a base já tem a Fase 2 criada; não espera mais nada.
      * 4. Composto do Planejamento do Portal (`ehComposto`) → KIT-06: não é base
@@ -125,10 +143,8 @@ class NovaPublicacaoService
 
             $chave = $p['status']['chave'] ?? null;
 
-            // A regra copiada de PainelVisaoGeralService:592 (ver o docblock).
-            if ($p['eh_kit'] === false
-                && in_array($chave, ProgramasPublicadorService::STATUS_NO_AR, true)
-                && ($p['kits'] ?? []) === []) {
+            // A FONTE ÚNICA da regra (Fase 179-02B) — nunca a conjunção inline.
+            if (ProgramasPublicadorService::prontoParaFase2($p)) {
                 // NOVA-07: item sem destino usável NÃO entra. `url_produto` só é
                 // null quando `$alvo` chega sem a chave da conta.
                 $destino = $p['url_produto'] ?? null;

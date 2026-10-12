@@ -446,11 +446,7 @@ class ProgramasPublicadorService
             return 'fase3_mais';
         }
 
-        // "No ar" = o status derivado diz publicado/parcial OU existe anúncio CREATED
-        // na lista (`anuncios` é montado SÓ de itens CREATED com ml_item_id). O segundo
-        // ramo cobre o kit/base que falhou numa republicação mas tem anúncio vivo.
-        $noAr = in_array($p['status']['chave'] ?? null, self::STATUS_NO_AR, true)
-            || ($p['anuncios'] ?? []) !== [];
+        $noAr = self::noAr($p);
 
         if (($p['eh_kit'] ?? false) === true) {
             return $noAr ? 'fase2_publicada' : 'fase2_preparacao';
@@ -470,6 +466,84 @@ class ProgramasPublicadorService
         $composto = $p['composto'] ?? null;
 
         return is_string($composto) && $composto !== '';
+    }
+
+    /**
+     * ⚠️ "NO AR" TEM UMA DEFINIÇÃO SÓ, E É ESTA. Nunca escreva uma segunda.
+     *
+     * O status derivado diz `publicado`/`parcial` **OU** existe anúncio CREATED na
+     * lista (`anuncios` é montado SÓ de itens CREATED com `ml_item_id`). O segundo
+     * ramo cobre o kit/base que **falhou numa republicação mas tem anúncio vivo**:
+     * ele está vendendo, e chamá-lo de rascunho seria mentira na tela.
+     *
+     * Antes do plano 179-02B (12/10/2026) esta expressão existia copiada em
+     * QUATRO lugares — `bucketDaFase()`, `PainelVisaoGeralService::noArPorFase()`,
+     * `JornadaDosProdutosService::noAr()` e (sem o 2º ramo) nas duas regras de
+     * "pronto para a Fase 2". Foi a cópia que divergiu, e foi ela que fez o anel e
+     * a ação da Visão geral mostrarem números diferentes para o mesmo conceito.
+     * Pública e estática pelo mesmo motivo de `ehComposto()`: para todo mundo usar
+     * a MESMA regra.
+     *
+     * @param  array  $p  shape de `produtosParaTela()` (ou o shape antigo, sem as chaves de fase)
+     */
+    public static function noAr(array $p): bool
+    {
+        return in_array($p['status']['chave'] ?? null, self::STATUS_NO_AR, true)
+            || ($p['anuncios'] ?? []) !== [];
+    }
+
+    /**
+     * ⚠️ A FONTE ÚNICA de "pronto para a Fase 2". Nunca reimplemente a conjunção.
+     *
+     * O produto é uma **base** (não kit, não composta do Planejamento) que está
+     * **no ar** e **ainda não tem nenhum kit** — ou seja, o próximo passo dele é
+     * criar a Fase 2.
+     *
+     * Consumida pelos TRÊS lugares que mostram esse número ao usuário:
+     *
+     * | # | Consumidor | O que ele mostra |
+     * |---|---|---|
+     * | 1 | `JornadaDosProdutosService::estagioDe()` | o estágio `ready` do anel de 176px |
+     * | 2 | `PainelVisaoGeralService::prontosParaFase2()` | a linha/ação "Prontos para a Fase 2" |
+     * | 3 | `NovaPublicacaoService::grupos()` | o grupo `PRONTOS PARA FASE 2` do modal (Fase 178) |
+     *
+     * ═══ ⚠️ A DECISÃO DO USUÁRIO — 12/10/2026 ═══════════════════════════════
+     *
+     * Até esta data a regra existia em **três cópias**, e foi exatamente a cópia
+     * que divergiu: a Jornada (plano 179-01) usava os dois ramos de `noAr()` e as
+     * outras duas só o status. Na mesma tela o anel dizia um número e a ação dizia
+     * outro; **dentro da mesma ação** a sub-lista mostrava 2 itens sob um cabeçalho
+     * que dizia 1.
+     *
+     * **Pergunta levada ao usuário:** *"Um produto cuja publicação falhou, mas que
+     * JÁ TEM anúncio vivo no ar e sem kit, conta como 'Pronto para Fase 2'?"*
+     * **Opções apresentadas:** (1) sim, alinhar os três lugares; (2) não, erro é
+     * erro e fica fora de todo lugar; (3) ver o número real de produção primeiro.
+     * Apresentada **com o aviso explícito** de que alinhar mudaria o modal da Fase
+     * 178, já aprovado e em produção.
+     *
+     * ➡️ **Escolha dele: a opção 1 — alinhar os três lugares.**
+     *
+     * ⚠️ **Isso SUPERA a "Exclusão 2" declarada no `178-01-SUMMARY.md`** e no
+     * docblock de `NovaPublicacaoService::grupos()` (*"`status.chave = 'erro'` →
+     * erro de publicação é triagem, e a casa dela é o bloco 'O que fazer agora'"*).
+     * A contradição é resolvida **pela decisão do usuário**, que é posterior e mais
+     * informada. A exclusão sobrevive só para `erro` **sem** anúncio vivo.
+     *
+     * ⚠️ **NÃO "restaure" a Exclusão 2 achando que foi regressão**, e não troque
+     * `noAr()` por `in_array(..., STATUS_NO_AR)` aqui: a definição que venceu é a
+     * do `bucketDaFase()` porque é a que a tela de Produtos usa, e dizer
+     * "rascunho" sobre um produto que está vendendo seria pior. **Não reabrir.**
+     * `ProntoParaFase2Test` reprova em quem desfizer, nos três consumidores.
+     *
+     * @param  array  $p  shape de `produtosParaTela()` (ou o shape antigo, sem as chaves de fase)
+     */
+    public static function prontoParaFase2(array $p): bool
+    {
+        return ($p['eh_kit'] ?? false) === false
+            && ! self::ehComposto($p)
+            && self::noAr($p)
+            && ($p['kits'] ?? []) === [];
     }
 
     /** Empresas com token por programa (as abas da tela A). */

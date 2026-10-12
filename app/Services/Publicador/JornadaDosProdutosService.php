@@ -132,23 +132,23 @@ class JornadaDosProdutosService
      * "Produtos com problema na publicação", que já existe em
      * `PainelVisaoGeralService::oQueFazerAgora()`.
      *
-     * ═══ "NO AR" tem UMA definição só ═══════════════════════════════════════
+     * ═══ "NO AR" e "PRONTO PARA A FASE 2" têm UMA fonte só ══════════════════
      *
-     * `status.chave` em `ProgramasPublicadorService::STATUS_NO_AR`
-     * (`publicado`/`parcial`) **ou** `anuncios !== []` — exatamente a de
-     * `ProgramasPublicadorService::bucketDaFase()` e de
-     * `PainelVisaoGeralService::noArPorFase()`. O segundo ramo cobre a base que
-     * falhou numa republicação mas tem anúncio CREATED vivo. Nunca uma terceira
-     * definição.
+     * As duas vivem em `ProgramasPublicadorService` desde o plano **179-02B**
+     * (12/10/2026): `noAr()` (status em `STATUS_NO_AR` **ou** `anuncios !== []`)
+     * e `prontoParaFase2()` (base, não composta, no ar, sem kits). ⚠️ **Nunca
+     * reimplemente nenhuma das duas aqui.** O segundo ramo de `noAr()` cobre a
+     * base que falhou numa republicação mas tem anúncio CREATED vivo.
      *
-     * ⚠️ **Divergência MEDIDA com `prontosParaFase2()`**: aquela regra
-     * (`PainelVisaoGeralService.php:592`) usa só `STATUS_NO_AR`, sem o segundo
-     * ramo. Então a base com `status.chave = 'erro'` e anúncio vivo, sem kit,
-     * entra em `ready` aqui e **não** conta lá. É o preço de "no ar" ter uma
-     * definição só; o teste
-     * `test_divergencia_com_prontos_para_fase_2_e_medida_e_declarada()` mede o
-     * tamanho exato dessa diferença, e a paridade nos cinco casos de fronteira
-     * é cobrada por reflexão.
+     * ⚠️ **A divergência com `prontosParaFase2()` FOI RESOLVIDA em 12/10/2026,
+     * por decisão do usuário.** Até então aquela regra usava só `STATUS_NO_AR`,
+     * sem o segundo ramo, e a base com `status.chave = 'erro'` e anúncio vivo,
+     * sem kit, entrava em `ready` aqui e **não** contava lá — o anel e a ação
+     * mostravam números diferentes na mesma tela. Hoje o estágio `ready` **é** a
+     * fonte única, por construção. A decisão inteira (a pergunta, as opções, a
+     * escolha e a "Exclusão 2" do 178-01 que ela supera) está no docblock de
+     * `ProgramasPublicadorService::prontoParaFase2()`, e
+     * `ProntoParaFase2Test` reprova em quem a desfizer.
      *
      * @param  array{chave?: ?string}  $alvo  a saída de `ProgramasPublicadorService::resolver()`
      * @param  list<array>  $produtos  shape de `ProgramasPublicadorService::produtosParaTela()`
@@ -221,12 +221,15 @@ class JornadaDosProdutosService
     /** O estágio de UM produto: if-else encadeado, exclusivo e total, com default. */
     private function estagioDe(array $p): string
     {
-        $noAr = $this->noAr($p);
-
-        if ($noAr && ($p['kits'] ?? []) !== []) {
+        if (ProgramasPublicadorService::noAr($p) && ($p['kits'] ?? []) !== []) {
             return 'done';
         }
-        if ($noAr) {
+        // ⚠️ O estágio `ready` **É** a regra de "pronto para a Fase 2", por
+        // construção — não uma reimplementação dela (Fase 179-02B). As condições
+        // de universo (`eh_kit`, composto) são redundantes aqui porque
+        // `noUniverso()` já filtrou; a redundância é o preço barato de a regra
+        // ter UMA fonte, e é ela que faz o anel e a ação nunca mais divergirem.
+        if (ProgramasPublicadorService::prontoParaFase2($p)) {
             return 'ready';
         }
         // `rascunho` é a chave de "NÃO EXISTE rascunho" (`EditorRascunhoService::prontidao()`).
@@ -237,13 +240,6 @@ class JornadaDosProdutosService
         // Default de propósito: `conferir`, `pronto`, `publicando`, `erro` e
         // qualquer status novo. Ver o aviso no docblock de `jornada()`.
         return 'draft';
-    }
-
-    /** A MESMA definição de `bucketDaFase()` / `noArPorFase()`. Nunca uma terceira. */
-    private function noAr(array $p): bool
-    {
-        return in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
-            || ($p['anuncios'] ?? []) !== [];
     }
 
     /** Percentual inteiro com guard de zero — `NaN` na tela é bug, não estado. */

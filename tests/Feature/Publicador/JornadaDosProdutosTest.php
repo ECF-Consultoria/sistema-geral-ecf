@@ -598,8 +598,10 @@ class JornadaDosProdutosTest extends TestCase
             .'Se voltou a 1, uma das duas pontas deixou de chamar a fonte única '
             .'`ProgramasPublicadorService::prontoParaFase2()` — reler a 179-02B-SUMMARY.',
         );
-        // ⚠️ Conjunto, não contagem: dois lados podem acertar o número errando o produto.
-        $this->assertSame(
+        // ⚠️ Conjunto, não contagem: dois lados podem acertar o número errando o
+        // produto. Canonicalizing porque a ORDEM é de `produtosParaTela()` (por nome)
+        // e não é contrato deste plano — cravá-la quebraria o teste pelo motivo errado.
+        $this->assertEqualsCanonicalizing(
             ['PUB', 'ERRO-COM-ANUNCIO'],
             $this->skus($saida, 'ready'),
             'a base cuja publicação falhou mas que TEM anúncio vivo saiu de `ready`',

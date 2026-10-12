@@ -345,9 +345,8 @@ class PainelVisaoGeralService
             }
             $cienteDeFase = true;
 
-            $noAr = in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
-                || ($p['anuncios'] ?? []) !== [];
-            if (! $noAr) {
+            // A definição única de "no ar" (Fase 179-02B) — nunca uma segunda cópia.
+            if (! ProgramasPublicadorService::noAr($p)) {
                 continue;
             }
             // Composto do Planejamento (Combo/Kit/Combit do Portal, 09/10/2026): nem Fase 1 nem kit da família.
@@ -628,8 +627,16 @@ class PainelVisaoGeralService
     }
 
     /**
-     * Quantos produtos estão de fato esperando uma Fase 2: base (não kit)
-     * publicado ou parcial e SEM NENHUM kit — a regra nova da §7.
+     * Quantos produtos estão de fato esperando uma Fase 2.
+     *
+     * ⚠️ **A REGRA NÃO MORA AQUI** — ela é a fonte única
+     * `ProgramasPublicadorService::prontoParaFase2()` desde o plano 179-02B
+     * (12/10/2026). Até então havia uma cópia nesta linha, outra em
+     * `NovaPublicacaoService::grupos()` e uma terceira no estágio `ready` da
+     * Jornada; e foi a cópia que divergiu, fazendo o anel e esta linha mostrarem
+     * números diferentes na MESMA tela. **Nunca reimplemente a conjunção aqui.**
+     * A decisão do usuário que fechou isso (e o que ela supera) está no docblock
+     * da fonte única.
      *
      * ⚠️ Compatibilidade com chamador antigo, de propósito: a regra só pode ser
      * aplicada quando `$produtos` é a lista CIENTE DE FASE (a que
@@ -637,6 +644,8 @@ class PainelVisaoGeralService
      * Sem essas chaves — lista omitida ou shape antigo — o número volta a ser
      * `contagemProdutos['publicados']`, que é exatamente o de hoje. Assim a linha
      * NUNCA desaparece por falta de dado: ou ela conta certo, ou conta como antes.
+     * O fallback é cobrado por
+     * `ProntoParaFase2Test::test_o_fallback_de_shape_antigo_de_prontosParaFase2_sobreviveu()`.
      */
     private function prontosParaFase2(array $contagemProdutos, array $produtos): int
     {
@@ -649,11 +658,7 @@ class PainelVisaoGeralService
             }
             $cienteDeFase = true;
 
-            // O composto do Planejamento não espera Fase 2 nenhuma (KIT-06, 09/10/2026).
-            if ($p['eh_kit'] === false
-                && ! ProgramasPublicadorService::ehComposto($p)
-                && in_array($p['status']['chave'] ?? null, ProgramasPublicadorService::STATUS_NO_AR, true)
-                && ($p['kits'] ?? []) === []) {
+            if (ProgramasPublicadorService::prontoParaFase2($p)) {
                 $total++;
             }
         }
