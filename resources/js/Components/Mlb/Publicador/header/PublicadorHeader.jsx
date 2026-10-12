@@ -1,4 +1,5 @@
-import { Link, router, usePage } from '@inertiajs/react';
+import { useState } from 'react';
+import { Link, usePage } from '@inertiajs/react';
 import { Plus, Search, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AvisoContaTravada from '../AvisoContaTravada';
@@ -6,6 +7,7 @@ import { textoUtil } from '../BarraDaConta';
 import GlyphDaFase from '../identidade/GlyphDaFase';
 import AbasDoHeader from './AbasDoHeader';
 import ConexaoDoHeader from './ConexaoDoHeader';
+import ModalNovaPublicacao from './ModalNovaPublicacao';
 import SeletorDeEmpresaDoHeader from './SeletorDeEmpresaDoHeader';
 import { useAtalhosDoHeader } from './atalhosDoHeader';
 
@@ -25,8 +27,14 @@ import { useAtalhosDoHeader } from './atalhosDoHeader';
 // única linha do `AppLayout` (D2). O `sticky top-0` continua valendo porque
 // quem rola é o `<main>` (`overflow-y-auto`), não a janela.
 //
-// O QUE AINDA NÃO ESTÁ AQUI (cada slot tem o seu plano):
-//   · o modal "Nova publicação" de 620px                       → Fase 178
+// O MODAL "NOVA PUBLICAÇÃO" (Fase 178, plano 03) JÁ ESTÁ AQUI: é
+// `ModalNovaPublicacao`, montado no fim do `<header>`. ⚠️ O lugar do JSX só
+// define quem é o pai React — o conteúdo é PORTADO para o `document.body` por
+// `Dialog.Portal`, e tem de ser: o `backdrop-filter` desta casca cria
+// containing block para `position: fixed`, então um overlay escrito aqui
+// dentro nasceria recortado na faixa de 109px do topo. O porquê completo, a
+// geometria (620px a `top:110px`) e as divergências estão no topo de
+// `ModalNovaPublicacao.jsx`.
 //
 // JÁ ENTREGUE: as abas-pílula da linha 2 vêm de `AbasDoHeader` (plano 177-05)
 // — são QUATRO de propósito, "Desempenho" fica FORA por decisão do usuário
@@ -47,9 +55,11 @@ import { useAtalhosDoHeader } from './atalhosDoHeader';
 // ⚠️ O separador "/" abaixo NÃO entra na conta: ele é SVG inline com o viewBox
 // do próprio protótipo (16×22), então o 1.4 dele já é o traço certo.
 //
-// ⚠️ O CTA NÃO NASCE MORTO (EXMP-03): até a Fase 178, "Nova publicação" e o
-// ⌘K levam ao destino que o botão equivalente de hoje leva — a seleção de
-// produtos da conta. Aparência nova, comportamento atual.
+// ⚠️ O CTA NÃO NASCE MORTO (EXMP-03): "Nova publicação", a busca de 250px, o
+// ⌘K/Ctrl+K e o "N" fora de campo de digitação abrem o MESMO modal — uma
+// função (`abrirNovaPublicacao`), três chamadores. Sem conta usável os dois
+// botões seguem `disabled` com `title` explicando, e o modal não abre: um
+// clique que não faz nada e não explica é o que EXMP-03 proíbe.
 //
 // DIVERGÊNCIAS DECLARADAS (FID-02 — cada uma com restrição concreta):
 //   1. Props: o protótipo recebe `active`, `mlConnected` e `erpConnected`
@@ -111,19 +121,31 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
     // como `AnunciosEmpresas.jsx` já faz — nenhuma prop nova nas 9 páginas.
     const userId = usePage().props?.auth?.user?.id ?? null;
 
-    // ⚠️ Fase 178 troca o CORPO desta função pelo modal "Nova publicação"; a
-    // assinatura e os dois chamadores (o CTA e o ⌘K) ficam como estão.
+    // O único estado de abertura que mora neste arquivo (plano 178-03). ⚠️ NÃO
+    // PROCURE OS OUTROS: o dropdown de empresa e o popover de conexão são dois
+    // `Popover` do Radix e cada um cuida da própria abertura (177-06).
+    const [novaPublicacaoAberta, setNovaPublicacaoAberta] = useState(false);
+
+    // ⚠️ A ASSINATURA E OS CHAMADORES NÃO MUDARAM na Fase 178 — só o corpo, que
+    // é o que o plano 177-04 deixou escrito. Esta função serve TRÊS chamadores:
+    // a busca de 250px, o CTA amarelo e o hook de atalhos (⌘K/Ctrl+K e "N").
+    // Sem conta não há destino nem modal (EXMP-03).
     function abrirNovaPublicacao() {
         if (!temConta) return;
-        router.get(route('mlb.anuncios.publicador.produtos', { conta }));
+        setNovaPublicacaoAberta(true);
     }
 
-    // ⚠️ NÃO PROCURE O ESTADO QUE NÃO EXISTE: o dropdown de empresa e o popover
-    // de conexão são dois `Popover` do Radix, e cada um se fecha no Esc por
-    // conta própria (`DismissableLayer`) — nenhum estado de abertura mora aqui.
-    // O `noop` continua porque o contrato do hook já liga o Esc, e o modal da
-    // Fase 178 vai ter estado próprio para fechar neste ponto.
-    function fecharTudo() {}
+    // O Esc do hook de atalhos (HEAD-13) fecha o modal por aqui.
+    //
+    // ⚠️ ESC FECHA POR DOIS CAMINHOS, E ISSO NÃO É DEFEITO: o `DismissableLayer`
+    // do Radix já trata `onEscapeKeyDown` dentro da `Dialog.Content`, e o
+    // ouvinte de `window` do hook chama esta função. `setNovaPublicacaoAberta
+    // (false)` é idempotente, então a redundância é segura — e é de propósito,
+    // porque o foco pode estar fora da caixa (o portal convive com o resto da
+    // página). NÃO "limpe" nenhum dos dois caminhos.
+    function fecharTudo() {
+        setNovaPublicacaoAberta(false);
+    }
 
     useAtalhosDoHeader({ aoAbrirBusca: abrirNovaPublicacao, aoFechar: fecharTudo });
 
@@ -258,6 +280,16 @@ export default function PublicadorHeader({ aba, cabecalho = null, acoes = null, 
                     {acoes !== null && <div className="flex flex-none items-center gap-2">{acoes}</div>}
                 </nav>
             </div>
+
+            {/* ─── O modal "Nova publicação" de 620px (plano 178-03) ───
+                ⚠️ O conteúdo é PORTADO para o `document.body`: o lugar deste
+                JSX só define quem é o pai React, não onde os pixels caem. Com
+                `aberto=false` o Radix não renderiza nada. */}
+            <ModalNovaPublicacao
+                aberto={novaPublicacaoAberta}
+                aoFechar={() => setNovaPublicacaoAberta(false)}
+                conta={conta}
+            />
         </header>
     );
 }
