@@ -21,6 +21,13 @@ Cada plano de desenho traz uma tabela FID-01 derivada do `.dc.html`. **Placar da
 **Em NENHUMA das ~102 a tabela venceu.** As referências de linha envelhecem e deslocam; confirme
 cada medida pela **semântica**, nunca pelo número de linha.
 
+⚠️ **REFINAMENTO medido em 13/10/2026 (plano 180-01): a tabela acertou 10 de 10** — 4 hex, 4 números
+de linha e 2 tamanhos, zero divergências. **Foi a primeira vez na milestone.** A diferença: aquele
+planejador **mediu com varredura por script**, em vez de ler e estimar.
+➡️ **A regra não se revoga, se refina: tabela derivada de SCRIPT é confiável; tabela derivada de
+LEITURA não é.** O executor segue obrigado a medir — mas, quando o plano diz como mediu, o custo da
+conferência cai. **Mande o planejador declarar se a tabela saiu de script ou de leitura.**
+
 ➡️ **Escreva no plano: "quando a tabela discordar do protótipo, MEÇA no `.dc.html` e o protótipo
 ganha; a divergência vai na SUMMARY com `arquivo:linha`."** Sem essa frase, o executor obedece a
 tabela e o redesenho sai errado — foi a causa documentada do fracasso da primeira tentativa de
@@ -57,6 +64,12 @@ de presença. Ler o corpo da regra é obrigatório — e o medidor erra de seis 
 4. **O cssnano tira o zero da frente, inclusive depois do sinal de menos:** `-0.03em` → `-.03em`.
 5. **O CSS escapa o seletor com barra invertida** (`.text-\[13\.5px\]`) — 54 falsas faltas.
 6. **Na variante, o prefixo faz parte do nome da classe:** `.hover\:bg-pub-hover-0:hover`.
+7. ⚠️ **Escapar SÓ a barra invertida quebra em classe com colchete e ponto.** Escapar apenas o
+   caractere de barra funciona em `.hover:bg-…`, mas em `.text-[15.5px]` os colchetes e o ponto
+   sobrevivem sem escape e a regex passa a ler **classe de caracteres** em vez de literais — a regra
+   **presente e correta** sai como AUSENTE.
+   ➡️ **Escape TODOS os metacaracteres de regex** (use `RegExp.escape` ou equivalente), não só a
+   barra. (5ª mentira da sonda na milestone, no plano 180-01.)
 
 ➡️ **Toda sonda carrega ISCA**, e a isca tem de ser **classe inexistente no projeto inteiro** —
 `w-[13px]` parecia inventada e saiu presente.
@@ -88,6 +101,11 @@ Este projeto já foi mordido nove vezes pela mesma classe de erro: asserção qu
    `app/Services/Mlb/MlPublicacaoService.php` (o real é `app/Services/Mlb/Publicacao/…`) e
    `identidade/tempo.js` + `identidade/dadosDeExemplo.js` (vivem um nível acima, em
    `Components/Mlb/Publicador/`). ➡️ **`test -e` em cada alvo ANTES de acreditar num diff vazio.**
+   ⚠️ **Os caminhos CERTOS dos dois territórios proibidos mais citados, conferidos por `test -e` em
+   13/10/2026:** `resources/js/Components/Publicador/Mesa` (**SEM** o `Mlb` no meio) e
+   `resources/js/Components/Mlb/Publicador/header/PublicadorHeader.jsx` (**dentro** de `header/`).
+   Escrever `Components/Mlb/Publicador/Mesa` ou o header fora de `header/` dá diff vazio e "prova"
+   território intocado — foram o 3º e o 4º caminho fantasma da milestone.
 9. ⚠️ **Asserção de ausência rodada com dado VAZIO é vazia por construção.** Se você assertar que
    um bloco não aparece, rode **com as props preenchidas**.
 
