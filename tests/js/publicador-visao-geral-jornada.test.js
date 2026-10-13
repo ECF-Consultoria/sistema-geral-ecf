@@ -605,6 +605,20 @@ test('normalizarJornada — formas adversas não lançam e não viram lixo na te
         }
     });
 
+    await contexto.test('⚠️ DESTINO é mais estrito que TEXTO: número vale como nome, nunca como URL', () => {
+        // `textoUtil(7)` devolve `'7'` — e `7` é um nome de produto plausível.
+        // Mas `href="7"` é uma URL relativa que não leva a lugar nenhum e
+        // `src="7"` dispara um request inútil (EXMP-01).
+        const normal = J.normalizarJornada({
+            estagios: [{ chave: 'ready', total: 1, itens: [{ nome: 7, sku: 9, url: 7, capa: 9 }] }],
+        });
+        const item = normal.estagios[2].itens[0];
+        assert.equal(item.nome, '7');
+        assert.equal(item.sku, '9');
+        assert.equal(item.url, null);
+        assert.equal(item.capa, null);
+    });
+
     await contexto.test('`proximo_passo` fora das 4 chaves cai em `none`', () => {
         for (const passo of ['erro', '', null, {}, 7, 'READY']) {
             assert.equal(J.normalizarJornada({ proximo_passo: passo }).proximo_passo, 'none', String(passo));
@@ -644,8 +658,12 @@ test('jornada.js — módulo PURO: nem React, nem JSX, nem classe do Tailwind', 
         // gera CSS e portanto NÃO EXISTE para a tela — o mesmo efeito da classe
         // montada por concatenação de string que o 179-04 avisou. Os mapas de
         // classe deste bloco moram no `.jsx` por esse motivo, não por estilo.
-        const config = lerSemComentarios('tailwind.config.js');
-        assert.match(config, /\.\/resources\/js\/\*\*\/\*\.jsx/);
+        // ⚠️ LEITURA CRUA, de propósito: `lerSemComentarios` tira blocos
+        // `/* … */` e o glob `./resources/js/**/*.jsx` CONTÉM um `/*` seguido de
+        // `*/`. Passado pelo helper, o glob chega aqui como `./resources/js*.jsx`
+        // e esta asserção reprovaria pelo motivo errado (medido em 13/10/2026).
+        const config = fs.readFileSync(path.resolve(RAIZ, 'tailwind.config.js'), 'utf8');
+        assert.match(config, /'\.\/resources\/js\/\*\*\/\*\.jsx'/);
         assert.ok(
             !/['"]\.\/resources\/js\/\*\*\/\*\.js['"]/.test(config),
             'o config passou a varrer .js — este gate pode ser relaxado, com medição',
