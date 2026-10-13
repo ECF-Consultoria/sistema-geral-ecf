@@ -7,7 +7,8 @@ import * as esbuild from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
-    MAX_CATEGORIAS, adicionarCategoria, cabeMaisCategoria, erroDoDownload, parametrosDoModelo, pendenciasDaFicha, removerCategoria, resumoDaFicha, textoDoBaixar,
+    ARQUIVO_PADRAO, MAX_CATEGORIAS, adicionarCategoria, cabeMaisCategoria, erroDoDownload, nomeDoArquivoBaixado, parametrosDoModelo, pendenciasDaFicha, removerCategoria,
+    resumoDaFicha, textoDoBaixar,
 } from '../../resources/js/lib/modeloCompleto.js';
 import { lerSemComentarios } from './_fonte.js';
 
@@ -177,4 +178,28 @@ test("a escolha abre pedindo a categoria, em duas colunas, e só libera o downlo
     assert.doesNotMatch(html, /data-categorias-escolhidas/);
     // Duas colunas no computador: achar a categoria à esquerda, o que foi escolhido à direita.
     assert.match(html, /lg:grid-cols-\[minmax\(0,1\.35fr\)_minmax\(0,1fr\)\]/);
+});
+
+// ─── O nome do arquivo ───────────────────────────────────────────────────────
+
+// 13/10/2026: "quando baixar o modelo, vir nomeado nome da categoria, ex.: poltrona-modelo.xlsx".
+// Quem dá o nome é o servidor; a tela só o lê do cabeçalho da resposta.
+test('o arquivo baixado leva o nome que o servidor deu, com a categoria na frente', () => {
+    assert.equal(nomeDoArquivoBaixado('attachment; filename=poltronas-modelo.xlsx'), 'poltronas-modelo.xlsx');
+    assert.equal(nomeDoArquivoBaixado('attachment; filename="cadeiras-mesas-de-jantar-modelo.xlsx"'), 'cadeiras-mesas-de-jantar-modelo.xlsx');
+    assert.equal(nomeDoArquivoBaixado('ATTACHMENT; FILENAME=sofas-modelo.xlsx; size=10'), 'sofas-modelo.xlsx');
+
+    // Sem cabeçalho, ou com um nome que não é um .xlsx simples, vale o padrão.
+    assert.equal(ARQUIVO_PADRAO, 'modelo.xlsx');
+    for (const ruim of [undefined, null, '', 'attachment', 'attachment; filename=modelo.exe', 'attachment; filename="../../etc/x.xlsx"', 'attachment; filename="a b.xlsx"']) {
+        assert.equal(nomeDoArquivoBaixado(ruim), ARQUIVO_PADRAO, `recusou mal: ${ruim}`);
+    }
+    assert.equal(nomeDoArquivoBaixado(undefined, 'outro.xlsx'), 'outro.xlsx');
+});
+
+test('a tela não fixa mais o nome do arquivo: usa o do cabeçalho da resposta', () => {
+    const escolha = lerSemComentarios(`${DIR}/ModeloCompletoEscolha.jsx`);
+    assert.ok(! escolha.includes('modelo-completo.xlsx'));
+    assert.match(escolha, /salvar\(resposta\.data, nomeDoArquivoBaixado\(resposta\.headers\?\.\['content-disposition'\]\)\)/);
+    assert.match(escolha, /a\.download = nome;/);
 });

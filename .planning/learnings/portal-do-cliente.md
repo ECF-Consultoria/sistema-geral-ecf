@@ -1695,6 +1695,11 @@ separado por coluna":**
   volumes; o exportado, quantos o maior produto tiver (teto 8). Na leitura as quatro colunas viram o MESMO texto de
   antes (`186×43×12 · 27,8 | …`) e seguem pela regra que já existia — volume com medida faltando é aviso, não erro
   mudo. A planilha antiga, com tudo numa célula, continua sendo lida.
+- **O arquivo leva o nome da categoria** ("poltronas-modelo.xlsx"; duas ou três, todas no nome; acima disso, as duas
+  primeiras e "e-mais-N"). Quem dá o nome é o servidor (`ModeloCompleto::nomeDoArquivo`), só com letras sem acento,
+  números e hífen. **A tela baixa por `axios` com `blob`, e aí o nome do `Content-Disposition` NÃO vale sozinho:** o
+  navegador usa o `download` do link criado no JavaScript. Por isso a tela lê o cabeçalho
+  (`nomeDoArquivoBaixado`) em vez de ter o nome fixo; trocar o nome só no controller não muda nada para quem baixa.
 - **Armadilha:** a importação da ficha avisa "coluna que não é da ficha" para todo cabeçalho que não reconhece. As
   colunas do produto e dos volumes precisam estar na lista de `ModeloCompleto::chavesDosCabecalhos()`, senão cada
   planilha importada vem com uma dúzia de avisos falsos.

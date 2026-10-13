@@ -40,6 +40,9 @@ class ModeloCompletoTest extends TestCase
 
     private const PROIBIDO = '/mercado|an[uú]ncio|publica|\bmlb|\bml\b/iu';
 
+    /** Os nomes das categorias de mentira (ver o `Http::fake` do `setUp`). */
+    private const NOMES = ['MLB1' => 'Cadeiras', 'MLB2' => 'Mesas de Jantar'];
+
     /** @var list<string> */
     private array $temporarios = [];
 
@@ -102,7 +105,7 @@ class ModeloCompletoTest extends TestCase
     private function baixar(Company $empresa, array $categorias): Spreadsheet
     {
         $r = $this->entrarNoPortal($empresa)->get(route('portal.auth.estrutura.produtos.modelo_completo', ['categorias' => $categorias]))
-            ->assertOk()->assertDownload('modelo-completo.xlsx');
+            ->assertOk()->assertDownload(ModeloCompleto::nomeDoArquivo(array_map(fn ($id) => ['nome' => self::NOMES[$id]], $categorias)));
         $caminho = tempnam(sys_get_temp_dir(), 'mc').'.xlsx';
         $this->temporarios[] = $caminho;
         file_put_contents($caminho, $r->streamedContent());
@@ -227,6 +230,28 @@ class ModeloCompletoTest extends TestCase
                 $this->assertDoesNotMatchRegularExpression(self::PROIBIDO, $v->getPrompt().' '.$v->getError().' '.$v->getPromptTitle().' '.$v->getFormula1());
             }
         }
+    }
+
+    /** 13/10/2026: "quando baixar o modelo, vir nomeado nome da categoria, ex.: poltrona-modelo.xlsx". */
+    public function test_o_arquivo_vem_com_o_nome_da_categoria(): void
+    {
+        $empresa = $this->empresaDoGabarito();
+        $rota = fn (array $ids) => route('portal.auth.estrutura.produtos.modelo_completo', ['categorias' => $ids]);
+
+        $this->entrarNoPortal($empresa)->get($rota(['MLB1']))->assertOk()->assertDownload('cadeiras-modelo.xlsx');
+        // Mais de uma: todas no nome, na ordem das abas.
+        $this->entrarNoPortal($empresa)->get($rota(['MLB2', 'MLB1']))->assertOk()->assertDownload('mesas-de-jantar-cadeiras-modelo.xlsx');
+
+        // Acento e símbolo saem; acima de 3 categorias, as 2 primeiras e quantas faltam.
+        $this->assertSame('cadeiras-para-escritorio-modelo.xlsx', ModeloCompleto::nomeDoArquivo([['nome' => 'Cadeiras para Escritório']]));
+        $this->assertSame('sofas-pufes-e-banquetas-modelo.xlsx', ModeloCompleto::nomeDoArquivo([['nome' => 'Sofás'], ['nome' => 'Pufes e Banquetas']]));
+        $this->assertSame('poltronas-sofas-e-mais-3-modelo.xlsx', ModeloCompleto::nomeDoArquivo(
+            array_map(fn ($n) => ['nome' => $n], ['Poltronas', 'Sofás', 'Pufes', 'Futon', 'Banquetas']),
+        ));
+        // Nome repetido conta uma vez; sem nome nenhum, o nome genérico.
+        $this->assertSame('poltronas-modelo.xlsx', ModeloCompleto::nomeDoArquivo([['nome' => 'Poltronas'], ['nome' => 'poltronas']]));
+        $this->assertSame('modelo.xlsx', ModeloCompleto::nomeDoArquivo([]));
+        $this->assertSame('modelo.xlsx', ModeloCompleto::nomeDoArquivo([['nome' => '···']]));
     }
 
     public function test_baixar_recusa_categoria_que_nao_e_a_ultima_do_ramo_ou_invalida_e_exige_sessao(): void
