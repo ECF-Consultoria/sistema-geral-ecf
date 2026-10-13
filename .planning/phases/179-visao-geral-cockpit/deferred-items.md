@@ -49,3 +49,37 @@ publicação e não por produto. Quem corrigir deve baixar o teto no mesmo commi
 
 **Impacto em produção:** não medido — a leitura de produção está bloqueada nesta sessão. A conta
 com mais publicações do Publicador é o pior caso, e a Visão geral é a primeira tela do módulo.
+
+---
+
+## 2. ⚠️ `CockpitDaContaTest` reprova se a suíte rodar ANTES das 09:00 — descoberto no plano 179-05
+
+**Onde:** `tests/Feature/Publicador/CockpitDaContaTest.php:1277-1299`
+(`test_a_atividade_agrupa_em_hoje_ontem_e_data_nesta_ordem`, do plano **179-03**, commit `43fa4d4a`)
+
+**O sintoma, medido duas vezes no mesmo dia (2026-10-13):**
+
+| Rodada | Hora local (`America/Sao_Paulo`) | Resultado |
+|---|---|---|
+| suíte completa | ~**08:06** | **1 falha** — `[2, 3, 1]` em vez de `[3, 2, 1]` |
+| o mesmo teste isolado | **09:01** | **passa**, 6 asserções |
+
+**A causa, por construção:** o cenário monta três eventos "de hoje" com
+`now()->subHours(2)`, `subHours(5)` e `subHours(9)`, e cobra
+`assertSame([3, 2, 1], …)` nos grupos `hoje` / `ontem` / data antiga. ⚠️ **Antes das 09:00,
+`now()->subHours(9)` cai no dia ANTERIOR** — o evento migra de `hoje` para `ontem` e as contagens
+viram `[2, 3, 1]`. O agrupamento do serviço está **certo**; o cenário é que é relativo à hora do
+relógio.
+
+**Não é regressão do plano 179-05:** `CockpitDaContaTest` chama `CockpitDaContaService` **direto**,
+sem passar pelo controller, e este plano tocou só `MlbPublicadorEntradaController`,
+`routes/mlb_anuncios.php` e o próprio `VisaoGeralCockpitTest` (diff vazio em
+`CockpitDaContaService.php` e em `CockpitDaContaTest.php` no range do plano).
+
+**Como corrigir, para quem pegar:** `Carbon::setTestNow()` com uma hora fixa segura (o arquivo já
+usa `Carbon` e o padrão existe na suíte), ou trocar `subHours(9)` por um horário ancorado em
+`today()->setTime(…)`. **Uma linha**, e o gate passa a valer nas 24 horas do dia.
+
+⚠️ **Enquanto não for corrigido:** qualquer rodada da suíte do Publicador entre 00:00 e 09:00
+reporta **1 falha que não é regressão**. A próxima pessoa não deve procurar bug no próprio trabalho
+— deve olhar a hora.

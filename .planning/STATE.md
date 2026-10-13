@@ -740,6 +740,126 @@ vazio (controle: o mesmo comando no range da fase devolve 13 arquivos dos irmão
 
 ---
 
+### 2026-10-13 — v26.0 (Redesign do Publicador) · Fase 179 · plano 05 de 10 CONCLUÍDO — **WAVE 2**
+
+> ⚠️ Bloco **aditivo**, escrito à mão, conferido por `git diff --numstat` (0 linhas removidas).
+> `state.advance-plan` **não foi executado**. `ROADMAP.md` e `REQUIREMENTS-v26.md` **intactos**.
+
+**179-05** ligou a wave 1 na tela: `visaoGeral()` entrega **23 props** (as **14** de hoje, intactas e
+com o mesmo valor, **+ as 9** do cockpit) e `POST publicador/empresas/{conta}/acoes/adiar` faz o
+adiamento **sobreviver à recarga**. Commits `c914a92d` (RED) · `e5ccb690` (GREEN) · `82a51f57`
+(deferred) · `4df1883f` (fix de gate). **26 testes / 251 asserções**; suíte do Publicador
+**2007 / 14953 / 0** (baseline medida ANTES de editar: 1981 / 14702 / 0). **11 mutações, 10
+reprovaram, 1 equivalente declarada.** Nenhuma migration, nenhum pacote, `resources/js` com diff
+vazio.
+
+⚠️ **AS PROPS DE HOJE SÃO 14, NÃO 13.** O `<interfaces>` do `179-05-PLAN.md:75-77` diz "13 props" e
+na mesma frase lista 14 — a fonte é o `Inertia::render` real. **O total é 23.** Quem escrever o
+179-06/07/08/09 e o 179-10 deve usar 14+9.
+
+⚠️ **UM DOS QUATRO MOTIVOS DE MANTER `quemPublicou` NÃO SE SUSTENTOU — e o 179-09 precisa saber.** O
+plano afirma que ela *"reusa o `$publicados` que a action já computa para os `indicadores`"*: **falso**.
+`$publicados = $painel->publicadosRecentes($alvo)` (`MlbPublicadorEntradaController.php:525`) existe
+**somente** para `quemPublicou` — `indicadores()` recebe `$alvo`/`$contagemProdutos`/`$produtos` e não
+o toca. E `publicadosRecentes()` varre **todas** as publicações da conta pagando um `User::find()`
+**por linha**. ➡️ **`produtosPorFase` custa 0 mesmo (passthrough); `quemPublicou` custa 1 consulta + 1
+`User::find()` por publicação.** As duas **ficam** (decisão de arquitetura do orquestrador, honrada —
+a decisão do usuário de 12/10 é de TELA), mas o 179-09 agora tem o **número** para decidir se tira a
+prop junto com o render.
+
+⚠️ **DÍVIDA PRÉ-EXISTENTE MEDIDA E REGISTRADA (não é regressão):** a Visão geral **não cresce com
+produto** — 3 produtos = **65** consultas, 12 produtos = **65** (acréscimo **zero**) — mas **cresce
+com PUBLICAÇÃO**: 12 publicações = **91**. Causa: `PainelVisaoGeralService::resolverAtor()` (`:136`)
+faz `User::find()` por linha e é chamado por `publicadosRecentes()` e `ultimasPublicacoes()`, as duas
+da Fase 173 e as duas chamadas **uma vez cada** antes e depois deste plano. ⚠️ **O próprio arquivo já
+tem o padrão certo 840 linhas abaixo** (`atividadeDaEquipe()`, `:976`, um `whereIn`) e o docblock de
+`:860` até declara *"nunca um `User::find()` por linha"*. Receita completa em
+`.planning/phases/179-visao-geral-cockpit/deferred-items.md`.
+
+⚠️ **RECEITA DE GATE DE N+1 PARA AS WAVES SEGUINTES: congele a OUTRA dimensão.** A primeira versão do
+gate variava produtos **e** publicações juntos, reprovava com 91 e **não dizia de quem era a culpa** —
+misturava dívida alheia com a própria. Com as publicações fixas em 2, o acréscimo por produto é zero e
+o gate passa a ser sobre o que **este** plano ligou. A dívida alheia ganhou um **marcador** separado
+(teto 120 + prova comparativa de que o crescimento é por publicação).
+
+⚠️ **MUTAÇÃO QUE SOBREVIVE POR COINCIDÊNCIA DE ID — o furo que a lição 4 pegou.** M05
+(`$request->user()?->id` → `1`) **sobreviveu** na 1ª rodada porque quem adiava no teste era o
+**primeiro** usuário criado, de `id` exatamente **1**. Não era equivalência, era coincidência. Gate
+corrigido (quem adia é o **segundo** admin, `assertNotSame` dos ids, saco de cache dos **dois**
+conferido) e M05 passou a reprovar. **Quem escrever gate de escopo por usuário nas Fases 180/181: não
+use o primeiro usuário criado como sujeito da ação.**
+
+⚠️ **A MUTAÇÃO "mover o `abort_unless` para depois do `adiar()`" É EQUIVALENTE POR CONSTRUÇÃO, e isso
+é bom.** `AdiamentoDeAcoes::adiar()` **também** recusa chave fora do mapa, em silêncio (defesa em
+profundidade da wave 1), então para chave inválida **nenhuma** das duas ordens escreve e o 422 vem nas
+duas. Declarada, **não contada** como reprovação, e substituída por **M07b** (trocar a constante do
+serviço por uma lista literal local incompleta), que reprova — *a borda não pode ser mais estreita que
+o contrato*.
+
+⚠️ **[Rule 2] A SAÚDE E O HEADER DISCORDAVAM SOBRE A MESMA CONTA.** Sem Company, o `$defasagem` que a
+action monta (`:523`) diz `nunca_coletado: false` e o `CabecalhoPublicadorService::para()` (`:96`) diz
+**`true`** — ele carimba a ausência de propósito. Ligar o cru faria o **chrome** dizer "nunca
+coletado" e o **corpo** dizer "tudo conectado", na mesma tela. A `saude` passou a ler
+`$cabecalho['integracoes']['coleta']`, a mesma fonte única de onde já vem o `total` da barra.
+**Corrigir o stub da action não era opção:** `indicadores()` o lê
+(`PainelVisaoGeralService.php:286`), comportamento aprovado, arquivo de outro plano. M09 reprova quem
+reverter.
+
+⚠️ **`partialMock()` NÃO SERVE PARA CLASSE COM DEPENDÊNCIA PROMOVIDA.** O `->once()` de
+`CabecalhoPublicadorService::para()` exigiu **delegação explícita**
+(`andReturnUsing(fn (...$a) => $real->para(...$a))`): o mock parcial não roda construtor, o
+`passthru()` estoura em *"Typed property … must not be accessed before initialization"*, e o mock
+**proxiado** estoura igual (o `passthru` chama na subclasse, não no objeto proxiado).
+`ProgramasPublicadorService` aceita `partialMock` porque não tem dependência promovida.
+
+⚠️ **`{conta}` FORA DO PADRÃO: O STATUS 404 É GATE VAZIO POR CONSTRUÇÃO.** Sem o
+`->where('conta', …)` o `resolver()` devolveria `null` e o `abort_if` daria o **mesmo** 404. O que
+prova é `shouldNotReceive('resolver')` — o controller nunca alcançado. M10 reprova.
+
+⚠️ **O gate "nenhuma chave de prop removida" é vazio AO CONTRÁRIO.** Içar as 6 saídas reusadas para
+variável gera `-'chave' =>` **por construção**. As 6 remoções foram **enumeradas uma a uma com o `+`
+correspondente da MESMA chave** (só o lado direito mudou); as outras 8 chaves não aparecem em nenhum
+lado do diff. ⚠️ **E o gate 6b fecha o argumento das props que ficam:**
+`git diff --stat 898d68c2..HEAD -- ListaPorFaseTest.php VisaoGeralTest.php` = **VAZIO** — manter
+`produtosPorFase`/`quemPublicou` custou **ZERO** cirurgia nas 14 asserções que as asseguram.
+
+⚠️ **TRIMSTRINGS APARA A `chave` ANTES DA ACTION:** `'sem_publicacao '` (espaço à direita) é
+**aceita**, porque é literalmente a mesma chave depois do middleware global. Documentado no gate
+porque a intuição diz o contrário — é normalização de borda do framework, não furo da lista fechada.
+`''` e `'  '` caem no `required` e voltam **302 com erro de sessão**, não 422: são dois caminhos de
+recusa diferentes e os dois têm gate.
+
+⚠️ **`atividade.disponivel` é `true` em conta SEM Company que tenha produto recebido** — o `<action>`
+previu `false`. A **4ª fonte** (`produtosRecebidos()`, `CockpitDaContaService.php:558`) é escopada por
+`mlb_empresa_id` **OU** `company_id` e não precisa de Company; afirmar "indisponível" esconderia
+evento que existe (VG-18). O caso realmente vazio tem teste próprio e aí é `false`.
+
+⚠️ **SEGUNDA DÍVIDA ALHEIA, e ela vai morder quem rodar a suíte de madrugada:**
+`CockpitDaContaTest.php:1277` (`test_a_atividade_agrupa_em_hoje_ontem_e_data_nesta_ordem`, plano
+**179-03**) **reprova se a suíte rodar antes das 09:00 locais** — o cenário usa
+`now()->subHours(2|5|9)` como "três eventos de hoje", e antes das 09:00 o de 9 horas cai no dia
+anterior: as contagens viram `[2,3,1]` em vez de `[3,2,1]`. **Medido duas vezes no mesmo dia:**
+falhou às ~**08:06** na suíte completa, **passou** às **09:01** isolado (6 asserções). Não é
+regressão deste plano — `CockpitDaContaTest` chama o serviço **direto**, sem controller, e o arquivo
+tem diff vazio no range. **Correção é uma linha de `Carbon::setTestNow()`.**
+
+⚠️ **A armadilha de range se confirmou pela TERCEIRA vez** (179-03, 179-04, agora). Os gates deste
+plano usaram **dois** ranges: `898d68c2..HEAD` para o que ninguém da fase pode tocar (os 14 caminhos
+deram `0`) e `af614ba3..HEAD` para o que **outro plano possui** (os 8 caminhos deram `0`). Rodado no
+range da fase, o segundo grupo acusaria o trabalho legítimo dos irmãos. **Isca** do range do plano:
+3 arquivos / 1146 inserções — o vazio dos outros **não é por construção**. Os 22 caminhos foram
+conferidos por `test -e` antes de acreditar no vazio.
+
+**Pendências de decisão herdadas e vivas:** a divergência de **"Prontos para a Fase 2"** (aberta pelo
+179-02) **não** foi resolvida — e este plano a torna **visível**, porque agora o anel e a ação estão
+na mesma tela com números diferentes para o mesmo conceito.
+
+**Deprecations 53 → 54** (o `@group phase179` da classe de teste nova). **Nada deployado, nada
+empurrado, nada no VPS. Nenhuma tela foi vista renderizada. Nenhum número de produção foi medido — a
+leitura de produção segue bloqueada nesta sessão.**
+
+---
+
 
 Phase: 156 (historico-e-sla-v23-0) — **COMPLETA** (trabalho direto, sem migration e sem gravar nada)
 
