@@ -324,8 +324,8 @@ class AcervoTriagemService
      * ⚠️ NÃO EXISTE PARÂMETRO `periodo`, e isso é MEDIDO, não esquecimento:
      * `ml_acervo_itens` não tem coluna de data de publicação. As únicas datas da
      * tabela são `coletado_em`, `detalhe_coletado_em` e os `timestamps`
-     * (migration `2026_08_11_090000_create_ml_acervo_itens_table.php:84-91`;
-     * `$fillable` em `app/Models/MlAcervoItem.php:43-83` — nenhum
+     * (migration `2026_08_11_090000_create_ml_acervo_itens_table.php:84-88`;
+     * `$fillable` em `app/Models/MlAcervoItem.php:80-81` — nenhum
      * `published_at`/`date_created`). `created_at` é a data em que a COLETA criou
      * a linha, não a da publicação, e já enganou este projeto antes
      * (`.planning/learnings/…/created_at é artefato de reimport`). O filtro
