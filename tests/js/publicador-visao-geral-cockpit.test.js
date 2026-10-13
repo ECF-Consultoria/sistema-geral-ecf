@@ -1298,3 +1298,87 @@ test('M — as duas URLs do cliente: nome da rota, parâmetro e a ausência que 
         assert.equal((fonte.match(/\broute\(/g) ?? []).length, 2, 'o cockpit deveria chamar `route()` exatamente 2 vezes');
     });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// N. ⚠️ AS QUATRO PROPS QUE SÃO SÓ DO GATE — a composição NÃO as passa
+//
+// [Rule 1 — gate furado] A mutação M20 desta rodada SOBREVIVEU: passar
+// `expandidasIniciais={{com_problema: true}}` ao `OQueFazerAgora` não reprovava
+// nada. E isso é exatamente a classe de furo que os planos 179-07 e 179-08
+// avisaram: `expandidasIniciais`, `atualizandoInicialmente`, `chipInicial` e
+// `agora` existem para que as asserções DELES não fiquem vazias por
+// construção, e passá-las em produção mudaria o estado INICIAL da tela em
+// silêncio — gaveta aberta, spinner ligado, chip de filtro trocado, data
+// congelada.
+//
+// O estado inicial de produção é o do protótipo: tudo fechado (`:390`,
+// `open: {}`), sem spinner (`syncing: false`), chip `tudo` e data real.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ⚠️ ARMADILHA DE MEDIDOR, achada por ESTA rodada e registrada aqui:
+ * `new RegExp(`\b${nome}\b`)` com TEMPLATE LITERAL é asserção VAZIA.
+ * Em template literal, `\b` é o caractere BACKSPACE (U+0008) e não a borda de
+ * palavra do regex — e nenhuma fonte deste projeto contém backspace, então as 4
+ * asserções negativas passavam POR CONSTRUÇÃO. Quem denunciou foi a ISCA logo
+ * abaixo, que usa a MESMA expressão no sentido POSITIVO e reprovou. Por isso
+ * aqui é `String.raw`.
+ *
+ * É irmã do `/href="…"/` sem o `\s` do 179-08: medidor que nunca falha.
+ */
+const PROPS_SO_DO_GATE = [
+    { nome: 'expandidasIniciais', dono: 'OQueFazerAgora (179-07)', efeito: 'abriria a gaveta de uma ação na primeira pintura' },
+    { nome: 'atualizandoInicialmente', dono: 'SaudeDaConta (179-07)', efeito: 'nasceria com o spinner de "Atualizando" ligado' },
+    { nome: 'filtroInicial', dono: 'OQueFazerAgora (179-07)', efeito: 'abriria o segmented numa severidade que não é "todas"' },
+    { nome: 'chipInicial', dono: 'AtividadeRecente (179-08)', efeito: 'abriria a timeline num filtro que não é "tudo"' },
+];
+
+test('N — a composição não passa nenhuma das 4 props de ESTADO INICIAL (elas são do gate)', async (contexto) => {
+    const fonte = FONTES.get(REL_COCKPIT);
+
+    for (const { nome, dono, efeito } of PROPS_SO_DO_GATE) {
+        await contexto.test(`${nome} (${dono}) não é passada`, () => {
+            assert.doesNotMatch(
+                fonte,
+                new RegExp(String.raw`\b${nome}\b`),
+                `o cockpit passou ${nome}: em produção isso ${efeito}. Ela existe só para o gate do plano dono dela.`,
+            );
+        });
+    }
+
+    await contexto.test('`agora` (a data fixa do gate do 179-08) não é passada', () => {
+        // ⚠️ Como PROP, com o `=`: `/agora/` solto casaria com o literal
+        // "O que fazer agora" de qualquer bloco e seria asserção vazia ao
+        // contrário.
+        assert.doesNotMatch(fonte, /\bagora=/, 'o cockpit fixou a data: `agora` é prop só do teste');
+    });
+
+    await contexto.test('⚠️ ISCA: as 5 props EXISTEM nos componentes donos', () => {
+        // Sem isto, as asserções acima passariam também se os componentes
+        // tivessem deixado de aceitar as props (e aí o nome estaria errado).
+        const donos = {
+            expandidasIniciais: `${DIR}/OQueFazerAgora.jsx`,
+            filtroInicial: `${DIR}/OQueFazerAgora.jsx`,
+            atualizandoInicialmente: `${DIR}/SaudeDaConta.jsx`,
+            chipInicial: `${DIR}/AtividadeRecente.jsx`,
+            agora: `${DIR}/PublicacoesRecentes.jsx`,
+        };
+        for (const [prop, caminho] of Object.entries(donos)) {
+            assert.match(
+                lerSemComentarios(caminho),
+                new RegExp(String.raw`\b${prop}\b`),
+                `${caminho} não aceita mais a prop ${prop} — a asserção negativa acima virou vazia`,
+            );
+        }
+    });
+
+    await contexto.test('as props que a composição PASSA são exatamente as 11 reais', () => {
+        // ⚠️ Lista FECHADA: prop nova entrando aqui exige decisão de alguém.
+        const passadas = [...fonte.matchAll(/<(?:BannerDeIntegracao|JornadaDosProdutos|OQueFazerAgora|SaudeDaConta|PublicacoesNoMercadoLivre|FaixaDeDesempenho|PublicacoesRecentes|AtividadeRecente)\b([^>]*)>/g)]
+            .flatMap((m) => [...m[1].matchAll(/\b([a-zA-Z][\w]*)=/g)].map((a) => a[1]));
+        assert.deepEqual(
+            [...new Set(passadas)].sort(),
+            ['acervoImagens', 'acoes', 'atividade', 'banner', 'contaChave', 'desempenho', 'jornada', 'publicacoesMl', 'recentes', 'saude', 'urlProdutos', 'urlPublicacoes'].sort(),
+        );
+    });
+});
