@@ -31,6 +31,7 @@ use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\EditorRascunhoService;
 use App\Services\Publicador\IaParaRascunhoService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Services\Publicador\PublicacoesDaListaService;
 use App\Services\Mlb\Acervo\AnuncioSaudeService;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
 use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
@@ -452,8 +453,14 @@ class MlbAnuncioController extends Controller
      * publicou — `Publicacao::considerado()` não entra aqui, essa query LISTA,
      * não CONTA (regra travada em 134-CONTEXT.md, canonical_refs).
      */
-    public function meus(Request $request, Company $company, ProgramasPublicadorService $programas, AcervoTriagemService $acervoTriagem, CabecalhoPublicadorService $cabecalhos)
-    {
+    public function meus(
+        Request $request,
+        Company $company,
+        ProgramasPublicadorService $programas,
+        AcervoTriagemService $acervoTriagem,
+        CabecalhoPublicadorService $cabecalhos,
+        PublicacoesDaListaService $publicacoes,
+    ) {
         // Mesma trava de todas as outras actions do módulo — nenhuma exceção (D-02, T-134-01/02).
         $company->loadMissing('mlToken');
         abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
@@ -462,7 +469,14 @@ class MlbAnuncioController extends Controller
         $alvo  = $programas->resolver('company-'.$company->id);
         $conta = $alvo !== null ? $programas->empresaParaTela($alvo) : null;
 
-        $busca = trim((string) $request->query('busca', ''));
+        // ⚠️ `is_string` ANTES do `trim`, e não `(string)`: `?busca[]=x` entrega
+        // um ARRAY, e `(string) []` emite `Array to string conversion`, que o
+        // `HandleExceptions` do Laravel transforma em `ErrorException` — ou seja,
+        // 500 numa querystring malformada. Mesma trava em `status`, `sub`,
+        // `visao` e `sel` abaixo (T-180-04-T). Nenhum nome e nenhum tipo de prop
+        // muda com isso: `busca` continua string.
+        $buscaBruta = $request->query('busca', '');
+        $busca      = is_string($buscaBruta) ? trim($buscaBruta) : '';
 
         // D-03: só ativos por padrão. Valor fora da lista fechada cai no default —
         // nunca interpolar querystring em SQL.
@@ -487,8 +501,19 @@ class MlbAnuncioController extends Controller
         // lista passa a ter 6 valores; `acionaveis` SEGUE sendo o default e
         // segue cobrindo `active` + `paused` + `under_review`. O rótulo na tela
         // é "Em revisão" — `under_review` nunca aparece para o usuário.
-        $statusFiltro = (string) $request->query('status', 'acionaveis');
-        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'em_revisao', 'encerrados', 'todos'], true)) {
+        //
+        // ─── Emenda de 2026-10-13 (Fase 180, plano 04) ────────────────────
+        // A lista passa a ter SETE valores: `com_erro` entrou (LIST-05). Ele é
+        // o único que NÃO é um valor de `ml_acervo_itens.status` — é o eixo
+        // `sub_status` do Mercado Livre, de lista fechada em
+        // `AcervoTriagemService::SUB_STATUS_COM_ERRO`, aplicado por fora do
+        // `match` daquele serviço. ⚠️ Sem este 7º valor a aba nova NUNCA chega
+        // ao serviço: a lista COAGE o resto para `acionaveis`, então
+        // `?status=com_erro` viraria `acionaveis` em silêncio. O rótulo
+        // "Com erro" é da tela; aqui e no payload circula a CHAVE.
+        // `acionaveis` segue sendo o default.
+        $statusFiltro = $request->query('status', 'acionaveis');
+        if (! in_array($statusFiltro, ['acionaveis', 'ativos', 'pausados', 'em_revisao', 'encerrados', 'todos', AcervoTriagemService::STATUS_COM_ERRO], true)) {
             $statusFiltro = 'acionaveis';
         }
 
@@ -501,7 +526,7 @@ class MlbAnuncioController extends Controller
 
         // Decisão A2 do UI-SPEC: Publicados é a sub-aba padrão. A listagem de
         // Rascunhos em si é escopo do 134-09 — aqui só o contador da sub-aba.
-        $sub = (string) $request->query('sub', 'publicados');
+        $sub = $request->query('sub', 'publicados');
         if (! in_array($sub, ['publicados', 'rascunhos'], true)) {
             $sub = 'publicados';
         }
@@ -512,11 +537,132 @@ class MlbAnuncioController extends Controller
         // filtrado, senão os chips ficariam errados com comVenda=1 ativo.
         $comVenda = $request->boolean('comVenda');
 
+        // ═══ Fase 180, plano 04 — os 7 parâmetros NOVOS da URL (LIST-19) ═════
+        //
+        // LIST-19 exige que recarregar a página devolva o MESMO estado, então
+        // todo filtro vive na querystring e volta na prop `filtros`. A regra de
+        // saneamento é a que `status`/`motivo`/`sub` já seguiam e que agora vale
+        // para os sete: **lista FECHADA ou cast**, valor fora dela cai no
+        // default, e NADA é interpolado em SQL (T-180-04-T).
+        //
+        // ⚠️ Nenhum deles usa `(string) $request->query(...)`: array na
+        // querystring (`?tipo[]=x`) viraria `ErrorException` via
+        // `HandleExceptions` — 500 de graça. `in_array` com `true` estrito
+        // recebe array sem reclamar e devolve `false`, que é o default.
+        //
+        // ⚠️ `catalogo` vem de `$request->boolean()`, NUNCA de truthiness: a
+        // STRING `'false'` que uma querystring entrega é truthy em PHP, e
+        // `AcervoTriagemService::filtros()` compara com `=== true` justamente
+        // para que o filtro não ligue ao contrário do que o usuário pediu.
+
+        // `fase` = a fase do Publicador em que a publicação nasceu (1 base, 2
+        // kit). Chega como string na querystring; lista fechada de duas.
+        $faseBruta = $request->query('fase');
+        $fase      = in_array($faseBruta, ['1', '2', 1, 2], true) ? (int) $faseBruta : null;
+
+        // `tipo` = Clássico/Premium. As duas chaves são as PÚBLICAS do serviço,
+        // que também é quem conhece o `listing_type_id` real de cada uma — aqui
+        // nunca aparece `gold_special`/`gold_pro` como entrada do usuário.
+        $tipoBruto = $request->query('tipo');
+        $tipo      = in_array($tipoBruto, [AcervoTriagemService::TIPO_CLASSICO, AcervoTriagemService::TIPO_PREMIUM], true)
+            ? $tipoBruto
+            : null;
+
+        $catalogo = $request->boolean('catalogo');
+
+        // `responsavel` = ids de USUÁRIO DA EQUIPE. ⚠️ Array de querystring
+        // chega de todo jeito: escalar (`?responsavel=7`), array associativo
+        // (`?responsavel[a]=7`), com nulo dentro, com string não numérica. O
+        // saneamento é FECHADO — só `int > 0` ou string decimal sem sinal,
+        // espaço, ponto nem expoente sobrevive. `'; DROP'`, `'-1'`, `'0'`,
+        // `'1.5'`, `'1e3'`, array aninhado e `null` caem fora.
+        $responsavelBruto = $request->query('responsavel', []);
+        if (! is_array($responsavelBruto)) {
+            $responsavelBruto = [$responsavelBruto];
+        }
+        $responsavel = [];
+        foreach ($responsavelBruto as $bruto) {
+            if (is_int($bruto) && $bruto > 0) {
+                $responsavel[] = $bruto;
+            } elseif (is_string($bruto) && preg_match('/^[1-9]\d{0,17}$/', $bruto) === 1) {
+                $responsavel[] = (int) $bruto;
+            }
+        }
+        $responsavel = array_values(array_unique($responsavel));
+
+        // `periodo` = quando a publicação foi CONCLUÍDA. ⚠️ Não sai do acervo:
+        // `ml_acervo_itens` NÃO tem coluna de data de publicação (medido no
+        // plano 180-03 — as únicas datas são `coletado_em`,
+        // `detalhe_coletado_em` e os `timestamps`, e `created_at` é a data em
+        // que a COLETA criou a linha). A data real é
+        // `pub_publicacoes.concluida_em`, e por isso este filtro entra pelo
+        // mesmo caminho de `fase` e `responsavel`: `ml_item_ids`.
+        $periodoBruto = $request->query('periodo');
+        $periodo      = in_array($periodoBruto, ['hoje', '7d', '30d'], true) ? $periodoBruto : null;
+
+        // `visao` = Por produto (default, LIST-09) | Lista.
+        $visaoBruta = $request->query('visao', 'grupo');
+        $visao      = in_array($visaoBruta, ['grupo', 'lista'], true) ? $visaoBruta : 'grupo';
+
+        // `sel` = a publicação selecionada. ⚠️ Validado pela FORMA (`MLB` +
+        // dígitos) e NÃO lido do banco: nesta fase a tela só precisa saber qual
+        // linha pintar. Ler o item para confirmar que existe custaria uma
+        // consulta a cada request, e quem vai ler de propósito é o painel de
+        // inspeção da Fase 181 — que usa este MESMO parâmetro.
+        $selBruto = $request->query('sel');
+        $sel      = is_string($selBruto) && preg_match('/^MLB\d+$/', $selBruto) === 1 ? $selBruto : null;
+
+        // ─── Fase, Responsável e Período → `ml_item_ids` ──────────────────────
+        //
+        // Os três vivem no PUBLICADOR (`pub_produtos.fase`,
+        // `pub_publicacoes.ator`, `pub_publicacoes.concluida_em`), não no
+        // acervo, e por isso são resolvidos para uma lista de `ml_item_id` que o
+        // `filtros()` aplica com um `whereIn`. Os três compõem por INTERSEÇÃO —
+        // dois ativos ao mesmo tempo é E, não OU — porque são o MESMO `WHERE` de
+        // uma consulta só.
+        //
+        // ⚠️⚠️ `null` É "SEM FILTRO"; `[]` É "O FILTRO CASOU COM ZERO". Colapsar
+        // os dois mostraria o acervo INTEIRO justamente quando o recorte não
+        // achou nada — o pior tipo de mentira de tela. `whereIn(col, [])` gera
+        // `0 = 1`, que é exatamente a verdade.
+        $idsPorMetodologia = $this->idsPorMetodologia($company, $fase, $responsavel, $periodo);
+
+        // Os filtros que vivem no acervo, numa estrutura só — a MESMA passada
+        // para a listagem e para as contagens das abas. `com_vendas` é o
+        // predicado `sold_quantity > 0` roteado pela definição ÚNICA de
+        // `AcervoTriagemService::filtros()` (Fase 173-02 o tinha escrito inline
+        // aqui; deixar os dois é deixar a regra escrita duas vezes).
+        $filtrosDoAcervo = [
+            'tipo'         => $tipo,
+            'catalogo'     => $catalogo,
+            'com_vendas'   => $comVenda,
+            'ml_item_ids'  => $idsPorMetodologia,
+        ];
+
+        // ⚠️ A triagem recebe os MESMOS filtros MENOS `com_vendas`, e isso é
+        // deliberado: a decisão da Fase 173-02 (comentário acima, e o teste
+        // `MeusAnunciosTest::com_venda_filtra_a_listagem_sem_mudar_a_triagem`)
+        // é que os chips mostram o universo completo do status filtrado quando
+        // `comVenda=1` está ligado. Os filtros NOVOS entram porque sem eles os
+        // chips contariam um universo maior que a lista — que é o defeito que o
+        // plano 180-03 consertou ao dar `$filtros` e `$lista` à `triagem()`.
+        $filtrosDaTriagem = $filtrosDoAcervo;
+        unset($filtrosDaTriagem['com_vendas']);
+
         // ─── Listagem — ordenação por gravidade (D-12), determinística, sem
         // nenhum dado da camada cara: 3 níveis de desempate + tie-break estável. ───
-        $anuncios = $acervoTriagem->escopo($company, $busca, $statusFiltro)
-            ->when($motivo !== null, fn ($q) => $q->where('motivos', 'like', '%"' . $motivo . '"%'))
-            ->when($comVenda, fn ($q) => $q->where('sold_quantity', '>', 0))
+        // ⚠️ O 4º argumento (`$publicacoes`) é o que liga a BUSCA POR NOME DE
+        // PRODUTO (LIST-03, plano 180-03): sem ele o braço do produto nunca é
+        // montado e o trabalho daquele plano fica inacessível pela tela.
+        // ⚠️ O `com_vendas` saiu do `when()` inline e virou chave de
+        // `$filtrosDoAcervo` — fonte única.
+        $anuncios = $this->comMotivo(
+            $acervoTriagem->filtros(
+                $acervoTriagem->escopo($company, $busca, $statusFiltro, $publicacoes),
+                $filtrosDoAcervo,
+            ),
+            $motivo,
+        )
             ->orderByDesc('severidade')
             ->orderByRaw('nota_ecf IS NULL ASC') // não avaliado vai para o fim, não para o topo (D-12/D-18)
             ->orderBy('nota_ecf')
@@ -569,8 +715,94 @@ class MlbAnuncioController extends Controller
         // ─── Triagem (D-09) e defasagem (D-08) — extraídas para
         // AcervoTriagemService (Fase 173-02): fonte única também usada pela
         // Visão geral, mesmos números de antes. ───
-        $triagem   = $acervoTriagem->triagem($company, $busca, $statusFiltro);
+        // ⚠️ `$filtrosDaTriagem` e `$publicacoes` (plano 180-03): sem eles a tela
+        // mostraria uma linha achada pelo nome do produto e os chips diriam 0.
+        $triagem   = $acervoTriagem->triagem($company, $busca, $statusFiltro, $filtrosDaTriagem, $publicacoes);
         $defasagem = $acervoTriagem->defasagem($company);
+
+        // ═══ As contagens das 7 abas de status (LIST-05) ══════════════════════
+        //
+        // "Calculadas sobre os DEMAIS filtros": o eixo de status é o que cada
+        // aba representa, então ele NÃO entra; busca, motivo, tipo, catálogo,
+        // vendas e `ml_item_ids` entram. É o que faz a aba "Ativas" dizer
+        // quantas ativas existem DENTRO do recorte atual, e não quantas existem
+        // na conta inteira.
+        //
+        // ⚠️ UMA consulta agregada, nunca 7 `count()` — a mesma disciplina de
+        // `CockpitDaContaService::resumoDePublicacoes()` ("nunca quatro
+        // `count()`"). E aqui o ganho é maior que 7 contra 1: com busca ativa,
+        // cada chamada a `escopo()` resolveria DE NOVO os `ml_item_id` do
+        // produto, então 7 abas custariam 14 consultas em vez de 2.
+        //
+        // ⚠️ A soma de `acionaveis` e o nome das colunas de `status` repetem o
+        // `match` de `AcervoTriagemService::escopo()`. A duplicação é guardada
+        // por um gate que compara, para TODAS as 7 chaves, este agregado com o
+        // `filtros(escopo(…, <chave>), …)->count()` do próprio serviço — se o
+        // `match` mudar e esta soma não, o teste reprova.
+        $porStatus = $this->comMotivo(
+            $acervoTriagem->filtros(
+                $acervoTriagem->escopo($company, $busca, 'todos', $publicacoes),
+                $filtrosDoAcervo,
+            ),
+            $motivo,
+        )
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $somaDeStatus = static fn (array $colunas) => (int) array_sum(
+            array_map(static fn (string $coluna) => (int) ($porStatus[$coluna] ?? 0), $colunas),
+        );
+
+        // `com_erro` é consulta PRÓPRIA porque não é um valor de `status`: é o
+        // eixo `sub_status`, e o serviço é a fonte fechada dele.
+        $totalComErro = $this->comMotivo(
+            $acervoTriagem->filtros(
+                $acervoTriagem->escopo($company, $busca, AcervoTriagemService::STATUS_COM_ERRO, $publicacoes),
+                $filtrosDoAcervo,
+            ),
+            $motivo,
+        )->count();
+
+        $totalDeRascunhos = MlAnuncioRascunho::where('company_id', $company->id)->count();
+
+        $contagens = [
+            // `todos` é a soma de TUDO que o agregado trouxe, inclusive status
+            // que nenhuma aba nomeia (`inactive`, por exemplo) — é o mesmo
+            // universo que `escopo(…, 'todos')`, que não filtra status.
+            'todos'      => (int) $porStatus->sum(),
+            'acionaveis' => $somaDeStatus(['active', 'paused', 'under_review']),
+            'ativos'     => $somaDeStatus(['active']),
+            'pausados'   => $somaDeStatus(['paused']),
+            'em_revisao' => $somaDeStatus(['under_review']),
+            'encerrados' => $somaDeStatus(['closed']),
+            'com_erro'   => (int) $totalComErro,
+            'rascunhos'  => $totalDeRascunhos,
+        ];
+
+        // As SEIS abas que a tela desenha, NA ORDEM (plano 180-06). ⚠️
+        // `encerrados` e `acionaveis` NÃO têm aba no layout novo, mas continuam
+        // valores válidos de `status` e continuam com contagem em `$contagens` —
+        // são os destinos que a Visão Geral da Fase 179 monta
+        // (`CockpitDaContaService::resumoDePublicacoes()`), e `acionaveis` é o
+        // DEFAULT da tela.
+        //
+        // ⚠️ `comDot` em camelCase, e isso é de propósito: é o nome LITERAL que
+        // `AbasDeStatus.jsx` consome (`180-06-PLAN.md:94`). Mandar `com_dot`
+        // faria o componente ler `undefined` e NUNCA desenhar o ponto vermelho,
+        // em silêncio. O dot é calculado AQUI (`com_erro > 0`) porque o
+        // componente não recalcula — a regra mora num lugar só.
+        $abas = [
+            ['chave' => 'todos',                               'rotulo' => 'Todas',      'total' => $contagens['todos'],      'comDot' => false],
+            ['chave' => 'ativos',                              'rotulo' => 'Ativas',     'total' => $contagens['ativos'],     'comDot' => false],
+            ['chave' => 'pausados',                            'rotulo' => 'Pausadas',   'total' => $contagens['pausados'],   'comDot' => false],
+            ['chave' => AcervoTriagemService::STATUS_COM_ERRO, 'rotulo' => 'Com erro',   'total' => $contagens['com_erro'],   'comDot' => $contagens['com_erro'] > 0],
+            ['chave' => 'em_revisao',                          'rotulo' => 'Em revisão', 'total' => $contagens['em_revisao'], 'comDot' => false],
+            // LIST-25: "Rascunhos" entrou no MESMO trilho das abas de status. O
+            // dado e a query continuam os de hoje (`sub`/`subTotais`, D-14) — o
+            // que mudou é o lugar do atalho.
+            ['chave' => 'rascunhos',                           'rotulo' => 'Rascunhos',  'total' => $contagens['rascunhos'],  'comDot' => false],
+        ];
 
         // ─── RIE-04 (quick 261010-rie): o vazio da busca explica, não mente ──
         //
@@ -622,17 +854,190 @@ class MlbAnuncioController extends Controller
             'sub'       => $sub,
             'subTotais' => [
                 'publicados' => MlAcervoItem::where('company_id', $company->id)->count(),
-                'rascunhos'  => MlAnuncioRascunho::where('company_id', $company->id)->count(),
+                // ⚠️ Reaproveita o número que as abas já contaram — o mesmo
+                // `count()` escrito duas vezes é uma consulta paga duas vezes.
+                'rascunhos'  => $totalDeRascunhos,
             ],
             'anuncios'          => $anuncios,
             'rascunhos'         => $rascunhosProp,
             'triagem'           => $triagem,
-            'filtros'           => ['busca' => $busca, 'status' => $statusFiltro, 'motivo' => $motivo, 'com_venda' => $comVenda],
+            // ⚠️ ADITIVA: as 4 chaves de hoje (`busca`, `status`, `motivo`,
+            // `com_venda`) ficam com o MESMO nome e o MESMO tipo — 22 testes de
+            // `MeusAnunciosTest` as leem. As 7 novas entram ao lado, saneadas, e
+            // é isso que faz recarregar a página devolver o mesmo estado
+            // (LIST-19). `sub` continua em prop própria, como hoje; `page` é do
+            // paginator, que já carrega tudo pelo `withQueryString()`.
+            'filtros'           => [
+                'busca'       => $busca,
+                'status'      => $statusFiltro,
+                'motivo'      => $motivo,
+                'com_venda'   => $comVenda,
+                'fase'        => $fase,
+                'tipo'        => $tipo,
+                'catalogo'    => $catalogo,
+                'responsavel' => $responsavel,
+                'periodo'     => $periodo,
+                'visao'       => $visao,
+                'sel'         => $sel,
+            ],
+            // Fase 180, plano 04 — props NOVAS, nenhuma substituição.
+            'abas'              => $abas,
+            'contagens'         => $contagens,
             'skuNaoColetado'    => $skuNaoColetado,
             'defasagem'         => $defasagem,
             'saudeMlDisponivel' => (bool) config('mlb_acervo.saude_ml_disponivel'),
             'rotacaoN'          => (int) config('mlb_acervo.rotacao_n'),
         ]);
+    }
+
+    /**
+     * O filtro de MOTIVO da triagem (D-09), escrito UMA vez.
+     *
+     * A listagem e as contagens das abas aplicam o MESMO predicado; escrevê-lo
+     * duas vezes no mesmo método é o caminho mais curto para as duas
+     * divergirem na primeira correção feita de um lado só.
+     *
+     * ⚠️ `$motivo` já veio coagido contra a whitelist fechada de
+     * `AcervoTriagemService::motivosDef()` em `meus()` — nunca chega aqui valor
+     * livre de querystring. O `like '%"chave"%'` é o mesmo padrão sobre coluna
+     * json que `triagem()` e `comMotivos()` usam.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\MlAcervoItem>  $q
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\MlAcervoItem>
+     */
+    private function comMotivo($q, ?string $motivo)
+    {
+        return $q->when($motivo !== null, fn ($b) => $b->where('motivos', 'like', '%"' . $motivo . '"%'));
+    }
+
+    /**
+     * Fase, Responsável e Período → a lista de `ml_item_id` que o
+     * `AcervoTriagemService::filtros()` aplica (LIST-07/LIST-19).
+     *
+     * Os três filtros NÃO vivem no acervo: a fase é `pub_produtos.fase`, o
+     * responsável é `pub_publicacoes.ator` e a data de publicação é
+     * `pub_publicacoes.concluida_em` — medido no plano 180-03 que
+     * `ml_acervo_itens` não tem coluna de data de publicação. A ponte com o
+     * acervo é `pub_publicacao_itens.ml_item_id`, a MESMA que
+     * `PublicacoesDaListaService` e `historico()` percorrem (e **não** o
+     * `ml_acervo_itens.rascunho_id`, que aponta para `ml_anuncio_rascunhos`, o
+     * assistente ANTIGO — a divergência medida do LIST-20).
+     *
+     * ⚠️ UMA consulta para os três, e por isso eles compõem por INTERSEÇÃO: é o
+     * mesmo `WHERE`. Dois ativos ao mesmo tempo é E, nunca OU.
+     *
+     * ⚠️⚠️ O retorno distingue três coisas:
+     *   · `null` — nenhum dos três filtros está ativo: **não filtra nada**;
+     *   · `[]`   — os filtros estão ativos e casaram com ZERO publicações:
+     *              `whereIn(col, [])` gera `0 = 1` e a tela mostra zero linhas,
+     *              que é a verdade;
+     *   · lista  — os `ml_item_id` que sobreviveram.
+     * Colapsar `[]` em `null` mostraria o acervo INTEIRO exatamente quando o
+     * recorte não achou nada.
+     *
+     * ⚠️ Por que o responsável é resolvido em PHP e não em SQL: `ator` é uma
+     * coluna json (`{"equipe":bool,"id":int,"nome":string,"conta":{…}}`) e um
+     * `like '%"id":5%'` casaria também com `"id":55` — o `id` não é
+     * necessariamente a última chave, então não há sufixo confiável. Classificar
+     * em PHP é o padrão que `PainelVisaoGeralService::classificarAtor()` (`:151`)
+     * já estabeleceu para esta mesma coluna, e é exato.
+     *
+     * ⚠️ T-180-04-I: o id de usuário ENTRA (é o que o filtro manda de volta na
+     * URL) e NUNCA SAI daqui — o retorno é só `ml_item_id`, que é público (está
+     * no permalink do ML). Ator de CLIENTE do Portal nunca casa, mesmo que o id
+     * coincida: só `equipe === true` entra.
+     *
+     * @param  array<int,int>  $responsaveis  ids de usuário da equipe, já saneados
+     * @return array<int,string>|null
+     */
+    private function idsPorMetodologia(Company $company, ?int $fase, array $responsaveis, ?string $periodo): ?array
+    {
+        if ($fase === null && $responsaveis === [] && $periodo === null) {
+            return null;
+        }
+
+        $q = PubPublicacaoItem::query()
+            ->join('pub_publicacoes', 'pub_publicacoes.id', '=', 'pub_publicacao_itens.publicacao_id')
+            ->join('pub_rascunhos', 'pub_rascunhos.id', '=', 'pub_publicacoes.rascunho_id')
+            ->join('pub_produtos', 'pub_produtos.id', '=', 'pub_rascunhos.produto_id')
+            // Só o que de fato nasceu no ML — o mesmo filtro de `historico()` e
+            // de `PublicacoesDaListaService::base()`.
+            ->where('pub_publicacao_itens.status', PubPublicacaoItem::CREATED)
+            ->whereNotNull('pub_publicacao_itens.ml_item_id')
+            // O escopo por empresa, AGRUPADO. Um `orWhere` solto aqui subiria ao
+            // topo do WHERE e o filtro passaria a casar publicação de outra
+            // conta (T-134-01). A âncora vem por SUBCONSULTA porque
+            // `mlb_empresas.company_id` não é unique e um `value('id')` deixaria
+            // invisível o produto ancorado na segunda.
+            ->where(function ($escopo) use ($company) {
+                $escopo->where('pub_produtos.company_id', $company->id)
+                    ->orWhereIn('pub_produtos.mlb_empresa_id', function ($ancoras) use ($company) {
+                        $ancoras->select('id')->from('mlb_empresas')->where('company_id', $company->id);
+                    });
+            });
+
+        if ($fase !== null) {
+            $q->where('pub_produtos.fase', $fase);
+        }
+
+        if ($periodo !== null) {
+            // Janela DESLIZANTE para 7d/30d (as últimas 168 h / 720 h) e o
+            // começo do dia para "hoje". `match` sem `default` de propósito: o
+            // valor vem de lista fechada, e alguém que a amplie sem ampliar
+            // isto tem de ver o erro, não um filtro que silenciosamente não
+            // filtra.
+            $q->where('pub_publicacoes.concluida_em', '>=', match ($periodo) {
+                'hoje' => now()->startOfDay(),
+                '7d'   => now()->subDays(7),
+                '30d'  => now()->subDays(30),
+            });
+        }
+
+        $linhas = $q->select(['pub_publicacao_itens.ml_item_id', 'pub_publicacoes.ator'])->get();
+
+        $ids = [];
+        foreach ($linhas as $linha) {
+            if ($responsaveis !== [] && ! $this->atorEhDaEquipe($linha->ator, $responsaveis)) {
+                continue;
+            }
+
+            $mlItemId = (string) $linha->ml_item_id;
+            if ($mlItemId !== '') {
+                $ids[$mlItemId] = true;
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * O `ator` de uma publicação é de um destes usuários DA EQUIPE?
+     *
+     * ⚠️ `ator` chega CRU (string json) quando vem de um `select` com join — o
+     * cast `array` do model não se aplica a coluna de outra tabela. Aceita os
+     * dois formatos de propósito.
+     *
+     * ⚠️ `equipe !== true` nunca casa: o ator do CLIENTE pelo Portal também tem
+     * `id` gravado, e o id dele vive em `portal_usuarios`, outra tabela. Casar
+     * por id sem olhar `equipe` confundiria um cliente com um colega de mesmo
+     * id numérico (T-173-09).
+     *
+     * @param  array<int,int>  $idsPermitidos
+     */
+    private function atorEhDaEquipe(mixed $bruto, array $idsPermitidos): bool
+    {
+        $ator = is_array($bruto) ? $bruto : (is_string($bruto) ? json_decode($bruto, true) : null);
+        if (! is_array($ator)) {
+            return false;
+        }
+
+        if (($ator['equipe'] ?? null) !== true) {
+            return false;
+        }
+
+        $id = $ator['id'] ?? null;
+
+        return is_numeric($id) && in_array((int) $id, $idsPermitidos, true);
     }
 
     /**
