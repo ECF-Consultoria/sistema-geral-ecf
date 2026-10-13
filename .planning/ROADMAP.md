@@ -4061,6 +4061,101 @@ tabela de conferência (FID-01), o inventário de não-regressão (REG-01) e os 
 
 ---
 
+### Phase 184: Conexão com o Bling (ERP) — OAuth por link de autorização do cliente
+
+**Goal**: a loja do cliente fica conectada ao Bling dele, e o sistema passa a ler produtos e estoque
+de lá. A conexão nasce em **Configurações da loja no Publicador**
+(`/mlb/anuncios/publicador/empresas/{conta}/configuracoes`, hoje com a linha "ERP · declarado no
+onboarding" só-leitura em `PainelVisaoGeralService::integracoes()`), **não** no Portal do cliente.
+
+**Depends on**: nada das fases 177-183 (milestone v26.0). Toca `Configuracoes.jsx` e
+`PainelVisaoGeralService::integracoes()`, que a v26.0 declarou FORA do pacote de redesign (HEAD-15:
+"corpo antigo" nessas telas) — logo não disputa arquivo com a Fase 180/181 em curso.
+
+**Requirements**: a definir no planejamento. A pesquisa está feita:
+`.planning/seeds/261010-integracao-bling-erp.md` (10/10/2026) — API v3, OAuth, limites, schema das
+tabelas, mapa de campos Bling→Portal e 10 riscos. Esta fase é a **Fase 0 + Fase 1 (MVP)** daquele
+seed, com as decisões da §9 respondidas em 13/10/2026 (abaixo).
+
+**Decisões do usuário — 13/10/2026** (respostas à §9 do seed):
+
+1. **Quem autoriza: o CLIENTE, por link.** O botão nas Configurações **gera um link de autorização**
+   (com validade) que a equipe envia ao cliente; ele autoriza no Bling dele. Isso **substitui** a
+   recomendação do seed ("o cliente conecta pelo Portal") e também a alternativa "a equipe conecta
+   com a senha do ERP em mãos". Implica: estado intermediário `aguardando_cliente`, tela de retorno
+   pública amigável (exigência da homologação do Bling) e nenhuma senha de ERP trafegando pela equipe.
+2. **O app do Bling ainda não existe** — criar nesta fase, como app **público** (até 10 contas sem
+   homologação; a carteira passa disso, então a homologação entra como item seguinte, fora desta fase).
+   `BLING_CLIENT_ID`, `BLING_CLIENT_SECRET` e `BLING_REDIRECT_URI` só no `.env`.
+3. **Escopos: todos de uma vez** — Produtos, Estoques, Depósitos, Categorias de produtos, Campos
+   customizados, Dados básicos da empresa **+ Produtos-Lojas, Canais de venda e Anúncios**. Motivo:
+   mudar escopo depois **revoga todos os clientes já conectados** (seed §6).
+   ⚠️ **Tensão declarada, aceita pelo usuário:** combinada com a decisão 1, é **o cliente** que vê a
+   tela de consentimento — e ela lista "Anúncios" e "Lojas". Isso expõe a plataforma de venda, contra
+   a regra de sigilo que o resto do Portal segue (`assertSemOrigem`, risco 10 do seed). Não reabrir:
+   o usuário recebeu o trade-off por escrito e escolheu assim.
+
+**Fora desta fase** (ficam para a 185 e para a Fase 2 do seed): webhooks, fotos, GTIN/marca, kits do
+Bling virando ofertas do Planejamento, releitura de saldo ao publicar, painel `/bling-oauth` no Admin
+e qualquer **escrita** no Bling.
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (rodar `/gsd-plan-phase 184` para quebrar em planos)
+
+---
+
+### Phase 185: SKU do combo no Bling — kit com composição criado por POST
+
+**Goal**: o combo que o Publicador cria deixa de ser um SKU que o ERP do cliente não conhece. Depois
+de criado, o sistema **cria o kit no Bling** (`POST /produtos`, `formato E`, com
+`estrutura.componentes` apontando o produto-base vinculado e `quantidade = N`), para que a venda do
+combo baixe o estoque dos componentes no Bling e não fique "sem produto".
+
+**Depends on**: Fase 184 (sem vínculo `bling_vinculos` do produto-base não há `componentes[].produto.id`
+para mandar; o kit teria de nascer sem composição, que é justamente o que não resolve o estoque).
+
+**Requirements**: a definir no planejamento. É a **Fase 3** do seed
+`.planning/seeds/261010-integracao-bling-erp.md`, restrita aos kits/combos da ECF.
+
+**O que o código JÁ faz** (medido em 13/10/2026 — esta fase NÃO reconstrói nada disso):
+
+  1. **O SKU do combo já é gerado e já é distinto do unitário.**
+     `PreviaDaFaseService::skuSugerido()` (`app/Services/Publicador/PreviaDaFaseService.php:109`)
+     devolve `{SKU base}-KIT{N}` para fase criada no Publicador e `{SKU base}-CB{N}` para combo do
+     Planejamento do Portal (decisão 7 do docblock, 09/10/2026). O corte de 120 caracteres tira o
+     COMEÇO, nunca o sufixo.
+  2. **O SELLER_SKU por variante também.** `PreviaDaFaseService::sellerSkuSugerido()` (`:118`), com
+     `MlbPublicadorFaseController::sellerSkusParaGravar()` (`:531`) deixando a pessoa sobrescrever.
+  3. **O SKU é o MESMO no Clássico e no Premium** — os dois anúncios saem do mesmo rascunho e das
+     mesmas `pub_variantes`; `gold_special` e `gold_pro` só mudam `listing_type_id`, título e preço
+     (`EstruturaPublicacao::LISTING_TYPES`). Nada a fazer aqui: já é garantido por construção.
+  4. **O unitário usa o SKU do produto** — `PubProduto::skuExibido()` (`app/Models/PubProduto.php:240`),
+     gravado como atributo `SELLER_SKU` por `EditorRascunhoService` (`:103`).
+
+**Portanto o trabalho desta fase é só a ESCRITA no Bling**, não a geração do código.
+
+**Decisão do usuário — 13/10/2026**: mandar ao Bling como **kit com composição** (`formato E`), não
+como produto simples. Motivo aceito: o produto simples criaria um estoque paralelo no ERP e a venda do
+combo **não** baixaria o estoque do produto-base — ou seja, não resolveria o problema que motivou o
+pedido ("se não pode bagunçar a gestão de estoque").
+
+**Pontos que o planejamento tem de resolver** (do seed §7 e §8):
+- Quando disparar: na criação da fase, no Confirmar, ou só depois da publicação do anúncio.
+- O que fazer quando o produto-base **não** está vinculado ao Bling (recusar, enfileirar, ou criar o
+  base antes).
+- `POST /estoques` **não é idempotente** e `PUT /produtos` substitui o produto inteiro (usar PATCH).
+- Quem autoriza escrever no ERP fiscal do cliente (§9, pergunta 4 do seed — ainda em aberto para a
+  escrita de produtos que só existem no Portal; **esta fase cobre apenas kits/combos**).
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (rodar `/gsd-plan-phase 185` para quebrar em planos)
+
+---
+
 *Roadmap atualizado: 2026-10-11 — **Milestone v26.0 (Redesign do Publicador de Anúncios)** anexada:
 6 fases (177-182) cobrindo os 139 REQ-IDs do `REQUIREMENTS-v26.md`, derivados do pacote
 `new_layout_publicador/` (README + 4 protótipos) e da instrução do usuário de 2026-10-11.
