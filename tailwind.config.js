@@ -112,8 +112,15 @@ export default {
                     page: '#0A0A0A',          // fundo da página e do header
                     surface: '#111111',       // cards, tabela, painel, inputs
                     sunken: '#0D0D0D',        // cabeçalho de tabela, rodapés, sub-listas
+                    // `raised-0` e `hover-0` nomeiam tons MAIS ESCUROS que
+                    // `raised` (#151515) e `hover` (#141414) — o sufixo `-0`
+                    // existe para dizer isso. A diferença de 2 e 3 pontos é
+                    // visível num card de 1600px, e "usar o token parecido que
+                    // já existe" é justificativa vetada (FID-02).
+                    'raised-0': '#131313',    // ação RECOMENDADA de "O que fazer agora" (Visao Geral.dc.html:516)
                     raised: '#151515',        // linha de grupo
                     'raised-2': '#181818',    // estágio selecionado
+                    'hover-0': '#121212',     // linha do painel de estágio, no hover (Visao Geral.dc.html:137)
                     hover: '#141414',
                     'hover-2': '#161616',     // aba ativa do nav
                     'hover-3': '#1A1A1A',
@@ -136,6 +143,11 @@ export default {
                     'accent-hover': '#EAB308',
                     'row-sel': '#221D07',     // linha selecionada
                     'row-new': '#14120A',     // linha "NOVA"
+                    // Amarelo rebaixado ao ponto de virar superfície: fundo do
+                    // ícone circular do evento de PUBLICAÇÃO na Atividade
+                    // (Visao Geral.dc.html:588). É tinta sólida no protótipo,
+                    // não `accent` com opacidade — por isso ganha nome próprio.
+                    'accent-sunken': '#1F1B08',
                     // ── Fase 1 (TOK-07) — barras/células da Fase 1 ──
                     fase1: '#D4D4D8',
                     'fase1-2': '#E4E4E7',
@@ -212,6 +224,15 @@ export default {
             backgroundImage: {
                 'ecf-grad': 'linear-gradient(90deg, #171392 0%, #FE4D46 55%, #EDBA06 100%)',
                 'yellow-grad': 'linear-gradient(180deg, #ffe600 0%, #f5d400 100%)',
+                // Hachura do segmento "Sem publicação" da barra de estágios
+                // (VG-07, `Visao Geral.dc.html:479`, onde `k === 'none'`). Vive
+                // aqui porque é assim que o Tailwind a emite como classe
+                // (`bg-pub-hachura`); escrita na tela ela seria um
+                // `bg-[repeating-linear-gradient(...)]` com DOIS hex literais
+                // dentro — o que TOK-15 e o gate de vocabulário reprovam.
+                // As duas cores já têm nome na camada (`line-off` e `seg`/`line`);
+                // o gradiente é que não tinha.
+                'pub-hachura': 'repeating-linear-gradient(135deg,#3F3F46 0 3px,#262626 3px 6px)',
             },
         },
     },
