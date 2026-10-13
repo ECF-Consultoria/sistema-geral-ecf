@@ -29,6 +29,7 @@ import { lerSemComentarios } from './_fonte.js';
 
 const DIR = 'resources/js/Components/Mlb/Publicador/identidade';
 const DIR_HEADER = 'resources/js/Components/Mlb/Publicador/header';
+const DIR_VG = 'resources/js/Components/Mlb/Publicador/visaogeral';
 
 const ARQUIVOS_NOVOS = [
     `${DIR}/identidade.js`,
@@ -57,18 +58,106 @@ const ARQUIVOS_NOVOS = [
     // Fase 178, plano 03 — a casca portada (620px a `top:110px`, o backdrop, o
     // fetch lazy e o foco no input).
     `${DIR_HEADER}/ModalNovaPublicacao.jsx`,
+    // ─── Fase 179 — os 12 arquivos da Visão geral (cockpit) ───
+    //
+    // ⚠️ A lista REAL foi conferida com
+    // `git diff --name-only --diff-filter=A 898d68c2..HEAD -- resources/js`
+    // (11 arquivos já commitados) **mais** o `CockpitDaConta.jsx` deste plano
+    // = 12. Não é o número do plano repetido: ele falava em 13, e o 13º
+    // (`BlocosPreservados.jsx`) NÃO nasceu depois da decisão do usuário de
+    // 12/10/2026 de tirar "Produtos por fase" e "Quem publicou" da tela.
+    //
+    // Plano 179-06 — a Jornada dos produtos:
+    `${DIR_VG}/jornada.js`,
+    `${DIR_VG}/JornadaDosProdutos.jsx`,
+    // Plano 179-07 — "O que fazer agora", "Saúde da conta" e "Publicações no ML":
+    `${DIR_VG}/acoes.js`,
+    `${DIR_VG}/OQueFazerAgora.jsx`,
+    `${DIR_VG}/SaudeDaConta.jsx`,
+    `${DIR_VG}/PublicacoesNoMercadoLivre.jsx`,
+    // Plano 179-08 — banner, faixa de Desempenho, recentes e atividade:
+    `${DIR_VG}/recentes.js`,
+    `${DIR_VG}/BannerDeIntegracao.jsx`,
+    `${DIR_VG}/FaixaDeDesempenho.jsx`,
+    `${DIR_VG}/PublicacoesRecentes.jsx`,
+    `${DIR_VG}/AtividadeRecente.jsx`,
+    // Plano 179-09 — a composição:
+    `${DIR_VG}/CockpitDaConta.jsx`,
 ];
 
 /**
  * Os corpos de texto do README (§Design Tokens e as telas). FID-03 é o motivo
  * de 13.5 e 14.5 estarem aqui: o passo do Tailwind não tem meio pixel, então
  * quem arredondasse para `text-sm` (14px) mudaria o layout.
+ *
+ * ⚠️ Fase 179, plano 09 — `8.5` entrou, e é uma AMPLIAÇÃO da lista permitida,
+ * não um endurecimento. Por isso a medida fica escrita ao lado, para a próxima
+ * pessoa saber que não é arredondamento nem descuido:
+ *
+ *   · `new_layout_publicador/Visao Geral.dc.html` declara `font-size:8.5px`
+ *     **3 vezes** — as iniciais do avatar de 24px (`:104`), as do thumb de
+ *     26px (`:197`) e o ícone de 22px do sub-item (`:210`).
+ *     ⚠️ As linhas do plano (`:97`/`:192`/`:204`) estão deslocadas; estas
+ *     foram medidas com `grep -n`.
+ *   · E `text-[8.5px]` aparece **3 vezes** nos arquivos novos:
+ *     `JornadaDosProdutos.jsx` (1) e `OQueFazerAgora.jsx` (2). Nenhum dos 5
+ *     arquivos do plano 179-08 o usa — medido com `grep`, não presumido.
+ *
+ * Três declarações no protótipo, três usos no código. Nenhum valor foi
+ * REMOVIDO desta lista.
  */
 const TAMANHOS_PERMITIDOS = new Set([
-    10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 17, 20, 24, 28, 30, 32, 34,
+    8.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 17, 20, 24, 28, 30, 32, 34,
 ]);
 
 const FONTES = new Map(ARQUIVOS_NOVOS.map((caminho) => [caminho, lerSemComentarios(caminho)]));
+
+/**
+ * ⚠️ O gate que impede a OMISSÃO — Fase 179, plano 09.
+ *
+ * `ARQUIVOS_NOVOS` é uma constante de propósito (ver o comentário do topo:
+ * glob pegaria arquivo que ainda não nasceu). Mas constante tem o defeito
+ * simétrico: **esquecer um arquivo faz este gate passar sem acusar nada**, e
+ * aquele arquivo fica sem conferência contra `text-sm`, `ecf-*`,
+ * `font-display`, hex literal e breakpoint.
+ *
+ * Este teste fecha o furo para os dois diretórios que são 100% desta
+ * milestone: `identidade/` (Fase 177) e `visaogeral/` (Fase 179). Arquivo novo
+ * ali dentro reprova até alguém decidir, à mão, que ele entra na lista.
+ *
+ * ⚠️ `header/` fica FORA desta checagem de propósito: aquele diretório tem
+ * arquivos que NÃO são desta milestone, e varrê-lo inteiro reprovaria trabalho
+ * de outra fase.
+ */
+const DIRETORIOS_FECHADOS = [DIR, DIR_VG];
+
+test('GATE-03 — nenhum arquivo de `identidade/` ou `visaogeral/` fica FORA de ARQUIVOS_NOVOS', async (contexto) => {
+    for (const diretorio of DIRETORIOS_FECHADOS) {
+        await contexto.test(`${diretorio} — a lista cobre exatamente os .js/.jsx da pasta`, () => {
+            const noDisco = readdirSync(resolve(import.meta.dirname, '../..', diretorio))
+                .filter((nome) => nome.endsWith('.js') || nome.endsWith('.jsx'))
+                .map((nome) => `${diretorio}/${nome}`)
+                .sort();
+            const declarados = ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${diretorio}/`)).sort();
+
+            // Sem isto, um diretório vazio (ou renomeado) passaria calado.
+            assert.ok(noDisco.length > 0, `${diretorio} não tem nenhum .js/.jsx — o caminho está errado?`);
+            assert.deepEqual(
+                noDisco,
+                declarados,
+                `${diretorio}: arquivo no disco fora de ARQUIVOS_NOVOS (ou o contrário). Arquivo fora da lista passa SEM conferência de vocabulário — e o gate passaria POR OMISSÃO.`,
+            );
+        });
+    }
+
+    await contexto.test('os 12 arquivos da Fase 179 estão na lista', () => {
+        assert.equal(
+            ARQUIVOS_NOVOS.filter((c) => c.startsWith(`${DIR_VG}/`)).length,
+            12,
+            'a Fase 179 criou 12 arquivos em `visaogeral/` (11 nas waves 1-2 + CockpitDaConta)',
+        );
+    });
+});
 
 test('GATE-03 — vocabulário novo fechado, arquivo por arquivo', async (contexto) => {
     for (const caminho of ARQUIVOS_NOVOS) {
@@ -289,10 +378,20 @@ test('GATE-01 — nenhuma página do Publicador monta BarraDaConta nem AbasDaCon
 // `PublicacaoEmLote` só era lido por testes que não olhavam o topo da tela.
 //
 // E não basta "está no arquivo": o header TEM de vir ANTES do container do
-// corpo (`mx-auto max-w-[1240px]`). É ele que carrega o `-mx-6 -mt-6` que
-// neutraliza o `p-6` do `<main>` (HEAD-14); dentro de um container com `px-8`
-// ele não encostaria nas bordas e FID-05 (conteúdo de 1600px com 36px de
-// padding) ficaria impossível.
+// corpo. É ele que carrega o `-mx-6 -mt-6` que neutraliza o `p-6` do `<main>`
+// (HEAD-14); dentro de um container com `px-8` ele não encostaria nas bordas e
+// FID-05 (conteúdo de 1600px com 36px de padding) ficaria impossível.
+//
+// ⚠️ Fase 179, plano 09 — REAPONTE DE VALOR, não remoção nem afrouxamento.
+// Antes o container do corpo era procurado por UM literal fixo
+// (`mx-auto max-w-[1240px]`) em todas as 6 páginas. A Visão geral virou o
+// cockpit e o container dela passou a ser o do protótipo
+// (`mx-auto flex max-w-[1600px] …`, FID-05: 1600px de conteúdo com 36px de
+// padding — exatamente o que este comentário sempre disse que era o objetivo).
+// O que a asserção garante continua sendo o MESMO: o header nasce ANTES do
+// container do corpo. O que mudou é o literal com que cada página é
+// localizada, e ele virou uma tabela por página para que nenhuma delas seja
+// medida pelo container de outra.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -310,6 +409,22 @@ test('GATE-01 — nenhuma página do Publicador monta BarraDaConta nem AbasDaCon
  * de engrenagem da linha 1 (HEAD-08), e o valor serve para nenhuma das quatro
  * ficar ativa.
  */
+/**
+ * O literal que localiza o container do corpo de CADA página.
+ *
+ * ⚠️ É uma tabela e não um literal único porque a Visão geral (Fase 179) mede
+ * 1600px e as outras cinco seguem em 1240px. Um literal único voltaria a
+ * reprovar/passar pelo motivo errado na primeira página que mudasse de medida.
+ */
+const CONTAINER_POR_PAGINA = new Map([
+    ['VisaoGeral.jsx', 'mx-auto flex max-w-[1600px]'],
+    ['Produtos.jsx', 'mx-auto max-w-[1240px]'],
+    ['Produto.jsx', 'mx-auto max-w-[1240px]'],
+    ['Alavancas.jsx', 'mx-auto max-w-[1240px]'],
+    ['Configuracoes.jsx', 'mx-auto max-w-[1240px]'],
+    ['PublicacaoEmLote.jsx', 'mx-auto max-w-[1240px]'],
+]);
+
 const ABA_POR_PAGINA = new Map([
     ['VisaoGeral.jsx', 'visao-geral'],
     ['Produtos.jsx', 'produtos'],
@@ -340,6 +455,10 @@ test('HEAD-14 — as 6 páginas por conta montam o PublicadorHeader antes do con
         assert.deepEqual(naPasta, declaradas);
     });
 
+    await contexto.test('e toda página com header tem container declarado (nenhuma medida por omissão)', () => {
+        assert.deepEqual([...CONTAINER_POR_PAGINA.keys()].sort(), [...PAGINAS_COM_HEADER].sort());
+    });
+
     for (const nome of PAGINAS_COM_HEADER) {
         const fonte = lerSemComentarios(`${DIR_PAGINAS_PUBLICADOR}/${nome}`);
 
@@ -360,11 +479,13 @@ test('HEAD-14 — as 6 páginas por conta montam o PublicadorHeader antes do con
         });
 
         await contexto.test(`${nome} — o header vem ANTES do container do corpo (HEAD-14)`, () => {
+            const marca = CONTAINER_POR_PAGINA.get(nome);
+            assert.ok(marca, `${nome} não tem container declarado em CONTAINER_POR_PAGINA`);
             const header = fonte.indexOf('<PublicadorHeader');
-            const corpo = fonte.indexOf('mx-auto max-w-[1240px]');
+            const corpo = fonte.indexOf(marca);
             assert.ok(header !== -1, 'header não encontrado');
-            assert.ok(corpo !== -1, 'container do corpo (max-w-[1240px]) não encontrado');
-            assert.ok(header < corpo, `${nome}: o header nasceu DENTRO do container do corpo — com o px-8 dele o -mx-6 não encosta nas bordas`);
+            assert.ok(corpo !== -1, `container do corpo ("${marca}") não encontrado em ${nome}`);
+            assert.ok(header < corpo, `${nome}: o header nasceu DENTRO do container do corpo — com o padding dele o -mx-6 não encosta nas bordas`);
         });
 
         await contexto.test(`${nome} — passa cabecalho com o ?? null explícito`, () => {
