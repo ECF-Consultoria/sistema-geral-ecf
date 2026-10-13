@@ -3733,7 +3733,7 @@ hoje entrega.
 **Depends on**: Fase 177 (header, tokens, identidade) e Fase 179 (os links de "Publicações
 filtrada" da Visão Geral apontam para os filtros desta tela).
 
-**Requirements**: LIST-01..24
+**Requirements**: LIST-01..25
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -3891,7 +3891,7 @@ pedidos, não trabalho de UI.
 | NOVA-01..NOVA-10 (10) | Phase 178 | **Entregue** (em producao 12/10, conferido e aprovado pelo usuario) |
 | VG-01..VG-20 (20) | Phase 179 | **Entregue** (15 plenos; VG-14/15/17/19 parciais por falta de DADO, causa declarada na 179-10) |
 | EXMP-01..EXMP-04 (4) | Phase 179 | **Entregue** (nenhum bloco nasceu de exemplo: tudo real) |
-| LIST-01..LIST-24 (24) | Phase 180 | Pending |
+| LIST-01..LIST-25 (25) | Phase 180 | Pending |
 | INSP-01..INSP-12 (12) | Phase 181 | Pending |
 | DESEMP-01..DESEMP-08 (8) | Phase 182 | **Deferred** (bloqueio de dado + decisão do usuário) |
 
