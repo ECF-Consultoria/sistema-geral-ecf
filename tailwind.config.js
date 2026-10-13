@@ -124,6 +124,14 @@ export default {
                     hover: '#141414',
                     'hover-2': '#161616',     // aba ativa do nav
                     'hover-3': '#1A1A1A',
+                    // `hover-toast` é o único `hover-*` AMARELADO da camada: é o
+                    // `style-hover` do botão "×" que dispensa a faixa de sucesso
+                    // de Publicações (`Publicacoes v2.dc.html:62`), e essa faixa
+                    // tem fundo amarelado (`row-new`, #14120A). Todos os outros
+                    // `hover-*` são cinzas neutros e nenhum deles funciona sobre
+                    // superfície amarelada — "usar o hover que já existe" é
+                    // justificativa vetada (FID-02).
+                    'hover-toast': '#26220F',
                     seg: '#262626',           // opção ativa do segmented control
                     'seg-ring': '#333333',    // o `inset 0 0 0 1px` da opção ativa
                     // ── Bordas (TOK-05) ──
@@ -132,6 +140,13 @@ export default {
                     'line-subtle': '#1F1F1F', // divisórias internas
                     'line-subtle-2': '#1C1C1C',
                     'line-off': '#3F3F46',    // checkbox vazio, células tracejadas
+                    // Borda dos chips-toggle de filtro no estado OFF — a função
+                    // `on(b)` de `Publicacoes v2.dc.html:608`, usada por
+                    // "Em catálogo", "Com vendas", "Responsável" e "Publicada".
+                    // NÃO é `line-strong` (#2E2E2E): são 4 pontos mais claro e
+                    // `line-strong` é a borda de INPUT/botão secundário, outro
+                    // uso. Encostar no parecido aqui é FID-02 literal.
+                    'line-off-2': '#2A2A2A',
                     // ── Texto (TOK-05) ──
                     txt: '#F4F4F5',
                     'txt-2': '#A1A1AA',
@@ -141,7 +156,27 @@ export default {
                     // ── Accent (TOK-06) — texto sobre amarelo é SEMPRE `pub-page` ──
                     accent: '#FACC15',
                     'accent-hover': '#EAB308',
+                    // Os CINCO fundos de linha da tabela de Publicações, na
+                    // ordem exata em que o ternário de
+                    // `Publicacoes v2.dc.html:553` os resolve — têm de ser
+                    // lidos juntos:
+                    //   isSel → row-sel · isFocus → row-focus ·
+                    //   checked → row-checked · isNew → row-new · senão surface
                     'row-sel': '#221D07',     // linha selecionada
+                    // `row-focus` é a linha com o FOCO do teclado. O hex já
+                    // tinha nome na camada (`line-subtle-2`), mas lá ele é
+                    // BORDA — as divisórias do painel (`:357`-`:359`) e a dos
+                    // irmãos (`:603`). Escrever `bg-pub-line-subtle-2` numa
+                    // linha de tabela seria um nome mentindo sobre o uso.
+                    // Duplicata DENTRO da camada é justamente o que a camada
+                    // existe para absorver (é o mesmo caso já declarado de
+                    // `neutral-dot`/`txt-4`); nas telas é o que TOK-15 proíbe.
+                    'row-focus': '#1C1C1C',
+                    // Linha MARCADA (checkbox ligado). Fica ENTRE `row-sel` e
+                    // `row-new`, e nenhum dos dois serve: com `row-sel` a linha
+                    // marcada some dentro da selecionada, com `row-new` ela some
+                    // dentro da nova. O protótipo pinta os cinco distintos.
+                    'row-checked': '#18160C',
                     'row-new': '#14120A',     // linha "NOVA"
                     // Amarelo rebaixado ao ponto de virar superfície: fundo do
                     // ícone circular do evento de PUBLICAÇÃO na Atividade
@@ -164,6 +199,13 @@ export default {
                     // os descreve separados. Duplicata DENTRO da camada é o que a
                     // camada existe para absorver; nas telas é o que TOK-15 proíbe.
                     'neutral-dot': '#71717A',
+                    // Borda do ANEL ABERTO de "Em revisão" na célula Status da
+                    // tabela de Publicações (`Publicacoes v2.dc.html:250`:
+                    // `border:1.6px solid #5F5F68;border-right-color:transparent`).
+                    // Mais ESCURO que `neutral-dot`/`txt-4` (#71717A) de
+                    // propósito: o anel fica ao lado do próprio rótulo e não
+                    // pode competir com o texto dele.
+                    'neutral-ring': '#5F5F68',
                     'neutral-txt': '#A1A1AA',
                 },
             },
