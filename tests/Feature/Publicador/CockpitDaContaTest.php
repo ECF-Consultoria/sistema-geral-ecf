@@ -9,16 +9,22 @@ use App\Models\MlAnuncioCriativoKit;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\MlToken;
+use App\Models\PubImagem;
+use App\Models\PubImagemAtribuicao;
 use App\Models\PubProduto;
 use App\Models\PubPublicacao;
+use App\Models\PubPublicacaoItem;
 use App\Models\PubRascunho;
+use App\Models\PubValidacao;
 use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\CockpitDaContaService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
+use App\Support\Publicador\Variacao\ChaveCanonica;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -88,6 +94,18 @@ class CockpitDaContaTest extends TestCase
 
     /** As quatro faixas da barra, em ORDEM FIXA. */
     private const ORDEM_DAS_FAIXAS = ['ativas', 'pausadas', 'em_revisao', 'encerradas'];
+
+    /** As chaves do item de "Publicações recentes", em ORDEM. Campo a mais aqui é convite a inventar tela na wave 3. */
+    private const CAMPOS_DO_RECENTE = ['produto_id', 'produto_nome', 'titulo', 'capa', 'fase', 'rotulo_fase',
+        'tipo', 'ml_item_id', 'situacao', 'vendas', 'quando', 'quem', 'nova'];
+
+    /**
+     * Os ÚNICOS lugares onde array é esperado no payload. Fora deles, todo campo
+     * é escalar — `quem` entra na lista porque `{tipo, nome}` JÁ atravessa hoje em
+     * produção e o cliente a lê campo a campo (`quem.nome ?? quem.tipo`).
+     */
+    private const CONTEINERES = ['banner', 'saude', 'publicacoes_ml', 'acervo_imagens', 'desempenho', 'recentes',
+        'atividade', 'linhas', 'faixas', 'pedem_acao', 'kpis', 'serie', 'itens', 'grupos', 'eventos', 'quem'];
 
     protected function setUp(): void
     {
@@ -207,6 +225,191 @@ class CockpitDaContaTest extends TestCase
         $kit->forceFill(['created_at' => $criadoEm])->save();
 
         return $kit->fresh();
+    }
+
+
+    /**
+     * Uma publicação CONCLUÍDA **com anúncio criado** — é o item CREATED que
+     * `ultimasPublicacoes()` e a Atividade leem.
+     */
+    private function publicada(PubProduto $p, Carbon|string $quando, string $listingType = 'gold_special'): PubPublicacao
+    {
+        $publicacao = $this->publicacao($p, $quando);
+        PubPublicacaoItem::create([
+            'publicacao_id' => $publicacao->id,
+            'indice' => 0,
+            'listing_type_id' => $listingType,
+            'variante_chave' => ChaveCanonica::UNICA,
+            'status' => PubPublicacaoItem::CREATED,
+            'ml_item_id' => 'MLB'.(9000000 + $publicacao->id),
+            'payload' => ['family_name' => 'Anúncio de '.$p->nome],
+        ]);
+
+        return $publicacao;
+    }
+
+    /** Um evento no shape EXATO de `atividadeDaEquipe()` — tudo escalar. */
+    private function evento(string $tipo, Carbon|string|null $quando, string $titulo = 'Cadeira Oslo'): array
+    {
+        return [
+            'tipo' => $tipo,
+            'quem' => 'Ana Ribeiro',
+            'quando_iso' => $quando === null ? null : Carbon::parse($quando)->toIso8601String(),
+            'titulo' => $titulo,
+            'detalhe' => 'Fase 1 · 1 unidade',
+        ];
+    }
+
+    /** O `$alvo` sem nenhuma âncora (D23 no limite) — a 4ª fonte não tem o que ler. */
+    private function semAncora(): array
+    {
+        return ['mlb_empresa' => null, 'company' => null, 'programa' => 'gestao', 'chave' => null];
+    }
+
+    /** As publicações recentes da conta, com a lista de produtos real. */
+    private function recentes(MlbEmpresa $e, ?Company $c): array
+    {
+        $alvo = $this->alvo($e);
+
+        return $this->servico()->recentes(
+            $this->painel()->ultimasPublicacoes($alvo),
+            $this->programas()->produtosParaTela($e, $c, $alvo['chave']),
+        );
+    }
+
+    /** Todos os eventos da atividade, achatados na ordem dos grupos. */
+    private function eventos(array $atividade): array
+    {
+        $eventos = [];
+        foreach ($atividade['grupos'] as $grupo) {
+            foreach ($grupo['eventos'] as $evento) {
+                $eventos[] = $evento;
+            }
+        }
+
+        return $eventos;
+    }
+
+    /**
+     * Os SETE blocos do cockpit sobre um cenário cheio — a base das varreduras.
+     *
+     * ⚠️ As asserções de não-vacuidade ficam AQUI, não em cada teste: varrer um
+     * payload vazio por rótulo, objeto ou segredo passaria por construção.
+     */
+    private function cockpitCompleto(): array
+    {
+        [$e, $c] = $this->conta(tokenStatus: 'expired', nome: 'Conta cheia');
+        $this->erpDeclarado($e, 'Bling');
+        foreach (range(1, 4) as $i) {
+            $this->acervo($c, 'MLBX'.$i, $i === 2 ? 'paused' : ($i === 3 ? 'under_review' : 'active'), $i, $i === 1 ? [
+                'severidade' => MlAcervoItem::SEVERIDADE_CRITICA,
+                'motivos' => [MlAcervoItem::MOTIVO_PAUSADO],
+            ] : []);
+        }
+        $produto = $this->produto($e, $c, 'SKU-CHEIA');
+        $this->publicada($produto, now()->subHours(2));
+        $this->kitDeCriativo($e, $c, now()->subHours(4));
+        MlAnuncioCriativo::create([
+            'token' => Str::random(32), 'company_id' => $c->id, 'mlb_empresa_id' => $e->id,
+            'slot' => 'hero', 'slot_indice' => 0, 'imagem_path' => 'criativos/cheia.jpg',
+            'status' => MlAnuncioCriativo::STATUS_PENDENTE,
+        ]);
+
+        $alvo = $this->alvo($e);
+        $empresa = $this->programas()->empresaParaTela($alvo);
+        $produtos = $this->programas()->produtosParaTela($e, $c, $alvo['chave']);
+        $indicadores = $this->painel()->indicadores($alvo, $this->programas()->contagemProdutos($produtos), $produtos);
+        $defasagem = $this->defasagem($c);
+        $servico = $this->servico();
+
+        $cockpit = [
+            'banner' => $servico->banner($empresa),
+            'saude' => $servico->saude($empresa, $this->painel()->integracoes($alvo, $empresa), $defasagem, $c->id),
+            'publicacoes_ml' => $servico->resumoDePublicacoes($c, app(CabecalhoPublicadorService::class)->contadores($alvo, $defasagem)),
+            'acervo_imagens' => $servico->acervoDeImagens($alvo, $indicadores),
+            'desempenho' => $servico->desempenho($alvo, $indicadores),
+            'recentes' => $servico->recentes($this->painel()->ultimasPublicacoes($alvo), $produtos),
+            'atividade' => $servico->atividade($alvo, $this->painel()->atividadeDaEquipe($alvo)),
+        ];
+
+        // Não-vacuidade: cada bloco tem conteúdo de verdade.
+        $this->assertNotNull($cockpit['banner']);
+        $this->assertCount(3, $cockpit['saude']['linhas']);
+        $this->assertTrue($cockpit['publicacoes_ml']['disponivel']);
+        $this->assertSame(4, $cockpit['publicacoes_ml']['total']);
+        $this->assertArrayHasKey('pedem_acao', $cockpit['publicacoes_ml']);
+        $this->assertSame(1, $cockpit['acervo_imagens']['imagens']);
+        $this->assertCount(30, $this->kpi($cockpit['desempenho'], 'publicacoes_criadas')['serie']);
+        $this->assertNotSame([], $cockpit['recentes']['itens']);
+        $this->assertNotSame([], $cockpit['atividade']['grupos']);
+
+        return $cockpit;
+    }
+
+    /** Quantas consultas os métodos do cockpit fazem — e SÓ eles. */
+    private function consultasDoCockpit(MlbEmpresa $e, ?Company $c): int
+    {
+        // Tudo o que o CONTROLLER já calcula fica fora da medição, porque é o que
+        // acontece em produção: estes argumentos chegam prontos.
+        $alvo = $this->alvo($e);
+        $empresa = $this->programas()->empresaParaTela($alvo);
+        $integracoes = $this->painel()->integracoes($alvo, $empresa);
+        $defasagem = $this->defasagem($c);
+        $contadores = app(CabecalhoPublicadorService::class)->contadores($alvo, $defasagem);
+        $produtos = $this->programas()->produtosParaTela($e, $c, $alvo['chave']);
+        $indicadores = $this->painel()->indicadores($alvo, $this->programas()->contagemProdutos($produtos), $produtos);
+        $ultimas = $this->painel()->ultimasPublicacoes($alvo);
+        $daEquipe = $this->painel()->atividadeDaEquipe($alvo);
+        $servico = $this->servico();
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $servico->banner($empresa);
+        $servico->saude($empresa, $integracoes, $defasagem, $c?->id);
+        $servico->resumoDePublicacoes($c, $contadores);
+        $servico->acervoDeImagens($alvo, $indicadores);
+        $servico->desempenho($alvo, $indicadores);
+        $servico->recentes($ultimas, $produtos);
+        $servico->atividade($alvo, $daEquipe);
+        $quantas = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $quantas;
+    }
+
+    /**
+     * Varredura recursiva: nenhum campo é objeto, e array só nos contêineres
+     * NOMEADOS. Foi um campo-objeto renderizado como texto que derrubou a página
+     * inteira em 07/10/2026 ("Objects are not valid as a React child").
+     */
+    private function varrerEscalares(array $payload, string $caminho): void
+    {
+        foreach ($payload as $chave => $valor) {
+            $onde = $caminho === '' ? (string) $chave : $caminho.'.'.$chave;
+            $this->assertFalse(is_object($valor), "objeto em `{$onde}` — nenhum campo do payload pode ser objeto");
+            if (is_array($valor)) {
+                $this->assertTrue(
+                    is_int($chave) || in_array((string) $chave, self::CONTEINERES, true),
+                    "array em `{$onde}`, que não é contêiner nomeado",
+                );
+                $this->varrerEscalares($valor, $onde);
+
+                continue;
+            }
+            $this->assertTrue($valor === null || is_scalar($valor), "campo `{$onde}` não é escalar");
+        }
+    }
+
+    /** Varredura recursiva por uma chave de TELA que não pode existir no payload. */
+    private function varrerChaveAusente(array $payload, string $proibida, string $caminho): void
+    {
+        foreach ($payload as $chave => $valor) {
+            $onde = $caminho === '' ? (string) $chave : $caminho.'.'.$chave;
+            $this->assertNotSame($proibida, (string) $chave, "a chave de tela `{$proibida}` apareceu em `{$onde}`");
+            if (is_array($valor)) {
+                $this->varrerChaveAusente($valor, $proibida, $onde);
+            }
+        }
     }
 
     private function programas(): ProgramasPublicadorService
@@ -928,5 +1131,418 @@ class CockpitDaContaTest extends TestCase
         $desempenho = $this->desempenho($e);
         $this->assertSame(1, $this->kpi($desempenho, 'publicacoes_criadas')['valor']);
         $this->assertSame(1, $this->kpi($desempenho, 'criativos_ia')['valor']);
+    }
+    // ═══ 6. Publicações recentes (VG-16) ═════════════════════════════════════
+
+    public function test_recentes_traz_cinco_da_mais_nova_para_a_mais_velha(): void
+    {
+        [$e, $c] = $this->conta();
+        // 6 publicações COM anúncio criado (é isso que `ultimasPublicacoes()` lê).
+        foreach (range(1, 6) as $i) {
+            $produto = $this->produto($e, $c, 'SKU-R'.$i);
+            $this->publicada($produto, now()->subHours($i * 5));
+        }
+
+        $recentes = $this->recentes($e, $c);
+
+        $this->assertTrue($recentes['disponivel']);
+        $this->assertCount(5, $recentes['itens'], 'o card mostra 5 — a 6ª mais velha fica fora');
+        $this->assertSame(
+            ['Cadeira SKU-R1', 'Cadeira SKU-R2', 'Cadeira SKU-R3', 'Cadeira SKU-R4', 'Cadeira SKU-R5'],
+            array_column($recentes['itens'], 'produto_nome'),
+            'da mais nova para a mais velha — a 6ª (SKU-R6) é a que fica fora',
+        );
+        $this->assertSame(self::CAMPOS_DO_RECENTE, array_keys($recentes['itens'][0]));
+    }
+
+    public function test_o_teto_de_cinco_vale_mesmo_quando_a_fonte_manda_mais(): void
+    {
+        // ⚠️ Teto PRÓPRIO deste serviço: se um dia a fonte subir o limite de 5, o
+        // card não vira uma lista de 30 linhas em silêncio. `recentes()` é função
+        // pura, então o cenário entrega 7 itens direto.
+        $itens = [];
+        foreach (range(1, 7) as $i) {
+            $itens[] = ['titulo' => 'Anúncio '.$i, 'produto_id' => $i, 'quando' => now()->subHours($i)->toIso8601String()];
+        }
+
+        $recentes = $this->servico()->recentes(['disponivel' => true, 'itens' => $itens], []);
+
+        $this->assertCount(5, $recentes['itens']);
+        $this->assertSame('Anúncio 1', $recentes['itens'][0]['titulo'], 'corta o FIM da lista, nunca o começo');
+    }
+
+    public function test_nova_e_as_ultimas_vinte_e_quatro_horas_medidas_nunca_a_posicao_na_lista(): void
+    {
+        $agora = now();
+        $recentes = $this->servico()->recentes([
+            'disponivel' => true,
+            'itens' => [
+                ['titulo' => 'há 3 h', 'quando' => $agora->copy()->subHours(3)->toIso8601String()],
+                ['titulo' => 'há 30 h', 'quando' => $agora->copy()->subHours(30)->toIso8601String()],
+                ['titulo' => 'sem data', 'quando' => null],
+                ['titulo' => 'data ilegível', 'quando' => 'ontem de tarde'],
+            ],
+        ], []);
+
+        $this->assertTrue($recentes['itens'][0]['nova']);
+        $this->assertFalse($recentes['itens'][1]['nova'], '30 h está fora da janela');
+        $this->assertFalse($recentes['itens'][2]['nova'], 'sem data não é nova');
+        $this->assertFalse($recentes['itens'][3]['nova'], 'data ilegível não lança e não é nova');
+    }
+
+    public function test_a_capa_vem_do_produto_por_id_e_e_nula_quando_o_produto_nao_esta_na_lista(): void
+    {
+        [$e, $c] = $this->conta();
+        $produto = $this->produto($e, $c, 'SKU-CAPA');
+        $publicacao = $this->publicada($produto, now()->subHour());
+        // A foto que `produtosParaTela()` resolve: galeria geral já enviada ao ML.
+        $rascunho = PubRascunho::where('produto_id', $produto->id)->first();
+        $imagem = PubImagem::create([
+            'rascunho_id' => $rascunho->id,
+            'ml_url' => 'https://http2.mlstatic.com/D_NQ_NP_2X_123456-F.jpg',
+            'upload_status' => PubImagem::ENVIADA,
+        ]);
+        PubImagemAtribuicao::create([
+            'imagem_id' => $imagem->id,
+            'grupo_chave' => ResolvedorGruposImagem::GERAL,
+            'grupo_hash' => ChaveCanonica::hash(ResolvedorGruposImagem::GERAL),
+            'posicao' => 0,
+        ]);
+
+        $alvo = $this->alvo($e);
+        $produtos = $this->programas()->produtosParaTela($e, $c, $alvo['chave']);
+        $ultimas = $this->painel()->ultimasPublicacoes($alvo);
+        $item = $this->servico()->recentes($ultimas, $produtos)['itens'][0];
+
+        $this->assertSame($produto->id, $item['produto_id']);
+        $this->assertSame($produtos[0]['capa'], $item['capa'], 'a capa é a MESMA que a lista de produtos já resolveu');
+        $this->assertNotNull($item['capa']);
+        $this->assertStringContainsString('-I.jpg', $item['capa'], 'a miniatura de ~4 kB, resolvida no servidor');
+
+        // ⚠️ Produto fora da lista recebida (fora do escopo, ou apagado) fica SEM
+        // foto — nunca com a foto de outro produto.
+        $semProduto = $this->servico()->recentes($ultimas, [])['itens'][0];
+        $this->assertNull($semProduto['capa']);
+        $this->assertSame($produto->id, $semProduto['produto_id'], 'e o id continua lá');
+    }
+
+    public function test_recentes_nao_recalcula_nada_do_que_a_fonte_ja_decidiu(): void
+    {
+        [$e, $c] = $this->conta();
+        $produto = $this->produto($e, $c, 'SKU-INTACTO');
+        $this->publicada($produto, now()->subHours(2));
+
+        $alvo = $this->alvo($e);
+        $ultimas = $this->painel()->ultimasPublicacoes($alvo);
+        $daFonte = $ultimas['itens'][0];
+        $item = $this->servico()->recentes($ultimas, [])['itens'][0];
+
+        // Nenhuma chave nova inventada, nenhum valor recalculado.
+        foreach (['titulo', 'tipo', 'situacao', 'vendas', 'fase', 'rotulo_fase', 'ml_item_id', 'quando', 'produto_nome'] as $campo) {
+            $this->assertSame($daFonte[$campo], $item[$campo], "`{$campo}` tem de vir como veio da fonte única");
+        }
+        // `quem` continua sendo {tipo, nome} — a estrutura que JÁ atravessa hoje.
+        $this->assertSame($daFonte['quem'], $item['quem']);
+        $this->assertSame(['tipo', 'nome'], array_keys($item['quem']));
+    }
+
+    public function test_tipo_nulo_nao_lanca_e_nao_inventa_classico(): void
+    {
+        [$e, $c] = $this->conta();
+        $produto = $this->produto($e, $c, 'SKU-TIPO');
+        // `listing_type_id` fora do catálogo: a fonte devolve `tipo` nulo.
+        $this->publicada($produto, now()->subHour(), 'tipo_que_nao_existe');
+
+        $item = $this->recentes($e, $c)['itens'][0];
+
+        $this->assertNull($item['tipo'], 'listing desconhecido fica nulo — o cliente desenha a ausência');
+        $this->assertNotSame('Clássico', $item['tipo']);
+    }
+
+    public function test_fonte_indisponivel_deixa_recentes_indisponivel(): void
+    {
+        [$e, $c] = $this->conta(comCompany: false);
+
+        $ultimas = $this->painel()->ultimasPublicacoes($this->alvo($e));
+        $this->assertFalse($ultimas['disponivel'], 'D23: a premissa do caso');
+
+        $recentes = $this->servico()->recentes($ultimas, []);
+        $this->assertFalse($recentes['disponivel']);
+        $this->assertSame([], $recentes['itens']);
+    }
+
+    // ═══ 7. Atividade recente (VG-17 / VG-20) ════════════════════════════════
+
+    public function test_a_atividade_agrupa_em_hoje_ontem_e_data_nesta_ordem(): void
+    {
+        $eventos = [
+            $this->evento('publicou', now()->subHours(2)),
+            $this->evento('criativos', now()->subHours(5)),
+            $this->evento('conferiu', now()->subHours(9)),
+            $this->evento('publicou', now()->subDay()->setTime(17, 48)),
+            $this->evento('criativos', now()->subDay()->setTime(10, 12)),
+            $this->evento('publicou', now()->subDays(8)->setTime(11, 20)),
+        ];
+
+        $atividade = $this->servico()->atividade($this->semAncora(), ['disponivel' => true, 'itens' => $eventos]);
+
+        $this->assertTrue($atividade['disponivel']);
+        $this->assertSame(
+            ['hoje', 'ontem', now()->subDays(8)->toDateString()],
+            array_column($atividade['grupos'], 'chave'),
+            'três grupos, em ordem decrescente de data',
+        );
+        $this->assertSame([3, 2, 1], array_map(fn (array $g) => count($g['eventos']), $atividade['grupos']));
+        $this->assertSame(['chave', 'data_iso', 'eventos'], array_keys($atividade['grupos'][0]));
+        $this->assertSame(now()->toDateString(), $atividade['grupos'][0]['data_iso']);
+        // ⚠️ `HOJE`, `ONTEM` e `8 OUT` são do cliente: aqui só chave e data.
+        $this->assertStringNotContainsStringIgnoringCase('hoje', json_encode($atividade['grupos'][2], JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_evento_sem_data_vai_para_o_ultimo_grupo_nunca_para_o_topo(): void
+    {
+        $eventos = [
+            $this->evento('publicou', null),
+            $this->evento('criativos', now()->subHours(2)),
+            $this->evento('conferiu', now()->subDays(3)),
+        ];
+
+        $grupos = $this->servico()->atividade($this->semAncora(), ['disponivel' => true, 'itens' => $eventos])['grupos'];
+
+        $this->assertSame(['hoje', now()->subDays(3)->toDateString(), 'sem_data'], array_column($grupos, 'chave'));
+        $this->assertNull($grupos[2]['data_iso']);
+        $this->assertSame('publicou', $grupos[2]['eventos'][0]['tipo'], 'o evento sem data é o do FIM');
+    }
+
+    public function test_as_tres_fontes_reais_chegam_intactas_e_a_quarta_e_somada(): void
+    {
+        [$e, $c] = $this->conta();
+        // (1) publicou — publicação com anúncio criado
+        $pubProduto = $this->produto($e, $c, 'SKU-PUB');
+        $this->publicada($pubProduto, now()->subHours(2));
+        // (2) criativos — kit com imagem gerada
+        $this->kitDeCriativo($e, $c, now()->subHours(4));
+        // (3) conferiu — validação que passou
+        $confProduto = $this->produto($e, $c, 'SKU-CONF');
+        $rascunho = PubRascunho::create(['produto_id' => $confProduto->id, 'status' => PubRascunho::VALIDATED, 'revisao' => 1]);
+        PubValidacao::create([
+            'rascunho_id' => $rascunho->id, 'revisao' => 1, 'camada' => 'L3', 'resultado' => 'OK',
+            'created_at' => now()->subHours(6), 'updated_at' => now()->subHours(6),
+        ]);
+
+        $alvo = $this->alvo($e);
+        $daEquipe = $this->painel()->atividadeDaEquipe($alvo);
+        $this->assertSame(
+            ['publicou', 'criativos', 'conferiu'],
+            array_values(array_unique(array_column($daEquipe['itens'], 'tipo'))),
+            'as três fontes reais da premissa',
+        );
+
+        $atividade = $this->servico()->atividade($alvo, $daEquipe);
+        $eventos = $this->eventos($atividade);
+
+        // ⚠️ VG-20: as três chegam BYTE A BYTE — nenhuma reimplementada aqui.
+        foreach ($daEquipe['itens'] as $original) {
+            $this->assertContains($original, $eventos, 'evento da fonte real saiu ou foi alterado no caminho');
+        }
+        // E a 4ª fonte é real: os dois produtos recebidos nos últimos 30 dias.
+        $recebidos = array_values(array_filter($eventos, fn (array $ev) => $ev['tipo'] === 'produto_recebido'));
+        $this->assertCount(2, $recebidos, 'sem esta fonte o chip "Produtos" nasceria sempre vazio (EXMP-01)');
+        $this->assertSame(['tipo', 'quem', 'quando_iso', 'titulo', 'detalhe'], array_keys($recebidos[0]));
+        $this->assertSame(PainelVisaoGeralService::QUEM_EQUIPE_SEM_NOME, $recebidos[0]['quem']);
+        $this->assertSame('Cadeira SKU-CONF', $recebidos[0]['titulo']);
+        $this->assertSame('SKU-CONF', $recebidos[0]['detalhe'], 'o SKU é o identificador que o usuário tem na mão');
+    }
+
+    public function test_produto_do_portal_nunca_expoe_nome_nem_id_de_cliente(): void
+    {
+        [$e, $c] = $this->conta();
+        $this->produto($e, $c, 'SKU-PORTAL', ['origem' => PubProduto::ORIGEM_PORTAL]);
+        $this->produto($e, $c, 'SKU-OUTRA', ['origem' => 'importacao_antiga']);
+
+        $eventos = $this->eventos($this->servico()->atividade($this->alvo($e), ['disponivel' => false, 'itens' => []]));
+        $quemPorTitulo = array_combine(array_column($eventos, 'titulo'), array_column($eventos, 'quem'));
+
+        // T-173-09: o rótulo agregado, nunca o nome ou o id de quem enviou.
+        $this->assertSame(PainelVisaoGeralService::QUEM_CLIENTE, $quemPorTitulo['Cadeira SKU-PORTAL']);
+        $this->assertSame(PainelVisaoGeralService::QUEM_ORIGEM_ANTIGA, $quemPorTitulo['Cadeira SKU-OUTRA']);
+        // As constantes REUSADAS, nunca uma string nova.
+        foreach ($eventos as $evento) {
+            $this->assertContains($evento['quem'], [
+                PainelVisaoGeralService::QUEM_CLIENTE,
+                PainelVisaoGeralService::QUEM_EQUIPE_SEM_NOME,
+                PainelVisaoGeralService::QUEM_ORIGEM_ANTIGA,
+            ]);
+        }
+    }
+
+    public function test_a_quarta_fonte_nao_vaza_produto_de_outra_conta_nem_produto_antigo(): void
+    {
+        [$e, $c] = $this->conta(nome: 'Minha conta');
+        [$e2, $c2] = $this->conta(nome: 'Conta vizinha');
+        $this->produto($e, $c, 'SKU-MEU');
+        foreach (range(1, 4) as $i) {
+            $this->produto($e2, $c2, 'SKU-VIZINHO'.$i);
+        }
+        // Produto de 60 dias atrás não é "recebido recentemente".
+        $antigo = $this->produto($e, $c, 'SKU-ANTIGO');
+        $antigo->forceFill(['created_at' => now()->subDays(60)])->save();
+
+        $eventos = $this->eventos($this->servico()->atividade($this->alvo($e), ['disponivel' => false, 'itens' => []]));
+
+        $this->assertSame(['Cadeira SKU-MEU'], array_column($eventos, 'titulo'));
+    }
+
+    public function test_sem_fonte_nenhuma_a_atividade_fica_indisponivel_sem_grupo_vazio(): void
+    {
+        [$e, $c] = $this->conta(comCompany: false);
+
+        $daEquipe = $this->painel()->atividadeDaEquipe($this->alvo($e));
+        $this->assertFalse($daEquipe['disponivel'], 'D23: a premissa do caso');
+
+        $atividade = $this->servico()->atividade($this->alvo($e), $daEquipe);
+        $this->assertFalse($atividade['disponivel']);
+        $this->assertSame([], $atividade['grupos'], '"não sabemos" não desenha um grupo vazio');
+    }
+
+    public function test_o_limite_corta_a_linha_do_tempo_pelos_mais_recentes(): void
+    {
+        $eventos = [];
+        foreach (range(1, 9) as $i) {
+            $eventos[] = $this->evento('publicou', now()->subHours($i), 'Evento '.$i);
+        }
+
+        $atividade = $this->servico()->atividade($this->semAncora(), ['disponivel' => true, 'itens' => $eventos], 4);
+
+        $this->assertCount(4, $this->eventos($atividade));
+        $this->assertSame('Evento 1', $this->eventos($atividade)[0]['titulo'], 'os mais recentes sobrevivem ao corte');
+        // Limite zero não lança e não inventa grupo.
+        $zerado = $this->servico()->atividade($this->semAncora(), ['disponivel' => true, 'itens' => $eventos], 0);
+        $this->assertFalse($zerado['disponivel']);
+        $this->assertSame([], $zerado['grupos']);
+    }
+
+    public function test_nenhum_campo_de_evento_e_objeto_nem_string_vazia(): void
+    {
+        [$e, $c] = $this->conta();
+        $produto = $this->produto($e, $c, 'SKU-ESCALAR');
+        $this->publicada($produto, now()->subHours(2));
+        $this->kitDeCriativo($e, $c, now()->subHours(3));
+        // Produto SEM nome existe (importação antiga do Portal): `titulo` vira
+        // null, nunca `''` — `''` daria um alvo mudo na frase da tela.
+        PubProduto::create(['mlb_empresa_id' => $e->id, 'company_id' => $c->id, 'sku' => 'SKU-SEM-NOME', 'nome' => '', 'origem' => PubProduto::ORIGEM_PORTAL]);
+
+        $alvo = $this->alvo($e);
+        $eventos = $this->eventos($this->servico()->atividade($alvo, $this->painel()->atividadeDaEquipe($alvo)));
+
+        $this->assertNotSame([], $eventos, 'o cenário tem de produzir eventos, senão a varredura é vazia por construção');
+        $semNome = array_values(array_filter($eventos, fn (array $ev) => $ev['titulo'] === null));
+        $this->assertCount(1, $semNome, 'o produto sem nome vira titulo null');
+        foreach ($eventos as $evento) {
+            foreach ($evento as $campo => $valor) {
+                $this->assertFalse(is_array($valor), "`{$campo}` não pode ser array num evento");
+                $this->assertFalse(is_object($valor), "`{$campo}` não pode ser objeto num evento (a tela preta de 07/10)");
+                $this->assertNotSame('', $valor, "`{$campo}` vazio tem de ser null, nunca ''");
+            }
+        }
+    }
+
+    // ═══ 8. Os gates do contrato inteiro ═════════════════════════════════════
+
+    public function test_nenhum_campo_do_payload_e_objeto_fora_dos_conteineres_nomeados(): void
+    {
+        $cockpit = $this->cockpitCompleto();
+
+        $this->varrerEscalares($cockpit, '');
+    }
+
+    public function test_nenhum_rotulo_de_tela_atravessa_o_servidor(): void
+    {
+        $cockpit = $this->cockpitCompleto();
+        $json = json_encode($cockpit, JSON_UNESCAPED_UNICODE);
+
+        // ⚠️ Negativa de propósito: a positiva deixaria uma fase futura
+        // acrescentar rótulo e o teste seguir verde.
+        foreach (['rotulo', 'label', 'titulo_kpi', 'cor', 'color', 'icone', 'sub', 'cta'] as $chaveDeTela) {
+            $this->varrerChaveAusente($cockpit, $chaveDeTela, '');
+        }
+        foreach (['Tudo conectado', 'Requer ação', 'Atualizar', 'Reconectar', 'HOJE', 'ONTEM', 'Com erro', 'Ativas', 'Pausadas', 'Publicações criadas', 'Acervo de imagens', 'Ver desempenho'] as $literal) {
+            $this->assertStringNotContainsString($literal, $json, "o literal de tela `{$literal}` não pode sair do servidor");
+        }
+        // "Tudo" só existe como chip do cliente; a chave do servidor é `tudo`? Não:
+        // o servidor não manda chip nenhum — a lista de chips é do plano 179-08.
+        $this->assertStringNotContainsString('"chips"', $json);
+    }
+
+    public function test_o_payload_nao_vaza_segredo_da_conta(): void
+    {
+        $json = json_encode($this->cockpitCompleto(), JSON_UNESCAPED_UNICODE);
+
+        foreach (['access_token', 'refresh_token', 'APP_USR', 'TG-'] as $segredo) {
+            $this->assertStringNotContainsString($segredo, $json, "o payload não pode carregar `{$segredo}`");
+        }
+    }
+
+    public function test_d23_os_seis_metodos_com_company_nula_nao_lancam(): void
+    {
+        [$e, $c] = $this->conta(comCompany: false);
+        $alvo = $this->alvo($e);
+        $empresa = $this->programas()->empresaParaTela($alvo);
+        $servico = $this->servico();
+
+        $cockpit = [
+            'banner' => $servico->banner($empresa),
+            'saude' => $servico->saude($empresa, $this->painel()->integracoes($alvo, $empresa), $this->defasagem(null), null),
+            'publicacoes_ml' => $servico->resumoDePublicacoes(null, app(CabecalhoPublicadorService::class)->contadores($alvo)),
+            'acervo_imagens' => $servico->acervoDeImagens($alvo, $this->painel()->indicadores($alvo, [], [])),
+            'desempenho' => $servico->desempenho($alvo, $this->painel()->indicadores($alvo, [], [])),
+            'recentes' => $servico->recentes($this->painel()->ultimasPublicacoes($alvo), []),
+            'atividade' => $servico->atividade($alvo, $this->painel()->atividadeDaEquipe($alvo)),
+        ];
+
+        $this->assertNotNull($cockpit['banner'], 'a conta sem Company deste cenário está sem token');
+        $this->assertFalse($cockpit['publicacoes_ml']['disponivel']);
+        $this->assertFalse($cockpit['recentes']['disponivel']);
+        $this->assertFalse($cockpit['atividade']['disponivel']);
+        $this->assertNull($cockpit['saude']['linhas'][2]['atualizar_url']);
+        $this->assertNull($this->kpi($cockpit['desempenho'], 'publicacoes_com_venda')['valor']);
+        $this->varrerEscalares($cockpit, '');
+    }
+
+    public function test_o_custo_dos_seis_metodos_e_estavel_entre_doze_e_vinte_e_quatro_produtos(): void
+    {
+        [$e, $c] = $this->conta();
+        foreach (range(1, 20) as $i) {
+            $this->acervo($c, 'MLBQ'.$i, $i % 4 === 0 ? 'paused' : 'active', $i % 3);
+        }
+        foreach (range(1, 12) as $i) {
+            $produto = $this->produto($e, $c, 'SKU-Q'.$i);
+            if ($i % 3 === 0) {
+                $this->publicada($produto, now()->subDays($i));
+            }
+            if ($i % 4 === 0) {
+                $this->kitDeCriativo($e, $c, now()->subDays($i));
+            }
+        }
+
+        // ⚠️ ISCA: um trecho que SABEMOS que consulta. Sem ela, um
+        // `enableQueryLog()` mal posicionado daria zero e o teto passaria por
+        // construção (o gate vazio que as três waves desta fase pegaram).
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->programas()->produtosParaTela($e, $c, 'empresa-'.$e->id);
+        $isca = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        $this->assertGreaterThan(0, $isca, 'a isca não mediu nada: o contador de consultas está no lugar errado');
+
+        $com12 = $this->consultasDoCockpit($e, $c);
+        $this->assertLessThan(10, $com12, "os seis métodos custaram {$com12} consultas");
+
+        // 12 produtos a mais: o MESMO número. É isto que pega N+1 — o teto, não.
+        foreach (range(13, 24) as $i) {
+            $this->produto($e, $c, 'SKU-Q'.$i);
+        }
+        $com24 = $this->consultasDoCockpit($e, $c);
+        $this->assertSame($com12, $com24, 'o custo cresceu com o número de produtos: há N+1 no caminho');
     }
 }
