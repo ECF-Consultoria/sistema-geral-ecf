@@ -48,6 +48,8 @@ final class BlingFixtures
 
     private static function caminho(string $nome): string
     {
-        return base_path("tests/fixtures-bling/{$nome}.json");
+        // __DIR__ (não base_path()) de propósito: o tradutor é provado por
+        // `PHPUnit\Framework\TestCase` puro, sem o container do Laravel inicializado.
+        return dirname(__DIR__)."/fixtures-bling/{$nome}.json";
     }
 }
