@@ -14,9 +14,11 @@ use App\Services\Portal\Estrutura\Produtos\FichaTecnicaDoProduto;
 use App\Services\Portal\Estrutura\Produtos\FotosEmLoteService;
 use App\Services\Portal\Estrutura\Produtos\FreteMe2Service;
 use App\Services\Portal\Estrutura\Produtos\ImportadorFichasTecnicas;
+use App\Services\Portal\Estrutura\Produtos\ImportadorModeloCompleto;
 use App\Services\Portal\Estrutura\Produtos\ImportadorProdutos;
 use App\Services\Portal\Estrutura\Produtos\ListasDaEmpresaService;
 use App\Services\Portal\Estrutura\Produtos\LogisticaProduto;
+use App\Services\Portal\Estrutura\Produtos\ModeloCompleto;
 use App\Services\Portal\Estrutura\Produtos\PendenciasDoProduto;
 use App\Services\Portal\Estrutura\Produtos\PlanilhaDasFichasTecnicas;
 use App\Services\Portal\Estrutura\Produtos\PlanilhaDosProdutos;
@@ -296,11 +298,40 @@ class PortalEstruturaProdutosController extends Controller
         );
     }
 
-    /** Lê o arquivo e mostra o que mudaria — nada é gravado. */
-    public function previaImportacao(Request $request)
+    /**
+     * O MODELO COMPLETO (13/10/2026): a planilha com o produto e a ficha técnica na mesma linha, uma aba
+     * por categoria. Como a ficha muda com a categoria, ela é escolhida ANTES de baixar (`categorias[]`,
+     * de 1 a 10, cada uma a última do ramo dela). Qualquer categoria que não sirva volta como erro, com
+     * o motivo — o arquivo só sai inteiro.
+     */
+    public function modeloCompleto(Request $request, ModeloCompleto $modelo)
+    {
+        $dados = $request->validate([
+            'categorias'   => 'required|array|min:1|max:'.ModeloCompleto::MAX_CATEGORIAS,
+            'categorias.*' => ['required', 'string', 'regex:/^MLB\d{1,17}$/i'],
+        ], [
+            'categorias.required' => 'Escolha ao menos uma categoria.',
+            'categorias.max'      => 'Escolha no máximo '.ModeloCompleto::MAX_CATEGORIAS.' categorias por arquivo.',
+            'categorias.*.regex'  => 'Categoria inválida. Escolha de novo.',
+        ]);
+
+        $r = $modelo->gerar($dados['categorias']);
+        if ($r['recusadas'] !== [] || $r['planilha'] === null) {
+            throw ValidationException::withMessages(['categorias' => array_column($r['recusadas'], 'motivo') ?: ['Não foi possível montar o modelo agora. Tente de novo.']]);
+        }
+
+        return $this->baixarPlanilha($r['planilha'], 'modelo-completo.xlsx');
+    }
+
+    /** Lê o arquivo e mostra o que mudaria — nada é gravado. O modelo completo traz também a prévia da ficha. */
+    public function previaImportacao(Request $request, ImportadorModeloCompleto $completo)
     {
         $request->validate(['arquivo' => 'required|file|max:2048|mimes:xlsx'], self::MENSAGENS_DO_ARQUIVO);
         $caminho = $this->caminhoDoUpload($request);
+
+        if (ImportadorModeloCompleto::reconhece($caminho)) {
+            return response()->json($completo->previa(PortalContexto::empresa(), $caminho));
+        }
 
         return response()->json($this->importador->previa(PortalContexto::empresa(), $caminho));
     }
@@ -310,7 +341,7 @@ class PortalEstruturaProdutosController extends Controller
      * `categorias` são as que a pessoa confirmou na prévia, por nome digitado (`texto` + `id`):
      * o servidor confere cada uma de novo e só as aplica a produto ainda sem categoria escolhida.
      */
-    public function aplicarImportacao(Request $request)
+    public function aplicarImportacao(Request $request, ImportadorModeloCompleto $completo)
     {
         $dados = $request->validate([
             'arquivo'            => 'required|file|max:2048|mimes:xlsx',
@@ -326,13 +357,21 @@ class PortalEstruturaProdutosController extends Controller
         ]);
         $caminho = $this->caminhoDoUpload($request);
 
-        $r = $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? []);
+        // O modelo completo traz a categoria na aba e a ficha na linha: produtos primeiro, ficha depois.
+        $doModeloCompleto = ImportadorModeloCompleto::reconhece($caminho);
+        $r = $doModeloCompleto
+            ? $completo->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator())
+            : $this->importador->aplicar(PortalContexto::empresa(), $caminho, PortalContexto::ator(), $dados['categorias'] ?? []);
 
         if (isset($r['erro_geral'])) {
             return back()->withErrors(['arquivo' => $r['erro_geral']]);
         }
+        // (O preparo no editor interno já é agendado pelas duas gravações: a dos produtos e a da ficha.)
 
         $mensagem = "Importação concluída: {$r['novos']} novos, {$r['atualizados']} atualizados.";
+        if ($doModeloCompleto) {
+            $mensagem .= self::resumoDaFicha($r['ficha'] ?? []);
+        }
         if ($r['categorias_confirmadas'] > 0) {
             $mensagem .= ' Categoria confirmada em '.self::produtos($r['categorias_confirmadas']).'.';
         }
@@ -344,6 +383,24 @@ class PortalEstruturaProdutosController extends Controller
         }
 
         return back()->with('success', $mensagem);
+    }
+
+    /** O que a ficha técnica do modelo completo gravou, e o que ficou de fora, em uma frase. */
+    private static function resumoDaFicha(array $ficha): string
+    {
+        if ($ficha === [] || isset($ficha['erro_geral'])) {
+            return ' A ficha técnica não pôde ser lida; envie o arquivo de novo para gravá-la.';
+        }
+        $texto = ' Ficha técnica: '.(int) ($ficha['campos'] ?? 0).' campos em '.self::produtos((int) ($ficha['produtos'] ?? 0)).'.';
+        if (($ficha['com_erro'] ?? 0) > 0) {
+            $texto .= ' '.ucfirst(self::produtos((int) $ficha['com_erro'])).' com campo recusado';
+            $texto .= ($ficha['nao_entraram'] ?? []) !== [] ? ' ('.implode('; ', array_slice($ficha['nao_entraram'], 0, 3)).').' : '.';
+        }
+        if (($ficha['com_falta'] ?? 0) > 0) {
+            $texto .= ' '.ucfirst(self::produtos((int) $ficha['com_falta'])).' ainda com campo obrigatório em branco.';
+        }
+
+        return $texto;
     }
 
     private static function produtos(int $n): string

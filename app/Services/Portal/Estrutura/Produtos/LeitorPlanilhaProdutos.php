@@ -392,7 +392,7 @@ final class LeitorPlanilhaProdutos
      * de "Produto …" (o nome, como na 3Planejamento); "Tipo de variação" é o eixo e vem antes de
      * "Variação". "Categoria ML" e "Grupo (anúncio)" (arquivo antigo) caem nos mesmos campos.
      */
-    private static function campoDoCabecalho(string $titulo): ?string
+    public static function campoDoCabecalho(string $titulo): ?string
     {
         $t = Str::lower(Str::ascii($titulo));
         $t = trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[^a-z0-9 ]+/', ' ', $t)));

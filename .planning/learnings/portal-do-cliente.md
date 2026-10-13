@@ -1644,3 +1644,38 @@ nada de frete. Nem sei se é ME1".
   ("por enquanto deixa somando", [[frete-mercado-envios]]).
 - Lido e NÃO conferido rodando: com "Ver N combos" aberto, a página do Planejamento pode mandar mais de 20 chaves
   para `sugestoes.frete`, cuja validação é `max:20` (422). Conferir antes de dar como defeito.
+
+## 48. Planilha: o modelo completo, com a categoria escolhida ANTES de baixar (13/10/2026)
+
+Pedido do usuário: "preciso dela completa; o problema é que a ficha técnica vem de acordo com a categoria. Queria
+saber se tem como… eu escolher a categoria do produto na planilha e me mostrar as fichas técnicas. Se não, vamos ter
+que fazer que nem na Amazon." Aprovado: "ok, faça modo Amazon".
+
+- **Dentro da planilha não dá.** Um .xlsx não consulta nada sozinho (só com macro, que cliente não abre e que não roda
+  no Google Planilhas), e cada categoria tem colunas diferentes (20 a 45 campos nas medidas) entre milhares de
+  categorias. O que dá é escolher a categoria antes e baixar o arquivo já montado para ela.
+- **Como ficou:** em "Importar planilha" → "Baixar o modelo completo (com a ficha técnica)" a pessoa escolhe de 1 a
+  10 categorias com o MESMO seletor da ficha (buscar pelo nome ou navegar). O arquivo tem uma aba por categoria, com
+  as colunas do produto (as do modelo de Produtos, sem a "Categoria" e com o grupo na frente) e, em cabeçalho mais
+  claro, uma coluna por campo da ficha. `ModeloCompleto` monta; as colunas da ficha saem de
+  `PlanilhaDasFichasTecnicas::colunasDaFicha` (mesmas listas, "*", unidades e "Outro").
+- **A importação NÃO tem regra nova:** `ImportadorModeloCompleto` roda as duas que já existiam, na ordem. (1) As
+  colunas do produto de cada aba viram um arquivo de passagem no formato do modelo de Produtos — com as linhas nos
+  MESMOS números da aba enviada, para o "linha 7" da prévia ser a linha 7 — e passam pela `ImportadorProdutos`, já com
+  a categoria da aba confirmada. (2) A ficha passa pela `ImportadorFichasTecnicas` sobre o mesmo arquivo. O envio é o
+  de sempre (`produtos.importacao`): o servidor reconhece o modelo pela aba oculta "Categorias" (marca em A1).
+- **A prévia confere a ficha de produto que ainda não existe** com um `EstruturaProduto` de passagem (nunca gravado)
+  na categoria da aba — `planejarParcial` só lê. Na gravação há a trava inversa: produto que não foi criado não recebe
+  ficha (`! $produto->exists`), senão o `updateOrCreate` gravaria com `produto_id` nulo.
+- **A ficha é do PRODUTO, não da variação:** preenche-se na 1ª linha; as outras linhas do mesmo produto só completam
+  o que ficou em branco (sem o aviso "vale a primeira", que continua valendo na planilha antiga da ficha).
+- **Produto que já está em outra categoria** não troca de categoria nem recebe a ficha da aba errada, e isso é dito
+  ("já está em outra categoria; a ficha técnica desta aba não vale para ele"). Sem a mensagem a coluna era ignorada
+  em silêncio.
+- **Sigilo no arquivo:** a aba oculta guarda só os NÚMEROS do código da categoria (o prefixo é devolvido na leitura);
+  o teste varre abas, células e validações atrás dos termos.
+- **Número digitado como número** (custo 120,5; estoque 10) chega do Excel como float: vira texto com vírgula antes de
+  ir à importação de produtos, senão "120.5" poderia ser lido como milhar.
+- Os dois modelos antigos (Produtos; Ficha técnica) continuam iguais. Rota nova = linha nova na allowlist do Portal e
+  +1 nas duas contagens do `AcessoAosProdutosTest`.
+- **Fora do escopo:** fotos (seguem em "Enviar fotos em lote") e combos/kits (são ofertas, não produtos).

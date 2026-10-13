@@ -57,9 +57,9 @@ class ImportadorFichasTecnicas
      *
      * @return array{erro_geral: ?string, totais: array{produtos: int, campos: int, com_erro: int, com_falta: int, nao_encontrados: int}, produtos: list<array>, avisos: list<string>}
      */
-    public function previa(Company $empresa, string $caminho): array
+    public function previa(Company $empresa, string $caminho, array $abasDoModelo = []): array
     {
-        $plano = $this->plano($empresa, $caminho);
+        $plano = $this->plano($empresa, $caminho, $abasDoModelo);
         if ($plano['erro_geral'] !== null) {
             return ['erro_geral' => $plano['erro_geral'], 'totais' => self::totais([]), 'produtos' => [], 'avisos' => []];
         }
@@ -91,9 +91,9 @@ class ImportadorFichasTecnicas
      *
      * @return array{erro_geral?: string, produtos: int, campos: int, com_erro: int, com_falta: int, nao_encontrados: int, nao_entraram: list<string>}
      */
-    public function aplicar(Company $empresa, string $caminho, AtorDoPortal $ator): array
+    public function aplicar(Company $empresa, string $caminho, AtorDoPortal $ator, array $abasDoModelo = []): array
     {
-        $plano = $this->plano($empresa, $caminho);
+        $plano = $this->plano($empresa, $caminho, $abasDoModelo);
         if ($plano['erro_geral'] !== null) {
             return ['erro_geral' => $plano['erro_geral']] + self::totais([]) + ['nao_entraram' => []];
         }
@@ -103,6 +103,13 @@ class ImportadorFichasTecnicas
         foreach ($plano['itens'] as $item) {
             if ($item['produto'] === null) {
                 $itens[] = self::saidaDoItem($item, 0, [], []);
+                continue;
+            }
+            // Modelo completo: o produto desta linha tinha de ter sido criado antes (a importação dos
+            // produtos roda primeiro). Se não foi, a ficha dele não tem onde entrar — nunca se grava em
+            // produto que não existe.
+            if (! $item['produto']->exists) {
+                $itens[] = self::saidaDoItem(['produto' => null, 'motivo' => "O produto {$item['grupo']} não foi criado; a ficha técnica dele não entrou."] + $item, 0, [], []);
                 continue;
             }
             try {
@@ -136,7 +143,16 @@ class ImportadorFichasTecnicas
     /**
      * @return array{erro_geral: ?string, itens: list<array{aba: string, linha: int, grupo: string, produto: ?EstruturaProduto, entradas: array<string, array>, colunas: array<string, string>, motivo: ?string}>, avisos: list<string>}
      */
-    private function plano(Company $empresa, string $caminho): array
+    /**
+     * `$abasDoModelo` (aba => id da categoria) liga o MODELO COMPLETO (13/10/2026): a aba traz os dados do
+     * produto e a ficha na mesma linha, e o produto pode ainda nem existir. Nesse modo:
+     *  - as colunas do produto (Ref, Variação, Volumes…) não são "coluna estranha": ficam de fora caladas;
+     *  - produto que o arquivo vai criar é conferido contra a categoria da ABA (um produto de passagem,
+     *    nunca gravado) — a prévia mostra os erros da ficha antes de qualquer coisa existir;
+     *  - as outras linhas do mesmo produto (uma por variação) completam a primeira, sem aviso;
+     *  - produto que já está em OUTRA categoria não recebe a ficha desta aba, e isso é dito.
+     */
+    private function plano(Company $empresa, string $caminho, array $abasDoModelo = []): array
     {
         $lido = $this->ler($caminho);
         if ($lido['erro_geral'] !== null) {
@@ -148,9 +164,11 @@ class ImportadorFichasTecnicas
         $avisos = [];
         $itens = [];
         $vistos = [];
+        $indiceDoVisto = [];   // modelo completo: chave do produto => posição em $itens (as variações completam a 1ª linha)
 
         foreach ($lido['abas'] as $aba) {
             $ignoradas = [];
+            $categoriaDaAba = isset($abasDoModelo[$aba['nome']]) ? (string) $abasDoModelo[$aba['nome']] : null;
             foreach ($aba['linhas'] as $linha) {
                 $grupo = trim((string) ($linha[$aba['coluna_grupo']] ?? ''));
                 if ($grupo === '') {
@@ -160,16 +178,35 @@ class ImportadorFichasTecnicas
                 $produto = $porCodigo[$chave] ?? $porRef[$chave] ?? null;
                 $item = ['aba' => $aba['nome'], 'linha' => $linha['__linha'], 'grupo' => $grupo, 'produto' => $produto, 'entradas' => [], 'colunas' => [], 'motivo' => null];
 
+                if ($produto === null && $categoriaDaAba !== null) {
+                    // O arquivo vai criar este produto: confere a ficha contra a categoria da aba.
+                    $produto = (new EstruturaProduto())->forceFill(['company_id' => $empresa->id, 'categoria_ml_id' => $categoriaDaAba]);
+                    $item['produto'] = $produto;
+                }
                 if ($produto === null) {
                     $item['motivo'] = "Não achamos o produto {$grupo}. Não mude a coluna Produto (grupo).";
                     $itens[] = $item;
                     continue;
                 }
-                if (isset($vistos[$produto->id])) {
-                    $avisos[] = "{$aba['nome']}, linha {$linha['__linha']}: o produto {$grupo} já veio na linha {$vistos[$produto->id]}; vale a primeira.";
+                $chaveDoVisto = $produto->exists ? 'p'.$produto->id : 'g'.$chave;
+                $completando = null;
+                if (isset($vistos[$chaveDoVisto])) {
+                    if ($categoriaDaAba === null || ! isset($indiceDoVisto[$chaveDoVisto])) {
+                        $avisos[] = "{$aba['nome']}, linha {$linha['__linha']}: o produto {$grupo} já veio na linha {$vistos[$chaveDoVisto]}; vale a primeira.";
+                        continue;
+                    }
+                    $completando = $indiceDoVisto[$chaveDoVisto];
+                } else {
+                    $vistos[$chaveDoVisto] = "{$linha['__linha']} ({$aba['nome']})";
+                }
+
+                if ($completando === null && $categoriaDaAba !== null && $produto->exists && trim((string) $produto->categoria_ml_id) !== ''
+                    && strcasecmp(trim((string) $produto->categoria_ml_id), $categoriaDaAba) !== 0) {
+                    $item['produto'] = null;
+                    $item['motivo'] = "O produto {$grupo} já está em outra categoria; a ficha técnica desta aba não vale para ele.";
+                    $itens[] = $item;
                     continue;
                 }
-                $vistos[$produto->id] = "{$linha['__linha']} ({$aba['nome']})";
 
                 $categoria = trim((string) $produto->categoria_ml_id);
                 if ($categoria === '') {
@@ -188,7 +225,10 @@ class ImportadorFichasTecnicas
                         $campo ??= $campos[$k] ?? null;
                     }
                     if ($campo === null) {
-                        $ignoradas[$titulo] = true;
+                        // No modelo completo as colunas do produto moram na mesma aba: não são "coluna estranha".
+                        if ($categoriaDaAba === null || LeitorPlanilhaProdutos::campoDoCabecalho($titulo) === null) {
+                            $ignoradas[$titulo] = true;
+                        }
                         continue;
                     }
                     $bruto = $linha[$coluna] ?? null;
@@ -198,6 +238,14 @@ class ImportadorFichasTecnicas
                     $item['entradas'][$campo['id']] = self::entrada($campo, $bruto);
                     $item['colunas'][$campo['id']] = $titulo;
                 }
+                if ($completando !== null) {
+                    // Outra variação do mesmo produto: só acrescenta o que a 1ª linha deixou em branco.
+                    $itens[$completando]['entradas'] += $item['entradas'];
+                    $itens[$completando]['colunas'] += $item['colunas'];
+
+                    continue;
+                }
+                $indiceDoVisto[$chaveDoVisto] = count($itens);
                 $itens[] = $item;
             }
             foreach (array_keys($ignoradas) as $titulo) {
@@ -329,7 +377,7 @@ class ImportadorFichasTecnicas
      *
      * @return array{erro_geral: ?string, abas: list<array{nome: string, cabecalhos: array<int, string>, coluna_grupo: int, coluna_nome: ?int, linhas: list<array>}>}
      */
-    private function ler(string $caminho): array
+    public function ler(string $caminho): array
     {
         $falha = fn (string $msg) => ['erro_geral' => $msg, 'abas' => []];
 
