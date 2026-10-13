@@ -35,6 +35,21 @@ export function textoDoBaixar(lista) {
     return n === 1 ? 'Baixar a planilha desta categoria' : `Baixar a planilha (${n} categorias, uma aba cada)`;
 }
 
+/** O nome usado quando a resposta não diz qual é. */
+export const ARQUIVO_PADRAO = 'modelo.xlsx';
+
+/**
+ * O nome do arquivo baixado, tirado do cabeçalho `Content-Disposition` da resposta: quem decide o
+ * nome é o servidor ("poltronas-modelo.xlsx", com a categoria na frente). Só aceita um .xlsx de
+ * nome simples; qualquer outra coisa cai no padrão.
+ */
+export function nomeDoArquivoBaixado(disposicao, padrao = ARQUIVO_PADRAO) {
+    const achado = /filename="?([^";]+)"?/i.exec(String(disposicao ?? ''));
+    const nome = (achado?.[1] ?? '').trim();
+
+    return /^[a-z0-9][a-z0-9._-]*\.xlsx$/i.test(nome) ? nome : padrao;
+}
+
 /** A mensagem de erro do download, que chega como JSON dentro de um blob. */
 export function erroDoDownload(corpo) {
     try {

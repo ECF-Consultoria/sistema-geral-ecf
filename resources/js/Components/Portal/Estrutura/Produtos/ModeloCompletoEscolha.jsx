@@ -5,7 +5,7 @@ import { Botao } from '@/Components/Portal/Estrutura/comum';
 import Janela from '@/Components/Portal/Estrutura/Janela';
 import PickerCategoria from '@/Components/Portal/Estrutura/Produtos/PickerCategoria';
 import {
-    MAX_CATEGORIAS, adicionarCategoria, cabeMaisCategoria, erroDoDownload, parametrosDoModelo, removerCategoria, textoDoBaixar,
+    MAX_CATEGORIAS, adicionarCategoria, cabeMaisCategoria, erroDoDownload, nomeDoArquivoBaixado, parametrosDoModelo, removerCategoria, textoDoBaixar,
 } from '@/lib/modeloCompleto';
 
 // ─── "Baixar modelo": primeiro a categoria, depois a planilha ───────────────
@@ -19,14 +19,12 @@ import {
 // A janela é larga de propósito: à esquerda, achar a categoria (a busca e a árvore
 // precisam de espaço); à direita, o que já foi escolhido e o botão de baixar.
 
-const ARQUIVO = 'modelo-completo.xlsx';
-
-/** Entrega o arquivo recebido ao navegador como download. */
-function salvar(blob) {
+/** Entrega o arquivo recebido ao navegador como download, com o nome que o servidor deu. */
+function salvar(blob, nome) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = ARQUIVO;
+    a.download = nome;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -50,8 +48,9 @@ export function EscolhaDeCategorias() {
         setBaixando(true);
         setErro(null);
         try {
-            const { data } = await axios.get(route('portal.auth.estrutura.produtos.modelo_completo'), { params: parametrosDoModelo(categorias), responseType: 'blob' });
-            salvar(data);
+            const resposta = await axios.get(route('portal.auth.estrutura.produtos.modelo_completo'), { params: parametrosDoModelo(categorias), responseType: 'blob' });
+            // O nome vem com a categoria na frente ("poltronas-modelo.xlsx"), para a pessoa saber qual é qual.
+            salvar(resposta.data, nomeDoArquivoBaixado(resposta.headers?.['content-disposition']));
         } catch (e) {
             // O motivo vem como JSON dentro do blob.
             const corpo = e.response?.data && typeof e.response.data.text === 'function' ? await e.response.data.text() : null;

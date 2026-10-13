@@ -320,7 +320,8 @@ class PortalEstruturaProdutosController extends Controller
             throw ValidationException::withMessages(['categorias' => array_column($r['recusadas'], 'motivo') ?: ['Não foi possível montar o modelo agora. Tente de novo.']]);
         }
 
-        return $this->baixarPlanilha($r['planilha'], 'modelo-completo.xlsx');
+        // O nome leva a categoria ("poltronas-modelo.xlsx"); a tela o lê do cabeçalho da resposta.
+        return $this->baixarPlanilha($r['planilha'], ModeloCompleto::nomeDoArquivo($r['abas']));
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Models\EstruturaProdutoAtributo;
 use App\Models\EstruturaProdutoVariacao;
 use App\Services\Incubadora\Publicador\CategoriaSugestaoService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
@@ -136,6 +137,27 @@ class ModeloCompleto
         }
 
         return $saida;
+    }
+
+    /**
+     * O nome do arquivo do modelo, com o nome da categoria na frente (13/10/2026, "vir nomeado
+     * nome da categoria, ex.: poltrona-modelo.xlsx"): quem baixa vários modelos precisa saber qual é
+     * qual sem abrir. Até 3 categorias vão todas no nome; acima disso, as 2 primeiras e "e-mais-N".
+     * Só letras sem acento, números e hífen, para o nome chegar igual em qualquer navegador.
+     *
+     * @param  list<array{nome: string}>  $abas  as categorias do arquivo, na ordem das abas
+     */
+    public static function nomeDoArquivo(array $abas): string
+    {
+        $nomes = array_values(array_unique(array_filter(array_map(fn ($a) => Str::slug((string) ($a['nome'] ?? '')), $abas))));
+        if ($nomes === []) {
+            return 'modelo.xlsx';
+        }
+        if (count($nomes) > 3) {
+            $nomes = [$nomes[0], $nomes[1], 'e-mais-'.(count($nomes) - 2)];
+        }
+
+        return rtrim(Str::limit(implode('-', $nomes), 120, ''), '-').'-modelo.xlsx';
     }
 
     /**
