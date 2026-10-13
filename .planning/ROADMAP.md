@@ -3720,7 +3720,7 @@ e de ação reaproveitam os destinos do modal).
       nunca mistura real e exemplo no mesmo número (EXMP-02)
   15. O plano traz a tabela de conferência item a item contra `Visao Geral.dc.html` (FID-01)
 
-**Plans**: TBD
+**Plans**: 11 planos em 4 waves (179-01 Jornada servidor, 179-02 Acoes+Adiar, 179-02B a regra unica de "pronto para Fase 2", 179-03 Cockpit servidor, 179-04 tokens, 179-05 controller+rota, 179-06 Jornada JSX, 179-07 Acoes+Saude+Publicacoes JSX, 179-08 Desempenho+Recentes+Atividade JSX, 179-09 composicao, 179-10 fechamento medido) — executados em 12-13/10/2026
 **UI hint**: yes
 
 ### Phase 180: Publicações — lista, busca, filtros e tabela agrupada por produto
@@ -3881,16 +3881,16 @@ pedidos, não trabalho de UI.
 
 | Requirement | Phase | Status |
 |---|---|---|
-| FID-01..FID-06 (6) | Phase 177 | Pending |
-| TOK-01..TOK-15 (15) | Phase 177 | Pending |
-| IDENT-01..IDENT-08 (8) | Phase 177 | Pending |
-| HEAD-01..HEAD-15 (15) | Phase 177 | Pending |
-| GATE-01..GATE-06 (6) | Phase 177 | Pending |
-| REND-01..REND-05 (5) | Phase 177 | Pending |
-| REG-01..REG-06 (6) | Phase 177 | Pending |
-| NOVA-01..NOVA-10 (10) | Phase 178 | Pending |
-| VG-01..VG-20 (20) | Phase 179 | Pending |
-| EXMP-01..EXMP-04 (4) | Phase 179 | Pending |
+| FID-01..FID-06 (6) | Phase 177 | **Entregue** (em producao 12/10) |
+| TOK-01..TOK-15 (15) | Phase 177 | **Entregue** (em producao 12/10) |
+| IDENT-01..IDENT-08 (8) | Phase 177 | **Entregue** (em producao 12/10) |
+| HEAD-01..HEAD-15 (15) | Phase 177 | **Entregue** (em producao 12/10; HEAD-01 corrigido para z-30 na quick 261012-mbw) |
+| GATE-01..GATE-06 (6) | Phase 177 | **Entregue** (em producao 12/10) |
+| REND-01..REND-05 (5) | Phase 177 | **Entregue** (em producao 12/10) |
+| REG-01..REG-06 (6) | Phase 177 | **Entregue** (em producao 12/10) |
+| NOVA-01..NOVA-10 (10) | Phase 178 | **Entregue** (em producao 12/10, conferido e aprovado pelo usuario) |
+| VG-01..VG-20 (20) | Phase 179 | **Entregue** (15 plenos; VG-14/15/17/19 parciais por falta de DADO, causa declarada na 179-10) |
+| EXMP-01..EXMP-04 (4) | Phase 179 | **Entregue** (nenhum bloco nasceu de exemplo: tudo real) |
 | LIST-01..LIST-24 (24) | Phase 180 | Pending |
 | INSP-01..INSP-12 (12) | Phase 181 | Pending |
 | DESEMP-01..DESEMP-08 (8) | Phase 182 | **Deferred** (bloqueio de dado + decisão do usuário) |
