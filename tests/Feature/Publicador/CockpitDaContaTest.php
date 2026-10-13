@@ -10,12 +10,15 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\MlToken;
 use App\Models\PubProduto;
+use App\Models\PubPublicacao;
+use App\Models\PubRascunho;
 use App\Services\Publicador\AcervoTriagemService;
 use App\Services\Publicador\CabecalhoPublicadorService;
 use App\Services\Publicador\CockpitDaContaService;
 use App\Services\Publicador\PainelVisaoGeralService;
 use App\Services\Publicador\ProgramasPublicadorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -164,6 +167,48 @@ class CockpitDaContaTest extends TestCase
         ]);
     }
 
+    /**
+     * Uma publicação CONCLUÍDA do produto, na data pedida — a fonte do KPI
+     * `publicacoes_criadas`. Um rascunho por publicação (é o que o editor faz a
+     * cada revisão).
+     */
+    private function publicacao(PubProduto $p, Carbon|string $concluidaEm, string $status = PubPublicacao::PUBLISHED): PubPublicacao
+    {
+        // ⚠️ `pub_rascunhos.produto_id` é UNIQUE (um rascunho por produto): duas
+        // publicações do mesmo produto são REVISÕES do mesmo rascunho, como no
+        // editor — criar um rascunho por publicação viola a restrição real.
+        $rascunho = PubRascunho::firstOrCreate(
+            ['produto_id' => $p->id],
+            ['status' => PubRascunho::PUBLISHED, 'revisao' => 1],
+        );
+
+        return PubPublicacao::create([
+            'rascunho_id' => $rascunho->id,
+            'revisao' => PubPublicacao::where('rascunho_id', $rascunho->id)->count() + 1,
+            'modelo_publicacao' => 'items',
+            'status' => $status,
+            'chave_idempotencia' => (string) Str::uuid(),
+            'concluida_em' => $concluidaEm,
+            'ator' => ['equipe' => true, 'id' => 1, 'nome' => 'Dev'],
+        ]);
+    }
+
+    /** Um kit de criativo da conta, na data pedida — a fonte do KPI `criativos_ia`. */
+    private function kitDeCriativo(MlbEmpresa $e, ?Company $c, Carbon|string $criadoEm, int $imagens = 3): MlAnuncioCriativoKit
+    {
+        $kit = MlAnuncioCriativoKit::create([
+            'token' => Str::random(32),
+            'company_id' => $c?->id,
+            'mlb_empresa_id' => $e->id,
+            'status' => MlAnuncioCriativoKit::STATUS_PRONTO,
+            'imagens_geradas' => $imagens,
+        ]);
+        // `created_at` é carimbo automático: a data do cenário entra por update.
+        $kit->forceFill(['created_at' => $criadoEm])->save();
+
+        return $kit->fresh();
+    }
+
     private function programas(): ProgramasPublicadorService
     {
         return app(ProgramasPublicadorService::class);
@@ -221,6 +266,24 @@ class CockpitDaContaTest extends TestCase
     private function resumo(MlbEmpresa $e, ?Company $c): array
     {
         return $this->servico()->resumoDePublicacoes($c, $this->contadores($e));
+    }
+
+    /** A faixa de Desempenho da conta, com os indicadores reais do painel. */
+    private function desempenho(MlbEmpresa $e): array
+    {
+        $alvo = $this->alvo($e);
+
+        return $this->servico()->desempenho($alvo, $this->painel()->indicadores($alvo, [], []));
+    }
+
+    private function kpi(array $desempenho, string $chave): array
+    {
+        foreach ($desempenho['kpis'] as $kpi) {
+            if ($kpi['chave'] === $chave) {
+                return $kpi;
+            }
+        }
+        $this->fail("o KPI '{$chave}' não veio na faixa de Desempenho");
     }
 
     private function linha(array $saude, string $chave): array
@@ -668,5 +731,202 @@ class CockpitDaContaTest extends TestCase
         // Alvo sem nenhuma âncora: a consulta é FECHADA, nunca aberta à base.
         $semAncora = ['mlb_empresa' => null, 'company' => null, 'programa' => 'gestao', 'chave' => null];
         $this->assertSame(0, $this->servico()->acervoDeImagens($semAncora, [])['imagens']);
+    }
+
+    // ═══ 5. A faixa de Desempenho (VG-15) ════════════════════════════════════
+
+    public function test_publicacoes_criadas_mede_as_duas_janelas_e_a_serie_de_trinta_dias(): void
+    {
+        [$e, $c] = $this->conta();
+        $produto = $this->produto($e, $c, 'SKU-1');
+        // 16 na janela atual: 12 hoje, 4 há 20 dias.
+        foreach (range(1, 12) as $i) {
+            $this->publicacao($produto, now()->subHours(2));
+        }
+        foreach (range(1, 4) as $i) {
+            $this->publicacao($produto, now()->subDays(20));
+        }
+        // 11 na janela anterior (dia 40).
+        foreach (range(1, 11) as $i) {
+            $this->publicacao($produto, now()->subDays(40));
+        }
+        // E uma FORA das duas janelas (dia 70): não entra em nenhum dos números.
+        $this->publicacao($produto, now()->subDays(70));
+
+        $kpi = $this->kpi($this->desempenho($e), 'publicacoes_criadas');
+
+        $this->assertSame(['chave', 'valor', 'de', 'delta', 'serie'], array_keys($kpi));
+        $this->assertSame(16, $kpi['valor']);
+        $this->assertSame(5, $kpi['delta'], '16 − 11: o delta é a SUBTRAÇÃO das janelas, nunca o valor da atual');
+        $this->assertNull($kpi['de'], '`de` só existe no KPI do acervo');
+        $this->assertCount(30, $kpi['serie']);
+        $this->assertSame(12, $kpi['serie'][29], 'a última posição é HOJE');
+        $this->assertSame(4, $kpi['serie'][9], 'há 20 dias = a 10ª posição de uma série que termina hoje');
+        $this->assertSame(0, $kpi['serie'][0], 'dia sem publicação é zero MEDIDO (a janela é fechada e a fonte é nossa)');
+        $this->assertSame(16, array_sum($kpi['serie']), 'a série e o valor contam a MESMA janela');
+        foreach ($kpi['serie'] as $ponto) {
+            $this->assertIsInt($ponto, 'nenhum ponto da série pode ser null: dia vazio aqui é 0, não ausência');
+        }
+    }
+
+    public function test_o_delta_cobre_janela_anterior_vazia_queda_total_e_empate(): void
+    {
+        // (a) nada antes, 4 agora
+        [$e1, $c1] = $this->conta(nome: 'Conta delta A');
+        $p1 = $this->produto($e1, $c1, 'SKU-A');
+        foreach (range(1, 4) as $i) {
+            $this->publicacao($p1, now()->subDays(3));
+        }
+        $this->assertSame(4, $this->kpi($this->desempenho($e1), 'publicacoes_criadas')['delta']);
+
+        // (b) 4 antes, nada agora
+        [$e2, $c2] = $this->conta(nome: 'Conta delta B');
+        $p2 = $this->produto($e2, $c2, 'SKU-B');
+        foreach (range(1, 4) as $i) {
+            $this->publicacao($p2, now()->subDays(45));
+        }
+        $kpiB = $this->kpi($this->desempenho($e2), 'publicacoes_criadas');
+        $this->assertSame(0, $kpiB['valor']);
+        $this->assertSame(-4, $kpiB['delta'], 'queda total é delta negativo, nunca 0 nem null');
+
+        // (c) 3 e 3: empate
+        [$e3, $c3] = $this->conta(nome: 'Conta delta C');
+        $p3 = $this->produto($e3, $c3, 'SKU-C');
+        foreach (range(1, 3) as $i) {
+            $this->publicacao($p3, now()->subDays(5));
+            $this->publicacao($p3, now()->subDays(45));
+        }
+        $kpiC = $this->kpi($this->desempenho($e3), 'publicacoes_criadas');
+        $this->assertSame(3, $kpiC['valor']);
+        $this->assertSame(0, $kpiC['delta'], 'empate é 0 MEDIDO ("sem variação"), não ausência de medida');
+    }
+
+    public function test_criativos_ia_mede_a_janela_dos_kits_e_convive_com_criativos_packs(): void
+    {
+        [$e, $c] = $this->conta();
+        // 3 kits na janela atual, 1 na anterior, 1 fora das duas.
+        foreach ([2, 6, 29] as $dias) {
+            $this->kitDeCriativo($e, $c, now()->subDays($dias));
+        }
+        $this->kitDeCriativo($e, $c, now()->subDays(35));
+        $this->kitDeCriativo($e, $c, now()->subDays(80));
+
+        $kpi = $this->kpi($this->desempenho($e), 'criativos_ia');
+        $this->assertSame(3, $kpi['valor']);
+        $this->assertSame(2, $kpi['delta'], '3 − 1');
+        $this->assertCount(30, $kpi['serie']);
+        $this->assertSame(1, $kpi['serie'][27], 'há 2 dias');
+        $this->assertSame(1, $kpi['serie'][0], 'há 29 dias é a primeira posição da série');
+
+        // ⚠️ Dois números com nomes diferentes, de propósito, no MESMO retorno:
+        // `criativos_packs` é a contagem de SEMPRE (bloco do acervo) e
+        // `criativos_ia` é a janela de 30 dias (a faixa).
+        $packs = $this->painel()->criativosPacks($this->alvo($e));
+        $this->assertSame(5, $packs, 'o indicador de sempre conta os cinco kits');
+        $this->assertSame(5, $this->servico()->acervoDeImagens($this->alvo($e), ['criativos_packs' => $packs])['packs']);
+        $this->assertNotSame($packs, $kpi['valor'], 'um não substitui o outro');
+    }
+
+    public function test_publicacoes_com_venda_vem_do_acervo_sem_delta_e_sem_serie(): void
+    {
+        [$e, $c] = $this->conta();
+        $this->acervo($c, 'MLBV1', 'active', 3);
+        $this->acervo($c, 'MLBV2', 'active', 0);
+        $this->acervo($c, 'MLBV3', 'paused', 7);
+
+        $indicadores = $this->painel()->indicadores($this->alvo($e), [], []);
+        $kpi = $this->kpi($this->servico()->desempenho($this->alvo($e), $indicadores), 'publicacoes_com_venda');
+
+        $this->assertSame(2, $kpi['valor'], 'é o `com_venda` do acervo, fonte única');
+        $this->assertSame($indicadores['com_venda'], $kpi['valor']);
+        $this->assertSame(3, $kpi['de'], 'e o `de` é o `no_ar`');
+        $this->assertSame($indicadores['no_ar'], $kpi['de']);
+        // ⚠️ Sem delta e sem série: o acervo guarda o ESTADO de hoje, não uma
+        // linha do tempo de "com venda" por dia. Inventar uma seria série sintética.
+        $this->assertNull($kpi['delta']);
+        $this->assertNull($kpi['serie']);
+    }
+
+    public function test_com_venda_nunca_coletado_fica_nulo_e_nunca_zero(): void
+    {
+        [$e, $c] = $this->conta();
+        // Nenhuma linha de acervo: `indicadores()` devolve null nos dois.
+        $indicadores = $this->painel()->indicadores($this->alvo($e), [], []);
+        $this->assertNull($indicadores['com_venda'], 'a premissa do caso');
+
+        $kpi = $this->kpi($this->servico()->desempenho($this->alvo($e), $indicadores), 'publicacoes_com_venda');
+        $this->assertNull($kpi['valor'], '"nunca medimos" não vira 0');
+        $this->assertNull($kpi['de']);
+    }
+
+    public function test_a_faixa_nao_tem_kpi_de_venda_de_visita_nem_de_conversao(): void
+    {
+        [$e, $c] = $this->conta();
+        // ⚠️ ISCA DA NEGATIVA: o cenário TEM o dado que produziria os três KPIs —
+        // acervo com `sold_quantity` gravado e `visitas`/`price_to_win` na linha.
+        // Sem isso, a asserção de ausência passaria por falta de dado.
+        $this->acervo($c, 'MLBK1', 'active', 11, ['visitas_30d' => 320]);
+        $this->acervo($c, 'MLBK2', 'active', 4, ['visitas_30d' => 90]);
+        $produto = $this->produto($e, $c, 'SKU-K');
+        $this->publicacao($produto, now()->subDays(1));
+
+        $desempenho = $this->desempenho($e);
+        $chaves = array_column($desempenho['kpis'], 'chave');
+
+        $this->assertSame(['publicacoes_criadas', 'criativos_ia', 'publicacoes_com_venda'], $chaves, 'três KPIs, nesta ordem, e SÓ eles');
+        foreach (['vendas', 'vendas_30d', 'visitas', 'conversao', 'conversão', 'faturamento', 'receita'] as $inventado) {
+            $this->assertNotContains($inventado, $chaves, "não existe fonte para o KPI `{$inventado}` (DESEMP-05)");
+        }
+        // E nenhuma delas pode ter entrado por outro caminho no payload.
+        $json = json_encode($desempenho, JSON_UNESCAPED_UNICODE);
+        foreach (['vendas', 'visitas', 'conversao', 'conversão', 'sold_quantity'] as $inventado) {
+            $this->assertStringNotContainsString($inventado, $json);
+        }
+    }
+
+    public function test_a_faixa_de_desempenho_nao_tem_destino_porque_a_tela_nao_existe(): void
+    {
+        [$e, $c] = $this->conta();
+
+        $desempenho = $this->desempenho($e);
+
+        $this->assertSame(['kpis', 'dias', 'url'], array_keys($desempenho));
+        $this->assertSame(30, $desempenho['dias']);
+        // ⚠️ Divergência DECLARADA de VG-15: a tela Desempenho é a Fase 182 e não
+        // existe. Link para tela inexistente é botão sem destino (EXMP-03). O
+        // cliente desenha `<section>`, não `<a>`.
+        $this->assertNull($desempenho['url']);
+        $this->assertArrayNotHasKey('rota', $desempenho);
+    }
+
+    public function test_d23_sem_company_os_kpis_de_publicacao_e_criativo_continuam_reais(): void
+    {
+        [$e, $c] = $this->conta(comCompany: false);
+        $this->assertNull($c);
+        $produto = $this->produto($e, null, 'SKU-SC');
+        $this->publicacao($produto, now()->subDays(2));
+        $this->kitDeCriativo($e, null, now()->subDays(2));
+
+        $desempenho = $this->servico()->desempenho($this->alvo($e), $this->painel()->indicadores($this->alvo($e), [], []));
+
+        $this->assertSame(1, $this->kpi($desempenho, 'publicacoes_criadas')['valor'], 'a âncora da MlbEmpresa basta');
+        $this->assertSame(1, $this->kpi($desempenho, 'criativos_ia')['valor']);
+        $this->assertNull($this->kpi($desempenho, 'publicacoes_com_venda')['valor'], 'sem Company não há acervo para medir');
+    }
+
+    public function test_os_kpis_de_janela_nao_contam_dado_de_outra_conta(): void
+    {
+        [$e, $c] = $this->conta(nome: 'Minha conta');
+        [$e2, $c2] = $this->conta(nome: 'Conta vizinha');
+        $this->publicacao($this->produto($e, $c, 'SKU-MINHA'), now()->subDays(1));
+        foreach (range(1, 4) as $i) {
+            $this->publicacao($this->produto($e2, $c2, 'SKU-VIZ'.$i), now()->subDays(1));
+            $this->kitDeCriativo($e2, $c2, now()->subDays(1));
+        }
+        $this->kitDeCriativo($e, $c, now()->subDays(1));
+
+        $desempenho = $this->desempenho($e);
+        $this->assertSame(1, $this->kpi($desempenho, 'publicacoes_criadas')['valor']);
+        $this->assertSame(1, $this->kpi($desempenho, 'criativos_ia')['valor']);
     }
 }
