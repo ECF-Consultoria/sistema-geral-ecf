@@ -1275,6 +1275,12 @@ class CockpitDaContaTest extends TestCase
 
     public function test_a_atividade_agrupa_em_hoje_ontem_e_data_nesta_ordem(): void
     {
+        // O caso ancora o relogio porque os deslocamentos abaixo sao relativos a
+        // `now()`: rodando antes das 09:00 locais, o `subHours(9)` cai no dia
+        // ANTERIOR e os grupos viram [2,3,1], falhando sem nenhuma regressao de
+        // codigo. Medido falhando as 08:06 e passando as 09:01 (plano 179-05).
+        Carbon::setTestNow(Carbon::today()->setTime(14, 0));
+
         $eventos = [
             $this->evento('publicou', now()->subHours(2)),
             $this->evento('criativos', now()->subHours(5)),
