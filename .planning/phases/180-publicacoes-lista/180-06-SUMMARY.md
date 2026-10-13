@@ -508,3 +508,14 @@ acusar**, como ele manda.
 
 Nada deployado, nada empurrado, nenhum comando no VPS, nenhuma migration, nenhum pacote, nenhuma
 leitura de produção.
+
+---
+
+## Self-Check: PASSED
+
+| o que | resultado |
+|---|---|
+| os 5 arquivos declarados existem no disco (`test -f`) | **5/5 FOUND** |
+| os 4 commits existem (`git log --oneline --all \| grep`) | **4/4 FOUND** |
+| delecoes nos 4 commits (`git diff --diff-filter=D HEAD~1 HEAD`) | **0 em todos** |
+| arquivo gerado/nao rastreado deixado para tras (`git status --short` nos meus diretorios) | **nenhum** |
