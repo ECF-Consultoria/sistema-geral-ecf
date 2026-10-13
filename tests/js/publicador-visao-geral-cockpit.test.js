@@ -1204,3 +1204,97 @@ test('L — a lista dos 12 arquivos novos cobre o diretório inteiro', () => {
         '⚠️ apareceu (ou sumiu) arquivo em `visaogeral/` que não está na lista dos 12. Arquivo fora da lista fica SEM conferência contra `text-sm`, `ecf-*`, `font-display`, hex literal e breakpoint — e o gate de vocabulário passaria POR OMISSÃO.',
     );
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// M. AS DUAS URLs — montadas no cliente, num lugar só, e nunca inventadas
+//
+// ⚠️ `urlProdutos` e `urlPublicacoes` NÃO existem nas 23 props do servidor: o
+// cockpit as monta por `route()` do Ziggy. Sem esta prova, trocar o nome da
+// rota ou deixar de descer a prop passaria calado — e `/href="…"/` SEM o `\s`
+// é asserção VAZIA, porque `data-href="…"` casa com ela (uma mutação do 179-08
+// sobreviveu provando isso).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Os `href` de um nó, lidos da TAG (com o `\s` obrigatório antes do atributo). */
+function hrefsDe(html, no) {
+    return [...conteudoDe(html, no).matchAll(/\shref="([^"]*)"/g)].map((m) => m[1]);
+}
+
+test('M — as duas URLs do cliente: nome da rota, parâmetro e a ausência que vira `null`', async (contexto) => {
+    const html = render(TODAS({ banner: BANNER_ML() }));
+    const { interno } = esqueleto(html);
+
+    await contexto.test('`urlProdutos` usa a rota `mlb.anuncios.publicador.produtos` com a chave da conta', () => {
+        assert.equal(C.urlDeProdutos({ chave: 'company-459' }), '/mlb.anuncios.publicador.produtos{"conta":"company-459"}');
+        const jornada = pegaSlot(interno, html, 'Jornada dos produtos');
+        const hrefs = hrefsDe(html, jornada);
+        assert.ok(hrefs.length > 0, 'a Jornada não renderizou nenhum href — a asserção virou vazia');
+        assert.ok(
+            hrefs.some((h) => h.includes('mlb.anuncios.publicador.produtos') && h.includes('company-459')),
+            `a Jornada não tem o destino de Produtos. hrefs: ${JSON.stringify(hrefs)}`,
+        );
+    });
+
+    await contexto.test('`urlPublicacoes` usa a rota `mlb.anuncios.meus` com o `abas.company_id`', () => {
+        assert.equal(C.urlDePublicacoes({ company_id: 459 }), '/mlb.anuncios.meus{"company":459}');
+        const grade5 = pegaSlot(interno, html, 'grade 1fr|1fr');
+        const hrefs = hrefsDe(html, grade5.filhos[0]);
+        assert.ok(hrefs.length > 0, '"Publicações recentes" não renderizou href — a asserção virou vazia');
+        assert.ok(
+            hrefs.some((h) => h.includes('mlb.anuncios.meus') && h.includes('459')),
+            `"Publicações recentes" não recebeu urlPublicacoes. hrefs: ${JSON.stringify(hrefs)}`,
+        );
+        // E a coluna lateral também recebe (é a MESMA URL, montada uma vez).
+        const lateral = pegaSlot(interno, html, 'grade 1fr|392px').filhos[1].filhos[1];
+        assert.ok(
+            hrefsDe(html, lateral).some((h) => h.includes('mlb.anuncios.meus')),
+            '"Publicações no Mercado Livre" não recebeu urlPublicacoes',
+        );
+    });
+
+    await contexto.test('⚠️ sem destino ÚTIL a prop desce `null` — nunca um destino inventado', () => {
+        // `textoUtil` e não `textoSeguro`: `''`/`'   '` viraria
+        // `route('…', {conta: ''})`, e número viraria nome de conta plausível.
+        // ⚠️ `7` está nesta lista porque `textoUtil(7)` devolve `'7'`: foi este
+        // caso que pegou o furo e virou a guarda canónica (ver o [Rule 2] no
+        // `CockpitDaConta.jsx`).
+        for (const chave of [null, undefined, '', '   ', 7, {}, [], true, 'company', 'company-', '459', 'empresa-abc', 'loja-7', 'company-459x']) {
+            assert.equal(C.urlDeProdutos({ chave }), null, `chave ${JSON.stringify(chave)} inventou destino`);
+        }
+        // E as DUAS formas canónicas (as mesmas que a rota aceita) passam.
+        assert.equal(C.chaveDeContaSegura('empresa-12'), 'empresa-12');
+        assert.equal(C.chaveDeContaSegura('company-459'), 'company-459');
+        // `TrimStrings` do framework apara a borda; aqui também.
+        assert.equal(C.chaveDeContaSegura('  company-459  '), 'company-459');
+        for (const empresa of [null, undefined, 'x', 7, []]) {
+            assert.equal(C.urlDeProdutos(empresa), null, `empresa ${JSON.stringify(empresa)} inventou destino`);
+        }
+        for (const company_id of [null, undefined, 0, -3, '', 'abc', {}, []]) {
+            assert.equal(C.urlDePublicacoes({ company_id }), null, `company_id ${JSON.stringify(company_id)} inventou destino`);
+        }
+        for (const abas of [null, undefined, 'x', 7, []]) {
+            assert.equal(C.urlDePublicacoes(abas), null, `abas ${JSON.stringify(abas)} inventou destino`);
+        }
+    });
+
+    await contexto.test('D23: conta sem Company renderiza tudo, só sem os destinos de publicação', () => {
+        const semCompany = TODAS({ abas: {}, banner: BANNER_ML() });
+        const h = render(semCompany);
+        const { interno: dentro } = esqueleto(h);
+        semLixo(h, 'conta sem Company');
+        // Os 6 blocos continuam de pé.
+        assert.equal(dentro.filhos.length, 6);
+        // E nenhum href aponta para `mlb.anuncios.meus` montado pelo cockpit
+        // com company vazio.
+        assert.ok(!h.includes('mlb.anuncios.meus{}'), 'montou destino de publicações sem company');
+        assert.ok(!h.includes('mlb.anuncios.publicador.produtos{}'), 'montou destino de produtos sem conta');
+    });
+
+    await contexto.test('nenhuma URL é concatenada à mão no cockpit', () => {
+        const fonte = FONTES.get(REL_COCKPIT);
+        // Só `route(...)` monta destino aqui: nada de `'/mlb/' +` nem template
+        // string com barra.
+        assert.doesNotMatch(fonte, /['"`]\/mlb\//, 'o cockpit escreveu uma URL à mão');
+        assert.equal((fonte.match(/\broute\(/g) ?? []).length, 2, 'o cockpit deveria chamar `route()` exatamente 2 vezes');
+    });
+});

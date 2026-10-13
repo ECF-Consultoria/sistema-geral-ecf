@@ -91,15 +91,31 @@ function objeto(valor) {
 }
 
 /**
+ * A chave CANÓNICA da conta, ou `null`.
+ *
+ * ⚠️ [Rule 2] `textoUtil` não basta aqui, e o próprio gate deste plano pegou:
+ * `textoUtil(7)` devolve a STRING `'7'` (`textoSeguro` aceita número), e isso
+ * montava `route('…', { conta: '7' })` — um destino que **não pode existir**,
+ * porque a rota declara `->where('conta', '(empresa|company)-[0-9]+')` e
+ * responderia 404. É a mesma arapuca que o 179-07 registrou: *"guarda de
+ * DESTINO e de PARÂMETRO mais estrita que guarda de TEXTO"*.
+ *
+ * A forma aceita é a MESMA que a rota aceita, nem mais larga nem mais
+ * estreita: `empresa-N` ou `company-N`.
+ */
+export function chaveDeContaSegura(valor) {
+    const texto = textoUtil(valor);
+    return texto !== null && /^(empresa|company)-[0-9]+$/.test(texto) ? texto : null;
+}
+
+/**
  * A URL da lista de Produtos da conta.
  *
- * ⚠️ `textoUtil` e não `textoSeguro`: chave vazia ou só com espaço viraria
- * `route('…', { conta: '' })`, um destino inventado. Sem chave útil a prop
- * desce `null` e os CTA da Jornada simplesmente não nascem (EXMP-01 —
- * botão sem destino é pior que botão ausente).
+ * ⚠️ Sem chave canónica a prop desce `null` e os CTA da Jornada simplesmente
+ * não nascem (EXMP-01 — botão sem destino é pior que botão ausente).
  */
 export function urlDeProdutos(empresa) {
-    const conta = textoUtil(objeto(empresa).chave);
+    const conta = chaveDeContaSegura(objeto(empresa).chave);
     if (conta === null) return null;
 
     try {
@@ -153,7 +169,9 @@ export default function CockpitDaConta({
 }) {
     const urlProdutos = urlDeProdutos(empresa);
     const urlPublicacoes = urlDePublicacoes(abas);
-    const contaChave = textoUtil(objeto(empresa).chave);
+    // ⚠️ A MESMA guarda canónica: `contaChave` vira parâmetro de URL no POST de
+    // "Adiar até amanhã" (`publicador.acoes.adiar`, que tem o MESMO `where`).
+    const contaChave = chaveDeContaSegura(objeto(empresa).chave);
 
     return (
         <>
