@@ -253,15 +253,23 @@ export function segmentosDoAnel(contagens, total, selecionado = null) {
  * `flex-grow: 0` colapsa a faixa, e os `gap` de 3px ficam tortos. O piso deixa
  * a faixa de contagem zero FININHA, não ausente — "medimos e é zero" continua
  * visível (VG-18).
+ *
+ * `titulo` é o `title` de `:121` (`"{label} · {count}"`) montado aqui para que o
+ * `.map()` do componente não precise ler nada do escopo dele (REND-04).
  */
 export function faixasDaBarra(contagens, selecionado = null) {
     const fonte = objeto(contagens);
 
-    return ORDEM_ESTAGIOS.map((chave) => ({
-        chave,
-        flexGrow: Math.max(numeroSeguro(fonte[chave], 0), 0.0001),
-        opacity: selecionado && selecionado !== chave ? 0.35 : 1,
-    }));
+    return ORDEM_ESTAGIOS.map((chave) => {
+        const contagem = numeroSeguro(fonte[chave], 0);
+
+        return {
+            chave,
+            flexGrow: Math.max(contagem, 0.0001),
+            opacity: selecionado && selecionado !== chave ? 0.35 : 1,
+            titulo: `${ESTAGIOS[chave].rotulo} · ${contagem}`,
+        };
+    });
 }
 
 // ─── A fronteira entre o servidor e o JSX (REND-01/02) ───
@@ -352,4 +360,91 @@ export function normalizarJornada(bruta) {
         estagios,
         contagens,
     };
+}
+
+// ─── Os três "view models" que os `.map()` do componente consomem ───
+//
+// ⚠️ Existem por REND-04, não por elegância. Enquanto o componente mapeava
+// `dados.estagios` direto, cada callback precisava ler `selecionado` e
+// `dados.proximo_passo` do ESCOPO DO COMPONENTE — exatamente a forma que o
+// Rollup já eliminou neste projeto (`feedback_rollup_map_scope_bug.md`),
+// deixando o uso e produzindo `ReferenceError` só no bundle de produção. Com o
+// cálculo aqui, cada callback lê apenas o seu próprio parâmetro e os mapas de
+// classe do módulo do componente.
+
+/**
+ * Os 4 cartões de estágio, prontos (`:473-:480`).
+ *
+ * @param {{estagios: Array, proximo_passo: string}} dados  a saída de `normalizarJornada`
+ * @param {string|null} selecionado
+ */
+export function cartoesDosEstagios(dados, selecionado = null) {
+    const fonte = objeto(dados);
+    const estagios = Array.isArray(fonte.estagios) ? fonte.estagios : [];
+
+    return estagios.map((estagio, indice) => {
+        const chave = objeto(estagio).chave;
+        const literais = ESTAGIOS[chave];
+        const total = numeroSeguro(objeto(estagio).total, 0);
+
+        return {
+            chave,
+            passo: literais.passo,
+            rotulo: literais.rotulo,
+            sub: literais.sub,
+            cta: literais.cta,
+            total,
+            share: percentualSeguro(objeto(estagio).share_pct),
+            aberto: selecionado === chave,
+            // `isHot: k === hot && cnt[k] > 0` (`:476`) — o badge não aparece
+            // sobre um estágio vazio.
+            ehProximoPasso: fonte.proximo_passo === chave && total > 0,
+            restante: restanteDaPilha(total),
+            tiles: (Array.isArray(objeto(estagio).itens) ? estagio.itens : []).slice(0, MAX_TILES),
+            // `hasArrow: i < 3` (`:476`) — a seta liga um cartão ao seguinte,
+            // então o último não tem.
+            temSeta: indice < ORDEM_ESTAGIOS.length - 1,
+        };
+    });
+}
+
+/** O cabeçalho do painel do estágio aberto (`:487`), ou nulo. */
+export function cabecalhoDoPainel(dados, selecionado) {
+    const fonte = objeto(dados);
+    const estagios = Array.isArray(fonte.estagios) ? fonte.estagios : [];
+    const estagio = estagios.find((candidato) => objeto(candidato).chave === selecionado);
+
+    if (!estagio || !PAINEL[selecionado]) return null;
+
+    const total = numeroSeguro(estagio.total, 0);
+
+    return {
+        chave: selecionado,
+        titulo: tituloDoPainel(selecionado, total),
+        sub: PAINEL[selecionado].sub,
+        link: linkDoPainel(total),
+        ver_todos_url: urlSegura(estagio.ver_todos_url),
+    };
+}
+
+/**
+ * As linhas do painel (`:488-:490`) — até 6, porque é o que o servidor manda.
+ *
+ * Cada linha já carrega a `chave` do estágio e o `rotuloCta`: o componente lê
+ * só `linha.*` dentro do `.map()`.
+ */
+export function linhasDoPainel(dados, selecionado) {
+    const fonte = objeto(dados);
+    const estagios = Array.isArray(fonte.estagios) ? fonte.estagios : [];
+    const estagio = estagios.find((candidato) => objeto(candidato).chave === selecionado);
+    const itens = Array.isArray(objeto(estagio).itens) ? estagio.itens : [];
+
+    return itens.map((item, posicao) => ({
+        ...objeto(item),
+        chave: selecionado,
+        posicao,
+        // `border: i ? '1px solid #1A1A1A' : 'none'` (`:489`)
+        primeira: posicao === 0,
+        rotuloCta: rotuloDoCta(selecionado, objeto(item).cta_chave),
+    }));
 }
