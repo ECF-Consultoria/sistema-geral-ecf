@@ -25,7 +25,7 @@ import { textoUtil } from '../BarraDaConta';
 // `feedback_rollup_map_scope_bug.md`: variável de escopo do componente lida
 // dentro de um `.map()` já foi ELIMINADA pelo Rollup no bundle de produção
 // DESTE projeto (ReferenceError em produção com os testes passando). A Jornada
-// mapeia estágios, tiles, faixas da barra e linhas do painel — quatro `.map()`
+// mapeia segmentos, estágios, tiles, faixas e linhas — CINCO `.map()`
 // —, então toda a aritmética recebe tudo por argumento e devolve valor pronto.
 // ═══════════════════════════════════════════════════════════════════════════
 

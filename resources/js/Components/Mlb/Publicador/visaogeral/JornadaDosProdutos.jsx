@@ -56,8 +56,8 @@ import {
 // `./resources/js/**/*.jsx` e **não** `*.js`. Classe escrita num `.js` não é
 // varrida, não gera CSS e portanto não existe para a tela.
 //
-// ⚠️ REND-04 (`feedback_rollup_map_scope_bug.md`): este arquivo tem QUATRO
-// `.map()` (estágios, tiles, faixas da barra, linhas do painel). Nenhuma flag
+// ⚠️ REND-04 (`feedback_rollup_map_scope_bug.md`): este arquivo tem CINCO
+// `.map()` (segmentos do anel, estágios, tiles, faixas, linhas). Nenhuma flag
 // derivada nasce no corpo do componente para ser lida dentro de um callback —
 // cada uma é calculada DENTRO do callback, a partir dos mapas de módulo acima,
 // das funções de `jornada.js` e dos parâmetros do próprio callback. O Rollup já
