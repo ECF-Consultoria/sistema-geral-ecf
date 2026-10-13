@@ -196,6 +196,8 @@ export const filtroAtivo = (filtros) => Boolean(filtros?.fase || filtros?.famili
 export function filtrosDaAba(filtros, aba) {
     const saida = {};
     if (aba !== 'sugestoes') saida.aba = aba;
+    // Criadas abre sem filtro nenhum (e não carrega os das outras abas na URL).
+    if (aba === 'criadas') return saida;
     for (const campo of ['fase', 'familia', 'tipo', 'q', 'status']) {
         if (filtros?.[campo]) saida[campo] = filtros[campo];
     }
@@ -205,6 +207,9 @@ export function filtrosDaAba(filtros, aba) {
 
 /** Quais controles da barra valem em cada aba (reflete o que o servidor já aplica). */
 export function controlesDaAba(aba) {
+    // Criadas não é lista de sugestões: nenhum filtro da barra vale ali.
+    if (aba === 'criadas') return { busca: false, familia: false, fase: false, tipo: false, status: false };
+
     return {
         busca: true,
         familia: true,

@@ -12,6 +12,7 @@ import BarraDeFiltros from '@/Components/Portal/Estrutura/Sugestoes/BarraDeFiltr
 import GrupoFamilia from '@/Components/Portal/Estrutura/Sugestoes/GrupoFamilia';
 import AbasDasSugestoes from '@/Components/Portal/Estrutura/Sugestoes/AbasDasSugestoes';
 import BarraDeMarcadas from '@/Components/Portal/Estrutura/Sugestoes/BarraDeMarcadas';
+import PainelCriadas from '@/Components/Portal/Estrutura/Sugestoes/PainelCriadas';
 import PainelSemTipo from '@/Components/Portal/Estrutura/Sugestoes/PainelSemTipo';
 import JanelaTipo from '@/Components/Portal/Estrutura/Sugestoes/JanelaTipo';
 import ListaDescartadas from '@/Components/Portal/Estrutura/Sugestoes/ListaDescartadas';
@@ -110,7 +111,7 @@ function BlocoDeCombos({ chave, bloco, ocupado, onAlternar, children }) {
     );
 }
 
-export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
+export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, criadas = null, filtros, ml_conectado = false, vocabulario, montagem = null, montar_disponivel = false }) {
     const limites = sugestoes.limites;
     const [montarAberto, setMontarAberto] = useState(false);
     const [produtoMontar, setProdutoMontar] = useState(null);     // `?montar=<produto>`: entra já escolhido
@@ -142,6 +143,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
     const ehAbaSugestoes = sugestoes.aba === 'sugestoes';
     const ehAbaSemTipo = sugestoes.aba === 'sem_tipo';
     const ehAbaDescartadas = sugestoes.aba === 'descartadas';
+    // 13/10/2026 — os combos, kits e combits que já existem: não é lista de sugestões, não tem filtro nem seleção.
+    const ehAbaCriadas = sugestoes.aba === 'criadas';
     const itens = sugestoes.itens ?? [];
     const grupos = useMemo(() => montarGrupos(itens, sugestoes.grupos), [itens, sugestoes.grupos]);
     const marcadas = estado.marcadas;
@@ -631,7 +634,7 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                     </EstadoVazio>
                 )}
 
-                {sugestoes.tem_produtos && (
+                {sugestoes.tem_produtos && ! ehAbaCriadas && (
                     <>
                         <div className="mt-4">
                             <ResumoSugestoes resumo={sugestoes.resumo} />
@@ -747,6 +750,8 @@ export default function EstruturaSugestoes({ empresa, modulos = [], sugestoes, f
                         )}
                     </>
                 )}
+
+                {ehAbaCriadas && <PainelCriadas criadas={criadas} />}
 
                 {ehAbaSemTipo && sugestoes.tem_produtos && (
                     <PainelSemTipo produtos={sugestoes.produtos_sem_tipo ?? []} tipos={sugestoes.tipos ?? []} paginacao={sugestoes.paginacao}
